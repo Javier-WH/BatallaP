@@ -48,6 +48,8 @@ import Subject from './Subject';
 import PeriodGradeSubject from './PeriodGradeSubject';
 import Inscription from './Inscription';
 import InscriptionSubject from './InscriptionSubject';
+import EvaluationPlan from './EvaluationPlan';
+import Qualification from './Qualification';
 
 // ... (Existing User/Person/Role/Contact associations) ...
 
@@ -90,6 +92,16 @@ Subject.belongsToMany(Inscription, { through: InscriptionSubject, foreignKey: 's
 InscriptionSubject.belongsTo(Inscription, { foreignKey: 'inscriptionId', as: 'inscription' });
 InscriptionSubject.belongsTo(Subject, { foreignKey: 'subjectId', as: 'subject' });
 
+// 5. Evaluation and Qualification Associations
+PeriodGradeSubject.hasMany(EvaluationPlan, { foreignKey: 'periodGradeSubjectId', as: 'evaluationPlans' });
+EvaluationPlan.belongsTo(PeriodGradeSubject, { foreignKey: 'periodGradeSubjectId', as: 'periodGradeSubject' });
+
+EvaluationPlan.hasMany(Qualification, { foreignKey: 'evaluationPlanId', as: 'qualifications' });
+Qualification.belongsTo(EvaluationPlan, { foreignKey: 'evaluationPlanId', as: 'evaluationPlan' });
+
+InscriptionSubject.hasMany(Qualification, { foreignKey: 'inscriptionSubjectId', as: 'qualifications' });
+Qualification.belongsTo(InscriptionSubject, { foreignKey: 'inscriptionSubjectId', as: 'inscriptionSubject' });
+
 export {
   User,
   Person,
@@ -104,5 +116,7 @@ export {
   Subject,
   PeriodGradeSubject,
   Inscription,
-  InscriptionSubject
+  InscriptionSubject,
+  EvaluationPlan,
+  Qualification
 };
