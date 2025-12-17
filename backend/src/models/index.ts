@@ -87,6 +87,9 @@ Section.hasMany(Inscription, { foreignKey: 'sectionId', as: 'inscriptions' });
 Inscription.belongsTo(Person, { foreignKey: 'personId', as: 'student' });
 Person.hasMany(Inscription, { foreignKey: 'personId', as: 'inscriptions' });
 
+// Inscription <-> InscriptionSubject (One-to-Many for easier access)
+Inscription.hasMany(InscriptionSubject, { foreignKey: 'inscriptionId', as: 'inscriptionSubjects' });
+
 // Inscription <-> Subject (Many-to-Many)
 Inscription.belongsToMany(Subject, { through: InscriptionSubject, foreignKey: 'inscriptionId', otherKey: 'subjectId', as: 'subjects' });
 Subject.belongsToMany(Inscription, { through: InscriptionSubject, foreignKey: 'subjectId', otherKey: 'inscriptionId', as: 'inscriptions' });

@@ -8,7 +8,8 @@ import {
   VideoCameraOutlined,
   LogoutOutlined,
   DashboardOutlined,
-  TeamOutlined
+  TeamOutlined,
+  BookOutlined
 } from '@ant-design/icons';
 import { Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
@@ -52,6 +53,15 @@ const MainLayout: React.FC = () => {
       icon: <TeamOutlined />,
       label: 'Admin',
       onClick: () => navigate('/admin')
+    });
+  }
+
+  if (user?.roles.includes('Teacher')) {
+    menuItems.push({
+      key: 'teacher-module',
+      icon: <BookOutlined />,
+      label: 'Profesor',
+      onClick: () => navigate('/teacher')
     });
   }
 

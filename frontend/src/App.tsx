@@ -20,6 +20,7 @@ import RegisterStaff from '@/pages/admin/RegisterStaff';
 import EnrollStudent from '@/pages/admin/EnrollStudent';
 import EnrolledStudents from '@/pages/admin/EnrolledStudents';
 import TeacherProjection from '@/pages/admin/TeacherProjection';
+import TeacherPanel from '@/pages/teacher/TeacherPanel';
 import type { JSX } from 'react';
 
 // Protected Route Component
@@ -89,6 +90,9 @@ function AppRoutes() {
           <Route path="search" element={<SearchUsers />} />
           <Route path="edit/:id" element={<EditUser />} />
         </Route>
+
+        {/* Nested Teacher Module */}
+        <Route path="teacher" element={<RequireAuth allowedRoles={['Teacher', 'Admin', 'Master']}><TeacherPanel /></RequireAuth>} />
       </Route>
 
       <Route path="*" element={<h1>404 Not Found</h1>} />
