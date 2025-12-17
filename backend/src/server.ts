@@ -24,7 +24,7 @@ const startServer = async () => {
 
     // Sync models (create tables if not exist)
     // In production, use migrations instead of sync({ force: true/false })
-    await sequelize.sync({ alter: true });
+    await sequelize.sync();
     console.log('All models were synchronized successfully.');
 
     app.listen(PORT, () => {

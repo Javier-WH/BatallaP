@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Form, Input, Button, DatePicker, Select, Radio, message, Card, Spin, Tag, Divider, Alert } from 'antd';
+import { Form, Input, Button, DatePicker, Select, Radio, message, Card, Spin, Tag, Divider, Alert, Popconfirm } from 'antd';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import api from '@/services/api';
 import dayjs from 'dayjs';
@@ -23,6 +23,8 @@ const EditUser: React.FC = () => {
   const [enrollStructure, setEnrollStructure] = useState<any[]>([]);
   const [selectedGradeId, setSelectedGradeId] = useState<number | null>(null);
   const [targetUserRoles, setTargetUserRoles] = useState<string[]>([]);
+  const [hasAccount, setHasAccount] = useState(false);
+  const [showAccountFields, setShowAccountFields] = useState(false);
 
   const getBasePath = useCallback(() => {
     if (location.pathname.startsWith('/master')) return '/master';
@@ -36,6 +38,10 @@ const EditUser: React.FC = () => {
         const { data } = await api.get(`/users/${id}`);
         const userRoles = data.roles?.map((r: any) => r.name) || [];
         setTargetUserRoles(userRoles);
+
+        const hasUser = !!data.user;
+        setHasAccount(hasUser);
+        setShowAccountFields(hasUser);
 
         const studentCheck = userRoles.some((r: string) =>
           ['Student', 'Estudiante', 'Alumno'].includes(r)
@@ -119,6 +125,22 @@ const EditUser: React.FC = () => {
     return item?.sections || [];
   };
 
+  const handleDeleteAccount = async () => {
+    try {
+      setSubmitting(true);
+      await api.delete(`/users/${id}/account`);
+      message.success('Acceso al sistema eliminado');
+      setHasAccount(false);
+      setShowAccountFields(false);
+      form.setFieldsValue({ username: '', password: '' });
+    } catch (error: any) {
+      console.error(error);
+      message.error(error.response?.data?.message || 'Error al eliminar acceso');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const targetHasRestrictedRoles = targetUserRoles.includes('Master') || targetUserRoles.includes('Admin');
 
   if (loading) return <div style={{ display: 'flex', justifyContent: 'center', padding: 50 }}><Spin size="large" /></div>;
@@ -146,20 +168,64 @@ const EditUser: React.FC = () => {
 
         <Form form={form} layout="vertical" onFinish={onFinish}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-            <div style={{ gridColumn: 'span 2' }}>
-              <h4 style={{ margin: 0, marginBottom: 8, color: '#666' }}>Credenciales de Acceso</h4>
-            </div>
-            <Form.Item
-              name="username"
-              label="Usuario (Opcional si no tiene cuenta)"
-              rules={[{ required: !!form.getFieldValue('username'), message: 'El nombre de usuario es requerido si se desea crear una cuenta' }]}
-            >
-              <Input placeholder="Dejar en blanco si no requiere acceso" />
-            </Form.Item>
+            {/* Account Info Section */}
+            {!showAccountFields ? (
+              <div style={{ gridColumn: 'span 2', marginBottom: 16 }}>
+                <Alert
+                  message="Sin cuenta de acceso"
+                  description="Este usuario no tiene credenciales para entrar al sistema."
+                  type="info"
+                  showIcon
+                  action={
+                    <Button size="small" type="primary" onClick={() => setShowAccountFields(true)}>
+                      Habilitar Acceso
+                    </Button>
+                  }
+                />
+              </div>
+            ) : (
+              <>
+                <div style={{ gridColumn: 'span 2', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <h4 style={{ margin: 0, color: '#666' }}>
+                    Credenciales de Acceso
+                    {hasAccount && <Tag color="green" style={{ marginLeft: 8 }}>Cuenta Activa</Tag>}
+                    {!hasAccount && <Tag color="orange" style={{ marginLeft: 8 }}>Nueva Cuenta</Tag>}
+                  </h4>
+                  {hasAccount && (isMaster || !targetHasRestrictedRoles) && (
+                    <Popconfirm
+                      title="¿Eliminar acceso al sistema?"
+                      description="Se borrará el usuario y contraseña. Los datos personales permanecerán intactos."
+                      onConfirm={handleDeleteAccount}
+                      okText="Sí, eliminar"
+                      cancelText="No"
+                      okButtonProps={{ danger: true }}
+                    >
+                      <Button danger type="link" size="small">Eliminar Acceso</Button>
+                    </Popconfirm>
+                  )}
+                  {!hasAccount && (
+                    <Button type="link" size="small" onClick={() => setShowAccountFields(false)}>
+                      Cancelar habilitación
+                    </Button>
+                  )}
+                </div>
+                <Form.Item
+                  name="username"
+                  label="Usuario"
+                  rules={[{ required: showAccountFields, message: 'El nombre de usuario es requerido' }]}
+                >
+                  <Input placeholder="Nombre de usuario" disabled={targetHasRestrictedRoles && !isMaster} />
+                </Form.Item>
 
-            <Form.Item name="password" label="Nueva Contraseña (Dejar en blanco para no cambiar)">
-              <Input.Password placeholder="******" />
-            </Form.Item>
+                <Form.Item
+                  name="password"
+                  label={hasAccount ? "Nueva Contraseña (Dejar en blanco para no cambiar)" : "Contraseña Inicial"}
+                  rules={[{ required: !hasAccount && showAccountFields, message: 'La contraseña es requerida para nuevas cuentas' }]}
+                >
+                  <Input.Password placeholder="******" disabled={targetHasRestrictedRoles && !isMaster} />
+                </Form.Item>
+              </>
+            )}
 
             <div style={{ gridColumn: 'span 2', marginTop: 8 }}>
               <h4 style={{ margin: 0, marginBottom: 8, color: '#666' }}>Datos Personales</h4>
@@ -252,7 +318,7 @@ const EditUser: React.FC = () => {
               rules={[{ required: true, message: 'Seleccione al menos un rol' }]}
               style={{ gridColumn: 'span 2' }}
             >
-              <Select mode="multiple" placeholder="Selecciona roles">
+              <Select mode="multiple" placeholder="Selecciona roles" disabled={targetHasRestrictedRoles && !isMaster}>
                 <Option value="Student">Estudiante</Option>
                 <Option value="Tutor">Representante</Option>
                 <Option value="Teacher">Profesor</Option>

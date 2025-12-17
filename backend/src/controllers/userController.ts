@@ -104,26 +104,35 @@ export const updateUser = async (req: Request, res: Response) => {
       roleName
     } = req.body;
 
-    const person = await Person.findByPk(id);
+    const person = await Person.findByPk(id, {
+      include: [{ model: Role, as: 'roles', through: { attributes: [] } }]
+    });
     if (!person) return res.status(404).json({ message: 'Person not found' });
 
-    // Update Person
+    // Permissions Check
+    const currentUser = (req.session as any).user;
+    const isMaster = currentUser?.roles?.includes('Master');
+    const currentRoles = (person as any).roles || [];
+    const targetHasRestrictedRoles = currentRoles.some((r: any) => ['Master', 'Admin'].includes(r.name));
+
+    // Update Person Data (Allowed for all admins)
     await person.update({ firstName, lastName, documentType, document, gender, birthdate });
 
-    // Update User
-    if (person.userId) {
-      const user = await User.findByPk(person.userId);
-      if (user && username) {
-        user.username = username;
-        if (password && password.trim() !== '') {
-          user.password = password;
+    // Update User (Account/Security) - Protected for Admin/Master by non-Master
+    if (!targetHasRestrictedRoles || isMaster) {
+      if (person.userId) {
+        const user = await User.findByPk(person.userId);
+        if (user && username) {
+          user.username = username;
+          if (password && password.trim() !== '') {
+            user.password = password;
+          }
+          await user.save();
         }
-        await user.save();
+      } else if (username && password) {
+        const newUser = await User.create({ username, password });
+        await person.update({ userId: newUser.id });
       }
-    } else if (username && password) {
-      // Logic to create a user if they didn't have one and credentials are provided
-      const newUser = await User.create({ username, password });
-      await person.update({ userId: newUser.id });
     }
 
     // Update Contact
@@ -142,32 +151,32 @@ export const updateUser = async (req: Request, res: Response) => {
       }
     }
 
-    // Update Role (Multi-role support)
-    // Expecting 'roles' as an array of role names strings
-    const { roles } = req.body;
+    // Update Role (Multi-role support) - Protected for Admin/Master by non-Master
+    if (!targetHasRestrictedRoles || isMaster) {
+      const { roles } = req.body;
 
-    if (roles && Array.isArray(roles)) {
-      // Find all role IDs
-      const targetRoles = await Role.findAll({ where: { name: { [Op.in]: roles } } });
+      if (roles && Array.isArray(roles)) {
+        // Find all role IDs
+        const targetRoles = await Role.findAll({ where: { name: { [Op.in]: roles } } });
 
-      if (targetRoles.length > 0) {
-        // Clear current roles
-        await PersonRole.destroy({ where: { personId: person.id } });
+        if (targetRoles.length > 0) {
+          // Clear current roles
+          await PersonRole.destroy({ where: { personId: person.id } });
 
-        // Add new roles
-        // Ideally use bulkCreate
-        const personRoles = targetRoles.map(role => ({
-          personId: person.id,
-          roleId: role.id
-        }));
+          // Add new roles
+          const personRoles = targetRoles.map(role => ({
+            personId: person.id,
+            roleId: role.id
+          }));
 
-        await PersonRole.bulkCreate(personRoles);
-      }
-    } else if (roleName) { // Fallback for single role update if needed or legacy
-      const role = await Role.findOne({ where: { name: roleName } });
-      if (role) {
-        await PersonRole.destroy({ where: { personId: person.id } });
-        await PersonRole.create({ personId: person.id, roleId: role.id });
+          await PersonRole.bulkCreate(personRoles);
+        }
+      } else if (roleName) { // Fallback for single role update if needed or legacy
+        const role = await Role.findOne({ where: { name: roleName } });
+        if (role) {
+          await PersonRole.destroy({ where: { personId: person.id } });
+          await PersonRole.create({ personId: person.id, roleId: role.id });
+        }
       }
     }
 
@@ -176,4 +185,50 @@ export const updateUser = async (req: Request, res: Response) => {
     console.error(error);
     res.status(500).json({ message: 'Error updating user' });
   }
-}
+};
+
+export const deleteUserAccount = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params; // Person ID
+    const person = await Person.findByPk(id, {
+      include: [{ model: Role, as: 'roles', through: { attributes: [] } }]
+    });
+
+    if (!person) {
+      return res.status(404).json({ message: 'Persona no encontrada' });
+    }
+
+    if (!person.userId) {
+      return res.status(400).json({ message: 'Esta persona no tiene una cuenta vinculada' });
+    }
+
+    const userId = person.userId;
+
+    // Check permissions: only Master can delete Admin or Master accounts
+    const currentUser = (req.session as any).user;
+    const isMaster = currentUser?.roles?.includes('Master');
+
+    // cast to any to access included roles from association in plain sequelize
+    const roles = (person as any).roles || [];
+    const targetHasRestrictedRoles = roles.some((r: any) =>
+      ['Master', 'Admin'].includes(r.name)
+    );
+
+    if (targetHasRestrictedRoles && !isMaster) {
+      return res.status(403).json({
+        message: 'No tienes permisos para eliminar la cuenta de un administrador o master'
+      });
+    }
+
+    // 1. Dissociate person from user
+    await person.update({ userId: null });
+
+    // 2. Delete the user record
+    await User.destroy({ where: { id: userId } });
+
+    res.json({ message: 'Cuenta de acceso eliminada correctamente' });
+  } catch (error) {
+    console.error('Error deleting user account:', error);
+    res.status(500).json({ message: 'Error al eliminar la cuenta de acceso' });
+  }
+};
