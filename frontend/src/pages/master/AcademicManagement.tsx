@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Card, Tabs, Table, Button, Modal, Form, Input, Tag, message, Select, Space, Row, Col, Popconfirm } from 'antd';
-import { PlusOutlined, DeleteOutlined, CheckCircleOutlined } from '@ant-design/icons';
+import { PlusOutlined, DeleteOutlined, CheckCircleOutlined, EditOutlined } from '@ant-design/icons';
 import api from '@/services/api';
 
 const { TabPane } = Tabs;
@@ -152,6 +152,61 @@ const AcademicManagement: React.FC = () => {
     }
   ];
 
+  // --- Catalog Actions ---
+
+  // State for editing catalogs
+  const [editCatalogVisible, setEditCatalogVisible] = useState(false);
+  const [editCatalogTarget, setEditCatalogTarget] = useState<{ type: 'grade' | 'section', id: number, name: string } | null>(null);
+  const [editCatalogForm] = Form.useForm();
+
+  const openEditCatalog = (type: 'grade' | 'section', record: any) => {
+    setEditCatalogTarget({ type, id: record.id, name: record.name });
+    editCatalogForm.setFieldsValue({ name: record.name });
+    setEditCatalogVisible(true);
+  };
+
+  const handleEditCatalog = async (values: any) => {
+    if (!editCatalogTarget) return;
+    try {
+      const url = editCatalogTarget.type === 'grade' ? '/academic/grades' : '/academic/sections';
+      await api.put(`${url}/${editCatalogTarget.id}`, values);
+      message.success('Actualizado exitosamente');
+      setEditCatalogVisible(false);
+      fetchAll();
+    } catch (error) {
+      message.error('Error actualizando');
+    }
+  };
+
+  const handleDeleteCatalog = async (type: 'grade' | 'section', id: number) => {
+    try {
+      const url = type === 'grade' ? '/academic/grades' : '/academic/sections';
+      await api.delete(`${url}/${id}`);
+      message.success('Eliminado exitosamente');
+      fetchAll();
+    } catch (error: any) {
+      message.error(error.response?.data?.error || 'Error eliminando (posiblemente en uso)');
+    }
+  };
+
+  // Columns for Catalogs
+  const catalogColumns = (type: 'grade' | 'section') => [
+    { title: 'Nombre', dataIndex: 'name' },
+    {
+      title: 'Acciones',
+      key: 'actions',
+      width: 100,
+      render: (_: any, r: any) => (
+        <Space>
+          <Button type="text" icon={<EditOutlined />} onClick={() => openEditCatalog(type, r)} />
+          <Popconfirm title="¿Eliminar?" onConfirm={() => handleDeleteCatalog(type, r.id)}>
+            <Button type="text" danger icon={<DeleteOutlined />} />
+          </Popconfirm>
+        </Space>
+      )
+    }
+  ];
+
   // --- Render ---
 
   return (
@@ -262,7 +317,7 @@ const AcademicManagement: React.FC = () => {
                   rowKey="id"
                   size="small"
                   style={{ marginTop: 16 }}
-                  columns={[{ title: 'Nombre', dataIndex: 'name' }]}
+                  columns={catalogColumns('grade')}
                 />
               </Col>
               <Col span={12}>
@@ -281,7 +336,7 @@ const AcademicManagement: React.FC = () => {
                   rowKey="id"
                   size="small"
                   style={{ marginTop: 16 }}
-                  columns={[{ title: 'Nombre', dataIndex: 'name' }]}
+                  columns={catalogColumns('section')}
                 />
               </Col>
             </Row>
@@ -301,6 +356,21 @@ const AcademicManagement: React.FC = () => {
             <Input placeholder="2024-2025" />
           </Form.Item>
           <Button type="primary" htmlType="submit" block>Crear Periodo</Button>
+        </Form>
+      </Modal>
+
+      {/* Edit Catalog Modal */}
+      <Modal
+        title={`Editar ${editCatalogTarget?.type === 'grade' ? 'Grado' : 'Sección'}`}
+        open={editCatalogVisible}
+        onCancel={() => setEditCatalogVisible(false)}
+        footer={null}
+      >
+        <Form form={editCatalogForm} layout="vertical" onFinish={handleEditCatalog}>
+          <Form.Item name="name" label="Nombre" rules={[{ required: true }]}>
+            <Input />
+          </Form.Item>
+          <Button type="primary" htmlType="submit" block>Guardar Cambios</Button>
         </Form>
       </Modal>
     </div>

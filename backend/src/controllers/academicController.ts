@@ -55,6 +55,27 @@ export const createGrade = async (req: Request, res: Response) => {
   res.json(grade);
 };
 
+export const updateGrade = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { name } = req.body;
+    await Grade.update({ name }, { where: { id } });
+    res.json({ message: 'Grade updated' });
+  } catch (error) {
+    res.status(500).json({ error: 'Error updating grade' });
+  }
+};
+
+export const deleteGrade = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    await Grade.destroy({ where: { id } });
+    res.json({ message: 'Grade deleted' });
+  } catch (error) {
+    res.status(400).json({ error: 'No se puede eliminar porque está en uso' });
+  }
+};
+
 export const getSections = async (req: Request, res: Response) => {
   const sections = await Section.findAll();
   res.json(sections);
@@ -64,6 +85,27 @@ export const createSection = async (req: Request, res: Response) => {
   const { name } = req.body;
   const section = await Section.create({ name });
   res.json(section);
+};
+
+export const updateSection = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { name } = req.body;
+    await Section.update({ name }, { where: { id } });
+    res.json({ message: 'Section updated' });
+  } catch (error) {
+    res.status(500).json({ error: 'Error updating section' });
+  }
+};
+
+export const deleteSection = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    await Section.destroy({ where: { id } });
+    res.json({ message: 'Section deleted' });
+  } catch (error) {
+    res.status(400).json({ error: 'No se puede eliminar porque está en uso' });
+  }
 };
 
 // --- Structure Management ---
