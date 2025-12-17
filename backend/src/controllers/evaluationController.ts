@@ -132,7 +132,14 @@ export const getStudentsForAssignment = async (req: Request, res: Response) => {
         {
           model: InscriptionSubject,
           as: 'inscriptionSubjects',
-          where: { subjectId: periodGradeSubject.subjectId }
+          where: { subjectId: periodGradeSubject.subjectId },
+          include: [
+            {
+              model: Qualification,
+              as: 'qualifications',
+              include: [{ model: EvaluationPlan, as: 'evaluationPlan' }]
+            }
+          ]
         }
       ]
     });

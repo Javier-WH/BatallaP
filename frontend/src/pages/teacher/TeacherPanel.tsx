@@ -135,6 +135,8 @@ const TeacherPanel: React.FC = () => {
         ...qualifications,
         [evalPlanId]: { score, observations }
       });
+      // Refresh the student list to update the "1/4" progress indicators
+      fetchPlanAndStudents();
     } catch (error) {
       message.error('Error al guardar nota');
     }
@@ -164,19 +166,16 @@ const TeacherPanel: React.FC = () => {
     },
     { title: 'Cédula', dataIndex: ['student', 'document'], key: 'document' },
     {
-      title: 'Progreso',
-      key: 'progress',
-      render: () => {
-        // Calculation of total score could go here
-        return <Tag color="blue">Ver Detalle</Tag>;
+      title: 'Notas',
+      key: 'grades_count',
+      render: (_: any, record: any) => {
+        const insSub = record.inscriptionSubjects?.[0];
+        const gradedCount = insSub?.qualifications?.filter((q: any) => q.evaluationPlan?.term === selectedTerm).length || 0;
+        const totalCount = evaluationPlan.length;
+        return <Tag color={gradedCount === totalCount && totalCount > 0 ? 'green' : 'orange'}>
+          {gradedCount} / {totalCount}
+        </Tag>;
       }
-    },
-    {
-      title: 'Acciones',
-      key: 'actions',
-      render: (_: any, record: any) => (
-        <Button type="primary" size="small" onClick={() => handleOpenGrading(record)}>Calificar</Button>
-      )
     }
   ];
 
