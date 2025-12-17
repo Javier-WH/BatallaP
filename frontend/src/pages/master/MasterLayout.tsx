@@ -1,7 +1,7 @@
 import React from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { Button, Space, Card, Tooltip } from 'antd';
-import { DashboardOutlined, UserAddOutlined, SearchOutlined } from '@ant-design/icons';
+import { DashboardOutlined, UserAddOutlined, SearchOutlined, BankOutlined } from '@ant-design/icons';
 
 const MasterLayout: React.FC = () => {
   const navigate = useNavigate();
@@ -48,6 +48,16 @@ const MasterLayout: React.FC = () => {
               onClick={() => navigate('/master/search')}
             >
               Buscar / Editar
+            </Button>
+          </Tooltip>
+
+          <Tooltip title="Gestión de Periodos, Grados y Secciones">
+            <Button
+              type={isActive('/master/academic') ? 'primary' : 'text'}
+              icon={<BankOutlined />}
+              onClick={() => navigate('/master/academic')}
+            >
+              Académico
             </Button>
           </Tooltip>
         </Space>

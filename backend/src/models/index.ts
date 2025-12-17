@@ -34,17 +34,42 @@ Person.belongsToMany(Role, {
   as: 'roles'
 });
 
-Role.belongsToMany(Person, {
-  through: PersonRole,
-  foreignKey: 'roleId',
-  otherKey: 'personId',
-  as: 'people'
-});
+import SchoolPeriod from './SchoolPeriod';
+import Grade from './Grade';
+import Section from './Section';
+import PeriodGrade from './PeriodGrade';
+import PeriodGradeSection from './PeriodGradeSection';
+
+// ... (Existing User/Person/Role/Contact associations) ...
+
+// Educational Structure Associations
+
+// 1. SchoolPeriod <-> Grade (Through PeriodGrade)
+SchoolPeriod.belongsToMany(Grade, { through: PeriodGrade, foreignKey: 'schoolPeriodId', otherKey: 'gradeId', as: 'grades' });
+Grade.belongsToMany(SchoolPeriod, { through: PeriodGrade, foreignKey: 'gradeId', otherKey: 'schoolPeriodId', as: 'periods' });
+
+// Setup explicit associations for PeriodGrade to access attributes easily if needed
+PeriodGrade.belongsTo(SchoolPeriod, { foreignKey: 'schoolPeriodId', as: 'schoolPeriod' });
+PeriodGrade.belongsTo(Grade, { foreignKey: 'gradeId', as: 'grade' });
+
+// 2. PeriodGrade <-> Section (Through PeriodGradeSection)
+// This effectively links a specific Grade in a specific Period to multiple Sections
+PeriodGrade.belongsToMany(Section, { through: PeriodGradeSection, foreignKey: 'periodGradeId', otherKey: 'sectionId', as: 'sections' });
+Section.belongsToMany(PeriodGrade, { through: PeriodGradeSection, foreignKey: 'sectionId', otherKey: 'periodGradeId', as: 'periodGrades' });
+
+// Explicit associations for PeriodGradeSection
+PeriodGradeSection.belongsTo(PeriodGrade, { foreignKey: 'periodGradeId', as: 'periodGrade' });
+PeriodGradeSection.belongsTo(Section, { foreignKey: 'sectionId', as: 'section' });
 
 export {
   User,
   Person,
   Role,
   PersonRole,
-  Contact
+  Contact,
+  SchoolPeriod,
+  Grade,
+  Section,
+  PeriodGrade,
+  PeriodGradeSection
 };

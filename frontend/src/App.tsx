@@ -10,6 +10,7 @@ import MasterDashboard from '@/pages/master/Dashboard';
 import RegisterUser from '@/pages/master/RegisterUser';
 import SearchUsers from '@/pages/master/SearchUsers';
 import EditUser from '@/pages/master/EditUser';
+import AcademicManagement from '@/pages/master/AcademicManagement';
 
 // Admin Module Imports
 import AdminLayout from '@/pages/admin/AdminLayout';
@@ -72,6 +73,7 @@ function AppRoutes() {
           <Route path="register" element={<RegisterUser />} />
           <Route path="search" element={<SearchUsers />} />
           <Route path="edit/:id" element={<EditUser />} />
+          <Route path="academic" element={<AcademicManagement />} />
         </Route>
 
         {/* Nested Admin Module */}
