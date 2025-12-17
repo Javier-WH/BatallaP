@@ -19,6 +19,7 @@ import AdminLayout from '@/pages/admin/AdminLayout';
 import RegisterStaff from '@/pages/admin/RegisterStaff';
 import EnrollStudent from '@/pages/admin/EnrollStudent';
 import EnrolledStudents from '@/pages/admin/EnrolledStudents';
+import TeacherProjection from '@/pages/admin/TeacherProjection';
 import type { JSX } from 'react';
 
 // Protected Route Component
@@ -84,6 +85,7 @@ function AppRoutes() {
           <Route path="register-staff" element={<RegisterStaff />} />
           <Route path="enroll-student" element={<EnrollStudent />} />
           <Route path="enrolled" element={<EnrolledStudents />} />
+          <Route path="projection" element={<TeacherProjection />} />
           <Route path="search" element={<SearchUsers />} />
           <Route path="edit/:id" element={<EditUser />} />
         </Route>

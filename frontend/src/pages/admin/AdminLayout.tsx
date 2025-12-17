@@ -61,6 +61,16 @@ const AdminLayout: React.FC = () => {
             </Button>
           </Tooltip>
 
+          <Tooltip title="Proyección de Profesores (Asignación de materias)">
+            <Button
+              type={isActive('/admin/projection') ? 'primary' : 'text'}
+              icon={<SearchOutlined />}
+              onClick={() => navigate('/admin/projection')}
+            >
+              Proyección
+            </Button>
+          </Tooltip>
+
           <Tooltip title="Buscar y editar usuarios (excepto roles administrativos)">
             <Button
               type={isActive('/admin/search') ? 'primary' : 'text'}

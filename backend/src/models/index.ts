@@ -50,6 +50,7 @@ import Inscription from './Inscription';
 import InscriptionSubject from './InscriptionSubject';
 import EvaluationPlan from './EvaluationPlan';
 import Qualification from './Qualification';
+import TeacherAssignment from './TeacherAssignment';
 
 // ... (Existing User/Person/Role/Contact associations) ...
 
@@ -102,6 +103,16 @@ Qualification.belongsTo(EvaluationPlan, { foreignKey: 'evaluationPlanId', as: 'e
 InscriptionSubject.hasMany(Qualification, { foreignKey: 'inscriptionSubjectId', as: 'qualifications' });
 Qualification.belongsTo(InscriptionSubject, { foreignKey: 'inscriptionSubjectId', as: 'inscriptionSubject' });
 
+// 6. Teacher Assignment Associations
+Person.hasMany(TeacherAssignment, { foreignKey: 'teacherId', as: 'teachingAssignments' });
+TeacherAssignment.belongsTo(Person, { foreignKey: 'teacherId', as: 'teacher' });
+
+PeriodGradeSubject.hasMany(TeacherAssignment, { foreignKey: 'periodGradeSubjectId', as: 'teacherAssignments' });
+TeacherAssignment.belongsTo(PeriodGradeSubject, { foreignKey: 'periodGradeSubjectId', as: 'periodGradeSubject' });
+
+Section.hasMany(TeacherAssignment, { foreignKey: 'sectionId', as: 'teacherAssignments' });
+TeacherAssignment.belongsTo(Section, { foreignKey: 'sectionId', as: 'section' });
+
 export {
   User,
   Person,
@@ -118,5 +129,6 @@ export {
   Inscription,
   InscriptionSubject,
   EvaluationPlan,
-  Qualification
+  Qualification,
+  TeacherAssignment
 };

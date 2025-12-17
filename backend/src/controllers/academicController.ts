@@ -13,6 +13,15 @@ export const getPeriods = async (req: Request, res: Response) => {
   }
 };
 
+export const getActivePeriod = async (req: Request, res: Response) => {
+  try {
+    const period = await SchoolPeriod.findOne({ where: { isActive: true } });
+    res.json(period);
+  } catch (error) {
+    res.status(500).json({ error: 'Error fetching active period' });
+  }
+};
+
 export const createPeriod = async (req: Request, res: Response) => {
   try {
     const { name } = req.body;

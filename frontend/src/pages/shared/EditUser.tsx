@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Form, Input, Button, DatePicker, Select, Radio, message, Card, Spin, Tag, Divider, Alert, Popconfirm } from 'antd';
+import { Form, Input, Button, DatePicker, Select, Radio, message, Card, Spin, Tag, Divider, Alert, Popconfirm, List, Space } from 'antd';
+import { BookOutlined } from '@ant-design/icons';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import api from '@/services/api';
 import dayjs from 'dayjs';
@@ -19,6 +20,8 @@ const EditUser: React.FC = () => {
   const isMaster = currentUser?.roles?.includes('Master') || false;
 
   const [isStudent, setIsStudent] = useState(false);
+  const [isTeacher, setIsTeacher] = useState(false);
+  const [teachingAssignments, setTeachingAssignments] = useState<any[]>([]);
   const [inscriptionData, setInscriptionData] = useState<any>(null);
   const [enrollStructure, setEnrollStructure] = useState<any[]>([]);
   const [selectedGradeId, setSelectedGradeId] = useState<number | null>(null);
@@ -47,6 +50,12 @@ const EditUser: React.FC = () => {
           ['Student', 'Estudiante', 'Alumno'].includes(r)
         );
         setIsStudent(studentCheck);
+
+        const teacherCheck = userRoles.includes('Teacher');
+        setIsTeacher(teacherCheck);
+        if (teacherCheck) {
+          setTeachingAssignments(data.teachingAssignments || []);
+        }
 
         if (studentCheck && data.inscription) {
           setInscriptionData(data.inscription);
@@ -326,6 +335,34 @@ const EditUser: React.FC = () => {
                 <Option value="Master" disabled={!isMaster}>Master {!isMaster && '(Restringido)'}</Option>
               </Select>
             </Form.Item>
+
+            {isTeacher && (
+              <div style={{ gridColumn: 'span 2', marginTop: 16 }}>
+                <Divider>Carga Académica (Docencia)</Divider>
+                {teachingAssignments.length > 0 ? (
+                  <List
+                    size="small"
+                    bordered
+                    dataSource={teachingAssignments}
+                    renderItem={(item: any) => (
+                      <List.Item>
+                        <Space>
+                          <BookOutlined style={{ color: '#1890ff' }} />
+                          <span style={{ fontWeight: 600 }}>{item.periodGradeSubject?.subject?.name}</span>
+                          <Tag color="cyan">{item.periodGradeSubject?.periodGrade?.grade?.name}</Tag>
+                          <Tag color="blue">Sección {item.section?.name}</Tag>
+                        </Space>
+                      </List.Item>
+                    )}
+                  />
+                ) : (
+                  <Alert message="Sin carga académica asignada en este periodo" type="info" showIcon />
+                )}
+                <div style={{ marginTop: 8, textAlign: 'right' }}>
+                  <Button type="link" onClick={() => navigate('/admin/projection')}>Gestionar en Proyección</Button>
+                </div>
+              </div>
+            )}
           </div>
 
           <Form.Item>
@@ -336,7 +373,7 @@ const EditUser: React.FC = () => {
           </Form.Item>
         </Form>
       </Card>
-    </div>
+    </div >
   );
 };
 

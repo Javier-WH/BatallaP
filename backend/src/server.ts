@@ -6,6 +6,7 @@ import authRoutes from '@/routes/authRoutes';
 import userRoutes from '@/routes/userRoutes';
 import academicRoutes from '@/routes/academicRoutes';
 import inscriptionRoutes from '@/routes/inscriptionRoutes';
+import teacherRoutes from '@/routes/teacherRoutes';
 
 dotenv.config();
 
@@ -16,6 +17,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/academic', academicRoutes);
 app.use('/api/inscriptions', inscriptionRoutes);
+app.use('/api/teachers', teacherRoutes);
 
 const startServer = async () => {
   try {
