@@ -43,7 +43,7 @@ export const searchUsers = async (req: Request, res: Response) => {
 
 export const getUserDetails = async (req: Request, res: Response) => {
   try {
-    const { id } = req.params; // Person ID or User ID? Let's use User ID for url consistency usually, but here we search people. Let's use Person ID.
+    const { id } = req.params; // Person ID
 
     const person = await Person.findByPk(id, {
       include: [
@@ -57,8 +57,35 @@ export const getUserDetails = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    res.json(person);
+    // Check if student and include inscription data
+    const roles = (person as any).roles || [];
+    const isStudent = roles.some((r: any) =>
+      ['student', 'estudiante', 'alumno'].includes(r.name.toLowerCase())
+    );
+
+    let inscriptionData = null;
+    if (isStudent) {
+      // Import Inscription model dynamically to avoid circular dependency issues at top
+      const { Inscription, SchoolPeriod, Grade, Section }: any = require('../models');
+
+      // Get the most recent/active inscription
+      inscriptionData = await Inscription.findOne({
+        where: { personId: id },
+        include: [
+          { model: SchoolPeriod, as: 'period' },
+          { model: Grade, as: 'grade' },
+          { model: Section, as: 'section' }
+        ],
+        order: [['createdAt', 'DESC']]
+      });
+    }
+
+    res.json({
+      ...person.toJSON(),
+      inscription: inscriptionData
+    });
   } catch (error) {
+    console.error(error);
     res.status(500).json({ message: 'Error fetching user details' });
   }
 };

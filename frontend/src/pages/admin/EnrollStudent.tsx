@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Card, Button, Form, Tag, message, Select, Row, Col, Input, DatePicker, Radio, Tabs } from 'antd';
+import { Card, Button, Form, Tag, message, Select, Row, Col, Input, DatePicker, Radio, Tabs, Alert } from 'antd';
 import { UserAddOutlined } from '@ant-design/icons';
 import api from '@/services/api';
 
@@ -7,70 +7,104 @@ const { Option } = Select;
 const { TabPane } = Tabs;
 
 const EnrollStudent: React.FC = () => {
-  // Common State
-  const [periods, setPeriods] = useState<any[]>([]);
+  // State
+  const [activePeriod, setActivePeriod] = useState<any>(null);
   const [enrollStructure, setEnrollStructure] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // For section selector (controlled)
+  const [selectedGradeId, setSelectedGradeId] = useState<number | null>(null);
+  const [selectedGradeIdExisting, setSelectedGradeIdExisting] = useState<number | null>(null);
 
   // Existing Student State
   const [studentOptions, setStudentOptions] = useState<any[]>([]);
   const [searchingStudents, setSearchingStudents] = useState(false);
+  const searchTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Forms
   const [newStudentForm] = Form.useForm();
   const [existingStudentForm] = Form.useForm();
 
-  // Load Periods
+  // Load Active Period and its structure on mount
   useEffect(() => {
-    const fetchPeriods = async () => {
+    const init = async () => {
+      setLoading(true);
       try {
-        const res = await api.get('/academic/periods');
-        setPeriods(res.data);
+        // 1. Get periods and find active
+        const periodsRes = await api.get('/academic/periods');
+        const active = periodsRes.data.find((p: any) => p.isActive);
+
+        if (!active) {
+          message.warning('No hay periodo escolar activo configurado');
+          setLoading(false);
+          return;
+        }
+
+        setActivePeriod(active);
+
+        // 2. Load structure for active period
+        const structureRes = await api.get(`/academic/structure/${active.id}`);
+        setEnrollStructure(structureRes.data);
       } catch (error) {
-        message.error('Error cargando periodos');
+        message.error('Error cargando datos del periodo activo');
+      } finally {
+        setLoading(false);
       }
     };
-    fetchPeriods();
+    init();
   }, []);
+
+  // Get sections for selected grade
+  const getSectionsForGrade = (gradeId: number | null) => {
+    if (!gradeId) return [];
+    const item = enrollStructure.find(s => s.gradeId === gradeId);
+    return item?.sections || [];
+  };
 
   // --- Handlers ---
 
-  const handlePeriodChange = async (val: number, formInstance: any) => {
-    try {
-      const res = await api.get(`/academic/structure/${val}`);
-      setEnrollStructure(res.data);
-      formInstance.setFieldsValue({ gradeId: undefined, sectionId: undefined });
-    } catch (error) {
-      message.error('Error cargando estructura del periodo');
+  const handleSearchStudents = (value: string) => {
+    // Clear previous timeout
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
     }
-  };
 
-  const handleSearchStudents = async (value: string) => {
-    if (!value) {
+    if (!value || value.length < 2) {
       setStudentOptions([]);
       return;
     }
-    setSearchingStudents(true);
-    try {
-      const res = await api.get(`/users/search?q=${value}`);
-      const students = res.data.filter((p: any) =>
-        p.roles?.some((r: any) => ['student', 'estudiante', 'alumno'].includes(r.name.toLowerCase()))
-      );
-      setStudentOptions(students.map((p: any) => ({
-        label: `${p.firstName} ${p.lastName} (${p.document})`,
-        value: p.id
-      })));
-    } catch (error) {
-      // quiet fail
-    } finally {
-      setSearchingStudents(false);
-    }
+
+    // Debounce: wait 300ms before searching
+    searchTimeoutRef.current = setTimeout(async () => {
+      setSearchingStudents(true);
+      try {
+        const res = await api.get(`/users?q=${encodeURIComponent(value)}`);
+        const students = res.data.filter((p: any) =>
+          p.roles?.some((r: any) => ['student', 'estudiante', 'alumno'].includes(r.name.toLowerCase()))
+        );
+        setStudentOptions(students.map((p: any) => ({
+          label: `${p.firstName} ${p.lastName} (${p.document})`,
+          value: p.id
+        })));
+      } catch (error) {
+        console.error('Error buscando estudiantes:', error);
+      } finally {
+        setSearchingStudents(false);
+      }
+    }, 300);
   };
 
-  // Submit: New Student (uses /inscriptions/register - no User created)
+  // Submit: New Student
   const handleNewStudentSubmit = async (values: any) => {
+    if (!activePeriod) {
+      message.error('No hay periodo activo');
+      return;
+    }
+
     try {
       const payload = {
         ...values,
+        schoolPeriodId: activePeriod.id,
         birthdate: values.birthdate ? values.birthdate.format('YYYY-MM-DD') : null
       };
 
@@ -78,7 +112,7 @@ const EnrollStudent: React.FC = () => {
 
       message.success('Estudiante registrado e inscrito exitosamente');
       newStudentForm.resetFields();
-      setEnrollStructure([]);
+      setSelectedGradeId(null);
     } catch (error: any) {
       console.error(error);
       message.error(error.response?.data?.error || error.response?.data?.message || 'Error al procesar la solicitud');
@@ -87,18 +121,52 @@ const EnrollStudent: React.FC = () => {
 
   // Submit: Existing Student
   const handleExistingStudentSubmit = async (values: any) => {
+    if (!activePeriod) {
+      message.error('No hay periodo activo');
+      return;
+    }
+
     try {
-      await api.post('/inscriptions', values);
+      await api.post('/inscriptions', {
+        ...values,
+        schoolPeriodId: activePeriod.id
+      });
       message.success('Estudiante inscrito correctamente');
       existingStudentForm.resetFields();
+      setSelectedGradeIdExisting(null);
     } catch (error: any) {
       message.error(error.response?.data?.error || 'Error en inscripción');
     }
   };
 
+  if (loading) {
+    return <Card loading />;
+  }
+
+  if (!activePeriod) {
+    return (
+      <Card>
+        <Alert
+          type="warning"
+          message="No hay periodo escolar activo"
+          description="Para inscribir estudiantes, primero debe configurar un periodo escolar activo desde el módulo de Gestión Académica."
+          showIcon
+        />
+      </Card>
+    );
+  }
+
   return (
     <div style={{ maxWidth: 900, margin: '0 auto', paddingBottom: 40 }}>
-      <Card title="Inscripción de Estudiantes" bordered={false}>
+      <Card
+        title="Inscripción de Estudiantes"
+        bordered={false}
+        extra={
+          <Tag color="blue" style={{ fontSize: 14, padding: '4px 12px' }}>
+            Periodo Activo: <strong>{activePeriod.name}</strong>
+          </Tag>
+        }
+      >
         <Tabs defaultActiveKey="new">
 
           {/* TAB 1: NEW STUDENT */}
@@ -110,45 +178,40 @@ const EnrollStudent: React.FC = () => {
               initialValues={{ documentType: 'Venezolano', gender: 'M' }}
             >
               <div style={{ background: '#f0f7ff', padding: 16, borderRadius: 8, marginBottom: 24, border: '1px solid #91caff' }}>
-                <h4 style={{ marginTop: 0, color: '#1890ff' }}>1. Datos Académicos (Inscripción)</h4>
+                <h4 style={{ marginTop: 0, color: '#1890ff' }}>1. Datos Académicos</h4>
                 <Row gutter={16}>
-                  <Col span={8}>
+                  <Col span={12}>
                     <Form.Item
-                      name="schoolPeriodId"
-                      label="Periodo Escolar"
-                      rules={[{ required: true }]}
+                      name="gradeId"
+                      label="Grado"
+                      rules={[{ required: true, message: 'Seleccione un grado' }]}
                     >
-                      <Select placeholder="Seleccione" onChange={(v) => handlePeriodChange(v, newStudentForm)}>
-                        {periods.map(p => (
-                          <Option key={p.id} value={p.id}>{p.name} {p.isActive && <Tag color="green">ACTIVO</Tag>}</Option>
+                      <Select
+                        placeholder="Seleccione Grado"
+                        onChange={(val) => {
+                          setSelectedGradeId(val);
+                          newStudentForm.setFieldsValue({ sectionId: undefined });
+                        }}
+                      >
+                        {enrollStructure.map(s => (
+                          <Option key={s.gradeId} value={s.gradeId}>{s.grade?.name}</Option>
                         ))}
                       </Select>
                     </Form.Item>
                   </Col>
-                  <Col span={8}>
-                    <Form.Item
-                      name="gradeId"
-                      label="Grado"
-                      dependencies={['schoolPeriodId']}
-                      rules={[{ required: true }]}
-                    >
-                      <Select placeholder="Grado" disabled={!enrollStructure.length} onChange={() => newStudentForm.setFieldsValue({ sectionId: undefined })}>
-                        {enrollStructure.map(s => <Option key={s.gradeId} value={s.gradeId}>{s.grade?.name}</Option>)}
-                      </Select>
-                    </Form.Item>
-                  </Col>
-                  <Col span={8}>
+                  <Col span={12}>
                     <Form.Item
                       name="sectionId"
-                      label="Sección"
-                      dependencies={['gradeId']}
+                      label="Sección (Opcional)"
                     >
-                      <Select placeholder="Sección" disabled={!enrollStructure.length} allowClear>
-                        {(() => {
-                          const gid = newStudentForm.getFieldValue('gradeId');
-                          const item = enrollStructure.find(s => s.gradeId === gid);
-                          return item?.sections?.map((sec: any) => <Option key={sec.id} value={sec.id}>{sec.name}</Option>) || [];
-                        })()}
+                      <Select
+                        placeholder="Seleccione Sección"
+                        disabled={!selectedGradeId}
+                        allowClear
+                      >
+                        {getSectionsForGrade(selectedGradeId).map((sec: any) => (
+                          <Option key={sec.id} value={sec.id}>{sec.name}</Option>
+                        ))}
                       </Select>
                     </Form.Item>
                   </Col>
@@ -247,30 +310,24 @@ const EnrollStudent: React.FC = () => {
               style={{ maxWidth: 600, margin: '20px auto' }}
             >
               <Form.Item
-                name="schoolPeriodId"
-                label="Periodo Escolar"
-                rules={[{ required: true }]}
-              >
-                <Select placeholder="Seleccione el Año Escolar" onChange={(v) => handlePeriodChange(v, existingStudentForm)}>
-                  {periods.map(p => (
-                    <Option key={p.id} value={p.id}>{p.name} {p.isActive && <Tag color="green">ACTIVO</Tag>}</Option>
-                  ))}
-                </Select>
-              </Form.Item>
-
-              <Form.Item
                 name="personId"
-                label="Estudiante"
-                rules={[{ required: true, message: 'Busque un estudiante' }]}
+                label="Estudiante (escriba al menos 2 caracteres para buscar)"
+                rules={[{ required: true, message: 'Busque y seleccione un estudiante' }]}
               >
                 <Select
                   showSearch
-                  placeholder="Buscar por nombre o cédula"
+                  placeholder="Escriba nombre o cédula..."
                   filterOption={false}
                   onSearch={handleSearchStudents}
                   loading={searchingStudents}
                   options={studentOptions}
-                  notFoundContent={searchingStudents ? <div style={{ padding: 8 }}>Buscando...</div> : null}
+                  notFoundContent={
+                    searchingStudents
+                      ? <div style={{ padding: 8 }}>Buscando...</div>
+                      : studentOptions.length === 0
+                        ? <div style={{ padding: 8, color: '#999' }}>Escriba para buscar estudiantes</div>
+                        : null
+                  }
                 />
               </Form.Item>
 
@@ -279,26 +336,34 @@ const EnrollStudent: React.FC = () => {
                   <Form.Item
                     name="gradeId"
                     label="Grado"
-                    dependencies={['schoolPeriodId']}
-                    rules={[{ required: true }]}
+                    rules={[{ required: true, message: 'Seleccione un grado' }]}
                   >
-                    <Select placeholder="Grado" disabled={!enrollStructure.length} onChange={() => existingStudentForm.setFieldsValue({ sectionId: undefined })}>
-                      {enrollStructure.map(s => <Option key={s.gradeId} value={s.gradeId}>{s.grade?.name}</Option>)}
+                    <Select
+                      placeholder="Seleccione Grado"
+                      onChange={(val) => {
+                        setSelectedGradeIdExisting(val);
+                        existingStudentForm.setFieldsValue({ sectionId: undefined });
+                      }}
+                    >
+                      {enrollStructure.map(s => (
+                        <Option key={s.gradeId} value={s.gradeId}>{s.grade?.name}</Option>
+                      ))}
                     </Select>
                   </Form.Item>
                 </Col>
                 <Col span={12}>
                   <Form.Item
                     name="sectionId"
-                    label="Sección"
-                    dependencies={['gradeId']}
+                    label="Sección (Opcional)"
                   >
-                    <Select placeholder="Sección" disabled={!enrollStructure.length} allowClear>
-                      {(() => {
-                        const gid = existingStudentForm.getFieldValue('gradeId');
-                        const item = enrollStructure.find(s => s.gradeId === gid);
-                        return item?.sections?.map((sec: any) => <Option key={sec.id} value={sec.id}>{sec.name}</Option>) || [];
-                      })()}
+                    <Select
+                      placeholder="Seleccione Sección"
+                      disabled={!selectedGradeIdExisting}
+                      allowClear
+                    >
+                      {getSectionsForGrade(selectedGradeIdExisting).map((sec: any) => (
+                        <Option key={sec.id} value={sec.id}>{sec.name}</Option>
+                      ))}
                     </Select>
                   </Form.Item>
                 </Col>

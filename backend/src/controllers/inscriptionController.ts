@@ -73,15 +73,15 @@ export const createInscription = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'La persona seleccionada no tiene el rol de estudiante' });
     }
 
-    // 2. Check existence
+    // 2. Check existence (student can only be enrolled once per period)
     const existing = await Inscription.findOne({
-      where: { schoolPeriodId, gradeId, personId },
+      where: { schoolPeriodId, personId },
       transaction: t
     });
 
     if (existing) {
       await t.rollback();
-      return res.status(400).json({ error: 'El estudiante ya está inscrito en este grado y periodo' });
+      return res.status(400).json({ error: 'El estudiante ya está inscrito en este periodo escolar' });
     }
 
     // 3. Create Inscription
@@ -125,16 +125,20 @@ export const createInscription = async (req: Request, res: Response) => {
 export const updateInscription = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { sectionId } = req.body;
+    const { sectionId, gradeId } = req.body;
 
     const inscription = await Inscription.findByPk(id);
     if (!inscription) return res.status(404).json({ error: 'Inscripción no encontrada' });
 
-    // Usually we only update sectionId here. Changing period/grade/student is tricky and implies a new inscription logically.
+    // Update allowed fields
+    if (gradeId !== undefined) {
+      inscription.gradeId = gradeId;
+    }
     if (sectionId !== undefined) {
       inscription.sectionId = sectionId;
-      await inscription.save();
     }
+
+    await inscription.save();
 
     res.json(inscription);
   } catch (error) {

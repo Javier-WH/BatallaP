@@ -64,7 +64,7 @@ Inscription.init(
     indexes: [
       {
         unique: true,
-        fields: ['schoolPeriodId', 'gradeId', 'personId']
+        fields: ['schoolPeriodId', 'personId'] // Student can only be enrolled once per period
       }
     ]
   }
