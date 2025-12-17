@@ -133,6 +133,7 @@ export const getStudentsForAssignment = async (req: Request, res: Response) => {
           model: InscriptionSubject,
           as: 'inscriptionSubjects',
           where: { subjectId: periodGradeSubject.subjectId },
+          required: false, // Change to false to avoid filtering out students without subjects records yet
           include: [
             {
               model: Qualification,
@@ -165,12 +166,40 @@ export const getQualifications = async (req: Request, res: Response) => {
 
 export const saveQualification = async (req: Request, res: Response) => {
   try {
-    const { evaluationPlanId, inscriptionSubjectId, score, observations } = req.body;
+    const { evaluationPlanId, inscriptionSubjectId, score, observations, inscriptionId } = req.body;
+
+    let finalInscriptionSubjectId = inscriptionSubjectId;
+
+    // Robust handling: If inscriptionSubjectId is missing but we have inscriptionId, we can resolve it
+    if (!finalInscriptionSubjectId && inscriptionId) {
+      const evalPlan = await EvaluationPlan.findByPk(evaluationPlanId, {
+        include: [{ model: PeriodGradeSubject, as: 'periodGradeSubject' }]
+      });
+
+      const ep = evalPlan as any;
+      if (ep && ep.periodGradeSubject) {
+        const [insSub] = await InscriptionSubject.findOrCreate({
+          where: {
+            inscriptionId,
+            subjectId: ep.periodGradeSubject.subjectId
+          },
+          defaults: {
+            inscriptionId,
+            subjectId: ep.periodGradeSubject.subjectId
+          }
+        });
+        finalInscriptionSubjectId = insSub.id;
+      }
+    }
+
+    if (!finalInscriptionSubjectId) {
+      return res.status(400).json({ message: 'No se pudo determinar el enlace del estudiante con la materia' });
+    }
 
     // Check if exists to update, else create
     const [qualification, created] = await Qualification.findOrCreate({
-      where: { evaluationPlanId, inscriptionSubjectId },
-      defaults: { evaluationPlanId, inscriptionSubjectId, score, observations }
+      where: { evaluationPlanId, inscriptionSubjectId: finalInscriptionSubjectId },
+      defaults: { evaluationPlanId, inscriptionSubjectId: finalInscriptionSubjectId, score, observations }
     });
 
     if (!created) {
@@ -179,7 +208,7 @@ export const saveQualification = async (req: Request, res: Response) => {
 
     res.json(qualification);
   } catch (error) {
-    console.error(error);
+    console.error('Error in saveQualification:', error);
     res.status(500).json({ message: 'Error al guardar calificación' });
   }
 };

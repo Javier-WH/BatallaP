@@ -51,6 +51,7 @@ import InscriptionSubject from './InscriptionSubject';
 import EvaluationPlan from './EvaluationPlan';
 import Qualification from './Qualification';
 import TeacherAssignment from './TeacherAssignment';
+import Setting from './Setting';
 
 // ... (Existing User/Person/Role/Contact associations) ...
 
@@ -133,5 +134,6 @@ export {
   InscriptionSubject,
   EvaluationPlan,
   Qualification,
-  TeacherAssignment
+  TeacherAssignment,
+  Setting
 };

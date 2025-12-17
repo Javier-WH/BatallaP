@@ -1,7 +1,7 @@
 import React from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { Button, Space, Card, Tooltip } from 'antd';
-import { DashboardOutlined, UserAddOutlined, SearchOutlined, BankOutlined } from '@ant-design/icons';
+import { DashboardOutlined, UserAddOutlined, SearchOutlined, BankOutlined, SettingOutlined } from '@ant-design/icons';
 
 const MasterLayout: React.FC = () => {
   const navigate = useNavigate();
@@ -58,6 +58,16 @@ const MasterLayout: React.FC = () => {
               onClick={() => navigate('/master/academic')}
             >
               Académico
+            </Button>
+          </Tooltip>
+
+          <Tooltip title="Configuración Global del Sistema">
+            <Button
+              type={isActive('/master/settings') ? 'primary' : 'text'}
+              icon={<SettingOutlined />}
+              onClick={() => navigate('/master/settings')}
+            >
+              Configuración
             </Button>
           </Tooltip>
         </Space>

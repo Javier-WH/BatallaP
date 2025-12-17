@@ -22,6 +22,7 @@ import EnrolledStudents from '@/pages/admin/EnrolledStudents';
 import TeacherProjection from '@/pages/admin/TeacherProjection';
 import TeacherPanel from '@/pages/teacher/TeacherPanel';
 import StudentDetail from '@/pages/student/StudentDetail';
+import SettingsManagement from '@/pages/master/SettingsManagement';
 import type { JSX } from 'react';
 
 // Protected Route Component
@@ -79,6 +80,7 @@ function AppRoutes() {
           <Route path="search" element={<SearchUsers />} />
           <Route path="edit/:id" element={<EditUser />} />
           <Route path="academic" element={<AcademicManagement />} />
+          <Route path="settings" element={<SettingsManagement />} />
         </Route>
 
         {/* Nested Admin Module */}

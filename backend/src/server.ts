@@ -8,6 +8,7 @@ import academicRoutes from '@/routes/academicRoutes';
 import inscriptionRoutes from '@/routes/inscriptionRoutes';
 import teacherRoutes from '@/routes/teacherRoutes';
 import evaluationRoutes from '@/routes/evaluationRoutes';
+import settingRoutes from '@/routes/settingRoutes';
 
 dotenv.config();
 
@@ -20,6 +21,7 @@ app.use('/api/academic', academicRoutes);
 app.use('/api/inscriptions', inscriptionRoutes);
 app.use('/api/teachers', teacherRoutes);
 app.use('/api/evaluation', evaluationRoutes);
+app.use('/api/settings', settingRoutes);
 
 const startServer = async () => {
   try {

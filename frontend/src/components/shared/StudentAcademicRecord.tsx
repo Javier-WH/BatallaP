@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Card, Table, Typography, Collapse, Tag, Space, Spin, Alert, Divider } from 'antd';
+import { Card, Table, Typography, Collapse, Tag, Space, Spin, Alert } from 'antd';
 import { FileTextOutlined, CalendarOutlined, BookOutlined } from '@ant-design/icons';
 import api from '@/services/api';
 
@@ -13,6 +13,19 @@ interface StudentAcademicRecordProps {
 const StudentAcademicRecord: React.FC<StudentAcademicRecordProps> = ({ personId }) => {
   const [loading, setLoading] = useState(false);
   const [records, setRecords] = useState<any[]>([]);
+  const [maxGrade, setMaxGrade] = useState<number>(20);
+
+  useEffect(() => {
+    const fetchSettings = async () => {
+      try {
+        const res = await api.get('/settings/max_grade');
+        if (res.data?.value) setMaxGrade(Number(res.data.value));
+      } catch (e) {
+        console.error('Error fetching max_grade');
+      }
+    };
+    fetchSettings();
+  }, []);
 
   useEffect(() => {
     const fetchRecord = async () => {
@@ -36,7 +49,7 @@ const StudentAcademicRecord: React.FC<StudentAcademicRecordProps> = ({ personId 
     <div style={{ padding: '20px 0' }}>
       <Title level={3}><FileTextOutlined /> Historial Académico</Title>
 
-      <Collapse defaultActiveKey={[records[0]?.id]} ghost accordion expandIconPosition="right">
+      <Collapse defaultActiveKey={[records[0]?.id]} ghost accordion expandIconPosition="end">
         {records.map((record: any) => (
           <Panel
             key={record.id}
@@ -78,11 +91,11 @@ const StudentAcademicRecord: React.FC<StudentAcademicRecordProps> = ({ personId 
                               <div key={t} style={{ flex: 1, minWidth: 100 }}>
                                 <Text type="secondary" style={{ fontSize: 12, display: 'block' }}>L{t}</Text>
                                 {hasNotes ? (
-                                  <Tag color={totalScore >= 10 ? 'green' : 'red'} style={{ fontWeight: 'bold' }}>
+                                  <Tag color={totalScore >= (maxGrade / 2) ? 'green' : 'red'} style={{ fontWeight: 'bold' }}>
                                     {totalScore.toFixed(2)} pts
                                   </Tag>
                                 ) : (
-                                  <Text type="disabled">-</Text>
+                                  <Text type="secondary">-</Text>
                                 )}
                               </div>
                             );
@@ -107,7 +120,7 @@ const StudentAcademicRecord: React.FC<StudentAcademicRecordProps> = ({ personId 
                       if (termScores.length === 0) return '-';
                       const avg = termScores.reduce((a, b) => a + b, 0) / termScores.length;
 
-                      return <Tag color={avg >= 10 ? 'blue' : 'volcano'}>{avg.toFixed(2)}</Tag>;
+                      return <Tag color={avg >= (maxGrade / 2) ? 'blue' : 'volcano'}>{avg.toFixed(2)}</Tag>;
                     }
                   }
                 ]}

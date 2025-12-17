@@ -23,6 +23,19 @@ const TeacherPanel: React.FC = () => {
   // For Grading
   const [selectedStudent, setSelectedStudent] = useState<any>(null);
   const [qualifications, setQualifications] = useState<any>({}); // { evalPlanId: score }
+  const [maxGrade, setMaxGrade] = useState<number>(20);
+
+  useEffect(() => {
+    const fetchMaxGrade = async () => {
+      try {
+        const res = await api.get('/settings/max_grade');
+        if (res.data?.value) setMaxGrade(Number(res.data.value));
+      } catch (e) {
+        console.error('Error fetching max_grade setting');
+      }
+    };
+    fetchMaxGrade();
+  }, []);
 
   const fetchAssignments = useCallback(async () => {
     setLoading(true);
@@ -126,6 +139,7 @@ const TeacherPanel: React.FC = () => {
       await api.post('/evaluation/qualifications', {
         evaluationPlanId: evalPlanId,
         inscriptionSubjectId,
+        inscriptionId: enrollment.id,
         score,
         observations
       });
@@ -280,7 +294,7 @@ const TeacherPanel: React.FC = () => {
                         <Space align="start">
                           <InputNumber
                             min={0}
-                            max={20} // Assuming 20 is max score
+                            max={maxGrade}
                             placeholder="Nota"
                             value={qualifications[item.id]?.score}
                             onChange={(val) => setQualifications({ ...qualifications, [item.id]: { ...qualifications[item.id], score: val } })}

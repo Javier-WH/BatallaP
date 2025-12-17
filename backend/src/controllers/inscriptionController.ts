@@ -148,26 +148,58 @@ export const createInscription = async (req: Request, res: Response) => {
 };
 
 export const updateInscription = async (req: Request, res: Response) => {
+  const t = await sequelize.transaction();
   try {
     const { id } = req.params;
     const { sectionId, gradeId } = req.body;
 
-    const inscription = await Inscription.findByPk(id);
-    if (!inscription) return res.status(404).json({ error: 'Inscripción no encontrada' });
-
-    // Update allowed fields
-    if (gradeId !== undefined) {
-      inscription.gradeId = gradeId;
-    }
-    if (sectionId !== undefined) {
-      inscription.sectionId = sectionId;
+    const inscription = await Inscription.findByPk(id, { transaction: t });
+    if (!inscription) {
+      await t.rollback();
+      return res.status(404).json({ error: 'Inscripción no encontrada' });
     }
 
-    await inscription.save();
+    const oldGradeId = inscription.gradeId;
 
+    // Update basic fields
+    if (gradeId !== undefined) inscription.gradeId = gradeId;
+    if (sectionId !== undefined) inscription.sectionId = sectionId;
+
+    await inscription.save({ transaction: t });
+
+    // If grade changed, we MUST sync subjects
+    if (gradeId !== undefined && Number(gradeId) !== Number(oldGradeId)) {
+      // 1. Remove old subjects
+      await InscriptionSubject.destroy({
+        where: { inscriptionId: id },
+        transaction: t
+      });
+
+      // 2. Add subjects from the NEW grade structure
+      const periodGrade = await PeriodGrade.findOne({
+        where: {
+          schoolPeriodId: inscription.schoolPeriodId,
+          gradeId: gradeId
+        },
+        include: [{ model: Subject, as: 'subjects' }],
+        transaction: t
+      });
+
+      if (periodGrade && periodGrade.subjects && periodGrade.subjects.length > 0) {
+        const subjectsToAdd = periodGrade.subjects.map((s: any) => ({
+          inscriptionId: inscription.id,
+          subjectId: s.id
+        }));
+        await InscriptionSubject.bulkCreate(subjectsToAdd, { transaction: t });
+      }
+    }
+
+    await t.commit();
     res.json(inscription);
-  } catch (error) {
-    res.status(500).json({ error: 'Error actualizando inscripción', details: error });
+  } catch (error: any) {
+    if (t) await t.rollback();
+    console.error('Error updating inscription:', error);
+    res.status(500).json({ error: 'Error actualizando inscripción', details: error.message || error });
   }
 };
 
