@@ -17,6 +17,7 @@ import AdminLayout from '@/pages/admin/AdminLayout';
 import RegisterSpecialized from '@/pages/admin/RegisterSpecialized';
 import SearchUsersAdmin from '@/pages/admin/SearchUsersAdmin';
 import EditUserAdmin from '@/pages/admin/EditUserAdmin';
+import EnrollStudent from '@/pages/admin/EnrollStudent';
 import type { JSX } from 'react';
 
 // Protected Route Component
@@ -81,6 +82,7 @@ function AppRoutes() {
           <Route index element={<h1>Panel de Admin</h1>} /> {/* Placeholder dashboard */}
           <Route path="register-teacher" element={<RegisterSpecialized roleTarget="Teacher" title="Profesor" />} />
           <Route path="register-tutor" element={<RegisterSpecialized roleTarget="Tutor" title="Representante" />} />
+          <Route path="enroll-student" element={<EnrollStudent />} />
           <Route path="search" element={<SearchUsersAdmin />} />
           <Route path="edit/:id" element={<EditUserAdmin />} />
         </Route>

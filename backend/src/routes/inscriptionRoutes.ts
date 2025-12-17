@@ -6,7 +6,8 @@ import {
   updateInscription,
   deleteInscription,
   addSubjectToInscription,
-  removeSubjectFromInscription
+  removeSubjectFromInscription,
+  registerAndEnroll
 } from '../controllers/inscriptionController';
 
 const router = Router();
@@ -14,6 +15,7 @@ const router = Router();
 router.get('/', getInscriptions);
 router.get('/:id', getInscriptionById);
 router.post('/', createInscription);
+router.post('/register', registerAndEnroll); // New: Register Person + Enroll (no User)
 router.put('/:id', updateInscription);
 router.delete('/:id', deleteInscription);
 

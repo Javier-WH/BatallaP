@@ -15,6 +15,8 @@ const AcademicManagement: React.FC = () => {
   const [activePeriodId, setActivePeriodId] = useState<number | null>(null); // For structure view
   const [structure, setStructure] = useState<any[]>([]);
 
+
+
   // UI State
   const [isPeriodModalVisible, setIsPeriodModalVisible] = useState(false);
   const [loading, setLoading] = useState(false);

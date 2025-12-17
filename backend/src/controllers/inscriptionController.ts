@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { Inscription, Person, Role, Subject, PeriodGrade, InscriptionSubject, SchoolPeriod, Grade, Section } from '../models';
+import { Inscription, Person, Role, Subject, PeriodGrade, InscriptionSubject, SchoolPeriod, Grade, Section, Contact, PersonRole } from '../models';
 import sequelize from '../config/database';
 
 export const getInscriptions = async (req: Request, res: Response) => {
@@ -193,5 +193,96 @@ export const removeSubjectFromInscription = async (req: Request, res: Response) 
     res.json({ message: 'Materia removida de la inscripción' });
   } catch (error: any) {
     res.status(500).json({ error: 'Error removiendo materia', details: error.message });
+  }
+};
+
+// Register a new student (Person without User) and enroll them
+export const registerAndEnroll = async (req: Request, res: Response) => {
+  const t = await sequelize.transaction();
+  try {
+    const {
+      // Person data
+      firstName,
+      lastName,
+      documentType,
+      document,
+      gender,
+      birthdate,
+      // Contact data
+      phone1,
+      phone2,
+      email,
+      address,
+      whatsapp,
+      // Enrollment data
+      schoolPeriodId,
+      gradeId,
+      sectionId
+    } = req.body;
+
+    // 1. Create Person (no User)
+    const person = await Person.create({
+      firstName,
+      lastName,
+      documentType,
+      document,
+      gender,
+      birthdate,
+      userId: null // No user associated
+    }, { transaction: t });
+
+    // 2. Create Contact
+    if (phone1 || email || address) {
+      await Contact.create({
+        phone1,
+        phone2,
+        email,
+        address,
+        whatsapp,
+        personId: person.id
+      }, { transaction: t });
+    }
+
+    // 3. Assign Student role
+    let role = await Role.findOne({ where: { name: 'Student' }, transaction: t });
+    if (!role) {
+      role = await Role.create({ name: 'Student' }, { transaction: t });
+    }
+    await PersonRole.create({ personId: person.id, roleId: role.id }, { transaction: t });
+
+    // 4. Create Inscription
+    const inscription = await Inscription.create({
+      schoolPeriodId,
+      gradeId,
+      sectionId: sectionId || null,
+      personId: person.id
+    }, { transaction: t });
+
+    // 5. Auto-assign subjects from PeriodGrade structure
+    const periodGrade = await PeriodGrade.findOne({
+      where: { schoolPeriodId, gradeId },
+      include: [{ model: Subject, as: 'subjects' }],
+      transaction: t
+    });
+
+    if (periodGrade && periodGrade.subjects && periodGrade.subjects.length > 0) {
+      const subjectsToAdd = periodGrade.subjects.map((s: any) => ({
+        inscriptionId: inscription.id,
+        subjectId: s.id
+      }));
+      await InscriptionSubject.bulkCreate(subjectsToAdd, { transaction: t });
+    }
+
+    await t.commit();
+
+    res.status(201).json({
+      message: 'Estudiante registrado e inscrito exitosamente',
+      person,
+      inscription
+    });
+  } catch (error: any) {
+    await t.rollback();
+    console.error(error);
+    res.status(500).json({ error: 'Error al registrar e inscribir', details: error.message || error });
   }
 };
