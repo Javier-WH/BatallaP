@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import { Op } from 'sequelize';
 import { Inscription, Person, Role, Subject, PeriodGrade, InscriptionSubject, SchoolPeriod, Grade, Section, Contact, PersonRole } from '../models';
 import sequelize from '../config/database';
 
@@ -11,16 +12,21 @@ export const getInscriptions = async (req: Request, res: Response) => {
     if (sectionId) where.sectionId = sectionId;
 
     const personWhere: any = {};
-    if (gender) personWhere.gender = gender;
+    let hasPersonFilter = false;
 
-    // Search by name or document
+    if (gender) {
+      personWhere.gender = gender;
+      hasPersonFilter = true;
+    }
+
+    // Search by name, last name or document
     if (q) {
-      const { Op } = require('sequelize');
       personWhere[Op.or] = [
         { firstName: { [Op.like]: `%${q}%` } },
         { lastName: { [Op.like]: `%${q}%` } },
         { document: { [Op.like]: `%${q}%` } }
       ];
+      hasPersonFilter = true;
     }
 
     const inscriptions = await Inscription.findAll({
@@ -29,7 +35,8 @@ export const getInscriptions = async (req: Request, res: Response) => {
         {
           model: Person,
           as: 'student',
-          where: Object.keys(personWhere).length > 0 ? personWhere : undefined
+          where: hasPersonFilter ? personWhere : undefined,
+          required: hasPersonFilter // Force INNER JOIN if filtering by person
         },
         { model: SchoolPeriod, as: 'period' },
         { model: Grade, as: 'grade' },
@@ -40,8 +47,8 @@ export const getInscriptions = async (req: Request, res: Response) => {
     });
     res.json(inscriptions);
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: 'Error obteniendo inscripciones', details: error });
+    console.error('Error en getInscriptions:', error);
+    res.status(500).json({ error: 'Error obteniendo inscripciones' });
   }
 };
 

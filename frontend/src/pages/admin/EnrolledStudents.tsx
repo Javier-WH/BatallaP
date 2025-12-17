@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Table, Card, Button, Input, Select, Space, Tag, message, Row, Col, Typography } from 'antd';
-import { FilterOutlined, UserOutlined } from '@ant-design/icons';
+import { Table, Card, Button, Input, Select, Space, Tag, message, Row, Col, Typography, Empty } from 'antd';
+import { FilterOutlined, TeamOutlined } from '@ant-design/icons';
 import api from '@/services/api';
 
 const { Search } = Input;
@@ -24,52 +24,55 @@ const EnrolledStudents: React.FC = () => {
     q: ''
   });
 
-  const fetchData = useCallback(async () => {
+  // 1. Initial Load: Active Period and Catalogs
+  useEffect(() => {
+    const loadCatalogs = async () => {
+      try {
+        const [periodsRes, gradesRes, sectionsRes] = await Promise.all([
+          api.get('/academic/periods'),
+          api.get('/academic/grades'),
+          api.get('/academic/sections')
+        ]);
+
+        const active = periodsRes.data.find((p: any) => p.isActive);
+        setActivePeriod(active);
+        setGrades(gradesRes.data);
+        setSections(sectionsRes.data);
+      } catch (error) {
+        console.error('Error loading catalogs:', error);
+        message.error('Error al cargar catálogos');
+      }
+    };
+    loadCatalogs();
+  }, []);
+
+  // 2. Fetch Inscriptions when filters or activePeriod change
+  const fetchInscriptions = useCallback(async () => {
+    if (!activePeriod) return;
+
     setLoading(true);
     try {
-      // 1. Get periods to find the active one
-      const periodsRes = await api.get('/academic/periods');
-      const active = periodsRes.data.find((p: any) => p.isActive);
-
-      if (!active) {
-        setActivePeriod(null);
-        setInscriptions([]);
-        setLoading(false);
-        return;
-      }
-
-      setActivePeriod(active);
-
-      // 2. Fetch catalogs for filters
-      const [gradesRes, sectionsRes] = await Promise.all([
-        api.get('/academic/grades'),
-        api.get('/academic/sections')
-      ]);
-      setGrades(gradesRes.data);
-      setSections(sectionsRes.data);
-
-      // 3. Fetch inscriptions
       const params = {
-        schoolPeriodId: active.id,
+        schoolPeriodId: activePeriod.id,
         gradeId: filters.gradeId,
         sectionId: filters.sectionId,
         gender: filters.gender,
         q: filters.q
       };
 
-      const inscriptionsRes = await api.get('/inscriptions', { params });
-      setInscriptions(inscriptionsRes.data);
+      const res = await api.get('/inscriptions', { params });
+      setInscriptions(res.data);
     } catch (error) {
-      console.error(error);
-      message.error('Error al cargar datos de estudiantes');
+      console.error('Error fetching inscriptions:', error);
+      message.error('Error al obtener lista de estudiantes');
     } finally {
       setLoading(false);
     }
-  }, [filters]);
+  }, [activePeriod, filters]);
 
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    fetchInscriptions();
+  }, [fetchInscriptions]);
 
   const columns = [
     {
@@ -78,7 +81,9 @@ const EnrolledStudents: React.FC = () => {
       render: (_: any, record: any) => (
         <Space direction="vertical" size={0}>
           <Text strong>{`${record.student?.firstName} ${record.student?.lastName}`}</Text>
-          <Text type="secondary" style={{ fontSize: '12px' }}>{record.student?.documentType}: {record.student?.document}</Text>
+          <Text type="secondary" style={{ fontSize: '12px' }}>
+            {record.student?.documentType}: {record.student?.document}
+          </Text>
         </Space>
       )
     },
@@ -110,85 +115,111 @@ const EnrolledStudents: React.FC = () => {
       <Card
         title={
           <Space>
-            <UserOutlined />
-            <span>Estudiantes Inscritos</span>
-            {activePeriod && <Tag color="green">Periodo: {activePeriod.name}</Tag>}
+            <TeamOutlined style={{ color: '#1890ff' }} />
+            <span style={{ fontSize: '18px', fontWeight: 600 }}>Estudiantes Inscritos</span>
+            {activePeriod && <Tag color="blue" style={{ marginLeft: 8 }}>Periodo {activePeriod.name}</Tag>}
           </Space>
         }
+        style={{ borderRadius: '12px', boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }}
       >
         {!activePeriod && !loading && (
-          <Text type="danger">No hay un periodo escolar activo actualmente.</Text>
+          <Empty
+            description="No hay un periodo escolar activo. Por favor, active uno en Gestión Académica."
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+          />
         )}
 
-        {/* Filters Area */}
-        <div style={{ marginBottom: 24, padding: 16, background: '#f5f5f5', borderRadius: 8 }}>
-          <Row gutter={[16, 16]} align="bottom">
-            <Col xs={24} sm={12} md={6}>
-              <Text type="secondary">Búsqueda</Text>
-              <Search
-                placeholder="Nombre o Cédula"
-                allowClear
-                onSearch={(val) => setFilters(prev => ({ ...prev, q: val }))}
-                style={{ width: '100%', marginTop: 8 }}
-              />
-            </Col>
-            <Col xs={12} sm={8} md={5}>
-              <Text type="secondary">Grado</Text>
-              <Select
-                placeholder="Todos"
-                style={{ width: '100%', marginTop: 8 }}
-                allowClear
-                value={filters.gradeId}
-                onChange={(val) => setFilters(prev => ({ ...prev, gradeId: val }))}
-              >
-                {grades.map(g => <Option key={g.id} value={g.id}>{g.name}</Option>)}
-              </Select>
-            </Col>
-            <Col xs={12} sm={8} md={4}>
-              <Text type="secondary">Sección</Text>
-              <Select
-                placeholder="Todas"
-                style={{ width: '100%', marginTop: 8 }}
-                allowClear
-                value={filters.sectionId}
-                onChange={(val) => setFilters(prev => ({ ...prev, sectionId: val }))}
-              >
-                {sections.map(s => <Option key={s.id} value={s.id}>{s.name}</Option>)}
-              </Select>
-            </Col>
-            <Col xs={12} sm={8} md={5}>
-              <Text type="secondary">Género</Text>
-              <Select
-                placeholder="Todos"
-                style={{ width: '100%', marginTop: 8 }}
-                allowClear
-                value={filters.gender}
-                onChange={(val) => setFilters(prev => ({ ...prev, gender: val }))}
-              >
-                <Option value="M">Masculino</Option>
-                <Option value="F">Femenino</Option>
-              </Select>
-            </Col>
-            <Col xs={12} sm={4} md={4}>
-              <Button
-                icon={<FilterOutlined />}
-                onClick={() => setFilters({ gradeId: undefined, sectionId: undefined, gender: undefined, q: '' })}
-                block
-              >
-                Limpiar
-              </Button>
-            </Col>
-          </Row>
-        </div>
+        {activePeriod && (
+          <>
+            {/* Filters Area */}
+            <div style={{
+              marginBottom: 24,
+              padding: '20px',
+              background: '#f8fafc',
+              borderRadius: '12px',
+              border: '1px solid #e2e8f0'
+            }}>
+              <Row gutter={[16, 16]} align="bottom">
+                <Col xs={24} md={8}>
+                  <Text strong type="secondary">Búsqueda rápida</Text>
+                  <Search
+                    placeholder="Escriba nombre o cédula..."
+                    allowClear
+                    enterButton
+                    loading={loading}
+                    onSearch={(val) => setFilters(prev => ({ ...prev, q: val }))}
+                    onChange={(e) => {
+                      if (!e.target.value) setFilters(prev => ({ ...prev, q: '' }));
+                    }}
+                    style={{ width: '100%', marginTop: 8 }}
+                  />
+                </Col>
+                <Col xs={12} sm={8} md={5}>
+                  <Text strong type="secondary">Grado</Text>
+                  <Select
+                    placeholder="Todos los grados"
+                    style={{ width: '100%', marginTop: 8 }}
+                    allowClear
+                    value={filters.gradeId}
+                    onChange={(val) => setFilters(prev => ({ ...prev, gradeId: val }))}
+                  >
+                    {grades.map(g => <Option key={g.id} value={g.id}>{g.name}</Option>)}
+                  </Select>
+                </Col>
+                <Col xs={12} sm={8} md={4}>
+                  <Text strong type="secondary">Sección</Text>
+                  <Select
+                    placeholder="Todas"
+                    style={{ width: '100%', marginTop: 8 }}
+                    allowClear
+                    value={filters.sectionId}
+                    onChange={(val) => setFilters(prev => ({ ...prev, sectionId: val }))}
+                  >
+                    {sections.map(s => <Option key={s.id} value={s.id}>{s.name}</Option>)}
+                  </Select>
+                </Col>
+                <Col xs={12} sm={8} md={4}>
+                  <Text strong type="secondary">Género</Text>
+                  <Select
+                    placeholder="Ambos"
+                    style={{ width: '100%', marginTop: 8 }}
+                    allowClear
+                    value={filters.gender}
+                    onChange={(val) => setFilters(prev => ({ ...prev, gender: val }))}
+                  >
+                    <Option value="M">Masculino</Option>
+                    <Option value="F">Femenino</Option>
+                  </Select>
+                </Col>
+                <Col xs={12} md={3}>
+                  <Button
+                    icon={<FilterOutlined />}
+                    onClick={() => setFilters({ gradeId: undefined, sectionId: undefined, gender: undefined, q: '' })}
+                    block
+                    style={{ marginTop: '29px' }}
+                  >
+                    Limpiar
+                  </Button>
+                </Col>
+              </Row>
+            </div>
 
-        <Table
-          columns={columns}
-          dataSource={inscriptions}
-          rowKey="id"
-          loading={loading}
-          pagination={{ pageSize: 12, hideOnSinglePage: true }}
-          locale={{ emptyText: 'No se encontraron estudiantes para los filtros seleccionados' }}
-        />
+            <Table
+              columns={columns}
+              dataSource={inscriptions}
+              rowKey="id"
+              loading={loading}
+              pagination={{
+                pageSize: 10,
+                showSizeChanger: false,
+                hideOnSinglePage: true,
+                position: ['bottomCenter']
+              }}
+              locale={{ emptyText: 'No se encontraron estudiantes para los filtros seleccionados' }}
+              style={{ background: '#fff' }}
+            />
+          </>
+        )}
       </Card>
     </div>
   );
