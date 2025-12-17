@@ -55,26 +55,6 @@ const MainLayout: React.FC = () => {
     });
   }
 
-  // Example items for others
-  const otherItems = [
-    {
-      key: '1',
-      icon: <UserOutlined />,
-      label: 'Alumnos',
-    },
-    {
-      key: '2',
-      icon: <VideoCameraOutlined />,
-      label: 'Profesores',
-    },
-    {
-      key: '3',
-      icon: <UploadOutlined />,
-      label: 'Carga de Notas',
-    },
-  ];
-
-  menuItems.push(...otherItems); // Added back for demonstration
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
