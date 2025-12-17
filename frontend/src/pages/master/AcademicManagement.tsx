@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Card, Tabs, Table, Button, Modal, Form, Input, Tag, message, Select, Space, Row, Col, Popconfirm } from 'antd';
-import { PlusOutlined, DeleteOutlined, CheckCircleOutlined, EditOutlined } from '@ant-design/icons';
+import { PlusOutlined, DeleteOutlined, CheckCircleOutlined, EditOutlined, BookOutlined } from '@ant-design/icons';
 import api from '@/services/api';
 
 const { TabPane } = Tabs;
@@ -11,6 +11,7 @@ const AcademicManagement: React.FC = () => {
   const [periods, setPeriods] = useState<any[]>([]);
   const [grades, setGrades] = useState<any[]>([]);
   const [sections, setSections] = useState<any[]>([]);
+  const [subjects, setSubjects] = useState<any[]>([]); // New Subject State
   const [activePeriodId, setActivePeriodId] = useState<number | null>(null); // For structure view
   const [structure, setStructure] = useState<any[]>([]);
 
@@ -22,23 +23,29 @@ const AcademicManagement: React.FC = () => {
   const [periodForm] = Form.useForm();
   const [gradeCatalogForm] = Form.useForm();
   const [sectionCatalogForm] = Form.useForm();
+  const [subjectCatalogForm] = Form.useForm(); // New Form
 
   const fetchAll = async () => {
     setLoading(true);
     try {
-      const [pRes, gRes, sRes] = await Promise.all([
+      const [pRes, gRes, sRes, subRes] = await Promise.all([
         api.get('/academic/periods'),
         api.get('/academic/grades'),
-        api.get('/academic/sections')
+        api.get('/academic/sections'),
+        api.get('/academic/subjects')
       ]);
       setPeriods(pRes.data);
       setGrades(gRes.data);
       setSections(sRes.data);
+      setSubjects(subRes.data);
 
       // Set default active period for viewing structure
-      const active = pRes.data.find((p: any) => p.isActive);
-      if (active) setActivePeriodId(active.id);
-      else if (pRes.data.length > 0) setActivePeriodId(pRes.data[0].id);
+      // Only set if not already set, or validate if current still exists
+      if (!activePeriodId) {
+        const active = pRes.data.find((p: any) => p.isActive);
+        if (active) setActivePeriodId(active.id);
+        else if (pRes.data.length > 0) setActivePeriodId(pRes.data[0].id);
+      }
 
     } catch (error) {
       message.error('Error cargando datos');
@@ -130,6 +137,26 @@ const AcademicManagement: React.FC = () => {
     }
   };
 
+  const handleAddSubjectToGrade = async (periodGradeId: number, subjectId: number) => {
+    try {
+      await api.post('/academic/structure/subject', { periodGradeId, subjectId });
+      message.success('Materia agregada');
+      fetchStructure();
+    } catch (error) {
+      message.error('Error agregando materia');
+    }
+  };
+
+  const handleRemoveSubjectFromGrade = async (periodGradeId: number, subjectId: number) => {
+    try {
+      await api.post('/academic/structure/subject/remove', { periodGradeId, subjectId });
+      message.success('Materia removida');
+      fetchStructure();
+    } catch (error) {
+      message.error('Error removiendo materia');
+    }
+  };
+
   // --- Columns ---
 
   const periodColumns = [
@@ -156,10 +183,10 @@ const AcademicManagement: React.FC = () => {
 
   // State for editing catalogs
   const [editCatalogVisible, setEditCatalogVisible] = useState(false);
-  const [editCatalogTarget, setEditCatalogTarget] = useState<{ type: 'grade' | 'section', id: number, name: string } | null>(null);
+  const [editCatalogTarget, setEditCatalogTarget] = useState<{ type: 'grade' | 'section' | 'subject', id: number, name: string } | null>(null);
   const [editCatalogForm] = Form.useForm();
 
-  const openEditCatalog = (type: 'grade' | 'section', record: any) => {
+  const openEditCatalog = (type: 'grade' | 'section' | 'subject', record: any) => {
     setEditCatalogTarget({ type, id: record.id, name: record.name });
     editCatalogForm.setFieldsValue({ name: record.name });
     setEditCatalogVisible(true);
@@ -168,7 +195,12 @@ const AcademicManagement: React.FC = () => {
   const handleEditCatalog = async (values: any) => {
     if (!editCatalogTarget) return;
     try {
-      const url = editCatalogTarget.type === 'grade' ? '/academic/grades' : '/academic/sections';
+      let url = '';
+      switch (editCatalogTarget.type) {
+        case 'grade': url = '/academic/grades'; break;
+        case 'section': url = '/academic/sections'; break;
+        case 'subject': url = '/academic/subjects'; break;
+      }
       await api.put(`${url}/${editCatalogTarget.id}`, values);
       message.success('Actualizado exitosamente');
       setEditCatalogVisible(false);
@@ -178,9 +210,14 @@ const AcademicManagement: React.FC = () => {
     }
   };
 
-  const handleDeleteCatalog = async (type: 'grade' | 'section', id: number) => {
+  const handleDeleteCatalog = async (type: 'grade' | 'section' | 'subject', id: number) => {
     try {
-      const url = type === 'grade' ? '/academic/grades' : '/academic/sections';
+      let url = '';
+      switch (type) {
+        case 'grade': url = '/academic/grades'; break;
+        case 'section': url = '/academic/sections'; break;
+        case 'subject': url = '/academic/subjects'; break;
+      }
       await api.delete(`${url}/${id}`);
       message.success('Eliminado exitosamente');
       fetchAll();
@@ -190,7 +227,7 @@ const AcademicManagement: React.FC = () => {
   };
 
   // Columns for Catalogs
-  const catalogColumns = (type: 'grade' | 'section') => [
+  const catalogColumns = (type: 'grade' | 'section' | 'subject') => [
     { title: 'Nombre', dataIndex: 'name' },
     {
       title: 'Acciones',
@@ -259,38 +296,69 @@ const AcademicManagement: React.FC = () => {
 
                 {/* List of Active Grades in Period */}
                 {structure.map((item: any) => (
-                  <Col span={8} key={item.id}>
+                  <Col span={12} key={item.id}>
                     <Card
                       title={item.grade?.name}
                       extra={
-                        <Popconfirm title="Eliminar grado y sus secciones?" onConfirm={() => handleRemoveGradeFromStructure(item.id)}>
+                        <Popconfirm title="Eliminar grado y todo su contenido?" onConfirm={() => handleRemoveGradeFromStructure(item.id)}>
                           <Button type="text" danger icon={<DeleteOutlined />} />
                         </Popconfirm>
                       }
+                      actions={[
+                        <div style={{ padding: '0 16px', textAlign: 'left' }}>
+                          <div style={{ fontSize: 12, color: '#999', marginBottom: 4 }}>Agregar Sección:</div>
+                          <Select
+                            size="small"
+                            placeholder="+ Sección"
+                            style={{ width: '100%' }}
+                            onChange={(val) => handleAddSectionToGrade(item.id, val)}
+                            options={sections
+                              .filter(s => !item.sections?.some((is: any) => is.id === s.id))
+                              .map(s => ({ label: s.name, value: s.id }))
+                            }
+                          />
+                        </div>,
+                        <div style={{ padding: '0 16px', textAlign: 'left' }}>
+                          <div style={{ fontSize: 12, color: '#999', marginBottom: 4 }}>Agregar Materia:</div>
+                          <Select
+                            size="small"
+                            placeholder="+ Materia"
+                            style={{ width: '100%' }}
+                            onChange={(val) => handleAddSubjectToGrade(item.id, val)}
+                            options={subjects
+                              .filter(s => !item.subjects?.some((is: any) => is.id === s.id))
+                              .map(s => ({ label: s.name, value: s.id }))
+                            }
+                          />
+                        </div>
+                      ]}
                     >
-                      <div style={{ marginBottom: 8 }}>Secciones:</div>
-                      <Space wrap style={{ marginBottom: 8 }}>
-                        {item.sections?.map((sec: any) => (
-                          <Tag
-                            key={sec.id}
-                            closable
-                            onClose={() => handleRemoveSectionFromGrade(item.id, sec.id)}
-                          >
-                            {sec.name}
-                          </Tag>
-                        ))}
-                      </Space>
-
-                      <Select
-                        size="small"
-                        placeholder="+ Sección"
-                        style={{ width: 100, marginTop: 8 }}
-                        onChange={(val) => handleAddSectionToGrade(item.id, val)}
-                        options={sections
-                          .filter(s => !item.sections?.some((is: any) => is.id === s.id))
-                          .map(s => ({ label: s.name, value: s.id }))
-                        }
-                      />
+                      <Row gutter={16}>
+                        <Col span={12}>
+                          <h4>Secciones:</h4>
+                          <Space wrap>
+                            {item.sections?.map((sec: any) => (
+                              <Tag key={sec.id} closable onClose={() => handleRemoveSectionFromGrade(item.id, sec.id)}>{sec.name}</Tag>
+                            ))}
+                            {(!item.sections || item.sections.length === 0) && <span style={{ color: '#ccc' }}>Sin secciones</span>}
+                          </Space>
+                        </Col>
+                        <Col span={12} style={{ borderLeft: '1px solid #f0f0f0' }}>
+                          <h4>Materias:</h4>
+                          <Space direction="vertical" style={{ width: '100%' }}>
+                            {item.subjects?.map((sub: any) => (
+                              <div key={sub.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
+                                <Space><BookOutlined /> {sub.name}</Space>
+                                <DeleteOutlined
+                                  style={{ color: '#ff4d4f', cursor: 'pointer' }}
+                                  onClick={() => handleRemoveSubjectFromGrade(item.id, sub.id)}
+                                />
+                              </div>
+                            ))}
+                            {(!item.subjects || item.subjects.length === 0) && <span style={{ color: '#ccc' }}>Sin materias</span>}
+                          </Space>
+                        </Col>
+                      </Row>
                     </Card>
                   </Col>
                 ))}
@@ -301,16 +369,16 @@ const AcademicManagement: React.FC = () => {
           {/* CATALOGS TAB */}
           <TabPane tab="Catálogos Globales" key="3">
             <Row gutter={24}>
-              <Col span={12}>
-                <h3>Grados Disponibles</h3>
+              <Col span={8}>
+                <h3>Grados</h3>
                 <Form form={gradeCatalogForm} layout="inline" onFinish={async (v) => {
                   await api.post('/academic/grades', v);
                   message.success('Grado creado');
                   gradeCatalogForm.resetFields();
                   fetchAll();
                 }}>
-                  <Form.Item name="name" rules={[{ required: true }]}><Input placeholder="Nombre (Ej. 1er Grado)" /></Form.Item>
-                  <Form.Item><Button type="primary" htmlType="submit">Crear</Button></Form.Item>
+                  <Form.Item name="name" rules={[{ required: true }]} style={{ width: 150 }}><Input placeholder="Nombre" /></Form.Item>
+                  <Button type="primary" htmlType="submit" icon={<PlusOutlined />} />
                 </Form>
                 <Table
                   dataSource={grades}
@@ -318,18 +386,19 @@ const AcademicManagement: React.FC = () => {
                   size="small"
                   style={{ marginTop: 16 }}
                   columns={catalogColumns('grade')}
+                  pagination={{ pageSize: 5 }}
                 />
               </Col>
-              <Col span={12}>
-                <h3>Secciones Disponibles</h3>
+              <Col span={8}>
+                <h3>Secciones</h3>
                 <Form form={sectionCatalogForm} layout="inline" onFinish={async (v) => {
                   await api.post('/academic/sections', v);
                   message.success('Sección creada');
                   sectionCatalogForm.resetFields();
                   fetchAll();
                 }}>
-                  <Form.Item name="name" rules={[{ required: true }]}><Input placeholder="Nombre (Ej. A, B)" /></Form.Item>
-                  <Form.Item><Button type="primary" htmlType="submit">Crear</Button></Form.Item>
+                  <Form.Item name="name" rules={[{ required: true }]} style={{ width: 150 }}><Input placeholder="Nombre" /></Form.Item>
+                  <Button type="primary" htmlType="submit" icon={<PlusOutlined />} />
                 </Form>
                 <Table
                   dataSource={sections}
@@ -337,7 +406,23 @@ const AcademicManagement: React.FC = () => {
                   size="small"
                   style={{ marginTop: 16 }}
                   columns={catalogColumns('section')}
+                  pagination={{ pageSize: 5 }}
                 />
+              </Col>
+
+              {/* Subjects */}
+              <Col span={8}>
+                <h3>Materias</h3>
+                <Form form={subjectCatalogForm} layout="inline" onFinish={async (v) => {
+                  await api.post('/academic/subjects', v);
+                  message.success('Creado');
+                  subjectCatalogForm.resetFields();
+                  fetchAll();
+                }}>
+                  <Form.Item name="name" rules={[{ required: true }]} style={{ width: 150 }}><Input placeholder="Nombre" /></Form.Item>
+                  <Button type="primary" htmlType="submit" icon={<PlusOutlined />} />
+                </Form>
+                <Table dataSource={subjects} rowKey="id" size="small" style={{ marginTop: 16 }} columns={catalogColumns('subject')} pagination={{ pageSize: 5 }} />
               </Col>
             </Row>
           </TabPane>
@@ -361,7 +446,7 @@ const AcademicManagement: React.FC = () => {
 
       {/* Edit Catalog Modal */}
       <Modal
-        title={`Editar ${editCatalogTarget?.type === 'grade' ? 'Grado' : 'Sección'}`}
+        title={`Editar Item`}
         open={editCatalogVisible}
         onCancel={() => setEditCatalogVisible(false)}
         footer={null}

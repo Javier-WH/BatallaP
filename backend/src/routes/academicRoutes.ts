@@ -19,11 +19,18 @@ router.post('/sections', academic.createSection);
 router.put('/sections/:id', academic.updateSection);
 router.delete('/sections/:id', academic.deleteSection);
 
+router.get('/subjects', academic.getSubjects);
+router.post('/subjects', academic.createSubject);
+router.put('/subjects/:id', academic.updateSubject);
+router.delete('/subjects/:id', academic.deleteSubject);
+
 // Structure
 router.get('/structure/:periodId', academic.getPeriodStructure);
 router.post('/structure/period-grade', academic.addGradeToPeriod);
 router.delete('/structure/period-grade/:id', academic.removeGradeFromPeriod);
 router.post('/structure/section', academic.addSectionToGrade);
-router.post('/structure/section/remove', academic.removeSectionFromGrade); // Using POST because of composite key body
+router.post('/structure/section/remove', academic.removeSectionFromGrade);
+router.post('/structure/subject', academic.addSubjectToGrade);
+router.post('/structure/subject/remove', academic.removeSubjectFromGrade); // Using POST because of composite key body
 
 export default router;

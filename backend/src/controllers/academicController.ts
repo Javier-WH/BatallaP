@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { SchoolPeriod, Grade, Section, PeriodGrade, PeriodGradeSection } from '@/models/index';
+import { SchoolPeriod, Grade, Section, PeriodGrade, PeriodGradeSection, Subject, PeriodGradeSubject } from '@/models/index';
 import sequelize from '@/config/database';
 
 // --- School Periods ---
@@ -108,6 +108,40 @@ export const deleteSection = async (req: Request, res: Response) => {
   }
 };
 
+// ... (Grades & Sections) ...
+
+export const getSubjects = async (req: Request, res: Response) => {
+  const subjects = await Subject.findAll();
+  res.json(subjects);
+};
+
+export const createSubject = async (req: Request, res: Response) => {
+  const { name } = req.body;
+  const subject = await Subject.create({ name });
+  res.json(subject);
+};
+
+export const updateSubject = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { name } = req.body;
+    await Subject.update({ name }, { where: { id } });
+    res.json({ message: 'Subject updated' });
+  } catch (error) {
+    res.status(500).json({ error: 'Error updating subject' });
+  }
+};
+
+export const deleteSubject = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    await Subject.destroy({ where: { id } });
+    res.json({ message: 'Subject deleted' });
+  } catch (error) {
+    res.status(400).json({ error: 'No se puede eliminar porque está en uso' });
+  }
+};
+
 // --- Structure Management ---
 
 export const getPeriodStructure = async (req: Request, res: Response) => {
@@ -121,16 +155,42 @@ export const getPeriodStructure = async (req: Request, res: Response) => {
         {
           model: Section,
           as: 'sections',
-          through: { attributes: ['id'] } // Get PeriodGradeSection ID if needed
+          through: { attributes: ['id'] }
+        },
+        {
+          model: Subject,
+          as: 'subjects',
+          through: { attributes: ['id'] }
         }
       ]
     });
 
-    // Transform for easier frontend consumption if needed, or send as is
     res.json(structure);
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Error fetching structure' });
+  }
+};
+
+// ... (Grade/Section assignment) ...
+
+export const addSubjectToGrade = async (req: Request, res: Response) => {
+  try {
+    const { periodGradeId, subjectId } = req.body;
+    const pgs = await PeriodGradeSubject.create({ periodGradeId, subjectId });
+    res.json(pgs);
+  } catch (error) {
+    res.status(500).json({ error: 'Error adding subject' });
+  }
+};
+
+export const removeSubjectFromGrade = async (req: Request, res: Response) => {
+  try {
+    const { periodGradeId, subjectId } = req.body;
+    await PeriodGradeSubject.destroy({ where: { periodGradeId, subjectId } });
+    res.json({ message: 'Deleted' });
+  } catch (error) {
+    res.status(500).json({ error: 'Error removing subject' });
   }
 };
 

@@ -44,22 +44,30 @@ import PeriodGradeSection from './PeriodGradeSection';
 
 // Educational Structure Associations
 
-// 1. SchoolPeriod <-> Grade (Through PeriodGrade)
+import Subject from './Subject';
+import PeriodGradeSubject from './PeriodGradeSubject';
+
+// ... (Existing User/Person/Role/Contact associations) ...
+
+// Educational Structure Associations
+
+// 1. SchoolPeriod <-> Grade
 SchoolPeriod.belongsToMany(Grade, { through: PeriodGrade, foreignKey: 'schoolPeriodId', otherKey: 'gradeId', as: 'grades' });
 Grade.belongsToMany(SchoolPeriod, { through: PeriodGrade, foreignKey: 'gradeId', otherKey: 'schoolPeriodId', as: 'periods' });
-
-// Setup explicit associations for PeriodGrade to access attributes easily if needed
 PeriodGrade.belongsTo(SchoolPeriod, { foreignKey: 'schoolPeriodId', as: 'schoolPeriod' });
 PeriodGrade.belongsTo(Grade, { foreignKey: 'gradeId', as: 'grade' });
 
-// 2. PeriodGrade <-> Section (Through PeriodGradeSection)
-// This effectively links a specific Grade in a specific Period to multiple Sections
+// 2. PeriodGrade <-> Section
 PeriodGrade.belongsToMany(Section, { through: PeriodGradeSection, foreignKey: 'periodGradeId', otherKey: 'sectionId', as: 'sections' });
 Section.belongsToMany(PeriodGrade, { through: PeriodGradeSection, foreignKey: 'sectionId', otherKey: 'periodGradeId', as: 'periodGrades' });
-
-// Explicit associations for PeriodGradeSection
 PeriodGradeSection.belongsTo(PeriodGrade, { foreignKey: 'periodGradeId', as: 'periodGrade' });
 PeriodGradeSection.belongsTo(Section, { foreignKey: 'sectionId', as: 'section' });
+
+// 3. PeriodGrade <-> Subject
+PeriodGrade.belongsToMany(Subject, { through: PeriodGradeSubject, foreignKey: 'periodGradeId', otherKey: 'subjectId', as: 'subjects' });
+Subject.belongsToMany(PeriodGrade, { through: PeriodGradeSubject, foreignKey: 'subjectId', otherKey: 'periodGradeId', as: 'periodGrades' });
+PeriodGradeSubject.belongsTo(PeriodGrade, { foreignKey: 'periodGradeId', as: 'periodGrade' });
+PeriodGradeSubject.belongsTo(Subject, { foreignKey: 'subjectId', as: 'subject' });
 
 export {
   User,
@@ -71,5 +79,7 @@ export {
   Grade,
   Section,
   PeriodGrade,
-  PeriodGradeSection
+  PeriodGradeSection,
+  Subject,
+  PeriodGradeSubject
 };
