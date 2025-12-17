@@ -7,7 +7,8 @@ import {
   deleteEvaluationItem,
   getStudentsForAssignment,
   getQualifications,
-  saveQualification
+  saveQualification,
+  getStudentFullAcademicRecord
 } from '@/controllers/evaluationController';
 
 const router = Router();
@@ -20,5 +21,6 @@ router.delete('/plan/:id', deleteEvaluationItem);
 router.get('/students/:assignmentId', getStudentsForAssignment);
 router.get('/qualifications/:inscriptionSubjectId', getQualifications);
 router.post('/qualifications', saveQualification);
+router.get('/student-record/:personId', getStudentFullAcademicRecord);
 
 export default router;

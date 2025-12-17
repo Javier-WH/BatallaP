@@ -183,3 +183,39 @@ export const saveQualification = async (req: Request, res: Response) => {
     res.status(500).json({ message: 'Error al guardar calificación' });
   }
 };
+
+export const getStudentFullAcademicRecord = async (req: Request, res: Response) => {
+  try {
+    const { personId } = req.params;
+
+    const records = await Inscription.findAll({
+      where: { personId },
+      include: [
+        { model: SchoolPeriod, as: 'period' },
+        { model: Grade, as: 'grade' },
+        { model: Section, as: 'section' },
+        {
+          model: InscriptionSubject,
+          as: 'inscriptionSubjects',
+          include: [
+            { model: Subject, as: 'subject' },
+            {
+              model: Qualification,
+              as: 'qualifications',
+              include: [{ model: EvaluationPlan, as: 'evaluationPlan' }]
+            }
+          ]
+        }
+      ],
+      order: [
+        [{ model: SchoolPeriod, as: 'period' }, 'id', 'DESC'],
+        [{ model: InscriptionSubject, as: 'inscriptionSubjects' }, { model: Subject, as: 'subject' }, 'name', 'ASC']
+      ]
+    });
+
+    res.json(records);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Error al obtener historial' });
+  }
+};

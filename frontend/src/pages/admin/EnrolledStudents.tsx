@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Table, Card, Button, Input, Select, Space, Tag, message, Row, Col, Typography, Empty } from 'antd';
-import { FilterOutlined, TeamOutlined } from '@ant-design/icons';
+import { FilterOutlined, TeamOutlined, EyeOutlined } from '@ant-design/icons';
+import { useNavigate } from 'react-router-dom';
 import api from '@/services/api';
 
 const { Search } = Input;
@@ -8,6 +9,7 @@ const { Option } = Select;
 const { Text } = Typography;
 
 const EnrolledStudents: React.FC = () => {
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [inscriptions, setInscriptions] = useState<any[]>([]);
   const [activePeriod, setActivePeriod] = useState<any>(null);
@@ -107,6 +109,21 @@ const EnrolledStudents: React.FC = () => {
       dataIndex: ['section', 'name'],
       key: 'section',
       render: (name: string) => name || <Text type="secondary">N/A</Text>
+    },
+    {
+      title: 'Expediente',
+      key: 'record',
+      align: 'center' as const,
+      render: (_: any, record: any) => (
+        <Button
+          type="primary"
+          ghost
+          icon={<EyeOutlined />}
+          onClick={() => navigate(`/student/${record.student?.id}`)}
+        >
+          Ver Detalle
+        </Button>
+      )
     }
   ];
 
