@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Card, Tabs, Table, Button, Modal, Form, Input, Tag, message, Select, Space, Row, Col, Popconfirm } from 'antd';
-import { PlusOutlined, DeleteOutlined, CheckCircleOutlined, EditOutlined, BookOutlined } from '@ant-design/icons';
+import { PlusOutlined, DeleteOutlined, CheckCircleOutlined, EditOutlined, BookOutlined, AppstoreOutlined } from '@ant-design/icons';
 import api from '@/services/api';
 
 const { TabPane } = Tabs;
@@ -97,7 +97,7 @@ const AcademicManagement: React.FC = () => {
   };
 
   const handleAddGradeToStructure = async (gradeId: number) => {
-    if (!activePeriodId) return message.warn('Seleccione un periodo');
+    if (!activePeriodId) return message.warning('Seleccione un periodo');
     try {
       await api.post('/academic/structure/period-grade', { schoolPeriodId: activePeriodId, gradeId });
       message.success('Grado agregado al periodo');
@@ -299,6 +299,8 @@ const AcademicManagement: React.FC = () => {
                   <Col span={12} key={item.id}>
                     <Card
                       title={item.grade?.name}
+                      style={{ border: '1px solid #d9d9d9', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}
+                      headStyle={{ backgroundColor: '#fafafa', borderBottom: '1px solid #d9d9d9' }}
                       extra={
                         <Popconfirm title="Eliminar grado y todo su contenido?" onConfirm={() => handleRemoveGradeFromStructure(item.id)}>
                           <Button type="text" danger icon={<DeleteOutlined />} />
@@ -336,9 +338,15 @@ const AcademicManagement: React.FC = () => {
                       <Row gutter={16}>
                         <Col span={12}>
                           <h4>Secciones:</h4>
-                          <Space wrap>
+                          <Space direction="vertical" style={{ width: '100%' }}>
                             {item.sections?.map((sec: any) => (
-                              <Tag key={sec.id} closable onClose={() => handleRemoveSectionFromGrade(item.id, sec.id)}>{sec.name}</Tag>
+                              <div key={sec.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
+                                <Space><AppstoreOutlined style={{ color: '#1890ff' }} /> {sec.name}</Space>
+                                <DeleteOutlined
+                                  style={{ color: '#ff4d4f', cursor: 'pointer' }}
+                                  onClick={() => handleRemoveSectionFromGrade(item.id, sec.id)}
+                                />
+                              </div>
                             ))}
                             {(!item.sections || item.sections.length === 0) && <span style={{ color: '#ccc' }}>Sin secciones</span>}
                           </Space>
@@ -370,59 +378,74 @@ const AcademicManagement: React.FC = () => {
           <TabPane tab="Catálogos Globales" key="3">
             <Row gutter={24}>
               <Col span={8}>
-                <h3>Grados</h3>
-                <Form form={gradeCatalogForm} layout="inline" onFinish={async (v) => {
-                  await api.post('/academic/grades', v);
-                  message.success('Grado creado');
-                  gradeCatalogForm.resetFields();
-                  fetchAll();
-                }}>
-                  <Form.Item name="name" rules={[{ required: true }]} style={{ width: 150 }}><Input placeholder="Nombre" /></Form.Item>
-                  <Button type="primary" htmlType="submit" icon={<PlusOutlined />} />
-                </Form>
-                <Table
-                  dataSource={grades}
-                  rowKey="id"
-                  size="small"
-                  style={{ marginTop: 16 }}
-                  columns={catalogColumns('grade')}
-                  pagination={{ pageSize: 5 }}
-                />
+                <Card
+                  title="Grados"
+                  style={{ border: '1px solid #d9d9d9', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}
+                  headStyle={{ backgroundColor: '#fafafa', borderBottom: '1px solid #d9d9d9' }}
+                >
+                  <Form form={gradeCatalogForm} layout="inline" onFinish={async (v) => {
+                    await api.post('/academic/grades', v);
+                    message.success('Grado creado');
+                    gradeCatalogForm.resetFields();
+                    fetchAll();
+                  }}>
+                    <Form.Item name="name" rules={[{ required: true }]} style={{ width: 150 }}><Input placeholder="Nombre" /></Form.Item>
+                    <Button type="primary" htmlType="submit" icon={<PlusOutlined />} />
+                  </Form>
+                  <Table
+                    dataSource={grades}
+                    rowKey="id"
+                    size="small"
+                    style={{ marginTop: 16 }}
+                    columns={catalogColumns('grade')}
+                    pagination={{ pageSize: 5 }}
+                  />
+                </Card>
               </Col>
               <Col span={8}>
-                <h3>Secciones</h3>
-                <Form form={sectionCatalogForm} layout="inline" onFinish={async (v) => {
-                  await api.post('/academic/sections', v);
-                  message.success('Sección creada');
-                  sectionCatalogForm.resetFields();
-                  fetchAll();
-                }}>
-                  <Form.Item name="name" rules={[{ required: true }]} style={{ width: 150 }}><Input placeholder="Nombre" /></Form.Item>
-                  <Button type="primary" htmlType="submit" icon={<PlusOutlined />} />
-                </Form>
-                <Table
-                  dataSource={sections}
-                  rowKey="id"
-                  size="small"
-                  style={{ marginTop: 16 }}
-                  columns={catalogColumns('section')}
-                  pagination={{ pageSize: 5 }}
-                />
+                <Card
+                  title="Secciones"
+                  style={{ border: '1px solid #d9d9d9', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}
+                  headStyle={{ backgroundColor: '#fafafa', borderBottom: '1px solid #d9d9d9' }}
+                >
+                  <Form form={sectionCatalogForm} layout="inline" onFinish={async (v) => {
+                    await api.post('/academic/sections', v);
+                    message.success('Sección creada');
+                    sectionCatalogForm.resetFields();
+                    fetchAll();
+                  }}>
+                    <Form.Item name="name" rules={[{ required: true }]} style={{ width: 150 }}><Input placeholder="Nombre" /></Form.Item>
+                    <Button type="primary" htmlType="submit" icon={<PlusOutlined />} />
+                  </Form>
+                  <Table
+                    dataSource={sections}
+                    rowKey="id"
+                    size="small"
+                    style={{ marginTop: 16 }}
+                    columns={catalogColumns('section')}
+                    pagination={{ pageSize: 5 }}
+                  />
+                </Card>
               </Col>
 
               {/* Subjects */}
               <Col span={8}>
-                <h3>Materias</h3>
-                <Form form={subjectCatalogForm} layout="inline" onFinish={async (v) => {
-                  await api.post('/academic/subjects', v);
-                  message.success('Creado');
-                  subjectCatalogForm.resetFields();
-                  fetchAll();
-                }}>
-                  <Form.Item name="name" rules={[{ required: true }]} style={{ width: 150 }}><Input placeholder="Nombre" /></Form.Item>
-                  <Button type="primary" htmlType="submit" icon={<PlusOutlined />} />
-                </Form>
-                <Table dataSource={subjects} rowKey="id" size="small" style={{ marginTop: 16 }} columns={catalogColumns('subject')} pagination={{ pageSize: 5 }} />
+                <Card
+                  title="Materias"
+                  style={{ border: '1px solid #d9d9d9', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}
+                  headStyle={{ backgroundColor: '#fafafa', borderBottom: '1px solid #d9d9d9' }}
+                >
+                  <Form form={subjectCatalogForm} layout="inline" onFinish={async (v) => {
+                    await api.post('/academic/subjects', v);
+                    message.success('Creado');
+                    subjectCatalogForm.resetFields();
+                    fetchAll();
+                  }}>
+                    <Form.Item name="name" rules={[{ required: true }]} style={{ width: 150 }}><Input placeholder="Nombre" /></Form.Item>
+                    <Button type="primary" htmlType="submit" icon={<PlusOutlined />} />
+                  </Form>
+                  <Table dataSource={subjects} rowKey="id" size="small" style={{ marginTop: 16 }} columns={catalogColumns('subject')} pagination={{ pageSize: 5 }} />
+                </Card>
               </Col>
             </Row>
           </TabPane>

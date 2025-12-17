@@ -5,6 +5,7 @@ import dotenv from 'dotenv';
 import authRoutes from '@/routes/authRoutes';
 import userRoutes from '@/routes/userRoutes';
 import academicRoutes from '@/routes/academicRoutes';
+import inscriptionRoutes from '@/routes/inscriptionRoutes';
 
 dotenv.config();
 
@@ -14,6 +15,7 @@ const PORT = process.env.PORT || 3000;
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/academic', academicRoutes);
+app.use('/api/inscriptions', inscriptionRoutes);
 
 const startServer = async () => {
   try {

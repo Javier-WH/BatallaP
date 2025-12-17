@@ -46,6 +46,8 @@ import PeriodGradeSection from './PeriodGradeSection';
 
 import Subject from './Subject';
 import PeriodGradeSubject from './PeriodGradeSubject';
+import Inscription from './Inscription';
+import InscriptionSubject from './InscriptionSubject';
 
 // ... (Existing User/Person/Role/Contact associations) ...
 
@@ -69,6 +71,25 @@ Subject.belongsToMany(PeriodGrade, { through: PeriodGradeSubject, foreignKey: 's
 PeriodGradeSubject.belongsTo(PeriodGrade, { foreignKey: 'periodGradeId', as: 'periodGrade' });
 PeriodGradeSubject.belongsTo(Subject, { foreignKey: 'subjectId', as: 'subject' });
 
+// 4. Inscription Associations
+Inscription.belongsTo(SchoolPeriod, { foreignKey: 'schoolPeriodId', as: 'period' });
+SchoolPeriod.hasMany(Inscription, { foreignKey: 'schoolPeriodId', as: 'inscriptions' });
+
+Inscription.belongsTo(Grade, { foreignKey: 'gradeId', as: 'grade' });
+Grade.hasMany(Inscription, { foreignKey: 'gradeId', as: 'inscriptions' });
+
+Inscription.belongsTo(Section, { foreignKey: 'sectionId', as: 'section' });
+Section.hasMany(Inscription, { foreignKey: 'sectionId', as: 'inscriptions' });
+
+Inscription.belongsTo(Person, { foreignKey: 'personId', as: 'student' });
+Person.hasMany(Inscription, { foreignKey: 'personId', as: 'inscriptions' });
+
+// Inscription <-> Subject (Many-to-Many)
+Inscription.belongsToMany(Subject, { through: InscriptionSubject, foreignKey: 'inscriptionId', otherKey: 'subjectId', as: 'subjects' });
+Subject.belongsToMany(Inscription, { through: InscriptionSubject, foreignKey: 'subjectId', otherKey: 'inscriptionId', as: 'inscriptions' });
+InscriptionSubject.belongsTo(Inscription, { foreignKey: 'inscriptionId', as: 'inscription' });
+InscriptionSubject.belongsTo(Subject, { foreignKey: 'subjectId', as: 'subject' });
+
 export {
   User,
   Person,
@@ -81,5 +102,7 @@ export {
   PeriodGrade,
   PeriodGradeSection,
   Subject,
-  PeriodGradeSubject
+  PeriodGradeSubject,
+  Inscription,
+  InscriptionSubject
 };
