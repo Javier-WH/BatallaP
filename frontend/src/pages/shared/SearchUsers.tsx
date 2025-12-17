@@ -51,28 +51,50 @@ const SearchUsers: React.FC = () => {
       key: 'document',
     },
     {
-      title: 'Usuario',
-      key: 'username',
-      render: (_: any, record: any) => record.user?.username || 'N/A'
-    },
-    {
       title: 'Roles',
       key: 'roles',
-      render: (_: any, record: any) => (
-        <Space size={0} wrap>
-          {record.roles?.map((role: any) => {
-            // Color coding for different roles
-            let color = 'blue';
-            if (role.name === 'Master') color = 'purple';
-            else if (role.name === 'Admin') color = 'gold';
-            else if (role.name === 'Teacher') color = 'green';
-            else if (role.name === 'Student') color = 'cyan';
-            else if (role.name === 'Tutor') color = 'magenta';
+      render: (_: any, record: any) => {
+        const roleOrder: { [key: string]: number } = {
+          'Master': 1,
+          'Admin': 2,
+          'Teacher': 3,
+          'Tutor': 4,
+          'Student': 5
+        };
 
-            return <Tag key={role.id} color={color}>{role.name}</Tag>;
-          })}
-        </Space>
-      )
+        const wowColors: { [key: string]: { color: string, textColor: string, border?: string } } = {
+          'Master': { color: '#ff8000', textColor: '#fff' }, // Legendary
+          'Admin': { color: '#a335ee', textColor: '#fff' },  // Epic
+          'Teacher': { color: '#0070dd', textColor: '#fff' }, // Rare
+          'Tutor': { color: '#ffffff', textColor: '#333', border: '1px solid #d9d9d9' },  // Common
+          'Student': { color: '#9d9d9d', textColor: '#fff' } // Trash
+        };
+
+        const sortedRoles = [...(record.roles || [])].sort((a, b) => {
+          return (roleOrder[a.name] || 99) - (roleOrder[b.name] || 99);
+        });
+
+        return (
+          <Space size={4} wrap>
+            {sortedRoles.map((role: any) => {
+              const style = wowColors[role.name] || { color: '#ccc', textColor: '#fff' };
+              return (
+                <Tag
+                  key={role.id}
+                  style={{
+                    backgroundColor: style.color,
+                    color: style.textColor,
+                    border: style.border || 'none',
+                    fontWeight: 600
+                  }}
+                >
+                  {role.name}
+                </Tag>
+              );
+            })}
+          </Space>
+        );
+      }
     },
     {
       title: 'Acciones',
