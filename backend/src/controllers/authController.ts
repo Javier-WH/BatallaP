@@ -38,8 +38,6 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    // "por ahora que solo imprima los datos por consola"
-    console.log('Login successful. User Data:', JSON.stringify(user.toJSON(), null, 2));
 
     const person = (user as any).person; // Type casting might be needed until types are fully generated/inferred
     const roles = person ? person.roles : [];

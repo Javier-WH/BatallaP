@@ -4,8 +4,13 @@ import MainLayout from '@/pages/MainLayout';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import '@/index.css';
 
+// Master Module Imports
+import MasterLayout from '@/pages/master/MasterLayout';
+import MasterDashboard from '@/pages/master/Dashboard';
+import RegisterUser from '@/pages/master/RegisterUser';
+
 // Protected Route Component
-const RequireAuth = ({ children }: { children: JSX.Element }) => {
+const RequireAuth = ({ children, allowedRoles }: { children: JSX.Element; allowedRoles?: string[] }) => {
   const { user, loading } = useAuth();
 
   if (loading) {
@@ -14,6 +19,15 @@ const RequireAuth = ({ children }: { children: JSX.Element }) => {
 
   if (!user) {
     return <Navigate to="/" replace />;
+  }
+
+  // Check role permission if defined
+  if (allowedRoles) {
+    // Check if user has AT LEAST ONE of the allowed roles
+    const hasPermission = user.roles.some(role => allowedRoles.includes(role));
+    if (!hasPermission) {
+      return <Navigate to="/dashboard" replace />; // Redirect to common dashboard or access denied page
+    }
   }
 
   return children;
@@ -26,6 +40,7 @@ const PublicRoute = ({ children }: { children: JSX.Element }) => {
   if (loading) return <div>Loading...</div>;
 
   if (user) {
+    // Redirect based on primary role? For now generic dashboard
     return <Navigate to="/dashboard" replace />;
   }
 
@@ -38,9 +53,15 @@ function AppRoutes() {
     <Routes>
       <Route path="/" element={<PublicRoute><Login /></PublicRoute>} />
 
+      {/* General Dashboard (To be defined or shared) */}
       <Route path="/" element={<RequireAuth><MainLayout /></RequireAuth>}>
-        <Route path="dashboard" element={<h1>Bienvenido al Dashboard</h1>} />
-        {/* Add more protected routes here */}
+        <Route path="dashboard" element={<h1>Bienvenido al Dashboard General</h1>} />
+
+        {/* Nested Master Module */}
+        <Route path="master" element={<RequireAuth allowedRoles={['Master']}><MasterLayout /></RequireAuth>}>
+          <Route index element={<MasterDashboard />} />
+          <Route path="register" element={<RegisterUser />} />
+        </Route>
       </Route>
 
       <Route path="*" element={<h1>404 Not Found</h1>} />

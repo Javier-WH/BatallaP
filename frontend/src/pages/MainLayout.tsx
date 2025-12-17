@@ -27,14 +27,26 @@ const MainLayout: React.FC = () => {
     navigate('/');
   }
 
-  const menuItems = [
+  const menuItems: any[] = [
     {
       key: 'dashboard',
       icon: <DashboardOutlined />,
       label: 'Dashboard',
       onClick: () => navigate('/dashboard')
-    },
-    // Example items
+    }
+  ];
+
+  if (user?.roles.includes('Master')) {
+    menuItems.push({
+      key: 'master-module',
+      icon: <UserOutlined />, // You can change this icon
+      label: 'Master',
+      onClick: () => navigate('/master')
+    });
+  }
+
+  // Example items for others
+  const otherItems = [
     {
       key: '1',
       icon: <UserOutlined />,
@@ -51,6 +63,8 @@ const MainLayout: React.FC = () => {
       label: 'Carga de Notas',
     },
   ];
+
+  menuItems.push(...otherItems); // Added back for demonstration
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
@@ -76,7 +90,7 @@ const MainLayout: React.FC = () => {
             }}
           />
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span>Hola, <strong>{user?.firstName}</strong> ({user?.role})</span>
+            <span>Hola, <strong>{user?.firstName}</strong> ({user?.roles?.join(', ')})</span>
             <Button icon={<LogoutOutlined />} onClick={handleLogout}>Salir</Button>
           </div>
         </Header>

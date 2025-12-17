@@ -5,9 +5,10 @@ import { Spin } from 'antd';
 interface User {
   id: number;
   username: string;
-  role: 'admin' | 'student' | 'teacher';
+  roles: string[];
   firstName: string;
   lastName: string;
+  personId?: number;
 }
 
 interface AuthContextType {
