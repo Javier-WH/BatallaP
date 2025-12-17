@@ -16,6 +16,7 @@ const Login: React.FC = () => {
     setLoading(true);
     try {
       const { data } = await api.post('/auth/login', values);
+      console.log(data);
       message.success('Bienvenido el sistema');
       login(data.user);
       navigate('/dashboard'); // Redirect to dashboard

@@ -1,5 +1,6 @@
 import app from './app';
 import sequelize from '@/config/database';
+import '@/models/index'; // Register models
 import dotenv from 'dotenv';
 import authRoutes from '@/routes/authRoutes';
 
