@@ -7,7 +7,8 @@ import {
   UserOutlined,
   VideoCameraOutlined,
   LogoutOutlined,
-  DashboardOutlined
+  DashboardOutlined,
+  TeamOutlined
 } from '@ant-design/icons';
 import { Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
@@ -42,6 +43,15 @@ const MainLayout: React.FC = () => {
       icon: <UserOutlined />, // You can change this icon
       label: 'Master',
       onClick: () => navigate('/master')
+    });
+  }
+
+  if (user?.roles.includes('Admin')) {
+    menuItems.push({
+      key: 'admin-module',
+      icon: <TeamOutlined />,
+      label: 'Admin',
+      onClick: () => navigate('/admin')
     });
   }
 

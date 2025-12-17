@@ -3,6 +3,7 @@ import sequelize from '@/config/database';
 import '@/models/index'; // Register models
 import dotenv from 'dotenv';
 import authRoutes from '@/routes/authRoutes';
+import userRoutes from '@/routes/userRoutes';
 
 dotenv.config();
 
@@ -10,6 +11,7 @@ const PORT = process.env.PORT || 3000;
 
 // Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/users', userRoutes);
 
 const startServer = async () => {
   try {

@@ -4,24 +4,26 @@ import api from '@/services/api';
 
 const { Option } = Select;
 
-const RegisterUser: React.FC = () => {
+interface RegisterSpecializedProps {
+  roleTarget: 'Teacher' | 'Tutor';
+  title: string;
+}
+
+const RegisterSpecialized: React.FC<RegisterSpecializedProps> = ({ roleTarget, title }) => {
   const [loading, setLoading] = useState(false);
   const [form] = Form.useForm();
 
   const onFinish = async (values: any) => {
     setLoading(true);
     try {
-      // Form values match backend expectation: 
-      // username, password, firstName, lastName, documentType, document, gender, birthdate, roleName
-      // Map 'roleName' manually if needed, or ensure form field name matches
-
       const payload = {
         ...values,
-        birthdate: values.birthdate.format('YYYY-MM-DD') // Ensure date format
+        birthdate: values.birthdate.format('YYYY-MM-DD'),
+        roleName: roleTarget // Force fixed role
       };
 
-      await api.post('/auth/register', payload); // Adjust endpoint if you create a specific admin-create-user endpoint, but using public register for now or update it in backend
-      message.success('Usuario inscrito exitosamente');
+      await api.post('/auth/register', payload);
+      message.success(`${title} inscrito exitosamente`);
       form.resetFields();
     } catch (error: any) {
       console.error(error);
@@ -33,7 +35,7 @@ const RegisterUser: React.FC = () => {
 
   return (
     <div style={{ maxWidth: 800, margin: '0 auto' }}>
-      <Card title="Inscripción de Nuevo Usuario">
+      <Card title={`Inscripción de ${title}`}>
         <Form
           form={form}
           layout="vertical"
@@ -41,42 +43,47 @@ const RegisterUser: React.FC = () => {
           initialValues={{
             documentType: 'Venezolano',
             gender: 'M',
-            roleName: 'Student'
           }}
         >
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
             {/* Account Info */}
+            <div style={{ gridColumn: 'span 2' }}>
+              <h4 style={{ margin: 0, marginBottom: 8, color: '#666' }}>Datos de Cuenta</h4>
+            </div>
             <Form.Item
               name="username"
-              label="Nombre de Usuario (Login)"
-              rules={[{ required: true, message: 'Por favor ingrese el usuario' }]}
+              label="Usuario"
+              rules={[{ required: true }]}
             >
-              <Input placeholder="Ej. jdoe" />
+              <Input placeholder="Ej. jperez" />
             </Form.Item>
 
             <Form.Item
               name="password"
               label="Contraseña"
-              rules={[{ required: true, message: 'Por favor ingrese la contraseña' }]}
+              rules={[{ required: true }]}
             >
-              <Input.Password placeholder="******" />
+              <Input.Password />
             </Form.Item>
 
             {/* Personal Info */}
+            <div style={{ gridColumn: 'span 2', marginTop: 8 }}>
+              <h4 style={{ margin: 0, marginBottom: 8, color: '#666' }}>Datos Personales</h4>
+            </div>
             <Form.Item
               name="firstName"
               label="Nombre"
-              rules={[{ required: true, message: 'Por favor ingrese el nombre' }]}
+              rules={[{ required: true }]}
             >
-              <Input placeholder="Juan" />
+              <Input />
             </Form.Item>
 
             <Form.Item
               name="lastName"
               label="Apellido"
-              rules={[{ required: true, message: 'Por favor ingrese el apellido' }]}
+              rules={[{ required: true }]}
             >
-              <Input placeholder="Perez" />
+              <Input />
             </Form.Item>
 
             <Form.Item
@@ -88,16 +95,15 @@ const RegisterUser: React.FC = () => {
                 <Option value="Venezolano">Venezolano</Option>
                 <Option value="Extranjero">Extranjero</Option>
                 <Option value="Pasaporte">Pasaporte</Option>
-                <Option value="Cedula Escolar">Cédula Escolar</Option>
               </Select>
             </Form.Item>
 
             <Form.Item
               name="document"
               label="Número de Documento"
-              rules={[{ required: true, message: 'Ingrese el número' }]}
+              rules={[{ required: true }]}
             >
-              <Input placeholder="12345678" />
+              <Input />
             </Form.Item>
 
             <Form.Item
@@ -114,7 +120,7 @@ const RegisterUser: React.FC = () => {
             <Form.Item
               name="birthdate"
               label="Fecha de Nacimiento"
-              rules={[{ required: true, message: 'Seleccione fecha' }]}
+              rules={[{ required: true }]}
             >
               <DatePicker style={{ width: '100%' }} format="YYYY-MM-DD" />
             </Form.Item>
@@ -125,65 +131,45 @@ const RegisterUser: React.FC = () => {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                 <Form.Item
                   name="address"
-                  label="Dirección de Vivienda"
-                  rules={[{ required: true, message: 'Ingrese la dirección' }]}
+                  label="Dirección"
+                  rules={[{ required: true }]}
                   style={{ gridColumn: 'span 2' }}
                 >
-                  <Input.TextArea rows={2} placeholder="Av. Principal, Edificio B, Apto 2..." />
+                  <Input.TextArea rows={2} />
                 </Form.Item>
 
                 <Form.Item
                   name="phone1"
                   label="Teléfono Principal"
-                  rules={[{ required: true, message: 'Ingrese un teléfono' }]}
+                  rules={[{ required: true }]}
                 >
-                  <Input placeholder="0414-1234567" />
+                  <Input />
                 </Form.Item>
 
-                <Form.Item
-                  name="phone2"
-                  label="Teléfono Secundario (Opcional)"
-                >
-                  <Input placeholder="0212-1234567" />
+                <Form.Item name="phone2" label="Teléfono Secundario">
+                  <Input />
                 </Form.Item>
 
-                <Form.Item
-                  name="email"
-                  label="Correo Electrónico"
-                  rules={[{ type: 'email', message: 'Email inválido' }]}
-                >
-                  <Input placeholder="correo@ejemplo.com" />
+                <Form.Item name="email" label="Email" rules={[{ type: 'email' }]}>
+                  <Input />
                 </Form.Item>
 
-                <Form.Item
-                  name="whatsapp"
-                  label="WhatsApp (Opcional)"
-                >
-                  <Input placeholder="+584141234567" />
+                <Form.Item name="whatsapp" label="WhatsApp">
+                  <Input />
                 </Form.Item>
               </div>
             </div>
-
-            {/* Role Assignment */}
-            <Form.Item
-              name="roleName"
-              label="Asignar Rol Inicial"
-              rules={[{ required: true }]}
-              style={{ gridColumn: 'span 2', marginTop: 16 }}
-            >
-              <Select placeholder="Selecciona un rol">
-                <Option value="Student">Estudiante</Option>
-                <Option value="Tutor">Representante</Option>
-                <Option value="Teacher">Profesor</Option>
-                <Option value="Admin">Admin</Option>
-                <Option value="Master">Master</Option>
-              </Select>
-            </Form.Item>
           </div>
 
-          <Form.Item>
+          <div style={{ marginTop: 24, padding: 10, background: '#f9f9f9', borderRadius: 4, textAlign: 'center' }}>
+            <span style={{ color: '#888' }}>
+              Se asignará automáticamente el rol de <strong>{roleTarget === 'Teacher' ? 'Profesor' : 'Representante'}</strong>.
+            </span>
+          </div>
+
+          <Form.Item style={{ marginTop: 16 }}>
             <Button type="primary" htmlType="submit" loading={loading} block>
-              Inscribir Usuario
+              Registrar {title}
             </Button>
           </Form.Item>
         </Form>
@@ -192,4 +178,4 @@ const RegisterUser: React.FC = () => {
   );
 };
 
-export default RegisterUser;
+export default RegisterSpecialized;

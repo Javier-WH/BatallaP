@@ -1,9 +1,9 @@
 import React from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { Button, Space, Card, Tooltip } from 'antd';
-import { DashboardOutlined, UserAddOutlined, SearchOutlined } from '@ant-design/icons';
+import { DashboardOutlined, UserAddOutlined, SearchOutlined, AuditOutlined, TeamOutlined } from '@ant-design/icons';
 
-const MasterLayout: React.FC = () => {
+const AdminLayout: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -11,41 +11,51 @@ const MasterLayout: React.FC = () => {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', marginTop: -24, marginLeft: -24, marginRight: -24 }}>
-      {/* Master Toolbar */}
+      {/* Admin Toolbar */}
       <Card
         size="small"
         bodyStyle={{ padding: '8px 16px', display: 'flex', alignItems: 'center', gap: '16px' }}
         style={{ borderRadius: 0, borderBottom: '1px solid #f0f0f0', boxShadow: 'none' }}
       >
         <span style={{ fontWeight: 600, color: '#666', marginRight: 8, borderRight: '1px solid #eee', paddingRight: 16 }}>
-          MASTER TOOLS
+          ADMIN TOOLS
         </span>
         <Space>
-          <Tooltip title="Panel Principal">
+          <Tooltip title="Panel Principal Admin">
             <Button
-              type={isActive('/master') ? 'primary' : 'text'}
+              type={isActive('/admin') ? 'primary' : 'text'}
               icon={<DashboardOutlined />}
-              onClick={() => navigate('/master')}
+              onClick={() => navigate('/admin')}
             >
               Panel
             </Button>
           </Tooltip>
 
-          <Tooltip title="Inscribir un nuevo usuario en el sistema">
+          <Tooltip title="Inscribir nuevo Profesor">
             <Button
-              type={isActive('/master/register') ? 'primary' : 'text'}
+              type={isActive('/admin/register-teacher') ? 'primary' : 'text'}
               icon={<UserAddOutlined />}
-              onClick={() => navigate('/master/register')}
+              onClick={() => navigate('/admin/register-teacher')}
             >
-              Inscribir
+              Inscribir Profesor
             </Button>
           </Tooltip>
 
-          <Tooltip title="Buscar y editar usuarios">
+          <Tooltip title="Inscribir nuevo Representante">
             <Button
-              type={isActive('/master/search') ? 'primary' : 'text'}
+              type={isActive('/admin/register-tutor') ? 'primary' : 'text'}
+              icon={<TeamOutlined />}
+              onClick={() => navigate('/admin/register-tutor')}
+            >
+              Inscribir Representante
+            </Button>
+          </Tooltip>
+
+          <Tooltip title="Buscar y editar usuarios (excepto roles administrativos)">
+            <Button
+              type={isActive('/admin/search') ? 'primary' : 'text'}
               icon={<SearchOutlined />}
-              onClick={() => navigate('/master/search')}
+              onClick={() => navigate('/admin/search')}
             >
               Buscar / Editar
             </Button>
@@ -61,4 +71,4 @@ const MasterLayout: React.FC = () => {
   );
 };
 
-export default MasterLayout;
+export default AdminLayout;

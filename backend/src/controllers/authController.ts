@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { User, Person, Role, PersonRole } from '@/models/index'; // Import from index to ensure associations
+import { User, Person, Role, PersonRole, Contact } from '@/models/index'; // Import from index to ensure associations
 
 export const login = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -90,7 +90,13 @@ export const register = async (req: Request, res: Response) => {
       document,
       gender,
       birthdate,
-      roleName
+      roleName,
+      // Contact Info
+      phone1,
+      phone2,
+      email,
+      address,
+      whatsapp
     } = req.body;
 
     // 1. Create User
@@ -107,7 +113,17 @@ export const register = async (req: Request, res: Response) => {
       userId: user.id
     });
 
-    // 3. Assign Role (assuming role exists, or find/create it)
+    // 3. Create Contact linked to Person
+    await Contact.create({
+      phone1,
+      phone2,
+      email,
+      address,
+      whatsapp,
+      personId: person.id
+    });
+
+    // 4. Assign Role
     if (roleName) {
       // Find role by name
       let role = await Role.findOne({ where: { name: roleName } });
@@ -120,7 +136,7 @@ export const register = async (req: Request, res: Response) => {
       if (role) {
         // Manually or via helper
         // Since we are not using the 'addRole' mixin yet (TypeScript types needs setup), we use PersonRole or standard methods if available.
-        // Getting the association method might require type assertions. 
+        // Getting the association method might require type assertions.
         // Let's use the explicit model approach for safety if methods aren't typed.
         await PersonRole.create({
           personId: person.id,
@@ -129,7 +145,7 @@ export const register = async (req: Request, res: Response) => {
       }
     }
 
-    res.status(201).json({ message: 'User registered', user, person });
+    res.status(201).json({ message: 'User registered successfully', user, person });
   } catch (error) {
     console.error(error);
     res.status(400).json({ error: error });

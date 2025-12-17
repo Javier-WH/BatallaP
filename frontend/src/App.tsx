@@ -8,6 +8,15 @@ import '@/index.css';
 import MasterLayout from '@/pages/master/MasterLayout';
 import MasterDashboard from '@/pages/master/Dashboard';
 import RegisterUser from '@/pages/master/RegisterUser';
+import SearchUsers from '@/pages/master/SearchUsers';
+import EditUser from '@/pages/master/EditUser';
+
+// Admin Module Imports
+import AdminLayout from '@/pages/admin/AdminLayout';
+import RegisterSpecialized from '@/pages/admin/RegisterSpecialized';
+import SearchUsersAdmin from '@/pages/admin/SearchUsersAdmin';
+import EditUserAdmin from '@/pages/admin/EditUserAdmin';
+import type { JSX } from 'react';
 
 // Protected Route Component
 const RequireAuth = ({ children, allowedRoles }: { children: JSX.Element; allowedRoles?: string[] }) => {
@@ -61,6 +70,17 @@ function AppRoutes() {
         <Route path="master" element={<RequireAuth allowedRoles={['Master']}><MasterLayout /></RequireAuth>}>
           <Route index element={<MasterDashboard />} />
           <Route path="register" element={<RegisterUser />} />
+          <Route path="search" element={<SearchUsers />} />
+          <Route path="edit/:id" element={<EditUser />} />
+        </Route>
+
+        {/* Nested Admin Module */}
+        <Route path="admin" element={<RequireAuth allowedRoles={['Admin']}><AdminLayout /></RequireAuth>}>
+          <Route index element={<h1>Panel de Admin</h1>} /> {/* Placeholder dashboard */}
+          <Route path="register-teacher" element={<RegisterSpecialized roleTarget="Teacher" title="Profesor" />} />
+          <Route path="register-tutor" element={<RegisterSpecialized roleTarget="Tutor" title="Representante" />} />
+          <Route path="search" element={<SearchUsersAdmin />} />
+          <Route path="edit/:id" element={<EditUserAdmin />} />
         </Route>
       </Route>
 
