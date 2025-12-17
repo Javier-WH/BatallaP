@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Tabs, Card, Select, Table, Button, Modal, Form, Input, DatePicker, message, Space, Tag, Divider, Typography, List, InputNumber, Alert } from 'antd';
+import { Tabs, Card, Select, Table, Button, Modal, Form, Input, DatePicker, message, Space, Tag, Divider, Typography, List, InputNumber, Alert, Segmented } from 'antd';
 import { BookOutlined, PlusOutlined, DeleteOutlined, EditOutlined, SaveOutlined } from '@ant-design/icons';
 import api from '@/services/api';
 import dayjs from 'dayjs';
@@ -12,6 +12,7 @@ const TeacherPanel: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [assignments, setAssignments] = useState<any[]>([]);
   const [selectedAssignmentId, setSelectedAssignmentId] = useState<number | null>(null);
+  const [selectedTerm, setSelectedTerm] = useState<number>(1);
   const [evaluationPlan, setEvaluationPlan] = useState<any[]>([]);
   const [students, setStudents] = useState<any[]>([]);
   const [showPlanModal, setShowPlanModal] = useState(false);
@@ -46,7 +47,7 @@ const TeacherPanel: React.FC = () => {
     setLoading(true);
     try {
       const [planRes, studentsRes] = await Promise.all([
-        api.get(`/evaluation/plan/${assignment.periodGradeSubjectId}`),
+        api.get(`/evaluation/plan/${assignment.periodGradeSubjectId}?term=${selectedTerm}`),
         api.get(`/evaluation/students/${selectedAssignmentId}`)
       ]);
       setEvaluationPlan(planRes.data);
@@ -56,7 +57,7 @@ const TeacherPanel: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [selectedAssignmentId, assignments]);
+  }, [selectedAssignmentId, assignments, selectedTerm]);
 
   useEffect(() => {
     fetchAssignments();
@@ -68,7 +69,11 @@ const TeacherPanel: React.FC = () => {
 
   const handleSavePlanItem = async (values: any) => {
     const assignment = assignments.find(a => a.id === selectedAssignmentId);
-    const data = { ...values, periodGradeSubjectId: assignment.periodGradeSubjectId };
+    const data = {
+      ...values,
+      periodGradeSubjectId: assignment.periodGradeSubjectId,
+      term: selectedTerm
+    };
 
     try {
       if (editingItem) {
@@ -186,23 +191,39 @@ const TeacherPanel: React.FC = () => {
       </Title>
 
       <Card style={{ marginBottom: 24 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-          <Text strong>Asignación:</Text>
-          <Select
-            style={{ width: 400 }}
-            placeholder="Seleccione Materia/Sección"
-            value={selectedAssignmentId}
-            onChange={setSelectedAssignmentId}
-          >
-            {assignments.map(as => (
-              <Option key={as.id} value={as.id}>
-                {as.periodGradeSubject?.subject?.name} - {as.periodGradeSubject?.periodGrade?.grade?.name} ({as.section?.name})
-              </Option>
-            ))}
-          </Select>
-          {currentAssignment && (
-            <Tag color="purple">{currentAssignment.periodGradeSubject?.periodGrade?.schoolPeriod?.name}</Tag>
-          )}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
+          <Space>
+            <Text strong>Asignación:</Text>
+            <Select
+              style={{ width: 400 }}
+              placeholder="Seleccione Materia/Sección"
+              value={selectedAssignmentId}
+              onChange={setSelectedAssignmentId}
+            >
+              {assignments.map(as => (
+                <Option key={as.id} value={as.id}>
+                  {as.periodGradeSubject?.subject?.name} - {as.periodGradeSubject?.periodGrade?.grade?.name} ({as.section?.name})
+                </Option>
+              ))}
+            </Select>
+            {currentAssignment && (
+              <Tag color="purple">{currentAssignment.periodGradeSubject?.periodGrade?.schoolPeriod?.name}</Tag>
+            )}
+          </Space>
+
+          <Space>
+            <Text strong>Lapso:</Text>
+            <Segmented
+              options={[
+                { label: 'Lapso 1', value: 1 },
+                { label: 'Lapso 2', value: 2 },
+                { label: 'Lapso 3', value: 3 }
+              ]}
+              value={selectedTerm}
+              onChange={(val) => setSelectedTerm(val as number)}
+              size="large"
+            />
+          </Space>
         </div>
       </Card>
 
@@ -222,7 +243,7 @@ const TeacherPanel: React.FC = () => {
             />
             <Divider />
             <div style={{ textAlign: 'right' }}>
-              <Text strong>Total Planificado: </Text>
+              <Text strong>Total Planificado (Lapso {selectedTerm}): </Text>
               <Tag color={totalPercentage > 100 ? 'red' : totalPercentage === 100 ? 'green' : 'orange'}>
                 {totalPercentage}% / 100%
               </Tag>

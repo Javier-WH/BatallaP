@@ -5,6 +5,7 @@ import PeriodGradeSubject from './PeriodGradeSubject';
 interface EvaluationPlanAttributes {
   id: number;
   periodGradeSubjectId: number;
+  term: number; // 1, 2, 3 (Lapsos)
   description: string;
   percentage: number;
   date: Date;
@@ -15,6 +16,7 @@ interface EvaluationPlanCreationAttributes extends Optional<EvaluationPlanAttrib
 class EvaluationPlan extends Model<EvaluationPlanAttributes, EvaluationPlanCreationAttributes> implements EvaluationPlanAttributes {
   public id!: number;
   public periodGradeSubjectId!: number;
+  public term!: number;
   public description!: string;
   public percentage!: number;
   public date!: Date;
@@ -34,6 +36,15 @@ EvaluationPlan.init(
       type: DataTypes.INTEGER,
       references: { model: PeriodGradeSubject, key: 'id' },
       allowNull: false
+    },
+    term: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      defaultValue: 1,
+      validate: {
+        min: 1,
+        max: 3
+      }
     },
     description: {
       type: DataTypes.STRING,
@@ -61,12 +72,13 @@ EvaluationPlan.init(
         const currentSum = await EvaluationPlan.sum('percentage', {
           where: {
             periodGradeSubjectId: plan.periodGradeSubjectId,
+            term: plan.term,
             id: { [Op.ne]: plan.id || 0 }
           }
         }) || 0;
 
         if (Number(currentSum) + Number(plan.percentage) > 100) {
-          throw new Error('La suma de los porcentajes del plan de evaluación no puede superar el 100%');
+          throw new Error(`La suma de los porcentajes para el Lapso ${plan.term} no puede superar el 100%`);
         }
       }
     }

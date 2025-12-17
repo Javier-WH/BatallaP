@@ -54,8 +54,13 @@ export const getMyAssignments = async (req: Request, res: Response) => {
 export const getEvaluationPlan = async (req: Request, res: Response) => {
   try {
     const { periodGradeSubjectId } = req.params;
+    const { term } = req.query;
+
+    const where: any = { periodGradeSubjectId };
+    if (term) where.term = term;
+
     const plan = await EvaluationPlan.findAll({
-      where: { periodGradeSubjectId },
+      where,
       order: [['date', 'ASC']]
     });
     res.json(plan);
