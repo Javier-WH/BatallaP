@@ -113,18 +113,17 @@ export const updateUser = async (req: Request, res: Response) => {
     // Update User
     if (person.userId) {
       const user = await User.findByPk(person.userId);
-      if (user) {
-        const userUpdates: any = { username };
+      if (user && username) {
+        user.username = username;
         if (password && password.trim() !== '') {
-          // Hash password manually or let hook handle it if changed
-          // Since update hook handles changed('password'), just setting it might be enough if model is setup right.
-          // However, hooks on bulk update might fail, but on instance update it works. 
-          // Let's rely on the model hook for beforeUpdate
           user.password = password;
         }
-        user.username = username;
         await user.save();
       }
+    } else if (username && password) {
+      // Logic to create a user if they didn't have one and credentials are provided
+      const newUser = await User.create({ username, password });
+      await person.update({ userId: newUser.id });
     }
 
     // Update Contact
