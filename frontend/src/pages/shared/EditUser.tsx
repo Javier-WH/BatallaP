@@ -1,23 +1,35 @@
 import React, { useState, useEffect } from 'react';
-import { Form, Input, Button, DatePicker, Select, Radio, message, Card, Spin, Tag, Divider } from 'antd';
+import { Form, Input, Button, DatePicker, Select, Radio, message, Card, Spin, Tag, Divider, Alert } from 'antd';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '@/services/api';
 import dayjs from 'dayjs';
+import { useAuth } from '@/context/AuthContext';
 
 const { Option } = Select;
 
 const EditUser: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { user: currentUser } = useAuth();
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [form] = Form.useForm();
+
+  // Check if current user has Master role
+  const isMaster = currentUser?.roles?.includes('Master') || false;
 
   // State for student data
   const [isStudent, setIsStudent] = useState(false);
   const [inscriptionData, setInscriptionData] = useState<any>(null);
   const [enrollStructure, setEnrollStructure] = useState<any[]>([]);
   const [selectedGradeId, setSelectedGradeId] = useState<number | null>(null);
+  const [targetUserRoles, setTargetUserRoles] = useState<string[]>([]);
+
+  // Determine base path for navigation
+  const getBasePath = () => {
+    if (isMaster) return '/master';
+    return '/admin';
+  };
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -25,6 +37,7 @@ const EditUser: React.FC = () => {
         const { data } = await api.get(`/users/${id}`);
 
         const userRoles = data.roles?.map((r: any) => r.name) || [];
+        setTargetUserRoles(userRoles);
 
         // Check if student
         const studentCheck = userRoles.some((r: string) =>
@@ -78,7 +91,7 @@ const EditUser: React.FC = () => {
       } catch (error) {
         console.error(error);
         message.error('Error al cargar datos del usuario');
-        navigate('/master/search');
+        navigate(`${getBasePath()}/search`);
       } finally {
         setLoading(false);
       }
@@ -111,7 +124,7 @@ const EditUser: React.FC = () => {
       }
 
       message.success('Usuario actualizado exitosamente');
-      navigate('/master/search');
+      navigate(`${getBasePath()}/search`);
     } catch (error: any) {
       console.error(error);
       message.error(error.response?.data?.message || 'Error al actualizar usuario');
@@ -127,11 +140,33 @@ const EditUser: React.FC = () => {
     return item?.sections || [];
   };
 
+  // Check if target user has restricted roles (Master/Admin)
+  const targetHasRestrictedRoles = targetUserRoles.includes('Master') || targetUserRoles.includes('Admin');
+
   if (loading) return <div style={{ display: 'flex', justifyContent: 'center', padding: 50 }}><Spin size="large" /></div>;
 
   return (
     <div style={{ maxWidth: 800, margin: '0 auto' }}>
-      <Card title="Editar Usuario" extra={<Button onClick={() => navigate('/master/search')}>Volver</Button>}>
+      <Card
+        title="Editar Usuario"
+        extra={
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            {isMaster && <Tag color="purple">Modo Master</Tag>}
+            <Button onClick={() => navigate(`${getBasePath()}/search`)}>Volver</Button>
+          </div>
+        }
+      >
+        {/* Warning for Admin editing Master/Admin users */}
+        {!isMaster && targetHasRestrictedRoles && (
+          <Alert
+            message="Permisos Limitados"
+            description="Este usuario tiene roles administrativos. Los roles Master y Admin no pueden ser modificados."
+            type="warning"
+            showIcon
+            style={{ marginBottom: 16 }}
+          />
+        )}
+
         <Form
           form={form}
           layout="vertical"
@@ -301,20 +336,29 @@ const EditUser: React.FC = () => {
 
             {/* Role Assignment */}
             <div style={{ gridColumn: 'span 2', marginTop: 8 }}>
-              <h4 style={{ margin: 0, marginBottom: 8, color: '#666' }}>Permisos del Sistema</h4>
+              <h4 style={{ margin: 0, marginBottom: 8, color: '#666' }}>
+                Permisos del Sistema
+                {!isMaster && <span style={{ fontWeight: 'normal', fontSize: 12, marginLeft: 8 }}>(Limitados)</span>}
+              </h4>
             </div>
             <Form.Item
               name="roles"
               label="Roles Asignados"
               rules={[{ required: true, message: 'Seleccione al menos un rol' }]}
               style={{ gridColumn: 'span 2' }}
+              help={!isMaster ? "Los roles Master y Admin no pueden ser modificados por administradores." : undefined}
             >
               <Select mode="multiple" placeholder="Selecciona roles">
                 <Option value="Student">Estudiante</Option>
                 <Option value="Tutor">Representante</Option>
                 <Option value="Teacher">Profesor</Option>
-                <Option value="Admin">Admin</Option>
-                <Option value="Master">Master</Option>
+                {/* Admin and Master options - disabled for non-Master users */}
+                <Option value="Admin" disabled={!isMaster}>
+                  Admin {!isMaster && '(Restringido)'}
+                </Option>
+                <Option value="Master" disabled={!isMaster}>
+                  Master {!isMaster && '(Restringido)'}
+                </Option>
               </Select>
             </Form.Item>
           </div>
@@ -326,7 +370,7 @@ const EditUser: React.FC = () => {
           </Form.Item>
 
           <Form.Item>
-            <Button danger block onClick={() => navigate('/master/search')}>
+            <Button danger block onClick={() => navigate(`${getBasePath()}/search`)}>
               Cancelar
             </Button>
           </Form.Item>

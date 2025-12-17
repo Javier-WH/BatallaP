@@ -1,30 +1,35 @@
 import React, { useState } from 'react';
-import { Form, Input, Button, DatePicker, Select, Radio, message, Card } from 'antd';
+import { Form, Input, Button, DatePicker, Select, Radio, message, Card, Checkbox, Space, Tag } from 'antd';
+import { UserOutlined, TeamOutlined } from '@ant-design/icons';
 import api from '@/services/api';
 
 const { Option } = Select;
 
-interface RegisterSpecializedProps {
-  roleTarget: 'Teacher' | 'Tutor';
-  title: string;
-}
-
-const RegisterSpecialized: React.FC<RegisterSpecializedProps> = ({ roleTarget, title }) => {
+const RegisterStaff: React.FC = () => {
   const [loading, setLoading] = useState(false);
+  const [selectedRoles, setSelectedRoles] = useState<string[]>(['Teacher']);
   const [form] = Form.useForm();
 
   const onFinish = async (values: any) => {
+    if (selectedRoles.length === 0) {
+      message.warning('Debe seleccionar al menos un rol');
+      return;
+    }
+
     setLoading(true);
     try {
       const payload = {
         ...values,
         birthdate: values.birthdate.format('YYYY-MM-DD'),
-        roleName: roleTarget // Force fixed role
+        roles: selectedRoles // Send array of roles
       };
 
       await api.post('/auth/register', payload);
-      message.success(`${title} inscrito exitosamente`);
+
+      const rolesText = selectedRoles.map(r => r === 'Teacher' ? 'Profesor' : 'Representante').join(' y ');
+      message.success(`${rolesText} inscrito exitosamente`);
       form.resetFields();
+      setSelectedRoles(['Teacher']); // Reset to default
     } catch (error: any) {
       console.error(error);
       message.error(error.response?.data?.message || 'Error al inscribir usuario');
@@ -33,9 +38,23 @@ const RegisterSpecialized: React.FC<RegisterSpecializedProps> = ({ roleTarget, t
     }
   };
 
+  const handleRoleChange = (role: string, checked: boolean) => {
+    if (checked) {
+      setSelectedRoles([...selectedRoles, role]);
+    } else {
+      setSelectedRoles(selectedRoles.filter(r => r !== role));
+    }
+  };
+
+  const getRoleLabel = () => {
+    if (selectedRoles.length === 0) return 'Sin rol seleccionado';
+    if (selectedRoles.length === 2) return 'Profesor y Representante';
+    return selectedRoles[0] === 'Teacher' ? 'Profesor' : 'Representante';
+  };
+
   return (
     <div style={{ maxWidth: 800, margin: '0 auto' }}>
-      <Card title={`Inscripción de ${title}`}>
+      <Card title="Inscripción de Personal">
         <Form
           form={form}
           layout="vertical"
@@ -45,6 +64,42 @@ const RegisterSpecialized: React.FC<RegisterSpecializedProps> = ({ roleTarget, t
             gender: 'M',
           }}
         >
+          {/* Role Selection */}
+          <div style={{
+            marginBottom: 24,
+            padding: 16,
+            background: 'linear-gradient(135deg, #f5f7fa 0%, #e4e8ec 100%)',
+            borderRadius: 8,
+            border: '1px solid #e0e0e0'
+          }}>
+            <h4 style={{ margin: 0, marginBottom: 12, color: '#333' }}>Tipo de Usuario</h4>
+            <Space size="large">
+              <Checkbox
+                checked={selectedRoles.includes('Teacher')}
+                onChange={(e) => handleRoleChange('Teacher', e.target.checked)}
+              >
+                <Space>
+                  <UserOutlined style={{ color: selectedRoles.includes('Teacher') ? '#52c41a' : '#999' }} />
+                  <span style={{ fontWeight: selectedRoles.includes('Teacher') ? 600 : 400 }}>Profesor</span>
+                </Space>
+              </Checkbox>
+              <Checkbox
+                checked={selectedRoles.includes('Tutor')}
+                onChange={(e) => handleRoleChange('Tutor', e.target.checked)}
+              >
+                <Space>
+                  <TeamOutlined style={{ color: selectedRoles.includes('Tutor') ? '#1890ff' : '#999' }} />
+                  <span style={{ fontWeight: selectedRoles.includes('Tutor') ? 600 : 400 }}>Representante</span>
+                </Space>
+              </Checkbox>
+            </Space>
+            {selectedRoles.length === 0 && (
+              <div style={{ marginTop: 8, color: '#ff4d4f', fontSize: 12 }}>
+                ⚠️ Seleccione al menos un rol
+              </div>
+            )}
+          </div>
+
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
             {/* Account Info */}
             <div style={{ gridColumn: 'span 2' }}>
@@ -161,15 +216,31 @@ const RegisterSpecialized: React.FC<RegisterSpecializedProps> = ({ roleTarget, t
             </div>
           </div>
 
-          <div style={{ marginTop: 24, padding: 10, background: '#f9f9f9', borderRadius: 4, textAlign: 'center' }}>
-            <span style={{ color: '#888' }}>
-              Se asignará automáticamente el rol de <strong>{roleTarget === 'Teacher' ? 'Profesor' : 'Representante'}</strong>.
+          <div style={{ marginTop: 24, padding: 12, background: '#f0f5ff', borderRadius: 8, textAlign: 'center', border: '1px solid #adc6ff' }}>
+            <span style={{ color: '#1d39c4' }}>
+              Se asignará el rol de: {' '}
+              {selectedRoles.map(role => (
+                <Tag
+                  key={role}
+                  color={role === 'Teacher' ? 'green' : 'blue'}
+                  style={{ marginLeft: 4 }}
+                >
+                  {role === 'Teacher' ? 'Profesor' : 'Representante'}
+                </Tag>
+              ))}
+              {selectedRoles.length === 0 && <Tag color="error">Ninguno</Tag>}
             </span>
           </div>
 
           <Form.Item style={{ marginTop: 16 }}>
-            <Button type="primary" htmlType="submit" loading={loading} block>
-              Registrar {title}
+            <Button
+              type="primary"
+              htmlType="submit"
+              loading={loading}
+              block
+              disabled={selectedRoles.length === 0}
+            >
+              Registrar {getRoleLabel()}
             </Button>
           </Form.Item>
         </Form>
@@ -178,4 +249,4 @@ const RegisterSpecialized: React.FC<RegisterSpecializedProps> = ({ roleTarget, t
   );
 };
 
-export default RegisterSpecialized;
+export default RegisterStaff;

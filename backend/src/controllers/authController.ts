@@ -91,6 +91,7 @@ export const register = async (req: Request, res: Response) => {
       gender,
       birthdate,
       roleName,
+      roles,
       // Contact Info
       phone1,
       phone2,
@@ -123,21 +124,17 @@ export const register = async (req: Request, res: Response) => {
       personId: person.id
     });
 
-    // 4. Assign Role
-    if (roleName) {
-      // Find role by name
-      let role = await Role.findOne({ where: { name: roleName } });
+    // 4. Assign Roles
+    const rolesToAssign = roles || (roleName ? [roleName] : []);
+
+    for (const name of rolesToAssign) {
+      let role = await Role.findOne({ where: { name } });
       if (!role) {
         // Create if not exists (optional, or throw error)
-        // For now, let's assume we create it if it's a valid enum value
-        role = await Role.create({ name: roleName });
+        role = await Role.create({ name });
       }
 
       if (role) {
-        // Manually or via helper
-        // Since we are not using the 'addRole' mixin yet (TypeScript types needs setup), we use PersonRole or standard methods if available.
-        // Getting the association method might require type assertions.
-        // Let's use the explicit model approach for safety if methods aren't typed.
         await PersonRole.create({
           personId: person.id,
           roleId: role.id

@@ -4,19 +4,19 @@ import MainLayout from '@/pages/MainLayout';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import '@/index.css';
 
+// Shared Components
+import SearchUsers from '@/pages/shared/SearchUsers';
+import EditUser from '@/pages/shared/EditUser';
+
 // Master Module Imports
 import MasterLayout from '@/pages/master/MasterLayout';
 import MasterDashboard from '@/pages/master/Dashboard';
 import RegisterUser from '@/pages/master/RegisterUser';
-import SearchUsers from '@/pages/master/SearchUsers';
-import EditUser from '@/pages/master/EditUser';
 import AcademicManagement from '@/pages/master/AcademicManagement';
 
 // Admin Module Imports
 import AdminLayout from '@/pages/admin/AdminLayout';
-import RegisterSpecialized from '@/pages/admin/RegisterSpecialized';
-import SearchUsersAdmin from '@/pages/admin/SearchUsersAdmin';
-import EditUserAdmin from '@/pages/admin/EditUserAdmin';
+import RegisterStaff from '@/pages/admin/RegisterStaff';
 import EnrollStudent from '@/pages/admin/EnrollStudent';
 import type { JSX } from 'react';
 
@@ -78,13 +78,12 @@ function AppRoutes() {
         </Route>
 
         {/* Nested Admin Module */}
-        <Route path="admin" element={<RequireAuth allowedRoles={['Admin']}><AdminLayout /></RequireAuth>}>
+        <Route path="admin" element={<RequireAuth allowedRoles={['Admin', 'Master']}><AdminLayout /></RequireAuth>}>
           <Route index element={<h1>Panel de Admin</h1>} /> {/* Placeholder dashboard */}
-          <Route path="register-teacher" element={<RegisterSpecialized roleTarget="Teacher" title="Profesor" />} />
-          <Route path="register-tutor" element={<RegisterSpecialized roleTarget="Tutor" title="Representante" />} />
+          <Route path="register-staff" element={<RegisterStaff />} />
           <Route path="enroll-student" element={<EnrollStudent />} />
-          <Route path="search" element={<SearchUsersAdmin />} />
-          <Route path="edit/:id" element={<EditUserAdmin />} />
+          <Route path="search" element={<SearchUsers />} />
+          <Route path="edit/:id" element={<EditUser />} />
         </Route>
       </Route>
 

@@ -3,14 +3,18 @@ import { Input, Table, Card, Button, Space, Tag, message } from 'antd';
 import { SearchOutlined, EditOutlined } from '@ant-design/icons';
 import api from '@/services/api';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '@/context/AuthContext';
 
 const { Search } = Input;
 
 const SearchUsers: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<any[]>([]);
-  const [query, setQuery] = useState('');
   const navigate = useNavigate();
+  const { user } = useAuth();
+
+  // Check if current user has Master role
+  const isMaster = user?.roles?.includes('Master') || false;
 
   const fetchUsers = async (q: string = '') => {
     setLoading(true);
@@ -28,6 +32,12 @@ const SearchUsers: React.FC = () => {
   useEffect(() => {
     fetchUsers();
   }, []);
+
+  // Determine the base path based on user role
+  const getBasePath = () => {
+    if (isMaster) return '/master';
+    return '/admin';
+  };
 
   const columns = [
     {
@@ -50,7 +60,17 @@ const SearchUsers: React.FC = () => {
       key: 'roles',
       render: (_: any, record: any) => (
         <Space size={0} wrap>
-          {record.roles?.map((role: any) => <Tag key={role.id} color="blue">{role.name}</Tag>)}
+          {record.roles?.map((role: any) => {
+            // Color coding for different roles
+            let color = 'blue';
+            if (role.name === 'Master') color = 'purple';
+            else if (role.name === 'Admin') color = 'gold';
+            else if (role.name === 'Teacher') color = 'green';
+            else if (role.name === 'Student') color = 'cyan';
+            else if (role.name === 'Tutor') color = 'magenta';
+
+            return <Tag key={role.id} color={color}>{role.name}</Tag>;
+          })}
         </Space>
       )
     },
@@ -61,7 +81,7 @@ const SearchUsers: React.FC = () => {
         <Button
           type="link"
           icon={<EditOutlined />}
-          onClick={() => navigate(`/master/edit/${record.id}`)}
+          onClick={() => navigate(`${getBasePath()}/edit/${record.id}`)}
         >
           Editar
         </Button>
@@ -71,7 +91,14 @@ const SearchUsers: React.FC = () => {
 
   return (
     <div style={{ maxWidth: 1000, margin: '0 auto' }}>
-      <Card title="Buscar y Editar Usuarios">
+      <Card
+        title="Buscar y Editar Usuarios"
+        extra={
+          isMaster && (
+            <Tag color="purple" style={{ margin: 0 }}>Modo Master</Tag>
+          )
+        }
+      >
         <div style={{ marginBottom: 16 }}>
           <Search
             placeholder="Buscar por nombre o cédula"
@@ -81,7 +108,6 @@ const SearchUsers: React.FC = () => {
             onSearch={fetchUsers}
             onChange={(e) => {
               if (!e.target.value) fetchUsers(''); // Auto reload on clear
-              setQuery(e.target.value);
             }}
           />
         </div>
