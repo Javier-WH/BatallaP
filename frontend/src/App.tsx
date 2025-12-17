@@ -18,6 +18,7 @@ import AcademicManagement from '@/pages/master/AcademicManagement';
 import AdminLayout from '@/pages/admin/AdminLayout';
 import RegisterStaff from '@/pages/admin/RegisterStaff';
 import EnrollStudent from '@/pages/admin/EnrollStudent';
+import EnrolledStudents from '@/pages/admin/EnrolledStudents';
 import type { JSX } from 'react';
 
 // Protected Route Component
@@ -82,6 +83,7 @@ function AppRoutes() {
           <Route index element={<h1>Panel de Admin</h1>} /> {/* Placeholder dashboard */}
           <Route path="register-staff" element={<RegisterStaff />} />
           <Route path="enroll-student" element={<EnrollStudent />} />
+          <Route path="enrolled" element={<EnrolledStudents />} />
           <Route path="search" element={<SearchUsers />} />
           <Route path="edit/:id" element={<EditUser />} />
         </Route>

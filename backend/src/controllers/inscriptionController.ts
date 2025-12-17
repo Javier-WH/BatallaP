@@ -4,16 +4,33 @@ import sequelize from '../config/database';
 
 export const getInscriptions = async (req: Request, res: Response) => {
   try {
-    const { schoolPeriodId, gradeId, sectionId } = req.query;
+    const { schoolPeriodId, gradeId, sectionId, q, gender } = req.query;
     const where: any = {};
     if (schoolPeriodId) where.schoolPeriodId = schoolPeriodId;
     if (gradeId) where.gradeId = gradeId;
     if (sectionId) where.sectionId = sectionId;
 
+    const personWhere: any = {};
+    if (gender) personWhere.gender = gender;
+
+    // Search by name or document
+    if (q) {
+      const { Op } = require('sequelize');
+      personWhere[Op.or] = [
+        { firstName: { [Op.like]: `%${q}%` } },
+        { lastName: { [Op.like]: `%${q}%` } },
+        { document: { [Op.like]: `%${q}%` } }
+      ];
+    }
+
     const inscriptions = await Inscription.findAll({
       where,
       include: [
-        { model: Person, as: 'student' },
+        {
+          model: Person,
+          as: 'student',
+          where: Object.keys(personWhere).length > 0 ? personWhere : undefined
+        },
         { model: SchoolPeriod, as: 'period' },
         { model: Grade, as: 'grade' },
         { model: Section, as: 'section' },
@@ -23,6 +40,7 @@ export const getInscriptions = async (req: Request, res: Response) => {
     });
     res.json(inscriptions);
   } catch (error) {
+    console.error(error);
     res.status(500).json({ error: 'Error obteniendo inscripciones', details: error });
   }
 };

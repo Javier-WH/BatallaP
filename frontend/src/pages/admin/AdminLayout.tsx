@@ -1,7 +1,7 @@
 import React from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { Button, Space, Card, Tooltip } from 'antd';
-import { DashboardOutlined, UserAddOutlined, SearchOutlined } from '@ant-design/icons';
+import { DashboardOutlined, TeamOutlined, UserAddOutlined, SearchOutlined } from '@ant-design/icons';
 
 const AdminLayout: React.FC = () => {
   const navigate = useNavigate();
@@ -48,6 +48,16 @@ const AdminLayout: React.FC = () => {
               onClick={() => navigate('/admin/enroll-student')}
             >
               Inscribir Estudiante
+            </Button>
+          </Tooltip>
+
+          <Tooltip title="Lista de Estudiantes Inscritos">
+            <Button
+              type={isActive('/admin/enrolled') ? 'primary' : 'text'}
+              icon={<TeamOutlined />}
+              onClick={() => navigate('/admin/enrolled')}
+            >
+              Estudiantes
             </Button>
           </Tooltip>
 
