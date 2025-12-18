@@ -45,11 +45,40 @@ export const getUserDetails = async (req: Request, res: Response) => {
   try {
     const { id } = req.params; // Person ID
 
+    const { TeacherAssignment, PeriodGradeSubject, Subject, PeriodGrade, Grade, Section, SchoolPeriod }: any = require('../models');
+    const activePeriod = await SchoolPeriod.findOne({ where: { isActive: true } });
+
     const person = await Person.findByPk(id, {
       include: [
         { model: User, as: 'user' },
         { model: Role, as: 'roles', through: { attributes: [] } },
-        { model: Contact, as: 'contact' }
+        { model: Contact, as: 'contact' },
+        {
+          model: TeacherAssignment,
+          as: 'teachingAssignments',
+          required: false,
+          include: [
+            {
+              model: PeriodGradeSubject,
+              as: 'periodGradeSubject',
+              required: true,
+              include: [
+                { model: Subject, as: 'subject' },
+                {
+                  model: PeriodGrade,
+                  as: 'periodGrade',
+                  required: true,
+                  where: activePeriod ? { schoolPeriodId: activePeriod.id } : {},
+                  include: [
+                    { model: Grade, as: 'grade' },
+                    { model: SchoolPeriod, as: 'schoolPeriod' }
+                  ]
+                }
+              ]
+            },
+            { model: Section, as: 'section' }
+          ]
+        }
       ]
     });
 
@@ -65,11 +94,9 @@ export const getUserDetails = async (req: Request, res: Response) => {
 
     let inscriptionData = null;
     if (isStudent) {
-      const { Inscription, SchoolPeriod, Grade, Section }: any = require('../models');
+      const { Inscription } = require('../models');
 
       // 1. Try to find inscription in the ACTIVE period first
-      const activePeriod = await SchoolPeriod.findOne({ where: { isActive: true } });
-
       if (activePeriod) {
         inscriptionData = await Inscription.findOne({
           where: { personId: id, schoolPeriodId: activePeriod.id },

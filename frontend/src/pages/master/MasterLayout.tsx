@@ -1,7 +1,7 @@
 import React from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { Button, Space, Card, Tooltip } from 'antd';
-import { DashboardOutlined, UserAddOutlined, SearchOutlined, BankOutlined, SettingOutlined } from '@ant-design/icons';
+import { DashboardOutlined, UserAddOutlined, BankOutlined, SettingOutlined } from '@ant-design/icons';
 
 const MasterLayout: React.FC = () => {
   const navigate = useNavigate();
@@ -31,23 +31,13 @@ const MasterLayout: React.FC = () => {
             </Button>
           </Tooltip>
 
-          <Tooltip title="Inscribir un nuevo usuario en el sistema">
+          <Tooltip title="Inscribir un nuevo usuario administrativo (Master o Admin)">
             <Button
               type={isActive('/master/register') ? 'primary' : 'text'}
               icon={<UserAddOutlined />}
               onClick={() => navigate('/master/register')}
             >
-              Inscribir
-            </Button>
-          </Tooltip>
-
-          <Tooltip title="Buscar y editar usuarios">
-            <Button
-              type={isActive('/master/search') ? 'primary' : 'text'}
-              icon={<SearchOutlined />}
-              onClick={() => navigate('/master/search')}
-            >
-              Buscar / Editar
+              Inscribir Usuario
             </Button>
           </Tooltip>
 

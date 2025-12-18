@@ -109,8 +109,8 @@ const EditUser: React.FC = () => {
 
       if (isStudent && inscriptionData) {
         try {
+          // Grade is now fixed for the current inscription, only section can be moved
           await api.put(`/inscriptions/${inscriptionData.id}`, {
-            gradeId: values.gradeId,
             sectionId: values.sectionId
           });
         } catch (inscErr) {
@@ -298,6 +298,7 @@ const EditUser: React.FC = () => {
                 <Form.Item name="gradeId" label="Grado">
                   <Select
                     placeholder="Seleccione Grado"
+                    disabled // Disable grade editing
                     onChange={(val) => {
                       setSelectedGradeId(val);
                       form.setFieldsValue({ sectionId: undefined });

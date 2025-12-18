@@ -41,7 +41,7 @@ const RegisterUser: React.FC = () => {
           initialValues={{
             documentType: 'Venezolano',
             gender: 'M',
-            roleName: 'Student'
+            roleName: 'Admin'
           }}
         >
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
@@ -167,14 +167,11 @@ const RegisterUser: React.FC = () => {
             {/* Role Assignment */}
             <Form.Item
               name="roleName"
-              label="Asignar Rol Inicial"
+              label="Asignar Rol Administrativo"
               rules={[{ required: true }]}
               style={{ gridColumn: 'span 2', marginTop: 16 }}
             >
               <Select placeholder="Selecciona un rol">
-                <Option value="Student">Estudiante</Option>
-                <Option value="Tutor">Representante</Option>
-                <Option value="Teacher">Profesor</Option>
                 <Option value="Admin">Admin</Option>
                 <Option value="Master">Master</Option>
               </Select>
