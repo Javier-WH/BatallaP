@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Tabs, Card, Select, Table, Button, Modal, Form, Input, DatePicker, message, Space, Tag, Divider, Typography, List, InputNumber, Alert, Segmented } from 'antd';
-import { BookOutlined, PlusOutlined, DeleteOutlined, EditOutlined, SaveOutlined } from '@ant-design/icons';
+import { Tabs, Card, Select, Table, Button, Modal, Form, Input, DatePicker, message, Space, Tag, Divider, Typography, InputNumber, Alert, Segmented } from 'antd';
+import { BookOutlined, PlusOutlined, DeleteOutlined, EditOutlined } from '@ant-design/icons';
 import api from '@/services/api';
 import dayjs from 'dayjs';
 
@@ -19,10 +19,6 @@ const TeacherPanel: React.FC = () => {
   const [editingItem, setEditingItem] = useState<any>(null);
   const [planForm] = Form.useForm();
   const [activeTab, setActiveTab] = useState('1');
-
-  // For Grading
-  const [selectedStudent, setSelectedStudent] = useState<any>(null);
-  const [qualifications, setQualifications] = useState<any>({}); // { evalPlanId: score }
   const [maxGrade, setMaxGrade] = useState<number>(20);
 
   useEffect(() => {
@@ -113,26 +109,8 @@ const TeacherPanel: React.FC = () => {
     }
   };
 
-  const handleOpenGrading = async (enrollment: any) => {
-    setSelectedStudent(enrollment);
-    // Load existing qualifications for this student-subject
-    const inscriptionSubjectId = enrollment.inscriptionSubjects?.[0]?.id;
-    if (!inscriptionSubjectId) return;
 
-    try {
-      const res = await api.get(`/evaluation/qualifications/${inscriptionSubjectId}`);
-      const qualsMap: any = {};
-      res.data.forEach((q: any) => {
-        qualsMap[q.evaluationPlanId] = { score: q.score, observations: q.observations };
-      });
-      setQualifications(qualsMap);
-    } catch (error) {
-      message.error('Error al cargar notas');
-    }
-  };
-
-  const handleSaveScore = async (evalPlanId: number, score: number, observations: string) => {
-    const enrollment = selectedStudent;
+  const handleSaveScoreInGrid = async (enrollment: any, evalPlanId: number, score: number | null) => {
     const inscriptionSubjectId = enrollment.inscriptionSubjects?.[0]?.id;
 
     try {
@@ -140,16 +118,10 @@ const TeacherPanel: React.FC = () => {
         evaluationPlanId: evalPlanId,
         inscriptionSubjectId,
         inscriptionId: enrollment.id,
-        score,
-        observations
+        score: score === null ? 0 : score,
+        observations: ''
       });
-      message.success('Nota guardada');
-      // Update local state
-      setQualifications({
-        ...qualifications,
-        [evalPlanId]: { score, observations }
-      });
-      // Refresh the student list to update the "1/4" progress indicators
+      // message.success(`Nota guardada para ${enrollment.student?.lastName}`);
       fetchPlanAndStudents();
     } catch (error) {
       message.error('Error al guardar nota');
@@ -172,36 +144,44 @@ const TeacherPanel: React.FC = () => {
     }
   ];
 
-  const studentColumns = [
-    {
-      title: 'Estudiante',
-      key: 'student',
-      render: (_: any, record: any) => `${record.student?.firstName} ${record.student?.lastName}`
-    },
-    { title: 'Cédula', dataIndex: ['student', 'document'], key: 'document' },
-    {
-      title: 'Notas',
-      key: 'grades_count',
-      render: (_: any, record: any) => {
-        const insSub = record.inscriptionSubjects?.[0];
-        const gradedCount = insSub?.qualifications?.filter((q: any) => q.evaluationPlan?.term === selectedTerm).length || 0;
-        const totalCount = evaluationPlan.length;
-        return <Tag color={gradedCount === totalCount && totalCount > 0 ? 'green' : 'orange'}>
-          {gradedCount} / {totalCount}
-        </Tag>;
-      }
-    }
-  ];
 
   const currentAssignment = assignments.find(a => a.id === selectedAssignmentId);
   const totalPercentage = evaluationPlan.reduce((acc, curr) => acc + Number(curr.percentage), 0);
 
   return (
-    <div style={{ padding: 24 }}>
-      <Title level={2}>
-        <BookOutlined style={{ marginRight: 8 }} />
-        Panel del Profesor
-      </Title>
+    <div style={{ padding: '8px 24px' }}>
+      <style>{`
+        .grading-row:hover {
+          background-color: #f0f7ff !important;
+        }
+        .grading-row td {
+          transition: background-color 0.2s;
+        }
+        .grading-table-container::-webkit-scrollbar {
+          height: 8px;
+          width: 8px;
+        }
+        .grading-table-container::-webkit-scrollbar-thumb {
+          background: #e1e1e1;
+          border-radius: 4px;
+        }
+        .grading-table-container::-webkit-scrollbar-track {
+          background: #f5f5f5;
+        }
+        .custom-segmented {
+          background: #f0f0f0;
+          padding: 4px;
+        }
+        .custom-segmented .ant-segmented-item-selected {
+          background-color: #1890ff !important;
+          color: white !important;
+          font-weight: bold;
+        }
+      `}</style>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+        <BookOutlined style={{ fontSize: 24, color: '#1890ff' }} />
+        <Title level={4} style={{ margin: 0 }}>Panel del Profesor</Title>
+      </div>
 
       <Card style={{ marginBottom: 24 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
@@ -227,6 +207,7 @@ const TeacherPanel: React.FC = () => {
           <Space>
             <Text strong>Lapso:</Text>
             <Segmented
+              className="custom-segmented"
               options={[
                 { label: 'Lapso 1', value: 1 },
                 { label: 'Lapso 2', value: 2 },
@@ -265,60 +246,130 @@ const TeacherPanel: React.FC = () => {
         </TabPane>
 
         <TabPane tab="Calificaciones" key="2">
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
-            <Card title="Lista de Estudiantes">
-              <Table
-                loading={loading}
-                columns={studentColumns}
-                dataSource={students}
-                rowKey="id"
-                size="small"
-                onRow={(record) => ({
-                  onClick: () => handleOpenGrading(record),
-                  style: { cursor: 'pointer', background: selectedStudent?.id === record.id ? '#e6f7ff' : 'transparent' }
-                })}
-              />
+          {evaluationPlan.length === 0 ? (
+            <Card style={{ textAlign: 'center', padding: '40px 0' }}>
+              <div style={{ marginBottom: 24 }}>
+                <Title level={4}>No hay Plan de Evaluación definido</Title>
+                <Text type="secondary">Para poder calificar este lapso, primero debe definir las actividades y sus porcentajes.</Text>
+              </div>
+              <Button type="primary" size="large" onClick={() => setActiveTab('1')}>
+                Crear Plan de Evaluación
+              </Button>
             </Card>
+          ) : (
+            <Card bodyStyle={{ padding: 0 }} style={{ overflow: 'hidden' }}>
+              <div style={{ overflowX: 'auto', maxHeight: 'calc(100vh - 350px)' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead style={{ position: 'sticky', top: 0, zIndex: 10, background: '#fafafa' }}>
+                    <tr>
+                      <th style={{ padding: '12px 16px', borderBottom: '1px solid #f0f0f0', textAlign: 'left', minWidth: 250 }}>Estudiante</th>
+                      {evaluationPlan.map((item) => (
+                        <th key={item.id} style={{ padding: '12px 8px', borderBottom: '1px solid #f0f0f0', textAlign: 'center', minWidth: 100 }}>
+                          <div style={{ fontSize: '13px', fontWeight: 600 }}>{item.description}</div>
+                          <div style={{ fontSize: '11px', color: '#8c8c8c' }}>{item.percentage}%</div>
+                        </th>
+                      ))}
+                      <th style={{ padding: '12px 16px', borderBottom: '1px solid #f0f0f0', textAlign: 'center', minWidth: 80 }}>Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[...students]
+                      .sort((a, b) => {
+                        const nameA = `${a.student?.lastName} ${a.student?.firstName}`.toLowerCase();
+                        const nameB = `${b.student?.lastName} ${b.student?.firstName}`.toLowerCase();
+                        return nameB.localeCompare(nameA); // Order descendiente
+                      })
+                      .map((enrollment, rowIndex) => {
+                        const insSub = enrollment.inscriptionSubjects?.[0];
+                        const studentQuals = insSub?.qualifications || [];
 
-            <Card title={selectedStudent ? `Notas: ${selectedStudent.student?.firstName} ${selectedStudent.student?.lastName}` : 'Seleccione un estudiante'}>
-              {selectedStudent ? (
-                <List
-                  dataSource={evaluationPlan}
-                  renderItem={item => (
-                    <List.Item key={item.id}>
-                      <div style={{ width: '100%' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                          <Text strong>{item.description} ({item.percentage}%)</Text>
-                          <Text type="secondary">{dayjs(item.date).format('DD/MM')}</Text>
-                        </div>
-                        <Space align="start">
-                          <InputNumber
-                            min={0}
-                            max={maxGrade}
-                            placeholder="Nota"
-                            value={qualifications[item.id]?.score}
-                            onChange={(val) => setQualifications({ ...qualifications, [item.id]: { ...qualifications[item.id], score: val } })}
-                          />
-                          <Input
-                            placeholder="Observaciones"
-                            value={qualifications[item.id]?.observations}
-                            onChange={(e) => setQualifications({ ...qualifications, [item.id]: { ...qualifications[item.id], observations: e.target.value } })}
-                          />
-                          <Button
-                            type="primary"
-                            icon={<SaveOutlined />}
-                            onClick={() => handleSaveScore(item.id, qualifications[item.id]?.score, qualifications[item.id]?.observations)}
-                          />
-                        </Space>
-                      </div>
-                    </List.Item>
-                  )}
-                />
-              ) : (
-                <Alert message="Haga clic en un estudiante de la lista para ver y editar sus calificaciones." type="info" showIcon />
+                        let rowTotal = 0;
+                        evaluationPlan.forEach(item => {
+                          const q = studentQuals.find((sq: any) => sq.evaluationPlanId === item.id);
+                          if (q) {
+                            rowTotal += (Number(q.score) * Number(item.percentage)) / 100;
+                          }
+                        });
+
+                        return (
+                          <tr key={enrollment.id} className="grading-row">
+                            <td style={{ padding: '8px 16px', borderBottom: '1px solid #f0f0f0', background: '#fff' }}>
+                              <div style={{ fontWeight: 500 }}>{enrollment.student?.lastName}, {enrollment.student?.firstName}</div>
+                              <div style={{ fontSize: '12px', color: '#8c8c8c' }}>{enrollment.student?.document}</div>
+                            </td>
+                            {evaluationPlan.map((item, colIndex) => {
+                              const q = studentQuals.find((sq: any) => sq.evaluationPlanId === item.id);
+                              const currentScore = q ? q.score : null;
+
+                              return (
+                                <td key={item.id} style={{ padding: '4px 8px', borderBottom: '1px solid #f0f0f0', textAlign: 'center' }}>
+                                  <InputNumber
+                                    id={`grade-${rowIndex}-${colIndex}`}
+                                    min={0}
+                                    max={maxGrade}
+                                    precision={2}
+                                    value={currentScore}
+                                    style={{ width: '80px' }}
+                                    onKeyDown={(e) => {
+                                      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter'].includes(e.key)) {
+                                        // Prevent default behavior for arrows to avoid changing number values while navigating
+                                        if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+                                          e.preventDefault();
+                                        }
+
+                                        let nextRow = rowIndex;
+                                        let nextCol = colIndex;
+                                        if (e.key === 'ArrowUp') nextRow--;
+                                        if (e.key === 'ArrowDown' || e.key === 'Enter') {
+                                          if (e.key === 'Enter') e.preventDefault();
+                                          nextRow++;
+                                        }
+                                        if (e.key === 'ArrowLeft') nextCol--;
+                                        if (e.key === 'ArrowRight') nextCol++;
+
+                                        const nextInputId = `grade-${nextRow}-${nextCol}`;
+                                        setTimeout(() => {
+                                          const nextInput = document.getElementById(nextInputId);
+                                          if (nextInput) {
+                                            const inner = nextInput.querySelector('input');
+                                            if (inner) {
+                                              inner.focus();
+                                              inner.select();
+                                            } else {
+                                              nextInput.focus();
+                                            }
+                                          }
+                                        }, 0);
+                                      }
+                                    }}
+                                    onBlur={(e) => {
+                                      const val = (e.target as any).value === '' ? null : Number((e.target as any).value);
+                                      if (val !== currentScore) {
+                                        handleSaveScoreInGrid(enrollment, item.id, val);
+                                      }
+                                    }}
+                                  />
+                                </td>
+                              );
+                            })}
+                            <td style={{ padding: '8px 16px', borderBottom: '1px solid #f0f0f0', textAlign: 'center', background: '#fafafa', fontWeight: 'bold' }}>
+                              <Tag color={rowTotal >= (maxGrade * 0.5) ? 'green' : 'red'} style={{ margin: 0 }}>
+                                {rowTotal.toFixed(2)}
+                              </Tag>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                  </tbody>
+                </table>
+              </div>
+              {students.length === 0 && (
+                <div style={{ padding: '40px', textAlign: 'center' }}>
+                  <Alert message="No hay estudiantes inscritos en esta sección" type="info" />
+                </div>
               )}
             </Card>
-          </div>
+          )}
         </TabPane>
       </Tabs>
 
