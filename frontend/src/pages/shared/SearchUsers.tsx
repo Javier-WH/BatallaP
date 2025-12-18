@@ -35,7 +35,6 @@ const SearchUsers: React.FC = () => {
 
   // Determine the base path based on user role
   const getBasePath = () => {
-    if (isMaster) return '/master';
     return '/admin';
   };
 

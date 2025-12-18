@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Form, Input, Button, DatePicker, Select, Radio, message, Card, Spin, Tag, Divider, Alert, Popconfirm, List, Space } from 'antd';
 import { BookOutlined } from '@ant-design/icons';
-import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import api from '@/services/api';
 import dayjs from 'dayjs';
 import { useAuth } from '@/context/AuthContext';
@@ -11,7 +11,6 @@ const { Option } = Select;
 const EditUser: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const location = useLocation();
   const { user: currentUser } = useAuth();
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -30,10 +29,8 @@ const EditUser: React.FC = () => {
   const [showAccountFields, setShowAccountFields] = useState(false);
 
   const getBasePath = useCallback(() => {
-    if (location.pathname.startsWith('/master')) return '/master';
-    if (location.pathname.startsWith('/admin')) return '/admin';
-    return isMaster ? '/master' : '/admin';
-  }, [location.pathname, isMaster]);
+    return '/admin';
+  }, []);
 
   useEffect(() => {
     const fetchUser = async () => {
