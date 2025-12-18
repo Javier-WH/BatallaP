@@ -65,19 +65,34 @@ export const getUserDetails = async (req: Request, res: Response) => {
 
     let inscriptionData = null;
     if (isStudent) {
-      // Import Inscription model dynamically to avoid circular dependency issues at top
       const { Inscription, SchoolPeriod, Grade, Section }: any = require('../models');
 
-      // Get the most recent/active inscription
-      inscriptionData = await Inscription.findOne({
-        where: { personId: id },
-        include: [
-          { model: SchoolPeriod, as: 'period' },
-          { model: Grade, as: 'grade' },
-          { model: Section, as: 'section' }
-        ],
-        order: [['createdAt', 'DESC']]
-      });
+      // 1. Try to find inscription in the ACTIVE period first
+      const activePeriod = await SchoolPeriod.findOne({ where: { isActive: true } });
+
+      if (activePeriod) {
+        inscriptionData = await Inscription.findOne({
+          where: { personId: id, schoolPeriodId: activePeriod.id },
+          include: [
+            { model: SchoolPeriod, as: 'period' },
+            { model: Grade, as: 'grade' },
+            { model: Section, as: 'section' }
+          ]
+        });
+      }
+
+      // 2. Fallback to the latest one if not found in active or no active period
+      if (!inscriptionData) {
+        inscriptionData = await Inscription.findOne({
+          where: { personId: id },
+          include: [
+            { model: SchoolPeriod, as: 'period' },
+            { model: Grade, as: 'grade' },
+            { model: Section, as: 'section' }
+          ],
+          order: [['createdAt', 'DESC']]
+        });
+      }
     }
 
     res.json({

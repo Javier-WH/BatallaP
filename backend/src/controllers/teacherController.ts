@@ -4,6 +4,14 @@ import { Op } from 'sequelize';
 
 export const getTeachers = async (req: Request, res: Response) => {
   try {
+    const { schoolPeriodId } = req.query;
+    let targetPeriodId = schoolPeriodId ? Number(schoolPeriodId) : null;
+
+    if (!targetPeriodId) {
+      const activePeriod = await SchoolPeriod.findOne({ where: { isActive: true } });
+      if (activePeriod) targetPeriodId = activePeriod.id;
+    }
+
     const teachers = await Person.findAll({
       include: [
         {
@@ -15,13 +23,24 @@ export const getTeachers = async (req: Request, res: Response) => {
         {
           model: TeacherAssignment,
           as: 'teachingAssignments',
+          required: false, // Important: keep all teachers in the list
           include: [
             {
               model: PeriodGradeSubject,
               as: 'periodGradeSubject',
+              required: targetPeriodId ? true : false,
               include: [
                 { model: Subject, as: 'subject' },
-                { model: PeriodGrade, as: 'periodGrade', include: [{ model: Grade, as: 'grade' }] }
+                {
+                  model: PeriodGrade,
+                  as: 'periodGrade',
+                  required: targetPeriodId ? true : false,
+                  where: targetPeriodId ? { schoolPeriodId: targetPeriodId } : {},
+                  include: [
+                    { model: Grade, as: 'grade' },
+                    { model: SchoolPeriod, as: 'schoolPeriod' }
+                  ]
+                }
               ]
             },
             { model: Section, as: 'section' }

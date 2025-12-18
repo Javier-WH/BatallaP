@@ -28,20 +28,28 @@ export const getMyAssignments = async (req: Request, res: Response) => {
         {
           model: PeriodGradeSubject,
           as: 'periodGradeSubject',
+          required: true, // Force inner join
           include: [
             { model: Subject, as: 'subject' },
             {
               model: PeriodGrade,
               as: 'periodGrade',
+              required: true, // Force inner join
               include: [
                 { model: Grade, as: 'grade' },
-                { model: SchoolPeriod, as: 'schoolPeriod' }
+                {
+                  model: SchoolPeriod,
+                  as: 'schoolPeriod',
+                  required: true, // Force inner join
+                  where: { isActive: true } // Only active period
+                }
               ]
             }
           ]
         },
         { model: Section, as: 'section' }
-      ]
+      ],
+      order: [['id', 'DESC']]
     });
 
     res.json(assignments);

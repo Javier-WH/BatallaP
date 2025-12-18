@@ -195,7 +195,7 @@ const TeacherPanel: React.FC = () => {
             >
               {assignments.map(as => (
                 <Option key={as.id} value={as.id}>
-                  {as.periodGradeSubject?.subject?.name} - {as.periodGradeSubject?.periodGrade?.grade?.name} ({as.section?.name})
+                  {as.periodGradeSubject?.subject?.name} - {as.periodGradeSubject?.periodGrade?.grade?.name} ({as.section?.name}) - {as.periodGradeSubject?.periodGrade?.schoolPeriod?.name}
                 </Option>
               ))}
             </Select>

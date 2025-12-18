@@ -20,16 +20,17 @@ const TeacherProjection: React.FC = () => {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const [periodRes, teachersRes] = await Promise.all([
-        api.get('/academic/active'),
-        api.get('/teachers')
-      ]);
+      const periodRes = await api.get('/academic/active');
+      const active = periodRes.data;
+      setActivePeriod(active);
 
-      setActivePeriod(periodRes.data);
+      const teachersRes = await api.get('/teachers', {
+        params: active ? { schoolPeriodId: active.id } : {}
+      });
       setTeachers(teachersRes.data);
 
-      if (periodRes.data) {
-        const structRes = await api.get(`/academic/structure/${periodRes.data.id}`);
+      if (active) {
+        const structRes = await api.get(`/academic/structure/${active.id}`);
         setAvailableStructure(structRes.data);
       }
     } catch (error) {
