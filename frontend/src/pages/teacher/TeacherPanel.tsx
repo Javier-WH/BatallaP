@@ -56,7 +56,7 @@ const TeacherPanel: React.FC = () => {
     setLoading(true);
     try {
       const [planRes, studentsRes] = await Promise.all([
-        api.get(`/evaluation/plan/${assignment.periodGradeSubjectId}?term=${selectedTerm}`),
+        api.get(`/evaluation/plan/${assignment.periodGradeSubjectId}?term=${selectedTerm}&sectionId=${assignment.sectionId}`),
         api.get(`/evaluation/students/${selectedAssignmentId}`)
       ]);
       setEvaluationPlan(planRes.data);
@@ -81,6 +81,7 @@ const TeacherPanel: React.FC = () => {
     const data = {
       ...values,
       periodGradeSubjectId: assignment.periodGradeSubjectId,
+      sectionId: assignment.sectionId,
       term: selectedTerm
     };
 

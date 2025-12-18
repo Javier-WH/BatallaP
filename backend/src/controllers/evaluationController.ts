@@ -62,10 +62,11 @@ export const getMyAssignments = async (req: Request, res: Response) => {
 export const getEvaluationPlan = async (req: Request, res: Response) => {
   try {
     const { periodGradeSubjectId } = req.params;
-    const { term } = req.query;
+    const { term, sectionId } = req.query;
 
     const where: any = { periodGradeSubjectId };
     if (term) where.term = term;
+    if (sectionId) where.sectionId = sectionId;
 
     const plan = await EvaluationPlan.findAll({
       where,

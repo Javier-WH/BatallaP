@@ -5,6 +5,7 @@ import PeriodGradeSubject from './PeriodGradeSubject';
 interface EvaluationPlanAttributes {
   id: number;
   periodGradeSubjectId: number;
+  sectionId: number;
   term: number; // 1, 2, 3 (Lapsos)
   description: string;
   percentage: number;
@@ -16,6 +17,7 @@ interface EvaluationPlanCreationAttributes extends Optional<EvaluationPlanAttrib
 class EvaluationPlan extends Model<EvaluationPlanAttributes, EvaluationPlanCreationAttributes> implements EvaluationPlanAttributes {
   public id!: number;
   public periodGradeSubjectId!: number;
+  public sectionId!: number;
   public term!: number;
   public description!: string;
   public percentage!: number;
@@ -35,6 +37,10 @@ EvaluationPlan.init(
     periodGradeSubjectId: {
       type: DataTypes.INTEGER,
       references: { model: PeriodGradeSubject, key: 'id' },
+      allowNull: false
+    },
+    sectionId: {
+      type: DataTypes.INTEGER,
       allowNull: false
     },
     term: {
@@ -72,6 +78,7 @@ EvaluationPlan.init(
         const currentSum = await EvaluationPlan.sum('percentage', {
           where: {
             periodGradeSubjectId: plan.periodGradeSubjectId,
+            sectionId: plan.sectionId,
             term: plan.term,
             id: { [Op.ne]: plan.id || 0 }
           }
