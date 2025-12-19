@@ -71,6 +71,7 @@ const AcademicManagement: React.FC = () => {
   const [sectionCatalogForm] = Form.useForm();
   const [subjectCatalogForm] = Form.useForm();
   const [subjectGroupForm] = Form.useForm();
+  const [specializationCatalogForm] = Form.useForm();
 
   const [editPeriodVisible, setEditPeriodVisible] = useState(false);
   const [editPeriodForm] = Form.useForm();
@@ -760,10 +761,12 @@ const AcademicManagement: React.FC = () => {
 
               <Panel header="Especializaciones / Menciones" key="specializations">
                 <Form
+                  form={specializationCatalogForm}
                   layout="inline"
                   onFinish={async (v) => {
                     await api.post('/academic/specializations', v);
                     message.success('Especialización creada');
+                    specializationCatalogForm.resetFields();
                     fetchAll();
                   }}
                 >
