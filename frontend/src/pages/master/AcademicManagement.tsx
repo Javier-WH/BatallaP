@@ -22,7 +22,12 @@ interface Grade extends BaseCatalogItem {
 
 type Section = BaseCatalogItem;
 
-type Subject = BaseCatalogItem;
+type SubjectGroup = BaseCatalogItem;
+
+interface Subject extends BaseCatalogItem {
+  subjectGroupId?: number | null;
+  subjectGroup?: SubjectGroup | null;
+}
 
 type Specialization = BaseCatalogItem;
 
@@ -46,8 +51,9 @@ const AcademicManagement: React.FC = () => {
   const [periods, setPeriods] = useState<Period[]>([]);
   const [grades, setGrades] = useState<Grade[]>([]);
   const [sections, setSections] = useState<Section[]>([]);
-  const [subjects, setSubjects] = useState<Subject[]>([]); // New Subject State
-   const [specializations, setSpecializations] = useState<Specialization[]>([]);
+  const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [subjectGroups, setSubjectGroups] = useState<SubjectGroup[]>([]);
+  const [specializations, setSpecializations] = useState<Specialization[]>([]);
   const [activePeriodId, setActivePeriodId] = useState<number | null>(null); // For structure view
   const [structure, setStructure] = useState<PeriodGradeStructureItem[]>([]);
 
@@ -61,7 +67,8 @@ const AcademicManagement: React.FC = () => {
   const [periodForm] = Form.useForm();
   const [gradeCatalogForm] = Form.useForm();
   const [sectionCatalogForm] = Form.useForm();
-  const [subjectCatalogForm] = Form.useForm(); // New Form
+  const [subjectCatalogForm] = Form.useForm();
+  const [subjectGroupForm] = Form.useForm();
 
   const [editPeriodVisible, setEditPeriodVisible] = useState(false);
   const [editPeriodForm] = Form.useForm();
@@ -78,12 +85,13 @@ const AcademicManagement: React.FC = () => {
   const fetchAll = async () => {
     setLoading(true);
     try {
-      const [pRes, gRes, sRes, subRes, specRes] = await Promise.all([
+      const [pRes, gRes, sRes, subRes, specRes, sgRes] = await Promise.all([
         api.get<Period[]>('/academic/periods'),
         api.get<Grade[]>('/academic/grades'),
         api.get<Section[]>('/academic/sections'),
         api.get<Subject[]>('/academic/subjects'),
         api.get<Specialization[]>('/academic/specializations'),
+        api.get<SubjectGroup[]>('/academic/subject-groups'),
       ]);
       const periodsData = pRes.data;
 
@@ -92,6 +100,7 @@ const AcademicManagement: React.FC = () => {
       setSections(sRes.data);
       setSubjects(subRes.data);
       setSpecializations(specRes.data);
+      setSubjectGroups(sgRes.data);
 
       // Always sync activePeriodId with current active period (or first available)
       if (periodsData.length > 0) {
@@ -346,13 +355,19 @@ const AcademicManagement: React.FC = () => {
         name: gradeRecord.name,
         isDiversified: gradeRecord.isDiversified,
       });
+    } else if (type === 'subject') {
+      const subjectRecord = record as Subject;
+      editCatalogForm.setFieldsValue({
+        name: subjectRecord.name,
+        subjectGroupId: subjectRecord.subjectGroupId ?? null,
+      });
     } else {
       editCatalogForm.setFieldsValue({ name: record.name });
     }
     setEditCatalogVisible(true);
   };
 
-  const handleEditCatalog = async (values: { name: string; isDiversified?: boolean }) => {
+  const handleEditCatalog = async (values: { name: string; isDiversified?: boolean; subjectGroupId?: number | null }) => {
     if (!editCatalogTarget) return;
     try {
       let url = '';
@@ -367,6 +382,11 @@ const AcademicManagement: React.FC = () => {
         await api.put(`${url}/${editCatalogTarget.id}`, {
           name: values.name,
           isDiversified: values.isDiversified ?? false,
+        });
+      } else if (editCatalogTarget.type === 'subject') {
+        await api.put(`${url}/${editCatalogTarget.id}`, {
+          name: values.name,
+          subjectGroupId: values.subjectGroupId ?? null,
         });
       } else {
         await api.put(`${url}/${editCatalogTarget.id}`, { name: values.name });
@@ -411,6 +431,17 @@ const AcademicManagement: React.FC = () => {
               <Tag color="purple" style={{ borderRadius: 12 }}>Diversificado</Tag>
             </Space>
           );
+        }
+        if (type === 'subject') {
+          const subjectRecord = record as Subject;
+          if (subjectRecord.subjectGroup) {
+            return (
+              <Space>
+                <span>{text}</span>
+                <Tag color="blue" style={{ borderRadius: 12 }}>{subjectRecord.subjectGroup.name}</Tag>
+              </Space>
+            );
+          }
         }
         return text;
       },
@@ -630,6 +661,61 @@ const AcademicManagement: React.FC = () => {
                   </Form>
                   <Table dataSource={subjects} rowKey="id" size="small" style={{ marginTop: 16 }} columns={catalogColumns('subject')} pagination={{ pageSize: 5 }} />
                 </Card>
+
+                <Card
+                  title="Grupos de Materias"
+                  style={{ border: '1px solid #d9d9d9', boxShadow: '0 2px 8px rgba(0,0,0,0.05)', marginTop: 24 }}
+                  headStyle={{ backgroundColor: '#fafafa', borderBottom: '1px solid #d9d9d9' }}
+                >
+                  <Form
+                    form={subjectGroupForm}
+                    layout="inline"
+                    onFinish={async (v) => {
+                      await api.post('/academic/subject-groups', v);
+                      message.success('Grupo creado');
+                      subjectGroupForm.resetFields();
+                      fetchAll();
+                    }}
+                  >
+                    <Form.Item name="name" rules={[{ required: true }]} style={{ width: 150 }}>
+                      <Input placeholder="Nombre del grupo" />
+                    </Form.Item>
+                    <Button type="primary" htmlType="submit" icon={<PlusOutlined />} />
+                  </Form>
+
+                  <Table
+                    dataSource={subjectGroups}
+                    rowKey="id"
+                    size="small"
+                    style={{ marginTop: 16 }}
+                    columns={[
+                      { title: 'Nombre', dataIndex: 'name' },
+                      {
+                        title: 'Acciones',
+                        key: 'actions',
+                        width: 100,
+                        render: (_: unknown, record: SubjectGroup) => (
+                          <Popconfirm
+                            title="¿Eliminar grupo?"
+                            onConfirm={async () => {
+                              try {
+                                await api.delete(`/academic/subject-groups/${record.id}`);
+                                message.success('Grupo eliminado');
+                                fetchAll();
+                              } catch (error) {
+                                console.error(error);
+                                message.error('Error eliminando grupo (posiblemente en uso)');
+                              }
+                            }}
+                          >
+                            <Button type="text" danger icon={<DeleteOutlined />} />
+                          </Popconfirm>
+                        ),
+                      },
+                    ]}
+                    pagination={{ pageSize: 5 }}
+                  />
+                </Card>
               </Col>
 
               {/* Specializations */}
@@ -723,6 +809,16 @@ const AcademicManagement: React.FC = () => {
           {editCatalogTarget?.type === 'grade' && (
             <Form.Item name="isDiversified" valuePropName="checked">
               <Checkbox>Diversificado</Checkbox>
+            </Form.Item>
+          )}
+
+          {editCatalogTarget?.type === 'subject' && (
+            <Form.Item name="subjectGroupId" label="Grupo de Materia">
+              <Select
+                allowClear
+                placeholder="Sin grupo"
+                options={subjectGroups.map((g) => ({ label: g.name, value: g.id }))}
+              />
             </Form.Item>
           )}
 

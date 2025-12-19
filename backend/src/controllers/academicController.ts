@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { SchoolPeriod, Grade, Section, PeriodGrade, PeriodGradeSection, Subject, PeriodGradeSubject, Specialization } from '@/models/index';
+import { SchoolPeriod, Grade, Section, PeriodGrade, PeriodGradeSection, Subject, PeriodGradeSubject, Specialization, SubjectGroup } from '@/models/index';
 import sequelize from '@/config/database';
 
 // --- School Periods ---
@@ -224,21 +224,21 @@ export const deleteSection = async (req: Request, res: Response) => {
 // ... (Grades & Sections) ...
 
 export const getSubjects = async (req: Request, res: Response) => {
-  const subjects = await Subject.findAll();
+  const subjects = await Subject.findAll({ include: [{ model: SubjectGroup, as: 'subjectGroup' }] });
   res.json(subjects);
 };
 
 export const createSubject = async (req: Request, res: Response) => {
-  const { name } = req.body;
-  const subject = await Subject.create({ name });
+  const { name, subjectGroupId } = req.body as { name: string; subjectGroupId?: number | null };
+  const subject = await Subject.create({ name, subjectGroupId: subjectGroupId ?? null });
   res.json(subject);
 };
 
 export const updateSubject = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { name } = req.body;
-    await Subject.update({ name }, { where: { id } });
+    const { name, subjectGroupId } = req.body as { name?: string; subjectGroupId?: number | null };
+    await Subject.update({ name, subjectGroupId: subjectGroupId ?? null }, { where: { id } });
     res.json({ message: 'Subject updated' });
   } catch (error) {
     res.status(500).json({ error: 'Error updating subject' });
@@ -250,6 +250,40 @@ export const deleteSubject = async (req: Request, res: Response) => {
     const { id } = req.params;
     await Subject.destroy({ where: { id } });
     res.json({ message: 'Subject deleted' });
+  } catch (error) {
+    res.status(400).json({ error: 'No se puede eliminar porque está en uso' });
+  }
+};
+
+// Subject Groups
+
+export const getSubjectGroups = async (req: Request, res: Response) => {
+  const groups = await SubjectGroup.findAll();
+  res.json(groups);
+};
+
+export const createSubjectGroup = async (req: Request, res: Response) => {
+  const { name } = req.body as { name: string };
+  const group = await SubjectGroup.create({ name });
+  res.json(group);
+};
+
+export const updateSubjectGroup = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { name } = req.body as { name: string };
+    await SubjectGroup.update({ name }, { where: { id } });
+    res.json({ message: 'Subject group updated' });
+  } catch (error) {
+    res.status(500).json({ error: 'Error updating subject group' });
+  }
+};
+
+export const deleteSubjectGroup = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    await SubjectGroup.destroy({ where: { id } });
+    res.json({ message: 'Subject group deleted' });
   } catch (error) {
     res.status(400).json({ error: 'No se puede eliminar porque está en uso' });
   }
@@ -274,7 +308,8 @@ export const getPeriodStructure = async (req: Request, res: Response) => {
         {
           model: Subject,
           as: 'subjects',
-          through: { attributes: ['id'] }
+          through: { attributes: ['id'] },
+          include: [{ model: SubjectGroup, as: 'subjectGroup' }]
         }
       ]
     });

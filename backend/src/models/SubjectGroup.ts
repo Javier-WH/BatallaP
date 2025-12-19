@@ -1,24 +1,22 @@
 import { DataTypes, Model, Optional } from 'sequelize';
 import sequelize from '@/config/database';
 
-interface SubjectAttributes {
+interface SubjectGroupAttributes {
   id: number;
   name: string;
-  subjectGroupId?: number | null;
 }
 
-interface SubjectCreationAttributes extends Optional<SubjectAttributes, 'id'> { }
+interface SubjectGroupCreationAttributes extends Optional<SubjectGroupAttributes, 'id'> { }
 
-class Subject extends Model<SubjectAttributes, SubjectCreationAttributes> implements SubjectAttributes {
+class SubjectGroup extends Model<SubjectGroupAttributes, SubjectGroupCreationAttributes> implements SubjectGroupAttributes {
   public id!: number;
   public name!: string;
-  public subjectGroupId?: number | null;
 
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
 }
 
-Subject.init(
+SubjectGroup.init(
   {
     id: {
       type: DataTypes.INTEGER,
@@ -28,17 +26,13 @@ Subject.init(
     name: {
       type: DataTypes.STRING,
       allowNull: false,
-      unique: true
-    },
-    subjectGroupId: {
-      type: DataTypes.INTEGER,
-      allowNull: true,
+      unique: true,
     },
   },
   {
     sequelize,
-    tableName: 'subjects',
+    tableName: 'subject_groups',
   }
 );
 
-export default Subject;
+export default SubjectGroup;

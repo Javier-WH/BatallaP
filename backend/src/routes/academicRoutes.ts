@@ -27,6 +27,12 @@ router.post('/subjects', academic.createSubject);
 router.put('/subjects/:id', academic.updateSubject);
 router.delete('/subjects/:id', academic.deleteSubject);
 
+// Subject Groups
+router.get('/subject-groups', academic.getSubjectGroups);
+router.post('/subject-groups', academic.createSubjectGroup);
+router.put('/subject-groups/:id', academic.updateSubjectGroup);
+router.delete('/subject-groups/:id', academic.deleteSubjectGroup);
+
 router.get('/specializations', academic.getSpecializations);
 router.post('/specializations', academic.createSpecialization);
 router.put('/specializations/:id', academic.updateSpecialization);

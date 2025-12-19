@@ -45,6 +45,7 @@ import PeriodGradeSection from './PeriodGradeSection';
 // Educational Structure Associations
 
 import Subject from './Subject';
+import SubjectGroup from './SubjectGroup';
 import PeriodGradeSubject from './PeriodGradeSubject';
 import Specialization from './Specialization';
 import Inscription from './Inscription';
@@ -77,6 +78,10 @@ PeriodGrade.belongsToMany(Subject, { through: PeriodGradeSubject, foreignKey: 'p
 Subject.belongsToMany(PeriodGrade, { through: PeriodGradeSubject, foreignKey: 'subjectId', otherKey: 'periodGradeId', as: 'periodGrades' });
 PeriodGradeSubject.belongsTo(PeriodGrade, { foreignKey: 'periodGradeId', as: 'periodGrade' });
 PeriodGradeSubject.belongsTo(Subject, { foreignKey: 'subjectId', as: 'subject' });
+
+// SubjectGroup <-> Subject
+SubjectGroup.hasMany(Subject, { foreignKey: 'subjectGroupId', as: 'subjects' });
+Subject.belongsTo(SubjectGroup, { foreignKey: 'subjectGroupId', as: 'subjectGroup' });
 
 // 4. Inscription Associations
 Inscription.belongsTo(SchoolPeriod, { foreignKey: 'schoolPeriodId', as: 'period' });
@@ -132,6 +137,7 @@ export {
   PeriodGrade,
   PeriodGradeSection,
   Subject,
+  SubjectGroup,
   PeriodGradeSubject,
   Specialization,
   Inscription,
