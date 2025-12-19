@@ -1,24 +1,24 @@
 import { DataTypes, Model, Optional } from 'sequelize';
 import sequelize from '@/config/database';
 
-interface GradeAttributes {
+interface SpecializationAttributes {
   id: number;
   name: string;
-  isDiversified: boolean;
 }
 
-interface GradeCreationAttributes extends Optional<GradeAttributes, 'id'> { }
+interface SpecializationCreationAttributes extends Optional<SpecializationAttributes, 'id'> {}
 
-class Grade extends Model<GradeAttributes, GradeCreationAttributes> implements GradeAttributes {
+class Specialization
+  extends Model<SpecializationAttributes, SpecializationCreationAttributes>
+  implements SpecializationAttributes {
   public id!: number;
   public name!: string;
-  public isDiversified!: boolean;
 
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
 }
 
-Grade.init(
+Specialization.init(
   {
     id: {
       type: DataTypes.INTEGER,
@@ -28,18 +28,13 @@ Grade.init(
     name: {
       type: DataTypes.STRING,
       allowNull: false,
-      unique: true
-    },
-    isDiversified: {
-      type: DataTypes.BOOLEAN,
-      allowNull: false,
-      defaultValue: false,
+      unique: true,
     },
   },
   {
     sequelize,
-    tableName: 'grades',
+    tableName: 'specializations',
   }
 );
 
-export default Grade;
+export default Specialization;

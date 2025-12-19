@@ -2,11 +2,13 @@ import { DataTypes, Model, Optional } from 'sequelize';
 import sequelize from '@/config/database';
 import SchoolPeriod from './SchoolPeriod';
 import Grade from './Grade';
+import Specialization from './Specialization';
 
 interface PeriodGradeAttributes {
   id: number;
   schoolPeriodId: number;
   gradeId: number;
+  specializationId?: number | null;
 }
 
 interface PeriodGradeCreationAttributes extends Optional<PeriodGradeAttributes, 'id'> { }
@@ -15,6 +17,7 @@ class PeriodGrade extends Model<PeriodGradeAttributes, PeriodGradeCreationAttrib
   public id!: number;
   public schoolPeriodId!: number;
   public gradeId!: number;
+  public specializationId?: number | null;
 
   public readonly subjects?: import('./Subject').default[];
 
@@ -38,6 +41,11 @@ PeriodGrade.init(
       type: DataTypes.INTEGER,
       references: { model: Grade, key: 'id' },
       allowNull: false
+    },
+    specializationId: {
+      type: DataTypes.INTEGER,
+      references: { model: Specialization, key: 'id' },
+      allowNull: true,
     }
   },
   {
@@ -46,7 +54,7 @@ PeriodGrade.init(
     indexes: [
       {
         unique: true,
-        fields: ['schoolPeriodId', 'gradeId']
+        fields: ['schoolPeriodId', 'gradeId', 'specializationId']
       }
     ]
   }

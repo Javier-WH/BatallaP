@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { SchoolPeriod, Grade, Section, PeriodGrade, PeriodGradeSection, Subject, PeriodGradeSubject } from '@/models/index';
+import { SchoolPeriod, Grade, Section, PeriodGrade, PeriodGradeSection, Subject, PeriodGradeSubject, Specialization } from '@/models/index';
 import sequelize from '@/config/database';
 
 // --- School Periods ---
@@ -10,6 +10,40 @@ export const getPeriods = async (req: Request, res: Response) => {
     res.json(periods);
   } catch (error) {
     res.status(500).json({ error: 'Error fetching periods' });
+  }
+};
+
+// Specializations
+
+export const getSpecializations = async (req: Request, res: Response) => {
+  const specializations = await Specialization.findAll();
+  res.json(specializations);
+};
+
+export const createSpecialization = async (req: Request, res: Response) => {
+  const { name } = req.body as { name: string };
+  const specialization = await Specialization.create({ name });
+  res.json(specialization);
+};
+
+export const updateSpecialization = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { name } = req.body as { name: string };
+    await Specialization.update({ name }, { where: { id } });
+    res.json({ message: 'Specialization updated' });
+  } catch (error) {
+    res.status(500).json({ error: 'Error updating specialization' });
+  }
+};
+
+export const deleteSpecialization = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    await Specialization.destroy({ where: { id } });
+    res.json({ message: 'Specialization deleted' });
+  } catch (error) {
+    res.status(400).json({ error: 'No se puede eliminar porque está en uso' });
   }
 };
 
@@ -129,16 +163,16 @@ export const getGrades = async (req: Request, res: Response) => {
 };
 
 export const createGrade = async (req: Request, res: Response) => {
-  const { name } = req.body;
-  const grade = await Grade.create({ name });
+  const { name, isDiversified } = req.body as { name: string; isDiversified?: boolean };
+  const grade = await Grade.create({ name, isDiversified: !!isDiversified });
   res.json(grade);
 };
 
 export const updateGrade = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { name } = req.body;
-    await Grade.update({ name }, { where: { id } });
+    const { name, isDiversified } = req.body as { name?: string; isDiversified?: boolean };
+    await Grade.update({ name, isDiversified }, { where: { id } });
     res.json({ message: 'Grade updated' });
   } catch (error) {
     res.status(500).json({ error: 'Error updating grade' });
@@ -231,6 +265,7 @@ export const getPeriodStructure = async (req: Request, res: Response) => {
       where: { schoolPeriodId: periodId },
       include: [
         { model: Grade, as: 'grade' },
+        { model: Specialization, as: 'specialization' },
         {
           model: Section,
           as: 'sections',
@@ -275,8 +310,12 @@ export const removeSubjectFromGrade = async (req: Request, res: Response) => {
 
 export const addGradeToPeriod = async (req: Request, res: Response) => {
   try {
-    const { schoolPeriodId, gradeId } = req.body;
-    const pg = await PeriodGrade.create({ schoolPeriodId, gradeId });
+    const { schoolPeriodId, gradeId, specializationId } = req.body as {
+      schoolPeriodId: number;
+      gradeId: number;
+      specializationId?: number | null;
+    };
+    const pg = await PeriodGrade.create({ schoolPeriodId, gradeId, specializationId: specializationId ?? null });
     res.json(pg);
   } catch (error) {
     res.status(500).json({ error: 'Error adding grade to period' });

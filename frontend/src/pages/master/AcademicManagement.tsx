@@ -10,32 +10,33 @@ interface Period {
   isActive?: boolean;
 }
 
-interface Grade {
+interface BaseCatalogItem {
   id: number;
   name: string;
 }
 
-interface Section {
-  id: number;
-  name: string;
+interface Grade extends BaseCatalogItem {
+  isDiversified: boolean;
 }
 
-interface Subject {
-  id: number;
-  name: string;
-}
+interface Section extends BaseCatalogItem {}
+
+interface Subject extends BaseCatalogItem {}
+
+interface Specialization extends BaseCatalogItem {}
 
 interface PeriodGradeStructureItem {
   id: number;
   gradeId: number;
   grade?: Grade;
+  specialization?: Specialization | null;
   sections?: Section[];
   subjects?: Subject[];
 }
 
-type CatalogType = 'grade' | 'section' | 'subject';
+type CatalogType = 'grade' | 'section' | 'subject' | 'specialization';
 
-type CatalogItem = Grade | Section | Subject;
+type CatalogItem = Grade | Section | Subject | Specialization;
 
 const { TabPane } = Tabs;
 
@@ -45,6 +46,7 @@ const AcademicManagement: React.FC = () => {
   const [grades, setGrades] = useState<Grade[]>([]);
   const [sections, setSections] = useState<Section[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]); // New Subject State
+   const [specializations, setSpecializations] = useState<Specialization[]>([]);
   const [activePeriodId, setActivePeriodId] = useState<number | null>(null); // For structure view
   const [structure, setStructure] = useState<PeriodGradeStructureItem[]>([]);
 
@@ -68,14 +70,19 @@ const AcademicManagement: React.FC = () => {
   const [periodToDelete, setPeriodToDelete] = useState<Period | null>(null);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
 
+  const [specializationModalVisible, setSpecializationModalVisible] = useState(false);
+  const [selectedGradeForStructure, setSelectedGradeForStructure] = useState<Grade | null>(null);
+  const [selectedSpecializationId, setSelectedSpecializationId] = useState<number | null>(null);
+
   const fetchAll = async () => {
     setLoading(true);
     try {
-      const [pRes, gRes, sRes, subRes] = await Promise.all([
+      const [pRes, gRes, sRes, subRes, specRes] = await Promise.all([
         api.get<Period[]>('/academic/periods'),
         api.get<Grade[]>('/academic/grades'),
         api.get<Section[]>('/academic/sections'),
-        api.get<Subject[]>('/academic/subjects')
+        api.get<Subject[]>('/academic/subjects'),
+        api.get<Specialization[]>('/academic/specializations'),
       ]);
       const periodsData = pRes.data;
 
@@ -83,6 +90,7 @@ const AcademicManagement: React.FC = () => {
       setGrades(gRes.data);
       setSections(sRes.data);
       setSubjects(subRes.data);
+      setSpecializations(specRes.data);
 
       // Always sync activePeriodId with current active period (or first available)
       if (periodsData.length > 0) {
@@ -173,7 +181,7 @@ const AcademicManagement: React.FC = () => {
       setIsPeriodModalVisible(false);
       periodForm.resetFields();
       fetchAll();
-    } catch (error) {
+    } catch {
       message.error('Error creando periodo');
     }
   };
@@ -183,19 +191,53 @@ const AcademicManagement: React.FC = () => {
       await api.put(`/academic/periods/${id}/activate`);
       message.success('Periodo activado');
       fetchAll();
-    } catch (error) {
+    } catch {
       message.error('Error activando periodo');
     }
   };
 
   const handleAddGradeToStructure = async (gradeId: number) => {
     if (!activePeriodId) return message.warning('Seleccione un periodo');
+
+    const grade = grades.find((g) => g.id === gradeId);
+
+    // Si el grado está marcado como diversificado, pedimos mención antes de crear
+    if (grade && grade.isDiversified) {
+      setSelectedGradeForStructure(grade);
+      setSelectedSpecializationId(null);
+      setSpecializationModalVisible(true);
+      return;
+    }
+
     try {
       await api.post('/academic/structure/period-grade', { schoolPeriodId: activePeriodId, gradeId });
       message.success('Grado agregado al periodo');
       fetchStructure();
     } catch (error) {
       message.error('Error agregando grado');
+    }
+  };
+
+  const handleConfirmDiversifiedGrade = async () => {
+    if (!activePeriodId || !selectedGradeForStructure) return;
+    if (!selectedSpecializationId) {
+      message.warning('Seleccione una especialización');
+      return;
+    }
+
+    try {
+      await api.post('/academic/structure/period-grade', {
+        schoolPeriodId: activePeriodId,
+        gradeId: selectedGradeForStructure.id,
+        specializationId: selectedSpecializationId,
+      });
+      message.success('Grado diversificado agregado al periodo');
+      setSpecializationModalVisible(false);
+      setSelectedGradeForStructure(null);
+      setSelectedSpecializationId(null);
+      fetchStructure();
+    } catch (error) {
+      message.error('Error agregando grado diversificado');
     }
   };
 
@@ -287,7 +329,7 @@ const AcademicManagement: React.FC = () => {
     setEditCatalogVisible(true);
   };
 
-  const handleEditCatalog = async (values: { name: string }) => {
+  const handleEditCatalog = async (values: { name: string; isDiversified?: boolean }) => {
     if (!editCatalogTarget) return;
     try {
       let url = '';
@@ -295,8 +337,17 @@ const AcademicManagement: React.FC = () => {
         case 'grade': url = '/academic/grades'; break;
         case 'section': url = '/academic/sections'; break;
         case 'subject': url = '/academic/subjects'; break;
+        case 'specialization': url = '/academic/specializations'; break;
       }
-      await api.put(`${url}/${editCatalogTarget.id}`, values);
+      // Para grados, enviamos también isDiversified; para el resto solo name
+      if (editCatalogTarget.type === 'grade') {
+        await api.put(`${url}/${editCatalogTarget.id}`, {
+          name: values.name,
+          isDiversified: values.isDiversified ?? false,
+        });
+      } else {
+        await api.put(`${url}/${editCatalogTarget.id}`, { name: values.name });
+      }
       message.success('Actualizado exitosamente');
       setEditCatalogVisible(false);
       fetchAll();
@@ -324,7 +375,21 @@ const AcademicManagement: React.FC = () => {
 
   // Columns for Catalogs
   const catalogColumns = (type: CatalogType) => [
-    { title: 'Nombre', dataIndex: 'name' },
+    {
+      title: 'Nombre',
+      dataIndex: 'name',
+      render: (text: string, record: CatalogItem) => {
+        if (type === 'grade' && 'isDiversified' in record && (record as Grade).isDiversified) {
+          return (
+            <Space>
+              <span>{text}</span>
+              <Tag color="purple" style={{ borderRadius: 12 }}>Diversificado</Tag>
+            </Space>
+          );
+        }
+        return text;
+      },
+    },
     {
       title: 'Acciones',
       key: 'actions',
@@ -381,11 +446,8 @@ const AcademicManagement: React.FC = () => {
                         placeholder="Seleccionar Grado del Catálogo"
                         style={{ width: 250 }}
                         onChange={handleAddGradeToStructure}
-                        // Filter out already added grades
-                        options={grades
-                          .filter(g => !structure.some(s => s.gradeId === g.id))
-                          .map(g => ({ label: g.name, value: g.id }))
-                        }
+                        // Filter out already added grades (by gradeId + specializationId when applicable)
+                        options={grades.map((g) => ({ label: g.name, value: g.id }))}
                       />
                     </Space>
                   </Card>
@@ -395,7 +457,7 @@ const AcademicManagement: React.FC = () => {
                 {structure.map((item: PeriodGradeStructureItem) => (
                   <Col span={12} key={item.id}>
                     <Card
-                      title={item.grade?.name}
+                      title={`${item.grade?.name ?? ''}${item.specialization ? ` - ${item.specialization.name}` : ''}`}
                       style={{ border: '1px solid #d9d9d9', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}
                       headStyle={{ backgroundColor: '#fafafa', borderBottom: '1px solid #d9d9d9' }}
                       extra={
@@ -544,6 +606,37 @@ const AcademicManagement: React.FC = () => {
                   <Table dataSource={subjects} rowKey="id" size="small" style={{ marginTop: 16 }} columns={catalogColumns('subject')} pagination={{ pageSize: 5 }} />
                 </Card>
               </Col>
+
+              {/* Specializations */}
+              <Col span={8} style={{ marginTop: 24 }}>
+                <Card
+                  title="Especializaciones / Menciones"
+                  style={{ border: '1px solid #d9d9d9', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}
+                  headStyle={{ backgroundColor: '#fafafa', borderBottom: '1px solid #d9d9d9' }}
+                >
+                  <Form
+                    layout="inline"
+                    onFinish={async (v) => {
+                      await api.post('/academic/specializations', v);
+                      message.success('Especialización creada');
+                      fetchAll();
+                    }}
+                  >
+                    <Form.Item name="name" rules={[{ required: true }]} style={{ width: 180 }}>
+                      <Input placeholder="Ej. Ciencias, Humanidades" />
+                    </Form.Item>
+                    <Button type="primary" htmlType="submit" icon={<PlusOutlined />} />
+                  </Form>
+                  <Table
+                    dataSource={specializations}
+                    rowKey="id"
+                    size="small"
+                    style={{ marginTop: 16 }}
+                    columns={catalogColumns('specialization')}
+                    pagination={{ pageSize: 5 }}
+                  />
+                </Card>
+              </Col>
             </Row>
           </TabPane>
         </Tabs>
@@ -601,6 +694,13 @@ const AcademicManagement: React.FC = () => {
           <Form.Item name="name" label="Nombre" rules={[{ required: true }]}>
             <Input />
           </Form.Item>
+
+          {editCatalogTarget?.type === 'grade' && (
+            <Form.Item name="isDiversified" valuePropName="checked" label="Diversificado">
+              <Input type="checkbox" />
+            </Form.Item>
+          )}
+
           <Button type="primary" htmlType="submit" block>Guardar Cambios</Button>
         </Form>
       </Modal>
@@ -649,6 +749,31 @@ const AcademicManagement: React.FC = () => {
           value={deleteConfirmText}
           onChange={(e) => setDeleteConfirmText(e.target.value)}
           placeholder="Escriba DELETE para confirmar"
+        />
+      </Modal>
+
+      <Modal
+        title="Seleccionar Especialización"
+        open={specializationModalVisible}
+        onCancel={() => {
+          setSpecializationModalVisible(false);
+          setSelectedGradeForStructure(null);
+          setSelectedSpecializationId(null);
+        }}
+        onOk={handleConfirmDiversifiedGrade}
+        okButtonProps={{ disabled: !selectedSpecializationId }}
+        okText="Agregar Grado con Mención"
+      >
+        <p>
+          Seleccione la especialización/mención para el grado{' '}
+          <strong>{selectedGradeForStructure?.name}</strong> en este periodo.
+        </p>
+        <Select
+          placeholder="Seleccione una especialización"
+          style={{ width: '100%' }}
+          value={selectedSpecializationId ?? undefined}
+          onChange={(val) => setSelectedSpecializationId(val)}
+          options={specializations.map((s) => ({ label: s.name, value: s.id }))}
         />
       </Modal>
     </div>

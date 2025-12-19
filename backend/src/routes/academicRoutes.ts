@@ -27,6 +27,11 @@ router.post('/subjects', academic.createSubject);
 router.put('/subjects/:id', academic.updateSubject);
 router.delete('/subjects/:id', academic.deleteSubject);
 
+router.get('/specializations', academic.getSpecializations);
+router.post('/specializations', academic.createSpecialization);
+router.put('/specializations/:id', academic.updateSpecialization);
+router.delete('/specializations/:id', academic.deleteSpecialization);
+
 // Structure
 router.get('/structure/:periodId', academic.getPeriodStructure);
 router.post('/structure/period-grade', academic.addGradeToPeriod);

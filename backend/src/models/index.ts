@@ -46,6 +46,7 @@ import PeriodGradeSection from './PeriodGradeSection';
 
 import Subject from './Subject';
 import PeriodGradeSubject from './PeriodGradeSubject';
+import Specialization from './Specialization';
 import Inscription from './Inscription';
 import InscriptionSubject from './InscriptionSubject';
 import EvaluationPlan from './EvaluationPlan';
@@ -62,6 +63,8 @@ SchoolPeriod.belongsToMany(Grade, { through: PeriodGrade, foreignKey: 'schoolPer
 Grade.belongsToMany(SchoolPeriod, { through: PeriodGrade, foreignKey: 'gradeId', otherKey: 'schoolPeriodId', as: 'periods' });
 PeriodGrade.belongsTo(SchoolPeriod, { foreignKey: 'schoolPeriodId', as: 'schoolPeriod' });
 PeriodGrade.belongsTo(Grade, { foreignKey: 'gradeId', as: 'grade' });
+PeriodGrade.belongsTo(Specialization, { foreignKey: 'specializationId', as: 'specialization' });
+Specialization.hasMany(PeriodGrade, { foreignKey: 'specializationId', as: 'periodGrades' });
 
 // 2. PeriodGrade <-> Section
 PeriodGrade.belongsToMany(Section, { through: PeriodGradeSection, foreignKey: 'periodGradeId', otherKey: 'sectionId', as: 'sections' });
@@ -130,6 +133,7 @@ export {
   PeriodGradeSection,
   Subject,
   PeriodGradeSubject,
+  Specialization,
   Inscription,
   InscriptionSubject,
   EvaluationPlan,
