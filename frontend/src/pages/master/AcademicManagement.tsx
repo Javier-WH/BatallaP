@@ -87,6 +87,10 @@ const AcademicManagement: React.FC = () => {
   const [draggingSubject, setDraggingSubject] = useState<{ periodGradeId: number; subjectId: number } | null>(null);
   const [draggingGradeId, setDraggingGradeId] = useState<number | null>(null);
 
+  const [editSubjectGroupVisible, setEditSubjectGroupVisible] = useState(false);
+  const [editSubjectGroupForm] = Form.useForm();
+  const [editingSubjectGroup, setEditingSubjectGroup] = useState<SubjectGroup | null>(null);
+
   const fetchAll = async () => {
     setLoading(true);
     try {
@@ -120,6 +124,28 @@ const AcademicManagement: React.FC = () => {
       message.error('Error cargando datos');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const openEditSubjectGroup = (group: SubjectGroup) => {
+    setEditingSubjectGroup(group);
+    editSubjectGroupForm.setFieldsValue({ name: group.name });
+    setEditSubjectGroupVisible(true);
+  };
+
+  const handleEditSubjectGroup = async (values: { name: string }) => {
+    if (!editingSubjectGroup) return;
+    try {
+      await api.put(`/academic/subject-groups/${editingSubjectGroup.id}`, { name: values.name });
+      message.success('Grupo actualizado');
+      setEditSubjectGroupVisible(false);
+      setEditingSubjectGroup(null);
+      editSubjectGroupForm.resetFields();
+      await fetchAll();
+      await fetchStructure();
+    } catch (error) {
+      console.error(error);
+      message.error('Error actualizando grupo');
     }
   };
 
@@ -737,21 +763,25 @@ const AcademicManagement: React.FC = () => {
                       key: 'actions',
                       width: 100,
                       render: (_: unknown, record: SubjectGroup) => (
-                        <Popconfirm
-                          title="¿Eliminar grupo?"
-                          onConfirm={async () => {
-                            try {
-                              await api.delete(`/academic/subject-groups/${record.id}`);
-                              message.success('Grupo eliminado');
-                              fetchAll();
-                            } catch (error) {
-                              console.error(error);
-                              message.error('Error eliminando grupo (posiblemente en uso)');
-                            }
-                          }}
-                        >
-                          <Button type="text" danger icon={<DeleteOutlined />} />
-                        </Popconfirm>
+                        <Space>
+                          <Button type="text" icon={<EditOutlined />} onClick={() => openEditSubjectGroup(record)} />
+                          <Popconfirm
+                            title="¿Eliminar grupo?"
+                            onConfirm={async () => {
+                              try {
+                                await api.delete(`/academic/subject-groups/${record.id}`);
+                                message.success('Grupo eliminado');
+                                await fetchAll();
+                                await fetchStructure();
+                              } catch (error) {
+                                console.error(error);
+                                message.error('Error eliminando grupo (posiblemente en uso)');
+                              }
+                            }}
+                          >
+                            <Button type="text" danger icon={<DeleteOutlined />} />
+                          </Popconfirm>
+                        </Space>
                       ),
                     },
                   ]}
@@ -894,6 +924,30 @@ const AcademicManagement: React.FC = () => {
           </Form.Item>
 
           <Button type="primary" htmlType="submit" block>Crear Periodo</Button>
+        </Form>
+      </Modal>
+
+      <Modal
+        title="Editar Grupo de Materias"
+        open={editSubjectGroupVisible}
+        onCancel={() => {
+          setEditSubjectGroupVisible(false);
+          setEditingSubjectGroup(null);
+          editSubjectGroupForm.resetFields();
+        }}
+        footer={null}
+      >
+        <Form form={editSubjectGroupForm} layout="vertical" onFinish={handleEditSubjectGroup}>
+          <Form.Item
+            name="name"
+            label="Nombre del grupo"
+            rules={[{ required: true, message: 'Ingrese el nombre del grupo' }]}
+          >
+            <Input placeholder="Nombre del grupo" />
+          </Form.Item>
+          <Button type="primary" htmlType="submit" block>
+            Guardar Cambios
+          </Button>
         </Form>
       </Modal>
 
