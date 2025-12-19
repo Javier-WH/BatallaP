@@ -485,6 +485,7 @@ const AcademicManagement: React.FC = () => {
         case 'grade': url = '/academic/grades'; break;
         case 'section': url = '/academic/sections'; break;
         case 'subject': url = '/academic/subjects'; break;
+        case 'specialization': url = '/academic/specializations'; break;
       }
       await api.delete(`${url}/${id}`);
       message.success('Eliminado exitosamente');

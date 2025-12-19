@@ -40,6 +40,12 @@ export const updateSpecialization = async (req: Request, res: Response) => {
 export const deleteSpecialization = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
+    // Check if any PeriodGrade is using this specialization
+    const inUseCount = await PeriodGrade.count({ where: { specializationId: id } });
+    if (inUseCount > 0) {
+      return res.status(400).json({ error: 'No se puede eliminar la especialización porque está siendo utilizada por uno o más grados' });
+    }
+
     await Specialization.destroy({ where: { id } });
     res.json({ message: 'Specialization deleted' });
   } catch (error) {
