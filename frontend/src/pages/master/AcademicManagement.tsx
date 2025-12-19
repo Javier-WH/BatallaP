@@ -136,7 +136,8 @@ const AcademicManagement: React.FC = () => {
   const handleEditSubjectGroup = async (values: { name: string }) => {
     if (!editingSubjectGroup) return;
     try {
-      await api.put(`/academic/subject-groups/${editingSubjectGroup.id}`, { name: values.name });
+      const payload = { name: (values.name || '').trim() };
+      await api.put(`/academic/subject-groups/${editingSubjectGroup.id}`, payload);
       message.success('Grupo actualizado');
       setEditSubjectGroupVisible(false);
       setEditingSubjectGroup(null);
@@ -145,7 +146,8 @@ const AcademicManagement: React.FC = () => {
       await fetchStructure();
     } catch (error) {
       console.error(error);
-      message.error('Error actualizando grupo');
+      const err = error as { response?: { data?: { error?: string } } };
+      message.error(err.response?.data?.error || 'Error actualizando grupo');
     }
   };
 
@@ -739,10 +741,17 @@ const AcademicManagement: React.FC = () => {
                   form={subjectGroupForm}
                   layout="inline"
                   onFinish={async (v) => {
-                    await api.post('/academic/subject-groups', v);
-                    message.success('Grupo creado');
-                    subjectGroupForm.resetFields();
-                    fetchAll();
+                    try {
+                      const payload = { name: (v.name || '').trim() };
+                      await api.post('/academic/subject-groups', payload);
+                      message.success('Grupo creado');
+                      subjectGroupForm.resetFields();
+                      fetchAll();
+                    } catch (error) {
+                      console.error(error);
+                      const err = error as { response?: { data?: { error?: string } } };
+                      message.error(err.response?.data?.error || 'Error creando grupo');
+                    }
                   }}
                 >
                   <Form.Item name="name" rules={[{ required: true }]} style={{ width: 220 }}>

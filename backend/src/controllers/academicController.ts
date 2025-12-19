@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import { Op } from 'sequelize';
 import { SchoolPeriod, Grade, Section, PeriodGrade, PeriodGradeSection, Subject, PeriodGradeSubject, Specialization, SubjectGroup } from '@/models/index';
 import sequelize from '@/config/database';
 
@@ -297,15 +298,49 @@ export const getSubjectGroups = async (req: Request, res: Response) => {
 };
 
 export const createSubjectGroup = async (req: Request, res: Response) => {
-  const { name } = req.body as { name: string };
-  const group = await SubjectGroup.create({ name });
-  res.json(group);
+  try {
+    const rawName = (req.body as { name: string }).name;
+    const name = rawName.trim();
+    if (!name) {
+      return res.status(400).json({ error: 'El nombre del grupo es requerido' });
+    }
+
+    const existing = await SubjectGroup.findOne({ where: sequelize.where(
+      sequelize.fn('LOWER', sequelize.col('name')),
+      sequelize.fn('LOWER', name),
+    ) });
+
+    if (existing) {
+      return res.status(400).json({ error: 'Ya existe un grupo de materias con ese nombre' });
+    }
+
+    const group = await SubjectGroup.create({ name });
+    res.json(group);
+  } catch (error) {
+    res.status(500).json({ error: 'Error creando grupo de materias' });
+  }
 };
 
 export const updateSubjectGroup = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { name } = req.body as { name: string };
+    const rawName = (req.body as { name: string }).name;
+    const name = rawName.trim();
+    if (!name) {
+      return res.status(400).json({ error: 'El nombre del grupo es requerido' });
+    }
+
+    const existing = await SubjectGroup.findOne({
+      where: {
+        name,
+        id: { [Op.ne]: id },
+      } as any,
+    });
+
+    if (existing) {
+      return res.status(400).json({ error: 'Ya existe un grupo de materias con ese nombre' });
+    }
+
     await SubjectGroup.update({ name }, { where: { id } });
     res.json({ message: 'Subject group updated' });
   } catch (error) {
