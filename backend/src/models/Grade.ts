@@ -5,6 +5,7 @@ interface GradeAttributes {
   id: number;
   name: string;
   isDiversified: boolean;
+  order?: number | null;
 }
 
 interface GradeCreationAttributes extends Optional<GradeAttributes, 'id'> { }
@@ -13,6 +14,7 @@ class Grade extends Model<GradeAttributes, GradeCreationAttributes> implements G
   public id!: number;
   public name!: string;
   public isDiversified!: boolean;
+  public order?: number | null;
 
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
@@ -34,6 +36,10 @@ Grade.init(
       type: DataTypes.BOOLEAN,
       allowNull: false,
       defaultValue: false,
+    },
+    order: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
     },
   },
   {

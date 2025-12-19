@@ -16,6 +16,7 @@ router.get('/grades', academic.getGrades);
 router.post('/grades', academic.createGrade);
 router.put('/grades/:id', academic.updateGrade);
 router.delete('/grades/:id', academic.deleteGrade);
+router.post('/grades/reorder', academic.updateGradeOrder);
 
 router.get('/sections', academic.getSections);
 router.post('/sections', academic.createSection);

@@ -158,13 +158,20 @@ export const deletePeriod = async (req: Request, res: Response) => {
 // --- Catalogs (Grades & Sections) ---
 
 export const getGrades = async (req: Request, res: Response) => {
-  const grades = await Grade.findAll();
+  const grades = await Grade.findAll({
+    order: [
+      ['order', 'ASC'],
+      ['name', 'ASC'],
+    ],
+  });
   res.json(grades);
 };
 
 export const createGrade = async (req: Request, res: Response) => {
   const { name, isDiversified } = req.body as { name: string; isDiversified?: boolean };
-  const grade = await Grade.create({ name, isDiversified: !!isDiversified });
+  const maxOrder = await Grade.max('order');
+  const nextOrder = Number.isFinite(maxOrder as number) ? (Number(maxOrder) || 0) + 1 : 1;
+  const grade = await Grade.create({ name, isDiversified: !!isDiversified, order: nextOrder } as any);
   res.json(grade);
 };
 
@@ -176,6 +183,27 @@ export const updateGrade = async (req: Request, res: Response) => {
     res.json({ message: 'Grade updated' });
   } catch (error) {
     res.status(500).json({ error: 'Error updating grade' });
+  }
+};
+
+export const updateGradeOrder = async (req: Request, res: Response) => {
+  try {
+    const { gradeIds } = req.body as { gradeIds: number[] };
+
+    if (!Array.isArray(gradeIds) || gradeIds.length === 0) {
+      return res.status(400).json({ error: 'gradeIds must be a non-empty array' });
+    }
+
+    const updates = gradeIds.map((gradeId, index) =>
+      Grade.update({ order: index + 1 } as any, { where: { id: gradeId } }),
+    );
+
+    await Promise.all(updates);
+
+    res.json({ message: 'Grade order updated' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Error updating grade order' });
   }
 };
 

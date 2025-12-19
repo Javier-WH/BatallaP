@@ -83,6 +83,7 @@ const AcademicManagement: React.FC = () => {
   const [selectedGradeForStructure, setSelectedGradeForStructure] = useState<Grade | null>(null);
   const [selectedSpecializationId, setSelectedSpecializationId] = useState<number | null>(null);
   const [draggingSubject, setDraggingSubject] = useState<{ periodGradeId: number; subjectId: number } | null>(null);
+  const [draggingGradeId, setDraggingGradeId] = useState<number | null>(null);
 
   const fetchAll = async () => {
     setLoading(true);
@@ -363,6 +364,33 @@ const AcademicManagement: React.FC = () => {
     }
   };
 
+  const handleReorderGrades = async (gradeIds: number[]) => {
+    try {
+      await api.post('/academic/grades/reorder', { gradeIds });
+    } catch (error) {
+      console.error(error);
+      message.error('Error guardando el orden de grados');
+    }
+  };
+
+  const handleGradeDrop = async (targetGradeId: number) => {
+    if (draggingGradeId == null || draggingGradeId === targetGradeId) return;
+
+    const gradesCopy = [...grades];
+    const fromIndex = gradesCopy.findIndex((g) => g.id === draggingGradeId);
+    const toIndex = gradesCopy.findIndex((g) => g.id === targetGradeId);
+    if (fromIndex === -1 || toIndex === -1) return;
+
+    const [moved] = gradesCopy.splice(fromIndex, 1);
+    gradesCopy.splice(toIndex, 0, moved);
+
+    setGrades(gradesCopy);
+    setDraggingGradeId(null);
+
+    const orderedIds = gradesCopy.map((g) => g.id);
+    await handleReorderGrades(orderedIds);
+  };
+
   // --- Columns ---
 
   const periodColumns = [
@@ -469,6 +497,14 @@ const AcademicManagement: React.FC = () => {
 
   // Columns for Catalogs
   const catalogColumns = (type: CatalogType) => [
+    ...(type === 'grade'
+      ? [{
+          title: '#',
+          key: 'index',
+          width: 50,
+          render: (_: unknown, __: CatalogItem, index: number) => index + 1,
+        }]
+      : []),
     {
       title: 'Nombre',
       dataIndex: 'name',
@@ -552,7 +588,6 @@ const AcademicManagement: React.FC = () => {
                         placeholder="Seleccionar Grado del Catálogo"
                         style={{ width: 250 }}
                         onChange={handleAddGradeToStructure}
-                        // Filter out already added grades (by gradeId + specializationId when applicable)
                         options={grades.map((g) => ({ label: g.name, value: g.id }))}
                       />
                     </Space>
@@ -755,7 +790,14 @@ const AcademicManagement: React.FC = () => {
                   size="small"
                   style={{ marginTop: 16 }}
                   columns={catalogColumns('grade')}
-                  pagination={{ pageSize: 5 }}
+                  pagination={false}
+                  onRow={(record: Grade) => ({
+                    draggable: true,
+                    onDragStart: () => setDraggingGradeId(record.id),
+                    onDragOver: (e) => e.preventDefault(),
+                    onDrop: () => handleGradeDrop(record.id),
+                    style: { cursor: 'move' },
+                  })}
                 />
               </Panel>
 
