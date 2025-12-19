@@ -548,6 +548,7 @@ const AcademicManagement: React.FC = () => {
                   <Card size="small" title="Agregar Grado a este Periodo">
                     <Space>
                       <Select
+                        key={`add-grade-${activePeriodId}-${structure.map((pg) => pg.id).join('-')}`}
                         placeholder="Seleccionar Grado del Catálogo"
                         style={{ width: 250 }}
                         onChange={handleAddGradeToStructure}
@@ -574,6 +575,7 @@ const AcademicManagement: React.FC = () => {
                         <div style={{ padding: '0 16px', textAlign: 'left' }}>
                           <div style={{ fontSize: 12, color: '#999', marginBottom: 4 }}>Agregar Sección:</div>
                           <Select
+                            key={`add-section-${item.id}-${(item.sections || []).map((s) => s.id).join('-')}`}
                             size="small"
                             placeholder="+ Sección"
                             style={{ width: '100%' }}
@@ -587,13 +589,19 @@ const AcademicManagement: React.FC = () => {
                         <div style={{ padding: '0 16px', textAlign: 'left' }}>
                           <div style={{ fontSize: 12, color: '#999', marginBottom: 4 }}>Agregar Materia:</div>
                           <Select
+                            key={`add-subject-${item.id}-${(item.subjects || []).map((s) => s.id).join('-')}`}
                             size="small"
                             placeholder="+ Materia"
                             style={{ width: '100%' }}
                             onChange={(val) => handleAddSubjectToGrade(item.id, val)}
                             options={subjects
                               .filter((s) => !item.subjects?.some((is: Subject) => is.id === s.id))
-                              .map((s) => ({ label: s.name, value: s.id }))
+                              .map((s) => {
+                                const label = s.subjectGroup
+                                  ? `${s.name} - ${s.subjectGroup.name}`
+                                  : s.name;
+                                return { label, value: s.id };
+                              })
                             }
                           />
                         </div>
@@ -627,7 +635,15 @@ const AcademicManagement: React.FC = () => {
                                 onDragOver={handleSubjectDragOver}
                                 onDrop={() => handleSubjectDrop(item.id, sub.id)}
                               >
-                                <Space><BookOutlined /> {sub.name}</Space>
+                                <Space>
+                                  <BookOutlined />
+                                  <span>{sub.name}</span>
+                                  {sub.subjectGroup && (
+                                    <Tag color="blue" style={{ borderRadius: 12 }}>
+                                      {sub.subjectGroup.name}
+                                    </Tag>
+                                  )}
+                                </Space>
                                 <DeleteOutlined
                                   style={{ color: '#ff4d4f', cursor: 'pointer' }}
                                   onClick={() => handleRemoveSubjectFromGrade(item.id, sub.id)}
