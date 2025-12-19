@@ -368,6 +368,7 @@ const AcademicManagement: React.FC = () => {
   const handleReorderGrades = async (gradeIds: number[]) => {
     try {
       await api.post('/academic/grades/reorder', { gradeIds });
+      await fetchStructure();
     } catch (error) {
       console.error(error);
       message.error('Error guardando el orden de grados');
