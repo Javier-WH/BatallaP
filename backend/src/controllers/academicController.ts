@@ -6,7 +6,7 @@ import sequelize from '@/config/database';
 
 export const getPeriods = async (req: Request, res: Response) => {
   try {
-    const periods = await SchoolPeriod.findAll({ order: [['id', 'DESC']] });
+    const periods = await SchoolPeriod.findAll({ order: [['startYear', 'DESC'], ['endYear', 'DESC']] });
     res.json(periods);
   } catch (error) {
     res.status(500).json({ error: 'Error fetching periods' });
@@ -24,10 +24,38 @@ export const getActivePeriod = async (req: Request, res: Response) => {
 
 export const createPeriod = async (req: Request, res: Response) => {
   try {
-    const { name } = req.body;
-    const period = await SchoolPeriod.create({ name, isActive: false });
-    res.status(201).json(period);
-  } catch (error) {
+    const { period, name } = req.body as { period?: string; name?: string };
+
+    if (!period || !name) {
+      return res.status(400).json({ error: 'Period and name are required' });
+    }
+
+    // Expected format: YYYY-YYYY
+    const match = /^([0-9]{4})-([0-9]{4})$/.exec(period);
+    if (!match) {
+      return res.status(400).json({ error: 'Period must have format YYYY-YYYY (e.g. 2025-2026)' });
+    }
+
+    const startYear = parseInt(match[1], 10);
+    const endYear = parseInt(match[2], 10);
+
+    if (!(endYear > startYear)) {
+      return res.status(400).json({ error: 'End year must be greater than start year' });
+    }
+
+    const created = await SchoolPeriod.create({
+      period,
+      name,
+      startYear,
+      endYear,
+      isActive: false,
+    });
+
+    res.status(201).json(created);
+  } catch (error: any) {
+    if (error?.name === 'SequelizeUniqueConstraintError') {
+      return res.status(400).json({ error: 'Period already exists' });
+    }
     res.status(500).json({ error: 'Error creating period' });
   }
 };
@@ -48,6 +76,48 @@ export const togglePeriodActive = async (req: Request, res: Response) => {
   } catch (error) {
     await t.rollback();
     res.status(500).json({ error: 'Error toggling period' });
+  }
+};
+
+export const updatePeriod = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { period, name } = req.body as { period?: string; name?: string };
+
+    if (!period || !name) {
+      return res.status(400).json({ error: 'Period and name are required' });
+    }
+
+    const match = /^([0-9]{4})-([0-9]{4})$/.exec(period);
+    if (!match) {
+      return res.status(400).json({ error: 'Period must have format YYYY-YYYY (e.g. 2025-2026)' });
+    }
+
+    const startYear = parseInt(match[1], 10);
+    const endYear = parseInt(match[2], 10);
+
+    if (!(endYear > startYear)) {
+      return res.status(400).json({ error: 'End year must be greater than start year' });
+    }
+
+    await SchoolPeriod.update(
+      { period, name, startYear, endYear },
+      { where: { id } }
+    );
+
+    res.json({ message: 'Period updated' });
+  } catch (error) {
+    res.status(500).json({ error: 'Error updating period' });
+  }
+};
+
+export const deletePeriod = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    await SchoolPeriod.destroy({ where: { id } });
+    res.json({ message: 'Period deleted' });
+  } catch (error) {
+    res.status(400).json({ error: 'No se puede eliminar porque está en uso' });
   }
 };
 

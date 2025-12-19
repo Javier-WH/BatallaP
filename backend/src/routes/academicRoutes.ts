@@ -8,6 +8,8 @@ router.get('/periods', academic.getPeriods);
 router.get('/active', academic.getActivePeriod);
 router.post('/periods', academic.createPeriod);
 router.put('/periods/:id/activate', academic.togglePeriodActive);
+router.put('/periods/:id', academic.updatePeriod);
+router.delete('/periods/:id', academic.deletePeriod);
 
 // Catalogs
 router.get('/grades', academic.getGrades);

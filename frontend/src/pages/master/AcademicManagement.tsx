@@ -1,19 +1,52 @@
 import React, { useState, useEffect } from 'react';
 import { Card, Tabs, Table, Button, Modal, Form, Input, Tag, message, Select, Space, Row, Col, Popconfirm } from 'antd';
-import { PlusOutlined, DeleteOutlined, CheckCircleOutlined, EditOutlined, BookOutlined, AppstoreOutlined } from '@ant-design/icons';
+import { PlusOutlined, DeleteOutlined, EditOutlined, BookOutlined, AppstoreOutlined, CheckCircleOutlined } from '@ant-design/icons';
 import api from '@/services/api';
 
+interface Period {
+  id: number;
+  period: string;
+  name: string;
+  isActive?: boolean;
+}
+
+interface Grade {
+  id: number;
+  name: string;
+}
+
+interface Section {
+  id: number;
+  name: string;
+}
+
+interface Subject {
+  id: number;
+  name: string;
+}
+
+interface PeriodGradeStructureItem {
+  id: number;
+  gradeId: number;
+  grade?: Grade;
+  sections?: Section[];
+  subjects?: Subject[];
+}
+
+type CatalogType = 'grade' | 'section' | 'subject';
+
+type CatalogItem = Grade | Section | Subject;
+
 const { TabPane } = Tabs;
-const { Option } = Select;
 
 const AcademicManagement: React.FC = () => {
   // State
-  const [periods, setPeriods] = useState<any[]>([]);
-  const [grades, setGrades] = useState<any[]>([]);
-  const [sections, setSections] = useState<any[]>([]);
-  const [subjects, setSubjects] = useState<any[]>([]); // New Subject State
+  const [periods, setPeriods] = useState<Period[]>([]);
+  const [grades, setGrades] = useState<Grade[]>([]);
+  const [sections, setSections] = useState<Section[]>([]);
+  const [subjects, setSubjects] = useState<Subject[]>([]); // New Subject State
   const [activePeriodId, setActivePeriodId] = useState<number | null>(null); // For structure view
-  const [structure, setStructure] = useState<any[]>([]);
+  const [structure, setStructure] = useState<PeriodGradeStructureItem[]>([]);
 
 
 
@@ -27,39 +60,91 @@ const AcademicManagement: React.FC = () => {
   const [sectionCatalogForm] = Form.useForm();
   const [subjectCatalogForm] = Form.useForm(); // New Form
 
+  const [editPeriodVisible, setEditPeriodVisible] = useState(false);
+  const [editPeriodForm] = Form.useForm();
+  const [editingPeriod, setEditingPeriod] = useState<Period | null>(null);
+
+  const [deletePeriodVisible, setDeletePeriodVisible] = useState(false);
+  const [periodToDelete, setPeriodToDelete] = useState<Period | null>(null);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+
   const fetchAll = async () => {
     setLoading(true);
     try {
       const [pRes, gRes, sRes, subRes] = await Promise.all([
-        api.get('/academic/periods'),
-        api.get('/academic/grades'),
-        api.get('/academic/sections'),
-        api.get('/academic/subjects')
+        api.get<Period[]>('/academic/periods'),
+        api.get<Grade[]>('/academic/grades'),
+        api.get<Section[]>('/academic/sections'),
+        api.get<Subject[]>('/academic/subjects')
       ]);
-      setPeriods(pRes.data);
+      const periodsData = pRes.data;
+
+      setPeriods(periodsData);
       setGrades(gRes.data);
       setSections(sRes.data);
       setSubjects(subRes.data);
 
-      // Set default active period for viewing structure
-      // Only set if not already set, or validate if current still exists
-      if (!activePeriodId) {
-        const active = pRes.data.find((p: any) => p.isActive);
-        if (active) setActivePeriodId(active.id);
-        else if (pRes.data.length > 0) setActivePeriodId(pRes.data[0].id);
+      // Always sync activePeriodId with current active period (or first available)
+      if (periodsData.length > 0) {
+        const active = periodsData.find((p) => p.isActive) ?? periodsData[0];
+        setActivePeriodId(active.id);
+      } else {
+        setActivePeriodId(null);
       }
 
-    } catch (error) {
+    } catch {
       message.error('Error cargando datos');
     } finally {
       setLoading(false);
     }
   };
 
+  const openEditPeriod = (period: Period) => {
+    setEditingPeriod(period);
+    editPeriodForm.setFieldsValue({ period: period.period, name: period.name });
+    setEditPeriodVisible(true);
+  };
+
+  const handleEditPeriod = async (values: { name: string }) => {
+    if (!editingPeriod) return;
+    try {
+      await api.put(`/academic/periods/${editingPeriod.id}`, {
+        period: editingPeriod.period,
+        name: values.name,
+      });
+      message.success('Periodo actualizado');
+      setEditPeriodVisible(false);
+      setEditingPeriod(null);
+      fetchAll();
+    } catch {
+      message.error('Error actualizando periodo');
+    }
+  };
+
+  const openDeletePeriod = (period: Period) => {
+    setPeriodToDelete(period);
+    setDeleteConfirmText('');
+    setDeletePeriodVisible(true);
+  };
+
+  const handleDeletePeriod = async (id: number) => {
+    try {
+      await api.delete(`/academic/periods/${id}`);
+      message.success('Periodo eliminado');
+      if (activePeriodId === id) {
+        setActivePeriodId(null);
+        setStructure([]);
+      }
+      fetchAll();
+    } catch (error) {
+      message.error('Error eliminando periodo (posiblemente en uso), ' + error);
+    }
+  };
+
   const fetchStructure = async () => {
     if (!activePeriodId) return;
     try {
-      const res = await api.get(`/academic/structure/${activePeriodId}`);
+      const res = await api.get<PeriodGradeStructureItem[]>(`/academic/structure/${activePeriodId}`);
       setStructure(res.data);
     } catch (error) {
       message.error('Error cargando estructura');
@@ -76,9 +161,14 @@ const AcademicManagement: React.FC = () => {
 
   // --- Actions ---
 
-  const handleCreatePeriod = async (values: any) => {
+  const handleCreatePeriod = async (values: { period: string; name: string }) => {
     try {
-      await api.post('/academic/periods', values);
+      const { period, name } = values;
+      if (periods.some((p) => p.period === period)) {
+        message.error('Ese periodo ya existe');
+        return;
+      }
+      await api.post('/academic/periods', { period, name });
       message.success('Periodo creado');
       setIsPeriodModalVisible(false);
       periodForm.resetFields();
@@ -162,21 +252,24 @@ const AcademicManagement: React.FC = () => {
   // --- Columns ---
 
   const periodColumns = [
+    { title: 'Periodo', dataIndex: 'period', key: 'period' },
     { title: 'Nombre', dataIndex: 'name', key: 'name' },
     {
       title: 'Estado',
       key: 'status',
-      render: (_: any, r: any) => r.isActive ? <Tag color="green">ACTIVO</Tag> : <Tag>INACTIVO</Tag>
+      render: (_: unknown, r: Period) => r.isActive ? <Tag color="green">ACTIVO</Tag> : <Tag>INACTIVO</Tag>
     },
     {
       title: 'Acciones',
       key: 'actions',
-      render: (_: any, r: any) => (
-        !r.isActive && (
-          <Button type="link" size="small" onClick={() => handleActivatePeriod(r.id)}>
-            Activar Año Escolar
-          </Button>
-        )
+      render: (_: unknown, r: Period) => (
+        <Space>
+          {!r.isActive && (
+            <Button type="text" size="small" onClick={() => handleActivatePeriod(r.id)} icon={<CheckCircleOutlined style={{ color: '#52c41a' }} />} />
+          )}
+          <Button type="text" size="small" onClick={() => openEditPeriod(r)} icon={<EditOutlined />} />
+          <Button type="text" size="small" danger onClick={() => openDeletePeriod(r)} icon={<DeleteOutlined />} />
+        </Space>
       )
     }
   ];
@@ -185,16 +278,16 @@ const AcademicManagement: React.FC = () => {
 
   // State for editing catalogs
   const [editCatalogVisible, setEditCatalogVisible] = useState(false);
-  const [editCatalogTarget, setEditCatalogTarget] = useState<{ type: 'grade' | 'section' | 'subject', id: number, name: string } | null>(null);
+  const [editCatalogTarget, setEditCatalogTarget] = useState<{ type: CatalogType; id: number; name: string } | null>(null);
   const [editCatalogForm] = Form.useForm();
 
-  const openEditCatalog = (type: 'grade' | 'section' | 'subject', record: any) => {
+  const openEditCatalog = (type: CatalogType, record: CatalogItem) => {
     setEditCatalogTarget({ type, id: record.id, name: record.name });
     editCatalogForm.setFieldsValue({ name: record.name });
     setEditCatalogVisible(true);
   };
 
-  const handleEditCatalog = async (values: any) => {
+  const handleEditCatalog = async (values: { name: string }) => {
     if (!editCatalogTarget) return;
     try {
       let url = '';
@@ -208,11 +301,11 @@ const AcademicManagement: React.FC = () => {
       setEditCatalogVisible(false);
       fetchAll();
     } catch (error) {
-      message.error('Error actualizando');
+      message.error('Error actualizando => ' + error);
     }
   };
 
-  const handleDeleteCatalog = async (type: 'grade' | 'section' | 'subject', id: number) => {
+  const handleDeleteCatalog = async (type: CatalogType, id: number) => {
     try {
       let url = '';
       switch (type) {
@@ -223,19 +316,20 @@ const AcademicManagement: React.FC = () => {
       await api.delete(`${url}/${id}`);
       message.success('Eliminado exitosamente');
       fetchAll();
-    } catch (error: any) {
-      message.error(error.response?.data?.error || 'Error eliminando (posiblemente en uso)');
+    } catch (error) {
+      const err = error as { response?: { data?: { error?: string } } };
+      message.error(err.response?.data?.error || 'Error eliminando (posiblemente en uso)');
     }
   };
 
   // Columns for Catalogs
-  const catalogColumns = (type: 'grade' | 'section' | 'subject') => [
+  const catalogColumns = (type: CatalogType) => [
     { title: 'Nombre', dataIndex: 'name' },
     {
       title: 'Acciones',
       key: 'actions',
       width: 100,
-      render: (_: any, r: any) => (
+      render: (_: unknown, r: CatalogItem) => (
         <Space>
           <Button type="text" icon={<EditOutlined />} onClick={() => openEditCatalog(type, r)} />
           <Popconfirm title="¿Eliminar?" onConfirm={() => handleDeleteCatalog(type, r.id)}>
@@ -248,34 +342,35 @@ const AcademicManagement: React.FC = () => {
 
   // --- Render ---
 
+  const activePeriod = periods.find((p) => p.isActive);
+
   return (
     <div style={{ maxWidth: 1200, margin: '0 auto' }}>
       <Card title="Gestión Académica">
+        {activePeriod && (
+          <div style={{ marginBottom: 12 }}>
+            <Tag color="blue">
+              Periodo activo: <strong>{activePeriod.period}</strong> - {activePeriod.name}
+            </Tag>
+          </div>
+        )}
         <Tabs defaultActiveKey="1">
           {/* PERIODS TAB */}
           <TabPane tab="Periodos Escolares" key="1">
             <Button type="primary" icon={<PlusOutlined />} onClick={() => setIsPeriodModalVisible(true)} style={{ marginBottom: 16 }}>
               Nuevo Periodo
             </Button>
-            <Table dataSource={periods} columns={periodColumns} rowKey="id" loading={loading} />
+            <Table
+              dataSource={periods}
+              columns={periodColumns}
+              rowKey="id"
+              loading={loading}
+              rowClassName={(record: Period) => (record.isActive ? 'active-period-row' : '')}
+            />
           </TabPane>
 
           {/* STRUCTURE TAB */}
           <TabPane tab="Estructura (Grados y Secciones)" key="2">
-            <div style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 16 }}>
-              <span>Periodo a gestionar:</span>
-              <Select
-                value={activePeriodId}
-                style={{ width: 200 }}
-                onChange={setActivePeriodId}
-                loading={loading}
-              >
-                {periods.map(p => (
-                  <Option key={p.id} value={p.id}>{p.name} {p.isActive && '(Activo)'}</Option>
-                ))}
-              </Select>
-            </div>
-
             {activePeriodId && (
               <Row gutter={[16, 16]}>
                 {/* Grade Adder */}
@@ -297,7 +392,7 @@ const AcademicManagement: React.FC = () => {
                 </Col>
 
                 {/* List of Active Grades in Period */}
-                {structure.map((item: any) => (
+                {structure.map((item: PeriodGradeStructureItem) => (
                   <Col span={12} key={item.id}>
                     <Card
                       title={item.grade?.name}
@@ -317,8 +412,8 @@ const AcademicManagement: React.FC = () => {
                             style={{ width: '100%' }}
                             onChange={(val) => handleAddSectionToGrade(item.id, val)}
                             options={sections
-                              .filter(s => !item.sections?.some((is: any) => is.id === s.id))
-                              .map(s => ({ label: s.name, value: s.id }))
+                              .filter((s) => !item.sections?.some((is: Section) => is.id === s.id))
+                              .map((s) => ({ label: s.name, value: s.id }))
                             }
                           />
                         </div>,
@@ -330,8 +425,8 @@ const AcademicManagement: React.FC = () => {
                             style={{ width: '100%' }}
                             onChange={(val) => handleAddSubjectToGrade(item.id, val)}
                             options={subjects
-                              .filter(s => !item.subjects?.some((is: any) => is.id === s.id))
-                              .map(s => ({ label: s.name, value: s.id }))
+                              .filter((s) => !item.subjects?.some((is: Subject) => is.id === s.id))
+                              .map((s) => ({ label: s.name, value: s.id }))
                             }
                           />
                         </div>
@@ -341,7 +436,7 @@ const AcademicManagement: React.FC = () => {
                         <Col span={12}>
                           <h4>Secciones:</h4>
                           <Space direction="vertical" style={{ width: '100%' }}>
-                            {item.sections?.map((sec: any) => (
+                            {item.sections?.map((sec: Section) => (
                               <div key={sec.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
                                 <Space><AppstoreOutlined style={{ color: '#1890ff' }} /> {sec.name}</Space>
                                 <DeleteOutlined
@@ -356,7 +451,7 @@ const AcademicManagement: React.FC = () => {
                         <Col span={12} style={{ borderLeft: '1px solid #f0f0f0' }}>
                           <h4>Materias:</h4>
                           <Space direction="vertical" style={{ width: '100%' }}>
-                            {item.subjects?.map((sub: any) => (
+                            {item.subjects?.map((sub: Subject) => (
                               <div key={sub.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
                                 <Space><BookOutlined /> {sub.name}</Space>
                                 <DeleteOutlined
@@ -462,9 +557,35 @@ const AcademicManagement: React.FC = () => {
         footer={null}
       >
         <Form form={periodForm} layout="vertical" onFinish={handleCreatePeriod}>
-          <Form.Item name="name" label="Nombre del Periodo" rules={[{ required: true, message: 'Ej. 2024-2025' }]}>
-            <Input placeholder="2024-2025" />
+          <Form.Item
+            name="period"
+            label="Periodo (Año-Año)"
+            rules={[{ required: true, message: 'Seleccione el periodo escolar' }]}
+          >
+            <Select placeholder="Seleccione periodo">
+              {(() => {
+                const options: string[] = [];
+                const currentYear = new Date().getFullYear();
+                const maxStart = currentYear;
+                const minStart = 2000;
+                for (let y = maxStart; y >= minStart; y -= 1) {
+                  options.push(`${y}-${y + 1}`);
+                }
+                return options.map((p) => (
+                  <Select.Option key={p} value={p}>{p}</Select.Option>
+                ));
+              })()}
+            </Select>
           </Form.Item>
+
+          <Form.Item
+            name="name"
+            label="Nombre del Periodo"
+            rules={[{ required: true, message: 'Ingrese un nombre descriptivo, ej. Año Escolar 2025-2026' }]}
+          >
+            <Input placeholder="Año Escolar 2025-2026" />
+          </Form.Item>
+
           <Button type="primary" htmlType="submit" block>Crear Periodo</Button>
         </Form>
       </Modal>
@@ -482,6 +603,53 @@ const AcademicManagement: React.FC = () => {
           </Form.Item>
           <Button type="primary" htmlType="submit" block>Guardar Cambios</Button>
         </Form>
+      </Modal>
+
+      <Modal
+        title="Editar Periodo Escolar"
+        open={editPeriodVisible}
+        onCancel={() => setEditPeriodVisible(false)}
+        footer={null}
+      >
+        <Form form={editPeriodForm} layout="vertical" onFinish={handleEditPeriod}>
+          <Form.Item label="Periodo">
+            <Input value={editingPeriod?.period} disabled />
+          </Form.Item>
+
+          <Form.Item
+            name="name"
+            label="Nombre del Periodo"
+            rules={[{ required: true, message: 'Ingrese un nombre descriptivo, ej. Año Escolar 2025-2026' }]}
+          >
+            <Input placeholder="Año Escolar 2025-2026" />
+          </Form.Item>
+
+          <Button type="primary" htmlType="submit" block>Guardar Cambios</Button>
+        </Form>
+      </Modal>
+
+      <Modal
+        title="Eliminar Periodo Escolar"
+        open={deletePeriodVisible}
+        onCancel={() => setDeletePeriodVisible(false)}
+        onOk={() => periodToDelete && handleDeletePeriod(periodToDelete.id)}
+        okButtonProps={{
+          danger: true,
+          disabled: deleteConfirmText !== 'DELETE',
+        }}
+        okText="Eliminar definitivamente"
+      >
+        <p>
+          Esta acción <strong>no se puede deshacer</strong>. Se eliminará el periodo{' '}
+          <strong>{periodToDelete?.name}</strong> ({periodToDelete?.period}) y{' '}
+          <strong>todos los datos relacionados</strong> a este año escolar (estructura, inscripciones, etc.).
+        </p>
+        <p>Para confirmar, escriba <code>DELETE</code> en el siguiente campo:</p>
+        <Input
+          value={deleteConfirmText}
+          onChange={(e) => setDeleteConfirmText(e.target.value)}
+          placeholder="Escriba DELETE para confirmar"
+        />
       </Modal>
     </div>
   );
