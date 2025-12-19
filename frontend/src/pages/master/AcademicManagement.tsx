@@ -1,6 +1,6 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 import React, { useState, useEffect } from 'react';
-import { Card, Tabs, Table, Button, Modal, Form, Input, Tag, message, Select, Space, Row, Col, Popconfirm, Checkbox } from 'antd';
+import { Card, Tabs, Table, Button, Modal, Form, Input, Tag, message, Select, Space, Row, Col, Popconfirm, Checkbox, Collapse } from 'antd';
 import { PlusOutlined, DeleteOutlined, EditOutlined, BookOutlined, AppstoreOutlined, CheckCircleOutlined } from '@ant-design/icons';
 import api from '@/services/api';
 
@@ -45,6 +45,7 @@ type CatalogType = 'grade' | 'section' | 'subject' | 'specialization';
 type CatalogItem = Grade | Section | Subject | Specialization;
 
 const { TabPane } = Tabs;
+const { Panel } = Collapse;
 
 const AcademicManagement: React.FC = () => {
   // State
@@ -591,164 +592,142 @@ const AcademicManagement: React.FC = () => {
 
           {/* CATALOGS TAB */}
           <TabPane tab="Catálogos Globales" key="3">
-            <Row gutter={24}>
-              <Col span={8}>
-                <Card
-                  title="Grados"
-                  style={{ border: '1px solid #d9d9d9', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}
-                  headStyle={{ backgroundColor: '#fafafa', borderBottom: '1px solid #d9d9d9' }}
-                >
-                  <Form form={gradeCatalogForm} layout="inline" onFinish={async (v) => {
-                    await api.post('/academic/grades', v);
-                    message.success('Grado creado');
-                    gradeCatalogForm.resetFields();
+            <Collapse defaultActiveKey={['subjectGroups', 'grades']}>
+              <Panel header="Grupos de Materias" key="subjectGroups">
+                <Form
+                  form={subjectGroupForm}
+                  layout="inline"
+                  onFinish={async (v) => {
+                    await api.post('/academic/subject-groups', v);
+                    message.success('Grupo creado');
+                    subjectGroupForm.resetFields();
                     fetchAll();
-                  }}>
-                    <Form.Item name="name" rules={[{ required: true }]} style={{ width: 150 }}><Input placeholder="Nombre" /></Form.Item>
-                    <Button type="primary" htmlType="submit" icon={<PlusOutlined />} />
-                  </Form>
-                  <Table
-                    dataSource={grades}
-                    rowKey="id"
-                    size="small"
-                    style={{ marginTop: 16 }}
-                    columns={catalogColumns('grade')}
-                    pagination={{ pageSize: 5 }}
-                  />
-                </Card>
-              </Col>
-              <Col span={8}>
-                <Card
-                  title="Secciones"
-                  style={{ border: '1px solid #d9d9d9', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}
-                  headStyle={{ backgroundColor: '#fafafa', borderBottom: '1px solid #d9d9d9' }}
+                  }}
                 >
-                  <Form form={sectionCatalogForm} layout="inline" onFinish={async (v) => {
-                    await api.post('/academic/sections', v);
-                    message.success('Sección creada');
-                    sectionCatalogForm.resetFields();
+                  <Form.Item name="name" rules={[{ required: true }]} style={{ width: 220 }}>
+                    <Input placeholder="Nombre del grupo" />
+                  </Form.Item>
+                  <Button type="primary" htmlType="submit" icon={<PlusOutlined />} />
+                </Form>
+
+                <Table
+                  dataSource={subjectGroups}
+                  rowKey="id"
+                  size="small"
+                  style={{ marginTop: 16 }}
+                  columns={[
+                    { title: 'Nombre', dataIndex: 'name' },
+                    {
+                      title: 'Acciones',
+                      key: 'actions',
+                      width: 100,
+                      render: (_: unknown, record: SubjectGroup) => (
+                        <Popconfirm
+                          title="¿Eliminar grupo?"
+                          onConfirm={async () => {
+                            try {
+                              await api.delete(`/academic/subject-groups/${record.id}`);
+                              message.success('Grupo eliminado');
+                              fetchAll();
+                            } catch (error) {
+                              console.error(error);
+                              message.error('Error eliminando grupo (posiblemente en uso)');
+                            }
+                          }}
+                        >
+                          <Button type="text" danger icon={<DeleteOutlined />} />
+                        </Popconfirm>
+                      ),
+                    },
+                  ]}
+                  pagination={{ pageSize: 5 }}
+                />
+              </Panel>
+
+              <Panel header="Especializaciones / Menciones" key="specializations">
+                <Form
+                  layout="inline"
+                  onFinish={async (v) => {
+                    await api.post('/academic/specializations', v);
+                    message.success('Especialización creada');
                     fetchAll();
-                  }}>
-                    <Form.Item name="name" rules={[{ required: true }]} style={{ width: 150 }}><Input placeholder="Nombre" /></Form.Item>
-                    <Button type="primary" htmlType="submit" icon={<PlusOutlined />} />
-                  </Form>
-                  <Table
-                    dataSource={sections}
-                    rowKey="id"
-                    size="small"
-                    style={{ marginTop: 16 }}
-                    columns={catalogColumns('section')}
-                    pagination={{ pageSize: 5 }}
-                  />
-                </Card>
-              </Col>
-
-              {/* Subjects */}
-              <Col span={8}>
-                <Card
-                  title="Materias"
-                  style={{ border: '1px solid #d9d9d9', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}
-                  headStyle={{ backgroundColor: '#fafafa', borderBottom: '1px solid #d9d9d9' }}
+                  }}
                 >
-                  <Form form={subjectCatalogForm} layout="inline" onFinish={async (v) => {
-                    await api.post('/academic/subjects', v);
-                    message.success('Creado');
-                    subjectCatalogForm.resetFields();
-                    fetchAll();
-                  }}>
-                    <Form.Item name="name" rules={[{ required: true }]} style={{ width: 150 }}><Input placeholder="Nombre" /></Form.Item>
-                    <Button type="primary" htmlType="submit" icon={<PlusOutlined />} />
-                  </Form>
-                  <Table dataSource={subjects} rowKey="id" size="small" style={{ marginTop: 16 }} columns={catalogColumns('subject')} pagination={{ pageSize: 5 }} />
-                </Card>
+                  <Form.Item name="name" rules={[{ required: true }]} style={{ width: 260 }}>
+                    <Input placeholder="Ej. Ciencias, Humanidades" />
+                  </Form.Item>
+                  <Button type="primary" htmlType="submit" icon={<PlusOutlined />} />
+                </Form>
+                <Table
+                  dataSource={specializations}
+                  rowKey="id"
+                  size="small"
+                  style={{ marginTop: 16 }}
+                  columns={catalogColumns('specialization')}
+                  pagination={{ pageSize: 5 }}
+                />
+              </Panel>
 
-                <Card
-                  title="Grupos de Materias"
-                  style={{ border: '1px solid #d9d9d9', boxShadow: '0 2px 8px rgba(0,0,0,0.05)', marginTop: 24 }}
-                  headStyle={{ backgroundColor: '#fafafa', borderBottom: '1px solid #d9d9d9' }}
-                >
-                  <Form
-                    form={subjectGroupForm}
-                    layout="inline"
-                    onFinish={async (v) => {
-                      await api.post('/academic/subject-groups', v);
-                      message.success('Grupo creado');
-                      subjectGroupForm.resetFields();
-                      fetchAll();
-                    }}
-                  >
-                    <Form.Item name="name" rules={[{ required: true }]} style={{ width: 150 }}>
-                      <Input placeholder="Nombre del grupo" />
-                    </Form.Item>
-                    <Button type="primary" htmlType="submit" icon={<PlusOutlined />} />
-                  </Form>
+              <Panel header="Grados" key="grades">
+                <Form form={gradeCatalogForm} layout="inline" onFinish={async (v) => {
+                  await api.post('/academic/grades', v);
+                  message.success('Grado creado');
+                  gradeCatalogForm.resetFields();
+                  fetchAll();
+                }}>
+                  <Form.Item name="name" rules={[{ required: true }]} style={{ width: 220 }}><Input placeholder="Nombre" /></Form.Item>
+                  <Button type="primary" htmlType="submit" icon={<PlusOutlined />} />
+                </Form>
+                <Table
+                  dataSource={grades}
+                  rowKey="id"
+                  size="small"
+                  style={{ marginTop: 16 }}
+                  columns={catalogColumns('grade')}
+                  pagination={{ pageSize: 5 }}
+                />
+              </Panel>
 
-                  <Table
-                    dataSource={subjectGroups}
-                    rowKey="id"
-                    size="small"
-                    style={{ marginTop: 16 }}
-                    columns={[
-                      { title: 'Nombre', dataIndex: 'name' },
-                      {
-                        title: 'Acciones',
-                        key: 'actions',
-                        width: 100,
-                        render: (_: unknown, record: SubjectGroup) => (
-                          <Popconfirm
-                            title="¿Eliminar grupo?"
-                            onConfirm={async () => {
-                              try {
-                                await api.delete(`/academic/subject-groups/${record.id}`);
-                                message.success('Grupo eliminado');
-                                fetchAll();
-                              } catch (error) {
-                                console.error(error);
-                                message.error('Error eliminando grupo (posiblemente en uso)');
-                              }
-                            }}
-                          >
-                            <Button type="text" danger icon={<DeleteOutlined />} />
-                          </Popconfirm>
-                        ),
-                      },
-                    ]}
-                    pagination={{ pageSize: 5 }}
-                  />
-                </Card>
-              </Col>
+              <Panel header="Secciones" key="sections">
+                <Form form={sectionCatalogForm} layout="inline" onFinish={async (v) => {
+                  await api.post('/academic/sections', v);
+                  message.success('Sección creada');
+                  sectionCatalogForm.resetFields();
+                  fetchAll();
+                }}>
+                  <Form.Item name="name" rules={[{ required: true }]} style={{ width: 220 }}><Input placeholder="Nombre" /></Form.Item>
+                  <Button type="primary" htmlType="submit" icon={<PlusOutlined />} />
+                </Form>
+                <Table
+                  dataSource={sections}
+                  rowKey="id"
+                  size="small"
+                  style={{ marginTop: 16 }}
+                  columns={catalogColumns('section')}
+                  pagination={{ pageSize: 5 }}
+                />
+              </Panel>
 
-              {/* Specializations */}
-              <Col span={8} style={{ marginTop: 24 }}>
-                <Card
-                  title="Especializaciones / Menciones"
-                  style={{ border: '1px solid #d9d9d9', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}
-                  headStyle={{ backgroundColor: '#fafafa', borderBottom: '1px solid #d9d9d9' }}
-                >
-                  <Form
-                    layout="inline"
-                    onFinish={async (v) => {
-                      await api.post('/academic/specializations', v);
-                      message.success('Especialización creada');
-                      fetchAll();
-                    }}
-                  >
-                    <Form.Item name="name" rules={[{ required: true }]} style={{ width: 180 }}>
-                      <Input placeholder="Ej. Ciencias, Humanidades" />
-                    </Form.Item>
-                    <Button type="primary" htmlType="submit" icon={<PlusOutlined />} />
-                  </Form>
-                  <Table
-                    dataSource={specializations}
-                    rowKey="id"
-                    size="small"
-                    style={{ marginTop: 16 }}
-                    columns={catalogColumns('specialization')}
-                    pagination={{ pageSize: 5 }}
-                  />
-                </Card>
-              </Col>
-            </Row>
+              <Panel header="Materias" key="subjects">
+                <Form form={subjectCatalogForm} layout="inline" onFinish={async (v) => {
+                  await api.post('/academic/subjects', v);
+                  message.success('Creado');
+                  subjectCatalogForm.resetFields();
+                  fetchAll();
+                }}>
+                  <Form.Item name="name" rules={[{ required: true }]} style={{ width: 220 }}><Input placeholder="Nombre" /></Form.Item>
+                  <Button type="primary" htmlType="submit" icon={<PlusOutlined />} />
+                </Form>
+                <Table
+                  dataSource={subjects}
+                  rowKey="id"
+                  size="small"
+                  style={{ marginTop: 16 }}
+                  columns={catalogColumns('subject')}
+                  pagination={{ pageSize: 5 }}
+                />
+              </Panel>
+            </Collapse>
           </TabPane>
         </Tabs>
       </Card>
