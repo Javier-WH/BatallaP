@@ -1,5 +1,6 @@
+/* eslint-disable react-hooks/exhaustive-deps */
 import React, { useState, useEffect } from 'react';
-import { Card, Tabs, Table, Button, Modal, Form, Input, Tag, message, Select, Space, Row, Col, Popconfirm } from 'antd';
+import { Card, Tabs, Table, Button, Modal, Form, Input, Tag, message, Select, Space, Row, Col, Popconfirm, Checkbox } from 'antd';
 import { PlusOutlined, DeleteOutlined, EditOutlined, BookOutlined, AppstoreOutlined, CheckCircleOutlined } from '@ant-design/icons';
 import api from '@/services/api';
 
@@ -19,11 +20,11 @@ interface Grade extends BaseCatalogItem {
   isDiversified: boolean;
 }
 
-interface Section extends BaseCatalogItem {}
+type Section = BaseCatalogItem;
 
-interface Subject extends BaseCatalogItem {}
+type Subject = BaseCatalogItem;
 
-interface Specialization extends BaseCatalogItem {}
+type Specialization = BaseCatalogItem;
 
 interface PeriodGradeStructureItem {
   id: number;
@@ -100,7 +101,8 @@ const AcademicManagement: React.FC = () => {
         setActivePeriodId(null);
       }
 
-    } catch {
+    } catch (error) {
+      console.error(error);
       message.error('Error cargando datos');
     } finally {
       setLoading(false);
@@ -124,7 +126,8 @@ const AcademicManagement: React.FC = () => {
       setEditPeriodVisible(false);
       setEditingPeriod(null);
       fetchAll();
-    } catch {
+    } catch (error) {
+      console.error(error);
       message.error('Error actualizando periodo');
     }
   };
@@ -145,6 +148,7 @@ const AcademicManagement: React.FC = () => {
       }
       fetchAll();
     } catch (error) {
+      console.error(error);
       message.error('Error eliminando periodo (posiblemente en uso), ' + error);
     }
   };
@@ -155,6 +159,7 @@ const AcademicManagement: React.FC = () => {
       const res = await api.get<PeriodGradeStructureItem[]>(`/academic/structure/${activePeriodId}`);
       setStructure(res.data);
     } catch (error) {
+      console.error(error);
       message.error('Error cargando estructura');
     }
   }
@@ -181,7 +186,8 @@ const AcademicManagement: React.FC = () => {
       setIsPeriodModalVisible(false);
       periodForm.resetFields();
       fetchAll();
-    } catch {
+    } catch (error) {
+      console.error(error);
       message.error('Error creando periodo');
     }
   };
@@ -191,7 +197,8 @@ const AcademicManagement: React.FC = () => {
       await api.put(`/academic/periods/${id}/activate`);
       message.success('Periodo activado');
       fetchAll();
-    } catch {
+    } catch (error) {
+      console.error(error);
       message.error('Error activando periodo');
     }
   };
@@ -214,6 +221,7 @@ const AcademicManagement: React.FC = () => {
       message.success('Grado agregado al periodo');
       fetchStructure();
     } catch (error) {
+      console.error(error);
       message.error('Error agregando grado');
     }
   };
@@ -237,6 +245,7 @@ const AcademicManagement: React.FC = () => {
       setSelectedSpecializationId(null);
       fetchStructure();
     } catch (error) {
+      console.error(error);
       message.error('Error agregando grado diversificado');
     }
   };
@@ -247,6 +256,7 @@ const AcademicManagement: React.FC = () => {
       message.success('Grado eliminado del periodo');
       fetchStructure();
     } catch (error) {
+      console.error(error);
       message.error('Error eliminando grado');
     }
   };
@@ -257,6 +267,7 @@ const AcademicManagement: React.FC = () => {
       message.success('Sección agregada');
       fetchStructure();
     } catch (error) {
+      console.error(error);
       message.error('Error agregando sección');
     }
   };
@@ -267,6 +278,7 @@ const AcademicManagement: React.FC = () => {
       message.success('Sección removida');
       fetchStructure();
     } catch (error) {
+      console.error(error);
       message.error('Error removiendo sección');
     }
   };
@@ -277,6 +289,7 @@ const AcademicManagement: React.FC = () => {
       message.success('Materia agregada');
       fetchStructure();
     } catch (error) {
+      console.error(error);
       message.error('Error agregando materia');
     }
   };
@@ -287,6 +300,7 @@ const AcademicManagement: React.FC = () => {
       message.success('Materia removida');
       fetchStructure();
     } catch (error) {
+      console.error(error);
       message.error('Error removiendo materia');
     }
   };
@@ -325,7 +339,16 @@ const AcademicManagement: React.FC = () => {
 
   const openEditCatalog = (type: CatalogType, record: CatalogItem) => {
     setEditCatalogTarget({ type, id: record.id, name: record.name });
-    editCatalogForm.setFieldsValue({ name: record.name });
+
+    if (type === 'grade') {
+      const gradeRecord = record as Grade;
+      editCatalogForm.setFieldsValue({
+        name: gradeRecord.name,
+        isDiversified: gradeRecord.isDiversified,
+      });
+    } else {
+      editCatalogForm.setFieldsValue({ name: record.name });
+    }
     setEditCatalogVisible(true);
   };
 
@@ -352,6 +375,7 @@ const AcademicManagement: React.FC = () => {
       setEditCatalogVisible(false);
       fetchAll();
     } catch (error) {
+      console.error(error);
       message.error('Error actualizando => ' + error);
     }
   };
@@ -368,6 +392,7 @@ const AcademicManagement: React.FC = () => {
       message.success('Eliminado exitosamente');
       fetchAll();
     } catch (error) {
+      console.error(error);
       const err = error as { response?: { data?: { error?: string } } };
       message.error(err.response?.data?.error || 'Error eliminando (posiblemente en uso)');
     }
@@ -685,7 +710,7 @@ const AcademicManagement: React.FC = () => {
 
       {/* Edit Catalog Modal */}
       <Modal
-        title={`Editar Item`}
+        title={editCatalogTarget?.type === 'grade' ? 'Editar Grado' : 'Editar Item'}
         open={editCatalogVisible}
         onCancel={() => setEditCatalogVisible(false)}
         footer={null}
@@ -696,8 +721,8 @@ const AcademicManagement: React.FC = () => {
           </Form.Item>
 
           {editCatalogTarget?.type === 'grade' && (
-            <Form.Item name="isDiversified" valuePropName="checked" label="Diversificado">
-              <Input type="checkbox" />
+            <Form.Item name="isDiversified" valuePropName="checked">
+              <Checkbox>Diversificado</Checkbox>
             </Form.Item>
           )}
 
