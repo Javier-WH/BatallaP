@@ -82,6 +82,7 @@ const AcademicManagement: React.FC = () => {
   const [specializationModalVisible, setSpecializationModalVisible] = useState(false);
   const [selectedGradeForStructure, setSelectedGradeForStructure] = useState<Grade | null>(null);
   const [selectedSpecializationId, setSelectedSpecializationId] = useState<number | null>(null);
+  const [draggingSubject, setDraggingSubject] = useState<{ periodGradeId: number; subjectId: number } | null>(null);
 
   const fetchAll = async () => {
     setLoading(true);
@@ -312,6 +313,53 @@ const AcademicManagement: React.FC = () => {
     } catch (error) {
       console.error(error);
       message.error('Error removiendo materia');
+    }
+  };
+
+  const handleReorderSubjects = async (periodGradeId: number, subjectIds: number[]) => {
+    try {
+      await api.post('/academic/structure/subject/reorder', { periodGradeId, subjectIds });
+    } catch (error) {
+      console.error(error);
+      message.error('Error guardando el orden de materias');
+    }
+  };
+
+  const handleSubjectDragStart = (periodGradeId: number, subjectId: number) => {
+    setDraggingSubject({ periodGradeId, subjectId });
+  };
+
+  const handleSubjectDragOver = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+  };
+
+  const handleSubjectDrop = async (periodGradeId: number, targetSubjectId: number) => {
+    if (!draggingSubject || draggingSubject.periodGradeId !== periodGradeId) return;
+
+    const sourceSubjectId = draggingSubject.subjectId;
+    if (sourceSubjectId === targetSubjectId) return;
+
+    const nextStructure = structure.map((pg) => {
+      if (pg.id !== periodGradeId || !pg.subjects) return pg;
+
+      const subjectsCopy = [...pg.subjects];
+      const fromIndex = subjectsCopy.findIndex((s) => s.id === sourceSubjectId);
+      const toIndex = subjectsCopy.findIndex((s) => s.id === targetSubjectId);
+      if (fromIndex === -1 || toIndex === -1) return pg;
+
+      const [moved] = subjectsCopy.splice(fromIndex, 1);
+      subjectsCopy.splice(toIndex, 0, moved);
+
+      return { ...pg, subjects: subjectsCopy };
+    });
+
+    setStructure(nextStructure);
+    setDraggingSubject(null);
+
+    const updated = nextStructure.find((pg) => pg.id === periodGradeId);
+    if (updated?.subjects) {
+      const orderedIds = updated.subjects.map((s) => s.id);
+      await handleReorderSubjects(periodGradeId, orderedIds);
     }
   };
 
@@ -571,7 +619,14 @@ const AcademicManagement: React.FC = () => {
                           <h4>Materias:</h4>
                           <Space direction="vertical" style={{ width: '100%' }}>
                             {item.subjects?.map((sub: Subject) => (
-                              <div key={sub.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
+                              <div
+                                key={sub.id}
+                                style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, cursor: 'move' }}
+                                draggable
+                                onDragStart={() => handleSubjectDragStart(item.id, sub.id)}
+                                onDragOver={handleSubjectDragOver}
+                                onDrop={() => handleSubjectDrop(item.id, sub.id)}
+                              >
                                 <Space><BookOutlined /> {sub.name}</Space>
                                 <DeleteOutlined
                                   style={{ color: '#ff4d4f', cursor: 'pointer' }}

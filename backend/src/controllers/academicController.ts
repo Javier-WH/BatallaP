@@ -308,10 +308,14 @@ export const getPeriodStructure = async (req: Request, res: Response) => {
         {
           model: Subject,
           as: 'subjects',
-          through: { attributes: ['id'] },
+          through: { attributes: ['id', 'order'] },
           include: [{ model: SubjectGroup, as: 'subjectGroup' }]
         }
-      ]
+      ],
+      order: [
+        // Order subjects within each PeriodGrade by the join-table "order" column
+        [{ model: Subject, as: 'subjects' }, PeriodGradeSubject, 'order', 'ASC'],
+      ],
     });
 
     res.json(structure);
@@ -326,10 +330,38 @@ export const getPeriodStructure = async (req: Request, res: Response) => {
 export const addSubjectToGrade = async (req: Request, res: Response) => {
   try {
     const { periodGradeId, subjectId } = req.body;
-    const pgs = await PeriodGradeSubject.create({ periodGradeId, subjectId });
+    // Determine next order for this periodGrade
+    const maxExisting = await PeriodGradeSubject.max('order', { where: { periodGradeId } });
+    const nextOrder = Number.isFinite(maxExisting as number) ? (Number(maxExisting) || 0) + 1 : 1;
+    const pgs = await PeriodGradeSubject.create({ periodGradeId, subjectId, order: nextOrder });
     res.json(pgs);
   } catch (error) {
     res.status(500).json({ error: 'Error adding subject' });
+  }
+};
+
+export const updateSubjectOrderForGrade = async (req: Request, res: Response) => {
+  try {
+    const { periodGradeId, subjectIds } = req.body as { periodGradeId: number; subjectIds: number[] };
+
+    if (!Array.isArray(subjectIds) || subjectIds.length === 0) {
+      return res.status(400).json({ error: 'subjectIds must be a non-empty array' });
+    }
+
+    // Update order sequentially based on array index
+    const updates = subjectIds.map((subjectId, index) =>
+      PeriodGradeSubject.update(
+        { order: index + 1 },
+        { where: { periodGradeId, subjectId } },
+      ),
+    );
+
+    await Promise.all(updates);
+
+    res.json({ message: 'Order updated' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Error updating subject order' });
   }
 };
 

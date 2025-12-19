@@ -7,6 +7,7 @@ interface PeriodGradeSubjectAttributes {
   id: number;
   periodGradeId: number;
   subjectId: number;
+  order?: number | null;
 }
 
 interface PeriodGradeSubjectCreationAttributes extends Optional<PeriodGradeSubjectAttributes, 'id'> { }
@@ -15,6 +16,7 @@ class PeriodGradeSubject extends Model<PeriodGradeSubjectAttributes, PeriodGrade
   public id!: number;
   public periodGradeId!: number;
   public subjectId!: number;
+  public order?: number | null;
 
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
@@ -36,7 +38,11 @@ PeriodGradeSubject.init(
       type: DataTypes.INTEGER,
       references: { model: Subject, key: 'id' },
       allowNull: false
-    }
+    },
+    order: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
   },
   {
     sequelize,
