@@ -18,6 +18,7 @@ interface BaseCatalogItem {
 
 interface Grade extends BaseCatalogItem {
   isDiversified: boolean;
+  order?: number | null;
 }
 
 type Section = BaseCatalogItem;
@@ -550,6 +551,15 @@ const AcademicManagement: React.FC = () => {
 
   const activePeriod = periods.find((p) => p.isActive);
 
+  const orderedStructure = [...structure].sort((a, b) => {
+    const aOrder = a.grade?.order ?? Number.MAX_SAFE_INTEGER;
+    const bOrder = b.grade?.order ?? Number.MAX_SAFE_INTEGER;
+    if (aOrder !== bOrder) return aOrder - bOrder;
+    const aName = a.grade?.name ?? '';
+    const bName = b.grade?.name ?? '';
+    return aName.localeCompare(bName, 'es');
+  });
+
   return (
     <div style={{ maxWidth: 1200, margin: '0 auto' }}>
       <Card title="Gestión Académica">
@@ -578,72 +588,47 @@ const AcademicManagement: React.FC = () => {
           {/* STRUCTURE TAB */}
           <TabPane tab="Estructura (Grados y Secciones)" key="2">
             {activePeriodId && (
-              <Row gutter={[16, 16]}>
-                {/* Grade Adder */}
-                <Col span={24}>
-                  <Card size="small" title="Agregar Grado a este Periodo">
-                    <Space>
-                      <Select
-                        key={`add-grade-${activePeriodId}-${structure.map((pg) => pg.id).join('-')}`}
-                        placeholder="Seleccionar Grado del Catálogo"
-                        style={{ width: 250 }}
-                        onChange={handleAddGradeToStructure}
-                        options={grades.map((g) => ({ label: g.name, value: g.id }))}
-                      />
-                    </Space>
-                  </Card>
-                </Col>
+              <>
+                <Card size="small" title="Agregar Grado a este Periodo" style={{ marginBottom: 16 }}>
+                  <Space>
+                    <Select
+                      key={`add-grade-${activePeriodId}-${orderedStructure.map((pg) => pg.id).join('-')}`}
+                      placeholder="Seleccionar Grado del Catálogo"
+                      style={{ width: 250 }}
+                      onChange={handleAddGradeToStructure}
+                      options={grades.map((g) => ({ label: g.name, value: g.id }))}
+                    />
+                  </Space>
+                </Card>
 
-                {/* List of Active Grades in Period */}
-                {structure.map((item: PeriodGradeStructureItem) => (
-                  <Col span={12} key={item.id}>
-                    <Card
-                      title={`${item.grade?.name ?? ''}${item.specialization ? ` - ${item.specialization.name}` : ''}`}
-                      style={{ border: '1px solid #d9d9d9', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}
-                      headStyle={{ backgroundColor: '#fafafa', borderBottom: '1px solid #d9d9d9' }}
+                <Collapse defaultActiveKey={orderedStructure.map((item) => String(item.id))}>
+                  {orderedStructure.map((item: PeriodGradeStructureItem) => (
+                    <Panel
+                      key={item.id}
+                      header={`${item.grade?.name ?? ''}${item.specialization ? ` - ${item.specialization.name}` : ''}`}
                       extra={
                         <Popconfirm title="Eliminar grado y todo su contenido?" onConfirm={() => handleRemoveGradeFromStructure(item.id)}>
-                          <Button type="text" danger icon={<DeleteOutlined />} />
+                          <Button type="text" danger icon={<DeleteOutlined />} onClick={(e) => e.stopPropagation()} />
                         </Popconfirm>
                       }
-                      actions={[
-                        <div style={{ padding: '0 16px', textAlign: 'left' }}>
-                          <div style={{ fontSize: 12, color: '#999', marginBottom: 4 }}>Agregar Sección:</div>
-                          <Select
-                            key={`add-section-${item.id}-${(item.sections || []).map((s) => s.id).join('-')}`}
-                            size="small"
-                            placeholder="+ Sección"
-                            style={{ width: '100%' }}
-                            onChange={(val) => handleAddSectionToGrade(item.id, val)}
-                            options={sections
-                              .filter((s) => !item.sections?.some((is: Section) => is.id === s.id))
-                              .map((s) => ({ label: s.name, value: s.id }))
-                            }
-                          />
-                        </div>,
-                        <div style={{ padding: '0 16px', textAlign: 'left' }}>
-                          <div style={{ fontSize: 12, color: '#999', marginBottom: 4 }}>Agregar Materia:</div>
-                          <Select
-                            key={`add-subject-${item.id}-${(item.subjects || []).map((s) => s.id).join('-')}`}
-                            size="small"
-                            placeholder="+ Materia"
-                            style={{ width: '100%' }}
-                            onChange={(val) => handleAddSubjectToGrade(item.id, val)}
-                            options={subjects
-                              .filter((s) => !item.subjects?.some((is: Subject) => is.id === s.id))
-                              .map((s) => {
-                                const label = s.subjectGroup
-                                  ? `${s.name} - ${s.subjectGroup.name}`
-                                  : s.name;
-                                return { label, value: s.id };
-                              })
-                            }
-                          />
-                        </div>
-                      ]}
                     >
                       <Row gutter={16}>
                         <Col span={12}>
+                          <div style={{ marginBottom: 8 }}>
+                            <div style={{ fontSize: 12, color: '#999', marginBottom: 4 }}>Agregar Sección:</div>
+                            <Select
+                              key={`add-section-${item.id}-${(item.sections || []).map((s) => s.id).join('-')}`}
+                              size="small"
+                              placeholder="+ Sección"
+                              style={{ width: '100%' }}
+                              onChange={(val) => handleAddSectionToGrade(item.id, val)}
+                              options={sections
+                                .filter((s) => !item.sections?.some((is: Section) => is.id === s.id))
+                                .map((s) => ({ label: s.name, value: s.id }))
+                              }
+                            />
+                          </div>
+
                           <h4>Secciones:</h4>
                           <Space direction="vertical" style={{ width: '100%' }}>
                             {item.sections?.map((sec: Section) => (
@@ -658,7 +643,28 @@ const AcademicManagement: React.FC = () => {
                             {(!item.sections || item.sections.length === 0) && <span style={{ color: '#ccc' }}>Sin secciones</span>}
                           </Space>
                         </Col>
+
                         <Col span={12} style={{ borderLeft: '1px solid #f0f0f0' }}>
+                          <div style={{ marginBottom: 8 }}>
+                            <div style={{ fontSize: 12, color: '#999', marginBottom: 4 }}>Agregar Materia:</div>
+                            <Select
+                              key={`add-subject-${item.id}-${(item.subjects || []).map((s) => s.id).join('-')}`}
+                              size="small"
+                              placeholder="+ Materia"
+                              style={{ width: '100%' }}
+                              onChange={(val) => handleAddSubjectToGrade(item.id, val)}
+                              options={subjects
+                                .filter((s) => !item.subjects?.some((is: Subject) => is.id === s.id))
+                                .map((s) => {
+                                  const label = s.subjectGroup
+                                    ? `${s.name} - ${s.subjectGroup.name}`
+                                    : s.name;
+                                  return { label, value: s.id };
+                                })
+                              }
+                            />
+                          </div>
+
                           <h4>Materias:</h4>
                           <Space direction="vertical" style={{ width: '100%' }}>
                             {item.subjects?.map((sub: Subject) => (
@@ -689,10 +695,10 @@ const AcademicManagement: React.FC = () => {
                           </Space>
                         </Col>
                       </Row>
-                    </Card>
-                  </Col>
-                ))}
-              </Row>
+                    </Panel>
+                  ))}
+                </Collapse>
+              </>
             )}
           </TabPane>
 
