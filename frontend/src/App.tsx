@@ -28,6 +28,7 @@ import type { JSX } from 'react';
 // Control de Estudios Module Imports
 import ControlEstudiosLayout from '@/pages/control-estudios/ControlEstudiosLayout';
 import ControlEstudiosDashboard from '@/pages/control-estudios/Dashboard';
+import AcademicSettings from '@/pages/control-estudios/AcademicSettings';
 
 // Protected Route Component
 const RequireAuth = ({ children, allowedRoles }: { children: JSX.Element; allowedRoles?: string[] }) => {
@@ -99,6 +100,7 @@ function AppRoutes() {
         {/* Nested Control de Estudios Module */}
         <Route path="control-estudios" element={<RequireAuth allowedRoles={['StudyControl', 'Admin', 'Master']}><ControlEstudiosLayout /></RequireAuth>}>
           <Route index element={<ControlEstudiosDashboard />} />
+          <Route path="configuracion" element={<AcademicSettings />} />
         </Route>
 
         {/* Nested Teacher Module */}

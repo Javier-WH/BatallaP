@@ -1,13 +1,13 @@
 import React from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { Button, Space, Card, Tooltip } from 'antd';
-import { DashboardOutlined } from '@ant-design/icons';
+import { DashboardOutlined, SettingOutlined } from '@ant-design/icons';
 
 const ControlEstudiosLayout: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const isActive = (path: string) => location.pathname === path;
+  const isActive = (path: string) => location.pathname.startsWith(path);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', marginTop: -24, marginLeft: -24, marginRight: -24 }}>
@@ -23,11 +23,20 @@ const ControlEstudiosLayout: React.FC = () => {
         <Space>
           <Tooltip title="Panel Principal">
             <Button
-              type={isActive('/control-estudios') ? 'primary' : 'text'}
+              type={isActive('/control-estudios') && !isActive('/control-estudios/configuracion') ? 'primary' : 'text'}
               icon={<DashboardOutlined />}
               onClick={() => navigate('/control-estudios')}
             >
               Panel
+            </Button>
+          </Tooltip>
+          <Tooltip title="Configuración Académica">
+            <Button
+              type={isActive('/control-estudios/configuracion') ? 'primary' : 'text'}
+              icon={<SettingOutlined />}
+              onClick={() => navigate('/control-estudios/configuracion')}
+            >
+              Configuración Académica
             </Button>
           </Tooltip>
         </Space>

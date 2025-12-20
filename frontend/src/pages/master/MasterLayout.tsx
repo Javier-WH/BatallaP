@@ -41,13 +41,13 @@ const MasterLayout: React.FC = () => {
             </Button>
           </Tooltip>
 
-          <Tooltip title="Configuración Global del Sistema">
+          <Tooltip title="Configuración General del Sistema">
             <Button
               type={isActive('/master/settings') ? 'primary' : 'text'}
               icon={<SettingOutlined />}
               onClick={() => navigate('/master/settings')}
             >
-              Configuración
+              Configuración General
             </Button>
           </Tooltip>
         </Space>
