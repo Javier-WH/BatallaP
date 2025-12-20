@@ -1,7 +1,7 @@
 import React from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { Button, Space, Card, Tooltip } from 'antd';
-import { DashboardOutlined, TeamOutlined, UserAddOutlined, SearchOutlined } from '@ant-design/icons';
+import { DashboardOutlined, TeamOutlined, UserAddOutlined, SearchOutlined, BankOutlined } from '@ant-design/icons';
 
 const AdminLayout: React.FC = () => {
   const navigate = useNavigate();
@@ -68,6 +68,16 @@ const AdminLayout: React.FC = () => {
               onClick={() => navigate('/admin/projection')}
             >
               Proyección
+            </Button>
+          </Tooltip>
+
+          <Tooltip title="Gestión de Periodos, Grados y Secciones">
+            <Button
+              type={isActive('/admin/academic') ? 'primary' : 'text'}
+              icon={<BankOutlined />}
+              onClick={() => navigate('/admin/academic')}
+            >
+              Académico
             </Button>
           </Tooltip>
 
