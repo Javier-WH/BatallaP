@@ -550,6 +550,27 @@ export const removeSubjectFromGrade = async (req: Request, res: Response) => {
   }
 };
 
+export const getPeriodGradeSubject = async (req: Request, res: Response) => {
+  try {
+    const { periodGradeId, subjectId } = req.params;
+    const pgs = await PeriodGradeSubject.findOne({ 
+      where: { 
+        periodGradeId: Number(periodGradeId), 
+        subjectId: Number(subjectId) 
+      } 
+    });
+    
+    if (!pgs) {
+      return res.status(404).json({ error: 'PeriodGradeSubject not found' });
+    }
+    
+    res.json(pgs);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Error fetching PeriodGradeSubject' });
+  }
+};
+
 export const addGradeToPeriod = async (req: Request, res: Response) => {
   try {
     const { schoolPeriodId, gradeId, specializationId } = req.body as {

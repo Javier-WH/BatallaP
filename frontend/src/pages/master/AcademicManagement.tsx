@@ -1,7 +1,7 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 import React, { useState, useEffect, createContext, useContext } from 'react';
 import { Card, Tabs, Table, Button, Modal, Form, Input, Tag, message, Select, Space, Row, Col, Popconfirm, Checkbox, Collapse } from 'antd';
-import { PlusOutlined, DeleteOutlined, EditOutlined, BookOutlined, AppstoreOutlined, CheckCircleOutlined, HolderOutlined } from '@ant-design/icons';
+import { PlusOutlined, DeleteOutlined, EditOutlined, BookOutlined, AppstoreOutlined, CheckCircleOutlined, HolderOutlined, UserAddOutlined } from '@ant-design/icons';
 import api from '@/services/api';
 import {
   DndContext,
@@ -113,9 +113,10 @@ interface SortableSubjectItemProps {
   subject: Subject;
   periodGradeId: number;
   onRemove: (periodGradeId: number, subjectId: number) => void;
+  onAssignTeacher?: (periodGradeId: number, subjectId: number) => void;
 }
 
-const SortableSubjectItem: React.FC<SortableSubjectItemProps> = ({ subject, periodGradeId, onRemove }) => {
+const SortableSubjectItem: React.FC<SortableSubjectItemProps> = ({ subject, periodGradeId, onRemove, onAssignTeacher }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: `${periodGradeId}-${subject.id}`,
   });
@@ -147,13 +148,24 @@ const SortableSubjectItem: React.FC<SortableSubjectItemProps> = ({ subject, peri
           </Tag>
         )}
       </Space>
-      <DeleteOutlined
-        style={{ color: '#ff4d4f', cursor: 'pointer' }}
-        onClick={(e) => {
-          e.stopPropagation();
-          onRemove(periodGradeId, subject.id);
-        }}
-      />
+      <Space>
+        {onAssignTeacher && (
+          <UserAddOutlined
+            style={{ color: '#1890ff', cursor: 'pointer' }}
+            onClick={(e) => {
+              e.stopPropagation();
+              onAssignTeacher(periodGradeId, subject.id);
+            }}
+          />
+        )}
+        <DeleteOutlined
+          style={{ color: '#ff4d4f', cursor: 'pointer' }}
+          onClick={(e) => {
+            e.stopPropagation();
+            onRemove(periodGradeId, subject.id);
+          }}
+        />
+      </Space>
     </div>
   );
 };
@@ -192,6 +204,13 @@ const AcademicManagement: React.FC = () => {
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
 
   const [specializationModalVisible, setSpecializationModalVisible] = useState(false);
+  
+  // Estados para asignación de profesor
+  const [teacherAssignModalVisible, setTeacherAssignModalVisible] = useState(false);
+  const [selectedSubjectForTeacher, setSelectedSubjectForTeacher] = useState<{periodGradeId: number, subjectId: number, periodGradeSubjectId?: number} | null>(null);
+  const [availableSections, setAvailableSections] = useState<Section[]>([]);
+  const [availableTeachers, setAvailableTeachers] = useState<{id: number, name: string}[]>([]);
+  const [teacherAssignForm] = Form.useForm();
   const [selectedGradeForStructure, setSelectedGradeForStructure] = useState<Grade | null>(null);
   const [selectedSpecializationId, setSelectedSpecializationId] = useState<number | null>(null);
 
@@ -429,12 +448,92 @@ const AcademicManagement: React.FC = () => {
 
   const handleRemoveSectionFromGrade = async (periodGradeId: number, sectionId: number) => {
     try {
-      await api.post('/academic/structure/section/remove', { periodGradeId, sectionId });
-      message.success('Sección removida');
+      await api.delete(`/academic/structure/section/${periodGradeId}/${sectionId}`);
+      message.success('Sección eliminada del grado');
       fetchStructure();
     } catch (error) {
       console.error(error);
-      message.error('Error removiendo sección');
+      message.error('Error eliminando sección');
+    }
+  };
+
+  // Función para abrir el modal de asignación de profesor
+  const handleOpenAssignTeacher = async (periodGradeId: number, subjectId: number) => {
+    try {
+      console.log('Obteniendo PeriodGradeSubject para:', { periodGradeId, subjectId });
+      
+      // Primero necesitamos obtener el periodGradeSubjectId
+      const { data } = await api.get(`/academic/structure/subject/${periodGradeId}/${subjectId}`);
+      console.log('Respuesta del endpoint:', data);
+      
+      const periodGradeSubjectId = data?.id;
+      console.log('periodGradeSubjectId obtenido:', periodGradeSubjectId);
+      
+      if (!periodGradeSubjectId) {
+        message.error('No se pudo obtener la información de la materia');
+        return;
+      }
+      
+      setSelectedSubjectForTeacher({ 
+        periodGradeId, 
+        subjectId,
+        periodGradeSubjectId 
+      });
+      
+      // Obtener las secciones disponibles para este grado
+      const periodGrade = structure.find(pg => pg.id === periodGradeId);
+      if (periodGrade && periodGrade.sections) {
+        setAvailableSections(periodGrade.sections);
+      }
+      
+      // Obtener profesores disponibles
+      interface Teacher {
+        id: number;
+        firstName: string;
+        lastName: string;
+        roles?: { name: string }[];
+      }
+      const { data: teachers } = await api.get<Teacher[]>('/teachers');
+      setAvailableTeachers(teachers
+        .filter(t => t.roles?.some(r => r.name === 'Teacher'))
+        .map((t) => ({ 
+          id: t.id, 
+          name: `${t.firstName} ${t.lastName}` 
+        })));
+      
+      teacherAssignForm.resetFields();
+      setTeacherAssignModalVisible(true);
+    } catch (error) {
+      console.error(error);
+      message.error('Error al cargar datos para asignar profesor');
+    }
+  };
+  
+  // Función para asignar profesor
+  const handleAssignTeacher = async (values: { teacherId: number, sectionId: number }) => {
+    if (!selectedSubjectForTeacher || !selectedSubjectForTeacher.periodGradeSubjectId) return;
+    
+    try {
+      console.log('Enviando datos para asignar profesor:', {
+        teacherId: values.teacherId,
+        periodGradeSubjectId: selectedSubjectForTeacher.periodGradeSubjectId,
+        sectionId: values.sectionId
+      });
+      
+      await api.post('/teachers/assign', {
+        teacherId: values.teacherId,
+        periodGradeSubjectId: selectedSubjectForTeacher.periodGradeSubjectId,
+        sectionId: values.sectionId
+      });
+      
+      message.success('Profesor asignado exitosamente');
+      setTeacherAssignModalVisible(false);
+      fetchStructure();
+    } catch (error: unknown) {
+      console.error(error);
+      const axiosError = error as { response?: { data?: { message?: string } } };
+      const errorMessage = axiosError.response?.data?.message || 'Error al asignar profesor';
+      message.error(errorMessage);
     }
   };
 
@@ -836,6 +935,7 @@ const AcademicManagement: React.FC = () => {
                                       subject={sub}
                                       periodGradeId={item.id}
                                       onRemove={handleRemoveSubjectFromGrade}
+                                      onAssignTeacher={handleOpenAssignTeacher}
                                     />
                                   ))}
                                 </div>
@@ -1191,6 +1291,70 @@ const AcademicManagement: React.FC = () => {
           onChange={(val) => setSelectedSpecializationId(val)}
           options={specializations.map((s) => ({ label: s.name, value: s.id }))}
         />
+      </Modal>
+
+      {/* Modal para asignar profesor */}
+      <Modal
+        title="Asignar Profesor a Materia"
+        open={teacherAssignModalVisible}
+        onCancel={() => setTeacherAssignModalVisible(false)}
+        footer={null}
+      >
+        <Form
+          form={teacherAssignForm}
+          layout="vertical"
+          onFinish={handleAssignTeacher}
+        >
+          <Form.Item
+            name="teacherId"
+            label="Profesor"
+            rules={[{ required: true, message: 'Seleccione un profesor' }]}
+          >
+            <Select 
+              placeholder="Seleccionar profesor"
+              showSearch
+              optionFilterProp="children"
+              filterOption={(input, option) => 
+                option?.children?.toString().toLowerCase().includes(input.toLowerCase()) ?? false
+              }
+              style={{ width: '100%' }}
+            >
+              {availableTeachers.map(teacher => (
+                <Select.Option key={teacher.id} value={teacher.id}>
+                  {teacher.name}
+                </Select.Option>
+              ))}
+            </Select>
+          </Form.Item>
+          
+          <Form.Item
+            name="sectionId"
+            label="Sección"
+            rules={[{ required: true, message: 'Seleccione una sección' }]}
+          >
+            <Select 
+              placeholder="Seleccionar sección"
+              showSearch
+              optionFilterProp="children"
+              filterOption={(input, option) => 
+                option?.children?.toString().toLowerCase().includes(input.toLowerCase()) ?? false
+              }
+              style={{ width: '100%' }}
+            >
+              {availableSections.map(section => (
+                <Select.Option key={section.id} value={section.id}>
+                  {section.name}
+                </Select.Option>
+              ))}
+            </Select>
+          </Form.Item>
+          
+          <Form.Item>
+            <Button type="primary" htmlType="submit" block>
+              Asignar Profesor
+            </Button>
+          </Form.Item>
+        </Form>
       </Modal>
     </div>
   );

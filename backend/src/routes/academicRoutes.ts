@@ -48,6 +48,7 @@ router.post('/structure/section/remove', academic.removeSectionFromGrade);
 router.post('/structure/subject', academic.addSubjectToGrade);
 router.post('/structure/subject/remove', academic.removeSubjectFromGrade);
 router.post('/structure/subject/reorder', academic.updateSubjectOrderForGrade);
+router.get('/structure/subject/:periodGradeId/:subjectId', academic.getPeriodGradeSubject);
 // Using POST because of composite key body
 
 export default router;

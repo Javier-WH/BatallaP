@@ -2,6 +2,12 @@ import { Request, Response } from 'express';
 import { Person, Role, TeacherAssignment, PeriodGradeSubject, Subject, Grade, Section, PeriodGrade, SchoolPeriod } from '@/models/index';
 import { Op } from 'sequelize';
 
+// Extender la interfaz de TeacherAssignment para TypeScript
+interface TeacherAssignmentWithRelations extends TeacherAssignment {
+  teacher?: Person;
+  section?: Section;
+}
+
 export const getTeachers = async (req: Request, res: Response) => {
   try {
     const { schoolPeriodId } = req.query;
@@ -93,15 +99,56 @@ export const getAvailableSubjectsForPeriod = async (req: Request, res: Response)
 
 export const assignTeacherToSubject = async (req: Request, res: Response) => {
   try {
+    console.log('Datos recibidos en assignTeacherToSubject:', req.body);
     const { teacherId, periodGradeSubjectId, sectionId } = req.body;
+    
+    // Validar datos
+    if (!teacherId || !periodGradeSubjectId || !sectionId) {
+      console.error('Datos incompletos:', { teacherId, periodGradeSubjectId, sectionId });
+      return res.status(400).json({ message: 'Datos incompletos. Se requiere teacherId, periodGradeSubjectId y sectionId' });
+    }
 
     // Check if already assigned
     const existing = await TeacherAssignment.findOne({
       where: { periodGradeSubjectId, sectionId }
     });
+    
+    console.log('Asignación existente:', existing);
 
     if (existing) {
-      return res.status(400).json({ message: 'Esta materia y sección ya tienen un profesor asignado' });
+      // Obtener información del profesor ya asignado
+      const existingAssignment = await TeacherAssignment.findOne({
+        where: { periodGradeSubjectId, sectionId },
+        include: [
+          {
+            model: Person,
+            as: 'teacher',
+            attributes: ['firstName', 'lastName']
+          },
+          {
+            model: Section,
+            as: 'section',
+            attributes: ['name']
+          }
+        ]
+      }) as unknown as TeacherAssignmentWithRelations;
+      
+      let teacherName = 'otro profesor';
+      let sectionName = '';
+      
+      if (existingAssignment) {
+        if (existingAssignment.teacher) {
+          teacherName = `${existingAssignment.teacher.firstName} ${existingAssignment.teacher.lastName}`;
+        }
+        
+        if (existingAssignment.section) {
+          sectionName = existingAssignment.section.name;
+        }
+      }
+      
+      return res.status(400).json({ 
+        message: `Esta materia ya tiene asignado al profesor ${teacherName} en la sección ${sectionName}` 
+      });
     }
 
     const assignment = await TeacherAssignment.create({
