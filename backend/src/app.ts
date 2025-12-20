@@ -3,8 +3,19 @@ import cors from 'cors';
 import session from 'express-session';
 import cookieParser from 'cookie-parser';
 import dotenv from 'dotenv';
+import sequelize from '@/config/database';
+import connectSessionSequelize from 'connect-session-sequelize';
 
 dotenv.config();
+
+const SequelizeStore = connectSessionSequelize(session.Store);
+
+const sessionStore = new SequelizeStore({
+  db: sequelize,
+  tableName: 'sessions',
+  checkExpirationInterval: 15 * 60 * 1000, // Clean expired sessions every 15 min
+  expiration: 1000 * 60 * 60 * 24 // 1 day
+});
 
 const app: Application = express();
 
@@ -21,6 +32,7 @@ app.use(cors({
 
 app.use(session({
   secret: process.env.SESSION_SECRET || 'secret',
+  store: sessionStore,
   resave: false,
   saveUninitialized: false,
   cookie: {
@@ -29,6 +41,9 @@ app.use(session({
     maxAge: 1000 * 60 * 60 * 24 // 1 day
   }
 }));
+
+// Sync session store table
+sessionStore.sync();
 
 app.get('/', (req, res) => {
   res.send('API is running...');
