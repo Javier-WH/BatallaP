@@ -298,6 +298,10 @@ const AcademicManagement: React.FC = () => {
         setStructure([]);
       }
       fetchAll();
+      // Cerrar el modal después de eliminar exitosamente
+      setDeletePeriodVisible(false);
+      setPeriodToDelete(null);
+      setDeleteConfirmText('');
     } catch (error) {
       console.error(error);
       message.error('Error eliminando periodo (posiblemente en uso), ' + error);
