@@ -410,7 +410,7 @@ const TeacherPanel: React.FC = () => {
             )}
           </Space>
 
-          <Space>
+          <Space >
             <Text strong>Lapso:</Text>
             <Select
               style={{ width: 200 }}
@@ -429,16 +429,17 @@ const TeacherPanel: React.FC = () => {
                 </Option>
               ))}
             </Select>
-            {selectedTerm && availableTerms.find(t => t.id === selectedTerm)?.isBlocked && (
-              <Alert
-                message="Lapso bloqueado"
-                description="Este lapso está bloqueado. Puedes ver la información pero no modificarla."
-                type="warning"
-                showIcon
-                style={{ marginTop: 8 }}
-              />
-            )}
+  
           </Space>
+          {selectedTerm && availableTerms.find(t => t.id === selectedTerm)?.isBlocked && (
+            <Alert
+              message="Lapso bloqueado"
+              description="Este lapso está bloqueado. Puedes ver la información pero no modificarla."
+              type="warning"
+              showIcon
+              style={{ marginTop: 8 }}
+            />
+          )}
         </div>
       </Card>
 
