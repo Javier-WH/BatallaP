@@ -1,8 +1,25 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 import React, { useState, useEffect } from 'react';
 import { Card, Tabs, Table, Button, Modal, Form, Input, Tag, message, Select, Space, Row, Col, Popconfirm, Checkbox, Collapse } from 'antd';
-import { PlusOutlined, DeleteOutlined, EditOutlined, BookOutlined, AppstoreOutlined, CheckCircleOutlined } from '@ant-design/icons';
+import { PlusOutlined, DeleteOutlined, EditOutlined, BookOutlined, AppstoreOutlined, CheckCircleOutlined, HolderOutlined } from '@ant-design/icons';
 import api from '@/services/api';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core';
+import type { DragEndEvent } from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 
 interface Period {
   id: number;
@@ -48,6 +65,80 @@ type CatalogItem = Grade | Section | Subject | Specialization;
 const { TabPane } = Tabs;
 const { Panel } = Collapse;
 
+interface SortableRowProps {
+  children: React.ReactNode;
+  'data-row-key': number;
+}
+
+const SortableRow: React.FC<SortableRowProps> = (props) => {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: props['data-row-key'],
+  });
+
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    cursor: 'move',
+    opacity: isDragging ? 0.5 : 1,
+    backgroundColor: isDragging ? '#fafafa' : undefined,
+  };
+
+  return (
+    <tr {...props} ref={setNodeRef} style={style} {...attributes} {...listeners}>
+      {props.children}
+    </tr>
+  );
+};
+
+interface SortableSubjectItemProps {
+  subject: Subject;
+  periodGradeId: number;
+  onRemove: (periodGradeId: number, subjectId: number) => void;
+}
+
+const SortableSubjectItem: React.FC<SortableSubjectItemProps> = ({ subject, periodGradeId, onRemove }) => {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: `${periodGradeId}-${subject.id}`,
+  });
+
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    display: 'flex',
+    justifyContent: 'space-between',
+    fontSize: 13,
+    cursor: 'move',
+    opacity: isDragging ? 0.5 : 1,
+    backgroundColor: isDragging ? '#f0f0f0' : 'white',
+    padding: '8px 12px',
+    borderRadius: '6px',
+    border: '1px solid #f0f0f0',
+    marginBottom: '8px',
+  };
+
+  return (
+    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
+      <Space>
+        <HolderOutlined style={{ color: '#999' }} />
+        <BookOutlined />
+        <span>{subject.name}</span>
+        {subject.subjectGroup && (
+          <Tag color="blue" style={{ borderRadius: 12 }}>
+            {subject.subjectGroup.name}
+          </Tag>
+        )}
+      </Space>
+      <DeleteOutlined
+        style={{ color: '#ff4d4f', cursor: 'pointer' }}
+        onClick={(e) => {
+          e.stopPropagation();
+          onRemove(periodGradeId, subject.id);
+        }}
+      />
+    </div>
+  );
+};
+
 const AcademicManagement: React.FC = () => {
   // State
   const [periods, setPeriods] = useState<Period[]>([]);
@@ -84,8 +175,7 @@ const AcademicManagement: React.FC = () => {
   const [specializationModalVisible, setSpecializationModalVisible] = useState(false);
   const [selectedGradeForStructure, setSelectedGradeForStructure] = useState<Grade | null>(null);
   const [selectedSpecializationId, setSelectedSpecializationId] = useState<number | null>(null);
-  const [draggingSubject, setDraggingSubject] = useState<{ periodGradeId: number; subjectId: number } | null>(null);
-  const [draggingGradeId, setDraggingGradeId] = useState<number | null>(null);
+  const [activeSubjectDragId, setActiveSubjectDragId] = useState<string | null>(null);
 
   const [editSubjectGroupVisible, setEditSubjectGroupVisible] = useState(false);
   const [editSubjectGroupForm] = Form.useForm();
@@ -356,36 +446,33 @@ const AcademicManagement: React.FC = () => {
     }
   };
 
-  const handleSubjectDragStart = (periodGradeId: number, subjectId: number) => {
-    setDraggingSubject({ periodGradeId, subjectId });
-  };
+  const handleSubjectDragEnd = async (event: DragEndEvent, periodGradeId: number) => {
+    const { active, over } = event;
 
-  const handleSubjectDragOver = (event: React.DragEvent<HTMLDivElement>) => {
-    event.preventDefault();
-  };
+    if (!over || active.id === over.id) return;
 
-  const handleSubjectDrop = async (periodGradeId: number, targetSubjectId: number) => {
-    if (!draggingSubject || draggingSubject.periodGradeId !== periodGradeId) return;
+    const activeId = String(active.id).split('-')[1];
+    const overId = String(over.id).split('-')[1];
 
-    const sourceSubjectId = draggingSubject.subjectId;
-    if (sourceSubjectId === targetSubjectId) return;
+    if (!activeId || !overId) return;
+
+    const activeSubjectId = parseInt(activeId, 10);
+    const overSubjectId = parseInt(overId, 10);
 
     const nextStructure = structure.map((pg) => {
       if (pg.id !== periodGradeId || !pg.subjects) return pg;
 
       const subjectsCopy = [...pg.subjects];
-      const fromIndex = subjectsCopy.findIndex((s) => s.id === sourceSubjectId);
-      const toIndex = subjectsCopy.findIndex((s) => s.id === targetSubjectId);
-      if (fromIndex === -1 || toIndex === -1) return pg;
+      const oldIndex = subjectsCopy.findIndex((s) => s.id === activeSubjectId);
+      const newIndex = subjectsCopy.findIndex((s) => s.id === overSubjectId);
 
-      const [moved] = subjectsCopy.splice(fromIndex, 1);
-      subjectsCopy.splice(toIndex, 0, moved);
+      if (oldIndex === -1 || newIndex === -1) return pg;
 
-      return { ...pg, subjects: subjectsCopy };
+      const reorderedSubjects = arrayMove(subjectsCopy, oldIndex, newIndex);
+      return { ...pg, subjects: reorderedSubjects };
     });
 
     setStructure(nextStructure);
-    setDraggingSubject(null);
 
     const updated = nextStructure.find((pg) => pg.id === periodGradeId);
     if (updated?.subjects) {
@@ -404,22 +491,26 @@ const AcademicManagement: React.FC = () => {
     }
   };
 
-  const handleGradeDrop = async (targetGradeId: number) => {
-    if (draggingGradeId == null || draggingGradeId === targetGradeId) return;
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
 
-    const gradesCopy = [...grades];
-    const fromIndex = gradesCopy.findIndex((g) => g.id === draggingGradeId);
-    const toIndex = gradesCopy.findIndex((g) => g.id === targetGradeId);
-    if (fromIndex === -1 || toIndex === -1) return;
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
 
-    const [moved] = gradesCopy.splice(fromIndex, 1);
-    gradesCopy.splice(toIndex, 0, moved);
+    if (over && active.id !== over.id) {
+      const oldIndex = grades.findIndex((g) => g.id === active.id);
+      const newIndex = grades.findIndex((g) => g.id === over.id);
 
-    setGrades(gradesCopy);
-    setDraggingGradeId(null);
+      const newGrades = arrayMove(grades, oldIndex, newIndex);
+      setGrades(newGrades);
 
-    const orderedIds = gradesCopy.map((g) => g.id);
-    await handleReorderGrades(orderedIds);
+      const orderedIds = newGrades.map((g) => g.id);
+      await handleReorderGrades(orderedIds);
+    }
   };
 
   // --- Columns ---
@@ -529,6 +620,14 @@ const AcademicManagement: React.FC = () => {
 
   // Columns for Catalogs
   const catalogColumns = (type: CatalogType) => [
+    ...(type === 'grade'
+      ? [{
+          title: '',
+          key: 'drag',
+          width: 40,
+          render: () => <HolderOutlined style={{ cursor: 'move', color: '#999' }} />,
+        }]
+      : []),
     ...(type === 'grade'
       ? [{
           title: '#',
@@ -697,33 +796,31 @@ const AcademicManagement: React.FC = () => {
                           </div>
 
                           <h4>Materias:</h4>
-                          <Space direction="vertical" style={{ width: '100%' }}>
-                            {item.subjects?.map((sub: Subject) => (
-                              <div
-                                key={sub.id}
-                                style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, cursor: 'move' }}
-                                draggable
-                                onDragStart={() => handleSubjectDragStart(item.id, sub.id)}
-                                onDragOver={handleSubjectDragOver}
-                                onDrop={() => handleSubjectDrop(item.id, sub.id)}
+                          {item.subjects && item.subjects.length > 0 ? (
+                            <DndContext
+                              sensors={sensors}
+                              collisionDetection={closestCenter}
+                              onDragEnd={(event) => handleSubjectDragEnd(event, item.id)}
+                            >
+                              <SortableContext
+                                items={item.subjects.map((s) => `${item.id}-${s.id}`)}
+                                strategy={verticalListSortingStrategy}
                               >
-                                <Space>
-                                  <BookOutlined />
-                                  <span>{sub.name}</span>
-                                  {sub.subjectGroup && (
-                                    <Tag color="blue" style={{ borderRadius: 12 }}>
-                                      {sub.subjectGroup.name}
-                                    </Tag>
-                                  )}
-                                </Space>
-                                <DeleteOutlined
-                                  style={{ color: '#ff4d4f', cursor: 'pointer' }}
-                                  onClick={() => handleRemoveSubjectFromGrade(item.id, sub.id)}
-                                />
-                              </div>
-                            ))}
-                            {(!item.subjects || item.subjects.length === 0) && <span style={{ color: '#ccc' }}>Sin materias</span>}
-                          </Space>
+                                <div style={{ width: '100%' }}>
+                                  {item.subjects.map((sub: Subject) => (
+                                    <SortableSubjectItem
+                                      key={sub.id}
+                                      subject={sub}
+                                      periodGradeId={item.id}
+                                      onRemove={handleRemoveSubjectFromGrade}
+                                    />
+                                  ))}
+                                </div>
+                              </SortableContext>
+                            </DndContext>
+                          ) : (
+                            <span style={{ color: '#ccc' }}>Sin materias</span>
+                          )}
                         </Col>
                       </Row>
                     </Panel>
@@ -834,21 +931,30 @@ const AcademicManagement: React.FC = () => {
                   <Form.Item name="name" rules={[{ required: true }]} style={{ width: 220 }}><Input placeholder="Nombre" /></Form.Item>
                   <Button type="primary" htmlType="submit" icon={<PlusOutlined />} />
                 </Form>
-                <Table
-                  dataSource={grades}
-                  rowKey="id"
-                  size="small"
-                  style={{ marginTop: 16 }}
-                  columns={catalogColumns('grade')}
-                  pagination={false}
-                  onRow={(record: Grade) => ({
-                    draggable: true,
-                    onDragStart: () => setDraggingGradeId(record.id),
-                    onDragOver: (e) => e.preventDefault(),
-                    onDrop: () => handleGradeDrop(record.id),
-                    style: { cursor: 'move' },
-                  })}
-                />
+                <DndContext
+                  sensors={sensors}
+                  collisionDetection={closestCenter}
+                  onDragEnd={handleDragEnd}
+                >
+                  <SortableContext
+                    items={grades.map((g) => g.id)}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    <Table
+                      dataSource={grades}
+                      rowKey="id"
+                      size="small"
+                      style={{ marginTop: 16 }}
+                      columns={catalogColumns('grade')}
+                      pagination={false}
+                      components={{
+                        body: {
+                          row: SortableRow,
+                        },
+                      }}
+                    />
+                  </SortableContext>
+                </DndContext>
               </Panel>
 
               <Panel header="Secciones" key="sections">
