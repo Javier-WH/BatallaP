@@ -1,7 +1,9 @@
 import app from './app';
+import express from 'express';
 import sequelize from '@/config/database';
 import '@/models/index'; // Register models
 import dotenv from 'dotenv';
+import path from 'path';
 import authRoutes from '@/routes/authRoutes';
 import userRoutes from '@/routes/userRoutes';
 import academicRoutes from '@/routes/academicRoutes';
@@ -9,10 +11,14 @@ import inscriptionRoutes from '@/routes/inscriptionRoutes';
 import teacherRoutes from '@/routes/teacherRoutes';
 import evaluationRoutes from '@/routes/evaluationRoutes';
 import settingRoutes from '@/routes/settingRoutes';
+import uploadRoutes from '@/routes/uploadRoutes';
 
 dotenv.config();
 
 const PORT = process.env.PORT || 3000;
+
+// Configurar Express para servir archivos estáticos
+app.use('/uploads', express.static(path.join(__dirname, '../public/uploads')));
 
 // Routes
 app.use('/api/auth', authRoutes);
@@ -22,6 +28,7 @@ app.use('/api/inscriptions', inscriptionRoutes);
 app.use('/api/teachers', teacherRoutes);
 app.use('/api/evaluation', evaluationRoutes);
 app.use('/api/settings', settingRoutes);
+app.use('/api/upload', uploadRoutes);
 
 const startServer = async () => {
   try {

@@ -6,10 +6,37 @@ import api from '@/services/api';
 
 const { Title, Text } = Typography;
 
+interface SettingsFormValues {
+  max_grade?: number;
+  passing_grade?: number;
+  grade_lock_mode?: string;
+  term1_locked?: boolean;
+  term2_locked?: boolean;
+  term3_locked?: boolean;
+  term1_open_at?: dayjs.Dayjs;
+  term1_close_at?: dayjs.Dayjs;
+  term2_open_at?: dayjs.Dayjs;
+  term2_close_at?: dayjs.Dayjs;
+  term3_open_at?: dayjs.Dayjs;
+  term3_close_at?: dayjs.Dayjs;
+  institution_name?: string;
+  institution_logo?: string;
+}
+
+interface SettingsPayload extends Omit<SettingsFormValues, 'term1_open_at' | 'term1_close_at' | 'term2_open_at' | 'term2_close_at' | 'term3_open_at' | 'term3_close_at'> {
+  term1_open_at?: string;
+  term1_close_at?: string;
+  term2_open_at?: string;
+  term2_close_at?: string;
+  term3_open_at?: string;
+  term3_close_at?: string;
+}
+
 const SettingsManagement: React.FC = () => {
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [logoPreview, setLogoPreview] = useState<string>('');
 
   useEffect(() => {
     const fetchSettings = async () => {
@@ -32,8 +59,18 @@ const SettingsManagement: React.FC = () => {
           term3_open_at: res.data.term3_open_at ? dayjs(res.data.term3_open_at) : null,
           term3_close_at: res.data.term3_close_at ? dayjs(res.data.term3_close_at) : null,
           institution_name: res.data.institution_name || '',
-          institution_logo_data: res.data.institution_logo_data || undefined,
+          institution_logo: res.data.institution_logo || '',
         });
+
+        // Cargar el logo desde la API
+        try {
+          const logoResponse = await api.get('/upload/logo', { responseType: 'blob' });
+          const logoUrl = URL.createObjectURL(logoResponse.data);
+          setLogoPreview(logoUrl);
+        } catch {
+          // Si no hay logo, no hay problema
+          console.log('No logo found, that\'s ok');
+        }
       } catch (error) {
         console.error('Error fetching settings', error);
         message.error('Error al cargar configuraciones');
@@ -44,24 +81,27 @@ const SettingsManagement: React.FC = () => {
     fetchSettings();
   }, [form]);
 
-  const onFinish = async (values: any) => {
+  const onFinish = async (values: SettingsFormValues) => {
     setSaving(true);
     try {
-      const payload = { ...values };
+      const payload: SettingsPayload = { ...values };
+      // Eliminar el logo de los valores para enviarlo por separado
+      delete payload.institution_logo;
 
       // Normalizar fechas a ISO
-      const dateKeys = [
+      const dateKeys: (keyof SettingsFormValues)[] = [
         'term1_open_at', 'term1_close_at',
         'term2_open_at', 'term2_close_at',
         'term3_open_at', 'term3_close_at',
       ];
       dateKeys.forEach((key) => {
-        const v = (payload as any)[key];
-        if (v && v.toISOString) {
-          (payload as any)[key] = v.toISOString();
+        const v = payload[key as keyof SettingsPayload];
+        if (v && typeof v === 'object' && 'toISOString' in v) {
+          payload[key as keyof SettingsPayload] = v.toISOString();
         }
       });
 
+      // Guardar las configuraciones generales
       await api.post('/settings', { settings: payload });
       message.success('Configuraciones guardadas correctamente');
     } catch (error) {
@@ -212,30 +252,63 @@ const SettingsManagement: React.FC = () => {
             label="Logo de la Institución"
             tooltip="Este logo se usará posteriormente en reportes y encabezados"
           >
-            <Form.Item name="institution_logo_data" noStyle>
+            <Form.Item name="institution_logo" noStyle>
               <Input type="hidden" />
             </Form.Item>
             <Upload
               beforeUpload={(file) => {
+                // Validar que sea una imagen
+                if (!file.type.startsWith('image/')) {
+                  message.error('Solo se permiten archivos de imagen');
+                  return Upload.LIST_IGNORE;
+                }
+                
+                // Validar tamaño (máximo 5MB)
+                if (file.size > 5 * 1024 * 1024) {
+                  message.error('La imagen no debe superar los 5MB');
+                  return Upload.LIST_IGNORE;
+                }
+
+                // Crear una vista previa
                 const reader = new FileReader();
                 reader.onload = () => {
-                  form.setFieldsValue({ institution_logo_data: reader.result });
+                  setLogoPreview(reader.result as string);
                 };
                 reader.readAsDataURL(file);
-                return false; // prevenir upload real
+                
+                // Subir el archivo inmediatamente
+                const formData = new FormData();
+                formData.append('logo', file);
+                
+                api.post('/upload/logo', formData, {
+                  headers: {
+                    'Content-Type': 'multipart/form-data'
+                  }
+                })
+                .then(response => {
+                  message.success('Logo subido correctamente');
+                  // Guardar la URL del logo en el formulario
+                  form.setFieldsValue({ institution_logo: response.data.url });
+                })
+                .catch(error => {
+                  console.error('Error al subir el logo:', error);
+                  message.error('Error al subir el logo');
+                });
+                
+                return false; // prevenir upload automático
               }}
               showUploadList={false}
             >
               <Button icon={<UploadOutlined />}>Seleccionar Logo</Button>
             </Upload>
 
-            {form.getFieldValue('institution_logo_data') && (
+            {logoPreview && (
               <div style={{ marginTop: 16 }}>
                 <Text type="secondary">Vista previa:</Text>
                 <div style={{ marginTop: 8 }}>
-                  {/* eslint-disable-next-line jsx-a11y/alt-text */}
                   <img
-                    src={form.getFieldValue('institution_logo_data')}
+                    src={logoPreview}
+                    alt="Logo de la institución"
                     style={{ maxHeight: 80, maxWidth: 240, border: '1px solid #eee', padding: 4, background: '#fff' }}
                   />
                 </div>
