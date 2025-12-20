@@ -1,5 +1,6 @@
 import sequelize from '@/config/database';
 import { User, Person, Role, PersonRole, SchoolPeriod, Subject, Grade, Section, Specialization } from '@/models/index';
+import Term from '@/models/Term';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -43,7 +44,33 @@ const seed = async () => {
       }
     }
 
-    // 3. Create Subjects - Venezuelan High School Curriculum (1st to 5th year)
+    // 3. Create default Terms for active period
+    const activePeriod = await SchoolPeriod.findOne({ where: { isActive: true } });
+    if (activePeriod) {
+      const defaultTerms = [
+        { name: 'Primer Lapso', order: 1, isBlocked: false },
+        { name: 'Segundo Lapso', order: 2, isBlocked: false },
+        { name: 'Tercer Lapso', order: 3, isBlocked: false }
+      ];
+
+      for (const termData of defaultTerms) {
+        const exists = await Term.findOne({
+          where: {
+            schoolPeriodId: activePeriod.id,
+            order: termData.order
+          }
+        });
+        if (!exists) {
+          await Term.create({
+            ...termData,
+            schoolPeriodId: activePeriod.id
+          });
+          console.log(`Term "${termData.name}" created for period ${activePeriod.name}.`);
+        }
+      }
+    }
+
+    // 4. Create Subjects - Venezuelan High School Curriculum (1st to 5th year)
     const subjects = [
       // Materias comunes a todos los años
       'Castellano y Literatura',

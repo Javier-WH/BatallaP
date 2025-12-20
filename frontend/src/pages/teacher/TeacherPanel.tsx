@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Tabs, Card, Select, Table, Button, Modal, Form, Input, DatePicker, message, Space, Tag, Divider, Typography, InputNumber, Alert, Segmented } from 'antd';
+import { Tabs, Card, Select, Table, Button, Modal, Form, Input, DatePicker, message, Space, Tag, Divider, Typography, InputNumber, Alert } from 'antd';
 import { BookOutlined, PlusOutlined, DeleteOutlined, EditOutlined } from '@ant-design/icons';
 import api from '@/services/api';
 import dayjs from 'dayjs';
@@ -44,51 +44,22 @@ interface EvaluationPlanItem {
   date: string;
 }
 
-interface Section {
+interface Term {
   id: number;
   name: string;
-}
-
-interface Grade {
-  id: number;
-  name: string;
-}
-
-interface SchoolPeriod {
-  id: number;
-  name: string;
-}
-
-interface PeriodGrade {
-  id: number;
-  grade: Grade;
-  schoolPeriod: SchoolPeriod;
-}
-
-interface Subject {
-  id: number;
-  name: string;
-}
-
-interface PeriodGradeSubject {
-  id: number;
-  subject: Subject;
-  periodGrade: PeriodGrade;
-}
-
-interface Assignment {
-  id: number;
-  periodGradeSubjectId: number;
-  sectionId: number;
-  periodGradeSubject: PeriodGradeSubject;
-  section: Section;
+  isBlocked: boolean;
+  openDate?: string;
+  closeDate?: string;
+  schoolPeriodId: number;
+  order: number;
 }
 
 const TeacherPanel: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [selectedAssignmentId, setSelectedAssignmentId] = useState<number | null>(null);
-  const [selectedTerm, setSelectedTerm] = useState<number>(1);
+  const [selectedTerm, setSelectedTerm] = useState<number | null>(null);
+  const [availableTerms, setAvailableTerms] = useState<Term[]>([]);
   const [evaluationPlan, setEvaluationPlan] = useState<EvaluationPlanItem[]>([]);
   const [students, setStudents] = useState<StudentEnrollment[]>([]);
   const [showPlanModal, setShowPlanModal] = useState(false);
@@ -125,6 +96,23 @@ const TeacherPanel: React.FC = () => {
     }
   }, []);
 
+  const fetchTerms = useCallback(async () => {
+    try {
+      const res = await api.get('/academic/active');
+      if (res.data) {
+        const termsRes = await api.get(`/terms?schoolPeriodId=${res.data.id}`);
+        setAvailableTerms(termsRes.data);
+        // Set first active term as default
+        const activeTerm = termsRes.data.find((t: Term) => !t.isBlocked);
+        if (activeTerm) {
+          setSelectedTerm(activeTerm.id);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching terms', error);
+    }
+  }, []);
+
   const fetchPlanAndStudents = useCallback(async () => {
     if (!selectedAssignmentId) return;
     const assignment = assignments.find(a => a.id === selectedAssignmentId);
@@ -150,6 +138,10 @@ const TeacherPanel: React.FC = () => {
   }, [fetchAssignments]);
 
   useEffect(() => {
+    fetchTerms();
+  }, [fetchTerms]);
+
+  useEffect(() => {
     fetchPlanAndStudents();
   }, [fetchPlanAndStudents]);
 
@@ -163,7 +155,7 @@ const TeacherPanel: React.FC = () => {
       ...values,
       periodGradeSubjectId: assignment.periodGradeSubjectId,
       sectionId: assignment.sectionId,
-      term: selectedTerm
+      termId: selectedTerm
     };
 
     try {
@@ -289,17 +281,22 @@ const TeacherPanel: React.FC = () => {
 
           <Space>
             <Text strong>Lapso:</Text>
-            <Segmented
-              className="custom-segmented"
-              options={[
-                { label: 'Lapso 1', value: 1 },
-                { label: 'Lapso 2', value: 2 },
-                { label: 'Lapso 3', value: 3 }
-              ]}
+            <Select
+              style={{ width: 200 }}
+              placeholder="Seleccione Lapso"
               value={selectedTerm}
-              onChange={(val) => setSelectedTerm(val as number)}
-              size="large"
-            />
+              onChange={setSelectedTerm}
+              disabled={availableTerms.length === 0}
+            >
+              {availableTerms.map(term => (
+                <Option key={term.id} value={term.id} disabled={term.isBlocked}>
+                  <Space>
+                    {term.name}
+                    {term.isBlocked && <LockOutlined style={{ color: '#ff4d4f' }} />}
+                  </Space>
+                </Option>
+              ))}
+            </Select>
           </Space>
         </div>
       </Card>

@@ -54,6 +54,7 @@ import EvaluationPlan from './EvaluationPlan';
 import Qualification from './Qualification';
 import TeacherAssignment from './TeacherAssignment';
 import Setting from './Setting';
+import Term from './Term';
 
 // ... (Existing User/Person/Role/Contact associations) ...
 
@@ -125,6 +126,10 @@ TeacherAssignment.belongsTo(PeriodGradeSubject, { foreignKey: 'periodGradeSubjec
 Section.hasMany(TeacherAssignment, { foreignKey: 'sectionId', as: 'teacherAssignments' });
 TeacherAssignment.belongsTo(Section, { foreignKey: 'sectionId', as: 'section' });
 
+// Term associations
+SchoolPeriod.hasMany(Term, { foreignKey: 'schoolPeriodId', as: 'terms' });
+Term.belongsTo(SchoolPeriod, { foreignKey: 'schoolPeriodId', as: 'schoolPeriod' });
+
 export {
   User,
   Person,
@@ -145,5 +150,6 @@ export {
   EvaluationPlan,
   Qualification,
   TeacherAssignment,
-  Setting
+  Setting,
+  Term
 };

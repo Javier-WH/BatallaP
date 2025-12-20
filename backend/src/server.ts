@@ -12,6 +12,7 @@ import teacherRoutes from '@/routes/teacherRoutes';
 import evaluationRoutes from '@/routes/evaluationRoutes';
 import settingRoutes from '@/routes/settingRoutes';
 import uploadRoutes from '@/routes/uploadRoutes';
+import termRoutes from '@/routes/termRoutes';
 
 dotenv.config();
 
@@ -29,6 +30,7 @@ app.use('/api/teachers', teacherRoutes);
 app.use('/api/evaluation', evaluationRoutes);
 app.use('/api/settings', settingRoutes);
 app.use('/api/upload', uploadRoutes);
+app.use('/api/terms', termRoutes);
 
 const startServer = async () => {
   try {
