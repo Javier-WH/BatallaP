@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { Op } from 'sequelize';
-import { SchoolPeriod, Grade, Section, PeriodGrade, PeriodGradeSection, Subject, PeriodGradeSubject, Specialization, SubjectGroup } from '@/models/index';
+import { SchoolPeriod, Grade, Section, PeriodGrade, PeriodGradeSection, Subject, PeriodGradeSubject, Specialization, SubjectGroup, TeacherAssignment } from '@/models/index';
 import sequelize from '@/config/database';
 
 // --- School Periods ---
@@ -64,16 +64,19 @@ export const getActivePeriod = async (req: Request, res: Response) => {
 };
 
 export const createPeriod = async (req: Request, res: Response) => {
+  const transaction = await sequelize.transaction();
   try {
     const { period, name } = req.body as { period?: string; name?: string };
 
     if (!period || !name) {
+      await transaction.rollback();
       return res.status(400).json({ error: 'Period and name are required' });
     }
 
     // Expected format: YYYY-YYYY
     const match = /^([0-9]{4})-([0-9]{4})$/.exec(period);
     if (!match) {
+      await transaction.rollback();
       return res.status(400).json({ error: 'Period must have format YYYY-YYYY (e.g. 2025-2026)' });
     }
 
@@ -81,22 +84,125 @@ export const createPeriod = async (req: Request, res: Response) => {
     const endYear = parseInt(match[2], 10);
 
     if (!(endYear > startYear)) {
+      await transaction.rollback();
       return res.status(400).json({ error: 'End year must be greater than start year' });
     }
 
+    // Find the current active period to determine if new one should be active
+    const currentActivePeriod = await SchoolPeriod.findOne({
+      where: { isActive: true },
+      transaction
+    });
+
+    // New period is active if it's more recent than the current active period (or if there's no active period)
+    const shouldBeActive = !currentActivePeriod || 
+      (startYear > currentActivePeriod.startYear) || 
+      (startYear === currentActivePeriod.startYear && endYear > currentActivePeriod.endYear);
+
+    // If new period will be active, deactivate the current one
+    if (shouldBeActive && currentActivePeriod) {
+      await SchoolPeriod.update({ isActive: false }, { 
+        where: { id: currentActivePeriod.id }, 
+        transaction 
+      });
+    }
+
+    // Create the new period
     const created = await SchoolPeriod.create({
       period,
       name,
       startYear,
       endYear,
-      isActive: false,
+      isActive: shouldBeActive,
+    }, { transaction });
+
+    // Find the most recent previous period to copy structure from
+    const previousPeriod = await SchoolPeriod.findOne({
+      where: { id: { [Op.ne]: created.id } },
+      order: [['startYear', 'DESC'], ['endYear', 'DESC']],
+      transaction
     });
 
+    if (previousPeriod) {
+      // Get all PeriodGrades from the previous period with their sections and subjects
+      const previousPeriodGrades = await PeriodGrade.findAll({
+        where: { schoolPeriodId: previousPeriod.id },
+        transaction
+      });
+
+      // Map old PeriodGrade IDs to new ones for TeacherAssignment copying
+      const periodGradeIdMap = new Map<number, number>();
+      const periodGradeSubjectIdMap = new Map<number, number>();
+
+      for (const pg of previousPeriodGrades) {
+        // Create new PeriodGrade for the new period
+        const newPg = await PeriodGrade.create({
+          schoolPeriodId: created.id,
+          gradeId: pg.gradeId,
+          specializationId: pg.specializationId
+        }, { transaction });
+
+        periodGradeIdMap.set(pg.id, newPg.id);
+
+        // Copy sections for this PeriodGrade
+        const previousSections = await PeriodGradeSection.findAll({
+          where: { periodGradeId: pg.id },
+          transaction
+        });
+
+        for (const pgs of previousSections) {
+          await PeriodGradeSection.create({
+            periodGradeId: newPg.id,
+            sectionId: pgs.sectionId
+          }, { transaction });
+        }
+
+        // Copy subjects for this PeriodGrade
+        const previousSubjects = await PeriodGradeSubject.findAll({
+          where: { periodGradeId: pg.id },
+          transaction
+        });
+
+        for (const pgsub of previousSubjects) {
+          const newPgSub = await PeriodGradeSubject.create({
+            periodGradeId: newPg.id,
+            subjectId: pgsub.subjectId,
+            order: pgsub.order
+          }, { transaction });
+
+          periodGradeSubjectIdMap.set(pgsub.id, newPgSub.id);
+        }
+      }
+
+      // Copy TeacherAssignments
+      const previousAssignments = await TeacherAssignment.findAll({
+        where: {
+          periodGradeSubjectId: { [Op.in]: Array.from(periodGradeSubjectIdMap.keys()) }
+        },
+        transaction
+      });
+
+      for (const ta of previousAssignments) {
+        const newPgSubId = periodGradeSubjectIdMap.get(ta.periodGradeSubjectId);
+        if (newPgSubId) {
+          await TeacherAssignment.create({
+            teacherId: ta.teacherId,
+            periodGradeSubjectId: newPgSubId,
+            sectionId: ta.sectionId
+          }, { transaction });
+        }
+      }
+    }
+
+    await transaction.commit();
     res.status(201).json(created);
-  } catch (error: any) {
-    if (error?.name === 'SequelizeUniqueConstraintError') {
+  } catch (error: unknown) {
+    await transaction.rollback();
+    const err = error as { name?: string };
+    if (err?.name === 'SequelizeUniqueConstraintError') {
       return res.status(400).json({ error: 'Period already exists' });
     }
+    console.error('Error creating period:', error);
     res.status(500).json({ error: 'Error creating period' });
   }
 };
