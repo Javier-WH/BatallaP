@@ -38,6 +38,19 @@ const SettingsManagement: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [logoPreview, setLogoPreview] = useState<string>('');
 
+  // Function to safely parse dates
+  const parseDate = (dateValue: unknown): dayjs.Dayjs | undefined => {
+    if (!dateValue) return undefined;
+    if (typeof dateValue === 'string' && dateValue.trim() === '') return undefined;
+
+    try {
+      const parsed = dayjs(dateValue);
+      return parsed.isValid() ? parsed : undefined;
+    } catch {
+      return undefined;
+    }
+  };
+
   useEffect(() => {
     const fetchSettings = async () => {
       setLoading(true);
@@ -52,12 +65,12 @@ const SettingsManagement: React.FC = () => {
           term1_locked: res.data.term1_locked === 'true',
           term2_locked: res.data.term2_locked === 'true',
           term3_locked: res.data.term3_locked === 'true',
-          term1_open_at: res.data.term1_open_at ? dayjs(res.data.term1_open_at) : null,
-          term1_close_at: res.data.term1_close_at ? dayjs(res.data.term1_close_at) : null,
-          term2_open_at: res.data.term2_open_at ? dayjs(res.data.term2_open_at) : null,
-          term2_close_at: res.data.term2_close_at ? dayjs(res.data.term2_close_at) : null,
-          term3_open_at: res.data.term3_open_at ? dayjs(res.data.term3_open_at) : null,
-          term3_close_at: res.data.term3_close_at ? dayjs(res.data.term3_close_at) : null,
+          term1_open_at: parseDate(res.data.term1_open_at),
+          term1_close_at: parseDate(res.data.term1_close_at),
+          term2_open_at: parseDate(res.data.term2_open_at),
+          term2_close_at: parseDate(res.data.term2_close_at),
+          term3_open_at: parseDate(res.data.term3_open_at),
+          term3_close_at: parseDate(res.data.term3_close_at),
           institution_name: res.data.institution_name || '',
           institution_logo: res.data.institution_logo || '',
         });
