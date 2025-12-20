@@ -255,14 +255,18 @@ const SettingsManagement: React.FC = () => {
             <Form.Item name="institution_logo" noStyle>
               <Input type="hidden" />
             </Form.Item>
-            <Upload
+            <Upload.Dragger
+              name="logo"
+              listType="picture-card"
+              className="avatar-uploader"
+              showUploadList={false}
               beforeUpload={(file) => {
                 // Validar que sea una imagen
                 if (!file.type.startsWith('image/')) {
                   message.error('Solo se permiten archivos de imagen');
                   return Upload.LIST_IGNORE;
                 }
-                
+
                 // Validar tamaño (máximo 5MB)
                 if (file.size > 5 * 1024 * 1024) {
                   message.error('La imagen no debe superar los 5MB');
@@ -275,11 +279,11 @@ const SettingsManagement: React.FC = () => {
                   setLogoPreview(reader.result as string);
                 };
                 reader.readAsDataURL(file);
-                
+
                 // Subir el archivo inmediatamente
                 const formData = new FormData();
                 formData.append('logo', file);
-                
+
                 api.post('/upload/logo', formData, {
                   headers: {
                     'Content-Type': 'multipart/form-data'
@@ -288,32 +292,99 @@ const SettingsManagement: React.FC = () => {
                 .then(response => {
                   message.success('Logo subido correctamente');
                   // Guardar la URL del logo en el formulario
-                  form.setFieldsValue({ institution_logo: response.data.url });
+                  form.setFieldsValue({ institution_logo: response.data.filename });
                 })
                 .catch(error => {
                   console.error('Error al subir el logo:', error);
                   message.error('Error al subir el logo');
+                  setLogoPreview(''); // Limpiar vista previa si hay error
                 });
-                
+
                 return false; // prevenir upload automático
               }}
-              showUploadList={false}
+              style={{
+                width: '100%',
+                maxWidth: '400px',
+                height: '200px',
+                border: '2px dashed #d9d9d9',
+                borderRadius: '8px',
+                backgroundColor: logoPreview ? '#f6ffed' : '#fafafa',
+                cursor: 'pointer',
+                transition: 'all 0.3s',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                overflow: 'hidden'
+              }}
             >
-              <Button icon={<UploadOutlined />}>Seleccionar Logo</Button>
-            </Upload>
-
-            {logoPreview && (
-              <div style={{ marginTop: 16 }}>
-                <Text type="secondary">Vista previa:</Text>
-                <div style={{ marginTop: 8 }}>
+              {logoPreview ? (
+                <div style={{
+                  width: '100%',
+                  height: '100%',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  position: 'relative'
+                }}>
                   <img
                     src={logoPreview}
                     alt="Logo de la institución"
-                    style={{ maxHeight: 80, maxWidth: 240, border: '1px solid #eee', padding: 4, background: '#fff' }}
+                    style={{
+                      maxWidth: '80%',
+                      maxHeight: '80%',
+                      objectFit: 'contain',
+                      borderRadius: '4px'
+                    }}
                   />
+                  <div style={{
+                    position: 'absolute',
+                    bottom: '8px',
+                    left: '50%',
+                    transform: 'translateX(-50%)',
+                    background: 'rgba(0, 0, 0, 0.6)',
+                    color: 'white',
+                    padding: '4px 8px',
+                    borderRadius: '4px',
+                    fontSize: '12px'
+                  }}>
+                    Haz clic para cambiar
+                  </div>
                 </div>
-              </div>
-            )}
+              ) : (
+                <div style={{
+                  textAlign: 'center',
+                  padding: '20px'
+                }}>
+                  <UploadOutlined style={{
+                    fontSize: '48px',
+                    color: '#40a9ff',
+                    marginBottom: '16px'
+                  }} />
+                  <div style={{
+                    fontSize: '16px',
+                    fontWeight: 'bold',
+                    color: '#262626',
+                    marginBottom: '8px'
+                  }}>
+                    Logo de la Institución
+                  </div>
+                  <div style={{
+                    fontSize: '14px',
+                    color: '#8c8c8c',
+                    marginBottom: '8px'
+                  }}>
+                    Haz clic o arrastra una imagen aquí
+                  </div>
+                  <div style={{
+                    fontSize: '12px',
+                    color: '#bfbfbf'
+                  }}>
+                    JPG, PNG, GIF (máx. 5MB)
+                  </div>
+                </div>
+              )}
+            </Upload.Dragger>
           </Form.Item>
 
           <Divider />
