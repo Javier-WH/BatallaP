@@ -1,5 +1,5 @@
 /* eslint-disable react-hooks/exhaustive-deps */
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, createContext, useContext } from 'react';
 import { Card, Tabs, Table, Button, Modal, Form, Input, Tag, message, Select, Space, Row, Col, Popconfirm, Checkbox, Collapse } from 'antd';
 import { PlusOutlined, DeleteOutlined, EditOutlined, BookOutlined, AppstoreOutlined, CheckCircleOutlined, HolderOutlined } from '@ant-design/icons';
 import api from '@/services/api';
@@ -20,6 +20,13 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+
+// Context for passing drag listeners to the drag handle cell
+interface RowContextProps {
+  setActivatorNodeRef?: (element: HTMLElement | null) => void;
+  listeners?: Record<string, unknown>;
+}
+const RowContext = createContext<RowContextProps>({});
 
 interface Period {
   id: number;
@@ -71,22 +78,34 @@ interface SortableRowProps {
 }
 
 const SortableRow: React.FC<SortableRowProps> = (props) => {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({
     id: props['data-row-key'],
   });
 
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
     transition,
-    cursor: 'move',
     opacity: isDragging ? 0.5 : 1,
     backgroundColor: isDragging ? '#fafafa' : undefined,
   };
 
   return (
-    <tr {...props} ref={setNodeRef} style={style} {...attributes} {...listeners}>
-      {props.children}
-    </tr>
+    <RowContext.Provider value={{ setActivatorNodeRef, listeners }}>
+      <tr {...props} ref={setNodeRef} style={style} {...attributes}>
+        {props.children}
+      </tr>
+    </RowContext.Provider>
+  );
+};
+
+const DragHandle: React.FC = () => {
+  const { setActivatorNodeRef, listeners } = useContext(RowContext);
+  return (
+    <HolderOutlined
+      ref={setActivatorNodeRef}
+      style={{ cursor: 'grab', color: '#999' }}
+      {...listeners}
+    />
   );
 };
 
@@ -117,9 +136,9 @@ const SortableSubjectItem: React.FC<SortableSubjectItemProps> = ({ subject, peri
   };
 
   return (
-    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
+    <div ref={setNodeRef} style={style} {...attributes}>
       <Space>
-        <HolderOutlined style={{ color: '#999' }} />
+        <HolderOutlined style={{ color: '#999', cursor: 'grab' }} {...listeners} />
         <BookOutlined />
         <span>{subject.name}</span>
         {subject.subjectGroup && (
@@ -625,7 +644,7 @@ const AcademicManagement: React.FC = () => {
           title: '',
           key: 'drag',
           width: 40,
-          render: () => <HolderOutlined style={{ cursor: 'move', color: '#999' }} />,
+          render: () => <DragHandle />,
         }]
       : []),
     ...(type === 'grade'

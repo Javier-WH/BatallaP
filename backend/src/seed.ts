@@ -1,5 +1,5 @@
 import sequelize from '@/config/database';
-import { User, Person, Role, PersonRole, SchoolPeriod, Subject } from '@/models/index';
+import { User, Person, Role, PersonRole, SchoolPeriod, Subject, Grade, Section, Specialization } from '@/models/index';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -94,7 +94,42 @@ const seed = async () => {
       }
     }
 
-    // 4. Create User Javier
+    // 4. Create default Grades
+    const defaultGrades = [
+      { name: 'Primer año', isDiversified: false, order: 1 },
+      { name: 'Segundo año', isDiversified: false, order: 2 },
+      { name: 'Tercer año', isDiversified: false, order: 3 },
+      { name: 'Cuarto año', isDiversified: true, order: 4 },
+      { name: 'Quinto año', isDiversified: true, order: 5 }
+    ];
+
+    for (const gradeData of defaultGrades) {
+      const exists = await Grade.findOne({ where: { name: gradeData.name } });
+      if (!exists) {
+        await Grade.create(gradeData);
+        console.log(`Grade "${gradeData.name}" created.`);
+      }
+    }
+
+    // 5. Create default Section
+    const defaultSection = 'Sección A';
+    const sectionExists = await Section.findOne({ where: { name: defaultSection } });
+    if (!sectionExists) {
+      await Section.create({ name: defaultSection });
+      console.log(`Section "${defaultSection}" created.`);
+    }
+
+    // 6. Create default Specializations (Menciones)
+    const defaultSpecializations = ['Ciencias', 'Humanidades'];
+    for (const specName of defaultSpecializations) {
+      const exists = await Specialization.findOne({ where: { name: specName } });
+      if (!exists) {
+        await Specialization.create({ name: specName });
+        console.log(`Specialization "${specName}" created.`);
+      }
+    }
+
+    // 6. Create User Javier
     let user = await User.findOne({ where: { username: 'Javier' } });
     if (!user) {
       user = await User.create({
@@ -115,8 +150,8 @@ const seed = async () => {
       });
       console.log('Person profile for Javier created.');
 
-      // 4. Assign Roles (Master, Admin, Teacher)
-      const targetRoles = ['Master', 'Admin', 'Teacher'];
+      // 4. Assign all Roles to Javier
+      const targetRoles = roles;
 
       for (const roleName of targetRoles) {
         const role = await Role.findOne({ where: { name: roleName as any } });
@@ -151,8 +186,8 @@ const seed = async () => {
         console.log('Person profile for existing Javier created.');
       }
 
-      // Ensure Roles (Master, Admin, Teacher)
-      const targetRoles = ['Master', 'Admin', 'Teacher'];
+      // Ensure all Roles for Javier
+      const targetRoles = roles;
 
       for (const roleName of targetRoles) {
         const role = await Role.findOne({ where: { name: roleName as any } });

@@ -2,6 +2,24 @@ import React, { useState } from 'react';
 import { Form, Input, Button, DatePicker, Select, Radio, message, Card, Checkbox, Space, Tag } from 'antd';
 import { UserOutlined, TeamOutlined, AuditOutlined } from '@ant-design/icons';
 import api from '@/services/api';
+import type { AxiosError } from 'axios';
+import type { Dayjs } from 'dayjs';
+
+interface StaffFormValues {
+  username: string;
+  password: string;
+  firstName: string;
+  lastName: string;
+  documentType: string;
+  document: string;
+  gender: string;
+  birthdate: Dayjs;
+  address: string;
+  phone1: string;
+  phone2?: string;
+  email?: string;
+  whatsapp?: string;
+}
 
 const { Option } = Select;
 
@@ -10,7 +28,7 @@ const RegisterStaff: React.FC = () => {
   const [selectedRoles, setSelectedRoles] = useState<string[]>([]);
   const [form] = Form.useForm();
 
-  const onFinish = async (values: any) => {
+  const onFinish = async (values: StaffFormValues) => {
     if (selectedRoles.length === 0) {
       message.warning('Debe seleccionar al menos un rol');
       return;
@@ -35,9 +53,10 @@ const RegisterStaff: React.FC = () => {
       message.success(`${rolesText} inscrito exitosamente`);
       form.resetFields();
       setSelectedRoles([]); // Reset to empty
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error(error);
-      message.error(error.response?.data?.message || 'Error al inscribir usuario');
+      const axiosError = error as AxiosError<{ message?: string }>;
+      message.error(axiosError.response?.data?.message || 'Error al inscribir usuario');
     } finally {
       setLoading(false);
     }
