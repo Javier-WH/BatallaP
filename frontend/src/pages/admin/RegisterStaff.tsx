@@ -1,13 +1,13 @@
 import React, { useState } from 'react';
 import { Form, Input, Button, DatePicker, Select, Radio, message, Card, Checkbox, Space, Tag } from 'antd';
-import { UserOutlined, TeamOutlined } from '@ant-design/icons';
+import { UserOutlined, TeamOutlined, AuditOutlined } from '@ant-design/icons';
 import api from '@/services/api';
 
 const { Option } = Select;
 
 const RegisterStaff: React.FC = () => {
   const [loading, setLoading] = useState(false);
-  const [selectedRoles, setSelectedRoles] = useState<string[]>(['Teacher']);
+  const [selectedRoles, setSelectedRoles] = useState<string[]>([]);
   const [form] = Form.useForm();
 
   const onFinish = async (values: any) => {
@@ -26,10 +26,15 @@ const RegisterStaff: React.FC = () => {
 
       await api.post('/auth/register', payload);
 
-      const rolesText = selectedRoles.map(r => r === 'Teacher' ? 'Profesor' : 'Representante').join(' y ');
+      const rolesText = selectedRoles.map(r => {
+        if (r === 'Teacher') return 'Profesor';
+        if (r === 'Tutor') return 'Representante';
+        if (r === 'StudyControl') return 'Control de Estudios';
+        return r;
+      }).join(' y ');
       message.success(`${rolesText} inscrito exitosamente`);
       form.resetFields();
-      setSelectedRoles(['Teacher']); // Reset to default
+      setSelectedRoles([]); // Reset to empty
     } catch (error: any) {
       console.error(error);
       message.error(error.response?.data?.message || 'Error al inscribir usuario');
@@ -48,8 +53,13 @@ const RegisterStaff: React.FC = () => {
 
   const getRoleLabel = () => {
     if (selectedRoles.length === 0) return 'Sin rol seleccionado';
-    if (selectedRoles.length === 2) return 'Profesor y Representante';
-    return selectedRoles[0] === 'Teacher' ? 'Profesor' : 'Representante';
+    const labels = selectedRoles.map(r => {
+      if (r === 'Teacher') return 'Profesor';
+      if (r === 'Tutor') return 'Representante';
+      if (r === 'StudyControl') return 'Control de Estudios';
+      return r;
+    });
+    return labels.join(' y ');
   };
 
   return (
@@ -73,7 +83,7 @@ const RegisterStaff: React.FC = () => {
             border: '1px solid #e0e0e0'
           }}>
             <h4 style={{ margin: 0, marginBottom: 12, color: '#333' }}>Tipo de Usuario</h4>
-            <Space size="large">
+            <Space size="large" wrap>
               <Checkbox
                 checked={selectedRoles.includes('Teacher')}
                 onChange={(e) => handleRoleChange('Teacher', e.target.checked)}
@@ -90,6 +100,15 @@ const RegisterStaff: React.FC = () => {
                 <Space>
                   <TeamOutlined style={{ color: selectedRoles.includes('Tutor') ? '#1890ff' : '#999' }} />
                   <span style={{ fontWeight: selectedRoles.includes('Tutor') ? 600 : 400 }}>Representante</span>
+                </Space>
+              </Checkbox>
+              <Checkbox
+                checked={selectedRoles.includes('StudyControl')}
+                onChange={(e) => handleRoleChange('StudyControl', e.target.checked)}
+              >
+                <Space>
+                  <AuditOutlined style={{ color: selectedRoles.includes('StudyControl') ? '#722ed1' : '#999' }} />
+                  <span style={{ fontWeight: selectedRoles.includes('StudyControl') ? 600 : 400 }}>Control de Estudios</span>
                 </Space>
               </Checkbox>
             </Space>
@@ -222,10 +241,10 @@ const RegisterStaff: React.FC = () => {
               {selectedRoles.map(role => (
                 <Tag
                   key={role}
-                  color={role === 'Teacher' ? 'green' : 'blue'}
+                  color={role === 'Teacher' ? 'green' : role === 'Tutor' ? 'blue' : 'purple'}
                   style={{ marginLeft: 4 }}
                 >
-                  {role === 'Teacher' ? 'Profesor' : 'Representante'}
+                  {role === 'Teacher' ? 'Profesor' : role === 'Tutor' ? 'Representante' : 'Control de Estudios'}
                 </Tag>
               ))}
               {selectedRoles.length === 0 && <Tag color="error">Ninguno</Tag>}

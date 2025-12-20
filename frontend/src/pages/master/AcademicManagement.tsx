@@ -175,7 +175,7 @@ const AcademicManagement: React.FC = () => {
   const [specializationModalVisible, setSpecializationModalVisible] = useState(false);
   const [selectedGradeForStructure, setSelectedGradeForStructure] = useState<Grade | null>(null);
   const [selectedSpecializationId, setSelectedSpecializationId] = useState<number | null>(null);
-  const [activeSubjectDragId, setActiveSubjectDragId] = useState<string | null>(null);
+
 
   const [editSubjectGroupVisible, setEditSubjectGroupVisible] = useState(false);
   const [editSubjectGroupForm] = Form.useForm();

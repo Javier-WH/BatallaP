@@ -329,6 +329,7 @@ const EditUser: React.FC = () => {
                 <Option value="Student">Estudiante</Option>
                 <Option value="Tutor">Representante</Option>
                 <Option value="Teacher">Profesor</Option>
+                <Option value="StudyControl">Control de Estudios</Option>
                 <Option value="Admin" disabled={!isMaster}>Admin {!isMaster && '(Restringido)'}</Option>
                 <Option value="Master" disabled={!isMaster}>Master {!isMaster && '(Restringido)'}</Option>
               </Select>
