@@ -3,8 +3,85 @@ import { Form, Input, Button, DatePicker, Select, Radio, message, Card, Spin, Ta
 import { BookOutlined } from '@ant-design/icons';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '@/services/api';
-import dayjs from 'dayjs';
+import dayjs, { Dayjs } from 'dayjs';
 import { useAuth } from '@/context/AuthContext';
+import type { AxiosError } from 'axios';
+
+interface Role {
+  id: number;
+  name: string;
+}
+
+interface Section {
+  id: number;
+  name: string;
+}
+
+interface Grade {
+  id: number;
+  name: string;
+}
+
+interface Subject {
+  id: number;
+  name: string;
+}
+
+interface PeriodGrade {
+  id: number;
+  grade?: Grade;
+}
+
+interface PeriodGradeSubject {
+  id: number;
+  subject?: Subject;
+  periodGrade?: PeriodGrade;
+}
+
+interface TeachingAssignment {
+  id: number;
+  periodGradeSubject?: PeriodGradeSubject;
+  section?: Section;
+}
+
+interface Period {
+  id: number;
+  name: string;
+  period: string;
+}
+
+interface InscriptionData {
+  id: number;
+  schoolPeriodId: number;
+  gradeId: number;
+  sectionId: number;
+  period?: Period;
+}
+
+interface EnrollStructureItem {
+  gradeId: number;
+  grade?: Grade;
+  sections?: Section[];
+}
+
+interface EditUserFormValues {
+  firstName: string;
+  lastName: string;
+  documentType: string;
+  document: string;
+  gender: string;
+  birthdate: Dayjs | null;
+  username?: string;
+  password?: string;
+  address?: string;
+  phone1?: string;
+  phone2?: string;
+  email?: string;
+  whatsapp?: string;
+  roles: string[];
+  gradeId?: number;
+  sectionId?: number;
+}
 
 const { Option } = Select;
 
@@ -20,9 +97,9 @@ const EditUser: React.FC = () => {
 
   const [isStudent, setIsStudent] = useState(false);
   const [isTeacher, setIsTeacher] = useState(false);
-  const [teachingAssignments, setTeachingAssignments] = useState<any[]>([]);
-  const [inscriptionData, setInscriptionData] = useState<any>(null);
-  const [enrollStructure, setEnrollStructure] = useState<any[]>([]);
+  const [teachingAssignments, setTeachingAssignments] = useState<TeachingAssignment[]>([]);
+  const [inscriptionData, setInscriptionData] = useState<InscriptionData | null>(null);
+  const [enrollStructure, setEnrollStructure] = useState<EnrollStructureItem[]>([]);
   const [selectedGradeId, setSelectedGradeId] = useState<number | null>(null);
   const [targetUserRoles, setTargetUserRoles] = useState<string[]>([]);
   const [hasAccount, setHasAccount] = useState(false);
@@ -36,7 +113,7 @@ const EditUser: React.FC = () => {
     const fetchUser = async () => {
       try {
         const { data } = await api.get(`/users/${id}`);
-        const userRoles = data.roles?.map((r: any) => r.name) || [];
+        const userRoles = data.roles?.map((r: Role) => r.name) || [];
         setTargetUserRoles(userRoles);
 
         const hasUser = !!data.user;
@@ -94,7 +171,7 @@ const EditUser: React.FC = () => {
     if (id) fetchUser();
   }, [id, form, navigate, getBasePath]);
 
-  const onFinish = async (values: any) => {
+  const onFinish = async (values: EditUserFormValues) => {
     setSubmitting(true);
     try {
       const payload = {
@@ -117,9 +194,10 @@ const EditUser: React.FC = () => {
 
       message.success('Usuario actualizado exitosamente');
       navigate(`${getBasePath()}/search`);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error(error);
-      message.error(error.response?.data?.message || 'Error al actualizar usuario');
+      const axiosError = error as AxiosError<{ message?: string }>;
+      message.error(axiosError.response?.data?.message || 'Error al actualizar usuario');
     } finally {
       setSubmitting(false);
     }
@@ -139,9 +217,10 @@ const EditUser: React.FC = () => {
       setHasAccount(false);
       setShowAccountFields(false);
       form.setFieldsValue({ username: '', password: '' });
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error(error);
-      message.error(error.response?.data?.message || 'Error al eliminar acceso');
+      const axiosError = error as AxiosError<{ message?: string }>;
+      message.error(axiosError.response?.data?.message || 'Error al eliminar acceso');
     } finally {
       setSubmitting(false);
     }
@@ -308,7 +387,7 @@ const EditUser: React.FC = () => {
                 </Form.Item>
                 <Form.Item name="sectionId" label="Sección">
                   <Select placeholder="Seleccione Sección" disabled={!selectedGradeId} allowClear>
-                    {getSectionsForGrade(selectedGradeId).map((sec: any) => (
+                    {getSectionsForGrade(selectedGradeId).map((sec: Section) => (
                       <Option key={sec.id} value={sec.id}>{sec.name}</Option>
                     ))}
                   </Select>
@@ -343,7 +422,7 @@ const EditUser: React.FC = () => {
                     size="small"
                     bordered
                     dataSource={teachingAssignments}
-                    renderItem={(item: any) => (
+                    renderItem={(item: TeachingAssignment) => (
                       <List.Item>
                         <Space>
                           <BookOutlined style={{ color: '#1890ff' }} />
