@@ -8,7 +8,9 @@
     "dev": "nodemon -r tsconfig-paths/register src/server.ts",
     "build": "tsc",
     "start": "node dist/src/server.js",
-    "seed": "npx ts-node -r tsconfig-paths/register src/seed.ts"
+    "seed": "npx ts-node -r tsconfig-paths/register src/seed.ts",
+    "db:sync-only": "npx ts-node -r tsconfig-paths/register -e \"(async () => { const sequelize = (await import('./src/config/database')).default; await import('./src/models/index'); await sequelize.authenticate(); await sequelize.sync(); console.log('All models were synchronized successfully.'); })().catch((e) => { console.error(e); process.exit(1); });\"",
+    "db:sync": "npm run db:sync-only && npm run seed"
   },
   "keywords": [],
   "author": "",
