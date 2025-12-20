@@ -23,7 +23,7 @@ export const getTeachers = async (req: Request, res: Response) => {
         {
           model: Role,
           as: 'roles',
-          where: { name: 'Teacher' },
+          where: { name: 'Profesor' },
           through: { attributes: [] }
         },
         {

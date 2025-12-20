@@ -121,11 +121,11 @@ const EditUser: React.FC = () => {
         setShowAccountFields(hasUser);
 
         const studentCheck = userRoles.some((r: string) =>
-          ['Student', 'Estudiante', 'Alumno'].includes(r)
+          ['Alumno'].includes(r)
         );
         setIsStudent(studentCheck);
 
-        const teacherCheck = userRoles.includes('Teacher');
+        const teacherCheck = userRoles.includes('Profesor');
         setIsTeacher(teacherCheck);
         if (teacherCheck) {
           setTeachingAssignments(data.teachingAssignments || []);
@@ -226,7 +226,7 @@ const EditUser: React.FC = () => {
     }
   };
 
-  const targetHasRestrictedRoles = targetUserRoles.includes('Master') || targetUserRoles.includes('Admin');
+  const targetHasRestrictedRoles = targetUserRoles.includes('Master') || targetUserRoles.includes('Administrador');
 
   if (loading) return <div style={{ display: 'flex', justifyContent: 'center', padding: 50 }}><Spin size="large" /></div>;
 

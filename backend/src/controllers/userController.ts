@@ -253,7 +253,7 @@ export const deleteUserAccount = async (req: Request, res: Response) => {
     // cast to any to access included roles from association in plain sequelize
     const roles = (person as any).roles || [];
     const targetHasRestrictedRoles = roles.some((r: any) =>
-      ['Master', 'Admin'].includes(r.name)
+      ['Master', 'Administrador'].includes(r.name)
     );
 
     if (targetHasRestrictedRoles && !isMaster) {

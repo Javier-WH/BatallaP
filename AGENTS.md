@@ -145,9 +145,11 @@ Los componentes en esta carpeta detectan automáticamente el rol del usuario act
 | Rol | Descripción | Permisos principales |
 |-----|-------------|---------------------|
 | **Master** | Super administrador | Gestión completa del sistema académico |
-| **Admin** | Administrador | Inscripciones, búsqueda de usuarios |
-| **Teacher** | Profesor | (Por implementar) |
-| **Student** | Estudiante | (Por implementar) |
+| **Administrador** | Administrador | Inscripciones, búsqueda de usuarios |
+| **Control de Estudios** | Control de Estudios | (Por implementar) |
+| **Profesor** | Profesor | Gestión de calificaciones y evaluaciones |
+| **Representante** | Representante | (Por implementar) |
+| **Alumno** | Estudiante | Acceso a calificaciones y evaluaciones |
 
 ---
 

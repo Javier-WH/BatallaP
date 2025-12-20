@@ -5,15 +5,28 @@ import api from '@/services/api';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 
+interface Role {
+  id: number;
+  name: string;
+}
+
+interface User {
+  id: number;
+  firstName: string;
+  lastName: string;
+  document: string;
+  roles: Role[];
+}
+
 const { Search } = Input;
 
 const SearchUsers: React.FC = () => {
   const [loading, setLoading] = useState(false);
-  const [data, setData] = useState<any[]>([]);
+  const [data, setData] = useState<User[]>([]);
   const navigate = useNavigate();
   const { user } = useAuth();
 
-  // Check if current user has Master role
+  // Check if current user has Master role (Spanish: Master)
   const isMaster = user?.roles?.includes('Master') || false;
 
   const fetchUsers = async (q: string = '') => {
@@ -42,7 +55,7 @@ const SearchUsers: React.FC = () => {
     {
       title: 'Nombre',
       key: 'fullName',
-      render: (_: any, record: any) => `${record.firstName} ${record.lastName}`
+      render: (_: unknown, record: User) => `${record.firstName} ${record.lastName}`
     },
     {
       title: 'Documento',
@@ -52,21 +65,23 @@ const SearchUsers: React.FC = () => {
     {
       title: 'Roles',
       key: 'roles',
-      render: (_: any, record: any) => {
+      render: (_: unknown, record: User) => {
         const roleOrder: { [key: string]: number } = {
           'Master': 1,
-          'Admin': 2,
-          'Teacher': 3,
-          'Tutor': 4,
-          'Student': 5
+          'Administrador': 2,
+          'Control de Estudios': 3,
+          'Profesor': 4,
+          'Representante': 5,
+          'Alumno': 6
         };
 
         const wowColors: { [key: string]: { color: string, textColor: string, border?: string } } = {
           'Master': { color: '#ff8000', textColor: '#fff' }, // Legendary
-          'Admin': { color: '#a335ee', textColor: '#fff' },  // Epic
-          'Teacher': { color: '#0070dd', textColor: '#fff' }, // Rare
-          'Tutor': { color: '#ffffff', textColor: '#333', border: '1px solid #d9d9d9' },  // Common
-          'Student': { color: '#9d9d9d', textColor: '#fff' } // Trash
+          'Administrador': { color: '#a335ee', textColor: '#fff' },  // Epic
+          'Control de Estudios': { color: '#0070dd', textColor: '#fff' }, // Rare
+          'Profesor': { color: '#1eff00', textColor: '#000' }, // Uncommon
+          'Representante': { color: '#ffffff', textColor: '#333', border: '1px solid #d9d9d9' },  // Common
+          'Alumno': { color: '#9d9d9d', textColor: '#fff' } // Trash
         };
 
         const sortedRoles = [...(record.roles || [])].sort((a, b) => {
@@ -75,7 +90,7 @@ const SearchUsers: React.FC = () => {
 
         return (
           <Space size={4} wrap>
-            {sortedRoles.map((role: any) => {
+            {sortedRoles.map((role: Role) => {
               const style = wowColors[role.name] || { color: '#ccc', textColor: '#fff' };
               return (
                 <Tag
@@ -98,7 +113,7 @@ const SearchUsers: React.FC = () => {
     {
       title: 'Acciones',
       key: 'actions',
-      render: (_: any, record: any) => (
+      render: (_: unknown, record: User) => (
         <Button
           type="link"
           icon={<EditOutlined />}

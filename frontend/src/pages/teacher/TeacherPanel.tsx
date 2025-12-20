@@ -7,15 +7,92 @@ import dayjs from 'dayjs';
 const { Option } = Select;
 const { Title, Text } = Typography;
 
+interface PlanItemFormValues {
+  description: string;
+  percentage: number;
+  date: dayjs.Dayjs;
+}
+
+interface Qualification {
+  id: number;
+  evaluationPlanId: number;
+  score: number;
+  observations?: string;
+}
+
+interface InscriptionSubject {
+  id: number;
+  qualifications: Qualification[];
+}
+
+interface Student {
+  firstName: string;
+  lastName: string;
+  document: string;
+}
+
+interface StudentEnrollment {
+  id: number;
+  student: Student;
+  inscriptionSubjects: InscriptionSubject[];
+}
+
+interface EvaluationPlanItem {
+  id: number;
+  description: string;
+  percentage: number;
+  date: string;
+}
+
+interface Section {
+  id: number;
+  name: string;
+}
+
+interface Grade {
+  id: number;
+  name: string;
+}
+
+interface SchoolPeriod {
+  id: number;
+  name: string;
+}
+
+interface PeriodGrade {
+  id: number;
+  grade: Grade;
+  schoolPeriod: SchoolPeriod;
+}
+
+interface Subject {
+  id: number;
+  name: string;
+}
+
+interface PeriodGradeSubject {
+  id: number;
+  subject: Subject;
+  periodGrade: PeriodGrade;
+}
+
+interface Assignment {
+  id: number;
+  periodGradeSubjectId: number;
+  sectionId: number;
+  periodGradeSubject: PeriodGradeSubject;
+  section: Section;
+}
+
 const TeacherPanel: React.FC = () => {
   const [loading, setLoading] = useState(false);
-  const [assignments, setAssignments] = useState<any[]>([]);
+  const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [selectedAssignmentId, setSelectedAssignmentId] = useState<number | null>(null);
   const [selectedTerm, setSelectedTerm] = useState<number>(1);
-  const [evaluationPlan, setEvaluationPlan] = useState<any[]>([]);
-  const [students, setStudents] = useState<any[]>([]);
+  const [evaluationPlan, setEvaluationPlan] = useState<EvaluationPlanItem[]>([]);
+  const [students, setStudents] = useState<StudentEnrollment[]>([]);
   const [showPlanModal, setShowPlanModal] = useState(false);
-  const [editingItem, setEditingItem] = useState<any>(null);
+  const [editingItem, setEditingItem] = useState<EvaluationPlanItem | null>(null);
   const [planForm] = Form.useForm();
   const [activeTab, setActiveTab] = useState('1');
   const [maxGrade, setMaxGrade] = useState<number>(20);
@@ -76,8 +153,12 @@ const TeacherPanel: React.FC = () => {
     fetchPlanAndStudents();
   }, [fetchPlanAndStudents]);
 
-  const handleSavePlanItem = async (values: any) => {
+  const handleSavePlanItem = async (values: PlanItemFormValues) => {
     const assignment = assignments.find(a => a.id === selectedAssignmentId);
+    if (!assignment) {
+      message.error('No se pudo encontrar la asignación seleccionada');
+      return;
+    }
     const data = {
       ...values,
       periodGradeSubjectId: assignment.periodGradeSubjectId,
@@ -95,8 +176,9 @@ const TeacherPanel: React.FC = () => {
       }
       setShowPlanModal(false);
       fetchPlanAndStudents();
-    } catch (error: any) {
-      message.error(error.response?.data?.message || 'Error al guardar');
+    } catch (error: unknown) {
+      const err = error as { response?: { data?: { message?: string } } };
+      message.error(err.response?.data?.message || 'Error al guardar');
     }
   };
 
@@ -111,7 +193,7 @@ const TeacherPanel: React.FC = () => {
   };
 
 
-  const handleSaveScoreInGrid = async (enrollment: any, evalPlanId: number, score: number | null) => {
+  const handleSaveScoreInGrid = async (enrollment: StudentEnrollment, evalPlanId: number, score: number | null) => {
     const inscriptionSubjectId = enrollment.inscriptionSubjects?.[0]?.id;
 
     try {
@@ -131,12 +213,12 @@ const TeacherPanel: React.FC = () => {
 
   const planColumns = [
     { title: 'Descripción', dataIndex: 'description', key: 'description' },
-    { title: 'Peso (%)', dataIndex: 'percentage', key: 'percentage', render: (val: any) => `${val}%` },
-    { title: 'Fecha', dataIndex: 'date', key: 'date', render: (val: any) => dayjs(val).format('DD/MM/YYYY') },
+    { title: 'Peso (%)', dataIndex: 'percentage', key: 'percentage', render: (val: number) => `${val}%` },
+    { title: 'Fecha', dataIndex: 'date', key: 'date', render: (val: string) => dayjs(val).format('DD/MM/YYYY') },
     {
       title: 'Acciones',
       key: 'actions',
-      render: (_: any, record: any) => (
+      render: (_: unknown, record: EvaluationPlanItem) => (
         <Space>
           <Button icon={<EditOutlined />} onClick={() => { setEditingItem(record); planForm.setFieldsValue({ ...record, date: dayjs(record.date) }); setShowPlanModal(true); }} />
           <Button icon={<DeleteOutlined />} danger onClick={() => handleDeletePlanItem(record.id)} />
@@ -304,7 +386,7 @@ const TeacherPanel: React.FC = () => {
 
                           let rowTotal = 0;
                           evaluationPlan.forEach(item => {
-                            const q = studentQuals.find((sq: any) => sq.evaluationPlanId === item.id);
+                            const q = studentQuals.find((sq: Qualification) => sq.evaluationPlanId === item.id);
                             if (q) {
                               rowTotal += (Number(q.score) * Number(item.percentage)) / 100;
                             }
@@ -317,7 +399,7 @@ const TeacherPanel: React.FC = () => {
                                 <div style={{ fontSize: '12px', color: '#8c8c8c' }}>{enrollment.student?.document}</div>
                               </td>
                               {evaluationPlan.map((item, colIndex) => {
-                                const q = studentQuals.find((sq: any) => sq.evaluationPlanId === item.id);
+                                const q = studentQuals.find((sq: Qualification) => sq.evaluationPlanId === item.id);
                                 const currentScore = q ? q.score : null;
 
                                 return (
@@ -361,7 +443,7 @@ const TeacherPanel: React.FC = () => {
                                         }
                                       }}
                                       onBlur={(e) => {
-                                        const val = (e.target as any).value === '' ? null : Number((e.target as any).value);
+                                        const val = (e.target as HTMLInputElement).value === '' ? null : Number((e.target as HTMLInputElement).value);
                                         if (val !== currentScore) {
                                           handleSaveScoreInGrid(enrollment, item.id, val);
                                         }
