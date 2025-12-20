@@ -65,7 +65,7 @@ export const getEvaluationPlan = async (req: Request, res: Response) => {
     const { term, sectionId } = req.query;
 
     const where: any = { periodGradeSubjectId };
-    if (term) where.term = term;
+    if (term) where.termId = term; // Changed from where.term to where.termId
     if (sectionId) where.sectionId = sectionId;
 
     const plan = await EvaluationPlan.findAll({

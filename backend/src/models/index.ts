@@ -110,6 +110,9 @@ InscriptionSubject.belongsTo(Subject, { foreignKey: 'subjectId', as: 'subject' }
 PeriodGradeSubject.hasMany(EvaluationPlan, { foreignKey: 'periodGradeSubjectId', as: 'evaluationPlans' });
 EvaluationPlan.belongsTo(PeriodGradeSubject, { foreignKey: 'periodGradeSubjectId', as: 'periodGradeSubject' });
 
+Term.hasMany(EvaluationPlan, { foreignKey: 'termId', as: 'evaluationPlans' });
+EvaluationPlan.belongsTo(Term, { foreignKey: 'termId', as: 'term' });
+
 EvaluationPlan.hasMany(Qualification, { foreignKey: 'evaluationPlanId', as: 'qualifications' });
 Qualification.belongsTo(EvaluationPlan, { foreignKey: 'evaluationPlanId', as: 'evaluationPlan' });
 

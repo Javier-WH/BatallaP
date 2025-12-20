@@ -1,12 +1,13 @@
 import { DataTypes, Model, Optional } from 'sequelize';
 import sequelize from '@/config/database';
 import PeriodGradeSubject from './PeriodGradeSubject';
+import Term from './Term';
 
 interface EvaluationPlanAttributes {
   id: number;
   periodGradeSubjectId: number;
   sectionId: number;
-  term: number; // 1, 2, 3 (Lapsos)
+  termId: number; // Reference to Term model instead of hardcoded numbers
   description: string;
   percentage: number;
   date: Date;
@@ -18,7 +19,7 @@ class EvaluationPlan extends Model<EvaluationPlanAttributes, EvaluationPlanCreat
   public id!: number;
   public periodGradeSubjectId!: number;
   public sectionId!: number;
-  public term!: number;
+  public termId!: number; // Reference to Term model
   public description!: string;
   public percentage!: number;
   public date!: Date;
@@ -43,14 +44,10 @@ EvaluationPlan.init(
       type: DataTypes.INTEGER,
       allowNull: false
     },
-    term: {
+    termId: {
       type: DataTypes.INTEGER,
-      allowNull: false,
-      defaultValue: 1,
-      validate: {
-        min: 1,
-        max: 3
-      }
+      references: { model: Term, key: 'id' },
+      allowNull: false
     },
     description: {
       type: DataTypes.STRING,
@@ -79,13 +76,13 @@ EvaluationPlan.init(
           where: {
             periodGradeSubjectId: plan.periodGradeSubjectId,
             sectionId: plan.sectionId,
-            term: plan.term,
+            termId: plan.termId,
             id: { [Op.ne]: plan.id || 0 }
           }
         }) || 0;
 
         if (Number(currentSum) + Number(plan.percentage) > 100) {
-          throw new Error(`La suma de los porcentajes para el Lapso ${plan.term} no puede superar el 100%`);
+          throw new Error(`La suma de los porcentajes para este lapso no puede superar el 100%`);
         }
       }
     }

@@ -1,11 +1,66 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, Component, ErrorInfo, ReactNode } from 'react';
 import { Tabs, Card, Select, Table, Button, Modal, Form, Input, DatePicker, message, Space, Tag, Divider, Typography, InputNumber, Alert } from 'antd';
-import { BookOutlined, PlusOutlined, DeleteOutlined, EditOutlined } from '@ant-design/icons';
+import { BookOutlined, PlusOutlined, DeleteOutlined, EditOutlined, LockOutlined } from '@ant-design/icons';
 import api from '@/services/api';
 import dayjs from 'dayjs';
 
 const { Option } = Select;
 const { Title, Text } = Typography;
+
+// Error Boundary Component
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error?: Error;
+}
+
+interface ErrorBoundaryProps {
+  children: ReactNode;
+}
+
+class TeacherPanelErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error('TeacherPanel Error Boundary caught an error:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ padding: '20px', textAlign: 'center' }}>
+          <Alert
+            message="Error en el Panel del Profesor"
+            description={
+              <div>
+                <p>Ha ocurrido un error al cargar el panel del profesor.</p>
+                <p>Error: {this.state.error?.message}</p>
+                <p>Por favor, recarga la página o contacta al administrador.</p>
+                <Button
+                  type="primary"
+                  onClick={() => window.location.reload()}
+                  style={{ marginTop: 16 }}
+                >
+                  Recargar Página
+                </Button>
+              </div>
+            }
+            type="error"
+            showIcon
+          />
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
 
 interface PlanItemFormValues {
   description: string;
@@ -44,6 +99,38 @@ interface EvaluationPlanItem {
   date: string;
 }
 
+interface Subject {
+  id: number;
+  name: string;
+}
+
+interface Grade {
+  id: number;
+  name: string;
+}
+
+interface SchoolPeriod {
+  id: number;
+  name: string;
+}
+
+interface PeriodGrade {
+  id: number;
+  grade: Grade;
+  schoolPeriod: SchoolPeriod;
+}
+
+interface PeriodGradeSubject {
+  id: number;
+  subject: Subject;
+  periodGrade: PeriodGrade;
+}
+
+interface Section {
+  id: number;
+  name: string;
+}
+
 interface Term {
   id: number;
   name: string;
@@ -52,6 +139,14 @@ interface Term {
   closeDate?: string;
   schoolPeriodId: number;
   order: number;
+}
+
+interface Assignment {
+  id: number;
+  periodGradeSubjectId: number;
+  sectionId: number;
+  periodGradeSubject: PeriodGradeSubject;
+  section: Section;
 }
 
 const TeacherPanel: React.FC = () => {
@@ -98,14 +193,24 @@ const TeacherPanel: React.FC = () => {
 
   const fetchTerms = useCallback(async () => {
     try {
+      console.log('Fetching terms...');
       const res = await api.get('/academic/active');
+      console.log('Active period response:', res.data);
       if (res.data) {
         const termsRes = await api.get(`/terms?schoolPeriodId=${res.data.id}`);
+        console.log('Terms response:', termsRes.data);
         setAvailableTerms(termsRes.data);
         // Set first active term as default
         const activeTerm = termsRes.data.find((t: Term) => !t.isBlocked);
         if (activeTerm) {
+          console.log('Setting active term:', activeTerm.id);
           setSelectedTerm(activeTerm.id);
+        } else if (termsRes.data.length > 0) {
+          console.log('No active terms, setting first term:', termsRes.data[0].id);
+          setSelectedTerm(termsRes.data[0].id);
+        } else {
+          console.log('No terms available');
+          setSelectedTerm(null);
         }
       }
     } catch (error) {
@@ -114,9 +219,18 @@ const TeacherPanel: React.FC = () => {
   }, []);
 
   const fetchPlanAndStudents = useCallback(async () => {
-    if (!selectedAssignmentId) return;
+    if (!selectedAssignmentId || !selectedTerm) {
+      console.log('fetchPlanAndStudents: Missing selectedAssignmentId or selectedTerm', { selectedAssignmentId, selectedTerm });
+      return;
+    }
+
     const assignment = assignments.find(a => a.id === selectedAssignmentId);
-    if (!assignment) return;
+    if (!assignment) {
+      console.log('fetchPlanAndStudents: Assignment not found', { selectedAssignmentId, assignments });
+      return;
+    }
+
+    console.log('fetchPlanAndStudents: Starting API calls', { assignment, selectedTerm });
 
     setLoading(true);
     try {
@@ -124,10 +238,27 @@ const TeacherPanel: React.FC = () => {
         api.get(`/evaluation/plan/${assignment.periodGradeSubjectId}?term=${selectedTerm}&sectionId=${assignment.sectionId}`),
         api.get(`/evaluation/students/${selectedAssignmentId}`)
       ]);
-      setEvaluationPlan(planRes.data);
-      setStudents(studentsRes.data);
-    } catch {
-      message.error('Error al cargar datos');
+
+      console.log('fetchPlanAndStudents: API responses received', {
+        planData: planRes.data,
+        studentsData: studentsRes.data
+      });
+
+      setEvaluationPlan(planRes.data || []);
+      setStudents(studentsRes.data || []);
+    } catch (error: any) {
+      console.error('fetchPlanAndStudents: API call failed', error);
+      console.error('Error details:', {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status
+      });
+
+      // Set empty arrays on error to prevent rendering issues
+      setEvaluationPlan([]);
+      setStudents([]);
+
+      message.error('Error al cargar datos del lapso');
     } finally {
       setLoading(false);
     }
@@ -220,8 +351,8 @@ const TeacherPanel: React.FC = () => {
   ];
 
 
-  const currentAssignment = assignments.find(a => a.id === selectedAssignmentId);
-  const totalPercentage = evaluationPlan.reduce((acc, curr) => acc + Number(curr.percentage), 0);
+  const currentAssignment = assignments?.find(a => a.id === selectedAssignmentId);
+  const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?.percentage || 0), 0) || 0;
 
   return (
     <div style={{ padding: '8px 24px' }}>
@@ -269,8 +400,8 @@ const TeacherPanel: React.FC = () => {
               onChange={setSelectedAssignmentId}
             >
               {assignments.map(as => (
-                <Option key={as.id} value={as.id}>
-                  {as.periodGradeSubject?.subject?.name} - {as.periodGradeSubject?.periodGrade?.grade?.name} ({as.section?.name}) - {as.periodGradeSubject?.periodGrade?.schoolPeriod?.name}
+                <Option key={as?.id || Math.random()} value={as?.id}>
+                  {as?.periodGradeSubject?.subject?.name} - {as?.periodGradeSubject?.periodGrade?.grade?.name} ({as?.section?.name}) - {as?.periodGradeSubject?.periodGrade?.schoolPeriod?.name}
                 </Option>
               ))}
             </Select>
@@ -289,14 +420,24 @@ const TeacherPanel: React.FC = () => {
               disabled={availableTerms.length === 0}
             >
               {availableTerms.map(term => (
-                <Option key={term.id} value={term.id} disabled={term.isBlocked}>
+                <Option key={term.id} value={term.id}>
                   <Space>
                     {term.name}
                     {term.isBlocked && <LockOutlined style={{ color: '#ff4d4f' }} />}
+                    {term.isBlocked && <Text type="danger">(Bloqueado)</Text>}
                   </Space>
                 </Option>
               ))}
             </Select>
+            {selectedTerm && availableTerms.find(t => t.id === selectedTerm)?.isBlocked && (
+              <Alert
+                message="Lapso bloqueado"
+                description="Este lapso está bloqueado. Puedes ver la información pero no modificarla."
+                type="warning"
+                showIcon
+                style={{ marginTop: 8 }}
+              />
+            )}
           </Space>
         </div>
       </Card>
@@ -502,4 +643,10 @@ const TeacherPanel: React.FC = () => {
   );
 };
 
-export default TeacherPanel;
+export default function TeacherPanelWithErrorBoundary() {
+  return (
+    <TeacherPanelErrorBoundary>
+      <TeacherPanel />
+    </TeacherPanelErrorBoundary>
+  );
+}
