@@ -3,13 +3,12 @@ import { Layout, Menu, Button, theme } from 'antd';
 import {
   MenuFoldOutlined,
   MenuUnfoldOutlined,
-  UploadOutlined,
   UserOutlined,
-  VideoCameraOutlined,
   LogoutOutlined,
   DashboardOutlined,
   TeamOutlined,
-  BookOutlined
+  BookOutlined,
+  FileTextOutlined
 } from '@ant-design/icons';
 import { Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
@@ -29,7 +28,7 @@ const MainLayout: React.FC = () => {
     navigate('/');
   }
 
-  const menuItems: any[] = [
+  const menuItems: { key: string; icon: React.ReactNode; label: string; onClick: () => void }[] = [
     {
       key: 'dashboard',
       icon: <DashboardOutlined />,
@@ -62,6 +61,15 @@ const MainLayout: React.FC = () => {
       icon: <BookOutlined />,
       label: 'Profesor',
       onClick: () => navigate('/teacher')
+    });
+  }
+
+  if (user?.roles.includes('StudyControl')) {
+    menuItems.push({
+      key: 'control-estudios-module',
+      icon: <FileTextOutlined />,
+      label: 'Control de Estudios',
+      onClick: () => navigate('/control-estudios')
     });
   }
 

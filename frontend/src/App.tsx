@@ -25,6 +25,10 @@ import StudentDetail from '@/pages/student/StudentDetail';
 import SettingsManagement from '@/pages/master/SettingsManagement';
 import type { JSX } from 'react';
 
+// Control de Estudios Module Imports
+import ControlEstudiosLayout from '@/pages/control-estudios/ControlEstudiosLayout';
+import ControlEstudiosDashboard from '@/pages/control-estudios/Dashboard';
+
 // Protected Route Component
 const RequireAuth = ({ children, allowedRoles }: { children: JSX.Element; allowedRoles?: string[] }) => {
   const { user, loading } = useAuth();
@@ -90,6 +94,11 @@ function AppRoutes() {
           <Route path="academic" element={<AcademicManagement />} />
           <Route path="search" element={<SearchUsers />} />
           <Route path="edit/:id" element={<EditUser />} />
+        </Route>
+
+        {/* Nested Control de Estudios Module */}
+        <Route path="control-estudios" element={<RequireAuth allowedRoles={['StudyControl', 'Admin', 'Master']}><ControlEstudiosLayout /></RequireAuth>}>
+          <Route index element={<ControlEstudiosDashboard />} />
         </Route>
 
         {/* Nested Teacher Module */}
