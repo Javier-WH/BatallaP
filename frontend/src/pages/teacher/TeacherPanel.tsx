@@ -4,7 +4,6 @@ import { BookOutlined, PlusOutlined, DeleteOutlined, EditOutlined } from '@ant-d
 import api from '@/services/api';
 import dayjs from 'dayjs';
 
-const { TabPane } = Tabs;
 const { Option } = Select;
 const { Title, Text } = Typography;
 
@@ -26,7 +25,8 @@ const TeacherPanel: React.FC = () => {
       try {
         const res = await api.get('/settings/max_grade');
         if (res.data?.value) setMaxGrade(Number(res.data.value));
-      } catch (e) {
+      } catch {
+         
         console.error('Error fetching max_grade setting');
       }
     };
@@ -41,7 +41,7 @@ const TeacherPanel: React.FC = () => {
       if (res.data.length > 0) {
         setSelectedAssignmentId(res.data[0].id);
       }
-    } catch (error) {
+    } catch {
       message.error('Error al cargar asignaciones');
     } finally {
       setLoading(false);
@@ -61,7 +61,7 @@ const TeacherPanel: React.FC = () => {
       ]);
       setEvaluationPlan(planRes.data);
       setStudents(studentsRes.data);
-    } catch (error) {
+    } catch {
       message.error('Error al cargar datos');
     } finally {
       setLoading(false);
@@ -105,7 +105,7 @@ const TeacherPanel: React.FC = () => {
       await api.delete(`/evaluation/plan/${id}`);
       message.success('Item eliminado');
       fetchPlanAndStudents();
-    } catch (error) {
+    } catch {
       message.error('Error al eliminar');
     }
   };
@@ -124,7 +124,7 @@ const TeacherPanel: React.FC = () => {
       });
       // message.success(`Nota guardada para ${enrollment.student?.lastName}`);
       fetchPlanAndStudents();
-    } catch (error) {
+    } catch {
       message.error('Error al guardar nota');
     }
   };
@@ -222,164 +222,188 @@ const TeacherPanel: React.FC = () => {
         </div>
       </Card>
 
-      <Tabs activeKey={activeTab} onChange={setActiveTab} type="card">
-        <TabPane tab="Plan de Evaluación" key="1">
-          <Card extra={
-            <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditingItem(null); planForm.resetFields(); setShowPlanModal(true); }}>
-              Agregar Evaluación
-            </Button>
-          }>
-            <Table
-              loading={loading}
-              columns={planColumns}
-              dataSource={evaluationPlan}
-              rowKey="id"
-              pagination={false}
-            />
-            <Divider />
-            <div style={{ textAlign: 'right' }}>
-              <Text strong>Total Planificado (Lapso {selectedTerm}): </Text>
-              <Tag color={totalPercentage > 100 ? 'red' : totalPercentage === 100 ? 'green' : 'orange'}>
-                {totalPercentage}% / 100%
-              </Tag>
-            </div>
-          </Card>
-        </TabPane>
-
-        <TabPane tab="Calificaciones" key="2">
-          {evaluationPlan.length === 0 ? (
-            <Card style={{ textAlign: 'center', padding: '40px 0' }}>
-              <div style={{ marginBottom: 24 }}>
-                <Title level={4}>No hay Plan de Evaluación definido</Title>
-                <Text type="secondary">Para poder calificar este lapso, primero debe definir las actividades y sus porcentajes.</Text>
-              </div>
-              <Button type="primary" size="large" onClick={() => setActiveTab('1')}>
-                Crear Plan de Evaluación
-              </Button>
-            </Card>
-          ) : (
-            <Card bodyStyle={{ padding: 0 }} style={{ overflow: 'hidden' }}>
-              <div style={{ overflowX: 'auto', maxHeight: 'calc(100vh - 350px)' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                  <thead style={{ position: 'sticky', top: 0, zIndex: 10, background: '#fafafa' }}>
-                    <tr>
-                      <th style={{ padding: '12px 16px', borderBottom: '1px solid #f0f0f0', textAlign: 'left', minWidth: 250 }}>Estudiante</th>
-                      {evaluationPlan.map((item) => (
-                        <th key={item.id} style={{ padding: '12px 8px', borderBottom: '1px solid #f0f0f0', textAlign: 'center', minWidth: 100 }}>
-                          <div style={{ fontSize: '13px', fontWeight: 600 }}>{item.description}</div>
-                          <div style={{ fontSize: '11px', color: '#8c8c8c' }}>{item.percentage}%</div>
-                        </th>
-                      ))}
-                      <th style={{ padding: '12px 16px', borderBottom: '1px solid #f0f0f0', textAlign: 'center', minWidth: 80 }}>Total</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {[...students]
-                      .sort((a, b) => {
-                        const nameA = `${a.student?.lastName} ${a.student?.firstName}`.toLowerCase();
-                        const nameB = `${b.student?.lastName} ${b.student?.firstName}`.toLowerCase();
-                        return nameB.localeCompare(nameA); // Order descendiente
-                      })
-                      .map((enrollment, rowIndex) => {
-                        const insSub = enrollment.inscriptionSubjects?.[0];
-                        const studentQuals = insSub?.qualifications || [];
-
-                        let rowTotal = 0;
-                        evaluationPlan.forEach(item => {
-                          const q = studentQuals.find((sq: any) => sq.evaluationPlanId === item.id);
-                          if (q) {
-                            rowTotal += (Number(q.score) * Number(item.percentage)) / 100;
-                          }
-                        });
-
-                        return (
-                          <tr key={enrollment.id} className="grading-row">
-                            <td style={{ padding: '8px 16px', borderBottom: '1px solid #f0f0f0', background: '#fff' }}>
-                              <div style={{ fontWeight: 500 }}>{enrollment.student?.lastName}, {enrollment.student?.firstName}</div>
-                              <div style={{ fontSize: '12px', color: '#8c8c8c' }}>{enrollment.student?.document}</div>
-                            </td>
-                            {evaluationPlan.map((item, colIndex) => {
-                              const q = studentQuals.find((sq: any) => sq.evaluationPlanId === item.id);
-                              const currentScore = q ? q.score : null;
-
-                              return (
-                                <td key={item.id} style={{ padding: '4px 8px', borderBottom: '1px solid #f0f0f0', textAlign: 'center' }}>
-                                  <InputNumber
-                                    id={`grade-${rowIndex}-${colIndex}`}
-                                    min={0}
-                                    max={maxGrade}
-                                    precision={2}
-                                    value={currentScore}
-                                    style={{ width: '80px' }}
-                                    onKeyDown={(e) => {
-                                      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter'].includes(e.key)) {
-                                        // Prevent default behavior for arrows to avoid changing number values while navigating
-                                        if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
-                                          e.preventDefault();
-                                        }
-
-                                        let nextRow = rowIndex;
-                                        let nextCol = colIndex;
-                                        if (e.key === 'ArrowUp') nextRow--;
-                                        if (e.key === 'ArrowDown' || e.key === 'Enter') {
-                                          if (e.key === 'Enter') e.preventDefault();
-                                          nextRow++;
-                                        }
-                                        if (e.key === 'ArrowLeft') nextCol--;
-                                        if (e.key === 'ArrowRight') nextCol++;
-
-                                        const nextInputId = `grade-${nextRow}-${nextCol}`;
-                                        setTimeout(() => {
-                                          const nextInput = document.getElementById(nextInputId);
-                                          if (nextInput) {
-                                            const inner = nextInput.querySelector('input');
-                                            if (inner) {
-                                              inner.focus();
-                                              inner.select();
-                                            } else {
-                                              nextInput.focus();
-                                            }
-                                          }
-                                        }, 0);
-                                      }
-                                    }}
-                                    onBlur={(e) => {
-                                      const val = (e.target as any).value === '' ? null : Number((e.target as any).value);
-                                      if (val !== currentScore) {
-                                        handleSaveScoreInGrid(enrollment, item.id, val);
-                                      }
-                                    }}
-                                  />
-                                </td>
-                              );
-                            })}
-                            <td style={{ padding: '8px 16px', borderBottom: '1px solid #f0f0f0', textAlign: 'center', background: '#fafafa', fontWeight: 'bold' }}>
-                              <Tag color={rowTotal >= (maxGrade * 0.5) ? 'green' : 'red'} style={{ margin: 0 }}>
-                                {rowTotal.toFixed(2)}
-                              </Tag>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                  </tbody>
-                </table>
-              </div>
-              {students.length === 0 && (
-                <div style={{ padding: '40px', textAlign: 'center' }}>
-                  <Alert message="No hay estudiantes inscritos en esta sección" type="info" />
+      <Tabs 
+        activeKey={activeTab} 
+        onChange={setActiveTab} 
+        type="card"
+        items={[
+          {
+            key: '1',
+            label: 'Plan de Evaluación',
+            children: (
+              <Card 
+                extra={
+                  <Button 
+                    type="primary" 
+                    icon={<PlusOutlined />} 
+                    onClick={() => { 
+                      setEditingItem(null); 
+                      planForm.resetFields(); 
+                      setShowPlanModal(true); 
+                    }}
+                  >
+                    Agregar Evaluación
+                  </Button>
+                }>
+                <Table
+                  loading={loading}
+                  columns={planColumns}
+                  dataSource={evaluationPlan}
+                  rowKey="id"
+                  pagination={false}
+                />
+                <Divider />
+                <div style={{ textAlign: 'right' }}>
+                  <Text strong>Total Planificado (Lapso {selectedTerm}): </Text>
+                  <Tag color={totalPercentage > 100 ? 'red' : totalPercentage === 100 ? 'green' : 'orange'}>
+                    {totalPercentage}% / 100%
+                  </Tag>
                 </div>
-              )}
-            </Card>
-          )}
-        </TabPane>
-      </Tabs>
+              </Card>
+            )
+          },
+          {
+            key: '2',
+            label: 'Calificaciones',
+            children: evaluationPlan.length === 0 ? (
+              <Card style={{ textAlign: 'center', padding: '40px 0' }}>
+                <div style={{ marginBottom: 24 }}>
+                  <Title level={4}>No hay Plan de Evaluación definido</Title>
+                  <Text type="secondary">Para poder calificar este lapso, primero debe definir las actividades y sus porcentajes.</Text>
+                </div>
+                <Button type="primary" size="large" onClick={() => setActiveTab('1')}>
+                  Crear Plan de Evaluación
+                </Button>
+              </Card>
+            ) : (
+              <Card bodyStyle={{ padding: 0 }} style={{ overflow: 'hidden' }}>
+                <div style={{ overflowX: 'auto', maxHeight: 'calc(100vh - 350px)' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead style={{ position: 'sticky', top: 0, zIndex: 10, background: '#fafafa' }}>
+                      <tr>
+                        <th style={{ padding: '12px 16px', borderBottom: '1px solid #f0f0f0', textAlign: 'left', minWidth: 250 }}>Estudiante</th>
+                        {evaluationPlan.map((item) => (
+                          <th key={item.id} style={{ padding: '12px 8px', borderBottom: '1px solid #f0f0f0', textAlign: 'center', minWidth: 100 }}>
+                            <div style={{ fontSize: '13px', fontWeight: 600 }}>{item.description}</div>
+                            <div style={{ fontSize: '11px', color: '#8c8c8c' }}>{item.percentage}%</div>
+                          </th>
+                        ))}
+                        <th style={{ padding: '12px 16px', borderBottom: '1px solid #f0f0f0', textAlign: 'center', minWidth: 80 }}>Total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {[...students]
+                        .sort((a, b) => {
+                          const nameA = `${a.student?.lastName} ${a.student?.firstName}`.toLowerCase();
+                          const nameB = `${b.student?.lastName} ${b.student?.firstName}`.toLowerCase();
+                          return nameB.localeCompare(nameA); // Order descendiente
+                        })
+                        .map((enrollment, rowIndex) => {
+                          const insSub = enrollment.inscriptionSubjects?.[0];
+                          const studentQuals = insSub?.qualifications || [];
+
+                          let rowTotal = 0;
+                          evaluationPlan.forEach(item => {
+                            const q = studentQuals.find((sq: any) => sq.evaluationPlanId === item.id);
+                            if (q) {
+                              rowTotal += (Number(q.score) * Number(item.percentage)) / 100;
+                            }
+                          });
+
+                          return (
+                            <tr key={enrollment.id} className="grading-row">
+                              <td style={{ padding: '8px 16px', borderBottom: '1px solid #f0f0f0', background: '#fff' }}>
+                                <div style={{ fontWeight: 500 }}>{enrollment.student?.lastName}, {enrollment.student?.firstName}</div>
+                                <div style={{ fontSize: '12px', color: '#8c8c8c' }}>{enrollment.student?.document}</div>
+                              </td>
+                              {evaluationPlan.map((item, colIndex) => {
+                                const q = studentQuals.find((sq: any) => sq.evaluationPlanId === item.id);
+                                const currentScore = q ? q.score : null;
+
+                                return (
+                                  <td key={item.id} style={{ padding: '4px 8px', borderBottom: '1px solid #f0f0f0', textAlign: 'center' }}>
+                                    <InputNumber
+                                      id={`grade-${rowIndex}-${colIndex}`}
+                                      min={0}
+                                      max={maxGrade}
+                                      precision={2}
+                                      value={currentScore}
+                                      style={{ width: '80px' }}
+                                      onKeyDown={(e) => {
+                                        if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter'].includes(e.key)) {
+                                          if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+                                            e.preventDefault();
+                                          }
+
+                                          let nextRow = rowIndex;
+                                          let nextCol = colIndex;
+                                          if (e.key === 'ArrowUp') nextRow--;
+                                          if (e.key === 'ArrowDown' || e.key === 'Enter') {
+                                            if (e.key === 'Enter') e.preventDefault();
+                                            nextRow++;
+                                          }
+                                          if (e.key === 'ArrowLeft') nextCol--;
+                                          if (e.key === 'ArrowRight') nextCol++;
+
+                                          const nextInputId = `grade-${nextRow}-${nextCol}`;
+                                          setTimeout(() => {
+                                            const nextInput = document.getElementById(nextInputId);
+                                            if (nextInput) {
+                                              const inner = nextInput.querySelector('input');
+                                              if (inner) {
+                                                inner.focus();
+                                                inner.select();
+                                              } else {
+                                                nextInput.focus();
+                                              }
+                                            }
+                                          }, 0);
+                                        }
+                                      }}
+                                      onBlur={(e) => {
+                                        const val = (e.target as any).value === '' ? null : Number((e.target as any).value);
+                                        if (val !== currentScore) {
+                                          handleSaveScoreInGrid(enrollment, item.id, val);
+                                        }
+                                      }}
+                                    />
+                                  </td>
+                                );
+                              })}
+                              <td style={{ padding: '8px 16px', borderBottom: '1px solid #f0f0f0', textAlign: 'center', background: '#fafafa', fontWeight: 'bold' }}>
+                                <Tag color={rowTotal >= (maxGrade * 0.5) ? 'green' : 'red'} style={{ margin: 0 }}>
+                                  {rowTotal.toFixed(2)}
+                                </Tag>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                    </tbody>
+                  </table>
+                </div>
+                {students.length === 0 && (
+                  <div style={{ padding: '40px', textAlign: 'center' }}>
+                    <Alert message="No hay estudiantes inscritos en esta sección" type="info" />
+                  </div>
+                )}
+              </Card>
+            )
+          }
+        ]}
+      />
 
       <Modal
         title={editingItem ? "Editar Evaluación" : "Nueva Evaluación"}
         open={showPlanModal}
         onCancel={() => setShowPlanModal(false)}
         onOk={() => planForm.submit()}
-        destroyOnClose
+        destroyOnHidden
+        footer={[
+          <Button key="cancel" onClick={() => setShowPlanModal(false)}>Cancelar</Button>,
+          <Button key="submit" type="primary" onClick={() => planForm.submit()}>
+            {editingItem ? 'Actualizar' : 'Guardar'}
+          </Button>
+        ]}
       >
         <Form form={planForm} layout="vertical" onFinish={handleSavePlanItem}>
           <Form.Item name="description" label="Descripción de la actividad" rules={[{ required: true }]}>

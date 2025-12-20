@@ -3,14 +3,14 @@ import sequelize from '@/config/database';
 
 interface RoleAttributes {
   id: number;
-  name: 'Master' | 'Admin' | 'StudyControl' | 'Teacher' | 'Tutor' | 'Student';
+  name: 'Master' | 'Administrador' | 'Control de Estudios' | 'Profesor' | 'Representante' | 'Alumno';
 }
 
 interface RoleCreationAttributes extends Optional<RoleAttributes, 'id'> { }
 
 class Role extends Model<RoleAttributes, RoleCreationAttributes> implements RoleAttributes {
   public id!: number;
-  public name!: 'Master' | 'Admin' | 'StudyControl' | 'Teacher' | 'Tutor' | 'Student';
+  public name!: 'Master' | 'Administrador' | 'Control de Estudios' | 'Profesor' | 'Representante' | 'Alumno';
 
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
@@ -24,7 +24,7 @@ Role.init(
       primaryKey: true,
     },
     name: {
-      type: DataTypes.ENUM('Master', 'Admin', 'StudyControl', 'Teacher', 'Tutor', 'Student'),
+      type: DataTypes.STRING(30), // Increased length to accommodate Spanish role names
       allowNull: false,
       unique: true,
     },

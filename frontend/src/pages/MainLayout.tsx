@@ -28,50 +28,71 @@ const MainLayout: React.FC = () => {
     navigate('/');
   }
 
-  const menuItems: { key: string; icon: React.ReactNode; label: string; onClick: () => void }[] = [
+  // Define all possible menu items with their order and specific role access
+  const allMenuItems = [
     {
       key: 'dashboard',
       icon: <DashboardOutlined />,
       label: 'Dashboard',
-      onClick: () => navigate('/dashboard')
-    }
-  ];
-
-  if (user?.roles.includes('Master')) {
-    menuItems.push({
+      roles: ['Master', 'Administrador', 'Profesor', 'Control de Estudios', 'Representante', 'Alumno'],
+      path: '/dashboard'
+    },
+    {
       key: 'master-module',
-      icon: <UserOutlined />, // You can change this icon
+      icon: <UserOutlined />,
       label: 'Master',
-      onClick: () => navigate('/master')
-    });
-  }
-
-  if (user?.roles.includes('Admin')) {
-    menuItems.push({
+      roles: ['Master'],
+      path: '/master'
+    },
+    {
       key: 'admin-module',
       icon: <TeamOutlined />,
-      label: 'Admin',
-      onClick: () => navigate('/admin')
-    });
-  }
-
-  if (user?.roles.includes('Teacher')) {
-    menuItems.push({
-      key: 'teacher-module',
-      icon: <BookOutlined />,
-      label: 'Profesor',
-      onClick: () => navigate('/teacher')
-    });
-  }
-
-  if (user?.roles.includes('StudyControl')) {
-    menuItems.push({
+      label: 'Administrador',
+      roles: ['Administrador'],
+      path: '/admin'
+    },
+    {
       key: 'control-estudios-module',
       icon: <FileTextOutlined />,
       label: 'Control de Estudios',
-      onClick: () => navigate('/control-estudios')
-    });
-  }
+      roles: ['Control de Estudios'],
+      path: '/control-estudios'
+    },
+    {
+      key: 'profesor-module',
+      icon: <BookOutlined />,
+      label: 'Profesor',
+      roles: ['Profesor'],
+      path: '/profesor'
+    },
+    {
+      key: 'representante-module',
+      icon: <UserOutlined />,
+      label: 'Representante',
+      roles: ['Representante'],
+      path: '/representante'
+    },
+    {
+      key: 'alumno-module',
+      icon: <UserOutlined />,
+      label: 'Alumno',
+      roles: ['Alumno'],
+      path: '/alumno'
+    }
+  ];
+
+  // Filter menu items to show only the modules the user has access to, in the specified order
+  const menuItems = allMenuItems
+    .filter(item => {
+      // For each menu item, check if user has at least one of the required roles
+      return user?.roles.some(userRole => item.roles.includes(userRole));
+    })
+    .map(({ key, icon, label, path }) => ({
+      key,
+      icon,
+      label,
+      onClick: () => navigate(path)
+    }));
 
 
   return (

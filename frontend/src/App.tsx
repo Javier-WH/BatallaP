@@ -103,8 +103,10 @@ function AppRoutes() {
           <Route path="configuracion" element={<AcademicSettings />} />
         </Route>
 
-        {/* Nested Teacher Module */}
-        <Route path="teacher" element={<RequireAuth allowedRoles={['Teacher', 'Admin', 'Master']}><TeacherPanel /></RequireAuth>} />
+        {/* Teacher Module (Spanish) */}
+        <Route path="profesor" element={<RequireAuth allowedRoles={['Profesor']}><TeacherPanel /></RequireAuth>}>
+          <Route index element={<h1>Panel del Profesor</h1>} />
+        </Route>
 
         {/* Academic Record Module */}
         <Route path="student/:personId" element={<RequireAuth allowedRoles={['Teacher', 'Admin', 'Master']}><StudentDetail /></RequireAuth>} />

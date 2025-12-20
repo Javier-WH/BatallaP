@@ -13,7 +13,7 @@ const seed = async () => {
     await sequelize.sync();
 
     // 1. Create Roles
-    const roles = ['Master', 'Admin', 'StudyControl', 'Teacher', 'Tutor', 'Student'];
+    const roles = ['Master', 'Administrador', 'Control de Estudios', 'Profesor', 'Representante', 'Alumno'];
     for (const roleName of roles) {
       const exists = await Role.findOne({ where: { name: roleName as any } });
       if (!exists) {

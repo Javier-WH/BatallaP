@@ -304,10 +304,10 @@ export const registerAndEnroll = async (req: Request, res: Response) => {
       }, { transaction: t });
     }
 
-    // 3. Assign Student role
-    let role = await Role.findOne({ where: { name: 'Student' }, transaction: t });
+    // 3. Assign Alumno role
+    let role = await Role.findOne({ where: { name: 'Alumno' }, transaction: t });
     if (!role) {
-      role = await Role.create({ name: 'Student' }, { transaction: t });
+      role = await Role.create({ name: 'Alumno' }, { transaction: t });
     }
     await PersonRole.create({ personId: person.id, roleId: role.id }, { transaction: t });
 

@@ -89,7 +89,7 @@ export const getUserDetails = async (req: Request, res: Response) => {
     // Check if student and include inscription data
     const roles = (person as any).roles || [];
     const isStudent = roles.some((r: any) =>
-      ['student', 'estudiante', 'alumno'].includes(r.name.toLowerCase())
+      r.name === 'Alumno'
     );
 
     let inscriptionData = null;
@@ -155,7 +155,7 @@ export const updateUser = async (req: Request, res: Response) => {
     const currentUser = (req.session as any).user;
     const isMaster = currentUser?.roles?.includes('Master');
     const currentRoles = (person as any).roles || [];
-    const targetHasRestrictedRoles = currentRoles.some((r: any) => ['Master', 'Admin'].includes(r.name));
+    const targetHasRestrictedRoles = currentRoles.some((r: any) => ['Master', 'Administrador'].includes(r.name));
 
     // Update Person Data (Allowed for all admins)
     await person.update({ firstName, lastName, documentType, document, gender, birthdate });
