@@ -11,7 +11,8 @@ import {
   EvaluationPlan,
   Qualification,
   Inscription,
-  InscriptionSubject
+  InscriptionSubject,
+  Term
 } from '@/models/index';
 
 export const getMyAssignments = async (req: Request, res: Response) => {
@@ -81,6 +82,18 @@ export const getEvaluationPlan = async (req: Request, res: Response) => {
 
 export const createEvaluationItem = async (req: Request, res: Response) => {
   try {
+    // Prevent creating plan items on blocked terms
+    const { termId } = req.body;
+    if (termId) {
+      const term = await Term.findByPk(termId);
+      if (!term) {
+        return res.status(404).json({ message: 'Lapso no encontrado' });
+      }
+      if (term.isBlocked) {
+        return res.status(403).json({ message: 'Lapso bloqueado; no se pueden modificar el plan de evaluación' });
+      }
+    }
+
     const item = await EvaluationPlan.create(req.body);
     res.json(item);
   } catch (error: any) {
@@ -93,6 +106,16 @@ export const updateEvaluationItem = async (req: Request, res: Response) => {
     const { id } = req.params;
     const item = await EvaluationPlan.findByPk(id);
     if (!item) return res.status(404).json({ message: 'Item no encontrado' });
+
+    const targetTermId = req.body.termId ?? item.termId;
+    const term = await Term.findByPk(targetTermId);
+    if (!term) {
+      return res.status(404).json({ message: 'Lapso no encontrado' });
+    }
+    if (term.isBlocked) {
+      return res.status(403).json({ message: 'Lapso bloqueado; no se pueden modificar el plan de evaluación' });
+    }
+
     await item.update(req.body);
     res.json(item);
   } catch (error: any) {
@@ -103,6 +126,19 @@ export const updateEvaluationItem = async (req: Request, res: Response) => {
 export const deleteEvaluationItem = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
+    const item = await EvaluationPlan.findByPk(id);
+    if (!item) {
+      return res.status(404).json({ message: 'Item no encontrado' });
+    }
+
+    const term = await Term.findByPk(item.termId);
+    if (!term) {
+      return res.status(404).json({ message: 'Lapso no encontrado' });
+    }
+    if (term.isBlocked) {
+      return res.status(403).json({ message: 'Lapso bloqueado; no se pueden modificar el plan de evaluación' });
+    }
+
     await EvaluationPlan.destroy({ where: { id } });
     res.json({ message: 'Item eliminado' });
   } catch (error) {
@@ -179,22 +215,35 @@ export const saveQualification = async (req: Request, res: Response) => {
 
     let finalInscriptionSubjectId = inscriptionSubjectId;
 
+    // Validate term state: if the associated term is blocked, forbid changes
+    const evalPlan = await EvaluationPlan.findByPk(evaluationPlanId);
+    if (!evalPlan) {
+      return res.status(404).json({ message: 'Plan de evaluación no encontrado' });
+    }
+    const term = await Term.findByPk(evalPlan.termId);
+    if (!term) {
+      return res.status(404).json({ message: 'Lapso no encontrado' });
+    }
+    if (term.isBlocked) {
+      return res.status(403).json({ message: 'Lapso bloqueado; no se pueden modificar calificaciones' });
+    }
+
     // Robust handling: If inscriptionSubjectId is missing but we have inscriptionId, we can resolve it
     if (!finalInscriptionSubjectId && inscriptionId) {
-      const evalPlan = await EvaluationPlan.findByPk(evaluationPlanId, {
+      const ep = await EvaluationPlan.findByPk(evaluationPlanId, {
         include: [{ model: PeriodGradeSubject, as: 'periodGradeSubject' }]
       });
 
-      const ep = evalPlan as any;
-      if (ep && ep.periodGradeSubject) {
+      const evalPlanWithSubject = ep as any;
+      if (evalPlanWithSubject && evalPlanWithSubject.periodGradeSubject) {
         const [insSub] = await InscriptionSubject.findOrCreate({
           where: {
             inscriptionId,
-            subjectId: ep.periodGradeSubject.subjectId
+            subjectId: evalPlanWithSubject.periodGradeSubject.subjectId
           },
           defaults: {
             inscriptionId,
-            subjectId: ep.periodGradeSubject.subjectId
+            subjectId: evalPlanWithSubject.periodGradeSubject.subjectId
           }
         });
         finalInscriptionSubjectId = insSub.id;
