@@ -1,6 +1,9 @@
-import React, { useState, useEffect, useCallback, Component, ErrorInfo, ReactNode } from 'react';
+import React, { useState, useEffect, useCallback, Component, useMemo } from 'react';
+import type { ReactNode, ErrorInfo } from 'react';
 import { Tabs, Card, Select, Table, Button, Modal, Form, Input, DatePicker, message, Space, Tag, Divider, Typography, InputNumber, Alert } from 'antd';
 import { BookOutlined, PlusOutlined, DeleteOutlined, EditOutlined, LockOutlined } from '@ant-design/icons';
+import type { ColumnsType } from 'antd/es/table';
+import { isAxiosError } from 'axios';
 import api from '@/services/api';
 import dayjs from 'dayjs';
 
@@ -159,9 +162,15 @@ const TeacherPanel: React.FC = () => {
   const [students, setStudents] = useState<StudentEnrollment[]>([]);
   const [showPlanModal, setShowPlanModal] = useState(false);
   const [editingItem, setEditingItem] = useState<EvaluationPlanItem | null>(null);
-  const [planForm] = Form.useForm();
+  const [planForm] = Form.useForm<PlanItemFormValues>();
   const [activeTab, setActiveTab] = useState('1');
   const [maxGrade, setMaxGrade] = useState<number>(20);
+
+  const isSelectedTermBlocked = useMemo(() => {
+    if (!selectedTerm) return false;
+    const term = availableTerms.find(t => t.id === selectedTerm);
+    return term?.isBlocked ?? false;
+  }, [availableTerms, selectedTerm]);
 
   useEffect(() => {
     const fetchMaxGrade = async () => {
@@ -246,13 +255,22 @@ const TeacherPanel: React.FC = () => {
 
       setEvaluationPlan(planRes.data || []);
       setStudents(studentsRes.data || []);
-    } catch (error: any) {
-      console.error('fetchPlanAndStudents: API call failed', error);
-      console.error('Error details:', {
-        message: error.message,
-        response: error.response?.data,
-        status: error.response?.status
-      });
+    } catch (error: unknown) {
+      if (isAxiosError(error)) {
+        console.error('fetchPlanAndStudents: API call failed', error);
+        console.error('Error details:', {
+          message: error.message,
+          response: error.response?.data,
+          status: error.response?.status
+        });
+      } else if (error instanceof Error) {
+        console.error('fetchPlanAndStudents: API call failed', error);
+        console.error('Error details:', {
+          message: error.message
+        });
+      } else {
+        console.error('Unexpected error', error);
+      }
 
       // Set empty arrays on error to prevent rendering issues
       setEvaluationPlan([]);
@@ -277,6 +295,10 @@ const TeacherPanel: React.FC = () => {
   }, [fetchPlanAndStudents]);
 
   const handleSavePlanItem = async (values: PlanItemFormValues) => {
+    if (isSelectedTermBlocked) {
+      message.warning('Este lapso está bloqueado. No puedes modificar el plan de evaluación.');
+      return;
+    }
     const assignment = assignments.find(a => a.id === selectedAssignmentId);
     if (!assignment) {
       message.error('No se pudo encontrar la asignación seleccionada');
@@ -300,12 +322,19 @@ const TeacherPanel: React.FC = () => {
       setShowPlanModal(false);
       fetchPlanAndStudents();
     } catch (error: unknown) {
-      const err = error as { response?: { data?: { message?: string } } };
-      message.error(err.response?.data?.message || 'Error al guardar');
+      if (isAxiosError<{ message?: string }>(error)) {
+        message.error(error.response?.data?.message || 'Error al guardar');
+      } else {
+        message.error('Error al guardar');
+      }
     }
   };
 
   const handleDeletePlanItem = async (id: number) => {
+    if (isSelectedTermBlocked) {
+      message.warning('Este lapso está bloqueado. No puedes modificar el plan de evaluación.');
+      return;
+    }
     try {
       await api.delete(`/evaluation/plan/${id}`);
       message.success('Item eliminado');
@@ -317,6 +346,10 @@ const TeacherPanel: React.FC = () => {
 
 
   const handleSaveScoreInGrid = async (enrollment: StudentEnrollment, evalPlanId: number, score: number | null) => {
+    if (isSelectedTermBlocked) {
+      message.warning('Este lapso está bloqueado. No puedes modificar calificaciones.');
+      return;
+    }
     const inscriptionSubjectId = enrollment.inscriptionSubjects?.[0]?.id;
 
     try {
@@ -334,7 +367,7 @@ const TeacherPanel: React.FC = () => {
     }
   };
 
-  const planColumns = [
+  const planColumns: ColumnsType<EvaluationPlanItem> = [
     { title: 'Descripción', dataIndex: 'description', key: 'description' },
     { title: 'Peso (%)', dataIndex: 'percentage', key: 'percentage', render: (val: number) => `${val}%` },
     { title: 'Fecha', dataIndex: 'date', key: 'date', render: (val: string) => dayjs(val).format('DD/MM/YYYY') },
@@ -431,6 +464,8 @@ const TeacherPanel: React.FC = () => {
             </Select>
   
           </Space>
+        </div>
+      </Card>
           {selectedTerm && availableTerms.find(t => t.id === selectedTerm)?.isBlocked && (
             <Alert
               message="Lapso bloqueado"
@@ -440,8 +475,6 @@ const TeacherPanel: React.FC = () => {
               style={{ marginTop: 8 }}
             />
           )}
-        </div>
-      </Card>
 
       <Tabs 
         activeKey={activeTab} 
@@ -457,6 +490,7 @@ const TeacherPanel: React.FC = () => {
                   <Button 
                     type="primary" 
                     icon={<PlusOutlined />} 
+                    disabled={isSelectedTermBlocked}
                     onClick={() => { 
                       setEditingItem(null); 
                       planForm.resetFields(); 
@@ -466,7 +500,7 @@ const TeacherPanel: React.FC = () => {
                     Agregar Evaluación
                   </Button>
                 }>
-                <Table
+                <Table<EvaluationPlanItem>
                   loading={loading}
                   columns={planColumns}
                   dataSource={evaluationPlan}
@@ -550,7 +584,8 @@ const TeacherPanel: React.FC = () => {
                                       precision={2}
                                       value={currentScore}
                                       style={{ width: '80px' }}
-                                      onKeyDown={(e) => {
+                                      disabled={isSelectedTermBlocked}
+                                      onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
                                         if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter'].includes(e.key)) {
                                           if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
                                             e.preventDefault();
@@ -581,7 +616,7 @@ const TeacherPanel: React.FC = () => {
                                           }, 0);
                                         }
                                       }}
-                                      onBlur={(e) => {
+                                      onBlur={(e: React.FocusEvent<HTMLInputElement>) => {
                                         const val = (e.target as HTMLInputElement).value === '' ? null : Number((e.target as HTMLInputElement).value);
                                         if (val !== currentScore) {
                                           handleSaveScoreInGrid(enrollment, item.id, val);
