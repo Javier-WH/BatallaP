@@ -376,8 +376,19 @@ const TeacherPanel: React.FC = () => {
       key: 'actions',
       render: (_: unknown, record: EvaluationPlanItem) => (
         <Space>
-          <Button icon={<EditOutlined />} onClick={() => { setEditingItem(record); planForm.setFieldsValue({ ...record, date: dayjs(record.date) }); setShowPlanModal(true); }} />
-          <Button icon={<DeleteOutlined />} danger onClick={() => handleDeletePlanItem(record.id)} />
+          {!isSelectedTermBlocked && (
+            <>
+              <Button
+                icon={<EditOutlined />}
+                onClick={() => {
+                  setEditingItem(record);
+                  planForm.setFieldsValue({ ...record, date: dayjs(record.date) });
+                  setShowPlanModal(true);
+                }}
+              />
+              <Button icon={<DeleteOutlined />} danger onClick={() => handleDeletePlanItem(record.id)} />
+            </>
+          )}
         </Space>
       )
     }
