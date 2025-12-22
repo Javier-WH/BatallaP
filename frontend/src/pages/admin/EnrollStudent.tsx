@@ -40,6 +40,8 @@ const EnrollStudent: React.FC = () => {
   const [existingStudentForm] = Form.useForm();
   const birthStateValue = Form.useWatch('birthState', newStudentForm);
   const birthMunicipalityValue = Form.useWatch('birthMunicipality', newStudentForm);
+  const residenceStateValue = Form.useWatch('residenceState', newStudentForm);
+  const residenceMunicipalityValue = Form.useWatch('residenceMunicipality', newStudentForm);
 
   // Load Active Period and its structure on mount
   useEffect(() => {
@@ -115,6 +117,39 @@ const EnrollStudent: React.FC = () => {
         ? selectedMunicipality.parroquias.map((parish) => ({ label: parish, value: parish }))
         : [],
     [selectedMunicipality]
+  );
+
+  const residenceStateOptions = stateOptions;
+
+  const selectedResidenceState = useMemo(
+    () => venezuelaLocations.find((state) => state.estado === residenceStateValue) || null,
+    [residenceStateValue, venezuelaLocations]
+  );
+
+  const residenceMunicipalityOptions = useMemo(
+    () =>
+      selectedResidenceState
+        ? selectedResidenceState.municipios.map((municipio) => ({
+          label: municipio.municipio,
+          value: municipio.municipio
+        }))
+        : [],
+    [selectedResidenceState]
+  );
+
+  const selectedResidenceMunicipality = useMemo(
+    () =>
+      selectedResidenceState?.municipios.find((municipio) => municipio.municipio === residenceMunicipalityValue) ||
+      null,
+    [selectedResidenceState, residenceMunicipalityValue]
+  );
+
+  const residenceParishOptions = useMemo(
+    () =>
+      selectedResidenceMunicipality
+        ? selectedResidenceMunicipality.parroquias.map((parish) => ({ label: parish, value: parish }))
+        : [],
+    [selectedResidenceMunicipality]
   );
 
   // --- Handlers ---
@@ -384,8 +419,67 @@ const EnrollStudent: React.FC = () => {
                 </Row>
               </div>
 
+              <div style={{ marginBottom: 24 }}>
+                <h4 style={{ color: '#666', borderBottom: '1px solid #eee', paddingBottom: 8 }}>4. Datos de Residencia</h4>
+                <Row gutter={16}>
+                  <Col span={8}>
+                    <Form.Item
+                      name="residenceState"
+                      label="Estado de residencia"
+                      rules={[{ required: true, message: 'Seleccione un estado' }]}
+                    >
+                      <Select
+                        placeholder="Seleccione estado"
+                        showSearch
+                        optionFilterProp="label"
+                        filterOption={selectFilterOption}
+                        options={residenceStateOptions}
+                        onChange={() => newStudentForm.setFieldsValue({
+                          residenceMunicipality: undefined,
+                          residenceParish: undefined
+                        })}
+                        disabled={!stateOptions.length}
+                      />
+                    </Form.Item>
+                  </Col>
+                  <Col span={8}>
+                    <Form.Item
+                      name="residenceMunicipality"
+                      label="Municipio de residencia"
+                      rules={[{ required: true, message: 'Seleccione un municipio' }]}
+                    >
+                      <Select
+                        placeholder="Seleccione municipio"
+                        showSearch
+                        optionFilterProp="label"
+                        filterOption={selectFilterOption}
+                        options={residenceMunicipalityOptions}
+                        disabled={!residenceStateValue}
+                        onChange={() => newStudentForm.setFieldsValue({ residenceParish: undefined })}
+                      />
+                    </Form.Item>
+                  </Col>
+                  <Col span={8}>
+                    <Form.Item
+                      name="residenceParish"
+                      label="Parroquia de residencia"
+                      rules={[{ required: true, message: 'Seleccione una parroquia' }]}
+                    >
+                      <Select
+                        placeholder="Seleccione parroquia"
+                        showSearch
+                        optionFilterProp="label"
+                        filterOption={selectFilterOption}
+                        options={residenceParishOptions}
+                        disabled={!residenceMunicipalityValue}
+                      />
+                    </Form.Item>
+                  </Col>
+                </Row>
+              </div>
+
               <div>
-                <h4 style={{ color: '#666', borderBottom: '1px solid #eee', paddingBottom: 8 }}>4. Datos de Contacto</h4>
+                <h4 style={{ color: '#666', borderBottom: '1px solid #eee', paddingBottom: 8 }}>5. Datos de Contacto</h4>
                 <Row gutter={16}>
                   <Col span={24}>
                     <Form.Item name="address" label="Dirección" rules={[{ required: true }]}>

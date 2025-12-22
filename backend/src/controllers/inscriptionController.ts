@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { Op } from 'sequelize';
-import { Inscription, Person, Role, Subject, PeriodGrade, InscriptionSubject, SchoolPeriod, Grade, Section, Contact, PersonRole } from '../models';
+import { Inscription, Person, Role, Subject, PeriodGrade, InscriptionSubject, SchoolPeriod, Grade, Section, Contact, PersonRole, PersonResidence } from '../models';
 import sequelize from '../config/database';
 
 export const getInscriptions = async (req: Request, res: Response) => {
@@ -269,6 +269,12 @@ export const registerAndEnroll = async (req: Request, res: Response) => {
       document,
       gender,
       birthdate,
+      birthState,
+      birthMunicipality,
+      birthParish,
+      residenceState,
+      residenceMunicipality,
+      residenceParish,
       // Contact data
       phone1,
       phone2,
@@ -292,6 +298,12 @@ export const registerAndEnroll = async (req: Request, res: Response) => {
       userId: null // No user associated
     }, { transaction: t });
 
+    // Validate residence payload
+    const hasResidenceData = birthState && birthMunicipality && birthParish && residenceState && residenceMunicipality && residenceParish;
+    if (!hasResidenceData) {
+      throw new Error('Datos de nacimiento y residencia son obligatorios para registrar estudiantes.');
+    }
+
     // 2. Create Contact
     if (phone1 || email || address) {
       await Contact.create({
@@ -304,14 +316,25 @@ export const registerAndEnroll = async (req: Request, res: Response) => {
       }, { transaction: t });
     }
 
-    // 3. Assign Alumno role
+    // 3. Create Residence data
+    await PersonResidence.create({
+      personId: person.id,
+      birthState,
+      birthMunicipality,
+      birthParish,
+      residenceState,
+      residenceMunicipality,
+      residenceParish
+    }, { transaction: t });
+
+    // 4. Assign Alumno role
     let role = await Role.findOne({ where: { name: 'Alumno' }, transaction: t });
     if (!role) {
       role = await Role.create({ name: 'Alumno' }, { transaction: t });
     }
     await PersonRole.create({ personId: person.id, roleId: role.id }, { transaction: t });
 
-    // 4. Create Inscription
+    // 5. Create Inscription
     const inscription = await Inscription.create({
       schoolPeriodId,
       gradeId,
@@ -319,7 +342,7 @@ export const registerAndEnroll = async (req: Request, res: Response) => {
       personId: person.id
     }, { transaction: t });
 
-    // 5. Auto-assign subjects from PeriodGrade structure
+    // 6. Auto-assign subjects from PeriodGrade structure
     const periodGrade = await PeriodGrade.findOne({
       where: { schoolPeriodId, gradeId },
       include: [{ model: Subject, as: 'subjects' }],
