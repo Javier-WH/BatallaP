@@ -13,9 +13,7 @@ export type PlantelRecord = {
 let cachedPlanteles: PlantelRecord[] | null = null;
 
 const loadPlanteles = (): PlantelRecord[] => {
-  if (cachedPlanteles) {
-    return cachedPlanteles;
-  }
+  // Always reload from file to get fresh data after scraping
   const filePath = path.resolve(process.cwd(), 'src/assets/planteles.json');
   const raw = fs.readFileSync(filePath, 'utf-8');
   cachedPlanteles = JSON.parse(raw) as PlantelRecord[];
@@ -39,7 +37,7 @@ export const searchPlanteles = (params: {
   const limitNumber =
     typeof limit === 'number' && Number.isFinite(limit) && limit > 0
       ? Math.min(limit, 200)
-      : 50;
+      : undefined; // No limit when not specified
 
   const filtered = target.filter((plantel) => {
     if (normalizedState && normalize(plantel.state) !== normalizedState) {

@@ -1,4 +1,5 @@
-import React, { createContext, useState, useEffect, useContext, ReactNode } from 'react';
+import { createContext, useState, useEffect, useContext } from 'react';
+import type { ReactNode } from 'react';
 import api from '@/services/api';
 import { Spin } from 'antd';
 

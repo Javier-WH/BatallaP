@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Card, Button, Form, Tag, message, Select, Row, Col, Input, DatePicker, Radio, Tabs, Alert } from 'antd';
 import { UserAddOutlined } from '@ant-design/icons';
+import dayjs from 'dayjs';
 import api from '@/services/api';
 
 const { Option } = Select;
@@ -17,6 +18,63 @@ type VenezuelaState = {
 };
 
 type OptionItem = { label: string; value: string };
+
+type SchoolPeriod = {
+  id: number;
+  period: string;
+  name: string;
+  startYear: number;
+  endYear: number;
+  isActive: boolean;
+};
+
+type Grade = {
+  id: number;
+  name: string;
+};
+
+type Section = {
+  id: number;
+  name: string;
+  PeriodGradeSection?: { id: number };
+};
+
+type Subject = {
+  id: number;
+  name: string;
+  PeriodGradeSubject?: { id: number; order: number };
+  subjectGroup?: { id: number; name: string };
+};
+
+type EnrollStructureItem = {
+  id: number;
+  gradeId: number;
+  schoolPeriodId: number;
+  specializationId?: number | null;
+  grade?: Grade;
+  sections?: Section[];
+  subjects?: Subject[];
+};
+
+type UserSearchResult = {
+  id: number;
+  firstName: string;
+  lastName: string;
+  document: string;
+  roles: { name: string }[];
+};
+
+type GuardianData = {
+  firstName?: string;
+  lastName?: string;
+  document?: string;
+  phone?: string;
+  email?: string;
+  residenceState?: string;
+  residenceMunicipality?: string;
+  residenceParish?: string;
+  address?: string;
+};
 
 const selectFilterOption = (input: string, option?: { label?: string }) =>
   (option?.label ?? '').toString().toLowerCase().includes(input.toLowerCase());
@@ -50,7 +108,7 @@ const buildParishOptions = (
     : [];
 };
 
-const guardianHasAnyValue = (fields?: Record<string, any>) => {
+const guardianHasAnyValue = (fields?: Record<string, unknown>) => {
   if (!fields) return false;
   return Object.values(fields).some((value) => {
     if (value === null || value === undefined) return false;
@@ -61,8 +119,8 @@ const guardianHasAnyValue = (fields?: Record<string, any>) => {
 
 const EnrollStudent: React.FC = () => {
   // State
-  const [activePeriod, setActivePeriod] = useState<any>(null);
-  const [enrollStructure, setEnrollStructure] = useState<any[]>([]);
+  const [activePeriod, setActivePeriod] = useState<SchoolPeriod | null>(null);
+  const [enrollStructure, setEnrollStructure] = useState<EnrollStructureItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [venezuelaLocations, setVenezuelaLocations] = useState<VenezuelaState[]>([]);
 
@@ -71,7 +129,7 @@ const EnrollStudent: React.FC = () => {
   const [selectedGradeIdExisting, setSelectedGradeIdExisting] = useState<number | null>(null);
 
   // Existing Student State
-  const [studentOptions, setStudentOptions] = useState<any[]>([]);
+  const [studentOptions, setStudentOptions] = useState<OptionItem[]>([]);
   const [searchingStudents, setSearchingStudents] = useState(false);
   const searchTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -97,7 +155,7 @@ const EnrollStudent: React.FC = () => {
       try {
         // 1. Get periods and find active
         const periodsRes = await api.get('/academic/periods');
-        const active = periodsRes.data.find((p: any) => p.isActive);
+        const active = periodsRes.data.find((p: SchoolPeriod) => p.isActive);
 
         if (!active) {
           message.warning('No hay periodo escolar activo configurado');
@@ -115,6 +173,7 @@ const EnrollStudent: React.FC = () => {
         const locationsRes = await api.get('/locations/venezuela');
         setVenezuelaLocations(locationsRes.data);
       } catch (error) {
+        console.log(error);
         message.error('Error cargando datos del periodo activo');
       } finally {
         setLoading(false);
@@ -238,24 +297,24 @@ const EnrollStudent: React.FC = () => {
   const representativeFieldsRequired = requireRepresentativeData || representativeHasAnyValue;
 
   const resetGuardianMunicipality = (guardianKey: 'mother' | 'father' | 'representative') => {
-    const current = newStudentForm.getFieldValue(guardianKey) || {};
+    const current = newStudentForm.getFieldValue(guardianKey) as GuardianData || {};
     newStudentForm.setFieldsValue({
       [guardianKey]: {
         ...current,
         residenceMunicipality: undefined,
         residenceParish: undefined
-      }
-    } as Record<string, any>);
+      } as GuardianData
+    });
   };
 
   const resetGuardianParish = (guardianKey: 'mother' | 'father' | 'representative') => {
-    const current = newStudentForm.getFieldValue(guardianKey) || {};
+    const current = newStudentForm.getFieldValue(guardianKey) as GuardianData || {};
     newStudentForm.setFieldsValue({
       [guardianKey]: {
         ...current,
         residenceParish: undefined
-      }
-    } as Record<string, any>);
+      } as GuardianData
+    });
   };
 
   // --- Handlers ---
@@ -276,10 +335,10 @@ const EnrollStudent: React.FC = () => {
       setSearchingStudents(true);
       try {
         const res = await api.get(`/users?q=${encodeURIComponent(value)}`);
-        const students = res.data.filter((p: any) =>
-          p.roles?.some((r: any) => ['student', 'estudiante', 'alumno'].includes(r.name.toLowerCase()))
+        const students = res.data.filter((p: UserSearchResult) =>
+          p.roles?.some((r) => ['student', 'estudiante', 'alumno'].includes(r.name.toLowerCase()))
         );
-        setStudentOptions(students.map((p: any) => ({
+        setStudentOptions(students.map((p: UserSearchResult) => ({
           label: `${p.firstName} ${p.lastName} (${p.document})`,
           value: p.id
         })));
@@ -292,7 +351,7 @@ const EnrollStudent: React.FC = () => {
   };
 
   // Submit: New Student
-  const handleNewStudentSubmit = async (values: any) => {
+  const handleNewStudentSubmit = async (values: Record<string, unknown>) => {
     if (!activePeriod) {
       message.error('No hay periodo activo');
       return;
@@ -302,7 +361,7 @@ const EnrollStudent: React.FC = () => {
       const payload = {
         ...values,
         schoolPeriodId: activePeriod.id,
-        birthdate: values.birthdate ? values.birthdate.format('YYYY-MM-DD') : null
+        birthdate: values.birthdate ? (values.birthdate as dayjs.Dayjs).format('YYYY-MM-DD') : null
       };
 
       await api.post('/inscriptions/register', payload);
@@ -310,14 +369,15 @@ const EnrollStudent: React.FC = () => {
       message.success('Estudiante registrado e inscrito exitosamente');
       newStudentForm.resetFields();
       setSelectedGradeId(null);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error(error);
-      message.error(error.response?.data?.error || error.response?.data?.message || 'Error al procesar la solicitud');
+      const err = error as { response?: { data?: { error?: string; message?: string } } };
+      message.error(err.response?.data?.error || err.response?.data?.message || 'Error al procesar la solicitud');
     }
   };
 
   // Submit: Existing Student
-  const handleExistingStudentSubmit = async (values: any) => {
+  const handleExistingStudentSubmit = async (values: Record<string, unknown>) => {
     if (!activePeriod) {
       message.error('No hay periodo activo');
       return;
@@ -331,8 +391,9 @@ const EnrollStudent: React.FC = () => {
       message.success('Estudiante inscrito correctamente');
       existingStudentForm.resetFields();
       setSelectedGradeIdExisting(null);
-    } catch (error: any) {
-      message.error(error.response?.data?.error || 'Error en inscripción');
+    } catch (error: unknown) {
+      const err = error as { response?: { data?: { error?: string } } };
+      message.error(err.response?.data?.error || 'Error en inscripción');
     }
   };
 
@@ -406,7 +467,7 @@ const EnrollStudent: React.FC = () => {
                         disabled={!selectedGradeId}
                         allowClear
                       >
-                        {getSectionsForGrade(selectedGradeId).map((sec: any) => (
+                        {getSectionsForGrade(selectedGradeId).map((sec: Section) => (
                           <Option key={sec.id} value={sec.id}>{sec.name}</Option>
                         ))}
                       </Select>
@@ -1061,7 +1122,7 @@ const EnrollStudent: React.FC = () => {
                       disabled={!selectedGradeIdExisting}
                       allowClear
                     >
-                      {getSectionsForGrade(selectedGradeIdExisting).map((sec: any) => (
+                      {getSectionsForGrade(selectedGradeIdExisting).map((sec: Section) => (
                         <Option key={sec.id} value={sec.id}>{sec.name}</Option>
                       ))}
                     </Select>
