@@ -63,7 +63,7 @@ const MainLayout: React.FC = () => {
       key: 'search-users',
       icon: <SearchOutlined />,
       label: 'Buscar / Editar',
-      roles: ['Master', 'Administrador', 'Control de Estudios'],
+      roles: ['Master', 'Administrador'],
       path: '/gestion-usuarios'
     },
     {

@@ -110,7 +110,7 @@ function AppRoutes() {
         <Route
           path="gestion-usuarios"
           element={
-            <RequireAuth allowedRoles={['Master', 'Administrador', 'Control de Estudios']}>
+            <RequireAuth allowedRoles={['Master', 'Administrador']}>
               <SearchUsers />
             </RequireAuth>
           }
