@@ -1,7 +1,7 @@
 import React from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { Button, Space, Card, Tooltip } from 'antd';
-import { DashboardOutlined, SettingOutlined } from '@ant-design/icons';
+import { DashboardOutlined, SettingOutlined, UserAddOutlined } from '@ant-design/icons';
 
 const ControlEstudiosLayout: React.FC = () => {
   const navigate = useNavigate();
@@ -28,6 +28,15 @@ const ControlEstudiosLayout: React.FC = () => {
               onClick={() => navigate('/control-estudios')}
             >
               Panel
+            </Button>
+          </Tooltip>
+          <Tooltip title="Inscribir Estudiantes">
+            <Button
+              type={isActive('/control-estudios/inscribir-estudiante') ? 'primary' : 'text'}
+              icon={<UserAddOutlined />}
+              onClick={() => navigate('/control-estudios/inscribir-estudiante')}
+            >
+              Inscripciones
             </Button>
           </Tooltip>
           <Tooltip title="Configuración Académica">

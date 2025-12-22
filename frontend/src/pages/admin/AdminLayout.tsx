@@ -41,16 +41,6 @@ const AdminLayout: React.FC = () => {
             </Button>
           </Tooltip>
 
-          <Tooltip title="Inscribir nuevo Estudiante">
-            <Button
-              type={isActive('/admin/enroll-student') ? 'primary' : 'text'}
-              icon={<UserAddOutlined />}
-              onClick={() => navigate('/admin/enroll-student')}
-            >
-              Inscribir Estudiante
-            </Button>
-          </Tooltip>
-
           <Tooltip title="Lista de Estudiantes Inscritos">
             <Button
               type={isActive('/admin/enrolled') ? 'primary' : 'text'}

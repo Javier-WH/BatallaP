@@ -100,6 +100,7 @@ function AppRoutes() {
         {/* Nested Control de Estudios Module */}
         <Route path="control-estudios" element={<RequireAuth allowedRoles={['StudyControl', 'Admin', 'Master']}><ControlEstudiosLayout /></RequireAuth>}>
           <Route index element={<ControlEstudiosDashboard />} />
+          <Route path="inscribir-estudiante" element={<EnrollStudent />} />
           <Route path="configuracion" element={<AcademicSettings />} />
         </Route>
 
