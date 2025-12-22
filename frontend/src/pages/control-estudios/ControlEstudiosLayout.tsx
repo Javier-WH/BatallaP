@@ -7,7 +7,8 @@ const ControlEstudiosLayout: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const isActive = (path: string) => location.pathname.startsWith(path);
+  const matchesPath = (path: string) => location.pathname.startsWith(path);
+  const isExact = (path: string) => location.pathname === path;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', marginTop: -24, marginLeft: -24, marginRight: -24 }}>
@@ -23,7 +24,7 @@ const ControlEstudiosLayout: React.FC = () => {
         <Space>
           <Tooltip title="Panel Principal">
             <Button
-              type={isActive('/control-estudios') && !isActive('/control-estudios/configuracion') ? 'primary' : 'text'}
+              type={isExact('/control-estudios') ? 'primary' : 'text'}
               icon={<DashboardOutlined />}
               onClick={() => navigate('/control-estudios')}
             >
@@ -32,7 +33,7 @@ const ControlEstudiosLayout: React.FC = () => {
           </Tooltip>
           <Tooltip title="Inscribir Estudiantes">
             <Button
-              type={isActive('/control-estudios/inscribir-estudiante') ? 'primary' : 'text'}
+              type={matchesPath('/control-estudios/inscribir-estudiante') ? 'primary' : 'text'}
               icon={<UserAddOutlined />}
               onClick={() => navigate('/control-estudios/inscribir-estudiante')}
             >
@@ -41,7 +42,7 @@ const ControlEstudiosLayout: React.FC = () => {
           </Tooltip>
           <Tooltip title="Configuración Académica">
             <Button
-              type={isActive('/control-estudios/configuracion') ? 'primary' : 'text'}
+              type={matchesPath('/control-estudios/configuracion') ? 'primary' : 'text'}
               icon={<SettingOutlined />}
               onClick={() => navigate('/control-estudios/configuracion')}
             >
