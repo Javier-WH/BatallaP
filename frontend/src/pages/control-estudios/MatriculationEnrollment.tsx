@@ -504,43 +504,30 @@ const MatriculationEnrollment: React.FC = () => {
       dataIndex: ['grade', 'name'],
       key: 'grade',
       render: (name: string) => name || '-'
-    },
-    {
-      title: 'Sección',
-      dataIndex: ['section', 'name'],
-      key: 'section',
-      render: (name: string) => name || '-'
-    },
-    {
-      title: 'Periodo',
-      dataIndex: ['period', 'name'],
-      key: 'period',
-      render: (name: string) => name || '-'
     }
   ];
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '360px 1fr', gap: 24 }}>
-      <Card
-        title="Estudiantes Matriculados"
-        bordered={false}
-        extra={
-          <Space>
-            <Input
-              placeholder="Buscar por nombre o documento"
-              prefix={<SearchOutlined />}
-              value={searchValue}
-              onChange={(e) => setSearchValue(e.target.value)}
-              onPressEnter={handleSearch}
-              allowClear
-              style={{ width: 200 }}
-            />
-            <Button onClick={handleSearch} icon={<SearchOutlined />} />
-            <Button onClick={handleRefresh} icon={<ReloadOutlined />} />
-          </Space>
-        }
-        style={{ height: '100%' }}
-      >
+      <Card bordered={false} style={{ height: '100%' }}>
+        <div style={{ marginBottom: 12 }}>
+          <Text style={{ fontSize: 13, fontWeight: 600, letterSpacing: 0.4, color: '#4a4a4a', textTransform: 'uppercase' }}>
+            Estudiantes Matriculados
+          </Text>
+        </div>
+        <Space style={{ marginBottom: 16 }}>
+          <Input
+            placeholder="Buscar por nombre o documento"
+            prefix={<SearchOutlined />}
+            value={searchValue}
+            onChange={(e) => setSearchValue(e.target.value)}
+            onPressEnter={handleSearch}
+            allowClear
+            style={{ width: 200 }}
+          />
+          <Button onClick={handleSearch} icon={<SearchOutlined />} />
+          <Button onClick={handleRefresh} icon={<ReloadOutlined />} />
+        </Space>
         {listLoading ? (
           <div style={{ textAlign: 'center', padding: 40 }}>
             <Spin />
@@ -573,9 +560,7 @@ const MatriculationEnrollment: React.FC = () => {
             <Tag color="blue">
               Periodo: <strong>{detail.period?.name}</strong>
             </Tag>
-          ) : (
-            <Text type="secondary">Seleccione un estudiante para iniciar</Text>
-          )
+          ) : null
         }
       >
         {!selectedId ? (
