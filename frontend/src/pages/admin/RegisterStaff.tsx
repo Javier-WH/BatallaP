@@ -23,6 +23,12 @@ interface StaffFormValues {
 
 const { Option } = Select;
 
+const ROLE_OPTIONS = [
+  { value: 'Profesor', label: 'Profesor', icon: <UserOutlined />, color: 'green' },
+  { value: 'Representante', label: 'Representante', icon: <TeamOutlined />, color: 'blue' },
+  { value: 'Control de Estudios', label: 'Control de Estudios', icon: <AuditOutlined />, color: 'purple' }
+];
+
 const RegisterStaff: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [selectedRoles, setSelectedRoles] = useState<string[]>([]);
@@ -44,12 +50,7 @@ const RegisterStaff: React.FC = () => {
 
       await api.post('/auth/register', payload);
 
-      const rolesText = selectedRoles.map(r => {
-        if (r === 'Teacher') return 'Profesor';
-        if (r === 'Tutor') return 'Representante';
-        if (r === 'StudyControl') return 'Control de Estudios';
-        return r;
-      }).join(' y ');
+      const rolesText = selectedRoles.join(' y ');
       message.success(`${rolesText} inscrito exitosamente`);
       form.resetFields();
       setSelectedRoles([]); // Reset to empty
@@ -72,13 +73,7 @@ const RegisterStaff: React.FC = () => {
 
   const getRoleLabel = () => {
     if (selectedRoles.length === 0) return 'Sin rol seleccionado';
-    const labels = selectedRoles.map(r => {
-      if (r === 'Teacher') return 'Profesor';
-      if (r === 'Tutor') return 'Representante';
-      if (r === 'StudyControl') return 'Control de Estudios';
-      return r;
-    });
-    return labels.join(' y ');
+    return selectedRoles.join(' y ');
   };
 
   return (
@@ -103,33 +98,18 @@ const RegisterStaff: React.FC = () => {
           }}>
             <h4 style={{ margin: 0, marginBottom: 12, color: '#333' }}>Tipo de Usuario</h4>
             <Space size="large" wrap>
-              <Checkbox
-                checked={selectedRoles.includes('Teacher')}
-                onChange={(e) => handleRoleChange('Teacher', e.target.checked)}
-              >
-                <Space>
-                  <UserOutlined style={{ color: selectedRoles.includes('Teacher') ? '#52c41a' : '#999' }} />
-                  <span style={{ fontWeight: selectedRoles.includes('Teacher') ? 600 : 400 }}>Profesor</span>
-                </Space>
-              </Checkbox>
-              <Checkbox
-                checked={selectedRoles.includes('Tutor')}
-                onChange={(e) => handleRoleChange('Tutor', e.target.checked)}
-              >
-                <Space>
-                  <TeamOutlined style={{ color: selectedRoles.includes('Tutor') ? '#1890ff' : '#999' }} />
-                  <span style={{ fontWeight: selectedRoles.includes('Tutor') ? 600 : 400 }}>Representante</span>
-                </Space>
-              </Checkbox>
-              <Checkbox
-                checked={selectedRoles.includes('StudyControl')}
-                onChange={(e) => handleRoleChange('StudyControl', e.target.checked)}
-              >
-                <Space>
-                  <AuditOutlined style={{ color: selectedRoles.includes('StudyControl') ? '#722ed1' : '#999' }} />
-                  <span style={{ fontWeight: selectedRoles.includes('StudyControl') ? 600 : 400 }}>Control de Estudios</span>
-                </Space>
-              </Checkbox>
+              {ROLE_OPTIONS.map((role) => (
+                <Checkbox
+                  key={role.value}
+                  checked={selectedRoles.includes(role.value)}
+                  onChange={(e) => handleRoleChange(role.value, e.target.checked)}
+                >
+                  <Space>
+                    {React.cloneElement(role.icon, { style: { color: selectedRoles.includes(role.value) ? role.color : '#999' } })}
+                    <span style={{ fontWeight: selectedRoles.includes(role.value) ? 600 : 400 }}>{role.label}</span>
+                  </Space>
+                </Checkbox>
+              ))}
             </Space>
             {selectedRoles.length === 0 && (
               <div style={{ marginTop: 8, color: '#ff4d4f', fontSize: 12 }}>

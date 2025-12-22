@@ -81,15 +81,6 @@ const AdminLayout: React.FC = () => {
             </Button>
           </Tooltip>
 
-          <Tooltip title="Buscar y editar usuarios (excepto roles administrativos)">
-            <Button
-              type={isActive('/admin/search') ? 'primary' : 'text'}
-              icon={<SearchOutlined />}
-              onClick={() => navigate('/admin/search')}
-            >
-              Buscar / Editar
-            </Button>
-          </Tooltip>
         </Space>
       </Card>
 

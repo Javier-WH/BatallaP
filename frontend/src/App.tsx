@@ -88,7 +88,7 @@ function AppRoutes() {
         </Route>
 
         {/* Nested Admin Module */}
-        <Route path="admin" element={<RequireAuth allowedRoles={['Admin', 'Master']}><AdminLayout /></RequireAuth>}>
+        <Route path="admin" element={<RequireAuth allowedRoles={['Administrador', 'Master']}><AdminLayout /></RequireAuth>}>
           <Route index element={<h1>Panel de Admin</h1>} /> {/* Placeholder dashboard */}
           <Route path="register-staff" element={<RegisterStaff />} />
           <Route path="matricular-estudiante" element={<QuickEnrollStudent />} />
@@ -101,11 +101,20 @@ function AppRoutes() {
         </Route>
 
         {/* Nested Control de Estudios Module */}
-        <Route path="control-estudios" element={<RequireAuth allowedRoles={['StudyControl', 'Admin', 'Master']}><ControlEstudiosLayout /></RequireAuth>}>
+        <Route path="control-estudios" element={<RequireAuth allowedRoles={['Control de Estudios', 'Administrador', 'Master']}><ControlEstudiosLayout /></RequireAuth>}>
           <Route index element={<ControlEstudiosDashboard />} />
           <Route path="inscribir-estudiante" element={<MatriculationEnrollment />} />
           <Route path="configuracion" element={<AcademicSettings />} />
         </Route>
+
+        <Route
+          path="gestion-usuarios"
+          element={
+            <RequireAuth allowedRoles={['Master', 'Administrador', 'Control de Estudios']}>
+              <SearchUsers />
+            </RequireAuth>
+          }
+        />
 
         {/* Teacher Module (Spanish) */}
         <Route path="profesor" element={<RequireAuth allowedRoles={['Profesor']}><TeacherPanel /></RequireAuth>}>
@@ -113,7 +122,7 @@ function AppRoutes() {
         </Route>
 
         {/* Academic Record Module */}
-        <Route path="student/:personId" element={<RequireAuth allowedRoles={['Teacher', 'Admin', 'Master']}><StudentDetail /></RequireAuth>} />
+        <Route path="student/:personId" element={<RequireAuth allowedRoles={['Profesor', 'Administrador', 'Master']}><StudentDetail /></RequireAuth>} />
       </Route>
 
       <Route path="*" element={<h1>404 Not Found</h1>} />

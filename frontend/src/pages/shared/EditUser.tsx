@@ -120,9 +120,7 @@ const EditUser: React.FC = () => {
         setHasAccount(hasUser);
         setShowAccountFields(hasUser);
 
-        const studentCheck = userRoles.some((r: string) =>
-          ['Alumno'].includes(r)
-        );
+        const studentCheck = userRoles.includes('Alumno');
         setIsStudent(studentCheck);
 
         const teacherCheck = userRoles.includes('Profesor');
@@ -405,11 +403,11 @@ const EditUser: React.FC = () => {
               style={{ gridColumn: 'span 2' }}
             >
               <Select mode="multiple" placeholder="Selecciona roles" disabled={targetHasRestrictedRoles && !isMaster}>
-                <Option value="Student">Estudiante</Option>
-                <Option value="Tutor">Representante</Option>
-                <Option value="Teacher">Profesor</Option>
-                <Option value="StudyControl">Control de Estudios</Option>
-                <Option value="Admin" disabled={!isMaster}>Admin {!isMaster && '(Restringido)'}</Option>
+                <Option value="Alumno">Alumno</Option>
+                <Option value="Representante">Representante</Option>
+                <Option value="Profesor">Profesor</Option>
+                <Option value="Control de Estudios">Control de Estudios</Option>
+                <Option value="Administrador" disabled={!isMaster}>Administrador {!isMaster && '(Restringido)'}</Option>
                 <Option value="Master" disabled={!isMaster}>Master {!isMaster && '(Restringido)'}</Option>
               </Select>
             </Form.Item>

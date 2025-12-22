@@ -8,7 +8,8 @@ import {
   DashboardOutlined,
   TeamOutlined,
   BookOutlined,
-  FileTextOutlined
+  FileTextOutlined,
+  SearchOutlined
 } from '@ant-design/icons';
 import { Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
@@ -57,6 +58,13 @@ const MainLayout: React.FC = () => {
       label: 'Control de Estudios',
       roles: ['Control de Estudios'],
       path: '/control-estudios'
+    },
+    {
+      key: 'search-users',
+      icon: <SearchOutlined />,
+      label: 'Buscar / Editar',
+      roles: ['Master', 'Administrador', 'Control de Estudios'],
+      path: '/gestion-usuarios'
     },
     {
       key: 'profesor-module',
