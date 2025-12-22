@@ -452,9 +452,13 @@ const EnrollStudent: React.FC = () => {
                 <Row gutter={16}>
                   <Col span={12}>
                     <Form.Item name="gender" label="Género" rules={[{ required: true }]}>
-                      <Radio.Group>
-                        <Radio value="M">Masculino</Radio>
-                        <Radio value="F">Femenino</Radio>
+                      <Radio.Group style={{ width: '100%' }}>
+                        <Radio.Button value="M" style={{ width: '50%', textAlign: 'center' }}>
+                          Masculino
+                        </Radio.Button>
+                        <Radio.Button value="F" style={{ width: '50%', textAlign: 'center' }}>
+                          Femenino
+                        </Radio.Button>
                       </Radio.Group>
                     </Form.Item>
                   </Col>
