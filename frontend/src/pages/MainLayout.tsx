@@ -67,6 +67,13 @@ const MainLayout: React.FC = () => {
       path: '/gestion-usuarios'
     },
     {
+      key: 'students',
+      icon: <TeamOutlined />,
+      label: 'Estudiantes',
+      roles: ['Master', 'Administrador', 'Control de Estudios'],
+      path: '/estudiantes'
+    },
+    {
       key: 'profesor-module',
       icon: <BookOutlined />,
       label: 'Profesor',

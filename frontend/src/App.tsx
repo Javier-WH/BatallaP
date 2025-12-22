@@ -93,7 +93,6 @@ function AppRoutes() {
           <Route path="register-staff" element={<RegisterStaff />} />
           <Route path="matricular-estudiante" element={<QuickEnrollStudent />} />
           <Route path="enroll-student" element={<EnrollStudent />} />
-          <Route path="enrolled" element={<EnrolledStudents />} />
           <Route path="projection" element={<TeacherProjection />} />
           <Route path="academic" element={<AcademicManagement />} />
           <Route path="search" element={<SearchUsers />} />
@@ -112,6 +111,14 @@ function AppRoutes() {
           element={
             <RequireAuth allowedRoles={['Master', 'Administrador']}>
               <SearchUsers />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="estudiantes"
+          element={
+            <RequireAuth allowedRoles={['Master', 'Administrador', 'Control de Estudios']}>
+              <EnrolledStudents />
             </RequireAuth>
           }
         />
