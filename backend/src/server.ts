@@ -16,6 +16,7 @@ import termRoutes from '@/routes/termRoutes';
 import residenceRoutes from '@/routes/residenceRoutes';
 import locationRoutes from '@/routes/locationRoutes';
 import matriculationRoutes from '@/routes/matriculationRoutes';
+import studentPreviousSchoolRoutes from '@/routes/studentPreviousSchoolRoutes';
 
 dotenv.config();
 
@@ -27,6 +28,7 @@ app.use('/uploads', express.static(path.join(__dirname, '../public/uploads')));
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/users/:personId/student-previous-schools', studentPreviousSchoolRoutes);
 app.use('/api/academic', academicRoutes);
 app.use('/api/inscriptions', inscriptionRoutes);
 app.use('/api/teachers', teacherRoutes);

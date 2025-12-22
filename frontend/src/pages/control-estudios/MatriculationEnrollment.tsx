@@ -50,6 +50,22 @@ interface PersonSummary {
   birthdate?: string | null;
 }
 
+interface StudentPreviousSchool {
+  id: number;
+  personId: number;
+  plantelCode: string | null;
+  plantelName: string;
+  state: string | null;
+  municipality: string | null;
+  parish: string | null;
+  dependency: string | null;
+  gradeFrom: string | null;
+  gradeTo: string | null;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 interface MatriculationSummary {
   id: number;
   grade?: GradeSummary;
@@ -158,6 +174,7 @@ interface MatriculationFormValues {
   mother: GuardianFormValues;
   father?: GuardianFormValues;
   representative?: GuardianFormValues;
+  previousSchoolIds?: number[];
 }
 
 const selectFilterOption = (input: string, option?: { label?: string }) =>
@@ -203,6 +220,10 @@ const MatriculationEnrollment: React.FC = () => {
   const [searchValue, setSearchValue] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [form] = Form.useForm();
+
+  // Previous schools state
+  const [previousSchools, setPreviousSchools] = useState<StudentPreviousSchool[]>([]);
+  const [previousSchoolsLoading, setPreviousSchoolsLoading] = useState(false);
 
   // Form watchers
   const birthStateValue = Form.useWatch('birthState', form);
@@ -260,6 +281,21 @@ const MatriculationEnrollment: React.FC = () => {
     }
   }, []);
 
+  const fetchPreviousSchools = useCallback(async () => {
+    if (!detail?.student?.id) return;
+    
+    setPreviousSchoolsLoading(true);
+    try {
+      const { data } = await api.get(`/users/${detail.student.id}/student-previous-schools`);
+      setPreviousSchools(data);
+    } catch (error) {
+      console.error('Error loading previous schools:', error);
+      setPreviousSchools([]);
+    } finally {
+      setPreviousSchoolsLoading(false);
+    }
+  }, [detail?.student?.id]);
+
   const loadDetail = useCallback(
     async (id: number) => {
       setDetailLoading(true);
@@ -267,6 +303,7 @@ const MatriculationEnrollment: React.FC = () => {
         const { data } = await api.get(`/matriculations/${id}`);
         setDetail(data);
         await fetchStructure(data.schoolPeriodId);
+        await fetchPreviousSchools();
 
         const guardians = data.guardians || [];
         const mother = guardians.find((g: GuardianInfo) => g.relationship === 'mother');
@@ -350,7 +387,7 @@ const MatriculationEnrollment: React.FC = () => {
         setDetailLoading(false);
       }
     },
-    [fetchStructure, form]
+    [fetchStructure, fetchPreviousSchools, form]
   );
 
   useEffect(() => {
@@ -470,7 +507,8 @@ const MatriculationEnrollment: React.FC = () => {
     try {
       const payload = {
         ...values,
-        birthdate: values.birthdate ? values.birthdate.format('YYYY-MM-DD') : null
+        birthdate: values.birthdate ? values.birthdate.format('YYYY-MM-DD') : null,
+        previousSchoolIds: values.previousSchoolIds || []
       };
       await api.post(`/matriculations/${selectedId}/enroll`, payload);
       message.success('Estudiante inscrito correctamente');
@@ -666,6 +704,36 @@ const MatriculationEnrollment: React.FC = () => {
                 <Col span={12}>
                   <Form.Item name="birthdate" label="Fecha Nacimiento" rules={[{ required: true }]}>
                     <DatePicker style={{ width: '100%' }} format="YYYY-MM-DD" />
+                  </Form.Item>
+                </Col>
+              </Row>
+
+              <Row gutter={16}>
+                <Col span={24}>
+                  <Form.Item
+                    name="previousSchoolIds"
+                    label="Planteles anteriores"
+                    extra="Seleccione los planteles donde el estudiante ha estudiado anteriormente"
+                  >
+                    <Select
+                      mode="multiple"
+                      placeholder="Buscar y seleccionar planteles anteriores"
+                      loading={previousSchoolsLoading}
+                      showSearch
+                      optionFilterProp="children"
+                      filterOption={(input, option) =>
+                        (option?.children as string)?.toLowerCase().includes(input.toLowerCase())
+                      }
+                      style={{ width: '100%' }}
+                    >
+                      {previousSchools.map((school) => (
+                        <Option key={school.id} value={school.id}>
+                          {school.plantelName}
+                          {school.state && ` (${school.state})`}
+                          {school.gradeFrom && school.gradeTo && ` - Grados ${school.gradeFrom}-${school.gradeTo}`}
+                        </Option>
+                      ))}
+                    </Select>
                   </Form.Item>
                 </Col>
               </Row>

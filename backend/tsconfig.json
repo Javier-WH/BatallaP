@@ -10,6 +10,7 @@
       "@/routes/*": ["src/routes/*"],
       "@/config/*": ["src/config/*"],
       "@/middlewares/*": ["src/middlewares/*"],
+      "@/services/*": ["src/services/*"],
       "@/types/*": ["src/types/*"]
     },
     "moduleResolution": "node",

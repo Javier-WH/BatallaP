@@ -1,0 +1,42 @@
+[
+  {
+    "code": "DEA0001",
+    "name": "Unidad Educativa Nacional Bolivariana Simón Bolívar",
+    "state": "Distrito Capital",
+    "municipality": "Libertador",
+    "parish": "El Recreo",
+    "dependency": "Nacional"
+  },
+  {
+    "code": "DEA0002",
+    "name": "Unidad Educativa Privada Colegio San Ignacio",
+    "state": "Distrito Capital",
+    "municipality": "Chacao",
+    "parish": "Chacao",
+    "dependency": "Privado"
+  },
+  {
+    "code": "DEA0003",
+    "name": "Escuela Básica Nacional Juan XXIII",
+    "state": "Miranda",
+    "municipality": "Sucre",
+    "parish": "Petare",
+    "dependency": "Estadal"
+  },
+  {
+    "code": "DEA0004",
+    "name": "Unidad Educativa Padre Félix De Vegamian",
+    "state": "Zulia",
+    "municipality": "Maracaibo",
+    "parish": "Olegario Villalobos",
+    "dependency": "Privado"
+  },
+  {
+    "code": "DEA0005",
+    "name": "Escuela Técnica Agropecuaria San Carlos de Río Negro",
+    "state": "Amazonas",
+    "municipality": "Atabapo",
+    "parish": "San Carlos de Río Negro",
+    "dependency": "Nacional"
+  }
+]
