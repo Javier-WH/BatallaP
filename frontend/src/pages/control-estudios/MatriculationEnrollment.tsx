@@ -51,19 +51,12 @@ interface PersonSummary {
 }
 
 interface StudentPreviousSchool {
-  id: number;
-  personId: number;
-  plantelCode: string | null;
-  plantelName: string;
-  state: string | null;
-  municipality: string | null;
-  parish: string | null;
-  dependency: string | null;
-  gradeFrom: string | null;
-  gradeTo: string | null;
-  notes: string | null;
-  createdAt: string;
-  updatedAt: string;
+  code?: string | null;
+  name: string;
+  state?: string | null;
+  municipality?: string | null;
+  parish?: string | null;
+  dependency?: string | null;
 }
 
 interface MatriculationSummary {
@@ -282,19 +275,17 @@ const MatriculationEnrollment: React.FC = () => {
   }, []);
 
   const fetchPreviousSchools = useCallback(async () => {
-    if (!detail?.student?.id) return;
-    
     setPreviousSchoolsLoading(true);
     try {
-      const { data } = await api.get(`/users/${detail.student.id}/student-previous-schools`);
+      const { data } = await api.get('/planteles');
       setPreviousSchools(data);
     } catch (error) {
-      console.error('Error loading previous schools:', error);
+      console.error('Error loading planteles:', error);
       setPreviousSchools([]);
     } finally {
       setPreviousSchoolsLoading(false);
     }
-  }, [detail?.student?.id]);
+  }, []);
 
   const loadDetail = useCallback(
     async (id: number) => {
@@ -721,16 +712,16 @@ const MatriculationEnrollment: React.FC = () => {
                       loading={previousSchoolsLoading}
                       showSearch
                       optionFilterProp="children"
-                      filterOption={(input, option) =>
-                        (option?.children as string)?.toLowerCase().includes(input.toLowerCase())
-                      }
+                      filterOption={(input, option) => {
+                        const text = option?.children?.toString() || '';
+                        return text.toLowerCase().includes(input.toLowerCase());
+                      }}
                       style={{ width: '100%' }}
                     >
                       {previousSchools.map((school) => (
-                        <Option key={school.id} value={school.id}>
-                          {school.plantelName}
-                          {school.state && ` (${school.state})`}
-                          {school.gradeFrom && school.gradeTo && ` - Grados ${school.gradeFrom}-${school.gradeTo}`}
+                        <Option key={school.code || school.name} value={school.code || school.name}>
+                          {school.name}
+                          {school.code && ` (${school.code})`}
                         </Option>
                       ))}
                     </Select>

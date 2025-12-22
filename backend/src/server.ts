@@ -17,6 +17,7 @@ import residenceRoutes from '@/routes/residenceRoutes';
 import locationRoutes from '@/routes/locationRoutes';
 import matriculationRoutes from '@/routes/matriculationRoutes';
 import studentPreviousSchoolRoutes from '@/routes/studentPreviousSchoolRoutes';
+import plantelRoutes from '@/routes/plantelRoutes';
 
 dotenv.config();
 
@@ -39,6 +40,7 @@ app.use('/api/terms', termRoutes);
 app.use('/api/residences', residenceRoutes);
 app.use('/api/locations', locationRoutes);
 app.use('/api/matriculations', matriculationRoutes);
+app.use('/api/planteles', plantelRoutes);
 
 const startServer = async () => {
   try {
