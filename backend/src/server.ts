@@ -13,6 +13,8 @@ import evaluationRoutes from '@/routes/evaluationRoutes';
 import settingRoutes from '@/routes/settingRoutes';
 import uploadRoutes from '@/routes/uploadRoutes';
 import termRoutes from '@/routes/termRoutes';
+import residenceRoutes from '@/routes/residenceRoutes';
+import locationRoutes from '@/routes/locationRoutes';
 
 dotenv.config();
 
@@ -31,6 +33,8 @@ app.use('/api/evaluation', evaluationRoutes);
 app.use('/api/settings', settingRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/terms', termRoutes);
+app.use('/api/residences', residenceRoutes);
+app.use('/api/locations', locationRoutes);
 
 const startServer = async () => {
   try {

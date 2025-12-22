@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Card, Button, Form, Tag, message, Select, Row, Col, Input, DatePicker, Radio, Tabs, Alert } from 'antd';
 import { UserAddOutlined } from '@ant-design/icons';
 import api from '@/services/api';
@@ -6,11 +6,25 @@ import api from '@/services/api';
 const { Option } = Select;
 const { TabPane } = Tabs;
 
+type VenezuelaMunicipality = {
+  municipio: string;
+  parroquias: string[];
+};
+
+type VenezuelaState = {
+  estado: string;
+  municipios: VenezuelaMunicipality[];
+};
+
+const selectFilterOption = (input: string, option?: { label?: string }) =>
+  (option?.label ?? '').toString().toLowerCase().includes(input.toLowerCase());
+
 const EnrollStudent: React.FC = () => {
   // State
   const [activePeriod, setActivePeriod] = useState<any>(null);
   const [enrollStructure, setEnrollStructure] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [venezuelaLocations, setVenezuelaLocations] = useState<VenezuelaState[]>([]);
 
   // For section selector (controlled)
   const [selectedGradeId, setSelectedGradeId] = useState<number | null>(null);
@@ -24,6 +38,8 @@ const EnrollStudent: React.FC = () => {
   // Forms
   const [newStudentForm] = Form.useForm();
   const [existingStudentForm] = Form.useForm();
+  const birthStateValue = Form.useWatch('birthState', newStudentForm);
+  const birthMunicipalityValue = Form.useWatch('birthMunicipality', newStudentForm);
 
   // Load Active Period and its structure on mount
   useEffect(() => {
@@ -45,6 +61,10 @@ const EnrollStudent: React.FC = () => {
         // 2. Load structure for active period
         const structureRes = await api.get(`/academic/structure/${active.id}`);
         setEnrollStructure(structureRes.data);
+
+        // 3. Load venezuela locations
+        const locationsRes = await api.get('/locations/venezuela');
+        setVenezuelaLocations(locationsRes.data);
       } catch (error) {
         message.error('Error cargando datos del periodo activo');
       } finally {
@@ -60,6 +80,42 @@ const EnrollStudent: React.FC = () => {
     const item = enrollStructure.find(s => s.gradeId === gradeId);
     return item?.sections || [];
   };
+
+  const stateOptions = useMemo(
+    () => venezuelaLocations.map((state) => ({ label: state.estado, value: state.estado })),
+    [venezuelaLocations]
+  );
+
+  const selectedBirthState = useMemo(
+    () => venezuelaLocations.find((state) => state.estado === birthStateValue) || null,
+    [birthStateValue, venezuelaLocations]
+  );
+
+  const municipalityOptions = useMemo(
+    () =>
+      selectedBirthState
+        ? selectedBirthState.municipios.map((municipio) => ({
+          label: municipio.municipio,
+          value: municipio.municipio
+        }))
+        : [],
+    [selectedBirthState]
+  );
+
+  const selectedMunicipality = useMemo(
+    () =>
+      selectedBirthState?.municipios.find((municipio) => municipio.municipio === birthMunicipalityValue) ||
+      null,
+    [selectedBirthState, birthMunicipalityValue]
+  );
+
+  const parishOptions = useMemo(
+    () =>
+      selectedMunicipality
+        ? selectedMunicipality.parroquias.map((parish) => ({ label: parish, value: parish }))
+        : [],
+    [selectedMunicipality]
+  );
 
   // --- Handlers ---
 
@@ -269,8 +325,67 @@ const EnrollStudent: React.FC = () => {
                 </Row>
               </div>
 
+              <div style={{ marginBottom: 24 }}>
+                <h4 style={{ color: '#666', borderBottom: '1px solid #eee', paddingBottom: 8 }}>3. Datos de Nacimiento</h4>
+                <Row gutter={16}>
+                  <Col span={8}>
+                    <Form.Item
+                      name="birthState"
+                      label="Estado de nacimiento"
+                      rules={[{ required: true, message: 'Seleccione un estado' }]}
+                    >
+                      <Select
+                        placeholder="Seleccione estado"
+                        showSearch
+                        optionFilterProp="label"
+                        filterOption={selectFilterOption}
+                        options={stateOptions}
+                        onChange={() => newStudentForm.setFieldsValue({
+                          birthMunicipality: undefined,
+                          birthParish: undefined
+                        })}
+                        disabled={!stateOptions.length}
+                      />
+                    </Form.Item>
+                  </Col>
+                  <Col span={8}>
+                    <Form.Item
+                      name="birthMunicipality"
+                      label="Municipio de nacimiento"
+                      rules={[{ required: true, message: 'Seleccione un municipio' }]}
+                    >
+                      <Select
+                        placeholder="Seleccione municipio"
+                        showSearch
+                        optionFilterProp="label"
+                        filterOption={selectFilterOption}
+                        options={municipalityOptions}
+                        disabled={!birthStateValue}
+                        onChange={() => newStudentForm.setFieldsValue({ birthParish: undefined })}
+                      />
+                    </Form.Item>
+                  </Col>
+                  <Col span={8}>
+                    <Form.Item
+                      name="birthParish"
+                      label="Parroquia de nacimiento"
+                      rules={[{ required: true, message: 'Seleccione una parroquia' }]}
+                    >
+                      <Select
+                        placeholder="Seleccione parroquia"
+                        showSearch
+                        optionFilterProp="label"
+                        filterOption={selectFilterOption}
+                        options={parishOptions}
+                        disabled={!birthMunicipalityValue}
+                      />
+                    </Form.Item>
+                  </Col>
+                </Row>
+              </div>
+
               <div>
-                <h4 style={{ color: '#666', borderBottom: '1px solid #eee', paddingBottom: 8 }}>3. Datos de Contacto</h4>
+                <h4 style={{ color: '#666', borderBottom: '1px solid #eee', paddingBottom: 8 }}>4. Datos de Contacto</h4>
                 <Row gutter={16}>
                   <Col span={24}>
                     <Form.Item name="address" label="Dirección" rules={[{ required: true }]}>

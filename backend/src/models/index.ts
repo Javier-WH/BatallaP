@@ -3,6 +3,7 @@ import Person from './Person';
 import Role from './Role';
 import PersonRole from './PersonRole';
 import Contact from './Contact';
+import PersonResidence from './PersonResidence';
 
 // User <-> Person Association
 User.hasOne(Person, {
@@ -22,6 +23,17 @@ Person.hasOne(Contact, {
 });
 
 Contact.belongsTo(Person, {
+  foreignKey: 'personId',
+  as: 'person'
+});
+
+// Person <-> PersonResidence Association (One-to-One)
+Person.hasOne(PersonResidence, {
+  foreignKey: 'personId',
+  as: 'residence'
+});
+
+PersonResidence.belongsTo(Person, {
   foreignKey: 'personId',
   as: 'person'
 });
@@ -139,6 +151,7 @@ export {
   Role,
   PersonRole,
   Contact,
+  PersonResidence,
   SchoolPeriod,
   Grade,
   Section,
