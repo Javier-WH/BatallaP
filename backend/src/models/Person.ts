@@ -52,8 +52,8 @@ Person.init(
     },
     document: {
       type: DataTypes.STRING,
-      allowNull: false,
-      unique: true, // Assuming document numbers are unique
+      allowNull: true,
+      unique: true, // Assuming document numbers are unique when provided
     },
     gender: {
       type: DataTypes.ENUM('M', 'F'),

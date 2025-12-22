@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { Op } from 'sequelize';
-import { Inscription, Person, Role, Subject, PeriodGrade, InscriptionSubject, SchoolPeriod, Grade, Section, Contact, PersonRole, PersonResidence, StudentGuardian } from '../models';
+import { Inscription, Person, Role, Subject, PeriodGrade, InscriptionSubject, SchoolPeriod, Grade, Section, Contact, PersonRole, PersonResidence, StudentGuardian, Matriculation } from '../models';
 import sequelize from '../config/database';
 
 type GuardianInput = {
@@ -71,32 +71,19 @@ export const quickRegister = async (req: Request, res: Response) => {
     }
     await PersonRole.create({ personId: person.id, roleId: studentRole.id }, { transaction: t });
 
-    const inscription = await Inscription.create({
+    const matriculation = await Matriculation.create({
+      personId: person.id,
       schoolPeriodId: targetPeriodId,
       gradeId,
       sectionId: sectionId || null,
-      personId: person.id
+      status: 'pending'
     }, { transaction: t });
-
-    const periodGrade = await PeriodGrade.findOne({
-      where: { schoolPeriodId: targetPeriodId, gradeId },
-      include: [{ model: Subject, as: 'subjects' }],
-      transaction: t
-    });
-
-    if (periodGrade?.subjects?.length) {
-      const subjectsToAdd = periodGrade.subjects.map((s: any) => ({
-        inscriptionId: inscription.id,
-        subjectId: s.id
-      }));
-      await InscriptionSubject.bulkCreate(subjectsToAdd, { transaction: t });
-    }
 
     await t.commit();
     res.status(201).json({
       message: 'Estudiante matriculado exitosamente',
       person,
-      inscription
+      matriculation
     });
   } catch (error: any) {
     if (t) await t.rollback();
@@ -150,6 +137,293 @@ const validateGuardianPayload = (
   }
 
   return data as CompleteGuardianInput;
+};
+
+export const getMatriculations = async (req: Request, res: Response) => {
+  try {
+    const { status = 'pending', schoolPeriodId, gradeId, sectionId, q } = req.query;
+
+    const where: any = {};
+    if (status) where.status = status;
+    if (schoolPeriodId) where.schoolPeriodId = schoolPeriodId;
+    if (gradeId) where.gradeId = gradeId;
+    if (sectionId) where.sectionId = sectionId;
+
+    const studentWhere: any = {};
+    let hasStudentFilter = false;
+    if (q) {
+      const like = `%${q}%`;
+      studentWhere[Op.or] = [
+        { firstName: { [Op.like]: like } },
+        { lastName: { [Op.like]: like } },
+        { document: { [Op.like]: like } }
+      ];
+      hasStudentFilter = true;
+    }
+
+    const matriculations = await Matriculation.findAll({
+      where,
+      include: [
+        {
+          model: Person,
+          as: 'student',
+          where: hasStudentFilter ? studentWhere : undefined,
+          required: hasStudentFilter
+        },
+        { model: SchoolPeriod, as: 'period' },
+        { model: Grade, as: 'grade' },
+        { model: Section, as: 'section' }
+      ],
+      order: [['createdAt', 'DESC']]
+    });
+
+    res.json(matriculations);
+  } catch (error) {
+    console.error('Error fetching matriculations:', error);
+    res.status(500).json({ error: 'Error obteniendo matriculados' });
+  }
+};
+
+export const getMatriculationById = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const matriculation = await Matriculation.findByPk(id, {
+      include: [
+        {
+          model: Person,
+          as: 'student',
+          include: [
+            { model: Contact, as: 'contact' },
+            { model: PersonResidence, as: 'residence' },
+            { model: StudentGuardian, as: 'guardians' }
+          ]
+        },
+        { model: SchoolPeriod, as: 'period' },
+        { model: Grade, as: 'grade' },
+        { model: Section, as: 'section' },
+        { model: Inscription, as: 'inscription' }
+      ]
+    });
+
+    if (!matriculation) {
+      return res.status(404).json({ error: 'Matriculación no encontrada' });
+    }
+
+    res.json(matriculation);
+  } catch (error) {
+    console.error('Error fetching matriculation:', error);
+    res.status(500).json({ error: 'Error obteniendo la matriculación' });
+  }
+};
+
+type MatriculationWithStudent = Matriculation & { student?: Person | null };
+
+export const enrollMatriculatedStudent = async (req: Request, res: Response) => {
+  const t = await sequelize.transaction();
+  try {
+    const { id } = req.params;
+    const {
+      firstName,
+      lastName,
+      documentType,
+      document,
+      gender,
+      birthdate,
+      birthState,
+      birthMunicipality,
+      birthParish,
+      residenceState,
+      residenceMunicipality,
+      residenceParish,
+      address,
+      phone1,
+      phone2,
+      email,
+      whatsapp,
+      gradeId,
+      sectionId,
+      schoolPeriodId,
+      mother,
+      father,
+      representative,
+      representativeType
+    } = req.body;
+
+    const matriculation = (await Matriculation.findByPk(id, {
+      include: [{ model: Person, as: 'student' }],
+      transaction: t,
+      lock: t.LOCK.UPDATE
+    })) as MatriculationWithStudent | null;
+
+    if (!matriculation) {
+      await t.rollback();
+      return res.status(404).json({ error: 'Matriculación no encontrada' });
+    }
+
+    if (matriculation.status === 'completed') {
+      await t.rollback();
+      return res.status(400).json({ error: 'El estudiante ya fue inscrito' });
+    }
+
+    const person = matriculation.student;
+    if (!person) {
+      await t.rollback();
+      return res.status(400).json({ error: 'No se encontró el estudiante asociado' });
+    }
+
+    if (!firstName || !lastName || !documentType || !gender || !birthdate) {
+      await t.rollback();
+      return res.status(400).json({ error: 'Datos básicos del estudiante incompletos' });
+    }
+
+    person.firstName = firstName;
+    person.lastName = lastName;
+    person.documentType = documentType;
+    person.document = document || null;
+    person.gender = gender;
+    person.birthdate = birthdate;
+    await person.save({ transaction: t });
+
+    // Contact
+    if (phone1 || phone2 || email || address || whatsapp) {
+      const contactPayload = { phone1, phone2, email, address, whatsapp, personId: person.id };
+      const existingContact = await Contact.findOne({ where: { personId: person.id }, transaction: t, lock: t.LOCK.UPDATE });
+      if (existingContact) {
+        await existingContact.update(contactPayload, { transaction: t });
+      } else {
+        await Contact.create(contactPayload, { transaction: t });
+      }
+    }
+
+    // Residence
+    if (!birthState || !birthMunicipality || !birthParish || !residenceState || !residenceMunicipality || !residenceParish) {
+      await t.rollback();
+      return res.status(400).json({ error: 'Datos de nacimiento y residencia son obligatorios.' });
+    }
+
+    const residencePayload = {
+      birthState,
+      birthMunicipality,
+      birthParish,
+      residenceState,
+      residenceMunicipality,
+      residenceParish,
+      personId: person.id
+    };
+    const existingResidence = await PersonResidence.findOne({ where: { personId: person.id }, transaction: t, lock: t.LOCK.UPDATE });
+    if (existingResidence) {
+      await existingResidence.update(residencePayload, { transaction: t });
+    } else {
+      await PersonResidence.create(residencePayload, { transaction: t });
+    }
+
+    // Guardians
+    const representativeSelection = typeof representativeType === 'string' && ['mother', 'father', 'other'].includes(representativeType)
+      ? representativeType
+      : 'mother';
+    const motherIsRepresentative = representativeSelection === 'mother';
+    const fatherIsRepresentative = representativeSelection === 'father';
+    const representativeDataRequired = representativeSelection === 'other' || (!motherIsRepresentative && !fatherIsRepresentative);
+    const motherDataRequired = motherIsRepresentative || documentType === 'Cedula Escolar';
+    const fatherDataRequired = fatherIsRepresentative;
+
+    const motherData = validateGuardianPayload('la madre', mother, motherDataRequired);
+    const fatherData = validateGuardianPayload('el padre', father, fatherDataRequired);
+    const representativeData = validateGuardianPayload('el representante', representative, representativeDataRequired);
+
+    if (!motherIsRepresentative && !fatherIsRepresentative && !representativeData) {
+      throw new Error('Debe registrar un representante si la madre o el padre no lo son.');
+    }
+
+    await StudentGuardian.destroy({ where: { studentId: person.id }, transaction: t });
+
+    const guardiansToCreate = [];
+    if (motherData) {
+      guardiansToCreate.push({
+        studentId: person.id,
+        relationship: 'mother' as const,
+        isRepresentative: motherIsRepresentative,
+        ...motherData
+      });
+    }
+    if (fatherData) {
+      guardiansToCreate.push({
+        studentId: person.id,
+        relationship: 'father' as const,
+        isRepresentative: fatherIsRepresentative,
+        ...fatherData
+      });
+    }
+    if (representativeData) {
+      guardiansToCreate.push({
+        studentId: person.id,
+        relationship: 'representative' as const,
+        isRepresentative: true,
+        ...representativeData
+      });
+    }
+    if (guardiansToCreate.length > 0) {
+      await StudentGuardian.bulkCreate(guardiansToCreate, { transaction: t });
+    }
+
+    const targetPeriodId = schoolPeriodId || matriculation.schoolPeriodId;
+    const targetGradeId = gradeId || matriculation.gradeId;
+    const targetSectionId = sectionId ?? matriculation.sectionId ?? null;
+
+    const existingInscription = await Inscription.findOne({
+      where: { schoolPeriodId: targetPeriodId, personId: person.id },
+      transaction: t,
+      lock: t.LOCK.UPDATE
+    });
+    if (existingInscription) {
+      await t.rollback();
+      return res.status(400).json({ error: 'El estudiante ya está inscrito en este periodo escolar' });
+    }
+
+    const inscription = await Inscription.create({
+      schoolPeriodId: targetPeriodId,
+      gradeId: targetGradeId,
+      sectionId: targetSectionId,
+      personId: person.id
+    }, { transaction: t });
+
+    const periodGrade = await PeriodGrade.findOne({
+      where: { schoolPeriodId: targetPeriodId, gradeId: targetGradeId },
+      include: [{ model: Subject, as: 'subjects' }],
+      transaction: t
+    });
+
+    if (periodGrade?.subjects?.length) {
+      const subjectsToAdd = periodGrade.subjects.map((s: any) => ({
+        inscriptionId: inscription.id,
+        subjectId: s.id
+      }));
+      await InscriptionSubject.bulkCreate(subjectsToAdd, { transaction: t });
+    }
+
+    matriculation.gradeId = targetGradeId;
+    matriculation.sectionId = targetSectionId;
+    matriculation.schoolPeriodId = targetPeriodId;
+    matriculation.status = 'completed';
+    matriculation.inscriptionId = inscription.id;
+    await matriculation.save({ transaction: t });
+
+    await t.commit();
+    const result = await Matriculation.findByPk(id, {
+      include: [
+        { model: Person, as: 'student' },
+        { model: Inscription, as: 'inscription' }
+      ]
+    });
+    res.status(201).json({
+      message: 'Estudiante inscrito exitosamente',
+      matriculation: result
+    });
+  } catch (error: any) {
+    if (t) await t.rollback();
+    console.error('Error al inscribir matriculado:', error);
+    res.status(500).json({ error: 'Error al inscribir estudiante matriculado', details: error.message || error });
+  }
 };
 
 export const getInscriptions = async (req: Request, res: Response) => {

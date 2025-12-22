@@ -30,6 +30,7 @@ import type { JSX } from 'react';
 import ControlEstudiosLayout from '@/pages/control-estudios/ControlEstudiosLayout';
 import ControlEstudiosDashboard from '@/pages/control-estudios/Dashboard';
 import AcademicSettings from '@/pages/control-estudios/AcademicSettings';
+import MatriculationEnrollment from '@/pages/control-estudios/MatriculationEnrollment';
 
 // Protected Route Component
 const RequireAuth = ({ children, allowedRoles }: { children: JSX.Element; allowedRoles?: string[] }) => {
@@ -102,7 +103,7 @@ function AppRoutes() {
         {/* Nested Control de Estudios Module */}
         <Route path="control-estudios" element={<RequireAuth allowedRoles={['StudyControl', 'Admin', 'Master']}><ControlEstudiosLayout /></RequireAuth>}>
           <Route index element={<ControlEstudiosDashboard />} />
-          <Route path="inscribir-estudiante" element={<EnrollStudent />} />
+          <Route path="inscribir-estudiante" element={<MatriculationEnrollment />} />
           <Route path="configuracion" element={<AcademicSettings />} />
         </Route>
 
