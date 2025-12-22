@@ -129,7 +129,14 @@ function AppRoutes() {
         </Route>
 
         {/* Academic Record Module */}
-        <Route path="student/:personId" element={<RequireAuth allowedRoles={['Profesor', 'Administrador', 'Master']}><StudentDetail /></RequireAuth>} />
+        <Route
+          path="student/:personId"
+          element={
+            <RequireAuth allowedRoles={['Administrador', 'Master', 'Control de Estudios']}>
+              <StudentDetail />
+            </RequireAuth>
+          }
+        />
       </Route>
 
       <Route path="*" element={<h1>404 Not Found</h1>} />
