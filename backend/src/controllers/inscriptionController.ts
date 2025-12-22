@@ -1,7 +1,66 @@
 import { Request, Response } from 'express';
 import { Op } from 'sequelize';
-import { Inscription, Person, Role, Subject, PeriodGrade, InscriptionSubject, SchoolPeriod, Grade, Section, Contact, PersonRole, PersonResidence } from '../models';
+import { Inscription, Person, Role, Subject, PeriodGrade, InscriptionSubject, SchoolPeriod, Grade, Section, Contact, PersonRole, PersonResidence, StudentGuardian } from '../models';
 import sequelize from '../config/database';
+
+type GuardianInput = {
+  firstName?: string;
+  lastName?: string;
+  document?: string;
+  residenceState?: string;
+  residenceMunicipality?: string;
+  residenceParish?: string;
+  address?: string;
+  phone?: string;
+  email?: string;
+};
+
+type CompleteGuardianInput = Required<GuardianInput>;
+
+const guardianRequiredFields: (keyof GuardianInput)[] = [
+  'firstName',
+  'lastName',
+  'document',
+  'residenceState',
+  'residenceMunicipality',
+  'residenceParish',
+  'address',
+  'phone',
+  'email'
+];
+
+const isEmptyValue = (value: unknown) => {
+  if (value === null || value === undefined) return true;
+  if (typeof value === 'string') return value.trim() === '';
+  return false;
+};
+
+const hasGuardianData = (data?: GuardianInput | null) => {
+  if (!data) return false;
+  return Object.values(data).some((value) => !isEmptyValue(value));
+};
+
+const validateGuardianPayload = (
+  label: string,
+  data: GuardianInput | null | undefined,
+  required: boolean
+): CompleteGuardianInput | null => {
+  const hasData = hasGuardianData(data);
+
+  if (!hasData) {
+    if (required) {
+      throw new Error(`Los datos de ${label} son obligatorios.`);
+    }
+    return null;
+  }
+
+  const missingFields = guardianRequiredFields.filter((field) => isEmptyValue(data?.[field]));
+  if (missingFields.length > 0) {
+    throw new Error(`Faltan campos obligatorios para ${label}: ${missingFields.join(', ')}`);
+  }
+
+  return data as CompleteGuardianInput;
+};
 
 export const getInscriptions = async (req: Request, res: Response) => {
   try {
@@ -275,6 +334,10 @@ export const registerAndEnroll = async (req: Request, res: Response) => {
       residenceState,
       residenceMunicipality,
       residenceParish,
+      mother,
+      father,
+      representative,
+      representativeType,
       // Contact data
       phone1,
       phone2,
@@ -304,6 +367,23 @@ export const registerAndEnroll = async (req: Request, res: Response) => {
       throw new Error('Datos de nacimiento y residencia son obligatorios para registrar estudiantes.');
     }
 
+    const representativeSelection = typeof representativeType === 'string' && ['mother', 'father', 'other'].includes(representativeType)
+      ? representativeType
+      : 'mother';
+    const motherIsRepresentative = representativeSelection === 'mother';
+    const fatherIsRepresentative = representativeSelection === 'father';
+    const representativeDataRequired = representativeSelection === 'other' || (!motherIsRepresentative && !fatherIsRepresentative);
+    const motherDataRequired = motherIsRepresentative || documentType === 'Cedula Escolar';
+    const fatherDataRequired = fatherIsRepresentative;
+
+    const motherData = validateGuardianPayload('la madre', mother, motherDataRequired);
+    const fatherData = validateGuardianPayload('el padre', father, fatherDataRequired);
+    const representativeData = validateGuardianPayload('el representante', representative, representativeDataRequired);
+
+    if (!motherIsRepresentative && !fatherIsRepresentative && !representativeData) {
+      throw new Error('Debe registrar un representante si la madre o el padre no lo son.');
+    }
+
     // 2. Create Contact
     if (phone1 || email || address) {
       await Contact.create({
@@ -326,6 +406,44 @@ export const registerAndEnroll = async (req: Request, res: Response) => {
       residenceMunicipality,
       residenceParish
     }, { transaction: t });
+
+    // 4. Create guardians
+    const guardiansToCreate = [];
+
+    if (motherData) {
+      guardiansToCreate.push({
+        studentId: person.id,
+        relationship: 'mother' as const,
+        isRepresentative: motherIsRepresentative,
+        ...motherData
+      });
+    }
+
+    if (fatherData) {
+      guardiansToCreate.push({
+        studentId: person.id,
+        relationship: 'father' as const,
+        isRepresentative: fatherIsRepresentative,
+        ...fatherData
+      });
+    }
+
+    if (representativeData) {
+      guardiansToCreate.push({
+        studentId: person.id,
+        relationship: 'representative' as const,
+        isRepresentative: true,
+        ...representativeData
+      });
+    }
+
+    if (!guardiansToCreate.some((guardian) => guardian.isRepresentative)) {
+      throw new Error('Debe seleccionar al menos un representante legal.');
+    }
+
+    if (guardiansToCreate.length > 0) {
+      await StudentGuardian.bulkCreate(guardiansToCreate, { transaction: t });
+    }
 
     // 4. Assign Alumno role
     let role = await Role.findOne({ where: { name: 'Alumno' }, transaction: t });

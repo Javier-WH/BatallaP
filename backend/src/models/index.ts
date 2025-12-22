@@ -4,6 +4,7 @@ import Role from './Role';
 import PersonRole from './PersonRole';
 import Contact from './Contact';
 import PersonResidence from './PersonResidence';
+import StudentGuardian from './StudentGuardian';
 
 // User <-> Person Association
 User.hasOne(Person, {
@@ -36,6 +37,17 @@ Person.hasOne(PersonResidence, {
 PersonResidence.belongsTo(Person, {
   foreignKey: 'personId',
   as: 'person'
+});
+
+// Person <-> StudentGuardian Association (One-to-Many)
+Person.hasMany(StudentGuardian, {
+  foreignKey: 'studentId',
+  as: 'guardians'
+});
+
+StudentGuardian.belongsTo(Person, {
+  foreignKey: 'studentId',
+  as: 'student'
 });
 
 // Person <-> Role Association (Many-to-Many)
@@ -152,6 +164,7 @@ export {
   PersonRole,
   Contact,
   PersonResidence,
+  StudentGuardian,
   SchoolPeriod,
   Grade,
   Section,
