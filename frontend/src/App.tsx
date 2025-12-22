@@ -18,6 +18,7 @@ import AcademicManagement from '@/pages/master/AcademicManagement';
 import AdminLayout from '@/pages/admin/AdminLayout';
 import RegisterStaff from '@/pages/admin/RegisterStaff';
 import EnrollStudent from '@/pages/admin/EnrollStudent';
+import QuickEnrollStudent from '@/pages/admin/QuickEnrollStudent';
 import EnrolledStudents from '@/pages/admin/EnrolledStudents';
 import TeacherProjection from '@/pages/admin/TeacherProjection';
 import TeacherPanel from '@/pages/teacher/TeacherPanel';
@@ -89,6 +90,7 @@ function AppRoutes() {
         <Route path="admin" element={<RequireAuth allowedRoles={['Admin', 'Master']}><AdminLayout /></RequireAuth>}>
           <Route index element={<h1>Panel de Admin</h1>} /> {/* Placeholder dashboard */}
           <Route path="register-staff" element={<RegisterStaff />} />
+          <Route path="matricular-estudiante" element={<QuickEnrollStudent />} />
           <Route path="enroll-student" element={<EnrollStudent />} />
           <Route path="enrolled" element={<EnrolledStudents />} />
           <Route path="projection" element={<TeacherProjection />} />

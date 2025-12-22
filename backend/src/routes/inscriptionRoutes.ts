@@ -7,7 +7,8 @@ import {
   deleteInscription,
   addSubjectToInscription,
   removeSubjectFromInscription,
-  registerAndEnroll
+  registerAndEnroll,
+  quickRegister
 } from '../controllers/inscriptionController';
 
 const router = Router();
@@ -16,6 +17,7 @@ router.get('/', getInscriptions);
 router.get('/:id', getInscriptionById);
 router.post('/', createInscription);
 router.post('/register', registerAndEnroll); // New: Register Person + Enroll (no User)
+router.post('/quick-register', quickRegister); // Minimal data enrollment (Admin)
 router.put('/:id', updateInscription);
 router.delete('/:id', deleteInscription);
 

@@ -15,6 +15,96 @@ type GuardianInput = {
   email?: string;
 };
 
+export const quickRegister = async (req: Request, res: Response) => {
+  const t = await sequelize.transaction();
+  try {
+    const {
+      schoolPeriodId,
+      gradeId,
+      sectionId,
+      firstName,
+      lastName,
+      documentType,
+      document,
+      gender,
+      birthdate
+    } = req.body;
+
+    if (!gradeId) {
+      await t.rollback();
+      return res.status(400).json({ error: 'El grado es obligatorio' });
+    }
+
+    const targetPeriodId = schoolPeriodId
+      ? schoolPeriodId
+      : (
+        await SchoolPeriod.findOne({
+          where: { isActive: true },
+          attributes: ['id'],
+          transaction: t
+        })
+      )?.id;
+
+    if (!targetPeriodId) {
+      await t.rollback();
+      return res.status(400).json({ error: 'No se encontró un periodo escolar activo' });
+    }
+
+    if (!firstName || !lastName || !documentType || !document || !gender || !birthdate) {
+      await t.rollback();
+      return res.status(400).json({ error: 'Datos básicos del estudiante incompletos' });
+    }
+
+    const person = await Person.create({
+      firstName,
+      lastName,
+      documentType,
+      document,
+      gender,
+      birthdate,
+      userId: null
+    }, { transaction: t });
+
+    let studentRole = await Role.findOne({ where: { name: 'Alumno' }, transaction: t });
+    if (!studentRole) {
+      studentRole = await Role.create({ name: 'Alumno' }, { transaction: t });
+    }
+    await PersonRole.create({ personId: person.id, roleId: studentRole.id }, { transaction: t });
+
+    const inscription = await Inscription.create({
+      schoolPeriodId: targetPeriodId,
+      gradeId,
+      sectionId: sectionId || null,
+      personId: person.id
+    }, { transaction: t });
+
+    const periodGrade = await PeriodGrade.findOne({
+      where: { schoolPeriodId: targetPeriodId, gradeId },
+      include: [{ model: Subject, as: 'subjects' }],
+      transaction: t
+    });
+
+    if (periodGrade?.subjects?.length) {
+      const subjectsToAdd = periodGrade.subjects.map((s: any) => ({
+        inscriptionId: inscription.id,
+        subjectId: s.id
+      }));
+      await InscriptionSubject.bulkCreate(subjectsToAdd, { transaction: t });
+    }
+
+    await t.commit();
+    res.status(201).json({
+      message: 'Estudiante matriculado exitosamente',
+      person,
+      inscription
+    });
+  } catch (error: any) {
+    if (t) await t.rollback();
+    console.error('Error en quickRegister:', error);
+    res.status(500).json({ error: 'Error al matricular estudiante', details: error.message || error });
+  }
+};
+
 type CompleteGuardianInput = Required<GuardianInput>;
 
 const guardianRequiredFields: (keyof GuardianInput)[] = [
