@@ -9,6 +9,7 @@ import {
   Form,
   Input,
   message,
+  Modal,
   Radio,
   Row,
   Select,
@@ -214,6 +215,8 @@ const MatriculationEnrollment: React.FC = () => {
   // Previous schools state
   const [previousSchoolsLoading, setPreviousSchoolsLoading] = useState(false);
   const [schoolOptions, setSchoolOptions] = useState<{ label: string; value: string }[]>([]);
+  const [showAddSchool, setShowAddSchool] = useState(false);
+  const [currentSearchQuery, setCurrentSearchQuery] = useState('');
 
   // Form watchers
   const birthStateValue = Form.useWatch('birthState', form);
@@ -271,9 +274,36 @@ const MatriculationEnrollment: React.FC = () => {
     }
   }, []);
 
+  const handleAddSchool = async (schoolData: { name: string; code: string; state: string }) => {
+    try {
+      const response = await api.post('/planteles', schoolData);
+      const newSchool = response.data;
+      
+      // Add the new school to the current options
+      const newOption = {
+        label: `${newSchool.name} (${newSchool.code})`,
+        value: newSchool.code || newSchool.name
+      };
+      
+      setSchoolOptions(prev => [...prev, newOption]);
+      setShowAddSchool(false);
+      
+      message.success('Plantel agregado exitosamente');
+      
+      // Optionally, you could refresh the search or clear the current search
+      // setCurrentSearchQuery('');
+    } catch (error) {
+      console.error('Error adding school:', error);
+      message.error('Error agregando plantel');
+    }
+  };
+
   const searchSchools = async (query: string) => {
+    setCurrentSearchQuery(query);
+    
     if (!query || query.length < 2) {
       setSchoolOptions([]);
+      setShowAddSchool(false);
       return;
     }
 
@@ -284,10 +314,13 @@ const MatriculationEnrollment: React.FC = () => {
         label: `${school.name} (${school.code})`,
         value: school.code || school.name
       }));
+      
       setSchoolOptions(options);
+      // Don't automatically show modal - let user click button
     } catch (error) {
       console.error('Error searching schools:', error);
       message.error('Error buscando planteles');
+      setSchoolOptions([]);
     } finally {
       setPreviousSchoolsLoading(false);
     }
@@ -724,9 +757,21 @@ const MatriculationEnrollment: React.FC = () => {
                       notFoundContent={
                         previousSchoolsLoading
                           ? <div style={{ padding: 8 }}>Buscando planteles...</div>
-                          : schoolOptions.length === 0
-                            ? <div style={{ padding: 8, color: '#999' }}>Escriba al menos 2 caracteres para buscar</div>
-                            : null
+                          : !schoolOptions.length && currentSearchQuery && currentSearchQuery.length >= 2
+                            ? <div style={{ padding: 8 }}>
+                                <div style={{ marginBottom: 8, color: '#666' }}>
+                                  No se encontraron planteles con "{currentSearchQuery}"
+                                </div>
+                                <Button 
+                                  type="link" 
+                                  size="small"
+                                  onClick={() => setShowAddSchool(true)}
+                                  style={{ padding: 0 }}
+                                >
+                                  + Agregar nuevo plantel
+                                </Button>
+                              </div>
+                            : <div style={{ padding: 8, color: '#999' }}>Escriba al menos 2 caracteres para buscar</div>
                       }
                     />
                   </Form.Item>
@@ -1351,6 +1396,78 @@ const MatriculationEnrollment: React.FC = () => {
           </Form>
         )}
       </Card>
+
+      {/* Add School Modal */}
+      <Modal
+        title="Agregar Nuevo Plantel"
+        open={showAddSchool}
+        onCancel={() => setShowAddSchool(false)}
+        footer={null}
+        destroyOnClose
+      >
+        <Form
+          layout="vertical"
+          onFinish={handleAddSchool}
+          initialValues={{
+            name: currentSearchQuery,
+            state: '',
+            code: '',
+            dependency: 'Público'
+          }}
+        >
+          <Form.Item
+            name="name"
+            label="Nombre del Plantel"
+            rules={[{ required: true, message: 'Ingrese el nombre del plantel' }]}
+          >
+            <Input placeholder="Ej: Escuela Nacional República de Colombia" />
+          </Form.Item>
+
+          <Form.Item
+            name="code"
+            label="Código del Plantel"
+            rules={[{ required: true, message: 'Ingrese el código del plantel' }]}
+          >
+            <Input placeholder="Ej: 012345" />
+          </Form.Item>
+
+          <Form.Item
+            name="state"
+            label="Estado"
+            rules={[{ required: true, message: 'Seleccione el estado' }]}
+          >
+            <Select placeholder="Seleccione estado">
+              {locations.map((state) => (
+                <Option key={state.estado} value={state.estado}>
+                  {state.estado}
+                </Option>
+              ))}
+            </Select>
+          </Form.Item>
+
+          <Form.Item
+            name="dependency"
+            label="Dependencia"
+          >
+            <Select placeholder="Seleccione dependencia">
+              <Option value="Público">Público</Option>
+              <Option value="Privado">Privado</Option>
+              <Option value="Subvencionado">Subvencionado</Option>
+            </Select>
+          </Form.Item>
+
+          <Form.Item style={{ marginBottom: 0, textAlign: 'right' }}>
+            <Space>
+              <Button onClick={() => setShowAddSchool(false)}>
+                Cancelar
+              </Button>
+              <Button type="primary" htmlType="submit">
+                Agregar Plantel
+              </Button>
+            </Space>
+          </Form.Item>
+        </Form>
+      </Modal>
     </div>
   );
 };
