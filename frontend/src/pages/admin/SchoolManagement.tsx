@@ -223,7 +223,7 @@ const SchoolManagement: React.FC = () => {
       title: 'Acciones',
       key: 'actions',
       width: 150,
-      render: (_, record: Plantel) => (
+      render: (_: unknown, record: Plantel) => (
         <Space size="small">
           <Button
             type="text"
@@ -328,7 +328,7 @@ const SchoolManagement: React.FC = () => {
         open={modalVisible}
         onCancel={handleModalClose}
         footer={null}
-        destroyOnClose
+        destroyOnHidden
         width={600}
       >
         <Form

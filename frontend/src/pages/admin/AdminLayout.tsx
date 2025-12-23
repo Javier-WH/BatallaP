@@ -14,7 +14,7 @@ const AdminLayout: React.FC = () => {
       {/* Admin Toolbar */}
       <Card
         size="small"
-        bodyStyle={{ padding: '8px 16px', display: 'flex', alignItems: 'center', gap: '16px' }}
+        styles={{ body: { padding: '8px 16px', display: 'flex', alignItems: 'center', gap: '16px' } }}
         style={{ borderRadius: 0, borderBottom: '1px solid #f0f0f0', boxShadow: 'none' }}
       >
         <span style={{ fontWeight: 600, color: '#666', marginRight: 8, borderRight: '1px solid #eee', paddingRight: 16 }}>

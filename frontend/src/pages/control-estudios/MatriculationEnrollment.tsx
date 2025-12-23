@@ -577,7 +577,7 @@ const MatriculationEnrollment: React.FC = () => {
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '360px 1fr', gap: 24 }}>
-      <Card bordered={false} style={{ height: '100%' }}>
+      <Card variant="borderless" style={{ height: '100%' }}>
         <div style={{ marginBottom: 12 }}>
           <Text style={{ fontSize: 13, fontWeight: 600, letterSpacing: 0.4, color: '#4a4a4a', textTransform: 'uppercase' }}>
             Estudiantes Matriculados
@@ -648,7 +648,7 @@ const MatriculationEnrollment: React.FC = () => {
               type="info"
               showIcon
               style={{ marginBottom: 20 }}
-              message="Datos pre-cargados"
+              title="Datos pre-cargados"
               description="Revise y complete todos los campos antes de inscribir al estudiante."
             />
 
@@ -1403,7 +1403,7 @@ const MatriculationEnrollment: React.FC = () => {
         open={showAddSchool}
         onCancel={() => setShowAddSchool(false)}
         footer={null}
-        destroyOnClose
+        destroyOnHidden
       >
         <Form
           layout="vertical"
