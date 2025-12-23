@@ -1,6 +1,8 @@
 import sequelize from '@/config/database';
-import { User, Person, Role, PersonRole, SchoolPeriod, Subject, Grade, Section, Specialization } from '@/models/index';
+import { User, Person, Role, PersonRole, SchoolPeriod, Subject, Grade, Section, Specialization, Plantel } from '@/models/index';
 import Term from '@/models/Term';
+import fs from 'fs';
+import path from 'path';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -154,6 +156,49 @@ const seed = async () => {
         await Specialization.create({ name: specName });
         console.log(`Specialization "${specName}" created.`);
       }
+    }
+
+    // 7. Seed Planteles from JSON file
+    console.log('🌱 Seeding planteles...');
+    const existingPlantelesCount = await Plantel.count();
+    if (existingPlantelesCount === 0) {
+      try {
+        const plantelesPath = path.resolve(process.cwd(), 'src/assets/planteles.json');
+        const rawData = fs.readFileSync(plantelesPath, 'utf-8');
+        const plantelesData = JSON.parse(rawData);
+
+        console.log(`📊 Found ${plantelesData.length} planteles to seed`);
+
+        // Insert in batches to avoid memory issues
+        const batchSize = 1000;
+        let totalInserted = 0;
+
+        for (let i = 0; i < plantelesData.length; i += batchSize) {
+          const batch = plantelesData.slice(i, i + batchSize);
+          const plantelesToInsert = batch.map((plantel: any) => ({
+            code: plantel.code,
+            name: plantel.name,
+            state: plantel.state,
+            dependency: plantel.dependency,
+            municipality: plantel.municipality || null,
+            parish: plantel.parish || null
+          }));
+
+          await Plantel.bulkCreate(plantelesToInsert, {
+            ignoreDuplicates: true,
+            validate: true
+          });
+
+          totalInserted += batch.length;
+          console.log(`✅ Batch ${Math.floor(i / batchSize) + 1} inserted (${totalInserted}/${plantelesData.length})`);
+        }
+
+        console.log(`🎉 Successfully seeded ${totalInserted} planteles!`);
+      } catch (error) {
+        console.error('❌ Error seeding planteles:', error);
+      }
+    } else {
+      console.log(`ℹ️  Planteles already seeded (${existingPlantelesCount} records found)`);
     }
 
     // 6. Create User Javier

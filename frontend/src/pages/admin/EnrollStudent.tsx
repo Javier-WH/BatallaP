@@ -19,6 +19,12 @@ type VenezuelaState = {
 
 type OptionItem = { label: string; value: string };
 
+type SchoolSearchResult = {
+  code?: string;
+  name: string;
+  state: string;
+};
+
 type SchoolPeriod = {
   id: number;
   period: string;
@@ -123,6 +129,8 @@ const EnrollStudent: React.FC = () => {
   const [enrollStructure, setEnrollStructure] = useState<EnrollStructureItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [venezuelaLocations, setVenezuelaLocations] = useState<VenezuelaState[]>([]);
+  const [schoolOptions, setSchoolOptions] = useState<OptionItem[]>([]);
+  const [loadingSchools, setLoadingSchools] = useState(false);
 
   // For section selector (controlled)
   const [selectedGradeId, setSelectedGradeId] = useState<number | null>(null);
@@ -148,6 +156,29 @@ const EnrollStudent: React.FC = () => {
   const fatherMunicipalityValue = Form.useWatch(['father', 'residenceMunicipality'], newStudentForm);
   const representativeStateValue = Form.useWatch(['representative', 'residenceState'], newStudentForm);
   const representativeMunicipalityValue = Form.useWatch(['representative', 'residenceMunicipality'], newStudentForm);
+
+  const searchSchools = async (query: string) => {
+    if (!query || query.length < 2) {
+      setSchoolOptions([]);
+      return;
+    }
+
+    setLoadingSchools(true);
+    try {
+      const response = await api.get(`/planteles/search?q=${encodeURIComponent(query)}`);
+      const options = response.data.map((school: SchoolSearchResult) => ({
+        label: `${school.name} (${school.code})`,
+        value: school.code || school.name
+      }));
+      setSchoolOptions(options);
+    } catch (error) {
+      console.error('Error searching schools:', error);
+      message.error('Error buscando planteles');
+    } finally {
+      setLoadingSchools(false);
+    }
+  };
+
   // Load Active Period and its structure on mount
   useEffect(() => {
     const init = async () => {
@@ -647,6 +678,28 @@ const EnrollStudent: React.FC = () => {
                     </Form.Item>
                   </Col>
                 </Row>
+              </div>
+
+              <div style={{ marginBottom: 24 }}>
+                <h4 style={{ color: '#666', borderBottom: '1px solid #eee', paddingBottom: 8 }}>4.5. Procedencia Escolar (Opcional)</h4>
+                <Form.Item name="previousSchool" label="Plantel anterior">
+                  <Select
+                    showSearch
+                    placeholder="Escriba para buscar planteles..."
+                    filterOption={false}
+                    onSearch={searchSchools}
+                    loading={loadingSchools}
+                    options={schoolOptions}
+                    allowClear
+                    notFoundContent={
+                      loadingSchools
+                        ? <div style={{ padding: 8 }}>Buscando planteles...</div>
+                        : schoolOptions.length === 0
+                          ? <div style={{ padding: 8, color: '#999' }}>Escriba al menos 2 caracteres para buscar</div>
+                          : null
+                    }
+                  />
+                </Form.Item>
               </div>
 
               <div>

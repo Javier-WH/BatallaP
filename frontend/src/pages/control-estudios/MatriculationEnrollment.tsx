@@ -50,15 +50,6 @@ interface PersonSummary {
   birthdate?: string | null;
 }
 
-interface StudentPreviousSchool {
-  code?: string | null;
-  name: string;
-  state?: string | null;
-  municipality?: string | null;
-  parish?: string | null;
-  dependency?: string | null;
-}
-
 interface MatriculationSummary {
   id: number;
   grade?: GradeSummary;
@@ -123,7 +114,7 @@ type VenezuelaState = {
   municipios: VenezuelaMunicipality[];
 };
 
-interface EnrollStructureEntry {
+type EnrollStructureEntry = {
   gradeId: number;
   grade?: GradeSummary;
   sections?: SectionSummary[];
@@ -170,6 +161,12 @@ interface MatriculationFormValues {
   previousSchoolIds?: number[];
 }
 
+type SchoolSearchResult = {
+  code?: string;
+  name: string;
+  state: string;
+};
+
 const selectFilterOption = (input: string, option?: { label?: string }) =>
   (option?.label ?? '').toString().toLowerCase().includes(input.toLowerCase());
 
@@ -215,8 +212,8 @@ const MatriculationEnrollment: React.FC = () => {
   const [form] = Form.useForm();
 
   // Previous schools state
-  const [previousSchools, setPreviousSchools] = useState<StudentPreviousSchool[]>([]);
   const [previousSchoolsLoading, setPreviousSchoolsLoading] = useState(false);
+  const [schoolOptions, setSchoolOptions] = useState<{ label: string; value: string }[]>([]);
 
   // Form watchers
   const birthStateValue = Form.useWatch('birthState', form);
@@ -274,18 +271,27 @@ const MatriculationEnrollment: React.FC = () => {
     }
   }, []);
 
-  const fetchPreviousSchools = useCallback(async () => {
+  const searchSchools = async (query: string) => {
+    if (!query || query.length < 2) {
+      setSchoolOptions([]);
+      return;
+    }
+
     setPreviousSchoolsLoading(true);
     try {
-      const { data } = await api.get('/planteles');
-      setPreviousSchools(data);
+      const response = await api.get(`/planteles/search?q=${encodeURIComponent(query)}`);
+      const options = response.data.map((school: SchoolSearchResult) => ({
+        label: `${school.name} (${school.code})`,
+        value: school.code || school.name
+      }));
+      setSchoolOptions(options);
     } catch (error) {
-      console.error('Error loading planteles:', error);
-      setPreviousSchools([]);
+      console.error('Error searching schools:', error);
+      message.error('Error buscando planteles');
     } finally {
       setPreviousSchoolsLoading(false);
     }
-  }, []);
+  };
 
   const loadDetail = useCallback(
     async (id: number) => {
@@ -294,7 +300,7 @@ const MatriculationEnrollment: React.FC = () => {
         const { data } = await api.get(`/matriculations/${id}`);
         setDetail(data);
         await fetchStructure(data.schoolPeriodId);
-        await fetchPreviousSchools();
+        // No longer need to load previous schools - search is done on demand
 
         const guardians = data.guardians || [];
         const mother = guardians.find((g: GuardianInfo) => g.relationship === 'mother');
@@ -378,7 +384,7 @@ const MatriculationEnrollment: React.FC = () => {
         setDetailLoading(false);
       }
     },
-    [fetchStructure, fetchPreviousSchools, form]
+    [fetchStructure, form]
   );
 
   useEffect(() => {
@@ -711,20 +717,18 @@ const MatriculationEnrollment: React.FC = () => {
                       placeholder="Buscar y seleccionar planteles anteriores"
                       loading={previousSchoolsLoading}
                       showSearch
-                      optionFilterProp="children"
-                      filterOption={(input, option) => {
-                        const text = option?.children?.toString() || '';
-                        return text.toLowerCase().includes(input.toLowerCase());
-                      }}
+                      filterOption={false}
+                      onSearch={searchSchools}
+                      options={schoolOptions}
                       style={{ width: '100%' }}
-                    >
-                      {previousSchools.map((school) => (
-                        <Option key={school.code || school.name} value={school.code || school.name}>
-                          {school.name}
-                          {school.code && ` (${school.code})`}
-                        </Option>
-                      ))}
-                    </Select>
+                      notFoundContent={
+                        previousSchoolsLoading
+                          ? <div style={{ padding: 8 }}>Buscando planteles...</div>
+                          : schoolOptions.length === 0
+                            ? <div style={{ padding: 8, color: '#999' }}>Escriba al menos 2 caracteres para buscar</div>
+                            : null
+                      }
+                    />
                   </Form.Item>
                 </Col>
               </Row>

@@ -6,6 +6,7 @@ import Contact from './Contact';
 import PersonResidence from './PersonResidence';
 import StudentGuardian from './StudentGuardian';
 import StudentPreviousSchool from './StudentPreviousSchool';
+import Plantel from './Plantel';
 
 // User <-> Person Association
 User.hasOne(Person, {
@@ -195,6 +196,7 @@ export {
   PersonResidence,
   StudentGuardian,
   StudentPreviousSchool,
+  Plantel,
   SchoolPeriod,
   Grade,
   Section,
