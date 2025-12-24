@@ -18,6 +18,8 @@ import locationRoutes from '@/routes/locationRoutes';
 import matriculationRoutes from '@/routes/matriculationRoutes';
 import studentPreviousSchoolRoutes from '@/routes/studentPreviousSchoolRoutes';
 import plantelRoutes from '@/routes/plantelRoutes';
+import enrollmentQuestionRoutes from '@/routes/enrollmentQuestionRoutes';
+import enrollmentAnswerRoutes from '@/routes/enrollmentAnswerRoutes';
 
 dotenv.config();
 
@@ -41,6 +43,8 @@ app.use('/api/residences', residenceRoutes);
 app.use('/api/locations', locationRoutes);
 app.use('/api/matriculations', matriculationRoutes);
 app.use('/api/planteles', plantelRoutes);
+app.use('/api/enrollment-questions', enrollmentQuestionRoutes);
+app.use('/api/enrollment-answers', enrollmentAnswerRoutes);
 
 const startServer = async () => {
   try {

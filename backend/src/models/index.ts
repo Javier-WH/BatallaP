@@ -93,6 +93,8 @@ import TeacherAssignment from './TeacherAssignment';
 import Setting from './Setting';
 import Term from './Term';
 import Matriculation from './Matriculation';
+import EnrollmentQuestion from './EnrollmentQuestion';
+import EnrollmentAnswer from './EnrollmentAnswer';
 
 // ... (Existing User/Person/Role/Contact associations) ...
 
@@ -187,6 +189,13 @@ TeacherAssignment.belongsTo(Section, { foreignKey: 'sectionId', as: 'section' })
 SchoolPeriod.hasMany(Term, { foreignKey: 'schoolPeriodId', as: 'terms' });
 Term.belongsTo(SchoolPeriod, { foreignKey: 'schoolPeriodId', as: 'schoolPeriod' });
 
+// Enrollment questions and answers
+EnrollmentQuestion.hasMany(EnrollmentAnswer, { foreignKey: 'questionId', as: 'answers' });
+EnrollmentAnswer.belongsTo(EnrollmentQuestion, { foreignKey: 'questionId', as: 'question' });
+
+Person.hasMany(EnrollmentAnswer, { foreignKey: 'personId', as: 'enrollmentAnswers' });
+EnrollmentAnswer.belongsTo(Person, { foreignKey: 'personId', as: 'student' });
+
 export {
   User,
   Person,
@@ -213,5 +222,7 @@ export {
   Qualification,
   TeacherAssignment,
   Setting,
-  Term
+  Term,
+  EnrollmentQuestion,
+  EnrollmentAnswer
 };

@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { Op } from 'sequelize';
 import { Inscription, Person, Role, Subject, PeriodGrade, InscriptionSubject, SchoolPeriod, Grade, Section, Contact, PersonRole, PersonResidence, StudentGuardian, Matriculation } from '../models';
 import sequelize from '../config/database';
+import { saveEnrollmentAnswers } from '@/services/enrollmentAnswerService';
 
 type GuardianInput = {
   firstName?: string;
@@ -246,7 +247,8 @@ export const enrollMatriculatedStudent = async (req: Request, res: Response) => 
       mother,
       father,
       representative,
-      representativeType
+      representativeType,
+      enrollmentAnswers
     } = req.body;
 
     const matriculation = (await Matriculation.findByPk(id, {
@@ -366,6 +368,10 @@ export const enrollMatriculatedStudent = async (req: Request, res: Response) => 
       await StudentGuardian.bulkCreate(guardiansToCreate, { transaction: t });
     }
 
+    if (Array.isArray(enrollmentAnswers)) {
+      await saveEnrollmentAnswers(person.id, enrollmentAnswers, { transaction: t });
+    }
+
     const targetPeriodId = schoolPeriodId || matriculation.schoolPeriodId;
     const targetGradeId = gradeId || matriculation.gradeId;
     const targetSectionId = sectionId ?? matriculation.sectionId ?? null;
@@ -378,6 +384,10 @@ export const enrollMatriculatedStudent = async (req: Request, res: Response) => 
     if (existingInscription) {
       await t.rollback();
       return res.status(400).json({ error: 'El estudiante ya está inscrito en este periodo escolar' });
+    }
+
+    if (Array.isArray(enrollmentAnswers)) {
+      await saveEnrollmentAnswers(person.id, enrollmentAnswers, { transaction: t });
     }
 
     const inscription = await Inscription.create({
@@ -497,7 +507,7 @@ export const getInscriptionById = async (req: Request, res: Response) => {
 export const createInscription = async (req: Request, res: Response) => {
   const t = await sequelize.transaction();
   try {
-    const { schoolPeriodId, gradeId, personId, sectionId } = req.body;
+    const { schoolPeriodId, gradeId, personId, sectionId, enrollmentAnswers } = req.body;
 
     // 1. Verify Role Student
     const person = await Person.findByPk(personId, {
@@ -533,6 +543,10 @@ export const createInscription = async (req: Request, res: Response) => {
     }
 
     // 3. Create Inscription
+    if (Array.isArray(enrollmentAnswers)) {
+      await saveEnrollmentAnswers(personId, enrollmentAnswers, { transaction: t });
+    }
+
     const inscription = await Inscription.create({
       schoolPeriodId,
       gradeId,
@@ -711,7 +725,8 @@ export const registerAndEnroll = async (req: Request, res: Response) => {
       // Enrollment data
       schoolPeriodId,
       gradeId,
-      sectionId
+      sectionId,
+      enrollmentAnswers
     } = req.body;
 
     // 1. Create Person (no User)

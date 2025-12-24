@@ -1,7 +1,7 @@
 import React from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { Button, Space, Card, Tooltip } from 'antd';
-import { DashboardOutlined, UserAddOutlined, SearchOutlined, BankOutlined, BookOutlined } from '@ant-design/icons';
+import { DashboardOutlined, UserAddOutlined, SearchOutlined, BankOutlined, BookOutlined, QuestionCircleOutlined } from '@ant-design/icons';
 
 const AdminLayout: React.FC = () => {
   const navigate = useNavigate();
@@ -78,6 +78,16 @@ const AdminLayout: React.FC = () => {
               onClick={() => navigate('/admin/planteles')}
             >
               Planteles
+            </Button>
+          </Tooltip>
+
+          <Tooltip title="Gestionar preguntas del formulario de inscripción">
+            <Button
+              type={isActive('/admin/enrollment-questions') ? 'primary' : 'text'}
+              icon={<QuestionCircleOutlined />}
+              onClick={() => navigate('/admin/enrollment-questions')}
+            >
+              Preguntas
             </Button>
           </Tooltip>
 

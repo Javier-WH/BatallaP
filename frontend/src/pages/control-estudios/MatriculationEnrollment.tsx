@@ -3,6 +3,7 @@ import {
   Alert,
   Button,
   Card,
+  Checkbox,
   Col,
   DatePicker,
   Empty,
@@ -22,6 +23,8 @@ import {
 import { ReloadOutlined, SearchOutlined, UserAddOutlined } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
 import api from '@/services/api';
+import { getEnrollmentQuestionsForPerson } from '@/services/enrollmentQuestions';
+import type { EnrollmentQuestionResponse } from '@/services/enrollmentQuestions';
 
 const { Text } = Typography;
 const { Option } = Select;
@@ -135,6 +138,8 @@ interface GuardianFormValues {
 
 type RepresentativeType = 'mother' | 'father' | 'other';
 
+type EnrollmentAnswerFormValues = Record<number, string | string[]>;
+
 interface MatriculationFormValues {
   gradeId: number;
   sectionId?: number;
@@ -160,6 +165,7 @@ interface MatriculationFormValues {
   father?: GuardianFormValues;
   representative?: GuardianFormValues;
   previousSchoolIds?: number[];
+  enrollmentAnswers?: EnrollmentAnswerFormValues;
 }
 
 type SchoolSearchResult = {
@@ -211,6 +217,7 @@ const MatriculationEnrollment: React.FC = () => {
   const [searchValue, setSearchValue] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [form] = Form.useForm();
+  const [enrollmentQuestions, setEnrollmentQuestions] = useState<EnrollmentQuestionResponse[]>([]);
 
   // Previous schools state
   const [previousSchoolsLoading, setPreviousSchoolsLoading] = useState(false);
@@ -326,6 +333,29 @@ const MatriculationEnrollment: React.FC = () => {
     }
   };
 
+  const loadEnrollmentQuestions = useCallback(
+    async (personId: number) => {
+      try {
+        const data = await getEnrollmentQuestionsForPerson(personId);
+        setEnrollmentQuestions(data);
+        const answers: EnrollmentAnswerFormValues = {};
+        data.forEach((question) => {
+          if (question.answer !== null && question.answer !== undefined) {
+            answers[question.id] = question.answer as string | string[];
+          }
+        });
+        form.setFieldsValue({
+          enrollmentAnswers: answers
+        });
+      } catch (error) {
+        console.error('Error loading enrollment questions:', error);
+        message.error('No se pudieron cargar las preguntas dinámicas');
+        setEnrollmentQuestions([]);
+      }
+    },
+    [form]
+  );
+
   const loadDetail = useCallback(
     async (id: number) => {
       setDetailLoading(true);
@@ -410,6 +440,8 @@ const MatriculationEnrollment: React.FC = () => {
               }
             : undefined
         });
+
+        await loadEnrollmentQuestions(data.student.id);
       } catch (error) {
         console.error(error);
         message.error('No se pudo cargar la matriculación seleccionada');
@@ -417,7 +449,7 @@ const MatriculationEnrollment: React.FC = () => {
         setDetailLoading(false);
       }
     },
-    [fetchStructure, form]
+    [fetchStructure, form, loadEnrollmentQuestions]
   );
 
   useEffect(() => {
