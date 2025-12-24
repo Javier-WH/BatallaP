@@ -1,12 +1,17 @@
 import { Request, Response } from 'express';
-import { Op } from 'sequelize';
-import { Inscription, Person, Role, Subject, PeriodGrade, InscriptionSubject, SchoolPeriod, Grade, Section, Contact, PersonRole, PersonResidence, StudentGuardian, Matriculation } from '../models';
+import { Op, Transaction } from 'sequelize';
+import { Inscription, Person, Role, Subject, PeriodGrade, InscriptionSubject, SchoolPeriod, Grade, Section, Contact, PersonRole, PersonResidence, StudentGuardian, Matriculation, GuardianProfile } from '../models';
 import sequelize from '../config/database';
 import { saveEnrollmentAnswers } from '@/services/enrollmentAnswerService';
+import { GuardianDocumentType } from '@/models/GuardianProfile';
+import { GuardianRelationship } from '@/models/StudentGuardian';
+import { GuardianProfilePayload } from '@/services/guardianProfileService';
+import { assignGuardians, GuardianAssignment } from '@/services/studentGuardianService';
 
 type GuardianInput = {
   firstName?: string;
   lastName?: string;
+  documentType?: GuardianDocumentType;
   document?: string;
   residenceState?: string;
   residenceMunicipality?: string;
@@ -98,6 +103,7 @@ type CompleteGuardianInput = Required<GuardianInput>;
 const guardianRequiredFields: (keyof GuardianInput)[] = [
   'firstName',
   'lastName',
+  'documentType',
   'document',
   'residenceState',
   'residenceMunicipality',
@@ -139,6 +145,19 @@ const validateGuardianPayload = (
 
   return data as CompleteGuardianInput;
 };
+
+const mapToGuardianProfilePayload = (data: CompleteGuardianInput): GuardianProfilePayload => ({
+  firstName: data.firstName,
+  lastName: data.lastName,
+  documentType: data.documentType,
+  document: data.document,
+  phone: data.phone,
+  email: data.email,
+  residenceState: data.residenceState,
+  residenceMunicipality: data.residenceMunicipality,
+  residenceParish: data.residenceParish,
+  address: data.address
+});
 
 export const getMatriculations = async (req: Request, res: Response) => {
   try {
@@ -340,32 +359,30 @@ export const enrollMatriculatedStudent = async (req: Request, res: Response) => 
     await StudentGuardian.destroy({ where: { studentId: person.id }, transaction: t });
 
     const guardiansToCreate = [];
+    const assignments: GuardianAssignment[] = [];
     if (motherData) {
-      guardiansToCreate.push({
-        studentId: person.id,
-        relationship: 'mother' as const,
-        isRepresentative: motherIsRepresentative,
-        ...motherData
+      assignments.push({
+        payload: mapToGuardianProfilePayload(motherData),
+        relationship: 'mother',
+        isRepresentative: motherIsRepresentative
       });
     }
     if (fatherData) {
-      guardiansToCreate.push({
-        studentId: person.id,
-        relationship: 'father' as const,
-        isRepresentative: fatherIsRepresentative,
-        ...fatherData
+      assignments.push({
+        payload: mapToGuardianProfilePayload(fatherData),
+        relationship: 'father',
+        isRepresentative: fatherIsRepresentative
       });
     }
     if (representativeData) {
-      guardiansToCreate.push({
-        studentId: person.id,
-        relationship: 'representative' as const,
-        isRepresentative: true,
-        ...representativeData
+      assignments.push({
+        payload: mapToGuardianProfilePayload(representativeData),
+        relationship: 'representative',
+        isRepresentative: true
       });
     }
-    if (guardiansToCreate.length > 0) {
-      await StudentGuardian.bulkCreate(guardiansToCreate, { transaction: t });
+    if (assignments.length > 0) {
+      await assignGuardians(person.id, assignments, t);
     }
 
     if (Array.isArray(enrollmentAnswers)) {
@@ -787,41 +804,38 @@ export const registerAndEnroll = async (req: Request, res: Response) => {
     }, { transaction: t });
 
     // 4. Create guardians
-    const guardiansToCreate = [];
+    const assignments: GuardianAssignment[] = [];
 
     if (motherData) {
-      guardiansToCreate.push({
-        studentId: person.id,
-        relationship: 'mother' as const,
-        isRepresentative: motherIsRepresentative,
-        ...motherData
+      assignments.push({
+        payload: mapToGuardianProfilePayload(motherData),
+        relationship: 'mother',
+        isRepresentative: motherIsRepresentative
       });
     }
 
     if (fatherData) {
-      guardiansToCreate.push({
-        studentId: person.id,
-        relationship: 'father' as const,
-        isRepresentative: fatherIsRepresentative,
-        ...fatherData
+      assignments.push({
+        payload: mapToGuardianProfilePayload(fatherData),
+        relationship: 'father',
+        isRepresentative: fatherIsRepresentative
       });
     }
 
     if (representativeData) {
-      guardiansToCreate.push({
-        studentId: person.id,
-        relationship: 'representative' as const,
-        isRepresentative: true,
-        ...representativeData
+      assignments.push({
+        payload: mapToGuardianProfilePayload(representativeData),
+        relationship: 'representative',
+        isRepresentative: true
       });
     }
 
-    if (!guardiansToCreate.some((guardian) => guardian.isRepresentative)) {
+    if (!assignments.some((guardian) => guardian.isRepresentative)) {
       throw new Error('Debe seleccionar al menos un representante legal.');
     }
 
-    if (guardiansToCreate.length > 0) {
-      await StudentGuardian.bulkCreate(guardiansToCreate, { transaction: t });
+    if (assignments.length > 0) {
+      await assignGuardians(person.id, assignments, t);
     }
 
     // 4. Assign Alumno role

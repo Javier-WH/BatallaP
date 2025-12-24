@@ -1,11 +1,13 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Card, Button, Form, Tag, message, Select, Row, Col, Input, DatePicker, Radio, Tabs, Alert } from 'antd';
-import { UserAddOutlined } from '@ant-design/icons';
+import { UserAddOutlined, LoadingOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import api from '@/services/api';
 import EnrollmentQuestionFields from '@/components/EnrollmentQuestionFields';
 import { getEnrollmentQuestions, getEnrollmentQuestionsForPerson } from '@/services/enrollmentQuestions';
 import type { EnrollmentQuestionResponse } from '@/services/enrollmentQuestions';
+import { searchGuardian } from '@/services/guardians';
+import type { GuardianDocumentType, GuardianProfileResponse } from '@/services/guardians';
 
 const { Option } = Select;
 const { TabPane } = Tabs;
@@ -76,6 +78,7 @@ type UserSearchResult = {
 type GuardianData = {
   firstName?: string;
   lastName?: string;
+  documentType?: GuardianDocumentType;
   document?: string;
   phone?: string;
   email?: string;
@@ -87,6 +90,38 @@ type GuardianData = {
 
 const selectFilterOption = (input: string, option?: { label?: string }) =>
   (option?.label ?? '').toString().toLowerCase().includes(input.toLowerCase());
+
+type GuardianKey = 'mother' | 'father' | 'representative';
+
+const guardianDocumentOptions: { label: string; value: GuardianDocumentType }[] = [
+  { label: 'Venezolano', value: 'Venezolano' },
+  { label: 'Extranjero', value: 'Extranjero' },
+  { label: 'Pasaporte', value: 'Pasaporte' }
+];
+
+const guardianLabels: Record<GuardianKey, string> = {
+  mother: 'la madre',
+  father: 'el padre',
+  representative: 'el representante'
+};
+
+const mapProfileToGuardianForm = (profile: GuardianProfileResponse): GuardianData => ({
+  firstName: profile.firstName,
+  lastName: profile.lastName,
+  documentType: profile.documentType,
+  document: profile.document,
+  phone: profile.phone,
+  email: profile.email,
+  residenceState: profile.residenceState,
+  residenceMunicipality: profile.residenceMunicipality,
+  residenceParish: profile.residenceParish,
+  address: profile.address
+});
+
+const buildGuardianCacheKey = (documentType?: GuardianDocumentType, document?: string) => {
+  if (!documentType || !document?.trim()) return '';
+  return `${documentType}-${document.trim()}`;
+};
 
 const buildMunicipalityOptions = (
   locations: VenezuelaState[],
@@ -161,6 +196,12 @@ const EnrollStudent: React.FC = () => {
   // Forms
   const [newStudentForm] = Form.useForm();
   const [existingStudentForm] = Form.useForm();
+  const [guardianLookupLoading, setGuardianLookupLoading] = useState<GuardianKey | null>(null);
+  const [guardianLookupCache, setGuardianLookupCache] = useState<Record<GuardianKey, string>>({
+    mother: '',
+    father: '',
+    representative: ''
+  });
   const documentTypeValue = Form.useWatch('documentType', newStudentForm);
   const representativeTypeValue = Form.useWatch('representativeType', newStudentForm);
   const birthStateValue = Form.useWatch('birthState', newStudentForm);
@@ -173,6 +214,12 @@ const EnrollStudent: React.FC = () => {
   const fatherMunicipalityValue = Form.useWatch(['father', 'residenceMunicipality'], newStudentForm);
   const representativeStateValue = Form.useWatch(['representative', 'residenceState'], newStudentForm);
   const representativeMunicipalityValue = Form.useWatch(['representative', 'residenceMunicipality'], newStudentForm);
+  const motherDocumentTypeValue = Form.useWatch(['mother', 'documentType'], newStudentForm) as GuardianDocumentType | undefined;
+  const motherDocumentValue = Form.useWatch(['mother', 'document'], newStudentForm) as string | undefined;
+  const fatherDocumentTypeValue = Form.useWatch(['father', 'documentType'], newStudentForm) as GuardianDocumentType | undefined;
+  const fatherDocumentValue = Form.useWatch(['father', 'document'], newStudentForm) as string | undefined;
+  const representativeDocumentTypeValue = Form.useWatch(['representative', 'documentType'], newStudentForm) as GuardianDocumentType | undefined;
+  const representativeDocumentValue = Form.useWatch(['representative', 'document'], newStudentForm) as string | undefined;
 
   const searchSchools = async (query: string) => {
     if (!query || query.length < 2) {
@@ -195,6 +242,89 @@ const EnrollStudent: React.FC = () => {
       setLoadingSchools(false);
     }
   };
+
+  const handleGuardianLookup = useCallback(
+    async (guardianKey: GuardianKey, documentType?: GuardianDocumentType, document?: string) => {
+      const cacheKey = buildGuardianCacheKey(documentType, document);
+      if (!cacheKey) {
+        setGuardianLookupCache((prev) => ({ ...prev, [guardianKey]: '' }));
+        return;
+      }
+      if (guardianLookupCache[guardianKey] === cacheKey) {
+        return;
+      }
+
+      setGuardianLookupLoading(guardianKey);
+      try {
+        const profile = await searchGuardian(documentType!, document!.trim());
+        if (profile) {
+          const merged = {
+            ...(newStudentForm.getFieldValue(guardianKey) || {}),
+            ...mapProfileToGuardianForm(profile)
+          };
+          newStudentForm.setFieldsValue({
+            [guardianKey]: merged
+          });
+          message.success(`Datos de ${guardianLabels[guardianKey]} encontrados.`);
+        } else {
+          message.info(`No se encontró registro previo para ${guardianLabels[guardianKey]}.`);
+        }
+        setGuardianLookupCache((prev) => ({ ...prev, [guardianKey]: cacheKey }));
+      } catch (error) {
+        console.error('Error buscando representante:', error);
+        message.error(`No se pudieron cargar los datos de ${guardianLabels[guardianKey]}`);
+      } finally {
+        setGuardianLookupLoading(null);
+      }
+    },
+    [guardianLookupCache, newStudentForm]
+  );
+
+  useEffect(() => {
+    handleGuardianLookup('mother', motherDocumentTypeValue, motherDocumentValue);
+  }, [motherDocumentTypeValue, motherDocumentValue, handleGuardianLookup]);
+
+  useEffect(() => {
+    handleGuardianLookup('father', fatherDocumentTypeValue, fatherDocumentValue);
+  }, [fatherDocumentTypeValue, fatherDocumentValue, handleGuardianLookup]);
+
+  useEffect(() => {
+    handleGuardianLookup('representative', representativeDocumentTypeValue, representativeDocumentValue);
+  }, [representativeDocumentTypeValue, representativeDocumentValue, handleGuardianLookup]);
+
+  const renderGuardianDocumentControls = (guardianKey: GuardianKey, required: boolean) => (
+    <Row gutter={16}>
+      <Col span={8}>
+        <Form.Item
+          name={[guardianKey, 'documentType']}
+          label="Tipo de documento"
+          rules={
+            required
+              ? [{ required: true, message: `Seleccione el tipo de documento de ${guardianLabels[guardianKey]}` }]
+              : []
+          }
+        >
+          <Select placeholder="Seleccione" options={guardianDocumentOptions} />
+        </Form.Item>
+      </Col>
+      <Col span={16}>
+        <Form.Item
+          name={[guardianKey, 'document']}
+          label="Número de documento"
+          rules={
+            required
+              ? [{ required: true, message: `Ingrese la cédula de ${guardianLabels[guardianKey]}` }]
+              : []
+          }
+        >
+          <Input
+            placeholder="Ej: 12345678"
+            suffix={guardianLookupLoading === guardianKey ? <LoadingOutlined spin /> : undefined}
+          />
+        </Form.Item>
+      </Col>
+    </Row>
+  );
 
   // Load Active Period and its structure on mount
   useEffect(() => {
@@ -792,6 +922,7 @@ const EnrollStudent: React.FC = () => {
 
                 <div style={{ background: '#fff', border: '1px solid #f0f0f0', borderRadius: 8, padding: 16, marginBottom: 24 }}>
                   <h5 style={{ marginBottom: 16 }}>Madre (obligatoria)</h5>
+                  {renderGuardianDocumentControls('mother', true)}
                   <Row gutter={16}>
                     <Col span={12}>
                       <Form.Item
@@ -912,6 +1043,7 @@ const EnrollStudent: React.FC = () => {
                   <h5 style={{ marginBottom: 16 }}>
                     Padre {fatherDataRequired ? '(obligatorio)' : '(opcional)'}
                   </h5>
+                  {renderGuardianDocumentControls('father', fatherFieldsRequired)}
                   <Row gutter={16}>
                     <Col span={12}>
                       <Form.Item
@@ -933,16 +1065,7 @@ const EnrollStudent: React.FC = () => {
                     </Col>
                   </Row>
                   <Row gutter={16}>
-                    <Col span={8}>
-                      <Form.Item
-                        name={['father', 'document']}
-                        label="Cédula"
-                        rules={fatherFieldsRequired ? [{ required: true, message: 'Ingrese la cédula del padre' }] : []}
-                      >
-                        <Input />
-                      </Form.Item>
-                    </Col>
-                    <Col span={8}>
+                    <Col span={12}>
                       <Form.Item
                         name={['father', 'phone']}
                         label="Teléfono"
@@ -951,7 +1074,7 @@ const EnrollStudent: React.FC = () => {
                         <Input />
                       </Form.Item>
                     </Col>
-                    <Col span={8}>
+                    <Col span={12}>
                       <Form.Item
                         name={['father', 'email']}
                         label="Email"
@@ -1031,6 +1154,7 @@ const EnrollStudent: React.FC = () => {
                 {(representativeFieldsRequired || representativeIsOther) && (
                   <div style={{ background: '#fff', border: '1px solid #f0f0f0', borderRadius: 8, padding: 16 }}>
                     <h5 style={{ marginBottom: 16 }}>Representante (solo si es diferente)</h5>
+                    {renderGuardianDocumentControls('representative', representativeFieldsRequired)}
                     <Row gutter={16}>
                       <Col span={12}>
                         <Form.Item
@@ -1052,16 +1176,7 @@ const EnrollStudent: React.FC = () => {
                       </Col>
                     </Row>
                     <Row gutter={16}>
-                      <Col span={8}>
-                        <Form.Item
-                          name={['representative', 'document']}
-                          label="Cédula"
-                          rules={representativeFieldsRequired ? [{ required: true, message: 'Ingrese la cédula del representante' }] : []}
-                        >
-                          <Input />
-                        </Form.Item>
-                      </Col>
-                      <Col span={8}>
+                      <Col span={12}>
                         <Form.Item
                           name={['representative', 'phone']}
                           label="Teléfono"
@@ -1070,7 +1185,7 @@ const EnrollStudent: React.FC = () => {
                           <Input />
                         </Form.Item>
                       </Col>
-                      <Col span={8}>
+                      <Col span={12}>
                         <Form.Item
                           name={['representative', 'email']}
                           label="Email"
