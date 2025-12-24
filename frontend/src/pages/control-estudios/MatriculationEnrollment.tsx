@@ -1273,161 +1273,163 @@ const MatriculationEnrollment: React.FC = () => {
                 </Row>
               </div>
 
-              <div style={{ background: '#fff', border: '1px solid #f0f0f0', borderRadius: 8, padding: 16 }}>
-                <h5 style={{ marginBottom: 16 }}>
-                  Representante {requireRepresentativeData ? '(obligatorio)' : '(opcional)'}
-                </h5>
-                <Row gutter={16}>
-                  <Col span={12}>
-                    <Form.Item
-                      name={['representative', 'firstName']}
-                      label="Nombres"
-                      rules={
-                        requireRepresentativeData
-                          ? [{ required: true, message: 'Ingrese los nombres del representante' }]
-                          : []
-                      }
-                    >
-                      <Input />
-                    </Form.Item>
-                  </Col>
-                  <Col span={12}>
-                    <Form.Item
-                      name={['representative', 'lastName']}
-                      label="Apellidos"
-                      rules={
-                        requireRepresentativeData
-                          ? [{ required: true, message: 'Ingrese los apellidos del representante' }]
-                          : []
-                      }
-                    >
-                      <Input />
-                    </Form.Item>
-                  </Col>
-                </Row>
-                <Row gutter={16}>
-                  <Col span={8}>
-                    <Form.Item
-                      name={['representative', 'document']}
-                      label="Cédula"
-                      rules={
-                        requireRepresentativeData
-                          ? [{ required: true, message: 'Ingrese la cédula del representante' }]
-                          : []
-                      }
-                    >
-                      <Input />
-                    </Form.Item>
-                  </Col>
-                  <Col span={8}>
-                    <Form.Item
-                      name={['representative', 'phone']}
-                      label="Teléfono"
-                      rules={
-                        requireRepresentativeData
-                          ? [{ required: true, message: 'Ingrese el teléfono del representante' }]
-                          : []
-                      }
-                    >
-                      <Input />
-                    </Form.Item>
-                  </Col>
-                  <Col span={8}>
-                    <Form.Item
-                      name={['representative', 'email']}
-                      label="Email"
-                      rules={
-                        requireRepresentativeData
-                          ? [
-                              { required: true, message: 'Ingrese el email del representante' },
-                              { type: 'email', message: 'Email inválido' }
-                            ]
-                          : [{ type: 'email', message: 'Email inválido' }]
-                      }
-                    >
-                      <Input />
-                    </Form.Item>
-                  </Col>
-                </Row>
-                <Row gutter={16}>
-                  <Col span={8}>
-                    <Form.Item
-                      name={['representative', 'residenceState']}
-                      label="Estado de residencia"
-                      rules={
-                        requireRepresentativeData
-                          ? [{ required: true, message: 'Seleccione el estado de residencia' }]
-                          : []
-                      }
-                    >
-                      <Select
-                        placeholder="Seleccione estado"
-                        showSearch
-                        optionFilterProp="label"
-                        filterOption={selectFilterOption}
-                        options={stateOptions}
-                        onChange={() => resetGuardianMunicipality('representative')}
-                      />
-                    </Form.Item>
-                  </Col>
-                  <Col span={8}>
-                    <Form.Item
-                      name={['representative', 'residenceMunicipality']}
-                      label="Municipio de residencia"
-                      rules={
-                        requireRepresentativeData
-                          ? [{ required: true, message: 'Seleccione el municipio de residencia' }]
-                          : []
-                      }
-                    >
-                      <Select
-                        placeholder="Seleccione municipio"
-                        showSearch
-                        optionFilterProp="label"
-                        filterOption={selectFilterOption}
-                        options={representativeMunicipalityOptions}
-                        disabled={!representativeStateValue}
-                        onChange={() => resetGuardianParish('representative')}
-                      />
-                    </Form.Item>
-                  </Col>
-                  <Col span={8}>
-                    <Form.Item
-                      name={['representative', 'residenceParish']}
-                      label="Parroquia de residencia"
-                      rules={
-                        requireRepresentativeData
-                          ? [{ required: true, message: 'Seleccione la parroquia de residencia' }]
-                          : []
-                      }
-                    >
-                      <Select
-                        placeholder="Seleccione parroquia"
-                        showSearch
-                        optionFilterProp="label"
-                        filterOption={selectFilterOption}
-                        options={representativeParishOptions}
-                        disabled={!representativeMunicipalityValue}
-                      />
-                    </Form.Item>
-                  </Col>
-                </Row>
-                <Row>
-                  <Col span={24}>
-                    <Form.Item
-                      name={['representative', 'address']}
-                      label="Dirección"
-                      rules={
-                        requireRepresentativeData
-                          ? [{ required: true, message: 'Ingrese la dirección del representante' }]
-                          : []
-                      }
-                    >
-                      <Input.TextArea rows={2} />
-                    </Form.Item>
-                  </Col>
-                </Row>
-              </div>
+              {representativeIsOther && (
+                <div style={{ background: '#fff', border: '1px solid #f0f0f0', borderRadius: 8, padding: 16 }}>
+                  <h5 style={{ marginBottom: 16 }}>
+                    Representante {requireRepresentativeData ? '(obligatorio)' : '(opcional)'}
+                  </h5>
+                  <Row gutter={16}>
+                    <Col span={12}>
+                      <Form.Item
+                        name={['representative', 'firstName']}
+                        label="Nombres"
+                        rules={
+                          requireRepresentativeData
+                            ? [{ required: true, message: 'Ingrese los nombres del representante' }]
+                            : []
+                        }
+                      >
+                        <Input />
+                      </Form.Item>
+                    </Col>
+                    <Col span={12}>
+                      <Form.Item
+                        name={['representative', 'lastName']}
+                        label="Apellidos"
+                        rules={
+                          requireRepresentativeData
+                            ? [{ required: true, message: 'Ingrese los apellidos del representante' }]
+                            : []
+                        }
+                      >
+                        <Input />
+                      </Form.Item>
+                    </Col>
+                  </Row>
+                  <Row gutter={16}>
+                    <Col span={8}>
+                      <Form.Item
+                        name={['representative', 'document']}
+                        label="Cédula"
+                        rules={
+                          requireRepresentativeData
+                            ? [{ required: true, message: 'Ingrese la cédula del representante' }]
+                            : []
+                        }
+                      >
+                        <Input />
+                      </Form.Item>
+                    </Col>
+                    <Col span={8}>
+                      <Form.Item
+                        name={['representative', 'phone']}
+                        label="Teléfono"
+                        rules={
+                          requireRepresentativeData
+                            ? [{ required: true, message: 'Ingrese el teléfono del representante' }]
+                            : []
+                        }
+                      >
+                        <Input />
+                      </Form.Item>
+                    </Col>
+                    <Col span={8}>
+                      <Form.Item
+                        name={['representative', 'email']}
+                        label="Email"
+                        rules={
+                          requireRepresentativeData
+                            ? [
+                                { required: true, message: 'Ingrese el email del representante' },
+                                { type: 'email', message: 'Email inválido' }
+                              ]
+                            : [{ type: 'email', message: 'Email inválido' }]
+                        }
+                      >
+                        <Input />
+                      </Form.Item>
+                    </Col>
+                  </Row>
+                  <Row gutter={16}>
+                    <Col span={8}>
+                      <Form.Item
+                        name={['representative', 'residenceState']}
+                        label="Estado de residencia"
+                        rules={
+                          requireRepresentativeData
+                            ? [{ required: true, message: 'Seleccione el estado de residencia' }]
+                            : []
+                        }
+                      >
+                        <Select
+                          placeholder="Seleccione estado"
+                          showSearch
+                          optionFilterProp="label"
+                          filterOption={selectFilterOption}
+                          options={stateOptions}
+                          onChange={() => resetGuardianMunicipality('representative')}
+                        />
+                      </Form.Item>
+                    </Col>
+                    <Col span={8}>
+                      <Form.Item
+                        name={['representative', 'residenceMunicipality']}
+                        label="Municipio de residencia"
+                        rules={
+                          requireRepresentativeData
+                            ? [{ required: true, message: 'Seleccione el municipio de residencia' }]
+                            : []
+                        }
+                      >
+                        <Select
+                          placeholder="Seleccione municipio"
+                          showSearch
+                          optionFilterProp="label"
+                          filterOption={selectFilterOption}
+                          options={representativeMunicipalityOptions}
+                          disabled={!representativeStateValue}
+                          onChange={() => resetGuardianParish('representative')}
+                        />
+                      </Form.Item>
+                    </Col>
+                    <Col span={8}>
+                      <Form.Item
+                        name={['representative', 'residenceParish']}
+                        label="Parroquia de residencia"
+                        rules={
+                          requireRepresentativeData
+                            ? [{ required: true, message: 'Seleccione la parroquia de residencia' }]
+                            : []
+                        }
+                      >
+                        <Select
+                          placeholder="Seleccione parroquia"
+                          showSearch
+                          optionFilterProp="label"
+                          filterOption={selectFilterOption}
+                          options={representativeParishOptions}
+                          disabled={!representativeMunicipalityValue}
+                        />
+                      </Form.Item>
+                    </Col>
+                  </Row>
+                  <Row>
+                    <Col span={24}>
+                      <Form.Item
+                        name={['representative', 'address']}
+                        label="Dirección"
+                        rules={
+                          requireRepresentativeData
+                            ? [{ required: true, message: 'Ingrese la dirección del representante' }]
+                            : []
+                        }
+                      >
+                        <Input.TextArea rows={2} />
+                      </Form.Item>
+                    </Col>
+                  </Row>
+                </div>
+              )}
             </div>
 
             {Boolean(enrollmentQuestions.length) && (
