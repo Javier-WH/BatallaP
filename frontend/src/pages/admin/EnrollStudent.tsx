@@ -3,6 +3,9 @@ import { Card, Button, Form, Tag, message, Select, Row, Col, Input, DatePicker, 
 import { UserAddOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import api from '@/services/api';
+import EnrollmentQuestionFields from '@/components/EnrollmentQuestionFields';
+import { getEnrollmentQuestions, getEnrollmentQuestionsForPerson } from '@/services/enrollmentQuestions';
+import type { EnrollmentQuestionResponse } from '@/services/enrollmentQuestions';
 
 const { Option } = Select;
 const { TabPane } = Tabs;
@@ -123,6 +126,16 @@ const guardianHasAnyValue = (fields?: Record<string, unknown>) => {
   });
 };
 
+type EnrollmentAnswerFormValues = Record<number, string | string[]>;
+
+const transformAnswers = (raw?: EnrollmentAnswerFormValues) => {
+  if (!raw) return [];
+  return Object.entries(raw).map(([key, value]) => ({
+    questionId: Number(key),
+    answer: value
+  }));
+};
+
 const EnrollStudent: React.FC = () => {
   // State
   const [activePeriod, setActivePeriod] = useState<SchoolPeriod | null>(null);
@@ -131,6 +144,10 @@ const EnrollStudent: React.FC = () => {
   const [venezuelaLocations, setVenezuelaLocations] = useState<VenezuelaState[]>([]);
   const [schoolOptions, setSchoolOptions] = useState<OptionItem[]>([]);
   const [loadingSchools, setLoadingSchools] = useState(false);
+  const [enrollmentQuestions, setEnrollmentQuestions] = useState<EnrollmentQuestionResponse[]>([]);
+  const [questionsLoading, setQuestionsLoading] = useState(false);
+  const [existingEnrollmentQuestions, setExistingEnrollmentQuestions] = useState<EnrollmentQuestionResponse[]>([]);
+  const [existingQuestionsLoading, setExistingQuestionsLoading] = useState(false);
 
   // For section selector (controlled)
   const [selectedGradeId, setSelectedGradeId] = useState<number | null>(null);
@@ -203,15 +220,41 @@ const EnrollStudent: React.FC = () => {
         // 3. Load venezuela locations
         const locationsRes = await api.get('/locations/venezuela');
         setVenezuelaLocations(locationsRes.data);
+
+        setQuestionsLoading(true);
+        const dynamicQuestions = await getEnrollmentQuestions(false);
+        setEnrollmentQuestions(dynamicQuestions);
       } catch (error) {
         console.log(error);
         message.error('Error cargando datos del periodo activo');
       } finally {
         setLoading(false);
+        setQuestionsLoading(false);
       }
     };
     init();
   }, []);
+
+  const loadExistingQuestions = async (personId: number) => {
+    setExistingQuestionsLoading(true);
+    try {
+      const questions = await getEnrollmentQuestionsForPerson(personId);
+      setExistingEnrollmentQuestions(questions);
+      const answers: EnrollmentAnswerFormValues = {};
+      questions.forEach((question) => {
+        if (question.answer !== null && question.answer !== undefined) {
+          answers[question.id] = question.answer as string | string[];
+        }
+      });
+      existingStudentForm.setFieldsValue({ enrollmentAnswers: answers });
+    } catch (error) {
+      console.error('Error cargando preguntas adicionales:', error);
+      message.error('No se pudieron cargar las preguntas del formulario');
+      setExistingEnrollmentQuestions([]);
+    } finally {
+      setExistingQuestionsLoading(false);
+    }
+  };
 
   // Get sections for selected grade
   const getSectionsForGrade = (gradeId: number | null) => {
@@ -392,7 +435,8 @@ const EnrollStudent: React.FC = () => {
       const payload = {
         ...values,
         schoolPeriodId: activePeriod.id,
-        birthdate: values.birthdate ? (values.birthdate as dayjs.Dayjs).format('YYYY-MM-DD') : null
+        birthdate: values.birthdate ? (values.birthdate as dayjs.Dayjs).format('YYYY-MM-DD') : null,
+        enrollmentAnswers: transformAnswers(values.enrollmentAnswers as EnrollmentAnswerFormValues | undefined)
       };
 
       await api.post('/inscriptions/register', payload);
@@ -417,7 +461,8 @@ const EnrollStudent: React.FC = () => {
     try {
       await api.post('/inscriptions', {
         ...values,
-        schoolPeriodId: activePeriod.id
+        schoolPeriodId: activePeriod.id,
+        enrollmentAnswers: transformAnswers(values.enrollmentAnswers as EnrollmentAnswerFormValues | undefined)
       });
       message.success('Estudiante inscrito correctamente');
       existingStudentForm.resetFields();
@@ -1104,6 +1149,20 @@ const EnrollStudent: React.FC = () => {
                 )}
               </div>
 
+              {questionsLoading ? (
+                <Card loading style={{ marginBottom: 24 }} />
+              ) : enrollmentQuestions.length > 0 ? (
+                <div style={{ marginBottom: 32 }}>
+                  <h4 style={{ color: '#666', borderBottom: '1px solid #eee', paddingBottom: 8 }}>
+                    7. Preguntas adicionales del plantel
+                  </h4>
+                  <EnrollmentQuestionFields
+                    questions={enrollmentQuestions}
+                    parentName="enrollmentAnswers"
+                  />
+                </div>
+              ) : null}
+
               <Form.Item style={{ marginTop: 24 }}>
                 <Button type="primary" htmlType="submit" block size="large" icon={<UserAddOutlined />}>
                   Registrar e Inscribir Estudiante
@@ -1129,10 +1188,13 @@ const EnrollStudent: React.FC = () => {
                 rules={[{ required: true, message: 'Busque y seleccione un estudiante' }]}
               >
                 <Select
-                  showSearch
                   placeholder="Escriba nombre o cédula..."
                   filterOption={false}
                   onSearch={handleSearchStudents}
+                  onChange={(personId: number) => {
+                    existingStudentForm.setFieldsValue({ personId });
+                    loadExistingQuestions(personId);
+                  }}
                   loading={searchingStudents}
                   options={studentOptions}
                   notFoundContent={
@@ -1188,6 +1250,22 @@ const EnrollStudent: React.FC = () => {
                   Inscribir Estudiante
                 </Button>
               </Form.Item>
+
+              {existingEnrollmentQuestions.length > 0 && (
+                <div style={{ marginTop: 24 }}>
+                  <h4 style={{ color: '#666', borderBottom: '1px solid #eee', paddingBottom: 8 }}>
+                    Preguntas adicionales del plantel
+                  </h4>
+                  {existingQuestionsLoading ? (
+                    <Card loading />
+                  ) : (
+                    <EnrollmentQuestionFields
+                      questions={existingEnrollmentQuestions}
+                      parentName="enrollmentAnswers"
+                    />
+                  )}
+                </div>
+              )}
             </Form>
           </TabPane>
         </Tabs>

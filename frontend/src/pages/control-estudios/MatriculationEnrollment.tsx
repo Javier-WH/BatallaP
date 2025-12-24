@@ -3,7 +3,6 @@ import {
   Alert,
   Button,
   Card,
-  Checkbox,
   Col,
   DatePicker,
   Empty,
@@ -25,6 +24,7 @@ import dayjs, { Dayjs } from 'dayjs';
 import api from '@/services/api';
 import { getEnrollmentQuestionsForPerson } from '@/services/enrollmentQuestions';
 import type { EnrollmentQuestionResponse } from '@/services/enrollmentQuestions';
+import EnrollmentQuestionFields from '@/components/EnrollmentQuestionFields';
 
 const { Text } = Typography;
 const { Option } = Select;
@@ -239,6 +239,11 @@ const MatriculationEnrollment: React.FC = () => {
   const representativeTypeValue = Form.useWatch('representativeType', form) as RepresentativeType | undefined;
   const gradeIdValue = Form.useWatch('gradeId', form) as number | null;
 
+  const clearEnrollmentQuestions = useCallback(() => {
+    setEnrollmentQuestions([]);
+    form.setFieldsValue({ enrollmentAnswers: {} });
+  }, [form]);
+
   const fetchMatriculations = useCallback(
     async (query?: string) => {
       setListLoading(true);
@@ -250,6 +255,8 @@ const MatriculationEnrollment: React.FC = () => {
         if (data.length === 0) {
           setSelectedId(null);
           setDetail(null);
+          clearEnrollmentQuestions();
+          form.resetFields();
         }
       } catch (error) {
         console.error(error);
@@ -258,7 +265,7 @@ const MatriculationEnrollment: React.FC = () => {
         setListLoading(false);
       }
     },
-    []
+    [clearEnrollmentQuestions, form],
   );
 
   const fetchLocations = useCallback(async () => {
@@ -560,6 +567,14 @@ const MatriculationEnrollment: React.FC = () => {
   const requireRepresentativeData = representativeIsOther || (!motherIsRepresentative && !fatherIsRepresentative);
   const fatherDataRequired = !!fatherIsRepresentative;
 
+  const transformAnswers = (raw?: EnrollmentAnswerFormValues) => {
+    if (!raw) return [];
+    return Object.entries(raw).map(([id, answer]) => ({
+      questionId: Number(id),
+      answer
+    }));
+  };
+
   const handleSubmit = async (values: MatriculationFormValues) => {
     if (!selectedId || !detail) {
       message.warning('Seleccione un estudiante matriculado');
@@ -570,7 +585,8 @@ const MatriculationEnrollment: React.FC = () => {
       const payload = {
         ...values,
         birthdate: values.birthdate ? values.birthdate.format('YYYY-MM-DD') : null,
-        previousSchoolIds: values.previousSchoolIds || []
+        previousSchoolIds: values.previousSchoolIds || [],
+        enrollmentAnswers: transformAnswers(values.enrollmentAnswers)
       };
       await api.post(`/matriculations/${selectedId}/enroll`, payload);
       message.success('Estudiante inscrito correctamente');
@@ -1414,16 +1430,27 @@ const MatriculationEnrollment: React.FC = () => {
               </div>
             </div>
 
+            {Boolean(enrollmentQuestions.length) && (
+              <div style={{ marginBottom: 24 }}>
+                <h4 style={{ color: '#666', borderBottom: '1px solid #eee', paddingBottom: 8 }}>
+                  6. Preguntas adicionales del plantel
+                </h4>
+                <EnrollmentQuestionFields questions={enrollmentQuestions} parentName="enrollmentAnswers" />
+              </div>
+            )}
+
             <Form.Item style={{ marginTop: 24, textAlign: 'right' }}>
-              <Button
-                type="primary"
-                htmlType="submit"
-                icon={<UserAddOutlined />}
-                size="large"
-                loading={submitting}
-              >
-                Inscribir Estudiante
-              </Button>
+              <Space>
+                <Button
+                  type="primary"
+                  htmlType="submit"
+                  icon={<UserAddOutlined />}
+                  size="large"
+                  loading={submitting}
+                >
+                  Inscribir Estudiante
+                </Button>
+              </Space>
             </Form.Item>
           </Form>
         )}

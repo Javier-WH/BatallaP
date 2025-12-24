@@ -22,6 +22,7 @@ import QuickEnrollStudent from '@/pages/admin/QuickEnrollStudent';
 import EnrolledStudents from '@/pages/admin/EnrolledStudents';
 import TeacherProjection from '@/pages/admin/TeacherProjection';
 import SchoolManagement from '@/pages/admin/SchoolManagement';
+import EnrollmentQuestions from '@/pages/admin/EnrollmentQuestions';
 import TeacherPanel from '@/pages/teacher/TeacherPanel';
 import StudentDetail from '@/pages/student/StudentDetail';
 import SettingsManagement from '@/pages/master/SettingsManagement';
@@ -97,6 +98,7 @@ function AppRoutes() {
           <Route path="projection" element={<TeacherProjection />} />
           <Route path="academic" element={<AcademicManagement />} />
           <Route path="planteles" element={<SchoolManagement />} />
+          <Route path="enrollment-questions" element={<EnrollmentQuestions />} />
           <Route path="search" element={<SearchUsers />} />
           <Route path="edit/:id" element={<EditUser />} />
         </Route>
