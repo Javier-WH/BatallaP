@@ -21,6 +21,8 @@ import plantelRoutes from '@/routes/plantelRoutes';
 import enrollmentQuestionRoutes from './routes/enrollmentQuestionRoutes';
 import enrollmentAnswerRoutes from './routes/enrollmentAnswerRoutes';
 import guardianRoutes from './routes/guardianRoutes';
+import councilRoutes from '@/routes/councilRoutes';
+
 
 dotenv.config();
 
@@ -47,6 +49,8 @@ app.use('/api/planteles', plantelRoutes);
 app.use('/api/enrollment-questions', enrollmentQuestionRoutes);
 app.use('/api/enrollment-answers', enrollmentAnswerRoutes);
 app.use('/api/guardians', guardianRoutes);
+app.use('/api/council', councilRoutes);
+
 
 const startServer = async () => {
   try {

@@ -107,6 +107,8 @@ import Term from './Term';
 import Matriculation from './Matriculation';
 import EnrollmentQuestion from './EnrollmentQuestion';
 import EnrollmentAnswer from './EnrollmentAnswer';
+import CouncilPoint from './CouncilPoint';
+
 
 // ... (Existing User/Person/Role/Contact associations) ...
 
@@ -187,6 +189,14 @@ Qualification.belongsTo(EvaluationPlan, { foreignKey: 'evaluationPlanId', as: 'e
 InscriptionSubject.hasMany(Qualification, { foreignKey: 'inscriptionSubjectId', as: 'qualifications' });
 Qualification.belongsTo(InscriptionSubject, { foreignKey: 'inscriptionSubjectId', as: 'inscriptionSubject' });
 
+// 5.5 Council Point Associations
+InscriptionSubject.hasMany(CouncilPoint, { foreignKey: 'inscriptionSubjectId', as: 'councilPoints' });
+CouncilPoint.belongsTo(InscriptionSubject, { foreignKey: 'inscriptionSubjectId', as: 'inscriptionSubject' });
+
+Term.hasMany(CouncilPoint, { foreignKey: 'termId', as: 'councilPoints' });
+CouncilPoint.belongsTo(Term, { foreignKey: 'termId', as: 'term' });
+
+
 // 6. Teacher Assignment Associations
 Person.hasMany(TeacherAssignment, { foreignKey: 'teacherId', as: 'teachingAssignments' });
 TeacherAssignment.belongsTo(Person, { foreignKey: 'teacherId', as: 'teacher' });
@@ -237,5 +247,6 @@ export {
   Setting,
   Term,
   EnrollmentQuestion,
-  EnrollmentAnswer
+  EnrollmentAnswer,
+  CouncilPoint
 };

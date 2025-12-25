@@ -33,6 +33,8 @@ import ControlEstudiosLayout from '@/pages/control-estudios/ControlEstudiosLayou
 import ControlEstudiosDashboard from '@/pages/control-estudios/Dashboard';
 import AcademicSettings from '@/pages/control-estudios/AcademicSettings';
 import MatriculationEnrollment from '@/pages/control-estudios/MatriculationEnrollment';
+import CourseCouncil from '@/pages/control-estudios/CourseCouncil';
+
 
 // Protected Route Component
 const RequireAuth = ({ children, allowedRoles }: { children: JSX.Element; allowedRoles?: string[] }) => {
@@ -108,7 +110,9 @@ function AppRoutes() {
           <Route index element={<ControlEstudiosDashboard />} />
           <Route path="inscribir-estudiante" element={<MatriculationEnrollment />} />
           <Route path="configuracion" element={<AcademicSettings />} />
+          <Route path="consejos-curso" element={<CourseCouncil />} />
         </Route>
+
 
         <Route
           path="gestion-usuarios"

@@ -1,7 +1,7 @@
 import React from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { Button, Space, Card, Tooltip } from 'antd';
-import { DashboardOutlined, SettingOutlined, UserAddOutlined } from '@ant-design/icons';
+import { DashboardOutlined, SettingOutlined, UserAddOutlined, CheckCircleFilled } from '@ant-design/icons';
 
 const ControlEstudiosLayout: React.FC = () => {
   const navigate = useNavigate();
@@ -47,6 +47,15 @@ const ControlEstudiosLayout: React.FC = () => {
               onClick={() => navigate('/control-estudios/configuracion')}
             >
               Configuración Académica
+            </Button>
+          </Tooltip>
+          <Tooltip title="Consejos de Curso">
+            <Button
+              type={matchesPath('/control-estudios/consejos-curso') ? 'primary' : 'text'}
+              icon={<CheckCircleFilled />}
+              onClick={() => navigate('/control-estudios/consejos-curso')}
+            >
+              Consejos de Curso
             </Button>
           </Tooltip>
         </Space>
