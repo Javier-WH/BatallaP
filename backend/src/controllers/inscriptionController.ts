@@ -579,12 +579,17 @@ export const createInscription = async (req: Request, res: Response) => {
     });
 
     if (periodGrade && periodGrade.subjects && periodGrade.subjects.length > 0) {
-      const subjectsToAdd = periodGrade.subjects.map((s: any) => ({
-        inscriptionId: inscription.id,
-        subjectId: s.id
-      }));
+      // Filter out subjects that belong to a group
+      const subjectsToAdd = periodGrade.subjects
+        .filter((s: any) => !s.subjectGroupId)
+        .map((s: any) => ({
+          inscriptionId: inscription.id,
+          subjectId: s.id
+        }));
 
-      await InscriptionSubject.bulkCreate(subjectsToAdd, { transaction: t });
+      if (subjectsToAdd.length > 0) {
+        await InscriptionSubject.bulkCreate(subjectsToAdd, { transaction: t });
+      }
     }
 
     await t.commit();

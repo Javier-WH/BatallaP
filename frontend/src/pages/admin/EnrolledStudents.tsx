@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Table, Card, Button, Input, Select, Space, Tag, message, Row, Col, Typography, Empty } from 'antd';
-import { FilterOutlined, TeamOutlined, EyeOutlined } from '@ant-design/icons';
+import { Table, Card, Button, Input, Select, Space, Tag, message, Row, Col, Typography, Empty, Tooltip } from 'antd';
+import { FilterOutlined, TeamOutlined, EyeOutlined, BookOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import api from '@/services/api';
 import type { ColumnsType } from 'antd/es/table';
+import StudentSubjectsModal from './StudentSubjectsModal';
 
 const { Search } = Input;
 const { Option } = Select;
@@ -41,6 +42,7 @@ interface InscriptionRecord {
   student: StudentSummary;
   grade: Grade;
   section?: Section | null;
+  schoolPeriodId: number;
 }
 
 interface FiltersState {
@@ -55,6 +57,15 @@ const EnrolledStudents: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [inscriptions, setInscriptions] = useState<InscriptionRecord[]>([]);
   const [activePeriod, setActivePeriod] = useState<SchoolPeriod | null>(null);
+
+  // Subject Modal State
+  const [subjectModalVisible, setSubjectModalVisible] = useState(false);
+  const [selectedStudentForSubjects, setSelectedStudentForSubjects] = useState<{
+    inscriptionId: number;
+    studentName: string;
+    gradeId: number;
+    schoolPeriodId: number;
+  } | null>(null);
 
   // Catalogs for filters
   const [grades, setGrades] = useState<Grade[]>([]);
@@ -118,6 +129,16 @@ const EnrolledStudents: React.FC = () => {
     fetchInscriptions();
   }, [fetchInscriptions]);
 
+  const handleOpenSubjectModal = (record: InscriptionRecord) => {
+    setSelectedStudentForSubjects({
+      inscriptionId: record.id,
+      studentName: `${record.student.firstName} ${record.student.lastName}`,
+      gradeId: record.grade.id,
+      schoolPeriodId: record.schoolPeriodId
+    });
+    setSubjectModalVisible(true);
+  };
+
   const columns: ColumnsType<InscriptionRecord> = [
     {
       title: 'Estudiante',
@@ -153,18 +174,26 @@ const EnrolledStudents: React.FC = () => {
       render: (name: string) => name || <Text type="secondary">N/A</Text>
     },
     {
-      title: 'Expediente',
-      key: 'record',
+      title: 'Acciones',
+      key: 'actions',
       align: 'center' as const,
       render: (_: unknown, record) => (
-        <Button
-          type="primary"
-          ghost
-          icon={<EyeOutlined />}
-          onClick={() => navigate(`/student/${record.student?.id}`)}
-        >
-          Ver Detalle
-        </Button>
+        <Space>
+          <Tooltip title="Gestionar Materias">
+            <Button
+              icon={<BookOutlined />}
+              onClick={() => handleOpenSubjectModal(record)}
+            />
+          </Tooltip>
+          <Tooltip title="Ver Expediente">
+            <Button
+              type="primary"
+              ghost
+              icon={<EyeOutlined />}
+              onClick={() => navigate(`/student/${record.student?.id}`)}
+            />
+          </Tooltip>
+        </Space>
       )
     }
   ];
@@ -277,6 +306,17 @@ const EnrolledStudents: React.FC = () => {
           </>
         )}
       </Card>
+
+      {selectedStudentForSubjects && (
+        <StudentSubjectsModal
+          visible={subjectModalVisible}
+          onClose={() => setSubjectModalVisible(false)}
+          inscriptionId={selectedStudentForSubjects.inscriptionId}
+          studentName={selectedStudentForSubjects.studentName}
+          gradeId={selectedStudentForSubjects.gradeId}
+          schoolPeriodId={selectedStudentForSubjects.schoolPeriodId}
+        />
+      )}
     </div>
   );
 };
