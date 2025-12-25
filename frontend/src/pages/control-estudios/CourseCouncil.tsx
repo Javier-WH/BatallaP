@@ -5,7 +5,8 @@ import {
   SaveOutlined,
   FilterOutlined,
   CalendarOutlined,
-  UserOutlined
+  UserOutlined,
+  InfoCircleOutlined
 } from '@ant-design/icons';
 import api from '@/services/api';
 
@@ -46,6 +47,8 @@ interface CouncilStudent {
     points: number;
     councilPointId?: number;
     grade: number;
+    hasOtherTermsPoints: boolean;
+    otherTermsInfo?: { termName: string, points: number }[];
   }[];
 }
 
@@ -311,11 +314,29 @@ const CourseCouncil: React.FC = () => {
           const subjectData = record.subjects.find(s => s.id === sub.id);
           return (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
-              <Tooltip title="Nota Definitiva">
-                <Text style={{ fontSize: 11, fontWeight: 600, color: (subjectData?.grade || 0) < 10 ? '#ff4d4f' : '#8c8c8c' }}>
-                  {subjectData?.grade || 0}
-                </Text>
-              </Tooltip>
+              <div style={{ display: 'flex', alignItems: 'center', lineHeight: '14px' }}>
+                <Tooltip title="Nota Definitiva">
+                  <Text style={{ fontSize: 11, fontWeight: 600, color: (subjectData?.grade || 0) < 10 ? '#ff4d4f' : '#8c8c8c' }}>
+                    {subjectData?.grade || 0}
+                  </Text>
+                </Tooltip>
+                {subjectData?.hasOtherTermsPoints && (
+                  <Tooltip
+                    title={
+                      <div>
+                        <strong>Puntos previos:</strong>
+                        {subjectData.otherTermsInfo?.map((info, idx) => (
+                          <div key={idx} style={{ fontSize: 11 }}>
+                            {info.termName}: {info.points} {info.points === 1 ? 'punto' : 'puntos'}
+                          </div>
+                        ))}
+                      </div>
+                    }
+                  >
+                    <InfoCircleOutlined style={{ marginLeft: 4, color: '#faad14', fontSize: 10, cursor: 'help' }} />
+                  </Tooltip>
+                )}
+              </div>
               <InputNumber
                 min={0}
                 max={pointsLimit}

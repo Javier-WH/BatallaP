@@ -43,7 +43,7 @@ export const getCouncilData = async (req: Request, res: Response) => {
             {
               model: CouncilPoint,
               as: 'councilPoints',
-              where: { termId: Number(termId) },
+              include: [{ model: Term, as: 'term', attributes: ['name'] }],
               required: false
             },
             {
@@ -103,13 +103,21 @@ export const getCouncilData = async (req: Request, res: Response) => {
           return acc + (score * (percentage / 100));
         }, 0);
 
+        const currentTermPoints = (is.councilPoints || []).find((cp: any) => cp.termId === Number(termId));
+        const otherTermsPoints = (is.councilPoints || []).filter((cp: any) => cp.termId !== Number(termId) && cp.points > 0);
+
         return {
           id: is.subjectId,
           name: is.subject?.name,
           inscriptionSubjectId: is.id,
-          points: is.councilPoints?.[0]?.points || 0,
-          councilPointId: is.councilPoints?.[0]?.id,
-          grade: Math.round(grade * 100) / 100
+          points: currentTermPoints?.points || 0,
+          councilPointId: currentTermPoints?.id,
+          grade: Math.round(grade * 100) / 100,
+          hasOtherTermsPoints: otherTermsPoints.length > 0,
+          otherTermsInfo: otherTermsPoints.map((cp: any) => ({
+            termName: cp.term?.name,
+            points: cp.points
+          }))
         };
       });
 
