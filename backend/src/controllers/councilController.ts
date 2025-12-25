@@ -7,7 +7,9 @@ import {
   CouncilPoint,
   PeriodGrade,
   PeriodGradeSubject,
-  Term
+  Term,
+  Qualification,
+  EvaluationPlan
 } from '@/models/index';
 
 export const getCouncilData = async (req: Request, res: Response) => {
@@ -42,6 +44,18 @@ export const getCouncilData = async (req: Request, res: Response) => {
               model: CouncilPoint,
               as: 'councilPoints',
               where: { termId: Number(termId) },
+              required: false
+            },
+            {
+              model: Qualification,
+              as: 'qualifications',
+              include: [
+                {
+                  model: EvaluationPlan,
+                  as: 'evaluationPlan',
+                  where: { termId: Number(termId) }
+                }
+              ],
               required: false
             }
           ]
@@ -80,13 +94,24 @@ export const getCouncilData = async (req: Request, res: Response) => {
         const orderA = subjectOrderMap.get(a.subjectId) || 999;
         const orderB = subjectOrderMap.get(b.subjectId) || 999;
         return orderA - orderB;
-      }).map((is: any) => ({
-        id: is.subjectId,
-        name: is.subject?.name,
-        inscriptionSubjectId: is.id,
-        points: is.councilPoints?.[0]?.points || 0,
-        councilPointId: is.councilPoints?.[0]?.id
-      }));
+      }).map((is: any) => {
+        // Calculate definitive grade for this term
+        const qualifications = is.qualifications || [];
+        const grade = qualifications.reduce((acc: number, q: any) => {
+          const score = Number(q.score) || 0;
+          const percentage = Number(q.evaluationPlan?.percentage) || 0;
+          return acc + (score * (percentage / 100));
+        }, 0);
+
+        return {
+          id: is.subjectId,
+          name: is.subject?.name,
+          inscriptionSubjectId: is.id,
+          points: is.councilPoints?.[0]?.points || 0,
+          councilPointId: is.councilPoints?.[0]?.id,
+          grade: Math.round(grade * 100) / 100
+        };
+      });
 
       return {
         id: ins.id,

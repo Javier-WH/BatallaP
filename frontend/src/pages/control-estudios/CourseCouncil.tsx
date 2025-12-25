@@ -45,6 +45,7 @@ interface CouncilStudent {
     inscriptionSubjectId: number;
     points: number;
     councilPointId?: number;
+    grade: number;
   }[];
 }
 
@@ -278,15 +279,22 @@ const CourseCouncil: React.FC = () => {
         render: (_: any, record: CouncilStudent) => {
           const subjectData = record.subjects.find(s => s.id === sub.id);
           return (
-            <InputNumber
-              min={0}
-              max={2}
-              size="small"
-              value={subjectData?.points}
-              onChange={(val) => handlePointChange(record.id, subjectData!.inscriptionSubjectId, val)}
-              disabled={selectedTerm?.isBlocked}
-              style={{ width: 50 }}
-            />
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+              <Tooltip title="Nota Definitiva">
+                <Text style={{ fontSize: 11, fontWeight: 600, color: (subjectData?.grade || 0) < 10 ? '#ff4d4f' : '#8c8c8c' }}>
+                  {subjectData?.grade || 0}
+                </Text>
+              </Tooltip>
+              <InputNumber
+                min={0}
+                max={2}
+                size="small"
+                value={subjectData?.points}
+                onChange={(val) => handlePointChange(record.id, subjectData!.inscriptionSubjectId, val)}
+                disabled={selectedTerm?.isBlocked}
+                style={{ width: 45 }}
+              />
+            </div>
           );
         }
       }))
