@@ -25,6 +25,7 @@ import api from '@/services/api';
 import { getEnrollmentQuestionsForPerson } from '@/services/enrollmentQuestions';
 import type { EnrollmentQuestionResponse } from '@/services/enrollmentQuestions';
 import EnrollmentQuestionFields from '@/components/EnrollmentQuestionFields';
+import type { GuardianDocumentType } from '@/services/guardians';
 
 const { Text } = Typography;
 const { Option } = Select;
@@ -89,6 +90,7 @@ interface GuardianInfo {
   firstName: string;
   lastName: string;
   document: string;
+  documentType?: GuardianDocumentType;
   phone?: string | null;
   email?: string | null;
   residenceState?: string | null;
@@ -127,6 +129,7 @@ type EnrollStructureEntry = {
 interface GuardianFormValues {
   firstName?: string;
   lastName?: string;
+  documentType?: GuardianDocumentType;
   document?: string;
   phone?: string;
   email?: string;
@@ -172,6 +175,18 @@ type SchoolSearchResult = {
   code?: string;
   name: string;
   state: string;
+};
+
+const guardianDocumentOptions: { label: string; value: GuardianDocumentType }[] = [
+  { label: 'Venezolano', value: 'Venezolano' },
+  { label: 'Extranjero', value: 'Extranjero' },
+  { label: 'Pasaporte', value: 'Pasaporte' }
+];
+
+const guardianLabels: Record<GuardianRelationship, string> = {
+  mother: 'la madre',
+  father: 'el padre',
+  representative: 'el representante'
 };
 
 const selectFilterOption = (input: string, option?: { label?: string }) =>
@@ -239,11 +254,6 @@ const MatriculationEnrollment: React.FC = () => {
   const representativeTypeValue = Form.useWatch('representativeType', form) as RepresentativeType | undefined;
   const gradeIdValue = Form.useWatch('gradeId', form) as number | null;
 
-  const clearEnrollmentQuestions = useCallback(() => {
-    setEnrollmentQuestions([]);
-    form.setFieldsValue({ enrollmentAnswers: {} });
-  }, [form]);
-
   const fetchMatriculations = useCallback(
     async (query?: string) => {
       setListLoading(true);
@@ -255,7 +265,13 @@ const MatriculationEnrollment: React.FC = () => {
         if (data.length === 0) {
           setSelectedId(null);
           setDetail(null);
-          clearEnrollmentQuestions();
+          setEnrollmentQuestions([]);
+          form.setFieldsValue({
+            enrollmentAnswers: {},
+            mother: { documentType: 'Venezolano' },
+            father: { documentType: 'Venezolano' },
+            representative: { documentType: 'Venezolano' }
+          });
           form.resetFields();
         }
       } catch (error) {
@@ -265,7 +281,7 @@ const MatriculationEnrollment: React.FC = () => {
         setListLoading(false);
       }
     },
-    [clearEnrollmentQuestions, form],
+    [form],
   );
 
   const fetchLocations = useCallback(async () => {
@@ -411,6 +427,7 @@ const MatriculationEnrollment: React.FC = () => {
             ? {
                 firstName: mother.firstName,
                 lastName: mother.lastName,
+                documentType: mother.documentType || 'Venezolano',
                 document: mother.document,
                 phone: mother.phone,
                 email: mother.email,
@@ -419,11 +436,12 @@ const MatriculationEnrollment: React.FC = () => {
                 residenceParish: mother.residenceParish,
                 address: mother.address
               }
-            : undefined,
+            : { documentType: 'Venezolano' },
           father: father
             ? {
                 firstName: father.firstName,
                 lastName: father.lastName,
+                documentType: father.documentType || 'Venezolano',
                 document: father.document,
                 phone: father.phone,
                 email: father.email,
@@ -432,11 +450,12 @@ const MatriculationEnrollment: React.FC = () => {
                 residenceParish: father.residenceParish,
                 address: father.address
               }
-            : undefined,
+            : { documentType: 'Venezolano' },
           representative: representative
             ? {
                 firstName: representative.firstName,
                 lastName: representative.lastName,
+                documentType: representative.documentType || 'Venezolano',
                 document: representative.document,
                 phone: representative.phone,
                 email: representative.email,
@@ -445,7 +464,7 @@ const MatriculationEnrollment: React.FC = () => {
                 residenceParish: representative.residenceParish,
                 address: representative.address
               }
-            : undefined
+            : { documentType: 'Venezolano' }
         });
 
         await loadEnrollmentQuestions(data.student.id);
@@ -559,6 +578,35 @@ const MatriculationEnrollment: React.FC = () => {
   const representativeParishOptions = useMemo(
     () => buildParishOptions(locations, representativeStateValue, representativeMunicipalityValue),
     [locations, representativeStateValue, representativeMunicipalityValue]
+  );
+
+  const renderGuardianDocumentControls = (guardianKey: GuardianRelationship, required: boolean) => (
+    <Row gutter={16}>
+      <Col span={8}>
+        <Form.Item
+          name={[guardianKey, 'documentType']}
+          label="Tipo de documento"
+          rules={
+            required
+              ? [{ required: true, message: `Seleccione el tipo de documento de ${guardianLabels[guardianKey]}` }]
+              : []
+          }
+        >
+          <Select placeholder="Seleccione" options={guardianDocumentOptions} />
+        </Form.Item>
+      </Col>
+      <Col span={16}>
+        <Form.Item
+          name={[guardianKey, 'document']}
+          label="Número de documento"
+          rules={
+            required ? [{ required: true, message: `Ingrese la cédula de ${guardianLabels[guardianKey]}` }] : []
+          }
+        >
+          <Input />
+        </Form.Item>
+      </Col>
+    </Row>
   );
 
   const motherIsRepresentative = representativeTypeValue === 'mother';
@@ -690,7 +738,14 @@ const MatriculationEnrollment: React.FC = () => {
             form={form}
             layout="vertical"
             onFinish={handleSubmit}
-            initialValues={{ documentType: 'Venezolano', gender: 'M', representativeType: 'mother' }}
+            initialValues={{
+              documentType: 'Venezolano',
+              gender: 'M',
+              representativeType: 'mother',
+              mother: { documentType: 'Venezolano' },
+              father: { documentType: 'Venezolano' },
+              representative: { documentType: 'Venezolano' }
+            }}
           >
             <Alert
               type="info"
@@ -1001,6 +1056,7 @@ const MatriculationEnrollment: React.FC = () => {
 
               <div style={{ background: '#fff', border: '1px solid #f0f0f0', borderRadius: 8, padding: 16, marginBottom: 24 }}>
                 <h5 style={{ marginBottom: 16 }}>Madre (obligatoria)</h5>
+                {renderGuardianDocumentControls('mother', true)}
                 <Row gutter={16}>
                   <Col span={12}>
                     <Form.Item
@@ -1022,16 +1078,7 @@ const MatriculationEnrollment: React.FC = () => {
                   </Col>
                 </Row>
                 <Row gutter={16}>
-                  <Col span={8}>
-                    <Form.Item
-                      name={['mother', 'document']}
-                      label="Cédula"
-                      rules={[{ required: true, message: 'Ingrese la cédula de la madre' }]}
-                    >
-                      <Input />
-                    </Form.Item>
-                  </Col>
-                  <Col span={8}>
+                  <Col span={12}>
                     <Form.Item
                       name={['mother', 'phone']}
                       label="Teléfono"
@@ -1040,7 +1087,7 @@ const MatriculationEnrollment: React.FC = () => {
                       <Input />
                     </Form.Item>
                   </Col>
-                  <Col span={8}>
+                  <Col span={12}>
                     <Form.Item
                       name={['mother', 'email']}
                       label="Email"
@@ -1121,6 +1168,7 @@ const MatriculationEnrollment: React.FC = () => {
                 <h5 style={{ marginBottom: 16 }}>
                   Padre {fatherDataRequired ? '(obligatorio)' : '(opcional)'}
                 </h5>
+                {renderGuardianDocumentControls('father', fatherDataRequired)}
                 <Row gutter={16}>
                   <Col span={12}>
                     <Form.Item
@@ -1150,20 +1198,7 @@ const MatriculationEnrollment: React.FC = () => {
                   </Col>
                 </Row>
                 <Row gutter={16}>
-                  <Col span={8}>
-                    <Form.Item
-                      name={['father', 'document']}
-                      label="Cédula"
-                      rules={
-                        fatherDataRequired
-                          ? [{ required: true, message: 'Ingrese la cédula del padre' }]
-                          : []
-                      }
-                    >
-                      <Input />
-                    </Form.Item>
-                  </Col>
-                  <Col span={8}>
+                  <Col span={12}>
                     <Form.Item
                       name={['father', 'phone']}
                       label="Teléfono"
@@ -1176,7 +1211,7 @@ const MatriculationEnrollment: React.FC = () => {
                       <Input />
                     </Form.Item>
                   </Col>
-                  <Col span={8}>
+                  <Col span={12}>
                     <Form.Item
                       name={['father', 'email']}
                       label="Email"
@@ -1278,6 +1313,7 @@ const MatriculationEnrollment: React.FC = () => {
                   <h5 style={{ marginBottom: 16 }}>
                     Representante {requireRepresentativeData ? '(obligatorio)' : '(opcional)'}
                   </h5>
+                  {renderGuardianDocumentControls('representative', requireRepresentativeData)}
                   <Row gutter={16}>
                     <Col span={12}>
                       <Form.Item
@@ -1307,20 +1343,7 @@ const MatriculationEnrollment: React.FC = () => {
                     </Col>
                   </Row>
                   <Row gutter={16}>
-                    <Col span={8}>
-                      <Form.Item
-                        name={['representative', 'document']}
-                        label="Cédula"
-                        rules={
-                          requireRepresentativeData
-                            ? [{ required: true, message: 'Ingrese la cédula del representante' }]
-                            : []
-                        }
-                      >
-                        <Input />
-                      </Form.Item>
-                    </Col>
-                    <Col span={8}>
+                    <Col span={12}>
                       <Form.Item
                         name={['representative', 'phone']}
                         label="Teléfono"
@@ -1333,7 +1356,7 @@ const MatriculationEnrollment: React.FC = () => {
                         <Input />
                       </Form.Item>
                     </Col>
-                    <Col span={8}>
+                    <Col span={12}>
                       <Form.Item
                         name={['representative', 'email']}
                         label="Email"
