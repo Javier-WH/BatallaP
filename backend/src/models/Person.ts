@@ -26,6 +26,8 @@ class Person extends Model<PersonAttributes, PersonCreationAttributes> implement
   public userId!: number | null;
 
   public readonly roles?: import('./Role').default[];
+  public readonly contact?: import('./Contact').default;
+  public readonly residence?: import('./PersonResidence').default;
 
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;

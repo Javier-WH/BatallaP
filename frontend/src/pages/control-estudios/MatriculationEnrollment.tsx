@@ -243,6 +243,7 @@ const MatriculationEnrollment: React.FC = () => {
   // Guardian search state
   const [guardianSearchLoading, setGuardianSearchLoading] = useState<{ [key: string]: boolean }>({});
   const [guardianSearchResults, setGuardianSearchResults] = useState<{ [key: string]: GuardianInfo | null }>({});
+  const [guardianSearchStatus, setGuardianSearchStatus] = useState<{ [key: string]: 'idle' | 'loading' | 'found' | 'not_found' }>({});
 
   // Form watchers
   const birthStateValue = Form.useWatch('birthState', form);
@@ -278,10 +279,12 @@ const MatriculationEnrollment: React.FC = () => {
           setSelectedId(null);
           setDetail(null);
           setEnrollmentQuestions([]);
+          setGuardianSearchResults({});
+          setGuardianSearchStatus({});
           form.setFieldsValue({
             enrollmentAnswers: {},
             mother: { documentType: 'Venezolano' },
-            father: { documentType: 'Venezolano' },
+            father: { documentType: undefined },
             representative: { documentType: 'Venezolano' }
           });
           form.resetFields();
@@ -371,10 +374,13 @@ const MatriculationEnrollment: React.FC = () => {
   const searchGuardian = useCallback(async (guardianKey: GuardianRelationship, documentType: GuardianDocumentType, document: string) => {
     if (!documentType || !document || document.length < 3) {
       setGuardianSearchResults(prev => ({ ...prev, [guardianKey]: null }));
+      setGuardianSearchStatus(prev => ({ ...prev, [guardianKey]: 'idle' }));
       return;
     }
 
     setGuardianSearchLoading(prev => ({ ...prev, [guardianKey]: true }));
+    setGuardianSearchStatus(prev => ({ ...prev, [guardianKey]: 'loading' }));
+    
     try {
       const response = await api.get('/guardians/search', {
         params: { documentType, document }
@@ -382,6 +388,8 @@ const MatriculationEnrollment: React.FC = () => {
       
       if (response.data) {
         setGuardianSearchResults(prev => ({ ...prev, [guardianKey]: response.data }));
+        setGuardianSearchStatus(prev => ({ ...prev, [guardianKey]: 'found' }));
+        
         // Auto-fill form with found guardian data
         const guardian = response.data;
         form.setFieldsValue({
@@ -398,14 +406,17 @@ const MatriculationEnrollment: React.FC = () => {
             address: guardian.address
           }
         });
-        message.success(`Datos de ${guardianLabels[guardianKey]} encontrados y cargados`);
+        message.success(`Datos de ${guardianLabels[guardianKey]} encontrados`);
       }
     } catch (error: unknown) {
       if (error && typeof error === 'object' && 'response' in error) {
         const err = error as { response?: { status?: number } };
         if (err.response?.status === 404) {
           setGuardianSearchResults(prev => ({ ...prev, [guardianKey]: null }));
+          setGuardianSearchStatus(prev => ({ ...prev, [guardianKey]: 'not_found' }));
+          
           // Clear form fields if guardian not found
+          const currentValues = form.getFieldValue(guardianKey) || {};
           form.setFieldsValue({
             [guardianKey]: {
               firstName: undefined,
@@ -416,17 +427,19 @@ const MatriculationEnrollment: React.FC = () => {
               residenceMunicipality: undefined,
               residenceParish: undefined,
               address: undefined,
-              documentType,
-              document
+              documentType: currentValues.documentType || documentType,
+              document: currentValues.document || document
             }
           });
         } else {
           console.error('Error searching guardian:', error);
           message.error('Error buscando representante');
+          setGuardianSearchStatus(prev => ({ ...prev, [guardianKey]: 'idle' })); // Reset on error?
         }
       } else {
         console.error('Error searching guardian:', error);
         message.error('Error buscando representante');
+        setGuardianSearchStatus(prev => ({ ...prev, [guardianKey]: 'idle' }));
       }
     } finally {
       setGuardianSearchLoading(prev => ({ ...prev, [guardianKey]: false }));
@@ -469,6 +482,18 @@ const MatriculationEnrollment: React.FC = () => {
         const mother = guardians.find((g: GuardianInfo) => g.relationship === 'mother');
         const father = guardians.find((g: GuardianInfo) => g.relationship === 'father');
         const representative = guardians.find((g: GuardianInfo) => g.relationship === 'representative');
+
+        setGuardianSearchResults({
+          mother: mother || null,
+          father: father || null,
+          representative: representative || null
+        });
+
+        setGuardianSearchStatus({
+          mother: mother ? 'found' : 'idle',
+          father: father ? 'found' : 'idle',
+          representative: representative ? 'found' : 'idle'
+        });
 
         let representativeType: RepresentativeType = 'mother';
         if (representative?.isRepresentative) {
@@ -527,7 +552,7 @@ const MatriculationEnrollment: React.FC = () => {
                 residenceParish: father.residenceParish,
                 address: father.address
               }
-            : { documentType: 'Venezolano' },
+            : { documentType: undefined },
           representative: representative
             ? {
                 firstName: representative.firstName,
@@ -701,7 +726,7 @@ const MatriculationEnrollment: React.FC = () => {
                 : []
             }
           >
-            <Select placeholder="Seleccione" options={guardianDocumentOptions} />
+            <Select placeholder="Seleccione" options={guardianDocumentOptions} allowClear />
           </Form.Item>
         </Col>
         <Col span={16}>
@@ -721,6 +746,155 @@ const MatriculationEnrollment: React.FC = () => {
           </Form.Item>
         </Col>
       </Row>
+    );
+  };
+
+  const renderGuardianFields = (guardianKey: 'mother' | 'father' | 'representative', required: boolean) => {
+    const status = guardianSearchStatus[guardianKey];
+    const searchResult = guardianSearchResults[guardianKey];
+    const showDetails = status === 'found' || status === 'not_found';
+    // Only disable if status is found AND the specific field has a value in the search result
+    const isFieldReadOnly = (fieldName: keyof GuardianInfo) => status === 'found' && !!searchResult?.[fieldName];
+
+    if (!showDetails) return null;
+
+    const municipalityOptions = {
+      mother: motherMunicipalityOptions,
+      father: fatherMunicipalityOptions,
+      representative: representativeMunicipalityOptions
+    }[guardianKey];
+
+    const parishOptions = {
+      mother: motherParishOptions,
+      father: fatherParishOptions,
+      representative: representativeParishOptions
+    }[guardianKey];
+
+    const stateValue = {
+      mother: motherStateValue,
+      father: fatherStateValue,
+      representative: representativeStateValue
+    }[guardianKey];
+
+    const municipalityValue = {
+      mother: motherMunicipalityValue,
+      father: fatherMunicipalityValue,
+      representative: representativeMunicipalityValue
+    }[guardianKey];
+
+    return (
+      <>
+        <Row gutter={16}>
+          <Col span={12}>
+            <Form.Item
+              name={[guardianKey, 'firstName']}
+              label="Nombres"
+              rules={required ? [{ required: true, message: `Ingrese los nombres de ${guardianLabels[guardianKey]}` }] : []}
+            >
+              <Input disabled={isFieldReadOnly('firstName')} />
+            </Form.Item>
+          </Col>
+          <Col span={12}>
+            <Form.Item
+              name={[guardianKey, 'lastName']}
+              label="Apellidos"
+              rules={required ? [{ required: true, message: `Ingrese los apellidos de ${guardianLabels[guardianKey]}` }] : []}
+            >
+              <Input disabled={isFieldReadOnly('lastName')} />
+            </Form.Item>
+          </Col>
+        </Row>
+        <Row gutter={16}>
+          <Col span={12}>
+            <Form.Item
+              name={[guardianKey, 'phone']}
+              label="Teléfono"
+              rules={required ? [{ required: true, message: `Ingrese el teléfono de ${guardianLabels[guardianKey]}` }] : []}
+            >
+              <Input disabled={isFieldReadOnly('phone')} />
+            </Form.Item>
+          </Col>
+          <Col span={12}>
+            <Form.Item
+              name={[guardianKey, 'email']}
+              label="Email"
+              rules={
+                required
+                  ? [
+                      { required: true, message: `Ingrese el email de ${guardianLabels[guardianKey]}` },
+                      { type: 'email', message: 'Email inválido' }
+                    ]
+                  : [{ type: 'email', message: 'Email inválido' }]
+              }
+            >
+              <Input disabled={isFieldReadOnly('email')} />
+            </Form.Item>
+          </Col>
+        </Row>
+        <Row gutter={16}>
+          <Col span={8}>
+            <Form.Item
+              name={[guardianKey, 'residenceState']}
+              label="Estado de residencia"
+              rules={required ? [{ required: true, message: 'Seleccione el estado' }] : []}
+            >
+              <Select
+                placeholder="Seleccione estado"
+                showSearch
+                optionFilterProp="label"
+                filterOption={selectFilterOption}
+                options={stateOptions}
+                onChange={() => resetGuardianMunicipality(guardianKey)}
+                disabled={isFieldReadOnly('residenceState')}
+              />
+            </Form.Item>
+          </Col>
+          <Col span={8}>
+            <Form.Item
+              name={[guardianKey, 'residenceMunicipality']}
+              label="Municipio de residencia"
+              rules={required ? [{ required: true, message: 'Seleccione el municipio' }] : []}
+            >
+              <Select
+                placeholder="Seleccione municipio"
+                showSearch
+                optionFilterProp="label"
+                filterOption={selectFilterOption}
+                options={municipalityOptions}
+                disabled={isFieldReadOnly('residenceMunicipality') || !stateValue}
+                onChange={() => resetGuardianParish(guardianKey)}
+              />
+            </Form.Item>
+          </Col>
+          <Col span={8}>
+            <Form.Item
+              name={[guardianKey, 'residenceParish']}
+              label="Parroquia de residencia"
+              rules={required ? [{ required: true, message: 'Seleccione la parroquia' }] : []}
+            >
+              <Select
+                placeholder="Seleccione parroquia"
+                showSearch
+                optionFilterProp="label"
+                filterOption={selectFilterOption}
+                options={parishOptions}
+                disabled={isFieldReadOnly('residenceParish') || !municipalityValue}
+              />
+            </Form.Item>
+          </Col>
+        </Row>
+        <Row>
+          <Col span={24}>
+            <Form.Item
+              name={[guardianKey, 'address']}
+              label="Dirección"
+              rules={required ? [{ required: true, message: 'Ingrese la dirección' }] : []}
+            >
+              <Input.TextArea rows={2} disabled={isFieldReadOnly('address')} />
+            </Form.Item>
+          </Col>
+        </Row>
+      </>
     );
   };
 
@@ -858,7 +1032,7 @@ const MatriculationEnrollment: React.FC = () => {
               gender: 'M',
               representativeType: 'mother',
               mother: { documentType: 'Venezolano' },
-              father: { documentType: 'Venezolano' },
+              father: { documentType: undefined },
               representative: { documentType: 'Venezolano' }
             }}
           >
@@ -1172,111 +1346,7 @@ const MatriculationEnrollment: React.FC = () => {
               <div style={{ background: '#fff', border: '1px solid #f0f0f0', borderRadius: 8, padding: 16, marginBottom: 24 }}>
                 <h5 style={{ marginBottom: 16 }}>Madre (obligatoria)</h5>
                 {renderGuardianDocumentControls('mother', true)}
-                <Row gutter={16}>
-                  <Col span={12}>
-                    <Form.Item
-                      name={['mother', 'firstName']}
-                      label="Nombres"
-                      rules={[{ required: true, message: 'Ingrese los nombres de la madre' }]}
-                    >
-                      <Input />
-                    </Form.Item>
-                  </Col>
-                  <Col span={12}>
-                    <Form.Item
-                      name={['mother', 'lastName']}
-                      label="Apellidos"
-                      rules={[{ required: true, message: 'Ingrese los apellidos de la madre' }]}
-                    >
-                      <Input />
-                    </Form.Item>
-                  </Col>
-                </Row>
-                <Row gutter={16}>
-                  <Col span={12}>
-                    <Form.Item
-                      name={['mother', 'phone']}
-                      label="Teléfono"
-                      rules={[{ required: true, message: 'Ingrese el teléfono de la madre' }]}
-                    >
-                      <Input />
-                    </Form.Item>
-                  </Col>
-                  <Col span={12}>
-                    <Form.Item
-                      name={['mother', 'email']}
-                      label="Email"
-                      rules={[
-                        { required: true, message: 'Ingrese el email de la madre' },
-                        { type: 'email', message: 'Email inválido' }
-                      ]}
-                    >
-                      <Input />
-                    </Form.Item>
-                  </Col>
-                </Row>
-                <Row gutter={16}>
-                  <Col span={8}>
-                    <Form.Item
-                      name={['mother', 'residenceState']}
-                      label="Estado de residencia"
-                      rules={[{ required: true, message: 'Seleccione el estado de residencia' }]}
-                    >
-                      <Select
-                        placeholder="Seleccione estado"
-                        showSearch
-                        optionFilterProp="label"
-                        filterOption={selectFilterOption}
-                        options={stateOptions}
-                        onChange={() => resetGuardianMunicipality('mother')}
-                      />
-                    </Form.Item>
-                  </Col>
-                  <Col span={8}>
-                    <Form.Item
-                      name={['mother', 'residenceMunicipality']}
-                      label="Municipio de residencia"
-                      rules={[{ required: true, message: 'Seleccione el municipio de residencia' }]}
-                    >
-                      <Select
-                        placeholder="Seleccione municipio"
-                        showSearch
-                        optionFilterProp="label"
-                        filterOption={selectFilterOption}
-                        options={motherMunicipalityOptions}
-                        disabled={!motherStateValue}
-                        onChange={() => resetGuardianParish('mother')}
-                      />
-                    </Form.Item>
-                  </Col>
-                  <Col span={8}>
-                    <Form.Item
-                      name={['mother', 'residenceParish']}
-                      label="Parroquia de residencia"
-                      rules={[{ required: true, message: 'Seleccione la parroquia de residencia' }]}
-                    >
-                      <Select
-                        placeholder="Seleccione parroquia"
-                        showSearch
-                        optionFilterProp="label"
-                        filterOption={selectFilterOption}
-                        options={motherParishOptions}
-                        disabled={!motherMunicipalityValue}
-                      />
-                    </Form.Item>
-                  </Col>
-                </Row>
-                <Row>
-                  <Col span={24}>
-                    <Form.Item
-                      name={['mother', 'address']}
-                      label="Dirección"
-                      rules={[{ required: true, message: 'Ingrese la dirección de la madre' }]}
-                    >
-                      <Input.TextArea rows={2} />
-                    </Form.Item>
-                  </Col>
-                </Row>
+                {renderGuardianFields('mother', true)}
               </div>
 
               <div style={{ background: '#fff', border: '1px solid #f0f0f0', borderRadius: 8, padding: 16, marginBottom: 24 }}>
@@ -1284,143 +1354,7 @@ const MatriculationEnrollment: React.FC = () => {
                   Padre {fatherDataRequired ? '(obligatorio)' : '(opcional)'}
                 </h5>
                 {renderGuardianDocumentControls('father', fatherDataRequired)}
-                <Row gutter={16}>
-                  <Col span={12}>
-                    <Form.Item
-                      name={['father', 'firstName']}
-                      label="Nombres"
-                      rules={
-                        fatherDataRequired
-                          ? [{ required: true, message: 'Ingrese los nombres del padre' }]
-                          : []
-                      }
-                    >
-                      <Input />
-                    </Form.Item>
-                  </Col>
-                  <Col span={12}>
-                    <Form.Item
-                      name={['father', 'lastName']}
-                      label="Apellidos"
-                      rules={
-                        fatherDataRequired
-                          ? [{ required: true, message: 'Ingrese los apellidos del padre' }]
-                          : []
-                      }
-                    >
-                      <Input />
-                    </Form.Item>
-                  </Col>
-                </Row>
-                <Row gutter={16}>
-                  <Col span={12}>
-                    <Form.Item
-                      name={['father', 'phone']}
-                      label="Teléfono"
-                      rules={
-                        fatherDataRequired
-                          ? [{ required: true, message: 'Ingrese el teléfono del padre' }]
-                          : []
-                      }
-                    >
-                      <Input />
-                    </Form.Item>
-                  </Col>
-                  <Col span={12}>
-                    <Form.Item
-                      name={['father', 'email']}
-                      label="Email"
-                      rules={
-                        fatherDataRequired
-                          ? [
-                              { required: true, message: 'Ingrese el email del padre' },
-                              { type: 'email', message: 'Email inválido' }
-                            ]
-                          : [{ type: 'email', message: 'Email inválido' }]
-                      }
-                    >
-                      <Input />
-                    </Form.Item>
-                  </Col>
-                </Row>
-                <Row gutter={16}>
-                  <Col span={8}>
-                    <Form.Item
-                      name={['father', 'residenceState']}
-                      label="Estado de residencia"
-                      rules={
-                        fatherDataRequired
-                          ? [{ required: true, message: 'Seleccione el estado de residencia' }]
-                          : []
-                      }
-                    >
-                      <Select
-                        placeholder="Seleccione estado"
-                        showSearch
-                        optionFilterProp="label"
-                        filterOption={selectFilterOption}
-                        options={stateOptions}
-                        onChange={() => resetGuardianMunicipality('father')}
-                      />
-                    </Form.Item>
-                  </Col>
-                  <Col span={8}>
-                    <Form.Item
-                      name={['father', 'residenceMunicipality']}
-                      label="Municipio de residencia"
-                      rules={
-                        fatherDataRequired
-                          ? [{ required: true, message: 'Seleccione el municipio de residencia' }]
-                          : []
-                      }
-                    >
-                      <Select
-                        placeholder="Seleccione municipio"
-                        showSearch
-                        optionFilterProp="label"
-                        filterOption={selectFilterOption}
-                        options={fatherMunicipalityOptions}
-                        disabled={!fatherStateValue}
-                        onChange={() => resetGuardianParish('father')}
-                      />
-                    </Form.Item>
-                  </Col>
-                  <Col span={8}>
-                    <Form.Item
-                      name={['father', 'residenceParish']}
-                      label="Parroquia de residencia"
-                      rules={
-                        fatherDataRequired
-                          ? [{ required: true, message: 'Seleccione la parroquia de residencia' }]
-                          : []
-                      }
-                    >
-                      <Select
-                        placeholder="Seleccione parroquia"
-                        showSearch
-                        optionFilterProp="label"
-                        filterOption={selectFilterOption}
-                        options={fatherParishOptions}
-                        disabled={!fatherMunicipalityValue}
-                      />
-                    </Form.Item>
-                  </Col>
-                </Row>
-                <Row>
-                  <Col span={24}>
-                    <Form.Item
-                      name={['father', 'address']}
-                      label="Dirección"
-                      rules={
-                        fatherDataRequired
-                          ? [{ required: true, message: 'Ingrese la dirección del padre' }]
-                          : []
-                      }
-                    >
-                      <Input.TextArea rows={2} />
-                    </Form.Item>
-                  </Col>
-                </Row>
+                {renderGuardianFields('father', fatherDataRequired)}
               </div>
 
               {representativeIsOther && (
@@ -1429,143 +1363,7 @@ const MatriculationEnrollment: React.FC = () => {
                     Representante {requireRepresentativeData ? '(obligatorio)' : '(opcional)'}
                   </h5>
                   {renderGuardianDocumentControls('representative', requireRepresentativeData)}
-                  <Row gutter={16}>
-                    <Col span={12}>
-                      <Form.Item
-                        name={['representative', 'firstName']}
-                        label="Nombres"
-                        rules={
-                          requireRepresentativeData
-                            ? [{ required: true, message: 'Ingrese los nombres del representante' }]
-                            : []
-                        }
-                      >
-                        <Input />
-                      </Form.Item>
-                    </Col>
-                    <Col span={12}>
-                      <Form.Item
-                        name={['representative', 'lastName']}
-                        label="Apellidos"
-                        rules={
-                          requireRepresentativeData
-                            ? [{ required: true, message: 'Ingrese los apellidos del representante' }]
-                            : []
-                        }
-                      >
-                        <Input />
-                      </Form.Item>
-                    </Col>
-                  </Row>
-                  <Row gutter={16}>
-                    <Col span={12}>
-                      <Form.Item
-                        name={['representative', 'phone']}
-                        label="Teléfono"
-                        rules={
-                          requireRepresentativeData
-                            ? [{ required: true, message: 'Ingrese el teléfono del representante' }]
-                            : []
-                        }
-                      >
-                        <Input />
-                      </Form.Item>
-                    </Col>
-                    <Col span={12}>
-                      <Form.Item
-                        name={['representative', 'email']}
-                        label="Email"
-                        rules={
-                          requireRepresentativeData
-                            ? [
-                                { required: true, message: 'Ingrese el email del representante' },
-                                { type: 'email', message: 'Email inválido' }
-                              ]
-                            : [{ type: 'email', message: 'Email inválido' }]
-                        }
-                      >
-                        <Input />
-                      </Form.Item>
-                    </Col>
-                  </Row>
-                  <Row gutter={16}>
-                    <Col span={8}>
-                      <Form.Item
-                        name={['representative', 'residenceState']}
-                        label="Estado de residencia"
-                        rules={
-                          requireRepresentativeData
-                            ? [{ required: true, message: 'Seleccione el estado de residencia' }]
-                            : []
-                        }
-                      >
-                        <Select
-                          placeholder="Seleccione estado"
-                          showSearch
-                          optionFilterProp="label"
-                          filterOption={selectFilterOption}
-                          options={stateOptions}
-                          onChange={() => resetGuardianMunicipality('representative')}
-                        />
-                      </Form.Item>
-                    </Col>
-                    <Col span={8}>
-                      <Form.Item
-                        name={['representative', 'residenceMunicipality']}
-                        label="Municipio de residencia"
-                        rules={
-                          requireRepresentativeData
-                            ? [{ required: true, message: 'Seleccione el municipio de residencia' }]
-                            : []
-                        }
-                      >
-                        <Select
-                          placeholder="Seleccione municipio"
-                          showSearch
-                          optionFilterProp="label"
-                          filterOption={selectFilterOption}
-                          options={representativeMunicipalityOptions}
-                          disabled={!representativeStateValue}
-                          onChange={() => resetGuardianParish('representative')}
-                        />
-                      </Form.Item>
-                    </Col>
-                    <Col span={8}>
-                      <Form.Item
-                        name={['representative', 'residenceParish']}
-                        label="Parroquia de residencia"
-                        rules={
-                          requireRepresentativeData
-                            ? [{ required: true, message: 'Seleccione la parroquia de residencia' }]
-                            : []
-                        }
-                      >
-                        <Select
-                          placeholder="Seleccione parroquia"
-                          showSearch
-                          optionFilterProp="label"
-                          filterOption={selectFilterOption}
-                          options={representativeParishOptions}
-                          disabled={!representativeMunicipalityValue}
-                        />
-                      </Form.Item>
-                    </Col>
-                  </Row>
-                  <Row>
-                    <Col span={24}>
-                      <Form.Item
-                        name={['representative', 'address']}
-                        label="Dirección"
-                        rules={
-                          requireRepresentativeData
-                            ? [{ required: true, message: 'Ingrese la dirección del representante' }]
-                            : []
-                        }
-                      >
-                        <Input.TextArea rows={2} />
-                      </Form.Item>
-                    </Col>
-                  </Row>
+                  {renderGuardianFields('representative', requireRepresentativeData)}
                 </div>
               )}
             </div>
