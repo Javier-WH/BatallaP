@@ -5,8 +5,7 @@ import {
   SaveOutlined,
   FilterOutlined,
   CalendarOutlined,
-  UserOutlined,
-  InfoCircleOutlined
+  UserOutlined
 } from '@ant-design/icons';
 import api from '@/services/api';
 
@@ -287,11 +286,14 @@ const CourseCouncil: React.FC = () => {
           return (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               <Space>
-                <UserOutlined style={{ color: '#8c8c8c' }} />
-                <Text strong>{text}</Text>
+                <UserOutlined style={{ color: '#595959', fontSize: 16 }} />
+                <Text style={{ fontWeight: 700, fontSize: 15, color: '#262626' }}>{text}</Text>
               </Space>
               <div style={{ paddingLeft: 22 }}>
-                <Tag color={usedPoints >= pointsLimit ? 'orange' : 'blue'} style={{ fontSize: 10, margin: 0 }}>
+                <Tag
+                  color={usedPoints >= pointsLimit ? 'volcano' : 'blue'}
+                  style={{ fontWeight: 600, border: '1px solid currentColor' }}
+                >
                   Puntos: {usedPoints} / {pointsLimit}
                 </Tag>
               </div>
@@ -299,53 +301,93 @@ const CourseCouncil: React.FC = () => {
           );
         }
       },
+      {
+        title: 'Promedio',
+        key: 'average',
+        width: 100,
+        fixed: 'left' as const,
+        align: 'center' as const,
+        render: (_: any, record: CouncilStudent) => {
+          const totalGrades = record.subjects.reduce((sum, s) => sum + (s.grade || 0) + (s.points || 0), 0);
+          const average = record.subjects.length > 0 ? totalGrades / record.subjects.length : 0;
+          return (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+              <Text style={{ fontSize: 15, fontWeight: 600, color: average < 10 ? '#cf1322' : '#096dd9' }}>
+                {average.toFixed(2)}
+              </Text>
+              <Text style={{ fontSize: 10, fontWeight: 500, color: '#595959' }}>Promedio Final</Text>
+            </div>
+          );
+        }
+      },
       ...subjects.map(sub => ({
         title: (
           <Tooltip title={sub.name}>
-            <div style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)', padding: '10px 0', maxHeight: 150, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            <div style={{
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              maxWidth: 130
+            }}>
               {sub.name}
             </div>
           </Tooltip>
         ),
         key: sub.id,
-        width: 80,
+        width: 180,
         align: 'center' as const,
         render: (_: any, record: CouncilStudent) => {
           const subjectData = record.subjects.find(s => s.id === sub.id);
+          const prevPointsTotal = subjectData?.otherTermsInfo?.reduce((sum, info) => sum + info.points, 0) || 0;
+          const currentPoints = subjectData?.points || 0;
+          const baseGrade = subjectData?.grade || 0;
+          const totalGrade = Math.round((baseGrade + currentPoints) * 100) / 100;
+
           return (
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
-              <div style={{ display: 'flex', alignItems: 'center', lineHeight: '14px' }}>
-                <Tooltip title="Nota Definitiva">
-                  <Text style={{ fontSize: 11, fontWeight: 600, color: (subjectData?.grade || 0) < 10 ? '#ff4d4f' : '#8c8c8c' }}>
-                    {subjectData?.grade || 0}
-                  </Text>
-                </Tooltip>
-                {subjectData?.hasOtherTermsPoints && (
-                  <Tooltip
-                    title={
-                      <div>
-                        <strong>Puntos previos:</strong>
-                        {subjectData.otherTermsInfo?.map((info, idx) => (
-                          <div key={idx} style={{ fontSize: 11 }}>
-                            {info.termName}: {info.points} {info.points === 1 ? 'punto' : 'puntos'}
-                          </div>
-                        ))}
-                      </div>
-                    }
-                  >
-                    <InfoCircleOutlined style={{ marginLeft: 4, color: '#faad14', fontSize: 10, cursor: 'help' }} />
-                  </Tooltip>
-                )}
-              </div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+              <Tooltip
+                title={
+                  prevPointsTotal > 0 ? (
+                    <div>
+                      <strong>Desglose de puntos previos:</strong>
+                      {subjectData?.otherTermsInfo?.map((info, idx) => (
+                        <div key={idx} style={{ fontSize: 11 }}>
+                          {info.termName}: {info.points}
+                        </div>
+                      ))}
+                    </div>
+                  ) : "No se asignaron puntos en lapsos anteriores"
+                }
+              >
+                <Tag
+                  color={prevPointsTotal > 0 ? "orange" : "default"}
+                  style={{ fontSize: 10, padding: 0, margin: 0, lineHeight: '18px', width: 24, textAlign: 'center', fontWeight: 'normal' }}
+                >
+                  {prevPointsTotal > 0 ? `+${prevPointsTotal}` : '0'}
+                </Tag>
+              </Tooltip>
+
+              <Tooltip title="Nota Base">
+                <Text style={{ fontSize: 13, color: baseGrade < 10 ? '#cf1322' : '#262626', width: 35, textAlign: 'center', fontWeight: 'normal' }}>
+                  {baseGrade}
+                </Text>
+              </Tooltip>
+
               <InputNumber
                 min={0}
                 max={pointsLimit}
-                size="small"
+                size="middle"
                 value={subjectData?.points}
                 onChange={(val) => handlePointChange(record.id, subjectData!.inscriptionSubjectId, val)}
                 disabled={selectedTerm?.isBlocked}
-                style={{ width: 45 }}
+                style={{ width: 50, fontWeight: 'normal' }}
               />
+
+              <Tooltip title="Nota Final">
+                <Text style={{ fontSize: 13, fontWeight: 700, color: totalGrade < 10 ? '#cf1322' : '#389e0d', width: 40, textAlign: 'center' }}>
+                  {totalGrade}
+                </Text>
+              </Tooltip>
             </div>
           );
         }
@@ -379,15 +421,37 @@ const CourseCouncil: React.FC = () => {
           </Space>
         </div>
 
-        <Card styles={{ body: { padding: 0 } }} style={{ borderRadius: 12, overflow: 'hidden' }}>
+        <Card styles={{ body: { padding: 0 } }} style={{ borderRadius: 12, overflow: 'hidden', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
+          <style>{`
+            .council-table .ant-table-thead > tr > th {
+              background-color: #f0f2f5 !important;
+              color: #262626 !important;
+              font-weight: 700 !important;
+              border-bottom: 2px solid #d9d9d9 !important;
+            }
+            .council-table .row-odd {
+              background-color: #ffffff;
+            }
+            .council-table .row-even {
+              background-color: #f1f7ff;
+            }
+            .council-table .ant-table-row:hover > td {
+              background-color: #e6f7ff !important;
+            }
+            .council-table .ant-table-cell {
+              padding: 12px 8px !important;
+            }
+          `}</style>
           <Table
             dataSource={studentsData}
             columns={columns}
             rowKey="id"
             pagination={false}
             scroll={{ x: 'max-content', y: 'calc(100vh - 400px)' }}
-            size="small"
+            size="middle"
             bordered
+            className="council-table"
+            rowClassName={(_, index) => index % 2 === 0 ? 'row-odd' : 'row-even'}
           />
         </Card>
       </div>
