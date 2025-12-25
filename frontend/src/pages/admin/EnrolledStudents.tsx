@@ -3,23 +3,65 @@ import { Table, Card, Button, Input, Select, Space, Tag, message, Row, Col, Typo
 import { FilterOutlined, TeamOutlined, EyeOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import api from '@/services/api';
+import type { ColumnsType } from 'antd/es/table';
 
 const { Search } = Input;
 const { Option } = Select;
 const { Text } = Typography;
 
+type Gender = 'M' | 'F';
+
+interface SchoolPeriod {
+  id: number;
+  name: string;
+  isActive: boolean;
+}
+
+interface Grade {
+  id: number;
+  name: string;
+}
+
+interface Section {
+  id: number;
+  name: string;
+}
+
+interface StudentSummary {
+  id: number;
+  firstName: string;
+  lastName: string;
+  documentType: string;
+  document: string;
+  gender: Gender;
+}
+
+interface InscriptionRecord {
+  id: number;
+  student: StudentSummary;
+  grade: Grade;
+  section?: Section | null;
+}
+
+interface FiltersState {
+  gradeId?: number;
+  sectionId?: number;
+  gender?: Gender;
+  q: string;
+}
+
 const EnrolledStudents: React.FC = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
-  const [inscriptions, setInscriptions] = useState<any[]>([]);
-  const [activePeriod, setActivePeriod] = useState<any>(null);
+  const [inscriptions, setInscriptions] = useState<InscriptionRecord[]>([]);
+  const [activePeriod, setActivePeriod] = useState<SchoolPeriod | null>(null);
 
   // Catalogs for filters
-  const [grades, setGrades] = useState<any[]>([]);
-  const [sections, setSections] = useState<any[]>([]);
+  const [grades, setGrades] = useState<Grade[]>([]);
+  const [sections, setSections] = useState<Section[]>([]);
 
   // Filter states
-  const [filters, setFilters] = useState({
+  const [filters, setFilters] = useState<FiltersState>({
     gradeId: undefined,
     sectionId: undefined,
     gender: undefined,
@@ -31,12 +73,12 @@ const EnrolledStudents: React.FC = () => {
     const loadCatalogs = async () => {
       try {
         const [periodsRes, gradesRes, sectionsRes] = await Promise.all([
-          api.get('/academic/periods'),
-          api.get('/academic/grades'),
-          api.get('/academic/sections')
+          api.get<SchoolPeriod[]>('/academic/periods'),
+          api.get<Grade[]>('/academic/grades'),
+          api.get<Section[]>('/academic/sections')
         ]);
 
-        const active = periodsRes.data.find((p: any) => p.isActive);
+        const active = periodsRes.data.find((p) => p.isActive) || null;
         setActivePeriod(active);
         setGrades(gradesRes.data);
         setSections(sectionsRes.data);
@@ -62,7 +104,7 @@ const EnrolledStudents: React.FC = () => {
         q: filters.q
       };
 
-      const res = await api.get('/inscriptions', { params });
+      const res = await api.get<InscriptionRecord[]>('/inscriptions', { params });
       setInscriptions(res.data);
     } catch (error) {
       console.error('Error fetching inscriptions:', error);
@@ -76,11 +118,11 @@ const EnrolledStudents: React.FC = () => {
     fetchInscriptions();
   }, [fetchInscriptions]);
 
-  const columns = [
+  const columns: ColumnsType<InscriptionRecord> = [
     {
       title: 'Estudiante',
       key: 'student',
-      render: (_: any, record: any) => (
+      render: (_: unknown, record) => (
         <Space direction="vertical" size={0}>
           <Text strong>{`${record.student?.firstName} ${record.student?.lastName}`}</Text>
           <Text type="secondary" style={{ fontSize: '12px' }}>
@@ -114,7 +156,7 @@ const EnrolledStudents: React.FC = () => {
       title: 'Expediente',
       key: 'record',
       align: 'center' as const,
-      render: (_: any, record: any) => (
+      render: (_: unknown, record) => (
         <Button
           type="primary"
           ghost
@@ -165,7 +207,7 @@ const EnrolledStudents: React.FC = () => {
                     enterButton
                     loading={loading}
                     onSearch={(val) => setFilters(prev => ({ ...prev, q: val }))}
-                    onChange={(e) => {
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                       if (!e.target.value) setFilters(prev => ({ ...prev, q: '' }));
                     }}
                     style={{ width: '100%', marginTop: 8 }}
@@ -178,8 +220,7 @@ const EnrolledStudents: React.FC = () => {
                     style={{ width: '100%', marginTop: 8 }}
                     allowClear
                     value={filters.gradeId}
-                    onChange={(val) => setFilters(prev => ({ ...prev, gradeId: val }))}
-                  >
+                    onChange={(val: number | undefined) => setFilters(prev => ({ ...prev, gradeId: val }))}>
                     {grades.map(g => <Option key={g.id} value={g.id}>{g.name}</Option>)}
                   </Select>
                 </Col>
@@ -190,8 +231,7 @@ const EnrolledStudents: React.FC = () => {
                     style={{ width: '100%', marginTop: 8 }}
                     allowClear
                     value={filters.sectionId}
-                    onChange={(val) => setFilters(prev => ({ ...prev, sectionId: val }))}
-                  >
+                    onChange={(val: number | undefined) => setFilters(prev => ({ ...prev, sectionId: val }))}>
                     {sections.map(s => <Option key={s.id} value={s.id}>{s.name}</Option>)}
                   </Select>
                 </Col>
@@ -202,8 +242,7 @@ const EnrolledStudents: React.FC = () => {
                     style={{ width: '100%', marginTop: 8 }}
                     allowClear
                     value={filters.gender}
-                    onChange={(val) => setFilters(prev => ({ ...prev, gender: val }))}
-                  >
+                    onChange={(val: Gender | undefined) => setFilters(prev => ({ ...prev, gender: val }))}>
                     <Option value="M">Masculino</Option>
                     <Option value="F">Femenino</Option>
                   </Select>
