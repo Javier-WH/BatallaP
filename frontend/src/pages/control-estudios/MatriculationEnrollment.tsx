@@ -240,6 +240,10 @@ const MatriculationEnrollment: React.FC = () => {
   const [showAddSchool, setShowAddSchool] = useState(false);
   const [currentSearchQuery, setCurrentSearchQuery] = useState('');
 
+  // Guardian search state
+  const [guardianSearchLoading, setGuardianSearchLoading] = useState<{ [key: string]: boolean }>({});
+  const [guardianSearchResults, setGuardianSearchResults] = useState<{ [key: string]: GuardianInfo | null }>({});
+
   // Form watchers
   const birthStateValue = Form.useWatch('birthState', form);
   const birthMunicipalityValue = Form.useWatch('birthMunicipality', form);
@@ -253,6 +257,14 @@ const MatriculationEnrollment: React.FC = () => {
   const representativeMunicipalityValue = Form.useWatch(['representative', 'residenceMunicipality'], form);
   const representativeTypeValue = Form.useWatch('representativeType', form) as RepresentativeType | undefined;
   const gradeIdValue = Form.useWatch('gradeId', form) as number | null;
+
+  // Guardian document watchers
+  const motherDocumentType = Form.useWatch(['mother', 'documentType'], form);
+  const motherDocument = Form.useWatch(['mother', 'document'], form);
+  const fatherDocumentType = Form.useWatch(['father', 'documentType'], form);
+  const fatherDocument = Form.useWatch(['father', 'document'], form);
+  const representativeDocumentType = Form.useWatch(['representative', 'documentType'], form);
+  const representativeDocument = Form.useWatch(['representative', 'document'], form);
 
   const fetchMatriculations = useCallback(
     async (query?: string) => {
@@ -355,6 +367,71 @@ const MatriculationEnrollment: React.FC = () => {
       setPreviousSchoolsLoading(false);
     }
   };
+
+  const searchGuardian = useCallback(async (guardianKey: GuardianRelationship, documentType: GuardianDocumentType, document: string) => {
+    if (!documentType || !document || document.length < 3) {
+      setGuardianSearchResults(prev => ({ ...prev, [guardianKey]: null }));
+      return;
+    }
+
+    setGuardianSearchLoading(prev => ({ ...prev, [guardianKey]: true }));
+    try {
+      const response = await api.get('/guardians/search', {
+        params: { documentType, document }
+      });
+      
+      if (response.data) {
+        setGuardianSearchResults(prev => ({ ...prev, [guardianKey]: response.data }));
+        // Auto-fill form with found guardian data
+        const guardian = response.data;
+        form.setFieldsValue({
+          [guardianKey]: {
+            firstName: guardian.firstName,
+            lastName: guardian.lastName,
+            documentType: guardian.documentType,
+            document: guardian.document,
+            phone: guardian.phone,
+            email: guardian.email,
+            residenceState: guardian.residenceState,
+            residenceMunicipality: guardian.residenceMunicipality,
+            residenceParish: guardian.residenceParish,
+            address: guardian.address
+          }
+        });
+        message.success(`Datos de ${guardianLabels[guardianKey]} encontrados y cargados`);
+      }
+    } catch (error: unknown) {
+      if (error && typeof error === 'object' && 'response' in error) {
+        const err = error as { response?: { status?: number } };
+        if (err.response?.status === 404) {
+          setGuardianSearchResults(prev => ({ ...prev, [guardianKey]: null }));
+          // Clear form fields if guardian not found
+          form.setFieldsValue({
+            [guardianKey]: {
+              firstName: undefined,
+              lastName: undefined,
+              phone: undefined,
+              email: undefined,
+              residenceState: undefined,
+              residenceMunicipality: undefined,
+              residenceParish: undefined,
+              address: undefined,
+              documentType,
+              document
+            }
+          });
+        } else {
+          console.error('Error searching guardian:', error);
+          message.error('Error buscando representante');
+        }
+      } else {
+        console.error('Error searching guardian:', error);
+        message.error('Error buscando representante');
+      }
+    } finally {
+      setGuardianSearchLoading(prev => ({ ...prev, [guardianKey]: false }));
+    }
+  }, [form]);
 
   const loadEnrollmentQuestions = useCallback(
     async (personId: number) => {
@@ -483,6 +560,34 @@ const MatriculationEnrollment: React.FC = () => {
     fetchLocations();
   }, [fetchMatriculations, fetchLocations]);
 
+  // Auto-search guardians when document fields change
+  useEffect(() => {
+    if (motherDocumentType && motherDocument) {
+      const timeoutId = setTimeout(() => {
+        searchGuardian('mother', motherDocumentType, motherDocument);
+      }, 500); // Debounce 500ms
+      return () => clearTimeout(timeoutId);
+    }
+  }, [motherDocumentType, motherDocument, searchGuardian]);
+
+  useEffect(() => {
+    if (fatherDocumentType && fatherDocument) {
+      const timeoutId = setTimeout(() => {
+        searchGuardian('father', fatherDocumentType, fatherDocument);
+      }, 500); // Debounce 500ms
+      return () => clearTimeout(timeoutId);
+    }
+  }, [fatherDocumentType, fatherDocument, searchGuardian]);
+
+  useEffect(() => {
+    if (representativeDocumentType && representativeDocument) {
+      const timeoutId = setTimeout(() => {
+        searchGuardian('representative', representativeDocumentType, representativeDocument);
+      }, 500); // Debounce 500ms
+      return () => clearTimeout(timeoutId);
+    }
+  }, [representativeDocumentType, representativeDocument, searchGuardian]);
+
   const handleSearch = () => {
     fetchMatriculations(searchValue.trim() || undefined);
   };
@@ -580,34 +685,44 @@ const MatriculationEnrollment: React.FC = () => {
     [locations, representativeStateValue, representativeMunicipalityValue]
   );
 
-  const renderGuardianDocumentControls = (guardianKey: GuardianRelationship, required: boolean) => (
-    <Row gutter={16}>
-      <Col span={8}>
-        <Form.Item
-          name={[guardianKey, 'documentType']}
-          label="Tipo de documento"
-          rules={
-            required
-              ? [{ required: true, message: `Seleccione el tipo de documento de ${guardianLabels[guardianKey]}` }]
-              : []
-          }
-        >
-          <Select placeholder="Seleccione" options={guardianDocumentOptions} />
-        </Form.Item>
-      </Col>
-      <Col span={16}>
-        <Form.Item
-          name={[guardianKey, 'document']}
-          label="Número de documento"
-          rules={
-            required ? [{ required: true, message: `Ingrese la cédula de ${guardianLabels[guardianKey]}` }] : []
-          }
-        >
-          <Input />
-        </Form.Item>
-      </Col>
-    </Row>
-  );
+  const renderGuardianDocumentControls = (guardianKey: GuardianRelationship, required: boolean) => {
+    const isLoading = guardianSearchLoading[guardianKey];
+    const searchResult = guardianSearchResults[guardianKey];
+    
+    return (
+      <Row gutter={16}>
+        <Col span={8}>
+          <Form.Item
+            name={[guardianKey, 'documentType']}
+            label="Tipo de documento"
+            rules={
+              required
+                ? [{ required: true, message: `Seleccione el tipo de documento de ${guardianLabels[guardianKey]}` }]
+                : []
+            }
+          >
+            <Select placeholder="Seleccione" options={guardianDocumentOptions} />
+          </Form.Item>
+        </Col>
+        <Col span={16}>
+          <Form.Item
+            name={[guardianKey, 'document']}
+            label="Cédula"
+            help={searchResult ? `Representante encontrado: ${searchResult.firstName} ${searchResult.lastName}` : null}
+            validateStatus={searchResult ? 'success' : undefined}
+            rules={
+              required ? [{ required: true, message: `Ingrese la cédula de ${guardianLabels[guardianKey]}` }] : []
+            }
+          >
+            <Input 
+              placeholder="Número de cédula" 
+              suffix={isLoading ? <Spin size="small" /> : searchResult ? <UserAddOutlined style={{ color: '#52c41a' }} /> : <SearchOutlined style={{ color: '#bfbfbf' }} />}
+            />
+          </Form.Item>
+        </Col>
+      </Row>
+    );
+  };
 
   const motherIsRepresentative = representativeTypeValue === 'mother';
   const fatherIsRepresentative = representativeTypeValue === 'father';
