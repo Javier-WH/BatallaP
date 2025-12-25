@@ -421,11 +421,27 @@ export const enrollMatriculatedStudent = async (req: Request, res: Response) => 
     });
 
     if (periodGrade?.subjects?.length) {
-      const subjectsToAdd = periodGrade.subjects.map((s: any) => ({
-        inscriptionId: inscription.id,
-        subjectId: s.id
-      }));
-      await InscriptionSubject.bulkCreate(subjectsToAdd, { transaction: t });
+      console.log(`[Enrollment] Processing ${periodGrade.subjects.length} subjects for grade ${targetGradeId}`);
+      
+      // Filter out subjects that belong to a group (subjectGroupId is not null)
+      const subjectsToAdd = periodGrade.subjects
+        .filter((s: any) => {
+          const hasGroup = s.subjectGroupId !== null && s.subjectGroupId !== undefined;
+          if (hasGroup) {
+            console.log(`[Enrollment] Skipping subject ${s.name} (ID: ${s.id}) because it belongs to group ${s.subjectGroupId}`);
+          }
+          return !hasGroup;
+        })
+        .map((s: any) => ({
+          inscriptionId: inscription.id,
+          subjectId: s.id
+        }));
+      
+      console.log(`[Enrollment] Enrolling in ${subjectsToAdd.length} subjects`);
+
+      if (subjectsToAdd.length > 0) {
+        await InscriptionSubject.bulkCreate(subjectsToAdd, { transaction: t });
+      }
     }
 
     matriculation.gradeId = targetGradeId;
@@ -579,13 +595,23 @@ export const createInscription = async (req: Request, res: Response) => {
     });
 
     if (periodGrade && periodGrade.subjects && periodGrade.subjects.length > 0) {
+      console.log(`[CreateInscription] Processing ${periodGrade.subjects.length} subjects for grade ${gradeId}`);
+
       // Filter out subjects that belong to a group
       const subjectsToAdd = periodGrade.subjects
-        .filter((s: any) => !s.subjectGroupId)
+        .filter((s: any) => {
+          const hasGroup = s.subjectGroupId !== null && s.subjectGroupId !== undefined;
+          if (hasGroup) {
+            console.log(`[CreateInscription] Skipping subject ${s.name} (ID: ${s.id}) because it belongs to group ${s.subjectGroupId}`);
+          }
+          return !hasGroup;
+        })
         .map((s: any) => ({
           inscriptionId: inscription.id,
           subjectId: s.id
         }));
+
+      console.log(`[CreateInscription] Enrolling in ${subjectsToAdd.length} subjects`);
 
       if (subjectsToAdd.length > 0) {
         await InscriptionSubject.bulkCreate(subjectsToAdd, { transaction: t });
@@ -645,11 +671,26 @@ export const updateInscription = async (req: Request, res: Response) => {
       });
 
       if (periodGrade && periodGrade.subjects && periodGrade.subjects.length > 0) {
-        const subjectsToAdd = periodGrade.subjects.map((s: any) => ({
-          inscriptionId: inscription.id,
-          subjectId: s.id
-        }));
-        await InscriptionSubject.bulkCreate(subjectsToAdd, { transaction: t });
+        console.log(`[UpdateInscription] Processing ${periodGrade.subjects.length} subjects for new grade ${gradeId}`);
+        // Filter out subjects that belong to a group
+        const subjectsToAdd = periodGrade.subjects
+          .filter((s: any) => {
+            const hasGroup = s.subjectGroupId !== null && s.subjectGroupId !== undefined;
+            if (hasGroup) {
+              console.log(`[UpdateInscription] Skipping subject ${s.name} (ID: ${s.id}) because it belongs to group ${s.subjectGroupId}`);
+            }
+            return !hasGroup;
+          })
+          .map((s: any) => ({
+            inscriptionId: inscription.id,
+            subjectId: s.id
+          }));
+          
+        console.log(`[UpdateInscription] Enrolling in ${subjectsToAdd.length} subjects`);
+        
+        if (subjectsToAdd.length > 0) {
+          await InscriptionSubject.bulkCreate(subjectsToAdd, { transaction: t });
+        }
       }
     }
 
@@ -866,11 +907,27 @@ export const registerAndEnroll = async (req: Request, res: Response) => {
     });
 
     if (periodGrade && periodGrade.subjects && periodGrade.subjects.length > 0) {
-      const subjectsToAdd = periodGrade.subjects.map((s: any) => ({
-        inscriptionId: inscription.id,
-        subjectId: s.id
-      }));
-      await InscriptionSubject.bulkCreate(subjectsToAdd, { transaction: t });
+      console.log(`[RegisterAndEnroll] Processing ${periodGrade.subjects.length} subjects for grade ${gradeId}`);
+
+      // Filter out subjects that belong to a group
+      const subjectsToAdd = periodGrade.subjects
+        .filter((s: any) => {
+          const hasGroup = s.subjectGroupId !== null && s.subjectGroupId !== undefined;
+          if (hasGroup) {
+            console.log(`[RegisterAndEnroll] Skipping subject ${s.name} (ID: ${s.id}) because it belongs to group ${s.subjectGroupId}`);
+          }
+          return !hasGroup;
+        })
+        .map((s: any) => ({
+          inscriptionId: inscription.id,
+          subjectId: s.id
+        }));
+
+      console.log(`[RegisterAndEnroll] Enrolling in ${subjectsToAdd.length} subjects`);
+
+      if (subjectsToAdd.length > 0) {
+        await InscriptionSubject.bulkCreate(subjectsToAdd, { transaction: t });
+      }
     }
 
     await t.commit();
