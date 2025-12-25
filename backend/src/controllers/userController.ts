@@ -45,7 +45,7 @@ export const getUserDetails = async (req: Request, res: Response) => {
   try {
     const { id } = req.params; // Person ID
 
-    const { TeacherAssignment, PeriodGradeSubject, Subject, PeriodGrade, Grade, Section, SchoolPeriod }: any = require('../models');
+    const { TeacherAssignment, PeriodGradeSubject, Subject, PeriodGrade, Grade, Section, SchoolPeriod, PersonResidence, StudentGuardian, GuardianProfile }: any = require('../models');
     const activePeriod = await SchoolPeriod.findOne({ where: { isActive: true } });
 
     const person = await Person.findByPk(id, {
@@ -53,6 +53,12 @@ export const getUserDetails = async (req: Request, res: Response) => {
         { model: User, as: 'user' },
         { model: Role, as: 'roles', through: { attributes: [] } },
         { model: Contact, as: 'contact' },
+        { model: PersonResidence, as: 'residence' },
+        {
+          model: StudentGuardian,
+          as: 'guardians',
+          include: [{ model: GuardianProfile, as: 'profile' }]
+        },
         {
           model: TeacherAssignment,
           as: 'teachingAssignments',
