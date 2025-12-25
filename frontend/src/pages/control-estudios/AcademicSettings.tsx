@@ -24,6 +24,7 @@ interface SettingsFormValues {
   max_grade?: number;
   passing_grade?: number;
   grade_lock_mode?: string;
+  council_points_limit?: number;
 }
 
 interface TermFormValues {
@@ -52,6 +53,7 @@ const AcademicSettings: React.FC = () => {
         max_grade: res.data.max_grade ? Number(res.data.max_grade) : 20,
         passing_grade: res.data.passing_grade ? Number(res.data.passing_grade) : undefined,
         grade_lock_mode: res.data.grade_lock_mode || 'never',
+        council_points_limit: res.data.council_points_limit ? Number(res.data.council_points_limit) : 2,
       });
     } catch (error) {
       console.error('Error fetching settings', error);
@@ -278,6 +280,14 @@ const AcademicSettings: React.FC = () => {
               label="Nota de Aprobación"
             >
               <InputNumber min={0} max={100} style={{ width: '100%' }} />
+            </Form.Item>
+
+            <Form.Item
+              name="council_points_limit"
+              label="Límite de Puntos de Consejo (por alumno)"
+              rules={[{ required: true, message: 'Ingrese el límite de puntos' }]}
+            >
+              <InputNumber min={0} max={20} style={{ width: '100%' }} />
             </Form.Item>
 
             <Form.Item

@@ -61,6 +61,7 @@ const CourseCouncil: React.FC = () => {
   const [selectedTerm, setSelectedTerm] = useState<Term | null>(null);
   const [selectedSection, setSelectedSection] = useState<{ section: Section, grade: Grade } | null>(null);
   const [studentsData, setStudentsData] = useState<CouncilStudent[]>([]);
+  const [pointsLimit, setPointsLimit] = useState<number>(2);
 
   const [filterYear, setFilterYear] = useState<string>('');
 
@@ -71,13 +72,19 @@ const CourseCouncil: React.FC = () => {
       const period = activeRes.data;
       setActivePeriod(period);
 
+      const [termsRes, structureRes, settingsRes] = await Promise.all([
+        period ? api.get(`/terms?schoolPeriodId=${period.id}`) : Promise.resolve({ data: [] }),
+        period ? api.get(`/academic/structure/${period.id}`) : Promise.resolve({ data: [] }),
+        api.get('/settings')
+      ]);
+
       if (period) {
-        const [termsRes, structureRes] = await Promise.all([
-          api.get(`/terms?schoolPeriodId=${period.id}`),
-          api.get(`/academic/structure/${period.id}`)
-        ]);
         setTerms(termsRes.data.sort((a: Term, b: Term) => a.order - b.order));
         setStructure(structureRes.data);
+      }
+
+      if (settingsRes.data.council_points_limit) {
+        setPointsLimit(Number(settingsRes.data.council_points_limit));
       }
     } catch (error) {
       console.error('Error fetching data', error);
@@ -106,16 +113,30 @@ const CourseCouncil: React.FC = () => {
   };
 
   const handlePointChange = (studentId: number, inscriptionSubjectId: number, value: number | null) => {
-    setStudentsData(prev => prev.map(student => {
-      if (student.id === studentId) {
+    const student = studentsData.find(s => s.id === studentId);
+    if (!student) return;
+
+    const newValue = value || 0;
+    const currentTotal = student.subjects.reduce((sum, s) => {
+      if (s.inscriptionSubjectId === inscriptionSubjectId) return sum;
+      return sum + (s.points || 0);
+    }, 0);
+
+    if (currentTotal + newValue > pointsLimit) {
+      message.warning(`El límite total de puntos por alumno es de ${pointsLimit}.`);
+      return;
+    }
+
+    setStudentsData(prev => prev.map(sData => {
+      if (sData.id === studentId) {
         return {
-          ...student,
-          subjects: student.subjects.map(s =>
-            s.inscriptionSubjectId === inscriptionSubjectId ? { ...s, points: value || 0 } : s
+          ...sData,
+          subjects: sData.subjects.map(s =>
+            s.inscriptionSubjectId === inscriptionSubjectId ? { ...s, points: newValue } : s
           )
         };
       }
-      return student;
+      return sData;
     }));
   };
 
@@ -258,12 +279,22 @@ const CourseCouncil: React.FC = () => {
         key: 'studentName',
         fixed: 'left' as const,
         width: 250,
-        render: (text: string) => (
-          <Space>
-            <UserOutlined style={{ color: '#8c8c8c' }} />
-            <Text strong>{text}</Text>
-          </Space>
-        )
+        render: (text: string, record: CouncilStudent) => {
+          const usedPoints = record.subjects.reduce((sum, s) => sum + (s.points || 0), 0);
+          return (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <Space>
+                <UserOutlined style={{ color: '#8c8c8c' }} />
+                <Text strong>{text}</Text>
+              </Space>
+              <div style={{ paddingLeft: 22 }}>
+                <Tag color={usedPoints >= pointsLimit ? 'orange' : 'blue'} style={{ fontSize: 10, margin: 0 }}>
+                  Puntos: {usedPoints} / {pointsLimit}
+                </Tag>
+              </div>
+            </div>
+          );
+        }
       },
       ...subjects.map(sub => ({
         title: (
@@ -287,7 +318,7 @@ const CourseCouncil: React.FC = () => {
               </Tooltip>
               <InputNumber
                 min={0}
-                max={2}
+                max={pointsLimit}
                 size="small"
                 value={subjectData?.points}
                 onChange={(val) => handlePointChange(record.id, subjectData!.inscriptionSubjectId, val)}
