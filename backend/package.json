@@ -10,7 +10,10 @@
     "start": "node dist/src/server.js",
     "seed": "npx ts-node -r tsconfig-paths/register src/seed.ts",
     "db:sync-only": "npx ts-node -r tsconfig-paths/register -e \"(async () => { const sequelize = (await import('./src/config/database')).default; await import('./src/models/index'); await sequelize.authenticate(); await sequelize.sync({ force: true }); console.log('All models were synchronized successfully (force: true).'); })().catch((e) => { console.error(e); process.exit(1); });\"",
-    "db:sync": "npm run db:sync-only && npm run seed"
+    "db:sync": "npm run db:sync-only && npm run seed",
+    "seed:academic-structure": "ts-node -r tsconfig-paths/register src/seeders/academicStructureSeeder.ts",
+    "seed:bulk-inscriptions": "ts-node -r tsconfig-paths/register src/seeders/bulkMatriculationsSeeder.ts",
+    "seed:subject-groups": "ts-node -r tsconfig-paths/register src/seeders/subjectGroupsSeeder.ts"
   },
   "keywords": [],
   "author": "",

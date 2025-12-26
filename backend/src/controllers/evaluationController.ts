@@ -4,6 +4,7 @@ import {
   TeacherAssignment,
   PeriodGradeSubject,
   Subject,
+  SubjectGroup,
   Grade,
   Section,
   PeriodGrade,
@@ -285,7 +286,11 @@ export const getStudentFullAcademicRecord = async (req: Request, res: Response) 
           model: InscriptionSubject,
           as: 'inscriptionSubjects',
           include: [
-            { model: Subject, as: 'subject' },
+            {
+              model: Subject,
+              as: 'subject',
+              include: [{ model: SubjectGroup, as: 'subjectGroup', attributes: ['id', 'name'] }]
+            },
             {
               model: Qualification,
               as: 'qualifications',

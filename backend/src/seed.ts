@@ -112,7 +112,10 @@ const seed = async () => {
       'Educación Ambiental',
       'Estadística',
       'Cátedra Bolivariana',
-      'Memoria, Territorio y Ciudadanía'
+      'Memoria, Territorio y Ciudadanía',
+      'Artes Gráficas',
+      'Ortografía',
+      'Agrupación de Desfiles'
     ];
 
     for (const subjectName of subjects) {

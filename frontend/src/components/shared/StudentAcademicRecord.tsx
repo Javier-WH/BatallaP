@@ -68,11 +68,27 @@ const StudentAcademicRecord: React.FC<StudentAcademicRecordProps> = ({ personId 
                 pagination={false}
                 columns={[
                   {
-                    title: 'Materia',
+                    title: 'Materia / Grupo',
                     dataIndex: ['subject', 'name'],
                     key: 'subject',
                     width: '30%',
-                    render: (text: string) => <Space><BookOutlined /> {text}</Space>
+                    render: (_: string, recordItem: any) => {
+                      const groupName = recordItem.subject?.subjectGroup?.name;
+                      const displayName = groupName ?? recordItem.subject?.name;
+
+                      return (
+                        <Space direction="vertical" size={0}>
+                          <Space>
+                            <BookOutlined /> {displayName}
+                          </Space>
+                          {groupName && groupName !== recordItem.subject?.name && (
+                            <Tag color="geekblue" style={{ marginLeft: 22 }}>
+                              {recordItem.subject?.name}
+                            </Tag>
+                          )}
+                        </Space>
+                      );
+                    }
                   },
                   {
                     title: 'Lapsos / Notas',
