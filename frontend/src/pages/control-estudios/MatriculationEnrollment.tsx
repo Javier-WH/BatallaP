@@ -622,20 +622,21 @@ const MatriculationEnrollment: React.FC = () => {
         }}
       >
         {/* Clear button in top-right corner */}
-        <Button
-          disabled={selectedRowKeys.length === 0}
-          type="text"
-          size="small"
-          icon={<CloseOutlined />}
-          onClick={() => setSelectedRowKeys([])}
-          style={{
-            position: 'absolute',
-            top: '-8px',
-            right: '-5px',
-            color: '#888',
-            zIndex: 10
-          }}
-        />
+        {selectedRowKeys.length > 0 && (
+          <Button
+            type="text"
+            size="small"
+            icon={<CloseOutlined />}
+            onClick={() => setSelectedRowKeys([])}
+            style={{
+              position: 'absolute',
+              top: '-8px',
+              right: '-5px',
+              color: '#888',
+              zIndex: 10
+            }}
+          />
+        )}
 
         <div className="flex items-center gap-6">
 
