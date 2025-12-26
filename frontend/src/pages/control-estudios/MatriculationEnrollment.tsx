@@ -171,6 +171,10 @@ const BASE_COLUMN_OPTIONS: ColumnOption[] = [
   { key: 'fatherLastName', label: 'Apellidos Padre', group: 'Padre' },
   { key: 'fatherPhone', label: 'Teléfono Padre', group: 'Padre' },
   { key: 'representativeType', label: 'Asignar Representante', group: 'Representante' },
+  { key: 'representativeDocument', label: 'Cédula Representante', group: 'Representante' },
+  { key: 'representativeFirstName', label: 'Nombres Representante', group: 'Representante' },
+  { key: 'representativeLastName', label: 'Apellidos Representante', group: 'Representante' },
+  { key: 'representativePhone', label: 'Teléfono Representante', group: 'Representante' },
 ];
 
 const getQuestionColumnKey = (id: number) => `question-${id}`;
@@ -500,8 +504,18 @@ const MatriculationEnrollment: React.FC = () => {
     'firstName', 'lastName', 'document', 'gradeId', 'sectionId', 'subjectIds',
     'mDoc', 'mFirstName', 'mLastName', 'mPhone',
     'fDoc', 'fFirstName', 'fLastName', 'fPhone',
-    'repType'
+    'repType', 'repDoc', 'repFirstName', 'repLastName', 'repPhone'
   ];
+
+  const getRepresentativeInfo = (row: MatriculationRow) => {
+    if (row.tempData.representativeType === 'mother') {
+      return { profile: row.tempData.mother, label: 'Madre', editable: false };
+    }
+    if (row.tempData.representativeType === 'father') {
+      return { profile: row.tempData.father, label: 'Padre', editable: false };
+    }
+    return { profile: row.tempData.representative, label: 'Otro', editable: true };
+  };
 
   const handleKeyDown = <T extends Element>(e: React.KeyboardEvent<T>, rowIndex: number, colName: string) => {
     if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) return;
@@ -781,6 +795,90 @@ const MatriculationEnrollment: React.FC = () => {
           <Option value="other">Otro</Option>
         </Select>
       )
+    },
+    isColumnVisible('representativeDocument') && {
+      title: 'Cédula',
+      width: 140,
+      render: (_: unknown, record: MatriculationRow, idx: number) => {
+        const { profile, editable, label } = getRepresentativeInfo(record);
+        return (
+          <div className="flex flex-col gap-1">
+            <Input
+              id={`nav-${idx}-repDoc`}
+              value={profile?.document || ''}
+              placeholder="Doc..."
+              disabled={!editable}
+              onKeyDown={e => handleKeyDown(e, idx, 'repDoc')}
+              onChange={e => {
+                if (!editable) return;
+                handleUpdateGuardianField(record.id, 'representative', 'document', e.target.value);
+              }}
+            />
+            {!editable && (
+              <Text type="secondary" style={{ fontSize: 11 }}>
+                Representante: {label}
+              </Text>
+            )}
+          </div>
+        );
+      }
+    },
+    isColumnVisible('representativeFirstName') && {
+      title: 'Nombres',
+      width: 140,
+      render: (_: unknown, record: MatriculationRow, idx: number) => {
+        const { profile, editable } = getRepresentativeInfo(record);
+        return (
+          <Input
+            id={`nav-${idx}-repFirstName`}
+            value={profile?.firstName || ''}
+            disabled={!editable}
+            onKeyDown={e => handleKeyDown(e, idx, 'repFirstName')}
+            onChange={e => {
+              if (!editable) return;
+              handleUpdateGuardianField(record.id, 'representative', 'firstName', e.target.value);
+            }}
+          />
+        );
+      }
+    },
+    isColumnVisible('representativeLastName') && {
+      title: 'Apellidos',
+      width: 140,
+      render: (_: unknown, record: MatriculationRow, idx: number) => {
+        const { profile, editable } = getRepresentativeInfo(record);
+        return (
+          <Input
+            id={`nav-${idx}-repLastName`}
+            value={profile?.lastName || ''}
+            disabled={!editable}
+            onKeyDown={e => handleKeyDown(e, idx, 'repLastName')}
+            onChange={e => {
+              if (!editable) return;
+              handleUpdateGuardianField(record.id, 'representative', 'lastName', e.target.value);
+            }}
+          />
+        );
+      }
+    },
+    isColumnVisible('representativePhone') && {
+      title: 'Teléfono',
+      width: 130,
+      render: (_: unknown, record: MatriculationRow, idx: number) => {
+        const { profile, editable } = getRepresentativeInfo(record);
+        return (
+          <Input
+            id={`nav-${idx}-repPhone`}
+            value={profile?.phone || ''}
+            disabled={!editable}
+            onKeyDown={e => handleKeyDown(e, idx, 'repPhone')}
+            onChange={e => {
+              if (!editable) return;
+              handleUpdateGuardianField(record.id, 'representative', 'phone', e.target.value);
+            }}
+          />
+        );
+      }
     },
   ].filter(Boolean);
 
