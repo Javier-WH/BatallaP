@@ -1,7 +1,32 @@
 import React from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { Button, Space, Card, Tooltip } from 'antd';
+import { Button, Tooltip } from 'antd';
 import { DashboardOutlined, SettingOutlined, UserAddOutlined, CheckCircleFilled } from '@ant-design/icons';
+
+const NavButton: React.FC<{
+  icon: React.ReactNode;
+  label: string;
+  tooltip: string;
+  active: boolean;
+  onClick: () => void;
+}> = ({ icon, label, tooltip, active, onClick }) => (
+  <Tooltip title={tooltip} placement="bottom">
+    <Button
+      type="text"
+      icon={icon}
+      onClick={onClick}
+      className={`
+        h-10 px-4 flex items-center gap-2 rounded-xl transition-all font-semibold
+        ${active
+          ? 'bg-brand-primary text-white shadow-lg shadow-blue-500/30'
+          : 'text-slate-500 hover:bg-slate-100'
+        }
+      `}
+    >
+      <span className="text-sm">{label}</span>
+    </Button>
+  </Tooltip>
+);
 
 const ControlEstudiosLayout: React.FC = () => {
   const navigate = useNavigate();
@@ -10,59 +35,32 @@ const ControlEstudiosLayout: React.FC = () => {
   const matchesPath = (path: string) => location.pathname.startsWith(path);
   const isExact = (path: string) => location.pathname === path;
 
+  const tools = [
+    { path: '/control-estudios', icon: <DashboardOutlined />, label: 'Panel', tooltip: 'Panel Principal', exact: true },
+    { path: '/control-estudios/matricular-estudiante', icon: <UserAddOutlined />, label: 'Matricular', tooltip: 'Matriculación de Estudiantes' },
+    { path: '/control-estudios/configuracion', icon: <SettingOutlined />, label: 'Configuración', tooltip: 'Ajustes Académicos' },
+    { path: '/control-estudios/consejos-curso', icon: <CheckCircleFilled />, label: 'Consejos', tooltip: 'Consejos de Curso y Evaluación' },
+  ];
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', marginTop: -24, marginLeft: -24, marginRight: -24 }}>
+    <div className="flex flex-col gap-6">
       {/* Control de Estudios Toolbar */}
-      <Card
-        size="small"
-        styles={{ body: { padding: '8px 16px', display: 'flex', alignItems: 'center', gap: '16px' } }}
-        style={{ borderRadius: 0, borderBottom: '1px solid #f0f0f0', boxShadow: 'none' }}
-      >
-        <span style={{ fontWeight: 600, color: '#666', marginRight: 8, borderRight: '1px solid #eee', paddingRight: 16 }}>
-          CONTROL DE ESTUDIOS
-        </span>
-        <Space>
-          <Tooltip title="Panel Principal">
-            <Button
-              type={isExact('/control-estudios') ? 'primary' : 'text'}
-              icon={<DashboardOutlined />}
-              onClick={() => navigate('/control-estudios')}
-            >
-              Panel
-            </Button>
-          </Tooltip>
-          <Tooltip title="Matricular Estudiantes">
-            <Button
-              type={matchesPath('/control-estudios/matricular-estudiante') ? 'primary' : 'text'}
-              icon={<UserAddOutlined />}
-              onClick={() => navigate('/control-estudios/matricular-estudiante')}
-            >
-              Matricular
-            </Button>
-          </Tooltip>
-          <Tooltip title="Configuración Académica">
-            <Button
-              type={matchesPath('/control-estudios/configuracion') ? 'primary' : 'text'}
-              icon={<SettingOutlined />}
-              onClick={() => navigate('/control-estudios/configuracion')}
-            >
-              Configuración Académica
-            </Button>
-          </Tooltip>
-          <Tooltip title="Consejos de Curso">
-            <Button
-              type={matchesPath('/control-estudios/consejos-curso') ? 'primary' : 'text'}
-              icon={<CheckCircleFilled />}
-              onClick={() => navigate('/control-estudios/consejos-curso')}
-            >
-              Consejos de Curso
-            </Button>
-          </Tooltip>
-        </Space>
-      </Card>
+      <div className="bg-white/50 backdrop-blur-sm p-2 rounded-2xl border border-white flex items-center gap-2 shadow-sm">
+        <div className="px-4 py-1 border-r border-slate-200 mr-2 shrink-0">
+          <span className="text-[10px] uppercase font-black text-slate-400 tracking-[0.2em]">Académico</span>
+        </div>
+        {tools.map(tool => (
+          <NavButton
+            key={tool.path}
+            {...tool}
+            active={tool.exact ? isExact(tool.path) : matchesPath(tool.path)}
+            onClick={() => navigate(tool.path)}
+          />
+        ))}
+      </div>
 
       {/* Module Content */}
-      <div style={{ flex: 1, padding: 24 }}>
+      <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
         <Outlet />
       </div>
     </div>

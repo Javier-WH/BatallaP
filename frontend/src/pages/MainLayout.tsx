@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Layout, Menu, Button, theme } from 'antd';
+import { Layout, Button, Tooltip, Badge } from 'antd';
 import {
   MenuFoldOutlined,
   MenuUnfoldOutlined,
@@ -9,27 +9,29 @@ import {
   TeamOutlined,
   BookOutlined,
   FileTextOutlined,
-  SearchOutlined
+  SearchOutlined,
+  SettingOutlined,
+  BellOutlined,
+  CalendarOutlined
 } from '@ant-design/icons';
-import { Outlet, useNavigate } from 'react-router-dom';
+import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
+import { useSchool } from '@/context/SchoolContext';
 
 const { Header, Sider, Content } = Layout;
 
 const MainLayout: React.FC = () => {
   const [collapsed, setCollapsed] = useState(false);
-  const {
-    token: { colorBgContainer, borderRadiusLG },
-  } = theme.useToken();
   const { logout, user } = useAuth();
+  const { settings, activePeriod } = useSchool();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const handleLogout = () => {
     logout();
     navigate('/');
   }
 
-  // Define all possible menu items with their order and specific role access
   const allMenuItems = [
     {
       key: 'dashboard',
@@ -40,14 +42,14 @@ const MainLayout: React.FC = () => {
     },
     {
       key: 'master-module',
-      icon: <UserOutlined />,
-      label: 'Master',
+      icon: <SettingOutlined />,
+      label: 'Maestro',
       roles: ['Master'],
       path: '/master'
     },
     {
       key: 'admin-module',
-      icon: <TeamOutlined />,
+      icon: <UserOutlined />,
       label: 'Administrador',
       roles: ['Administrador'],
       path: '/admin'
@@ -55,14 +57,14 @@ const MainLayout: React.FC = () => {
     {
       key: 'control-estudios-module',
       icon: <FileTextOutlined />,
-      label: 'Control de Estudios',
+      label: 'Control Estudios',
       roles: ['Control de Estudios'],
       path: '/control-estudios'
     },
     {
       key: 'search-users',
       icon: <SearchOutlined />,
-      label: 'Buscar / Editar',
+      label: 'Usuarios',
       roles: ['Master', 'Administrador'],
       path: '/gestion-usuarios'
     },
@@ -76,78 +78,125 @@ const MainLayout: React.FC = () => {
     {
       key: 'profesor-module',
       icon: <BookOutlined />,
-      label: 'Profesor',
+      label: 'Académico',
       roles: ['Profesor'],
       path: '/profesor'
-    },
-    {
-      key: 'representante-module',
-      icon: <UserOutlined />,
-      label: 'Representante',
-      roles: ['Representante'],
-      path: '/representante'
-    },
-    {
-      key: 'alumno-module',
-      icon: <UserOutlined />,
-      label: 'Alumno',
-      roles: ['Alumno'],
-      path: '/alumno'
     }
   ];
 
-  // Filter menu items to show only the modules the user has access to, in the specified order
-  const menuItems = allMenuItems
-    .filter(item => {
-      // For each menu item, check if user has at least one of the required roles
-      return user?.roles.some(userRole => item.roles.includes(userRole));
-    })
-    .map(({ key, icon, label, path }) => ({
-      key,
-      icon,
-      label,
-      onClick: () => navigate(path)
-    }));
-
+  const menuItems = allMenuItems.filter(item =>
+    user?.roles.some(userRole => item.roles.includes(userRole))
+  );
 
   return (
-    <Layout style={{ minHeight: '100vh' }}>
-      <Sider trigger={null} collapsible collapsed={collapsed}>
-        <div className="demo-logo-vertical" style={{ height: 32, margin: 16, background: 'rgba(255, 255, 255, 0.2)', borderRadius: 6 }} />
-        <Menu
-          theme="dark"
-          mode="inline"
-          defaultSelectedKeys={['dashboard']}
-          items={menuItems}
-        />
+    <Layout className="min-h-screen bg-slate-50">
+      <Sider
+        trigger={null}
+        collapsible
+        collapsed={collapsed}
+        width={260}
+        className="premium-sidebar overflow-hidden"
+      >
+        <div className="flex flex-col h-full">
+          {/* Institution Header */}
+          <div className="p-6 flex items-center gap-3 border-b border-white/5 whitespace-nowrap overflow-hidden">
+            <div className="shrink-0 w-10 h-10 rounded-xl bg-white p-1 shadow-2xl shadow-blue-500/20 flex items-center justify-center overflow-hidden">
+              <img
+                src={settings.logo}
+                alt="Logo"
+                className="w-full h-full object-contain"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).src = 'https://cdn-icons-png.flaticon.com/512/2940/2940651.png';
+                }}
+              />
+            </div>
+            {!collapsed && (
+              <div className="flex flex-col truncate">
+                <span className="text-sm font-bold text-white tracking-tight leading-none truncate">{settings.name}</span>
+                <span className="text-[10px] uppercase font-bold text-slate-400 tracking-widest mt-1">Gestión Educativa</span>
+              </div>
+            )}
+          </div>
+
+          {/* Navigation Menu */}
+          <div className="flex-1 overflow-y-auto py-4">
+            {menuItems.map(item => {
+              const isActive = location.pathname.startsWith(item.path);
+              return (
+                <div
+                  key={item.key}
+                  onClick={() => navigate(item.path)}
+                  className={isActive ? 'nav-item-active' : 'nav-item'}
+                >
+                  <span className="text-lg flex shrink-0 items-center justify-center">{item.icon}</span>
+                  {!collapsed && <span className="font-semibold text-sm">{item.label}</span>}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* User Profile Summary */}
+          {!collapsed && (
+            <div className="p-4 mx-2 mb-4 bg-white/5 rounded-2xl border border-white/5">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-brand-primary flex items-center justify-center text-white border-2 border-white/20">
+                  <UserOutlined />
+                </div>
+                <div className="flex flex-col truncate">
+                  <span className="text-sm font-bold text-white truncate">{user?.firstName} {user?.lastName}</span>
+                  <span className="text-[10px] text-slate-400 font-medium truncate italic">{user?.roles[0]}</span>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
       </Sider>
-      <Layout>
-        <Header style={{ padding: 0, background: colorBgContainer, display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingRight: 24 }}>
-          <Button
-            type="text"
-            icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
-            onClick={() => setCollapsed(!collapsed)}
-            style={{
-              fontSize: '16px',
-              width: 64,
-              height: 64,
-            }}
-          />
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span>Hola, <strong>{user?.firstName}</strong> ({user?.roles?.join(', ')})</span>
-            <Button icon={<LogoutOutlined />} onClick={handleLogout}>Salir</Button>
+
+      <Layout className="flex flex-col">
+        <Header className="bg-white/80 backdrop-blur-md border-b border-slate-200 px-6 h-20 flex items-center justify-between sticky top-0 z-50">
+          <div className="flex items-center gap-4">
+            <Button
+              type="text"
+              icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+              onClick={() => setCollapsed(!collapsed)}
+              className="w-12 h-12 flex items-center justify-center hover:bg-slate-100 rounded-xl text-slate-500"
+            />
+
+            {/* Global Context Indicator: Active Period */}
+            {activePeriod && (
+              <div className="ml-2 hidden md:flex items-center gap-2 bg-blue-50/50 px-4 py-2 rounded-2xl border border-blue-100">
+                <CalendarOutlined className="text-brand-primary" />
+                <div className="flex flex-col">
+                  <span className="text-[10px] font-bold text-brand-primary uppercase tracking-wider leading-none">Periodo Escolar Activo</span>
+                  <span className="text-sm font-bold text-slate-700 leading-tight">{activePeriod.name}</span>
+                </div>
+                <Badge status="processing" className="ml-2" />
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center gap-4">
+            <Tooltip title="Notificaciones">
+              <Button shape="circle" icon={<BellOutlined />} className="border-none shadow-none hover:bg-slate-100" />
+            </Tooltip>
+            <div className="h-8 w-[1px] bg-slate-200" />
+            <Button
+              danger
+              type="primary"
+              ghost
+              icon={<LogoutOutlined />}
+              onClick={handleLogout}
+              className="rounded-xl font-bold border-2"
+            >
+              Cerrar Sesión
+            </Button>
           </div>
         </Header>
-        <Content
-          style={{
-            margin: '24px 16px',
-            padding: 24,
-            minHeight: 280,
-            background: colorBgContainer,
-            borderRadius: borderRadiusLG,
-          }}
-        >
-          <Outlet />
+
+        <Content className="p-6 overflow-y-auto">
+          <div className="max-w-7xl mx-auto">
+            <Outlet />
+          </div>
         </Content>
       </Layout>
     </Layout>

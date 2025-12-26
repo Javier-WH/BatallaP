@@ -1,36 +1,61 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import "tailwindcss";
 
+@theme {
+  --color-brand-primary: #1e40af;
+  --color-brand-secondary: #0ea5e9;
+  --color-luxury-gold: #d4af37;
+  --color-luxury-sidebar: #0f172a;
+  --font-inter: "Inter", sans-serif;
+}
+
+@layer base {
+  body {
+    @apply font-inter bg-slate-50 text-slate-900;
+  }
+}
+
+@layer components {
+  .glass-card {
+    @apply bg-white/70 backdrop-blur-md border border-white/20 shadow-xl rounded-2xl;
+  }
+
+  .luxury-button {
+    @apply px-6 py-2 bg-luxury-sidebar text-white font-medium rounded-xl hover:bg-slate-800 transition-all shadow-lg active:scale-95;
+  }
+
+  .premium-sidebar {
+    @apply h-screen bg-luxury-sidebar text-white shadow-2xl transition-all duration-300;
+  }
+
+  .nav-item {
+    @apply flex items-center gap-3 px-4 py-3 rounded-xl mx-2 my-1 transition-all text-slate-400 hover:text-white hover:bg-white/5 cursor-pointer;
+  }
+
+  .nav-item-active {
+    @apply flex items-center gap-3 px-4 py-3 rounded-xl mx-2 my-1 bg-white/10 text-white shadow-lg cursor-pointer;
+  }
+}
+
+/* Ant Design overrides for luxury feel */
 :root {
-  --primary-color: #4f46e5;
-  --secondary-color: #ec4899;
-  --background-color: #f3f4f6;
-  --text-color: #1f2937;
-  --white: #ffffff;
+  --ant-primary-color: #1e40af;
+  --ant-border-radius-base: 12px;
+  --ant-box-shadow-base: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
 }
 
-* {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
+.ant-card {
+  @apply rounded-2xl border-none shadow-sm;
 }
 
-body {
-  font-family: 'Inter', sans-serif;
-  background-color: var(--background-color);
-  color: var(--text-color);
-  line-height: 1.6;
+.ant-btn {
+  @apply rounded-xl font-medium;
 }
 
-a {
-  text-decoration: none;
-  color: inherit;
+.ant-select-selector,
+.ant-input {
+  @apply !rounded-xl;
 }
 
-ul {
-  list-style: none;
-}
-
-/* Highlight active school period row in AcademicManagement table */
-.active-period-row > td {
-  background-color: #e6f7ff !important; /* light blue similar to Ant Design */
+.ant-table-thead>tr>th {
+  @apply !bg-slate-50/50;
 }

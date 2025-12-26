@@ -2,6 +2,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import Login from '@/pages/Login';
 import MainLayout from '@/pages/MainLayout';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
+import { SchoolProvider } from '@/context/SchoolContext';
 import '@/index.css';
 
 // Shared Components
@@ -24,6 +25,7 @@ import TeacherProjection from '@/pages/admin/TeacherProjection';
 import SchoolManagement from '@/pages/admin/SchoolManagement';
 import EnrollmentQuestions from '@/pages/admin/EnrollmentQuestions';
 import TeacherPanel from '@/pages/teacher/TeacherPanel';
+import AdminDashboard from '@/pages/admin/Dashboard';
 import StudentDetail from '@/pages/student/StudentDetail';
 import SettingsManagement from '@/pages/master/SettingsManagement';
 import type { JSX } from 'react';
@@ -93,7 +95,7 @@ function AppRoutes() {
 
         {/* Nested Admin Module */}
         <Route path="admin" element={<RequireAuth allowedRoles={['Administrador', 'Master']}><AdminLayout /></RequireAuth>}>
-          <Route index element={<h1>Panel de Admin</h1>} /> {/* Placeholder dashboard */}
+          <Route index element={<AdminDashboard />} />
           <Route path="register-staff" element={<RegisterStaff />} />
           <Route path="inscribir-estudiante" element={<EnrollStudent />} />
           <Route path="projection" element={<TeacherProjection />} />
@@ -154,9 +156,11 @@ function AppRoutes() {
 function App() {
   return (
     <Router>
-      <AuthProvider>
-        <AppRoutes />
-      </AuthProvider>
+      <SchoolProvider>
+        <AuthProvider>
+          <AppRoutes />
+        </AuthProvider>
+      </SchoolProvider>
     </Router>
   );
 }

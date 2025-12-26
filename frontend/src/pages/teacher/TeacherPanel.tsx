@@ -178,7 +178,7 @@ const TeacherPanel: React.FC = () => {
         const res = await api.get('/settings/max_grade');
         if (res.data?.value) setMaxGrade(Number(res.data.value));
       } catch {
-         
+
         console.error('Error fetching max_grade setting');
       }
     };
@@ -395,7 +395,6 @@ const TeacherPanel: React.FC = () => {
   ];
 
 
-  const currentAssignment = assignments?.find(a => a.id === selectedAssignmentId);
   const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?.percentage || 0), 0) || 0;
 
   return (
@@ -445,13 +444,10 @@ const TeacherPanel: React.FC = () => {
             >
               {assignments.map(as => (
                 <Option key={as?.id || Math.random()} value={as?.id}>
-                  {as?.periodGradeSubject?.subject?.name} - {as?.periodGradeSubject?.periodGrade?.grade?.name} ({as?.section?.name}) - {as?.periodGradeSubject?.periodGrade?.schoolPeriod?.name}
+                  {as?.periodGradeSubject?.subject?.name} - {as?.periodGradeSubject?.periodGrade?.grade?.name} ({as?.section?.name})
                 </Option>
               ))}
             </Select>
-            {currentAssignment && (
-              <Tag color="purple">{currentAssignment.periodGradeSubject?.periodGrade?.schoolPeriod?.name}</Tag>
-            )}
           </Space>
 
           <Space >
@@ -473,39 +469,39 @@ const TeacherPanel: React.FC = () => {
                 </Option>
               ))}
             </Select>
-  
+
           </Space>
         </div>
       </Card>
-          {selectedTerm && availableTerms.find(t => t.id === selectedTerm)?.isBlocked && (
-            <Alert
-              message="Lapso bloqueado"
-              description="Este lapso está bloqueado. Puedes ver la información pero no modificarla."
-              type="warning"
-              showIcon
-              style={{ marginTop: 8 }}
-            />
-          )}
+      {selectedTerm && availableTerms.find(t => t.id === selectedTerm)?.isBlocked && (
+        <Alert
+          message="Lapso bloqueado"
+          description="Este lapso está bloqueado. Puedes ver la información pero no modificarla."
+          type="warning"
+          showIcon
+          style={{ marginTop: 8 }}
+        />
+      )}
 
-      <Tabs 
-        activeKey={activeTab} 
-        onChange={setActiveTab} 
+      <Tabs
+        activeKey={activeTab}
+        onChange={setActiveTab}
         type="card"
         items={[
           {
             key: '1',
             label: 'Plan de Evaluación',
             children: (
-              <Card 
+              <Card
                 extra={
-                  <Button 
-                    type="primary" 
-                    icon={<PlusOutlined />} 
+                  <Button
+                    type="primary"
+                    icon={<PlusOutlined />}
                     disabled={isSelectedTermBlocked}
-                    onClick={() => { 
-                      setEditingItem(null); 
-                      planForm.resetFields(); 
-                      setShowPlanModal(true); 
+                    onClick={() => {
+                      setEditingItem(null);
+                      planForm.resetFields();
+                      setShowPlanModal(true);
                     }}
                   >
                     Agregar Evaluación

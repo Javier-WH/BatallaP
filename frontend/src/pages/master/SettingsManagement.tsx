@@ -1,10 +1,11 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import React, { useState, useEffect } from 'react';
-import { Card, Form, Input, Button, Typography, Space, message, Divider, Spin, Upload } from 'antd';
-import { SettingOutlined, SaveOutlined, UploadOutlined } from '@ant-design/icons';
+import { Card, Form, Input, Button, Typography, message, Spin, Upload } from 'antd';
+import { SettingOutlined, SaveOutlined, UploadOutlined, BankOutlined } from '@ant-design/icons';
 import api from '@/services/api';
+import { useSchool } from '@/context/SchoolContext';
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 interface SettingsFormValues {
   institution_name?: string;
@@ -16,6 +17,7 @@ const SettingsManagement: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [logoPreview, setLogoPreview] = useState<string>('');
+  const { refreshSettings } = useSchool();
 
   useEffect(() => {
     const fetchSettings = async () => {
@@ -32,7 +34,7 @@ const SettingsManagement: React.FC = () => {
           const logoUrl = URL.createObjectURL(logoResponse.data);
           setLogoPreview(logoUrl);
         } catch {
-          console.log('No logo found, that\'s ok');
+          console.log('No logo found');
         }
       } catch (error) {
         console.error('Error fetching settings', error);
@@ -48,8 +50,8 @@ const SettingsManagement: React.FC = () => {
     setSaving(true);
     try {
       const { institution_logo, ...payload } = values;
-
       await api.post('/settings', { settings: payload });
+      await refreshSettings();
       message.success('Configuraciones guardadas correctamente');
     } catch (error) {
       console.error('Error saving settings', error);
@@ -59,185 +61,135 @@ const SettingsManagement: React.FC = () => {
     }
   };
 
-  if (loading) return <div style={{ textAlign: 'center', padding: 100 }}><Spin size="large" tip="Cargando configuración..." /></div>;
+  if (loading) return (
+    <div className="flex flex-col items-center justify-center p-24 gap-4">
+      <Spin size="large" />
+      <Text className="text-slate-400 font-bold uppercase tracking-widest text-[10px]">Sincronizando Parámetros...</Text>
+    </div>
+  );
 
   return (
-    <div style={{ padding: 24, maxWidth: 800, margin: '0 auto' }}>
-      <Title level={2}>
-        <SettingOutlined style={{ marginRight: 8 }} />
-        Configuración de la Institución
-      </Title>
-      <Text type="secondary">
-        Ajuste los parámetros de identidad de la institución.
-      </Text>
+    <div className="max-w-4xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+      {/* Page Header */}
+      <div className="flex flex-col gap-1">
+        <h1 className="text-3xl font-black text-slate-900 tracking-tight flex items-center gap-3">
+          <BankOutlined className="text-brand-primary" /> Institución
+        </h1>
+        <p className="text-slate-500 font-medium">Define la identidad visual y el nombre oficial que aparecerá en todo el sistema y reportes.</p>
+      </div>
 
-      <Card style={{ marginTop: 24, borderRadius: 12, boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }}>
+      <Card className="glass-card overflow-hidden !p-0">
+        <div className="bg-slate-900 px-8 py-6">
+          <h2 className="text-white text-xl font-bold">Identidad Institucional</h2>
+          <p className="text-slate-400 text-xs font-medium uppercase tracking-widest mt-1">Configuración del Perfil Maestro</p>
+        </div>
+
         <Form
           form={form}
           layout="vertical"
           onFinish={onFinish}
+          className="p-8"
+          requiredMark={false}
         >
-          <Title level={4}>Identidad de la Institución</Title>
-          <Divider style={{ marginTop: 0 }} />
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
+            <div className="space-y-6">
+              <Form.Item
+                label={<span className="text-slate-700 font-bold">Nombre de la Institución</span>}
+                name="institution_name"
+                rules={[{ required: true, message: 'El nombre es obligatorio' }]}
+              >
+                <Input
+                  placeholder="Ej: U.E. Colegio Batalla de la Victoria"
+                  className="h-12 border-slate-200 focus:border-brand-primary focus:ring-4 focus:ring-brand-primary/10 rounded-xl transition-all"
+                />
+              </Form.Item>
 
-          <Form.Item
-            label="Nombre de la Institución"
-            name="institution_name"
-          >
-            <Input placeholder="Ej: Unidad Educativa Colegio Ejemplo" />
-          </Form.Item>
+              <div className="bg-blue-50/50 p-6 rounded-2xl border border-blue-100/50">
+                <div className="flex gap-4">
+                  <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center text-blue-600 shrink-0">
+                    <SettingOutlined />
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-sm font-bold text-blue-900">Nota Importante</p>
+                    <p className="text-xs text-blue-700/80 leading-relaxed">
+                      El nombre y el logo se sincronizan automáticamente con el login y los encabezados de todos los módulos del sistema.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
 
-          <Form.Item
-            label="Logo de la Institución"
-            tooltip="Este logo se usará posteriormente en reportes y encabezados"
-          >
-            <Form.Item name="institution_logo" noStyle>
-              <Input type="hidden" />
-            </Form.Item>
-            <Upload.Dragger
-              name="logo"
-              listType="picture-card"
-              className="avatar-uploader"
-              showUploadList={false}
-              beforeUpload={(file) => {
-                // Validar que sea una imagen
-                if (!file.type.startsWith('image/')) {
-                  message.error('Solo se permiten archivos de imagen');
-                  return Upload.LIST_IGNORE;
-                }
-
-                // Validar tamaño (máximo 5MB)
-                if (file.size > 5 * 1024 * 1024) {
-                  message.error('La imagen no debe superar los 5MB');
-                  return Upload.LIST_IGNORE;
-                }
-
-                // Crear una vista previa
-                const reader = new FileReader();
-                reader.onload = () => {
-                  setLogoPreview(reader.result as string);
-                };
-                reader.readAsDataURL(file);
-
-                // Subir el archivo inmediatamente
-                const formData = new FormData();
-                formData.append('logo', file);
-
-                api.post('/upload/logo', formData, {
-                  headers: {
-                    'Content-Type': 'multipart/form-data'
+            <div className="space-y-4">
+              <span className="text-slate-700 font-bold block mb-2">Escudo / Logo Oficial</span>
+              <Upload.Dragger
+                name="logo"
+                showUploadList={false}
+                beforeUpload={(file) => {
+                  if (!file.type.startsWith('image/')) {
+                    message.error('Solo se permiten imágenes');
+                    return Upload.LIST_IGNORE;
                   }
-                })
-                .then(response => {
-                  message.success('Logo subido correctamente');
-                  form.setFieldsValue({ institution_logo: response.data.filename });
-                })
-                .catch(error => {
-                  console.error('Error al subir el logo:', error);
-                  message.error('Error al subir el logo');
-                  setLogoPreview('');
-                });
+                  if (file.size > 5 * 1024 * 1024) {
+                    message.error('Máximo 5MB');
+                    return Upload.LIST_IGNORE;
+                  }
 
-                return false; // prevenir upload automático
-              }}
-              style={{
-                width: '100%',
-                maxWidth: '400px',
-                height: '200px',
-                border: '2px dashed #d9d9d9',
-                borderRadius: '8px',
-                backgroundColor: logoPreview ? '#f6ffed' : '#fafafa',
-                cursor: 'pointer',
-                transition: 'all 0.3s',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                overflow: 'hidden'
-              }}
-            >
-              {logoPreview ? (
-                <div style={{
-                  width: '100%',
-                  height: '100%',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  position: 'relative'
-                }}>
-                  <img
-                    src={logoPreview}
-                    alt="Logo de la institución"
-                    style={{
-                      maxWidth: '80%',
-                      maxHeight: '80%',
-                      objectFit: 'contain',
-                      borderRadius: '4px'
-                    }}
-                  />
-                  <div style={{
-                    position: 'absolute',
-                    bottom: '8px',
-                    left: '50%',
-                    transform: 'translateX(-50%)',
-                    background: 'rgba(0, 0, 0, 0.6)',
-                    color: 'white',
-                    padding: '4px 8px',
-                    borderRadius: '4px',
-                    fontSize: '12px'
-                  }}>
-                    Haz clic para cambiar
-                  </div>
-                </div>
-              ) : (
-                <div style={{
-                  textAlign: 'center',
-                  padding: '20px'
-                }}>
-                  <UploadOutlined style={{
-                    fontSize: '48px',
-                    color: '#40a9ff',
-                    marginBottom: '16px'
-                  }} />
-                  <div style={{
-                    fontSize: '16px',
-                    fontWeight: 'bold',
-                    color: '#262626',
-                    marginBottom: '8px'
-                  }}>
-                    Logo de la Institución
-                  </div>
-                  <div style={{
-                    fontSize: '14px',
-                    color: '#8c8c8c',
-                    marginBottom: '8px'
-                  }}>
-                    Haz clic o arrastra una imagen aquí
-                  </div>
-                  <div style={{
-                    fontSize: '12px',
-                    color: '#bfbfbf'
-                  }}>
-                    JPG, PNG, GIF (máx. 5MB)
-                  </div>
-                </div>
-              )}
-            </Upload.Dragger>
-          </Form.Item>
+                  const formData = new FormData();
+                  formData.append('logo', file);
 
-          <Divider />
+                  api.post('/upload/logo', formData, {
+                    headers: { 'Content-Type': 'multipart/form-data' }
+                  })
+                    .then(async () => {
+                      message.success('Logo actualizado');
+                      await refreshSettings();
+                      // Refetch local preview
+                      const logoResponse = await api.get('/upload/logo', { responseType: 'blob' });
+                      setLogoPreview(URL.createObjectURL(logoResponse.data));
+                    })
+                    .catch(() => message.error('Error al subir logo'));
 
-          <Space size="middle">
+                  return false;
+                }}
+                className="!rounded-3xl border-2 border-dashed border-slate-200 bg-slate-50/50 hover:bg-white hover:border-brand-primary transition-all overflow-hidden"
+              >
+                {logoPreview ? (
+                  <div className="p-4 relative group h-48 flex flex-col items-center justify-center">
+                    <img
+                      src={logoPreview}
+                      alt="Preview"
+                      className="max-h-full max-w-full object-contain drop-shadow-2xl translate-y-2 group-hover:scale-110 transition-transform duration-500"
+                    />
+                    <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center backdrop-blur-sm">
+                      <div className="bg-white px-4 py-2 rounded-xl text-slate-900 font-black text-[10px] uppercase tracking-widest shadow-xl">Cambiar Logo</div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-8 space-y-4">
+                    <div className="w-16 h-16 bg-white rounded-2xl shadow-sm mx-auto flex items-center justify-center">
+                      <UploadOutlined className="text-3xl text-brand-primary" />
+                    </div>
+                    <div>
+                      <p className="text-slate-900 font-bold">Haz clic o arrastra el logo</p>
+                      <p className="text-slate-500 text-xs font-medium">PNG, JPG (Máx. 5MB)</p>
+                    </div>
+                  </div>
+                )}
+              </Upload.Dragger>
+            </div>
+          </div>
+
+          <div className="mt-12 flex justify-end">
             <Button
               type="primary"
               htmlType="submit"
               icon={<SaveOutlined />}
               loading={saving}
-              size="large"
+              className="h-14 px-12 bg-slate-900 border-none text-white font-black rounded-2xl shadow-2xl shadow-indigo-500/20 hover:scale-105 transition-all text-sm uppercase tracking-widest"
             >
-              Guardar Cambios
+              Guardar Identidad
             </Button>
-          </Space>
+          </div>
         </Form>
       </Card>
     </div>

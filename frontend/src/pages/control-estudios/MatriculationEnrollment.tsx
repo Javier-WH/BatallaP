@@ -602,8 +602,8 @@ const MatriculationEnrollment: React.FC = () => {
   ];
 
   return (
-    <div style={{ padding: 16, background: '#f5f7fa', minHeight: '100vh' }}>
-      <Card bordered={false} bodyStyle={{ padding: '12px 24px' }} style={{ marginBottom: 12 }}>
+    <div className="flex flex-col gap-4">
+      <Card className="glass-card !bg-white/50 border-none">
         <Row justify="space-between" align="middle" gutter={[16, 16]}>
           <Col xs={24} lg={8}>
             <Title level={4} style={{ margin: 0 }}>Panel de Matriculación Masiva</Title>
