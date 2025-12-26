@@ -10,9 +10,43 @@ interface StudentAcademicRecordProps {
   personId: number;
 }
 
+interface SubjectGroup {
+  name: string;
+}
+
+interface SubjectInfo {
+  name: string;
+  subjectGroup?: SubjectGroup | null;
+}
+
+interface EvaluationPlan {
+  term?: number;
+  percentage?: number;
+}
+
+interface Qualification {
+  id: number;
+  score: number | string;
+  evaluationPlan?: EvaluationPlan | null;
+}
+
+interface InscriptionSubject {
+  id: number;
+  subject?: SubjectInfo | null;
+  qualifications?: Qualification[];
+}
+
+interface AcademicRecord {
+  id: number;
+  period?: { name: string } | null;
+  grade?: { name: string } | null;
+  section?: { name: string } | null;
+  inscriptionSubjects: InscriptionSubject[];
+}
+
 const StudentAcademicRecord: React.FC<StudentAcademicRecordProps> = ({ personId }) => {
   const [loading, setLoading] = useState(false);
-  const [records, setRecords] = useState<any[]>([]);
+  const [records, setRecords] = useState<AcademicRecord[]>([]);
   const [maxGrade, setMaxGrade] = useState<number>(20);
 
   useEffect(() => {
@@ -20,8 +54,8 @@ const StudentAcademicRecord: React.FC<StudentAcademicRecordProps> = ({ personId 
       try {
         const res = await api.get('/settings/max_grade');
         if (res.data?.value) setMaxGrade(Number(res.data.value));
-      } catch (e) {
-        console.error('Error fetching max_grade');
+      } catch (error) {
+        console.error('Error fetching max_grade', error);
       }
     };
     fetchSettings();
@@ -50,7 +84,7 @@ const StudentAcademicRecord: React.FC<StudentAcademicRecordProps> = ({ personId 
       <Title level={3}><FileTextOutlined /> Historial Académico</Title>
 
       <Collapse defaultActiveKey={[records[0]?.id]} ghost accordion expandIconPosition="end">
-        {records.map((record: any) => (
+        {records.map(record => (
           <Panel
             key={record.id}
             header={
@@ -62,7 +96,7 @@ const StudentAcademicRecord: React.FC<StudentAcademicRecordProps> = ({ personId 
             }
           >
             <Card bordered={false} className="inner-table-card">
-              <Table
+              <Table<InscriptionSubject>
                 dataSource={record.inscriptionSubjects}
                 rowKey="id"
                 pagination={false}
@@ -72,7 +106,7 @@ const StudentAcademicRecord: React.FC<StudentAcademicRecordProps> = ({ personId 
                     dataIndex: ['subject', 'name'],
                     key: 'subject',
                     width: '30%',
-                    render: (_: string, recordItem: any) => {
+                    render: (_: string, recordItem) => {
                       const groupName = recordItem.subject?.subjectGroup?.name;
                       const displayName = groupName ?? recordItem.subject?.name;
 
@@ -93,14 +127,14 @@ const StudentAcademicRecord: React.FC<StudentAcademicRecordProps> = ({ personId 
                   {
                     title: 'Lapsos / Notas',
                     key: 'terms',
-                    render: (_, subject: any) => {
+                    render: (_: unknown, subject: InscriptionSubject) => {
                       // Group qualifications by term
                       const terms = [1, 2, 3];
                       return (
                         <div style={{ display: 'flex', gap: 20 }}>
                           {terms.map(t => {
-                            const quals = subject.qualifications?.filter((q: any) => q.evaluationPlan?.term === t) || [];
-                            const totalScore = quals.reduce((acc: number, q: any) => acc + (Number(q.score) * (Number(q.evaluationPlan?.percentage) / 100)), 0);
+                            const quals = subject.qualifications?.filter(q => q.evaluationPlan?.term === t) || [];
+                            const totalScore = quals.reduce((acc: number, q) => acc + (Number(q.score) * (Number(q.evaluationPlan?.percentage) / 100)), 0);
                             const hasNotes = quals.length > 0;
 
                             return (
@@ -124,13 +158,13 @@ const StudentAcademicRecord: React.FC<StudentAcademicRecordProps> = ({ personId 
                     title: 'Definitiva',
                     key: 'final',
                     align: 'center',
-                    render: (_, subject: any) => {
+                    render: (_: unknown, subject: InscriptionSubject) => {
                       const quals = subject.qualifications || [];
                       // Calc average of terms where there is at least one note
                       const termScores = [1, 2, 3].map(t => {
-                        const qL = quals.filter((q: any) => q.evaluationPlan?.term === t);
+                        const qL = quals.filter(q => q.evaluationPlan?.term === t);
                         if (qL.length === 0) return null;
-                        return qL.reduce((acc: number, q: any) => acc + (Number(q.score) * (Number(q.evaluationPlan?.percentage) / 100)), 0);
+                        return qL.reduce((acc: number, q: Qualification) => acc + (Number(q.score) * (Number(q.evaluationPlan?.percentage) / 100)), 0);
                       }).filter(s => s !== null);
 
                       if (termScores.length === 0) return '-';
