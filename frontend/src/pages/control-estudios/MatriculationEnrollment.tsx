@@ -18,7 +18,8 @@ import {
   UserOutlined,
   CheckCircleOutlined,
   BookOutlined,
-  QuestionCircleOutlined
+  QuestionCircleOutlined,
+  CloseOutlined
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import api from '@/services/api';
@@ -616,9 +617,26 @@ const MatriculationEnrollment: React.FC = () => {
           marginBottom: 12,
           background: selectedRowKeys.length > 0 ? '#e6f7ff' : '#f8fafc',
           borderColor: selectedRowKeys.length > 0 ? '#91d5ff' : '#e2e8f0',
-          transition: 'all 0.3s ease'
+          transition: 'all 0.3s ease',
+          position: 'relative'
         }}
       >
+        {/* Clear button in top-right corner */}
+        <Button
+          disabled={selectedRowKeys.length === 0}
+          type="text"
+          size="small"
+          icon={<CloseOutlined />}
+          onClick={() => setSelectedRowKeys([])}
+          style={{
+            position: 'absolute',
+            top: '-8px',
+            right: '-5px',
+            color: '#888',
+            zIndex: 10
+          }}
+        />
+
         <div className="flex items-center gap-6">
 
           {/* Section 1: Counter */}
@@ -657,20 +675,7 @@ const MatriculationEnrollment: React.FC = () => {
             </div>
 
             {/* Change Grade */}
-            <div className="flex flex-col gap-1">
-              <span className={`text-[10px] font-bold uppercase tracking-wider ${selectedRowKeys.length > 0 ? 'text-slate-500' : 'text-slate-300'}`}>
-                Cambiar Grado
-              </span>
-              <Select
-                disabled={selectedRowKeys.length === 0}
-                placeholder="Seleccionar..."
-                className="w-full"
-                onChange={v => handleBulkUpdate('gradeId', v)}
-                allowClear
-              >
-                {structure.map(s => <Option key={s.gradeId} value={s.gradeId}>{s.grade?.name}</Option>)}
-              </Select>
-            </div>
+
 
             {/* Group Subjects */}
             <div className="flex flex-col gap-1">
@@ -700,16 +705,7 @@ const MatriculationEnrollment: React.FC = () => {
           </div>
 
           {/* Section 3: Actions */}
-          <div className="flex flex-col items-start gap-2 pl-6 type border-l border-slate-300/50 min-w-max">
-            <Button
-              disabled={selectedRowKeys.length === 0}
-              size="small"
-              type="text"
-              style={{ color: '#888' }}
-              onClick={() => setSelectedRowKeys([])}
-            >
-              Limpiar
-            </Button>
+          <div className="flex items-center pl-6 border-l border-slate-300/50 min-w-max">
             <Button
               disabled={selectedRowKeys.length === 0}
               type="primary"
