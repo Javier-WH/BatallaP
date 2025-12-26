@@ -6,6 +6,7 @@ const router = Router();
 // Periods
 router.get('/periods', academic.getPeriods);
 router.get('/active', academic.getActivePeriod);
+router.get('/periods/active', academic.getActivePeriod);
 router.post('/periods', academic.createPeriod);
 router.put('/periods/:id/activate', academic.togglePeriodActive);
 router.put('/periods/:id', academic.updatePeriod);

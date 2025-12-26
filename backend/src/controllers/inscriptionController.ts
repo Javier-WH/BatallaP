@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { Op, Transaction } from 'sequelize';
-import { Inscription, Person, Role, Subject, PeriodGrade, InscriptionSubject, SchoolPeriod, Grade, Section, Contact, PersonRole, PersonResidence, StudentGuardian, Matriculation, GuardianProfile, StudentPreviousSchool, Plantel } from '../models';
+import { Inscription, Person, Role, Subject, PeriodGrade, InscriptionSubject, SchoolPeriod, Grade, Section, Contact, PersonRole, PersonResidence, StudentGuardian, Matriculation, GuardianProfile, StudentPreviousSchool, Plantel, EnrollmentAnswer, EnrollmentQuestion } from '../models';
 import sequelize from '../config/database';
 import { saveEnrollmentAnswers } from '@/services/enrollmentAnswerService';
 import { GuardianDocumentType } from '@/models/GuardianProfile';
@@ -188,7 +188,22 @@ export const getMatriculations = async (req: Request, res: Response) => {
           model: Person,
           as: 'student',
           where: hasStudentFilter ? studentWhere : undefined,
-          required: hasStudentFilter
+          required: hasStudentFilter,
+          include: [
+            { model: Contact, as: 'contact' },
+            { model: PersonResidence, as: 'residence' },
+            {
+              model: StudentGuardian,
+              as: 'guardians',
+              include: [{ model: GuardianProfile, as: 'profile' }]
+            },
+            { model: StudentPreviousSchool, as: 'previousSchools' },
+            {
+              model: EnrollmentAnswer,
+              as: 'enrollmentAnswers',
+              include: [{ model: EnrollmentQuestion, as: 'question' }]
+            }
+          ]
         },
         { model: SchoolPeriod, as: 'period' },
         { model: Grade, as: 'grade' },
@@ -422,6 +437,7 @@ export const enrollMatriculatedStudent = async (req: Request, res: Response) => 
     const targetPeriodId = schoolPeriodId || matriculation.schoolPeriodId;
     const targetGradeId = gradeId || matriculation.gradeId;
     const targetSectionId = sectionId ?? matriculation.sectionId ?? null;
+    const selectedGroupSubjectIds = Array.isArray(req.body.subjectIds) ? req.body.subjectIds : [];
 
     const existingInscription = await Inscription.findOne({
       where: { schoolPeriodId: targetPeriodId, personId: person.id },
@@ -431,10 +447,6 @@ export const enrollMatriculatedStudent = async (req: Request, res: Response) => 
     if (existingInscription) {
       await t.rollback();
       return res.status(400).json({ error: 'El estudiante ya está inscrito en este periodo escolar' });
-    }
-
-    if (Array.isArray(enrollmentAnswers)) {
-      await saveEnrollmentAnswers(person.id, enrollmentAnswers, { transaction: t });
     }
 
     const inscription = await Inscription.create({
@@ -453,21 +465,25 @@ export const enrollMatriculatedStudent = async (req: Request, res: Response) => 
     if (periodGrade?.subjects?.length) {
       console.log(`[Enrollment] Processing ${periodGrade.subjects.length} subjects for grade ${targetGradeId}`);
 
-      // Filter out subjects that belong to a group (subjectGroupId is not null)
-      const subjectsToAdd = periodGrade.subjects
-        .filter((s: any) => {
-          const hasGroup = s.subjectGroupId !== null && s.subjectGroupId !== undefined;
-          if (hasGroup) {
-            console.log(`[Enrollment] Skipping subject ${s.name} (ID: ${s.id}) because it belongs to group ${s.subjectGroupId}`);
-          }
-          return !hasGroup;
-        })
+      // 1. Core subjects (no group)
+      const coreSubjects = periodGrade.subjects
+        .filter((s: any) => !s.subjectGroupId)
         .map((s: any) => ({
           inscriptionId: inscription.id,
           subjectId: s.id
         }));
 
-      console.log(`[Enrollment] Enrolling in ${subjectsToAdd.length} subjects`);
+      // 2. Selected group subjects
+      const groupSubjects = periodGrade.subjects
+        .filter((s: any) => s.subjectGroupId && selectedGroupSubjectIds.includes(s.id))
+        .map((s: any) => ({
+          inscriptionId: inscription.id,
+          subjectId: s.id
+        }));
+
+      const subjectsToAdd = [...coreSubjects, ...groupSubjects];
+
+      console.log(`[Enrollment] Enrolling in ${subjectsToAdd.length} subjects (${coreSubjects.length} core, ${groupSubjects.length} group)`);
 
       if (subjectsToAdd.length > 0) {
         await InscriptionSubject.bulkCreate(subjectsToAdd, { transaction: t });
