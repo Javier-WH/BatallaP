@@ -117,9 +117,9 @@ const MainLayout: React.FC = () => {
       >
         <div className="flex flex-col h-full overflow-hidden relative">
           {/* Institution Header */}
-          <div className="p-6 flex items-center gap-3 border-b border-white/5 whitespace-nowrap overflow-hidden">
+          <div className="p-6 flex items-start gap-4 border-b border-white/5 overflow-hidden">
             <div
-              className="shrink-0 w-10 h-10 bg-white p-1 shadow-2xl shadow-blue-500/20 flex items-center justify-center overflow-hidden"
+              className="shrink-0 w-14 h-14 bg-white/90 p-2 shadow-2xl shadow-blue-500/20 flex items-center justify-center overflow-hidden border border-white/20"
               style={{ borderRadius: settings.logoShape === 'circle' ? '50%' : '0.75rem' }}
             >
               <img
@@ -133,8 +133,13 @@ const MainLayout: React.FC = () => {
               />
             </div>
             {!collapsed && (
-              <div className="flex flex-col truncate">
-                <span className="text-sm font-bold text-white tracking-tight leading-none truncate">{settings.name}</span>
+              <div className="flex flex-col flex-1 min-w-0 text-white">
+                <span
+                  className="text-sm font-bold tracking-tight leading-tight"
+                  style={{ whiteSpace: 'normal', wordBreak: 'break-word' }}
+                >
+                  {settings.name}
+                </span>
                 <span className="text-[10px] uppercase font-bold text-slate-400 tracking-widest mt-1">Gestión Educativa</span>
               </div>
             )}
@@ -196,8 +201,12 @@ const MainLayout: React.FC = () => {
                   <CalendarOutlined className="text-lg" />
                 </div>
                 <div className="flex flex-col">
-                  <span className="text-[10px] font-black text-brand-primary uppercase tracking-[0.2em] leading-none mb-1">Periodo Activo</span>
-                  <span className="text-sm font-black text-slate-800 leading-tight">{activePeriod.name}</span>
+                  <span className="text-[10px] font-black text-white/80 uppercase tracking-[0.2em] leading-none mb-1">
+                    Periodo Activo
+                  </span>
+                  <span className="text-sm font-black text-white leading-tight drop-shadow-sm">
+                    {activePeriod.name}
+                  </span>
                 </div>
                 <Badge status="processing" className="ml-1" />
               </div>

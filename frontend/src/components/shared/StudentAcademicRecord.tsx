@@ -89,7 +89,16 @@ const StudentAcademicRecord: React.FC<StudentAcademicRecordProps> = ({ personId 
             key={record.id}
             header={
               <Space size="large">
-                <Text strong style={{ fontSize: 16 }}><CalendarOutlined /> {record.period?.name}</Text>
+                <Text
+                  strong
+                  style={{
+                    fontSize: 16,
+                    color: '#f5f7ff',
+                    letterSpacing: 0.5,
+                  }}
+                >
+                  <CalendarOutlined /> {record.period?.name}
+                </Text>
                 <Tag color="cyan">{record.grade?.name}</Tag>
                 <Tag color="blue">{record.section?.name}</Tag>
               </Space>
