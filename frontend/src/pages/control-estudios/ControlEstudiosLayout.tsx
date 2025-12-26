@@ -43,24 +43,26 @@ const ControlEstudiosLayout: React.FC = () => {
   ];
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col">
       {/* Control de Estudios Toolbar */}
-      <div className="bg-white/50 backdrop-blur-sm p-2 rounded-2xl border border-white flex items-center gap-2 shadow-sm">
-        <div className="px-4 py-1 border-r border-slate-200 mr-2 shrink-0">
-          <span className="text-[10px] uppercase font-black text-slate-400 tracking-[0.2em]">Académico</span>
+      <div className="sticky top-0 z-40 bg-slate-50/80 backdrop-blur-md pb-4 pt-0 px-6">
+        <div className="bg-white/70 backdrop-blur-sm p-2 rounded-2xl border border-white flex items-center gap-2 shadow-sm">
+          <div className="px-4 py-1 border-r border-slate-200 mr-2 shrink-0">
+            <span className="text-[10px] uppercase font-black text-slate-400 tracking-[0.2em]">Académico</span>
+          </div>
+          {tools.map(tool => (
+            <NavButton
+              key={tool.path}
+              {...tool}
+              active={tool.exact ? isExact(tool.path) : matchesPath(tool.path)}
+              onClick={() => navigate(tool.path)}
+            />
+          ))}
         </div>
-        {tools.map(tool => (
-          <NavButton
-            key={tool.path}
-            {...tool}
-            active={tool.exact ? isExact(tool.path) : matchesPath(tool.path)}
-            onClick={() => navigate(tool.path)}
-          />
-        ))}
       </div>
 
       {/* Module Content */}
-      <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
+      <div className="p-6 pt-0 animate-in fade-in slide-in-from-bottom-2 duration-500">
         <Outlet />
       </div>
     </div>

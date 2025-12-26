@@ -173,13 +173,15 @@ const MainLayout: React.FC = () => {
           <div className="flex items-center gap-4">
             {/* Global Context Indicator: Active Period */}
             {activePeriod && (
-              <div className="ml-2 hidden md:flex items-center gap-2 bg-blue-50/50 px-4 py-2 rounded-2xl border border-blue-100 animate-in fade-in slide-in-from-left-4 duration-500">
-                <CalendarOutlined className="text-brand-primary" />
-                <div className="flex flex-col">
-                  <span className="text-[10px] font-bold text-brand-primary uppercase tracking-wider leading-none">Periodo Escolar Activo</span>
-                  <span className="text-sm font-bold text-slate-700 leading-tight">{activePeriod.name}</span>
+              <div className="ml-2 hidden md:flex items-center gap-3 animate-in fade-in slide-in-from-left-4 duration-500">
+                <div className="w-10 h-10 rounded-xl bg-blue-50/50 flex items-center justify-center text-brand-primary border border-blue-100/50">
+                  <CalendarOutlined className="text-lg" />
                 </div>
-                <Badge status="processing" className="ml-2" />
+                <div className="flex flex-col">
+                  <span className="text-[10px] font-black text-brand-primary uppercase tracking-[0.2em] leading-none mb-1">Periodo Activo</span>
+                  <span className="text-sm font-black text-slate-800 leading-tight">{activePeriod.name}</span>
+                </div>
+                <Badge status="processing" className="ml-1" />
               </div>
             )}
           </div>
@@ -202,7 +204,7 @@ const MainLayout: React.FC = () => {
           </div>
         </Header>
 
-        <Content className="flex-1 p-6 overflow-y-auto">
+        <Content className="flex-1 overflow-y-auto bg-slate-50">
           <div className="max-w-7xl mx-auto">
             <Outlet />
           </div>

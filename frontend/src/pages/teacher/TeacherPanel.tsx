@@ -398,7 +398,7 @@ const TeacherPanel: React.FC = () => {
   const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?.percentage || 0), 0) || 0;
 
   return (
-    <div style={{ padding: '8px 24px' }}>
+    <div style={{ padding: '24px' }}>
       <style>{`
         .grading-row:hover {
           background-color: #f0f7ff !important;
