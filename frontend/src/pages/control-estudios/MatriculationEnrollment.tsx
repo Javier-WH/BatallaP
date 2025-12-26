@@ -451,15 +451,15 @@ const MatriculationEnrollment: React.FC = () => {
     for (const row of selectedRows) {
       try {
         const { tempData } = row;
-        const fixGuardian = (g: any) => ({
-          ...g,
-          documentType: g.documentType || 'Venezolano',
-          residenceState: g.residenceState || 'N/A',
-          residenceMunicipality: g.residenceMunicipality || 'N/A',
-          residenceParish: g.residenceParish || 'N/A',
-          address: g.address || 'N/A',
-          email: g.email || 'no@email.com',
-          phone: g.phone || '0000000000'
+        const fixGuardian = (g?: GuardianProfile): GuardianProfile => ({
+          ...(g || {}),
+          documentType: g?.documentType || 'Venezolano',
+          residenceState: g?.residenceState || 'N/A',
+          residenceMunicipality: g?.residenceMunicipality || 'N/A',
+          residenceParish: g?.residenceParish || 'N/A',
+          address: g?.address || 'N/A',
+          email: g?.email || 'no@email.com',
+          phone: g?.phone || '0000000000'
         });
 
         const formattedAnswers = Object.entries(tempData.enrollmentAnswers || {}).map(([qId, ans]) => ({
@@ -503,7 +503,7 @@ const MatriculationEnrollment: React.FC = () => {
     'repType'
   ];
 
-  const handleKeyDown = (e: React.KeyboardEvent, rowIndex: number, colName: string) => {
+  const handleKeyDown = <T extends Element>(e: React.KeyboardEvent<T>, rowIndex: number, colName: string) => {
     if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) return;
 
     e.preventDefault();
@@ -579,7 +579,7 @@ const MatriculationEnrollment: React.FC = () => {
           id={`nav-${idx}-gradeId`}
           value={record.tempData.gradeId}
           style={{ width: '100%' }}
-          onInputKeyDown={e => handleKeyDown(e as any, idx, 'gradeId')}
+          onInputKeyDown={e => handleKeyDown(e, idx, 'gradeId')}
           onChange={(v) => handleUpdateRow(record.id, 'gradeId', v)}
         >
           {structure.map(s => <Option key={s.gradeId} value={s.gradeId}>{s.grade?.name}</Option>)}
@@ -597,7 +597,7 @@ const MatriculationEnrollment: React.FC = () => {
             value={record.tempData.sectionId}
             allowClear
             style={{ width: '100%' }}
-            onInputKeyDown={e => handleKeyDown(e as any, idx, 'sectionId')}
+            onInputKeyDown={e => handleKeyDown(e, idx, 'sectionId')}
             onChange={(v) => handleUpdateRow(record.id, 'sectionId', v)}
           >
             {gradeStruct?.sections?.map(sec => <Option key={sec.id} value={sec.id}>{sec.name}</Option>)}
@@ -617,7 +617,7 @@ const MatriculationEnrollment: React.FC = () => {
             mode="multiple"
             style={{ width: '100%' }}
             value={record.tempData.subjectIds}
-            onInputKeyDown={e => handleKeyDown(e as any, idx, 'subjectIds')}
+            onInputKeyDown={e => handleKeyDown(e, idx, 'subjectIds')}
             placeholder="Ninguna"
             onChange={(v) => handleUpdateRow(record.id, 'subjectIds', v)}
             maxTagCount="responsive"
@@ -773,7 +773,7 @@ const MatriculationEnrollment: React.FC = () => {
           id={`nav-${idx}-repType`}
           value={record.tempData.representativeType}
           style={{ width: '100%' }}
-          onInputKeyDown={e => handleKeyDown(e as any, idx, 'repType')}
+          onInputKeyDown={e => handleKeyDown(e, idx, 'repType')}
           onChange={v => handleUpdateRow(record.id, 'representativeType', v)}
         >
           <Option value="mother">Madre</Option>
