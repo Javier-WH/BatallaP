@@ -700,7 +700,16 @@ const MatriculationEnrollment: React.FC = () => {
           </div>
 
           {/* Section 3: Actions */}
-          <div className="flex items-center gap-2 pl-6 type border-l border-slate-300/50 min-w-max">
+          <div className="flex flex-col items-start gap-2 pl-6 type border-l border-slate-300/50 min-w-max">
+            <Button
+              disabled={selectedRowKeys.length === 0}
+              size="small"
+              type="text"
+              style={{ color: '#888' }}
+              onClick={() => setSelectedRowKeys([])}
+            >
+              Limpiar
+            </Button>
             <Button
               disabled={selectedRowKeys.length === 0}
               type="primary"
@@ -710,14 +719,6 @@ const MatriculationEnrollment: React.FC = () => {
               className="bg-blue-600 hover:bg-blue-500 border-none shadow-md shadow-blue-500/30"
             >
               Inscribir
-            </Button>
-            <Button
-              disabled={selectedRowKeys.length === 0}
-              danger
-              size="large"
-              onClick={() => setSelectedRowKeys([])}
-            >
-              Limpiar
             </Button>
           </div>
 
