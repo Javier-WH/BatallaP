@@ -11,14 +11,12 @@ import {
   Table,
   Tag,
   Typography,
-  Divider,
-  Badge
 } from 'antd';
 import {
   ReloadOutlined,
   SearchOutlined,
   UserOutlined,
-  TeamOutlined,
+  CheckCircleOutlined,
   BookOutlined,
   QuestionCircleOutlined
 } from '@ant-design/icons';
@@ -611,63 +609,120 @@ const MatriculationEnrollment: React.FC = () => {
         </Row>
       </Card>
 
-      {selectedRowKeys.length > 0 && (
-        <Card size="small" style={{ marginBottom: 12, background: '#e6f7ff', border: '1px solid #91d5ff', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
-          <Row align="middle">
-            <Col flex="auto">
-              <Space split={<Divider type="vertical" />}>
-                <Badge count={selectedRowKeys.length} overflowCount={999} color="#1890ff">
-                  <Text strong style={{ marginLeft: 8 }}>Seleccionados</Text>
-                </Badge>
+      <Card
+        size="small"
+        bodyStyle={{ padding: '16px 24px' }}
+        style={{
+          marginBottom: 12,
+          background: selectedRowKeys.length > 0 ? '#e6f7ff' : '#f8fafc',
+          borderColor: selectedRowKeys.length > 0 ? '#91d5ff' : '#e2e8f0',
+          transition: 'all 0.3s ease'
+        }}
+      >
+        <div className="flex items-center gap-6">
 
-                <Space>
-                  <Text style={{ fontSize: 13 }}>Asignar Sección:</Text>
-                  <Select placeholder="Seleccionar" style={{ width: 150 }} onChange={v => handleBulkUpdate('sectionId', v)}>
-                    <Option value={null}>Sin Sección</Option>
-                    {Array.from(new Set(structure.flatMap(s => s.sections || []).map(s => s.id))).map(id => {
-                      const sec = structure.flatMap(s => s.sections || []).find(s => s.id === id);
-                      return <Option key={id} value={id}>{sec?.name}</Option>;
-                    })}
-                  </Select>
-                </Space>
+          {/* Section 1: Counter */}
+          <div className="flex items-center gap-3 pr-6 border-r border-slate-300/50 min-w-max">
+            <div
+              className={`flex items-center justify-center w-10 h-10 rounded-full text-base font-bold shadow-sm transition-colors ${selectedRowKeys.length > 0 ? 'bg-blue-500 text-white' : 'bg-slate-200 text-slate-400'
+                }`}
+            >
+              {selectedRowKeys.length}
+            </div>
+            <div className={`flex flex-col leading-tight font-bold text-xs uppercase tracking-wide ${selectedRowKeys.length > 0 ? 'text-blue-900' : 'text-slate-400'}`}>
+              <span>Estudiantes</span>
+              <span>Seleccionados</span>
+            </div>
+          </div>
 
-                <Space>
-                  <Text style={{ fontSize: 13 }}>Cambiar Grado:</Text>
-                  <Select placeholder="Seleccionar" style={{ width: 180 }} onChange={v => handleBulkUpdate('gradeId', v)}>
-                    {structure.map(s => <Option key={s.gradeId} value={s.gradeId}>{s.grade?.name}</Option>)}
-                  </Select>
-                </Space>
+          {/* Section 2: Inputs Grid */}
+          <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Assign Section */}
+            <div className="flex flex-col gap-1">
+              <span className={`text-[10px] font-bold uppercase tracking-wider ${selectedRowKeys.length > 0 ? 'text-slate-500' : 'text-slate-300'}`}>
+                Asignar Sección
+              </span>
+              <Select
+                disabled={selectedRowKeys.length === 0}
+                placeholder="Seleccionar..."
+                className="w-full"
+                onChange={v => handleBulkUpdate('sectionId', v)}
+                allowClear
+              >
+                {Array.from(new Set(structure.flatMap(s => s.sections || []).map(s => s.id))).map(id => {
+                  const sec = structure.flatMap(s => s.sections || []).find(s => s.id === id);
+                  return <Option key={id} value={id}>{sec?.name}</Option>;
+                })}
+              </Select>
+            </div>
 
-                <Space>
-                  <Text style={{ fontSize: 13 }}>Materias de Grupo:</Text>
-                  <Select
-                    mode="multiple"
-                    placeholder="Asignar Materias"
-                    style={{ width: 250 }}
-                    maxTagCount="responsive"
-                    onChange={v => handleBulkUpdate('subjectIds', v)}
-                  >
-                    {Array.from(new Map(structure.flatMap(s => s.subjects || [])
-                      .filter(sub => sub.subjectGroupId)
-                      .map(sub => [sub.id, sub])).values())
-                      .map(sub => (
-                        <Option key={sub.id} value={sub.id}>
-                          {sub.name} <Tag color="blue" style={{ fontSize: 9 }}>{sub.subjectGroup?.name}</Tag>
-                        </Option>
-                      ))
-                    }
-                  </Select>
-                </Space>
+            {/* Change Grade */}
+            <div className="flex flex-col gap-1">
+              <span className={`text-[10px] font-bold uppercase tracking-wider ${selectedRowKeys.length > 0 ? 'text-slate-500' : 'text-slate-300'}`}>
+                Cambiar Grado
+              </span>
+              <Select
+                disabled={selectedRowKeys.length === 0}
+                placeholder="Seleccionar..."
+                className="w-full"
+                onChange={v => handleBulkUpdate('gradeId', v)}
+                allowClear
+              >
+                {structure.map(s => <Option key={s.gradeId} value={s.gradeId}>{s.grade?.name}</Option>)}
+              </Select>
+            </div>
 
-                <Button type="primary" icon={<TeamOutlined />} onClick={handleBulkEnroll}>Inscribir Selección</Button>
-              </Space>
-            </Col>
-            <Col>
-              <Button type="text" danger onClick={() => setSelectedRowKeys([])}>Limpiar Selección</Button>
-            </Col>
-          </Row>
-        </Card>
-      )}
+            {/* Group Subjects */}
+            <div className="flex flex-col gap-1">
+              <span className={`text-[10px] font-bold uppercase tracking-wider ${selectedRowKeys.length > 0 ? 'text-slate-500' : 'text-slate-300'}`}>
+                Materias de Grupo
+              </span>
+              <Select
+                disabled={selectedRowKeys.length === 0}
+                mode="multiple"
+                placeholder="Asignar Materias..."
+                className="w-full"
+                maxTagCount="responsive"
+                onChange={v => handleBulkUpdate('subjectIds', v)}
+                allowClear
+              >
+                {Array.from(new Map(structure.flatMap(s => s.subjects || [])
+                  .filter(sub => sub.subjectGroupId)
+                  .map(sub => [sub.id, sub])).values())
+                  .map(sub => (
+                    <Option key={sub.id} value={sub.id}>
+                      {sub.name} <Tag color="blue" style={{ fontSize: 9 }}>{sub.subjectGroup?.name}</Tag>
+                    </Option>
+                  ))
+                }
+              </Select>
+            </div>
+          </div>
+
+          {/* Section 3: Actions */}
+          <div className="flex items-center gap-2 pl-6 type border-l border-slate-300/50 min-w-max">
+            <Button
+              disabled={selectedRowKeys.length === 0}
+              type="primary"
+              size="large"
+              icon={<CheckCircleOutlined />}
+              onClick={handleBulkEnroll}
+              className="bg-blue-600 hover:bg-blue-500 border-none shadow-md shadow-blue-500/30"
+            >
+              Inscribir
+            </Button>
+            <Button
+              disabled={selectedRowKeys.length === 0}
+              danger
+              size="large"
+              onClick={() => setSelectedRowKeys([])}
+            >
+              Limpiar
+            </Button>
+          </div>
+
+        </div>
+      </Card>
 
       <Table
         rowKey="id"
