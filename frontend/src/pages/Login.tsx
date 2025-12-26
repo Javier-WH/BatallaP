@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Form, Input, Button, message } from 'antd';
-import { UserOutlined, LockOutlined, ArrowRightOutlined } from '@ant-design/icons';
+import { UserOutlined, LockOutlined } from '@ant-design/icons';
 import { useAuth } from '@/context/AuthContext';
 import { useSchool } from '@/context/SchoolContext';
 import api from '@/services/api';
@@ -27,82 +27,101 @@ const Login: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[radial-gradient(ellipse_at_top_left,_var(--tw-gradient-stops))] from-slate-100 via-slate-200 to-slate-300 overflow-hidden relative">
-      {/* Decorative Orbs */}
-      <div className="absolute -top-24 -left-24 w-96 h-96 bg-brand-primary/10 rounded-full blur-3xl animate-pulse" />
-      <div className="absolute -bottom-24 -right-24 w-96 h-96 bg-brand-secondary/10 rounded-full blur-3xl animate-pulse" />
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-200 via-slate-100 to-white overflow-hidden relative">
+      {/* Decorative Background Elements */}
+      <div className="absolute top-0 left-0 w-full h-full overflow-hidden z-0">
+        <div className="absolute -top-[20%] -left-[10%] w-[70vh] h-[70vh] rounded-full bg-brand-primary/5 blur-3xl animate-pulse" />
+        <div className="absolute top-[40%] -right-[10%] w-[60vh] h-[60vh] rounded-full bg-blue-400/5 blur-3xl animate-pulse delay-1000" />
+      </div>
 
-      <div className="w-full max-w-md p-4 relative z-10">
-        <div className="glass-card p-10 space-y-8">
-          <div className="text-center space-y-4">
-            <div className="relative inline-block">
+      <div className="w-full max-w-md px-6 relative z-10">
+        <div className="bg-white rounded-[2.5rem] shadow-2xl p-8 pt-20 relative animate-in fade-in slide-in-from-bottom-8 duration-700">
+
+          {/* Floating Logo - Half inside/outside */}
+          <div className="absolute -top-16 left-1/2 -translate-x-1/2">
+            <div
+              className="bg-white p-2 shadow-2xl flex items-center justify-center relative z-20"
+              style={{
+                borderRadius: settings.logoShape === 'circle' ? '50%' : '1.5rem',
+                width: '128px',
+                height: '128px'
+              }}
+            >
               <div
-                className="absolute -inset-1 bg-gradient-to-r from-brand-primary to-brand-secondary blur opacity-25 group-hover:opacity-100 transition duration-1000 group-hover:duration-200"
-                style={{ borderRadius: settings.logoShape === 'circle' ? '50%' : '1rem' }}
-              ></div>
+                className="absolute inset-0 bg-gradient-to-b from-brand-primary/10 to-transparent z-0"
+                style={{ borderRadius: settings.logoShape === 'circle' ? '50%' : '1.5rem' }}
+              />
               <img
                 src={settings.logo}
                 alt="Logo"
-                className="relative w-24 h-24 mx-auto object-contain bg-white p-2 shadow-inner border border-slate-100"
+                className="w-full h-full object-contain relative z-10 p-2"
                 style={{ borderRadius: settings.logoShape === 'circle' ? '50%' : '1rem' }}
                 onError={(e) => {
-                  (e.target as HTMLImageElement).src = 'https://cdn-icons-png.flaticon.com/512/2940/2940651.png'; // Fallback
+                  (e.target as HTMLImageElement).src = 'https://cdn-icons-png.flaticon.com/512/2940/2940651.png';
                 }}
               />
             </div>
-            <div>
-              <h1 className="text-3xl font-bold text-slate-900 tracking-tight">{settings.name}</h1>
-              <p className="text-slate-500 font-medium">Panel Administrativo Institucional</p>
-            </div>
+          </div>
+
+          <div className="text-center mb-8 space-y-1">
+            <h2 className="text-2xl font-black text-slate-800 tracking-tight">{settings.name}</h2>
+            <p className="text-slate-400 font-medium text-sm">Bienvenido de nuevo</p>
           </div>
 
           <Form
             name="login"
-            layout="vertical"
             onFinish={onFinish}
             autoComplete="off"
-            requiredMark={false}
+            size="large"
+            className="space-y-4"
           >
             <Form.Item
-              label={<span className="text-slate-600 font-semibold px-1">Usuario</span>}
               name="username"
               rules={[{ required: true, message: 'Ingresa tu usuario' }]}
+              className="mb-4"
             >
               <Input
-                prefix={<UserOutlined className="text-slate-400 mr-2" />}
-                className="h-12 border-slate-200 focus:border-brand-primary focus:ring-4 focus:ring-brand-primary/10 transition-all font-medium"
-                placeholder="Ej. jdoe"
+                prefix={<UserOutlined className="text-slate-400 mr-3 text-lg" />}
+                placeholder="Usuario"
+                className="bg-slate-100 border-none rounded-2xl h-14 px-4 font-medium text-slate-700 hover:bg-slate-200/80 focus:bg-white focus:ring-2 focus:ring-brand-primary/20 transition-all placeholder:text-slate-400"
               />
             </Form.Item>
 
             <Form.Item
-              label={<span className="text-slate-600 font-semibold px-1">Contraseña</span>}
               name="password"
               rules={[{ required: true, message: 'Ingresa tu contraseña' }]}
+              className="mb-2"
             >
               <Input.Password
-                prefix={<LockOutlined className="text-slate-400 mr-2" />}
-                className="h-12 border-slate-200 focus:border-brand-primary focus:ring-4 focus:ring-brand-primary/10 transition-all font-medium"
-                placeholder="••••••••"
+                prefix={<LockOutlined className="text-slate-400 mr-3 text-lg" />}
+                placeholder="Contraseña"
+                className="bg-slate-100 border-none rounded-2xl h-14 px-4 font-medium text-slate-700 hover:bg-slate-200/80 focus:bg-white focus:ring-2 focus:ring-brand-primary/20 transition-all placeholder:text-slate-400"
               />
             </Form.Item>
 
-            <div className="pt-2">
+            <div className="flex items-center justify-between text-xs font-bold text-slate-500 px-2 mb-6">
+              <label className="flex items-center gap-2 cursor-pointer hover:text-brand-primary transition-colors">
+                <input type="checkbox" className="rounded text-brand-primary focus:ring-brand-primary" />
+                Recordarme
+              </label>
+              <a href="#" className="hover:text-brand-primary transition-colors">¿Olvidaste tu clave?</a>
+            </div>
+
+            <Form.Item className="mb-0">
               <Button
                 type="primary"
                 htmlType="submit"
                 loading={loading}
-                className="w-full h-12 bg-slate-900 hover:bg-slate-800 border-none text-white font-bold rounded-xl shadow-lg flex items-center justify-center gap-2 group transition-all"
+                className="w-full h-14 bg-brand-primary hover:bg-brand-secondary border-none text-white font-black rounded-2xl shadow-lg shadow-brand-primary/30 text-base tracking-wide hover:scale-[1.02] active:scale-[0.98] transition-all"
               >
-                <span>Acceder al Sistema</span>
-                <ArrowRightOutlined className="group-hover:translate-x-1 transition-transform" />
+                INICIAR SESIÓN
               </Button>
-            </div>
+            </Form.Item>
           </Form>
 
-          <div className="text-center pt-4 border-t border-slate-100">
-            <p className="text-xs text-slate-400 font-medium uppercase tracking-widest">
-              &copy; {new Date().getFullYear()} Gestión Escolar Premium
+          <div className="text-center mt-8">
+            <p className="text-[10px] text-slate-300 font-bold uppercase tracking-widest">
+              Gestión Escolar Premium &copy; {new Date().getFullYear()}
             </p>
           </div>
         </div>

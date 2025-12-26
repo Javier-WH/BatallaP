@@ -17,7 +17,6 @@ import {
 import {
   ReloadOutlined,
   SearchOutlined,
-  CheckCircleOutlined,
   UserOutlined,
   TeamOutlined,
   BookOutlined,
@@ -53,7 +52,7 @@ const MatriculationEnrollment: React.FC = () => {
   const [structure, setStructure] = useState<EnrollStructureEntry[]>([]);
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [searchValue, setSearchValue] = useState('');
-  const [submitting, setSubmitting] = useState<number | null>(null);
+
   const [questions, setQuestions] = useState<any[]>([]);
 
   // Filter states
@@ -140,46 +139,7 @@ const MatriculationEnrollment: React.FC = () => {
     }));
   };
 
-  const enrollStudent = async (row: MatriculationRow) => {
-    setSubmitting(row.id);
-    try {
-      const { tempData } = row;
 
-      const fixGuardian = (g: any) => ({
-        ...g,
-        documentType: g.documentType || 'Venezolano',
-        residenceState: g.residenceState || 'N/A',
-        residenceMunicipality: g.residenceMunicipality || 'N/A',
-        residenceParish: g.residenceParish || 'N/A',
-        address: g.address || 'N/A',
-        email: g.email || 'no@email.com',
-        phone: g.phone || '0000000000'
-      });
-
-      // Format answers for backend: object -> array of {questionId, answer}
-      const formattedAnswers = Object.entries(tempData.enrollmentAnswers || {}).map(([qId, ans]) => ({
-        questionId: Number(qId),
-        answer: ans
-      }));
-
-      const payload = {
-        ...tempData,
-        birthdate: tempData.birthdate ? tempData.birthdate.format('YYYY-MM-DD') : null,
-        mother: fixGuardian(tempData.mother),
-        father: fixGuardian(tempData.father),
-        enrollmentAnswers: formattedAnswers
-      };
-
-      await api.post(`/matriculations/${row.id}/enroll`, payload);
-      message.success(`Inscrito con éxito: ${tempData.firstName}`);
-      setMatriculations(prev => prev.filter(r => r.id !== row.id));
-    } catch (error: any) {
-      console.error(error);
-      message.error(error.response?.data?.error || 'No se pudo completar la inscripción');
-    } finally {
-      setSubmitting(null);
-    }
-  };
 
   const handleBulkEnroll = async () => {
     const selectedRows = matriculations.filter(r => selectedRowKeys.includes(r.id));
@@ -582,23 +542,6 @@ const MatriculationEnrollment: React.FC = () => {
         }
       }))
     },
-    {
-      title: 'Acción',
-      fixed: 'right',
-      width: 130,
-      render: (_, record) => (
-        <Button
-          type="primary"
-          size="small"
-          icon={<CheckCircleOutlined />}
-          loading={submitting === record.id}
-          onClick={() => enrollStudent(record)}
-          block
-        >
-          Matricular
-        </Button>
-      )
-    }
   ];
 
   return (
@@ -760,19 +703,37 @@ const MatriculationEnrollment: React.FC = () => {
       />
 
       <style>{`
-        .ant-table-header th {
-          background: #fafafa !important;
+        /* 1. Global Header Styles */
+        .ant-table-thead > tr > th {
+          background-color: #fafafa !important;
           color: #555 !important;
           font-weight: 600 !important;
           font-size: 12px !important;
           text-transform: uppercase !important;
-          letter-spacing: 0.02em !important;
+          opacity: 1 !important;
         }
-        .ant-table-cell { padding: 4px 8px !important; }
+
+        /* 2. Global Body Styles */
+        .ant-table-tbody > tr > td {
+          background-color: #ffffff !important;
+          padding: 4px 8px !important;
+          opacity: 1 !important;
+        }
+
+        /* 3. Global Hover Styles */
+        .ant-table-tbody > tr:hover > td {
+          background-color: #fafafa !important;
+        }
+
+        /* 4. Global Selected Styles */
+        .ant-table-tbody > tr.ant-table-row-selected > td {
+          background-color: #f6ffed !important;
+        }
+
+        /* 5. Input Styles (Keep transparent to show row color, or white if focused) */
         .ant-input, .ant-select-selector {
           border: 1px solid transparent !important;
           background: transparent !important;
-          transition: border-color 0.2s, background 0.2s !important;
           border-radius: 4px !important;
         }
         .ant-table-row:hover .ant-input, 
@@ -784,9 +745,6 @@ const MatriculationEnrollment: React.FC = () => {
           border-color: #1890ff !important;
           background: #fff !important;
           box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.1) !important;
-        }
-        .ant-table-row-selected td {
-          background-color: #f6ffed !important;
         }
       `}</style>
     </div>

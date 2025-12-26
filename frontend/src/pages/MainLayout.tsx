@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Layout, Button, Tooltip, Badge } from 'antd';
+import { Layout, Button, Tooltip, Badge, Modal } from 'antd';
 import {
   LeftOutlined,
   RightOutlined,
@@ -28,8 +28,26 @@ const MainLayout: React.FC = () => {
   const location = useLocation();
 
   const handleLogout = () => {
-    logout();
-    navigate('/');
+    Modal.confirm({
+      title: <span className="text-slate-900 font-black">¿Cerrar sesión?</span>,
+      icon: <LogoutOutlined className="text-red-500" />,
+      content: <span className="text-slate-500 font-medium">¿Estás seguro de que deseas salir del sistema? Todos los cambios no guardados se perderán.</span>,
+      okText: 'Sí, Salir',
+      cancelText: 'Permanecer aquí',
+      okButtonProps: {
+        danger: true,
+        className: 'rounded-xl font-bold h-10',
+        type: 'primary'
+      },
+      cancelButtonProps: {
+        className: 'rounded-xl font-bold h-10'
+      },
+      centered: true,
+      onOk() {
+        logout();
+        navigate('/');
+      },
+    });
   }
 
   const allMenuItems = [
