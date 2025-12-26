@@ -12,9 +12,7 @@ import {
   Tag,
   Typography,
   Divider,
-  Badge,
-  Popover,
-  Empty
+  Badge
 } from 'antd';
 import {
   ReloadOutlined,
@@ -23,8 +21,7 @@ import {
   UserOutlined,
   TeamOutlined,
   BookOutlined,
-  QuestionCircleOutlined,
-  InfoCircleOutlined
+  QuestionCircleOutlined
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import api from '@/services/api';
@@ -58,6 +55,11 @@ const MatriculationEnrollment: React.FC = () => {
   const [searchValue, setSearchValue] = useState('');
   const [submitting, setSubmitting] = useState<number | null>(null);
   const [questions, setQuestions] = useState<any[]>([]);
+
+  // Filter states
+  const [filterGrade, setFilterGrade] = useState<number | null>(null);
+  const [filterSection, setFilterSection] = useState<number | null>(null);
+  const [filterMissing, setFilterMissing] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -127,10 +129,32 @@ const MatriculationEnrollment: React.FC = () => {
     }));
   };
 
+  const handleUpdateNested = (rowId: number, parentKey: 'mother' | 'father' | 'representative' | 'enrollmentAnswers', field: string, value: any) => {
+    setMatriculations(prev => prev.map(row => {
+      if (row.id === rowId) {
+        const parent = { ...(row.tempData[parentKey] || {}) };
+        parent[field] = value;
+        return { ...row, tempData: { ...row.tempData, [parentKey]: parent } };
+      }
+      return row;
+    }));
+  };
+
   const enrollStudent = async (row: MatriculationRow) => {
     setSubmitting(row.id);
     try {
       const { tempData } = row;
+
+      const fixGuardian = (g: any) => ({
+        ...g,
+        documentType: g.documentType || 'Venezolano',
+        residenceState: g.residenceState || 'N/A',
+        residenceMunicipality: g.residenceMunicipality || 'N/A',
+        residenceParish: g.residenceParish || 'N/A',
+        address: g.address || 'N/A',
+        email: g.email || 'no@email.com',
+        phone: g.phone || '0000000000'
+      });
 
       // Format answers for backend: object -> array of {questionId, answer}
       const formattedAnswers = Object.entries(tempData.enrollmentAnswers || {}).map(([qId, ans]) => ({
@@ -141,6 +165,8 @@ const MatriculationEnrollment: React.FC = () => {
       const payload = {
         ...tempData,
         birthdate: tempData.birthdate ? tempData.birthdate.format('YYYY-MM-DD') : null,
+        mother: fixGuardian(tempData.mother),
+        father: fixGuardian(tempData.father),
         enrollmentAnswers: formattedAnswers
       };
 
@@ -164,6 +190,17 @@ const MatriculationEnrollment: React.FC = () => {
     for (const row of selectedRows) {
       try {
         const { tempData } = row;
+        const fixGuardian = (g: any) => ({
+          ...g,
+          documentType: g.documentType || 'Venezolano',
+          residenceState: g.residenceState || 'N/A',
+          residenceMunicipality: g.residenceMunicipality || 'N/A',
+          residenceParish: g.residenceParish || 'N/A',
+          address: g.address || 'N/A',
+          email: g.email || 'no@email.com',
+          phone: g.phone || '0000000000'
+        });
+
         const formattedAnswers = Object.entries(tempData.enrollmentAnswers || {}).map(([qId, ans]) => ({
           questionId: Number(qId),
           answer: ans
@@ -172,6 +209,8 @@ const MatriculationEnrollment: React.FC = () => {
         const payload = {
           ...tempData,
           birthdate: tempData.birthdate ? tempData.birthdate.format('YYYY-MM-DD') : null,
+          mother: fixGuardian(tempData.mother),
+          father: fixGuardian(tempData.father),
           enrollmentAnswers: formattedAnswers
         };
         await api.post(`/matriculations/${row.id}/enroll`, payload);
@@ -196,7 +235,12 @@ const MatriculationEnrollment: React.FC = () => {
 
   // --- Keyboard Navigation ---
   // List of columns identifiers for horizontal navigation
-  const COLS = ['firstName', 'lastName', 'document', 'gradeId', 'sectionId', 'subjectIds', 'phone1', 'whatsapp'];
+  const COLS = [
+    'firstName', 'lastName', 'document', 'gradeId', 'sectionId', 'subjectIds',
+    'mDoc', 'mFirstName', 'mLastName', 'mPhone',
+    'fDoc', 'fFirstName', 'fLastName', 'fPhone',
+    'repType'
+  ];
 
   const handleKeyDown = (e: React.KeyboardEvent, rowIndex: number, colName: string) => {
     if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) return;
@@ -366,63 +410,134 @@ const MatriculationEnrollment: React.FC = () => {
       title: 'Representación',
       children: [
         {
-          title: 'Madre',
-          width: 160,
-          ellipsis: true,
-          render: (_, record) => {
-            const m = record.tempData.mother;
-            if (!m?.firstName) return <Text type="danger" style={{ fontSize: 11 }}>No registra</Text>;
-            return (
-              <Popover content={
-                <div>
-                  <p><b>Doc:</b> {m.documentType}-{m.document}</p>
-                  <p><b>Tel:</b> {m.phone}</p>
-                </div>
-              } title="Detalles de la Madre">
-                <Text style={{ fontSize: 12 }}>{`${m.firstName} ${m.lastName}`}</Text>
-              </Popover>
-            );
-          }
+          title: <Text strong style={{ color: '#eb2f96' }}>Madre</Text>,
+          children: [
+            {
+              title: 'Cédula',
+              width: 130,
+              render: (_, record, idx) => (
+                <Input
+                  id={`nav-${idx}-mDoc`}
+                  value={record.tempData.mother?.document}
+                  placeholder="Doc..."
+                  onKeyDown={e => handleKeyDown(e, idx, 'mDoc')}
+                  onChange={e => handleUpdateNested(record.id, 'mother', 'document', e.target.value)}
+                />
+              )
+            },
+            {
+              title: 'Nombres',
+              width: 140,
+              render: (_, record, idx) => (
+                <Input
+                  id={`nav-${idx}-mFirstName`}
+                  value={record.tempData.mother?.firstName}
+                  onKeyDown={e => handleKeyDown(e, idx, 'mFirstName')}
+                  onChange={e => handleUpdateNested(record.id, 'mother', 'firstName', e.target.value)}
+                />
+              )
+            },
+            {
+              title: 'Apellidos',
+              width: 140,
+              render: (_, record, idx) => (
+                <Input
+                  id={`nav-${idx}-mLastName`}
+                  value={record.tempData.mother?.lastName}
+                  onKeyDown={e => handleKeyDown(e, idx, 'mLastName')}
+                  onChange={e => handleUpdateNested(record.id, 'mother', 'lastName', e.target.value)}
+                />
+              )
+            },
+            {
+              title: 'Teléfono',
+              width: 130,
+              render: (_, record, idx) => (
+                <Input
+                  id={`nav-${idx}-mPhone`}
+                  value={record.tempData.mother?.phone}
+                  onKeyDown={e => handleKeyDown(e, idx, 'mPhone')}
+                  onChange={e => handleUpdateNested(record.id, 'mother', 'phone', e.target.value)}
+                />
+              )
+            },
+          ]
         },
         {
-          title: 'Padre',
-          width: 160,
-          ellipsis: true,
-          render: (_, record) => {
-            const f = record.tempData.father;
-            if (!f?.firstName) return <Text type="secondary" style={{ fontSize: 11 }}>N/A</Text>;
-            return (
-              <Popover content={
-                <div>
-                  <p><b>Doc:</b> {f.documentType}-{f.document}</p>
-                  <p><b>Tel:</b> {f.phone}</p>
-                </div>
-              } title="Detalles del Padre">
-                <Text style={{ fontSize: 12 }}>{`${f.firstName} ${f.lastName}`}</Text>
-              </Popover>
-            );
-          }
+          title: <Text strong style={{ color: '#1890ff' }}>Padre</Text>,
+          children: [
+            {
+              title: 'Cédula',
+              width: 130,
+              render: (_, record, idx) => (
+                <Input
+                  id={`nav-${idx}-fDoc`}
+                  value={record.tempData.father?.document}
+                  placeholder="Doc..."
+                  onKeyDown={e => handleKeyDown(e, idx, 'fDoc')}
+                  onChange={e => handleUpdateNested(record.id, 'father', 'document', e.target.value)}
+                />
+              )
+            },
+            {
+              title: 'Nombres',
+              width: 140,
+              render: (_, record, idx) => (
+                <Input
+                  id={`nav-${idx}-fFirstName`}
+                  value={record.tempData.father?.firstName}
+                  onKeyDown={e => handleKeyDown(e, idx, 'fFirstName')}
+                  onChange={e => handleUpdateNested(record.id, 'father', 'firstName', e.target.value)}
+                />
+              )
+            },
+            {
+              title: 'Apellidos',
+              width: 140,
+              render: (_, record, idx) => (
+                <Input
+                  id={`nav-${idx}-fLastName`}
+                  value={record.tempData.father?.lastName}
+                  onKeyDown={e => handleKeyDown(e, idx, 'fLastName')}
+                  onChange={e => handleUpdateNested(record.id, 'father', 'lastName', e.target.value)}
+                />
+              )
+            },
+            {
+              title: 'Teléfono',
+              width: 130,
+              render: (_, record, idx) => (
+                <Input
+                  id={`nav-${idx}-fPhone`}
+                  value={record.tempData.father?.phone}
+                  onKeyDown={e => handleKeyDown(e, idx, 'fPhone')}
+                  onChange={e => handleUpdateNested(record.id, 'father', 'phone', e.target.value)}
+                />
+              )
+            },
+          ]
         },
         {
           title: 'Representante',
-          width: 160,
-          ellipsis: true,
-          render: (_, record) => {
-            const r = record.tempData.representative;
-            const type = record.tempData.representativeType;
-            if (!r?.firstName && !type) return <Text type="danger" style={{ fontSize: 11 }}>No asignado</Text>;
-
-            // If it's mother or father, we show that link
-            let displayName = `${r?.firstName || ''} ${r?.lastName || ''}`.trim();
-            if (!displayName && type) displayName = type === 'mother' ? 'Mismo de Madre' : 'Mismo de Padre';
-
-            return (
-              <Space>
-                <Badge status={r?.firstName ? 'success' : 'warning'} />
-                <Text style={{ fontSize: 12 }}>{displayName}</Text>
-              </Space>
-            );
-          }
+          children: [
+            {
+              title: 'Asignar',
+              width: 140,
+              render: (_, record, idx) => (
+                <Select
+                  id={`nav-${idx}-repType`}
+                  value={record.tempData.representativeType}
+                  style={{ width: '100%' }}
+                  onInputKeyDown={e => handleKeyDown(e as any, idx, 'repType')}
+                  onChange={v => handleUpdateRow(record.id, 'representativeType', v)}
+                >
+                  <Option value="mother">Madre</Option>
+                  <Option value="father">Padre</Option>
+                  <Option value="other">Otro</Option>
+                </Select>
+              )
+            },
+          ]
         }
       ]
     },
@@ -489,23 +604,66 @@ const MatriculationEnrollment: React.FC = () => {
   return (
     <div style={{ padding: 16, background: '#f5f7fa', minHeight: '100vh' }}>
       <Card bordered={false} bodyStyle={{ padding: '12px 24px' }} style={{ marginBottom: 12 }}>
-        <Row justify="space-between" align="middle">
-          <Col span={12}>
+        <Row justify="space-between" align="middle" gutter={[16, 16]}>
+          <Col xs={24} lg={8}>
             <Title level={4} style={{ margin: 0 }}>Panel de Matriculación Masiva</Title>
-            <Text type="secondary" style={{ fontSize: 13 }}>Gestione y complete las inscripciones directamente en la cuadrícula</Text>
+            <Text type="secondary" style={{ fontSize: 13 }}>Gestione las inscripciones directamente en la cuadrícula</Text>
           </Col>
-          <Col span={12} style={{ textAlign: 'right' }}>
-            <Space size="middle">
-              <Input
-                placeholder="Filtrar por nombre o identificación..."
-                prefix={<SearchOutlined />}
-                style={{ width: 340 }}
-                value={searchValue}
-                onChange={e => setSearchValue(e.target.value)}
-                allowClear
-              />
-              <Button icon={<ReloadOutlined />} onClick={fetchData} loading={loading}>Actualizar</Button>
-            </Space>
+          <Col xs={24} lg={16}>
+            <Row gutter={[8, 8]} justify="end">
+              <Col>
+                <Select
+                  placeholder="Filtrar Grado"
+                  style={{ width: 160 }}
+                  allowClear
+                  value={filterGrade}
+                  onChange={v => { setFilterGrade(v); setFilterSection(null); }}
+                >
+                  {structure.map(s => <Option key={s.gradeId} value={s.gradeId}>{s.grade?.name}</Option>)}
+                </Select>
+              </Col>
+              <Col>
+                <Select
+                  placeholder="Sección"
+                  style={{ width: 110 }}
+                  allowClear
+                  value={filterSection}
+                  disabled={!filterGrade}
+                  onChange={setFilterSection}
+                >
+                  {structure.find(s => s.gradeId === filterGrade)?.sections?.map(sec => (
+                    <Option key={sec.id} value={sec.id}>{sec.name}</Option>
+                  ))}
+                </Select>
+              </Col>
+              <Col>
+                <Select
+                  placeholder="Datos Faltantes"
+                  style={{ width: 160 }}
+                  allowClear
+                  value={filterMissing}
+                  onChange={setFilterMissing}
+                >
+                  <Option value="guardians">Sin Representantes</Option>
+                  <Option value="contact">Sin Teléfono</Option>
+                  <Option value="questions">Preguntas Pendientes</Option>
+                  <Option value="all">Cualquier Dato Faltante</Option>
+                </Select>
+              </Col>
+              <Col>
+                <Input
+                  placeholder="Buscar Estudiante..."
+                  prefix={<SearchOutlined />}
+                  style={{ width: 220 }}
+                  value={searchValue}
+                  onChange={e => setSearchValue(e.target.value)}
+                  allowClear
+                />
+              </Col>
+              <Col>
+                <Button icon={<ReloadOutlined />} onClick={fetchData} loading={loading}>Actualizar</Button>
+              </Col>
+            </Row>
           </Col>
         </Row>
       </Card>
@@ -537,6 +695,27 @@ const MatriculationEnrollment: React.FC = () => {
                   </Select>
                 </Space>
 
+                <Space>
+                  <Text style={{ fontSize: 13 }}>Materias de Grupo:</Text>
+                  <Select
+                    mode="multiple"
+                    placeholder="Asignar Materias"
+                    style={{ width: 250 }}
+                    maxTagCount="responsive"
+                    onChange={v => handleBulkUpdate('subjectIds', v)}
+                  >
+                    {Array.from(new Map(structure.flatMap(s => s.subjects || [])
+                      .filter(sub => sub.subjectGroupId)
+                      .map(sub => [sub.id, sub])).values())
+                      .map(sub => (
+                        <Option key={sub.id} value={sub.id}>
+                          {sub.name} <Tag color="blue" style={{ fontSize: 9 }}>{sub.subjectGroup?.name}</Tag>
+                        </Option>
+                      ))
+                    }
+                  </Select>
+                </Space>
+
                 <Button type="primary" icon={<TeamOutlined />} onClick={handleBulkEnroll}>Inscribir Selección</Button>
               </Space>
             </Col>
@@ -550,9 +729,28 @@ const MatriculationEnrollment: React.FC = () => {
       <Table
         rowKey="id"
         columns={columns}
-        dataSource={matriculations.filter(r =>
-          `${r.student.firstName} ${r.student.lastName} ${r.student.document}`.toLowerCase().includes(searchValue.toLowerCase())
-        )}
+        dataSource={matriculations.filter(r => {
+          const searchLower = searchValue.toLowerCase();
+          const matchSearch = !searchValue ||
+            `${r.student.firstName} ${r.student.lastName} ${r.student.document}`.toLowerCase().includes(searchLower);
+
+          const matchGrade = !filterGrade || r.gradeId === filterGrade;
+          const matchSection = !filterSection || r.sectionId === filterSection;
+
+          let matchMissing = true;
+          if (filterMissing) {
+            const hasNoGuardians = !r.tempData.mother?.document || !r.tempData.father?.document;
+            const hasNoContact = !r.tempData.phone1;
+            const hasNoQuestions = questions.some(q => !r.tempData.enrollmentAnswers?.[q.id]);
+
+            if (filterMissing === 'guardians') matchMissing = hasNoGuardians;
+            else if (filterMissing === 'contact') matchMissing = hasNoContact;
+            else if (filterMissing === 'questions') matchMissing = hasNoQuestions;
+            else if (filterMissing === 'all') matchMissing = hasNoGuardians || hasNoContact || hasNoQuestions;
+          }
+
+          return matchSearch && matchGrade && matchSection && matchMissing;
+        })}
         loading={loading}
         pagination={{ pageSize: 50, showSizeChanger: true, showTotal: (total) => `Total ${total} estudiantes` }}
         scroll={{ x: 1800, y: 'calc(100vh - 260px)' }}
