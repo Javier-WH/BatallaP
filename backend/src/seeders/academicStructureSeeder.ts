@@ -84,7 +84,7 @@ const GRADE_SUBJECTS: Record<number, string[]> = {
 const ensureSectionsForGrade = async (grade: Grade, transaction: Transaction) => {
   const sectionRecords: Section[] = [];
   for (const suffix of SECTION_SUFFIXES) {
-    const name = `${grade.name} - Sección ${suffix}`;
+    const name = `Sección ${suffix}`;
     const [section] = await Section.findOrCreate({
       where: { name },
       defaults: { name },

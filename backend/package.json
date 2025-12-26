@@ -13,7 +13,9 @@
     "db:sync": "npm run db:sync-only && npm run seed",
     "seed:academic-structure": "ts-node -r tsconfig-paths/register src/seeders/academicStructureSeeder.ts",
     "seed:bulk-inscriptions": "ts-node -r tsconfig-paths/register src/seeders/bulkMatriculationsSeeder.ts",
-    "seed:subject-groups": "ts-node -r tsconfig-paths/register src/seeders/subjectGroupsSeeder.ts"
+    "seed:subject-groups": "ts-node -r tsconfig-paths/register src/seeders/subjectGroupsSeeder.ts",
+    "seed:unregistered": "ts-node -r tsconfig-paths/register src/seeders/unregisteredStudentsSeeder.ts --count=100",
+    "seed:full-reset": "npm run db:sync-only && npm run seed && npm run seed:academic-structure && npm run seed:subject-groups && ts-node -r tsconfig-paths/register src/seeders/bulkMatriculationsSeeder.ts --count=300 && npm run seed:unregistered"
   },
   "keywords": [],
   "author": "",
