@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { Op, Transaction } from 'sequelize';
-import { Inscription, Person, Role, Subject, PeriodGrade, InscriptionSubject, SchoolPeriod, Grade, Section, Contact, PersonRole, PersonResidence, StudentGuardian, Matriculation, GuardianProfile } from '../models';
+import { Inscription, Person, Role, Subject, PeriodGrade, InscriptionSubject, SchoolPeriod, Grade, Section, Contact, PersonRole, PersonResidence, StudentGuardian, Matriculation, GuardianProfile, StudentPreviousSchool, Plantel } from '../models';
 import sequelize from '../config/database';
 import { saveEnrollmentAnswers } from '@/services/enrollmentAnswerService';
 import { GuardianDocumentType } from '@/models/GuardianProfile';
@@ -215,7 +215,8 @@ export const getMatriculationById = async (req: Request, res: Response) => {
           include: [
             { model: Contact, as: 'contact' },
             { model: PersonResidence, as: 'residence' },
-            { model: StudentGuardian, as: 'guardians' }
+            { model: StudentGuardian, as: 'guardians' },
+            { model: StudentPreviousSchool, as: 'previousSchools' }
           ]
         },
         { model: SchoolPeriod, as: 'period' },
@@ -260,6 +261,7 @@ export const enrollMatriculatedStudent = async (req: Request, res: Response) => 
       phone2,
       email,
       whatsapp,
+      previousSchoolIds,
       gradeId,
       sectionId,
       schoolPeriodId,
@@ -313,6 +315,34 @@ export const enrollMatriculatedStudent = async (req: Request, res: Response) => 
         await existingContact.update(contactPayload, { transaction: t });
       } else {
         await Contact.create(contactPayload, { transaction: t });
+      }
+    }
+
+    // Previous Schools
+    if (Array.isArray(previousSchoolIds)) {
+      // 1. Clear old
+      await StudentPreviousSchool.destroy({ where: { personId: person.id }, transaction: t });
+      // 2. Map and add new
+      const schoolRecords = [];
+      for (const item of previousSchoolIds) {
+        // Find plantel to get details
+        const plantel = await Plantel.findOne({
+          where: {
+            [Op.or]: [{ code: item }, { name: item }]
+          },
+          transaction: t
+        });
+
+        schoolRecords.push({
+          personId: person.id,
+          plantelCode: plantel?.code || (typeof item === 'string' ? item : null),
+          plantelName: plantel?.name || (typeof item === 'string' ? item : 'Desconocido'),
+          state: plantel?.state || null,
+          dependency: plantel?.dependency || null
+        });
+      }
+      if (schoolRecords.length > 0) {
+        await StudentPreviousSchool.bulkCreate(schoolRecords, { transaction: t });
       }
     }
 
@@ -422,7 +452,7 @@ export const enrollMatriculatedStudent = async (req: Request, res: Response) => 
 
     if (periodGrade?.subjects?.length) {
       console.log(`[Enrollment] Processing ${periodGrade.subjects.length} subjects for grade ${targetGradeId}`);
-      
+
       // Filter out subjects that belong to a group (subjectGroupId is not null)
       const subjectsToAdd = periodGrade.subjects
         .filter((s: any) => {
@@ -436,7 +466,7 @@ export const enrollMatriculatedStudent = async (req: Request, res: Response) => 
           inscriptionId: inscription.id,
           subjectId: s.id
         }));
-      
+
       console.log(`[Enrollment] Enrolling in ${subjectsToAdd.length} subjects`);
 
       if (subjectsToAdd.length > 0) {
@@ -575,57 +605,27 @@ export const createInscription = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'El estudiante ya está inscrito en este periodo escolar' });
     }
 
-    // 3. Create Inscription
+    // 3. Create Matriculation (PENDING)
     if (Array.isArray(enrollmentAnswers)) {
       await saveEnrollmentAnswers(personId, enrollmentAnswers, { transaction: t });
     }
 
-    const inscription = await Inscription.create({
+    const matriculation = await Matriculation.create({
       schoolPeriodId,
       gradeId,
       sectionId: sectionId || null,
-      personId
+      personId,
+      status: 'pending'
     }, { transaction: t });
-
-    // 4. Auto-assign subjects from PeriodGrade structure
-    const periodGrade = await PeriodGrade.findOne({
-      where: { schoolPeriodId, gradeId },
-      include: [{ model: Subject, as: 'subjects' }],
-      transaction: t
-    });
-
-    if (periodGrade && periodGrade.subjects && periodGrade.subjects.length > 0) {
-      console.log(`[CreateInscription] Processing ${periodGrade.subjects.length} subjects for grade ${gradeId}`);
-
-      // Filter out subjects that belong to a group
-      const subjectsToAdd = periodGrade.subjects
-        .filter((s: any) => {
-          const hasGroup = s.subjectGroupId !== null && s.subjectGroupId !== undefined;
-          if (hasGroup) {
-            console.log(`[CreateInscription] Skipping subject ${s.name} (ID: ${s.id}) because it belongs to group ${s.subjectGroupId}`);
-          }
-          return !hasGroup;
-        })
-        .map((s: any) => ({
-          inscriptionId: inscription.id,
-          subjectId: s.id
-        }));
-
-      console.log(`[CreateInscription] Enrolling in ${subjectsToAdd.length} subjects`);
-
-      if (subjectsToAdd.length > 0) {
-        await InscriptionSubject.bulkCreate(subjectsToAdd, { transaction: t });
-      }
-    }
 
     await t.commit();
 
-    // Refetch to return full data
-    const result = await Inscription.findByPk(inscription.id, {
-      include: [{ model: Subject, as: 'subjects' }]
+    res.status(201).json({
+      message: 'Solicitud de inscripción registrada exitosamente',
+      matriculation
     });
 
-    res.status(201).json(result);
+
   } catch (error: any) {
     await t.rollback();
     res.status(500).json({ error: 'Error al inscribir', details: error.message || error });
@@ -685,9 +685,9 @@ export const updateInscription = async (req: Request, res: Response) => {
             inscriptionId: inscription.id,
             subjectId: s.id
           }));
-          
+
         console.log(`[UpdateInscription] Enrolling in ${subjectsToAdd.length} subjects`);
-        
+
         if (subjectsToAdd.length > 0) {
           await InscriptionSubject.bulkCreate(subjectsToAdd, { transaction: t });
         }
@@ -785,6 +785,7 @@ export const registerAndEnroll = async (req: Request, res: Response) => {
       email,
       address,
       whatsapp,
+      previousSchoolIds,
       // Enrollment data
       schoolPeriodId,
       gradeId,
@@ -849,6 +850,27 @@ export const registerAndEnroll = async (req: Request, res: Response) => {
       residenceParish
     }, { transaction: t });
 
+    // 3.5. Previous Schools
+    if (Array.isArray(previousSchoolIds)) {
+      const schoolRecords = [];
+      for (const item of previousSchoolIds) {
+        const plantel = await Plantel.findOne({
+          where: { [Op.or]: [{ code: item }, { name: item }] },
+          transaction: t
+        });
+        schoolRecords.push({
+          personId: person.id,
+          plantelCode: plantel?.code || (typeof item === 'string' ? item : null),
+          plantelName: plantel?.name || (typeof item === 'string' ? item : 'Desconocido'),
+          state: plantel?.state || null,
+          dependency: plantel?.dependency || null
+        });
+      }
+      if (schoolRecords.length > 0) {
+        await StudentPreviousSchool.bulkCreate(schoolRecords, { transaction: t });
+      }
+    }
+
     // 4. Create guardians
     const assignments: GuardianAssignment[] = [];
 
@@ -891,51 +913,26 @@ export const registerAndEnroll = async (req: Request, res: Response) => {
     }
     await PersonRole.create({ personId: person.id, roleId: role.id }, { transaction: t });
 
-    // 5. Create Inscription
-    const inscription = await Inscription.create({
+    // 5. Create Matriculation (PENDING)
+    const matriculation = await Matriculation.create({
       schoolPeriodId,
       gradeId,
       sectionId: sectionId || null,
-      personId: person.id
+      personId: person.id,
+      status: 'pending'
     }, { transaction: t });
 
-    // 6. Auto-assign subjects from PeriodGrade structure
-    const periodGrade = await PeriodGrade.findOne({
-      where: { schoolPeriodId, gradeId },
-      include: [{ model: Subject, as: 'subjects' }],
-      transaction: t
-    });
-
-    if (periodGrade && periodGrade.subjects && periodGrade.subjects.length > 0) {
-      console.log(`[RegisterAndEnroll] Processing ${periodGrade.subjects.length} subjects for grade ${gradeId}`);
-
-      // Filter out subjects that belong to a group
-      const subjectsToAdd = periodGrade.subjects
-        .filter((s: any) => {
-          const hasGroup = s.subjectGroupId !== null && s.subjectGroupId !== undefined;
-          if (hasGroup) {
-            console.log(`[RegisterAndEnroll] Skipping subject ${s.name} (ID: ${s.id}) because it belongs to group ${s.subjectGroupId}`);
-          }
-          return !hasGroup;
-        })
-        .map((s: any) => ({
-          inscriptionId: inscription.id,
-          subjectId: s.id
-        }));
-
-      console.log(`[RegisterAndEnroll] Enrolling in ${subjectsToAdd.length} subjects`);
-
-      if (subjectsToAdd.length > 0) {
-        await InscriptionSubject.bulkCreate(subjectsToAdd, { transaction: t });
-      }
+    // 6. Enrollment Answers (moved here to be consistent)
+    if (Array.isArray(enrollmentAnswers)) {
+      await saveEnrollmentAnswers(person.id, enrollmentAnswers, { transaction: t });
     }
 
     await t.commit();
 
     res.status(201).json({
-      message: 'Estudiante registrado e inscrito exitosamente',
+      message: 'Solicitud de inscripción registrada exitosamente',
       person,
-      inscription
+      matriculation
     });
   } catch (error: any) {
     await t.rollback();

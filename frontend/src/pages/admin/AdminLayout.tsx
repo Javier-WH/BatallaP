@@ -31,13 +31,13 @@ const AdminLayout: React.FC = () => {
             </Button>
           </Tooltip>
 
-          <Tooltip title="Matricular Estudiante (datos básicos)">
+          <Tooltip title="Inscribir Estudiante (solicitud de ingreso)">
             <Button
-              type={isActive('/admin/matricular-estudiante') ? 'primary' : 'text'}
+              type={isActive('/admin/inscribir-estudiante') ? 'primary' : 'text'}
               icon={<UserAddOutlined />}
-              onClick={() => navigate('/admin/matricular-estudiante')}
+              onClick={() => navigate('/admin/inscribir-estudiante')}
             >
-              Matricular Estudiante
+              Inscribir Estudiante
             </Button>
           </Tooltip>
 

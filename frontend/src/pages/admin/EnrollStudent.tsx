@@ -197,7 +197,7 @@ const EnrollStudent: React.FC = () => {
   const [newStudentForm] = Form.useForm();
   const [existingStudentForm] = Form.useForm();
   const [guardianLookupLoading, setGuardianLookupLoading] = useState<GuardianKey | null>(null);
-  const [guardianLookupCache, setGuardianLookupCache] = useState<Record<GuardianKey, string>>({
+  const guardianLookupCache = React.useRef<Record<GuardianKey, string>>({
     mother: '',
     father: '',
     representative: ''
@@ -246,11 +246,15 @@ const EnrollStudent: React.FC = () => {
   const handleGuardianLookup = useCallback(
     async (guardianKey: GuardianKey, documentType?: GuardianDocumentType, document?: string) => {
       const cacheKey = buildGuardianCacheKey(documentType, document);
+
+      // If no document info, clear cache entry and stop
       if (!cacheKey) {
-        setGuardianLookupCache((prev) => ({ ...prev, [guardianKey]: '' }));
+        guardianLookupCache.current[guardianKey] = '';
         return;
       }
-      if (guardianLookupCache[guardianKey] === cacheKey) {
+
+      // Stop if searching for the same thing
+      if (guardianLookupCache.current[guardianKey] === cacheKey) {
         return;
       }
 
@@ -267,9 +271,10 @@ const EnrollStudent: React.FC = () => {
           });
           message.success(`Datos de ${guardianLabels[guardianKey]} encontrados.`);
         } else {
-          message.info(`No se encontró registro previo para ${guardianLabels[guardianKey]}.`);
+          // message.info(`No se encontró registro previo para ${guardianLabels[guardianKey]}.`);
         }
-        setGuardianLookupCache((prev) => ({ ...prev, [guardianKey]: cacheKey }));
+        // Update cache AFTER successful lookup or if not found (to avoid repeated "not found" messages)
+        guardianLookupCache.current[guardianKey] = cacheKey;
       } catch (error) {
         console.error('Error buscando representante:', error);
         message.error(`No se pudieron cargar los datos de ${guardianLabels[guardianKey]}`);
@@ -277,19 +282,34 @@ const EnrollStudent: React.FC = () => {
         setGuardianLookupLoading(null);
       }
     },
-    [guardianLookupCache, newStudentForm]
+    [newStudentForm]
   );
 
   useEffect(() => {
-    handleGuardianLookup('mother', motherDocumentTypeValue, motherDocumentValue);
+    if (motherDocumentTypeValue && motherDocumentValue && motherDocumentValue.length >= 6) {
+      const timeoutId = setTimeout(() => {
+        handleGuardianLookup('mother', motherDocumentTypeValue, motherDocumentValue);
+      }, 500);
+      return () => clearTimeout(timeoutId);
+    }
   }, [motherDocumentTypeValue, motherDocumentValue, handleGuardianLookup]);
 
   useEffect(() => {
-    handleGuardianLookup('father', fatherDocumentTypeValue, fatherDocumentValue);
+    if (fatherDocumentTypeValue && fatherDocumentValue && fatherDocumentValue.length >= 6) {
+      const timeoutId = setTimeout(() => {
+        handleGuardianLookup('father', fatherDocumentTypeValue, fatherDocumentValue);
+      }, 500);
+      return () => clearTimeout(timeoutId);
+    }
   }, [fatherDocumentTypeValue, fatherDocumentValue, handleGuardianLookup]);
 
   useEffect(() => {
-    handleGuardianLookup('representative', representativeDocumentTypeValue, representativeDocumentValue);
+    if (representativeDocumentTypeValue && representativeDocumentValue && representativeDocumentValue.length >= 6) {
+      const timeoutId = setTimeout(() => {
+        handleGuardianLookup('representative', representativeDocumentTypeValue, representativeDocumentValue);
+      }, 500);
+      return () => clearTimeout(timeoutId);
+    }
   }, [representativeDocumentTypeValue, representativeDocumentValue, handleGuardianLookup]);
 
   const renderGuardianDocumentControls = (guardianKey: GuardianKey, required: boolean) => (
@@ -571,7 +591,7 @@ const EnrollStudent: React.FC = () => {
 
       await api.post('/inscriptions/register', payload);
 
-      message.success('Estudiante registrado e inscrito exitosamente');
+      message.success('Solicitud de inscripción registrada exitosamente');
       newStudentForm.resetFields();
       setSelectedGradeId(null);
     } catch (error: unknown) {
@@ -594,7 +614,7 @@ const EnrollStudent: React.FC = () => {
         schoolPeriodId: activePeriod.id,
         enrollmentAnswers: transformAnswers(values.enrollmentAnswers as EnrollmentAnswerFormValues | undefined)
       });
-      message.success('Estudiante inscrito correctamente');
+      message.success('Solicitud de inscripción registrada exitosamente');
       existingStudentForm.resetFields();
       setSelectedGradeIdExisting(null);
     } catch (error: unknown) {
@@ -857,27 +877,20 @@ const EnrollStudent: React.FC = () => {
 
               <div style={{ marginBottom: 24 }}>
                 <h4 style={{ color: '#666', borderBottom: '1px solid #eee', paddingBottom: 8 }}>4.5. Procedencia Escolar (Opcional)</h4>
-                <Form.Item name="previousSchool" label="Plantel anterior">
+                <Form.Item name="previousSchoolIds" label="Planteles anteriores">
                   <Select
-                    showSearch
-                    placeholder="Escriba para buscar planteles..."
+                    mode="multiple"
+                    placeholder="Escriba para buscar y seleccionar planteles..."
                     filterOption={false}
                     onSearch={searchSchools}
                     loading={loadingSchools}
                     options={schoolOptions}
                     allowClear
-                    notFoundContent={
-                      loadingSchools
-                        ? <div style={{ padding: 8 }}>Buscando planteles...</div>
-                        : schoolOptions.length === 0
-                          ? <div style={{ padding: 8, color: '#999' }}>Escriba al menos 2 caracteres para buscar</div>
-                          : null
-                    }
                   />
                 </Form.Item>
               </div>
 
-              <div>
+              <div style={{ marginBottom: 24 }}>
                 <h4 style={{ color: '#666', borderBottom: '1px solid #eee', paddingBottom: 8 }}>5. Datos de Contacto</h4>
                 <Row gutter={16}>
                   <Col span={24}>
@@ -887,6 +900,16 @@ const EnrollStudent: React.FC = () => {
                   </Col>
                   <Col span={12}>
                     <Form.Item name="phone1" label="Teléfono Principal">
+                      <Input />
+                    </Form.Item>
+                  </Col>
+                  <Col span={12}>
+                    <Form.Item name="phone2" label="Teléfono Secundario">
+                      <Input />
+                    </Form.Item>
+                  </Col>
+                  <Col span={12}>
+                    <Form.Item name="whatsapp" label="WhatsApp">
                       <Input />
                     </Form.Item>
                   </Col>
@@ -1280,7 +1303,7 @@ const EnrollStudent: React.FC = () => {
 
               <Form.Item style={{ marginTop: 24 }}>
                 <Button type="primary" htmlType="submit" block size="large" icon={<UserAddOutlined />}>
-                  Registrar e Inscribir Estudiante
+                  Inscribir Estudiante
                 </Button>
                 <div style={{ marginTop: 8, color: '#888', fontSize: 12, textAlign: 'center' }}>
                   * Los estudiantes no requieren usuario y contraseña
@@ -1385,7 +1408,7 @@ const EnrollStudent: React.FC = () => {
           </TabPane>
         </Tabs>
       </Card>
-    </div>
+    </div >
   );
 };
 

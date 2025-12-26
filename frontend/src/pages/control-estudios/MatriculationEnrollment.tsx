@@ -200,9 +200,9 @@ const buildMunicipalityOptions = (
   const selected = locations.find((state) => state.estado === stateName);
   return selected
     ? selected.municipios.map((municipio) => ({
-        label: municipio.municipio,
-        value: municipio.municipio
-      }))
+      label: municipio.municipio,
+      value: municipio.municipio
+    }))
     : [];
 };
 
@@ -323,18 +323,18 @@ const MatriculationEnrollment: React.FC = () => {
     try {
       const response = await api.post('/planteles', schoolData);
       const newSchool = response.data;
-      
+
       // Add the new school to the current options
       const newOption = {
         label: `${newSchool.name} (${newSchool.code})`,
         value: newSchool.code || newSchool.name
       };
-      
+
       setSchoolOptions(prev => [...prev, newOption]);
       setShowAddSchool(false);
-      
+
       message.success('Plantel agregado exitosamente');
-      
+
       // Optionally, you could refresh the search or clear the current search
       // setCurrentSearchQuery('');
     } catch (error) {
@@ -345,7 +345,7 @@ const MatriculationEnrollment: React.FC = () => {
 
   const searchSchools = async (query: string) => {
     setCurrentSearchQuery(query);
-    
+
     if (!query || query.length < 2) {
       setSchoolOptions([]);
       setShowAddSchool(false);
@@ -359,7 +359,7 @@ const MatriculationEnrollment: React.FC = () => {
         label: `${school.name} (${school.code})`,
         value: school.code || school.name
       }));
-      
+
       setSchoolOptions(options);
       // Don't automatically show modal - let user click button
     } catch (error) {
@@ -380,16 +380,16 @@ const MatriculationEnrollment: React.FC = () => {
 
     setGuardianSearchLoading(prev => ({ ...prev, [guardianKey]: true }));
     setGuardianSearchStatus(prev => ({ ...prev, [guardianKey]: 'loading' }));
-    
+
     try {
       const response = await api.get('/guardians/search', {
         params: { documentType, document }
       });
-      
+
       if (response.data) {
         setGuardianSearchResults(prev => ({ ...prev, [guardianKey]: response.data }));
         setGuardianSearchStatus(prev => ({ ...prev, [guardianKey]: 'found' }));
-        
+
         // Auto-fill form with found guardian data
         const guardian = response.data;
         form.setFieldsValue({
@@ -414,8 +414,7 @@ const MatriculationEnrollment: React.FC = () => {
         if (err.response?.status === 404) {
           setGuardianSearchResults(prev => ({ ...prev, [guardianKey]: null }));
           setGuardianSearchStatus(prev => ({ ...prev, [guardianKey]: 'not_found' }));
-          
-          // Clear form fields if guardian not found
+          // message.info('Representante no registrado...');
           const currentValues = form.getFieldValue(guardianKey) || {};
           form.setFieldsValue({
             [guardianKey]: {
@@ -527,46 +526,47 @@ const MatriculationEnrollment: React.FC = () => {
           representativeType,
           mother: mother
             ? {
-                firstName: mother.firstName,
-                lastName: mother.lastName,
-                documentType: mother.documentType || 'Venezolano',
-                document: mother.document,
-                phone: mother.phone,
-                email: mother.email,
-                residenceState: mother.residenceState,
-                residenceMunicipality: mother.residenceMunicipality,
-                residenceParish: mother.residenceParish,
-                address: mother.address
-              }
+              firstName: mother.firstName,
+              lastName: mother.lastName,
+              documentType: mother.documentType || 'Venezolano',
+              document: mother.document,
+              phone: mother.phone,
+              email: mother.email,
+              residenceState: mother.residenceState,
+              residenceMunicipality: mother.residenceMunicipality,
+              residenceParish: mother.residenceParish,
+              address: mother.address
+            }
             : { documentType: 'Venezolano' },
           father: father
             ? {
-                firstName: father.firstName,
-                lastName: father.lastName,
-                documentType: father.documentType || 'Venezolano',
-                document: father.document,
-                phone: father.phone,
-                email: father.email,
-                residenceState: father.residenceState,
-                residenceMunicipality: father.residenceMunicipality,
-                residenceParish: father.residenceParish,
-                address: father.address
-              }
+              firstName: father.firstName,
+              lastName: father.lastName,
+              documentType: father.documentType || 'Venezolano',
+              document: father.document,
+              phone: father.phone,
+              email: father.email,
+              residenceState: father.residenceState,
+              residenceMunicipality: father.residenceMunicipality,
+              residenceParish: father.residenceParish,
+              address: father.address
+            }
             : { documentType: undefined },
           representative: representative
             ? {
-                firstName: representative.firstName,
-                lastName: representative.lastName,
-                documentType: representative.documentType || 'Venezolano',
-                document: representative.document,
-                phone: representative.phone,
-                email: representative.email,
-                residenceState: representative.residenceState,
-                residenceMunicipality: representative.residenceMunicipality,
-                residenceParish: representative.residenceParish,
-                address: representative.address
-              }
-            : { documentType: 'Venezolano' }
+              firstName: representative.firstName,
+              lastName: representative.lastName,
+              documentType: representative.documentType || 'Venezolano',
+              document: representative.document,
+              phone: representative.phone,
+              email: representative.email,
+              residenceState: representative.residenceState,
+              residenceMunicipality: representative.residenceMunicipality,
+              residenceParish: representative.residenceParish,
+              address: representative.address
+            }
+            : { documentType: 'Venezolano' },
+          previousSchoolIds: data.student.previousSchools?.map((s: any) => s.plantelCode || s.plantelName) || [],
         });
 
         await loadEnrollmentQuestions(data.student.id);
@@ -587,7 +587,7 @@ const MatriculationEnrollment: React.FC = () => {
 
   // Auto-search guardians when document fields change
   useEffect(() => {
-    if (motherDocumentType && motherDocument) {
+    if (motherDocumentType && motherDocument && motherDocument.length >= 6) {
       const timeoutId = setTimeout(() => {
         searchGuardian('mother', motherDocumentType, motherDocument);
       }, 500); // Debounce 500ms
@@ -596,7 +596,7 @@ const MatriculationEnrollment: React.FC = () => {
   }, [motherDocumentType, motherDocument, searchGuardian]);
 
   useEffect(() => {
-    if (fatherDocumentType && fatherDocument) {
+    if (fatherDocumentType && fatherDocument && fatherDocument.length >= 6) {
       const timeoutId = setTimeout(() => {
         searchGuardian('father', fatherDocumentType, fatherDocument);
       }, 500); // Debounce 500ms
@@ -605,7 +605,7 @@ const MatriculationEnrollment: React.FC = () => {
   }, [fatherDocumentType, fatherDocument, searchGuardian]);
 
   useEffect(() => {
-    if (representativeDocumentType && representativeDocument) {
+    if (representativeDocumentType && representativeDocument && representativeDocument.length >= 6) {
       const timeoutId = setTimeout(() => {
         searchGuardian('representative', representativeDocumentType, representativeDocument);
       }, 500); // Debounce 500ms
@@ -713,7 +713,7 @@ const MatriculationEnrollment: React.FC = () => {
   const renderGuardianDocumentControls = (guardianKey: GuardianRelationship, required: boolean) => {
     const isLoading = guardianSearchLoading[guardianKey];
     const searchResult = guardianSearchResults[guardianKey];
-    
+
     return (
       <Row gutter={16}>
         <Col span={8}>
@@ -739,8 +739,8 @@ const MatriculationEnrollment: React.FC = () => {
               required ? [{ required: true, message: `Ingrese la cédula de ${guardianLabels[guardianKey]}` }] : []
             }
           >
-            <Input 
-              placeholder="Número de cédula" 
+            <Input
+              placeholder="Número de cédula"
               suffix={isLoading ? <Spin size="small" /> : searchResult ? <UserAddOutlined style={{ color: '#52c41a' }} /> : <SearchOutlined style={{ color: '#bfbfbf' }} />}
             />
           </Form.Item>
@@ -821,9 +821,9 @@ const MatriculationEnrollment: React.FC = () => {
               rules={
                 required
                   ? [
-                      { required: true, message: `Ingrese el email de ${guardianLabels[guardianKey]}` },
-                      { type: 'email', message: 'Email inválido' }
-                    ]
+                    { required: true, message: `Ingrese el email de ${guardianLabels[guardianKey]}` },
+                    { type: 'email', message: 'Email inválido' }
+                  ]
                   : [{ type: 'email', message: 'Email inválido' }]
               }
             >
@@ -965,7 +965,7 @@ const MatriculationEnrollment: React.FC = () => {
       <Card variant="borderless" style={{ height: '100%' }}>
         <div style={{ marginBottom: 12 }}>
           <Text style={{ fontSize: 13, fontWeight: 600, letterSpacing: 0.4, color: '#4a4a4a', textTransform: 'uppercase' }}>
-            Estudiantes Matriculados
+            Estudiantes por Matricular
           </Text>
         </div>
         <Space style={{ marginBottom: 16 }}>
@@ -1006,7 +1006,7 @@ const MatriculationEnrollment: React.FC = () => {
       </Card>
 
       <Card
-        title="Formulario de Inscripción"
+        title="Proceso de Matrícula"
         bordered={false}
         extra={
           detail ? (
@@ -1151,18 +1151,18 @@ const MatriculationEnrollment: React.FC = () => {
                           ? <div style={{ padding: 8 }}>Buscando planteles...</div>
                           : !schoolOptions.length && currentSearchQuery && currentSearchQuery.length >= 2
                             ? <div style={{ padding: 8 }}>
-                                <div style={{ marginBottom: 8, color: '#666' }}>
-                                  No se encontraron planteles con "{currentSearchQuery}"
-                                </div>
-                                <Button 
-                                  type="link" 
-                                  size="small"
-                                  onClick={() => setShowAddSchool(true)}
-                                  style={{ padding: 0 }}
-                                >
-                                  + Agregar nuevo plantel
-                                </Button>
+                              <div style={{ marginBottom: 8, color: '#666' }}>
+                                No se encontraron planteles con "{currentSearchQuery}"
                               </div>
+                              <Button
+                                type="link"
+                                size="small"
+                                onClick={() => setShowAddSchool(true)}
+                                style={{ padding: 0 }}
+                              >
+                                + Agregar nuevo plantel
+                              </Button>
+                            </div>
                             : <div style={{ padding: 8, color: '#999' }}>Escriba al menos 2 caracteres para buscar</div>
                       }
                     />
@@ -1386,7 +1386,7 @@ const MatriculationEnrollment: React.FC = () => {
                   size="large"
                   loading={submitting}
                 >
-                  Inscribir Estudiante
+                  Matricular Estudiante
                 </Button>
               </Space>
             </Form.Item>

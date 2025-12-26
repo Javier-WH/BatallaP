@@ -18,7 +18,7 @@ import AcademicManagement from '@/pages/master/AcademicManagement';
 import AdminLayout from '@/pages/admin/AdminLayout';
 import RegisterStaff from '@/pages/admin/RegisterStaff';
 import EnrollStudent from '@/pages/admin/EnrollStudent';
-import QuickEnrollStudent from '@/pages/admin/QuickEnrollStudent';
+
 import EnrolledStudents from '@/pages/admin/EnrolledStudents';
 import TeacherProjection from '@/pages/admin/TeacherProjection';
 import SchoolManagement from '@/pages/admin/SchoolManagement';
@@ -95,8 +95,7 @@ function AppRoutes() {
         <Route path="admin" element={<RequireAuth allowedRoles={['Administrador', 'Master']}><AdminLayout /></RequireAuth>}>
           <Route index element={<h1>Panel de Admin</h1>} /> {/* Placeholder dashboard */}
           <Route path="register-staff" element={<RegisterStaff />} />
-          <Route path="matricular-estudiante" element={<QuickEnrollStudent />} />
-          <Route path="enroll-student" element={<EnrollStudent />} />
+          <Route path="inscribir-estudiante" element={<EnrollStudent />} />
           <Route path="projection" element={<TeacherProjection />} />
           <Route path="academic" element={<AcademicManagement />} />
           <Route path="planteles" element={<SchoolManagement />} />
@@ -108,7 +107,7 @@ function AppRoutes() {
         {/* Nested Control de Estudios Module */}
         <Route path="control-estudios" element={<RequireAuth allowedRoles={['Control de Estudios', 'Administrador', 'Master']}><ControlEstudiosLayout /></RequireAuth>}>
           <Route index element={<ControlEstudiosDashboard />} />
-          <Route path="inscribir-estudiante" element={<MatriculationEnrollment />} />
+          <Route path="matricular-estudiante" element={<MatriculationEnrollment />} />
           <Route path="configuracion" element={<AcademicSettings />} />
           <Route path="consejos-curso" element={<CourseCouncil />} />
         </Route>

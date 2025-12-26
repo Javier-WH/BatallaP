@@ -31,13 +31,13 @@ const ControlEstudiosLayout: React.FC = () => {
               Panel
             </Button>
           </Tooltip>
-          <Tooltip title="Inscribir Estudiantes">
+          <Tooltip title="Matricular Estudiantes">
             <Button
-              type={matchesPath('/control-estudios/inscribir-estudiante') ? 'primary' : 'text'}
+              type={matchesPath('/control-estudios/matricular-estudiante') ? 'primary' : 'text'}
               icon={<UserAddOutlined />}
-              onClick={() => navigate('/control-estudios/inscribir-estudiante')}
+              onClick={() => navigate('/control-estudios/matricular-estudiante')}
             >
-              Inscripciones
+              Matricular
             </Button>
           </Tooltip>
           <Tooltip title="Configuración Académica">
