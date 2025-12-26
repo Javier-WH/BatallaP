@@ -36,11 +36,15 @@ const Login: React.FC = () => {
         <div className="glass-card p-10 space-y-8">
           <div className="text-center space-y-4">
             <div className="relative inline-block">
-              <div className="absolute -inset-1 bg-gradient-to-r from-brand-primary to-brand-secondary rounded-2xl blur opacity-25 group-hover:opacity-100 transition duration-1000 group-hover:duration-200"></div>
+              <div
+                className="absolute -inset-1 bg-gradient-to-r from-brand-primary to-brand-secondary blur opacity-25 group-hover:opacity-100 transition duration-1000 group-hover:duration-200"
+                style={{ borderRadius: settings.logoShape === 'circle' ? '50%' : '1rem' }}
+              ></div>
               <img
                 src={settings.logo}
                 alt="Logo"
-                className="relative w-24 h-24 mx-auto rounded-2xl object-contain bg-white p-2 shadow-inner border border-slate-100"
+                className="relative w-24 h-24 mx-auto object-contain bg-white p-2 shadow-inner border border-slate-100"
+                style={{ borderRadius: settings.logoShape === 'circle' ? '50%' : '1rem' }}
                 onError={(e) => {
                   (e.target as HTMLImageElement).src = 'https://cdn-icons-png.flaticon.com/512/2940/2940651.png'; // Fallback
                 }}

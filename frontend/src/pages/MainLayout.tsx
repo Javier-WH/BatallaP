@@ -100,11 +100,15 @@ const MainLayout: React.FC = () => {
         <div className="flex flex-col h-full overflow-hidden relative">
           {/* Institution Header */}
           <div className="p-6 flex items-center gap-3 border-b border-white/5 whitespace-nowrap overflow-hidden">
-            <div className="shrink-0 w-10 h-10 rounded-xl bg-white p-1 shadow-2xl shadow-blue-500/20 flex items-center justify-center overflow-hidden">
+            <div
+              className="shrink-0 w-10 h-10 bg-white p-1 shadow-2xl shadow-blue-500/20 flex items-center justify-center overflow-hidden"
+              style={{ borderRadius: settings.logoShape === 'circle' ? '50%' : '0.75rem' }}
+            >
               <img
                 src={settings.logo}
                 alt="Logo"
                 className="w-full h-full object-contain"
+                style={{ borderRadius: settings.logoShape === 'circle' ? '50%' : '0' }}
                 onError={(e) => {
                   (e.target as HTMLImageElement).src = 'https://cdn-icons-png.flaticon.com/512/2940/2940651.png';
                 }}

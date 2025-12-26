@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import React, { useState, useEffect } from 'react';
-import { Card, Form, Input, Button, Typography, message, Spin, Upload } from 'antd';
-import { SettingOutlined, SaveOutlined, UploadOutlined, BankOutlined } from '@ant-design/icons';
+import { Card, Form, Input, Button, Typography, message, Spin, Upload, Segmented } from 'antd';
+import { SettingOutlined, SaveOutlined, UploadOutlined, BankOutlined, BorderOutlined, CheckCircleOutlined } from '@ant-design/icons';
 import api from '@/services/api';
 import { useSchool } from '@/context/SchoolContext';
 
@@ -10,6 +10,7 @@ const { Text } = Typography;
 interface SettingsFormValues {
   institution_name?: string;
   institution_logo?: string;
+  institution_logo_shape?: 'circle' | 'square';
 }
 
 const SettingsManagement: React.FC = () => {
@@ -27,6 +28,7 @@ const SettingsManagement: React.FC = () => {
         form.setFieldsValue({
           institution_name: res.data.institution_name || '',
           institution_logo: res.data.institution_logo || '',
+          institution_logo_shape: res.data.institution_logo_shape || 'square',
         });
 
         try {
@@ -104,6 +106,26 @@ const SettingsManagement: React.FC = () => {
                 />
               </Form.Item>
 
+              <Form.Item
+                label={<span className="text-slate-700 font-bold">Forma del Logo</span>}
+                name="institution_logo_shape"
+              >
+                <Segmented
+                  block
+                  value={form.getFieldValue('institution_logo_shape')}
+                  onChange={(val) => {
+                    form.setFieldsValue({ institution_logo_shape: val });
+                    const currentValues = form.getFieldsValue();
+                    onFinish(currentValues);
+                  }}
+                  options={[
+                    { label: 'Cuadrado', value: 'square', icon: <BorderOutlined /> },
+                    { label: 'Redondo', value: 'circle', icon: <CheckCircleOutlined /> },
+                  ]}
+                  className="rounded-xl p-1 bg-slate-100"
+                />
+              </Form.Item>
+
               <div className="bg-blue-50/50 p-6 rounded-2xl border border-blue-100/50">
                 <div className="flex gap-4">
                   <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center text-blue-600 shrink-0">
@@ -158,7 +180,7 @@ const SettingsManagement: React.FC = () => {
                     <img
                       src={logoPreview}
                       alt="Preview"
-                      className="max-h-full max-w-full object-contain drop-shadow-2xl translate-y-2 group-hover:scale-110 transition-transform duration-500"
+                      className={`max-h-full max-w-full object-contain drop-shadow-2xl translate-y-2 group-hover:scale-110 transition-transform duration-500 ${form.getFieldValue('institution_logo_shape') === 'circle' ? 'rounded-full' : 'rounded-xl'}`}
                     />
                     <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center backdrop-blur-sm">
                       <div className="bg-white px-4 py-2 rounded-xl text-slate-900 font-black text-[10px] uppercase tracking-widest shadow-xl">Cambiar Logo</div>

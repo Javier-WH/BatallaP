@@ -4,6 +4,7 @@ import api from '@/services/api';
 interface SchoolSettings {
   name: string;
   logo: string;
+  logoShape: 'circle' | 'square';
 }
 
 interface SchoolContextType {
@@ -15,7 +16,8 @@ interface SchoolContextType {
 
 const defaultSettings: SchoolSettings = {
   name: 'U.E. Colegio "Batalla de Carabobo"',
-  logo: '/logo-placeholder.png' // Default placeholder
+  logo: '/logo-placeholder.png', // Default placeholder
+  logoShape: 'square'
 };
 
 const SchoolContext = createContext<SchoolContextType | undefined>(undefined);
@@ -35,10 +37,12 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
       const schoolName = settingsRes.data.institution_name;
       const schoolLogo = `http://localhost:3000/api/upload/logo?t=${Date.now()}`;
+      const schoolLogoShape = settingsRes.data.institution_logo_shape || 'square';
 
       setSettings({
         name: schoolName || defaultSettings.name,
-        logo: schoolLogo // Always use the upload shortcut, it will fallback to img onError
+        logo: schoolLogo, // Always use the upload shortcut, it will fallback to img onError
+        logoShape: schoolLogoShape as 'circle' | 'square'
       });
       setActivePeriod(periodRes.data);
     } catch (error) {
