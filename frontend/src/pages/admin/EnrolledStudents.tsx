@@ -313,7 +313,7 @@ const EnrolledStudents: React.FC = () => {
     </div>
   );
 
-  const addSeparator = (cols: any[]) => {
+  const addSeparator = (cols: ColumnsType<InscriptionRecord>): ColumnsType<InscriptionRecord> => {
     if (!cols || cols.length === 0) return cols;
     // Filter by visibility first
     const visibleCols = cols.filter(c => !c.key || isColumnVisible(c.key as string));
@@ -389,46 +389,46 @@ const EnrolledStudents: React.FC = () => {
       title: 'Teléfono',
       width: 120,
       key: 'contactPhone',
-      render: (_: any, r: InscriptionRecord) => <Text>{r.student.contact?.phone1 || '-'}</Text>
+      render: (_: unknown, r: InscriptionRecord) => <Text>{r.student.contact?.phone1 || '-'}</Text>
     },
     {
       title: 'Email',
       width: 180,
       key: 'contactEmail',
-      render: (_: any, r: InscriptionRecord) => <Text>{r.student.contact?.email || '-'}</Text>
+      render: (_: unknown, r: InscriptionRecord) => <Text>{r.student.contact?.email || '-'}</Text>
     },
     {
       title: 'Estado',
       width: 120,
       key: 'contactState',
-      render: (_: any, r: InscriptionRecord) => <Text>{r.student.residence?.residenceState || '-'}</Text>
+      render: (_: unknown, r: InscriptionRecord) => <Text>{r.student.residence?.residenceState || '-'}</Text>
     }
   ];
 
   const motherColumns = [
-    { title: 'Nombre', key: 'motherName', width: 140, render: (_: any, r: InscriptionRecord) => <Text>{getGuardian(r, 'mother')?.firstName || '-'}</Text> },
-    { title: 'Apellido', key: 'motherLastName', width: 140, render: (_: any, r: InscriptionRecord) => <Text>{getGuardian(r, 'mother')?.lastName || '-'}</Text> },
-    { title: 'Cédula', key: 'motherDoc', width: 100, render: (_: any, r: InscriptionRecord) => <Text>{getGuardian(r, 'mother')?.document || '-'}</Text> },
-    { title: 'Telf.', key: 'motherPhone', width: 110, render: (_: any, r: InscriptionRecord) => <Text>{getGuardian(r, 'mother')?.phone || '-'}</Text> },
+    { title: 'Nombre', key: 'motherName', width: 140, render: (_: unknown, r: InscriptionRecord) => <Text>{getGuardian(r, 'mother')?.firstName || '-'}</Text> },
+    { title: 'Apellido', key: 'motherLastName', width: 140, render: (_: unknown, r: InscriptionRecord) => <Text>{getGuardian(r, 'mother')?.lastName || '-'}</Text> },
+    { title: 'Cédula', key: 'motherDoc', width: 100, render: (_: unknown, r: InscriptionRecord) => <Text>{getGuardian(r, 'mother')?.document || '-'}</Text> },
+    { title: 'Telf.', key: 'motherPhone', width: 110, render: (_: unknown, r: InscriptionRecord) => <Text>{getGuardian(r, 'mother')?.phone || '-'}</Text> },
   ];
 
   const fatherColumns = [
-    { title: 'Nombre', key: 'fatherName', width: 140, render: (_: any, r: InscriptionRecord) => <Text>{getGuardian(r, 'father')?.firstName || '-'}</Text> },
-    { title: 'Apellido', key: 'fatherLastName', width: 140, render: (_: any, r: InscriptionRecord) => <Text>{getGuardian(r, 'father')?.lastName || '-'}</Text> },
-    { title: 'Cédula', key: 'fatherDoc', width: 100, render: (_: any, r: InscriptionRecord) => <Text>{getGuardian(r, 'father')?.document || '-'}</Text> },
-    { title: 'Telf.', key: 'fatherPhone', width: 110, render: (_: any, r: InscriptionRecord) => <Text>{getGuardian(r, 'father')?.phone || '-'}</Text> },
+    { title: 'Nombre', key: 'fatherName', width: 140, render: (_: unknown, r: InscriptionRecord) => <Text>{getGuardian(r, 'father')?.firstName || '-'}</Text> },
+    { title: 'Apellido', key: 'fatherLastName', width: 140, render: (_: unknown, r: InscriptionRecord) => <Text>{getGuardian(r, 'father')?.lastName || '-'}</Text> },
+    { title: 'Cédula', key: 'fatherDoc', width: 100, render: (_: unknown, r: InscriptionRecord) => <Text>{getGuardian(r, 'father')?.document || '-'}</Text> },
+    { title: 'Telf.', key: 'fatherPhone', width: 110, render: (_: unknown, r: InscriptionRecord) => <Text>{getGuardian(r, 'father')?.phone || '-'}</Text> },
   ];
 
   const repColumns = [
-    { title: 'Nombre', key: 'repName', width: 140, render: (_: any, r: InscriptionRecord) => <Text>{getRepresentative(r)?.firstName || '-'}</Text> },
+    { title: 'Nombre', key: 'repName', width: 140, render: (_: unknown, r: InscriptionRecord) => <Text>{getRepresentative(r)?.firstName || '-'}</Text> },
     {
-      title: 'Relación', key: 'repRel', width: 100, render: (_: any, r: InscriptionRecord) => {
+      title: 'Relación', key: 'repRel', width: 100, render: (_: unknown, r: InscriptionRecord) => {
         const rep = r.student.guardians?.find(g => g.isRepresentative);
         const mapRel: Record<string, string> = { mother: 'Madre', father: 'Padre', representative: 'Otro' };
         return <Tag>{mapRel[rep?.relationship || ''] || rep?.relationship || '-'}</Tag>
       }
     },
-    { title: 'Telf.', key: 'repPhone', width: 110, render: (_: any, r: InscriptionRecord) => <Text>{getRepresentative(r)?.phone || '-'}</Text> },
+    { title: 'Telf.', key: 'repPhone', width: 110, render: (_: unknown, r: InscriptionRecord) => <Text>{getRepresentative(r)?.phone || '-'}</Text> },
   ];
 
   const academicColumns = [
