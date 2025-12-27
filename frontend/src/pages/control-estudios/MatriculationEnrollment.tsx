@@ -1265,37 +1265,47 @@ const MatriculationEnrollment: React.FC = () => {
       <style>{`
         /* 1. Global Header Styles */
         .ant-table-thead > tr > th {
-          background-color: #fafafa !important;
-          color: #555 !important;
-          font-weight: 600 !important;
+          background-color: #f1f5f9 !important;
+          color: #475569 !important;
+          font-weight: 700 !important;
           font-size: 11px !important;
           padding: 6px 8px !important;
           text-transform: uppercase !important;
-          opacity: 1 !important;
+          border-right: 1px solid #e2e8f0 !important;
+          border-bottom: 1px solid #e2e8f0 !important;
         }
 
-        /* 2. Global Body Styles */
+        /* 2. Global Body Styles - Grid & Spacing */
         .ant-table-tbody > tr > td {
-          background-color: #ffffff !important;
           padding: 2px 4px !important;
-          opacity: 1 !important;
+          border-right: 1px solid #e2e8f0 !important;
+          border-bottom: 1px solid #e2e8f0 !important;
+          transition: background-color 0.2s;
         }
 
-        /* 3. Global Hover Styles */
+        /* 3. Alternating Row Colors (Zebra Striping) */
+        .ant-table-tbody > tr:nth-child(odd) > td {
+          background-color: #ffffff !important;
+        }
+        .ant-table-tbody > tr:nth-child(even) > td {
+          background-color: #f8fafc !important; /* Light Slate 50 */
+        }
+
+        /* 4. Hover Styles */
         .ant-table-tbody > tr:hover > td {
-          background-color: #fafafa !important;
+          background-color: #e2e8f0 !important; /* Slate 200 */
         }
 
-        /* 4. Global Selected Styles */
+        /* 5. Global Selected Styles */
         .ant-table-tbody > tr.ant-table-row-selected > td {
-          background-color: #f6ffed !important;
+          background-color: #bae7ff !important; /* Stronger blue for selection */
         }
 
-        /* 5. Input Styles (Keep transparent to show row color, or white if focused) */
+        /* 6. Input Styles */
         .ant-input, .ant-select-selector {
           border: 1px solid transparent !important;
           background: transparent !important;
-          border-radius: 4px !important;
+          border-radius: 0px !important; /* Square look for grid */
           height: 26px !important;
           font-size: 12px !important;
           padding-left: 4px !important;
@@ -1304,15 +1314,18 @@ const MatriculationEnrollment: React.FC = () => {
         .ant-select-selection-item {
           line-height: 24px !important;
         }
+        /* Show inputs on hover/focus */
         .ant-table-row:hover .ant-input, 
-        .ant-table-row:hover .ant-select-selector {
-          border-color: #d9d9d9 !important;
-          background: #fff !important;
+        .ant-table-row:hover .ant-select-selector,
+        .ant-input:focus, 
+        .ant-select-focused .ant-select-selector {
+          border-color: #cbd5e1 !important;
+          background: #ffffff !important;
+          border-radius: 4px !important;
         }
         .ant-input:focus, .ant-select-focused .ant-select-selector {
-          border-color: #1890ff !important;
-          background: #fff !important;
-          box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.1) !important;
+          border-color: #3b82f6 !important;
+          box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1) !important;
         }
       `}</style>
     </div >
