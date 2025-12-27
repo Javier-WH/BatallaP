@@ -14,6 +14,7 @@ import {
   Table,
   Tag,
   Typography,
+  Pagination,
 } from 'antd';
 import {
   ReloadOutlined,
@@ -197,6 +198,10 @@ const MatriculationEnrollment: React.FC = () => {
   const [filterSection, setFilterSection] = useState<number | null>(null);
   const [filterMissing, setFilterMissing] = useState<string | null>(null);
 
+  // Pagination State
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
+
   // Dynamic Height Calculation
   const [scrollY, setScrollY] = useState(500);
   const headerRef = useRef<HTMLDivElement>(null);
@@ -367,6 +372,42 @@ const MatriculationEnrollment: React.FC = () => {
     visibleColumnKeys.length,
     optionKeyOrder.length
   ]);
+
+  // --- Filtering & Pagination Logic ---
+  const filteredData = useMemo(() => {
+    return matriculations.filter(r => {
+      const searchLower = searchValue.toLowerCase();
+      const matchSearch = !searchValue ||
+        `${r.student.firstName} ${r.student.lastName} ${r.student.document}`.toLowerCase().includes(searchLower);
+
+      const matchGrade = !filterGrade || r.gradeId === filterGrade;
+      const matchSection = !filterSection || r.sectionId === filterSection;
+
+      let matchMissing = true;
+      if (filterMissing) {
+        const hasNoGuardians = !r.tempData.mother?.document || !r.tempData.father?.document;
+        const hasNoContact = !r.tempData.phone1;
+        const hasNoQuestions = questions.some(q => !r.tempData.enrollmentAnswers?.[q.id]);
+
+        if (filterMissing === 'guardians') matchMissing = hasNoGuardians;
+        else if (filterMissing === 'contact') matchMissing = hasNoContact;
+        else if (filterMissing === 'questions') matchMissing = hasNoQuestions;
+        else if (filterMissing === 'all') matchMissing = hasNoGuardians || hasNoContact || hasNoQuestions;
+      }
+
+      return matchSearch && matchGrade && matchSection && matchMissing;
+    });
+  }, [matriculations, searchValue, filterGrade, filterSection, filterMissing, questions]);
+
+  const currentData = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredData.slice(start, start + pageSize);
+  }, [filteredData, currentPage, pageSize]);
+
+  // Reset page when filter results change length (optional but good UX)
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchValue, filterGrade, filterSection, filterMissing]);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -986,7 +1027,26 @@ const MatriculationEnrollment: React.FC = () => {
         <Card size="small" bodyStyle={{ padding: '4px 12px' }} className="glass-card !bg-white/50 border-none shrink-0">
           <Row justify="space-between" align="middle" gutter={[4, 4]}>
             <Col xs={24} lg={8}>
-              <Title level={5} style={{ margin: 0 }}>Panel de Matriculación Masiva</Title>
+              <div className="flex flex-col items-start gap-1">
+                <Title level={5} style={{ margin: 0 }}>Panel de Matriculación Masiva</Title>
+                <Pagination
+                  simple
+                  size="small"
+                  current={currentPage}
+                  pageSize={pageSize}
+                  total={filteredData.length}
+                  onChange={(page, size) => {
+                    setCurrentPage(page);
+                    if (size !== pageSize) setPageSize(size);
+                  }}
+                  showSizeChanger={false}
+                  showTotal={(total, range) => (
+                    <span className="text-[10px] text-slate-400 font-normal ml-2">
+                      {range[0]}-{range[1]} de {total}
+                    </span>
+                  )}
+                />
+              </div>
             </Col>
             <Col xs={24} lg={16}>
               <Row gutter={[4, 4]} justify="end">
@@ -1192,30 +1252,9 @@ const MatriculationEnrollment: React.FC = () => {
       <Table
         rowKey="id"
         columns={columns}
-        dataSource={matriculations.filter(r => {
-          const searchLower = searchValue.toLowerCase();
-          const matchSearch = !searchValue ||
-            `${r.student.firstName} ${r.student.lastName} ${r.student.document}`.toLowerCase().includes(searchLower);
-
-          const matchGrade = !filterGrade || r.gradeId === filterGrade;
-          const matchSection = !filterSection || r.sectionId === filterSection;
-
-          let matchMissing = true;
-          if (filterMissing) {
-            const hasNoGuardians = !r.tempData.mother?.document || !r.tempData.father?.document;
-            const hasNoContact = !r.tempData.phone1;
-            const hasNoQuestions = questions.some(q => !r.tempData.enrollmentAnswers?.[q.id]);
-
-            if (filterMissing === 'guardians') matchMissing = hasNoGuardians;
-            else if (filterMissing === 'contact') matchMissing = hasNoContact;
-            else if (filterMissing === 'questions') matchMissing = hasNoQuestions;
-            else if (filterMissing === 'all') matchMissing = hasNoGuardians || hasNoContact || hasNoQuestions;
-          }
-
-          return matchSearch && matchGrade && matchSection && matchMissing;
-        })}
+        dataSource={currentData}
         loading={loading}
-        pagination={{ size: 'small', pageSize: 50, showSizeChanger: true, showTotal: (total) => `Total ${total} estudiantes`, className: '!mb-0' }}
+        pagination={false}
         scroll={{ x: 'max-content', y: scrollY }}
         rowSelection={{ selectedRowKeys, onChange: setSelectedRowKeys }}
         size="small"
