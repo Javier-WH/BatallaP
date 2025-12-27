@@ -13,6 +13,8 @@ import evaluationRoutes from '@/routes/evaluationRoutes';
 import settingRoutes from '@/routes/settingRoutes';
 import uploadRoutes from '@/routes/uploadRoutes';
 import termRoutes from '@/routes/termRoutes';
+import periodClosureRoutes from '@/routes/periodClosureRoutes';
+import periodOutcomeRoutes from '@/routes/periodOutcomeRoutes';
 import residenceRoutes from '@/routes/residenceRoutes';
 import locationRoutes from '@/routes/locationRoutes';
 import matriculationRoutes from '@/routes/matriculationRoutes';
@@ -50,6 +52,8 @@ app.use('/api/enrollment-questions', enrollmentQuestionRoutes);
 app.use('/api/enrollment-answers', enrollmentAnswerRoutes);
 app.use('/api/guardians', guardianRoutes);
 app.use('/api/council', councilRoutes);
+app.use('/api/period-closure', periodClosureRoutes);
+app.use('/api/periods', periodOutcomeRoutes);
 
 
 const startServer = async () => {

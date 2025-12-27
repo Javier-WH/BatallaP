@@ -13,11 +13,14 @@ interface InscriptionAttributes {
   sectionId?: number;
   personId: number;
   escolaridad: EscolaridadStatus;
+  originPeriodId?: number | null;
+  isRepeater: boolean;
   createdAt?: Date;
   updatedAt?: Date;
 }
 
-interface InscriptionCreationAttributes extends Optional<InscriptionAttributes, 'id' | 'sectionId'> { }
+interface InscriptionCreationAttributes
+  extends Optional<InscriptionAttributes, 'id' | 'sectionId' | 'originPeriodId' | 'isRepeater'> {}
 
 class Inscription extends Model<InscriptionAttributes, InscriptionCreationAttributes> implements InscriptionAttributes {
   public id!: number;
@@ -26,6 +29,8 @@ class Inscription extends Model<InscriptionAttributes, InscriptionCreationAttrib
   public sectionId!: number; // Can be null, types/nullability handled by Sequelize
   public personId!: number;
   public escolaridad!: EscolaridadStatus;
+  public originPeriodId!: number | null;
+  public isRepeater!: boolean;
 
   public readonly subjects?: import('./Subject').default[];
 
@@ -64,6 +69,19 @@ Inscription.init(
       type: DataTypes.ENUM('regular', 'repitiente', 'materia_pendiente'),
       allowNull: false,
       defaultValue: 'regular'
+    },
+    originPeriodId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      references: {
+        model: SchoolPeriod,
+        key: 'id'
+      }
+    },
+    isRepeater: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false
     }
   },
   {

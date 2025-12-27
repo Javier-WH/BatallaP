@@ -108,6 +108,12 @@ import Matriculation from './Matriculation';
 import EnrollmentQuestion from './EnrollmentQuestion';
 import EnrollmentAnswer from './EnrollmentAnswer';
 import CouncilPoint from './CouncilPoint';
+import PeriodClosure from './PeriodClosure';
+import CouncilChecklist from './CouncilChecklist';
+import SubjectFinalGrade from './SubjectFinalGrade';
+import StudentPeriodOutcome from './StudentPeriodOutcome';
+import PendingSubject from './PendingSubject';
+import SchoolPeriodTransitionRule from './SchoolPeriodTransitionRule';
 
 
 // ... (Existing User/Person/Role/Contact associations) ...
@@ -141,6 +147,8 @@ Subject.belongsTo(SubjectGroup, { foreignKey: 'subjectGroupId', as: 'subjectGrou
 // 4. Inscription Associations
 Inscription.belongsTo(SchoolPeriod, { foreignKey: 'schoolPeriodId', as: 'period' });
 SchoolPeriod.hasMany(Inscription, { foreignKey: 'schoolPeriodId', as: 'inscriptions' });
+
+Inscription.belongsTo(SchoolPeriod, { foreignKey: 'originPeriodId', as: 'originPeriod' });
 
 Inscription.belongsTo(Grade, { foreignKey: 'gradeId', as: 'grade' });
 Grade.hasMany(Inscription, { foreignKey: 'gradeId', as: 'inscriptions' });
@@ -211,12 +219,51 @@ TeacherAssignment.belongsTo(Section, { foreignKey: 'sectionId', as: 'section' })
 SchoolPeriod.hasMany(Term, { foreignKey: 'schoolPeriodId', as: 'terms' });
 Term.belongsTo(SchoolPeriod, { foreignKey: 'schoolPeriodId', as: 'schoolPeriod' });
 
+// Period closure and council checklist associations
+SchoolPeriod.hasMany(PeriodClosure, { foreignKey: 'schoolPeriodId', as: 'closures' });
+PeriodClosure.belongsTo(SchoolPeriod, { foreignKey: 'schoolPeriodId', as: 'period' });
+PeriodClosure.belongsTo(User, { foreignKey: 'initiatedBy', as: 'initiator' });
+
+SchoolPeriod.hasMany(CouncilChecklist, { foreignKey: 'schoolPeriodId', as: 'councilChecklists' });
+Grade.hasMany(CouncilChecklist, { foreignKey: 'gradeId', as: 'councilChecklists' });
+Section.hasMany(CouncilChecklist, { foreignKey: 'sectionId', as: 'councilChecklists' });
+Term.hasMany(CouncilChecklist, { foreignKey: 'termId', as: 'councilChecklists' });
+CouncilChecklist.belongsTo(SchoolPeriod, { foreignKey: 'schoolPeriodId', as: 'schoolPeriod' });
+CouncilChecklist.belongsTo(Grade, { foreignKey: 'gradeId', as: 'grade' });
+CouncilChecklist.belongsTo(Section, { foreignKey: 'sectionId', as: 'section' });
+CouncilChecklist.belongsTo(Term, { foreignKey: 'termId', as: 'term' });
+CouncilChecklist.belongsTo(User, { foreignKey: 'completedBy', as: 'completedByUser' });
+
 // Enrollment questions and answers
 EnrollmentQuestion.hasMany(EnrollmentAnswer, { foreignKey: 'questionId', as: 'answers' });
 EnrollmentAnswer.belongsTo(EnrollmentQuestion, { foreignKey: 'questionId', as: 'question' });
 
 Person.hasMany(EnrollmentAnswer, { foreignKey: 'personId', as: 'enrollmentAnswers' });
 EnrollmentAnswer.belongsTo(Person, { foreignKey: 'personId', as: 'student' });
+
+// Subject final grades
+InscriptionSubject.hasOne(SubjectFinalGrade, { foreignKey: 'inscriptionSubjectId', as: 'finalGrade' });
+SubjectFinalGrade.belongsTo(InscriptionSubject, { foreignKey: 'inscriptionSubjectId', as: 'inscriptionSubject' });
+
+// Student period outcomes
+Inscription.hasOne(StudentPeriodOutcome, { foreignKey: 'inscriptionId', as: 'periodOutcome' });
+StudentPeriodOutcome.belongsTo(Inscription, { foreignKey: 'inscriptionId', as: 'inscription' });
+Grade.hasMany(StudentPeriodOutcome, { foreignKey: 'promotionGradeId', as: 'incomingStudents' });
+StudentPeriodOutcome.belongsTo(Grade, { foreignKey: 'promotionGradeId', as: 'promotionGrade' });
+
+// Pending subjects
+Inscription.hasMany(PendingSubject, { foreignKey: 'newInscriptionId', as: 'pendingSubjects' });
+PendingSubject.belongsTo(Inscription, { foreignKey: 'newInscriptionId', as: 'inscription' });
+Subject.hasMany(PendingSubject, { foreignKey: 'subjectId', as: 'pendingAssignments' });
+PendingSubject.belongsTo(Subject, { foreignKey: 'subjectId', as: 'subject' });
+SchoolPeriod.hasMany(PendingSubject, { foreignKey: 'originPeriodId', as: 'pendingSubjects' });
+PendingSubject.belongsTo(SchoolPeriod, { foreignKey: 'originPeriodId', as: 'originPeriod' });
+
+// Transition rules
+Grade.hasOne(SchoolPeriodTransitionRule, { foreignKey: 'gradeFromId', as: 'transitionRule' });
+SchoolPeriodTransitionRule.belongsTo(Grade, { foreignKey: 'gradeFromId', as: 'gradeFrom' });
+Grade.hasMany(SchoolPeriodTransitionRule, { foreignKey: 'gradeToId', as: 'incomingTransitions' });
+SchoolPeriodTransitionRule.belongsTo(Grade, { foreignKey: 'gradeToId', as: 'gradeTo' });
 
 export {
   User,
@@ -248,5 +295,11 @@ export {
   Term,
   EnrollmentQuestion,
   EnrollmentAnswer,
-  CouncilPoint
+  CouncilPoint,
+  PeriodClosure,
+  CouncilChecklist,
+  SubjectFinalGrade,
+  StudentPeriodOutcome,
+  PendingSubject,
+  SchoolPeriodTransitionRule
 };

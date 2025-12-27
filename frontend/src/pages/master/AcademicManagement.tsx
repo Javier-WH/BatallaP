@@ -1,8 +1,35 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 import React, { useState, useEffect, createContext, useContext } from 'react';
-import { Card, Tabs, Table, Button, Modal, Form, Input, Tag, message, Select, Space, Row, Col, Popconfirm, Checkbox, Collapse } from 'antd';
-import { PlusOutlined, DeleteOutlined, EditOutlined, BookOutlined, AppstoreOutlined, CheckCircleOutlined, HolderOutlined, UserAddOutlined } from '@ant-design/icons';
+import {
+  Card,
+  Tabs,
+  Table,
+  Button,
+  Modal,
+  Form,
+  Input,
+  Tag,
+  message,
+  Select,
+  Space,
+  Row,
+  Col,
+  Popconfirm,
+  Checkbox,
+  Collapse
+} from 'antd';
+import {
+  PlusOutlined,
+  DeleteOutlined,
+  EditOutlined,
+  BookOutlined,
+  AppstoreOutlined,
+  CheckCircleOutlined,
+  HolderOutlined,
+  UserAddOutlined
+} from '@ant-design/icons';
 import api from '@/services/api';
+import PeriodClosurePanel from '@/pages/admin/components/PeriodClosurePanel';
 import {
   DndContext,
   closestCenter,
@@ -1120,6 +1147,11 @@ const AcademicManagement: React.FC = () => {
                 />
               </Panel>
             </Collapse>
+          </TabPane>
+
+          {/* PERIOD CLOSURE TAB */}
+          <TabPane tab="Cierre de Periodo" key="4">
+            <PeriodClosurePanel />
           </TabPane>
         </Tabs>
       </Card>
