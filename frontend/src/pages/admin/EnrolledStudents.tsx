@@ -511,7 +511,7 @@ const EnrolledStudents: React.FC = () => {
                 <Space>
                   <TeamOutlined style={{ color: '#1890ff' }} />
                   <Title level={5} style={{ margin: 0 }}>Estudiantes Inscritos</Title>
-                  {activePeriod && <Tag color="blue" bordered={false} style={{ fontSize: 10 }}>{activePeriod.name}</Tag>}
+
                 </Space>
                 <Pagination
                   simple
