@@ -537,11 +537,12 @@ export const enrollMatriculatedStudent = async (req: Request, res: Response) => 
 
 export const getInscriptions = async (req: Request, res: Response) => {
   try {
-    const { schoolPeriodId, gradeId, sectionId, q, gender } = req.query;
+    const { schoolPeriodId, gradeId, sectionId, q, gender, escolaridad } = req.query;
     const where: any = {};
     if (schoolPeriodId) where.schoolPeriodId = schoolPeriodId;
     if (gradeId) where.gradeId = gradeId;
     if (sectionId) where.sectionId = sectionId;
+    if (escolaridad) where.escolaridad = escolaridad;
 
     const personWhere: any = {};
     let hasPersonFilter = false;

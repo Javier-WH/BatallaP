@@ -81,6 +81,7 @@ interface FiltersState {
   gradeId?: number;
   sectionId?: number;
   gender?: Gender;
+  escolaridad?: EscolaridadStatus;
   q: string;
 }
 
@@ -267,6 +268,7 @@ const EnrolledStudents: React.FC = () => {
         gradeId: filters.gradeId,
         sectionId: filters.sectionId,
         gender: filters.gender,
+        escolaridad: filters.escolaridad,
         q: filters.q
       };
       const res = await api.get<InscriptionRecord[]>('/inscriptions', { params });
@@ -576,6 +578,20 @@ const EnrolledStudents: React.FC = () => {
                     onChange={(val) => setFilters(prev => ({ ...prev, gradeId: val }))}
                   >
                     {grades.map(g => <Option key={g.id} value={g.id}>{g.name}</Option>)}
+                  </Select>
+                </Col>
+                <Col>
+                  <Select
+                    placeholder="Escolaridad"
+                    size="small"
+                    style={{ width: 150 }}
+                    allowClear
+                    value={filters.escolaridad}
+                    onChange={(val) => setFilters(prev => ({ ...prev, escolaridad: val }))}
+                  >
+                    <Option value="regular">Regular</Option>
+                    <Option value="repitiente">Repitiente</Option>
+                    <Option value="materia_pendiente">Materia pendiente</Option>
                   </Select>
                 </Col>
                 <Col>
