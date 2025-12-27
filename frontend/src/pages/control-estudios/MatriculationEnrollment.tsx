@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import {
   Button,
   Card,
@@ -196,6 +196,32 @@ const MatriculationEnrollment: React.FC = () => {
   const [filterGrade, setFilterGrade] = useState<number | null>(null);
   const [filterSection, setFilterSection] = useState<number | null>(null);
   const [filterMissing, setFilterMissing] = useState<string | null>(null);
+
+  // Dynamic Height Calculation
+  const [scrollY, setScrollY] = useState(500);
+  const headerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const calculateHeight = () => {
+      if (headerRef.current) {
+        const { bottom } = headerRef.current.getBoundingClientRect();
+        // Available height = Window Height - Header Bottom - Table Header/Pagination (~90px) - Bottom Margin (~20px)
+        const available = window.innerHeight - bottom - 110;
+        setScrollY(Math.max(200, available));
+      }
+    };
+
+    calculateHeight();
+    window.addEventListener('resize', calculateHeight);
+
+    // Recalculate when selection changes (as it adds/removes a card)
+    const timeoutId = setTimeout(calculateHeight, 100);
+
+    return () => {
+      window.removeEventListener('resize', calculateHeight);
+      clearTimeout(timeoutId);
+    };
+  }, [selectedRowKeys.length, structure]);
 
   const questionColumnOptions = useMemo(
     () =>
@@ -955,196 +981,213 @@ const MatriculationEnrollment: React.FC = () => {
   ].filter(Boolean) as ColumnsType<MatriculationRow>;
 
   return (
-    <div className="flex flex-col gap-4">
-      <Card className="glass-card !bg-white/50 border-none">
-        <Row justify="space-between" align="middle" gutter={[16, 16]}>
-          <Col xs={24} lg={8}>
-            <Title level={4} style={{ margin: 0 }}>Panel de Matriculación Masiva</Title>
-            <Text type="secondary" style={{ fontSize: 13 }}>Gestione las inscripciones directamente en la cuadrícula</Text>
-          </Col>
-          <Col xs={24} lg={16}>
-            <Row gutter={[8, 8]} justify="end">
-              <Col>
-                <Select
-                  placeholder="Filtrar Grado"
-                  style={{ width: 160 }}
-                  allowClear
-                  value={filterGrade}
-                  onChange={v => { setFilterGrade(v); setFilterSection(null); }}
-                >
-                  {structure.map(s => <Option key={s.gradeId} value={s.gradeId}>{s.grade?.name}</Option>)}
-                </Select>
-              </Col>
-              <Col>
-                <Select
-                  placeholder="Sección"
-                  style={{ width: 110 }}
-                  allowClear
-                  value={filterSection}
-                  disabled={!filterGrade}
-                  onChange={setFilterSection}
-                >
-                  {structure.find(s => s.gradeId === filterGrade)?.sections?.map(sec => (
-                    <Option key={sec.id} value={sec.id}>{sec.name}</Option>
-                  ))}
-                </Select>
-              </Col>
-              <Col>
-                <Select
-                  placeholder="Datos Faltantes"
-                  style={{ width: 160 }}
-                  allowClear
-                  value={filterMissing}
-                  onChange={setFilterMissing}
-                >
-                  <Option value="guardians">Sin Representantes</Option>
-                  <Option value="contact">Sin Teléfono</Option>
-                  <Option value="questions">Preguntas Pendientes</Option>
-                  <Option value="all">Cualquier Dato Faltante</Option>
-                </Select>
-              </Col>
-              <Col>
-                <Input
-                  placeholder="Buscar Estudiante..."
-                  prefix={<SearchOutlined />}
-                  style={{ width: 220 }}
-                  value={searchValue}
-                  onChange={e => setSearchValue(e.target.value)}
-                  allowClear
-                />
-              </Col>
-              <Col>
-                <Popover
-                  content={columnMenuContent}
-                  trigger="click"
-                  open={columnPopoverOpen}
-                  onOpenChange={setColumnPopoverOpen}
-                  placement="bottomRight"
-                >
-                  <Button icon={<TableOutlined />} type="default">
-                    Columnas
-                  </Button>
-                </Popover>
-              </Col>
-              <Col>
-                <Button icon={<ReloadOutlined />} onClick={fetchData} loading={loading}>Actualizar</Button>
-              </Col>
-            </Row>
-          </Col>
-        </Row>
-      </Card>
+    <div className="flex flex-col gap-2 h-full">
+      <div ref={headerRef} className="flex flex-col gap-2 shrink-0">
+        <Card size="small" bodyStyle={{ padding: '4px 12px' }} className="glass-card !bg-white/50 border-none shrink-0">
+          <Row justify="space-between" align="middle" gutter={[4, 4]}>
+            <Col xs={24} lg={8}>
+              <Title level={5} style={{ margin: 0 }}>Panel de Matriculación Masiva</Title>
+            </Col>
+            <Col xs={24} lg={16}>
+              <Row gutter={[4, 4]} justify="end">
+                <Col>
+                  <Select
+                    placeholder="Filtrar Grado"
+                    size="small"
+                    style={{ width: 140 }}
+                    allowClear
+                    value={filterGrade}
+                    onChange={v => { setFilterGrade(v); setFilterSection(null); }}
+                  >
+                    {structure.map(s => <Option key={s.gradeId} value={s.gradeId}>{s.grade?.name}</Option>)}
+                  </Select>
+                </Col>
+                <Col>
+                  <Select
+                    placeholder="Sección"
+                    size="small"
+                    style={{ width: 100 }}
+                    allowClear
+                    value={filterSection}
+                    disabled={!filterGrade}
+                    onChange={setFilterSection}
+                  >
+                    {structure.find(s => s.gradeId === filterGrade)?.sections?.map(sec => (
+                      <Option key={sec.id} value={sec.id}>{sec.name}</Option>
+                    ))}
+                  </Select>
+                </Col>
+                <Col>
+                  <Select
+                    placeholder="Datos Faltantes"
+                    size="small"
+                    style={{ width: 140 }}
+                    allowClear
+                    value={filterMissing}
+                    onChange={setFilterMissing}
+                  >
+                    <Option value="guardians">Sin Representantes</Option>
+                    <Option value="contact">Sin Teléfono</Option>
+                    <Option value="questions">Preguntas Pendientes</Option>
+                    <Option value="all">Cualquier Dato Faltante</Option>
+                  </Select>
+                </Col>
+                <Col>
+                  <Input
+                    placeholder="Buscar..."
+                    size="small"
+                    prefix={<SearchOutlined />}
+                    style={{ width: 180 }}
+                    value={searchValue}
+                    onChange={e => setSearchValue(e.target.value)}
+                    allowClear
+                  />
+                </Col>
+                <Col>
+                  <Popover
+                    content={columnMenuContent}
+                    trigger="click"
+                    open={columnPopoverOpen}
+                    onOpenChange={setColumnPopoverOpen}
+                    placement="bottomRight"
+                  >
+                    <Button icon={<TableOutlined />} type="default" size="small">
+                      Columnas
+                    </Button>
+                  </Popover>
+                </Col>
+                <Col>
+                  <Button icon={<ReloadOutlined />} onClick={fetchData} loading={loading} size="small">Actualizar</Button>
+                </Col>
+              </Row>
+            </Col>
+          </Row>
+        </Card>
 
-      <Card
-        size="small"
-        bodyStyle={{ padding: '16px 24px' }}
-        style={{
-          marginBottom: 12,
-          background: selectedRowKeys.length > 0 ? '#e6f7ff' : '#f8fafc',
-          borderColor: selectedRowKeys.length > 0 ? '#91d5ff' : '#e2e8f0',
-          transition: 'all 0.3s ease',
-          position: 'relative'
-        }}
-      >
-        {/* Clear button in top-right corner */}
-        {selectedRowKeys.length > 0 && (
-          <Button
-            type="text"
-            size="small"
-            icon={<CloseOutlined />}
-            onClick={() => setSelectedRowKeys([])}
-            style={{
-              position: 'absolute',
-              top: '-8px',
-              right: '-5px',
-              color: '#888',
-              zIndex: 10
-            }}
-          />
-        )}
-
-        <div className="flex items-center gap-6">
-
-          {/* Section 1: Counter */}
-          <div className="flex items-center gap-3 pr-6 border-r border-slate-300/50 min-w-max">
-            <div
-              className={`flex items-center justify-center w-10 h-10 rounded-full text-base font-bold shadow-sm transition-colors ${selectedRowKeys.length > 0 ? 'bg-blue-500 text-white' : 'bg-slate-200 text-slate-400'
-                }`}
-            >
-              {selectedRowKeys.length}
-            </div>
-            <div className={`flex flex-col leading-tight font-bold text-xs uppercase tracking-wide ${selectedRowKeys.length > 0 ? 'text-blue-900' : 'text-slate-400'}`}>
-              <span>Estudiantes</span>
-              <span>Seleccionados</span>
-            </div>
-          </div>
-
-          {/* Section 2: Inputs Grid */}
-          <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-4">
-            {/* Assign Section */}
-            <div className="flex flex-col gap-1">
-              <span className={`text-[10px] font-bold uppercase tracking-wider ${selectedRowKeys.length > 0 ? 'text-slate-500' : 'text-slate-300'}`}>
-                Asignar Sección
-              </span>
-              <Select
-                disabled={selectedRowKeys.length === 0}
-                placeholder="Seleccionar..."
-                className="w-full"
-                onChange={v => handleBulkUpdate('sectionId', v)}
-                allowClear
-              >
-                {Array.from(new Set(structure.flatMap(s => s.sections || []).map(s => s.id))).map(id => {
-                  const sec = structure.flatMap(s => s.sections || []).find(s => s.id === id);
-                  return <Option key={id} value={id}>{sec?.name}</Option>;
-                })}
-              </Select>
-            </div>
-
-            {/* Change Grade */}
-
-
-            {/* Group Subjects */}
-            <div className="flex flex-col gap-1">
-              <span className={`text-[10px] font-bold uppercase tracking-wider ${selectedRowKeys.length > 0 ? 'text-slate-500' : 'text-slate-300'}`}>
-                Materias de Grupo
-              </span>
-              <Select
-                disabled={selectedRowKeys.length === 0}
-                mode="multiple"
-                placeholder="Asignar Materias..."
-                className="w-full"
-                maxTagCount="responsive"
-                onChange={v => handleBulkUpdate('subjectIds', v)}
-                allowClear
-              >
-                {Array.from(new Map(structure.flatMap(s => s.subjects || [])
-                  .filter(sub => sub.subjectGroupId)
-                  .map(sub => [sub.id, sub])).values())
-                  .map(sub => (
-                    <Option key={sub.id} value={sub.id}>
-                      {sub.name} <Tag color="blue" style={{ fontSize: 9 }}>{sub.subjectGroup?.name}</Tag>
-                    </Option>
-                  ))
-                }
-              </Select>
-            </div>
-          </div>
-
-          {/* Section 3: Actions */}
-          <div className="flex items-center pl-6 border-l border-slate-300/50 min-w-max">
+        <Card
+          size="small"
+          bodyStyle={{ padding: '8px 12px' }}
+          style={{
+            marginBottom: 0,
+            background: selectedRowKeys.length > 0 ? '#e6f7ff' : '#f8fafc',
+            borderColor: selectedRowKeys.length > 0 ? '#91d5ff' : '#e2e8f0',
+            transition: 'all 0.3s ease',
+            position: 'relative',
+            flexShrink: 0
+          }}
+        >
+          {/* Clear button in top-right corner */}
+          {selectedRowKeys.length > 0 && (
             <Button
-              disabled={selectedRowKeys.length === 0}
-              type="primary"
-              size="large"
-              icon={<CheckCircleOutlined />}
-              onClick={handleBulkEnroll}
-              className="bg-blue-600 hover:bg-blue-500 border-none shadow-md shadow-blue-500/30"
-            >
-              Inscribir
-            </Button>
-          </div>
+              type="text"
+              size="small"
+              icon={<CloseOutlined />}
+              onClick={() => setSelectedRowKeys([])}
+              style={{
+                position: 'absolute',
+                top: '-8px',
+                right: '-5px',
+                color: '#888',
+                zIndex: 10
+              }}
+            />
+          )}
 
-        </div>
-      </Card>
+          <div className="flex items-center gap-6">
+
+            {/* Section 1: Counter */}
+            <div className="flex items-center gap-2 pr-4 border-r border-slate-300/50 min-w-max">
+              <div
+                className={`flex items-center justify-center w-8 h-8 rounded-full text-sm font-bold shadow-sm transition-colors ${selectedRowKeys.length > 0 ? 'bg-blue-500 text-white' : 'bg-slate-200 text-slate-400'
+                  }`}
+              >
+                {selectedRowKeys.length}
+              </div>
+              <div className={`flex flex-col leading-tight font-bold text-[10px] uppercase tracking-wide ${selectedRowKeys.length > 0 ? 'text-blue-900' : 'text-slate-400'}`}>
+                <span>Estudiantes</span>
+                <span>Seleccionados</span>
+              </div>
+              {selectedRowKeys.length > 0 && (
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<CloseOutlined />}
+                  onClick={() => setSelectedRowKeys([])}
+                  className="text-slate-400 hover:text-red-500 ml-2"
+                />
+              )}
+            </div>
+
+            {/* Section 2: Inputs Grid */}
+            <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-2">
+              {/* Assign Section */}
+              <div className="flex flex-col gap-0.5">
+                <span className={`text-[9px] font-bold uppercase tracking-wider ${selectedRowKeys.length > 0 ? 'text-slate-500' : 'text-slate-300'}`}>
+                  Asignar Sección
+                </span>
+                <Select
+                  disabled={selectedRowKeys.length === 0}
+                  placeholder="Seleccionar..."
+                  size="small"
+                  className="w-full"
+                  onChange={v => handleBulkUpdate('sectionId', v)}
+                  allowClear
+                >
+                  {Array.from(new Set(structure.flatMap(s => s.sections || []).map(s => s.id))).map(id => {
+                    const sec = structure.flatMap(s => s.sections || []).find(s => s.id === id);
+                    return <Option key={id} value={id}>{sec?.name}</Option>;
+                  })}
+                </Select>
+              </div>
+
+              {/* Change Grade */}
+
+
+              {/* Group Subjects */}
+              <div className="flex flex-col gap-0.5">
+                <span className={`text-[9px] font-bold uppercase tracking-wider ${selectedRowKeys.length > 0 ? 'text-slate-500' : 'text-slate-300'}`}>
+                  Materias de Grupo
+                </span>
+                <Select
+                  disabled={selectedRowKeys.length === 0}
+                  mode="multiple"
+                  placeholder="Asignar Materias..."
+                  size="small"
+                  className="w-full"
+                  maxTagCount="responsive"
+                  onChange={v => handleBulkUpdate('subjectIds', v)}
+                  allowClear
+                >
+                  {Array.from(new Map(structure.flatMap(s => s.subjects || [])
+                    .filter(sub => sub.subjectGroupId)
+                    .map(sub => [sub.id, sub])).values())
+                    .map(sub => (
+                      <Option key={sub.id} value={sub.id}>
+                        {sub.name} <Tag color="blue" style={{ fontSize: 9 }}>{sub.subjectGroup?.name}</Tag>
+                      </Option>
+                    ))
+                  }
+                </Select>
+              </div>
+            </div>
+
+            {/* Section 3: Actions */}
+            <div className="flex items-center pl-4 border-l border-slate-300/50 min-w-max">
+              <Button
+                disabled={selectedRowKeys.length === 0}
+                type="primary"
+                size="middle"
+                icon={<CheckCircleOutlined />}
+                onClick={handleBulkEnroll}
+                className="bg-blue-600 hover:bg-blue-500 border-none shadow-md shadow-blue-500/30"
+              >
+                Inscribir
+              </Button>
+            </div>
+
+          </div>
+        </Card>
+      </div>
 
       <Table
         rowKey="id"
@@ -1172,11 +1215,12 @@ const MatriculationEnrollment: React.FC = () => {
           return matchSearch && matchGrade && matchSection && matchMissing;
         })}
         loading={loading}
-        pagination={{ pageSize: 50, showSizeChanger: true, showTotal: (total) => `Total ${total} estudiantes` }}
-        scroll={{ x: 1800, y: 'calc(100vh - 260px)' }}
+        pagination={{ size: 'small', pageSize: 50, showSizeChanger: true, showTotal: (total) => `Total ${total} estudiantes`, className: '!mb-0' }}
+        scroll={{ x: 'max-content', y: scrollY }}
         rowSelection={{ selectedRowKeys, onChange: setSelectedRowKeys }}
         size="small"
         bordered
+        className="flex-1 overflow-hidden"
       />
 
       <style>{`
@@ -1185,7 +1229,8 @@ const MatriculationEnrollment: React.FC = () => {
           background-color: #fafafa !important;
           color: #555 !important;
           font-weight: 600 !important;
-          font-size: 12px !important;
+          font-size: 11px !important;
+          padding: 6px 8px !important;
           text-transform: uppercase !important;
           opacity: 1 !important;
         }
@@ -1193,7 +1238,7 @@ const MatriculationEnrollment: React.FC = () => {
         /* 2. Global Body Styles */
         .ant-table-tbody > tr > td {
           background-color: #ffffff !important;
-          padding: 4px 8px !important;
+          padding: 2px 4px !important;
           opacity: 1 !important;
         }
 
@@ -1212,6 +1257,13 @@ const MatriculationEnrollment: React.FC = () => {
           border: 1px solid transparent !important;
           background: transparent !important;
           border-radius: 4px !important;
+          height: 26px !important;
+          font-size: 12px !important;
+          padding-left: 4px !important;
+          padding-right: 4px !important;
+        }
+        .ant-select-selection-item {
+          line-height: 24px !important;
         }
         .ant-table-row:hover .ant-input, 
         .ant-table-row:hover .ant-select-selector {
@@ -1224,7 +1276,7 @@ const MatriculationEnrollment: React.FC = () => {
           box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.1) !important;
         }
       `}</style>
-    </div>
+    </div >
   );
 };
 
