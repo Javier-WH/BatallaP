@@ -202,6 +202,9 @@ const MatriculationEnrollment: React.FC = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
 
+  // Column Pinning
+  const [pinnedGroups, setPinnedGroups] = useState<string[]>(['Estudiante']);
+
   // Dynamic Height Calculation
   const [scrollY, setScrollY] = useState(500);
   const headerRef = useRef<HTMLDivElement>(null);
@@ -984,23 +987,61 @@ const MatriculationEnrollment: React.FC = () => {
       }
     }));
 
+  const toggleGroupPin = useCallback((group: string) => {
+    setPinnedGroups(prev =>
+      prev.includes(group) ? prev.filter(g => g !== group) : [...prev, group]
+    );
+  }, []);
+
+  const renderGroupTitle = (group: string, titleNode: React.ReactNode) => (
+    <div className="flex items-center justify-between gap-2 group select-none cursor-pointer" onClick={() => toggleGroupPin(group)}>
+      {titleNode}
+      <Checkbox
+        checked={pinnedGroups.includes(group)}
+        onClick={(e) => { e.stopPropagation(); toggleGroupPin(group); }}
+        className={`transition-opacity duration-200 ${pinnedGroups.includes(group) ? 'opacity-100' : 'opacity-0 group-hover:opacity-50'}`}
+        style={{ transform: 'scale(0.7)' }}
+      />
+    </div>
+  );
+
+  const addSeparator = (cols: any[]) => {
+    if (!cols || cols.length === 0) return cols;
+    return cols.map((col, idx) => {
+      if (idx === cols.length - 1) {
+        return {
+          ...col,
+          className: 'group-separator-border',
+          onHeaderCell: () => ({ className: 'group-separator-border' })
+        };
+      }
+      return col;
+    });
+  };
+
   const columns = [
     studentColumns.length > 0 && {
-      title: <Space><UserOutlined /> Estudiante</Space>,
-      fixed: 'left' as const,
-      children: studentColumns
+      title: renderGroupTitle('Estudiante', <Space><UserOutlined /> Estudiante</Space>),
+      fixed: (pinnedGroups.includes('Estudiante') ? 'left' : undefined) as 'left' | undefined,
+      className: 'group-separator-border',
+      children: addSeparator(studentColumns)
     },
     academicColumns.length > 0 && {
-      title: <Space><BookOutlined /> Académico</Space>,
-      children: academicColumns
+      title: renderGroupTitle('Académico', <Space><BookOutlined /> Académico</Space>),
+      fixed: (pinnedGroups.includes('Académico') ? 'left' : undefined) as 'left' | undefined,
+      className: 'group-separator-border',
+      children: addSeparator(academicColumns)
     },
     contactColumns.length > 0 && {
-      title: 'Contacto',
-      children: contactColumns
+      title: renderGroupTitle('Contacto', 'Contacto'),
+      fixed: (pinnedGroups.includes('Contacto') ? 'left' : undefined) as 'left' | undefined,
+      className: 'group-separator-border',
+      children: addSeparator(contactColumns)
     },
     (motherColumns.length > 0 || fatherColumns.length > 0 || representativeColumns.length > 0) && {
-      title: 'Representación',
-      children: [
+      title: renderGroupTitle('Representación', 'Representación'),
+      className: 'group-separator-border',
+      children: addSeparator([
         motherColumns.length > 0 && {
           title: <Text strong style={{ color: '#eb2f96' }}>Madre</Text>,
           children: motherColumns
@@ -1013,10 +1054,12 @@ const MatriculationEnrollment: React.FC = () => {
           title: 'Representante',
           children: representativeColumns
         }
-      ].filter(Boolean)
+      ].filter(Boolean))
     },
     questionColumns.length > 0 && {
-      title: <Space><QuestionCircleOutlined /> Preguntas Personalizadas</Space>,
+      title: renderGroupTitle('Preguntas Personalizadas', <Space><QuestionCircleOutlined /> Preguntas</Space>),
+      // No separator needed for the very last group typically, but consistent looks might be good.
+      // Let's add it for consistency or leave it off if it's the edge.
       children: questionColumns
     }
   ].filter(Boolean) as ColumnsType<MatriculationRow>;
@@ -1282,6 +1325,11 @@ const MatriculationEnrollment: React.FC = () => {
           border-bottom: 1px solid #e2e8f0 !important;
           transition: background-color 0.2s;
         }
+        
+        /* New Group Separator Border */
+        .group-separator-border {
+          border-right: 2px solid #94a3b8 !important; /* Slate 400 */
+        }    
 
         /* 3. Alternating Row Colors (Zebra Striping) */
         .ant-table-tbody > tr:nth-child(odd) > td {
