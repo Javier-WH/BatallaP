@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Table, Card, Button, Input, Select, Space, Tag, message, Row, Col, Typography, Pagination, Checkbox, Tooltip } from 'antd';
-import { FilterOutlined, TeamOutlined, EyeOutlined, BookOutlined, ReloadOutlined, SearchOutlined, CloseOutlined, UserOutlined } from '@ant-design/icons';
+import { Table, Card, Button, Input, Select, Space, Tag, message, Row, Col, Typography, Pagination, Checkbox, Tooltip, Popover, Divider } from 'antd';
+import { FilterOutlined, TeamOutlined, EyeOutlined, BookOutlined, ReloadOutlined, SearchOutlined, CloseOutlined, UserOutlined, TableOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import api from '@/services/api';
 import type { ColumnsType } from 'antd/es/table';
@@ -79,6 +79,28 @@ interface FiltersState {
   q: string;
 }
 
+const BASE_COLUMN_OPTIONS = [
+  { key: 'firstName', label: 'Nombres', group: 'Estudiante' },
+  { key: 'document', label: 'Cédula', group: 'Estudiante' },
+  { key: 'gender', label: 'Género', group: 'Estudiante' },
+  { key: 'grade', label: 'Grado', group: 'Académico' },
+  { key: 'section', label: 'Sección', group: 'Académico' },
+  { key: 'contactPhone', label: 'Teléfono', group: 'Contacto' },
+  { key: 'contactEmail', label: 'Email', group: 'Contacto' },
+  { key: 'contactState', label: 'Estado', group: 'Contacto' },
+  { key: 'motherName', label: 'Nombre Madre', group: 'Madre' },
+  { key: 'motherLastName', label: 'Apellido Madre', group: 'Madre' },
+  { key: 'motherDoc', label: 'Cédula Madre', group: 'Madre' },
+  { key: 'motherPhone', label: 'Telf. Madre', group: 'Madre' },
+  { key: 'fatherName', label: 'Nombre Padre', group: 'Padre' },
+  { key: 'fatherLastName', label: 'Apellido Padre', group: 'Padre' },
+  { key: 'fatherDoc', label: 'Cédula Padre', group: 'Padre' },
+  { key: 'fatherPhone', label: 'Telf. Padre', group: 'Padre' },
+  { key: 'repName', label: 'Nombre Rep.', group: 'Representante' },
+  { key: 'repRel', label: 'Relación Rep.', group: 'Representante' },
+  { key: 'repPhone', label: 'Telf. Rep.', group: 'Representante' },
+];
+
 const EnrolledStudents: React.FC = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
@@ -116,6 +138,78 @@ const EnrolledStudents: React.FC = () => {
     q: ''
   });
 
+  // Column Visibility State
+  const [visibleColumnKeys, setVisibleColumnKeys] = useState<string[]>(BASE_COLUMN_OPTIONS.map(o => o.key));
+  const [columnPopoverOpen, setColumnPopoverOpen] = useState(false);
+
+  const isColumnVisible = (key: string) => visibleColumnKeys.includes(key);
+
+  const toggleColumn = (key: string) => {
+    setVisibleColumnKeys(prev =>
+      prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]
+    );
+  };
+
+  const toggleGroup = (group: string, checked: boolean) => {
+    const keysInGroup = BASE_COLUMN_OPTIONS.filter(o => o.group === group).map(o => o.key);
+    setVisibleColumnKeys(prev => {
+      const otherKeys = prev.filter(k => !keysInGroup.includes(k));
+      return checked ? [...otherKeys, ...keysInGroup] : otherKeys;
+    });
+  };
+
+  const groupedOptions = useMemo(() => {
+    const groups: Record<string, typeof BASE_COLUMN_OPTIONS> = {};
+    BASE_COLUMN_OPTIONS.forEach(opt => {
+      if (!groups[opt.group]) groups[opt.group] = [];
+      groups[opt.group].push(opt);
+    });
+    return groups;
+  }, []);
+
+  const columnMenuContent = useMemo(() => (
+    <div className="min-w-[280px] max-w-sm max-h-[400px] overflow-y-auto">
+      <div className="flex justify-between items-center mb-2">
+        <Text strong>Columnas</Text>
+        <Space>
+          <Button size="small" type="text" onClick={() => setVisibleColumnKeys(BASE_COLUMN_OPTIONS.map(o => o.key))}>Todas</Button>
+          <Button size="small" type="text" onClick={() => setVisibleColumnKeys([])}>Ninguna</Button>
+        </Space>
+      </div>
+      <Divider style={{ margin: '4px 0 8px 0' }} />
+      {Object.entries(groupedOptions).map(([group, options]) => {
+        const visibleCount = options.filter(o => visibleColumnKeys.includes(o.key)).length;
+        const allVisible = visibleCount === options.length;
+        const indeterminate = visibleCount > 0 && !allVisible;
+
+        return (
+          <div key={group} className="mb-3">
+            <Checkbox
+              indeterminate={indeterminate}
+              checked={allVisible}
+              onChange={(e) => toggleGroup(group, e.target.checked)}
+              className="font-bold mb-1 block"
+            >
+              {group}
+            </Checkbox>
+            <div className="pl-4 grid grid-cols-2 gap-x-2 gap-y-1">
+              {options.map(opt => (
+                <Checkbox
+                  key={opt.key}
+                  checked={visibleColumnKeys.includes(opt.key)}
+                  onChange={() => toggleColumn(opt.key)}
+                  style={{ fontSize: '11px', margin: 0 }}
+                >
+                  {opt.label}
+                </Checkbox>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  ), [visibleColumnKeys, groupedOptions]);
+
   // --- 1. Initial Load ---
   useEffect(() => {
     const loadCatalogs = async () => {
@@ -143,7 +237,7 @@ const EnrolledStudents: React.FC = () => {
     const calculateHeight = () => {
       if (headerRef.current) {
         const { bottom } = headerRef.current.getBoundingClientRect();
-        const available = window.innerHeight - bottom - 40; // Small margin logic
+        const available = window.innerHeight - bottom - 122; // Adjusted margin to maximize height without overflow (approx header 22px + scrollbar 17px + padding 24px + safety)
         setScrollY(Math.max(200, available));
       }
     };
@@ -212,8 +306,12 @@ const EnrolledStudents: React.FC = () => {
 
   const addSeparator = (cols: any[]) => {
     if (!cols || cols.length === 0) return cols;
-    return cols.map((col, idx) => {
-      if (idx === cols.length - 1) {
+    // Filter by visibility first
+    const visibleCols = cols.filter(c => !c.key || isColumnVisible(c.key as string));
+
+    return visibleCols.map((col, idx) => {
+      // Add separator to the last visible column in the group
+      if (idx === visibleCols.length - 1) {
         return {
           ...col,
           className: 'group-separator-border',
@@ -264,44 +362,47 @@ const EnrolledStudents: React.FC = () => {
     {
       title: 'Teléfono',
       width: 120,
+      key: 'contactPhone',
       render: (_: any, r: InscriptionRecord) => <Text>{r.student.contact?.phone1 || '-'}</Text>
     },
     {
       title: 'Email',
       width: 180,
+      key: 'contactEmail',
       render: (_: any, r: InscriptionRecord) => <Text>{r.student.contact?.email || '-'}</Text>
     },
     {
       title: 'Estado',
       width: 120,
+      key: 'contactState',
       render: (_: any, r: InscriptionRecord) => <Text>{r.student.residence?.residenceState || '-'}</Text>
     }
   ];
 
   const motherColumns = [
-    { title: 'Nombre', width: 140, render: (_: any, r: InscriptionRecord) => <Text>{getGuardian(r, 'mother')?.firstName || '-'}</Text> },
-    { title: 'Apellido', width: 140, render: (_: any, r: InscriptionRecord) => <Text>{getGuardian(r, 'mother')?.lastName || '-'}</Text> },
-    { title: 'Cédula', width: 100, render: (_: any, r: InscriptionRecord) => <Text>{getGuardian(r, 'mother')?.document || '-'}</Text> },
-    { title: 'Telf.', width: 110, render: (_: any, r: InscriptionRecord) => <Text>{getGuardian(r, 'mother')?.phone || '-'}</Text> },
+    { title: 'Nombre', key: 'motherName', width: 140, render: (_: any, r: InscriptionRecord) => <Text>{getGuardian(r, 'mother')?.firstName || '-'}</Text> },
+    { title: 'Apellido', key: 'motherLastName', width: 140, render: (_: any, r: InscriptionRecord) => <Text>{getGuardian(r, 'mother')?.lastName || '-'}</Text> },
+    { title: 'Cédula', key: 'motherDoc', width: 100, render: (_: any, r: InscriptionRecord) => <Text>{getGuardian(r, 'mother')?.document || '-'}</Text> },
+    { title: 'Telf.', key: 'motherPhone', width: 110, render: (_: any, r: InscriptionRecord) => <Text>{getGuardian(r, 'mother')?.phone || '-'}</Text> },
   ];
 
   const fatherColumns = [
-    { title: 'Nombre', width: 140, render: (_: any, r: InscriptionRecord) => <Text>{getGuardian(r, 'father')?.firstName || '-'}</Text> },
-    { title: 'Apellido', width: 140, render: (_: any, r: InscriptionRecord) => <Text>{getGuardian(r, 'father')?.lastName || '-'}</Text> },
-    { title: 'Cédula', width: 100, render: (_: any, r: InscriptionRecord) => <Text>{getGuardian(r, 'father')?.document || '-'}</Text> },
-    { title: 'Telf.', width: 110, render: (_: any, r: InscriptionRecord) => <Text>{getGuardian(r, 'father')?.phone || '-'}</Text> },
+    { title: 'Nombre', key: 'fatherName', width: 140, render: (_: any, r: InscriptionRecord) => <Text>{getGuardian(r, 'father')?.firstName || '-'}</Text> },
+    { title: 'Apellido', key: 'fatherLastName', width: 140, render: (_: any, r: InscriptionRecord) => <Text>{getGuardian(r, 'father')?.lastName || '-'}</Text> },
+    { title: 'Cédula', key: 'fatherDoc', width: 100, render: (_: any, r: InscriptionRecord) => <Text>{getGuardian(r, 'father')?.document || '-'}</Text> },
+    { title: 'Telf.', key: 'fatherPhone', width: 110, render: (_: any, r: InscriptionRecord) => <Text>{getGuardian(r, 'father')?.phone || '-'}</Text> },
   ];
 
   const repColumns = [
-    { title: 'Nombre', width: 140, render: (_: any, r: InscriptionRecord) => <Text>{getRepresentative(r)?.firstName || '-'}</Text> },
+    { title: 'Nombre', key: 'repName', width: 140, render: (_: any, r: InscriptionRecord) => <Text>{getRepresentative(r)?.firstName || '-'}</Text> },
     {
-      title: 'Relación', width: 100, render: (_: any, r: InscriptionRecord) => {
+      title: 'Relación', key: 'repRel', width: 100, render: (_: any, r: InscriptionRecord) => {
         const rep = r.student.guardians?.find(g => g.isRepresentative);
         const mapRel: Record<string, string> = { mother: 'Madre', father: 'Padre', representative: 'Otro' };
         return <Tag>{mapRel[rep?.relationship || ''] || rep?.relationship || '-'}</Tag>
       }
     },
-    { title: 'Telf.', width: 110, render: (_: any, r: InscriptionRecord) => <Text>{getRepresentative(r)?.phone || '-'}</Text> },
+    { title: 'Telf.', key: 'repPhone', width: 110, render: (_: any, r: InscriptionRecord) => <Text>{getRepresentative(r)?.phone || '-'}</Text> },
   ];
 
   const academicColumns = [
@@ -481,6 +582,17 @@ const EnrolledStudents: React.FC = () => {
                     onChange={(e) => setFilters(prev => ({ ...prev, q: e.target.value }))}
                     allowClear
                   />
+                </Col>
+                <Col>
+                  <Popover
+                    content={columnMenuContent}
+                    trigger="click"
+                    placement="bottomRight"
+                    open={columnPopoverOpen}
+                    onOpenChange={setColumnPopoverOpen}
+                  >
+                    <Button icon={<TableOutlined />} size="small" />
+                  </Popover>
                 </Col>
                 <Col>
                   <Button icon={<FilterOutlined />} size="small" onClick={() => setFilters({ q: '' })} />
