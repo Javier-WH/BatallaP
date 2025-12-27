@@ -324,18 +324,18 @@ const EnrolledStudents: React.FC = () => {
 
   const studentColumns = [
     {
-      title: 'Nombres',
-      dataIndex: ['student', 'firstName'],
-      key: 'firstName',
-      width: 150,
-      render: (_: string, r: InscriptionRecord) => <Text>{r.student.firstName} {r.student.lastName}</Text>
-    },
-    {
       title: 'Cédula',
       dataIndex: ['student', 'document'],
       key: 'document',
       width: 120,
       render: (_: string, r: InscriptionRecord) => <Text>{r.student.documentType}-{r.student.document}</Text>
+    },
+    {
+      title: 'Nombres',
+      dataIndex: ['student', 'firstName'],
+      key: 'firstName',
+      width: 150,
+      render: (_: string, r: InscriptionRecord) => <Text>{r.student.firstName} {r.student.lastName}</Text>
     },
     {
       title: 'Género',
