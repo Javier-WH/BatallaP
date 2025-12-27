@@ -4,6 +4,7 @@ import SchoolPeriod from './SchoolPeriod';
 import Grade from './Grade';
 import Section from './Section';
 import Person from './Person';
+import { EscolaridadStatus } from '@/types/enrollment';
 
 interface InscriptionAttributes {
   id: number;
@@ -11,6 +12,7 @@ interface InscriptionAttributes {
   gradeId: number;
   sectionId?: number;
   personId: number;
+  escolaridad: EscolaridadStatus;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -23,6 +25,7 @@ class Inscription extends Model<InscriptionAttributes, InscriptionCreationAttrib
   public gradeId!: number;
   public sectionId!: number; // Can be null, types/nullability handled by Sequelize
   public personId!: number;
+  public escolaridad!: EscolaridadStatus;
 
   public readonly subjects?: import('./Subject').default[];
 
@@ -56,6 +59,11 @@ Inscription.init(
       type: DataTypes.INTEGER,
       references: { model: Person, key: 'id' },
       allowNull: false
+    },
+    escolaridad: {
+      type: DataTypes.ENUM('regular', 'repitiente', 'materia_pendiente'),
+      allowNull: false,
+      defaultValue: 'regular'
     }
   },
   {

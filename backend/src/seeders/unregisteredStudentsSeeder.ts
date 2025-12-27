@@ -58,8 +58,10 @@ const LOCATION_PRESETS = [
 ];
 
 const randomItem = <T>(items: T[]): T => items[Math.floor(Math.random() * items.length)];
-const randomDigits = (length: number) => Math.floor(Math.random() * (10 ** length)).toString().padStart(length, '0');
+const randomDigits = (length: number) => Math.floor(Math.random() * 10 ** length).toString().padStart(length, '0');
 const slugify = (value: string) => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z]/gi, '').toLowerCase();
+const buildDocumentNumber = (base: number, suffix?: number) =>
+  suffix === undefined ? base.toString() : `${base}${suffix}`;
 
 const buildGuardianPayload = (
   firstName: string,
@@ -138,7 +140,7 @@ const createUnregisteredStudents = async (targetCount: number) => {
     while (created < targetCount && attempts < targetCount * 5) {
       attempts += 1;
       const baseDocumentNumber = 50000000 + attempts;
-      const document = `V${baseDocumentNumber}`;
+      const document = buildDocumentNumber(baseDocumentNumber);
 
       const existing = await Person.findOne({ where: { document }, transaction });
       if (existing) {
@@ -157,7 +159,8 @@ const createUnregisteredStudents = async (targetCount: number) => {
             gradeId: placement.gradeId,
             sectionId: placement.sectionId ?? null,
             status: 'pending',
-            inscriptionId: null
+            inscriptionId: null,
+            escolaridad: 'regular'
           },
           { transaction }
         );
@@ -214,8 +217,18 @@ const createUnregisteredStudents = async (targetCount: number) => {
         { transaction }
       );
 
-      const motherPayload = buildGuardianPayload(randomItem(FEMALE_NAMES), lastName, `VM${baseDocumentNumber}`, residence);
-      const fatherPayload = buildGuardianPayload(randomItem(MALE_NAMES), lastName, `VP${baseDocumentNumber}`, residence);
+      const motherPayload = buildGuardianPayload(
+        randomItem(FEMALE_NAMES),
+        lastName,
+        buildDocumentNumber(baseDocumentNumber, 1),
+        residence
+      );
+      const fatherPayload = buildGuardianPayload(
+        randomItem(MALE_NAMES),
+        lastName,
+        buildDocumentNumber(baseDocumentNumber, 2),
+        residence
+      );
 
       const representativeSelector = Math.random();
       const motherIsRepresentative = representativeSelector < 0.45;
@@ -240,7 +253,7 @@ const createUnregisteredStudents = async (targetCount: number) => {
           payload: buildGuardianPayload(
             randomItem([...MALE_NAMES, ...FEMALE_NAMES]),
             randomItem(LAST_NAMES),
-            `VR${baseDocumentNumber}`,
+            buildDocumentNumber(baseDocumentNumber, 3),
             residence
           ),
           relationship: 'representative',
@@ -257,7 +270,8 @@ const createUnregisteredStudents = async (targetCount: number) => {
           gradeId: placement.gradeId,
           sectionId: placement.sectionId ?? null,
           status: 'pending',
-          inscriptionId: null
+          inscriptionId: null,
+          escolaridad: 'regular'
         },
         { transaction }
       );

@@ -65,6 +65,8 @@ const LOCATION_PRESETS = [
 const randomItem = <T>(items: T[]): T => items[Math.floor(Math.random() * items.length)];
 const randomDigits = (length: number) => Math.floor(Math.random() * 10 ** length).toString().padStart(length, '0');
 const slugify = (value: string) => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z]/gi, '').toLowerCase();
+const buildDocumentNumber = (base: number, suffix?: number) =>
+  suffix === undefined ? base.toString() : `${base}${suffix}`;
 
 const buildGuardianPayload = (
   firstName: string,
@@ -174,7 +176,7 @@ const seedInscriptions = async (targetCount: number) => {
     while (created < targetCount && attempts < targetCount * 5) {
       attempts += 1;
       const baseDocumentNumber = 30000000 + attempts;
-      const studentDocument = `V${baseDocumentNumber}`;
+      const studentDocument = buildDocumentNumber(baseDocumentNumber);
       const existing = await Person.findOne({ where: { document: studentDocument }, transaction });
       if (existing) {
         continue;
@@ -248,8 +250,18 @@ const seedInscriptions = async (targetCount: number) => {
         { transaction }
       );
 
-      const motherPayload = buildGuardianPayload(randomItem(FEMALE_NAMES), lastName, `VM${baseDocumentNumber}`, residence);
-      const fatherPayload = buildGuardianPayload(randomItem(MALE_NAMES), lastName, `VP${baseDocumentNumber}`, residence);
+      const motherPayload = buildGuardianPayload(
+        randomItem(FEMALE_NAMES),
+        lastName,
+        buildDocumentNumber(baseDocumentNumber, 1),
+        residence
+      );
+      const fatherPayload = buildGuardianPayload(
+        randomItem(MALE_NAMES),
+        lastName,
+        buildDocumentNumber(baseDocumentNumber, 2),
+        residence
+      );
 
       const representativeType = Math.random();
       const motherIsRepresentative = representativeType < 0.4;
@@ -273,7 +285,7 @@ const seedInscriptions = async (targetCount: number) => {
         const repPayload = buildGuardianPayload(
           randomItem([...FEMALE_NAMES, ...MALE_NAMES]),
           randomItem(LAST_NAMES),
-          `VR${baseDocumentNumber}`,
+          buildDocumentNumber(baseDocumentNumber, 3),
           residence
         );
         assignments.push({
@@ -290,7 +302,8 @@ const seedInscriptions = async (targetCount: number) => {
           personId: person.id,
           schoolPeriodId: activePeriod.id,
           gradeId: grade.id,
-          sectionId: section?.id ?? undefined
+          sectionId: section?.id ?? undefined,
+          escolaridad: 'regular'
         },
         { transaction }
       );

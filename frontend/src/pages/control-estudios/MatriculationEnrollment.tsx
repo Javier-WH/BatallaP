@@ -29,10 +29,16 @@ import {
 import dayjs, { Dayjs } from 'dayjs';
 import api from '@/services/api';
 import type { EnrollmentQuestionResponse } from '@/services/enrollmentQuestions';
-import type { ColumnsType } from 'antd/es/table';
+import type { ColumnsType, ColumnType } from 'antd/es/table';
 
 const { Text, Title } = Typography;
 const { Option } = Select;
+
+const ESCOLARIDAD_OPTIONS: { label: string; value: EscolaridadStatus }[] = [
+  { label: 'Regular', value: 'regular' },
+  { label: 'Repitiente', value: 'repitiente' },
+  { label: 'Materia pendiente', value: 'materia_pendiente' }
+];
 
 type RepresentativeType = 'mother' | 'father' | 'other';
 
@@ -88,6 +94,8 @@ interface StudentData {
   enrollmentAnswers?: EnrollmentAnswerRecord[];
 }
 
+type EscolaridadStatus = 'regular' | 'repitiente' | 'materia_pendiente';
+
 interface TempData {
   firstName: string;
   lastName: string;
@@ -95,6 +103,7 @@ interface TempData {
   gradeId: number;
   sectionId?: number | null;
   subjectIds: number[];
+  escolaridad: EscolaridadStatus;
   phone1?: string;
   whatsapp?: string;
   birthdate: Dayjs | null;
@@ -128,6 +137,7 @@ interface MatriculationApiResponse {
   sectionId?: number | null;
   status: 'pending' | 'completed';
   student: StudentData;
+  escolaridad?: EscolaridadStatus;
 }
 
 interface EnrollStructureEntry {
@@ -161,6 +171,7 @@ const BASE_COLUMN_OPTIONS: ColumnOption[] = [
   { key: 'gradeId', label: 'Grado', group: 'Académico' },
   { key: 'sectionId', label: 'Sección', group: 'Académico' },
   { key: 'subjectIds', label: 'Materias de Grupo', group: 'Académico' },
+  { key: 'escolaridad', label: 'Escolaridad', group: 'Académico' },
   { key: 'phone1', label: 'S. Principal', group: 'Contacto' },
   { key: 'whatsapp', label: 'WhatsApp', group: 'Contacto' },
   { key: 'motherDocument', label: 'Cédula Madre', group: 'Madre' },
@@ -450,6 +461,7 @@ const MatriculationEnrollment: React.FC = () => {
               gradeId: m.gradeId,
               sectionId: m.sectionId,
               subjectIds: [],
+              escolaridad: m.escolaridad ?? 'regular',
               phone1: m.student.contact?.phone1,
               whatsapp: m.student.contact?.whatsapp,
               birthdate: m.student.birthdate ? dayjs(m.student.birthdate) : null,
@@ -714,6 +726,20 @@ const MatriculationEnrollment: React.FC = () => {
           </Select>
         );
       }
+    },
+    isColumnVisible('escolaridad') && {
+      title: 'Escolaridad',
+      width: 150,
+      render: (_: unknown, record: MatriculationRow, idx: number) => (
+        <Select
+          id={`nav-${idx}-escolaridad`}
+          value={record.tempData.escolaridad}
+          style={{ width: '100%' }}
+          onInputKeyDown={e => handleKeyDown(e, idx, 'escolaridad')}
+          onChange={(v) => handleUpdateRow(record.id, 'escolaridad', v as EscolaridadStatus)}
+          options={ESCOLARIDAD_OPTIONS}
+        />
+      )
     },
   ].filter(Boolean);
 

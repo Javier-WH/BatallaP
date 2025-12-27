@@ -99,6 +99,12 @@ const guardianDocumentOptions: { label: string; value: GuardianDocumentType }[] 
   { label: 'Pasaporte', value: 'Pasaporte' }
 ];
 
+const ESCOLARIDAD_OPTIONS = [
+  { label: 'Regular', value: 'regular' },
+  { label: 'Repitiente', value: 'repitiente' },
+  { label: 'Materia pendiente', value: 'materia_pendiente' }
+];
+
 const guardianLabels: Record<GuardianKey, string> = {
   mother: 'la madre',
   father: 'el padre',
@@ -659,7 +665,12 @@ const EnrollStudent: React.FC = () => {
               form={newStudentForm}
               layout="vertical"
               onFinish={handleNewStudentSubmit}
-              initialValues={{ documentType: 'Venezolano', gender: 'M', representativeType: 'mother' }}
+              initialValues={{
+                documentType: 'Venezolano',
+                gender: 'M',
+                representativeType: 'mother',
+                escolaridad: 'regular'
+              }}
             >
               <div style={{ background: '#f0f7ff', padding: 16, borderRadius: 8, marginBottom: 24, border: '1px solid #91caff' }}>
                 <h4 style={{ marginTop: 0, color: '#1890ff' }}>1. Datos Académicos</h4>
@@ -697,6 +708,18 @@ const EnrollStudent: React.FC = () => {
                           <Option key={sec.id} value={sec.id}>{sec.name}</Option>
                         ))}
                       </Select>
+                    </Form.Item>
+                  </Col>
+                </Row>
+
+                <Row gutter={16}>
+                  <Col span={12}>
+                    <Form.Item
+                      name="escolaridad"
+                      label="Escolaridad"
+                      rules={[{ required: true, message: 'Seleccione la escolaridad del estudiante' }]}
+                    >
+                      <Select placeholder="Seleccione" options={ESCOLARIDAD_OPTIONS} />
                     </Form.Item>
                   </Col>
                 </Row>
@@ -1319,6 +1342,7 @@ const EnrollStudent: React.FC = () => {
               layout="vertical"
               onFinish={handleExistingStudentSubmit}
               style={{ maxWidth: 600, margin: '20px auto' }}
+              initialValues={{ escolaridad: 'regular' }}
             >
               <Form.Item
                 name="personId"
@@ -1379,6 +1403,18 @@ const EnrollStudent: React.FC = () => {
                         <Option key={sec.id} value={sec.id}>{sec.name}</Option>
                       ))}
                     </Select>
+                  </Form.Item>
+                </Col>
+              </Row>
+
+              <Row gutter={16}>
+                <Col span={12}>
+                  <Form.Item
+                    name="escolaridad"
+                    label="Escolaridad"
+                    rules={[{ required: true, message: 'Seleccione la escolaridad del estudiante' }]}
+                  >
+                    <Select placeholder="Seleccione" options={ESCOLARIDAD_OPTIONS} />
                   </Form.Item>
                 </Col>
               </Row>

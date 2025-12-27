@@ -5,6 +5,7 @@ import SchoolPeriod from './SchoolPeriod';
 import Grade from './Grade';
 import Section from './Section';
 import Inscription from './Inscription';
+import { EscolaridadStatus } from '@/types/enrollment';
 
 export type MatriculationStatus = 'pending' | 'completed';
 
@@ -14,13 +15,14 @@ interface MatriculationAttributes {
   schoolPeriodId: number;
   gradeId: number;
   sectionId?: number | null;
+  escolaridad: EscolaridadStatus;
   status: MatriculationStatus;
   inscriptionId?: number | null;
   createdAt?: Date;
   updatedAt?: Date;
 }
 
-interface MatriculationCreationAttributes extends Optional<MatriculationAttributes, 'id' | 'sectionId' | 'status' | 'inscriptionId'> {}
+interface MatriculationCreationAttributes extends Optional<MatriculationAttributes, 'id' | 'sectionId' | 'status' | 'inscriptionId' | 'escolaridad'> {}
 
 class Matriculation extends Model<MatriculationAttributes, MatriculationCreationAttributes> implements MatriculationAttributes {
   public id!: number;
@@ -28,6 +30,7 @@ class Matriculation extends Model<MatriculationAttributes, MatriculationCreation
   public schoolPeriodId!: number;
   public gradeId!: number;
   public sectionId!: number | null;
+  public escolaridad!: EscolaridadStatus;
   public status!: MatriculationStatus;
   public inscriptionId!: number | null;
 
@@ -75,6 +78,11 @@ Matriculation.init(
       type: DataTypes.INTEGER,
       allowNull: true,
       references: { model: Section, key: 'id' }
+    },
+    escolaridad: {
+      type: DataTypes.ENUM('regular', 'repitiente', 'materia_pendiente'),
+      allowNull: false,
+      defaultValue: 'regular'
     },
     status: {
       type: DataTypes.ENUM('pending', 'completed'),

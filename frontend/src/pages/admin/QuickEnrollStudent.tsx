@@ -5,6 +5,11 @@ import { UserAddOutlined } from '@ant-design/icons';
 import api from '@/services/api';
 
 const { Option } = Select;
+const ESCOLARIDAD_OPTIONS = [
+  { label: 'Regular', value: 'regular' },
+  { label: 'Repitiente', value: 'repitiente' },
+  { label: 'Materia pendiente', value: 'materia_pendiente' }
+];
 
 interface EnrollStructureEntry {
   gradeId: number;
@@ -80,6 +85,7 @@ const MatricularEstudiante: React.FC = () => {
     document: string;
     gender: 'M' | 'F';
     birthdate: Dayjs;
+    escolaridad: string;
   }) => {
     if (!activePeriod) {
       message.error('No hay periodo activo configurado');
@@ -96,7 +102,8 @@ const MatricularEstudiante: React.FC = () => {
         documentType: values.documentType,
         document: values.document,
         gender: values.gender,
-        birthdate: values.birthdate ? values.birthdate.format('YYYY-MM-DD') : null
+        birthdate: values.birthdate ? values.birthdate.format('YYYY-MM-DD') : null,
+        escolaridad: values.escolaridad
       });
 
       message.success('Estudiante matriculado correctamente');
@@ -148,7 +155,7 @@ const MatricularEstudiante: React.FC = () => {
         <Form
           layout="vertical"
           form={form}
-          initialValues={{ documentType: 'Venezolano', gender: 'M' }}
+          initialValues={{ documentType: 'Venezolano', gender: 'M', escolaridad: 'regular' }}
           onFinish={handleSubmit}
         >
           <Row gutter={16}>
@@ -176,6 +183,18 @@ const MatricularEstudiante: React.FC = () => {
                   disabled={!selectedGradeId}
                   allowClear
                 />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item
+                name="escolaridad"
+                label="Escolaridad"
+                rules={[{ required: true, message: 'Seleccione la escolaridad' }]}
+              >
+                <Select placeholder="Seleccione" options={ESCOLARIDAD_OPTIONS} />
               </Form.Item>
             </Col>
           </Row>

@@ -7,6 +7,17 @@ import { GuardianDocumentType } from '@/models/GuardianProfile';
 import { GuardianRelationship } from '@/models/StudentGuardian';
 import { GuardianProfilePayload } from '@/services/guardianProfileService';
 import { assignGuardians, GuardianAssignment } from '@/services/studentGuardianService';
+import { EscolaridadStatus } from '@/types/enrollment';
+
+const ESCOLARIDAD_VALUES: EscolaridadStatus[] = ['regular', 'repitiente', 'materia_pendiente'];
+const normalizeEscolaridad = (value?: unknown): EscolaridadStatus => {
+  if (typeof value !== 'string') return 'regular';
+  const normalized = value.trim().toLowerCase() as EscolaridadStatus;
+  if (ESCOLARIDAD_VALUES.includes(normalized)) {
+    return normalized;
+  }
+  throw new Error('Valor de escolaridad inválido. Debe ser regular, repitiente o materia_pendiente.');
+};
 
 type GuardianInput = {
   firstName?: string;
@@ -33,7 +44,8 @@ export const quickRegister = async (req: Request, res: Response) => {
       documentType,
       document,
       gender,
-      birthdate
+      birthdate,
+      escolaridad
     } = req.body;
 
     if (!gradeId) {
@@ -82,7 +94,8 @@ export const quickRegister = async (req: Request, res: Response) => {
       schoolPeriodId: targetPeriodId,
       gradeId,
       sectionId: sectionId || null,
-      status: 'pending'
+      status: 'pending',
+      escolaridad: normalizeEscolaridad(escolaridad)
     }, { transaction: t });
 
     await t.commit();
@@ -284,7 +297,8 @@ export const enrollMatriculatedStudent = async (req: Request, res: Response) => 
       father,
       representative,
       representativeType,
-      enrollmentAnswers
+      enrollmentAnswers,
+      escolaridad,
     } = req.body;
 
     const matriculation = (await Matriculation.findByPk(id, {
@@ -439,6 +453,8 @@ export const enrollMatriculatedStudent = async (req: Request, res: Response) => 
     const targetSectionId = sectionId ?? matriculation.sectionId ?? null;
     const selectedGroupSubjectIds = Array.isArray(req.body.subjectIds) ? req.body.subjectIds : [];
 
+    const escolaridadValue = normalizeEscolaridad(escolaridad ?? matriculation.escolaridad);
+
     const existingInscription = await Inscription.findOne({
       where: { schoolPeriodId: targetPeriodId, personId: person.id },
       transaction: t,
@@ -449,11 +465,15 @@ export const enrollMatriculatedStudent = async (req: Request, res: Response) => 
       return res.status(400).json({ error: 'El estudiante ya está inscrito en este periodo escolar' });
     }
 
+    matriculation.escolaridad = escolaridadValue;
+    await matriculation.save({ transaction: t });
+
     const inscription = await Inscription.create({
       schoolPeriodId: targetPeriodId,
       gradeId: targetGradeId,
       sectionId: targetSectionId,
-      personId: person.id
+      personId: person.id,
+      escolaridad: escolaridadValue
     }, { transaction: t });
 
     const periodGrade = await PeriodGrade.findOne({
@@ -566,6 +586,15 @@ export const getInscriptions = async (req: Request, res: Response) => {
       ],
       order: [['createdAt', 'DESC']]
     });
+    if (inscriptions.length > 0) {
+      const sample = inscriptions[0];
+      console.log(
+        '[getInscriptions] sample keys',
+        Object.keys(sample.dataValues),
+        'value',
+        sample.getDataValue('escolaridad')
+      );
+    }
     res.json(inscriptions);
   } catch (error) {
     console.error('Error en getInscriptions:', error);
@@ -595,7 +624,7 @@ export const getInscriptionById = async (req: Request, res: Response) => {
 export const createInscription = async (req: Request, res: Response) => {
   const t = await sequelize.transaction();
   try {
-    const { schoolPeriodId, gradeId, personId, sectionId, enrollmentAnswers } = req.body;
+    const { schoolPeriodId, gradeId, personId, sectionId, enrollmentAnswers, escolaridad } = req.body;
 
     // 1. Verify Role Student
     const person = await Person.findByPk(personId, {
@@ -640,7 +669,8 @@ export const createInscription = async (req: Request, res: Response) => {
       gradeId,
       sectionId: sectionId || null,
       personId,
-      status: 'pending'
+      status: 'pending',
+      escolaridad: normalizeEscolaridad(escolaridad)
     }, { transaction: t });
 
     await t.commit();
@@ -815,7 +845,8 @@ export const registerAndEnroll = async (req: Request, res: Response) => {
       schoolPeriodId,
       gradeId,
       sectionId,
-      enrollmentAnswers
+      enrollmentAnswers,
+      escolaridad
     } = req.body;
 
     // 1. Create Person (no User)
@@ -939,12 +970,15 @@ export const registerAndEnroll = async (req: Request, res: Response) => {
     await PersonRole.create({ personId: person.id, roleId: role.id }, { transaction: t });
 
     // 5. Create Matriculation (PENDING)
+    const escolaridadValue = normalizeEscolaridad(escolaridad);
+
     const matriculation = await Matriculation.create({
       schoolPeriodId,
       gradeId,
       sectionId: sectionId || null,
       personId: person.id,
-      status: 'pending'
+      status: 'pending',
+      escolaridad: escolaridadValue
     }, { transaction: t });
 
     // 6. Enrollment Answers (moved here to be consistent)

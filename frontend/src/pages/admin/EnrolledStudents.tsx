@@ -52,11 +52,15 @@ interface StudentGuardian {
   profile: GuardianProfile;
 }
 
+type DocumentType = 'Venezolano' | 'Extranjero' | 'Pasaporte' | 'Cedula Escolar';
+
+type EscolaridadStatus = 'regular' | 'repitiente' | 'materia_pendiente';
+
 interface Student {
   id: number;
   firstName: string;
   lastName: string;
-  documentType: string;
+  documentType: DocumentType;
   document: string;
   gender: Gender;
   contact?: Contact;
@@ -70,6 +74,7 @@ interface InscriptionRecord {
   grade: Grade;
   section?: Section | null;
   schoolPeriodId: number;
+  escolaridad: EscolaridadStatus;
 }
 
 interface FiltersState {
@@ -80,11 +85,13 @@ interface FiltersState {
 }
 
 const BASE_COLUMN_OPTIONS = [
-  { key: 'firstName', label: 'Nombres', group: 'Estudiante' },
+  { key: 'nationality', label: 'Nac.', group: 'Estudiante' },
   { key: 'document', label: 'Cédula', group: 'Estudiante' },
+  { key: 'firstName', label: 'Nombres', group: 'Estudiante' },
   { key: 'gender', label: 'Género', group: 'Estudiante' },
   { key: 'grade', label: 'Grado', group: 'Académico' },
   { key: 'section', label: 'Sección', group: 'Académico' },
+  { key: 'escolaridad', label: 'Escolaridad', group: 'Académico' },
   { key: 'contactPhone', label: 'Teléfono', group: 'Contacto' },
   { key: 'contactEmail', label: 'Email', group: 'Contacto' },
   { key: 'contactState', label: 'Estado', group: 'Contacto' },
@@ -322,13 +329,30 @@ const EnrolledStudents: React.FC = () => {
     });
   };
 
+  const docPrefix: Record<DocumentType, string> = {
+    Venezolano: 'V-',
+    Extranjero: 'E-',
+    Pasaporte: 'P-',
+    'Cedula Escolar': 'CE-'
+  };
+
   const studentColumns = [
+    {
+      title: 'Nac.',
+      key: 'nationality',
+      width: 70,
+      render: (_: unknown, r: InscriptionRecord) => (
+        <Text>
+          {docPrefix[r.student.documentType] || r.student.documentType?.[0]?.toUpperCase() + '-'}
+        </Text>
+      )
+    },
     {
       title: 'Cédula',
       dataIndex: ['student', 'document'],
       key: 'document',
       width: 120,
-      render: (_: string, r: InscriptionRecord) => <Text>{r.student.documentType}-{r.student.document}</Text>
+      render: (_: string, r: InscriptionRecord) => <Text>{r.student.document}</Text>
     },
     {
       title: 'Nombres',
@@ -422,6 +446,20 @@ const EnrolledStudents: React.FC = () => {
           {name || <Text type="secondary">N/A</Text>}
         </div>
       )
+    },
+    {
+      title: 'Escolaridad',
+      key: 'escolaridad',
+      width: 140,
+      render: (_: unknown, r: InscriptionRecord) => {
+        const map: Record<EscolaridadStatus, { label: string; color: string }> = {
+          regular: { label: 'Regular', color: 'green' },
+          repitiente: { label: 'Repitiente', color: 'orange' },
+          materia_pendiente: { label: 'Materia pendiente', color: 'blue' }
+        };
+        const info = map[r.escolaridad] ?? { label: r.escolaridad, color: 'default' };
+        return <Tag color={info.color}>{info.label}</Tag>;
+      }
     }
   ];
 
@@ -438,13 +476,6 @@ const EnrolledStudents: React.FC = () => {
       fixed: (pinnedGroups.includes('Académico') ? 'left' : undefined) as 'left' | undefined,
       className: 'group-separator-border',
       children: addSeparator(academicColumns)
-    },
-    // Contact
-    {
-      title: renderGroupTitle('Contacto', 'Contacto'),
-      fixed: (pinnedGroups.includes('Contacto') ? 'left' : undefined) as 'left' | undefined,
-      className: 'group-separator-border',
-      children: addSeparator(contactColumns)
     },
     // Contact
     {
