@@ -15,14 +15,7 @@ interface Subject {
   };
 }
 
-interface InscriptionSubject {
-  id: number;
-  name: string;
-  InscriptionSubject?: {
-    inscriptionId: number;
-    subjectId: number;
-  };
-}
+
 
 interface Props {
   visible: boolean;
@@ -44,10 +37,10 @@ const StudentSubjectsModal: React.FC<Props> = ({
   const [loading, setLoading] = useState(false);
   const [enrolledSubjects, setEnrolledSubjects] = useState<Subject[]>([]);
   const [availableSubjects, setAvailableSubjects] = useState<Subject[]>([]);
-  
+
   const fetchData = async () => {
     if (!inscriptionId) return;
-    
+
     setLoading(true);
     try {
       // 1. Get current inscription details (with subjects)
@@ -59,7 +52,7 @@ const StudentSubjectsModal: React.FC<Props> = ({
       const structureRes = await api.get(`/academic/structure/${schoolPeriodId}`);
       // Find the specific periodGrade for this grade
       const periodGrade = structureRes.data.find((pg: any) => pg.gradeId === gradeId);
-      
+
       if (periodGrade && periodGrade.subjects) {
         const allSubjects = periodGrade.subjects;
         // Filter out subjects that are already enrolled
@@ -112,18 +105,18 @@ const StudentSubjectsModal: React.FC<Props> = ({
     <List.Item
       actions={[
         isEnrolled ? (
-          <Button 
-            danger 
-            type="text" 
-            icon={<DeleteOutlined />} 
+          <Button
+            danger
+            type="text"
+            icon={<DeleteOutlined />}
             onClick={() => handleRemoveSubject(subject.id)}
           >
             Remover
           </Button>
         ) : (
-          <Button 
-            type="link" 
-            icon={<PlusOutlined />} 
+          <Button
+            type="link"
+            icon={<PlusOutlined />}
             onClick={() => handleAddSubject(subject.id)}
           >
             Agregar
@@ -174,11 +167,11 @@ const StudentSubjectsModal: React.FC<Props> = ({
 
           <Title level={5}>Materias Disponibles (del Grado)</Title>
           {availableSubjects.length > 0 ? (
-             <List
-             size="small"
-             dataSource={availableSubjects}
-             renderItem={(item) => renderSubjectItem(item, false)}
-           />
+            <List
+              size="small"
+              dataSource={availableSubjects}
+              renderItem={(item) => renderSubjectItem(item, false)}
+            />
           ) : (
             <Empty description="No hay materias adicionales disponibles" image={Empty.PRESENTED_IMAGE_SIMPLE} />
           )}

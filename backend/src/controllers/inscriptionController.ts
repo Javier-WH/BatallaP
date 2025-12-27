@@ -548,7 +548,16 @@ export const getInscriptions = async (req: Request, res: Response) => {
           model: Person,
           as: 'student',
           where: hasPersonFilter ? personWhere : undefined,
-          required: hasPersonFilter // Force INNER JOIN if filtering by person
+          required: hasPersonFilter, // Force INNER JOIN if filtering by person
+          include: [
+            { model: Contact, as: 'contact' },
+            { model: PersonResidence, as: 'residence' },
+            {
+              model: StudentGuardian,
+              as: 'guardians',
+              include: [{ model: GuardianProfile, as: 'profile' }]
+            }
+          ]
         },
         { model: SchoolPeriod, as: 'period' },
         { model: Grade, as: 'grade' },

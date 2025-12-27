@@ -1,14 +1,13 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Table, Card, Button, Input, Select, Space, Tag, message, Row, Col, Typography, Empty, Tooltip } from 'antd';
-import { FilterOutlined, TeamOutlined, EyeOutlined, BookOutlined } from '@ant-design/icons';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { Table, Card, Button, Input, Select, Space, Tag, message, Row, Col, Typography, Pagination, Checkbox, Tooltip } from 'antd';
+import { FilterOutlined, TeamOutlined, EyeOutlined, BookOutlined, ReloadOutlined, SearchOutlined, CloseOutlined, UserOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import api from '@/services/api';
 import type { ColumnsType } from 'antd/es/table';
 import StudentSubjectsModal from './StudentSubjectsModal';
 
-const { Search } = Input;
 const { Option } = Select;
-const { Text } = Typography;
+const { Text, Title } = Typography;
 
 type Gender = 'M' | 'F';
 
@@ -28,18 +27,46 @@ interface Section {
   name: string;
 }
 
-interface StudentSummary {
+interface Contact {
+  phone1?: string;
+  email?: string;
+  address?: string;
+}
+
+interface Residence {
+  residenceState?: string;
+  residenceMunicipality?: string;
+}
+
+interface GuardianProfile {
+  firstName: string;
+  lastName: string;
+  document: string;
+  phone: string;
+  email: string;
+}
+
+interface StudentGuardian {
+  relationship: 'mother' | 'father' | 'representative';
+  isRepresentative: boolean;
+  profile: GuardianProfile;
+}
+
+interface Student {
   id: number;
   firstName: string;
   lastName: string;
   documentType: string;
   document: string;
   gender: Gender;
+  contact?: Contact;
+  residence?: Residence;
+  guardians?: StudentGuardian[];
 }
 
 interface InscriptionRecord {
   id: number;
-  student: StudentSummary;
+  student: Student;
   grade: Grade;
   section?: Section | null;
   schoolPeriodId: number;
@@ -58,6 +85,16 @@ const EnrolledStudents: React.FC = () => {
   const [inscriptions, setInscriptions] = useState<InscriptionRecord[]>([]);
   const [activePeriod, setActivePeriod] = useState<SchoolPeriod | null>(null);
 
+  // Layout & Table State
+  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
+  const [scrollY, setScrollY] = useState(500);
+  const headerRef = useRef<HTMLDivElement>(null);
+  const [pinnedGroups, setPinnedGroups] = useState<string[]>(['Estudiante']);
+
+  // Pagination State
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
+
   // Subject Modal State
   const [subjectModalVisible, setSubjectModalVisible] = useState(false);
   const [selectedStudentForSubjects, setSelectedStudentForSubjects] = useState<{
@@ -67,7 +104,7 @@ const EnrolledStudents: React.FC = () => {
     schoolPeriodId: number;
   } | null>(null);
 
-  // Catalogs for filters
+  // Catalogs
   const [grades, setGrades] = useState<Grade[]>([]);
   const [sections, setSections] = useState<Section[]>([]);
 
@@ -79,7 +116,7 @@ const EnrolledStudents: React.FC = () => {
     q: ''
   });
 
-  // 1. Initial Load: Active Period and Catalogs
+  // --- 1. Initial Load ---
   useEffect(() => {
     const loadCatalogs = async () => {
       try {
@@ -101,10 +138,27 @@ const EnrolledStudents: React.FC = () => {
     loadCatalogs();
   }, []);
 
-  // 2. Fetch Inscriptions when filters or activePeriod change
+  // --- 2. Dynamic Height ---
+  useEffect(() => {
+    const calculateHeight = () => {
+      if (headerRef.current) {
+        const { bottom } = headerRef.current.getBoundingClientRect();
+        const available = window.innerHeight - bottom - 40; // Small margin logic
+        setScrollY(Math.max(200, available));
+      }
+    };
+    calculateHeight();
+    window.addEventListener('resize', calculateHeight);
+    const timeoutId = setTimeout(calculateHeight, 100);
+    return () => {
+      window.removeEventListener('resize', calculateHeight);
+      clearTimeout(timeoutId);
+    };
+  }, [selectedRowKeys.length, activePeriod]); // Recalc on selection change or period load
+
+  // --- 3. Fetch Data ---
   const fetchInscriptions = useCallback(async () => {
     if (!activePeriod) return;
-
     setLoading(true);
     try {
       const params = {
@@ -114,12 +168,12 @@ const EnrolledStudents: React.FC = () => {
         gender: filters.gender,
         q: filters.q
       };
-
       const res = await api.get<InscriptionRecord[]>('/inscriptions', { params });
       setInscriptions(res.data);
+      setCurrentPage(1); // Reset pagination on new fetch
     } catch (error) {
       console.error('Error fetching inscriptions:', error);
-      message.error('Error al obtener lista de estudiantes');
+      message.error('Error al obtener lista');
     } finally {
       setLoading(false);
     }
@@ -129,183 +183,422 @@ const EnrolledStudents: React.FC = () => {
     fetchInscriptions();
   }, [fetchInscriptions]);
 
-  const handleOpenSubjectModal = (record: InscriptionRecord) => {
-    setSelectedStudentForSubjects({
-      inscriptionId: record.id,
-      studentName: `${record.student.firstName} ${record.student.lastName}`,
-      gradeId: record.grade.id,
-      schoolPeriodId: record.schoolPeriodId
+
+  // --- 4. Pagination Logic ---
+  const currentData = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return inscriptions.slice(start, start + pageSize);
+  }, [inscriptions, currentPage, pageSize]);
+
+
+  // --- 5. Column Logic ---
+  const toggleGroupPin = useCallback((group: string) => {
+    setPinnedGroups(prev =>
+      prev.includes(group) ? prev.filter(g => g !== group) : [...prev, group]
+    );
+  }, []);
+
+  const renderGroupTitle = (group: string, titleNode: React.ReactNode) => (
+    <div className="flex items-center justify-between gap-1 group select-none cursor-pointer" style={{ minHeight: '14px' }} onClick={() => toggleGroupPin(group)}>
+      {titleNode}
+      <Checkbox
+        checked={pinnedGroups.includes(group)}
+        onClick={(e) => { e.stopPropagation(); toggleGroupPin(group); }}
+        className={`transition-opacity duration-200 ${pinnedGroups.includes(group) ? 'opacity-100' : 'opacity-0 group-hover:opacity-50'}`}
+        style={{ transform: 'scale(0.7)', margin: 0, padding: 0 }}
+      />
+    </div>
+  );
+
+  const addSeparator = (cols: any[]) => {
+    if (!cols || cols.length === 0) return cols;
+    return cols.map((col, idx) => {
+      if (idx === cols.length - 1) {
+        return {
+          ...col,
+          className: 'group-separator-border',
+          onHeaderCell: () => ({ className: 'group-separator-border' })
+        };
+      }
+      return col;
     });
-    setSubjectModalVisible(true);
   };
 
-  const columns: ColumnsType<InscriptionRecord> = [
+  const studentColumns = [
     {
-      title: 'Estudiante',
-      key: 'student',
-      render: (_: unknown, record) => (
-        <Space direction="vertical" size={0}>
-          <Text strong>{`${record.student?.firstName} ${record.student?.lastName}`}</Text>
-          <Text type="secondary" style={{ fontSize: '12px' }}>
-            {record.student?.documentType}: {record.student?.document}
-          </Text>
-        </Space>
-      )
+      title: 'Nombres',
+      dataIndex: ['student', 'firstName'],
+      key: 'firstName',
+      width: 150,
+      render: (_: string, r: InscriptionRecord) => <Text>{r.student.firstName} {r.student.lastName}</Text>
+    },
+    {
+      title: 'Cédula',
+      dataIndex: ['student', 'document'],
+      key: 'document',
+      width: 120,
+      render: (_: string, r: InscriptionRecord) => <Text>{r.student.documentType}-{r.student.document}</Text>
     },
     {
       title: 'Género',
       dataIndex: ['student', 'gender'],
       key: 'gender',
+      width: 100,
       render: (gender: string) => (
         <Tag color={gender === 'M' ? 'blue' : 'magenta'}>
-          {gender === 'M' ? 'Masculino' : 'Femenino'}
+          {gender === 'M' ? 'Masc' : 'Fem'}
         </Tag>
       )
+    }
+  ];
+
+  const getGuardian = (r: InscriptionRecord, rel: 'mother' | 'father') => {
+    return r.student.guardians?.find(g => g.relationship === rel)?.profile;
+  };
+
+  const getRepresentative = (r: InscriptionRecord) => {
+    return r.student.guardians?.find(g => g.isRepresentative)?.profile;
+  };
+
+  const contactColumns = [
+    {
+      title: 'Teléfono',
+      width: 120,
+      render: (_: any, r: InscriptionRecord) => <Text>{r.student.contact?.phone1 || '-'}</Text>
     },
+    {
+      title: 'Email',
+      width: 180,
+      render: (_: any, r: InscriptionRecord) => <Text>{r.student.contact?.email || '-'}</Text>
+    },
+    {
+      title: 'Estado',
+      width: 120,
+      render: (_: any, r: InscriptionRecord) => <Text>{r.student.residence?.residenceState || '-'}</Text>
+    }
+  ];
+
+  const motherColumns = [
+    { title: 'Nombre', width: 140, render: (_: any, r: InscriptionRecord) => <Text>{getGuardian(r, 'mother')?.firstName || '-'}</Text> },
+    { title: 'Apellido', width: 140, render: (_: any, r: InscriptionRecord) => <Text>{getGuardian(r, 'mother')?.lastName || '-'}</Text> },
+    { title: 'Cédula', width: 100, render: (_: any, r: InscriptionRecord) => <Text>{getGuardian(r, 'mother')?.document || '-'}</Text> },
+    { title: 'Telf.', width: 110, render: (_: any, r: InscriptionRecord) => <Text>{getGuardian(r, 'mother')?.phone || '-'}</Text> },
+  ];
+
+  const fatherColumns = [
+    { title: 'Nombre', width: 140, render: (_: any, r: InscriptionRecord) => <Text>{getGuardian(r, 'father')?.firstName || '-'}</Text> },
+    { title: 'Apellido', width: 140, render: (_: any, r: InscriptionRecord) => <Text>{getGuardian(r, 'father')?.lastName || '-'}</Text> },
+    { title: 'Cédula', width: 100, render: (_: any, r: InscriptionRecord) => <Text>{getGuardian(r, 'father')?.document || '-'}</Text> },
+    { title: 'Telf.', width: 110, render: (_: any, r: InscriptionRecord) => <Text>{getGuardian(r, 'father')?.phone || '-'}</Text> },
+  ];
+
+  const repColumns = [
+    { title: 'Nombre', width: 140, render: (_: any, r: InscriptionRecord) => <Text>{getRepresentative(r)?.firstName || '-'}</Text> },
+    {
+      title: 'Relación', width: 100, render: (_: any, r: InscriptionRecord) => {
+        const rep = r.student.guardians?.find(g => g.isRepresentative);
+        const mapRel: Record<string, string> = { mother: 'Madre', father: 'Padre', representative: 'Otro' };
+        return <Tag>{mapRel[rep?.relationship || ''] || rep?.relationship || '-'}</Tag>
+      }
+    },
+    { title: 'Telf.', width: 110, render: (_: any, r: InscriptionRecord) => <Text>{getRepresentative(r)?.phone || '-'}</Text> },
+  ];
+
+  const academicColumns = [
     {
       title: 'Grado',
       dataIndex: ['grade', 'name'],
       key: 'grade',
+      width: 140,
     },
     {
       title: 'Sección',
       dataIndex: ['section', 'name'],
       key: 'section',
-      render: (name: string) => name || <Text type="secondary">N/A</Text>
-    },
-    {
-      title: 'Acciones',
-      key: 'actions',
-      align: 'center' as const,
-      render: (_: unknown, record) => (
-        <Space>
-          <Tooltip title="Gestionar Materias">
-            <Button
-              icon={<BookOutlined />}
-              onClick={() => handleOpenSubjectModal(record)}
-            />
-          </Tooltip>
-          <Tooltip title="Ver Expediente">
-            <Button
-              type="primary"
-              ghost
-              icon={<EyeOutlined />}
-              onClick={() => navigate(`/student/${record.student?.id}`)}
-            />
-          </Tooltip>
-        </Space>
+      // No fixed width to allow fluid expansion
+      render: (name: string) => (
+        <div style={{ minWidth: 100 }}>
+          {name || <Text type="secondary">N/A</Text>}
+        </div>
       )
     }
   ];
 
-  return (
-    <div style={{ padding: '0 20px' }}>
-      <Card
-        title={
-          <Space>
-            <TeamOutlined style={{ color: '#1890ff' }} />
-            <span style={{ fontSize: '18px', fontWeight: 600 }}>Estudiantes Inscritos</span>
-            {activePeriod && <Tag color="blue" style={{ marginLeft: 8 }}>Periodo {activePeriod.name}</Tag>}
-          </Space>
-        }
-        style={{ borderRadius: '12px', boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }}
-      >
-        {!activePeriod && !loading && (
-          <Empty
-            description="No hay un periodo escolar activo. Por favor, active uno en Gestión Académica."
-            image={Empty.PRESENTED_IMAGE_SIMPLE}
-          />
-        )}
+  const columns = [
+    {
+      title: renderGroupTitle('Estudiante', <Space><UserOutlined /> Estudiante</Space>),
+      fixed: (pinnedGroups.includes('Estudiante') ? 'left' : undefined) as 'left' | undefined,
+      className: 'group-separator-border',
+      children: addSeparator(studentColumns)
+    },
+    // Academic (Default Pinned Candidate?)
+    {
+      title: renderGroupTitle('Académico', <Space><BookOutlined /> Académico</Space>),
+      fixed: (pinnedGroups.includes('Académico') ? 'left' : undefined) as 'left' | undefined,
+      className: 'group-separator-border',
+      children: addSeparator(academicColumns)
+    },
+    // Contact
+    {
+      title: renderGroupTitle('Contacto', 'Contacto'),
+      fixed: (pinnedGroups.includes('Contacto') ? 'left' : undefined) as 'left' | undefined,
+      className: 'group-separator-border',
+      children: addSeparator(contactColumns)
+    },
+    // Contact
+    {
+      title: renderGroupTitle('Contacto', 'Contacto'),
+      fixed: (pinnedGroups.includes('Contacto') ? 'left' : undefined) as 'left' | undefined,
+      className: 'group-separator-border',
+      children: addSeparator(contactColumns)
+    },
+    // Family Group - Flattened to reduce header height
+    {
+      title: renderGroupTitle('Madre', <Text strong style={{ color: '#eb2f96' }}>Madre</Text>),
+      fixed: (pinnedGroups.includes('Madre') ? 'left' : undefined) as 'left' | undefined,
+      className: 'group-separator-border',
+      children: addSeparator(motherColumns)
+    },
+    {
+      title: renderGroupTitle('Padre', <Text strong style={{ color: '#1890ff' }}>Padre</Text>),
+      fixed: (pinnedGroups.includes('Padre') ? 'left' : undefined) as 'left' | undefined,
+      className: 'group-separator-border',
+      children: addSeparator(fatherColumns)
+    },
+    {
+      title: renderGroupTitle('Representante', 'Repres.'),
+      fixed: (pinnedGroups.includes('Representante') ? 'left' : undefined) as 'left' | undefined,
+      className: 'group-separator-border',
+      children: addSeparator(repColumns)
+    }
+  ] as ColumnsType<InscriptionRecord>;
 
-        {activePeriod && (
-          <>
-            {/* Filters Area */}
-            <div style={{
-              marginBottom: 24,
-              padding: '20px',
-              background: '#f8fafc',
-              borderRadius: '12px',
-              border: '1px solid #e2e8f0'
-            }}>
-              <Row gutter={[16, 16]} align="bottom">
-                <Col xs={24} md={8}>
-                  <Text strong type="secondary">Búsqueda rápida</Text>
-                  <Search
-                    placeholder="Escriba nombre o cédula..."
-                    allowClear
-                    enterButton
-                    loading={loading}
-                    onSearch={(val) => setFilters(prev => ({ ...prev, q: val }))}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                      if (!e.target.value) setFilters(prev => ({ ...prev, q: '' }));
-                    }}
-                    style={{ width: '100%', marginTop: 8 }}
-                  />
-                </Col>
-                <Col xs={12} sm={8} md={5}>
-                  <Text strong type="secondary">Grado</Text>
+
+  // --- 6. Actions Logic ---
+  const handleOpenSubjectModal = () => {
+    if (selectedRowKeys.length !== 1) return;
+    const record = inscriptions.find(r => r.id === selectedRowKeys[0]);
+    if (record) {
+      setSelectedStudentForSubjects({
+        inscriptionId: record.id,
+        studentName: `${record.student.firstName} ${record.student.lastName}`,
+        gradeId: record.grade.id,
+        schoolPeriodId: record.schoolPeriodId
+      });
+      setSubjectModalVisible(true);
+    }
+  };
+
+  const handleViewProfile = () => {
+    if (selectedRowKeys.length !== 1) return;
+    const record = inscriptions.find(r => r.id === selectedRowKeys[0]);
+    if (record) {
+      navigate(`/student/${record.student.id}`);
+    }
+  };
+
+  // --- Render ---
+  const selectedRecord = useMemo(() => inscriptions.find(r => r.id === selectedRowKeys[0]), [inscriptions, selectedRowKeys]);
+
+  return (
+    <div className="flex flex-col gap-2 h-full w-full">
+      <div ref={headerRef} className="flex flex-col gap-2 shrink-0">
+        <Card size="small" bodyStyle={{ padding: '4px 12px' }} className="glass-card !bg-white/50 border-none shrink-0">
+          <Row justify="space-between" align="middle" gutter={[4, 4]}>
+            <Col xs={24} lg={8}>
+              <div className="flex flex-col items-start gap-1">
+                <Space>
+                  <TeamOutlined style={{ color: '#1890ff' }} />
+                  <Title level={5} style={{ margin: 0 }}>Estudiantes Inscritos</Title>
+                  {activePeriod && <Tag color="blue" bordered={false} style={{ fontSize: 10 }}>{activePeriod.name}</Tag>}
+                </Space>
+                <Pagination
+                  simple
+                  size="small"
+                  current={currentPage}
+                  pageSize={pageSize}
+                  total={inscriptions.length}
+                  onChange={(page, size) => {
+                    setCurrentPage(page);
+                    if (size !== pageSize) setPageSize(size);
+                  }}
+                  showSizeChanger={false}
+                  showTotal={(total, range) => (
+                    <span className="text-[10px] text-slate-400 font-normal ml-2">
+                      {range[0]}-{range[1]} de {total}
+                    </span>
+                  )}
+                />
+              </div>
+            </Col>
+
+            <Col xs={24} lg={16}>
+              <Row gutter={[4, 4]} justify="end">
+                <Col>
                   <Select
-                    placeholder="Todos los grados"
-                    style={{ width: '100%', marginTop: 8 }}
+                    placeholder="Grado"
+                    size="small"
+                    style={{ width: 140 }}
                     allowClear
                     value={filters.gradeId}
-                    onChange={(val: number | undefined) => setFilters(prev => ({ ...prev, gradeId: val }))}>
+                    onChange={(val) => setFilters(prev => ({ ...prev, gradeId: val }))}
+                  >
                     {grades.map(g => <Option key={g.id} value={g.id}>{g.name}</Option>)}
                   </Select>
                 </Col>
-                <Col xs={12} sm={8} md={4}>
-                  <Text strong type="secondary">Sección</Text>
+                <Col>
                   <Select
-                    placeholder="Todas"
-                    style={{ width: '100%', marginTop: 8 }}
+                    placeholder="Sección"
+                    size="small"
+                    style={{ width: 100 }}
                     allowClear
                     value={filters.sectionId}
-                    onChange={(val: number | undefined) => setFilters(prev => ({ ...prev, sectionId: val }))}>
+                    onChange={(val) => setFilters(prev => ({ ...prev, sectionId: val }))}
+                  >
                     {sections.map(s => <Option key={s.id} value={s.id}>{s.name}</Option>)}
                   </Select>
                 </Col>
-                <Col xs={12} sm={8} md={4}>
-                  <Text strong type="secondary">Género</Text>
+                <Col>
                   <Select
-                    placeholder="Ambos"
-                    style={{ width: '100%', marginTop: 8 }}
+                    placeholder="Género"
+                    size="small"
+                    style={{ width: 100 }}
                     allowClear
                     value={filters.gender}
-                    onChange={(val: Gender | undefined) => setFilters(prev => ({ ...prev, gender: val }))}>
-                    <Option value="M">Masculino</Option>
-                    <Option value="F">Femenino</Option>
+                    onChange={(val) => setFilters(prev => ({ ...prev, gender: val }))}
+                  >
+                    <Option value="M">Masc</Option>
+                    <Option value="F">Fem</Option>
                   </Select>
                 </Col>
-                <Col xs={12} md={3}>
-                  <Button
-                    icon={<FilterOutlined />}
-                    onClick={() => setFilters({ gradeId: undefined, sectionId: undefined, gender: undefined, q: '' })}
-                    block
-                    style={{ marginTop: '29px' }}
-                  >
-                    Limpiar
-                  </Button>
+                <Col>
+                  <Input
+                    placeholder="Buscar..."
+                    size="small"
+                    prefix={<SearchOutlined />}
+                    style={{ width: 160 }}
+                    value={filters.q}
+                    onChange={(e) => setFilters(prev => ({ ...prev, q: e.target.value }))}
+                    allowClear
+                  />
+                </Col>
+                <Col>
+                  <Button icon={<FilterOutlined />} size="small" onClick={() => setFilters({ q: '' })} />
+                </Col>
+                <Col>
+                  <Button icon={<ReloadOutlined />} onClick={fetchInscriptions} loading={loading} size="small">Actualizar</Button>
                 </Col>
               </Row>
+            </Col>
+          </Row>
+        </Card>
+
+        {/* Selection Bar */}
+        <Card
+          size="small"
+          bodyStyle={{ padding: '8px 12px' }}
+          style={{
+            marginBottom: 0,
+            background: selectedRowKeys.length > 0 ? '#e6f7ff' : '#f8fafc',
+            borderColor: selectedRowKeys.length > 0 ? '#91d5ff' : '#e2e8f0',
+            transition: 'all 0.3s ease',
+            position: 'relative',
+            flexShrink: 0
+          }}
+        >
+          {/* Clear button in top-right corner */}
+          {selectedRowKeys.length > 0 && (
+            <Button
+              type="text"
+              size="small"
+              icon={<CloseOutlined />}
+              onClick={() => setSelectedRowKeys([])}
+              style={{
+                position: 'absolute',
+                top: '-8px',
+                right: '-5px',
+                color: '#888',
+                zIndex: 10
+              }}
+            />
+          )}
+
+          <div className="flex items-center gap-6">
+            {/* Selected Student Info */}
+            <div className="flex items-center gap-3 pr-4 border-r border-slate-300/50 min-w-max">
+              {selectedRecord ? (
+                <>
+                  <div className="flex items-center justify-center w-8 h-8 rounded-full bg-blue-600 text-white shadow-sm">
+                    <UserOutlined />
+                  </div>
+                  <div className="flex flex-col justify-center">
+                    <span className="text-xs font-bold text-blue-900 leading-tight">
+                      {selectedRecord.student.firstName} {selectedRecord.student.lastName}
+                    </span>
+                    <span className="text-[10px] text-blue-700 leading-none mt-0.5">
+                      {selectedRecord.student.documentType}-{selectedRecord.student.document}
+                    </span>
+                  </div>
+                </>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center justify-center w-8 h-8 rounded-full bg-slate-200 text-slate-400">
+                    <UserOutlined />
+                  </div>
+                  <div className="flex flex-col justify-center text-slate-400">
+                    <span className="text-xs font-bold leading-tight">Ningún estudiante</span>
+                    <span className="text-[10px] leading-none">seleccionado</span>
+                  </div>
+                </div>
+              )}
             </div>
 
-            <Table
-              columns={columns}
-              dataSource={inscriptions}
-              rowKey="id"
-              loading={loading}
-              pagination={{
-                pageSize: 10,
-                showSizeChanger: false,
-                hideOnSinglePage: true,
-                position: ['bottomCenter']
-              }}
-              locale={{ emptyText: 'No se encontraron estudiantes para los filtros seleccionados' }}
-              style={{ background: '#fff' }}
-            />
-          </>
-        )}
-      </Card>
+            {/* Actions */}
+            <div className="flex-1 flex gap-2">
+              <Tooltip title={selectedRowKeys.length !== 1 ? "Seleccione un solo estudiante" : ""}>
+                <Button
+                  icon={<BookOutlined />}
+                  size="small"
+                  disabled={selectedRowKeys.length !== 1}
+                  onClick={handleOpenSubjectModal}
+                  className={selectedRowKeys.length === 1 ? 'border-blue-300 text-blue-600 bg-white' : ''}
+                >
+                  Gestionar Materias
+                </Button>
+              </Tooltip>
+
+              <Tooltip title={selectedRowKeys.length !== 1 ? "Seleccione un solo estudiante" : ""}>
+                <Button
+                  icon={<EyeOutlined />}
+                  size="small"
+                  disabled={selectedRowKeys.length !== 1}
+                  onClick={handleViewProfile}
+                  className={selectedRowKeys.length === 1 ? 'border-blue-300 text-blue-600 bg-white' : ''}
+                >
+                  Ver Expediente
+                </Button>
+              </Tooltip>
+            </div>
+          </div>
+        </Card>
+      </div>
+
+      <Table
+        rowKey="id"
+        columns={columns}
+        dataSource={currentData}
+        loading={loading}
+        pagination={false}
+        scroll={{ x: '100%', y: scrollY }}
+        rowSelection={{
+          type: 'radio',
+          selectedRowKeys,
+          onChange: setSelectedRowKeys
+        }}
+        size="small"
+        bordered
+        className="flex-1 overflow-hidden"
+      />
 
       {selectedStudentForSubjects && (
         <StudentSubjectsModal
@@ -317,6 +610,69 @@ const EnrolledStudents: React.FC = () => {
           schoolPeriodId={selectedStudentForSubjects.schoolPeriodId}
         />
       )}
+
+      <style>{`
+        /* 1. Global Header Styles */
+        .ant-table-thead > tr > th {
+          background-color: #f1f5f9 !important;
+          color: #475569 !important;
+          font-weight: 700 !important;
+          font-size: 10px !important;
+          padding: 1px 4px !important;
+          height: 22px !important;
+          line-height: 1 !important;
+          text-transform: uppercase !important;
+          border-right: 1px solid #e2e8f0 !important;
+          border-bottom: 1px solid #e2e8f0 !important;
+          vertical-align: middle !important;
+        }
+
+        /* Remove default separator to avoid height issues */
+        .ant-table-thead th::before {
+            display: none !important;
+        }
+
+        /* 2. Global Body Styles - Grid & Spacing */
+        .ant-table-tbody > tr > td {
+          padding: 1px 4px !important;
+          font-size: 11px !important;
+          line-height: 1 !important;
+          border-right: 1px solid #e2e8f0 !important;
+          border-bottom: 1px solid #e2e8f0 !important;
+          transition: background-color 0.2s;
+        }
+        
+        /* Compact Tags in Table */
+        .ant-table-tbody .ant-tag {
+          margin: 0 !important;
+          padding: 0 4px !important;
+          line-height: 16px !important;
+          font-size: 10px !important;
+        }
+        
+        /* New Group Separator Border */
+        .group-separator-border {
+          border-right: 2px solid #94a3b8 !important; /* Slate 400 */
+        }    
+
+        /* 3. Alternating Row Colors (Zebra Striping) */
+        .ant-table-tbody > tr:nth-child(odd) > td {
+          background-color: #ffffff !important;
+        }
+        .ant-table-tbody > tr:nth-child(even) > td {
+          background-color: #f8fafc !important; /* Light Slate 50 */
+        }
+
+        /* 4. Hover Styles */
+        .ant-table-tbody > tr:hover > td {
+          background-color: #e2e8f0 !important; /* Slate 200 */
+        }
+
+        /* 5. Global Selected Styles */
+        .ant-table-tbody > tr.ant-table-row-selected > td {
+          background-color: #bae7ff !important; /* Stronger blue for selection */
+        }
+      `}</style>
     </div>
   );
 };
