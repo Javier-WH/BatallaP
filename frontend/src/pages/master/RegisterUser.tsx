@@ -32,9 +32,11 @@ const RegisterUser: React.FC = () => {
   };
 
   return (
-    <div style={{ maxWidth: 800, margin: '0 auto' }}>
-      <Card title="Inscripción de Nuevo Usuario">
-        <Form
+    <div className="h-full overflow-hidden">
+      <div className="h-full overflow-y-auto">
+        <div className="max-w-3xl mx-auto px-4 pb-8">
+          <Card title="Inscripción de Nuevo Usuario">
+            <Form
           form={form}
           layout="vertical"
           onFinish={onFinish}
@@ -183,8 +185,10 @@ const RegisterUser: React.FC = () => {
               Inscribir Usuario
             </Button>
           </Form.Item>
-        </Form>
-      </Card>
+            </Form>
+          </Card>
+        </div>
+      </div>
     </div>
   );
 };

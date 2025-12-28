@@ -43,7 +43,7 @@ const ControlEstudiosLayout: React.FC = () => {
   ];
 
   return (
-    <div className="flex flex-col">
+    <div className="flex flex-col h-full min-h-0">
       {/* Control de Estudios Toolbar */}
       <div className="sticky top-0 z-40 bg-slate-50/80 backdrop-blur-md pb-4 pt-0 px-6">
         <div className="bg-white/70 backdrop-blur-sm p-2 rounded-2xl border border-white flex items-center gap-2 shadow-sm">
@@ -62,8 +62,10 @@ const ControlEstudiosLayout: React.FC = () => {
       </div>
 
       {/* Module Content */}
-      <div className="pt-0 animate-in fade-in slide-in-from-bottom-2 duration-500">
-        <Outlet />
+      <div className="flex-1 min-h-0 pt-0">
+        <div className="h-full overflow-y-auto animate-in fade-in slide-in-from-bottom-2 duration-500">
+          <Outlet />
+        </div>
       </div>
     </div>
   );

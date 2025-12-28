@@ -16,7 +16,8 @@ const MasterDashboard: React.FC = () => {
   ];
 
   return (
-    <div className="space-y-8">
+    <div className="h-full overflow-y-auto pr-4">
+      <div className="space-y-8 pb-8">
       {/* Hero Welcome */}
       <div className="relative overflow-hidden rounded-3xl bg-slate-900 p-8 md:p-12 text-white shadow-2xl">
         <div className="relative z-10 space-y-4 max-w-2xl">
@@ -90,6 +91,7 @@ const MasterDashboard: React.FC = () => {
           </Card>
         </Col>
       </Row>
+      </div>
     </div>
   );
 };

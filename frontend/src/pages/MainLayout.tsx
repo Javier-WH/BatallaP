@@ -232,7 +232,7 @@ const MainLayout: React.FC = () => {
         </Header>
 
         <Content className="flex-1 overflow-hidden bg-slate-50 relative">
-          <div className="w-full">
+          <div className="absolute inset-0 overflow-y-auto">
             <Outlet />
           </div>
         </Content>

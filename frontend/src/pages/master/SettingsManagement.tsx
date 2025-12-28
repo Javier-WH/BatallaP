@@ -71,16 +71,17 @@ const SettingsManagement: React.FC = () => {
   );
 
   return (
-    <div className="max-w-4xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
-      {/* Page Header */}
-      <div className="flex flex-col gap-1">
+    <div className="h-full overflow-y-auto pr-4">
+      <div className="max-w-4xl mx-auto space-y-8 pb-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+        {/* Page Header */}
+        <div className="flex flex-col gap-1">
         <h1 className="text-3xl font-black text-slate-900 tracking-tight flex items-center gap-3">
           <BankOutlined className="text-brand-primary" /> Institución
         </h1>
         <p className="text-slate-500 font-medium">Define la identidad visual y el nombre oficial que aparecerá en todo el sistema y reportes.</p>
       </div>
 
-      <Card className="glass-card overflow-hidden !p-0">
+        <Card className="glass-card overflow-hidden !p-0">
         <div className="bg-slate-900 px-8 py-6">
           <h2 className="text-white text-xl font-bold">Identidad Institucional</h2>
           <p className="text-slate-400 text-xs font-medium uppercase tracking-widest mt-1">Configuración del Perfil Maestro</p>
@@ -213,7 +214,8 @@ const SettingsManagement: React.FC = () => {
             </Button>
           </div>
         </Form>
-      </Card>
+        </Card>
+      </div>
     </div>
   );
 };
