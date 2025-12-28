@@ -62,7 +62,7 @@ const ControlEstudiosLayout: React.FC = () => {
       </div>
 
       {/* Module Content */}
-      <div className="p-6 pt-0 animate-in fade-in slide-in-from-bottom-2 duration-500">
+      <div className="pt-0 animate-in fade-in slide-in-from-bottom-2 duration-500">
         <Outlet />
       </div>
     </div>

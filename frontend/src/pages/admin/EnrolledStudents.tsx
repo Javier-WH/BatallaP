@@ -245,7 +245,7 @@ const EnrolledStudents: React.FC = () => {
     const calculateHeight = () => {
       if (headerRef.current) {
         const { bottom } = headerRef.current.getBoundingClientRect();
-        const available = window.innerHeight - bottom - 122; // Adjusted margin to maximize height without overflow (approx header 22px + scrollbar 17px + padding 24px + safety)
+        const available = window.innerHeight - bottom - 184; // Additional buffer to avoid triggering layout scrollbars
         setScrollY(Math.max(200, available));
       }
     };

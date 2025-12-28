@@ -231,7 +231,7 @@ const MainLayout: React.FC = () => {
           </div>
         </Header>
 
-        <Content className="flex-1 overflow-y-auto bg-slate-50">
+        <Content className="flex-1 overflow-hidden bg-slate-50 relative">
           <div className="w-full">
             <Outlet />
           </div>
