@@ -451,7 +451,12 @@ export const enrollMatriculatedStudent = async (req: Request, res: Response) => 
     const targetPeriodId = schoolPeriodId || matriculation.schoolPeriodId;
     const targetGradeId = gradeId || matriculation.gradeId;
     const targetSectionId = sectionId ?? matriculation.sectionId ?? null;
-    const selectedGroupSubjectIds = Array.isArray(req.body.subjectIds) ? req.body.subjectIds : [];
+    const rawGroupSubjectIds = Array.isArray(req.body.subjectIds) ? req.body.subjectIds : [];
+    const selectedGroupSubjectIds = Array.from(new Set(
+      rawGroupSubjectIds
+        .map((subjectId: number | string) => Number(subjectId))
+        .filter((subjectId: number) => Number.isFinite(subjectId))
+    ));
 
     const escolaridadValue = normalizeEscolaridad(escolaridad ?? matriculation.escolaridad);
 

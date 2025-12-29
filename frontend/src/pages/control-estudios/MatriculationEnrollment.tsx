@@ -703,24 +703,24 @@ const MatriculationEnrollment: React.FC = () => {
     },
     isColumnVisible('subjectIds') && {
       title: 'Materias de Grupo',
-      width: 280,
+      width: 220,
       render: (_: unknown, record: MatriculationRow, idx: number) => {
         const gradeStruct = structure.find(s => s.gradeId === record.tempData.gradeId);
         const groupSubjects = gradeStruct?.subjects?.filter(s => s.subjectGroupId) || [];
+        const currentSubjectId = record.tempData.subjectIds?.[0];
         return (
           <Select
             id={`nav-${idx}-subjectIds`}
-            mode="multiple"
             style={{ width: '100%' }}
-            value={record.tempData.subjectIds}
+            value={currentSubjectId}
+            allowClear
             onInputKeyDown={e => handleKeyDown(e, idx, 'subjectIds')}
-            placeholder="Ninguna"
-            onChange={(v) => handleUpdateRow(record.id, 'subjectIds', v)}
-            maxTagCount="responsive"
+            placeholder="Seleccione"
+            onChange={(v) => handleUpdateRow(record.id, 'subjectIds', v ? [v] : [])}
           >
             {groupSubjects.map(s => (
               <Option key={s.id} value={s.id}>
-                {s.name} <Tag color="blue" style={{ fontSize: 9 }}>{s.subjectGroup?.name}</Tag>
+                {s.name}
               </Option>
             ))}
           </Select>
@@ -1279,12 +1279,10 @@ const MatriculationEnrollment: React.FC = () => {
                 </span>
                 <Select
                   disabled={selectedRowKeys.length === 0}
-                  mode="multiple"
-                  placeholder="Asignar Materias..."
+                  placeholder="Asignar Materia..."
                   size="small"
                   className="w-full"
-                  maxTagCount="responsive"
-                  onChange={v => handleBulkUpdate('subjectIds', v)}
+                  onChange={v => handleBulkUpdate('subjectIds', v ? [v] : [])}
                   allowClear
                 >
                   {Array.from(new Map(structure.flatMap(s => s.subjects || [])
@@ -1292,7 +1290,7 @@ const MatriculationEnrollment: React.FC = () => {
                     .map(sub => [sub.id, sub])).values())
                     .map(sub => (
                       <Option key={sub.id} value={sub.id}>
-                        {sub.name} <Tag color="blue" style={{ fontSize: 9 }}>{sub.subjectGroup?.name}</Tag>
+                        {sub.name}
                       </Option>
                     ))
                   }
