@@ -192,6 +192,42 @@ const BASE_COLUMN_OPTIONS: ColumnOption[] = [
 
 const getQuestionColumnKey = (id: number) => `question-${id}`;
 
+interface CellInputProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange'> {
+  value: string | undefined | null;
+  onChange: (value: string) => void;
+}
+
+const CellInput = React.memo(({ value, onChange, onBlur, onKeyDown, ...props }: CellInputProps) => {
+  const [localValue, setLocalValue] = useState(value || '');
+
+  useEffect(() => {
+    if (value !== undefined && value !== null) {
+      setLocalValue(prev => (prev !== value ? value : prev));
+    }
+  }, [value]);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setLocalValue(e.target.value);
+  };
+
+  const handleBlur = (e: React.FocusEvent<HTMLInputElement>) => {
+    if (localValue !== (value || '')) {
+      onChange(localValue);
+    }
+    if (onBlur) onBlur(e);
+  };
+
+  return (
+    <input
+      {...props}
+      value={localValue}
+      onChange={handleChange}
+      onBlur={handleBlur}
+      onKeyDown={onKeyDown}
+    />
+  );
+});
+
 const MatriculationEnrollment: React.FC = () => {
   const [matriculations, setMatriculations] = useState<MatriculationRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -273,6 +309,7 @@ const MatriculationEnrollment: React.FC = () => {
     };
   }, [contextMenuState.visible, closeContextMenu]);
 
+  // --- Dynamic Height Calculation ---
   useEffect(() => {
     const calculateHeight = () => {
       if (headerRef.current) {
@@ -284,16 +321,23 @@ const MatriculationEnrollment: React.FC = () => {
     };
 
     calculateHeight();
-    window.addEventListener('resize', calculateHeight);
 
-    // Recalculate when selection changes (as it adds/removes a card)
-    const timeoutId = setTimeout(calculateHeight, 100);
+    const resizeObserver = new ResizeObserver(() => {
+      calculateHeight();
+    });
+
+    if (headerRef.current) {
+      resizeObserver.observe(headerRef.current);
+    }
+
+    const handleWindowResize = () => calculateHeight();
+    window.addEventListener('resize', handleWindowResize);
 
     return () => {
-      window.removeEventListener('resize', calculateHeight);
-      clearTimeout(timeoutId);
+      resizeObserver.disconnect();
+      window.removeEventListener('resize', handleWindowResize);
     };
-  }, [selectedRowKeys.length, structure]);
+  }, [structure, selectedRowKeys.length]); // Dependencies that might change header height
 
   const questionColumnOptions = useMemo(
     () =>
@@ -678,10 +722,26 @@ const MatriculationEnrollment: React.FC = () => {
     return { profile: row.tempData.representative, label: 'Otro', editable: true };
   };
 
-  const handleKeyDown = <T extends Element>(e: React.KeyboardEvent<T>, rowIndex: number, colName: string) => {
+  const handleTableKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLElement;
+    // Check if event comes from a cell input/select
+    if (!target.matches('input, .ant-select-selection-search-input')) return;
+    
+    // Only handle navigation keys
     if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) return;
 
+    // Retrieve metadata
+    // For Antd Select, the input is nested. We need to find the closest element with data attributes.
+    const cell = target.closest('[data-row-index]');
+    if (!cell) return;
+
+    const rowIndexStr = cell.getAttribute('data-row-index');
+    const colName = cell.getAttribute('data-col-name');
+
+    if (!rowIndexStr || !colName) return;
+
     e.preventDefault();
+    const rowIndex = parseInt(rowIndexStr, 10);
     let nRow = rowIndex;
     let nColIdx = COLS.indexOf(colName);
 
@@ -693,15 +753,16 @@ const MatriculationEnrollment: React.FC = () => {
     const nCol = COLS[nColIdx];
     const targetId = `nav-${nRow}-${nCol}`;
 
-    setTimeout(() => {
+    // Use requestAnimationFrame for smoother focus transition
+    requestAnimationFrame(() => {
       const el = document.getElementById(targetId);
       if (el) {
+        // For Antd Selects, we might need to focus the internal input or the container
+        // If it's a select container (which it usually is for id placement on Select), focus it.
         el.focus();
         if (el.tagName === 'INPUT') (el as HTMLInputElement).select();
-        // If it's a select, we can't easily auto-open it with focus alone in many versions of Antd
-        // but it will be focused for the next arrow.
       }
-    }, 10);
+    });
   };
 
   // --- Columns Configuration ---
@@ -711,12 +772,14 @@ const MatriculationEnrollment: React.FC = () => {
       title: 'Nombres',
       width: 150,
       render: (_: unknown, record: MatriculationRow, idx: number) => (
-        <Input
+        <CellInput
           id={`nav-${idx}-firstName`}
+          data-row-index={idx}
+          data-col-name="firstName"
           value={record.tempData.firstName}
           disabled={!canEditRow(record.id)}
-          onKeyDown={e => handleKeyDown(e, idx, 'firstName')}
-          onChange={e => handleUpdateRow(record.id, 'firstName', e.target.value)}
+          className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
+          onChange={val => handleUpdateRow(record.id, 'firstName', val)}
         />
       )
     },
@@ -724,12 +787,14 @@ const MatriculationEnrollment: React.FC = () => {
       title: 'Apellidos',
       width: 150,
       render: (_: unknown, record: MatriculationRow, idx: number) => (
-        <Input
+        <CellInput
           id={`nav-${idx}-lastName`}
+          data-row-index={idx}
+          data-col-name="lastName"
           value={record.tempData.lastName}
           disabled={!canEditRow(record.id)}
-          onKeyDown={e => handleKeyDown(e, idx, 'lastName')}
-          onChange={e => handleUpdateRow(record.id, 'lastName', e.target.value)}
+          className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
+          onChange={val => handleUpdateRow(record.id, 'lastName', val)}
         />
       )
     },
@@ -737,12 +802,14 @@ const MatriculationEnrollment: React.FC = () => {
       title: 'Cédula',
       width: 120,
       render: (_: unknown, record: MatriculationRow, idx: number) => (
-        <Input
+        <CellInput
           id={`nav-${idx}-document`}
+          data-row-index={idx}
+          data-col-name="document"
           value={record.tempData.document}
           disabled={!canEditRow(record.id)}
-          onKeyDown={e => handleKeyDown(e, idx, 'document')}
-          onChange={e => handleUpdateRow(record.id, 'document', e.target.value)}
+          className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
+          onChange={val => handleUpdateRow(record.id, 'document', val)}
         />
       )
     },
@@ -752,36 +819,56 @@ const MatriculationEnrollment: React.FC = () => {
     isColumnVisible('gradeId') && {
       title: 'Grado',
       width: 160,
-      render: (_: unknown, record: MatriculationRow, idx: number) => (
-        <Select
-          id={`nav-${idx}-gradeId`}
-          value={record.tempData.gradeId}
-          style={{ width: '100%' }}
-          disabled={!canEditRow(record.id)}
-          onInputKeyDown={e => handleKeyDown(e, idx, 'gradeId')}
-          onChange={(v) => handleUpdateRow(record.id, 'gradeId', v)}
-        >
-          {structure.map(s => <Option key={s.gradeId} value={s.gradeId}>{s.grade?.name}</Option>)}
-        </Select>
-      )
+      render: (_: unknown, record: MatriculationRow, idx: number) => {
+        if (!canEditRow(record.id)) {
+          const gradeName = structure.find(s => s.gradeId === record.tempData.gradeId)?.grade?.name || 'N/A';
+          return (
+            <div className="px-1 py-0.5 text-xs text-slate-800 whitespace-nowrap overflow-hidden text-ellipsis">
+              {gradeName}
+            </div>
+          );
+        }
+        return (
+          <div data-row-index={idx} data-col-name="gradeId">
+            <Select
+              id={`nav-${idx}-gradeId`}
+              value={record.tempData.gradeId}
+              style={{ width: '100%' }}
+              size="small"
+              onChange={(v) => handleUpdateRow(record.id, 'gradeId', v)}
+            >
+              {structure.map(s => <Option key={s.gradeId} value={s.gradeId}>{s.grade?.name}</Option>)}
+            </Select>
+          </div>
+        );
+      }
     },
     isColumnVisible('sectionId') && {
       title: 'Sección',
       width: 120,
       render: (_: unknown, record: MatriculationRow, idx: number) => {
         const gradeStruct = structure.find(s => s.gradeId === record.tempData.gradeId);
+        if (!canEditRow(record.id)) {
+          const sectionName = gradeStruct?.sections?.find(s => s.id === record.tempData.sectionId)?.name || 'N/A';
+          return (
+            <div className="px-1 py-0.5 text-xs text-slate-800 whitespace-nowrap overflow-hidden text-ellipsis">
+              {sectionName}
+            </div>
+          );
+        }
         return (
-          <Select
-            id={`nav-${idx}-sectionId`}
-            value={record.tempData.sectionId}
-            allowClear
-            disabled={!canEditRow(record.id)}
-            style={{ width: '100%' }}
-            onInputKeyDown={e => handleKeyDown(e, idx, 'sectionId')}
-            onChange={(v) => handleUpdateRow(record.id, 'sectionId', v)}
-          >
-            {gradeStruct?.sections?.map(sec => <Option key={sec.id} value={sec.id}>{sec.name}</Option>)}
-          </Select>
+          <div data-row-index={idx} data-col-name="sectionId">
+            <Select
+              id={`nav-${idx}-sectionId`}
+              value={record.tempData.sectionId}
+              allowClear
+              size="small"
+              style={{ width: '100%' }}
+              onChange={(v) => handleUpdateRow(record.id, 'sectionId', v)}
+            >
+              {gradeStruct?.sections?.map(sec => <Option key={sec.id} value={sec.id}>{sec.name}</Option>)}
+            </Select>
+          </div>
         );
       }
     },
@@ -792,40 +879,62 @@ const MatriculationEnrollment: React.FC = () => {
         const gradeStruct = structure.find(s => s.gradeId === record.tempData.gradeId);
         const groupSubjects = gradeStruct?.subjects?.filter(s => s.subjectGroupId) || [];
         const currentSubjectId = record.tempData.subjectIds?.[0];
+        
+        if (!canEditRow(record.id)) {
+           const subjectName = groupSubjects.find(s => s.id === currentSubjectId)?.name || (currentSubjectId ? '...' : '');
+           return (
+             <div className="px-1 py-0.5 text-xs text-slate-800 whitespace-nowrap overflow-hidden text-ellipsis min-h-[20px]">
+               {subjectName}
+             </div>
+           );
+        }
+
         return (
-          <Select
-            id={`nav-${idx}-subjectIds`}
-            className="always-editable"
-            style={{ width: '100%' }}
-            value={currentSubjectId}
-            allowClear
-            onInputKeyDown={e => handleKeyDown(e, idx, 'subjectIds')}
-            placeholder="Seleccione"
-            onChange={(v) => handleUpdateRow(record.id, 'subjectIds', v ? [v] : [])}
-          >
-            {groupSubjects.map(s => (
-              <Option key={s.id} value={s.id}>
-                {s.name}
-              </Option>
-            ))}
-          </Select>
+          <div data-row-index={idx} data-col-name="subjectIds">
+            <Select
+              id={`nav-${idx}-subjectIds`}
+              style={{ width: '100%' }}
+              value={currentSubjectId}
+              allowClear
+              size="small"
+              placeholder="Seleccione"
+              onChange={(v) => handleUpdateRow(record.id, 'subjectIds', v ? [v] : [])}
+            >
+              {groupSubjects.map(s => (
+                <Option key={s.id} value={s.id}>
+                  {s.name}
+                </Option>
+              ))}
+            </Select>
+          </div>
         );
       }
     },
     isColumnVisible('escolaridad') && {
       title: 'Escolaridad',
       width: 150,
-      render: (_: unknown, record: MatriculationRow, idx: number) => (
-        <Select
-          id={`nav-${idx}-escolaridad`}
-          value={record.tempData.escolaridad}
-          style={{ width: '100%' }}
-          disabled={!canEditRow(record.id)}
-          onInputKeyDown={e => handleKeyDown(e, idx, 'escolaridad')}
-          onChange={(v) => handleUpdateRow(record.id, 'escolaridad', v as EscolaridadStatus)}
-          options={ESCOLARIDAD_OPTIONS}
-        />
-      )
+      render: (_: unknown, record: MatriculationRow, idx: number) => {
+        if (!canEditRow(record.id)) {
+          const label = ESCOLARIDAD_OPTIONS.find(o => o.value === record.tempData.escolaridad)?.label || record.tempData.escolaridad;
+          return (
+            <div className="px-1 py-0.5 text-xs text-slate-800 whitespace-nowrap overflow-hidden text-ellipsis">
+              {label}
+            </div>
+          );
+        }
+        return (
+          <div data-row-index={idx} data-col-name="escolaridad">
+            <Select
+              id={`nav-${idx}-escolaridad`}
+              value={record.tempData.escolaridad}
+              style={{ width: '100%' }}
+              size="small"
+              onChange={(v) => handleUpdateRow(record.id, 'escolaridad', v as EscolaridadStatus)}
+              options={ESCOLARIDAD_OPTIONS}
+            />
+          </div>
+        );
+      }
     },
   ].filter(Boolean);
 
@@ -834,12 +943,14 @@ const MatriculationEnrollment: React.FC = () => {
       title: 'S. Principal',
       width: 140,
       render: (_: unknown, record: MatriculationRow, idx: number) => (
-        <Input
+        <CellInput
           id={`nav-${idx}-phone1`}
+          data-row-index={idx}
+          data-col-name="phone1"
           value={record.tempData.phone1}
           disabled={!canEditRow(record.id)}
-          onKeyDown={e => handleKeyDown(e, idx, 'phone1')}
-          onChange={e => handleUpdateRow(record.id, 'phone1', e.target.value)}
+          className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
+          onChange={val => handleUpdateRow(record.id, 'phone1', val)}
         />
       )
     },
@@ -847,12 +958,14 @@ const MatriculationEnrollment: React.FC = () => {
       title: 'WhatsApp',
       width: 140,
       render: (_: unknown, record: MatriculationRow, idx: number) => (
-        <Input
+        <CellInput
           id={`nav-${idx}-whatsapp`}
+          data-row-index={idx}
+          data-col-name="whatsapp"
           value={record.tempData.whatsapp}
           disabled={!canEditRow(record.id)}
-          onKeyDown={e => handleKeyDown(e, idx, 'whatsapp')}
-          onChange={e => handleUpdateRow(record.id, 'whatsapp', e.target.value)}
+          className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
+          onChange={val => handleUpdateRow(record.id, 'whatsapp', val)}
         />
       )
     },
@@ -863,13 +976,15 @@ const MatriculationEnrollment: React.FC = () => {
       title: 'Cédula',
       width: 130,
       render: (_: unknown, record: MatriculationRow, idx: number) => (
-        <Input
+        <CellInput
           id={`nav-${idx}-mDoc`}
+          data-row-index={idx}
+          data-col-name="mDoc"
           value={record.tempData.mother?.document}
           placeholder="Doc..."
           disabled={!canEditRow(record.id)}
-          onKeyDown={e => handleKeyDown(e, idx, 'mDoc')}
-          onChange={e => handleUpdateGuardianField(record.id, 'mother', 'document', e.target.value)}
+          className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
+          onChange={val => handleUpdateGuardianField(record.id, 'mother', 'document', val)}
         />
       )
     },
@@ -877,12 +992,14 @@ const MatriculationEnrollment: React.FC = () => {
       title: 'Nombres',
       width: 140,
       render: (_: unknown, record: MatriculationRow, idx: number) => (
-        <Input
+        <CellInput
           id={`nav-${idx}-mFirstName`}
+          data-row-index={idx}
+          data-col-name="mFirstName"
           value={record.tempData.mother?.firstName}
           disabled={!canEditRow(record.id)}
-          onKeyDown={e => handleKeyDown(e, idx, 'mFirstName')}
-          onChange={e => handleUpdateGuardianField(record.id, 'mother', 'firstName', e.target.value)}
+          className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
+          onChange={val => handleUpdateGuardianField(record.id, 'mother', 'firstName', val)}
         />
       )
     },
@@ -890,12 +1007,14 @@ const MatriculationEnrollment: React.FC = () => {
       title: 'Apellidos',
       width: 140,
       render: (_: unknown, record: MatriculationRow, idx: number) => (
-        <Input
+        <CellInput
           id={`nav-${idx}-mLastName`}
+          data-row-index={idx}
+          data-col-name="mLastName"
           value={record.tempData.mother?.lastName}
           disabled={!canEditRow(record.id)}
-          onKeyDown={e => handleKeyDown(e, idx, 'mLastName')}
-          onChange={e => handleUpdateGuardianField(record.id, 'mother', 'lastName', e.target.value)}
+          className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
+          onChange={val => handleUpdateGuardianField(record.id, 'mother', 'lastName', val)}
         />
       )
     },
@@ -903,12 +1022,14 @@ const MatriculationEnrollment: React.FC = () => {
       title: 'Teléfono',
       width: 130,
       render: (_: unknown, record: MatriculationRow, idx: number) => (
-        <Input
+        <CellInput
           id={`nav-${idx}-mPhone`}
+          data-row-index={idx}
+          data-col-name="mPhone"
           value={record.tempData.mother?.phone}
           disabled={!canEditRow(record.id)}
-          onKeyDown={e => handleKeyDown(e, idx, 'mPhone')}
-          onChange={e => handleUpdateGuardianField(record.id, 'mother', 'phone', e.target.value)}
+          className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
+          onChange={val => handleUpdateGuardianField(record.id, 'mother', 'phone', val)}
         />
       )
     },
@@ -919,13 +1040,15 @@ const MatriculationEnrollment: React.FC = () => {
       title: 'Cédula',
       width: 130,
       render: (_: unknown, record: MatriculationRow, idx: number) => (
-        <Input
+        <CellInput
           id={`nav-${idx}-fDoc`}
+          data-row-index={idx}
+          data-col-name="fDoc"
           value={record.tempData.father?.document}
           placeholder="Doc..."
           disabled={!canEditRow(record.id)}
-          onKeyDown={e => handleKeyDown(e, idx, 'fDoc')}
-          onChange={e => handleUpdateGuardianField(record.id, 'father', 'document', e.target.value)}
+          className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
+          onChange={val => handleUpdateGuardianField(record.id, 'father', 'document', val)}
         />
       )
     },
@@ -933,12 +1056,14 @@ const MatriculationEnrollment: React.FC = () => {
       title: 'Nombres',
       width: 140,
       render: (_: unknown, record: MatriculationRow, idx: number) => (
-        <Input
+        <CellInput
           id={`nav-${idx}-fFirstName`}
+          data-row-index={idx}
+          data-col-name="fFirstName"
           value={record.tempData.father?.firstName}
           disabled={!canEditRow(record.id)}
-          onKeyDown={e => handleKeyDown(e, idx, 'fFirstName')}
-          onChange={e => handleUpdateGuardianField(record.id, 'father', 'firstName', e.target.value)}
+          className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
+          onChange={val => handleUpdateGuardianField(record.id, 'father', 'firstName', val)}
         />
       )
     },
@@ -946,12 +1071,14 @@ const MatriculationEnrollment: React.FC = () => {
       title: 'Apellidos',
       width: 140,
       render: (_: unknown, record: MatriculationRow, idx: number) => (
-        <Input
+        <CellInput
           id={`nav-${idx}-fLastName`}
+          data-row-index={idx}
+          data-col-name="fLastName"
           value={record.tempData.father?.lastName}
           disabled={!canEditRow(record.id)}
-          onKeyDown={e => handleKeyDown(e, idx, 'fLastName')}
-          onChange={e => handleUpdateGuardianField(record.id, 'father', 'lastName', e.target.value)}
+          className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
+          onChange={val => handleUpdateGuardianField(record.id, 'father', 'lastName', val)}
         />
       )
     },
@@ -959,12 +1086,14 @@ const MatriculationEnrollment: React.FC = () => {
       title: 'Teléfono',
       width: 130,
       render: (_: unknown, record: MatriculationRow, idx: number) => (
-        <Input
+        <CellInput
           id={`nav-${idx}-fPhone`}
+          data-row-index={idx}
+          data-col-name="fPhone"
           value={record.tempData.father?.phone}
           disabled={!canEditRow(record.id)}
-          onKeyDown={e => handleKeyDown(e, idx, 'fPhone')}
-          onChange={e => handleUpdateGuardianField(record.id, 'father', 'phone', e.target.value)}
+          className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
+          onChange={val => handleUpdateGuardianField(record.id, 'father', 'phone', val)}
         />
       )
     },
@@ -975,17 +1104,19 @@ const MatriculationEnrollment: React.FC = () => {
       title: 'Asignar',
       width: 140,
       render: (_: unknown, record: MatriculationRow, idx: number) => (
-        <Select
-          id={`nav-${idx}-repType`}
-          value={record.tempData.representativeType}
-          style={{ width: '100%' }}
-          onInputKeyDown={e => handleKeyDown(e, idx, 'repType')}
-          onChange={v => handleUpdateRow(record.id, 'representativeType', v)}
-        >
-          <Option value="mother">Madre</Option>
-          <Option value="father">Padre</Option>
-          <Option value="other">Otro</Option>
-        </Select>
+        <div data-row-index={idx} data-col-name="repType">
+          <Select
+            id={`nav-${idx}-repType`}
+            value={record.tempData.representativeType}
+            style={{ width: '100%' }}
+            size="small"
+            onChange={v => handleUpdateRow(record.id, 'representativeType', v)}
+          >
+            <Option value="mother">Madre</Option>
+            <Option value="father">Padre</Option>
+            <Option value="other">Otro</Option>
+          </Select>
+        </div>
       )
     },
     isColumnVisible('representativeDocument') && {
@@ -993,17 +1124,22 @@ const MatriculationEnrollment: React.FC = () => {
       width: 140,
       render: (_: unknown, record: MatriculationRow, idx: number) => {
         const { profile, editable, label } = getRepresentativeInfo(record);
+        const isRowEditable = canEditRow(record.id);
+        const isDisabled = !isRowEditable || !editable;
+        
         return (
           <div className="flex flex-col gap-1">
-            <Input
+            <CellInput
               id={`nav-${idx}-repDoc`}
-              value={profile?.document || ''}
+              data-row-index={idx}
+              data-col-name="repDoc"
+              value={profile?.document}
               placeholder="Doc..."
-              disabled={!editable}
-              onKeyDown={e => handleKeyDown(e, idx, 'repDoc')}
-              onChange={e => {
+              disabled={isDisabled}
+              className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
+              onChange={val => {
                 if (!editable) return;
-                handleUpdateGuardianField(record.id, 'representative', 'document', e.target.value);
+                handleUpdateGuardianField(record.id, 'representative', 'document', val);
               }}
             />
             {!editable && (
@@ -1020,15 +1156,20 @@ const MatriculationEnrollment: React.FC = () => {
       width: 140,
       render: (_: unknown, record: MatriculationRow, idx: number) => {
         const { profile, editable } = getRepresentativeInfo(record);
+        const isRowEditable = canEditRow(record.id);
+        const isDisabled = !isRowEditable || !editable;
+
         return (
-          <Input
+          <CellInput
             id={`nav-${idx}-repFirstName`}
-            value={profile?.firstName || ''}
-            disabled={!editable}
-            onKeyDown={e => handleKeyDown(e, idx, 'repFirstName')}
-            onChange={e => {
+            data-row-index={idx}
+            data-col-name="repFirstName"
+            value={profile?.firstName}
+            disabled={isDisabled}
+            className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
+            onChange={val => {
               if (!editable) return;
-              handleUpdateGuardianField(record.id, 'representative', 'firstName', e.target.value);
+              handleUpdateGuardianField(record.id, 'representative', 'firstName', val);
             }}
           />
         );
@@ -1039,15 +1180,20 @@ const MatriculationEnrollment: React.FC = () => {
       width: 140,
       render: (_: unknown, record: MatriculationRow, idx: number) => {
         const { profile, editable } = getRepresentativeInfo(record);
+        const isRowEditable = canEditRow(record.id);
+        const isDisabled = !isRowEditable || !editable;
+
         return (
-          <Input
+          <CellInput
             id={`nav-${idx}-repLastName`}
-            value={profile?.lastName || ''}
-            disabled={!editable}
-            onKeyDown={e => handleKeyDown(e, idx, 'repLastName')}
-            onChange={e => {
+            data-row-index={idx}
+            data-col-name="repLastName"
+            value={profile?.lastName}
+            disabled={isDisabled}
+            className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
+            onChange={val => {
               if (!editable) return;
-              handleUpdateGuardianField(record.id, 'representative', 'lastName', e.target.value);
+              handleUpdateGuardianField(record.id, 'representative', 'lastName', val);
             }}
           />
         );
@@ -1058,15 +1204,20 @@ const MatriculationEnrollment: React.FC = () => {
       width: 130,
       render: (_: unknown, record: MatriculationRow, idx: number) => {
         const { profile, editable } = getRepresentativeInfo(record);
+        const isRowEditable = canEditRow(record.id);
+        const isDisabled = !isRowEditable || !editable;
+
         return (
-          <Input
+          <CellInput
             id={`nav-${idx}-repPhone`}
-            value={profile?.phone || ''}
-            disabled={!editable}
-            onKeyDown={e => handleKeyDown(e, idx, 'repPhone')}
-            onChange={e => {
+            data-row-index={idx}
+            data-col-name="repPhone"
+            value={profile?.phone}
+            disabled={isDisabled}
+            className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
+            onChange={val => {
               if (!editable) return;
-              handleUpdateGuardianField(record.id, 'representative', 'phone', e.target.value);
+              handleUpdateGuardianField(record.id, 'representative', 'phone', val);
             }}
           />
         );
@@ -1079,30 +1230,49 @@ const MatriculationEnrollment: React.FC = () => {
     .map(q => ({
       title: q.prompt,
       width: 220,
-      render: (_: unknown, record: MatriculationRow) => {
+      render: (_: unknown, record: MatriculationRow, idx: number) => {
         const value = record.tempData.enrollmentAnswers?.[q.id];
+        const isRowEditable = canEditRow(record.id);
+        const colKey = getQuestionColumnKey(q.id);
+
         if (q.type === 'text') {
           return (
-            <Input
-              value={(value as string) || ''}
+            <CellInput
+              data-row-index={idx}
+              data-col-name={colKey}
+              value={(value as string)}
               placeholder="..."
-              onChange={e => handleUpdateAnswer(record.id, q.id, e.target.value)}
+              disabled={!isRowEditable}
+              className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
+              onChange={val => handleUpdateAnswer(record.id, q.id, val)}
             />
           );
         }
         if (q.type === 'select' || q.type === 'checkbox') {
+          if (!isRowEditable) {
+            const displayVal = Array.isArray(value) ? value.join(', ') : value;
+            return (
+              <div className="px-1 py-0.5 text-xs text-slate-800 whitespace-nowrap overflow-hidden text-ellipsis min-h-[20px]">
+                {displayVal}
+              </div>
+            );
+          }
           return (
-            <Select
-              mode={q.type === 'checkbox' ? 'multiple' : undefined}
-              style={{ width: '100%' }}
-              value={value as string | string[] | undefined}
-              placeholder="Elija..."
-              onChange={v => handleUpdateAnswer(record.id, q.id, v)}
-            >
-              {(q.options || []).map(opt => (
-                <Option key={opt} value={opt}>{opt}</Option>
-              ))}
-            </Select>
+            <div data-row-index={idx} data-col-name={colKey}>
+              <Select
+                mode={q.type === 'checkbox' ? 'multiple' : undefined}
+                style={{ width: '100%' }}
+                size="small"
+                value={value as string | string[] | undefined}
+                placeholder="Elija..."
+                disabled={!isRowEditable}
+                onChange={v => handleUpdateAnswer(record.id, q.id, v)}
+              >
+                {(q.options || []).map(opt => (
+                  <Option key={opt} value={opt}>{opt}</Option>
+                ))}
+              </Select>
+            </div>
           );
         }
         return null;
@@ -1187,7 +1357,7 @@ const MatriculationEnrollment: React.FC = () => {
   ].filter(Boolean) as ColumnsType<MatriculationRow>;
 
   return (
-    <div className="flex flex-col gap-2 h-full">
+    <div className="flex flex-col gap-2 h-full" onKeyDown={handleTableKeyDown}>
       <div ref={headerRef} className="flex flex-col gap-2 shrink-0">
         <Card size="small" bodyStyle={{ padding: '4px 12px' }} className="glass-card !bg-white/50 border-none shrink-0">
           <Row justify="space-between" align="middle" gutter={[4, 4]}>
@@ -1529,15 +1699,16 @@ const MatriculationEnrollment: React.FC = () => {
           line-height: 24px !important;
         }
         /* Show inputs on hover/focus */
-        .ant-table-row:hover .ant-input, 
+        .ant-table-row:hover .ant-input,
         .ant-table-row:hover .ant-select-selector,
-        .ant-input:focus, 
-        .ant-select-focused .ant-select-selector {
+        .ant-input:focus,
+        .ant-select-focused .ant-select-selector,
+        input:focus {
           border-color: #cbd5e1 !important;
           background: #ffffff !important;
           border-radius: 4px !important;
         }
-        .ant-input:focus, .ant-select-focused .ant-select-selector {
+        .ant-input:focus, .ant-select-focused .ant-select-selector, input:focus {
           border-color: #3b82f6 !important;
           box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1) !important;
         }
@@ -1552,7 +1723,7 @@ const MatriculationEnrollment: React.FC = () => {
         .locked-row input,
         .locked-row .ant-input,
         .locked-row .ant-select-selector {
-          color: #94a3b8 !important;
+          color: #1e293b !important; /* Slate 800 for readability */
           pointer-events: none;
         }
         .locked-row .always-editable,
@@ -1562,10 +1733,13 @@ const MatriculationEnrollment: React.FC = () => {
         }
         .locked-row .ant-select-selection-item,
         .locked-row .ant-select-selection-placeholder {
-          color: #94a3b8 !important;
+          color: #1e293b !important; /* Slate 800 */
         }
-        .context-menu button {
-          text-align: left;
+        
+        /* Native Input Disabled Look */
+        input:disabled {
+          background-color: transparent;
+          color: #1e293b; /* Slate 800 */
         }
       `}</style>
     </div >
