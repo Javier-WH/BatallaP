@@ -12,6 +12,7 @@ import {
   Select,
   Space,
   Table,
+  Tooltip,
   Typography,
   Pagination,
 } from 'antd';
@@ -1272,26 +1273,31 @@ const MatriculationEnrollment: React.FC = () => {
                 <span className={`text-[9px] font-bold uppercase tracking-wider ${selectedRowKeys.length > 0 ? 'text-slate-500' : 'text-slate-300'}`}>
                   Asignar Sección
                 </span>
-                <Select
-                  disabled={selectedRowKeys.length === 0 || hasMixedGrades}
-                  placeholder="Seleccionar..."
-                  size="small"
-                  className="w-full"
-                  value={selectedRows.length === 0 || hasMixedGrades ? undefined : undefined}
-                  onChange={v => handleBulkUpdate('sectionId', v)}
-                  allowClear
-                  notFoundContent={hasMixedGrades ? 'Seleccione estudiantes del mismo grado' : undefined}
+                <Tooltip
+                  title={hasMixedGrades ? 'Seleccione estudiantes del mismo grado para asignar secciones.' : undefined}
+                  placement="topLeft"
                 >
-                  {bulkGroupSubjects.length > 0
-                    ? (structure.find(s => s.gradeId === selectedRows[0].tempData.gradeId)?.sections || []).map(sec => (
-                      <Option key={sec.id} value={sec.id}>{sec.name}</Option>
-                    ))
-                    : (selectedRows.length === 0 ? [] :
-                      (structure.find(s => s.gradeId === selectedRows[0].tempData.gradeId)?.sections || []).map(sec => (
+                  <Select
+                    disabled={selectedRowKeys.length === 0 || hasMixedGrades}
+                    placeholder="Seleccionar..."
+                    size="small"
+                    className="w-full"
+                    value={selectedRows.length === 0 || hasMixedGrades ? undefined : undefined}
+                    onChange={v => handleBulkUpdate('sectionId', v)}
+                    allowClear
+                    notFoundContent={hasMixedGrades ? 'Seleccione estudiantes del mismo grado' : undefined}
+                  >
+                    {bulkGroupSubjects.length > 0
+                      ? (structure.find(s => s.gradeId === selectedRows[0].tempData.gradeId)?.sections || []).map(sec => (
                         <Option key={sec.id} value={sec.id}>{sec.name}</Option>
-                      )))
-                  }
-                </Select>
+                      ))
+                      : (selectedRows.length === 0 ? [] :
+                        (structure.find(s => s.gradeId === selectedRows[0].tempData.gradeId)?.sections || []).map(sec => (
+                          <Option key={sec.id} value={sec.id}>{sec.name}</Option>
+                        )))
+                    }
+                  </Select>
+                </Tooltip>
               </div>
 
               {/* Change Grade */}
@@ -1302,17 +1308,22 @@ const MatriculationEnrollment: React.FC = () => {
                 <span className={`text-[9px] font-bold uppercase tracking-wider ${selectedRowKeys.length > 0 ? 'text-slate-500' : 'text-slate-300'}`}>
                   Materias de Grupo
                 </span>
-                <Select
-                  disabled={selectedRowKeys.length === 0 || hasMixedGrades}
-                  placeholder="Asignar Materia..."
-                  size="small"
-                  className="w-full"
-                  value={bulkGroupSubjects.length === 0 ? undefined : undefined}
-                  onChange={v => handleBulkUpdate('subjectIds', v ? [v] : [])}
-                  allowClear
-                  notFoundContent={hasMixedGrades ? 'Seleccione estudiantes del mismo grado' : undefined}
-                  options={bulkGroupSubjects.map(sub => ({ label: sub.name, value: sub.id }))}
-                />
+                <Tooltip
+                  title={hasMixedGrades ? 'Seleccione estudiantes del mismo grado para asignar materias de grupo.' : undefined}
+                  placement="topLeft"
+                >
+                  <Select
+                    disabled={selectedRowKeys.length === 0 || hasMixedGrades}
+                    placeholder="Asignar Materia..."
+                    size="small"
+                    className="w-full"
+                    value={bulkGroupSubjects.length === 0 ? undefined : undefined}
+                    onChange={v => handleBulkUpdate('subjectIds', v ? [v] : [])}
+                    allowClear
+                    notFoundContent={hasMixedGrades ? 'Seleccione estudiantes del mismo grado' : undefined}
+                    options={bulkGroupSubjects.map(sub => ({ label: sub.name, value: sub.id }))}
+                  />
+                </Tooltip>
               </div>
             </div>
 
