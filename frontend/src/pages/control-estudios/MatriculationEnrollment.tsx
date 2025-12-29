@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Button,
   Card,
@@ -196,6 +197,13 @@ const MatriculationEnrollment: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [structure, setStructure] = useState<EnrollStructureEntry[]>([]);
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
+  const [editableRowIds, setEditableRowIds] = useState<number[]>([]);
+  const [contextMenuState, setContextMenuState] = useState<{ visible: boolean; x: number; y: number; rowId: number | null }>({
+    visible: false,
+    x: 0,
+    y: 0,
+    rowId: null
+  });
   const [searchValue, setSearchValue] = useState('');
 
   const [questions, setQuestions] = useState<EnrollmentQuestionResponse[]>([]);
@@ -219,6 +227,47 @@ const MatriculationEnrollment: React.FC = () => {
   // Dynamic Height Calculation
   const [scrollY, setScrollY] = useState(500);
   const headerRef = useRef<HTMLDivElement>(null);
+
+  const canEditRow = useCallback((rowId: number) => editableRowIds.includes(rowId), [editableRowIds]);
+
+  const enableRowEditing = useCallback((rowId: number) => {
+    setEditableRowIds(prev => (prev.includes(rowId) ? prev : [...prev, rowId]));
+  }, []);
+
+  const closeContextMenu = useCallback(() => {
+    setContextMenuState(prev => ({ ...prev, visible: false, rowId: null }));
+  }, []);
+
+  const handleContextMenu = useCallback((event: React.MouseEvent, rowId: number) => {
+    event.preventDefault();
+    setContextMenuState({
+      visible: true,
+      x: event.clientX,
+      y: event.clientY,
+      rowId
+    });
+  }, []);
+
+  const handleContextEdit = useCallback(() => {
+    if (contextMenuState.rowId != null) {
+      enableRowEditing(contextMenuState.rowId);
+    }
+    closeContextMenu();
+  }, [contextMenuState.rowId, enableRowEditing, closeContextMenu]);
+
+  useEffect(() => {
+    if (!contextMenuState.visible) return;
+    const handleClickAway = () => closeContextMenu();
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') closeContextMenu();
+    };
+    window.addEventListener('click', handleClickAway);
+    window.addEventListener('keydown', handleEscape);
+    return () => {
+      window.removeEventListener('click', handleClickAway);
+      window.removeEventListener('keydown', handleEscape);
+    };
+  }, [contextMenuState.visible, closeContextMenu]);
 
   useEffect(() => {
     const calculateHeight = () => {
@@ -599,6 +648,13 @@ const MatriculationEnrollment: React.FC = () => {
     return gradeStruct?.subjects?.filter(s => s.subjectGroupId) || [];
   }, [hasMixedGrades, selectedRows, structure]);
 
+  const bulkSections = useMemo(() => {
+    if (hasMixedGrades || selectedRows.length === 0) return [];
+    const gradeId = selectedRows[0].tempData.gradeId;
+    const gradeStruct = structure.find(s => s.gradeId === gradeId);
+    return gradeStruct?.sections || [];
+  }, [hasMixedGrades, selectedRows, structure]);
+
   // --- Keyboard Navigation ---
   // List of columns identifiers for horizontal navigation
   const COLS = [
@@ -654,6 +710,7 @@ const MatriculationEnrollment: React.FC = () => {
         <Input
           id={`nav-${idx}-firstName`}
           value={record.tempData.firstName}
+          disabled={!canEditRow(record.id)}
           onKeyDown={e => handleKeyDown(e, idx, 'firstName')}
           onChange={e => handleUpdateRow(record.id, 'firstName', e.target.value)}
         />
@@ -666,6 +723,7 @@ const MatriculationEnrollment: React.FC = () => {
         <Input
           id={`nav-${idx}-lastName`}
           value={record.tempData.lastName}
+          disabled={!canEditRow(record.id)}
           onKeyDown={e => handleKeyDown(e, idx, 'lastName')}
           onChange={e => handleUpdateRow(record.id, 'lastName', e.target.value)}
         />
@@ -678,6 +736,7 @@ const MatriculationEnrollment: React.FC = () => {
         <Input
           id={`nav-${idx}-document`}
           value={record.tempData.document}
+          disabled={!canEditRow(record.id)}
           onKeyDown={e => handleKeyDown(e, idx, 'document')}
           onChange={e => handleUpdateRow(record.id, 'document', e.target.value)}
         />
@@ -694,6 +753,7 @@ const MatriculationEnrollment: React.FC = () => {
           id={`nav-${idx}-gradeId`}
           value={record.tempData.gradeId}
           style={{ width: '100%' }}
+          disabled={!canEditRow(record.id)}
           onInputKeyDown={e => handleKeyDown(e, idx, 'gradeId')}
           onChange={(v) => handleUpdateRow(record.id, 'gradeId', v)}
         >
@@ -711,6 +771,7 @@ const MatriculationEnrollment: React.FC = () => {
             id={`nav-${idx}-sectionId`}
             value={record.tempData.sectionId}
             allowClear
+            disabled={!canEditRow(record.id)}
             style={{ width: '100%' }}
             onInputKeyDown={e => handleKeyDown(e, idx, 'sectionId')}
             onChange={(v) => handleUpdateRow(record.id, 'sectionId', v)}
@@ -730,6 +791,7 @@ const MatriculationEnrollment: React.FC = () => {
         return (
           <Select
             id={`nav-${idx}-subjectIds`}
+            className="always-editable"
             style={{ width: '100%' }}
             value={currentSubjectId}
             allowClear
@@ -754,6 +816,7 @@ const MatriculationEnrollment: React.FC = () => {
           id={`nav-${idx}-escolaridad`}
           value={record.tempData.escolaridad}
           style={{ width: '100%' }}
+          disabled={!canEditRow(record.id)}
           onInputKeyDown={e => handleKeyDown(e, idx, 'escolaridad')}
           onChange={(v) => handleUpdateRow(record.id, 'escolaridad', v as EscolaridadStatus)}
           options={ESCOLARIDAD_OPTIONS}
@@ -770,6 +833,7 @@ const MatriculationEnrollment: React.FC = () => {
         <Input
           id={`nav-${idx}-phone1`}
           value={record.tempData.phone1}
+          disabled={!canEditRow(record.id)}
           onKeyDown={e => handleKeyDown(e, idx, 'phone1')}
           onChange={e => handleUpdateRow(record.id, 'phone1', e.target.value)}
         />
@@ -782,6 +846,7 @@ const MatriculationEnrollment: React.FC = () => {
         <Input
           id={`nav-${idx}-whatsapp`}
           value={record.tempData.whatsapp}
+          disabled={!canEditRow(record.id)}
           onKeyDown={e => handleKeyDown(e, idx, 'whatsapp')}
           onChange={e => handleUpdateRow(record.id, 'whatsapp', e.target.value)}
         />
@@ -798,6 +863,7 @@ const MatriculationEnrollment: React.FC = () => {
           id={`nav-${idx}-mDoc`}
           value={record.tempData.mother?.document}
           placeholder="Doc..."
+          disabled={!canEditRow(record.id)}
           onKeyDown={e => handleKeyDown(e, idx, 'mDoc')}
           onChange={e => handleUpdateGuardianField(record.id, 'mother', 'document', e.target.value)}
         />
@@ -810,6 +876,7 @@ const MatriculationEnrollment: React.FC = () => {
         <Input
           id={`nav-${idx}-mFirstName`}
           value={record.tempData.mother?.firstName}
+          disabled={!canEditRow(record.id)}
           onKeyDown={e => handleKeyDown(e, idx, 'mFirstName')}
           onChange={e => handleUpdateGuardianField(record.id, 'mother', 'firstName', e.target.value)}
         />
@@ -822,6 +889,7 @@ const MatriculationEnrollment: React.FC = () => {
         <Input
           id={`nav-${idx}-mLastName`}
           value={record.tempData.mother?.lastName}
+          disabled={!canEditRow(record.id)}
           onKeyDown={e => handleKeyDown(e, idx, 'mLastName')}
           onChange={e => handleUpdateGuardianField(record.id, 'mother', 'lastName', e.target.value)}
         />
@@ -834,6 +902,7 @@ const MatriculationEnrollment: React.FC = () => {
         <Input
           id={`nav-${idx}-mPhone`}
           value={record.tempData.mother?.phone}
+          disabled={!canEditRow(record.id)}
           onKeyDown={e => handleKeyDown(e, idx, 'mPhone')}
           onChange={e => handleUpdateGuardianField(record.id, 'mother', 'phone', e.target.value)}
         />
@@ -850,6 +919,7 @@ const MatriculationEnrollment: React.FC = () => {
           id={`nav-${idx}-fDoc`}
           value={record.tempData.father?.document}
           placeholder="Doc..."
+          disabled={!canEditRow(record.id)}
           onKeyDown={e => handleKeyDown(e, idx, 'fDoc')}
           onChange={e => handleUpdateGuardianField(record.id, 'father', 'document', e.target.value)}
         />
@@ -862,6 +932,7 @@ const MatriculationEnrollment: React.FC = () => {
         <Input
           id={`nav-${idx}-fFirstName`}
           value={record.tempData.father?.firstName}
+          disabled={!canEditRow(record.id)}
           onKeyDown={e => handleKeyDown(e, idx, 'fFirstName')}
           onChange={e => handleUpdateGuardianField(record.id, 'father', 'firstName', e.target.value)}
         />
@@ -874,6 +945,7 @@ const MatriculationEnrollment: React.FC = () => {
         <Input
           id={`nav-${idx}-fLastName`}
           value={record.tempData.father?.lastName}
+          disabled={!canEditRow(record.id)}
           onKeyDown={e => handleKeyDown(e, idx, 'fLastName')}
           onChange={e => handleUpdateGuardianField(record.id, 'father', 'lastName', e.target.value)}
         />
@@ -886,6 +958,7 @@ const MatriculationEnrollment: React.FC = () => {
         <Input
           id={`nav-${idx}-fPhone`}
           value={record.tempData.father?.phone}
+          disabled={!canEditRow(record.id)}
           onKeyDown={e => handleKeyDown(e, idx, 'fPhone')}
           onChange={e => handleUpdateGuardianField(record.id, 'father', 'phone', e.target.value)}
         />
@@ -1278,24 +1351,17 @@ const MatriculationEnrollment: React.FC = () => {
                   placement="topLeft"
                 >
                   <Select
-                    disabled={selectedRowKeys.length === 0 || hasMixedGrades}
+                    disabled={selectedRowKeys.length === 0 || hasMixedGrades || bulkSections.length === 0}
                     placeholder="Seleccionar..."
                     size="small"
                     className="w-full"
-                    value={selectedRows.length === 0 || hasMixedGrades ? undefined : undefined}
                     onChange={v => handleBulkUpdate('sectionId', v)}
                     allowClear
                     notFoundContent={hasMixedGrades ? 'Seleccione estudiantes del mismo grado' : undefined}
                   >
-                    {bulkGroupSubjects.length > 0
-                      ? (structure.find(s => s.gradeId === selectedRows[0].tempData.gradeId)?.sections || []).map(sec => (
-                        <Option key={sec.id} value={sec.id}>{sec.name}</Option>
-                      ))
-                      : (selectedRows.length === 0 ? [] :
-                        (structure.find(s => s.gradeId === selectedRows[0].tempData.gradeId)?.sections || []).map(sec => (
-                          <Option key={sec.id} value={sec.id}>{sec.name}</Option>
-                        )))
-                    }
+                    {bulkSections.map(sec => (
+                      <Option key={sec.id} value={sec.id}>{sec.name}</Option>
+                    ))}
                   </Select>
                 </Tooltip>
               </div>
@@ -1313,11 +1379,10 @@ const MatriculationEnrollment: React.FC = () => {
                   placement="topLeft"
                 >
                   <Select
-                    disabled={selectedRowKeys.length === 0 || hasMixedGrades}
+                    disabled={selectedRowKeys.length === 0 || hasMixedGrades || bulkGroupSubjects.length === 0}
                     placeholder="Asignar Materia..."
                     size="small"
                     className="w-full"
-                    value={bulkGroupSubjects.length === 0 ? undefined : undefined}
                     onChange={v => handleBulkUpdate('subjectIds', v ? [v] : [])}
                     allowClear
                     notFoundContent={hasMixedGrades ? 'Seleccione estudiantes del mismo grado' : undefined}
@@ -1353,10 +1418,48 @@ const MatriculationEnrollment: React.FC = () => {
         pagination={false}
         scroll={{ x: 'max-content', y: scrollY }}
         rowSelection={{ selectedRowKeys, onChange: setSelectedRowKeys }}
+        rowClassName={record => (canEditRow(record.id) ? 'editable-row' : 'locked-row')}
+        onRow={(record) => ({
+          onContextMenu: (event) => handleContextMenu(event, record.id)
+        })}
         size="small"
         bordered
         className="flex-1 overflow-hidden"
       />
+
+      {contextMenuState.visible && createPortal(
+        <div
+          className="context-menu"
+          style={{
+            position: 'fixed',
+            top: contextMenuState.y,
+            left: contextMenuState.x,
+            transform: 'translate(-50%, 4px)',
+            background: '#fff',
+            border: '1px solid #e2e8f0',
+            borderRadius: 8,
+            boxShadow: '0 12px 30px rgba(15, 23, 42, 0.2)',
+            zIndex: 2000,
+            minWidth: 180,
+            overflow: 'hidden'
+          }}
+          onContextMenu={e => e.preventDefault()}
+        >
+          <div className="px-3 py-2 text-xs text-slate-400 border-b border-slate-100">
+            Acciones de fila
+          </div>
+          <Button type="text" block onClick={handleContextEdit} className="!text-left !py-2">
+            Editar fila
+          </Button>
+          <Button type="text" block onClick={closeContextMenu} className="!text-left !py-2 text-slate-500">
+            Cancelar
+          </Button>
+          <div className="px-3 py-2 text-[11px] text-slate-400 border-t border-slate-100">
+            Tip: clic derecho sobre la fila para mostrar este menú.
+          </div>
+        </div>,
+        document.body
+      )}
 
       <style>{`
         /* 1. Global Header Styles */
@@ -1427,6 +1530,32 @@ const MatriculationEnrollment: React.FC = () => {
         .ant-input:focus, .ant-select-focused .ant-select-selector {
           border-color: #3b82f6 !important;
           box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1) !important;
+        }
+        .editable-row > td {
+          background-color: #fff3c4 !important;
+          box-shadow: inset 0 0 0 1px #fde68a;
+        }
+        .locked-row > td {
+          background-color: #f8fafc !important;
+          color: #94a3b8;
+        }
+        .locked-row input,
+        .locked-row .ant-input,
+        .locked-row .ant-select-selector {
+          color: #94a3b8 !important;
+          pointer-events: none;
+        }
+        .locked-row .always-editable,
+        .locked-row .always-editable .ant-select-selector {
+          pointer-events: auto;
+          color: inherit !important;
+        }
+        .locked-row .ant-select-selection-item,
+        .locked-row .ant-select-selection-placeholder {
+          color: #94a3b8 !important;
+        }
+        .context-menu button {
+          text-align: left;
         }
       `}</style>
     </div >
