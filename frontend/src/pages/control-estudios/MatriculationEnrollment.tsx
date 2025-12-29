@@ -580,6 +580,25 @@ const MatriculationEnrollment: React.FC = () => {
     }));
   };
 
+  const selectedRows = useMemo(
+    () => matriculations.filter(row => selectedRowKeys.includes(row.id)),
+    [matriculations, selectedRowKeys]
+  );
+
+  const selectedGradeIds = useMemo(
+    () => Array.from(new Set(selectedRows.map(row => row.tempData.gradeId))),
+    [selectedRows]
+  );
+
+  const hasMixedGrades = selectedGradeIds.length > 1;
+
+  const bulkGroupSubjects = useMemo(() => {
+    if (hasMixedGrades || selectedRows.length === 0) return [];
+    const gradeId = selectedRows[0].tempData.gradeId;
+    const gradeStruct = structure.find(s => s.gradeId === gradeId);
+    return gradeStruct?.subjects?.filter(s => s.subjectGroupId) || [];
+  }, [hasMixedGrades, selectedRows, structure]);
+
   // --- Keyboard Navigation ---
   // List of columns identifiers for horizontal navigation
   const COLS = [
@@ -1278,23 +1297,16 @@ const MatriculationEnrollment: React.FC = () => {
                   Materias de Grupo
                 </span>
                 <Select
-                  disabled={selectedRowKeys.length === 0}
+                  disabled={selectedRowKeys.length === 0 || hasMixedGrades}
                   placeholder="Asignar Materia..."
                   size="small"
                   className="w-full"
+                  value={bulkGroupSubjects.length === 0 ? undefined : undefined}
                   onChange={v => handleBulkUpdate('subjectIds', v ? [v] : [])}
                   allowClear
-                >
-                  {Array.from(new Map(structure.flatMap(s => s.subjects || [])
-                    .filter(sub => sub.subjectGroupId)
-                    .map(sub => [sub.id, sub])).values())
-                    .map(sub => (
-                      <Option key={sub.id} value={sub.id}>
-                        {sub.name}
-                      </Option>
-                    ))
-                  }
-                </Select>
+                  notFoundContent={hasMixedGrades ? 'Seleccione estudiantes del mismo grado' : undefined}
+                  options={bulkGroupSubjects.map(sub => ({ label: sub.name, value: sub.id }))}
+                />
               </div>
             </div>
 
