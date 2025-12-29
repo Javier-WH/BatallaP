@@ -234,6 +234,10 @@ const MatriculationEnrollment: React.FC = () => {
     setEditableRowIds(prev => (prev.includes(rowId) ? prev : [...prev, rowId]));
   }, []);
 
+  const lockRow = useCallback((rowId: number) => {
+    setEditableRowIds(prev => prev.filter(id => id !== rowId));
+  }, []);
+
   const closeContextMenu = useCallback(() => {
     setContextMenuState(prev => ({ ...prev, visible: false, rowId: null }));
   }, []);
@@ -1420,7 +1424,13 @@ const MatriculationEnrollment: React.FC = () => {
         rowSelection={{ selectedRowKeys, onChange: setSelectedRowKeys }}
         rowClassName={record => (canEditRow(record.id) ? 'editable-row' : 'locked-row')}
         onRow={(record) => ({
-          onContextMenu: (event) => handleContextMenu(event, record.id)
+          onContextMenu: (event) => handleContextMenu(event, record.id),
+          onKeyDown: (event) => {
+            if (event.key === 'Enter' && canEditRow(record.id)) {
+              lockRow(record.id);
+              event.stopPropagation();
+            }
+          }
         })}
         size="small"
         bordered
