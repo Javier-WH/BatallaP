@@ -12,7 +12,6 @@ import {
   Select,
   Space,
   Table,
-  Tag,
   Typography,
   Pagination,
 } from 'antd';
@@ -29,7 +28,7 @@ import {
 import dayjs, { Dayjs } from 'dayjs';
 import api from '@/services/api';
 import type { EnrollmentQuestionResponse } from '@/services/enrollmentQuestions';
-import type { ColumnsType, ColumnType } from 'antd/es/table';
+import type { ColumnsType } from 'antd/es/table';
 
 const { Text, Title } = Typography;
 const { Option } = Select;
@@ -1274,17 +1273,24 @@ const MatriculationEnrollment: React.FC = () => {
                   Asignar Sección
                 </span>
                 <Select
-                  disabled={selectedRowKeys.length === 0}
+                  disabled={selectedRowKeys.length === 0 || hasMixedGrades}
                   placeholder="Seleccionar..."
                   size="small"
                   className="w-full"
+                  value={selectedRows.length === 0 || hasMixedGrades ? undefined : undefined}
                   onChange={v => handleBulkUpdate('sectionId', v)}
                   allowClear
+                  notFoundContent={hasMixedGrades ? 'Seleccione estudiantes del mismo grado' : undefined}
                 >
-                  {Array.from(new Set(structure.flatMap(s => s.sections || []).map(s => s.id))).map(id => {
-                    const sec = structure.flatMap(s => s.sections || []).find(s => s.id === id);
-                    return <Option key={id} value={id}>{sec?.name}</Option>;
-                  })}
+                  {bulkGroupSubjects.length > 0
+                    ? (structure.find(s => s.gradeId === selectedRows[0].tempData.gradeId)?.sections || []).map(sec => (
+                      <Option key={sec.id} value={sec.id}>{sec.name}</Option>
+                    ))
+                    : (selectedRows.length === 0 ? [] :
+                      (structure.find(s => s.gradeId === selectedRows[0].tempData.gradeId)?.sections || []).map(sec => (
+                        <Option key={sec.id} value={sec.id}>{sec.name}</Option>
+                      )))
+                  }
                 </Select>
               </div>
 
