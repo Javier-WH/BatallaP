@@ -198,29 +198,26 @@ interface CellInputProps extends Omit<React.InputHTMLAttributes<HTMLInputElement
 }
 
 const CellInput = React.memo(({ value, onChange, onBlur, onKeyDown, ...props }: CellInputProps) => {
-  const [localValue, setLocalValue] = useState(value || '');
-
-  useEffect(() => {
-    if (value !== undefined && value !== null) {
-      setLocalValue(prev => (prev !== value ? value : prev));
-    }
-  }, [value]);
+  const [draftValue, setDraftValue] = useState<string | null>(null);
+  const normalizedValue = value ?? '';
+  const inputValue = draftValue ?? normalizedValue;
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setLocalValue(e.target.value);
+    setDraftValue(e.target.value);
   };
 
   const handleBlur = (e: React.FocusEvent<HTMLInputElement>) => {
-    if (localValue !== (value || '')) {
-      onChange(localValue);
+    if (draftValue !== null && draftValue !== normalizedValue) {
+      onChange(draftValue);
     }
+    setDraftValue(null);
     if (onBlur) onBlur(e);
   };
 
   return (
     <input
       {...props}
-      value={localValue}
+      value={inputValue}
       onChange={handleChange}
       onBlur={handleBlur}
       onKeyDown={onKeyDown}
