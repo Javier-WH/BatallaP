@@ -592,6 +592,17 @@ const MatriculationEnrollment: React.FC = () => {
     fetchData();
   }, [fetchData]);
 
+  useEffect(() => {
+    const handleGlobalEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      setEditableRowIds(prev => (prev.length ? [] : prev));
+    };
+    window.addEventListener('keydown', handleGlobalEscape);
+    return () => {
+      window.removeEventListener('keydown', handleGlobalEscape);
+    };
+  }, []);
+
   const handleUpdateRow = <K extends keyof TempData>(id: number, field: K, value: TempData[K]) => {
     setMatriculations(prev => prev.map(row => (
       row.id === id
@@ -726,7 +737,6 @@ const MatriculationEnrollment: React.FC = () => {
     // Check if event comes from a cell input/select
     if (!target.matches('input, .ant-select-selection-search-input')) return;
     
-    // Only handle navigation keys
     if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) return;
 
     // Retrieve metadata
@@ -739,8 +749,8 @@ const MatriculationEnrollment: React.FC = () => {
 
     if (!rowIndexStr || !colName) return;
 
-    e.preventDefault();
     const rowIndex = parseInt(rowIndexStr, 10);
+    e.preventDefault();
     let nRow = rowIndex;
     let nColIdx = COLS.indexOf(colName);
 
