@@ -878,14 +878,14 @@ const MatriculationEnrollment: React.FC = () => {
         const gradeStruct = structure.find(s => s.gradeId === record.tempData.gradeId);
         const groupSubjects = gradeStruct?.subjects?.filter(s => s.subjectGroupId) || [];
         const currentSubjectId = record.tempData.subjectIds?.[0];
-        
-        if (!canEditRow(record.id)) {
-           const subjectName = groupSubjects.find(s => s.id === currentSubjectId)?.name || (currentSubjectId ? '...' : '');
-           return (
-             <div className="px-1 py-0.5 text-xs text-slate-800 whitespace-nowrap overflow-hidden text-ellipsis min-h-[20px]">
-               {subjectName}
-             </div>
-           );
+
+        if (groupSubjects.length === 0) {
+          const message = gradeStruct ? 'Sin materias agrupadas' : 'Seleccione un grado';
+          return (
+            <div className="px-1 py-0.5 text-xs text-slate-400 whitespace-nowrap overflow-hidden text-ellipsis min-h-[20px]">
+              {message}
+            </div>
+          );
         }
 
         return (
