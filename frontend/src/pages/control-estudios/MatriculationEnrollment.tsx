@@ -96,7 +96,6 @@ interface StudentData {
 }
 
 type EscolaridadStatus = 'regular' | 'repitiente' | 'materia_pendiente';
-
 interface TempData {
   firstName: string;
   lastName: string;
