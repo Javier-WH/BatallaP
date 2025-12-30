@@ -225,6 +225,8 @@ const CellInput = React.memo(({ value, onChange, onBlur, onKeyDown, ...props }: 
   );
 });
 
+type MatriculationColumn = ColumnsType<MatriculationRow>[number];
+
 const MatriculationEnrollment: React.FC = () => {
   const [matriculations, setMatriculations] = useState<MatriculationRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1294,10 +1296,12 @@ const MatriculationEnrollment: React.FC = () => {
     </div>
   );
 
-  const addSeparator = (cols: any[]) => {
-    if (!cols || cols.length === 0) return cols;
-    return cols.map((col, idx) => {
-      if (idx === cols.length - 1) {
+  const addSeparator = (cols?: (MatriculationColumn | false | null | undefined)[]): MatriculationColumn[] => {
+    if (!cols) return [];
+    const validCols = cols.filter((col): col is MatriculationColumn => Boolean(col));
+    if (validCols.length === 0) return validCols;
+    return validCols.map((col, idx) => {
+      if (idx === validCols.length - 1) {
         return {
           ...col,
           className: 'group-separator-border',
