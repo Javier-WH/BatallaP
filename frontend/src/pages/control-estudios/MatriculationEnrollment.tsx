@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import {
+  Alert,
   Button,
   Card,
   Checkbox,
@@ -9,10 +10,12 @@ import {
   Input,
   message,
   Popover,
+  Radio,
   Row,
   Select,
   Space,
   Table,
+  Tag,
   Tooltip,
   Typography,
   Pagination,
@@ -23,14 +26,17 @@ import {
   UserOutlined,
   CheckCircleOutlined,
   BookOutlined,
+  EyeOutlined,
   QuestionCircleOutlined,
   CloseOutlined,
   TableOutlined,
 } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
+import { useNavigate } from 'react-router-dom';
 import api from '@/services/api';
 import type { EnrollmentQuestionResponse } from '@/services/enrollmentQuestions';
 import type { ColumnsType } from 'antd/es/table';
+import StudentSubjectsModal from '../admin/StudentSubjectsModal';
 
 const { Text, Title } = Typography;
 const { Option } = Select;
@@ -85,28 +91,45 @@ interface EnrollmentAnswerRecord {
 type EnrollmentAnswersMap = Record<number, string | string[] | undefined>;
 
 interface StudentData {
+  id: number;
   firstName: string;
   lastName: string;
+  documentType: string;
   document: string;
+  gender?: string;
   contact?: ContactInfo;
-  guardians?: GuardianAssignment[];
+  guardians: {
+    relationship: string;
+    isRepresentative?: boolean;
+    profile?: GuardianProfile;
+  }[];
   birthdate?: string | null;
   residence?: ResidenceInfo;
   enrollmentAnswers?: EnrollmentAnswerRecord[];
 }
 
 type EscolaridadStatus = 'regular' | 'repitiente' | 'materia_pendiente';
+
+interface SchoolPeriod {
+  id: number;
+  name: string;
+  isActive: boolean;
+}
+
 interface TempData {
+  id: number;
   firstName: string;
   lastName: string;
+  documentType: string;
   document: string;
+  gender?: string;
   gradeId: number;
   sectionId?: number | null;
   subjectIds: number[];
   escolaridad: EscolaridadStatus;
   phone1?: string;
   whatsapp?: string;
-  birthdate: Dayjs | null;
+  birthdate: dayjs.Dayjs | null;
   mother?: GuardianProfile;
   father?: GuardianProfile;
   representative?: GuardianProfile;
@@ -125,8 +148,10 @@ interface TempData {
 interface MatriculationRow {
   id: number;
   gradeId: number;
+  schoolPeriodId: number;
   sectionId?: number | null;
   status: 'pending' | 'completed';
+  inscriptionId?: number | null;
   student: StudentData;
   tempData: TempData;
 }
@@ -134,8 +159,10 @@ interface MatriculationRow {
 interface MatriculationApiResponse {
   id: number;
   gradeId: number;
+  schoolPeriodId: number;
   sectionId?: number | null;
   status: 'pending' | 'completed';
+  inscriptionId?: number | null;
   student: StudentData;
   escolaridad?: EscolaridadStatus;
 }
@@ -164,10 +191,21 @@ const COLUMN_GROUP_ORDER = [
   'Preguntas Personalizadas'
 ];
 
+const COLS = [
+  'nationality', 'document', 'firstName', 'lastName', 'gender',
+  'gradeId', 'sectionId', 'subjectIds', 'escolaridad',
+  'phone1', 'whatsapp',
+  'mDoc', 'mFirstName', 'mLastName', 'mPhone',
+  'fDoc', 'fFirstName', 'fLastName', 'fPhone',
+  'repType', 'repDoc', 'repFirstName', 'repLastName', 'repPhone'
+];
+
 const BASE_COLUMN_OPTIONS: ColumnOption[] = [
+  { key: 'nationality', label: 'Nac.', group: 'Estudiante' },
+  { key: 'document', label: 'Cédula', group: 'Estudiante' },
   { key: 'firstName', label: 'Nombres', group: 'Estudiante' },
   { key: 'lastName', label: 'Apellidos', group: 'Estudiante' },
-  { key: 'document', label: 'Cédula', group: 'Estudiante' },
+  { key: 'gender', label: 'Género', group: 'Estudiante' },
   { key: 'gradeId', label: 'Grado', group: 'Académico' },
   { key: 'sectionId', label: 'Sección', group: 'Académico' },
   { key: 'subjectIds', label: 'Materias de Grupo', group: 'Académico' },
@@ -224,14 +262,22 @@ const CellInput = React.memo(({ value, onChange, onBlur, onKeyDown, ...props }: 
   );
 });
 
-type MatriculationColumn = ColumnsType<MatriculationRow>[number];
-
 const MatriculationEnrollment: React.FC = () => {
+  const navigate = useNavigate();
+  const [activePeriod, setActivePeriod] = useState<SchoolPeriod | null>(null);
+  const [viewStatus, setViewStatus] = useState<'pending' | 'completed'>('pending');
   const [matriculations, setMatriculations] = useState<MatriculationRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [structure, setStructure] = useState<EnrollStructureEntry[]>([]);
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [editableRowIds, setEditableRowIds] = useState<number[]>([]);
+  const [subjectModalVisible, setSubjectModalVisible] = useState(false);
+  const [selectedStudentForSubjects, setSelectedStudentForSubjects] = useState<{
+    inscriptionId: number;
+    studentName: string;
+    gradeId: number;
+    schoolPeriodId: number;
+  } | null>(null);
   const [contextMenuState, setContextMenuState] = useState<{ visible: boolean; x: number; y: number; rowId: number | null }>({
     visible: false,
     x: 0,
@@ -239,400 +285,207 @@ const MatriculationEnrollment: React.FC = () => {
     rowId: null
   });
   const [searchValue, setSearchValue] = useState('');
-
   const [questions, setQuestions] = useState<EnrollmentQuestionResponse[]>([]);
-  const [visibleColumnKeys, setVisibleColumnKeys] = useState<string[]>(
-    () => BASE_COLUMN_OPTIONS.map(option => option.key)
-  );
+  const [visibleColumnKeys, setVisibleColumnKeys] = useState<string[]>(() => BASE_COLUMN_OPTIONS.map(option => option.key));
   const [columnPopoverOpen, setColumnPopoverOpen] = useState(false);
-
-  // Filter states
   const [filterGrade, setFilterGrade] = useState<number | null>(null);
   const [filterSection, setFilterSection] = useState<number | null>(null);
+  const [filterGender, setFilterGender] = useState<string | null>(null);
+  const [filterEscolaridad, setFilterEscolaridad] = useState<'regular' | 'repitiente' | 'materia_pendiente' | null>(null);
   const [filterMissing, setFilterMissing] = useState<string | null>(null);
-
-  // Pagination State
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
-
-  // Column Pinning
   const [pinnedGroups, setPinnedGroups] = useState<string[]>(['Estudiante']);
-
-  // Dynamic Height Calculation
   const [scrollY, setScrollY] = useState(500);
   const headerRef = useRef<HTMLDivElement>(null);
 
-  const canEditRow = useCallback((rowId: number) => editableRowIds.includes(rowId), [editableRowIds]);
-
-  const enableRowEditing = useCallback((rowId: number) => {
-    setEditableRowIds(prev => (prev.includes(rowId) ? prev : [...prev, rowId]));
-  }, []);
-
-  const lockRow = useCallback((rowId: number) => {
-    setEditableRowIds(prev => prev.filter(id => id !== rowId));
-  }, []);
-
-  const closeContextMenu = useCallback(() => {
-    setContextMenuState(prev => ({ ...prev, visible: false, rowId: null }));
-  }, []);
-
-  const handleContextMenu = useCallback((event: React.MouseEvent, rowId: number) => {
-    event.preventDefault();
-    setContextMenuState({
-      visible: true,
-      x: event.clientX,
-      y: event.clientY,
-      rowId
-    });
-  }, []);
-
-  const handleContextEdit = useCallback(() => {
-    if (contextMenuState.rowId != null) {
-      enableRowEditing(contextMenuState.rowId);
-    }
-    closeContextMenu();
-  }, [contextMenuState.rowId, enableRowEditing, closeContextMenu]);
-
   useEffect(() => {
-    if (!contextMenuState.visible) return;
-    const handleClickAway = () => closeContextMenu();
-    const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') closeContextMenu();
-    };
-    window.addEventListener('click', handleClickAway);
-    window.addEventListener('keydown', handleEscape);
-    return () => {
-      window.removeEventListener('click', handleClickAway);
-      window.removeEventListener('keydown', handleEscape);
-    };
-  }, [contextMenuState.visible, closeContextMenu]);
-
-  // --- Dynamic Height Calculation ---
-  useEffect(() => {
-    const calculateHeight = () => {
-      if (headerRef.current) {
-        const { bottom } = headerRef.current.getBoundingClientRect();
-        // Available height = Window Height - Header Bottom - Table Header/Pagination (~90px) - Bottom Margin (~20px)
-        const available = window.innerHeight - bottom - 110;
-        setScrollY(Math.max(200, available));
+    const fetchActivePeriod = async () => {
+      try {
+        const res = await api.get('/academic/periods/active');
+        if (res.data) {
+          setActivePeriod(res.data);
+        } else {
+          setLoading(false);
+          message.warning('No hay un período académico activo configurado.');
+        }
+      } catch (error) {
+        console.error('Error fetching active period:', error);
+        setLoading(false);
+        message.error('Error al cargar el período académico activo.');
       }
     };
-
-    calculateHeight();
-
-    const resizeObserver = new ResizeObserver(() => {
-      calculateHeight();
-    });
-
-    if (headerRef.current) {
-      resizeObserver.observe(headerRef.current);
-    }
-
-    const handleWindowResize = () => calculateHeight();
-    window.addEventListener('resize', handleWindowResize);
-
-    return () => {
-      resizeObserver.disconnect();
-      window.removeEventListener('resize', handleWindowResize);
-    };
-  }, [structure, selectedRowKeys.length]); // Dependencies that might change header height
-
-  const questionColumnOptions = useMemo(
-    () =>
-      questions.map<ColumnOption>(q => ({
-        key: getQuestionColumnKey(q.id),
-        label: q.prompt,
-        group: 'Preguntas Personalizadas'
-      })),
-    [questions]
-  );
-
-  const allColumnOptions = useMemo<ColumnOption[]>(
-    () => [...BASE_COLUMN_OPTIONS, ...questionColumnOptions],
-    [questionColumnOptions]
-  );
-
-  const groupedColumnOptions = useMemo(() => {
-    return allColumnOptions.reduce<Record<string, ColumnOption[]>>((acc, option) => {
-      if (!acc[option.group]) acc[option.group] = [];
-      acc[option.group].push(option);
-      return acc;
-    }, {});
-  }, [allColumnOptions]);
-
-  const optionKeyOrder = useMemo(() => allColumnOptions.map(option => option.key), [allColumnOptions]);
-  const orderedGroupNames = useMemo(() => {
-    const preferred = COLUMN_GROUP_ORDER.filter(group => groupedColumnOptions[group]?.length);
-    const dynamic = Object.keys(groupedColumnOptions).filter(group => !COLUMN_GROUP_ORDER.includes(group));
-    return [...preferred, ...dynamic];
-  }, [groupedColumnOptions]);
-
-  useEffect(() => {
-    setVisibleColumnKeys(prev => {
-      const cleaned = prev.filter(key => optionKeyOrder.includes(key));
-      const missing = optionKeyOrder.filter(key => !cleaned.includes(key));
-      const next = [...cleaned, ...missing];
-      const isSameLength = next.length === prev.length;
-      const isSameOrder = isSameLength && next.every((key, index) => key === prev[index]);
-      return isSameOrder ? prev : next;
-    });
-  }, [optionKeyOrder]);
-
-  const alignWithOptionOrder = useCallback(
-    (keys: Iterable<string>) => {
-      const keySet = new Set(keys);
-      return optionKeyOrder.filter(key => keySet.has(key));
-    },
-    [optionKeyOrder]
-  );
-
-  const toggleColumnKey = useCallback((key: string) => {
-    setVisibleColumnKeys(prev => {
-      const nextSet = new Set(prev);
-      if (nextSet.has(key)) {
-        nextSet.delete(key);
-      } else {
-        nextSet.add(key);
-      }
-      return alignWithOptionOrder(nextSet);
-    });
-  }, [alignWithOptionOrder]);
-
-  const handleToggleGroup = useCallback((groupName: string, checked: boolean) => {
-    const groupOptions = groupedColumnOptions[groupName] || [];
-    if (groupOptions.length === 0) return;
-    setVisibleColumnKeys(prev => {
-      const nextSet = new Set(prev);
-      groupOptions.forEach(option => {
-        if (checked) nextSet.add(option.key);
-        else nextSet.delete(option.key);
-      });
-      return alignWithOptionOrder(nextSet);
-    });
-  }, [groupedColumnOptions, alignWithOptionOrder]);
-
-  const showAllColumns = useCallback(
-    () => setVisibleColumnKeys(optionKeyOrder),
-    [optionKeyOrder]
-  );
-  const hideAllColumns = useCallback(() => setVisibleColumnKeys([]), []);
-
-  const visibleColumnsSet = useMemo(() => new Set(visibleColumnKeys), [visibleColumnKeys]);
-  const isColumnVisible = useCallback((key: string) => visibleColumnsSet.has(key), [visibleColumnsSet]);
-
-  const columnMenuContent = useMemo(() => (
-    <div className="min-w-[320px] max-w-sm">
-      <div className="flex items-start justify-between gap-2">
-        <div>
-          <Text strong>Columnas visibles</Text>
-          <div className="text-xs text-slate-500">{visibleColumnKeys.length} / {optionKeyOrder.length}</div>
-        </div>
-        <Space size={4}>
-          <Button size="small" type="text" onClick={showAllColumns}>Mostrar todas</Button>
-          <Button size="small" type="text" onClick={hideAllColumns}>Ocultar todas</Button>
-        </Space>
-      </div>
-      <Divider style={{ margin: '8px 0' }} />
-      <Space direction="vertical" size={12} style={{ width: '100%' }}>
-        {orderedGroupNames.map(groupName => {
-          const options = groupedColumnOptions[groupName] || [];
-          if (options.length === 0) return null;
-          const selectedCount = options.filter(option => isColumnVisible(option.key)).length;
-          const isAllSelected = selectedCount === options.length;
-          const isIndeterminate = selectedCount > 0 && !isAllSelected;
-          return (
-            <div key={groupName}>
-              <Checkbox
-                indeterminate={isIndeterminate}
-                checked={isAllSelected}
-                onChange={e => handleToggleGroup(groupName, e.target.checked)}
-              >
-                <Space size={4}>
-                  <Text strong>{groupName}</Text>
-                  <Text type="secondary" style={{ fontSize: 12 }}>
-                    {selectedCount}/{options.length}
-                  </Text>
-                </Space>
-              </Checkbox>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 mt-2">
-                {options.map(option => (
-                  <Checkbox
-                    key={option.key}
-                    checked={isColumnVisible(option.key)}
-                    onChange={() => toggleColumnKey(option.key)}
-                  >
-                    {option.label}
-                  </Checkbox>
-                ))}
-              </div>
-            </div>
-          );
-        })}
-      </Space>
-    </div>
-  ), [
-    groupedColumnOptions,
-    orderedGroupNames,
-    handleToggleGroup,
-    toggleColumnKey,
-    showAllColumns,
-    hideAllColumns,
-    isColumnVisible,
-    visibleColumnKeys.length,
-    optionKeyOrder.length
-  ]);
-
-  // --- Filtering & Pagination Logic ---
-  const filteredData = useMemo(() => {
-    return matriculations.filter(r => {
-      const searchLower = searchValue.toLowerCase();
-      const matchSearch = !searchValue ||
-        `${r.student.firstName} ${r.student.lastName} ${r.student.document}`.toLowerCase().includes(searchLower);
-
-      const matchGrade = !filterGrade || r.gradeId === filterGrade;
-      const matchSection = !filterSection || r.sectionId === filterSection;
-
-      let matchMissing = true;
-      if (filterMissing) {
-        const hasNoGuardians = !r.tempData.mother?.document || !r.tempData.father?.document;
-        const hasNoContact = !r.tempData.phone1;
-        const hasNoQuestions = questions.some(q => !r.tempData.enrollmentAnswers?.[q.id]);
-
-        if (filterMissing === 'guardians') matchMissing = hasNoGuardians;
-        else if (filterMissing === 'contact') matchMissing = hasNoContact;
-        else if (filterMissing === 'questions') matchMissing = hasNoQuestions;
-        else if (filterMissing === 'all') matchMissing = hasNoGuardians || hasNoContact || hasNoQuestions;
-      }
-
-      return matchSearch && matchGrade && matchSection && matchMissing;
-    });
-  }, [matriculations, searchValue, filterGrade, filterSection, filterMissing, questions]);
-
-  const currentData = useMemo(() => {
-    const start = (currentPage - 1) * pageSize;
-    return filteredData.slice(start, start + pageSize);
-  }, [filteredData, currentPage, pageSize]);
-
-  // Reset page when filter results change length (optional but good UX)
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [searchValue, filterGrade, filterSection, filterMissing]);
+    fetchActivePeriod();
+  }, []);
 
   const fetchData = useCallback(async () => {
+    if (!activePeriod) return;
+
     setLoading(true);
     try {
-      const { data: period } = await api.get('/academic/active');
+      const pId = activePeriod.id;
+      const endpoint = viewStatus === 'completed' ? '/inscriptions' : '/matriculations';
+      const params = {
+        status: viewStatus === 'pending' ? 'pending' : undefined,
+        schoolPeriodId: pId
+      };
 
-      const pId = period?.id;
-      if (pId) {
-        const [matRes, structRes, questRes] = await Promise.all([
-          api.get(`/matriculations?status=pending&schoolPeriodId=${pId}`),
-          api.get(`/academic/structure/${pId}`),
-          api.get('/enrollment-questions?includeInactive=false')
-        ]);
+      const [dataRes, structRes] = await Promise.all([
+        api.get(endpoint, { params }),
+        api.get(`/academic/structure/${pId}`)
+      ]);
 
-        setQuestions((questRes.data || []) as EnrollmentQuestionResponse[]);
+      const rawData = dataRes.data || [];
+      const rows = rawData.map((item: any) => {
+        const isInscription = viewStatus === 'completed';
+        const m = isInscription ? {
+          ...item.matriculation,
+          id: item.matriculation?.id || -item.id,
+          student: item.student || {},
+          gradeId: item.gradeId,
+          sectionId: item.sectionId,
+          schoolPeriodId: item.schoolPeriodId,
+          status: 'completed' as const,
+          inscriptionId: item.id,
+          escolaridad: item.escolaridad
+        } : item;
 
-        const rows = (matRes.data || []).map((m: MatriculationApiResponse) => {
-          const guardians = m.student.guardians || [];
-          const findGuardianProfile = (relationship: string): GuardianProfile =>
-            (guardians.find(g => g.relationship === relationship)?.profile || {}) as GuardianProfile;
-          const representativeAssignment = guardians.find(g => g.isRepresentative);
-          const representativeRelationship = representativeAssignment?.relationship;
-          const representativeType: RepresentativeType =
-            representativeRelationship === 'mother' || representativeRelationship === 'father'
-              ? representativeRelationship
-              : 'other';
+        const student = m.student || {};
+        const guardians = student.guardians || [];
+        const findGuardianProfile = (relationship: string): StudentData['guardians'][0]['profile'] =>
+          (guardians.find((g: any) => g.relationship === relationship)?.profile || {}) as StudentData['guardians'][0]['profile'];
 
-          const enrollmentAnswers = (m.student.enrollmentAnswers || []).reduce<EnrollmentAnswersMap>((acc, curr) => {
-            acc[curr.questionId] = curr.answer || undefined;
-            return acc;
-          }, {});
+        const representativeAssignment = guardians.find((g: any) => g.isRepresentative);
+        const representativeRelationship = representativeAssignment?.relationship;
+        const representativeType: RepresentativeType =
+          representativeRelationship === 'mother' || representativeRelationship === 'father'
+            ? representativeRelationship
+            : 'other';
 
-          return {
-            ...m,
-            tempData: {
-              ...m.student,
-              gradeId: m.gradeId,
-              sectionId: m.sectionId,
-              subjectIds: [],
-              escolaridad: m.escolaridad ?? 'regular',
-              phone1: m.student.contact?.phone1,
-              whatsapp: m.student.contact?.whatsapp,
-              birthdate: m.student.birthdate ? dayjs(m.student.birthdate) : null,
-              mother: findGuardianProfile('mother'),
-              father: findGuardianProfile('father'),
-              representative: findGuardianProfile('representative'),
-              representativeType,
-              enrollmentAnswers,
-              address: m.student.contact?.address || 'N/A',
-              birthState: m.student.residence?.birthState || 'N/A',
-              birthMunicipality: m.student.residence?.birthMunicipality || 'N/A',
-              birthParish: m.student.residence?.birthParish || 'N/A',
-              residenceState: m.student.residence?.residenceState || 'N/A',
-              residenceMunicipality: m.student.residence?.residenceMunicipality || 'N/A',
-              residenceParish: m.student.residence?.residenceParish || 'N/A',
-            }
-          };
-        });
+        const enrollmentAnswers = (student.enrollmentAnswers || []).reduce((acc: Record<number, string | string[] | undefined>, curr: any) => {
+          acc[curr.questionId] = curr.answer || undefined;
+          return acc;
+        }, {});
 
-        setMatriculations(rows);
-        setStructure((structRes.data || []) as EnrollStructureEntry[]);
-      }
+        return {
+          ...m,
+          tempData: {
+            ...student,
+            id: student.id,
+            documentType: student.documentType || 'Venezolano',
+            gender: student.gender,
+            gradeId: m.gradeId,
+            sectionId: m.sectionId,
+            subjectIds: [],
+            escolaridad: m.escolaridad ?? 'regular',
+            phone1: student.contact?.phone1,
+            whatsapp: student.contact?.whatsapp,
+            birthdate: student.birthdate ? dayjs(student.birthdate) : null,
+            mother: findGuardianProfile('mother'),
+            father: findGuardianProfile('father'),
+            representative: findGuardianProfile('representative'),
+            representativeType,
+            enrollmentAnswers,
+            address: student.contact?.address || 'N/A',
+            birthState: student.residence?.birthState || 'N/A',
+            birthMunicipality: student.residence?.birthMunicipality || 'N/A',
+            birthParish: student.residence?.birthParish || 'N/A',
+            residenceState: student.residence?.residenceState || 'N/A',
+            residenceMunicipality: student.residence?.residenceMunicipality || 'N/A',
+            residenceParish: student.residence?.residenceParish || 'N/A',
+          }
+        };
+      });
+
+      setMatriculations(rows);
+      setStructure((structRes.data || []) as EnrollStructureEntry[]);
     } catch (error) {
-      console.error(error);
-      message.error('Error cargando información de matrícula');
+      console.error('[MatriculationEnrollment] Error fetching data:', error);
+      message.error('Error cargando información');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [viewStatus, activePeriod]);
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
 
-  useEffect(() => {
-    const handleGlobalEscape = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
+  const handleGlobalEscape = (event: KeyboardEvent) => {
+    if (event.key === 'Escape') {
       setEditableRowIds(prev => (prev.length ? [] : prev));
-    };
-    window.addEventListener('keydown', handleGlobalEscape);
-    return () => {
-      window.removeEventListener('keydown', handleGlobalEscape);
-    };
-  }, []);
-
-  const handleUpdateRow = <K extends keyof TempData>(id: number, field: K, value: TempData[K]) => {
-    setMatriculations(prev => prev.map(row => (
-      row.id === id
-        ? { ...row, tempData: { ...row.tempData, [field]: value } }
-        : row
-    )));
+    }
   };
 
-  const handleUpdateGuardianField = (
+  useEffect(() => {
+    window.addEventListener('keydown', handleGlobalEscape);
+    return () => window.removeEventListener('keydown', handleGlobalEscape);
+  }, []);
+
+  const handleUpdateRow = async <K extends keyof TempData>(id: number, field: K, value: TempData[K]) => {
+    setMatriculations(prev => prev.map(row => (
+      row.id === id ? { ...row, tempData: { ...row.tempData, [field]: value } } : row
+    )));
+
+    try {
+      const payload: Record<string, any> = { [field as string]: value };
+      if (field === 'birthdate' && value) {
+        payload[field as string] = (value as dayjs.Dayjs).format('YYYY-MM-DD');
+      }
+      await api.patch(`/matriculations/${id}`, payload);
+      message.success({ content: 'Guardado', key: `save-${id}`, duration: 1 });
+    } catch (error) {
+      console.error(error);
+      message.error({ content: 'Error al guardar', key: `save-${id}` });
+    }
+  };
+
+  const handleUpdateGuardianField = async (
     rowId: number,
     parentKey: 'mother' | 'father' | 'representative',
     field: keyof GuardianProfile,
-    value: GuardianProfile[keyof GuardianProfile]
+    value: any
   ) => {
+    let updatedProfile: GuardianProfile = {};
     setMatriculations(prev => prev.map(row => {
       if (row.id !== rowId) return row;
       const guardian = { ...(row.tempData[parentKey] || {}) } as GuardianProfile;
       guardian[field] = value;
+      updatedProfile = guardian;
       return { ...row, tempData: { ...row.tempData, [parentKey]: guardian } };
     }));
+
+    try {
+      await api.patch(`/matriculations/${rowId}`, { [parentKey]: updatedProfile });
+      message.success({ content: 'Guardado', key: `save-${rowId}`, duration: 1 });
+    } catch (e) {
+      console.error(e);
+      message.error({ content: 'Error al guardar', key: `save-${rowId}` });
+    }
   };
 
-  const handleUpdateAnswer = (rowId: number, questionId: number, value: string | string[] | undefined) => {
+  const handleUpdateAnswer = async (rowId: number, questionId: number, value: any) => {
+    let updatedAnswers: EnrollmentAnswersMap = {};
     setMatriculations(prev => prev.map(row => {
       if (row.id !== rowId) return row;
       const answers = { ...(row.tempData.enrollmentAnswers || {}) };
       answers[questionId] = value;
+      updatedAnswers = answers;
       return { ...row, tempData: { ...row.tempData, enrollmentAnswers: answers } };
     }));
-  };
 
+    try {
+      const formattedAnswers = Object.entries(updatedAnswers).map(([qId, ans]) => ({
+        questionId: Number(qId),
+        answer: ans
+      }));
+      await api.patch(`/matriculations/${rowId}`, { enrollmentAnswers: formattedAnswers });
+      message.success({ content: 'Guardado', key: `save-${rowId}`, duration: 1 });
+    } catch (e) {
+      console.error(e);
+      message.error({ content: 'Error al guardar', key: `save-${rowId}` });
+    }
+  };
 
   const handleBulkEnroll = async () => {
     const selectedRows = matriculations.filter(r => selectedRowKeys.includes(r.id));
@@ -686,40 +539,58 @@ const MatriculationEnrollment: React.FC = () => {
     }));
   };
 
-  const selectedRows = useMemo(
+  const handleOpenSubjectModal = () => {
+    if (selectedRowKeys.length !== 1) return;
+    const record = matriculations.find(r => r.id === selectedRowKeys[0]);
+    if (record && record.inscriptionId) {
+      setSelectedStudentForSubjects({
+        inscriptionId: record.inscriptionId,
+        studentName: `${record.student.firstName} ${record.student.lastName}`,
+        gradeId: record.gradeId,
+        schoolPeriodId: record.schoolPeriodId
+      });
+      setSubjectModalVisible(true);
+    } else {
+      message.warning('El estudiante debe estar inscrito para gestionar sus materias');
+    }
+  };
+
+  const handleViewProfile = () => {
+    if (selectedRowKeys.length !== 1) return;
+    const record = matriculations.find(r => r.id === selectedRowKeys[0]);
+    if (record && record.student) {
+      const personId = record.student.id;
+      if (personId) {
+        navigate(`/student/${personId}`);
+      }
+    }
+  };
+
+  const selectedRowsToManage = useMemo(
     () => matriculations.filter(row => selectedRowKeys.includes(row.id)),
     [matriculations, selectedRowKeys]
   );
 
   const selectedGradeIds = useMemo(
-    () => Array.from(new Set(selectedRows.map(row => row.tempData.gradeId))),
-    [selectedRows]
+    () => Array.from(new Set(selectedRowsToManage.map(row => row.tempData.gradeId))),
+    [selectedRowsToManage]
   );
 
   const hasMixedGrades = selectedGradeIds.length > 1;
 
   const bulkGroupSubjects = useMemo(() => {
-    if (hasMixedGrades || selectedRows.length === 0) return [];
-    const gradeId = selectedRows[0].tempData.gradeId;
+    if (hasMixedGrades || selectedRowsToManage.length === 0) return [];
+    const gradeId = selectedRowsToManage[0].tempData.gradeId;
     const gradeStruct = structure.find(s => s.gradeId === gradeId);
     return gradeStruct?.subjects?.filter(s => s.subjectGroupId) || [];
-  }, [hasMixedGrades, selectedRows, structure]);
+  }, [hasMixedGrades, selectedRowsToManage, structure]);
 
   const bulkSections = useMemo(() => {
-    if (hasMixedGrades || selectedRows.length === 0) return [];
-    const gradeId = selectedRows[0].tempData.gradeId;
+    if (hasMixedGrades || selectedRowsToManage.length === 0) return [];
+    const gradeId = selectedRowsToManage[0].tempData.gradeId;
     const gradeStruct = structure.find(s => s.gradeId === gradeId);
     return gradeStruct?.sections || [];
-  }, [hasMixedGrades, selectedRows, structure]);
-
-  // --- Keyboard Navigation ---
-  // List of columns identifiers for horizontal navigation
-  const COLS = [
-    'firstName', 'lastName', 'document', 'gradeId', 'sectionId', 'subjectIds',
-    'mDoc', 'mFirstName', 'mLastName', 'mPhone',
-    'fDoc', 'fFirstName', 'fLastName', 'fPhone',
-    'repType', 'repDoc', 'repFirstName', 'repLastName', 'repPhone'
-  ];
+  }, [hasMixedGrades, selectedRowsToManage, structure]);
 
   const getRepresentativeInfo = (row: MatriculationRow) => {
     if (row.tempData.representativeType === 'mother') {
@@ -733,19 +604,14 @@ const MatriculationEnrollment: React.FC = () => {
 
   const handleTableKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     const target = e.target as HTMLElement;
-    // Check if event comes from a cell input/select
     if (!target.matches('input, .ant-select-selection-search-input')) return;
-    
     if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) return;
 
-    // Retrieve metadata
-    // For Antd Select, the input is nested. We need to find the closest element with data attributes.
     const cell = target.closest('[data-row-index]');
     if (!cell) return;
 
     const rowIndexStr = cell.getAttribute('data-row-index');
     const colName = cell.getAttribute('data-col-name');
-
     if (!rowIndexStr || !colName) return;
 
     const rowIndex = parseInt(rowIndexStr, 10);
@@ -761,21 +627,137 @@ const MatriculationEnrollment: React.FC = () => {
     const nCol = COLS[nColIdx];
     const targetId = `nav-${nRow}-${nCol}`;
 
-    // Use requestAnimationFrame for smoother focus transition
     requestAnimationFrame(() => {
       const el = document.getElementById(targetId);
       if (el) {
-        // For Antd Selects, we might need to focus the internal input or the container
-        // If it's a select container (which it usually is for id placement on Select), focus it.
         el.focus();
         if (el.tagName === 'INPUT') (el as HTMLInputElement).select();
       }
     });
   };
 
-  // --- Columns Configuration ---
+  const isColumnVisible = (key: string) => visibleColumnKeys.includes(key);
+  const canEditRow = (id: number) => editableRowIds.includes(id);
+  const lockRow = (id: number) => setEditableRowIds(prev => prev.filter(rid => rid !== id));
+
+  const handleContextEdit = () => {
+    if (contextMenuState.rowId !== null) {
+      setEditableRowIds(prev => [...new Set([...prev, contextMenuState.rowId!])]);
+    }
+    closeContextMenu();
+  };
+
+  const handleContextMenu = (e: React.MouseEvent, rowId: number) => {
+    e.preventDefault();
+    setContextMenuState({ visible: true, x: e.clientX, y: e.clientY, rowId });
+  };
+
+  const closeContextMenu = () => setContextMenuState(prev => ({ ...prev, visible: false }));
+
+  const filteredData = useMemo(() => {
+    return matriculations.filter(item => {
+      if (searchValue) {
+        const search = searchValue.toLowerCase();
+        const matches = 
+          item.student.firstName.toLowerCase().includes(search) ||
+          item.student.lastName.toLowerCase().includes(search) ||
+          item.student.document.includes(search);
+        if (!matches) return false;
+      }
+      if (filterGrade && item.gradeId !== filterGrade) return false;
+      if (filterSection && item.sectionId !== filterSection) return false;
+      if (filterGender && item.student.gender !== filterGender) return false;
+      if (filterEscolaridad && item.tempData.escolaridad !== filterEscolaridad) return false;
+      if (filterMissing) {
+        if (filterMissing === 'guardians' && item.student.guardians?.some(g => g.isRepresentative)) return false;
+        if (filterMissing === 'contact' && item.student.contact?.phone1) return false;
+        if (filterMissing === 'questions' && questions.every(q => item.tempData.enrollmentAnswers?.[q.id])) return false;
+        if (filterMissing === 'all') {
+          const hasRep = item.student.guardians?.some(g => g.isRepresentative);
+          const hasPhone = !!item.student.contact?.phone1;
+          const allAnswered = questions.every(q => item.tempData.enrollmentAnswers?.[q.id]);
+          if (hasRep && hasPhone && allAnswered) return false;
+        }
+      }
+      return true;
+    });
+  }, [matriculations, searchValue, filterGrade, filterSection, filterGender, filterEscolaridad, filterMissing, questions]);
+
+  const currentData = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredData.slice(start, start + pageSize);
+  }, [filteredData, currentPage, pageSize]);
+
+  const columnMenuContent = (
+    <div style={{ maxHeight: '400px', overflowY: 'auto', padding: '8px' }}>
+      <div className="mb-2 pb-2 border-b border-slate-100 flex justify-between items-center">
+        <Text strong>Columnas Visibles</Text>
+        <Space>
+          <Button size="small" type="link" onClick={() => setVisibleColumnKeys(BASE_COLUMN_OPTIONS.map(o => o.key))}>Todas</Button>
+          <Button size="small" type="link" onClick={() => setVisibleColumnKeys(['document', 'firstName', 'lastName'])}>Mínimas</Button>
+        </Space>
+      </div>
+      <Checkbox.Group
+        style={{ width: '100%' }}
+        value={visibleColumnKeys}
+        onChange={(checked) => setVisibleColumnKeys(checked as string[])}
+      >
+        {COLUMN_GROUP_ORDER.map(group => {
+          const groupOptions = BASE_COLUMN_OPTIONS.filter(o => o.group === group);
+          if (groupOptions.length === 0 && group !== 'Preguntas Personalizadas') return null;
+          return (
+            <div key={group} className="mb-3">
+              <div className="text-[10px] uppercase font-bold text-slate-400 mb-1 px-1 tracking-wider">{group}</div>
+              <div className="grid grid-cols-1 gap-1">
+                {group === 'Preguntas Personalizadas' ? (
+                  questions.map(q => (
+                    <Checkbox key={getQuestionColumnKey(q.id)} value={getQuestionColumnKey(q.id)} className="text-xs">{q.prompt}</Checkbox>
+                  ))
+                ) : (
+                  groupOptions.map(opt => (
+                    <Checkbox key={opt.key} value={opt.key} className="text-xs">{opt.label}</Checkbox>
+                  ))
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </Checkbox.Group>
+    </div>
+  );
+
+  const docPrefix: Record<string, string> = {
+    Venezolano: 'V-',
+    Extranjero: 'E-',
+    Pasaporte: 'P-',
+    'Cedula Escolar': 'CE-'
+  };
 
   const studentColumns = [
+    isColumnVisible('nationality') && {
+      title: 'Nac.',
+      width: 70,
+      render: (_: unknown, record: MatriculationRow) => (
+        <div className="px-1 py-0.5 text-xs text-slate-800">
+          {docPrefix[record.tempData.documentType as keyof typeof docPrefix] || record.tempData.documentType?.[0]?.toUpperCase() + '-'}
+        </div>
+      )
+    },
+    isColumnVisible('document') && {
+      title: 'Cédula',
+      width: 120,
+      render: (_: unknown, record: MatriculationRow, idx: number) => (
+        <CellInput
+          id={`nav-${idx}-document`}
+          data-row-index={idx}
+          data-col-name="document"
+          value={record.tempData.document}
+          disabled={!canEditRow(record.id)}
+          className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
+          onChange={val => handleUpdateRow(record.id, 'document', val)}
+        />
+      )
+    },
     isColumnVisible('firstName') && {
       title: 'Nombres',
       width: 150,
@@ -806,19 +788,15 @@ const MatriculationEnrollment: React.FC = () => {
         />
       )
     },
-    isColumnVisible('document') && {
-      title: 'Cédula',
-      width: 120,
-      render: (_: unknown, record: MatriculationRow, idx: number) => (
-        <CellInput
-          id={`nav-${idx}-document`}
-          data-row-index={idx}
-          data-col-name="document"
-          value={record.tempData.document}
-          disabled={!canEditRow(record.id)}
-          className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
-          onChange={val => handleUpdateRow(record.id, 'document', val)}
-        />
+    isColumnVisible('gender') && {
+      title: 'Género',
+      width: 90,
+      render: (_: unknown, record: MatriculationRow) => (
+        <div className="px-1 py-0.5">
+          <Tag color={record.tempData.gender === 'M' ? 'blue' : 'magenta'} className="m-0 text-[10px] leading-none px-1 py-0">
+            {record.tempData.gender === 'M' ? 'Masc' : 'Fem'}
+          </Tag>
+        </div>
       )
     },
   ].filter(Boolean);
@@ -830,11 +808,7 @@ const MatriculationEnrollment: React.FC = () => {
       render: (_: unknown, record: MatriculationRow, idx: number) => {
         if (!canEditRow(record.id)) {
           const gradeName = structure.find(s => s.gradeId === record.tempData.gradeId)?.grade?.name || 'N/A';
-          return (
-            <div className="px-1 py-0.5 text-xs text-slate-800 whitespace-nowrap overflow-hidden text-ellipsis">
-              {gradeName}
-            </div>
-          );
+          return <div className="px-1 py-0.5 text-xs text-slate-800 whitespace-nowrap overflow-hidden text-ellipsis">{gradeName}</div>;
         }
         return (
           <div data-row-index={idx} data-col-name="gradeId">
@@ -858,11 +832,7 @@ const MatriculationEnrollment: React.FC = () => {
         const gradeStruct = structure.find(s => s.gradeId === record.tempData.gradeId);
         if (!canEditRow(record.id)) {
           const sectionName = gradeStruct?.sections?.find(s => s.id === record.tempData.sectionId)?.name || 'N/A';
-          return (
-            <div className="px-1 py-0.5 text-xs text-slate-800 whitespace-nowrap overflow-hidden text-ellipsis">
-              {sectionName}
-            </div>
-          );
+          return <div className="px-1 py-0.5 text-xs text-slate-800 whitespace-nowrap overflow-hidden text-ellipsis">{sectionName}</div>;
         }
         return (
           <div data-row-index={idx} data-col-name="sectionId">
@@ -887,16 +857,9 @@ const MatriculationEnrollment: React.FC = () => {
         const gradeStruct = structure.find(s => s.gradeId === record.tempData.gradeId);
         const groupSubjects = gradeStruct?.subjects?.filter(s => s.subjectGroupId) || [];
         const currentSubjectId = record.tempData.subjectIds?.[0];
-
         if (groupSubjects.length === 0) {
-          const message = gradeStruct ? 'Sin materias agrupadas' : 'Seleccione un grado';
-          return (
-            <div className="px-1 py-0.5 text-xs text-slate-400 whitespace-nowrap overflow-hidden text-ellipsis min-h-[20px]">
-              {message}
-            </div>
-          );
+          return <div className="px-1 py-0.5 text-xs text-slate-400 whitespace-nowrap overflow-hidden text-ellipsis min-h-[20px]">{gradeStruct ? 'Sin materias agrupadas' : 'Seleccione un grado'}</div>;
         }
-
         return (
           <div data-row-index={idx} data-col-name="subjectIds">
             <Select
@@ -908,11 +871,7 @@ const MatriculationEnrollment: React.FC = () => {
               placeholder="Seleccione"
               onChange={(v) => handleUpdateRow(record.id, 'subjectIds', v ? [v] : [])}
             >
-              {groupSubjects.map(s => (
-                <Option key={s.id} value={s.id}>
-                  {s.name}
-                </Option>
-              ))}
+              {groupSubjects.map(s => <Option key={s.id} value={s.id}>{s.name}</Option>)}
             </Select>
           </div>
         );
@@ -923,12 +882,13 @@ const MatriculationEnrollment: React.FC = () => {
       width: 150,
       render: (_: unknown, record: MatriculationRow, idx: number) => {
         if (!canEditRow(record.id)) {
-          const label = ESCOLARIDAD_OPTIONS.find(o => o.value === record.tempData.escolaridad)?.label || record.tempData.escolaridad;
-          return (
-            <div className="px-1 py-0.5 text-xs text-slate-800 whitespace-nowrap overflow-hidden text-ellipsis">
-              {label}
-            </div>
-          );
+          const map: Record<EscolaridadStatus, { label: string; color: string }> = {
+            regular: { label: 'Regular', color: 'green' },
+            repitiente: { label: 'Repitiente', color: 'orange' },
+            materia_pendiente: { label: 'Materia pendiente', color: 'blue' }
+          };
+          const info = map[record.tempData.escolaridad] ?? { label: record.tempData.escolaridad, color: 'default' };
+          return <div className="px-1 py-0.5"><Tag color={info.color} className="m-0 text-[10px] leading-none px-1 py-0">{info.label}</Tag></div>;
         }
         return (
           <div data-row-index={idx} data-col-name="escolaridad">
@@ -1132,9 +1092,7 @@ const MatriculationEnrollment: React.FC = () => {
       width: 140,
       render: (_: unknown, record: MatriculationRow, idx: number) => {
         const { profile, editable, label } = getRepresentativeInfo(record);
-        const isRowEditable = canEditRow(record.id);
-        const isDisabled = !isRowEditable || !editable;
-        
+        const isDisabled = !canEditRow(record.id) || !editable;
         return (
           <div className="flex flex-col gap-1">
             <CellInput
@@ -1150,11 +1108,7 @@ const MatriculationEnrollment: React.FC = () => {
                 handleUpdateGuardianField(record.id, 'representative', 'document', val);
               }}
             />
-            {!editable && (
-              <Text type="secondary" style={{ fontSize: 11 }}>
-                Representante: {label}
-              </Text>
-            )}
+            {!editable && <Text type="secondary" style={{ fontSize: 11 }}>Representante: {label}</Text>}
           </div>
         );
       }
@@ -1164,9 +1118,7 @@ const MatriculationEnrollment: React.FC = () => {
       width: 140,
       render: (_: unknown, record: MatriculationRow, idx: number) => {
         const { profile, editable } = getRepresentativeInfo(record);
-        const isRowEditable = canEditRow(record.id);
-        const isDisabled = !isRowEditable || !editable;
-
+        const isDisabled = !canEditRow(record.id) || !editable;
         return (
           <CellInput
             id={`nav-${idx}-repFirstName`}
@@ -1188,9 +1140,7 @@ const MatriculationEnrollment: React.FC = () => {
       width: 140,
       render: (_: unknown, record: MatriculationRow, idx: number) => {
         const { profile, editable } = getRepresentativeInfo(record);
-        const isRowEditable = canEditRow(record.id);
-        const isDisabled = !isRowEditable || !editable;
-
+        const isDisabled = !canEditRow(record.id) || !editable;
         return (
           <CellInput
             id={`nav-${idx}-repLastName`}
@@ -1212,9 +1162,7 @@ const MatriculationEnrollment: React.FC = () => {
       width: 130,
       render: (_: unknown, record: MatriculationRow, idx: number) => {
         const { profile, editable } = getRepresentativeInfo(record);
-        const isRowEditable = canEditRow(record.id);
-        const isDisabled = !isRowEditable || !editable;
-
+        const isDisabled = !canEditRow(record.id) || !editable;
         return (
           <CellInput
             id={`nav-${idx}-repPhone`}
@@ -1242,7 +1190,6 @@ const MatriculationEnrollment: React.FC = () => {
         const value = record.tempData.enrollmentAnswers?.[q.id];
         const isRowEditable = canEditRow(record.id);
         const colKey = getQuestionColumnKey(q.id);
-
         if (q.type === 'text') {
           return (
             <CellInput
@@ -1305,9 +1252,9 @@ const MatriculationEnrollment: React.FC = () => {
     </div>
   );
 
-  const addSeparator = (cols?: (MatriculationColumn | false | null | undefined)[]): MatriculationColumn[] => {
+  const addSeparator = (cols?: (any | false | null | undefined)[]): any[] => {
     if (!cols) return [];
-    const validCols = cols.filter((col): col is MatriculationColumn => Boolean(col));
+    const validCols = cols.filter((col): col is any => Boolean(col));
     if (validCols.length === 0) return validCols;
     return validCols.map((col, idx) => {
       if (idx === validCols.length - 1) {
@@ -1344,24 +1291,13 @@ const MatriculationEnrollment: React.FC = () => {
       title: renderGroupTitle('Representación', 'Representación'),
       className: 'group-separator-border',
       children: addSeparator([
-        motherColumns.length > 0 && {
-          title: <Text strong style={{ color: '#eb2f96' }}>Madre</Text>,
-          children: motherColumns
-        },
-        fatherColumns.length > 0 && {
-          title: <Text strong style={{ color: '#1890ff' }}>Padre</Text>,
-          children: fatherColumns
-        },
-        representativeColumns.length > 0 && {
-          title: 'Representante',
-          children: representativeColumns
-        }
+        motherColumns.length > 0 && { title: <Text strong style={{ color: '#eb2f96' }}>Madre</Text>, children: motherColumns },
+        fatherColumns.length > 0 && { title: <Text strong style={{ color: '#1890ff' }}>Padre</Text>, children: fatherColumns },
+        representativeColumns.length > 0 && { title: 'Representante', children: representativeColumns }
       ].filter(Boolean))
     },
     questionColumns.length > 0 && {
       title: renderGroupTitle('Preguntas Personalizadas', <Space><QuestionCircleOutlined /> Preguntas</Space>),
-      // No separator needed for the very last group typically, but consistent looks might be good.
-      // Let's add it for consistency or leave it off if it's the edge.
       children: questionColumns
     }
   ].filter(Boolean) as ColumnsType<MatriculationRow>;
@@ -1373,31 +1309,52 @@ const MatriculationEnrollment: React.FC = () => {
           <Row justify="space-between" align="middle" gutter={[4, 4]}>
             <Col xs={24} lg={8}>
               <div className="flex flex-col items-start gap-1">
-                <Title level={5} style={{ margin: 0 }}>Panel de Matriculación Masiva</Title>
-                <Pagination
-                  simple
-                  size="small"
-                  current={currentPage}
-                  pageSize={pageSize}
-                  total={filteredData.length}
-                  onChange={(page, size) => {
-                    setCurrentPage(page);
-                    if (size !== pageSize) setPageSize(size);
-                  }}
-                  showSizeChanger={false}
-                  showTotal={(total, range) => (
-                    <span className="text-[10px] text-slate-400 font-normal ml-2">
-                      {range[0]}-{range[1]} de {total}
-                    </span>
+                <Space>
+                  <Title level={5} style={{ margin: 0 }}>Panel de Matriculación Masiva</Title>
+                  {activePeriod && (
+                    <Tag color="blue" style={{ fontSize: 11 }}>
+                      P. Activo: <strong>{activePeriod.name}</strong>
+                    </Tag>
                   )}
-                />
+                </Space>
+                <div className="flex items-center gap-2">
+                  <Radio.Group 
+                    value={viewStatus} 
+                    onChange={e => {
+                      setViewStatus(e.target.value);
+                      setCurrentPage(1);
+                    }}
+                    size="small"
+                    buttonStyle="solid"
+                  >
+                    <Radio.Button value="pending">No Matriculados</Radio.Button>
+                    <Radio.Button value="completed">Matriculados</Radio.Button>
+                  </Radio.Group>
+                  <Pagination
+                    simple
+                    size="small"
+                    current={currentPage}
+                    pageSize={pageSize}
+                    total={filteredData.length}
+                    onChange={(page, size) => {
+                      setCurrentPage(page);
+                      if (size !== pageSize) setPageSize(size);
+                    }}
+                    showSizeChanger={false}
+                    showTotal={(total, range) => (
+                      <span className="text-[10px] text-slate-400 font-normal ml-2">
+                        {range[0]}-{range[1]} de {total}
+                      </span>
+                    )}
+                  />
+                </div>
               </div>
             </Col>
             <Col xs={24} lg={16}>
               <Row gutter={[4, 4]} justify="end">
                 <Col>
                   <Select
-                    placeholder="Filtrar Grado"
+                    placeholder="Grado"
                     size="small"
                     style={{ width: 140 }}
                     allowClear
@@ -1405,6 +1362,20 @@ const MatriculationEnrollment: React.FC = () => {
                     onChange={v => { setFilterGrade(v); setFilterSection(null); }}
                   >
                     {structure.map(s => <Option key={s.gradeId} value={s.gradeId}>{s.grade?.name}</Option>)}
+                  </Select>
+                </Col>
+                <Col>
+                  <Select
+                    placeholder="Escolaridad"
+                    size="small"
+                    style={{ width: 140 }}
+                    allowClear
+                    value={filterEscolaridad}
+                    onChange={setFilterEscolaridad}
+                  >
+                    <Option value="regular">Regular</Option>
+                    <Option value="repitiente">Repitiente</Option>
+                    <Option value="materia_pendiente">Materia pendiente</Option>
                   </Select>
                 </Col>
                 <Col>
@@ -1420,6 +1391,19 @@ const MatriculationEnrollment: React.FC = () => {
                     {structure.find(s => s.gradeId === filterGrade)?.sections?.map(sec => (
                       <Option key={sec.id} value={sec.id}>{sec.name}</Option>
                     ))}
+                  </Select>
+                </Col>
+                <Col>
+                  <Select
+                    placeholder="Género"
+                    size="small"
+                    style={{ width: 100 }}
+                    allowClear
+                    value={filterGender}
+                    onChange={setFilterGender}
+                  >
+                    <Option value="M">Masc</Option>
+                    <Option value="F">Fem</Option>
                   </Select>
                 </Col>
                 <Col>
@@ -1498,99 +1482,147 @@ const MatriculationEnrollment: React.FC = () => {
             />
           )}
 
-          <div className="flex items-center gap-6">
-
-            {/* Section 1: Counter */}
-            <div className="flex items-center gap-2 pr-4 border-r border-slate-300/50 min-w-max">
-              <div
-                className={`flex items-center justify-center w-8 h-8 rounded-full text-sm font-bold shadow-sm transition-colors ${selectedRowKeys.length > 0 ? 'bg-blue-500 text-white' : 'bg-slate-200 text-slate-400'
-                  }`}
-              >
-                {selectedRowKeys.length}
-              </div>
-              <div className={`flex flex-col leading-tight font-bold text-[10px] uppercase tracking-wide ${selectedRowKeys.length > 0 ? 'text-blue-900' : 'text-slate-400'}`}>
-                <span>Estudiantes</span>
-                <span>Seleccionados</span>
-              </div>
-              {selectedRowKeys.length > 0 && (
-                <Button
-                  type="text"
-                  size="small"
-                  icon={<CloseOutlined />}
-                  onClick={() => setSelectedRowKeys([])}
-                  className="text-slate-400 hover:text-red-500 ml-2"
-                />
-              )}
-            </div>
-
-            {/* Section 2: Inputs Grid */}
-            <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-2">
-              {/* Assign Section */}
-              <div className="flex flex-col gap-0.5">
-                <span className={`text-[9px] font-bold uppercase tracking-wider ${selectedRowKeys.length > 0 ? 'text-slate-500' : 'text-slate-300'}`}>
-                  Asignar Sección
-                </span>
-                <Tooltip
-                  title={hasMixedGrades ? 'Seleccione estudiantes del mismo grado para asignar secciones.' : undefined}
-                  placement="topLeft"
+          {viewStatus === 'pending' ? (
+            <div className="flex items-center gap-6">
+              {/* Section 1: Counter */}
+              <div className="flex items-center gap-2 pr-4 border-r border-slate-300/50 min-w-max">
+                <div
+                  className={`flex items-center justify-center w-8 h-8 rounded-full text-sm font-bold shadow-sm transition-colors ${selectedRowKeys.length > 0 ? 'bg-blue-500 text-white' : 'bg-slate-200 text-slate-400'
+                    }`}
                 >
-                  <Select
-                    disabled={selectedRowKeys.length === 0 || hasMixedGrades || bulkSections.length === 0}
-                    placeholder="Seleccionar..."
-                    size="small"
-                    className="w-full"
-                    onChange={v => handleBulkUpdate('sectionId', v)}
-                    allowClear
-                    notFoundContent={hasMixedGrades ? 'Seleccione estudiantes del mismo grado' : undefined}
+                  {selectedRowKeys.length}
+                </div>
+                <div className={`flex flex-col leading-tight font-bold text-[10px] uppercase tracking-wide ${selectedRowKeys.length > 0 ? 'text-blue-900' : 'text-slate-400'}`}>
+                  <span>Estudiantes</span>
+                  <span>Seleccionados</span>
+                </div>
+              </div>
+
+              {/* Section 2: Inputs Grid */}
+              <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-2">
+                {/* Assign Section */}
+                <div className="flex flex-col gap-0.5">
+                  <span className={`text-[9px] font-bold uppercase tracking-wider ${selectedRowKeys.length > 0 ? 'text-slate-500' : 'text-slate-300'}`}>
+                    Asignar Sección
+                  </span>
+                  <Tooltip
+                    title={hasMixedGrades ? 'Seleccione estudiantes del mismo grado para asignar secciones.' : undefined}
+                    placement="topLeft"
                   >
-                    {bulkSections.map(sec => (
-                      <Option key={sec.id} value={sec.id}>{sec.name}</Option>
-                    ))}
-                  </Select>
-                </Tooltip>
+                    <Select
+                      disabled={selectedRowKeys.length === 0 || hasMixedGrades || bulkSections.length === 0}
+                      placeholder="Seleccionar..."
+                      size="small"
+                      className="w-full"
+                      onChange={v => handleBulkUpdate('sectionId', v)}
+                      allowClear
+                      notFoundContent={hasMixedGrades ? 'Seleccione estudiantes del mismo grado' : undefined}
+                    >
+                      {bulkSections.map(sec => (
+                        <Option key={sec.id} value={sec.id}>{sec.name}</Option>
+                      ))}
+                    </Select>
+                  </Tooltip>
+                </div>
+
+                {/* Group Subjects */}
+                <div className="flex flex-col gap-0.5">
+                  <span className={`text-[9px] font-bold uppercase tracking-wider ${selectedRowKeys.length > 0 ? 'text-slate-500' : 'text-slate-300'}`}>
+                    Materias de Grupo
+                  </span>
+                  <Tooltip
+                    title={hasMixedGrades ? 'Seleccione estudiantes del mismo grado para asignar materias de grupo.' : undefined}
+                    placement="topLeft"
+                  >
+                    <Select
+                      disabled={selectedRowKeys.length === 0 || hasMixedGrades || bulkGroupSubjects.length === 0}
+                      placeholder="Asignar Materia..."
+                      size="small"
+                      className="w-full"
+                      onChange={v => handleBulkUpdate('subjectIds', v ? [v] : [])}
+                      allowClear
+                      notFoundContent={hasMixedGrades ? 'Seleccione estudiantes del mismo grado' : undefined}
+                      options={bulkGroupSubjects.map(sub => ({ label: sub.name, value: sub.id }))}
+                    />
+                  </Tooltip>
+                </div>
               </div>
 
-              {/* Change Grade */}
-
-
-              {/* Group Subjects */}
-              <div className="flex flex-col gap-0.5">
-                <span className={`text-[9px] font-bold uppercase tracking-wider ${selectedRowKeys.length > 0 ? 'text-slate-500' : 'text-slate-300'}`}>
-                  Materias de Grupo
-                </span>
-                <Tooltip
-                  title={hasMixedGrades ? 'Seleccione estudiantes del mismo grado para asignar materias de grupo.' : undefined}
-                  placement="topLeft"
+              {/* Section 3: Actions */}
+              <div className="flex items-center pl-4 border-l border-slate-300/50 min-w-max">
+                <Button
+                  disabled={selectedRowKeys.length === 0}
+                  type="primary"
+                  size="middle"
+                  icon={<CheckCircleOutlined />}
+                  onClick={handleBulkEnroll}
+                  className="bg-blue-600 hover:bg-blue-500 border-none shadow-md shadow-blue-500/30"
                 >
-                  <Select
-                    disabled={selectedRowKeys.length === 0 || hasMixedGrades || bulkGroupSubjects.length === 0}
-                    placeholder="Asignar Materia..."
+                  Inscribir
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center gap-6">
+              {/* Selected Student Info */}
+              <div className="flex items-center gap-3 pr-4 border-r border-slate-300/50 min-w-max">
+                {selectedRowKeys.length === 1 ? (
+                  <>
+                    <div className="flex items-center justify-center w-8 h-8 rounded-full bg-blue-600 text-white shadow-sm">
+                      <UserOutlined />
+                    </div>
+                    <div className="flex flex-col justify-center">
+                      <span className="text-xs font-bold text-blue-900 leading-tight">
+                        {matriculations.find(r => r.id === selectedRowKeys[0])?.student.firstName} {matriculations.find(r => r.id === selectedRowKeys[0])?.student.lastName}
+                      </span>
+                      <span className="text-[10px] text-blue-700 leading-none mt-0.5">
+                        {matriculations.find(r => r.id === selectedRowKeys[0])?.student.documentType}-{matriculations.find(r => r.id === selectedRowKeys[0])?.student.document}
+                      </span>
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <div className="flex items-center justify-center w-8 h-8 rounded-full bg-slate-200 text-slate-400">
+                      <UserOutlined />
+                    </div>
+                    <div className="flex flex-col justify-center text-slate-400">
+                      <span className="text-xs font-bold leading-tight">
+                        {selectedRowKeys.length === 0 ? 'Ningún' : selectedRowKeys.length} estudiante{selectedRowKeys.length !== 1 ? 's' : ''}
+                      </span>
+                      <span className="text-[10px] leading-none">seleccionado{selectedRowKeys.length !== 1 ? 's' : ''}</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Actions for Completed */}
+              <div className="flex-1 flex gap-2">
+                <Tooltip title={selectedRowKeys.length !== 1 ? "Seleccione un solo estudiante" : ""}>
+                  <Button
+                    icon={<BookOutlined />}
                     size="small"
-                    className="w-full"
-                    onChange={v => handleBulkUpdate('subjectIds', v ? [v] : [])}
-                    allowClear
-                    notFoundContent={hasMixedGrades ? 'Seleccione estudiantes del mismo grado' : undefined}
-                    options={bulkGroupSubjects.map(sub => ({ label: sub.name, value: sub.id }))}
-                  />
+                    disabled={selectedRowKeys.length !== 1}
+                    onClick={handleOpenSubjectModal}
+                    className={selectedRowKeys.length === 1 ? 'border-blue-300 text-blue-600 bg-white' : ''}
+                  >
+                    Gestionar Materias
+                  </Button>
+                </Tooltip>
+
+                <Tooltip title={selectedRowKeys.length !== 1 ? "Seleccione un solo estudiante" : ""}>
+                  <Button
+                    icon={<EyeOutlined />}
+                    size="small"
+                    disabled={selectedRowKeys.length !== 1}
+                    onClick={handleViewProfile}
+                    className={selectedRowKeys.length === 1 ? 'border-blue-300 text-blue-600 bg-white' : ''}
+                  >
+                    Ver Expediente
+                  </Button>
                 </Tooltip>
               </div>
             </div>
-
-            {/* Section 3: Actions */}
-            <div className="flex items-center pl-4 border-l border-slate-300/50 min-w-max">
-              <Button
-                disabled={selectedRowKeys.length === 0}
-                type="primary"
-                size="middle"
-                icon={<CheckCircleOutlined />}
-                onClick={handleBulkEnroll}
-                className="bg-blue-600 hover:bg-blue-500 border-none shadow-md shadow-blue-500/30"
-              >
-                Inscribir
-              </Button>
-            </div>
-
-          </div>
+          )}
         </Card>
       </div>
 
@@ -1601,7 +1633,11 @@ const MatriculationEnrollment: React.FC = () => {
         loading={loading}
         pagination={false}
         scroll={{ x: 'max-content', y: scrollY }}
-        rowSelection={{ selectedRowKeys, onChange: setSelectedRowKeys }}
+        rowSelection={{
+          type: viewStatus === 'completed' ? 'radio' : 'checkbox',
+          selectedRowKeys,
+          onChange: setSelectedRowKeys
+        }}
         rowClassName={record => (canEditRow(record.id) ? 'editable-row' : 'locked-row')}
         onRow={(record) => ({
           onContextMenu: (event) => handleContextMenu(event, record.id),
@@ -1616,6 +1652,17 @@ const MatriculationEnrollment: React.FC = () => {
         bordered
         className="flex-1 overflow-hidden"
       />
+
+      {selectedStudentForSubjects && (
+        <StudentSubjectsModal
+          visible={subjectModalVisible}
+          onClose={() => setSubjectModalVisible(false)}
+          inscriptionId={selectedStudentForSubjects.inscriptionId}
+          studentName={selectedStudentForSubjects.studentName}
+          gradeId={selectedStudentForSubjects.gradeId}
+          schoolPeriodId={selectedStudentForSubjects.schoolPeriodId}
+        />
+      )}
 
       {contextMenuState.visible && createPortal(
         <div

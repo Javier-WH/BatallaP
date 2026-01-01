@@ -582,13 +582,19 @@ export const getInscriptions = async (req: Request, res: Response) => {
               model: StudentGuardian,
               as: 'guardians',
               include: [{ model: GuardianProfile, as: 'profile' }]
+            },
+            {
+              model: EnrollmentAnswer,
+              as: 'enrollmentAnswers',
+              include: [{ model: EnrollmentQuestion, as: 'question' }]
             }
           ]
         },
         { model: SchoolPeriod, as: 'period' },
         { model: Grade, as: 'grade' },
         { model: Section, as: 'section' },
-        { model: Subject, as: 'subjects', through: { attributes: [] } }
+        { model: Subject, as: 'subjects', through: { attributes: [] } },
+        { model: Matriculation, as: 'matriculation' }
       ],
       order: [['createdAt', 'DESC']]
     });
@@ -1003,5 +1009,227 @@ export const registerAndEnroll = async (req: Request, res: Response) => {
     await t.rollback();
     console.error(error);
     res.status(500).json({ error: 'Error al registrar e inscribir', details: error.message || error });
+  }
+};
+
+export const updateMatriculation = async (req: Request, res: Response) => {
+  const t = await sequelize.transaction();
+  try {
+    const { id } = req.params;
+    const {
+      firstName,
+      lastName,
+      documentType,
+      document,
+      gender,
+      birthdate,
+      birthState,
+      birthMunicipality,
+      birthParish,
+      residenceState,
+      residenceMunicipality,
+      residenceParish,
+      address,
+      phone1,
+      phone2,
+      email,
+      whatsapp,
+      previousSchoolIds,
+      gradeId,
+      sectionId,
+      mother,
+      father,
+      representative,
+      representativeType,
+      enrollmentAnswers,
+      escolaridad,
+    } = req.body;
+
+    const matriculation = (await Matriculation.findByPk(id, {
+      include: [
+        { model: Person, as: 'student' },
+        { model: Inscription, as: 'inscription' }
+      ],
+      transaction: t,
+      lock: t.LOCK.UPDATE
+    })) as MatriculationWithStudent | null;
+
+    if (!matriculation) {
+      await t.rollback();
+      return res.status(404).json({ error: 'Matriculación no encontrada' });
+    }
+
+    const person = matriculation.student;
+    if (!person) {
+      await t.rollback();
+      return res.status(400).json({ error: 'No se encontró el estudiante asociado' });
+    }
+
+    // Update Person Data if provided
+    if (firstName) person.firstName = firstName;
+    if (lastName) person.lastName = lastName;
+    if (documentType) person.documentType = documentType;
+    if (document !== undefined) person.document = document || null;
+    if (gender) person.gender = gender;
+    if (birthdate) person.birthdate = birthdate;
+    
+    await person.save({ transaction: t });
+
+    // Contact
+    if (phone1 || phone2 || email || address || whatsapp) {
+      const contactPayload: any = { personId: person.id };
+      if (phone1 !== undefined) contactPayload.phone1 = phone1;
+      if (phone2 !== undefined) contactPayload.phone2 = phone2;
+      if (email !== undefined) contactPayload.email = email;
+      if (address !== undefined) contactPayload.address = address;
+      if (whatsapp !== undefined) contactPayload.whatsapp = whatsapp;
+
+      const existingContact = await Contact.findOne({ where: { personId: person.id }, transaction: t, lock: t.LOCK.UPDATE });
+      if (existingContact) {
+        await existingContact.update(contactPayload, { transaction: t });
+      } else {
+        await Contact.create(contactPayload, { transaction: t });
+      }
+    }
+
+    // Residence
+    if (birthState || birthMunicipality || birthParish || residenceState || residenceMunicipality || residenceParish) {
+      const residencePayload: any = { personId: person.id };
+      if (birthState) residencePayload.birthState = birthState;
+      if (birthMunicipality) residencePayload.birthMunicipality = birthMunicipality;
+      if (birthParish) residencePayload.birthParish = birthParish;
+      if (residenceState) residencePayload.residenceState = residenceState;
+      if (residenceMunicipality) residencePayload.residenceMunicipality = residenceMunicipality;
+      if (residenceParish) residencePayload.residenceParish = residenceParish;
+
+      const existingResidence = await PersonResidence.findOne({ where: { personId: person.id }, transaction: t, lock: t.LOCK.UPDATE });
+      if (existingResidence) {
+        await existingResidence.update(residencePayload, { transaction: t });
+      } else {
+        await PersonResidence.create(residencePayload, { transaction: t });
+      }
+    }
+
+    // Previous Schools
+    if (Array.isArray(previousSchoolIds)) {
+      await StudentPreviousSchool.destroy({ where: { personId: person.id }, transaction: t });
+      const schoolRecords = [];
+      for (const item of previousSchoolIds) {
+        const plantel = await Plantel.findOne({
+          where: {
+            [Op.or]: [{ code: item }, { name: item }]
+          },
+          transaction: t
+        });
+        schoolRecords.push({
+          personId: person.id,
+          plantelCode: plantel?.code || (typeof item === 'string' ? item : null),
+          plantelName: plantel?.name || (typeof item === 'string' ? item : 'Desconocido'),
+          state: plantel?.state || null,
+          dependency: plantel?.dependency || null
+        });
+      }
+      if (schoolRecords.length > 0) {
+        await StudentPreviousSchool.bulkCreate(schoolRecords, { transaction: t });
+      }
+    }
+
+    // Guardians - Simplified for partial updates
+    const assignments: GuardianAssignment[] = [];
+    
+    if (mother && hasGuardianData(mother)) {
+      assignments.push({
+        payload: mapToGuardianProfilePayload(mother as CompleteGuardianInput),
+        relationship: 'mother',
+        isRepresentative: representativeType === 'mother'
+      });
+    }
+    if (father && hasGuardianData(father)) {
+      assignments.push({
+        payload: mapToGuardianProfilePayload(father as CompleteGuardianInput),
+        relationship: 'father',
+        isRepresentative: representativeType === 'father'
+      });
+    }
+    if (representative && hasGuardianData(representative)) {
+      assignments.push({
+        payload: mapToGuardianProfilePayload(representative as CompleteGuardianInput),
+        relationship: 'representative',
+        isRepresentative: true
+      });
+    }
+
+    if (assignments.length > 0) {
+       await assignGuardians(person.id, assignments, t);
+    }
+    
+    // Enrollment Answers
+    if (Array.isArray(enrollmentAnswers)) {
+      await saveEnrollmentAnswers(person.id, enrollmentAnswers, { transaction: t });
+    }
+
+    // Grade, Section, Escolaridad
+    if (escolaridad !== undefined) {
+         const escolaridadValue = normalizeEscolaridad(escolaridad);
+         matriculation.escolaridad = escolaridadValue;
+         if (matriculation.inscription) {
+             matriculation.inscription.escolaridad = escolaridadValue;
+             await matriculation.inscription.save({ transaction: t });
+         }
+    }
+
+    if (gradeId !== undefined) matriculation.gradeId = gradeId;
+    if (sectionId !== undefined) matriculation.sectionId = sectionId;
+    
+    await matriculation.save({ transaction: t });
+
+    // Sync Inscription if it exists (completed status)
+    if (matriculation.status === 'completed' && matriculation.inscription) {
+        const inscription = matriculation.inscription;
+        const oldGradeId = inscription.gradeId;
+        
+        if (gradeId !== undefined) inscription.gradeId = gradeId;
+        if (sectionId !== undefined) inscription.sectionId = sectionId;
+        
+        await inscription.save({ transaction: t });
+
+        // If grade changed, sync subjects
+         if (gradeId !== undefined && Number(gradeId) !== Number(oldGradeId)) {
+              await InscriptionSubject.destroy({
+                where: { inscriptionId: inscription.id },
+                transaction: t
+              });
+
+              const periodGrade = await PeriodGrade.findOne({
+                where: {
+                  schoolPeriodId: inscription.schoolPeriodId,
+                  gradeId: gradeId
+                },
+                include: [{ model: Subject, as: 'subjects' }],
+                transaction: t
+              });
+
+              if (periodGrade && periodGrade.subjects && periodGrade.subjects.length > 0) {
+                 const subjectsToAdd = periodGrade.subjects
+                  .filter((s: any) => !s.subjectGroupId)
+                  .map((s: any) => ({
+                    inscriptionId: inscription.id,
+                    subjectId: s.id
+                  }));
+                  
+                 if (subjectsToAdd.length > 0) {
+                    await InscriptionSubject.bulkCreate(subjectsToAdd, { transaction: t });
+                 }
+              }
+         }
+    }
+
+    await t.commit();
+    res.json({ message: 'Datos actualizados correctamente', matriculation });
+
+  } catch (error: any) {
+    if (t) await t.rollback();
+    console.error('Error updating matriculation:', error);
+    res.status(500).json({ error: 'Error actualizando datos', details: error.message || error });
   }
 };
