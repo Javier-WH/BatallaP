@@ -1972,6 +1972,11 @@ const MatriculationEnrollment: React.FC = () => {
         .ant-select-selection-item {
           line-height: 24px !important;
         }
+        .ant-input-affix-wrapper .ant-input {
+          outline: none !important;
+          border: none !important;
+        }
+
         /* Show inputs on hover/focus */
         .ant-table-row:hover .ant-input,
         .ant-table-row:hover .ant-select-selector,
