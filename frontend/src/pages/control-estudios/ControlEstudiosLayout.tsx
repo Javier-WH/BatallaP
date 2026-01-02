@@ -37,7 +37,7 @@ const ControlEstudiosLayout: React.FC = () => {
 
   const tools = [
     { path: '/control-estudios', icon: <DashboardOutlined />, label: 'Panel', tooltip: 'Panel Principal', exact: true },
-    { path: '/control-estudios/matricular-estudiante', icon: <UserAddOutlined />, label: 'Matricular', tooltip: 'Matriculación de Estudiantes' },
+    { path: '/control-estudios/matricular-estudiante', icon: <UserAddOutlined />, label: 'Matricula', tooltip: 'Matriculación de Estudiantes' },
     { path: '/control-estudios/configuracion', icon: <SettingOutlined />, label: 'Configuración', tooltip: 'Ajustes Académicos' },
     { path: '/control-estudios/consejos-curso', icon: <CheckCircleFilled />, label: 'Consejos', tooltip: 'Consejos de Curso y Evaluación' },
   ];

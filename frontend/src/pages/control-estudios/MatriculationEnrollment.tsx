@@ -1420,12 +1420,16 @@ const MatriculationEnrollment: React.FC = () => {
   return (
     <div className="flex flex-col gap-2 h-full" onKeyDown={handleTableKeyDown}>
       <div ref={headerRef} className="flex flex-col gap-2 shrink-0">
-        <Card size="small" bodyStyle={{ padding: '4px 12px' }} className="glass-card !bg-white/50 border-none shrink-0">
+        <Card 
+          size="small" 
+          styles={{ body: { padding: '2px 12px' } }} 
+          className="glass-card !bg-white/50 border-none shrink-0"
+        >
           <Row justify="space-between" align="middle" gutter={[4, 4]}>
             <Col xs={24} lg={8}>
               <div className="flex flex-col items-start gap-1">
                 <Space>
-                  <Title level={5} style={{ margin: 0 }}>Panel de Matriculación Masiva</Title>
+                  <Title level={5} style={{ margin: 0 }}>Matricula Estudiantes</Title>
                 </Space>
                 <div className="flex items-center gap-2">
                   <Radio.Group 
