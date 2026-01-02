@@ -1,12 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  Alert,
   Button,
   Card,
   Checkbox,
   Col,
-  Divider,
   Input,
   message,
   Popover,
@@ -31,7 +29,7 @@ import {
   CloseOutlined,
   TableOutlined,
 } from '@ant-design/icons';
-import dayjs, { Dayjs } from 'dayjs';
+import dayjs from 'dayjs';
 import { useNavigate } from 'react-router-dom';
 import api from '@/services/api';
 import type { EnrollmentQuestionResponse } from '@/services/enrollmentQuestions';
@@ -62,12 +60,6 @@ interface GuardianProfile {
   email?: string;
 }
 
-interface GuardianAssignment {
-  relationship: string;
-  isRepresentative?: boolean;
-  profile?: GuardianProfile;
-}
-
 interface ContactInfo {
   phone1?: string;
   whatsapp?: string;
@@ -90,6 +82,12 @@ interface EnrollmentAnswerRecord {
 
 type EnrollmentAnswersMap = Record<number, string | string[] | undefined>;
 
+interface StudentGuardian {
+  relationship: string;
+  isRepresentative?: boolean;
+  profile?: GuardianProfile;
+}
+
 interface StudentData {
   id: number;
   firstName: string;
@@ -98,11 +96,7 @@ interface StudentData {
   document: string;
   gender?: string;
   contact?: ContactInfo;
-  guardians: {
-    relationship: string;
-    isRepresentative?: boolean;
-    profile?: GuardianProfile;
-  }[];
+  guardians: StudentGuardian[];
   birthdate?: string | null;
   residence?: ResidenceInfo;
   enrollmentAnswers?: EnrollmentAnswerRecord[];
@@ -165,6 +159,7 @@ interface MatriculationApiResponse {
   inscriptionId?: number | null;
   student: StudentData;
   escolaridad?: EscolaridadStatus;
+  matriculation?: MatriculationApiResponse | null;
 }
 
 interface EnrollStructureEntry {
@@ -296,30 +291,41 @@ const MatriculationEnrollment: React.FC = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
   const [pinnedGroups, setPinnedGroups] = useState<string[]>(['Estudiante']);
-  const [scrollY, setScrollY] = useState(500);
+  const scrollY = 500;
   const headerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const fetchActivePeriod = async () => {
+    const fetchInitialData = async () => {
       try {
-        const res = await api.get('/academic/periods/active');
-        if (res.data) {
-          setActivePeriod(res.data);
+        const [periodRes, questionsRes] = await Promise.all([
+          api.get('/academic/periods/active'),
+          api.get('/enrollment-questions')
+        ]);
+        
+        if (periodRes.data) {
+          setActivePeriod(periodRes.data);
         } else {
-          setLoading(false);
           message.warning('No hay un período académico activo configurado.');
         }
+        
+        if (questionsRes.data) {
+          setQuestions(questionsRes.data);
+        }
       } catch (error) {
-        console.error('Error fetching active period:', error);
+        console.error('Error fetching initial data:', error);
+        message.error('Error al cargar datos iniciales.');
+      } finally {
         setLoading(false);
-        message.error('Error al cargar el período académico activo.');
       }
     };
-    fetchActivePeriod();
+    fetchInitialData();
   }, []);
 
   const fetchData = useCallback(async () => {
-    if (!activePeriod) return;
+    if (!activePeriod) {
+      setLoading(false);
+      return;
+    }
 
     setLoading(true);
     try {
@@ -336,7 +342,7 @@ const MatriculationEnrollment: React.FC = () => {
       ]);
 
       const rawData = dataRes.data || [];
-      const rows = rawData.map((item: any) => {
+      const rows = rawData.map((item: MatriculationApiResponse) => {
         const isInscription = viewStatus === 'completed';
         const m = isInscription ? {
           ...item.matriculation,
@@ -351,19 +357,20 @@ const MatriculationEnrollment: React.FC = () => {
         } : item;
 
         const student = m.student || {};
-        const guardians = student.guardians || [];
-        const findGuardianProfile = (relationship: string): StudentData['guardians'][0]['profile'] =>
-          (guardians.find((g: any) => g.relationship === relationship)?.profile || {}) as StudentData['guardians'][0]['profile'];
+        const guardians: StudentGuardian[] = student.guardians || [];
+        const findGuardianProfile = (relationship: string): GuardianProfile =>
+          (guardians.find((g: { relationship: string; profile?: GuardianProfile }) => g.relationship === relationship)?.profile || {}) as GuardianProfile;
 
-        const representativeAssignment = guardians.find((g: any) => g.isRepresentative);
+        const representativeAssignment = guardians.find((g: StudentGuardian) => g.isRepresentative);
         const representativeRelationship = representativeAssignment?.relationship;
         const representativeType: RepresentativeType =
           representativeRelationship === 'mother' || representativeRelationship === 'father'
             ? representativeRelationship
             : 'other';
 
-        const enrollmentAnswers = (student.enrollmentAnswers || []).reduce((acc: Record<number, string | string[] | undefined>, curr: any) => {
-          acc[curr.questionId] = curr.answer || undefined;
+        const enrollmentAnswersList = student.enrollmentAnswers ?? [];
+        const enrollmentAnswers = enrollmentAnswersList.reduce<EnrollmentAnswersMap>((acc, curr) => {
+          acc[curr.questionId] = curr.answer ?? undefined;
           return acc;
         }, {});
 
@@ -422,13 +429,13 @@ const MatriculationEnrollment: React.FC = () => {
     return () => window.removeEventListener('keydown', handleGlobalEscape);
   }, []);
 
-  const handleUpdateRow = async <K extends keyof TempData>(id: number, field: K, value: TempData[K]) => {
+  const handleUpdateRow = useCallback(async <K extends keyof TempData>(id: number, field: K, value: TempData[K]) => {
     setMatriculations(prev => prev.map(row => (
       row.id === id ? { ...row, tempData: { ...row.tempData, [field]: value } } : row
     )));
 
     try {
-      const payload: Record<string, any> = { [field as string]: value };
+      const payload: Record<string, unknown> = { [field as string]: value };
       if (field === 'birthdate' && value) {
         payload[field as string] = (value as dayjs.Dayjs).format('YYYY-MM-DD');
       }
@@ -438,13 +445,15 @@ const MatriculationEnrollment: React.FC = () => {
       console.error(error);
       message.error({ content: 'Error al guardar', key: `save-${id}` });
     }
-  };
+  }, []);
 
-  const handleUpdateGuardianField = async (
+  const handleUpdateGuardianField = useCallback(async <
+    K extends keyof GuardianProfile
+  >(
     rowId: number,
     parentKey: 'mother' | 'father' | 'representative',
-    field: keyof GuardianProfile,
-    value: any
+    field: K,
+    value: GuardianProfile[K]
   ) => {
     let updatedProfile: GuardianProfile = {};
     setMatriculations(prev => prev.map(row => {
@@ -462,9 +471,13 @@ const MatriculationEnrollment: React.FC = () => {
       console.error(e);
       message.error({ content: 'Error al guardar', key: `save-${rowId}` });
     }
-  };
+  }, []);
 
-  const handleUpdateAnswer = async (rowId: number, questionId: number, value: any) => {
+  const handleUpdateAnswer = useCallback(async (
+    rowId: number,
+    questionId: number,
+    value: EnrollmentAnswersMap[number]
+  ) => {
     let updatedAnswers: EnrollmentAnswersMap = {};
     setMatriculations(prev => prev.map(row => {
       if (row.id !== rowId) return row;
@@ -485,7 +498,7 @@ const MatriculationEnrollment: React.FC = () => {
       console.error(e);
       message.error({ content: 'Error al guardar', key: `save-${rowId}` });
     }
-  };
+  }, []);
 
   const handleBulkEnroll = async () => {
     const selectedRows = matriculations.filter(r => selectedRowKeys.includes(r.id));
@@ -636,23 +649,19 @@ const MatriculationEnrollment: React.FC = () => {
     });
   };
 
-  const isColumnVisible = (key: string) => visibleColumnKeys.includes(key);
-  const canEditRow = (id: number) => editableRowIds.includes(id);
-  const lockRow = (id: number) => setEditableRowIds(prev => prev.filter(rid => rid !== id));
+  const closeContextMenu = useCallback(() => setContextMenuState(prev => ({ ...prev, visible: false })), []);
 
-  const handleContextEdit = () => {
+  const handleContextEdit = useCallback(() => {
     if (contextMenuState.rowId !== null) {
       setEditableRowIds(prev => [...new Set([...prev, contextMenuState.rowId!])]);
     }
     closeContextMenu();
-  };
+  }, [contextMenuState.rowId, closeContextMenu]);
 
   const handleContextMenu = (e: React.MouseEvent, rowId: number) => {
     e.preventDefault();
     setContextMenuState({ visible: true, x: e.clientX, y: e.clientY, rowId });
   };
-
-  const closeContextMenu = () => setContextMenuState(prev => ({ ...prev, visible: false }));
 
   const filteredData = useMemo(() => {
     return matriculations.filter(item => {
@@ -726,513 +735,9 @@ const MatriculationEnrollment: React.FC = () => {
     </div>
   );
 
-  const docPrefix: Record<string, string> = {
-    Venezolano: 'V-',
-    Extranjero: 'E-',
-    Pasaporte: 'P-',
-    'Cedula Escolar': 'CE-'
-  };
-
-  const studentColumns = [
-    isColumnVisible('nationality') && {
-      title: 'Nac.',
-      width: 70,
-      render: (_: unknown, record: MatriculationRow) => (
-        <div className="px-1 py-0.5 text-xs text-slate-800">
-          {docPrefix[record.tempData.documentType as keyof typeof docPrefix] || record.tempData.documentType?.[0]?.toUpperCase() + '-'}
-        </div>
-      )
-    },
-    isColumnVisible('document') && {
-      title: 'Cédula',
-      width: 120,
-      render: (_: unknown, record: MatriculationRow, idx: number) => (
-        <CellInput
-          id={`nav-${idx}-document`}
-          data-row-index={idx}
-          data-col-name="document"
-          value={record.tempData.document}
-          disabled={!canEditRow(record.id)}
-          className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
-          onChange={val => handleUpdateRow(record.id, 'document', val)}
-        />
-      )
-    },
-    isColumnVisible('firstName') && {
-      title: 'Nombres',
-      width: 150,
-      render: (_: unknown, record: MatriculationRow, idx: number) => (
-        <CellInput
-          id={`nav-${idx}-firstName`}
-          data-row-index={idx}
-          data-col-name="firstName"
-          value={record.tempData.firstName}
-          disabled={!canEditRow(record.id)}
-          className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
-          onChange={val => handleUpdateRow(record.id, 'firstName', val)}
-        />
-      )
-    },
-    isColumnVisible('lastName') && {
-      title: 'Apellidos',
-      width: 150,
-      render: (_: unknown, record: MatriculationRow, idx: number) => (
-        <CellInput
-          id={`nav-${idx}-lastName`}
-          data-row-index={idx}
-          data-col-name="lastName"
-          value={record.tempData.lastName}
-          disabled={!canEditRow(record.id)}
-          className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
-          onChange={val => handleUpdateRow(record.id, 'lastName', val)}
-        />
-      )
-    },
-    isColumnVisible('gender') && {
-      title: 'Género',
-      width: 90,
-      render: (_: unknown, record: MatriculationRow) => (
-        <div className="px-1 py-0.5">
-          <Tag color={record.tempData.gender === 'M' ? 'blue' : 'magenta'} className="m-0 text-[10px] leading-none px-1 py-0">
-            {record.tempData.gender === 'M' ? 'Masc' : 'Fem'}
-          </Tag>
-        </div>
-      )
-    },
-  ].filter(Boolean);
-
-  const academicColumns = [
-    isColumnVisible('gradeId') && {
-      title: 'Grado',
-      width: 160,
-      render: (_: unknown, record: MatriculationRow, idx: number) => {
-        if (!canEditRow(record.id)) {
-          const gradeName = structure.find(s => s.gradeId === record.tempData.gradeId)?.grade?.name || 'N/A';
-          return <div className="px-1 py-0.5 text-xs text-slate-800 whitespace-nowrap overflow-hidden text-ellipsis">{gradeName}</div>;
-        }
-        return (
-          <div data-row-index={idx} data-col-name="gradeId">
-            <Select
-              id={`nav-${idx}-gradeId`}
-              value={record.tempData.gradeId}
-              style={{ width: '100%' }}
-              size="small"
-              onChange={(v) => handleUpdateRow(record.id, 'gradeId', v)}
-            >
-              {structure.map(s => <Option key={s.gradeId} value={s.gradeId}>{s.grade?.name}</Option>)}
-            </Select>
-          </div>
-        );
-      }
-    },
-    isColumnVisible('sectionId') && {
-      title: 'Sección',
-      width: 120,
-      render: (_: unknown, record: MatriculationRow, idx: number) => {
-        const gradeStruct = structure.find(s => s.gradeId === record.tempData.gradeId);
-        if (!canEditRow(record.id)) {
-          const sectionName = gradeStruct?.sections?.find(s => s.id === record.tempData.sectionId)?.name || 'N/A';
-          return <div className="px-1 py-0.5 text-xs text-slate-800 whitespace-nowrap overflow-hidden text-ellipsis">{sectionName}</div>;
-        }
-        return (
-          <div data-row-index={idx} data-col-name="sectionId">
-            <Select
-              id={`nav-${idx}-sectionId`}
-              value={record.tempData.sectionId}
-              allowClear
-              size="small"
-              style={{ width: '100%' }}
-              onChange={(v) => handleUpdateRow(record.id, 'sectionId', v)}
-            >
-              {gradeStruct?.sections?.map(sec => <Option key={sec.id} value={sec.id}>{sec.name}</Option>)}
-            </Select>
-          </div>
-        );
-      }
-    },
-    isColumnVisible('subjectIds') && {
-      title: 'Materias de Grupo',
-      width: 220,
-      render: (_: unknown, record: MatriculationRow, idx: number) => {
-        const gradeStruct = structure.find(s => s.gradeId === record.tempData.gradeId);
-        const groupSubjects = gradeStruct?.subjects?.filter(s => s.subjectGroupId) || [];
-        const currentSubjectId = record.tempData.subjectIds?.[0];
-        if (groupSubjects.length === 0) {
-          return <div className="px-1 py-0.5 text-xs text-slate-400 whitespace-nowrap overflow-hidden text-ellipsis min-h-[20px]">{gradeStruct ? 'Sin materias agrupadas' : 'Seleccione un grado'}</div>;
-        }
-        return (
-          <div data-row-index={idx} data-col-name="subjectIds">
-            <Select
-              id={`nav-${idx}-subjectIds`}
-              style={{ width: '100%' }}
-              value={currentSubjectId}
-              allowClear
-              size="small"
-              placeholder="Seleccione"
-              onChange={(v) => handleUpdateRow(record.id, 'subjectIds', v ? [v] : [])}
-            >
-              {groupSubjects.map(s => <Option key={s.id} value={s.id}>{s.name}</Option>)}
-            </Select>
-          </div>
-        );
-      }
-    },
-    isColumnVisible('escolaridad') && {
-      title: 'Escolaridad',
-      width: 150,
-      render: (_: unknown, record: MatriculationRow, idx: number) => {
-        if (!canEditRow(record.id)) {
-          const map: Record<EscolaridadStatus, { label: string; color: string }> = {
-            regular: { label: 'Regular', color: 'green' },
-            repitiente: { label: 'Repitiente', color: 'orange' },
-            materia_pendiente: { label: 'Materia pendiente', color: 'blue' }
-          };
-          const info = map[record.tempData.escolaridad] ?? { label: record.tempData.escolaridad, color: 'default' };
-          return <div className="px-1 py-0.5"><Tag color={info.color} className="m-0 text-[10px] leading-none px-1 py-0">{info.label}</Tag></div>;
-        }
-        return (
-          <div data-row-index={idx} data-col-name="escolaridad">
-            <Select
-              id={`nav-${idx}-escolaridad`}
-              value={record.tempData.escolaridad}
-              style={{ width: '100%' }}
-              size="small"
-              onChange={(v) => handleUpdateRow(record.id, 'escolaridad', v as EscolaridadStatus)}
-              options={ESCOLARIDAD_OPTIONS}
-            />
-          </div>
-        );
-      }
-    },
-  ].filter(Boolean);
-
-  const contactColumns = [
-    isColumnVisible('phone1') && {
-      title: 'S. Principal',
-      width: 140,
-      render: (_: unknown, record: MatriculationRow, idx: number) => (
-        <CellInput
-          id={`nav-${idx}-phone1`}
-          data-row-index={idx}
-          data-col-name="phone1"
-          value={record.tempData.phone1}
-          disabled={!canEditRow(record.id)}
-          className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
-          onChange={val => handleUpdateRow(record.id, 'phone1', val)}
-        />
-      )
-    },
-    isColumnVisible('whatsapp') && {
-      title: 'WhatsApp',
-      width: 140,
-      render: (_: unknown, record: MatriculationRow, idx: number) => (
-        <CellInput
-          id={`nav-${idx}-whatsapp`}
-          data-row-index={idx}
-          data-col-name="whatsapp"
-          value={record.tempData.whatsapp}
-          disabled={!canEditRow(record.id)}
-          className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
-          onChange={val => handleUpdateRow(record.id, 'whatsapp', val)}
-        />
-      )
-    },
-  ].filter(Boolean);
-
-  const motherColumns = [
-    isColumnVisible('motherDocument') && {
-      title: 'Cédula',
-      width: 130,
-      render: (_: unknown, record: MatriculationRow, idx: number) => (
-        <CellInput
-          id={`nav-${idx}-mDoc`}
-          data-row-index={idx}
-          data-col-name="mDoc"
-          value={record.tempData.mother?.document}
-          placeholder="Doc..."
-          disabled={!canEditRow(record.id)}
-          className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
-          onChange={val => handleUpdateGuardianField(record.id, 'mother', 'document', val)}
-        />
-      )
-    },
-    isColumnVisible('motherFirstName') && {
-      title: 'Nombres',
-      width: 140,
-      render: (_: unknown, record: MatriculationRow, idx: number) => (
-        <CellInput
-          id={`nav-${idx}-mFirstName`}
-          data-row-index={idx}
-          data-col-name="mFirstName"
-          value={record.tempData.mother?.firstName}
-          disabled={!canEditRow(record.id)}
-          className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
-          onChange={val => handleUpdateGuardianField(record.id, 'mother', 'firstName', val)}
-        />
-      )
-    },
-    isColumnVisible('motherLastName') && {
-      title: 'Apellidos',
-      width: 140,
-      render: (_: unknown, record: MatriculationRow, idx: number) => (
-        <CellInput
-          id={`nav-${idx}-mLastName`}
-          data-row-index={idx}
-          data-col-name="mLastName"
-          value={record.tempData.mother?.lastName}
-          disabled={!canEditRow(record.id)}
-          className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
-          onChange={val => handleUpdateGuardianField(record.id, 'mother', 'lastName', val)}
-        />
-      )
-    },
-    isColumnVisible('motherPhone') && {
-      title: 'Teléfono',
-      width: 130,
-      render: (_: unknown, record: MatriculationRow, idx: number) => (
-        <CellInput
-          id={`nav-${idx}-mPhone`}
-          data-row-index={idx}
-          data-col-name="mPhone"
-          value={record.tempData.mother?.phone}
-          disabled={!canEditRow(record.id)}
-          className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
-          onChange={val => handleUpdateGuardianField(record.id, 'mother', 'phone', val)}
-        />
-      )
-    },
-  ].filter(Boolean);
-
-  const fatherColumns = [
-    isColumnVisible('fatherDocument') && {
-      title: 'Cédula',
-      width: 130,
-      render: (_: unknown, record: MatriculationRow, idx: number) => (
-        <CellInput
-          id={`nav-${idx}-fDoc`}
-          data-row-index={idx}
-          data-col-name="fDoc"
-          value={record.tempData.father?.document}
-          placeholder="Doc..."
-          disabled={!canEditRow(record.id)}
-          className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
-          onChange={val => handleUpdateGuardianField(record.id, 'father', 'document', val)}
-        />
-      )
-    },
-    isColumnVisible('fatherFirstName') && {
-      title: 'Nombres',
-      width: 140,
-      render: (_: unknown, record: MatriculationRow, idx: number) => (
-        <CellInput
-          id={`nav-${idx}-fFirstName`}
-          data-row-index={idx}
-          data-col-name="fFirstName"
-          value={record.tempData.father?.firstName}
-          disabled={!canEditRow(record.id)}
-          className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
-          onChange={val => handleUpdateGuardianField(record.id, 'father', 'firstName', val)}
-        />
-      )
-    },
-    isColumnVisible('fatherLastName') && {
-      title: 'Apellidos',
-      width: 140,
-      render: (_: unknown, record: MatriculationRow, idx: number) => (
-        <CellInput
-          id={`nav-${idx}-fLastName`}
-          data-row-index={idx}
-          data-col-name="fLastName"
-          value={record.tempData.father?.lastName}
-          disabled={!canEditRow(record.id)}
-          className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
-          onChange={val => handleUpdateGuardianField(record.id, 'father', 'lastName', val)}
-        />
-      )
-    },
-    isColumnVisible('fatherPhone') && {
-      title: 'Teléfono',
-      width: 130,
-      render: (_: unknown, record: MatriculationRow, idx: number) => (
-        <CellInput
-          id={`nav-${idx}-fPhone`}
-          data-row-index={idx}
-          data-col-name="fPhone"
-          value={record.tempData.father?.phone}
-          disabled={!canEditRow(record.id)}
-          className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
-          onChange={val => handleUpdateGuardianField(record.id, 'father', 'phone', val)}
-        />
-      )
-    },
-  ].filter(Boolean);
-
-  const representativeColumns = [
-    isColumnVisible('representativeType') && {
-      title: 'Asignar',
-      width: 140,
-      render: (_: unknown, record: MatriculationRow, idx: number) => (
-        <div data-row-index={idx} data-col-name="repType">
-          <Select
-            id={`nav-${idx}-repType`}
-            value={record.tempData.representativeType}
-            style={{ width: '100%' }}
-            size="small"
-            onChange={v => handleUpdateRow(record.id, 'representativeType', v)}
-          >
-            <Option value="mother">Madre</Option>
-            <Option value="father">Padre</Option>
-            <Option value="other">Otro</Option>
-          </Select>
-        </div>
-      )
-    },
-    isColumnVisible('representativeDocument') && {
-      title: 'Cédula',
-      width: 140,
-      render: (_: unknown, record: MatriculationRow, idx: number) => {
-        const { profile, editable, label } = getRepresentativeInfo(record);
-        const isDisabled = !canEditRow(record.id) || !editable;
-        return (
-          <div className="flex flex-col gap-1">
-            <CellInput
-              id={`nav-${idx}-repDoc`}
-              data-row-index={idx}
-              data-col-name="repDoc"
-              value={profile?.document}
-              placeholder="Doc..."
-              disabled={isDisabled}
-              className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
-              onChange={val => {
-                if (!editable) return;
-                handleUpdateGuardianField(record.id, 'representative', 'document', val);
-              }}
-            />
-            {!editable && <Text type="secondary" style={{ fontSize: 11 }}>Representante: {label}</Text>}
-          </div>
-        );
-      }
-    },
-    isColumnVisible('representativeFirstName') && {
-      title: 'Nombres',
-      width: 140,
-      render: (_: unknown, record: MatriculationRow, idx: number) => {
-        const { profile, editable } = getRepresentativeInfo(record);
-        const isDisabled = !canEditRow(record.id) || !editable;
-        return (
-          <CellInput
-            id={`nav-${idx}-repFirstName`}
-            data-row-index={idx}
-            data-col-name="repFirstName"
-            value={profile?.firstName}
-            disabled={isDisabled}
-            className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
-            onChange={val => {
-              if (!editable) return;
-              handleUpdateGuardianField(record.id, 'representative', 'firstName', val);
-            }}
-          />
-        );
-      }
-    },
-    isColumnVisible('representativeLastName') && {
-      title: 'Apellidos',
-      width: 140,
-      render: (_: unknown, record: MatriculationRow, idx: number) => {
-        const { profile, editable } = getRepresentativeInfo(record);
-        const isDisabled = !canEditRow(record.id) || !editable;
-        return (
-          <CellInput
-            id={`nav-${idx}-repLastName`}
-            data-row-index={idx}
-            data-col-name="repLastName"
-            value={profile?.lastName}
-            disabled={isDisabled}
-            className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
-            onChange={val => {
-              if (!editable) return;
-              handleUpdateGuardianField(record.id, 'representative', 'lastName', val);
-            }}
-          />
-        );
-      }
-    },
-    isColumnVisible('representativePhone') && {
-      title: 'Teléfono',
-      width: 130,
-      render: (_: unknown, record: MatriculationRow, idx: number) => {
-        const { profile, editable } = getRepresentativeInfo(record);
-        const isDisabled = !canEditRow(record.id) || !editable;
-        return (
-          <CellInput
-            id={`nav-${idx}-repPhone`}
-            data-row-index={idx}
-            data-col-name="repPhone"
-            value={profile?.phone}
-            disabled={isDisabled}
-            className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
-            onChange={val => {
-              if (!editable) return;
-              handleUpdateGuardianField(record.id, 'representative', 'phone', val);
-            }}
-          />
-        );
-      }
-    },
-  ].filter(Boolean);
-
-  const questionColumns = questions
-    .filter(q => isColumnVisible(getQuestionColumnKey(q.id)))
-    .map(q => ({
-      title: q.prompt,
-      width: 220,
-      render: (_: unknown, record: MatriculationRow, idx: number) => {
-        const value = record.tempData.enrollmentAnswers?.[q.id];
-        const isRowEditable = canEditRow(record.id);
-        const colKey = getQuestionColumnKey(q.id);
-        if (q.type === 'text') {
-          return (
-            <CellInput
-              data-row-index={idx}
-              data-col-name={colKey}
-              value={(value as string)}
-              placeholder="..."
-              disabled={!isRowEditable}
-              className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
-              onChange={val => handleUpdateAnswer(record.id, q.id, val)}
-            />
-          );
-        }
-        if (q.type === 'select' || q.type === 'checkbox') {
-          if (!isRowEditable) {
-            const displayVal = Array.isArray(value) ? value.join(', ') : value;
-            return (
-              <div className="px-1 py-0.5 text-xs text-slate-800 whitespace-nowrap overflow-hidden text-ellipsis min-h-[20px]">
-                {displayVal}
-              </div>
-            );
-          }
-          return (
-            <div data-row-index={idx} data-col-name={colKey}>
-              <Select
-                mode={q.type === 'checkbox' ? 'multiple' : undefined}
-                style={{ width: '100%' }}
-                size="small"
-                value={value as string | string[] | undefined}
-                placeholder="Elija..."
-                disabled={!isRowEditable}
-                onChange={v => handleUpdateAnswer(record.id, q.id, v)}
-              >
-                {(q.options || []).map(opt => (
-                  <Option key={opt} value={opt}>{opt}</Option>
-                ))}
-              </Select>
-            </div>
-          );
-        }
-        return null;
-      }
-    }));
+  const isColumnVisible = useCallback((key: string) => visibleColumnKeys.includes(key), [visibleColumnKeys]);
+  const canEditRow = useCallback((id: number) => editableRowIds.includes(id), [editableRowIds]);
+  const lockRow = useCallback((id: number) => setEditableRowIds(prev => prev.filter(rid => rid !== id)), []);
 
   const toggleGroupPin = useCallback((group: string) => {
     setPinnedGroups(prev =>
@@ -1240,7 +745,7 @@ const MatriculationEnrollment: React.FC = () => {
     );
   }, []);
 
-  const renderGroupTitle = (group: string, titleNode: React.ReactNode) => (
+  const renderGroupTitle = useCallback((group: string, titleNode: React.ReactNode) => (
     <div className="flex items-center justify-between gap-2 group select-none cursor-pointer" onClick={() => toggleGroupPin(group)}>
       {titleNode}
       <Checkbox
@@ -1250,11 +755,12 @@ const MatriculationEnrollment: React.FC = () => {
         style={{ transform: 'scale(0.7)' }}
       />
     </div>
-  );
+  ), [pinnedGroups, toggleGroupPin]);
 
-  const addSeparator = (cols?: (any | false | null | undefined)[]): any[] => {
+  type ColumnDefinition = ColumnsType<MatriculationRow>[number];
+  const addSeparator = useCallback((cols?: (ColumnDefinition | false | null | undefined)[]): ColumnDefinition[] => {
     if (!cols) return [];
-    const validCols = cols.filter((col): col is any => Boolean(col));
+    const validCols = cols.filter((col): col is ColumnDefinition => Boolean(col));
     if (validCols.length === 0) return validCols;
     return validCols.map((col, idx) => {
       if (idx === validCols.length - 1) {
@@ -1266,41 +772,562 @@ const MatriculationEnrollment: React.FC = () => {
       }
       return col;
     });
-  };
+  }, []);
 
-  const columns = [
-    studentColumns.length > 0 && {
-      title: renderGroupTitle('Estudiante', <Space><UserOutlined /> Estudiante</Space>),
-      fixed: (pinnedGroups.includes('Estudiante') ? 'left' : undefined) as 'left' | undefined,
-      className: 'group-separator-border',
-      children: addSeparator(studentColumns)
-    },
-    academicColumns.length > 0 && {
-      title: renderGroupTitle('Académico', <Space><BookOutlined /> Académico</Space>),
-      fixed: (pinnedGroups.includes('Académico') ? 'left' : undefined) as 'left' | undefined,
-      className: 'group-separator-border',
-      children: addSeparator(academicColumns)
-    },
-    contactColumns.length > 0 && {
-      title: renderGroupTitle('Contacto', 'Contacto'),
-      fixed: (pinnedGroups.includes('Contacto') ? 'left' : undefined) as 'left' | undefined,
-      className: 'group-separator-border',
-      children: addSeparator(contactColumns)
-    },
-    (motherColumns.length > 0 || fatherColumns.length > 0 || representativeColumns.length > 0) && {
-      title: renderGroupTitle('Representación', 'Representación'),
-      className: 'group-separator-border',
-      children: addSeparator([
-        motherColumns.length > 0 && { title: <Text strong style={{ color: '#eb2f96' }}>Madre</Text>, children: motherColumns },
-        fatherColumns.length > 0 && { title: <Text strong style={{ color: '#1890ff' }}>Padre</Text>, children: fatherColumns },
-        representativeColumns.length > 0 && { title: 'Representante', children: representativeColumns }
-      ].filter(Boolean))
-    },
-    questionColumns.length > 0 && {
-      title: renderGroupTitle('Preguntas Personalizadas', <Space><QuestionCircleOutlined /> Preguntas</Space>),
-      children: questionColumns
-    }
-  ].filter(Boolean) as ColumnsType<MatriculationRow>;
+  const columns = useMemo(() => {
+    const docPrefix: Record<string, string> = {
+      Venezolano: 'V-',
+      Extranjero: 'E-',
+      Pasaporte: 'P-',
+      'Cedula Escolar': 'CE-'
+    };
+
+    const studentCols = [
+      isColumnVisible('nationality') && {
+        title: 'Nac.',
+        width: 70,
+        render: (_: unknown, record: MatriculationRow) => (
+          <div className="px-1 py-0.5 text-xs text-slate-800">
+            {docPrefix[record.tempData.documentType as keyof typeof docPrefix] || record.tempData.documentType?.[0]?.toUpperCase() + '-'}
+          </div>
+        )
+      },
+      isColumnVisible('document') && {
+        title: 'Cédula',
+        width: 120,
+        render: (_: unknown, record: MatriculationRow, idx: number) => (
+          <CellInput
+            id={`nav-${idx}-document`}
+            data-row-index={idx}
+            data-col-name="document"
+            value={record.tempData.document}
+            disabled={!canEditRow(record.id)}
+            className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
+            onChange={val => handleUpdateRow(record.id, 'document', val)}
+          />
+        )
+      },
+      isColumnVisible('firstName') && {
+        title: 'Nombres',
+        width: 150,
+        render: (_: unknown, record: MatriculationRow, idx: number) => (
+          <CellInput
+            id={`nav-${idx}-firstName`}
+            data-row-index={idx}
+            data-col-name="firstName"
+            value={record.tempData.firstName}
+            disabled={!canEditRow(record.id)}
+            className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
+            onChange={val => handleUpdateRow(record.id, 'firstName', val)}
+          />
+        )
+      },
+      isColumnVisible('lastName') && {
+        title: 'Apellidos',
+        width: 150,
+        render: (_: unknown, record: MatriculationRow, idx: number) => (
+          <CellInput
+            id={`nav-${idx}-lastName`}
+            data-row-index={idx}
+            data-col-name="lastName"
+            value={record.tempData.lastName}
+            disabled={!canEditRow(record.id)}
+            className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
+            onChange={val => handleUpdateRow(record.id, 'lastName', val)}
+          />
+        )
+      },
+      isColumnVisible('gender') && {
+        title: 'Género',
+        width: 90,
+        render: (_: unknown, record: MatriculationRow) => (
+          <div className="px-1 py-0.5">
+            <Tag color={record.tempData.gender === 'M' ? 'blue' : 'magenta'} className="m-0 text-[10px] leading-none px-1 py-0">
+              {record.tempData.gender === 'M' ? 'Masc' : 'Fem'}
+            </Tag>
+          </div>
+        )
+      },
+    ].filter(Boolean);
+
+    const academicCols = [
+      isColumnVisible('gradeId') && {
+        title: 'Grado',
+        width: 160,
+        render: (_: unknown, record: MatriculationRow, idx: number) => {
+          if (!canEditRow(record.id)) {
+            const gradeName = structure.find(s => s.gradeId === record.tempData.gradeId)?.grade?.name || 'N/A';
+            return <div className="px-1 py-0.5 text-xs text-slate-800 whitespace-nowrap overflow-hidden text-ellipsis">{gradeName}</div>;
+          }
+          return (
+            <div data-row-index={idx} data-col-name="gradeId">
+              <Select
+                id={`nav-${idx}-gradeId`}
+                value={record.tempData.gradeId}
+                style={{ width: '100%' }}
+                size="small"
+                onChange={(v) => handleUpdateRow(record.id, 'gradeId', v)}
+              >
+                {structure.map(s => <Option key={s.gradeId} value={s.gradeId}>{s.grade?.name}</Option>)}
+              </Select>
+            </div>
+          );
+        }
+      },
+      isColumnVisible('sectionId') && {
+        title: 'Sección',
+        width: 120,
+        render: (_: unknown, record: MatriculationRow, idx: number) => {
+          const gradeStruct = structure.find(s => s.gradeId === record.tempData.gradeId);
+          if (!canEditRow(record.id)) {
+            const sectionName = gradeStruct?.sections?.find(s => s.id === record.tempData.sectionId)?.name || 'N/A';
+            return <div className="px-1 py-0.5 text-xs text-slate-800 whitespace-nowrap overflow-hidden text-ellipsis">{sectionName}</div>;
+          }
+          return (
+            <div data-row-index={idx} data-col-name="sectionId">
+              <Select
+                id={`nav-${idx}-sectionId`}
+                value={record.tempData.sectionId}
+                allowClear
+                size="small"
+                style={{ width: '100%' }}
+                onChange={(v) => handleUpdateRow(record.id, 'sectionId', v)}
+              >
+                {gradeStruct?.sections?.map(sec => <Option key={sec.id} value={sec.id}>{sec.name}</Option>)}
+              </Select>
+            </div>
+          );
+        }
+      },
+      isColumnVisible('subjectIds') && {
+        title: 'Materias de Grupo',
+        width: 220,
+        render: (_: unknown, record: MatriculationRow, idx: number) => {
+          const gradeStruct = structure.find(s => s.gradeId === record.tempData.gradeId);
+          const groupSubjects = gradeStruct?.subjects?.filter(s => s.subjectGroupId) || [];
+          const currentSubjectId = record.tempData.subjectIds?.[0];
+          if (groupSubjects.length === 0) {
+            return <div className="px-1 py-0.5 text-xs text-slate-400 whitespace-nowrap overflow-hidden text-ellipsis min-h-[20px]">{gradeStruct ? 'Sin materias agrupadas' : 'Seleccione un grado'}</div>;
+          }
+          return (
+            <div data-row-index={idx} data-col-name="subjectIds">
+              <Select
+                id={`nav-${idx}-subjectIds`}
+                style={{ width: '100%' }}
+                value={currentSubjectId}
+                allowClear
+                size="small"
+                placeholder="Seleccione"
+                onChange={(v) => handleUpdateRow(record.id, 'subjectIds', v ? [v] : [])}
+              >
+                {groupSubjects.map(s => <Option key={s.id} value={s.id}>{s.name}</Option>)}
+              </Select>
+            </div>
+          );
+        }
+      },
+      isColumnVisible('escolaridad') && {
+        title: 'Escolaridad',
+        width: 150,
+        render: (_: unknown, record: MatriculationRow, idx: number) => {
+          if (!canEditRow(record.id)) {
+            const map: Record<EscolaridadStatus, { label: string; color: string }> = {
+              regular: { label: 'Regular', color: 'green' },
+              repitiente: { label: 'Repitiente', color: 'orange' },
+              materia_pendiente: { label: 'Materia pendiente', color: 'blue' }
+            };
+            const info = map[record.tempData.escolaridad] ?? { label: record.tempData.escolaridad, color: 'default' };
+            return <div className="px-1 py-0.5"><Tag color={info.color} className="m-0 text-[10px] leading-none px-1 py-0">{info.label}</Tag></div>;
+          }
+          return (
+            <div data-row-index={idx} data-col-name="escolaridad">
+              <Select
+                id={`nav-${idx}-escolaridad`}
+                value={record.tempData.escolaridad}
+                style={{ width: '100%' }}
+                size="small"
+                onChange={(v) => handleUpdateRow(record.id, 'escolaridad', v as EscolaridadStatus)}
+                options={ESCOLARIDAD_OPTIONS}
+              />
+            </div>
+          );
+        }
+      },
+    ].filter(Boolean);
+
+    const contactCols = [
+      isColumnVisible('phone1') && {
+        title: 'S. Principal',
+        width: 140,
+        render: (_: unknown, record: MatriculationRow, idx: number) => (
+          <CellInput
+            id={`nav-${idx}-phone1`}
+            data-row-index={idx}
+            data-col-name="phone1"
+            value={record.tempData.phone1}
+            disabled={!canEditRow(record.id)}
+            className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
+            onChange={val => handleUpdateRow(record.id, 'phone1', val)}
+          />
+        )
+      },
+      isColumnVisible('whatsapp') && {
+        title: 'WhatsApp',
+        width: 140,
+        render: (_: unknown, record: MatriculationRow, idx: number) => (
+          <CellInput
+            id={`nav-${idx}-whatsapp`}
+            data-row-index={idx}
+            data-col-name="whatsapp"
+            value={record.tempData.whatsapp}
+            disabled={!canEditRow(record.id)}
+            className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
+            onChange={val => handleUpdateRow(record.id, 'whatsapp', val)}
+          />
+        )
+      },
+    ].filter(Boolean);
+
+    const motherCols = [
+      isColumnVisible('motherDocument') && {
+        title: 'Cédula',
+        width: 130,
+        render: (_: unknown, record: MatriculationRow, idx: number) => (
+          <CellInput
+            id={`nav-${idx}-mDoc`}
+            data-row-index={idx}
+            data-col-name="mDoc"
+            value={record.tempData.mother?.document}
+            placeholder="Doc..."
+            disabled={!canEditRow(record.id)}
+            className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
+            onChange={val => handleUpdateGuardianField(record.id, 'mother', 'document', val)}
+          />
+        )
+      },
+      isColumnVisible('motherFirstName') && {
+        title: 'Nombres',
+        width: 140,
+        render: (_: unknown, record: MatriculationRow, idx: number) => (
+          <CellInput
+            id={`nav-${idx}-mFirstName`}
+            data-row-index={idx}
+            data-col-name="mFirstName"
+            value={record.tempData.mother?.firstName}
+            disabled={!canEditRow(record.id)}
+            className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
+            onChange={val => handleUpdateGuardianField(record.id, 'mother', 'firstName', val)}
+          />
+        )
+      },
+      isColumnVisible('motherLastName') && {
+        title: 'Apellidos',
+        width: 140,
+        render: (_: unknown, record: MatriculationRow, idx: number) => (
+          <CellInput
+            id={`nav-${idx}-mLastName`}
+            data-row-index={idx}
+            data-col-name="mLastName"
+            value={record.tempData.mother?.lastName}
+            disabled={!canEditRow(record.id)}
+            className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
+            onChange={val => handleUpdateGuardianField(record.id, 'mother', 'lastName', val)}
+          />
+        )
+      },
+      isColumnVisible('motherPhone') && {
+        title: 'Teléfono',
+        width: 130,
+        render: (_: unknown, record: MatriculationRow, idx: number) => (
+          <CellInput
+            id={`nav-${idx}-mPhone`}
+            data-row-index={idx}
+            data-col-name="mPhone"
+            value={record.tempData.mother?.phone}
+            disabled={!canEditRow(record.id)}
+            className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
+            onChange={val => handleUpdateGuardianField(record.id, 'mother', 'phone', val)}
+          />
+        )
+      },
+    ].filter(Boolean);
+
+    const fatherCols = [
+      isColumnVisible('fatherDocument') && {
+        title: 'Cédula',
+        width: 130,
+        render: (_: unknown, record: MatriculationRow, idx: number) => (
+          <CellInput
+            id={`nav-${idx}-fDoc`}
+            data-row-index={idx}
+            data-col-name="fDoc"
+            value={record.tempData.father?.document}
+            placeholder="Doc..."
+            disabled={!canEditRow(record.id)}
+            className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
+            onChange={val => handleUpdateGuardianField(record.id, 'father', 'document', val)}
+          />
+        )
+      },
+      isColumnVisible('fatherFirstName') && {
+        title: 'Nombres',
+        width: 140,
+        render: (_: unknown, record: MatriculationRow, idx: number) => (
+          <CellInput
+            id={`nav-${idx}-fFirstName`}
+            data-row-index={idx}
+            data-col-name="fFirstName"
+            value={record.tempData.father?.firstName}
+            disabled={!canEditRow(record.id)}
+            className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
+            onChange={val => handleUpdateGuardianField(record.id, 'father', 'firstName', val)}
+          />
+        )
+      },
+      isColumnVisible('fatherLastName') && {
+        title: 'Apellidos',
+        width: 140,
+        render: (_: unknown, record: MatriculationRow, idx: number) => (
+          <CellInput
+            id={`nav-${idx}-fLastName`}
+            data-row-index={idx}
+            data-col-name="fLastName"
+            value={record.tempData.father?.lastName}
+            disabled={!canEditRow(record.id)}
+            className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
+            onChange={val => handleUpdateGuardianField(record.id, 'father', 'lastName', val)}
+          />
+        )
+      },
+      isColumnVisible('fatherPhone') && {
+        title: 'Teléfono',
+        width: 130,
+        render: (_: unknown, record: MatriculationRow, idx: number) => (
+          <CellInput
+            id={`nav-${idx}-fPhone`}
+            data-row-index={idx}
+            data-col-name="fPhone"
+            value={record.tempData.father?.phone}
+            disabled={!canEditRow(record.id)}
+            className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
+            onChange={val => handleUpdateGuardianField(record.id, 'father', 'phone', val)}
+          />
+        )
+      },
+    ].filter(Boolean);
+
+    const representativeCols = [
+      isColumnVisible('representativeType') && {
+        title: 'Asignar',
+        width: 140,
+        render: (_: unknown, record: MatriculationRow, idx: number) => (
+          <div data-row-index={idx} data-col-name="repType">
+            <Select
+              id={`nav-${idx}-repType`}
+              value={record.tempData.representativeType}
+              style={{ width: '100%' }}
+              size="small"
+              onChange={v => handleUpdateRow(record.id, 'representativeType', v)}
+            >
+              <Option value="mother">Madre</Option>
+              <Option value="father">Padre</Option>
+              <Option value="other">Otro</Option>
+            </Select>
+          </div>
+        )
+      },
+      isColumnVisible('representativeDocument') && {
+        title: 'Cédula',
+        width: 140,
+        render: (_: unknown, record: MatriculationRow, idx: number) => {
+          const { profile, editable, label } = getRepresentativeInfo(record);
+          const isDisabled = !canEditRow(record.id) || !editable;
+          return (
+            <div className="flex flex-col gap-1">
+              <CellInput
+                id={`nav-${idx}-repDoc`}
+                data-row-index={idx}
+                data-col-name="repDoc"
+                value={profile?.document}
+                placeholder="Doc..."
+                disabled={isDisabled}
+                className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
+                onChange={val => {
+                  if (!editable) return;
+                  handleUpdateGuardianField(record.id, 'representative', 'document', val);
+                }}
+              />
+              {!editable && <Text type="secondary" style={{ fontSize: 11 }}>Representante: {label}</Text>}
+            </div>
+          );
+        }
+      },
+      isColumnVisible('representativeFirstName') && {
+        title: 'Nombres',
+        width: 140,
+        render: (_: unknown, record: MatriculationRow, idx: number) => {
+          const { profile, editable } = getRepresentativeInfo(record);
+          const isDisabled = !canEditRow(record.id) || !editable;
+          return (
+            <CellInput
+              id={`nav-${idx}-repFirstName`}
+              data-row-index={idx}
+              data-col-name="repFirstName"
+              value={profile?.firstName}
+              disabled={isDisabled}
+              className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
+              onChange={val => {
+                if (!editable) return;
+                handleUpdateGuardianField(record.id, 'representative', 'firstName', val);
+              }}
+            />
+          );
+        }
+      },
+      isColumnVisible('representativeLastName') && {
+        title: 'Apellidos',
+        width: 140,
+        render: (_: unknown, record: MatriculationRow, idx: number) => {
+          const { profile, editable } = getRepresentativeInfo(record);
+          const isDisabled = !canEditRow(record.id) || !editable;
+          return (
+            <CellInput
+              id={`nav-${idx}-repLastName`}
+              data-row-index={idx}
+              data-col-name="repLastName"
+              value={profile?.lastName}
+              disabled={isDisabled}
+              className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
+              onChange={val => {
+                if (!editable) return;
+                handleUpdateGuardianField(record.id, 'representative', 'lastName', val);
+              }}
+            />
+          );
+        }
+      },
+      isColumnVisible('representativePhone') && {
+        title: 'Teléfono',
+        width: 130,
+        render: (_: unknown, record: MatriculationRow, idx: number) => {
+          const { profile, editable } = getRepresentativeInfo(record);
+          const isDisabled = !canEditRow(record.id) || !editable;
+          return (
+            <CellInput
+              id={`nav-${idx}-repPhone`}
+              data-row-index={idx}
+              data-col-name="repPhone"
+              value={profile?.phone}
+              disabled={isDisabled}
+              className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
+              onChange={val => {
+                if (!editable) return;
+                handleUpdateGuardianField(record.id, 'representative', 'phone', val);
+              }}
+            />
+          );
+        }
+      },
+    ].filter(Boolean);
+
+    const questionCols = questions
+      .filter(q => isColumnVisible(getQuestionColumnKey(q.id)))
+      .map(q => ({
+        title: q.prompt,
+        width: 220,
+        render: (_: unknown, record: MatriculationRow, idx: number) => {
+          const value = record.tempData.enrollmentAnswers?.[q.id];
+          const isRowEditable = canEditRow(record.id);
+          const colKey = getQuestionColumnKey(q.id);
+          if (q.type === 'text') {
+            return (
+              <CellInput
+                data-row-index={idx}
+                data-col-name={colKey}
+                value={(value as string)}
+                placeholder="..."
+                disabled={!isRowEditable}
+                className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
+                onChange={val => handleUpdateAnswer(record.id, q.id, val)}
+              />
+            );
+          }
+          if (q.type === 'select' || q.type === 'checkbox') {
+            if (!isRowEditable) {
+              const displayVal = Array.isArray(value) ? value.join(', ') : value;
+              return (
+                <div className="px-1 py-0.5 text-xs text-slate-800 whitespace-nowrap overflow-hidden text-ellipsis min-h-[20px]">
+                  {displayVal}
+                </div>
+              );
+            }
+            return (
+              <div data-row-index={idx} data-col-name={colKey}>
+                <Select
+                  mode={q.type === 'checkbox' ? 'multiple' : undefined}
+                  style={{ width: '100%' }}
+                  size="small"
+                  value={value as string | string[] | undefined}
+                  placeholder="Elija..."
+                  disabled={!isRowEditable}
+                  onChange={v => handleUpdateAnswer(record.id, q.id, v)}
+                >
+                  {(q.options || []).map(opt => (
+                    <Option key={opt} value={opt}>{opt}</Option>
+                  ))}
+                </Select>
+              </div>
+            );
+          }
+          return null;
+        }
+      }));
+
+    return [
+      studentCols.length > 0 && {
+        title: renderGroupTitle('Estudiante', <Space><UserOutlined /> Estudiante</Space>),
+        fixed: (pinnedGroups.includes('Estudiante') ? 'left' : undefined) as 'left' | undefined,
+        className: 'group-separator-border',
+        children: addSeparator(studentCols)
+      },
+      academicCols.length > 0 && {
+        title: renderGroupTitle('Académico', <Space><BookOutlined /> Académico</Space>),
+        fixed: (pinnedGroups.includes('Académico') ? 'left' : undefined) as 'left' | undefined,
+        className: 'group-separator-border',
+        children: addSeparator(academicCols)
+      },
+      contactCols.length > 0 && {
+        title: renderGroupTitle('Contacto', 'Contacto'),
+        fixed: (pinnedGroups.includes('Contacto') ? 'left' : undefined) as 'left' | undefined,
+        className: 'group-separator-border',
+        children: addSeparator(contactCols)
+      },
+      (motherCols.length > 0 || fatherCols.length > 0 || representativeCols.length > 0) && {
+        title: renderGroupTitle('Representación', 'Representación'),
+        className: 'group-separator-border',
+        children: addSeparator([
+          motherCols.length > 0 && { title: <Text strong style={{ color: '#eb2f96' }}>Madre</Text>, children: motherCols },
+          fatherCols.length > 0 && { title: <Text strong style={{ color: '#1890ff' }}>Padre</Text>, children: fatherCols },
+          representativeCols.length > 0 && { title: 'Representante', children: representativeCols }
+        ].filter(Boolean))
+      },
+      questionCols.length > 0 && {
+        title: renderGroupTitle('Preguntas Personalizadas', <Space><QuestionCircleOutlined /> Preguntas</Space>),
+        children: questionCols
+      }
+    ].filter(Boolean) as ColumnsType<MatriculationRow>;
+  }, [
+    structure,
+    questions,
+    pinnedGroups,
+    handleUpdateRow,
+    handleUpdateGuardianField,
+    handleUpdateAnswer,
+    renderGroupTitle,
+    addSeparator,
+    isColumnVisible,
+    canEditRow
+  ]);
 
   return (
     <div className="flex flex-col gap-2 h-full" onKeyDown={handleTableKeyDown}>
