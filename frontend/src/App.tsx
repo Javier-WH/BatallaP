@@ -91,6 +91,8 @@ function AppRoutes() {
         <Route path="master" element={<RequireAuth allowedRoles={['Master']}><MasterLayout /></RequireAuth>}>
           <Route index element={<MasterDashboard />} />
           <Route path="register" element={<RegisterUser />} />
+          <Route path="usuarios" element={<SearchUsers />} />
+          <Route path="edit/:id" element={<EditUser />} />
           <Route path="settings" element={<SettingsManagement />} />
         </Route>
 
@@ -99,6 +101,7 @@ function AppRoutes() {
           <Route index element={<AdminDashboard />} />
           <Route path="register-staff" element={<RegisterStaff />} />
           <Route path="inscribir-estudiante" element={<EnrollStudent />} />
+          <Route path="matricular-estudiante" element={<MatriculationEnrollment />} />
           <Route path="projection" element={<TeacherProjection />} />
           <Route path="planteles" element={<SchoolManagement />} />
           <Route path="enrollment-questions" element={<EnrollmentQuestions />} />

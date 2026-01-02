@@ -44,6 +44,7 @@ const AdminLayout: React.FC = () => {
   const tools = [
     { path: '/admin', icon: <DashboardOutlined />, label: 'Panel', tooltip: 'Panel Principal Admin' },
     { path: '/admin/inscribir-estudiante', icon: <UserAddOutlined />, label: 'Estudiantes', tooltip: 'Solicitudes de Ingreso' },
+    { path: '/admin/matricular-estudiante', icon: <UserAddOutlined />, label: 'Matrícula', tooltip: 'Matriculación de Estudiantes' },
     { path: '/admin/register-staff', icon: <TeamOutlined />, label: 'Personal', tooltip: 'Profesores y Representantes' },
     { path: '/admin/projection', icon: <ProjectOutlined />, label: 'Proyección', tooltip: 'Asignación Académica' },
     { path: '/admin/planteles', icon: <BookOutlined />, label: 'Planteles', tooltip: 'Planteles Escolares' },

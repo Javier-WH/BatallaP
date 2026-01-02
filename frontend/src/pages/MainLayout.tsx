@@ -8,7 +8,6 @@ import {
   DashboardOutlined,
   BookOutlined,
   FileTextOutlined,
-  SearchOutlined,
   SettingOutlined,
   BellOutlined,
   CalendarOutlined
@@ -77,13 +76,6 @@ const MainLayout: React.FC = () => {
       label: 'Control Estudios',
       roles: ['Control de Estudios'],
       path: '/control-estudios'
-    },
-    {
-      key: 'search-users',
-      icon: <SearchOutlined />,
-      label: 'Usuarios',
-      roles: ['Master', 'Administrador'],
-      path: '/gestion-usuarios'
     },
 
     {
