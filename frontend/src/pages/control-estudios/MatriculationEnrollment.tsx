@@ -163,6 +163,7 @@ interface MatriculationApiResponse {
   student: StudentData;
   escolaridad?: EscolaridadStatus;
   matriculation?: MatriculationApiResponse | null;
+  subjects?: { id: number; name: string; subjectGroupId?: number | null }[];
 }
 
 interface EnrollStructureEntry {
@@ -422,6 +423,12 @@ const MatriculationEnrollment: React.FC = () => {
           return acc;
         }, {});
 
+        // Extraer IDs de materias de grupo asignadas
+        const assignedSubjects = isInscription ? (item.subjects || []) : [];
+        const groupSubjectIds = assignedSubjects
+          .filter(s => s.subjectGroupId)
+          .map(s => s.id);
+
         return {
           ...m,
           tempData: {
@@ -431,7 +438,7 @@ const MatriculationEnrollment: React.FC = () => {
             gender: student.gender,
             gradeId: m.gradeId,
             sectionId: m.sectionId,
-            subjectIds: [],
+            subjectIds: groupSubjectIds,
             escolaridad: m.escolaridad ?? 'regular',
             phone1: student.contact?.phone1,
             whatsapp: student.contact?.whatsapp,

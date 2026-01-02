@@ -721,6 +721,7 @@ export const updateInscription = async (req: Request, res: Response) => {
       representativeType,
       enrollmentAnswers,
       escolaridad,
+      subjectIds,
     } = req.body;
 
     console.log('[updateInscription] ID:', id);
@@ -911,6 +912,49 @@ export const updateInscription = async (req: Request, res: Response) => {
 
         if (subjectsToAdd.length > 0) {
           await InscriptionSubject.bulkCreate(subjectsToAdd, { transaction: t });
+        }
+      }
+    }
+
+    // Handle group subject updates (when subjectIds is provided)
+    if (Array.isArray(subjectIds)) {
+      console.log(`[UpdateInscription] Updating group subjects:`, subjectIds);
+      
+      // Get all subjects for this grade to identify which are group subjects
+      const periodGrade = await PeriodGrade.findOne({
+        where: {
+          schoolPeriodId: inscription.schoolPeriodId,
+          gradeId: inscription.gradeId
+        },
+        include: [{ model: Subject, as: 'subjects' }],
+        transaction: t
+      });
+
+      if (periodGrade && periodGrade.subjects) {
+        const allGroupSubjectIds = periodGrade.subjects
+          .filter((s: any) => s.subjectGroupId !== null && s.subjectGroupId !== undefined)
+          .map((s: any) => s.id);
+
+        // Remove all existing group subjects for this inscription
+        if (allGroupSubjectIds.length > 0) {
+          await InscriptionSubject.destroy({
+            where: {
+              inscriptionId: id,
+              subjectId: { [Op.in]: allGroupSubjectIds }
+            },
+            transaction: t
+          });
+          console.log(`[UpdateInscription] Removed old group subjects`);
+        }
+
+        // Add new group subjects
+        if (subjectIds.length > 0) {
+          const newGroupSubjects = subjectIds.map((subjectId: number) => ({
+            inscriptionId: inscription.id,
+            subjectId: subjectId
+          }));
+          await InscriptionSubject.bulkCreate(newGroupSubjects, { transaction: t });
+          console.log(`[UpdateInscription] Added ${subjectIds.length} new group subjects`);
         }
       }
     }
