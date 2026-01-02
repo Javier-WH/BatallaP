@@ -1975,6 +1975,10 @@ const MatriculationEnrollment: React.FC = () => {
         .ant-input-affix-wrapper .ant-input {
           outline: none !important;
           border: none !important;
+          height: 22px !important;
+        }
+        .ant-input-affix-wrapper  {
+          height: 24px !important;
         }
 
         /* Show inputs on hover/focus */
