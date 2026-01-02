@@ -1082,7 +1082,23 @@ const MatriculationEnrollment: React.FC = () => {
                 allowClear
                 size="small"
                 placeholder="Seleccione"
-                onChange={(v) => handleUpdateRow(record.id, 'subjectIds', v ? [v] : [])}
+                onFocus={async () => {
+                  // Activar modo de edición al hacer clic en el Select
+                  if (editableRowId !== record.id) {
+                    if (editableRowId !== null) {
+                      await saveStudentChanges();
+                    }
+                    setEditableRowId(record.id);
+                    setPendingChanges({});
+                  }
+                }}
+                onChange={async (v) => {
+                  handleUpdateRow(record.id, 'subjectIds', v ? [v] : []);
+                  // Activar guardado automático después de cambiar materia de grupo
+                  setTimeout(() => {
+                    window.dispatchEvent(new CustomEvent('cell-input-changed'));
+                  }, 100);
+                }}
               >
                 {groupSubjects.map(s => <Option key={s.id} value={s.id}>{s.name}</Option>)}
               </Select>
