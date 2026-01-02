@@ -1641,7 +1641,7 @@ const MatriculationEnrollment: React.FC = () => {
                       disabled={selectedRowKeys.length === 0 || hasMixedGrades || bulkSections.length === 0}
                       placeholder="Seleccionar..."
                       size="small"
-                      className="w-full"
+                      style={{ width: 200 }}
                       onChange={v => handleBulkUpdate('sectionId', v)}
                       allowClear
                       notFoundContent={hasMixedGrades ? 'Seleccione estudiantes del mismo grado' : undefined}
@@ -1666,7 +1666,7 @@ const MatriculationEnrollment: React.FC = () => {
                       disabled={selectedRowKeys.length === 0 || hasMixedGrades || bulkGroupSubjects.length === 0}
                       placeholder="Asignar Materia..."
                       size="small"
-                      className="w-full"
+                      style={{ width: 200 }}
                       onChange={v => handleBulkUpdate('subjectIds', v ? [v] : [])}
                       allowClear
                       notFoundContent={hasMixedGrades ? 'Seleccione estudiantes del mismo grado' : undefined}
@@ -1762,7 +1762,7 @@ const MatriculationEnrollment: React.FC = () => {
                     <Select
                       placeholder="Asignar Materia..."
                       size="small"
-                      className="w-full"
+                      style={{ width: 200 }}
                       onChange={(v) => handleBulkUpdate('subjectIds', v ? [v] : [])}
                       allowClear
                       options={bulkGroupSubjects.map(s => ({ label: s.name, value: s.id }))}
