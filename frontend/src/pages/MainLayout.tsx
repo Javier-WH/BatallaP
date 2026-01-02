@@ -6,7 +6,6 @@ import {
   UserOutlined,
   LogoutOutlined,
   DashboardOutlined,
-  TeamOutlined,
   BookOutlined,
   FileTextOutlined,
   SearchOutlined,
@@ -86,13 +85,7 @@ const MainLayout: React.FC = () => {
       roles: ['Master', 'Administrador'],
       path: '/gestion-usuarios'
     },
-    {
-      key: 'students',
-      icon: <TeamOutlined />,
-      label: 'Estudiantes',
-      roles: ['Master', 'Administrador', 'Control de Estudios'],
-      path: '/estudiantes'
-    },
+
     {
       key: 'profesor-module',
       icon: <BookOutlined />,
