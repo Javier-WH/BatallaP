@@ -168,7 +168,8 @@ interface MatriculationApiResponse {
 interface EnrollStructureEntry {
   id: number;
   gradeId: number;
-  grade?: { id: number; name: string };
+  order?: number | null;
+  grade?: { id: number; name: string; order?: number | null };
   sections?: { id: number; name: string }[];
   subjects?: { id: number; name: string; subjectGroupId?: number | null; subjectGroup?: { name: string } }[];
 }
@@ -452,7 +453,18 @@ const MatriculationEnrollment: React.FC = () => {
       });
 
       setMatriculations(rows);
-      setStructure((structRes.data || []) as EnrollStructureEntry[]);
+
+      const structureData = (structRes.data || []) as EnrollStructureEntry[];
+      const sortedStructure = [...structureData].sort((a, b) => {
+        const orderA = a.grade?.order ?? a.order ?? Number.MAX_SAFE_INTEGER;
+        const orderB = b.grade?.order ?? b.order ?? Number.MAX_SAFE_INTEGER;
+        if (orderA !== orderB) return orderA - orderB;
+        const nameA = a.grade?.name || '';
+        const nameB = b.grade?.name || '';
+        return nameA.localeCompare(nameB, 'es');
+      });
+
+      setStructure(sortedStructure);
     } catch (error) {
       console.error('[MatriculationEnrollment] Error fetching data:', error);
       message.error('Error cargando información');
