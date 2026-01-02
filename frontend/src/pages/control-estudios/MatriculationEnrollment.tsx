@@ -341,6 +341,7 @@ const MatriculationEnrollment: React.FC = () => {
   const [filterMissing, setFilterMissing] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
+  const [sortedInfo, setSortedInfo] = useState<{ columnKey: string; order: 'ascend' | 'descend' } | null>(null);
   const [pinnedGroups, setPinnedGroups] = useState<string[]>(['Estudiante']);
   const scrollY = 500;
   const headerRef = useRef<HTMLDivElement>(null);
@@ -859,6 +860,48 @@ const MatriculationEnrollment: React.FC = () => {
 
   const exportToExcel = useCallback(() => {
     try {
+      // Aplicar ordenamiento si existe
+      const dataToExport = [...filteredData];
+      
+      if (sortedInfo && sortedInfo.order) {
+        const { columnKey, order } = sortedInfo;
+        
+        dataToExport.sort((a, b) => {
+          let compareResult = 0;
+          
+          switch (columnKey) {
+            case 'document':
+              compareResult = (a.tempData.document || '').localeCompare(b.tempData.document || '', undefined, { numeric: true });
+              break;
+            case 'firstName':
+              compareResult = (a.tempData.firstName || '').localeCompare(b.tempData.firstName || '');
+              break;
+            case 'lastName':
+              compareResult = (a.tempData.lastName || '').localeCompare(b.tempData.lastName || '');
+              break;
+            case 'gender':
+              compareResult = (a.tempData.gender || '').localeCompare(b.tempData.gender || '');
+              break;
+            case 'gradeId': {
+              const gradeA = structure.find(s => s.gradeId === a.tempData.gradeId)?.grade?.name || '';
+              const gradeB = structure.find(s => s.gradeId === b.tempData.gradeId)?.grade?.name || '';
+              compareResult = gradeA.localeCompare(gradeB);
+              break;
+            }
+            case 'sectionId': {
+              const gradeStructA = structure.find(s => s.gradeId === a.tempData.gradeId);
+              const gradeStructB = structure.find(s => s.gradeId === b.tempData.gradeId);
+              const sectionA = gradeStructA?.sections?.find(s => s.id === a.tempData.sectionId)?.name || '';
+              const sectionB = gradeStructB?.sections?.find(s => s.id === b.tempData.sectionId)?.name || '';
+              compareResult = sectionA.localeCompare(sectionB);
+              break;
+            }
+          }
+          
+          return order === 'ascend' ? compareResult : -compareResult;
+        });
+      }
+      
       // Mapeo de columnas con sus extractores y formateadores
       const columnConfig: Record<string, { header: string; getValue: (record: MatriculationRow) => string }> = {
         nationality: {
@@ -1010,8 +1053,8 @@ const MatriculationEnrollment: React.FC = () => {
         .map(key => ({ key, config: columnConfig[key] }))
         .filter(col => col.config);
 
-      // Mapear datos filtrados a formato Excel
-      const excelData = filteredData.map(record => {
+      // Mapear datos filtrados y ordenados a formato Excel
+      const excelData = dataToExport.map(record => {
         const row: Record<string, string> = {};
         visibleColumns.forEach(({ config }) => {
           row[config.header] = config.getValue(record);
@@ -1048,12 +1091,12 @@ const MatriculationEnrollment: React.FC = () => {
       const fileName = `matriculas_${viewStatus}_${timestamp}.xlsx`;
       
       XLSX.writeFile(workbook, fileName);
-      message.success(`Exportados ${filteredData.length} registros a Excel`);
+      message.success(`Exportados ${dataToExport.length} registros a Excel`);
     } catch (error) {
       console.error('Error exportando a Excel:', error);
       message.error('Error al exportar a Excel');
     }
-  }, [filteredData, visibleColumnKeys, structure, questions, viewStatus]);
+  }, [filteredData, visibleColumnKeys, structure, questions, viewStatus, sortedInfo]);
 
   const columnMenuContent = (
     <div style={{ maxHeight: '400px', overflowY: 'auto', padding: '8px' }}>
@@ -1157,8 +1200,14 @@ const MatriculationEnrollment: React.FC = () => {
         )
       },
       isColumnVisible('document') && {
+        key: 'document',
         title: 'Cédula',
         width: 120,
+        sorter: (a: MatriculationRow, b: MatriculationRow) => {
+          const docA = a.tempData.document || '';
+          const docB = b.tempData.document || '';
+          return docA.localeCompare(docB, undefined, { numeric: true });
+        },
         render: (_: unknown, record: MatriculationRow, idx: number) => (
           <CellInput
             id={`nav-${idx}-document`}
@@ -1172,8 +1221,14 @@ const MatriculationEnrollment: React.FC = () => {
         )
       },
       isColumnVisible('firstName') && {
+        key: 'firstName',
         title: 'Nombres',
         width: 150,
+        sorter: (a: MatriculationRow, b: MatriculationRow) => {
+          const nameA = a.tempData.firstName || '';
+          const nameB = b.tempData.firstName || '';
+          return nameA.localeCompare(nameB);
+        },
         render: (_: unknown, record: MatriculationRow, idx: number) => (
           <CellInput
             id={`nav-${idx}-firstName`}
@@ -1187,8 +1242,14 @@ const MatriculationEnrollment: React.FC = () => {
         )
       },
       isColumnVisible('lastName') && {
+        key: 'lastName',
         title: 'Apellidos',
         width: 150,
+        sorter: (a: MatriculationRow, b: MatriculationRow) => {
+          const lastA = a.tempData.lastName || '';
+          const lastB = b.tempData.lastName || '';
+          return lastA.localeCompare(lastB);
+        },
         render: (_: unknown, record: MatriculationRow, idx: number) => (
           <CellInput
             id={`nav-${idx}-lastName`}
@@ -1202,8 +1263,14 @@ const MatriculationEnrollment: React.FC = () => {
         )
       },
       isColumnVisible('gender') && {
+        key: 'gender',
         title: 'Género',
         width: 90,
+        sorter: (a: MatriculationRow, b: MatriculationRow) => {
+          const genderA = a.tempData.gender || '';
+          const genderB = b.tempData.gender || '';
+          return genderA.localeCompare(genderB);
+        },
         render: (_: unknown, record: MatriculationRow) => (
           <div className="px-1 py-0.5">
             <Tag color={record.tempData.gender === 'M' ? 'blue' : 'magenta'} className="m-0 text-[10px] leading-none px-1 py-0">
@@ -1216,8 +1283,14 @@ const MatriculationEnrollment: React.FC = () => {
 
     const academicCols = [
       isColumnVisible('gradeId') && {
+        key: 'gradeId',
         title: 'Grado',
         width: 160,
+        sorter: (a: MatriculationRow, b: MatriculationRow) => {
+          const gradeA = structure.find(s => s.gradeId === a.tempData.gradeId)?.grade?.name || '';
+          const gradeB = structure.find(s => s.gradeId === b.tempData.gradeId)?.grade?.name || '';
+          return gradeA.localeCompare(gradeB);
+        },
         render: (_: unknown, record: MatriculationRow, idx: number) => {
           if (!canEditRow(record.id)) {
             const gradeName = structure.find(s => s.gradeId === record.tempData.gradeId)?.grade?.name || 'N/A';
@@ -1239,8 +1312,16 @@ const MatriculationEnrollment: React.FC = () => {
         }
       },
       isColumnVisible('sectionId') && {
+        key: 'sectionId',
         title: 'Sección',
         width: 120,
+        sorter: (a: MatriculationRow, b: MatriculationRow) => {
+          const gradeStructA = structure.find(s => s.gradeId === a.tempData.gradeId);
+          const gradeStructB = structure.find(s => s.gradeId === b.tempData.gradeId);
+          const sectionA = gradeStructA?.sections?.find(s => s.id === a.tempData.sectionId)?.name || '';
+          const sectionB = gradeStructB?.sections?.find(s => s.id === b.tempData.sectionId)?.name || '';
+          return sectionA.localeCompare(sectionB);
+        },
         render: (_: unknown, record: MatriculationRow, idx: number) => {
           const gradeStruct = structure.find(s => s.gradeId === record.tempData.gradeId);
           if (!canEditRow(record.id)) {
@@ -2094,6 +2175,13 @@ const MatriculationEnrollment: React.FC = () => {
           type: 'checkbox',
           selectedRowKeys,
           onChange: setSelectedRowKeys
+        }}
+        onChange={(_pagination, _filters, sorter: any) => {
+          if (sorter && sorter.columnKey) {
+            setSortedInfo({ columnKey: sorter.columnKey, order: sorter.order });
+          } else {
+            setSortedInfo(null);
+          }
         }}
         rowClassName={record => (canEditRow(record.id) ? 'editable-row' : 'locked-row')}
         onRow={(record) => ({
