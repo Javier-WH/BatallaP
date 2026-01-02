@@ -20,7 +20,7 @@ import AdminLayout from '@/pages/admin/AdminLayout';
 import RegisterStaff from '@/pages/admin/RegisterStaff';
 import EnrollStudent from '@/pages/admin/EnrollStudent';
 
-import EnrolledStudents from '@/pages/admin/EnrolledStudents';
+
 import TeacherProjection from '@/pages/admin/TeacherProjection';
 import SchoolManagement from '@/pages/admin/SchoolManagement';
 import EnrollmentQuestions from '@/pages/admin/EnrollmentQuestions';
@@ -123,14 +123,7 @@ function AppRoutes() {
             </RequireAuth>
           }
         />
-        <Route
-          path="estudiantes"
-          element={
-            <RequireAuth allowedRoles={['Master', 'Administrador', 'Control de Estudios']}>
-              <EnrolledStudents />
-            </RequireAuth>
-          }
-        />
+
 
         {/* Teacher Module (Spanish) */}
         <Route path="profesor" element={<RequireAuth allowedRoles={['Profesor']}><TeacherPanel /></RequireAuth>}>
