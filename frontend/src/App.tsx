@@ -29,6 +29,7 @@ import AdminDashboard from '@/pages/admin/Dashboard';
 import StudentDetail from '@/pages/student/StudentDetail';
 import SettingsManagement from '@/pages/master/SettingsManagement';
 import type { JSX } from 'react';
+import NotFound from '@/pages/NotFound';
 
 // Control de Estudios Module Imports
 import ControlEstudiosLayout from '@/pages/control-estudios/ControlEstudiosLayout';
@@ -141,7 +142,7 @@ function AppRoutes() {
         />
       </Route>
 
-      <Route path="*" element={<h1>404 Not Found</h1>} />
+      <Route path="*" element={<NotFound />} />
     </Routes>
   );
 }
