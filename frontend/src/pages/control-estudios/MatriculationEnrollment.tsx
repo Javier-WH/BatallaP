@@ -31,6 +31,7 @@ import {
   CloseOutlined,
   TableOutlined,
   EditOutlined,
+  FileExcelOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useNavigate } from 'react-router-dom';
@@ -38,6 +39,7 @@ import api from '@/services/api';
 import type { EnrollmentQuestionResponse } from '@/services/enrollmentQuestions';
 import type { ColumnsType } from 'antd/es/table';
 import StudentSubjectsModal from '../admin/StudentSubjectsModal';
+import * as XLSX from 'xlsx';
 
 const { Text, Title } = Typography;
 const { Option } = Select;
@@ -855,6 +857,204 @@ const MatriculationEnrollment: React.FC = () => {
     return filteredData.slice(start, start + pageSize);
   }, [filteredData, currentPage, pageSize]);
 
+  const exportToExcel = useCallback(() => {
+    try {
+      // Mapeo de columnas con sus extractores y formateadores
+      const columnConfig: Record<string, { header: string; getValue: (record: MatriculationRow) => string }> = {
+        nationality: {
+          header: 'Nac.',
+          getValue: (r) => r.tempData.documentType === 'Venezolano' ? 'V' : 'E'
+        },
+        document: {
+          header: 'Cédula',
+          getValue: (r) => r.tempData.document || ''
+        },
+        firstName: {
+          header: 'Nombres',
+          getValue: (r) => r.tempData.firstName || ''
+        },
+        lastName: {
+          header: 'Apellidos',
+          getValue: (r) => r.tempData.lastName || ''
+        },
+        gender: {
+          header: 'Género',
+          getValue: (r) => r.tempData.gender === 'M' ? 'Masculino' : r.tempData.gender === 'F' ? 'Femenino' : ''
+        },
+        gradeId: {
+          header: 'Grado',
+          getValue: (r) => structure.find(s => s.gradeId === r.tempData.gradeId)?.grade?.name || 'N/A'
+        },
+        sectionId: {
+          header: 'Sección',
+          getValue: (r) => {
+            const gradeStruct = structure.find(s => s.gradeId === r.tempData.gradeId);
+            return gradeStruct?.sections?.find(s => s.id === r.tempData.sectionId)?.name || 'N/A';
+          }
+        },
+        subjectIds: {
+          header: 'Materias de Grupo',
+          getValue: (r) => {
+            const gradeStruct = structure.find(s => s.gradeId === r.tempData.gradeId);
+            const subjectId = r.tempData.subjectIds?.[0];
+            return gradeStruct?.subjects?.find(s => s.id === subjectId)?.name || '';
+          }
+        },
+        escolaridad: {
+          header: 'Escolaridad',
+          getValue: (r) => {
+            const map: Record<EscolaridadStatus, string> = {
+              regular: 'Regular',
+              repitiente: 'Repitiente',
+              materia_pendiente: 'Materia pendiente'
+            };
+            return map[r.tempData.escolaridad] || r.tempData.escolaridad;
+          }
+        },
+        phone1: {
+          header: 'Teléfono Principal',
+          getValue: (r) => r.tempData.phone1 || ''
+        },
+        whatsapp: {
+          header: 'WhatsApp',
+          getValue: (r) => r.tempData.whatsapp || ''
+        },
+        motherDocument: {
+          header: 'Cédula Madre',
+          getValue: (r) => r.tempData.mother?.document || ''
+        },
+        motherFirstName: {
+          header: 'Nombres Madre',
+          getValue: (r) => r.tempData.mother?.firstName || ''
+        },
+        motherLastName: {
+          header: 'Apellidos Madre',
+          getValue: (r) => r.tempData.mother?.lastName || ''
+        },
+        motherPhone: {
+          header: 'Teléfono Madre',
+          getValue: (r) => r.tempData.mother?.phone || ''
+        },
+        fatherDocument: {
+          header: 'Cédula Padre',
+          getValue: (r) => r.tempData.father?.document || ''
+        },
+        fatherFirstName: {
+          header: 'Nombres Padre',
+          getValue: (r) => r.tempData.father?.firstName || ''
+        },
+        fatherLastName: {
+          header: 'Apellidos Padre',
+          getValue: (r) => r.tempData.father?.lastName || ''
+        },
+        fatherPhone: {
+          header: 'Teléfono Padre',
+          getValue: (r) => r.tempData.father?.phone || ''
+        },
+        representativeType: {
+          header: 'Tipo Representante',
+          getValue: (r) => {
+            const map: Record<RepresentativeType, string> = {
+              mother: 'Madre',
+              father: 'Padre',
+              other: 'Otro'
+            };
+            return map[r.tempData.representativeType] || '';
+          }
+        },
+        representativeDocument: {
+          header: 'Cédula Representante',
+          getValue: (r) => {
+            const { profile } = getRepresentativeInfo(r);
+            return profile?.document || '';
+          }
+        },
+        representativeFirstName: {
+          header: 'Nombres Representante',
+          getValue: (r) => {
+            const { profile } = getRepresentativeInfo(r);
+            return profile?.firstName || '';
+          }
+        },
+        representativeLastName: {
+          header: 'Apellidos Representante',
+          getValue: (r) => {
+            const { profile } = getRepresentativeInfo(r);
+            return profile?.lastName || '';
+          }
+        },
+        representativePhone: {
+          header: 'Teléfono Representante',
+          getValue: (r) => {
+            const { profile } = getRepresentativeInfo(r);
+            return profile?.phone || '';
+          }
+        }
+      };
+
+      // Agregar columnas de preguntas personalizadas
+      questions.forEach(q => {
+        const key = getQuestionColumnKey(q.id);
+        columnConfig[key] = {
+          header: q.prompt,
+          getValue: (r) => {
+            const value = r.tempData.enrollmentAnswers?.[q.id];
+            if (Array.isArray(value)) return value.join(', ');
+            return value?.toString() || '';
+          }
+        };
+      });
+
+      // Filtrar solo las columnas visibles
+      const visibleColumns = visibleColumnKeys
+        .map(key => ({ key, config: columnConfig[key] }))
+        .filter(col => col.config);
+
+      // Mapear datos filtrados a formato Excel
+      const excelData = filteredData.map(record => {
+        const row: Record<string, string> = {};
+        visibleColumns.forEach(({ config }) => {
+          row[config.header] = config.getValue(record);
+        });
+        return row;
+      });
+
+      // Crear worksheet y workbook
+      const worksheet = XLSX.utils.json_to_sheet(excelData);
+      
+      // Auto-ajustar anchos de columna
+      const maxWidths: Record<string, number> = {};
+      visibleColumns.forEach(({ config }) => {
+        maxWidths[config.header] = config.header.length;
+      });
+      excelData.forEach(row => {
+        Object.entries(row).forEach(([header, value]) => {
+          const valueLength = String(value).length;
+          if (valueLength > maxWidths[header]) {
+            maxWidths[header] = valueLength;
+          }
+        });
+      });
+      
+      worksheet['!cols'] = visibleColumns.map(({ config }) => ({
+        wch: Math.min(maxWidths[config.header] + 2, 50)
+      }));
+
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Matrículas');
+      
+      // Generar nombre de archivo con fecha
+      const timestamp = dayjs().format('YYYY-MM-DD_HH-mm-ss');
+      const fileName = `matriculas_${viewStatus}_${timestamp}.xlsx`;
+      
+      XLSX.writeFile(workbook, fileName);
+      message.success(`Exportados ${filteredData.length} registros a Excel`);
+    } catch (error) {
+      console.error('Error exportando a Excel:', error);
+      message.error('Error al exportar a Excel');
+    }
+  }, [filteredData, visibleColumnKeys, structure, questions, viewStatus]);
+
   const columnMenuContent = (
     <div style={{ maxHeight: '400px', overflowY: 'auto', padding: '8px' }}>
       <div className="mb-2 pb-2 border-b border-slate-100 flex justify-between items-center">
@@ -1650,6 +1850,18 @@ const MatriculationEnrollment: React.FC = () => {
                       Columnas
                     </Button>
                   </Popover>
+                </Col>
+                <Col>
+                  <Tooltip title={`Exportar ${filteredData.length} registros a Excel con filtros aplicados`}>
+                    <Button 
+                      icon={<FileExcelOutlined />} 
+                      onClick={exportToExcel} 
+                      size="small"
+                      className="border-green-400 text-green-600 hover:bg-green-50"
+                    >
+                      Excel ({filteredData.length})
+                    </Button>
+                  </Tooltip>
                 </Col>
                 <Col>
                   <Button icon={<ReloadOutlined />} onClick={fetchData} loading={loading} size="small">Actualizar</Button>
