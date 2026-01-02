@@ -443,15 +443,7 @@ const MatriculationEnrollment: React.FC = () => {
   }, [fetchData]);
 
   const saveStudentChanges = useCallback(async () => {
-    console.log('[saveStudentChanges] Iniciando guardado...', {
-      editableRowId,
-      pendingChangesKeys: Object.keys(pendingChanges),
-      pendingChangesLength: Object.keys(pendingChanges).length,
-      pendingChanges
-    });
-    
     if (editableRowId === null || Object.keys(pendingChanges).length === 0) {
-      console.log('[saveStudentChanges] Abortando: editableRowId es null o pendingChanges está vacío');
       return;
     }
 
@@ -464,22 +456,14 @@ const MatriculationEnrollment: React.FC = () => {
         ? `/inscriptions/${row.inscriptionId || editableRowId}`
         : `/matriculations/${editableRowId}`;
 
-      console.log('[saveStudentChanges] Guardando cambios:', {
-        endpoint,
-        editableRowId,
-        viewStatus,
-        pendingChanges
-      });
-
       message.loading({ content: 'Guardando cambios...', key: 'save-student' });
-      const response = await api.patch(endpoint, pendingChanges);
-      console.log('[saveStudentChanges] Respuesta del servidor:', response.data);
+      await api.patch(endpoint, pendingChanges);
       message.success({ content: 'Cambios guardados correctamente', key: 'save-student', duration: 2 });
       
       // Recargar datos para reflejar cambios desde la BD
       await fetchData();
     } catch (error) {
-      console.error('[saveStudentChanges] Error saving student changes:', error);
+      console.error('Error saving student changes:', error);
       message.error({ content: 'Error al guardar cambios', key: 'save-student' });
     }
   }, [editableRowId, pendingChanges, matriculations, viewStatus, fetchData]);
@@ -503,7 +487,6 @@ const MatriculationEnrollment: React.FC = () => {
   // Listener para guardar cuando un input cambia y hace blur
   useEffect(() => {
     const handleCellInputChanged = async () => {
-      console.log('[handleCellInputChanged] Input cambió, guardando...');
       if (editableRowId !== null) {
         await saveStudentChanges();
         setEditableRowId(null);
@@ -516,8 +499,6 @@ const MatriculationEnrollment: React.FC = () => {
   }, [editableRowId, saveStudentChanges]);
 
   const handleUpdateRow = useCallback(<K extends keyof TempData>(id: number, field: K, value: TempData[K]) => {
-    console.log('[handleUpdateRow] Campo actualizado:', { id, field, value });
-    
     // Actualizar vista local inmediatamente
     setMatriculations(prev => prev.map(row => (
       row.id === id ? { ...row, tempData: { ...row.tempData, [field]: value } } : row
@@ -534,7 +515,6 @@ const MatriculationEnrollment: React.FC = () => {
         newChanges[field as string] = value;
       }
       
-      console.log('[handleUpdateRow] pendingChanges actualizado:', newChanges);
       return newChanges;
     });
   }, []);
@@ -1764,7 +1744,7 @@ const MatriculationEnrollment: React.FC = () => {
         pagination={false}
         scroll={{ x: 'max-content', y: scrollY }}
         rowSelection={{
-          type: viewStatus === 'completed' ? 'radio' : 'checkbox',
+          type: 'checkbox',
           selectedRowKeys,
           onChange: setSelectedRowKeys
         }}

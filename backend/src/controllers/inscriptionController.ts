@@ -598,15 +598,6 @@ export const getInscriptions = async (req: Request, res: Response) => {
       ],
       order: [['createdAt', 'DESC']]
     });
-    if (inscriptions.length > 0) {
-      const sample = inscriptions[0];
-      console.log(
-        '[getInscriptions] sample keys',
-        Object.keys(sample.dataValues),
-        'value',
-        sample.getDataValue('escolaridad')
-      );
-    }
     res.json(inscriptions);
   } catch (error) {
     console.error('Error en getInscriptions:', error);
