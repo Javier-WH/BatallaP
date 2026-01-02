@@ -99,7 +99,6 @@ function AppRoutes() {
           <Route path="register-staff" element={<RegisterStaff />} />
           <Route path="inscribir-estudiante" element={<EnrollStudent />} />
           <Route path="projection" element={<TeacherProjection />} />
-          <Route path="academic" element={<AcademicManagement />} />
           <Route path="planteles" element={<SchoolManagement />} />
           <Route path="enrollment-questions" element={<EnrollmentQuestions />} />
           <Route path="search" element={<SearchUsers />} />
@@ -111,6 +110,7 @@ function AppRoutes() {
           <Route index element={<ControlEstudiosDashboard />} />
           <Route path="matricular-estudiante" element={<MatriculationEnrollment />} />
           <Route path="configuracion" element={<AcademicSettings />} />
+          <Route path="academic" element={<AcademicManagement />} />
           <Route path="consejos-curso" element={<CourseCouncil />} />
         </Route>
 

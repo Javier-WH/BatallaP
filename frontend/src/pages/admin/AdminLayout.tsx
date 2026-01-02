@@ -5,7 +5,6 @@ import {
   DashboardOutlined,
   UserAddOutlined,
   TeamOutlined,
-  BankOutlined,
   BookOutlined,
   QuestionCircleOutlined,
   ProjectOutlined
@@ -47,7 +46,6 @@ const AdminLayout: React.FC = () => {
     { path: '/admin/inscribir-estudiante', icon: <UserAddOutlined />, label: 'Estudiantes', tooltip: 'Solicitudes de Ingreso' },
     { path: '/admin/register-staff', icon: <TeamOutlined />, label: 'Personal', tooltip: 'Profesores y Representantes' },
     { path: '/admin/projection', icon: <ProjectOutlined />, label: 'Proyección', tooltip: 'Asignación Académica' },
-    { path: '/admin/academic', icon: <BankOutlined />, label: 'Académico', tooltip: 'Gestión de Estructura' },
     { path: '/admin/planteles', icon: <BookOutlined />, label: 'Planteles', tooltip: 'Planteles Escolares' },
     { path: '/admin/enrollment-questions', icon: <QuestionCircleOutlined />, label: 'Preguntas', tooltip: 'Encuesta de Inscripción' },
   ];

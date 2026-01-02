@@ -1,7 +1,7 @@
 import React from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { Button, Tooltip } from 'antd';
-import { DashboardOutlined, SettingOutlined, UserAddOutlined, CheckCircleFilled } from '@ant-design/icons';
+import { DashboardOutlined, SettingOutlined, UserAddOutlined, CheckCircleFilled, BookOutlined } from '@ant-design/icons';
 
 const NavButton: React.FC<{
   icon: React.ReactNode;
@@ -38,6 +38,7 @@ const ControlEstudiosLayout: React.FC = () => {
   const tools = [
     { path: '/control-estudios', icon: <DashboardOutlined />, label: 'Panel', tooltip: 'Panel Principal', exact: true },
     { path: '/control-estudios/matricular-estudiante', icon: <UserAddOutlined />, label: 'Matricula', tooltip: 'Matriculación de Estudiantes' },
+    { path: '/control-estudios/academic', icon: <BookOutlined />, label: 'Académico', tooltip: 'Gestión Académica' },
     { path: '/control-estudios/configuracion', icon: <SettingOutlined />, label: 'Configuración', tooltip: 'Ajustes Académicos' },
     { path: '/control-estudios/consejos-curso', icon: <CheckCircleFilled />, label: 'Consejos', tooltip: 'Consejos de Curso y Evaluación' },
   ];
