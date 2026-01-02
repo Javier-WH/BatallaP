@@ -703,12 +703,175 @@ export const updateInscription = async (req: Request, res: Response) => {
   const t = await sequelize.transaction();
   try {
     const { id } = req.params;
-    const { sectionId, gradeId } = req.body;
+    const {
+      firstName,
+      lastName,
+      documentType,
+      document,
+      gender,
+      birthdate,
+      birthState,
+      birthMunicipality,
+      birthParish,
+      residenceState,
+      residenceMunicipality,
+      residenceParish,
+      address,
+      phone1,
+      phone2,
+      email,
+      whatsapp,
+      previousSchoolIds,
+      gradeId,
+      sectionId,
+      mother,
+      father,
+      representative,
+      representativeType,
+      enrollmentAnswers,
+      escolaridad,
+    } = req.body;
 
-    const inscription = await Inscription.findByPk(id, { transaction: t });
+    console.log('[updateInscription] ID:', id);
+    console.log('[updateInscription] Body recibido:', JSON.stringify(req.body, null, 2));
+
+    const inscription = await Inscription.findByPk(id, {
+      include: [{ model: Person, as: 'student' }],
+      transaction: t,
+      lock: t.LOCK.UPDATE
+    });
+    
     if (!inscription) {
       await t.rollback();
       return res.status(404).json({ error: 'Inscripción no encontrada' });
+    }
+
+    const person = inscription.student;
+    if (!person) {
+      await t.rollback();
+      return res.status(400).json({ error: 'No se encontró el estudiante asociado' });
+    }
+
+    console.log('[updateInscription] Person antes de actualizar:', {
+      id: person.id,
+      firstName: person.firstName,
+      lastName: person.lastName
+    });
+
+    // Update Person Data if provided
+    if (firstName) person.firstName = firstName;
+    if (lastName) person.lastName = lastName;
+    if (documentType) person.documentType = documentType;
+    if (document !== undefined) person.document = document || null;
+    if (gender) person.gender = gender;
+    if (birthdate) person.birthdate = birthdate;
+    
+    console.log('[updateInscription] Person después de cambios (antes de save):', {
+      id: person.id,
+      firstName: person.firstName,
+      lastName: person.lastName
+    });
+    
+    await person.save({ transaction: t });
+    
+    console.log('[updateInscription] Person guardado en BD');
+
+    // Contact
+    if (phone1 || phone2 || email || address || whatsapp) {
+      const contactPayload: any = { personId: person.id };
+      if (phone1 !== undefined) contactPayload.phone1 = phone1;
+      if (phone2 !== undefined) contactPayload.phone2 = phone2;
+      if (email !== undefined) contactPayload.email = email;
+      if (address !== undefined) contactPayload.address = address;
+      if (whatsapp !== undefined) contactPayload.whatsapp = whatsapp;
+
+      const existingContact = await Contact.findOne({ where: { personId: person.id }, transaction: t, lock: t.LOCK.UPDATE });
+      if (existingContact) {
+        await existingContact.update(contactPayload, { transaction: t });
+      } else {
+        await Contact.create(contactPayload, { transaction: t });
+      }
+    }
+
+    // Residence
+    if (birthState || birthMunicipality || birthParish || residenceState || residenceMunicipality || residenceParish) {
+      const residencePayload: any = { personId: person.id };
+      if (birthState) residencePayload.birthState = birthState;
+      if (birthMunicipality) residencePayload.birthMunicipality = birthMunicipality;
+      if (birthParish) residencePayload.birthParish = birthParish;
+      if (residenceState) residencePayload.residenceState = residenceState;
+      if (residenceMunicipality) residencePayload.residenceMunicipality = residenceMunicipality;
+      if (residenceParish) residencePayload.residenceParish = residenceParish;
+
+      const existingResidence = await PersonResidence.findOne({ where: { personId: person.id }, transaction: t, lock: t.LOCK.UPDATE });
+      if (existingResidence) {
+        await existingResidence.update(residencePayload, { transaction: t });
+      } else {
+        await PersonResidence.create(residencePayload, { transaction: t });
+      }
+    }
+
+    // Previous Schools
+    if (Array.isArray(previousSchoolIds)) {
+      await StudentPreviousSchool.destroy({ where: { personId: person.id }, transaction: t });
+      const schoolRecords = [];
+      for (const item of previousSchoolIds) {
+        const plantel = await Plantel.findOne({
+          where: {
+            [Op.or]: [{ code: item }, { name: item }]
+          },
+          transaction: t
+        });
+        schoolRecords.push({
+          personId: person.id,
+          plantelCode: plantel?.code || (typeof item === 'string' ? item : null),
+          plantelName: plantel?.name || (typeof item === 'string' ? item : 'Desconocido'),
+          state: plantel?.state || null,
+          dependency: plantel?.dependency || null
+        });
+      }
+      if (schoolRecords.length > 0) {
+        await StudentPreviousSchool.bulkCreate(schoolRecords, { transaction: t });
+      }
+    }
+
+    // Guardians
+    const assignments: GuardianAssignment[] = [];
+    
+    if (mother && hasGuardianData(mother)) {
+      assignments.push({
+        payload: mapToGuardianProfilePayload(mother as CompleteGuardianInput),
+        relationship: 'mother',
+        isRepresentative: representativeType === 'mother'
+      });
+    }
+    if (father && hasGuardianData(father)) {
+      assignments.push({
+        payload: mapToGuardianProfilePayload(father as CompleteGuardianInput),
+        relationship: 'father',
+        isRepresentative: representativeType === 'father'
+      });
+    }
+    if (representative && hasGuardianData(representative)) {
+      assignments.push({
+        payload: mapToGuardianProfilePayload(representative as CompleteGuardianInput),
+        relationship: 'representative',
+        isRepresentative: true
+      });
+    }
+
+    if (assignments.length > 0) {
+       await assignGuardians(person.id, assignments, t);
+    }
+    
+    // Enrollment Answers
+    if (Array.isArray(enrollmentAnswers)) {
+      await saveEnrollmentAnswers(person.id, enrollmentAnswers, { transaction: t });
+    }
+
+    // Escolaridad
+    if (escolaridad !== undefined) {
+      inscription.escolaridad = normalizeEscolaridad(escolaridad);
     }
 
     const oldGradeId = inscription.gradeId;
@@ -762,7 +925,7 @@ export const updateInscription = async (req: Request, res: Response) => {
     }
 
     await t.commit();
-    res.json(inscription);
+    res.json({ message: 'Datos actualizados correctamente', inscription });
   } catch (error: any) {
     if (t) await t.rollback();
     console.error('Error updating inscription:', error);
@@ -1045,6 +1208,9 @@ export const updateMatriculation = async (req: Request, res: Response) => {
       escolaridad,
     } = req.body;
 
+    console.log('[updateMatriculation] ID:', id);
+    console.log('[updateMatriculation] Body recibido:', JSON.stringify(req.body, null, 2));
+
     const matriculation = (await Matriculation.findByPk(id, {
       include: [
         { model: Person, as: 'student' },
@@ -1065,6 +1231,12 @@ export const updateMatriculation = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'No se encontró el estudiante asociado' });
     }
 
+    console.log('[updateMatriculation] Person antes de actualizar:', {
+      id: person.id,
+      firstName: person.firstName,
+      lastName: person.lastName
+    });
+
     // Update Person Data if provided
     if (firstName) person.firstName = firstName;
     if (lastName) person.lastName = lastName;
@@ -1073,7 +1245,15 @@ export const updateMatriculation = async (req: Request, res: Response) => {
     if (gender) person.gender = gender;
     if (birthdate) person.birthdate = birthdate;
     
+    console.log('[updateMatriculation] Person después de cambios (antes de save):', {
+      id: person.id,
+      firstName: person.firstName,
+      lastName: person.lastName
+    });
+    
     await person.save({ transaction: t });
+    
+    console.log('[updateMatriculation] Person guardado en BD');
 
     // Contact
     if (phone1 || phone2 || email || address || whatsapp) {

@@ -33,6 +33,7 @@ class Inscription extends Model<InscriptionAttributes, InscriptionCreationAttrib
   public isRepeater!: boolean;
 
   public readonly subjects?: import('./Subject').default[];
+  public readonly student?: Person;
 
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;

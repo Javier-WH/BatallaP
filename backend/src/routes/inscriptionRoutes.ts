@@ -19,6 +19,7 @@ router.post('/', createInscription);
 router.post('/register', registerAndEnroll); // New: Register Person + Enroll (no User)
 router.post('/quick-register', quickRegister); // Minimal data enrollment (Admin)
 router.put('/:id', updateInscription);
+router.patch('/:id', updateInscription); // Same handler as PUT for partial updates
 router.delete('/:id', deleteInscription);
 
 // Sub-resource for subjects (manual management)

@@ -238,12 +238,35 @@ const CellInput = React.memo(({ value, onChange, onBlur, onKeyDown, ...props }: 
     setDraftValue(e.target.value);
   };
 
-  const handleBlur = (e: React.FocusEvent<HTMLInputElement>) => {
+  const commitChange = () => {
     if (draftValue !== null && draftValue !== normalizedValue) {
       onChange(draftValue);
     }
     setDraftValue(null);
+  };
+
+  const handleBlur = (e: React.FocusEvent<HTMLInputElement>) => {
+    const hadChanges = draftValue !== null && draftValue !== normalizedValue;
+    commitChange();
+    
+    // Si hubo cambios y se hizo blur, disparar guardado después de un delay
+    if (hadChanges) {
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('cell-input-changed'));
+      }, 100);
+    }
+    
     if (onBlur) onBlur(e);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      e.stopPropagation();
+      commitChange();
+      e.currentTarget.blur();
+    }
+    if (onKeyDown) onKeyDown(e);
   };
 
   return (
@@ -252,7 +275,7 @@ const CellInput = React.memo(({ value, onChange, onBlur, onKeyDown, ...props }: 
       value={inputValue}
       onChange={handleChange}
       onBlur={handleBlur}
-      onKeyDown={onKeyDown}
+      onKeyDown={handleKeyDown}
     />
   );
 });
@@ -265,7 +288,8 @@ const MatriculationEnrollment: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [structure, setStructure] = useState<EnrollStructureEntry[]>([]);
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
-  const [editableRowIds, setEditableRowIds] = useState<number[]>([]);
+  const [editableRowId, setEditableRowId] = useState<number | null>(null);
+  const [pendingChanges, setPendingChanges] = useState<Record<string, unknown>>({});
   const [subjectModalVisible, setSubjectModalVisible] = useState(false);
   const [selectedStudentForSubjects, setSelectedStudentForSubjects] = useState<{
     inscriptionId: number;
@@ -418,36 +442,104 @@ const MatriculationEnrollment: React.FC = () => {
     fetchData();
   }, [fetchData]);
 
-  const handleGlobalEscape = (event: KeyboardEvent) => {
-    if (event.key === 'Escape') {
-      setEditableRowIds(prev => (prev.length ? [] : prev));
+  const saveStudentChanges = useCallback(async () => {
+    console.log('[saveStudentChanges] Iniciando guardado...', {
+      editableRowId,
+      pendingChangesKeys: Object.keys(pendingChanges),
+      pendingChangesLength: Object.keys(pendingChanges).length,
+      pendingChanges
+    });
+    
+    if (editableRowId === null || Object.keys(pendingChanges).length === 0) {
+      console.log('[saveStudentChanges] Abortando: editableRowId es null o pendingChanges está vacío');
+      return;
     }
-  };
+
+    try {
+      const row = matriculations.find(r => r.id === editableRowId);
+      if (!row) return;
+
+      // Determinar endpoint según viewStatus
+      const endpoint = viewStatus === 'completed' 
+        ? `/inscriptions/${row.inscriptionId || editableRowId}`
+        : `/matriculations/${editableRowId}`;
+
+      console.log('[saveStudentChanges] Guardando cambios:', {
+        endpoint,
+        editableRowId,
+        viewStatus,
+        pendingChanges
+      });
+
+      message.loading({ content: 'Guardando cambios...', key: 'save-student' });
+      const response = await api.patch(endpoint, pendingChanges);
+      console.log('[saveStudentChanges] Respuesta del servidor:', response.data);
+      message.success({ content: 'Cambios guardados correctamente', key: 'save-student', duration: 2 });
+      
+      // Recargar datos para reflejar cambios desde la BD
+      await fetchData();
+    } catch (error) {
+      console.error('[saveStudentChanges] Error saving student changes:', error);
+      message.error({ content: 'Error al guardar cambios', key: 'save-student' });
+    }
+  }, [editableRowId, pendingChanges, matriculations, viewStatus, fetchData]);
+
+  const handleGlobalEscape = useCallback(async (event: KeyboardEvent) => {
+    // Solo manejar Escape, no Enter (Enter se maneja en blur del input)
+    if (event.key === 'Escape') {
+      if (editableRowId !== null) {
+        await saveStudentChanges();
+        setEditableRowId(null);
+        setPendingChanges({});
+      }
+    }
+  }, [editableRowId, saveStudentChanges]);
 
   useEffect(() => {
     window.addEventListener('keydown', handleGlobalEscape);
     return () => window.removeEventListener('keydown', handleGlobalEscape);
-  }, []);
+  }, [handleGlobalEscape]);
 
-  const handleUpdateRow = useCallback(async <K extends keyof TempData>(id: number, field: K, value: TempData[K]) => {
+  // Listener para guardar cuando un input cambia y hace blur
+  useEffect(() => {
+    const handleCellInputChanged = async () => {
+      console.log('[handleCellInputChanged] Input cambió, guardando...');
+      if (editableRowId !== null) {
+        await saveStudentChanges();
+        setEditableRowId(null);
+        setPendingChanges({});
+      }
+    };
+
+    window.addEventListener('cell-input-changed', handleCellInputChanged);
+    return () => window.removeEventListener('cell-input-changed', handleCellInputChanged);
+  }, [editableRowId, saveStudentChanges]);
+
+  const handleUpdateRow = useCallback(<K extends keyof TempData>(id: number, field: K, value: TempData[K]) => {
+    console.log('[handleUpdateRow] Campo actualizado:', { id, field, value });
+    
+    // Actualizar vista local inmediatamente
     setMatriculations(prev => prev.map(row => (
       row.id === id ? { ...row, tempData: { ...row.tempData, [field]: value } } : row
     )));
 
-    try {
-      const payload: Record<string, unknown> = { [field as string]: value };
+    // Acumular cambios pendientes con nombres de campos de BD
+    setPendingChanges(prev => {
+      const newChanges = { ...prev };
+      
+      // Convertir nombres de campos del frontend a nombres de BD
       if (field === 'birthdate' && value) {
-        payload[field as string] = (value as dayjs.Dayjs).format('YYYY-MM-DD');
+        newChanges[field as string] = (value as dayjs.Dayjs).format('YYYY-MM-DD');
+      } else {
+        newChanges[field as string] = value;
       }
-      await api.patch(`/matriculations/${id}`, payload);
-      message.success({ content: 'Guardado', key: `save-${id}`, duration: 1 });
-    } catch (error) {
-      console.error(error);
-      message.error({ content: 'Error al guardar', key: `save-${id}` });
-    }
+      
+      console.log('[handleUpdateRow] pendingChanges actualizado:', newChanges);
+      return newChanges;
+    });
   }, []);
 
-  const handleUpdateGuardianField = useCallback(async <
+  const handleUpdateGuardianField = useCallback(<
     K extends keyof GuardianProfile
   >(
     rowId: number,
@@ -464,16 +556,14 @@ const MatriculationEnrollment: React.FC = () => {
       return { ...row, tempData: { ...row.tempData, [parentKey]: guardian } };
     }));
 
-    try {
-      await api.patch(`/matriculations/${rowId}`, { [parentKey]: updatedProfile });
-      message.success({ content: 'Guardado', key: `save-${rowId}`, duration: 1 });
-    } catch (e) {
-      console.error(e);
-      message.error({ content: 'Error al guardar', key: `save-${rowId}` });
-    }
+    // Acumular cambios de guardián
+    setPendingChanges(prev => ({
+      ...prev,
+      [parentKey]: updatedProfile
+    }));
   }, []);
 
-  const handleUpdateAnswer = useCallback(async (
+  const handleUpdateAnswer = useCallback((
     rowId: number,
     questionId: number,
     value: EnrollmentAnswersMap[number]
@@ -487,17 +577,16 @@ const MatriculationEnrollment: React.FC = () => {
       return { ...row, tempData: { ...row.tempData, enrollmentAnswers: answers } };
     }));
 
-    try {
-      const formattedAnswers = Object.entries(updatedAnswers).map(([qId, ans]) => ({
-        questionId: Number(qId),
-        answer: ans
-      }));
-      await api.patch(`/matriculations/${rowId}`, { enrollmentAnswers: formattedAnswers });
-      message.success({ content: 'Guardado', key: `save-${rowId}`, duration: 1 });
-    } catch (e) {
-      console.error(e);
-      message.error({ content: 'Error al guardar', key: `save-${rowId}` });
-    }
+    // Acumular cambios de respuestas
+    const formattedAnswers = Object.entries(updatedAnswers).map(([qId, ans]) => ({
+      questionId: Number(qId),
+      answer: ans
+    }));
+    
+    setPendingChanges(prev => ({
+      ...prev,
+      enrollmentAnswers: formattedAnswers
+    }));
   }, []);
 
   const handleBulkEnroll = async () => {
@@ -651,12 +740,20 @@ const MatriculationEnrollment: React.FC = () => {
 
   const closeContextMenu = useCallback(() => setContextMenuState(prev => ({ ...prev, visible: false })), []);
 
-  const handleContextEdit = useCallback(() => {
+  const handleContextEdit = useCallback(async () => {
     if (contextMenuState.rowId !== null) {
-      setEditableRowIds(prev => [...new Set([...prev, contextMenuState.rowId!])]);
+      // Si hay una fila diferente en edición, guardar cambios primero
+      if (editableRowId !== null && editableRowId !== contextMenuState.rowId) {
+        await saveStudentChanges();
+      }
+      // Establecer nueva fila editable (solo resetear pendingChanges si es diferente)
+      if (editableRowId !== contextMenuState.rowId) {
+        setEditableRowId(contextMenuState.rowId);
+        setPendingChanges({});
+      }
     }
     closeContextMenu();
-  }, [contextMenuState.rowId, closeContextMenu]);
+  }, [contextMenuState.rowId, closeContextMenu, editableRowId, saveStudentChanges]);
 
   const handleContextMenu = (e: React.MouseEvent, rowId: number) => {
     e.preventDefault();
@@ -736,8 +833,14 @@ const MatriculationEnrollment: React.FC = () => {
   );
 
   const isColumnVisible = useCallback((key: string) => visibleColumnKeys.includes(key), [visibleColumnKeys]);
-  const canEditRow = useCallback((id: number) => editableRowIds.includes(id), [editableRowIds]);
-  const lockRow = useCallback((id: number) => setEditableRowIds(prev => prev.filter(rid => rid !== id)), []);
+  const canEditRow = useCallback((id: number) => editableRowId === id, [editableRowId]);
+  const lockRow = useCallback(async (id: number) => {
+    if (editableRowId === id) {
+      await saveStudentChanges();
+      setEditableRowId(null);
+      setPendingChanges({});
+    }
+  }, [editableRowId, saveStudentChanges]);
 
   const toggleGroupPin = useCallback((group: string) => {
     setPinnedGroups(prev =>
