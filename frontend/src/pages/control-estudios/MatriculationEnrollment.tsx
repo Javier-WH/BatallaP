@@ -6,6 +6,7 @@ import {
   Checkbox,
   Col,
   Input,
+  Menu,
   message,
   Popover,
   Radio,
@@ -18,6 +19,7 @@ import {
   Typography,
   Pagination,
 } from 'antd';
+import type { MenuProps } from 'antd';
 import {
   ReloadOutlined,
   SearchOutlined,
@@ -28,6 +30,7 @@ import {
   QuestionCircleOutlined,
   CloseOutlined,
   TableOutlined,
+  EditOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useNavigate } from 'react-router-dom';
@@ -280,6 +283,25 @@ const CellInput = React.memo(({ value, onChange, onBlur, onKeyDown, ...props }: 
   );
 });
 
+const contextMenuItems: MenuProps['items'] = [
+  {
+    type: 'group',
+    label: <span className="text-[11px] text-slate-400 uppercase tracking-wide">Acciones de fila</span>,
+    children: [
+      {
+        key: 'edit',
+        icon: <EditOutlined />,
+        label: 'Editar fila'
+      },
+      {
+        key: 'cancel',
+        icon: <CloseOutlined />,
+        label: 'Cancelar'
+      }
+    ]
+  }
+];
+
 const MatriculationEnrollment: React.FC = () => {
   const navigate = useNavigate();
   const [activePeriod, setActivePeriod] = useState<SchoolPeriod | null>(null);
@@ -303,6 +325,7 @@ const MatriculationEnrollment: React.FC = () => {
     y: 0,
     rowId: null
   });
+  const contextMenuRef = useRef<HTMLDivElement | null>(null);
   const [searchValue, setSearchValue] = useState('');
   const [questions, setQuestions] = useState<EnrollmentQuestionResponse[]>([]);
   const [visibleColumnKeys, setVisibleColumnKeys] = useState<string[]>(() => BASE_COLUMN_OPTIONS.map(option => option.key));
@@ -740,10 +763,44 @@ const MatriculationEnrollment: React.FC = () => {
     closeContextMenu();
   }, [contextMenuState.rowId, closeContextMenu, editableRowId, saveStudentChanges]);
 
+  const handleContextMenuClick = useCallback<NonNullable<MenuProps['onClick']>>(async ({ key }) => {
+    if (key === 'edit') {
+      await handleContextEdit();
+    }
+    if (key === 'cancel') {
+      closeContextMenu();
+    }
+  }, [handleContextEdit, closeContextMenu]);
+
   const handleContextMenu = (e: React.MouseEvent, rowId: number) => {
     e.preventDefault();
     setContextMenuState({ visible: true, x: e.clientX, y: e.clientY, rowId });
   };
+
+  // Cerrar menú contextual con Escape o click fuera
+  useEffect(() => {
+    if (!contextMenuState.visible) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        closeContextMenu();
+      }
+    };
+
+    const handleClickOutside = (event: MouseEvent) => {
+      if (contextMenuRef.current && !contextMenuRef.current.contains(event.target as Node)) {
+        closeContextMenu();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('mousedown', handleClickOutside);
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [contextMenuState.visible, closeContextMenu]);
 
   const filteredData = useMemo(() => {
     return matriculations.filter(item => {
@@ -1819,34 +1876,29 @@ const MatriculationEnrollment: React.FC = () => {
 
       {contextMenuState.visible && createPortal(
         <div
-          className="context-menu"
+          ref={contextMenuRef}
+          className="context-menu ant-dropdown"
           style={{
             position: 'fixed',
             top: contextMenuState.y,
             left: contextMenuState.x,
             transform: 'translate(-50%, 4px)',
             background: '#fff',
-            border: '1px solid #e2e8f0',
             borderRadius: 8,
-            boxShadow: '0 12px 30px rgba(15, 23, 42, 0.2)',
+            boxShadow: '0 12px 30px rgba(15, 23, 42, 0.18)',
             zIndex: 2000,
-            minWidth: 180,
-            overflow: 'hidden'
+            minWidth: 200,
+            overflow: 'hidden',
+            border: '1px solid #e2e8f0'
           }}
           onContextMenu={e => e.preventDefault()}
         >
-          <div className="px-3 py-2 text-xs text-slate-400 border-b border-slate-100">
-            Acciones de fila
-          </div>
-          <Button type="text" block onClick={handleContextEdit} className="!text-left !py-2">
-            Editar fila
-          </Button>
-          <Button type="text" block onClick={closeContextMenu} className="!text-left !py-2 text-slate-500">
-            Cancelar
-          </Button>
-          <div className="px-3 py-2 text-[11px] text-slate-400 border-t border-slate-100">
-            Tip: clic derecho sobre la fila para mostrar este menú.
-          </div>
+          <Menu
+            selectable={false}
+            items={contextMenuItems}
+            onClick={handleContextMenuClick}
+            className="context-menu__menu"
+          />
         </div>,
         document.body
       )}
