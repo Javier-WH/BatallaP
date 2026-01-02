@@ -442,6 +442,11 @@ const MatriculationEnrollment: React.FC = () => {
     fetchData();
   }, [fetchData]);
 
+  // Deseleccionar estudiantes al cambiar entre matriculados y no matriculados
+  useEffect(() => {
+    setSelectedRowKeys([]);
+  }, [viewStatus]);
+
   const saveStudentChanges = useCallback(async () => {
     if (editableRowId === null || Object.keys(pendingChanges).length === 0) {
       return;
@@ -1421,11 +1426,6 @@ const MatriculationEnrollment: React.FC = () => {
               <div className="flex flex-col items-start gap-1">
                 <Space>
                   <Title level={5} style={{ margin: 0 }}>Panel de Matriculación Masiva</Title>
-                  {activePeriod && (
-                    <Tag color="blue" style={{ fontSize: 11 }}>
-                      P. Activo: <strong>{activePeriod.name}</strong>
-                    </Tag>
-                  )}
                 </Space>
                 <div className="flex items-center gap-2">
                   <Radio.Group 
@@ -1594,18 +1594,36 @@ const MatriculationEnrollment: React.FC = () => {
 
           {viewStatus === 'pending' ? (
             <div className="flex items-center gap-6">
-              {/* Section 1: Counter */}
+              {/* Section 1: Counter o Info del Estudiante */}
               <div className="flex items-center gap-2 pr-4 border-r border-slate-300/50 min-w-max">
-                <div
-                  className={`flex items-center justify-center w-8 h-8 rounded-full text-sm font-bold shadow-sm transition-colors ${selectedRowKeys.length > 0 ? 'bg-blue-500 text-white' : 'bg-slate-200 text-slate-400'
-                    }`}
-                >
-                  {selectedRowKeys.length}
-                </div>
-                <div className={`flex flex-col leading-tight font-bold text-[10px] uppercase tracking-wide ${selectedRowKeys.length > 0 ? 'text-blue-900' : 'text-slate-400'}`}>
-                  <span>Estudiantes</span>
-                  <span>Seleccionados</span>
-                </div>
+                {selectedRowKeys.length === 1 ? (
+                  <>
+                    <div className="flex items-center justify-center w-8 h-8 rounded-full bg-blue-600 text-white shadow-sm">
+                      <UserOutlined />
+                    </div>
+                    <div className="flex flex-col justify-center">
+                      <span className="text-xs font-bold text-blue-900 leading-tight">
+                        {matriculations.find(r => r.id === selectedRowKeys[0])?.student.firstName} {matriculations.find(r => r.id === selectedRowKeys[0])?.student.lastName}
+                      </span>
+                      <span className="text-[10px] text-blue-700 leading-none mt-0.5">
+                        {matriculations.find(r => r.id === selectedRowKeys[0])?.student.documentType}-{matriculations.find(r => r.id === selectedRowKeys[0])?.student.document}
+                      </span>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div
+                      className={`flex items-center justify-center w-8 h-8 rounded-full text-sm font-bold shadow-sm transition-colors ${selectedRowKeys.length > 0 ? 'bg-blue-500 text-white' : 'bg-slate-200 text-slate-400'
+                        }`}
+                    >
+                      {selectedRowKeys.length}
+                    </div>
+                    <div className={`flex flex-col leading-tight font-bold text-[10px] uppercase tracking-wide ${selectedRowKeys.length > 0 ? 'text-blue-900' : 'text-slate-400'}`}>
+                      <span>Estudiantes</span>
+                      <span>Seleccionados</span>
+                    </div>
+                  </>
+                )}
               </div>
 
               {/* Section 2: Inputs Grid */}
@@ -1674,8 +1692,8 @@ const MatriculationEnrollment: React.FC = () => {
             </div>
           ) : (
             <div className="flex items-center gap-6">
-              {/* Selected Student Info */}
-              <div className="flex items-center gap-3 pr-4 border-r border-slate-300/50 min-w-max">
+              {/* Section 1: Counter o Info del Estudiante */}
+              <div className="flex items-center gap-2 pr-4 border-r border-slate-300/50 min-w-max">
                 {selectedRowKeys.length === 1 ? (
                   <>
                     <div className="flex items-center justify-center w-8 h-8 rounded-full bg-blue-600 text-white shadow-sm">
@@ -1691,45 +1709,66 @@ const MatriculationEnrollment: React.FC = () => {
                     </div>
                   </>
                 ) : (
-                  <div className="flex items-center gap-2">
-                    <div className="flex items-center justify-center w-8 h-8 rounded-full bg-slate-200 text-slate-400">
-                      <UserOutlined />
+                  <>
+                    <div
+                      className={`flex items-center justify-center w-8 h-8 rounded-full text-sm font-bold shadow-sm transition-colors ${selectedRowKeys.length > 0 ? 'bg-blue-500 text-white' : 'bg-slate-200 text-slate-400'
+                        }`}
+                    >
+                      {selectedRowKeys.length}
                     </div>
-                    <div className="flex flex-col justify-center text-slate-400">
-                      <span className="text-xs font-bold leading-tight">
-                        {selectedRowKeys.length === 0 ? 'Ningún' : selectedRowKeys.length} estudiante{selectedRowKeys.length !== 1 ? 's' : ''}
-                      </span>
-                      <span className="text-[10px] leading-none">seleccionado{selectedRowKeys.length !== 1 ? 's' : ''}</span>
+                    <div className={`flex flex-col leading-tight font-bold text-[10px] uppercase tracking-wide ${selectedRowKeys.length > 0 ? 'text-blue-900' : 'text-slate-400'}`}>
+                      <span>Estudiantes</span>
+                      <span>Seleccionados</span>
                     </div>
-                  </div>
+                  </>
                 )}
               </div>
 
-              {/* Actions for Completed */}
-              <div className="flex-1 flex gap-2">
-                <Tooltip title={selectedRowKeys.length !== 1 ? "Seleccione un solo estudiante" : ""}>
-                  <Button
-                    icon={<BookOutlined />}
-                    size="small"
-                    disabled={selectedRowKeys.length !== 1}
-                    onClick={handleOpenSubjectModal}
-                    className={selectedRowKeys.length === 1 ? 'border-blue-300 text-blue-600 bg-white' : ''}
-                  >
-                    Gestionar Materias
-                  </Button>
-                </Tooltip>
+              {/* Section 2: Actions for Completed */}
+              <div className="flex-1 flex gap-2 items-center">
+                {/* Botones solo para 1 estudiante seleccionado */}
+                {selectedRowKeys.length === 1 && (
+                  <>
+                    <Tooltip title="Gestionar materias del estudiante">
+                      <Button
+                        icon={<BookOutlined />}
+                        size="small"
+                        onClick={handleOpenSubjectModal}
+                        className='border-blue-300 text-blue-600 bg-white'
+                      >
+                        Gestionar Materias
+                      </Button>
+                    </Tooltip>
 
-                <Tooltip title={selectedRowKeys.length !== 1 ? "Seleccione un solo estudiante" : ""}>
-                  <Button
-                    icon={<EyeOutlined />}
-                    size="small"
-                    disabled={selectedRowKeys.length !== 1}
-                    onClick={handleViewProfile}
-                    className={selectedRowKeys.length === 1 ? 'border-blue-300 text-blue-600 bg-white' : ''}
-                  >
-                    Ver Expediente
-                  </Button>
-                </Tooltip>
+                    <Tooltip title="Ver expediente del estudiante">
+                      <Button
+                        icon={<EyeOutlined />}
+                        size="small"
+                        onClick={handleViewProfile}
+                        className='border-blue-300 text-blue-600 bg-white'
+                      >
+                        Ver Expediente
+                      </Button>
+                    </Tooltip>
+                  </>
+                )}
+
+                {/* Selector de materias de grupo: para 1 o varios del mismo grado */}
+                {selectedRowKeys.length > 0 && !hasMixedGrades && bulkGroupSubjects.length > 0 && (
+                  <div className="flex flex-col gap-0.5 flex-1">
+                    <span className={`text-[9px] font-bold uppercase tracking-wider ${selectedRowKeys.length > 0 ? 'text-slate-500' : 'text-slate-300'}`}>
+                      Materias de Grupo
+                    </span>
+                    <Select
+                      placeholder="Asignar Materia..."
+                      size="small"
+                      className="w-full"
+                      onChange={(v) => handleBulkUpdate('subjectIds', v ? [v] : [])}
+                      allowClear
+                      options={bulkGroupSubjects.map(s => ({ label: s.name, value: s.id }))}
+                    />
+                  </div>
+                )}
               </div>
             </div>
           )}
