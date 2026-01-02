@@ -28,15 +28,9 @@ const NotFound = () => {
             <ArrowLeftOutlined />
             Ir al panel principal
           </Link>
-          <Link
-            to="/"
-            className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/40 bg-white/5 px-7 py-3 text-base font-semibold text-white backdrop-blur transition hover:-translate-y-0.5 hover:border-white/70 hover:bg-white/10"
-          >
-            Volver al inicio de sesión
-          </Link>
         </div>
 
-        <section className="mt-16 grid w-full gap-6 rounded-3xl border border-white/5 bg-white/5 p-6 backdrop-blur-xl md:grid-cols-3">
+        <section className="mt-16 grid w-full gap-6 rounded-3xl border border-white/5 bg-white/5 p-6 backdrop-blur-xl md:grid-cols-2">
           <article className="glass-card relative overflow-hidden rounded-2xl border border-white/10 bg-white/5 p-6 text-left">
             <div className="text-xs uppercase tracking-[0.3em] text-slate-300">Código</div>
             <div className="font-headline mt-3 text-4xl text-white">404</div>
@@ -50,24 +44,6 @@ const NotFound = () => {
             <p className="mt-3 text-sm text-slate-300">
               Algunas rutas solo están disponibles para roles específicos dentro del sistema.
             </p>
-          </article>
-
-          <article className="glass-card rounded-2xl border border-white/10 bg-white/5 p-6 text-left">
-            <div className="text-xs uppercase tracking-[0.3em] text-slate-300">Atajos</div>
-            <ul className="mt-4 space-y-2 text-sm text-slate-200">
-              <li className="flex items-center justify-between">
-                <span>Volver al dashboard</span>
-                <span className="text-white/70">/dashboard</span>
-              </li>
-              <li className="flex items-center justify-between">
-                <span>Panel Master</span>
-                <span className="text-white/70">/master</span>
-              </li>
-              <li className="flex items-center justify-between">
-                <span>Control de Estudios</span>
-                <span className="text-white/70">/control-estudios</span>
-              </li>
-            </ul>
           </article>
         </section>
       </main>
