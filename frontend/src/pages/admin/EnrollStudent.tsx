@@ -341,7 +341,7 @@ const EnrollStudent: React.FC = () => {
               : []
           }
         >
-          <Select placeholder="Seleccione" options={guardianDocumentOptions} />
+          <Select placeholder="Seleccione" options={guardianDocumentOptions} allowClear />
         </Form.Item>
       </Col>
       <Col span={16}>
@@ -542,6 +542,10 @@ const EnrollStudent: React.FC = () => {
   const motherFieldsRequired = motherDataRequired || motherHasAnyValue;
   const fatherFieldsRequired = fatherDataRequired || fatherHasAnyValue;
   const representativeFieldsRequired = requireRepresentativeData || representativeHasAnyValue;
+
+  const showMotherDetails = !!(motherDocumentTypeValue && motherDocumentValue);
+  const showFatherDetails = !!(fatherDocumentTypeValue && fatherDocumentValue);
+  const showRepresentativeDetails = !!(representativeDocumentTypeValue && representativeDocumentValue);
 
   const resetGuardianMunicipality = (guardianKey: 'mother' | 'father' | 'representative') => {
     const current = newStudentForm.getFieldValue(guardianKey) as GuardianData || {};
@@ -978,54 +982,57 @@ const EnrollStudent: React.FC = () => {
 
                 {/* MADRE */}
                 <div style={{ background: '#fafafa', padding: 16, borderRadius: 8, marginBottom: 24, border: '1px solid #f0f0f0' }}>
-                  <h4 style={{ color: '#fa8c16', marginBottom: 16 }}>
-                    Datos de la Madre {motherDataRequired ? '(Obligatorio)' : '(Opcional)'}
-                  </h4>
-                  {renderGuardianDocumentControls('mother', motherFieldsRequired)}
-                  <Row gutter={16}>
-                    <Col span={12}>
-                      <Form.Item name={['mother', 'firstName']} label="Nombres" rules={motherFieldsRequired ? [{ required: true }] : []}>
-                        <Input />
+                  <h4 style={{ color: '#fa8c16', marginBottom: 16 }}>Datos de la Madre</h4>
+                  {renderGuardianDocumentControls('mother', true)}
+
+                  {showMotherDetails && (
+                    <>
+                      <Row gutter={16}>
+                        <Col span={12}>
+                          <Form.Item name={['mother', 'firstName']} label="Nombres" rules={motherFieldsRequired ? [{ required: true }] : []}>
+                            <Input />
+                          </Form.Item>
+                        </Col>
+                        <Col span={12}>
+                          <Form.Item name={['mother', 'lastName']} label="Apellidos" rules={motherFieldsRequired ? [{ required: true }] : []}>
+                            <Input />
+                          </Form.Item>
+                        </Col>
+                      </Row>
+                      <Row gutter={16}>
+                        <Col span={12}>
+                          <Form.Item name={['mother', 'phone']} label="Teléfono" rules={motherFieldsRequired ? [{ required: true }] : []}>
+                            <Input />
+                          </Form.Item>
+                        </Col>
+                        <Col span={12}>
+                          <Form.Item name={['mother', 'email']} label="Email" rules={[{ type: 'email' }]}>
+                            <Input placeholder="Opcional" />
+                          </Form.Item>
+                        </Col>
+                      </Row>
+                      <Form.Item name={['mother', 'address']} label="Dirección de habitación" rules={motherFieldsRequired ? [{ required: true }] : []}>
+                        <Input.TextArea rows={2} />
                       </Form.Item>
-                    </Col>
-                    <Col span={12}>
-                      <Form.Item name={['mother', 'lastName']} label="Apellidos" rules={motherFieldsRequired ? [{ required: true }] : []}>
-                        <Input />
-                      </Form.Item>
-                    </Col>
-                  </Row>
-                  <Row gutter={16}>
-                    <Col span={12}>
-                      <Form.Item name={['mother', 'phone']} label="Teléfono" rules={motherFieldsRequired ? [{ required: true }] : []}>
-                        <Input />
-                      </Form.Item>
-                    </Col>
-                    <Col span={12}>
-                      <Form.Item name={['mother', 'email']} label="Email" rules={[{ type: 'email' }]}>
-                        <Input placeholder="Opcional" />
-                      </Form.Item>
-                    </Col>
-                  </Row>
-                  <Form.Item name={['mother', 'address']} label="Dirección de habitación" rules={motherFieldsRequired ? [{ required: true }] : []}>
-                    <Input.TextArea rows={2} />
-                  </Form.Item>
-                  <Row gutter={16}>
-                    <Col span={8}>
-                      <Form.Item name={['mother', 'residenceState']} label="Estado" rules={motherFieldsRequired ? [{ required: true }] : []}>
-                        <Select showSearch options={stateOptions} onChange={() => resetGuardianMunicipality('mother')} />
-                      </Form.Item>
-                    </Col>
-                    <Col span={8}>
-                      <Form.Item name={['mother', 'residenceMunicipality']} label="Municipio" rules={motherFieldsRequired ? [{ required: true }] : []}>
-                        <Select showSearch options={motherMunicipalityOptions} onChange={() => resetGuardianParish('mother')} disabled={!motherStateValue} />
-                      </Form.Item>
-                    </Col>
-                    <Col span={8}>
-                      <Form.Item name={['mother', 'residenceParish']} label="Parroquia" rules={motherFieldsRequired ? [{ required: true }] : []}>
-                        <Select showSearch options={motherParishOptions} disabled={!motherMunicipalityValue} />
-                      </Form.Item>
-                    </Col>
-                  </Row>
+                      <Row gutter={16}>
+                        <Col span={8}>
+                          <Form.Item name={['mother', 'residenceState']} label="Estado" rules={motherFieldsRequired ? [{ required: true }] : []}>
+                            <Select showSearch options={stateOptions} onChange={() => resetGuardianMunicipality('mother')} />
+                          </Form.Item>
+                        </Col>
+                        <Col span={8}>
+                          <Form.Item name={['mother', 'residenceMunicipality']} label="Municipio" rules={motherFieldsRequired ? [{ required: true }] : []}>
+                            <Select showSearch options={motherMunicipalityOptions} onChange={() => resetGuardianParish('mother')} disabled={!motherStateValue} />
+                          </Form.Item>
+                        </Col>
+                        <Col span={8}>
+                          <Form.Item name={['mother', 'residenceParish']} label="Parroquia" rules={motherFieldsRequired ? [{ required: true }] : []}>
+                            <Select showSearch options={motherParishOptions} disabled={!motherMunicipalityValue} />
+                          </Form.Item>
+                        </Col>
+                      </Row>
+                    </>
+                  )}
                 </div>
 
                 {/* PADRE */}
@@ -1034,61 +1041,66 @@ const EnrollStudent: React.FC = () => {
                     Datos del Padre {fatherDataRequired ? '(Obligatorio)' : '(Opcional)'}
                   </h4>
                   {renderGuardianDocumentControls('father', fatherFieldsRequired)}
-                  <Row gutter={16}>
-                    <Col span={12}>
-                      <Form.Item name={['father', 'firstName']} label="Nombres" rules={fatherFieldsRequired ? [{ required: true }] : []}>
-                        <Input />
-                      </Form.Item>
-                    </Col>
-                    <Col span={12}>
-                      <Form.Item name={['father', 'lastName']} label="Apellidos" rules={fatherFieldsRequired ? [{ required: true }] : []}>
-                        <Input />
-                      </Form.Item>
-                    </Col>
-                  </Row>
-                  <Row gutter={16}>
-                    <Col span={12}>
-                      <Form.Item name={['father', 'phone']} label="Teléfono" rules={fatherFieldsRequired ? [{ required: true }] : []}>
-                        <Input />
-                      </Form.Item>
-                    </Col>
-                    <Col span={12}>
-                      <Form.Item name={['father', 'email']} label="Email" rules={[{ type: 'email' }]}>
-                        <Input placeholder="Opcional" />
-                      </Form.Item>
-                    </Col>
-                  </Row>
 
-                  {/* Labor del padre (solo si es rep, pero lo pedimos siempre si llena datos padre?) */}
-                  {/* Image says "Labor del padre (si es el representante, opcional)". I'll show it always if filling father, optional. */}
-                  <Row gutter={16}>
-                    <Col span={24}>
-                      <Form.Item name={['father', 'occupation']} label="Labor / Ocupación">
-                        <Input placeholder="Ej: Ingeniero, Comerciante..." />
-                      </Form.Item>
-                    </Col>
-                  </Row>
+                  {showFatherDetails && (
+                    <>
+                      <Row gutter={16}>
+                        <Col span={12}>
+                          <Form.Item name={['father', 'firstName']} label="Nombres" rules={fatherFieldsRequired ? [{ required: true }] : []}>
+                            <Input />
+                          </Form.Item>
+                        </Col>
+                        <Col span={12}>
+                          <Form.Item name={['father', 'lastName']} label="Apellidos" rules={fatherFieldsRequired ? [{ required: true }] : []}>
+                            <Input />
+                          </Form.Item>
+                        </Col>
+                      </Row>
+                      <Row gutter={16}>
+                        <Col span={12}>
+                          <Form.Item name={['father', 'phone']} label="Teléfono" rules={fatherFieldsRequired ? [{ required: true }] : []}>
+                            <Input />
+                          </Form.Item>
+                        </Col>
+                        <Col span={12}>
+                          <Form.Item name={['father', 'email']} label="Email" rules={[{ type: 'email' }]}>
+                            <Input placeholder="Opcional" />
+                          </Form.Item>
+                        </Col>
+                      </Row>
 
-                  <Form.Item name={['father', 'address']} label="Dirección de habitación" rules={fatherFieldsRequired ? [{ required: true }] : []}>
-                    <Input.TextArea rows={2} />
-                  </Form.Item>
-                  <Row gutter={16}>
-                    <Col span={8}>
-                      <Form.Item name={['father', 'residenceState']} label="Estado" rules={fatherFieldsRequired ? [{ required: true }] : []}>
-                        <Select showSearch options={stateOptions} onChange={() => resetGuardianMunicipality('father')} />
+                      {/* Labor del padre (solo si es rep, pero lo pedimos siempre si llena datos padre?) */}
+                      {/* Image says "Labor del padre (si es el representante, opcional)". I'll show it always if filling father, optional. */}
+                      <Row gutter={16}>
+                        <Col span={24}>
+                          <Form.Item name={['father', 'occupation']} label="Labor / Ocupación">
+                            <Input placeholder="Ej: Ingeniero, Comerciante..." />
+                          </Form.Item>
+                        </Col>
+                      </Row>
+
+                      <Form.Item name={['father', 'address']} label="Dirección de habitación" rules={fatherFieldsRequired ? [{ required: true }] : []}>
+                        <Input.TextArea rows={2} />
                       </Form.Item>
-                    </Col>
-                    <Col span={8}>
-                      <Form.Item name={['father', 'residenceMunicipality']} label="Municipio" rules={fatherFieldsRequired ? [{ required: true }] : []}>
-                        <Select showSearch options={fatherMunicipalityOptions} onChange={() => resetGuardianParish('father')} disabled={!fatherStateValue} />
-                      </Form.Item>
-                    </Col>
-                    <Col span={8}>
-                      <Form.Item name={['father', 'residenceParish']} label="Parroquia" rules={fatherFieldsRequired ? [{ required: true }] : []}>
-                        <Select showSearch options={fatherParishOptions} disabled={!fatherMunicipalityValue} />
-                      </Form.Item>
-                    </Col>
-                  </Row>
+                      <Row gutter={16}>
+                        <Col span={8}>
+                          <Form.Item name={['father', 'residenceState']} label="Estado" rules={fatherFieldsRequired ? [{ required: true }] : []}>
+                            <Select showSearch options={stateOptions} onChange={() => resetGuardianMunicipality('father')} />
+                          </Form.Item>
+                        </Col>
+                        <Col span={8}>
+                          <Form.Item name={['father', 'residenceMunicipality']} label="Municipio" rules={fatherFieldsRequired ? [{ required: true }] : []}>
+                            <Select showSearch options={fatherMunicipalityOptions} onChange={() => resetGuardianParish('father')} disabled={!fatherStateValue} />
+                          </Form.Item>
+                        </Col>
+                        <Col span={8}>
+                          <Form.Item name={['father', 'residenceParish']} label="Parroquia" rules={fatherFieldsRequired ? [{ required: true }] : []}>
+                            <Select showSearch options={fatherParishOptions} disabled={!fatherMunicipalityValue} />
+                          </Form.Item>
+                        </Col>
+                      </Row>
+                    </>
+                  )}
                 </div>
 
                 {/* REPRESENTANTE (Si es otro) */}
@@ -1096,64 +1108,64 @@ const EnrollStudent: React.FC = () => {
                   <div style={{ background: '#fff7e6', padding: 16, borderRadius: 8, marginBottom: 24, border: '1px solid #ffd591' }}>
                     <h4 style={{ color: '#d46b08', marginBottom: 16 }}>Datos del Representante (Otro)</h4>
                     {renderGuardianDocumentControls('representative', representativeFieldsRequired)}
-                    <Row gutter={16}>
-                      <Col span={12}>
-                        <Form.Item name={['representative', 'firstName']} label="Nombres" rules={[{ required: true }]}>
-                          <Input />
-                        </Form.Item>
-                      </Col>
-                      <Col span={12}>
-                        <Form.Item name={['representative', 'lastName']} label="Apellidos" rules={[{ required: true }]}>
-                          <Input />
-                        </Form.Item>
-                      </Col>
-                    </Row>
-                    <Row gutter={16}>
-                      <Col span={12}>
-                        <Form.Item name={['representative', 'phone']} label="Teléfono" rules={[{ required: true }]}>
-                          <Input />
-                        </Form.Item>
-                      </Col>
-                      <Col span={12}>
-                        <Form.Item name={['representative', 'email']} label="Email" rules={[{ type: 'email' }]}>
-                          <Input placeholder="Opcional" />
-                        </Form.Item>
-                      </Col>
-                    </Row>
 
-                    <Row gutter={16}>
-                      <Col span={12}>
-                        <Form.Item name={['representative', 'occupation']} label="Labor / Ocupación">
-                          <Input />
-                        </Form.Item>
-                      </Col>
-                      {/* Add Vínculo? Not in GuardianProfile but asked in Image "Vínculo con el estudiante". */}
-                      {/* Currently logic handles relation via 'relationship' enum. If 'other', we don't store custom string relation in logic yet? */}
-                      {/* I didn't add 'relationshipDetails' to StudentGuardian model. The user image asks "Vínculo con el estudiante". */}
-                      {/* I should probably add it, but for now I'll skip or add 'occupation' is enough? No, link is different. */}
-                      {/* I'll focus on 'occupation' for now as I added it to DB. */}
-                    </Row>
+                    {showRepresentativeDetails && (
+                      <>
+                        <Row gutter={16}>
+                          <Col span={12}>
+                            <Form.Item name={['representative', 'firstName']} label="Nombres" rules={[{ required: true }]}>
+                              <Input />
+                            </Form.Item>
+                          </Col>
+                          <Col span={12}>
+                            <Form.Item name={['representative', 'lastName']} label="Apellidos" rules={[{ required: true }]}>
+                              <Input />
+                            </Form.Item>
+                          </Col>
+                        </Row>
+                        <Row gutter={16}>
+                          <Col span={12}>
+                            <Form.Item name={['representative', 'phone']} label="Teléfono" rules={[{ required: true }]}>
+                              <Input />
+                            </Form.Item>
+                          </Col>
+                          <Col span={12}>
+                            <Form.Item name={['representative', 'email']} label="Email" rules={[{ type: 'email' }]}>
+                              <Input placeholder="Opcional" />
+                            </Form.Item>
+                          </Col>
+                        </Row>
 
-                    <Form.Item name={['representative', 'address']} label="Dirección de habitación" rules={[{ required: true }]}>
-                      <Input.TextArea rows={2} />
-                    </Form.Item>
-                    <Row gutter={16}>
-                      <Col span={8}>
-                        <Form.Item name={['representative', 'residenceState']} label="Estado" rules={[{ required: true }]}>
-                          <Select showSearch options={stateOptions} onChange={() => resetGuardianMunicipality('representative')} />
+                        <Row gutter={16}>
+                          <Col span={12}>
+                            <Form.Item name={['representative', 'occupation']} label="Labor / Ocupación">
+                              <Input />
+                            </Form.Item>
+                          </Col>
+                        </Row>
+
+                        <Form.Item name={['representative', 'address']} label="Dirección de habitación" rules={[{ required: true }]}>
+                          <Input.TextArea rows={2} />
                         </Form.Item>
-                      </Col>
-                      <Col span={8}>
-                        <Form.Item name={['representative', 'residenceMunicipality']} label="Municipio" rules={[{ required: true }]}>
-                          <Select showSearch options={representativeMunicipalityOptions} onChange={() => resetGuardianParish('representative')} disabled={!representativeStateValue} />
-                        </Form.Item>
-                      </Col>
-                      <Col span={8}>
-                        <Form.Item name={['representative', 'residenceParish']} label="Parroquia" rules={[{ required: true }]}>
-                          <Select showSearch options={representativeParishOptions} disabled={!representativeMunicipalityValue} />
-                        </Form.Item>
-                      </Col>
-                    </Row>
+                        <Row gutter={16}>
+                          <Col span={8}>
+                            <Form.Item name={['representative', 'residenceState']} label="Estado" rules={[{ required: true }]}>
+                              <Select showSearch options={stateOptions} onChange={() => resetGuardianMunicipality('representative')} />
+                            </Form.Item>
+                          </Col>
+                          <Col span={8}>
+                            <Form.Item name={['representative', 'residenceMunicipality']} label="Municipio" rules={[{ required: true }]}>
+                              <Select showSearch options={representativeMunicipalityOptions} onChange={() => resetGuardianParish('representative')} disabled={!representativeStateValue} />
+                            </Form.Item>
+                          </Col>
+                          <Col span={8}>
+                            <Form.Item name={['representative', 'residenceParish']} label="Parroquia" rules={[{ required: true }]}>
+                              <Select showSearch options={representativeParishOptions} disabled={!representativeMunicipalityValue} />
+                            </Form.Item>
+                          </Col>
+                        </Row>
+                      </>
+                    )}
                   </div>
                 )}
               </div>
