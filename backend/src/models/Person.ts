@@ -10,6 +10,8 @@ interface PersonAttributes {
   document: string;
   gender: 'M' | 'F';
   birthdate: Date;
+  pathology?: string;
+  livingWith?: string;
   userId?: number | null;
 }
 
@@ -23,6 +25,8 @@ class Person extends Model<PersonAttributes, PersonCreationAttributes> implement
   public document!: string;
   public gender!: 'M' | 'F';
   public birthdate!: Date;
+  public pathology!: string;
+  public livingWith!: string;
   public userId!: number | null;
 
   public readonly roles?: import('./Role').default[];
@@ -64,6 +68,14 @@ Person.init(
     birthdate: {
       type: DataTypes.DATEONLY, // Use DATEONLY for birthdates usually
       allowNull: false,
+    },
+    pathology: {
+      type: DataTypes.TEXT,
+      allowNull: true
+    },
+    livingWith: {
+      type: DataTypes.STRING,
+      allowNull: true
     },
     userId: {
       type: DataTypes.INTEGER,

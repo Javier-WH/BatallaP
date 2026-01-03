@@ -15,6 +15,7 @@ interface GuardianProfileAttributes {
   residenceMunicipality: string;
   residenceParish: string;
   address: string;
+  occupation?: string;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -34,6 +35,7 @@ class GuardianProfile extends Model<GuardianProfileAttributes, GuardianProfileCr
   public residenceMunicipality!: string;
   public residenceParish!: string;
   public address!: string;
+  public occupation!: string;
 
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
@@ -86,6 +88,10 @@ GuardianProfile.init(
     address: {
       type: DataTypes.TEXT,
       allowNull: false
+    },
+    occupation: {
+      type: DataTypes.STRING,
+      allowNull: true
     }
   },
   {

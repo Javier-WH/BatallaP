@@ -16,6 +16,7 @@ export type GuardianProfilePayload = {
   residenceMunicipality: string;
   residenceParish: string;
   address: string;
+  occupation?: string;
 };
 
 interface Options {
@@ -66,7 +67,7 @@ export const findGuardianProfile = async (documentType: GuardianDocumentType, do
   if (person) {
     // Check if person is a student
     const isStudent = person.roles?.some(role => role.name === 'Alumno');
-    
+
     // Allow if they are NOT a student, OR if they have other roles besides Student (e.g. Student + Representative?? Unlikely but possible in some systems)
     // Actually request said "excepto los estudiantes", imply pure students. 
     // If a person is both Student and Representative, they should probably be findable as Representative.
@@ -75,7 +76,7 @@ export const findGuardianProfile = async (documentType: GuardianDocumentType, do
     // However, in adult education, a student can be a representative. 
     // User said: "todos los registros excepto los estudiantes".
     // Let's assume if they have the 'Alumno' role, they are a student and should be excluded unless they explicitly have another role like 'Representante'.
-    
+
     // Simplest interpretation: Filter out if 'Alumno' is their ONLY role.
     const isStudentOnly = person.roles?.length === 1 && person.roles[0].name === 'Alumno';
 
@@ -84,7 +85,7 @@ export const findGuardianProfile = async (documentType: GuardianDocumentType, do
     // Let's filter out if they have the Alumno role.
     // BUT, what if a teacher is also a student? 
     // Let's stick to the previous logic: exclude if ONLY student.
-    
+
     if (!isStudentOnly) {
       return {
         id: person.id,

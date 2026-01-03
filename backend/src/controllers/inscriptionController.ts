@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { Op, Transaction } from 'sequelize';
-import { Inscription, Person, Role, Subject, PeriodGrade, InscriptionSubject, SchoolPeriod, Grade, Section, Contact, PersonRole, PersonResidence, StudentGuardian, Matriculation, GuardianProfile, StudentPreviousSchool, Plantel, EnrollmentAnswer, EnrollmentQuestion } from '../models';
+import { Inscription, Person, Role, Subject, PeriodGrade, InscriptionSubject, SchoolPeriod, Grade, Section, Contact, PersonRole, PersonResidence, StudentGuardian, Matriculation, GuardianProfile, StudentPreviousSchool, Plantel, EnrollmentAnswer, EnrollmentQuestion, EnrollmentDocument } from '../models';
 import sequelize from '../config/database';
 import { saveEnrollmentAnswers } from '@/services/enrollmentAnswerService';
 import { GuardianDocumentType } from '@/models/GuardianProfile';
@@ -30,6 +30,7 @@ type GuardianInput = {
   address?: string;
   phone?: string;
   email?: string;
+  occupation?: string;
 };
 
 export const quickRegister = async (req: Request, res: Response) => {
@@ -169,7 +170,8 @@ const mapToGuardianProfilePayload = (data: CompleteGuardianInput): GuardianProfi
   residenceState: data.residenceState,
   residenceMunicipality: data.residenceMunicipality,
   residenceParish: data.residenceParish,
-  address: data.address
+  address: data.address,
+  occupation: data.occupation
 });
 
 export const getMatriculations = async (req: Request, res: Response) => {
@@ -627,7 +629,7 @@ export const getInscriptionById = async (req: Request, res: Response) => {
 export const createInscription = async (req: Request, res: Response) => {
   const t = await sequelize.transaction();
   try {
-    const { schoolPeriodId, gradeId, personId, sectionId, enrollmentAnswers, escolaridad } = req.body;
+    const { schoolPeriodId, gradeId, personId, sectionId, enrollmentAnswers, escolaridad, documents } = req.body;
 
     // 1. Verify Role Student
     const person = await Person.findByPk(personId, {
@@ -675,6 +677,14 @@ export const createInscription = async (req: Request, res: Response) => {
       status: 'pending',
       escolaridad: normalizeEscolaridad(escolaridad)
     }, { transaction: t });
+
+    // Documents
+    if (documents) {
+      await EnrollmentDocument.create({
+        matriculationId: matriculation.id,
+        ...documents
+      }, { transaction: t });
+    }
 
     await t.commit();
 
@@ -732,7 +742,7 @@ export const updateInscription = async (req: Request, res: Response) => {
       transaction: t,
       lock: t.LOCK.UPDATE
     });
-    
+
     if (!inscription) {
       await t.rollback();
       return res.status(404).json({ error: 'Inscripción no encontrada' });
@@ -757,15 +767,15 @@ export const updateInscription = async (req: Request, res: Response) => {
     if (document !== undefined) person.document = document || null;
     if (gender) person.gender = gender;
     if (birthdate) person.birthdate = birthdate;
-    
+
     console.log('[updateInscription] Person después de cambios (antes de save):', {
       id: person.id,
       firstName: person.firstName,
       lastName: person.lastName
     });
-    
+
     await person.save({ transaction: t });
-    
+
     console.log('[updateInscription] Person guardado en BD');
 
     // Contact
@@ -829,7 +839,7 @@ export const updateInscription = async (req: Request, res: Response) => {
 
     // Guardians
     const assignments: GuardianAssignment[] = [];
-    
+
     if (mother && hasGuardianData(mother)) {
       assignments.push({
         payload: mapToGuardianProfilePayload(mother as CompleteGuardianInput),
@@ -853,9 +863,9 @@ export const updateInscription = async (req: Request, res: Response) => {
     }
 
     if (assignments.length > 0) {
-       await assignGuardians(person.id, assignments, t);
+      await assignGuardians(person.id, assignments, t);
     }
-    
+
     // Enrollment Answers
     if (Array.isArray(enrollmentAnswers)) {
       await saveEnrollmentAnswers(person.id, enrollmentAnswers, { transaction: t });
@@ -919,7 +929,7 @@ export const updateInscription = async (req: Request, res: Response) => {
     // Handle group subject updates (when subjectIds is provided)
     if (Array.isArray(subjectIds)) {
       console.log(`[UpdateInscription] Updating group subjects:`, subjectIds);
-      
+
       // Get all subjects for this grade to identify which are group subjects
       const periodGrade = await PeriodGrade.findOne({
         where: {
@@ -1034,6 +1044,8 @@ export const registerAndEnroll = async (req: Request, res: Response) => {
       document,
       gender,
       birthdate,
+      pathology,
+      livingWith,
       birthState,
       birthMunicipality,
       birthParish,
@@ -1056,7 +1068,8 @@ export const registerAndEnroll = async (req: Request, res: Response) => {
       gradeId,
       sectionId,
       enrollmentAnswers,
-      escolaridad
+      escolaridad,
+      documents
     } = req.body;
 
     // 1. Create Person (no User)
@@ -1067,6 +1080,8 @@ export const registerAndEnroll = async (req: Request, res: Response) => {
       document,
       gender,
       birthdate,
+      pathology,
+      livingWith,
       userId: null // No user associated
     }, { transaction: t });
 
@@ -1113,7 +1128,8 @@ export const registerAndEnroll = async (req: Request, res: Response) => {
       birthParish,
       residenceState,
       residenceMunicipality,
-      residenceParish
+      residenceParish,
+      address
     }, { transaction: t });
 
     // 3.5. Previous Schools
@@ -1196,6 +1212,14 @@ export const registerAndEnroll = async (req: Request, res: Response) => {
       await saveEnrollmentAnswers(person.id, enrollmentAnswers, { transaction: t });
     }
 
+    // 7. Enrollment Documents
+    if (documents) {
+      await EnrollmentDocument.create({
+        matriculationId: matriculation.id,
+        ...documents
+      }, { transaction: t });
+    }
+
     await t.commit();
 
     res.status(201).json({
@@ -1241,6 +1265,9 @@ export const updateMatriculation = async (req: Request, res: Response) => {
       representativeType,
       enrollmentAnswers,
       escolaridad,
+      pathology,
+      livingWith,
+      documents
     } = req.body;
 
     console.log('[updateMatriculation] ID:', id);
@@ -1279,15 +1306,17 @@ export const updateMatriculation = async (req: Request, res: Response) => {
     if (document !== undefined) person.document = document || null;
     if (gender) person.gender = gender;
     if (birthdate) person.birthdate = birthdate;
-    
+    if (pathology !== undefined) person.pathology = pathology;
+    if (livingWith !== undefined) person.livingWith = livingWith;
+
     console.log('[updateMatriculation] Person después de cambios (antes de save):', {
       id: person.id,
       firstName: person.firstName,
       lastName: person.lastName
     });
-    
+
     await person.save({ transaction: t });
-    
+
     console.log('[updateMatriculation] Person guardado en BD');
 
     // Contact
@@ -1316,6 +1345,7 @@ export const updateMatriculation = async (req: Request, res: Response) => {
       if (residenceState) residencePayload.residenceState = residenceState;
       if (residenceMunicipality) residencePayload.residenceMunicipality = residenceMunicipality;
       if (residenceParish) residencePayload.residenceParish = residenceParish;
+      if (address) residencePayload.address = address;
 
       const existingResidence = await PersonResidence.findOne({ where: { personId: person.id }, transaction: t, lock: t.LOCK.UPDATE });
       if (existingResidence) {
@@ -1351,7 +1381,7 @@ export const updateMatriculation = async (req: Request, res: Response) => {
 
     // Guardians - Simplified for partial updates
     const assignments: GuardianAssignment[] = [];
-    
+
     if (mother && hasGuardianData(mother)) {
       assignments.push({
         payload: mapToGuardianProfilePayload(mother as CompleteGuardianInput),
@@ -1375,9 +1405,9 @@ export const updateMatriculation = async (req: Request, res: Response) => {
     }
 
     if (assignments.length > 0) {
-       await assignGuardians(person.id, assignments, t);
+      await assignGuardians(person.id, assignments, t);
     }
-    
+
     // Enrollment Answers
     if (Array.isArray(enrollmentAnswers)) {
       await saveEnrollmentAnswers(person.id, enrollmentAnswers, { transaction: t });
@@ -1385,58 +1415,68 @@ export const updateMatriculation = async (req: Request, res: Response) => {
 
     // Grade, Section, Escolaridad
     if (escolaridad !== undefined) {
-         const escolaridadValue = normalizeEscolaridad(escolaridad);
-         matriculation.escolaridad = escolaridadValue;
-         if (matriculation.inscription) {
-             matriculation.inscription.escolaridad = escolaridadValue;
-             await matriculation.inscription.save({ transaction: t });
-         }
+      const escolaridadValue = normalizeEscolaridad(escolaridad);
+      matriculation.escolaridad = escolaridadValue;
+      if (matriculation.inscription) {
+        matriculation.inscription.escolaridad = escolaridadValue;
+        await matriculation.inscription.save({ transaction: t });
+      }
     }
 
     if (gradeId !== undefined) matriculation.gradeId = gradeId;
     if (sectionId !== undefined) matriculation.sectionId = sectionId;
-    
+
     await matriculation.save({ transaction: t });
 
     // Sync Inscription if it exists (completed status)
     if (matriculation.status === 'completed' && matriculation.inscription) {
-        const inscription = matriculation.inscription;
-        const oldGradeId = inscription.gradeId;
-        
-        if (gradeId !== undefined) inscription.gradeId = gradeId;
-        if (sectionId !== undefined) inscription.sectionId = sectionId;
-        
-        await inscription.save({ transaction: t });
+      const inscription = matriculation.inscription;
+      const oldGradeId = inscription.gradeId;
 
-        // If grade changed, sync subjects
-         if (gradeId !== undefined && Number(gradeId) !== Number(oldGradeId)) {
-              await InscriptionSubject.destroy({
-                where: { inscriptionId: inscription.id },
-                transaction: t
-              });
+      if (gradeId !== undefined) inscription.gradeId = gradeId;
+      if (sectionId !== undefined) inscription.sectionId = sectionId;
 
-              const periodGrade = await PeriodGrade.findOne({
-                where: {
-                  schoolPeriodId: inscription.schoolPeriodId,
-                  gradeId: gradeId
-                },
-                include: [{ model: Subject, as: 'subjects' }],
-                transaction: t
-              });
+      await inscription.save({ transaction: t });
 
-              if (periodGrade && periodGrade.subjects && periodGrade.subjects.length > 0) {
-                 const subjectsToAdd = periodGrade.subjects
-                  .filter((s: any) => !s.subjectGroupId)
-                  .map((s: any) => ({
-                    inscriptionId: inscription.id,
-                    subjectId: s.id
-                  }));
-                  
-                 if (subjectsToAdd.length > 0) {
-                    await InscriptionSubject.bulkCreate(subjectsToAdd, { transaction: t });
-                 }
-              }
-         }
+      // If grade changed, sync subjects
+      if (gradeId !== undefined && Number(gradeId) !== Number(oldGradeId)) {
+        await InscriptionSubject.destroy({
+          where: { inscriptionId: inscription.id },
+          transaction: t
+        });
+
+        const periodGrade = await PeriodGrade.findOne({
+          where: {
+            schoolPeriodId: inscription.schoolPeriodId,
+            gradeId: gradeId
+          },
+          include: [{ model: Subject, as: 'subjects' }],
+          transaction: t
+        });
+
+        if (periodGrade && periodGrade.subjects && periodGrade.subjects.length > 0) {
+          const subjectsToAdd = periodGrade.subjects
+            .filter((s: any) => !s.subjectGroupId)
+            .map((s: any) => ({
+              inscriptionId: inscription.id,
+              subjectId: s.id
+            }));
+
+          if (subjectsToAdd.length > 0) {
+            await InscriptionSubject.bulkCreate(subjectsToAdd, { transaction: t });
+          }
+        }
+      }
+    }
+
+    // Documents
+    if (documents) {
+      const docRecord = await EnrollmentDocument.findOne({ where: { matriculationId: matriculation.id }, transaction: t });
+      if (docRecord) {
+        await docRecord.update(documents, { transaction: t });
+      } else {
+        await EnrollmentDocument.create({ matriculationId: matriculation.id, ...documents }, { transaction: t });
+      }
     }
 
     await t.commit();

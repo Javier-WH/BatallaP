@@ -11,6 +11,7 @@ export interface PersonResidenceAttributes {
   residenceState: string;
   residenceMunicipality: string;
   residenceParish: string;
+  address?: string;
 }
 
 type PersonResidenceCreationAttributes = Optional<PersonResidenceAttributes, 'id'>;
@@ -25,6 +26,7 @@ class PersonResidence extends Model<PersonResidenceAttributes, PersonResidenceCr
   public residenceState!: string;
   public residenceMunicipality!: string;
   public residenceParish!: string;
+  public address!: string;
 
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
@@ -76,6 +78,10 @@ PersonResidence.init(
       field: 'residence_parish',
       type: DataTypes.STRING,
       allowNull: false
+    },
+    address: {
+      type: DataTypes.TEXT,
+      allowNull: true
     }
   },
   {

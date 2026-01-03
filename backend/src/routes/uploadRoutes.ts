@@ -28,4 +28,9 @@ router.get('/logo', (req: Request, res: Response) => {
   res.sendFile(logoFile);
 });
 
+// Ruta para subir documentos
+import uploadDocument from '../middlewares/documentUploadMiddleware';
+import { uploadDocument as uploadDocumentController } from '../controllers/uploadController';
+router.post('/documents', uploadDocument.single('file'), uploadDocumentController);
+
 export default router;

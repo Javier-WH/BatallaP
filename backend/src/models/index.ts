@@ -114,6 +114,7 @@ import SubjectFinalGrade from './SubjectFinalGrade';
 import StudentPeriodOutcome from './StudentPeriodOutcome';
 import PendingSubject from './PendingSubject';
 import SchoolPeriodTransitionRule from './SchoolPeriodTransitionRule';
+import EnrollmentDocument from './EnrollmentDocument';
 
 
 // ... (Existing User/Person/Role/Contact associations) ...
@@ -183,6 +184,9 @@ Section.hasMany(Matriculation, { foreignKey: 'sectionId', as: 'matriculations' }
 
 Matriculation.belongsTo(Inscription, { foreignKey: 'inscriptionId', as: 'inscription' });
 Inscription.hasOne(Matriculation, { foreignKey: 'inscriptionId', as: 'matriculation' });
+
+Matriculation.hasOne(EnrollmentDocument, { foreignKey: 'matriculationId', as: 'documents' });
+EnrollmentDocument.belongsTo(Matriculation, { foreignKey: 'matriculationId', as: 'matriculation' });
 
 // 5. Evaluation and Qualification Associations
 PeriodGradeSubject.hasMany(EvaluationPlan, { foreignKey: 'periodGradeSubjectId', as: 'evaluationPlans' });
@@ -301,5 +305,6 @@ export {
   SubjectFinalGrade,
   StudentPeriodOutcome,
   PendingSubject,
-  SchoolPeriodTransitionRule
+  SchoolPeriodTransitionRule,
+  EnrollmentDocument
 };

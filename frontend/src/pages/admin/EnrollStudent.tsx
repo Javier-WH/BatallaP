@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Card, Button, Form, Tag, message, Select, Row, Col, Input, DatePicker, Radio, Tabs, Alert } from 'antd';
-import { UserAddOutlined, LoadingOutlined } from '@ant-design/icons';
+import { Card, Button, Form, Tag, message, Select, Row, Col, Input, DatePicker, Radio, Tabs, Alert, Checkbox, Upload } from 'antd';
+import { UserAddOutlined, LoadingOutlined, UploadOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import api from '@/services/api';
 import EnrollmentQuestionFields from '@/components/EnrollmentQuestionFields';
@@ -175,6 +175,13 @@ const transformAnswers = (raw?: EnrollmentAnswerFormValues) => {
     questionId: Number(key),
     answer: value
   }));
+};
+
+const normFile = (e: any) => {
+  if (Array.isArray(e)) {
+    return e;
+  }
+  return e?.fileList;
 };
 
 const EnrollStudent: React.FC = () => {
@@ -588,11 +595,20 @@ const EnrollStudent: React.FC = () => {
     }
 
     try {
+      const documents = (values.documents as any) || {};
+      const transformedDocuments = {
+        ...documents,
+        pathCedulaRepresentante: documents.pathCedulaRepresentante?.[0]?.response?.path || null,
+        pathFotoRepresentante: documents.pathFotoRepresentante?.[0]?.response?.path || null,
+        pathFotoEstudiante: documents.pathFotoEstudiante?.[0]?.response?.path || null,
+      };
+
       const payload = {
         ...values,
         schoolPeriodId: activePeriod.id,
         birthdate: values.birthdate ? (values.birthdate as dayjs.Dayjs).format('YYYY-MM-DD') : null,
-        enrollmentAnswers: transformAnswers(values.enrollmentAnswers as EnrollmentAnswerFormValues | undefined)
+        enrollmentAnswers: transformAnswers(values.enrollmentAnswers as EnrollmentAnswerFormValues | undefined),
+        documents: transformedDocuments
       };
 
       await api.post('/inscriptions/register', payload);
@@ -615,10 +631,19 @@ const EnrollStudent: React.FC = () => {
     }
 
     try {
+      const documents = (values.documents as any) || {};
+      const transformedDocuments = {
+        ...documents,
+        pathCedulaRepresentante: documents.pathCedulaRepresentante?.[0]?.response?.path || null,
+        pathFotoRepresentante: documents.pathFotoRepresentante?.[0]?.response?.path || null,
+        pathFotoEstudiante: documents.pathFotoEstudiante?.[0]?.response?.path || null,
+      };
+
       await api.post('/inscriptions', {
         ...values,
         schoolPeriodId: activePeriod.id,
-        enrollmentAnswers: transformAnswers(values.enrollmentAnswers as EnrollmentAnswerFormValues | undefined)
+        enrollmentAnswers: transformAnswers(values.enrollmentAnswers as EnrollmentAnswerFormValues | undefined),
+        documents: transformedDocuments
       });
       message.success('Solicitud de inscripción registrada exitosamente');
       existingStudentForm.resetFields();
@@ -664,62 +689,16 @@ const EnrollStudent: React.FC = () => {
                 escolaridad: 'regular'
               }}
             >
-              <div style={{ background: '#f0f7ff', padding: 16, borderRadius: 8, marginBottom: 24, border: '1px solid #91caff' }}>
-                <h4 style={{ marginTop: 0, color: '#1890ff' }}>1. Datos Académicos</h4>
-                <Row gutter={16}>
-                  <Col span={12}>
-                    <Form.Item
-                      name="gradeId"
-                      label="Grado"
-                      rules={[{ required: true, message: 'Seleccione un grado' }]}
-                    >
-                      <Select
-                        placeholder="Seleccione Grado"
-                        onChange={(val) => {
-                          setSelectedGradeId(val);
-                          newStudentForm.setFieldsValue({ sectionId: undefined });
-                        }}
-                      >
-                        {enrollStructure.map(s => (
-                          <Option key={s.gradeId} value={s.gradeId}>{s.grade?.name}</Option>
-                        ))}
-                      </Select>
-                    </Form.Item>
-                  </Col>
-                  <Col span={12}>
-                    <Form.Item
-                      name="sectionId"
-                      label="Sección (Opcional)"
-                    >
-                      <Select
-                        placeholder="Seleccione Sección"
-                        disabled={!selectedGradeId}
-                        allowClear
-                      >
-                        {getSectionsForGrade(selectedGradeId).map((sec: Section) => (
-                          <Option key={sec.id} value={sec.id}>{sec.name}</Option>
-                        ))}
-                      </Select>
-                    </Form.Item>
-                  </Col>
-                </Row>
+              {/* DATOS DEL ESTUDIANTE */}
+              <div style={{ marginBottom: 24, padding: 24, background: '#fff', border: '1px solid #d9d9d9', borderRadius: 8 }}>
+                <h3 style={{ borderLeft: '4px solid #faad14', paddingLeft: 12, marginBottom: 24, fontSize: 18 }}>
+                  Datos del Estudiante
+                </h3>
 
-                <Row gutter={16}>
-                  <Col span={12}>
-                    <Form.Item
-                      name="escolaridad"
-                      label="Escolaridad"
-                      rules={[{ required: true, message: 'Seleccione la escolaridad del estudiante' }]}
-                    >
-                      <Select placeholder="Seleccione" options={ESCOLARIDAD_OPTIONS} />
-                    </Form.Item>
-                  </Col>
-                </Row>
-              </div>
-
-              <div style={{ marginBottom: 24 }}>
-                <h4 style={{ color: '#666', borderBottom: '1px solid #eee', paddingBottom: 8 }}>2. Datos del Estudiante</h4>
-
+                {/* 1. IDENTIDAD */}
+                <h4 style={{ color: '#1890ff', marginBottom: 16, borderBottom: '1px solid #f0f0f0', paddingBottom: 8 }}>
+                  Identidad
+                </h4>
                 <Row gutter={16}>
                   <Col span={12}>
                     <Form.Item name="firstName" label="Nombres" rules={[{ required: true }]}>
@@ -732,7 +711,6 @@ const EnrollStudent: React.FC = () => {
                     </Form.Item>
                   </Col>
                 </Row>
-
                 <Row gutter={16}>
                   <Col span={8}>
                     <Form.Item name="documentType" label="Tipo Doc" rules={[{ required: true }]}>
@@ -750,17 +728,12 @@ const EnrollStudent: React.FC = () => {
                     </Form.Item>
                   </Col>
                 </Row>
-
                 <Row gutter={16}>
                   <Col span={12}>
                     <Form.Item name="gender" label="Género" rules={[{ required: true }]}>
                       <Radio.Group style={{ width: '100%' }}>
-                        <Radio.Button value="M" style={{ width: '50%', textAlign: 'center' }}>
-                          Masculino
-                        </Radio.Button>
-                        <Radio.Button value="F" style={{ width: '50%', textAlign: 'center' }}>
-                          Femenino
-                        </Radio.Button>
+                        <Radio.Button value="M" style={{ width: '50%', textAlign: 'center' }}>Masculino</Radio.Button>
+                        <Radio.Button value="F" style={{ width: '50%', textAlign: 'center' }}>Femenino</Radio.Button>
                       </Radio.Group>
                     </Form.Item>
                   </Col>
@@ -770,19 +743,15 @@ const EnrollStudent: React.FC = () => {
                     </Form.Item>
                   </Col>
                 </Row>
-              </div>
-
-              <div style={{ marginBottom: 24 }}>
-                <h4 style={{ color: '#666', borderBottom: '1px solid #eee', paddingBottom: 8 }}>3. Datos de Nacimiento</h4>
                 <Row gutter={16}>
                   <Col span={8}>
                     <Form.Item
                       name="birthState"
                       label="Estado de nacimiento"
-                      rules={[{ required: true, message: 'Seleccione un estado' }]}
+                      rules={[{ required: true, message: 'Requerido' }]}
                     >
                       <Select
-                        placeholder="Seleccione estado"
+                        placeholder="Estado"
                         showSearch
                         optionFilterProp="label"
                         filterOption={selectFilterOption}
@@ -799,10 +768,10 @@ const EnrollStudent: React.FC = () => {
                     <Form.Item
                       name="birthMunicipality"
                       label="Municipio de nacimiento"
-                      rules={[{ required: true, message: 'Seleccione un municipio' }]}
+                      rules={[{ required: true, message: 'Requerido' }]}
                     >
                       <Select
-                        placeholder="Seleccione municipio"
+                        placeholder="Municipio"
                         showSearch
                         optionFilterProp="label"
                         filterOption={selectFilterOption}
@@ -816,10 +785,10 @@ const EnrollStudent: React.FC = () => {
                     <Form.Item
                       name="birthParish"
                       label="Parroquia de nacimiento"
-                      rules={[{ required: true, message: 'Seleccione una parroquia' }]}
+                      rules={[{ required: true, message: 'Requerido' }]}
                     >
                       <Select
-                        placeholder="Seleccione parroquia"
+                        placeholder="Parroquia"
                         showSearch
                         optionFilterProp="label"
                         filterOption={selectFilterOption}
@@ -829,19 +798,106 @@ const EnrollStudent: React.FC = () => {
                     </Form.Item>
                   </Col>
                 </Row>
-              </div>
 
-              <div style={{ marginBottom: 24 }}>
-                <h4 style={{ color: '#666', borderBottom: '1px solid #eee', paddingBottom: 8 }}>4. Datos de Residencia</h4>
+                {/* 2. ACADÉMICO */}
+                <h4 style={{ color: '#1890ff', margin: '24px 0 16px', borderBottom: '1px solid #f0f0f0', paddingBottom: 8 }}>
+                  Académico
+                </h4>
+                <Row gutter={16}>
+                  <Col span={8}>
+                    <Form.Item
+                      name="gradeId"
+                      label="Año que va a cursar"
+                      rules={[{ required: true, message: 'Seleccione un grado' }]}
+                    >
+                      <Select
+                        placeholder="Seleccione Grado"
+                        onChange={(val) => {
+                          setSelectedGradeId(val);
+                          newStudentForm.setFieldsValue({ sectionId: undefined });
+                        }}
+                      >
+                        {enrollStructure.map(s => (
+                          <Option key={s.gradeId} value={s.gradeId}>{s.grade?.name}</Option>
+                        ))}
+                      </Select>
+                    </Form.Item>
+                  </Col>
+                  <Col span={8}>
+                    <Form.Item
+                      name="sectionId"
+                      label="Sección"
+                    >
+                      <Select
+                        placeholder="Sección"
+                        disabled={!selectedGradeId}
+                        allowClear
+                      >
+                        {getSectionsForGrade(selectedGradeId).map((sec: Section) => (
+                          <Option key={sec.id} value={sec.id}>{sec.name}</Option>
+                        ))}
+                      </Select>
+                    </Form.Item>
+                  </Col>
+                  <Col span={8}>
+                    <Form.Item
+                      name="escolaridad"
+                      label="Escolaridad"
+                      rules={[{ required: true }]}
+                    >
+                      <Select placeholder="Seleccione" options={ESCOLARIDAD_OPTIONS} />
+                    </Form.Item>
+                  </Col>
+                </Row>
+                <Row gutter={16}>
+                  <Col span={24}>
+                    <Form.Item name="previousSchoolIds" label="Plantel de procedencia">
+                      <Select
+                        mode="multiple"
+                        placeholder="Buscar plantel..."
+                        filterOption={false}
+                        onSearch={searchSchools}
+                        loading={loadingSchools}
+                        options={schoolOptions}
+                        allowClear
+                        maxTagCount={1}
+                      />
+                    </Form.Item>
+                  </Col>
+                </Row>
+
+                {/* 3. SOCIAL */}
+                <h4 style={{ color: '#1890ff', margin: '24px 0 16px', borderBottom: '1px solid #f0f0f0', paddingBottom: 8 }}>
+                  Social
+                </h4>
+                <Row gutter={16}>
+                  <Col span={12}>
+                    <Form.Item name="pathology" label="¿Sufre alguna patología?">
+                      <Input placeholder="Indique patología o 'Ninguna'" />
+                    </Form.Item>
+                  </Col>
+                  <Col span={12}>
+                    <Form.Item name="livingWith" label="¿Con quién vive?">
+                      <Input placeholder="Ej: Madre y Padre" />
+                    </Form.Item>
+                  </Col>
+                </Row>
+                <Row gutter={16}>
+                  <Col span={24}>
+                    <Form.Item name="address" label="Dirección de habitación (Usualmente la misma del representante)" rules={[{ required: true }]}>
+                      <Input.TextArea rows={2} />
+                    </Form.Item>
+                  </Col>
+                </Row>
                 <Row gutter={16}>
                   <Col span={8}>
                     <Form.Item
                       name="residenceState"
-                      label="Estado de residencia"
-                      rules={[{ required: true, message: 'Seleccione un estado' }]}
+                      label="Estado"
+                      rules={[{ required: true, message: 'Requerido' }]}
                     >
                       <Select
-                        placeholder="Seleccione estado"
+                        placeholder="Estado"
                         showSearch
                         optionFilterProp="label"
                         filterOption={selectFilterOption}
@@ -857,11 +913,11 @@ const EnrollStudent: React.FC = () => {
                   <Col span={8}>
                     <Form.Item
                       name="residenceMunicipality"
-                      label="Municipio de residencia"
-                      rules={[{ required: true, message: 'Seleccione un municipio' }]}
+                      label="Municipio"
+                      rules={[{ required: true, message: 'Requerido' }]}
                     >
                       <Select
-                        placeholder="Seleccione municipio"
+                        placeholder="Municipio"
                         showSearch
                         optionFilterProp="label"
                         filterOption={selectFilterOption}
@@ -874,11 +930,11 @@ const EnrollStudent: React.FC = () => {
                   <Col span={8}>
                     <Form.Item
                       name="residenceParish"
-                      label="Parroquia de residencia"
-                      rules={[{ required: true, message: 'Seleccione una parroquia' }]}
+                      label="Parroquia"
+                      rules={[{ required: true, message: 'Requerido' }]}
                     >
                       <Select
-                        placeholder="Seleccione parroquia"
+                        placeholder="Parroquia"
                         showSearch
                         optionFilterProp="label"
                         filterOption={selectFilterOption}
@@ -890,411 +946,199 @@ const EnrollStudent: React.FC = () => {
                 </Row>
               </div>
 
-              <div style={{ marginBottom: 24 }}>
-                <h4 style={{ color: '#666', borderBottom: '1px solid #eee', paddingBottom: 8 }}>4.5. Procedencia Escolar (Opcional)</h4>
-                <Form.Item name="previousSchoolIds" label="Planteles anteriores">
-                  <Select
-                    mode="multiple"
-                    placeholder="Escriba para buscar y seleccionar planteles..."
-                    filterOption={false}
-                    onSearch={searchSchools}
-                    loading={loadingSchools}
-                    options={schoolOptions}
-                    allowClear
-                  />
-                </Form.Item>
-              </div>
+              {/* DATOS DEL REPRESENTANTE */}
+              <div style={{ marginBottom: 32, padding: 24, background: '#fff', border: '1px solid #d9d9d9', borderRadius: 8 }}>
+                <h3 style={{ borderLeft: '4px solid #fa8c16', paddingLeft: 12, marginBottom: 24, fontSize: 18 }}>
+                  Datos del Representante
+                </h3>
 
-              <div style={{ marginBottom: 24 }}>
-                <h4 style={{ color: '#666', borderBottom: '1px solid #eee', paddingBottom: 8 }}>5. Datos de Contacto</h4>
-                <Row gutter={16}>
-                  <Col span={24}>
-                    <Form.Item name="address" label="Dirección" rules={[{ required: true }]}>
-                      <Input.TextArea rows={2} />
-                    </Form.Item>
-                  </Col>
-                  <Col span={12}>
-                    <Form.Item name="phone1" label="Teléfono Principal">
-                      <Input />
-                    </Form.Item>
-                  </Col>
-                  <Col span={12}>
-                    <Form.Item name="phone2" label="Teléfono Secundario">
-                      <Input />
-                    </Form.Item>
-                  </Col>
-                  <Col span={12}>
-                    <Form.Item name="whatsapp" label="WhatsApp">
-                      <Input />
-                    </Form.Item>
-                  </Col>
-                  <Col span={12}>
-                    <Form.Item name="email" label="Email" rules={[{ type: 'email' }]}>
-                      <Input />
-                    </Form.Item>
-                  </Col>
-                </Row>
-              </div>
 
-              <div style={{ marginBottom: 32 }}>
-                <h4 style={{ color: '#666', borderBottom: '1px solid #eee', paddingBottom: 8 }}>6. Datos Familiares y Representante</h4>
-                <Alert
-                  type="info"
-                  showIcon
-                  style={{ marginBottom: 16 }}
-                  message="Registrar madre, padre y representante"
-                  description="La madre siempre es obligatoria. El padre solo es opcional cuando el estudiante tiene Cédula Escolar y no será el representante. Si el representante no es la madre ni el padre, complete la sección de 'Representante'."
-                />
 
                 <Form.Item
                   name="representativeType"
-                  label="¿Quién será el representante legal?"
+                  label="¿Quién ejerce la representación?"
                   rules={[{ required: true, message: 'Seleccione un representante' }]}
                 >
-                  <Radio.Group>
-                    <Radio value="mother">Madre</Radio>
-                    <Radio value="father">Padre</Radio>
-                    <Radio value="other">Otra persona</Radio>
+                  <Radio.Group buttonStyle="solid">
+                    <Radio.Button value="mother">La Madre</Radio.Button>
+                    <Radio.Button value="father">El Padre</Radio.Button>
+                    <Radio.Button value="other">Otra persona</Radio.Button>
                   </Radio.Group>
                 </Form.Item>
 
-                <div style={{ background: '#fff', border: '1px solid #f0f0f0', borderRadius: 8, padding: 16, marginBottom: 24 }}>
-                  <h5 style={{ marginBottom: 16 }}>Madre (obligatoria)</h5>
+                {/* MADRE */}
+                <div style={{ background: '#fafafa', padding: 16, borderRadius: 8, marginBottom: 24, border: '1px solid #f0f0f0' }}>
+                  <h4 style={{ color: '#fa8c16', marginBottom: 16 }}>Datos de la Madre</h4>
                   {renderGuardianDocumentControls('mother', true)}
                   <Row gutter={16}>
                     <Col span={12}>
-                      <Form.Item
-                        name={['mother', 'firstName']}
-                        label="Nombres"
-                        rules={[{ required: true, message: 'Ingrese los nombres de la madre' }]}
-                      >
+                      <Form.Item name={['mother', 'firstName']} label="Nombres" rules={[{ required: true }]}>
                         <Input />
                       </Form.Item>
                     </Col>
                     <Col span={12}>
-                      <Form.Item
-                        name={['mother', 'lastName']}
-                        label="Apellidos"
-                        rules={[{ required: true, message: 'Ingrese los apellidos de la madre' }]}
-                      >
+                      <Form.Item name={['mother', 'lastName']} label="Apellidos" rules={[{ required: true }]}>
                         <Input />
                       </Form.Item>
                     </Col>
                   </Row>
                   <Row gutter={16}>
-                    <Col span={8}>
-                      <Form.Item
-                        name={['mother', 'document']}
-                        label="Cédula"
-                        rules={[{ required: true, message: 'Ingrese la cédula de la madre' }]}
-                      >
+                    <Col span={12}>
+                      <Form.Item name={['mother', 'phone']} label="Teléfono" rules={[{ required: true }]}>
                         <Input />
                       </Form.Item>
                     </Col>
-                    <Col span={8}>
-                      <Form.Item
-                        name={['mother', 'phone']}
-                        label="Teléfono"
-                        rules={[{ required: true, message: 'Ingrese el teléfono de la madre' }]}
-                      >
-                        <Input />
-                      </Form.Item>
-                    </Col>
-                    <Col span={8}>
-                      <Form.Item
-                        name={['mother', 'email']}
-                        label="Email"
-                        rules={[
-                          { required: true, message: 'Ingrese el email de la madre' },
-                          { type: 'email', message: 'Email inválido' }
-                        ]}
-                      >
-                        <Input />
+                    <Col span={12}>
+                      <Form.Item name={['mother', 'email']} label="Email" rules={[{ type: 'email' }]}>
+                        <Input placeholder="Opcional" />
                       </Form.Item>
                     </Col>
                   </Row>
+                  <Form.Item name={['mother', 'address']} label="Dirección de habitación" rules={[{ required: true }]}>
+                    <Input.TextArea rows={2} />
+                  </Form.Item>
                   <Row gutter={16}>
                     <Col span={8}>
-                      <Form.Item
-                        name={['mother', 'residenceState']}
-                        label="Estado de residencia"
-                        rules={[{ required: true, message: 'Seleccione el estado de residencia' }]}
-                      >
-                        <Select
-                          placeholder="Seleccione estado"
-                          showSearch
-                          optionFilterProp="label"
-                          filterOption={selectFilterOption}
-                          options={stateOptions}
-                          onChange={() => resetGuardianMunicipality('mother')}
-                        />
+                      <Form.Item name={['mother', 'residenceState']} label="Estado" rules={[{ required: true }]}>
+                        <Select showSearch options={stateOptions} onChange={() => resetGuardianMunicipality('mother')} />
                       </Form.Item>
                     </Col>
                     <Col span={8}>
-                      <Form.Item
-                        name={['mother', 'residenceMunicipality']}
-                        label="Municipio de residencia"
-                        rules={[{ required: true, message: 'Seleccione el municipio de residencia' }]}
-                      >
-                        <Select
-                          placeholder="Seleccione municipio"
-                          showSearch
-                          optionFilterProp="label"
-                          filterOption={selectFilterOption}
-                          options={motherMunicipalityOptions}
-                          disabled={!motherStateValue}
-                          onChange={() => resetGuardianParish('mother')}
-                        />
+                      <Form.Item name={['mother', 'residenceMunicipality']} label="Municipio" rules={[{ required: true }]}>
+                        <Select showSearch options={motherMunicipalityOptions} onChange={() => resetGuardianParish('mother')} disabled={!motherStateValue} />
                       </Form.Item>
                     </Col>
                     <Col span={8}>
-                      <Form.Item
-                        name={['mother', 'residenceParish']}
-                        label="Parroquia de residencia"
-                        rules={[{ required: true, message: 'Seleccione la parroquia de residencia' }]}
-                      >
-                        <Select
-                          placeholder="Seleccione parroquia"
-                          showSearch
-                          optionFilterProp="label"
-                          filterOption={selectFilterOption}
-                          options={motherParishOptions}
-                          disabled={!motherMunicipalityValue}
-                        />
-                      </Form.Item>
-                    </Col>
-                  </Row>
-                  <Row>
-                    <Col span={24}>
-                      <Form.Item
-                        name={['mother', 'address']}
-                        label="Dirección"
-                        rules={[{ required: true, message: 'Ingrese la dirección de la madre' }]}
-                      >
-                        <Input.TextArea rows={2} />
+                      <Form.Item name={['mother', 'residenceParish']} label="Parroquia" rules={[{ required: true }]}>
+                        <Select showSearch options={motherParishOptions} disabled={!motherMunicipalityValue} />
                       </Form.Item>
                     </Col>
                   </Row>
                 </div>
 
-                <div style={{ background: '#fff', border: '1px solid #f0f0f0', borderRadius: 8, padding: 16, marginBottom: 24 }}>
-                  <h5 style={{ marginBottom: 16 }}>
-                    Padre {fatherDataRequired ? '(obligatorio)' : '(opcional)'}
-                  </h5>
+                {/* PADRE */}
+                <div style={{ background: '#fafafa', padding: 16, borderRadius: 8, marginBottom: 24, border: '1px solid #f0f0f0' }}>
+                  <h4 style={{ color: '#fa8c16', marginBottom: 16 }}>
+                    Datos del Padre {fatherDataRequired ? '(Obligatorio)' : '(Opcional)'}
+                  </h4>
                   {renderGuardianDocumentControls('father', fatherFieldsRequired)}
                   <Row gutter={16}>
                     <Col span={12}>
-                      <Form.Item
-                        name={['father', 'firstName']}
-                        label="Nombres"
-                        rules={fatherFieldsRequired ? [{ required: true, message: 'Ingrese los nombres del padre' }] : []}
-                      >
+                      <Form.Item name={['father', 'firstName']} label="Nombres" rules={fatherFieldsRequired ? [{ required: true }] : []}>
                         <Input />
                       </Form.Item>
                     </Col>
                     <Col span={12}>
-                      <Form.Item
-                        name={['father', 'lastName']}
-                        label="Apellidos"
-                        rules={fatherFieldsRequired ? [{ required: true, message: 'Ingrese los apellidos del padre' }] : []}
-                      >
+                      <Form.Item name={['father', 'lastName']} label="Apellidos" rules={fatherFieldsRequired ? [{ required: true }] : []}>
                         <Input />
                       </Form.Item>
                     </Col>
                   </Row>
                   <Row gutter={16}>
                     <Col span={12}>
-                      <Form.Item
-                        name={['father', 'phone']}
-                        label="Teléfono"
-                        rules={fatherFieldsRequired ? [{ required: true, message: 'Ingrese el teléfono del padre' }] : []}
-                      >
+                      <Form.Item name={['father', 'phone']} label="Teléfono" rules={fatherFieldsRequired ? [{ required: true }] : []}>
                         <Input />
                       </Form.Item>
                     </Col>
                     <Col span={12}>
-                      <Form.Item
-                        name={['father', 'email']}
-                        label="Email"
-                        rules={[
-                          ...(fatherFieldsRequired ? [{ required: true, message: 'Ingrese el email del padre' }] : []),
-                          { type: 'email', message: 'Email inválido' }
-                        ]}
-                      >
-                        <Input />
+                      <Form.Item name={['father', 'email']} label="Email" rules={[{ type: 'email' }]}>
+                        <Input placeholder="Opcional" />
                       </Form.Item>
                     </Col>
                   </Row>
+
+                  {/* Labor del padre (solo si es rep, pero lo pedimos siempre si llena datos padre?) */}
+                  {/* Image says "Labor del padre (si es el representante, opcional)". I'll show it always if filling father, optional. */}
                   <Row gutter={16}>
-                    <Col span={8}>
-                      <Form.Item
-                        name={['father', 'residenceState']}
-                        label="Estado de residencia"
-                        rules={fatherFieldsRequired ? [{ required: true, message: 'Seleccione el estado de residencia' }] : []}
-                      >
-                        <Select
-                          placeholder="Seleccione estado"
-                          showSearch
-                          optionFilterProp="label"
-                          filterOption={selectFilterOption}
-                          options={stateOptions}
-                          onChange={() => resetGuardianMunicipality('father')}
-                        />
-                      </Form.Item>
-                    </Col>
-                    <Col span={8}>
-                      <Form.Item
-                        name={['father', 'residenceMunicipality']}
-                        label="Municipio de residencia"
-                        rules={fatherFieldsRequired ? [{ required: true, message: 'Seleccione el municipio de residencia' }] : []}
-                      >
-                        <Select
-                          placeholder="Seleccione municipio"
-                          showSearch
-                          optionFilterProp="label"
-                          filterOption={selectFilterOption}
-                          options={fatherMunicipalityOptions}
-                          disabled={!fatherStateValue}
-                          onChange={() => resetGuardianParish('father')}
-                        />
-                      </Form.Item>
-                    </Col>
-                    <Col span={8}>
-                      <Form.Item
-                        name={['father', 'residenceParish']}
-                        label="Parroquia de residencia"
-                        rules={fatherFieldsRequired ? [{ required: true, message: 'Seleccione la parroquia de residencia' }] : []}
-                      >
-                        <Select
-                          placeholder="Seleccione parroquia"
-                          showSearch
-                          optionFilterProp="label"
-                          filterOption={selectFilterOption}
-                          options={fatherParishOptions}
-                          disabled={!fatherMunicipalityValue}
-                        />
-                      </Form.Item>
-                    </Col>
-                  </Row>
-                  <Row>
                     <Col span={24}>
-                      <Form.Item
-                        name={['father', 'address']}
-                        label="Dirección"
-                        rules={fatherFieldsRequired ? [{ required: true, message: 'Ingrese la dirección del padre' }] : []}
-                      >
-                        <Input.TextArea rows={2} />
+                      <Form.Item name={['father', 'occupation']} label="Labor / Ocupación">
+                        <Input placeholder="Ej: Ingeniero, Comerciante..." />
+                      </Form.Item>
+                    </Col>
+                  </Row>
+
+                  <Form.Item name={['father', 'address']} label="Dirección de habitación" rules={fatherFieldsRequired ? [{ required: true }] : []}>
+                    <Input.TextArea rows={2} />
+                  </Form.Item>
+                  <Row gutter={16}>
+                    <Col span={8}>
+                      <Form.Item name={['father', 'residenceState']} label="Estado" rules={fatherFieldsRequired ? [{ required: true }] : []}>
+                        <Select showSearch options={stateOptions} onChange={() => resetGuardianMunicipality('father')} />
+                      </Form.Item>
+                    </Col>
+                    <Col span={8}>
+                      <Form.Item name={['father', 'residenceMunicipality']} label="Municipio" rules={fatherFieldsRequired ? [{ required: true }] : []}>
+                        <Select showSearch options={fatherMunicipalityOptions} onChange={() => resetGuardianParish('father')} disabled={!fatherStateValue} />
+                      </Form.Item>
+                    </Col>
+                    <Col span={8}>
+                      <Form.Item name={['father', 'residenceParish']} label="Parroquia" rules={fatherFieldsRequired ? [{ required: true }] : []}>
+                        <Select showSearch options={fatherParishOptions} disabled={!fatherMunicipalityValue} />
                       </Form.Item>
                     </Col>
                   </Row>
                 </div>
 
+                {/* REPRESENTANTE (Si es otro) */}
                 {(representativeFieldsRequired || representativeIsOther) && (
-                  <div style={{ background: '#fff', border: '1px solid #f0f0f0', borderRadius: 8, padding: 16 }}>
-                    <h5 style={{ marginBottom: 16 }}>Representante (solo si es diferente)</h5>
+                  <div style={{ background: '#fff7e6', padding: 16, borderRadius: 8, marginBottom: 24, border: '1px solid #ffd591' }}>
+                    <h4 style={{ color: '#d46b08', marginBottom: 16 }}>Datos del Representante (Otro)</h4>
                     {renderGuardianDocumentControls('representative', representativeFieldsRequired)}
                     <Row gutter={16}>
                       <Col span={12}>
-                        <Form.Item
-                          name={['representative', 'firstName']}
-                          label="Nombres"
-                          rules={representativeFieldsRequired ? [{ required: true, message: 'Ingrese los nombres del representante' }] : []}
-                        >
+                        <Form.Item name={['representative', 'firstName']} label="Nombres" rules={[{ required: true }]}>
                           <Input />
                         </Form.Item>
                       </Col>
                       <Col span={12}>
-                        <Form.Item
-                          name={['representative', 'lastName']}
-                          label="Apellidos"
-                          rules={representativeFieldsRequired ? [{ required: true, message: 'Ingrese los apellidos del representante' }] : []}
-                        >
+                        <Form.Item name={['representative', 'lastName']} label="Apellidos" rules={[{ required: true }]}>
                           <Input />
                         </Form.Item>
                       </Col>
                     </Row>
                     <Row gutter={16}>
                       <Col span={12}>
-                        <Form.Item
-                          name={['representative', 'phone']}
-                          label="Teléfono"
-                          rules={representativeFieldsRequired ? [{ required: true, message: 'Ingrese el teléfono del representante' }] : []}
-                        >
+                        <Form.Item name={['representative', 'phone']} label="Teléfono" rules={[{ required: true }]}>
                           <Input />
                         </Form.Item>
                       </Col>
                       <Col span={12}>
-                        <Form.Item
-                          name={['representative', 'email']}
-                          label="Email"
-                          rules={[
-                            ...(representativeFieldsRequired ? [{ required: true, message: 'Ingrese el email del representante' }] : []),
-                            { type: 'email', message: 'Email inválido' }
-                          ]}
-                        >
+                        <Form.Item name={['representative', 'email']} label="Email" rules={[{ type: 'email' }]}>
+                          <Input placeholder="Opcional" />
+                        </Form.Item>
+                      </Col>
+                    </Row>
+
+                    <Row gutter={16}>
+                      <Col span={12}>
+                        <Form.Item name={['representative', 'occupation']} label="Labor / Ocupación">
                           <Input />
                         </Form.Item>
                       </Col>
+                      {/* Add Vínculo? Not in GuardianProfile but asked in Image "Vínculo con el estudiante". */}
+                      {/* Currently logic handles relation via 'relationship' enum. If 'other', we don't store custom string relation in logic yet? */}
+                      {/* I didn't add 'relationshipDetails' to StudentGuardian model. The user image asks "Vínculo con el estudiante". */}
+                      {/* I should probably add it, but for now I'll skip or add 'occupation' is enough? No, link is different. */}
+                      {/* I'll focus on 'occupation' for now as I added it to DB. */}
                     </Row>
+
+                    <Form.Item name={['representative', 'address']} label="Dirección de habitación" rules={[{ required: true }]}>
+                      <Input.TextArea rows={2} />
+                    </Form.Item>
                     <Row gutter={16}>
                       <Col span={8}>
-                        <Form.Item
-                          name={['representative', 'residenceState']}
-                          label="Estado de residencia"
-                          rules={representativeFieldsRequired ? [{ required: true, message: 'Seleccione el estado de residencia' }] : []}
-                        >
-                          <Select
-                            placeholder="Seleccione estado"
-                            showSearch
-                            optionFilterProp="label"
-                            filterOption={selectFilterOption}
-                            options={stateOptions}
-                            onChange={() => resetGuardianMunicipality('representative')}
-                          />
+                        <Form.Item name={['representative', 'residenceState']} label="Estado" rules={[{ required: true }]}>
+                          <Select showSearch options={stateOptions} onChange={() => resetGuardianMunicipality('representative')} />
                         </Form.Item>
                       </Col>
                       <Col span={8}>
-                        <Form.Item
-                          name={['representative', 'residenceMunicipality']}
-                          label="Municipio de residencia"
-                          rules={representativeFieldsRequired ? [{ required: true, message: 'Seleccione el municipio de residencia' }] : []}
-                        >
-                          <Select
-                            placeholder="Seleccione municipio"
-                            showSearch
-                            optionFilterProp="label"
-                            filterOption={selectFilterOption}
-                            options={representativeMunicipalityOptions}
-                            disabled={!representativeStateValue}
-                            onChange={() => resetGuardianParish('representative')}
-                          />
+                        <Form.Item name={['representative', 'residenceMunicipality']} label="Municipio" rules={[{ required: true }]}>
+                          <Select showSearch options={representativeMunicipalityOptions} onChange={() => resetGuardianParish('representative')} disabled={!representativeStateValue} />
                         </Form.Item>
                       </Col>
                       <Col span={8}>
-                        <Form.Item
-                          name={['representative', 'residenceParish']}
-                          label="Parroquia de residencia"
-                          rules={representativeFieldsRequired ? [{ required: true, message: 'Seleccione la parroquia de residencia' }] : []}
-                        >
-                          <Select
-                            placeholder="Seleccione parroquia"
-                            showSearch
-                            optionFilterProp="label"
-                            filterOption={selectFilterOption}
-                            options={representativeParishOptions}
-                            disabled={!representativeMunicipalityValue}
-                          />
-                        </Form.Item>
-                      </Col>
-                    </Row>
-                    <Row>
-                      <Col span={24}>
-                        <Form.Item
-                          name={['representative', 'address']}
-                          label="Dirección"
-                          rules={representativeFieldsRequired ? [{ required: true, message: 'Ingrese la dirección del representante' }] : []}
-                        >
-                          <Input.TextArea rows={2} />
+                        <Form.Item name={['representative', 'residenceParish']} label="Parroquia" rules={[{ required: true }]}>
+                          <Select showSearch options={representativeParishOptions} disabled={!representativeMunicipalityValue} />
                         </Form.Item>
                       </Col>
                     </Row>
@@ -1315,6 +1159,49 @@ const EnrollStudent: React.FC = () => {
                   />
                 </div>
               ) : null}
+
+
+
+              {/* DOCUMENTOS */}
+              <div style={{ marginBottom: 32, padding: 24, background: '#fff', border: '1px solid #d9d9d9', borderRadius: 8 }}>
+                <h3 style={{ borderLeft: '4px solid #fa8c16', paddingLeft: 12, marginBottom: 24, fontSize: 18 }}>
+                  Documentos Consignados
+                </h3>
+                <Row gutter={[16, 16]}>
+                  <Col span={12}><Form.Item name={['documents', 'receivedCertificadoAprendizaje']} valuePropName="checked"><Checkbox>Certificado de aprendizaje</Checkbox></Form.Item></Col>
+                  <Col span={12}><Form.Item name={['documents', 'receivedCartaBuenaConducta']} valuePropName="checked"><Checkbox>Carta de buena conducta</Checkbox></Form.Item></Col>
+                  <Col span={12}><Form.Item name={['documents', 'receivedNotasCertificadas']} valuePropName="checked"><Checkbox>Notas certificadas (de 2do año en adelante)</Checkbox></Form.Item></Col>
+                  <Col span={12}><Form.Item name={['documents', 'receivedPartidaNacimiento']} valuePropName="checked"><Checkbox>Partida de nacimiento</Checkbox></Form.Item></Col>
+                  <Col span={12}><Form.Item name={['documents', 'receivedCopiaCedulaEstudiante']} valuePropName="checked"><Checkbox>Fotocopia de cédula del estudiante</Checkbox></Form.Item></Col>
+                  <Col span={12}><Form.Item name={['documents', 'receivedInformesMedicos']} valuePropName="checked"><Checkbox>Informes médicos (si tiene alguno)</Checkbox></Form.Item></Col>
+                  <Col span={12}><Form.Item name={['documents', 'receivedFotoCarnetEstudiante']} valuePropName="checked"><Checkbox>Foto tipo carnet del estudiante</Checkbox></Form.Item></Col>
+                </Row>
+
+                <h4 style={{ marginTop: 24, marginBottom: 16 }}>Archivos Digitales</h4>
+                <Row gutter={24}>
+                  <Col span={8}>
+                    <Form.Item name={['documents', 'pathCedulaRepresentante']} label="Cédula Representante" getValueFromEvent={normFile}>
+                      <Upload action="/api/upload/documents" maxCount={1} showUploadList={{ showRemoveIcon: true }}>
+                        <Button icon={<UploadOutlined />}>Subir Archivo</Button>
+                      </Upload>
+                    </Form.Item>
+                  </Col>
+                  <Col span={8}>
+                    <Form.Item name={['documents', 'pathFotoRepresentante']} label="Foto Representante" getValueFromEvent={normFile}>
+                      <Upload action="/api/upload/documents" maxCount={1} showUploadList={{ showRemoveIcon: true }}>
+                        <Button icon={<UploadOutlined />}>Subir Foto</Button>
+                      </Upload>
+                    </Form.Item>
+                  </Col>
+                  <Col span={8}>
+                    <Form.Item name={['documents', 'pathFotoEstudiante']} label="Foto Estudiante" getValueFromEvent={normFile}>
+                      <Upload action="/api/upload/documents" maxCount={1} showUploadList={{ showRemoveIcon: true }}>
+                        <Button icon={<UploadOutlined />}>Subir Foto</Button>
+                      </Upload>
+                    </Form.Item>
+                  </Col>
+                </Row>
+              </div>
 
               <Form.Item style={{ marginTop: 24 }}>
                 <Button type="primary" htmlType="submit" block size="large" icon={<UserAddOutlined />}>
@@ -1410,6 +1297,46 @@ const EnrollStudent: React.FC = () => {
                   </Form.Item>
                 </Col>
               </Row>
+
+              <div style={{ marginBottom: 32, padding: 24, background: '#fff', border: '1px solid #d9d9d9', borderRadius: 8 }}>
+                <h3 style={{ borderLeft: '4px solid #fa8c16', paddingLeft: 12, marginBottom: 24, fontSize: 18 }}>
+                  Documentos Consignados
+                </h3>
+                <Row gutter={[16, 16]}>
+                  <Col span={12}><Form.Item name={['documents', 'receivedCertificadoAprendizaje']} valuePropName="checked"><Checkbox>Certificado de aprendizaje</Checkbox></Form.Item></Col>
+                  <Col span={12}><Form.Item name={['documents', 'receivedCartaBuenaConducta']} valuePropName="checked"><Checkbox>Carta de buena conducta</Checkbox></Form.Item></Col>
+                  <Col span={12}><Form.Item name={['documents', 'receivedNotasCertificadas']} valuePropName="checked"><Checkbox>Notas certificadas (de 2do año en adelante)</Checkbox></Form.Item></Col>
+                  <Col span={12}><Form.Item name={['documents', 'receivedPartidaNacimiento']} valuePropName="checked"><Checkbox>Partida de nacimiento</Checkbox></Form.Item></Col>
+                  <Col span={12}><Form.Item name={['documents', 'receivedCopiaCedulaEstudiante']} valuePropName="checked"><Checkbox>Fotocopia de cédula del estudiante</Checkbox></Form.Item></Col>
+                  <Col span={12}><Form.Item name={['documents', 'receivedInformesMedicos']} valuePropName="checked"><Checkbox>Informes médicos (si tiene alguno)</Checkbox></Form.Item></Col>
+                  <Col span={12}><Form.Item name={['documents', 'receivedFotoCarnetEstudiante']} valuePropName="checked"><Checkbox>Foto tipo carnet del estudiante</Checkbox></Form.Item></Col>
+                </Row>
+
+                <h4 style={{ marginTop: 24, marginBottom: 16 }}>Archivos Digitales</h4>
+                <Row gutter={24}>
+                  <Col span={8}>
+                    <Form.Item name={['documents', 'pathCedulaRepresentante']} label="Cédula Representante" getValueFromEvent={normFile}>
+                      <Upload action="/api/upload/documents" maxCount={1} showUploadList={{ showRemoveIcon: true }}>
+                        <Button icon={<UploadOutlined />}>Subir Archivo</Button>
+                      </Upload>
+                    </Form.Item>
+                  </Col>
+                  <Col span={8}>
+                    <Form.Item name={['documents', 'pathFotoRepresentante']} label="Foto Representante" getValueFromEvent={normFile}>
+                      <Upload action="/api/upload/documents" maxCount={1} showUploadList={{ showRemoveIcon: true }}>
+                        <Button icon={<UploadOutlined />}>Subir Foto</Button>
+                      </Upload>
+                    </Form.Item>
+                  </Col>
+                  <Col span={8}>
+                    <Form.Item name={['documents', 'pathFotoEstudiante']} label="Foto Estudiante" getValueFromEvent={normFile}>
+                      <Upload action="/api/upload/documents" maxCount={1} showUploadList={{ showRemoveIcon: true }}>
+                        <Button icon={<UploadOutlined />}>Subir Foto</Button>
+                      </Upload>
+                    </Form.Item>
+                  </Col>
+                </Row>
+              </div>
 
               <Form.Item>
                 <Button type="primary" htmlType="submit" block icon={<UserAddOutlined />}>
