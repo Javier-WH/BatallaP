@@ -1072,12 +1072,43 @@ export const registerAndEnroll = async (req: Request, res: Response) => {
       documents
     } = req.body;
 
+    // 0. Auto-generate document if Cedula Escolar and empty
+    let finalDocument = document;
+    if (documentType === 'Cedula Escolar' && (!document || document.trim() === '')) {
+      if (!mother || !mother.document) {
+        throw new Error('La cédula de la madre es obligatoria para generar la Cédula Escolar.');
+      }
+
+      // 1. Nationality Char
+      const nationalityChar = req.body.nationality === 'Extranjero' ? 'E' : 'V';
+
+      // 2. Birth Order
+      let birthOrder = 1;
+      const motherProfile = await GuardianProfile.findOne({
+        where: { document: mother.document },
+        transaction: t
+      });
+      if (motherProfile) {
+        const childrenCount = await StudentGuardian.count({
+          where: { guardianId: motherProfile.id, relationship: 'mother' },
+          transaction: t
+        });
+        birthOrder = childrenCount + 1;
+      }
+
+      // 3. Year of birth (last 2 digits)
+      const birthYear = birthdate ? new Date(birthdate).getFullYear().toString().slice(-2) : '00';
+
+      // 4. Construct: [N][Order][Year][MotherID]
+      finalDocument = `${nationalityChar}${birthOrder}${birthYear}${mother.document}`;
+    }
+
     // 1. Create Person (no User)
     const person = await Person.create({
       firstName,
       lastName,
       documentType,
-      document,
+      document: finalDocument,
       gender,
       birthdate,
       pathology,

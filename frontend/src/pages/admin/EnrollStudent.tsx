@@ -221,6 +221,7 @@ const EnrollStudent: React.FC = () => {
   const [previewImage, setPreviewImage] = useState('');
   const [previewTitle, setPreviewTitle] = useState('');
   const representativeTypeValue = Form.useWatch('representativeType', newStudentForm);
+  const studentDocumentType = Form.useWatch('documentType', newStudentForm);
   const birthStateValue = Form.useWatch('birthState', newStudentForm);
   const birthMunicipalityValue = Form.useWatch('birthMunicipality', newStudentForm);
   const residenceStateValue = Form.useWatch('residenceState', newStudentForm);
@@ -532,8 +533,8 @@ const EnrollStudent: React.FC = () => {
   const fatherIsRepresentative = representativeTypeValue === 'father';
   const representativeIsOther = representativeTypeValue === 'other';
 
-  // Dynamic Requirements: Strictly mandatory only if they are the representative
-  const motherFieldsRequired = motherIsRepresentative;
+  // Dynamic Requirements: Strictly mandatory only if they are the representative OR if CE is used
+  const motherFieldsRequired = motherIsRepresentative || studentDocumentType === 'Cedula Escolar';
   const fatherFieldsRequired = fatherIsRepresentative;
   const representativeFieldsRequired = representativeIsOther;
 
@@ -731,7 +732,7 @@ const EnrollStudent: React.FC = () => {
                   </Col>
                 </Row>
                 <Row gutter={16}>
-                  <Col span={8}>
+                  <Col span={studentDocumentType === 'Cedula Escolar' ? 6 : 8}>
                     <Form.Item name="documentType" label="Tipo Doc" rules={[{ required: true }]}>
                       <Select>
                         <Option value="Venezolano">V</Option>
@@ -741,9 +742,28 @@ const EnrollStudent: React.FC = () => {
                       </Select>
                     </Form.Item>
                   </Col>
-                  <Col span={16}>
-                    <Form.Item name="document" label="Documento" rules={[{ required: true }]}>
-                      <Input />
+                  {studentDocumentType === 'Cedula Escolar' && (
+                    <Col span={6}>
+                      <Form.Item
+                        name="nationality"
+                        label="Nac."
+                        rules={[{ required: true, message: 'Requerido' }]}
+                        initialValue="Venezolano"
+                      >
+                        <Select>
+                          <Option value="Venezolano">V</Option>
+                          <Option value="Extranjero">E</Option>
+                        </Select>
+                      </Form.Item>
+                    </Col>
+                  )}
+                  <Col span={studentDocumentType === 'Cedula Escolar' ? 12 : 16}>
+                    <Form.Item
+                      name="document"
+                      label="Documento"
+                      rules={studentDocumentType === 'Cedula Escolar' ? [] : [{ required: true }]}
+                    >
+                      <Input placeholder={studentDocumentType === 'Cedula Escolar' ? 'Vacío para autogenerar' : ''} />
                     </Form.Item>
                   </Col>
                 </Row>
