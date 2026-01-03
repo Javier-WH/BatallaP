@@ -1205,22 +1205,49 @@ const EnrollStudent: React.FC = () => {
                 <Row gutter={24}>
                   <Col span={8}>
                     <Form.Item name={['documents', 'pathCedulaRepresentante']} label="Cédula Representante" getValueFromEvent={normFile}>
-                      <Upload action="/api/upload/documents" maxCount={1} showUploadList={{ showRemoveIcon: true }}>
-                        <Button icon={<UploadOutlined />}>Subir Archivo</Button>
+                      <Upload
+                        action="/api/upload/documents"
+                        maxCount={1}
+                        listType="picture-card"
+                        accept="image/*"
+                        showUploadList={{ showRemoveIcon: true }}
+                      >
+                        <div>
+                          <UploadOutlined />
+                          <div style={{ marginTop: 8 }}>Subir</div>
+                        </div>
                       </Upload>
                     </Form.Item>
                   </Col>
                   <Col span={8}>
                     <Form.Item name={['documents', 'pathFotoRepresentante']} label="Foto Representante" getValueFromEvent={normFile}>
-                      <Upload action="/api/upload/documents" maxCount={1} showUploadList={{ showRemoveIcon: true }}>
-                        <Button icon={<UploadOutlined />}>Subir Foto</Button>
+                      <Upload
+                        action="/api/upload/documents"
+                        maxCount={1}
+                        listType="picture-card"
+                        accept="image/*"
+                        showUploadList={{ showRemoveIcon: true }}
+                      >
+                        <div>
+                          <UploadOutlined />
+                          <div style={{ marginTop: 8 }}>Subir</div>
+                        </div>
                       </Upload>
                     </Form.Item>
                   </Col>
                   <Col span={8}>
                     <Form.Item name={['documents', 'pathFotoEstudiante']} label="Foto Estudiante" getValueFromEvent={normFile}>
-                      <Upload action="/api/upload/documents" maxCount={1} showUploadList={{ showRemoveIcon: true }}>
-                        <Button icon={<UploadOutlined />}>Subir Foto</Button>
+                      <Upload
+                        action="/api/upload/documents"
+                        maxCount={1}
+                        listType="picture-card"
+                        accept="image/*"
+                        showUploadList={{ showRemoveIcon: true }}
+                      >
+                        <div>
+                          <UploadOutlined />
+                          <div style={{ marginTop: 8 }}>Subir</div>
+                        </div>
                       </Upload>
                     </Form.Item>
                   </Col>
@@ -1340,22 +1367,49 @@ const EnrollStudent: React.FC = () => {
                 <Row gutter={24}>
                   <Col span={8}>
                     <Form.Item name={['documents', 'pathCedulaRepresentante']} label="Cédula Representante" getValueFromEvent={normFile}>
-                      <Upload action="/api/upload/documents" maxCount={1} showUploadList={{ showRemoveIcon: true }}>
-                        <Button icon={<UploadOutlined />}>Subir Archivo</Button>
+                      <Upload
+                        action="/api/upload/documents"
+                        maxCount={1}
+                        listType="picture-card"
+                        accept="image/*"
+                        showUploadList={{ showRemoveIcon: true }}
+                      >
+                        <div>
+                          <UploadOutlined />
+                          <div style={{ marginTop: 8 }}>Subir</div>
+                        </div>
                       </Upload>
                     </Form.Item>
                   </Col>
                   <Col span={8}>
                     <Form.Item name={['documents', 'pathFotoRepresentante']} label="Foto Representante" getValueFromEvent={normFile}>
-                      <Upload action="/api/upload/documents" maxCount={1} showUploadList={{ showRemoveIcon: true }}>
-                        <Button icon={<UploadOutlined />}>Subir Foto</Button>
+                      <Upload
+                        action="/api/upload/documents"
+                        maxCount={1}
+                        listType="picture-card"
+                        accept="image/*"
+                        showUploadList={{ showRemoveIcon: true }}
+                      >
+                        <div>
+                          <UploadOutlined />
+                          <div style={{ marginTop: 8 }}>Subir</div>
+                        </div>
                       </Upload>
                     </Form.Item>
                   </Col>
                   <Col span={8}>
                     <Form.Item name={['documents', 'pathFotoEstudiante']} label="Foto Estudiante" getValueFromEvent={normFile}>
-                      <Upload action="/api/upload/documents" maxCount={1} showUploadList={{ showRemoveIcon: true }}>
-                        <Button icon={<UploadOutlined />}>Subir Foto</Button>
+                      <Upload
+                        action="/api/upload/documents"
+                        maxCount={1}
+                        listType="picture-card"
+                        accept="image/*"
+                        showUploadList={{ showRemoveIcon: true }}
+                      >
+                        <div>
+                          <UploadOutlined />
+                          <div style={{ marginTop: 8 }}>Subir</div>
+                        </div>
                       </Upload>
                     </Form.Item>
                   </Col>
