@@ -23,7 +23,7 @@ type VenezuelaState = {
   municipios: VenezuelaMunicipality[];
 };
 
-type OptionItem = { label: string; value: string };
+type OptionItem = { label: string; value: string | number };
 
 type SchoolSearchResult = {
   code?: string;
@@ -248,7 +248,6 @@ const EnrollStudent: React.FC = () => {
   const representativeDocumentValue = Form.useWatch(['representative', 'document'], newStudentForm) as string | undefined;
 
   const receivedInformesMedicos = Form.useWatch(['documents', 'receivedInformesMedicos'], newStudentForm);
-  const receivedInformesMedicosExisting = Form.useWatch(['documents', 'receivedInformesMedicos'], existingStudentForm);
 
   // Watch entire objects for reactive validation
   const motherFormData = Form.useWatch('mother', newStudentForm);
@@ -682,20 +681,10 @@ const EnrollStudent: React.FC = () => {
     }
 
     try {
-      const documents = (values.documents as any) || {};
-      const transformedDocuments = {
-        ...documents,
-        pathCedulaRepresentante: documents.pathCedulaRepresentante?.[0]?.response?.path || null,
-        pathFotoRepresentante: documents.pathFotoRepresentante?.[0]?.response?.path || null,
-        pathFotoEstudiante: documents.pathFotoEstudiante?.[0]?.response?.path || null,
-        pathInformesMedicos: documents.pathInformesMedicos?.map((f: any) => f.response?.path).filter(Boolean) || [],
-      };
-
       await api.post('/inscriptions', {
         ...values,
         schoolPeriodId: activePeriod.id,
         enrollmentAnswers: transformAnswers(values.enrollmentAnswers as EnrollmentAnswerFormValues | undefined),
-        documents: transformedDocuments
       });
       message.success('Solicitud de inscripción registrada exitosamente');
       existingStudentForm.resetFields();
@@ -1343,6 +1332,7 @@ const EnrollStudent: React.FC = () => {
                 rules={[{ required: true, message: 'Busque y seleccione un estudiante' }]}
               >
                 <Select
+                  showSearch
                   placeholder="Escriba nombre o cédula..."
                   filterOption={false}
                   onSearch={handleSearchStudents}
@@ -1412,97 +1402,6 @@ const EnrollStudent: React.FC = () => {
                 </Col>
               </Row>
 
-              <div style={{ marginBottom: 32, padding: 24, background: '#fff', border: '1px solid #d9d9d9', borderRadius: 8 }}>
-                <h3 style={{ borderLeft: '4px solid #fa8c16', paddingLeft: 12, marginBottom: 24, fontSize: 18 }}>
-                  Documentos Consignados
-                </h3>
-                <Row gutter={[16, 16]}>
-                  <Col span={12}><Form.Item name={['documents', 'receivedCertificadoAprendizaje']} valuePropName="checked"><Checkbox>Certificado de aprendizaje</Checkbox></Form.Item></Col>
-                  <Col span={12}><Form.Item name={['documents', 'receivedCartaBuenaConducta']} valuePropName="checked"><Checkbox>Carta de buena conducta</Checkbox></Form.Item></Col>
-                  <Col span={12}><Form.Item name={['documents', 'receivedNotasCertificadas']} valuePropName="checked"><Checkbox>Notas certificadas (de 2do año en adelante)</Checkbox></Form.Item></Col>
-                  <Col span={12}><Form.Item name={['documents', 'receivedPartidaNacimiento']} valuePropName="checked"><Checkbox>Partida de nacimiento</Checkbox></Form.Item></Col>
-                  <Col span={12}><Form.Item name={['documents', 'receivedCopiaCedulaEstudiante']} valuePropName="checked"><Checkbox>Fotocopia de cédula del estudiante</Checkbox></Form.Item></Col>
-                  <Col span={12}><Form.Item name={['documents', 'receivedInformesMedicos']} valuePropName="checked"><Checkbox>Informes médicos (si tiene alguno)</Checkbox></Form.Item></Col>
-                  <Col span={12}><Form.Item name={['documents', 'receivedFotoCarnetEstudiante']} valuePropName="checked"><Checkbox>Foto tipo carnet del estudiante</Checkbox></Form.Item></Col>
-                </Row>
-
-                <h4 style={{ marginTop: 24, marginBottom: 16 }}>Archivos Digitales</h4>
-                <Row gutter={24}>
-                  <Col span={8}>
-                    <Form.Item name={['documents', 'pathCedulaRepresentante']} label="Cédula Representante" getValueFromEvent={normFile}>
-                      <Upload
-                        action="/api/upload/documents"
-                        maxCount={1}
-                        listType="picture-card"
-                        accept="image/*"
-                        showUploadList={{ showRemoveIcon: true }}
-                        onPreview={handlePreview}
-                      >
-                        <div>
-                          <UploadOutlined />
-                          <div style={{ marginTop: 8 }}>Subir</div>
-                        </div>
-                      </Upload>
-                    </Form.Item>
-                  </Col>
-                  <Col span={8}>
-                    <Form.Item name={['documents', 'pathFotoRepresentante']} label="Foto Representante" getValueFromEvent={normFile}>
-                      <Upload
-                        action="/api/upload/documents"
-                        maxCount={1}
-                        listType="picture-card"
-                        accept="image/*"
-                        showUploadList={{ showRemoveIcon: true }}
-                        onPreview={handlePreview}
-                      >
-                        <div>
-                          <UploadOutlined />
-                          <div style={{ marginTop: 8 }}>Subir</div>
-                        </div>
-                      </Upload>
-                    </Form.Item>
-                  </Col>
-                  <Col span={8}>
-                    <Form.Item name={['documents', 'pathFotoEstudiante']} label="Foto Estudiante" getValueFromEvent={normFile}>
-                      <Upload
-                        action="/api/upload/documents"
-                        maxCount={1}
-                        listType="picture-card"
-                        accept="image/*"
-                        showUploadList={{ showRemoveIcon: true }}
-                        onPreview={handlePreview}
-                      >
-                        <div>
-                          <UploadOutlined />
-                          <div style={{ marginTop: 8 }}>Subir</div>
-                        </div>
-                      </Upload>
-                    </Form.Item>
-                  </Col>
-                </Row>
-
-                {receivedInformesMedicosExisting && (
-                  <Row gutter={24} style={{ marginTop: 16 }}>
-                    <Col span={24}>
-                      <Form.Item name={['documents', 'pathInformesMedicos']} label="Informes Médicos (Imágenes)" getValueFromEvent={normFile}>
-                        <Upload
-                          action="/api/upload/documents"
-                          listType="picture-card"
-                          accept="image/*"
-                          multiple
-                          showUploadList={{ showRemoveIcon: true }}
-                          onPreview={handlePreview}
-                        >
-                          <div>
-                            <UploadOutlined />
-                            <div style={{ marginTop: 8 }}>Subir</div>
-                          </div>
-                        </Upload>
-                      </Form.Item>
-                    </Col>
-                  </Row>
-                )}
-              </div>
 
               <Form.Item>
                 <Button type="primary" htmlType="submit" block icon={<UserAddOutlined />}>
