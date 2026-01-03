@@ -1191,8 +1191,8 @@ const MatriculationEnrollment: React.FC = () => {
 
     const studentCols = [
       isColumnVisible('nationality') && {
-        title: 'Nac.',
-        width: 70,
+        title: 'CE-',
+        width: 35,
         render: (_: unknown, record: MatriculationRow) => (
           <div className="px-1 py-0.5 text-xs text-slate-800">
             {docPrefix[record.tempData.documentType as keyof typeof docPrefix] || record.tempData.documentType?.[0]?.toUpperCase() + '-'}
