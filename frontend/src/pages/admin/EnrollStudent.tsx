@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Card, Button, Form, Tag, message, Select, Row, Col, Input, DatePicker, Radio, Tabs, Alert, Checkbox, Upload } from 'antd';
+import { Card, Button, Form, Tag, message, Select, Row, Col, Input, DatePicker, Radio, Tabs, Alert, Checkbox, Upload, Modal } from 'antd';
+import type { UploadFile, RcFile } from 'antd/es/upload/interface';
 import { UserAddOutlined, LoadingOutlined, UploadOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import api from '@/services/api';
@@ -184,6 +185,14 @@ const normFile = (e: any) => {
   return e?.fileList;
 };
 
+const getBase64 = (file: RcFile): Promise<string> =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = (error) => reject(error);
+  });
+
 const EnrollStudent: React.FC = () => {
   // State
   const [activePeriod, setActivePeriod] = useState<SchoolPeriod | null>(null);
@@ -215,6 +224,11 @@ const EnrollStudent: React.FC = () => {
     father: '',
     representative: ''
   });
+
+  // Preview State
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewImage, setPreviewImage] = useState('');
+  const [previewTitle, setPreviewTitle] = useState('');
   const representativeTypeValue = Form.useWatch('representativeType', newStudentForm);
   const birthStateValue = Form.useWatch('birthState', newStudentForm);
   const birthMunicipalityValue = Form.useWatch('birthMunicipality', newStudentForm);
@@ -602,6 +616,25 @@ const EnrollStudent: React.FC = () => {
         setSearchingStudents(false);
       }
     }, 300);
+  };
+
+  // Preview Handlers
+  const handleCancelPreview = () => setPreviewOpen(false);
+
+  const handlePreview = async (file: UploadFile) => {
+    if (!file.url && !file.preview) {
+      file.preview = await getBase64(file.originFileObj as RcFile);
+    }
+
+    let url = file.url || (file.preview as string);
+    // If it's a relative path from the server, prepend the host
+    if (url && url.startsWith('/uploads')) {
+      url = `http://localhost:3000${url}`;
+    }
+
+    setPreviewImage(url);
+    setPreviewOpen(true);
+    setPreviewTitle(file.name || url.substring(url.lastIndexOf('/') + 1));
   };
 
   // Submit: New Student
@@ -1216,6 +1249,7 @@ const EnrollStudent: React.FC = () => {
                         listType="picture-card"
                         accept="image/*"
                         showUploadList={{ showRemoveIcon: true }}
+                        onPreview={handlePreview}
                       >
                         <div>
                           <UploadOutlined />
@@ -1232,6 +1266,7 @@ const EnrollStudent: React.FC = () => {
                         listType="picture-card"
                         accept="image/*"
                         showUploadList={{ showRemoveIcon: true }}
+                        onPreview={handlePreview}
                       >
                         <div>
                           <UploadOutlined />
@@ -1248,6 +1283,7 @@ const EnrollStudent: React.FC = () => {
                         listType="picture-card"
                         accept="image/*"
                         showUploadList={{ showRemoveIcon: true }}
+                        onPreview={handlePreview}
                       >
                         <div>
                           <UploadOutlined />
@@ -1268,6 +1304,7 @@ const EnrollStudent: React.FC = () => {
                           accept="image/*"
                           multiple
                           showUploadList={{ showRemoveIcon: true }}
+                          onPreview={handlePreview}
                         >
                           <div>
                             <UploadOutlined />
@@ -1399,6 +1436,7 @@ const EnrollStudent: React.FC = () => {
                         listType="picture-card"
                         accept="image/*"
                         showUploadList={{ showRemoveIcon: true }}
+                        onPreview={handlePreview}
                       >
                         <div>
                           <UploadOutlined />
@@ -1415,6 +1453,7 @@ const EnrollStudent: React.FC = () => {
                         listType="picture-card"
                         accept="image/*"
                         showUploadList={{ showRemoveIcon: true }}
+                        onPreview={handlePreview}
                       >
                         <div>
                           <UploadOutlined />
@@ -1431,6 +1470,7 @@ const EnrollStudent: React.FC = () => {
                         listType="picture-card"
                         accept="image/*"
                         showUploadList={{ showRemoveIcon: true }}
+                        onPreview={handlePreview}
                       >
                         <div>
                           <UploadOutlined />
@@ -1451,6 +1491,7 @@ const EnrollStudent: React.FC = () => {
                           accept="image/*"
                           multiple
                           showUploadList={{ showRemoveIcon: true }}
+                          onPreview={handlePreview}
                         >
                           <div>
                             <UploadOutlined />
@@ -1488,6 +1529,10 @@ const EnrollStudent: React.FC = () => {
           </TabPane>
         </Tabs>
       </Card>
+
+      <Modal open={previewOpen} title={previewTitle} footer={null} onCancel={handleCancelPreview}>
+        <img alt="example" style={{ width: '100%' }} src={previewImage} />
+      </Modal>
     </div >
   );
 };
