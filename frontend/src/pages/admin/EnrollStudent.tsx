@@ -159,15 +159,6 @@ const buildParishOptions = (
     : [];
 };
 
-const guardianHasAnyValue = (fields?: Record<string, unknown>) => {
-  if (!fields) return false;
-  return Object.values(fields).some((value) => {
-    if (value === null || value === undefined) return false;
-    if (typeof value === 'string') return value.trim() !== '';
-    return true;
-  });
-};
-
 type EnrollmentAnswerFormValues = Record<number, string | string[]>;
 
 const transformAnswers = (raw?: EnrollmentAnswerFormValues) => {
@@ -248,11 +239,6 @@ const EnrollStudent: React.FC = () => {
   const representativeDocumentValue = Form.useWatch(['representative', 'document'], newStudentForm) as string | undefined;
 
   const receivedInformesMedicos = Form.useWatch(['documents', 'receivedInformesMedicos'], newStudentForm);
-
-  // Watch entire objects for reactive validation
-  const motherFormData = Form.useWatch('mother', newStudentForm);
-  const fatherFormData = Form.useWatch('father', newStudentForm);
-  const representativeFormData = Form.useWatch('representative', newStudentForm);
 
   const searchSchools = async (query: string) => {
     if (!query || query.length < 2) {
@@ -545,19 +531,11 @@ const EnrollStudent: React.FC = () => {
   const motherIsRepresentative = representativeTypeValue === 'mother';
   const fatherIsRepresentative = representativeTypeValue === 'father';
   const representativeIsOther = representativeTypeValue === 'other';
-  const requireRepresentativeData = representativeIsOther || (!motherIsRepresentative && !fatherIsRepresentative);
 
-  // Dynamic Requirements
-  const motherDataRequired = motherIsRepresentative;
-  const fatherDataRequired = fatherIsRepresentative;
-
-  const motherHasAnyValue = guardianHasAnyValue(motherFormData);
-  const fatherHasAnyValue = guardianHasAnyValue(fatherFormData);
-  const representativeHasAnyValue = guardianHasAnyValue(representativeFormData);
-
-  const motherFieldsRequired = motherDataRequired || motherHasAnyValue;
-  const fatherFieldsRequired = fatherDataRequired || fatherHasAnyValue;
-  const representativeFieldsRequired = requireRepresentativeData || representativeHasAnyValue;
+  // Dynamic Requirements: Strictly mandatory only if they are the representative
+  const motherFieldsRequired = motherIsRepresentative;
+  const fatherFieldsRequired = fatherIsRepresentative;
+  const representativeFieldsRequired = representativeIsOther;
 
   const showMotherDetails = !!(motherDocumentTypeValue && motherDocumentValue);
   const showFatherDetails = !!(fatherDocumentTypeValue && fatherDocumentValue);
@@ -1009,8 +987,10 @@ const EnrollStudent: React.FC = () => {
 
                 {/* MADRE */}
                 <div style={{ background: '#fafafa', padding: 16, borderRadius: 8, marginBottom: 24, border: '1px solid #f0f0f0' }}>
-                  <h4 style={{ color: '#fa8c16', marginBottom: 16 }}>Datos de la Madre</h4>
-                  {renderGuardianDocumentControls('mother', true)}
+                  <h4 style={{ color: '#fa8c16', marginBottom: 16 }}>
+                    Datos de la Madre {motherFieldsRequired ? '(Obligatorio)' : '(Opcional)'}
+                  </h4>
+                  {renderGuardianDocumentControls('mother', motherFieldsRequired)}
 
                   {showMotherDetails && (
                     <>
@@ -1065,7 +1045,7 @@ const EnrollStudent: React.FC = () => {
                 {/* PADRE */}
                 <div style={{ background: '#fafafa', padding: 16, borderRadius: 8, marginBottom: 24, border: '1px solid #f0f0f0' }}>
                   <h4 style={{ color: '#fa8c16', marginBottom: 16 }}>
-                    Datos del Padre {fatherDataRequired ? '(Obligatorio)' : '(Opcional)'}
+                    Datos del Padre {fatherFieldsRequired ? '(Obligatorio)' : '(Opcional)'}
                   </h4>
                   {renderGuardianDocumentControls('father', fatherFieldsRequired)}
 
@@ -1131,28 +1111,30 @@ const EnrollStudent: React.FC = () => {
                 </div>
 
                 {/* REPRESENTANTE (Si es otro) */}
-                {(representativeFieldsRequired || representativeIsOther) && (
+                {representativeIsOther && (
                   <div style={{ background: '#fff7e6', padding: 16, borderRadius: 8, marginBottom: 24, border: '1px solid #ffd591' }}>
-                    <h4 style={{ color: '#d46b08', marginBottom: 16 }}>Datos del Representante (Otro)</h4>
+                    <h4 style={{ color: '#d46b08', marginBottom: 16 }}>
+                      Datos del Representante {representativeFieldsRequired ? '(Obligatorio)' : '(Opcional)'}
+                    </h4>
                     {renderGuardianDocumentControls('representative', representativeFieldsRequired)}
 
                     {showRepresentativeDetails && (
                       <>
                         <Row gutter={16}>
                           <Col span={12}>
-                            <Form.Item name={['representative', 'firstName']} label="Nombres" rules={[{ required: true }]}>
+                            <Form.Item name={['representative', 'firstName']} label="Nombres" rules={representativeFieldsRequired ? [{ required: true }] : []}>
                               <Input />
                             </Form.Item>
                           </Col>
                           <Col span={12}>
-                            <Form.Item name={['representative', 'lastName']} label="Apellidos" rules={[{ required: true }]}>
+                            <Form.Item name={['representative', 'lastName']} label="Apellidos" rules={representativeFieldsRequired ? [{ required: true }] : []}>
                               <Input />
                             </Form.Item>
                           </Col>
                         </Row>
                         <Row gutter={16}>
                           <Col span={12}>
-                            <Form.Item name={['representative', 'phone']} label="Teléfono" rules={[{ required: true }]}>
+                            <Form.Item name={['representative', 'phone']} label="Teléfono" rules={representativeFieldsRequired ? [{ required: true }] : []}>
                               <Input />
                             </Form.Item>
                           </Col>
@@ -1171,22 +1153,22 @@ const EnrollStudent: React.FC = () => {
                           </Col>
                         </Row>
 
-                        <Form.Item name={['representative', 'address']} label="Dirección de habitación" rules={[{ required: true }]}>
+                        <Form.Item name={['representative', 'address']} label="Dirección de habitación" rules={representativeFieldsRequired ? [{ required: true }] : []}>
                           <Input.TextArea rows={2} />
                         </Form.Item>
                         <Row gutter={16}>
                           <Col span={8}>
-                            <Form.Item name={['representative', 'residenceState']} label="Estado" rules={[{ required: true }]}>
+                            <Form.Item name={['representative', 'residenceState']} label="Estado" rules={representativeFieldsRequired ? [{ required: true }] : []}>
                               <Select showSearch options={stateOptions} onChange={() => resetGuardianMunicipality('representative')} />
                             </Form.Item>
                           </Col>
                           <Col span={8}>
-                            <Form.Item name={['representative', 'residenceMunicipality']} label="Municipio" rules={[{ required: true }]}>
+                            <Form.Item name={['representative', 'residenceMunicipality']} label="Municipio" rules={representativeFieldsRequired ? [{ required: true }] : []}>
                               <Select showSearch options={representativeMunicipalityOptions} onChange={() => resetGuardianParish('representative')} disabled={!representativeStateValue} />
                             </Form.Item>
                           </Col>
                           <Col span={8}>
-                            <Form.Item name={['representative', 'residenceParish']} label="Parroquia" rules={[{ required: true }]}>
+                            <Form.Item name={['representative', 'residenceParish']} label="Parroquia" rules={representativeFieldsRequired ? [{ required: true }] : []}>
                               <Select showSearch options={representativeParishOptions} disabled={!representativeMunicipalityValue} />
                             </Form.Item>
                           </Col>
