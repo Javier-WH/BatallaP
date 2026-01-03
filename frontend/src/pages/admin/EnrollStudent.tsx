@@ -1235,7 +1235,7 @@ const EnrollStudent: React.FC = () => {
                   <Col span={8}>
                     <Form.Item name={['documents', 'pathCedulaRepresentante']} label="Cédula Representante" getValueFromEvent={normFile}>
                       <Upload
-                        action="/api/upload/documents"
+                        action="http://localhost:3000/api/upload/documents"
                         maxCount={1}
                         listType="picture-card"
                         accept="image/*"
@@ -1252,7 +1252,7 @@ const EnrollStudent: React.FC = () => {
                   <Col span={8}>
                     <Form.Item name={['documents', 'pathFotoRepresentante']} label="Foto Representante" getValueFromEvent={normFile}>
                       <Upload
-                        action="/api/upload/documents"
+                        action="http://localhost:3000/api/upload/documents"
                         maxCount={1}
                         listType="picture-card"
                         accept="image/*"
@@ -1269,7 +1269,7 @@ const EnrollStudent: React.FC = () => {
                   <Col span={8}>
                     <Form.Item name={['documents', 'pathFotoEstudiante']} label="Foto Estudiante" getValueFromEvent={normFile}>
                       <Upload
-                        action="/api/upload/documents"
+                        action="http://localhost:3000/api/upload/documents"
                         maxCount={1}
                         listType="picture-card"
                         accept="image/*"
@@ -1290,7 +1290,7 @@ const EnrollStudent: React.FC = () => {
                     <Col span={24}>
                       <Form.Item name={['documents', 'pathInformesMedicos']} label="Informes Médicos (Imágenes)" getValueFromEvent={normFile}>
                         <Upload
-                          action="/api/upload/documents"
+                          action="http://localhost:3000/api/upload/documents"
                           listType="picture-card"
                           accept="image/*"
                           multiple

@@ -1142,11 +1142,11 @@ export const registerAndEnroll = async (req: Request, res: Response) => {
     // 2. Create Contact
     if (phone1 || email || address) {
       await Contact.create({
-        phone1,
-        phone2,
-        email,
-        address,
-        whatsapp,
+        phone1: phone1 || '',
+        phone2: phone2 || null,
+        email: email || null,
+        address: address || '',
+        whatsapp: whatsapp || null,
         personId: person.id
       }, { transaction: t });
     }
