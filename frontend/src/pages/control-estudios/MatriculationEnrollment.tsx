@@ -398,9 +398,36 @@ const MatriculationEnrollment: React.FC = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
   const [sortedInfo, setSortedInfo] = useState<{ columnKey: string; order: 'ascend' | 'descend' } | null>(null);
-  const [pinnedGroups, setPinnedGroups] = useState<string[]>(['Estudiante']);
-  const scrollY = 500;
+  const [pinnedGroups, setPinnedGroups] = useState<string[]>(['Estudiante: Básicos']);
+  const [scrollY, setScrollY] = useState(500);
   const headerRef = useRef<HTMLDivElement>(null);
+  const bulkActionRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const updateScrollY = () => {
+      const vh = window.innerHeight;
+      let headerBottom = 0;
+
+      if (headerRef.current) {
+        const rect = headerRef.current.getBoundingClientRect();
+        headerBottom = rect.bottom;
+      }
+
+      // Buffer: Table Header (grouped ~80px) + Horizontal Scrollbar (~15px) + Bottom Margin (~10px) + Extra safety
+      const tableOverhead = 115;
+      const calculated = vh - headerBottom - tableOverhead;
+
+      setScrollY(Math.max(200, calculated));
+    };
+
+    updateScrollY();
+    const timer = setTimeout(updateScrollY, 50);
+    window.addEventListener('resize', updateScrollY);
+    return () => {
+      window.removeEventListener('resize', updateScrollY);
+      clearTimeout(timer);
+    };
+  }, [selectedRowKeys.length, viewStatus, structure.length]);
 
   useEffect(() => {
     const fetchInitialData = async () => {
@@ -409,16 +436,9 @@ const MatriculationEnrollment: React.FC = () => {
           api.get('/academic/periods/active'),
           api.get('/enrollment-questions')
         ]);
-
-        if (periodRes.data) {
-          setActivePeriod(periodRes.data);
-        } else {
-          message.warning('No hay un período académico activo configurado.');
-        }
-
-        if (questionsRes.data) {
-          setQuestions(questionsRes.data);
-        }
+        if (periodRes.data) setActivePeriod(periodRes.data);
+        else message.warning('No hay un período académico activo configurado.');
+        if (questionsRes.data) setQuestions(questionsRes.data);
       } catch (error) {
         console.error('Error fetching initial data:', error);
         message.error('Error al cargar datos iniciales.');
@@ -434,7 +454,6 @@ const MatriculationEnrollment: React.FC = () => {
       setLoading(false);
       return;
     }
-
     setLoading(true);
     try {
       const pId = activePeriod.id;
@@ -443,96 +462,94 @@ const MatriculationEnrollment: React.FC = () => {
         status: viewStatus === 'pending' ? 'pending' : undefined,
         schoolPeriodId: pId
       };
-
       const [dataRes, structRes] = await Promise.all([
         api.get(endpoint, { params }),
         api.get(`/academic/structure/${pId}`)
       ]);
+      if (dataRes.data) {
+        const mapped = dataRes.data.map((item: MatriculationApiResponse) => {
+          const isInscription = viewStatus === 'completed';
+          const m = isInscription ? {
+            ...item.matriculation,
+            id: item.matriculation?.id || -item.id,
+            student: item.student || {},
+            gradeId: item.gradeId,
+            sectionId: item.sectionId,
+            schoolPeriodId: item.schoolPeriodId,
+            status: 'completed' as const,
+            inscriptionId: item.id,
+            escolaridad: item.escolaridad
+          } : item;
 
-      const rawData = dataRes.data || [];
-      const rows = rawData.map((item: MatriculationApiResponse) => {
-        const isInscription = viewStatus === 'completed';
-        const m = isInscription ? {
-          ...item.matriculation,
-          id: item.matriculation?.id || -item.id,
-          student: item.student || {},
-          gradeId: item.gradeId,
-          sectionId: item.sectionId,
-          schoolPeriodId: item.schoolPeriodId,
-          status: 'completed' as const,
-          inscriptionId: item.id,
-          escolaridad: item.escolaridad
-        } : item;
+          const student = m.student || {};
+          const guardians: StudentGuardian[] = student.guardians || [];
+          const findGuardianProfile = (relationship: string): GuardianProfile =>
+            (guardians.find((g: StudentGuardian) => g.relationship === relationship)?.profile || {}) as GuardianProfile;
 
-        const student = m.student || {};
-        const guardians: StudentGuardian[] = student.guardians || [];
-        const findGuardianProfile = (relationship: string): GuardianProfile =>
-          (guardians.find((g: { relationship: string; profile?: GuardianProfile }) => g.relationship === relationship)?.profile || {}) as GuardianProfile;
+          const representativeAssignment = guardians.find((g: StudentGuardian) => g.isRepresentative);
+          const representativeRelationship = representativeAssignment?.relationship;
+          const representativeType: RepresentativeType =
+            representativeRelationship === 'mother' || representativeRelationship === 'father'
+              ? representativeRelationship
+              : 'other';
 
-        const representativeAssignment = guardians.find((g: StudentGuardian) => g.isRepresentative);
-        const representativeRelationship = representativeAssignment?.relationship;
-        const representativeType: RepresentativeType =
-          representativeRelationship === 'mother' || representativeRelationship === 'father'
-            ? representativeRelationship
-            : 'other';
+          const enrollmentAnswersList = student.enrollmentAnswers ?? [];
+          const enrollmentAnswers = enrollmentAnswersList.reduce<EnrollmentAnswersMap>((acc, curr) => {
+            acc[curr.questionId] = curr.answer ?? undefined;
+            return acc;
+          }, {});
 
-        const enrollmentAnswersList = student.enrollmentAnswers ?? [];
-        const enrollmentAnswers = enrollmentAnswersList.reduce<EnrollmentAnswersMap>((acc, curr) => {
-          acc[curr.questionId] = curr.answer ?? undefined;
-          return acc;
-        }, {});
+          const assignedSubjects = isInscription ? (item.subjects || []) : [];
+          const groupSubjectIds = assignedSubjects
+            .filter(s => s.subjectGroupId)
+            .map(s => s.id);
 
-        // Extraer IDs de materias de grupo asignadas
-        const assignedSubjects = isInscription ? (item.subjects || []) : [];
-        const groupSubjectIds = assignedSubjects
-          .filter(s => s.subjectGroupId)
-          .map(s => s.id);
+          return {
+            ...m,
+            tempData: {
+              ...student,
+              id: student.id,
+              documentType: student.documentType || 'Venezolano',
+              gender: student.gender,
+              gradeId: m.gradeId,
+              sectionId: m.sectionId,
+              subjectIds: groupSubjectIds,
+              escolaridad: m.escolaridad ?? 'regular',
+              phone1: student.contact?.phone1,
+              whatsapp: student.contact?.whatsapp,
+              birthdate: student.birthdate ? dayjs(student.birthdate) : null,
+              mother: findGuardianProfile('mother'),
+              father: findGuardianProfile('father'),
+              representative: findGuardianProfile('representative'),
+              representativeType,
+              enrollmentAnswers,
+              address: student.contact?.address || 'N/A',
+              birthState: student.residence?.birthState || 'N/A',
+              birthMunicipality: student.residence?.birthMunicipality || 'N/A',
+              birthParish: student.residence?.birthParish || 'N/A',
+              residenceState: student.residence?.residenceState || 'N/A',
+              residenceMunicipality: student.residence?.residenceMunicipality || 'N/A',
+              residenceParish: student.residence?.residenceParish || 'N/A',
+              pathology: student.pathology || 'N/A',
+              livingWith: student.livingWith || 'N/A',
+            }
+          } as MatriculationRow;
+        });
+        setMatriculations(mapped);
+      }
 
-        return {
-          ...m,
-          tempData: {
-            ...student,
-            id: student.id,
-            documentType: student.documentType || 'Venezolano',
-            gender: student.gender,
-            gradeId: m.gradeId,
-            sectionId: m.sectionId,
-            subjectIds: groupSubjectIds,
-            escolaridad: m.escolaridad ?? 'regular',
-            phone1: student.contact?.phone1,
-            whatsapp: student.contact?.whatsapp,
-            birthdate: student.birthdate ? dayjs(student.birthdate) : null,
-            mother: findGuardianProfile('mother'),
-            father: findGuardianProfile('father'),
-            representative: findGuardianProfile('representative'),
-            representativeType,
-            enrollmentAnswers,
-            address: student.contact?.address || 'N/A',
-            birthState: student.residence?.birthState || 'N/A',
-            birthMunicipality: student.residence?.birthMunicipality || 'N/A',
-            birthParish: student.residence?.birthParish || 'N/A',
-            residenceState: student.residence?.residenceState || 'N/A',
-            residenceMunicipality: student.residence?.residenceMunicipality || 'N/A',
-            residenceParish: student.residence?.residenceParish || 'N/A',
-            pathology: student.pathology || 'N/A',
-            livingWith: student.livingWith || 'N/A',
-          }
-        };
-      });
-
-      setMatriculations(rows);
-
-      const structureData = (structRes.data || []) as EnrollStructureEntry[];
-      const sortedStructure = [...structureData].sort((a, b) => {
-        const orderA = a.grade?.order ?? a.order ?? Number.MAX_SAFE_INTEGER;
-        const orderB = b.grade?.order ?? b.order ?? Number.MAX_SAFE_INTEGER;
-        if (orderA !== orderB) return orderA - orderB;
-        const nameA = a.grade?.name || '';
-        const nameB = b.grade?.name || '';
-        return nameA.localeCompare(nameB, 'es');
-      });
-
-      setStructure(sortedStructure);
+      if (structRes.data) {
+        const structureData = (structRes.data || []) as EnrollStructureEntry[];
+        const sortedStructure = [...structureData].sort((a, b) => {
+          const orderA = a.grade?.order ?? a.order ?? Number.MAX_SAFE_INTEGER;
+          const orderB = b.grade?.order ?? b.order ?? Number.MAX_SAFE_INTEGER;
+          if (orderA !== orderB) return orderA - orderB;
+          const nameA = a.grade?.name || '';
+          const nameB = b.grade?.name || '';
+          return nameA.localeCompare(nameB, 'es');
+        });
+        setStructure(sortedStructure);
+      }
     } catch (error) {
       console.error('[MatriculationEnrollment] Error fetching data:', error);
       message.error('Error cargando información');
@@ -2589,7 +2606,7 @@ const MatriculationEnrollment: React.FC = () => {
   ]);
 
   return (
-    <div className="flex flex-col gap-2 h-full" onKeyDown={handleTableKeyDown}>
+    <div className="flex flex-col gap-2 h-full max-h-screen overflow-hidden p-1" onKeyDown={handleTableKeyDown}>
       <div ref={headerRef} className="flex flex-col gap-2 shrink-0">
         <Card
           size="small"
@@ -2600,7 +2617,7 @@ const MatriculationEnrollment: React.FC = () => {
             <Col xs={24} lg={8}>
               <div className="flex flex-col items-start gap-1">
                 <Space>
-                  <Title level={5} style={{ margin: 0 }}>Matricula Estudiantes</Title>
+                  <Title level={5} style={{ margin: 0 }}>Matrícula Estudiantes</Title>
                 </Space>
                 <div className="flex items-center gap-2">
                   <Radio.Group
@@ -2750,251 +2767,176 @@ const MatriculationEnrollment: React.FC = () => {
           </Row>
         </Card>
 
-        <Card
-          size="small"
-          bodyStyle={{ padding: '8px 12px' }}
-          style={{
-            marginBottom: 0,
-            background: selectedRowKeys.length > 0 ? '#e6f7ff' : '#f8fafc',
-            borderColor: selectedRowKeys.length > 0 ? '#91d5ff' : '#e2e8f0',
-            transition: 'all 0.3s ease',
-            position: 'relative',
-            flexShrink: 0
-          }}
-        >
-          {/* Clear button in top-right corner */}
-          {selectedRowKeys.length > 0 && (
-            <Button
-              type="text"
+        {selectedRowKeys.length > 0 && (
+          <div ref={bulkActionRef} className="shrink-0 transition-all duration-300">
+            <Card
               size="small"
-              icon={<CloseOutlined />}
-              onClick={() => setSelectedRowKeys([])}
-              style={{
-                position: 'absolute',
-                top: '-8px',
-                right: '-5px',
-                color: '#888',
-                zIndex: 10
-              }}
-            />
-          )}
+              className="glass-card border-none shadow-md overflow-hidden bg-blue-50/90 ring-1 ring-blue-100"
+              styles={{ body: { padding: '8px 16px' } }}
+            >
+              <Button
+                type="text"
+                size="small"
+                icon={<CloseOutlined />}
+                onClick={() => setSelectedRowKeys([])}
+                style={{
+                  position: 'absolute',
+                  top: '4px',
+                  right: '4px',
+                  color: '#888',
+                  zIndex: 10
+                }}
+              />
 
-          {viewStatus === 'pending' ? (
-            <div className="flex items-center gap-6">
-              {/* Section 1: Counter o Info del Estudiante */}
-              <div className="flex items-center gap-2 pr-4 border-r border-slate-300/50 min-w-max">
-                {selectedRowKeys.length === 1 ? (
-                  <>
-                    <div className="flex items-center justify-center w-8 h-8 rounded-full bg-blue-600 text-white shadow-sm">
-                      <UserOutlined />
-                    </div>
-                    <div className="flex flex-col justify-center">
-                      <span className="text-xs font-bold text-blue-900 leading-tight">
-                        {matriculations.find(r => r.id === selectedRowKeys[0])?.student.firstName} {matriculations.find(r => r.id === selectedRowKeys[0])?.student.lastName}
-                      </span>
-                      <span className="text-[10px] text-blue-700 leading-none mt-0.5">
-                        {matriculations.find(r => r.id === selectedRowKeys[0])?.student.documentType}-{matriculations.find(r => r.id === selectedRowKeys[0])?.student.document}
-                      </span>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <div
-                      className={`flex items-center justify-center w-8 h-8 rounded-full text-sm font-bold shadow-sm transition-colors ${selectedRowKeys.length > 0 ? 'bg-blue-500 text-white' : 'bg-slate-200 text-slate-400'
-                        }`}
-                    >
-                      {selectedRowKeys.length}
-                    </div>
-                    <div className={`flex flex-col leading-tight font-bold text-[10px] uppercase tracking-wide ${selectedRowKeys.length > 0 ? 'text-blue-900' : 'text-slate-400'}`}>
-                      <span>Estudiantes</span>
-                      <span>Seleccionados</span>
-                    </div>
-                  </>
-                )}
-              </div>
-
-              {/* Section 2: Inputs Grid */}
-              <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-2">
-                {/* Assign Section */}
-                <div className="flex flex-col gap-0.5">
-                  <span className={`text-[9px] font-bold uppercase tracking-wider ${selectedRowKeys.length > 0 ? 'text-slate-500' : 'text-slate-300'}`}>
-                    Asignar Sección
-                  </span>
-                  <Tooltip
-                    title={hasMixedGrades ? 'Seleccione estudiantes del mismo grado para asignar secciones.' : undefined}
-                    placement="topLeft"
-                  >
-                    <Select
-                      disabled={selectedRowKeys.length === 0 || hasMixedGrades || bulkSections.length === 0}
-                      placeholder="Seleccionar..."
-                      size="small"
-                      style={{ width: 200 }}
-                      onChange={v => handleBulkUpdate('sectionId', v)}
-                      allowClear
-                      notFoundContent={hasMixedGrades ? 'Seleccione estudiantes del mismo grado' : undefined}
-                    >
-                      {bulkSections.map(sec => (
-                        <Option key={sec.id} value={sec.id}>{sec.name}</Option>
-                      ))}
-                    </Select>
-                  </Tooltip>
+              <div className="flex items-center gap-6">
+                {/* Section 1: Counter / Student Info */}
+                <div className="flex items-center gap-2 pr-4 border-r border-slate-300/50 min-w-max">
+                  {selectedRowKeys.length === 1 ? (
+                    <>
+                      <div className="flex items-center justify-center w-8 h-8 rounded-full bg-blue-600 text-white shadow-sm">
+                        <UserOutlined />
+                      </div>
+                      <div className="flex flex-col justify-center">
+                        <span className="text-xs font-bold text-blue-900 leading-tight">
+                          {(() => {
+                            const r = matriculations.find(m => m.id === selectedRowKeys[0]);
+                            return r ? `${r.tempData.firstName} ${r.tempData.lastName}` : 'Estudiante';
+                          })()}
+                        </span>
+                        <span className="text-[10px] text-blue-700 leading-none mt-0.5">
+                          {(() => {
+                            const r = matriculations.find(m => m.id === selectedRowKeys[0]);
+                            return r ? `${r.tempData.document}` : '';
+                          })()}
+                        </span>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="flex items-center justify-center w-8 h-8 rounded-full bg-blue-500 text-white shadow-sm font-bold text-sm">
+                        {selectedRowKeys.length}
+                      </div>
+                      <div className="flex flex-col leading-tight font-bold text-[10px] uppercase tracking-wide text-blue-900">
+                        <span>Estudiantes</span>
+                        <span>Seleccionados</span>
+                      </div>
+                    </>
+                  )}
                 </div>
 
-                {/* Group Subjects */}
-                <div className="flex flex-col gap-0.5">
-                  <span className={`text-[9px] font-bold uppercase tracking-wider ${selectedRowKeys.length > 0 ? 'text-slate-500' : 'text-slate-300'}`}>
-                    Materias de Grupo
-                  </span>
-                  <Tooltip
-                    title={hasMixedGrades ? 'Seleccione estudiantes del mismo grado para asignar materias de grupo.' : undefined}
-                    placement="topLeft"
-                  >
-                    <Select
-                      disabled={selectedRowKeys.length === 0 || hasMixedGrades || bulkGroupSubjects.length === 0}
-                      placeholder="Asignar Materia..."
-                      size="small"
-                      style={{ width: 200 }}
-                      onChange={v => handleBulkUpdate('subjectIds', v ? [v] : [])}
-                      allowClear
-                      notFoundContent={hasMixedGrades ? 'Seleccione estudiantes del mismo grado' : undefined}
-                      options={bulkGroupSubjects.map(sub => ({ label: sub.name, value: sub.id }))}
-                    />
-                  </Tooltip>
+                {/* Section 2: Actions / Inputs */}
+                <div className="flex-1 flex gap-4 items-center">
+                  {viewStatus === 'pending' ? (
+                    <div className="grid grid-cols-2 gap-4 flex-1">
+                      <div className="flex flex-col gap-0.5">
+                        <span className="text-[9px] font-bold uppercase tracking-wider text-slate-500">Asignar Sección</span>
+                        <Tooltip title={hasMixedGrades ? 'Seleccione estudiantes del mismo grado' : undefined}>
+                          <Select
+                            disabled={hasMixedGrades || bulkSections.length === 0}
+                            placeholder="Seleccionar..."
+                            size="small"
+                            style={{ width: '100%' }}
+                            onChange={v => handleBulkUpdate('sectionId', v)}
+                            allowClear
+                          >
+                            {bulkSections.map(sec => <Option key={sec.id} value={sec.id}>{sec.name}</Option>)}
+                          </Select>
+                        </Tooltip>
+                      </div>
+                      <div className="flex flex-col gap-0.5">
+                        <span className="text-[9px] font-bold uppercase tracking-wider text-slate-500">Materias de Grupo</span>
+                        <Tooltip title={hasMixedGrades ? 'Seleccione estudiantes del mismo grado' : undefined}>
+                          <Select
+                            disabled={hasMixedGrades || bulkGroupSubjects.length === 0}
+                            placeholder="Asignar Materia..."
+                            size="small"
+                            style={{ width: '100%' }}
+                            onChange={v => handleBulkUpdate('subjectIds', v ? [v] : [])}
+                            allowClear
+                            options={bulkGroupSubjects.map(s => ({ label: s.name, value: s.id }))}
+                          />
+                        </Tooltip>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex gap-2 items-center flex-1">
+                      {selectedRowKeys.length === 1 && (
+                        <>
+                          <Button icon={<BookOutlined />} size="small" onClick={handleOpenSubjectModal}>Gestionar Materias</Button>
+                          <Button icon={<EyeOutlined />} size="small" onClick={handleViewProfile}>Ver Expediente</Button>
+                        </>
+                      )}
+                      {!hasMixedGrades && bulkGroupSubjects.length > 0 && (
+                        <div className="flex flex-col gap-0.5 ml-auto">
+                          <span className="text-[9px] font-bold uppercase tracking-wider text-slate-500">Materia de Grupo</span>
+                          <Select
+                            placeholder="Asignar..."
+                            size="small"
+                            style={{ width: 160 }}
+                            onChange={v => handleBulkUpdate('subjectIds', v ? [v] : [])}
+                            allowClear
+                            options={bulkGroupSubjects.map(s => ({ label: s.name, value: s.id }))}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
-              </div>
 
-              {/* Section 3: Actions */}
-              <div className="flex items-center pl-4 border-l border-slate-300/50 min-w-max">
-                <Button
-                  disabled={selectedRowKeys.length === 0}
-                  type="primary"
-                  size="middle"
-                  icon={<CheckCircleOutlined />}
-                  onClick={handleBulkEnroll}
-                  className="bg-blue-600 hover:bg-blue-500 border-none shadow-md shadow-blue-500/30"
-                >
-                  Inscribir
-                </Button>
-              </div>
-            </div>
-          ) : (
-            <div className="flex items-center gap-6">
-              {/* Section 1: Counter o Info del Estudiante */}
-              <div className="flex items-center gap-2 pr-4 border-r border-slate-300/50 min-w-max">
-                {selectedRowKeys.length === 1 ? (
-                  <>
-                    <div className="flex items-center justify-center w-8 h-8 rounded-full bg-blue-600 text-white shadow-sm">
-                      <UserOutlined />
-                    </div>
-                    <div className="flex flex-col justify-center">
-                      <span className="text-xs font-bold text-blue-900 leading-tight">
-                        {matriculations.find(r => r.id === selectedRowKeys[0])?.student.firstName} {matriculations.find(r => r.id === selectedRowKeys[0])?.student.lastName}
-                      </span>
-                      <span className="text-[10px] text-blue-700 leading-none mt-0.5">
-                        {matriculations.find(r => r.id === selectedRowKeys[0])?.student.documentType}-{matriculations.find(r => r.id === selectedRowKeys[0])?.student.document}
-                      </span>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <div
-                      className={`flex items-center justify-center w-8 h-8 rounded-full text-sm font-bold shadow-sm transition-colors ${selectedRowKeys.length > 0 ? 'bg-blue-500 text-white' : 'bg-slate-200 text-slate-400'
-                        }`}
+                {/* Section 3: Primary Action */}
+                {viewStatus === 'pending' && (
+                  <div className="pl-4 border-l border-slate-300/50">
+                    <Button
+                      type="primary"
+                      icon={<CheckCircleOutlined />}
+                      onClick={handleBulkEnroll}
+                      className="bg-blue-600 hover:bg-blue-500 border-none shadow-md shadow-blue-500/30"
                     >
-                      {selectedRowKeys.length}
-                    </div>
-                    <div className={`flex flex-col leading-tight font-bold text-[10px] uppercase tracking-wide ${selectedRowKeys.length > 0 ? 'text-blue-900' : 'text-slate-400'}`}>
-                      <span>Estudiantes</span>
-                      <span>Seleccionados</span>
-                    </div>
-                  </>
-                )}
-              </div>
-
-              {/* Section 2: Actions for Completed */}
-              <div className="flex-1 flex gap-2 items-center">
-                {/* Botones solo para 1 estudiante seleccionado */}
-                {selectedRowKeys.length === 1 && (
-                  <>
-                    <Tooltip title="Gestionar materias del estudiante">
-                      <Button
-                        icon={<BookOutlined />}
-                        size="small"
-                        onClick={handleOpenSubjectModal}
-                        className='border-blue-300 text-blue-600 bg-white'
-                      >
-                        Gestionar Materias
-                      </Button>
-                    </Tooltip>
-
-                    <Tooltip title="Ver expediente del estudiante">
-                      <Button
-                        icon={<EyeOutlined />}
-                        size="small"
-                        onClick={handleViewProfile}
-                        className='border-blue-300 text-blue-600 bg-white'
-                      >
-                        Ver Expediente
-                      </Button>
-                    </Tooltip>
-                  </>
-                )}
-
-                {/* Selector de materias de grupo: para 1 o varios del mismo grado */}
-                {selectedRowKeys.length > 0 && !hasMixedGrades && bulkGroupSubjects.length > 0 && (
-                  <div className="flex flex-col gap-0.5 flex-1">
-                    <span className={`text-[9px] font-bold uppercase tracking-wider ${selectedRowKeys.length > 0 ? 'text-slate-500' : 'text-slate-300'}`}>
-                      Materias de Grupo
-                    </span>
-                    <Select
-                      placeholder="Asignar Materia..."
-                      size="small"
-                      style={{ width: 200 }}
-                      onChange={(v) => handleBulkUpdate('subjectIds', v ? [v] : [])}
-                      allowClear
-                      options={bulkGroupSubjects.map(s => ({ label: s.name, value: s.id }))}
-                    />
+                      Inscribir
+                    </Button>
                   </div>
                 )}
               </div>
-            </div>
-          )}
-        </Card>
+            </Card>
+          </div>
+        )}
       </div>
 
-      <Table
-        rowKey="id"
-        columns={columns}
-        dataSource={currentData}
-        loading={loading}
-        pagination={false}
-        scroll={{ x: 'max-content', y: scrollY }}
-        rowSelection={{
-          type: 'checkbox',
-          selectedRowKeys,
-          onChange: setSelectedRowKeys
-        }}
-        onChange={(_pagination, _filters, sorter: any) => {
-          if (sorter && sorter.columnKey) {
-            setSortedInfo({ columnKey: sorter.columnKey, order: sorter.order });
-          } else {
-            setSortedInfo(null);
-          }
-        }}
-        rowClassName={record => (canEditRow(record.id) ? 'editable-row' : 'locked-row')}
-        onRow={(record) => ({
-          onContextMenu: (event) => handleContextMenu(event, record.id),
-          onKeyDown: (event) => {
-            if (event.key === 'Enter' && canEditRow(record.id)) {
-              lockRow(record.id);
-              event.stopPropagation();
+      <div className="flex-1 overflow-hidden min-h-0">
+        <Table
+          rowKey="id"
+          columns={columns}
+          dataSource={currentData}
+          loading={loading}
+          pagination={false}
+          size="small"
+          bordered
+          className="custom-table"
+          scroll={{ x: 'max-content', y: scrollY }}
+          rowSelection={{
+            type: 'checkbox',
+            selectedRowKeys,
+            onChange: setSelectedRowKeys
+          }}
+          onChange={(_pagination, _filters, sorter: any) => {
+            if (sorter && sorter.columnKey) {
+              setSortedInfo({ columnKey: sorter.columnKey, order: sorter.order });
+            } else {
+              setSortedInfo(null);
             }
-          }
-        })}
-        size="small"
-        bordered
-        className="flex-1 overflow-hidden"
-      />
+          }}
+          rowClassName={record => (canEditRow(record.id) ? 'editable-row' : 'locked-row')}
+          onRow={record => ({
+            onContextMenu: e => handleContextMenu(e, record.id),
+            onKeyDown: e => {
+              if (e.key === 'Enter' && canEditRow(record.id)) {
+                lockRow(record.id);
+                e.stopPropagation();
+              }
+            }
+          })}
+        />
+      </div>
 
       {selectedStudentForSubjects && (
         <StudentSubjectsModal
@@ -3030,14 +2972,12 @@ const MatriculationEnrollment: React.FC = () => {
             selectable={false}
             items={contextMenuItems}
             onClick={handleContextMenuClick}
-            className="context-menu__menu"
           />
         </div>,
         document.body
       )}
 
       <style>{`
-        /* 1. Global Header Styles */
         .ant-table-thead > tr > th {
           background-color: #f1f5f9 !important;
           color: #475569 !important;
@@ -3048,105 +2988,49 @@ const MatriculationEnrollment: React.FC = () => {
           border-right: 1px solid #e2e8f0 !important;
           border-bottom: 1px solid #e2e8f0 !important;
         }
-
-        /* 2. Global Body Styles - Grid & Spacing */
         .ant-table-tbody > tr > td {
           padding: 2px 4px !important;
           border-right: 1px solid #e2e8f0 !important;
           border-bottom: 1px solid #e2e8f0 !important;
           transition: background-color 0.2s;
         }
-        
-        /* New Group Separator Border */
         .group-separator-border {
-          border-right: 2px solid #94a3b8 !important; /* Slate 400 */
+          border-right: 2px solid #94a3b8 !important;
         }    
-
-        /* 3. Alternating Row Colors (Zebra Striping) */
-        .ant-table-tbody > tr:nth-child(odd) > td {
-          background-color: #ffffff !important;
-        }
         .ant-table-tbody > tr:nth-child(even) > td {
-          background-color: #f8fafc !important; /* Light Slate 50 */
+          background-color: #f8fafc !important;
         }
-
-        /* 4. Hover Styles */
         .ant-table-tbody > tr:hover > td {
-          background-color: #e2e8f0 !important; /* Slate 200 */
+          background-color: #e2e8f0 !important;
         }
-
-        /* 5. Global Selected Styles */
         .ant-table-tbody > tr.ant-table-row-selected > td {
-          background-color: #bae7ff !important; /* Stronger blue for selection */
+          background-color: #bae7ff !important;
         }
-
-        /* 6. Input Styles */
         .ant-input, .ant-select-selector {
           border: 1px solid transparent !important;
           background: transparent !important;
-          border-radius: 0px !important; /* Square look for grid */
+          border-radius: 0px !important;
           height: 26px !important;
           font-size: 12px !important;
           padding-left: 4px !important;
           padding-right: 4px !important;
         }
-        .ant-select-selection-item {
-          line-height: 24px !important;
-        }
-        .ant-input-affix-wrapper .ant-input {
-          outline: none !important;
-          border: none !important;
-          height: 22px !important;
-        }
-        .ant-input-affix-wrapper  {
-          height: 24px !important;
-        }
-
-        /* Show inputs on hover/focus */
-        .ant-table-row:hover .ant-input,
-        .ant-table-row:hover .ant-select-selector,
-        .ant-input:focus,
-        .ant-select-focused .ant-select-selector,
-        input:focus {
-          border-color: #cbd5e1 !important;
-          background: #ffffff !important;
-          border-radius: 4px !important;
-        }
-        .ant-input:focus, .ant-select-focused .ant-select-selector, input:focus {
-          border-color: #3b82f6 !important;
-          box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1) !important;
-        }
         .editable-row > td {
           background-color: #fff3c4 !important;
           box-shadow: inset 0 0 0 1px #fde68a;
         }
-        .locked-row > td {
-          background-color: #f8fafc !important;
-          color: #94a3b8;
+        .locked-row input:disabled {
+          color: #1e293b;
         }
-        .locked-row input,
-        .locked-row .ant-input,
-        .locked-row .ant-select-selector {
-          color: #1e293b !important; /* Slate 800 for readability */
-          pointer-events: none;
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 6px;
         }
-        .locked-row .always-editable,
-        .locked-row .always-editable .ant-select-selector {
-          pointer-events: auto;
-          color: inherit !important;
-        }
-        .locked-row .ant-select-selection-item,
-        .locked-row .ant-select-selection-placeholder {
-          color: #1e293b !important; /* Slate 800 */
-        }
-        
-        /* Native Input Disabled Look */
-        input:disabled {
-          background-color: transparent;
-          color: #1e293b; /* Slate 800 */
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: #cbd5e1;
+          border-radius: 3px;
         }
       `}</style>
-    </div >
+    </div>
   );
 };
 
