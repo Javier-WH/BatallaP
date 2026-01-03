@@ -648,15 +648,7 @@ const EnrollStudent: React.FC = () => {
 
   return (
     <div style={{ maxWidth: 900, margin: '0 auto', paddingBottom: 40 }}>
-      <Card
-        title="Inscripción de Estudiantes"
-        bordered={false}
-        extra={
-          <Tag color="blue" style={{ fontSize: 14, padding: '4px 12px' }}>
-            Periodo Activo: <strong>{activePeriod.name}</strong>
-          </Tag>
-        }
-      >
+      <Card title="Inscripción de Estudiantes">
         <Tabs defaultActiveKey="new">
 
           {/* TAB 1: NEW STUDENT */}
