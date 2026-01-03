@@ -190,6 +190,7 @@ interface ColumnOption {
 
 const COLUMN_GROUP_ORDER = [
   'Estudiante - Datos Básicos',
+  'Estudiante - Datos Extendidos',
   'Estudiante - Nacimiento',
   'Estudiante - Dirección',
   'Académico',
@@ -214,14 +215,16 @@ const COLS = [
 
 const BASE_COLUMN_OPTIONS: ColumnOption[] = [
   // Estudiante - Datos Básicos
-  { key: 'nationality', label: 'Nac.', group: 'Estudiante - Datos Básicos' },
+  { key: 'nationality', label: 'Nacionalidad', group: 'Estudiante - Datos Básicos' },
   { key: 'document', label: 'Cédula', group: 'Estudiante - Datos Básicos' },
   { key: 'firstName', label: 'Nombres', group: 'Estudiante - Datos Básicos' },
   { key: 'lastName', label: 'Apellidos', group: 'Estudiante - Datos Básicos' },
-  { key: 'gender', label: 'Género', group: 'Estudiante - Datos Básicos' },
-  { key: 'birthdate', label: 'Fecha Nacimiento', group: 'Estudiante - Datos Básicos' },
-  { key: 'pathology', label: 'Patología', group: 'Estudiante - Datos Básicos' },
-  { key: 'livingWith', label: 'Vive Con', group: 'Estudiante - Datos Básicos' },
+
+  // Estudiante - Datos Extendidos
+  { key: 'gender', label: 'Género', group: 'Estudiante - Datos Extendidos' },
+  { key: 'birthdate', label: 'Fecha Nacimiento', group: 'Estudiante - Datos Extendidos' },
+  { key: 'pathology', label: 'Patología', group: 'Estudiante - Datos Extendidos' },
+  { key: 'livingWith', label: 'Vive Con', group: 'Estudiante - Datos Extendidos' },
 
   // Estudiante - Nacimiento
   { key: 'birthState', label: 'Estado Nacimiento', group: 'Estudiante - Nacimiento' },
@@ -398,7 +401,7 @@ const MatriculationEnrollment: React.FC = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
   const [sortedInfo, setSortedInfo] = useState<{ columnKey: string; order: 'ascend' | 'descend' } | null>(null);
-  const [pinnedGroups, setPinnedGroups] = useState<string[]>(['Estudiante: Básicos']);
+  const [pinnedGroups, setPinnedGroups] = useState<string[]>(['Estudiante - Datos Básicos']);
   const [scrollY, setScrollY] = useState(500);
   const headerRef = useRef<HTMLDivElement>(null);
   const bulkActionRef = useRef<HTMLDivElement>(null);
@@ -1464,8 +1467,8 @@ const MatriculationEnrollment: React.FC = () => {
 
     const studentBasicCols = [
       isColumnVisible('nationality') && {
-        title: 'CE-',
-        width: 35,
+        title: 'N',
+        width: 10,
         render: (_: unknown, record: MatriculationRow) => (
           <div className="px-1 py-0.5 text-xs text-slate-800">
             {docPrefix[record.tempData.documentType as keyof typeof docPrefix] || record.tempData.documentType?.[0]?.toUpperCase() + '-'}
@@ -1535,6 +1538,9 @@ const MatriculationEnrollment: React.FC = () => {
           />
         )
       },
+    ].filter(Boolean);
+
+    const studentExtendedCols = [
       isColumnVisible('gender') && {
         key: 'gender',
         title: 'Género',
@@ -1544,13 +1550,30 @@ const MatriculationEnrollment: React.FC = () => {
           const genderB = b.tempData.gender || '';
           return genderA.localeCompare(genderB);
         },
-        render: (_: unknown, record: MatriculationRow) => (
-          <div className="px-1 py-0.5">
-            <Tag color={record.tempData.gender === 'M' ? 'blue' : 'magenta'} className="m-0 text-[10px] leading-none px-1 py-0">
-              {record.tempData.gender === 'M' ? 'Masc' : 'Fem'}
-            </Tag>
-          </div>
-        )
+        render: (_: unknown, record: MatriculationRow, idx: number) => {
+          if (!canEditRow(record.id)) {
+            return (
+              <div className="px-1 py-0.5">
+                <Tag color={record.tempData.gender === 'M' ? 'blue' : 'magenta'} className="m-0 text-[10px] leading-none px-1 py-0">
+                  {record.tempData.gender === 'M' ? 'Masc' : 'Fem'}
+                </Tag>
+              </div>
+            );
+          }
+          return (
+            <div data-row-index={idx} data-col-name="gender">
+              <Select
+                value={record.tempData.gender}
+                style={{ width: '100%' }}
+                size="small"
+                onChange={val => handleUpdateRow(record.id, 'gender', val)}
+              >
+                <Option value="M">Masc</Option>
+                <Option value="F">Fem</Option>
+              </Select>
+            </div>
+          );
+        }
       },
       isColumnVisible('birthdate') && {
         key: 'birthdate',
@@ -2553,6 +2576,12 @@ const MatriculationEnrollment: React.FC = () => {
         fixed: (pinnedGroups.includes('Estudiante - Datos Básicos') ? 'left' : undefined) as 'left' | undefined,
         className: 'group-separator-border',
         children: addSeparator(studentBasicCols)
+      },
+      studentExtendedCols.length > 0 && {
+        title: renderGroupTitle('Estudiante - Datos Extendidos', 'Estudiante: Datos Extendidos'),
+        fixed: (pinnedGroups.includes('Estudiante - Datos Extendidos') ? 'left' : undefined) as 'left' | undefined,
+        className: 'group-separator-border',
+        children: addSeparator(studentExtendedCols)
       },
       studentBirthCols.length > 0 && {
         title: renderGroupTitle('Estudiante - Nacimiento', 'Estudiante: Nacimiento'),
