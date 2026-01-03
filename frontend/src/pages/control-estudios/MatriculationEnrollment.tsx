@@ -63,6 +63,7 @@ interface GuardianProfile {
   residenceParish?: string;
   address?: string;
   email?: string;
+  occupation?: string;
 }
 
 interface ContactInfo {
@@ -105,6 +106,8 @@ interface StudentData {
   birthdate?: string | null;
   residence?: ResidenceInfo;
   enrollmentAnswers?: EnrollmentAnswerRecord[];
+  pathology?: string;
+  livingWith?: string;
 }
 
 type EscolaridadStatus = 'regular' | 'repitiente' | 'materia_pendiente';
@@ -141,6 +144,8 @@ interface TempData {
   residenceState: string;
   residenceMunicipality: string;
   residenceParish: string;
+  pathology?: string;
+  livingWith?: string;
   [key: string]: unknown;
 }
 
@@ -184,7 +189,9 @@ interface ColumnOption {
 }
 
 const COLUMN_GROUP_ORDER = [
-  'Estudiante',
+  'Estudiante - Datos Básicos',
+  'Estudiante - Nacimiento',
+  'Estudiante - Dirección',
   'Académico',
   'Contacto',
   'Madre',
@@ -194,39 +201,88 @@ const COLUMN_GROUP_ORDER = [
 ];
 
 const COLS = [
-  'nationality', 'document', 'firstName', 'lastName', 'gender',
+  'nationality', 'document', 'firstName', 'lastName', 'gender', 'birthdate',
+  'birthState', 'birthMunicipality', 'birthParish',
+  'residenceState', 'residenceMunicipality', 'residenceParish', 'address',
+  'pathology', 'livingWith',
   'gradeId', 'sectionId', 'subjectIds', 'escolaridad',
   'phone1', 'whatsapp',
-  'mDoc', 'mFirstName', 'mLastName', 'mPhone',
-  'fDoc', 'fFirstName', 'fLastName', 'fPhone',
-  'repType', 'repDoc', 'repFirstName', 'repLastName', 'repPhone'
+  'motherDocumentType', 'motherDocument', 'motherFirstName', 'motherLastName', 'motherPhone', 'motherEmail', 'motherOccupation', 'motherAddress', 'motherResidenceState', 'motherResidenceMunicipality', 'motherResidenceParish',
+  'fatherDocumentType', 'fatherDocument', 'fatherFirstName', 'fatherLastName', 'fatherPhone', 'fatherEmail', 'fatherOccupation', 'fatherAddress', 'fatherResidenceState', 'fatherResidenceMunicipality', 'fatherResidenceParish',
+  'representativeType', 'representativeDocumentType', 'representativeDocument', 'representativeFirstName', 'representativeLastName', 'representativePhone', 'representativeEmail', 'representativeOccupation', 'representativeAddress', 'representativeResidenceState', 'representativeResidenceMunicipality', 'representativeResidenceParish'
 ];
 
 const BASE_COLUMN_OPTIONS: ColumnOption[] = [
-  { key: 'nationality', label: 'Nac.', group: 'Estudiante' },
-  { key: 'document', label: 'Cédula', group: 'Estudiante' },
-  { key: 'firstName', label: 'Nombres', group: 'Estudiante' },
-  { key: 'lastName', label: 'Apellidos', group: 'Estudiante' },
-  { key: 'gender', label: 'Género', group: 'Estudiante' },
+  // Estudiante - Datos Básicos
+  { key: 'nationality', label: 'Nac.', group: 'Estudiante - Datos Básicos' },
+  { key: 'document', label: 'Cédula', group: 'Estudiante - Datos Básicos' },
+  { key: 'firstName', label: 'Nombres', group: 'Estudiante - Datos Básicos' },
+  { key: 'lastName', label: 'Apellidos', group: 'Estudiante - Datos Básicos' },
+  { key: 'gender', label: 'Género', group: 'Estudiante - Datos Básicos' },
+  { key: 'birthdate', label: 'Fecha Nacimiento', group: 'Estudiante - Datos Básicos' },
+  { key: 'pathology', label: 'Patología', group: 'Estudiante - Datos Básicos' },
+  { key: 'livingWith', label: 'Vive Con', group: 'Estudiante - Datos Básicos' },
+
+  // Estudiante - Nacimiento
+  { key: 'birthState', label: 'Estado Nacimiento', group: 'Estudiante - Nacimiento' },
+  { key: 'birthMunicipality', label: 'Municipio Nacimiento', group: 'Estudiante - Nacimiento' },
+  { key: 'birthParish', label: 'Parroquia Nacimiento', group: 'Estudiante - Nacimiento' },
+
+  // Estudiante - Dirección
+  { key: 'residenceState', label: 'Estado Residencia', group: 'Estudiante - Dirección' },
+  { key: 'residenceMunicipality', label: 'Municipio Residencia', group: 'Estudiante - Dirección' },
+  { key: 'residenceParish', label: 'Parroquia Residencia', group: 'Estudiante - Dirección' },
+  { key: 'address', label: 'Dirección', group: 'Estudiante - Dirección' },
+
+  // Académico
   { key: 'gradeId', label: 'Grado', group: 'Académico' },
   { key: 'sectionId', label: 'Sección', group: 'Académico' },
   { key: 'subjectIds', label: 'Materias de Grupo', group: 'Académico' },
   { key: 'escolaridad', label: 'Escolaridad', group: 'Académico' },
+
+  // Contacto
   { key: 'phone1', label: 'S. Principal', group: 'Contacto' },
   { key: 'whatsapp', label: 'WhatsApp', group: 'Contacto' },
+
+  // Madre
+  { key: 'motherDocumentType', label: 'Tipo Doc. Madre', group: 'Madre' },
   { key: 'motherDocument', label: 'Cédula Madre', group: 'Madre' },
   { key: 'motherFirstName', label: 'Nombres Madre', group: 'Madre' },
   { key: 'motherLastName', label: 'Apellidos Madre', group: 'Madre' },
   { key: 'motherPhone', label: 'Teléfono Madre', group: 'Madre' },
+  { key: 'motherEmail', label: 'Email Madre', group: 'Madre' },
+  { key: 'motherAddress', label: 'Dirección Madre', group: 'Madre' },
+  { key: 'motherResidenceState', label: 'Estado Madre', group: 'Madre' },
+  { key: 'motherResidenceMunicipality', label: 'Municipio Madre', group: 'Madre' },
+  { key: 'motherResidenceParish', label: 'Parroquia Madre', group: 'Madre' },
+  { key: 'motherOccupation', label: 'Ocupación Madre', group: 'Madre' },
+
+  // Padre
+  { key: 'fatherDocumentType', label: 'Tipo Doc. Padre', group: 'Padre' },
   { key: 'fatherDocument', label: 'Cédula Padre', group: 'Padre' },
   { key: 'fatherFirstName', label: 'Nombres Padre', group: 'Padre' },
   { key: 'fatherLastName', label: 'Apellidos Padre', group: 'Padre' },
   { key: 'fatherPhone', label: 'Teléfono Padre', group: 'Padre' },
+  { key: 'fatherEmail', label: 'Email Padre', group: 'Padre' },
+  { key: 'fatherOccupation', label: 'Ocupación Padre', group: 'Padre' },
+  { key: 'fatherAddress', label: 'Dirección Padre', group: 'Padre' },
+  { key: 'fatherResidenceState', label: 'Estado Padre', group: 'Padre' },
+  { key: 'fatherResidenceMunicipality', label: 'Municipio Padre', group: 'Padre' },
+  { key: 'fatherResidenceParish', label: 'Parroquia Padre', group: 'Padre' },
+
+  // Representante
   { key: 'representativeType', label: 'Asignar Representante', group: 'Representante' },
+  { key: 'representativeDocumentType', label: 'Tipo Doc. Representante', group: 'Representante' },
   { key: 'representativeDocument', label: 'Cédula Representante', group: 'Representante' },
   { key: 'representativeFirstName', label: 'Nombres Representante', group: 'Representante' },
   { key: 'representativeLastName', label: 'Apellidos Representante', group: 'Representante' },
   { key: 'representativePhone', label: 'Teléfono Representante', group: 'Representante' },
+  { key: 'representativeEmail', label: 'Email Representante', group: 'Representante' },
+  { key: 'representativeOccupation', label: 'Ocupación Representante', group: 'Representante' },
+  { key: 'representativeAddress', label: 'Dirección Representante', group: 'Representante' },
+  { key: 'representativeResidenceState', label: 'Estado Representante', group: 'Representante' },
+  { key: 'representativeResidenceMunicipality', label: 'Municipio Representante', group: 'Representante' },
+  { key: 'representativeResidenceParish', label: 'Parroquia Representante', group: 'Representante' },
 ];
 
 const getQuestionColumnKey = (id: number) => `question-${id}`;
@@ -255,14 +311,14 @@ const CellInput = React.memo(({ value, onChange, onBlur, onKeyDown, ...props }: 
   const handleBlur = (e: React.FocusEvent<HTMLInputElement>) => {
     const hadChanges = draftValue !== null && draftValue !== normalizedValue;
     commitChange();
-    
+
     // Si hubo cambios y se hizo blur, disparar guardado después de un delay
     if (hadChanges) {
       setTimeout(() => {
         window.dispatchEvent(new CustomEvent('cell-input-changed'));
       }, 100);
     }
-    
+
     if (onBlur) onBlur(e);
   };
 
@@ -353,13 +409,13 @@ const MatriculationEnrollment: React.FC = () => {
           api.get('/academic/periods/active'),
           api.get('/enrollment-questions')
         ]);
-        
+
         if (periodRes.data) {
           setActivePeriod(periodRes.data);
         } else {
           message.warning('No hay un período académico activo configurado.');
         }
-        
+
         if (questionsRes.data) {
           setQuestions(questionsRes.data);
         }
@@ -458,6 +514,8 @@ const MatriculationEnrollment: React.FC = () => {
             residenceState: student.residence?.residenceState || 'N/A',
             residenceMunicipality: student.residence?.residenceMunicipality || 'N/A',
             residenceParish: student.residence?.residenceParish || 'N/A',
+            pathology: student.pathology || 'N/A',
+            livingWith: student.livingWith || 'N/A',
           }
         };
       });
@@ -502,14 +560,14 @@ const MatriculationEnrollment: React.FC = () => {
       if (!row) return;
 
       // Determinar endpoint según viewStatus
-      const endpoint = viewStatus === 'completed' 
+      const endpoint = viewStatus === 'completed'
         ? `/inscriptions/${row.inscriptionId || editableRowId}`
         : `/matriculations/${editableRowId}`;
 
       message.loading({ content: 'Guardando cambios...', key: 'save-student' });
       await api.patch(endpoint, pendingChanges);
       message.success({ content: 'Cambios guardados correctamente', key: 'save-student', duration: 2 });
-      
+
       // Recargar datos para reflejar cambios desde la BD
       await fetchData();
     } catch (error) {
@@ -557,14 +615,14 @@ const MatriculationEnrollment: React.FC = () => {
     // Acumular cambios pendientes con nombres de campos de BD
     setPendingChanges(prev => {
       const newChanges = { ...prev };
-      
+
       // Convertir nombres de campos del frontend a nombres de BD
       if (field === 'birthdate' && value) {
         newChanges[field as string] = (value as dayjs.Dayjs).format('YYYY-MM-DD');
       } else {
         newChanges[field as string] = value;
       }
-      
+
       return newChanges;
     });
   }, []);
@@ -612,7 +670,7 @@ const MatriculationEnrollment: React.FC = () => {
       questionId: Number(qId),
       answer: ans
     }));
-    
+
     setPendingChanges(prev => ({
       ...prev,
       enrollmentAnswers: formattedAnswers
@@ -828,7 +886,7 @@ const MatriculationEnrollment: React.FC = () => {
     return matriculations.filter(item => {
       if (searchValue) {
         const search = searchValue.toLowerCase();
-        const matches = 
+        const matches =
           item.student.firstName.toLowerCase().includes(search) ||
           item.student.lastName.toLowerCase().includes(search) ||
           item.student.document.includes(search);
@@ -862,13 +920,13 @@ const MatriculationEnrollment: React.FC = () => {
     try {
       // Aplicar ordenamiento si existe
       const dataToExport = [...filteredData];
-      
+
       if (sortedInfo && sortedInfo.order) {
         const { columnKey, order } = sortedInfo;
-        
+
         dataToExport.sort((a, b) => {
           let compareResult = 0;
-          
+
           switch (columnKey) {
             case 'document':
               compareResult = (a.tempData.document || '').localeCompare(b.tempData.document || '', undefined, { numeric: true });
@@ -897,13 +955,14 @@ const MatriculationEnrollment: React.FC = () => {
               break;
             }
           }
-          
+
           return order === 'ascend' ? compareResult : -compareResult;
         });
       }
-      
+
       // Mapeo de columnas con sus extractores y formateadores
       const columnConfig: Record<string, { header: string; getValue: (record: MatriculationRow) => string }> = {
+        // Estudiante - Datos Básicos
         nationality: {
           header: 'Nac.',
           getValue: (r) => r.tempData.documentType === 'Venezolano' ? 'V' : 'E'
@@ -924,6 +983,48 @@ const MatriculationEnrollment: React.FC = () => {
           header: 'Género',
           getValue: (r) => r.tempData.gender === 'M' ? 'Masculino' : r.tempData.gender === 'F' ? 'Femenino' : ''
         },
+        birthdate: {
+          header: 'Fecha Nacimiento',
+          getValue: (r) => r.tempData.birthdate ? dayjs(r.tempData.birthdate).format('DD/MM/YYYY') : ''
+        },
+        birthState: {
+          header: 'Estado Nacimiento',
+          getValue: (r) => r.tempData.birthState || ''
+        },
+        birthMunicipality: {
+          header: 'Municipio Nacimiento',
+          getValue: (r) => r.tempData.birthMunicipality || ''
+        },
+        birthParish: {
+          header: 'Parroquia Nacimiento',
+          getValue: (r) => r.tempData.birthParish || ''
+        },
+        residenceState: {
+          header: 'Estado Residencia',
+          getValue: (r) => r.tempData.residenceState || ''
+        },
+        residenceMunicipality: {
+          header: 'Municipio Residencia',
+          getValue: (r) => r.tempData.residenceMunicipality || ''
+        },
+        residenceParish: {
+          header: 'Parroquia Residencia',
+          getValue: (r) => r.tempData.residenceParish || ''
+        },
+        address: {
+          header: 'Dirección',
+          getValue: (r) => r.tempData.address || ''
+        },
+        pathology: {
+          header: 'Patología',
+          getValue: (r) => r.tempData.pathology || ''
+        },
+        livingWith: {
+          header: 'Vive Con',
+          getValue: (r) => r.tempData.livingWith || ''
+        },
+
+        // Académico
         gradeId: {
           header: 'Grado',
           getValue: (r) => structure.find(s => s.gradeId === r.tempData.gradeId)?.grade?.name || 'N/A'
@@ -954,6 +1055,8 @@ const MatriculationEnrollment: React.FC = () => {
             return map[r.tempData.escolaridad] || r.tempData.escolaridad;
           }
         },
+
+        // Contacto
         phone1: {
           header: 'Teléfono Principal',
           getValue: (r) => r.tempData.phone1 || ''
@@ -961,6 +1064,12 @@ const MatriculationEnrollment: React.FC = () => {
         whatsapp: {
           header: 'WhatsApp',
           getValue: (r) => r.tempData.whatsapp || ''
+        },
+
+        // Madre
+        motherDocumentType: {
+          header: 'Tipo Doc. Madre',
+          getValue: (r) => r.tempData.mother?.documentType || ''
         },
         motherDocument: {
           header: 'Cédula Madre',
@@ -978,6 +1087,36 @@ const MatriculationEnrollment: React.FC = () => {
           header: 'Teléfono Madre',
           getValue: (r) => r.tempData.mother?.phone || ''
         },
+        motherEmail: {
+          header: 'Email Madre',
+          getValue: (r) => r.tempData.mother?.email || ''
+        },
+        motherAddress: {
+          header: 'Dirección Madre',
+          getValue: (r) => r.tempData.mother?.address || ''
+        },
+        motherResidenceState: {
+          header: 'Estado Madre',
+          getValue: (r) => r.tempData.mother?.residenceState || ''
+        },
+        motherResidenceMunicipality: {
+          header: 'Municipio Madre',
+          getValue: (r) => r.tempData.mother?.residenceMunicipality || ''
+        },
+        motherResidenceParish: {
+          header: 'Parroquia Madre',
+          getValue: (r) => r.tempData.mother?.residenceParish || ''
+        },
+        motherOccupation: {
+          header: 'Ocupación Madre',
+          getValue: (r) => (r.tempData.mother as any)?.occupation || ''
+        },
+
+        // Padre
+        fatherDocumentType: {
+          header: 'Tipo Doc. Padre',
+          getValue: (r) => r.tempData.father?.documentType || ''
+        },
         fatherDocument: {
           header: 'Cédula Padre',
           getValue: (r) => r.tempData.father?.document || ''
@@ -994,6 +1133,32 @@ const MatriculationEnrollment: React.FC = () => {
           header: 'Teléfono Padre',
           getValue: (r) => r.tempData.father?.phone || ''
         },
+        fatherEmail: {
+          header: 'Email Padre',
+          getValue: (r) => r.tempData.father?.email || ''
+        },
+        fatherOccupation: {
+          header: 'Ocupación Padre',
+          getValue: (r) => (r.tempData.father as any)?.occupation || ''
+        },
+        fatherAddress: {
+          header: 'Dirección Padre',
+          getValue: (r) => r.tempData.father?.address || ''
+        },
+        fatherResidenceState: {
+          header: 'Estado Padre',
+          getValue: (r) => r.tempData.father?.residenceState || ''
+        },
+        fatherResidenceMunicipality: {
+          header: 'Municipio Padre',
+          getValue: (r) => r.tempData.father?.residenceMunicipality || ''
+        },
+        fatherResidenceParish: {
+          header: 'Parroquia Padre',
+          getValue: (r) => r.tempData.father?.residenceParish || ''
+        },
+
+        // Representante
         representativeType: {
           header: 'Tipo Representante',
           getValue: (r) => {
@@ -1003,6 +1168,13 @@ const MatriculationEnrollment: React.FC = () => {
               other: 'Otro'
             };
             return map[r.tempData.representativeType] || '';
+          }
+        },
+        representativeDocumentType: {
+          header: 'Tipo Doc. Representante',
+          getValue: (r) => {
+            const { profile } = getRepresentativeInfo(r);
+            return profile?.documentType || '';
           }
         },
         representativeDocument: {
@@ -1031,6 +1203,48 @@ const MatriculationEnrollment: React.FC = () => {
           getValue: (r) => {
             const { profile } = getRepresentativeInfo(r);
             return profile?.phone || '';
+          }
+        },
+        representativeEmail: {
+          header: 'Email Representante',
+          getValue: (r) => {
+            const { profile } = getRepresentativeInfo(r);
+            return profile?.email || '';
+          }
+        },
+        representativeOccupation: {
+          header: 'Ocupación Representante',
+          getValue: (r) => {
+            const { profile } = getRepresentativeInfo(r);
+            return profile?.occupation || '';
+          }
+        },
+        representativeAddress: {
+          header: 'Dirección Representante',
+          getValue: (r) => {
+            const { profile } = getRepresentativeInfo(r);
+            return profile?.address || '';
+          }
+        },
+        representativeResidenceState: {
+          header: 'Estado Representante',
+          getValue: (r) => {
+            const { profile } = getRepresentativeInfo(r);
+            return profile?.residenceState || '';
+          }
+        },
+        representativeResidenceMunicipality: {
+          header: 'Municipio Representante',
+          getValue: (r) => {
+            const { profile } = getRepresentativeInfo(r);
+            return profile?.residenceMunicipality || '';
+          }
+        },
+        representativeResidenceParish: {
+          header: 'Parroquia Representante',
+          getValue: (r) => {
+            const { profile } = getRepresentativeInfo(r);
+            return profile?.residenceParish || '';
           }
         }
       };
@@ -1064,7 +1278,7 @@ const MatriculationEnrollment: React.FC = () => {
 
       // Crear worksheet y workbook
       const worksheet = XLSX.utils.json_to_sheet(excelData);
-      
+
       // Auto-ajustar anchos de columna
       const maxWidths: Record<string, number> = {};
       visibleColumns.forEach(({ config }) => {
@@ -1078,18 +1292,18 @@ const MatriculationEnrollment: React.FC = () => {
           }
         });
       });
-      
+
       worksheet['!cols'] = visibleColumns.map(({ config }) => ({
         wch: Math.min(maxWidths[config.header] + 2, 50)
       }));
 
       const workbook = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(workbook, worksheet, 'Matrículas');
-      
+
       // Generar nombre de archivo con fecha
       const timestamp = dayjs().format('YYYY-MM-DD_HH-mm-ss');
       const fileName = `matriculas_${viewStatus}_${timestamp}.xlsx`;
-      
+
       XLSX.writeFile(workbook, fileName);
       message.success(`Exportados ${dataToExport.length} registros a Excel`);
     } catch (error) {
@@ -1098,41 +1312,83 @@ const MatriculationEnrollment: React.FC = () => {
     }
   }, [filteredData, visibleColumnKeys, structure, questions, viewStatus, sortedInfo]);
 
+  const handleToggleGroup = (group: string, checked: boolean) => {
+    let groupKeys: string[] = [];
+    if (group === 'Preguntas Personalizadas') {
+      groupKeys = questions.map(q => getQuestionColumnKey(q.id));
+    } else {
+      groupKeys = BASE_COLUMN_OPTIONS.filter(o => o.group === group).map(o => o.key);
+    }
+
+    if (checked) {
+      setVisibleColumnKeys(prev => Array.from(new Set([...prev, ...groupKeys])));
+    } else {
+      setVisibleColumnKeys(prev => prev.filter(key => !groupKeys.includes(key)));
+    }
+  };
+
   const columnMenuContent = (
-    <div style={{ maxHeight: '400px', overflowY: 'auto', padding: '8px' }}>
-      <div className="mb-2 pb-2 border-b border-slate-100 flex justify-between items-center">
-        <Text strong>Columnas Visibles</Text>
+    <div style={{ maxHeight: '450px', overflowY: 'auto', padding: '12px', width: '280px' }} className="custom-scrollbar">
+      <div className="mb-4 pb-2 border-b border-slate-100 flex justify-between items-center sticky top-0 bg-white z-10">
+        <Text strong style={{ color: '#1e293b' }}>Gestión de Columnas</Text>
         <Space>
-          <Button size="small" type="link" onClick={() => setVisibleColumnKeys(BASE_COLUMN_OPTIONS.map(o => o.key))}>Todas</Button>
+          <Button size="small" type="link" onClick={() => setVisibleColumnKeys(BASE_COLUMN_OPTIONS.map(o => o.key).concat(questions.map(q => getQuestionColumnKey(q.id))))}>Todas</Button>
           <Button size="small" type="link" onClick={() => setVisibleColumnKeys(['document', 'firstName', 'lastName'])}>Mínimas</Button>
         </Space>
       </div>
-      <Checkbox.Group
-        style={{ width: '100%' }}
-        value={visibleColumnKeys}
-        onChange={(checked) => setVisibleColumnKeys(checked as string[])}
-      >
+      <div className="flex flex-col gap-4">
         {COLUMN_GROUP_ORDER.map(group => {
           const groupOptions = BASE_COLUMN_OPTIONS.filter(o => o.group === group);
-          if (groupOptions.length === 0 && group !== 'Preguntas Personalizadas') return null;
+          const groupKeys = group === 'Preguntas Personalizadas'
+            ? questions.map(q => getQuestionColumnKey(q.id))
+            : groupOptions.map(o => o.key);
+
+          if (groupKeys.length === 0) return null;
+
+          const visibleInGroup = groupKeys.filter(k => visibleColumnKeys.includes(k));
+          const allChecked = visibleInGroup.length === groupKeys.length;
+          const indeterminate = visibleInGroup.length > 0 && visibleInGroup.length < groupKeys.length;
+
           return (
-            <div key={group} className="mb-3">
-              <div className="text-[10px] uppercase font-bold text-slate-400 mb-1 px-1 tracking-wider">{group}</div>
-              <div className="grid grid-cols-1 gap-1">
-                {group === 'Preguntas Personalizadas' ? (
-                  questions.map(q => (
-                    <Checkbox key={getQuestionColumnKey(q.id)} value={getQuestionColumnKey(q.id)} className="text-xs">{q.prompt}</Checkbox>
-                  ))
-                ) : (
-                  groupOptions.map(opt => (
-                    <Checkbox key={opt.key} value={opt.key} className="text-xs">{opt.label}</Checkbox>
-                  ))
-                )}
+            <div key={group} className="bg-slate-50/50 p-2 rounded-lg border border-slate-100/50">
+              <div className="flex items-center justify-between mb-2 pb-1 border-b border-slate-200/50">
+                <Checkbox
+                  indeterminate={indeterminate}
+                  checked={allChecked}
+                  onChange={(e) => handleToggleGroup(group, e.target.checked)}
+                >
+                  <span className="text-[10px] uppercase font-extrabold text-slate-500 tracking-wider">
+                    {group}
+                  </span>
+                </Checkbox>
+              </div>
+              <div className="grid grid-cols-1 gap-1.5 pl-1">
+                <Checkbox.Group
+                  style={{ width: '100%' }}
+                  value={visibleColumnKeys}
+                  onChange={(checked) => setVisibleColumnKeys(checked as string[])}
+                >
+                  <div className="flex flex-col gap-1">
+                    {group === 'Preguntas Personalizadas' ? (
+                      questions.map(q => (
+                        <Checkbox key={getQuestionColumnKey(q.id)} value={getQuestionColumnKey(q.id)} className="text-[11px] text-slate-600">
+                          {q.prompt}
+                        </Checkbox>
+                      ))
+                    ) : (
+                      groupOptions.map(opt => (
+                        <Checkbox key={opt.key} value={opt.key} className="text-[11px] text-slate-600">
+                          {opt.label}
+                        </Checkbox>
+                      ))
+                    )}
+                  </div>
+                </Checkbox.Group>
               </div>
             </div>
           );
         })}
-      </Checkbox.Group>
+      </div>
     </div>
   );
 
@@ -1189,7 +1445,7 @@ const MatriculationEnrollment: React.FC = () => {
       'Cedula Escolar': 'CE-'
     };
 
-    const studentCols = [
+    const studentBasicCols = [
       isColumnVisible('nationality') && {
         title: 'CE-',
         width: 35,
@@ -1277,6 +1533,172 @@ const MatriculationEnrollment: React.FC = () => {
               {record.tempData.gender === 'M' ? 'Masc' : 'Fem'}
             </Tag>
           </div>
+        )
+      },
+      isColumnVisible('birthdate') && {
+        key: 'birthdate',
+        title: 'Fecha Nac.',
+        width: 120,
+        render: (_: unknown, record: MatriculationRow, idx: number) => (
+          <CellInput
+            id={`nav-${idx}-birthdate`}
+            data-row-index={idx}
+            data-col-name="birthdate"
+            value={record.tempData.birthdate ? record.tempData.birthdate.format('YYYY-MM-DD') : ''}
+            disabled={!canEditRow(record.id)}
+            className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
+            onChange={val => handleUpdateRow(record.id, 'birthdate', val ? dayjs(val) : null)}
+          />
+        )
+      },
+      isColumnVisible('pathology') && {
+        key: 'pathology',
+        title: 'Patología',
+        width: 150,
+        render: (_: unknown, record: MatriculationRow, idx: number) => (
+          <CellInput
+            id={`nav-${idx}-pathology`}
+            data-row-index={idx}
+            data-col-name="pathology"
+            value={record.tempData.pathology}
+            disabled={!canEditRow(record.id)}
+            className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
+            onChange={val => handleUpdateRow(record.id, 'pathology', val)}
+          />
+        )
+      },
+      isColumnVisible('livingWith') && {
+        key: 'livingWith',
+        title: 'Vive Con',
+        width: 150,
+        render: (_: unknown, record: MatriculationRow, idx: number) => (
+          <CellInput
+            id={`nav-${idx}-livingWith`}
+            data-row-index={idx}
+            data-col-name="livingWith"
+            value={record.tempData.livingWith}
+            disabled={!canEditRow(record.id)}
+            className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
+            onChange={val => handleUpdateRow(record.id, 'livingWith', val)}
+          />
+        )
+      },
+    ].filter(Boolean);
+
+    const studentBirthCols = [
+      isColumnVisible('birthState') && {
+        key: 'birthState',
+        title: 'Edo. Nac.',
+        width: 120,
+        render: (_: unknown, record: MatriculationRow, idx: number) => (
+          <CellInput
+            id={`nav-${idx}-birthState`}
+            data-row-index={idx}
+            data-col-name="birthState"
+            value={record.tempData.birthState}
+            disabled={!canEditRow(record.id)}
+            className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
+            onChange={val => handleUpdateRow(record.id, 'birthState', val)}
+          />
+        )
+      },
+      isColumnVisible('birthMunicipality') && {
+        key: 'birthMunicipality',
+        title: 'Mun. Nac.',
+        width: 120,
+        render: (_: unknown, record: MatriculationRow, idx: number) => (
+          <CellInput
+            id={`nav-${idx}-birthMunicipality`}
+            data-row-index={idx}
+            data-col-name="birthMunicipality"
+            value={record.tempData.birthMunicipality}
+            disabled={!canEditRow(record.id)}
+            className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
+            onChange={val => handleUpdateRow(record.id, 'birthMunicipality', val)}
+          />
+        )
+      },
+      isColumnVisible('birthParish') && {
+        key: 'birthParish',
+        title: 'Par. Nac.',
+        width: 120,
+        render: (_: unknown, record: MatriculationRow, idx: number) => (
+          <CellInput
+            id={`nav-${idx}-birthParish`}
+            data-row-index={idx}
+            data-col-name="birthParish"
+            value={record.tempData.birthParish}
+            disabled={!canEditRow(record.id)}
+            className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
+            onChange={val => handleUpdateRow(record.id, 'birthParish', val)}
+          />
+        )
+      },
+    ].filter(Boolean);
+
+    const studentAddressCols = [
+      isColumnVisible('residenceState') && {
+        key: 'residenceState',
+        title: 'Edo. Res.',
+        width: 120,
+        render: (_: unknown, record: MatriculationRow, idx: number) => (
+          <CellInput
+            id={`nav-${idx}-residenceState`}
+            data-row-index={idx}
+            data-col-name="residenceState"
+            value={record.tempData.residenceState}
+            disabled={!canEditRow(record.id)}
+            className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
+            onChange={val => handleUpdateRow(record.id, 'residenceState', val)}
+          />
+        )
+      },
+      isColumnVisible('residenceMunicipality') && {
+        key: 'residenceMunicipality',
+        title: 'Mun. Res.',
+        width: 120,
+        render: (_: unknown, record: MatriculationRow, idx: number) => (
+          <CellInput
+            id={`nav-${idx}-residenceMunicipality`}
+            data-row-index={idx}
+            data-col-name="residenceMunicipality"
+            value={record.tempData.residenceMunicipality}
+            disabled={!canEditRow(record.id)}
+            className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
+            onChange={val => handleUpdateRow(record.id, 'residenceMunicipality', val)}
+          />
+        )
+      },
+      isColumnVisible('residenceParish') && {
+        key: 'residenceParish',
+        title: 'Par. Res.',
+        width: 120,
+        render: (_: unknown, record: MatriculationRow, idx: number) => (
+          <CellInput
+            id={`nav-${idx}-residenceParish`}
+            data-row-index={idx}
+            data-col-name="residenceParish"
+            value={record.tempData.residenceParish}
+            disabled={!canEditRow(record.id)}
+            className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
+            onChange={val => handleUpdateRow(record.id, 'residenceParish', val)}
+          />
+        )
+      },
+      isColumnVisible('address') && {
+        key: 'address',
+        title: 'Dirección',
+        width: 250,
+        render: (_: unknown, record: MatriculationRow, idx: number) => (
+          <CellInput
+            id={`nav-${idx}-address`}
+            data-row-index={idx}
+            data-col-name="address"
+            value={record.tempData.address}
+            disabled={!canEditRow(record.id)}
+            className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
+            onChange={val => handleUpdateRow(record.id, 'address', val)}
+          />
         )
       },
     ].filter(Boolean);
@@ -1455,9 +1877,9 @@ const MatriculationEnrollment: React.FC = () => {
         width: 130,
         render: (_: unknown, record: MatriculationRow, idx: number) => (
           <CellInput
-            id={`nav-${idx}-mDoc`}
+            id={`nav-${idx}-motherDocument`}
             data-row-index={idx}
-            data-col-name="mDoc"
+            data-col-name="motherDocument"
             value={record.tempData.mother?.document}
             placeholder="Doc..."
             disabled={!canEditRow(record.id)}
@@ -1471,9 +1893,9 @@ const MatriculationEnrollment: React.FC = () => {
         width: 140,
         render: (_: unknown, record: MatriculationRow, idx: number) => (
           <CellInput
-            id={`nav-${idx}-mFirstName`}
+            id={`nav-${idx}-motherFirstName`}
             data-row-index={idx}
-            data-col-name="mFirstName"
+            data-col-name="motherFirstName"
             value={record.tempData.mother?.firstName}
             disabled={!canEditRow(record.id)}
             className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
@@ -1486,9 +1908,9 @@ const MatriculationEnrollment: React.FC = () => {
         width: 140,
         render: (_: unknown, record: MatriculationRow, idx: number) => (
           <CellInput
-            id={`nav-${idx}-mLastName`}
+            id={`nav-${idx}-motherLastName`}
             data-row-index={idx}
-            data-col-name="mLastName"
+            data-col-name="motherLastName"
             value={record.tempData.mother?.lastName}
             disabled={!canEditRow(record.id)}
             className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
@@ -1501,13 +1923,118 @@ const MatriculationEnrollment: React.FC = () => {
         width: 130,
         render: (_: unknown, record: MatriculationRow, idx: number) => (
           <CellInput
-            id={`nav-${idx}-mPhone`}
+            id={`nav-${idx}-motherPhone`}
             data-row-index={idx}
-            data-col-name="mPhone"
+            data-col-name="motherPhone"
             value={record.tempData.mother?.phone}
             disabled={!canEditRow(record.id)}
             className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
             onChange={val => handleUpdateGuardianField(record.id, 'mother', 'phone', val)}
+          />
+        )
+      },
+      isColumnVisible('motherDocumentType') && {
+        title: 'Tipo Doc.',
+        width: 100,
+        render: (_: unknown, record: MatriculationRow, idx: number) => (
+          <CellInput
+            id={`nav-${idx}-motherDocumentType`}
+            data-row-index={idx}
+            data-col-name="motherDocumentType"
+            value={record.tempData.mother?.documentType}
+            disabled={!canEditRow(record.id)}
+            className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
+            onChange={val => handleUpdateGuardianField(record.id, 'mother', 'documentType', val)}
+          />
+        )
+      },
+      isColumnVisible('motherEmail') && {
+        title: 'Email',
+        width: 150,
+        render: (_: unknown, record: MatriculationRow, idx: number) => (
+          <CellInput
+            id={`nav-${idx}-motherEmail`}
+            data-row-index={idx}
+            data-col-name="motherEmail"
+            value={record.tempData.mother?.email}
+            disabled={!canEditRow(record.id)}
+            className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
+            onChange={val => handleUpdateGuardianField(record.id, 'mother', 'email', val)}
+          />
+        )
+      },
+      isColumnVisible('motherAddress') && {
+        title: 'Dirección',
+        width: 200,
+        render: (_: unknown, record: MatriculationRow, idx: number) => (
+          <CellInput
+            id={`nav-${idx}-motherAddress`}
+            data-row-index={idx}
+            data-col-name="motherAddress"
+            value={record.tempData.mother?.address}
+            disabled={!canEditRow(record.id)}
+            className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
+            onChange={val => handleUpdateGuardianField(record.id, 'mother', 'address', val)}
+          />
+        )
+      },
+      isColumnVisible('motherResidenceState') && {
+        title: 'Estado Res.',
+        width: 120,
+        render: (_: unknown, record: MatriculationRow, idx: number) => (
+          <CellInput
+            id={`nav-${idx}-motherResidenceState`}
+            data-row-index={idx}
+            data-col-name="motherResidenceState"
+            value={record.tempData.mother?.residenceState}
+            disabled={!canEditRow(record.id)}
+            className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
+            onChange={val => handleUpdateGuardianField(record.id, 'mother', 'residenceState', val)}
+          />
+        )
+      },
+      isColumnVisible('motherResidenceMunicipality') && {
+        title: 'Mun. Res.',
+        width: 120,
+        render: (_: unknown, record: MatriculationRow, idx: number) => (
+          <CellInput
+            id={`nav-${idx}-motherResidenceMunicipality`}
+            data-row-index={idx}
+            data-col-name="motherResidenceMunicipality"
+            value={record.tempData.mother?.residenceMunicipality}
+            disabled={!canEditRow(record.id)}
+            className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
+            onChange={val => handleUpdateGuardianField(record.id, 'mother', 'residenceMunicipality', val)}
+          />
+        )
+      },
+      isColumnVisible('motherResidenceParish') && {
+        title: 'Par. Res.',
+        width: 120,
+        render: (_: unknown, record: MatriculationRow, idx: number) => (
+          <CellInput
+            id={`nav-${idx}-motherResidenceParish`}
+            data-row-index={idx}
+            data-col-name="motherResidenceParish"
+            value={record.tempData.mother?.residenceParish}
+            disabled={!canEditRow(record.id)}
+            className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
+            onChange={val => handleUpdateGuardianField(record.id, 'mother', 'residenceParish', val)}
+          />
+        )
+      },
+      isColumnVisible('motherOccupation') && {
+        title: 'Ocupación',
+        width: 150,
+        render: (_: unknown, record: MatriculationRow, idx: number) => (
+          <CellInput
+            id={`nav-${idx}-motherOccupation`}
+            data-row-index={idx}
+            data-col-name="motherOccupation"
+            value={(record.tempData.mother as any)?.occupation}
+            disabled={!canEditRow(record.id)}
+            className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
+            onChange={val => handleUpdateGuardianField(record.id, 'mother', 'occupation', val)}
           />
         )
       },
@@ -1519,9 +2046,9 @@ const MatriculationEnrollment: React.FC = () => {
         width: 130,
         render: (_: unknown, record: MatriculationRow, idx: number) => (
           <CellInput
-            id={`nav-${idx}-fDoc`}
+            id={`nav-${idx}-fatherDocument`}
             data-row-index={idx}
-            data-col-name="fDoc"
+            data-col-name="fatherDocument"
             value={record.tempData.father?.document}
             placeholder="Doc..."
             disabled={!canEditRow(record.id)}
@@ -1535,9 +2062,9 @@ const MatriculationEnrollment: React.FC = () => {
         width: 140,
         render: (_: unknown, record: MatriculationRow, idx: number) => (
           <CellInput
-            id={`nav-${idx}-fFirstName`}
+            id={`nav-${idx}-fatherFirstName`}
             data-row-index={idx}
-            data-col-name="fFirstName"
+            data-col-name="fatherFirstName"
             value={record.tempData.father?.firstName}
             disabled={!canEditRow(record.id)}
             className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
@@ -1550,9 +2077,9 @@ const MatriculationEnrollment: React.FC = () => {
         width: 140,
         render: (_: unknown, record: MatriculationRow, idx: number) => (
           <CellInput
-            id={`nav-${idx}-fLastName`}
+            id={`nav-${idx}-fatherLastName`}
             data-row-index={idx}
-            data-col-name="fLastName"
+            data-col-name="fatherLastName"
             value={record.tempData.father?.lastName}
             disabled={!canEditRow(record.id)}
             className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
@@ -1565,13 +2092,118 @@ const MatriculationEnrollment: React.FC = () => {
         width: 130,
         render: (_: unknown, record: MatriculationRow, idx: number) => (
           <CellInput
-            id={`nav-${idx}-fPhone`}
+            id={`nav-${idx}-fatherPhone`}
             data-row-index={idx}
-            data-col-name="fPhone"
+            data-col-name="fatherPhone"
             value={record.tempData.father?.phone}
             disabled={!canEditRow(record.id)}
             className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
             onChange={val => handleUpdateGuardianField(record.id, 'father', 'phone', val)}
+          />
+        )
+      },
+      isColumnVisible('fatherDocumentType') && {
+        title: 'Tipo Doc.',
+        width: 100,
+        render: (_: unknown, record: MatriculationRow, idx: number) => (
+          <CellInput
+            id={`nav-${idx}-fatherDocumentType`}
+            data-row-index={idx}
+            data-col-name="fatherDocumentType"
+            value={record.tempData.father?.documentType}
+            disabled={!canEditRow(record.id)}
+            className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
+            onChange={val => handleUpdateGuardianField(record.id, 'father', 'documentType', val)}
+          />
+        )
+      },
+      isColumnVisible('fatherEmail') && {
+        title: 'Email',
+        width: 150,
+        render: (_: unknown, record: MatriculationRow, idx: number) => (
+          <CellInput
+            id={`nav-${idx}-fatherEmail`}
+            data-row-index={idx}
+            data-col-name="fatherEmail"
+            value={record.tempData.father?.email}
+            disabled={!canEditRow(record.id)}
+            className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
+            onChange={val => handleUpdateGuardianField(record.id, 'father', 'email', val)}
+          />
+        )
+      },
+      isColumnVisible('fatherOccupation') && {
+        title: 'Ocupación',
+        width: 150,
+        render: (_: unknown, record: MatriculationRow, idx: number) => (
+          <CellInput
+            id={`nav-${idx}-fatherOccupation`}
+            data-row-index={idx}
+            data-col-name="fatherOccupation"
+            value={(record.tempData.father as any)?.occupation}
+            disabled={!canEditRow(record.id)}
+            className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
+            onChange={val => handleUpdateGuardianField(record.id, 'father', 'occupation', val)}
+          />
+        )
+      },
+      isColumnVisible('fatherAddress') && {
+        title: 'Dirección',
+        width: 200,
+        render: (_: unknown, record: MatriculationRow, idx: number) => (
+          <CellInput
+            id={`nav-${idx}-fatherAddress`}
+            data-row-index={idx}
+            data-col-name="fatherAddress"
+            value={record.tempData.father?.address}
+            disabled={!canEditRow(record.id)}
+            className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
+            onChange={val => handleUpdateGuardianField(record.id, 'father', 'address', val)}
+          />
+        )
+      },
+      isColumnVisible('fatherResidenceState') && {
+        title: 'Estado Res.',
+        width: 120,
+        render: (_: unknown, record: MatriculationRow, idx: number) => (
+          <CellInput
+            id={`nav-${idx}-fatherResidenceState`}
+            data-row-index={idx}
+            data-col-name="fatherResidenceState"
+            value={record.tempData.father?.residenceState}
+            disabled={!canEditRow(record.id)}
+            className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
+            onChange={val => handleUpdateGuardianField(record.id, 'father', 'residenceState', val)}
+          />
+        )
+      },
+      isColumnVisible('fatherResidenceMunicipality') && {
+        title: 'Mun. Res.',
+        width: 120,
+        render: (_: unknown, record: MatriculationRow, idx: number) => (
+          <CellInput
+            id={`nav-${idx}-fatherResidenceMunicipality`}
+            data-row-index={idx}
+            data-col-name="fatherResidenceMunicipality"
+            value={record.tempData.father?.residenceMunicipality}
+            disabled={!canEditRow(record.id)}
+            className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
+            onChange={val => handleUpdateGuardianField(record.id, 'father', 'residenceMunicipality', val)}
+          />
+        )
+      },
+      isColumnVisible('fatherResidenceParish') && {
+        title: 'Par. Res.',
+        width: 120,
+        render: (_: unknown, record: MatriculationRow, idx: number) => (
+          <CellInput
+            id={`nav-${idx}-fatherResidenceParish`}
+            data-row-index={idx}
+            data-col-name="fatherResidenceParish"
+            value={record.tempData.father?.residenceParish}
+            disabled={!canEditRow(record.id)}
+            className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
+            onChange={val => handleUpdateGuardianField(record.id, 'father', 'residenceParish', val)}
           />
         )
       },
@@ -1582,9 +2214,9 @@ const MatriculationEnrollment: React.FC = () => {
         title: 'Asignar',
         width: 140,
         render: (_: unknown, record: MatriculationRow, idx: number) => (
-          <div data-row-index={idx} data-col-name="repType">
+          <div data-row-index={idx} data-col-name="representativeType">
             <Select
-              id={`nav-${idx}-repType`}
+              id={`nav-${idx}-representativeType`}
               value={record.tempData.representativeType}
               style={{ width: '100%' }}
               size="small"
@@ -1606,9 +2238,9 @@ const MatriculationEnrollment: React.FC = () => {
           return (
             <div className="flex flex-col gap-1">
               <CellInput
-                id={`nav-${idx}-repDoc`}
+                id={`nav-${idx}-representativeDocument`}
                 data-row-index={idx}
-                data-col-name="repDoc"
+                data-col-name="representativeDocument"
                 value={profile?.document}
                 placeholder="Doc..."
                 disabled={isDisabled}
@@ -1631,9 +2263,9 @@ const MatriculationEnrollment: React.FC = () => {
           const isDisabled = !canEditRow(record.id) || !editable;
           return (
             <CellInput
-              id={`nav-${idx}-repFirstName`}
+              id={`nav-${idx}-representativeFirstName`}
               data-row-index={idx}
-              data-col-name="repFirstName"
+              data-col-name="representativeFirstName"
               value={profile?.firstName}
               disabled={isDisabled}
               className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
@@ -1653,9 +2285,9 @@ const MatriculationEnrollment: React.FC = () => {
           const isDisabled = !canEditRow(record.id) || !editable;
           return (
             <CellInput
-              id={`nav-${idx}-repLastName`}
+              id={`nav-${idx}-representativeLastName`}
               data-row-index={idx}
-              data-col-name="repLastName"
+              data-col-name="representativeLastName"
               value={profile?.lastName}
               disabled={isDisabled}
               className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
@@ -1675,15 +2307,169 @@ const MatriculationEnrollment: React.FC = () => {
           const isDisabled = !canEditRow(record.id) || !editable;
           return (
             <CellInput
-              id={`nav-${idx}-repPhone`}
+              id={`nav-${idx}-representativePhone`}
               data-row-index={idx}
-              data-col-name="repPhone"
+              data-col-name="representativePhone"
               value={profile?.phone}
               disabled={isDisabled}
               className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
               onChange={val => {
                 if (!editable) return;
                 handleUpdateGuardianField(record.id, 'representative', 'phone', val);
+              }}
+            />
+          );
+        }
+      },
+      isColumnVisible('representativeDocumentType') && {
+        title: 'Tipo Doc.',
+        width: 100,
+        render: (_: unknown, record: MatriculationRow, idx: number) => {
+          const { profile, editable } = getRepresentativeInfo(record);
+          const isDisabled = !canEditRow(record.id) || !editable;
+          return (
+            <CellInput
+              id={`nav-${idx}-representativeDocumentType`}
+              data-row-index={idx}
+              data-col-name="representativeDocumentType"
+              value={profile?.documentType}
+              disabled={isDisabled}
+              className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
+              onChange={val => {
+                if (!editable) return;
+                handleUpdateGuardianField(record.id, 'representative', 'documentType', val);
+              }}
+            />
+          );
+        }
+      },
+      isColumnVisible('representativeEmail') && {
+        title: 'Email',
+        width: 150,
+        render: (_: unknown, record: MatriculationRow, idx: number) => {
+          const { profile, editable } = getRepresentativeInfo(record);
+          const isDisabled = !canEditRow(record.id) || !editable;
+          return (
+            <CellInput
+              id={`nav-${idx}-representativeEmail`}
+              data-row-index={idx}
+              data-col-name="representativeEmail"
+              value={profile?.email}
+              disabled={isDisabled}
+              className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
+              onChange={val => {
+                if (!editable) return;
+                handleUpdateGuardianField(record.id, 'representative', 'email', val);
+              }}
+            />
+          );
+        }
+      },
+      isColumnVisible('representativeOccupation') && {
+        title: 'Ocupación',
+        width: 150,
+        render: (_: unknown, record: MatriculationRow, idx: number) => {
+          const { profile, editable } = getRepresentativeInfo(record);
+          const isDisabled = !canEditRow(record.id) || !editable;
+          return (
+            <CellInput
+              id={`nav-${idx}-representativeOccupation`}
+              data-row-index={idx}
+              data-col-name="representativeOccupation"
+              value={profile?.occupation}
+              disabled={isDisabled}
+              className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
+              onChange={val => {
+                if (!editable) return;
+                handleUpdateGuardianField(record.id, 'representative', 'occupation', val);
+              }}
+            />
+          );
+        }
+      },
+      isColumnVisible('representativeAddress') && {
+        title: 'Dirección',
+        width: 200,
+        render: (_: unknown, record: MatriculationRow, idx: number) => {
+          const { profile, editable } = getRepresentativeInfo(record);
+          const isDisabled = !canEditRow(record.id) || !editable;
+          return (
+            <CellInput
+              id={`nav-${idx}-representativeAddress`}
+              data-row-index={idx}
+              data-col-name="representativeAddress"
+              value={profile?.address}
+              disabled={isDisabled}
+              className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
+              onChange={val => {
+                if (!editable) return;
+                handleUpdateGuardianField(record.id, 'representative', 'address', val);
+              }}
+            />
+          );
+        }
+      },
+      isColumnVisible('representativeResidenceState') && {
+        title: 'Estado Res.',
+        width: 120,
+        render: (_: unknown, record: MatriculationRow, idx: number) => {
+          const { profile, editable } = getRepresentativeInfo(record);
+          const isDisabled = !canEditRow(record.id) || !editable;
+          return (
+            <CellInput
+              id={`nav-${idx}-representativeResidenceState`}
+              data-row-index={idx}
+              data-col-name="representativeResidenceState"
+              value={profile?.residenceState}
+              disabled={isDisabled}
+              className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
+              onChange={val => {
+                if (!editable) return;
+                handleUpdateGuardianField(record.id, 'representative', 'residenceState', val);
+              }}
+            />
+          );
+        }
+      },
+      isColumnVisible('representativeResidenceMunicipality') && {
+        title: 'Mun. Res.',
+        width: 120,
+        render: (_: unknown, record: MatriculationRow, idx: number) => {
+          const { profile, editable } = getRepresentativeInfo(record);
+          const isDisabled = !canEditRow(record.id) || !editable;
+          return (
+            <CellInput
+              id={`nav-${idx}-representativeResidenceMunicipality`}
+              data-row-index={idx}
+              data-col-name="representativeResidenceMunicipality"
+              value={profile?.residenceMunicipality}
+              disabled={isDisabled}
+              className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
+              onChange={val => {
+                if (!editable) return;
+                handleUpdateGuardianField(record.id, 'representative', 'residenceMunicipality', val);
+              }}
+            />
+          );
+        }
+      },
+      isColumnVisible('representativeResidenceParish') && {
+        title: 'Par. Res.',
+        width: 120,
+        render: (_: unknown, record: MatriculationRow, idx: number) => {
+          const { profile, editable } = getRepresentativeInfo(record);
+          const isDisabled = !canEditRow(record.id) || !editable;
+          return (
+            <CellInput
+              id={`nav-${idx}-representativeResidenceParish`}
+              data-row-index={idx}
+              data-col-name="representativeResidenceParish"
+              value={profile?.residenceParish}
+              disabled={isDisabled}
+              className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
+              onChange={val => {
+                if (!editable) return;
+                handleUpdateGuardianField(record.id, 'representative', 'residenceParish', val);
               }}
             />
           );
@@ -1745,11 +2531,23 @@ const MatriculationEnrollment: React.FC = () => {
       }));
 
     return [
-      studentCols.length > 0 && {
-        title: renderGroupTitle('Estudiante', <Space><UserOutlined /> Estudiante</Space>),
-        fixed: (pinnedGroups.includes('Estudiante') ? 'left' : undefined) as 'left' | undefined,
+      studentBasicCols.length > 0 && {
+        title: renderGroupTitle('Estudiante - Datos Básicos', <Space><UserOutlined /> Estudiante: Básicos</Space>),
+        fixed: (pinnedGroups.includes('Estudiante - Datos Básicos') ? 'left' : undefined) as 'left' | undefined,
         className: 'group-separator-border',
-        children: addSeparator(studentCols)
+        children: addSeparator(studentBasicCols)
+      },
+      studentBirthCols.length > 0 && {
+        title: renderGroupTitle('Estudiante - Nacimiento', 'Estudiante: Nacimiento'),
+        fixed: (pinnedGroups.includes('Estudiante - Nacimiento') ? 'left' : undefined) as 'left' | undefined,
+        className: 'group-separator-border',
+        children: addSeparator(studentBirthCols)
+      },
+      studentAddressCols.length > 0 && {
+        title: renderGroupTitle('Estudiante - Dirección', 'Estudiante: Dirección'),
+        fixed: (pinnedGroups.includes('Estudiante - Dirección') ? 'left' : undefined) as 'left' | undefined,
+        className: 'group-separator-border',
+        children: addSeparator(studentAddressCols)
       },
       academicCols.length > 0 && {
         title: renderGroupTitle('Académico', <Space><BookOutlined /> Académico</Space>),
@@ -1793,9 +2591,9 @@ const MatriculationEnrollment: React.FC = () => {
   return (
     <div className="flex flex-col gap-2 h-full" onKeyDown={handleTableKeyDown}>
       <div ref={headerRef} className="flex flex-col gap-2 shrink-0">
-        <Card 
-          size="small" 
-          styles={{ body: { padding: '2px 12px' } }} 
+        <Card
+          size="small"
+          styles={{ body: { padding: '2px 12px' } }}
           className="glass-card !bg-white/50 border-none shrink-0"
         >
           <Row justify="space-between" align="middle" gutter={[4, 4]}>
@@ -1805,8 +2603,8 @@ const MatriculationEnrollment: React.FC = () => {
                   <Title level={5} style={{ margin: 0 }}>Matricula Estudiantes</Title>
                 </Space>
                 <div className="flex items-center gap-2">
-                  <Radio.Group 
-                    value={viewStatus} 
+                  <Radio.Group
+                    value={viewStatus}
                     onChange={e => {
                       setViewStatus(e.target.value);
                       setCurrentPage(1);
@@ -1934,9 +2732,9 @@ const MatriculationEnrollment: React.FC = () => {
                 </Col>
                 <Col>
                   <Tooltip title={`Exportar ${filteredData.length} registros a Excel con filtros aplicados`}>
-                    <Button 
-                      icon={<FileExcelOutlined />} 
-                      onClick={exportToExcel} 
+                    <Button
+                      icon={<FileExcelOutlined />}
+                      onClick={exportToExcel}
                       size="small"
                       className="border-green-400 text-green-600 hover:bg-green-50"
                     >
