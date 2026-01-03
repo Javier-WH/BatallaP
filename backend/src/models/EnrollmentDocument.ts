@@ -17,6 +17,7 @@ interface EnrollmentDocumentAttributes {
   pathCedulaRepresentante?: string;
   pathFotoRepresentante?: string;
   pathFotoEstudiante?: string;
+  pathInformesMedicos?: string[]; // JSON array of paths
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -36,6 +37,7 @@ class EnrollmentDocument extends Model<EnrollmentDocumentAttributes, EnrollmentD
   public pathCedulaRepresentante!: string;
   public pathFotoRepresentante!: string;
   public pathFotoEstudiante!: string;
+  public pathInformesMedicos!: string[];
 
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
@@ -95,6 +97,10 @@ EnrollmentDocument.init(
     },
     pathFotoEstudiante: {
       type: DataTypes.STRING,
+      allowNull: true,
+    },
+    pathInformesMedicos: {
+      type: DataTypes.JSON,
       allowNull: true,
     },
   },

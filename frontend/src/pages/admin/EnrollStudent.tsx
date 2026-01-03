@@ -233,6 +233,9 @@ const EnrollStudent: React.FC = () => {
   const representativeDocumentTypeValue = Form.useWatch(['representative', 'documentType'], newStudentForm) as GuardianDocumentType | undefined;
   const representativeDocumentValue = Form.useWatch(['representative', 'document'], newStudentForm) as string | undefined;
 
+  const receivedInformesMedicos = Form.useWatch(['documents', 'receivedInformesMedicos'], newStudentForm);
+  const receivedInformesMedicosExisting = Form.useWatch(['documents', 'receivedInformesMedicos'], existingStudentForm);
+
   // Watch entire objects for reactive validation
   const motherFormData = Form.useWatch('mother', newStudentForm);
   const fatherFormData = Form.useWatch('father', newStudentForm);
@@ -615,6 +618,7 @@ const EnrollStudent: React.FC = () => {
         pathCedulaRepresentante: documents.pathCedulaRepresentante?.[0]?.response?.path || null,
         pathFotoRepresentante: documents.pathFotoRepresentante?.[0]?.response?.path || null,
         pathFotoEstudiante: documents.pathFotoEstudiante?.[0]?.response?.path || null,
+        pathInformesMedicos: documents.pathInformesMedicos?.map((f: any) => f.response?.path).filter(Boolean) || [],
       };
 
       const payload = {
@@ -651,6 +655,7 @@ const EnrollStudent: React.FC = () => {
         pathCedulaRepresentante: documents.pathCedulaRepresentante?.[0]?.response?.path || null,
         pathFotoRepresentante: documents.pathFotoRepresentante?.[0]?.response?.path || null,
         pathFotoEstudiante: documents.pathFotoEstudiante?.[0]?.response?.path || null,
+        pathInformesMedicos: documents.pathInformesMedicos?.map((f: any) => f.response?.path).filter(Boolean) || [],
       };
 
       await api.post('/inscriptions', {
@@ -1252,6 +1257,27 @@ const EnrollStudent: React.FC = () => {
                     </Form.Item>
                   </Col>
                 </Row>
+
+                {receivedInformesMedicos && (
+                  <Row gutter={24} style={{ marginTop: 16 }}>
+                    <Col span={24}>
+                      <Form.Item name={['documents', 'pathInformesMedicos']} label="Informes Médicos (Imágenes)" getValueFromEvent={normFile}>
+                        <Upload
+                          action="/api/upload/documents"
+                          listType="picture-card"
+                          accept="image/*"
+                          multiple
+                          showUploadList={{ showRemoveIcon: true }}
+                        >
+                          <div>
+                            <UploadOutlined />
+                            <div style={{ marginTop: 8 }}>Subir</div>
+                          </div>
+                        </Upload>
+                      </Form.Item>
+                    </Col>
+                  </Row>
+                )}
               </div>
 
               <Form.Item style={{ marginTop: 24 }}>
@@ -1414,6 +1440,27 @@ const EnrollStudent: React.FC = () => {
                     </Form.Item>
                   </Col>
                 </Row>
+
+                {receivedInformesMedicosExisting && (
+                  <Row gutter={24} style={{ marginTop: 16 }}>
+                    <Col span={24}>
+                      <Form.Item name={['documents', 'pathInformesMedicos']} label="Informes Médicos (Imágenes)" getValueFromEvent={normFile}>
+                        <Upload
+                          action="/api/upload/documents"
+                          listType="picture-card"
+                          accept="image/*"
+                          multiple
+                          showUploadList={{ showRemoveIcon: true }}
+                        >
+                          <div>
+                            <UploadOutlined />
+                            <div style={{ marginTop: 8 }}>Subir</div>
+                          </div>
+                        </Upload>
+                      </Form.Item>
+                    </Col>
+                  </Row>
+                )}
               </div>
 
               <Form.Item>
