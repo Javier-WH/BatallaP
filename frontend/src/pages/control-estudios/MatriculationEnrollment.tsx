@@ -41,7 +41,6 @@ import type { ColumnsType } from 'antd/es/table';
 import StudentSubjectsModal from '../admin/StudentSubjectsModal';
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
-import { useSchool } from '@/context/SchoolContext';
 
 const { Text, Title } = Typography;
 const { Option } = Select;
@@ -405,7 +404,6 @@ const MatriculationEnrollment: React.FC = () => {
   const [sortedInfo, setSortedInfo] = useState<{ columnKey: string; order: 'ascend' | 'descend' } | null>(null);
   const [pinnedGroups, setPinnedGroups] = useState<string[]>(['Estudiante - Datos Básicos']);
   const [scrollY, setScrollY] = useState(500);
-  const { settings: schoolSettings } = useSchool();
   const headerRef = useRef<HTMLDivElement>(null);
   const bulkActionRef = useRef<HTMLDivElement>(null);
 
@@ -1095,32 +1093,37 @@ const MatriculationEnrollment: React.FC = () => {
           extension: 'png',
         });
 
-        // Ajustar posición del logo
+        // Ajustar posición del logo (lado izquierdo) - Aumentado de tamaño
         worksheet.addImage(logoId, {
-          tl: { col: 0.2, row: 0.2 },
-          ext: { width: 80, height: 80 }
+          tl: { col: 0.1, row: 0.2 },
+          ext: { width: 110, height: 110 }
         });
       } catch (e) {
         console.error('No se pudo cargar el logo para el Excel', e);
       }
 
       // Añadimos filas de encabezado (5 filas iniciales)
-      worksheet.addRow([]); // Espacio para logo 
-      worksheet.addRow([headerTitle]);
-      worksheet.addRow([reportTitle]);
-      if (gradeSectionText) worksheet.addRow([gradeSectionText]);
-      if (periodText) worksheet.addRow([periodText]);
+      worksheet.addRow([]); // Espacio 
+      worksheet.addRow(['', '', headerTitle]); // Fila 2
+      worksheet.addRow(['', '', reportTitle]); // Fila 3
+      if (gradeSectionText) worksheet.addRow(['', '', gradeSectionText]); // Fila 4
+      if (periodText) worksheet.addRow(['', '', periodText]); // Fila 5
       worksheet.addRow([]); // Espacio en blanco antes de la tabla
 
-      // Estilo para el encabezado centrado
+      // Estilo para el encabezado (al lado del logo)
       const headerRows = [2, 3, 4, 5];
       headerRows.forEach(rowIdx => {
         const row = worksheet.getRow(rowIdx);
-        if (row.getCell(1).value) {
-          worksheet.mergeCells(rowIdx, 1, rowIdx, headers.length);
-          row.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
-          row.getCell(1).font = { bold: true, size: rowIdx === 2 ? 14 : 12 };
+        // Mezclamos desde la columna 3 hasta el final para dejar espacio al logo
+        const startCol = 3;
+        const endCol = Math.max(startCol, headers.length);
+
+        if (row.getCell(startCol).value) {
+          worksheet.mergeCells(rowIdx, startCol, rowIdx, endCol);
+          row.getCell(startCol).alignment = { horizontal: 'left', vertical: 'middle' };
+          row.getCell(startCol).font = { bold: true, size: rowIdx === 2 ? 14 : 11 };
         }
+        row.height = 24; // Aumentar altura para que el logo más grande luzca mejor
       });
 
       // --- TABLA ---
