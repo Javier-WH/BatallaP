@@ -39,7 +39,9 @@ import api from '@/services/api';
 import type { EnrollmentQuestionResponse } from '@/services/enrollmentQuestions';
 import type { ColumnsType } from 'antd/es/table';
 import StudentSubjectsModal from '../admin/StudentSubjectsModal';
-import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
+import { saveAs } from 'file-saver';
+import { useSchool } from '@/context/SchoolContext';
 
 const { Text, Title } = Typography;
 const { Option } = Select;
@@ -403,6 +405,7 @@ const MatriculationEnrollment: React.FC = () => {
   const [sortedInfo, setSortedInfo] = useState<{ columnKey: string; order: 'ascend' | 'descend' } | null>(null);
   const [pinnedGroups, setPinnedGroups] = useState<string[]>(['Estudiante - Datos Básicos']);
   const [scrollY, setScrollY] = useState(500);
+  const { settings: schoolSettings } = useSchool();
   const headerRef = useRef<HTMLDivElement>(null);
   const bulkActionRef = useRef<HTMLDivElement>(null);
 
@@ -936,17 +939,18 @@ const MatriculationEnrollment: React.FC = () => {
     return filteredData.slice(start, start + pageSize);
   }, [filteredData, currentPage, pageSize]);
 
-  const exportToExcel = useCallback(() => {
+  const exportToExcel = useCallback(async () => {
     try {
+      const workbook = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet('Matrículas');
+
       // Aplicar ordenamiento si existe
       const dataToExport = [...filteredData];
 
       if (sortedInfo && sortedInfo.order) {
         const { columnKey, order } = sortedInfo;
-
         dataToExport.sort((a, b) => {
           let compareResult = 0;
-
           switch (columnKey) {
             case 'document':
               compareResult = (a.tempData.document || '').localeCompare(b.tempData.document || '', undefined, { numeric: true });
@@ -975,80 +979,28 @@ const MatriculationEnrollment: React.FC = () => {
               break;
             }
           }
-
           return order === 'ascend' ? compareResult : -compareResult;
         });
       }
 
       // Mapeo de columnas con sus extractores y formateadores
       const columnConfig: Record<string, { header: string; getValue: (record: MatriculationRow) => string }> = {
-        // Estudiante - Datos Básicos
-        nationality: {
-          header: 'Nac.',
-          getValue: (r) => r.tempData.documentType === 'Venezolano' ? 'V' : 'E'
-        },
-        document: {
-          header: 'Cédula',
-          getValue: (r) => r.tempData.document || ''
-        },
-        firstName: {
-          header: 'Nombres',
-          getValue: (r) => r.tempData.firstName || ''
-        },
-        lastName: {
-          header: 'Apellidos',
-          getValue: (r) => r.tempData.lastName || ''
-        },
-        gender: {
-          header: 'Género',
-          getValue: (r) => r.tempData.gender === 'M' ? 'Masculino' : r.tempData.gender === 'F' ? 'Femenino' : ''
-        },
-        birthdate: {
-          header: 'Fecha Nacimiento',
-          getValue: (r) => r.tempData.birthdate ? dayjs(r.tempData.birthdate).format('DD/MM/YYYY') : ''
-        },
-        birthState: {
-          header: 'Estado Nacimiento',
-          getValue: (r) => r.tempData.birthState || ''
-        },
-        birthMunicipality: {
-          header: 'Municipio Nacimiento',
-          getValue: (r) => r.tempData.birthMunicipality || ''
-        },
-        birthParish: {
-          header: 'Parroquia Nacimiento',
-          getValue: (r) => r.tempData.birthParish || ''
-        },
-        residenceState: {
-          header: 'Estado Residencia',
-          getValue: (r) => r.tempData.residenceState || ''
-        },
-        residenceMunicipality: {
-          header: 'Municipio Residencia',
-          getValue: (r) => r.tempData.residenceMunicipality || ''
-        },
-        residenceParish: {
-          header: 'Parroquia Residencia',
-          getValue: (r) => r.tempData.residenceParish || ''
-        },
-        address: {
-          header: 'Dirección',
-          getValue: (r) => r.tempData.address || ''
-        },
-        pathology: {
-          header: 'Patología',
-          getValue: (r) => r.tempData.pathology || ''
-        },
-        livingWith: {
-          header: 'Vive Con',
-          getValue: (r) => r.tempData.livingWith || ''
-        },
-
-        // Académico
-        gradeId: {
-          header: 'Grado',
-          getValue: (r) => structure.find(s => s.gradeId === r.tempData.gradeId)?.grade?.name || 'N/A'
-        },
+        nationality: { header: 'Nac.', getValue: (r) => r.tempData.documentType === 'Venezolano' ? 'V' : 'E' },
+        document: { header: 'Cédula', getValue: (r) => r.tempData.document || '' },
+        firstName: { header: 'Nombres', getValue: (r) => r.tempData.firstName || '' },
+        lastName: { header: 'Apellidos', getValue: (r) => r.tempData.lastName || '' },
+        gender: { header: 'Género', getValue: (r) => r.tempData.gender === 'M' ? 'Masculino' : r.tempData.gender === 'F' ? 'Femenino' : '' },
+        birthdate: { header: 'Fecha Nacimiento', getValue: (r) => r.tempData.birthdate ? dayjs(r.tempData.birthdate).format('DD/MM/YYYY') : '' },
+        pathology: { header: 'Patología', getValue: (r) => r.tempData.pathology || 'N/A' },
+        livingWith: { header: 'Vive Con', getValue: (r) => r.tempData.livingWith || 'N/A' },
+        birthState: { header: 'Estado Nacimiento', getValue: (r) => r.tempData.birthState || '' },
+        birthMunicipality: { header: 'Municipio Nacimiento', getValue: (r) => r.tempData.birthMunicipality || '' },
+        birthParish: { header: 'Parroquia Nacimiento', getValue: (r) => r.tempData.birthParish || '' },
+        residenceState: { header: 'Estado Residencia', getValue: (r) => r.tempData.residenceState || '' },
+        residenceMunicipality: { header: 'Municipio Residencia', getValue: (r) => r.tempData.residenceMunicipality || '' },
+        residenceParish: { header: 'Parroquia Residencia', getValue: (r) => r.tempData.residenceParish || '' },
+        address: { header: 'Dirección', getValue: (r) => r.tempData.address || '' },
+        gradeId: { header: 'Grado', getValue: (r) => structure.find(s => s.gradeId === r.tempData.gradeId)?.grade?.name || 'N/A' },
         sectionId: {
           header: 'Sección',
           getValue: (r) => {
@@ -1057,7 +1009,7 @@ const MatriculationEnrollment: React.FC = () => {
           }
         },
         subjectIds: {
-          header: 'Materias de Grupo',
+          header: 'Materia',
           getValue: (r) => {
             const gradeStruct = structure.find(s => s.gradeId === r.tempData.gradeId);
             const subjectId = r.tempData.subjectIds?.[0];
@@ -1075,196 +1027,26 @@ const MatriculationEnrollment: React.FC = () => {
             return map[r.tempData.escolaridad] || r.tempData.escolaridad;
           }
         },
-
-        // Contacto
-        phone1: {
-          header: 'Teléfono Principal',
-          getValue: (r) => r.tempData.phone1 || ''
-        },
-        whatsapp: {
-          header: 'WhatsApp',
-          getValue: (r) => r.tempData.whatsapp || ''
-        },
-
-        // Madre
-        motherDocumentType: {
-          header: 'Tipo Doc. Madre',
-          getValue: (r) => r.tempData.mother?.documentType || ''
-        },
-        motherDocument: {
-          header: 'Cédula Madre',
-          getValue: (r) => r.tempData.mother?.document || ''
-        },
-        motherFirstName: {
-          header: 'Nombres Madre',
-          getValue: (r) => r.tempData.mother?.firstName || ''
-        },
-        motherLastName: {
-          header: 'Apellidos Madre',
-          getValue: (r) => r.tempData.mother?.lastName || ''
-        },
-        motherPhone: {
-          header: 'Teléfono Madre',
-          getValue: (r) => r.tempData.mother?.phone || ''
-        },
-        motherEmail: {
-          header: 'Email Madre',
-          getValue: (r) => r.tempData.mother?.email || ''
-        },
-        motherAddress: {
-          header: 'Dirección Madre',
-          getValue: (r) => r.tempData.mother?.address || ''
-        },
-        motherResidenceState: {
-          header: 'Estado Madre',
-          getValue: (r) => r.tempData.mother?.residenceState || ''
-        },
-        motherResidenceMunicipality: {
-          header: 'Municipio Madre',
-          getValue: (r) => r.tempData.mother?.residenceMunicipality || ''
-        },
-        motherResidenceParish: {
-          header: 'Parroquia Madre',
-          getValue: (r) => r.tempData.mother?.residenceParish || ''
-        },
-        motherOccupation: {
-          header: 'Ocupación Madre',
-          getValue: (r) => (r.tempData.mother as any)?.occupation || ''
-        },
-
-        // Padre
-        fatherDocumentType: {
-          header: 'Tipo Doc. Padre',
-          getValue: (r) => r.tempData.father?.documentType || ''
-        },
-        fatherDocument: {
-          header: 'Cédula Padre',
-          getValue: (r) => r.tempData.father?.document || ''
-        },
-        fatherFirstName: {
-          header: 'Nombres Padre',
-          getValue: (r) => r.tempData.father?.firstName || ''
-        },
-        fatherLastName: {
-          header: 'Apellidos Padre',
-          getValue: (r) => r.tempData.father?.lastName || ''
-        },
-        fatherPhone: {
-          header: 'Teléfono Padre',
-          getValue: (r) => r.tempData.father?.phone || ''
-        },
-        fatherEmail: {
-          header: 'Email Padre',
-          getValue: (r) => r.tempData.father?.email || ''
-        },
-        fatherOccupation: {
-          header: 'Ocupación Padre',
-          getValue: (r) => (r.tempData.father as any)?.occupation || ''
-        },
-        fatherAddress: {
-          header: 'Dirección Padre',
-          getValue: (r) => r.tempData.father?.address || ''
-        },
-        fatherResidenceState: {
-          header: 'Estado Padre',
-          getValue: (r) => r.tempData.father?.residenceState || ''
-        },
-        fatherResidenceMunicipality: {
-          header: 'Municipio Padre',
-          getValue: (r) => r.tempData.father?.residenceMunicipality || ''
-        },
-        fatherResidenceParish: {
-          header: 'Parroquia Padre',
-          getValue: (r) => r.tempData.father?.residenceParish || ''
-        },
-
-        // Representante
-        representativeType: {
-          header: 'Tipo Representante',
-          getValue: (r) => {
-            const map: Record<RepresentativeType, string> = {
-              mother: 'Madre',
-              father: 'Padre',
-              other: 'Otro'
-            };
-            return map[r.tempData.representativeType] || '';
-          }
-        },
-        representativeDocumentType: {
-          header: 'Tipo Doc. Representante',
-          getValue: (r) => {
-            const { profile } = getRepresentativeInfo(r);
-            return profile?.documentType || '';
-          }
-        },
-        representativeDocument: {
-          header: 'Cédula Representante',
-          getValue: (r) => {
-            const { profile } = getRepresentativeInfo(r);
-            return profile?.document || '';
-          }
-        },
+        phone1: { header: 'Teléfono', getValue: (r) => r.tempData.phone1 || '' },
+        whatsapp: { header: 'WhatsApp', getValue: (r) => r.tempData.whatsapp || '' },
+        motherDocument: { header: 'Cédula Madre', getValue: (r) => r.tempData.mother?.document || '' },
+        motherFirstName: { header: 'Nombres Madre', getValue: (r) => r.tempData.mother?.firstName || '' },
+        motherLastName: { header: 'Apellidos Madre', getValue: (r) => r.tempData.mother?.lastName || '' },
+        fatherDocument: { header: 'Cédula Padre', getValue: (r) => r.tempData.father?.document || '' },
+        fatherFirstName: { header: 'Nombres Padre', getValue: (r) => r.tempData.father?.firstName || '' },
+        fatherLastName: { header: 'Apellidos Padre', getValue: (r) => r.tempData.father?.lastName || '' },
         representativeFirstName: {
-          header: 'Nombres Representante',
+          header: 'Representante',
           getValue: (r) => {
             const { profile } = getRepresentativeInfo(r);
-            return profile?.firstName || '';
-          }
-        },
-        representativeLastName: {
-          header: 'Apellidos Representante',
-          getValue: (r) => {
-            const { profile } = getRepresentativeInfo(r);
-            return profile?.lastName || '';
+            return `${profile?.firstName || ''} ${profile?.lastName || ''}`.trim();
           }
         },
         representativePhone: {
-          header: 'Teléfono Representante',
+          header: 'Telf. Rep.',
           getValue: (r) => {
             const { profile } = getRepresentativeInfo(r);
             return profile?.phone || '';
-          }
-        },
-        representativeEmail: {
-          header: 'Email Representante',
-          getValue: (r) => {
-            const { profile } = getRepresentativeInfo(r);
-            return profile?.email || '';
-          }
-        },
-        representativeOccupation: {
-          header: 'Ocupación Representante',
-          getValue: (r) => {
-            const { profile } = getRepresentativeInfo(r);
-            return profile?.occupation || '';
-          }
-        },
-        representativeAddress: {
-          header: 'Dirección Representante',
-          getValue: (r) => {
-            const { profile } = getRepresentativeInfo(r);
-            return profile?.address || '';
-          }
-        },
-        representativeResidenceState: {
-          header: 'Estado Representante',
-          getValue: (r) => {
-            const { profile } = getRepresentativeInfo(r);
-            return profile?.residenceState || '';
-          }
-        },
-        representativeResidenceMunicipality: {
-          header: 'Municipio Representante',
-          getValue: (r) => {
-            const { profile } = getRepresentativeInfo(r);
-            return profile?.residenceMunicipality || '';
-          }
-        },
-        representativeResidenceParish: {
-          header: 'Parroquia Representante',
-          getValue: (r) => {
-            const { profile } = getRepresentativeInfo(r);
-            return profile?.residenceParish || '';
           }
         }
       };
@@ -1287,50 +1069,116 @@ const MatriculationEnrollment: React.FC = () => {
         .map(key => ({ key, config: columnConfig[key] }))
         .filter(col => col.config);
 
-      // Mapear datos filtrados y ordenados a formato Excel
-      const excelData = dataToExport.map(record => {
-        const row: Record<string, string> = {};
-        visibleColumns.forEach(({ config }) => {
-          row[config.header] = config.getValue(record);
+      const headers = visibleColumns.map(c => c.config.header);
+
+      // --- CONFIGURACIÓN DEL ENCABEZADO ---
+      // Determinamos el nombre del grado y sección si hay un filtro aplicado
+      let gradeName = '';
+      let sectionName = '';
+      if (filterGrade) {
+        gradeName = structure.find(s => s.gradeId === filterGrade)?.grade?.name || '';
+      }
+      if (filterSection && filterGrade) {
+        sectionName = structure.find(s => s.gradeId === filterGrade)?.sections?.find(s => s.id === filterSection)?.name || '';
+      }
+
+      const headerTitle = "UNIDAD EDUCATIVA COLEGIO BATALLA DE LA VICTORIA";
+      const reportTitle = viewStatus === 'completed' ? "NÓMINA DE ESTUDIANTES INSCRITOS" : "NÓMINA DE ESTUDIANTES (PRE-MATRÍCULA)";
+      const gradeSectionText = (gradeName || sectionName) ? `${gradeName} ${sectionName}`.trim() : "";
+      const periodText = activePeriod ? `PERÍODO ESCOLAR ${activePeriod.name}` : "";
+
+      // --- LOGO ---
+      try {
+        const logoRes = await api.get('/upload/logo', { responseType: 'arraybuffer' });
+        const logoId = workbook.addImage({
+          buffer: logoRes.data,
+          extension: 'png',
         });
-        return row;
+
+        // Ajustar posición del logo
+        worksheet.addImage(logoId, {
+          tl: { col: 0.2, row: 0.2 },
+          ext: { width: 80, height: 80 }
+        });
+      } catch (e) {
+        console.error('No se pudo cargar el logo para el Excel', e);
+      }
+
+      // Añadimos filas de encabezado (5 filas iniciales)
+      worksheet.addRow([]); // Espacio para logo 
+      worksheet.addRow([headerTitle]);
+      worksheet.addRow([reportTitle]);
+      if (gradeSectionText) worksheet.addRow([gradeSectionText]);
+      if (periodText) worksheet.addRow([periodText]);
+      worksheet.addRow([]); // Espacio en blanco antes de la tabla
+
+      // Estilo para el encabezado centrado
+      const headerRows = [2, 3, 4, 5];
+      headerRows.forEach(rowIdx => {
+        const row = worksheet.getRow(rowIdx);
+        if (row.getCell(1).value) {
+          worksheet.mergeCells(rowIdx, 1, rowIdx, headers.length);
+          row.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
+          row.getCell(1).font = { bold: true, size: rowIdx === 2 ? 14 : 12 };
+        }
       });
 
-      // Crear worksheet y workbook
-      const worksheet = XLSX.utils.json_to_sheet(excelData);
-
-      // Auto-ajustar anchos de columna
-      const maxWidths: Record<string, number> = {};
-      visibleColumns.forEach(({ config }) => {
-        maxWidths[config.header] = config.header.length;
+      // --- TABLA ---
+      // Añadir fila de encabezado de tabla
+      const tableHeaderRow = worksheet.addRow(headers);
+      tableHeaderRow.eachCell((cell) => {
+        cell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FFE0E0E0' }
+        };
+        cell.font = { bold: true };
+        cell.border = {
+          top: { style: 'thin' },
+          left: { style: 'thin' },
+          bottom: { style: 'thin' },
+          right: { style: 'thin' }
+        };
       });
-      excelData.forEach(row => {
-        Object.entries(row).forEach(([header, value]) => {
-          const valueLength = String(value).length;
-          if (valueLength > maxWidths[header]) {
-            maxWidths[header] = valueLength;
-          }
+
+      // Añadir datos
+      dataToExport.forEach(record => {
+        const rowValues = visibleColumns.map(col => col.config.getValue(record));
+        const row = worksheet.addRow(rowValues);
+        row.eachCell((cell) => {
+          cell.border = {
+            top: { style: 'thin' },
+            left: { style: 'thin' },
+            bottom: { style: 'thin' },
+            right: { style: 'thin' }
+          };
+          cell.font = { size: 10 };
         });
       });
 
-      worksheet['!cols'] = visibleColumns.map(({ config }) => ({
-        wch: Math.min(maxWidths[config.header] + 2, 50)
-      }));
+      // Auto-ajustar anchos
+      worksheet.columns = headers.map((h, i) => {
+        let maxLen = h.length;
+        // Revisar las primeras 100 filas para el ancho
+        for (let j = 0; j < Math.min(dataToExport.length, 100); j++) {
+          const val = columnConfig[visibleColumns[i].key].getValue(dataToExport[j]);
+          if (val && val.length > maxLen) maxLen = val.length;
+        }
+        return { width: Math.min(maxLen + 4, 40) };
+      });
 
-      const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, worksheet, 'Matrículas');
-
-      // Generar nombre de archivo con fecha
+      // Generar y descargar el archivo
+      const buffer = await workbook.xlsx.writeBuffer();
       const timestamp = dayjs().format('YYYY-MM-DD_HH-mm-ss');
       const fileName = `matriculas_${viewStatus}_${timestamp}.xlsx`;
+      saveAs(new Blob([buffer]), fileName);
 
-      XLSX.writeFile(workbook, fileName);
       message.success(`Exportados ${dataToExport.length} registros a Excel`);
     } catch (error) {
       console.error('Error exportando a Excel:', error);
       message.error('Error al exportar a Excel');
     }
-  }, [filteredData, visibleColumnKeys, structure, questions, viewStatus, sortedInfo]);
+  }, [filteredData, visibleColumnKeys, structure, questions, viewStatus, sortedInfo, activePeriod, filterGrade, filterSection]);
 
   const handleToggleGroup = (group: string, checked: boolean) => {
     let groupKeys: string[] = [];
