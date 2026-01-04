@@ -4,6 +4,7 @@ import {
   Person,
   InscriptionSubject,
   Subject,
+  SubjectGroup,
   CouncilPoint,
   PeriodGrade,
   PeriodGradeSubject,
@@ -39,7 +40,11 @@ export const getCouncilData = async (req: Request, res: Response) => {
           model: InscriptionSubject,
           as: 'inscriptionSubjects',
           include: [
-            { model: Subject, as: 'subject' },
+            {
+              model: Subject,
+              as: 'subject',
+              include: [{ model: SubjectGroup, as: 'subjectGroup', attributes: ['id', 'name'] }]
+            },
             {
               model: CouncilPoint,
               as: 'councilPoints',
@@ -109,6 +114,8 @@ export const getCouncilData = async (req: Request, res: Response) => {
         return {
           id: is.subjectId,
           name: is.subject?.name,
+          groupId: is.subject?.subjectGroupId,
+          groupName: is.subject?.subjectGroup?.name,
           inscriptionSubjectId: is.id,
           points: currentTermPoints?.points || 0,
           councilPointId: currentTermPoints?.id,

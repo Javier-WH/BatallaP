@@ -44,6 +44,8 @@ interface CouncilStudent {
   subjects: {
     id: number;
     name: string;
+    groupId?: number | null;
+    groupName?: string | null;
     inscriptionSubjectId: number;
     points: number;
     councilPointId?: number;
@@ -383,7 +385,35 @@ const CourseCouncil: React.FC = () => {
   const renderDataTable = () => {
     if (studentsData.length === 0) return <Empty description="No hay estudiantes en esta sección" />;
 
-    const subjects = studentsData[0].subjects;
+    // Generate dynamic columns based on subjects or subject groups
+    const columnDefinitions: { title: string, key: string, groupId?: number, subjectId?: number }[] = [];
+    const seenGroups = new Set<number>();
+    const seenSubjects = new Set<number>();
+
+    // Collect all unique subjects/groups across ALL students to ensure we don't miss any
+    studentsData.forEach(student => {
+      student.subjects.forEach(sub => {
+        if (sub.groupId && sub.groupName) {
+          if (!seenGroups.has(sub.groupId)) {
+            columnDefinitions.push({
+              title: sub.groupName,
+              key: `group-${sub.groupId}`,
+              groupId: sub.groupId
+            });
+            seenGroups.add(sub.groupId);
+          }
+        } else {
+          if (!seenSubjects.has(sub.id)) {
+            columnDefinitions.push({
+              title: sub.name,
+              key: `subject-${sub.id}`,
+              subjectId: sub.id
+            });
+            seenSubjects.add(sub.id);
+          }
+        }
+      });
+    });
 
     const columns = [
       {
@@ -448,43 +478,53 @@ const CourseCouncil: React.FC = () => {
           );
         }
       },
-      ...subjects.map(sub => ({
+      ...columnDefinitions.map(colDef => ({
         title: (
-          <Tooltip title={sub.name}>
+          <Tooltip title={colDef.title}>
             <div style={{
               whiteSpace: 'nowrap',
               overflow: 'hidden',
               textOverflow: 'ellipsis',
-              maxWidth: 130
+              maxWidth: 160
             }}>
-              {sub.name}
+              {colDef.title}
             </div>
           </Tooltip>
         ),
-        key: sub.id,
+        key: colDef.key,
         width: 180,
         align: 'center' as const,
         render: (_: any, record: CouncilStudent) => {
-          const subjectData = record.subjects.find(s => s.id === sub.id);
-          const prevPointsTotal = subjectData?.otherTermsInfo?.reduce((sum, info) => sum + info.points, 0) || 0;
-          const currentPoints = subjectData?.points || 0;
-          const baseGrade = subjectData?.grade || 0;
+          const subjectData = colDef.groupId
+            ? record.subjects.find(s => s.groupId === colDef.groupId)
+            : record.subjects.find(s => s.id === colDef.subjectId);
+
+          if (!subjectData) return <Text type="secondary">-</Text>;
+
+          const prevPointsTotal = subjectData.otherTermsInfo?.reduce((sum, info) => sum + info.points, 0) || 0;
+          const currentPoints = subjectData.points || 0;
+          const baseGrade = subjectData.grade || 0;
           const totalGrade = Math.round((baseGrade + currentPoints) * 100) / 100;
 
           return (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
               <Tooltip
                 title={
-                  prevPointsTotal > 0 ? (
-                    <div>
-                      <strong>Desglose de puntos previos:</strong>
-                      {subjectData?.otherTermsInfo?.map((info, idx) => (
-                        <div key={idx} style={{ fontSize: 11 }}>
-                          {info.termName}: {info.points}
-                        </div>
-                      ))}
-                    </div>
-                  ) : "No se asignaron puntos en lapsos anteriores"
+                  <div>
+                    {colDef.groupId && <div style={{ marginBottom: 4, borderBottom: '1px solid rgba(255,255,255,0.2)', paddingBottom: 2 }}><strong>Materia:</strong> {subjectData.name}</div>}
+                    {prevPointsTotal > 0 ? (
+                      <>
+                        <strong>Desglose de puntos previos:</strong>
+                        {subjectData.otherTermsInfo?.map((info: any, idx: number) => (
+                          <div key={idx} style={{ fontSize: 11 }}>
+                            {info.termName}: {info.points}
+                          </div>
+                        ))}
+                      </>
+                    ) : (
+                      "No se asignaron puntos en lapsos anteriores"
+                    )}
+                  </div>
                 }
               >
                 <Tag
@@ -505,8 +545,8 @@ const CourseCouncil: React.FC = () => {
                 min={0}
                 max={pointsLimit}
                 size="middle"
-                value={subjectData?.points}
-                onChange={(val) => handlePointChange(record.id, subjectData!.inscriptionSubjectId, val)}
+                value={subjectData.points}
+                onChange={(val) => handlePointChange(record.id, subjectData.inscriptionSubjectId, val)}
                 disabled={selectedTerm?.isBlocked}
                 style={{ width: 50, fontWeight: 'normal' }}
               />
