@@ -174,32 +174,72 @@ const CourseCouncil: React.FC = () => {
   };
 
   const renderTermSelector = () => (
-    <div style={{ padding: '20px 0' }}>
-      <Title level={4} style={{ marginBottom: 32, textAlign: 'center' }}>Seleccione el Lapso</Title>
-      <Row gutter={[24, 24]} justify="center">
-        {terms.map(term => (
+    <div style={{ padding: '0px 0' }}>
+      <div style={{ textAlign: 'center', marginBottom: 60 }} className="animate-card">
+        <Title level={1} style={{ margin: 0, fontWeight: 900, letterSpacing: '-0.04em' }}>Seleccione el Lapso</Title>
+        <Text type="secondary" style={{ fontSize: 16, fontWeight: 500 }}>Identifique el periodo académico para el procesamiento de puntos</Text>
+      </div>
+
+      <Row gutter={[32, 32]} justify="center">
+        {terms.map((term, idx) => (
           <Col key={term.id} xs={24} sm={12} md={8} lg={6}>
             <Card
               hoverable
+              className={`premium-card animate-card delay-${(idx % 3) + 1}`}
+              styles={{ body: { padding: '40px 24px' } }}
               style={{
-                borderRadius: 16,
                 textAlign: 'center',
-                border: selectedTerm?.id === term.id ? '2px solid #1890ff' : '1px solid #f0f0f0',
-                transition: 'all 0.3s'
+                transition: 'all 0.4s cubic-bezier(0.165, 0.84, 0.44, 1)'
               }}
               onClick={() => {
                 setSelectedTerm(term);
                 setStep(1);
               }}
             >
-              <CalendarOutlined style={{ fontSize: 48, color: term.isBlocked ? '#bfbfbf' : '#1890ff', marginBottom: 16 }} />
-              <Title level={4} style={{ margin: 0 }}>{term.name}</Title>
-              {term.isBlocked && <Tag color="error" style={{ marginTop: 8 }}>Bloqueado</Tag>}
-              {!term.isBlocked && <Tag color="success" style={{ marginTop: 8 }}>Activo</Tag>}
+              <div style={{
+                width: 80,
+                height: 80,
+                borderRadius: 24,
+                background: term.isBlocked ? '#f5f5f5' : 'linear-gradient(135deg, #1890ff 0%, #096dd9 100%)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                margin: '0 auto 24px',
+                boxShadow: term.isBlocked ? 'none' : '0 12px 24px rgba(24,144,255,0.25)',
+                transition: 'all 0.3s ease'
+              }} className="icon-wrapper">
+                <CalendarOutlined style={{ fontSize: 36, color: term.isBlocked ? '#bfbfbf' : '#fff' }} />
+              </div>
+
+              <Title level={3} style={{ margin: '0 0 8px 0', fontWeight: 800 }}>{term.name}</Title>
+
+              <div style={{ marginTop: 16 }}>
+                {term.isBlocked ? (
+                  <Tag color="error" style={{ borderRadius: 20, padding: '2px 16px', fontWeight: 700, border: 'none', textTransform: 'uppercase', fontSize: 10 }}>Bloqueado</Tag>
+                ) : (
+                  <Tag color="success" style={{ borderRadius: 20, padding: '2px 16px', fontWeight: 700, border: 'none', textTransform: 'uppercase', fontSize: 10 }}>Fase Activa</Tag>
+                )}
+              </div>
+
+              <div style={{
+                position: 'absolute',
+                top: 20,
+                right: 20,
+                opacity: 0.1,
+                fontSize: 40,
+                fontWeight: 900,
+                fontFamily: 'system-ui'
+              }}>
+                0{term.order || idx + 1}
+              </div>
             </Card>
           </Col>
         ))}
-        {terms.length === 0 && <Empty description="No hay lapsos configurados para este período" />}
+        {terms.length === 0 && (
+          <Col span={24}>
+            <Empty description="No hay lapsos configurados para este período escolar" />
+          </Col>
+        )}
       </Row>
     </div>
   );
@@ -216,61 +256,34 @@ const CourseCouncil: React.FC = () => {
 
     return (
       <div style={{ padding: '0px 0' }}>
-        <style>{`
-          @keyframes slideInUp {
-            from { opacity: 0; transform: translateY(20px); }
-            to { opacity: 1; transform: translateY(0); }
-          }
-          .section-group {
-            animation: slideInUp 0.5s ease-out both;
-          }
-          .section-card {
-            transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) !important;
-            border: 1px solid #f0f0f0 !important;
-          }
-          .section-card:hover {
-            transform: translateY(-5px) scale(1.02);
-            box-shadow: 0 12px 24px rgba(0,0,0,0.08) !important;
-            border-color: transparent !important;
-          }
-          .section-card:active {
-            transform: translateY(-2px) scale(1.01);
-          }
-          .section-letter {
-            transition: all 0.3s ease;
-          }
-          .section-card:hover .section-letter {
-            transform: rotate(-10deg) scale(1.1);
-          }
-          .grade-header {
-            position: sticky;
-            top: 0;
-            z-index: 10;
-            background: rgba(255, 255, 255, 0.8);
-            backdrop-filter: blur(8px);
-            padding: 12px 0;
-            margin-bottom: 24px;
-            border-bottom: 1px solid rgba(0,0,0,0.03);
-          }
-        `}</style>
-
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 40 }}>
-          <Space size="large">
+          <Space size="large" className="animate-card">
             <Button
               icon={<LeftOutlined />}
               onClick={() => setStep(0)}
-              style={{ borderRadius: '50%', width: 40, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              style={{
+                borderRadius: '50%',
+                width: 44,
+                height: 44,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.05)',
+                border: 'none',
+                background: '#fff'
+              }}
             />
             <div>
-              <Title level={2} style={{ margin: 0, fontWeight: 800 }}>Seleccione la Sección</Title>
-              <Text type="secondary">Elija el grupo académico para gestionar los puntos del consejo</Text>
+              <Title level={2} style={{ margin: 0, fontWeight: 900, letterSpacing: '-0.03em' }}>Estructura Académica</Title>
+              <Text type="secondary" style={{ fontWeight: 500 }}>Elija la sección para gestionar los puntos del consejo en el {selectedTerm?.name}</Text>
             </div>
           </Space>
           <Input
-            prefix={<FilterOutlined style={{ color: '#bfbfbf' }} />}
-            placeholder="Buscar grado o año..."
+            prefix={<FilterOutlined style={{ color: '#1890ff' }} />}
+            placeholder="Buscar por año o grado..."
             size="large"
-            style={{ width: 300, borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}
+            className="premium-search animate-card"
+            style={{ width: 320, borderRadius: 14, height: 48, animationDelay: '0.1s' }}
             value={filterYear}
             onChange={e => setFilterYear(e.target.value)}
           />
@@ -279,94 +292,88 @@ const CourseCouncil: React.FC = () => {
         {sectionsByGrade.length === 0 ? (
           <Empty
             image={Empty.PRESENTED_IMAGE_SIMPLE}
-            description={<Text type="secondary">No se encontraron grados que coincidan</Text>}
+            description={<Text type="secondary" strong>No se encontraron resultados para su búsqueda</Text>}
           />
         ) : (
           sectionsByGrade.map((group, groupIdx) => (
             <div
               key={group.grade.id}
-              className="section-group"
+              className="section-group animate-card"
               style={{
-                marginBottom: 48,
+                marginBottom: 56,
                 animationDelay: `${groupIdx * 0.1}s`
               }}
             >
-              <div className="grade-header">
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 16
-                }}>
+              <div className="grade-header-premium">
+                <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
                   <div style={{
-                    width: 6,
-                    height: 32,
-                    borderRadius: 3,
-                    background: group.grade.isDiversified
-                      ? 'linear-gradient(to bottom, #fa541c, #ffbb96)'
-                      : 'linear-gradient(to bottom, #1890ff, #91d5ff)'
-                  }} />
+                    width: 48,
+                    height: 48,
+                    borderRadius: 14,
+                    background: group.grade.isDiversified ? '#fa541c' : '#1890ff',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#fff',
+                    boxShadow: group.grade.isDiversified ? '0 8px 16px rgba(250,84,28,0.2)' : '0 8px 16px rgba(24,144,255,0.2)'
+                  }}>
+                    <Title level={4} style={{ color: '#fff', margin: 0, fontWeight: 900 }}>{group.grade.order || '?'}</Title>
+                  </div>
                   <div>
-                    <Title level={4} style={{ margin: 0, fontWeight: 700, letterSpacing: '-0.02em' }}>
+                    <Title level={3} style={{ margin: 0, fontWeight: 800, letterSpacing: '-0.02em', color: '#1f1f1f' }}>
                       {group.grade.name}
                     </Title>
-                    <Text style={{ fontSize: 12, color: '#8c8c8c', textTransform: 'uppercase', fontWeight: 600 }}>
+                    <Text style={{ fontSize: 11, color: '#8c8c8c', textTransform: 'uppercase', fontWeight: 800, letterSpacing: 0.5 }}>
                       {group.grade.isDiversified ? 'Ciclo Diversificado' : 'Educación Media General'}
                     </Text>
                   </div>
                 </div>
               </div>
 
-              <Row gutter={[20, 20]}>
-                {group.sections.map((sec) => (
+              <Row gutter={[24, 24]}>
+                {group.sections.map((sec, secIdx) => (
                   <Col key={sec.id} xs={24} sm={12} md={8} lg={6}>
                     <Card
                       hoverable
-                      className="section-card"
-                      styles={{ body: { padding: '16px' } }}
+                      className="section-card-premium"
+                      styles={{ body: { padding: '24px' } }}
                       style={{
-                        borderRadius: 16,
-                        overflow: 'hidden'
+                        borderRadius: 20,
+                        border: '1px solid rgba(0,0,0,0.05)',
+                        animationDelay: `${(groupIdx * 0.1) + (secIdx * 0.05)}s`
                       }}
                       onClick={() => {
                         setSelectedSection({ section: sec, grade: group.grade });
                         if (selectedTerm) fetchCouncilData(sec.id, selectedTerm.id, group.grade.id);
                       }}
                     >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
                         <div
-                          className="section-letter"
+                          className="section-letter-wrapper"
                           style={{
-                            width: 52,
-                            height: 52,
-                            borderRadius: 12,
+                            width: 64,
+                            height: 64,
+                            borderRadius: 18,
                             background: group.grade.isDiversified ? '#fff2e8' : '#f0f5ff',
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
-                            fontSize: 24,
+                            fontSize: 28,
                             fontWeight: 900,
-                            color: group.grade.isDiversified ? '#fa541c' : '#1d39c4',
+                            color: group.grade.isDiversified ? '#fa541c' : '#1890ff',
                             flexShrink: 0,
-                            border: `1px solid ${group.grade.isDiversified ? '#ffd591' : '#adc6ff'}`
+                            transition: 'all 0.3s ease'
                           }}
                         >
                           {sec.name.replace(/sección/gi, '').trim().charAt(0)}
                         </div>
-                        <div style={{ flex: 1, overflow: 'hidden' }}>
-                          <div style={{
-                            fontWeight: 700,
-                            fontSize: 17,
-                            color: '#1f1f1f',
-                            marginBottom: 2
-                          }}>
-                            {sec.name.toLowerCase().includes('sección') ? sec.name : `Sección ${sec.name}`}
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontWeight: 800, fontSize: 20, color: '#1f1f1f', lineHeight: 1.2, marginBottom: 4 }}>
+                            Sección {sec.name.replace(/sección/gi, '').trim()}
                           </div>
-                          <Space split={<div style={{ width: 4, height: 4, borderRadius: '50%', background: '#d9d9d9' }} />}>
-                            <Text style={{ fontSize: 12, color: '#8c8c8c', fontWeight: 500 }}>
+                          <Space size={4}>
+                            <Tag color={group.grade.isDiversified ? 'volcano' : 'blue'} style={{ border: 'none', borderRadius: 6, fontSize: 10, fontWeight: 700, margin: 0 }}>
                               {activePeriod?.name}
-                            </Text>
-                            <Tag color={group.grade.isDiversified ? 'orange' : 'processing'} style={{ border: 'none', borderRadius: 4, fontSize: 10, fontWeight: 700 }}>
-                              PROCESAR
                             </Tag>
                           </Space>
                         </div>
@@ -383,7 +390,19 @@ const CourseCouncil: React.FC = () => {
   };
 
   const renderDataTable = () => {
-    if (studentsData.length === 0) return <Empty description="No hay estudiantes en esta sección" />;
+    if (studentsData.length === 0) return (
+      <div style={{ padding: '80px 0', textAlign: 'center' }}>
+        <Empty
+          description={
+            <div style={{ marginTop: 16 }}>
+              <Title level={4}>No se encontraron estudiantes</Title>
+              <Text type="secondary">Esta sección no cuenta con alumnos inscritos para procesar.</Text>
+            </div>
+          }
+        />
+        <Button icon={<LeftOutlined />} onClick={() => setStep(1)} style={{ marginTop: 24 }}>Volver a Secciones</Button>
+      </div>
+    );
 
     // Generate dynamic columns based on subjects or subject groups
     const columnDefinitions: { title: string, key: string, groupId?: number, subjectId?: number }[] = [];
@@ -438,7 +457,7 @@ const CourseCouncil: React.FC = () => {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               <Space direction="vertical" size={0}>
                 <Space>
-                  <UserOutlined style={{ color: '#595959', fontSize: 13 }} />
+                  <UserOutlined style={{ color: '#1890ff', fontSize: 13 }} />
                   <Text style={{ fontWeight: 700, fontSize: 14, color: '#262626' }}>{text}</Text>
                 </Space>
                 <div style={{ paddingLeft: 20 }}>
@@ -450,9 +469,9 @@ const CourseCouncil: React.FC = () => {
               <div style={{ paddingLeft: 20 }}>
                 <Tag
                   color={usedPoints >= pointsLimit ? 'volcano' : 'blue'}
-                  style={{ fontWeight: 600, border: 'none', borderRadius: 4, height: 20, lineHeight: '18px', fontSize: 11 }}
+                  style={{ fontWeight: 700, border: 'none', borderRadius: 4, height: 20, lineHeight: '18px', fontSize: 10, textTransform: 'uppercase' }}
                 >
-                  Pts: {usedPoints} / {pointsLimit}
+                  USADO: {usedPoints} / {pointsLimit}
                 </Tag>
               </div>
             </div>
@@ -460,7 +479,7 @@ const CourseCouncil: React.FC = () => {
         }
       },
       {
-        title: 'Promedio',
+        title: 'PROM.',
         key: 'average',
         width: 100,
         fixed: 'left' as const,
@@ -469,11 +488,11 @@ const CourseCouncil: React.FC = () => {
           const totalGrades = record.subjects.reduce((sum, s) => sum + (s.grade || 0) + (s.points || 0), 0);
           const average = record.subjects.length > 0 ? totalGrades / record.subjects.length : 0;
           return (
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-              <Text style={{ fontSize: 15, fontWeight: 600, color: average < 10 ? '#cf1322' : '#096dd9' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', background: average < 10 ? '#fff1f0' : '#f0f5ff', padding: '4px', borderRadius: 8 }}>
+              <Text style={{ fontSize: 16, fontWeight: 900, color: average < 10 ? '#cf1322' : '#096dd9' }}>
                 {average.toFixed(2)}
               </Text>
-              <Text style={{ fontSize: 10, fontWeight: 500, color: '#595959' }}>Promedio Final</Text>
+              <Text style={{ fontSize: 9, fontWeight: 800, color: average < 10 ? '#cf1322' : '#096dd9', textTransform: 'uppercase' }}>Final</Text>
             </div>
           );
         }
@@ -485,7 +504,11 @@ const CourseCouncil: React.FC = () => {
               whiteSpace: 'nowrap',
               overflow: 'hidden',
               textOverflow: 'ellipsis',
-              maxWidth: 160
+              maxWidth: 160,
+              fontSize: 12,
+              fontWeight: 800,
+              textTransform: 'uppercase',
+              color: '#595959'
             }}>
               {colDef.title}
             </div>
@@ -510,33 +533,33 @@ const CourseCouncil: React.FC = () => {
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
               <Tooltip
                 title={
-                  <div>
-                    {colDef.groupId && <div style={{ marginBottom: 4, borderBottom: '1px solid rgba(255,255,255,0.2)', paddingBottom: 2 }}><strong>Materia:</strong> {subjectData.name}</div>}
+                  <div style={{ padding: 4 }}>
+                    {colDef.groupId && <div style={{ marginBottom: 6, borderBottom: '1px solid rgba(255,255,255,0.2)', paddingBottom: 4 }}><strong>Materia:</strong> {subjectData.name}</div>}
                     {prevPointsTotal > 0 ? (
                       <>
-                        <strong>Desglose de puntos previos:</strong>
+                        <div style={{ marginBottom: 4 }}><strong>Desglose de puntos previos:</strong></div>
                         {subjectData.otherTermsInfo?.map((info: any, idx: number) => (
-                          <div key={idx} style={{ fontSize: 11 }}>
-                            {info.termName}: {info.points}
+                          <div key={idx} style={{ fontSize: 11, opacity: 0.9 }}>
+                            • {info.termName}: <strong>+{info.points}</strong>
                           </div>
                         ))}
                       </>
                     ) : (
-                      "No se asignaron puntos en lapsos anteriores"
+                      "No hay puntos previos"
                     )}
                   </div>
                 }
               >
                 <Tag
                   color={prevPointsTotal > 0 ? "orange" : "default"}
-                  style={{ fontSize: 10, padding: 0, margin: 0, lineHeight: '18px', width: 24, textAlign: 'center', fontWeight: 'normal' }}
+                  style={{ fontSize: 10, padding: 0, margin: 0, lineHeight: '20px', width: 28, height: 20, textAlign: 'center', fontWeight: 700, borderRadius: 6, border: 'none' }}
                 >
                   {prevPointsTotal > 0 ? `+${prevPointsTotal}` : '0'}
                 </Tag>
               </Tooltip>
 
               <Tooltip title="Nota Base">
-                <Text style={{ fontSize: 13, color: baseGrade < 10 ? '#cf1322' : '#262626', width: 35, textAlign: 'center', fontWeight: 'normal' }}>
+                <Text style={{ fontSize: 14, color: baseGrade < 10 ? '#cf1322' : '#262626', width: 35, textAlign: 'center', fontWeight: 600 }}>
                   {baseGrade}
                 </Text>
               </Tooltip>
@@ -548,13 +571,25 @@ const CourseCouncil: React.FC = () => {
                 value={subjectData.points}
                 onChange={(val) => handlePointChange(record.id, subjectData.inscriptionSubjectId, val)}
                 disabled={selectedTerm?.isBlocked}
-                style={{ width: 50, fontWeight: 'normal' }}
+                className="premium-input-number"
+                style={{ width: 50, fontWeight: 700, borderRadius: 8 }}
               />
 
               <Tooltip title="Nota Final">
-                <Text style={{ fontSize: 13, fontWeight: 700, color: totalGrade < 10 ? '#cf1322' : '#389e0d', width: 40, textAlign: 'center' }}>
-                  {totalGrade}
-                </Text>
+                <div style={{
+                  width: 38,
+                  height: 28,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  background: totalGrade < 10 ? '#fff1f0' : '#f6ffed',
+                  borderRadius: 6,
+                  border: `1px solid ${totalGrade < 10 ? '#ffa39e' : '#b7eb8f'}`
+                }}>
+                  <Text style={{ fontSize: 14, fontWeight: 800, color: totalGrade < 10 ? '#cf1322' : '#389e0d' }}>
+                    {totalGrade}
+                  </Text>
+                </div>
               </Tooltip>
             </div>
           );
@@ -563,20 +598,33 @@ const CourseCouncil: React.FC = () => {
     ];
 
     return (
-      <div style={{ padding: '20px 0' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 24 }}>
-          <Space direction="vertical">
-            <Button icon={<LeftOutlined />} onClick={() => setStep(1)}>Cambiar Sección</Button>
+      <div style={{ padding: '0px 0' }} className="animate-card">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 32 }}>
+          <Space size="middle">
+            <Button
+              icon={<LeftOutlined />}
+              onClick={() => setStep(1)}
+              style={{ borderRadius: 12, height: 40, border: 'none', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}
+            />
             <div>
-              <Title level={4} style={{ margin: 0 }}>
-                {selectedSection?.grade.name} - {selectedSection?.section.name.toLowerCase().includes('sección') ? selectedSection?.section.name : `Sección ${selectedSection?.section.name}`}
+              <Title level={3} style={{ margin: 0, fontWeight: 900, letterSpacing: '-0.03em' }}>
+                {selectedSection?.grade.name} <span style={{ color: '#bfbfbf', fontWeight: 400 }}>/</span> Sección {selectedSection?.section.name.replace(/sección/gi, '').trim()}
               </Title>
-              <Text type="secondary">{selectedTerm?.name} • {activePeriod?.name}</Text>
+              <Space split={<Text type="secondary" style={{ opacity: 0.5 }}>•</Text>}>
+                <Text type="secondary" style={{ fontWeight: 600 }}>{selectedTerm?.name}</Text>
+                <Tag color="processing" style={{ border: 'none', borderRadius: 4, fontSize: 10, fontWeight: 700 }}>{activePeriod?.name}</Tag>
+              </Space>
             </div>
           </Space>
-          <Space>
+          <Space size="large">
             {selectedTerm?.isBlocked && (
-              <Alert message="Este lapso está bloqueado" type="warning" showIcon style={{ padding: '4px 12px' }} />
+              <Alert
+                message="Modo lectura"
+                description="El lapso está bloqueado para cambios."
+                type="warning"
+                showIcon
+                style={{ borderRadius: 14, padding: '4px 16px' }}
+              />
             )}
             <Button
               type="primary"
@@ -585,31 +633,56 @@ const CourseCouncil: React.FC = () => {
               onClick={handleSave}
               loading={saving}
               disabled={selectedTerm?.isBlocked}
+              style={{
+                borderRadius: 14,
+                fontWeight: 800,
+                height: 52,
+                padding: '0 32px',
+                background: '#001529',
+                border: 'none',
+                boxShadow: '0 8px 20px rgba(0,21,41,0.2)'
+              }}
             >
-              Guardar Puntos
+              Guardar Calificaciones
             </Button>
           </Space>
         </div>
 
-        <Card styles={{ body: { padding: 0 } }} style={{ borderRadius: 12, overflow: 'hidden', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
+        <Card
+          className="premium-table-card"
+          styles={{ body: { padding: 0 } }}
+          style={{ borderRadius: 20, overflow: 'hidden', border: '1px solid rgba(0,0,0,0.06)' }}
+        >
           <style>{`
-            .council-table .ant-table-thead > tr > th {
-              background-color: #f0f2f5 !important;
-              color: #262626 !important;
-              font-weight: 700 !important;
-              border-bottom: 2px solid #d9d9d9 !important;
+            .council-table-premium .ant-table-thead > tr > th {
+              background-color: #fafafa !important;
+              color: #595959 !important;
+              font-weight: 800 !important;
+              text-transform: uppercase;
+              font-size: 11px;
+              letter-spacing: 0.5px;
+              padding: 16px 8px !important;
+              border-bottom: 2px solid #f0f0f0 !important;
             }
-            .council-table .row-odd {
+            .council-table-premium .ant-table-row {
+              transition: all 0.2s ease;
+            }
+            .council-table-premium .row-odd {
               background-color: #ffffff;
             }
-            .council-table .row-even {
-              background-color: #f1f7ff;
+            .council-table-premium .row-even {
+              background-color: #fafbfc;
             }
-            .council-table .ant-table-row:hover > td {
-              background-color: #e6f7ff !important;
+            .council-table-premium .ant-table-row:hover > td {
+              background-color: #f0f7ff !important;
             }
-            .council-table .ant-table-cell {
-              padding: 12px 8px !important;
+            .council-table-premium .ant-table-cell {
+              padding: 14px 12px !important;
+              border-bottom: 1px solid #f0f0f0 !important;
+            }
+            .premium-input-number:hover, .premium-input-number-focused {
+              border-color: #1890ff !important;
+              box-shadow: 0 0 0 2px rgba(24,144,255,0.1) !important;
             }
           `}</style>
           <Table
@@ -617,10 +690,10 @@ const CourseCouncil: React.FC = () => {
             columns={columns}
             rowKey="id"
             pagination={false}
-            scroll={{ x: 'max-content', y: 'calc(100vh - 400px)' }}
+            scroll={{ x: 'max-content', y: 'calc(100vh - 420px)' }}
             size="middle"
             bordered
-            className="council-table"
+            className="council-table-premium"
             rowClassName={(_, index) => index % 2 === 0 ? 'row-odd' : 'row-even'}
           />
         </Card>
@@ -630,21 +703,75 @@ const CourseCouncil: React.FC = () => {
 
   if (loading && step < 2) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '60vh' }}>
-        <Spin size="large" tip="Cargando información..." />
+      <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', height: '60vh', gap: 20 }}>
+        <Spin size="large" />
+        <Text type="secondary" style={{ textTransform: 'uppercase', letterSpacing: 1.5, fontSize: 11, fontWeight: 800 }}>Preparando Mesa de Trabajo...</Text>
       </div>
     );
   }
 
   return (
-    <div style={{ width: '100%', padding: '0 12px' }}>
+    <div style={{ width: '100%', padding: '0 24px 40px' }}>
+      <style>{`
+        @keyframes fadeUp {
+          from { opacity: 0; transform: translateY(20px) scale(0.98); }
+          to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        .animate-card {
+          animation: fadeUp 0.6s cubic-bezier(0.23, 1, 0.32, 1) both;
+        }
+        .delay-1 { animation-delay: 0.1s; }
+        .delay-2 { animation-delay: 0.2s; }
+        .delay-3 { animation-delay: 0.3s; }
+        
+        .premium-card {
+          border-radius: 24px !important;
+          border: 1px solid rgba(0,0,0,0.05) !important;
+          box-shadow: 0 8px 32px rgba(0,0,0,0.03) !important;
+        }
+        .premium-card:hover {
+          transform: translateY(-8px);
+          box-shadow: 0 20px 48px rgba(0,0,0,0.08) !important;
+          border-color: #1890ff !important;
+        }
+        .premium-card:hover .icon-wrapper {
+          transform: scale(1.1) rotate(-5deg);
+        }
+        
+        .grade-header-premium {
+          position: sticky;
+          top: 0;
+          z-index: 10;
+          background: rgba(255, 255, 255, 0.9);
+          backdrop-filter: blur(12px);
+          padding: 16px 0;
+          margin-bottom: 32px;
+          border-bottom: 2px solid #f0f0f0;
+        }
+        
+        .section-card-premium {
+          transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) !important;
+        }
+        .section-card-premium:hover {
+          transform: translateY(-6px);
+          box-shadow: 0 12px 28px rgba(0,0,0,0.08) !important;
+          border-color: transparent !important;
+          background: #fff !important;
+        }
+        .section-card-premium:hover .section-letter-wrapper {
+          transform: scale(1.1) rotate(-8deg);
+          box-shadow: 0 8px 20px rgba(0,0,0,0.1);
+        }
+      `}</style>
+
       <Breadcrumb
-        style={{ marginBottom: 24 }}
+        style={{ marginBottom: 32 }}
+        className="animate-card"
         items={[
-          { title: 'Control de Estudios' },
-          { title: 'Consejos de Curso' },
-          ...(step >= 1 ? [{ title: selectedTerm?.name }] : []),
-          ...(step >= 2 ? [{ title: `${selectedSection?.grade.name} ${selectedSection?.section.name}` }] : []),
+          { title: <Text style={{ fontWeight: 600, fontSize: 12, color: '#8c8c8c' }}>CONTROL DE ESTUDIOS</Text> },
+          { title: <Text style={{ fontWeight: 800, fontSize: 12, color: '#262626' }}>CONSEJOS DE CURSO</Text> },
+          ...(step >= 1 ? [{ title: <Tag color="blue" style={{ borderRadius: 6, fontWeight: 700, margin: 0 }}>{selectedTerm?.name}</Tag> }] : []),
+          ...(step >= 2 ? [{ title: <Tag color="gold" style={{ borderRadius: 6, fontWeight: 700, margin: 0 }}>{selectedSection?.grade.name} {selectedSection?.section.name.replace(/sección/gi, '').trim()}</Tag> }] : []),
         ]}
       />
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Card, Form, Input, InputNumber, Button, Typography, Space, message, Spin, DatePicker, Switch, Table, Modal, Popconfirm, Tooltip, Alert, Tag, Row, Col } from 'antd';
+import { Card, Form, Input, InputNumber, Button, Typography, Space, message, Spin, DatePicker, Switch, Table, Modal, Popconfirm, Tooltip, Alert, Tag, Row, Col, Empty } from 'antd';
 import {
   SaveOutlined,
   PlusOutlined,
@@ -9,13 +9,13 @@ import {
   UnlockOutlined,
   DashboardOutlined,
   CalendarOutlined,
-  BlockOutlined,
-  ArrowRightOutlined
+  SettingOutlined,
+  ControlOutlined
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import api from '@/services/api';
 
-const { Text } = Typography;
+const { Text, Title } = Typography;
 
 interface Term {
   id: number;
@@ -82,7 +82,7 @@ const AcademicSettings: React.FC = () => {
 
       if (period) {
         const termsRes = await api.get(`/terms?schoolPeriodId=${period.id}`);
-        setTerms(termsRes.data);
+        setTerms(termsRes.data.sort((a: any, b: any) => a.order - b.order));
       }
     } catch (error) {
       console.error('Error fetching terms', error);
@@ -98,7 +98,6 @@ const AcademicSettings: React.FC = () => {
   const onFinish = async (values: SettingsFormValues) => {
     setSaving(true);
     try {
-      // Ensure values are strings for the settings table
       const payload = {
         ...values,
         grade_lock_mode: String(values.grade_lock_mode)
@@ -116,6 +115,7 @@ const AcademicSettings: React.FC = () => {
   const handleAddTerm = () => {
     setEditingTerm(null);
     termForm.resetFields();
+    termForm.setFieldsValue({ isBlocked: false });
     setShowTermModal(true);
   };
 
@@ -167,10 +167,9 @@ const AcademicSettings: React.FC = () => {
 
       setShowTermModal(false);
       fetchTerms();
-    } catch (error: unknown) {
-      const err = error as { response?: { data?: { message?: string } } };
+    } catch (error: any) {
       console.error('Error saving term', error);
-      message.error(err.response?.data?.message || 'Error al guardar el lapso');
+      message.error(error.response?.data?.message || 'Error al guardar el lapso');
     } finally {
       setTermSubmitting(false);
     }
@@ -194,65 +193,89 @@ const AcademicSettings: React.FC = () => {
       title: 'Orden',
       dataIndex: 'order',
       key: 'order',
-      width: 80,
-      render: (val: number) => <Tag className="rounded-lg font-bold border-none bg-slate-100 text-slate-600">{val}º</Tag>
-    },
-    {
-      title: 'Nombre del Lapso',
-      dataIndex: 'name',
-      key: 'name',
-      render: (text: string) => <span className="font-bold text-slate-700">{text}</span>
-    },
-    {
-      title: 'Estado',
-      key: 'status',
-      render: (_: unknown, record: Term) => (
-        <Space>
-          {record.isBlocked ? (
-            <Tag color="error" icon={<LockOutlined />} className="rounded-full px-3 font-bold uppercase text-[10px]">Bloqueado</Tag>
-          ) : (
-            <Tag color="success" icon={<UnlockOutlined />} className="rounded-full px-3 font-bold uppercase text-[10px]">Activo</Tag>
-          )}
-        </Space>
+      width: 100,
+      align: 'center' as const,
+      render: (val: number) => (
+        <div style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          width: 32,
+          height: 32,
+          borderRadius: 8,
+          background: '#f0f2f5',
+          color: '#595959',
+          fontWeight: 800,
+          fontSize: 14
+        }}>
+          {val}º
+        </div>
       )
     },
     {
-      title: 'Apertura',
-      dataIndex: 'openDate',
-      key: 'openDate',
-      render: (date: string) => date ? <span className="text-slate-500 font-medium">{dayjs(date).format('DD/MM/YYYY')}</span> : <Text type="secondary">-</Text>
+      title: 'Identificación Lapso',
+      dataIndex: 'name',
+      key: 'name',
+      render: (text: string) => <Text style={{ fontWeight: 700, color: '#262626', fontSize: 15 }}>{text}</Text>
     },
     {
-      title: 'Cierre',
-      dataIndex: 'closeDate',
-      key: 'closeDate',
-      render: (date: string) => date ? <span className="text-slate-500 font-medium">{dayjs(date).format('DD/MM/YYYY')}</span> : <Text type="secondary">-</Text>
+      title: 'Estado de Acceso',
+      key: 'status',
+      render: (_: any, record: Term) => (
+        <Tag
+          icon={record.isBlocked ? <LockOutlined /> : <UnlockOutlined />}
+          color={record.isBlocked ? "error" : "success"}
+          style={{
+            borderRadius: 20,
+            padding: '2px 12px',
+            fontWeight: 700,
+            textTransform: 'uppercase',
+            fontSize: 10,
+            border: 'none',
+            boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
+          }}
+        >
+          {record.isBlocked ? 'Bloqueado' : 'Abierto'}
+        </Tag>
+      )
+    },
+    {
+      title: 'Cronograma',
+      key: 'dates',
+      render: (_: any, record: Term) => (
+        <Space direction="vertical" size={0}>
+          <Text style={{ fontSize: 11, color: '#8c8c8c', textTransform: 'uppercase', fontWeight: 600 }}>Rango de Fechas</Text>
+          <Text style={{ fontSize: 13, fontWeight: 500 }}>
+            {record.openDate ? dayjs(record.openDate).format('DD MMM YYYY') : 'N/A'} - {record.closeDate ? dayjs(record.closeDate).format('DD MMM YYYY') : 'N/A'}
+          </Text>
+        </Space>
+      )
     },
     {
       title: 'Acciones',
       key: 'actions',
       align: 'right' as const,
-      render: (_: unknown, record: Term) => (
-        <Space>
-          <Tooltip title="Editar detalles">
+      render: (_: any, record: Term) => (
+        <Space size="middle">
+          <Tooltip title="Configurar detalles">
             <Button
               type="text"
-              icon={<EditOutlined />}
+              icon={<EditOutlined style={{ color: '#1890ff' }} />}
               onClick={() => handleEditTerm(record)}
-              className="hover:bg-blue-50 text-blue-600"
+              className="action-btn-hover"
             />
           </Tooltip>
-          <Tooltip title={record.isBlocked ? 'Activar Lapso' : 'Bloquear Lapso'}>
+          <Tooltip title={record.isBlocked ? 'Permitir entrada de notas' : 'Restringir entrada de notas'}>
             <Button
               type="text"
-              icon={record.isBlocked ? <UnlockOutlined /> : <LockOutlined />}
+              icon={record.isBlocked ? <UnlockOutlined style={{ color: '#52c41a' }} /> : <LockOutlined style={{ color: '#faad14' }} />}
               onClick={() => toggleTermBlock(record)}
-              className={record.isBlocked ? "text-emerald-500 hover:bg-emerald-50" : "text-amber-500 hover:bg-amber-50"}
+              className="action-btn-hover"
             />
           </Tooltip>
           <Popconfirm
-            title="¿Eliminar lapso?"
-            description="Se perderán los registros asociados."
+            title="¿Eliminar este lapso?"
+            description="Esta acción desvinculará las notas cargadas en este término."
             onConfirm={() => handleDeleteTerm(record.id)}
             okText="Eliminar"
             cancelText="Cancelar"
@@ -262,7 +285,7 @@ const AcademicSettings: React.FC = () => {
               type="text"
               danger
               icon={<DeleteOutlined />}
-              className="hover:bg-red-50 text-red-500"
+              className="action-btn-hover-danger"
             />
           </Popconfirm>
         </Space>
@@ -271,113 +294,225 @@ const AcademicSettings: React.FC = () => {
   ];
 
   if (loading) return (
-    <div className="flex flex-col items-center justify-center p-24 gap-4">
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '60vh', gap: 16 }}>
       <Spin size="large" />
-      <Text className="text-slate-400 font-bold uppercase tracking-widest text-[10px]">Cargando Configuración...</Text>
+      <Text type="secondary" style={{ letterSpacing: 1, textTransform: 'uppercase', fontSize: 12, fontWeight: 700 }}>Sincronizando Parámetros...</Text>
     </div>
   );
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-700">
-      {/* Page Header */}
-      <div className="flex flex-col gap-1">
-        <h1 className="text-3xl font-black text-slate-900 tracking-tight flex items-center gap-3">
-          <DashboardOutlined className="text-brand-primary" /> Parámetros Académicos
-        </h1>
-        <p className="text-slate-500 font-medium">Controla las reglas globales de calificación, bloqueos y gestión de periodos temporales.</p>
+    <div style={{ paddingBottom: 40 }}>
+      <style>{`
+        @keyframes fadeInScale {
+          from { opacity: 0; transform: scale(0.98) translateY(10px); }
+          to { opacity: 1; transform: scale(1) translateY(0); }
+        }
+        .animate-card {
+          animation: fadeInScale 0.6s cubic-bezier(0.23, 1, 0.32, 1) both;
+        }
+        .delay-1 { animation-delay: 0.1s; }
+        .delay-2 { animation-delay: 0.2s; }
+        
+        .premium-card {
+          border-radius: 20px !important;
+          border: 1px solid rgba(0,0,0,0.06) !important;
+          box-shadow: 0 10px 30px rgba(0,0,0,0.04) !important;
+          overflow: hidden;
+          transition: all 0.3s ease;
+        }
+        .settings-header {
+          background: linear-gradient(135deg, #001529 0%, #003a8c 100%);
+          padding: 16px 24px;
+          display: flex;
+          align-items: center;
+          gap: 12px;
+        }
+        .action-btn-hover:hover {
+          background: #e6f7ff !important;
+          transform: scale(1.1);
+        }
+        .action-btn-hover-danger:hover {
+          background: #fff1f0 !important;
+          transform: scale(1.1);
+        }
+        .ant-input-number, .ant-input, .ant-picker {
+          border-radius: 12px !important;
+        }
+        .premium-table .ant-table-thead > tr > th {
+          background: #fafafa !important;
+          font-weight: 800 !important;
+          text-transform: uppercase !important;
+          font-size: 11px !important;
+          letter-spacing: 0.5px !important;
+          color: #8c8c8c !important;
+          border-bottom: 2px solid #f0f0f0 !important;
+        }
+      `}</style>
+
+      {/* Hero Section */}
+      <div style={{ marginBottom: 40, marginTop: 12 }} className="animate-card">
+        <Row justify="space-between" align="middle">
+          <Col>
+            <Space size="middle" align="center">
+              <div style={{
+                width: 56,
+                height: 56,
+                borderRadius: 16,
+                background: 'linear-gradient(135deg, #1890ff 0%, #096dd9 100%)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                boxShadow: '0 8px 16px rgba(24,144,255,0.3)'
+              }}>
+                <ControlOutlined style={{ fontSize: 28, color: '#fff' }} />
+              </div>
+              <div>
+                <Title level={2} style={{ margin: 0, fontWeight: 900, letterSpacing: '-0.03em' }}>
+                  Parámetros Académicos
+                </Title>
+                <Text type="secondary" style={{ fontSize: 14, fontWeight: 500 }}>
+                  Configuración global del sistema de evaluación y gestión de términos.
+                </Text>
+              </div>
+            </Space>
+          </Col>
+        </Row>
       </div>
 
-      <Row gutter={[24, 24]}>
-        {/* General Settings Form */}
-        <Col span={24} lg={8}>
-          <Card className="glass-card h-full !p-0 overflow-hidden">
-            <div className="bg-slate-900 px-6 py-4">
-              <h3 className="text-white font-bold flex items-center gap-2"><BlockOutlined className="text-brand-primary" /> Reglas de Evaluación</h3>
+      <Row gutter={[32, 32]}>
+        {/* Rules Column */}
+        <Col xs={24} lg={9}>
+          <Card
+            className="premium-card animate-card delay-1"
+            styles={{ body: { padding: 0 } }}
+          >
+            <div className="settings-header">
+              <SettingOutlined style={{ color: '#bae7ff', fontSize: 18 }} />
+              <Title level={5} style={{ color: '#fff', margin: 0, fontWeight: 700 }}>Reglas de Evaluación</Title>
             </div>
-            <Form form={form} layout="vertical" onFinish={onFinish} className="p-6" requiredMark={false}>
-              <div className="space-y-6">
-                <Form.Item
-                  name="max_grade"
-                  label={<span className="text-slate-700 font-bold">Nota Máxima</span>}
-                  rules={[{ required: true, message: 'Requerido' }]}
-                >
-                  <InputNumber min={1} max={100} className="w-full !rounded-xl h-10 flex items-center px-2" />
-                </Form.Item>
 
-                <Form.Item
-                  name="passing_grade"
-                  label={<span className="text-slate-700 font-bold">Nota de Aprobación</span>}
-                  rules={[{ required: true, message: 'Requerido' }]}
-                >
-                  <InputNumber min={0} max={100} className="w-full !rounded-xl h-10 flex items-center px-2" />
-                </Form.Item>
-
-                <Form.Item
-                  name="council_points_limit"
-                  label={<span className="text-slate-700 font-bold">Límite Puntos Consejo</span>}
-                  tooltip="Puntos máximos que se pueden otorgar en Consejo de Curso por materia"
-                  rules={[{ required: true, message: 'Requerido' }]}
-                >
-                  <InputNumber min={0} max={20} className="w-full !rounded-xl h-10 flex items-center px-2" />
-                </Form.Item>
-
-                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 flex items-center justify-between">
-                  <div>
-                    <span className="text-slate-700 font-bold block">Bloqueo Automático</span>
-                    <span className="text-[10px] text-slate-400 font-medium uppercase">Gestionado por fecha</span>
-                  </div>
-                  <Form.Item name="grade_lock_mode" valuePropName="checked" noStyle>
-                    <Switch />
-                  </Form.Item>
-                </div>
-
-                <div className="pt-4">
-                  <Button
-                    type="primary"
-                    htmlType="submit"
-                    loading={saving}
-                    icon={<SaveOutlined />}
-                    block
-                    className="h-12 bg-slate-900 border-none rounded-xl font-bold shadow-lg"
+            <Form
+              form={form}
+              layout="vertical"
+              onFinish={onFinish}
+              style={{ padding: '28px' }}
+              requiredMark={false}
+            >
+              <Row gutter={16}>
+                <Col span={12}>
+                  <Form.Item
+                    name="max_grade"
+                    label={<Text style={{ fontWeight: 700, fontSize: 13 }}>Escala Máxima</Text>}
+                    tooltip="La nota más alta posible (Ej: 20 pts)"
+                    rules={[{ required: true }]}
                   >
-                    Guardar Reglas
-                  </Button>
+                    <InputNumber min={1} max={100} style={{ width: '100%', height: 44, display: 'flex', alignItems: 'center' }} />
+                  </Form.Item>
+                </Col>
+                <Col span={12}>
+                  <Form.Item
+                    name="passing_grade"
+                    label={<Text style={{ fontWeight: 700, fontSize: 13 }}>Nota Mínima</Text>}
+                    tooltip="Nota requerida para aprobar la materia"
+                    rules={[{ required: true }]}
+                  >
+                    <InputNumber min={0} max={100} style={{ width: '100%', height: 44, display: 'flex', alignItems: 'center' }} />
+                  </Form.Item>
+                </Col>
+              </Row>
+
+              <Form.Item
+                name="council_points_limit"
+                label={<Text style={{ fontWeight: 700, fontSize: 13 }}>Créditos de Consejo</Text>}
+                tooltip="Límite de puntos adicionales que el consejo puede otorgar"
+                rules={[{ required: true }]}
+              >
+                <InputNumber min={0} max={20} style={{ width: '100%', height: 44, display: 'flex', alignItems: 'center' }} />
+              </Form.Item>
+
+              <div style={{
+                background: '#f9f9f9',
+                padding: '16px 20px',
+                borderRadius: 16,
+                marginTop: 8,
+                marginBottom: 24,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                border: '1px dashed #d9d9d9'
+              }}>
+                <div>
+                  <Text style={{ display: 'block', fontWeight: 700, fontSize: 14 }}>Bloqueo Inteligente</Text>
+                  <Text style={{ fontSize: 11, color: '#8c8c8c' }}>Restringir por fecha automáticamente</Text>
                 </div>
+                <Form.Item name="grade_lock_mode" valuePropName="checked" noStyle>
+                  <Switch />
+                </Form.Item>
               </div>
+
+              <Button
+                type="primary"
+                htmlType="submit"
+                loading={saving}
+                icon={<SaveOutlined />}
+                block
+                size="large"
+                style={{
+                  height: 52,
+                  borderRadius: 14,
+                  fontWeight: 800,
+                  fontSize: 16,
+                  background: '#001529',
+                  border: 'none',
+                  boxShadow: '0 8px 20px rgba(0,21,41,0.2)'
+                }}
+              >
+                Aplicar Cambios Globales
+              </Button>
             </Form>
           </Card>
         </Col>
 
-        {/* Lapsos Management Table */}
-        <Col span={24} className="lg:col-span-2">
+        {/* Terms Column */}
+        <Col xs={24} lg={15}>
           <Card
-            className="glass-card !p-0 overflow-hidden"
+            className="premium-card animate-card delay-2"
+            styles={{ body: { padding: 0 } }}
             title={
-              <div className="py-2">
-                <h3 className="text-slate-800 font-black tracking-tight mb-0">Gestión de Lapsos / Términos</h3>
-                {activePeriod && <Text className="text-[10px] uppercase font-black text-brand-primary tracking-widest">{activePeriod.name}</Text>}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 12px' }}>
+                <Space direction="vertical" size={2}>
+                  <Text style={{ fontSize: 11, color: '#8c8c8c', textTransform: 'uppercase', fontWeight: 800, letterSpacing: 1 }}>Cronograma Académico</Text>
+                  <Title level={4} style={{ margin: 0, fontWeight: 800 }}>Gestión de Lapsos</Title>
+                </Space>
+                <Button
+                  type="primary"
+                  icon={<PlusOutlined />}
+                  onClick={handleAddTerm}
+                  disabled={!activePeriod}
+                  style={{
+                    borderRadius: 12,
+                    fontWeight: 700,
+                    height: 44,
+                    padding: '0 24px',
+                    background: 'linear-gradient(135deg, #1890ff 0%, #096dd9 100%)',
+                    border: 'none'
+                  }}
+                >
+                  Nuevo Lapso
+                </Button>
               </div>
-            }
-            extra={
-              <Button
-                type="primary"
-                icon={<PlusOutlined />}
-                onClick={handleAddTerm}
-                disabled={!activePeriod}
-                className="bg-brand-primary border-none rounded-xl font-bold h-10 px-6 shadow-md"
-              >
-                Nuevo Lapso
-              </Button>
             }
           >
             {!activePeriod ? (
-              <div className="p-12 text-center">
-                <Alert
-                  message="Sin Periodo Escolar"
-                  description="Debe activar un periodo escolar en el módulo Maestro para gestionar lapsos."
-                  type="warning"
-                  showIcon
-                  className="rounded-2xl"
+              <div style={{ padding: '60px 40px', textAlign: 'center' }}>
+                <Empty
+                  image={Empty.PRESENTED_IMAGE_SIMPLE}
+                  description={
+                    <Space direction="vertical">
+                      <Text strong style={{ fontSize: 16 }}>No hay Periodo Escolar Activo</Text>
+                      <Text type="secondary">Debe activar un periodo para poder gestionar sus términos académicos.</Text>
+                    </Space>
+                  }
                 />
               </div>
             ) : (
@@ -387,87 +522,126 @@ const AcademicSettings: React.FC = () => {
                 rowKey="id"
                 pagination={false}
                 className="premium-table"
+                style={{ padding: '4px' }}
               />
             )}
           </Card>
+
+          {activePeriod && (
+            <Alert
+              message={<Text style={{ fontWeight: 700 }}>Periodo en Curso: {activePeriod.name}</Text>}
+              description={<Text style={{ fontSize: 12 }}>Las configuraciones realizadas impactarán únicamente a las evaluaciones registradas dentro de este periodo escolar.</Text>}
+              type="info"
+              showIcon
+              style={{ marginTop: 24, borderRadius: 16, border: 'none', background: '#e6f7ff' }}
+              icon={<DashboardOutlined />}
+            />
+          )}
         </Col>
       </Row>
 
+      {/* Modal Rediseño */}
       <Modal
-        title={
-          <div className="flex items-center gap-3 py-2 border-b border-slate-100 mb-6">
-            <div className="w-10 h-10 bg-blue-50 rounded-xl flex items-center justify-center text-blue-600">
-              <CalendarOutlined />
-            </div>
-            <div>
-              <h3 className="m-0 font-black text-slate-800 tracking-tight">{editingTerm ? 'Configurar Lapso' : 'Nuevo Lapso'}</h3>
-              <p className="text-[10px] text-slate-400 uppercase font-bold m-0 tracking-widest">Definición de Término Académico</p>
-            </div>
-          </div>
-        }
+        title={null}
         open={showTermModal}
         onCancel={() => setShowTermModal(false)}
         footer={null}
         destroyOnClose
-        className="luxury-modal"
         centered
+        width={500}
+        styles={{ body: { padding: 0, borderRadius: 24, overflow: 'hidden' } }}
       >
-        <Form form={termForm} layout="vertical" onFinish={handleSaveTerm} requiredMark={false}>
-          <Form.Item
-            name="name"
-            label={<span className="text-slate-700 font-bold">Identificador del Lapso</span>}
-            rules={[{ required: true, message: 'Ingrese el nombre del lapso' }]}
+        <div style={{ borderRadius: 24, overflow: 'hidden' }}>
+          <div style={{
+            padding: '24px 32px',
+            background: 'linear-gradient(135deg, #001529 0%, #003a8c 100%)',
+            color: '#fff'
+          }}>
+            <Space size="middle">
+              <div style={{ width: 44, height: 44, borderRadius: 12, background: 'rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <CalendarOutlined style={{ fontSize: 22 }} />
+              </div>
+              <div>
+                <Title level={4} style={{ color: '#fff', margin: 0, fontWeight: 800 }}>{editingTerm ? 'Ajustar Lapso' : 'Registrar Nuevo Lapso'}</Title>
+                <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: 12, textTransform: 'uppercase', letterSpacing: 1, fontWeight: 600 }}>Término Académico</Text>
+              </div>
+            </Space>
+          </div>
+
+          <Form
+            form={termForm}
+            layout="vertical"
+            onFinish={handleSaveTerm}
+            requiredMark={false}
+            style={{ padding: '32px' }}
           >
-            <Input placeholder="Ej: Primer Lapso (Evaluación Continua)" className="h-11 rounded-xl" />
-          </Form.Item>
+            <Form.Item
+              name="name"
+              label={<Text style={{ fontWeight: 700 }}>Nombre / Identificación</Text>}
+              rules={[{ required: true, message: 'Ingrese un nombre identificador' }]}
+            >
+              <Input placeholder="Ej: Primer Lapso o Primer Momento" size="large" />
+            </Form.Item>
 
-          <div className="p-4 bg-amber-50 rounded-2xl border border-amber-100 mb-6 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <LockOutlined className="text-amber-600" />
-              <span className="text-amber-900 font-bold text-sm">Bloquear entrada de notas</span>
+            <div style={{
+              background: '#fff7e6',
+              padding: '16px 20px',
+              borderRadius: 16,
+              marginBottom: 24,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              border: '1px solid #ffe7ba'
+            }}>
+              <Space>
+                <LockOutlined style={{ color: '#faad14' }} />
+                <div>
+                  <Text style={{ display: 'block', fontWeight: 700, color: '#874d00' }}>Bloquear Lapso</Text>
+                  <Text style={{ fontSize: 11, color: '#d46b08' }}>Impide la modificación de calificaciones</Text>
+                </div>
+              </Space>
+              <Form.Item name="isBlocked" valuePropName="checked" noStyle>
+                <Switch className="custom-switch-warning" />
+              </Form.Item>
             </div>
-            <Form.Item name="isBlocked" valuePropName="checked" noStyle>
-              <Switch className="bg-slate-200" />
-            </Form.Item>
-          </div>
 
-          <div className="grid grid-cols-2 gap-6">
-            <Form.Item name="openDate" label={<span className="text-slate-700 font-bold text-xs uppercase tracking-wider">Fecha de Apertura</span>}>
-              <DatePicker
-                style={{ width: '100%' }}
-                format="DD/MM/YYYY"
-                placeholder="20/09/2025"
-                className="h-11 rounded-xl"
-              />
-            </Form.Item>
+            <Row gutter={16}>
+              <Col span={12}>
+                <Form.Item name="openDate" label={<Text style={{ fontWeight: 700, fontSize: 12 }}>Fecha de Apertura</Text>}>
+                  <DatePicker format="DD/MM/YYYY" style={{ width: '100%' }} size="large" placeholder="Desde" />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item name="closeDate" label={<Text style={{ fontWeight: 700, fontSize: 12 }}>Fecha de Cierre</Text>}>
+                  <DatePicker format="DD/MM/YYYY" style={{ width: '100%' }} size="large" placeholder="Hasta" />
+                </Form.Item>
+              </Col>
+            </Row>
 
-            <Form.Item name="closeDate" label={<span className="text-slate-700 font-bold text-xs uppercase tracking-wider">Fecha de Cierre</span>}>
-              <DatePicker
-                style={{ width: '100%' }}
-                format="DD/MM/YYYY"
-                placeholder="15/12/2025"
-                className="h-11 rounded-xl"
-              />
-            </Form.Item>
-          </div>
-
-          <Alert
-            type="info"
-            showIcon
-            message="Sincronización Automática"
-            description="Las fechas definen la visibilidad del lapso en el panel del profesor si el modo automático está activo."
-            className="mt-6 mb-8 rounded-xl bg-blue-50/50 border-blue-100 text-blue-800"
-          />
-
-          <div className="flex justify-end gap-3 pt-6 border-t border-slate-100">
-            <Button onClick={() => setShowTermModal(false)} className="h-11 px-8 rounded-xl font-bold">Descartar</Button>
-            <Button type="primary" htmlType="submit" loading={termSubmitting} className="h-11 px-10 bg-slate-900 border-none rounded-xl font-bold flex items-center gap-2">
-              {editingTerm ? 'Actualizar Cambios' : 'Confirmar Creación'} <ArrowRightOutlined className="text-[10px]" />
-            </Button>
-          </div>
-        </Form>
+            <div style={{ marginTop: 32, display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
+              <Button onClick={() => setShowTermModal(false)} size="large" style={{ borderRadius: 12, fontWeight: 700 }}>
+                Cancelar
+              </Button>
+              <Button
+                type="primary"
+                htmlType="submit"
+                loading={termSubmitting}
+                size="large"
+                style={{
+                  borderRadius: 12,
+                  fontWeight: 800,
+                  padding: '0 32px',
+                  background: '#001529',
+                  border: 'none'
+                }}
+              >
+                {editingTerm ? 'Guardar Cambios' : 'Crear Lapso'}
+              </Button>
+            </div>
+          </Form>
+        </div>
       </Modal>
-    </div >
+    </div>
   );
 };
 
