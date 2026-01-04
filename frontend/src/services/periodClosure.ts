@@ -73,13 +73,6 @@ export const getClosureStatus = async (periodId: number) => {
   return data;
 };
 
-export const updateChecklistStatus = async (
-  periodId: number,
-  payload: { gradeId: number; sectionId: number; termId: number; status: 'open' | 'in_review' | 'done' }
-) => {
-  const { data } = await api.post(`/period-closure/${periodId}/checklist`, payload);
-  return data;
-};
 
 export const getPeriodOutcomes = async (periodId: number, status?: OutcomeRecord['status']) => {
   const params = status ? { status } : undefined;

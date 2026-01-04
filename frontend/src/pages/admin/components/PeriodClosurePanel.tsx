@@ -17,10 +17,9 @@ import {
   Skeleton,
   Popconfirm,
   Modal,
-  Alert,
-  Divider
+  Alert
 } from 'antd';
-import { SyncOutlined, CheckCircleOutlined, WarningOutlined, CloseCircleOutlined } from '@ant-design/icons';
+import { SyncOutlined, CloseCircleOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import {
   getActivePeriod,
@@ -31,7 +30,6 @@ import {
   type ClosureStatusResponse,
   type OutcomeRecord,
   type PendingSubjectRecord,
-  updateChecklistStatus,
   validatePeriodClosure,
   executePeriodClosure,
   type ClosureValidationResult,
@@ -325,25 +323,6 @@ const PeriodClosurePanel: React.FC = () => {
     }
   };
 
-  const handleChecklistQuickAction = async (status: 'in_review' | 'done') => {
-    if (!activePeriodId) return;
-    try {
-      setStatusLoading(true);
-      await updateChecklistStatus(activePeriodId, {
-        gradeId: 0,
-        sectionId: 0,
-        termId: 0,
-        status
-      });
-      await loadAll();
-      message.success('Estado del checklist actualizado');
-    } catch (error) {
-      console.error(error);
-      message.error('No se pudo actualizar el checklist.');
-    } finally {
-      setStatusLoading(false);
-    }
-  };
 
   const handleValidateClosure = async () => {
     if (!activePeriodId) return;
@@ -500,24 +479,6 @@ const PeriodClosurePanel: React.FC = () => {
         <Col xs={24} md={8}>
           <Card title="Acciones de cierre">
             <Space direction="vertical" className="w-full">
-              <Button
-                block
-                icon={<WarningOutlined />}
-                onClick={() => handleChecklistQuickAction('in_review')}
-                disabled={statusLoading}
-              >
-                Marcar checklist en revisión
-              </Button>
-              <Button
-                block
-                type="primary"
-                icon={<CheckCircleOutlined />}
-                onClick={() => handleChecklistQuickAction('done')}
-                disabled={statusLoading}
-              >
-                Confirmar checklist completo
-              </Button>
-              <Divider style={{ margin: '12px 0' }} />
               <Button
                 block
                 type="primary"
