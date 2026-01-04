@@ -231,12 +231,12 @@ const AcademicManagement: React.FC = () => {
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
 
   const [specializationModalVisible, setSpecializationModalVisible] = useState(false);
-  
+
   // Estados para asignación de profesor
   const [teacherAssignModalVisible, setTeacherAssignModalVisible] = useState(false);
-  const [selectedSubjectForTeacher, setSelectedSubjectForTeacher] = useState<{periodGradeId: number, subjectId: number, periodGradeSubjectId?: number} | null>(null);
+  const [selectedSubjectForTeacher, setSelectedSubjectForTeacher] = useState<{ periodGradeId: number, subjectId: number, periodGradeSubjectId?: number } | null>(null);
   const [availableSections, setAvailableSections] = useState<Section[]>([]);
-  const [availableTeachers, setAvailableTeachers] = useState<{id: number, name: string}[]>([]);
+  const [availableTeachers, setAvailableTeachers] = useState<{ id: number, name: string }[]>([]);
   const [teacherAssignForm] = Form.useForm();
   const [selectedGradeForStructure, setSelectedGradeForStructure] = useState<Grade | null>(null);
   const [selectedSpecializationId, setSelectedSpecializationId] = useState<number | null>(null);
@@ -245,6 +245,7 @@ const AcademicManagement: React.FC = () => {
   const [editSubjectGroupVisible, setEditSubjectGroupVisible] = useState(false);
   const [editSubjectGroupForm] = Form.useForm();
   const [editingSubjectGroup, setEditingSubjectGroup] = useState<SubjectGroup | null>(null);
+  const [filterSubjectName, setFilterSubjectName] = useState<string>('');
 
   const fetchAll = async () => {
     setLoading(true);
@@ -488,31 +489,31 @@ const AcademicManagement: React.FC = () => {
   const handleOpenAssignTeacher = async (periodGradeId: number, subjectId: number) => {
     try {
       console.log('Obteniendo PeriodGradeSubject para:', { periodGradeId, subjectId });
-      
+
       // Primero necesitamos obtener el periodGradeSubjectId
       const { data } = await api.get(`/academic/structure/subject/${periodGradeId}/${subjectId}`);
       console.log('Respuesta del endpoint:', data);
-      
+
       const periodGradeSubjectId = data?.id;
       console.log('periodGradeSubjectId obtenido:', periodGradeSubjectId);
-      
+
       if (!periodGradeSubjectId) {
         message.error('No se pudo obtener la información de la materia');
         return;
       }
-      
-      setSelectedSubjectForTeacher({ 
-        periodGradeId, 
+
+      setSelectedSubjectForTeacher({
+        periodGradeId,
         subjectId,
-        periodGradeSubjectId 
+        periodGradeSubjectId
       });
-      
+
       // Obtener las secciones disponibles para este grado
       const periodGrade = structure.find(pg => pg.id === periodGradeId);
       if (periodGrade && periodGrade.sections) {
         setAvailableSections(periodGrade.sections);
       }
-      
+
       // Obtener profesores disponibles
       interface Teacher {
         id: number;
@@ -523,11 +524,11 @@ const AcademicManagement: React.FC = () => {
       const { data: teachers } = await api.get<Teacher[]>('/teachers');
       setAvailableTeachers(teachers
         .filter(t => t.roles?.some(r => r.name === 'Teacher'))
-        .map((t) => ({ 
-          id: t.id, 
-          name: `${t.firstName} ${t.lastName}` 
+        .map((t) => ({
+          id: t.id,
+          name: `${t.firstName} ${t.lastName}`
         })));
-      
+
       teacherAssignForm.resetFields();
       setTeacherAssignModalVisible(true);
     } catch (error) {
@@ -535,24 +536,24 @@ const AcademicManagement: React.FC = () => {
       message.error('Error al cargar datos para asignar profesor');
     }
   };
-  
+
   // Función para asignar profesor
   const handleAssignTeacher = async (values: { teacherId: number, sectionId: number }) => {
     if (!selectedSubjectForTeacher || !selectedSubjectForTeacher.periodGradeSubjectId) return;
-    
+
     try {
       console.log('Enviando datos para asignar profesor:', {
         teacherId: values.teacherId,
         periodGradeSubjectId: selectedSubjectForTeacher.periodGradeSubjectId,
         sectionId: values.sectionId
       });
-      
+
       await api.post('/teachers/assign', {
         teacherId: values.teacherId,
         periodGradeSubjectId: selectedSubjectForTeacher.periodGradeSubjectId,
         sectionId: values.sectionId
       });
-      
+
       message.success('Profesor asignado exitosamente');
       setTeacherAssignModalVisible(false);
       fetchStructure();
@@ -771,19 +772,19 @@ const AcademicManagement: React.FC = () => {
   const catalogColumns = (type: CatalogType) => [
     ...(type === 'grade'
       ? [{
-          title: '',
-          key: 'drag',
-          width: 40,
-          render: () => <DragHandle />,
-        }]
+        title: '',
+        key: 'drag',
+        width: 40,
+        render: () => <DragHandle />,
+      }]
       : []),
     ...(type === 'grade'
       ? [{
-          title: '#',
-          key: 'index',
-          width: 50,
-          render: (_: unknown, __: CatalogItem, index: number) => index + 1,
-        }]
+        title: '#',
+        key: 'index',
+        width: 50,
+        render: (_: unknown, __: CatalogItem, index: number) => index + 1,
+      }]
       : []),
     {
       title: 'Nombre',
@@ -1137,8 +1138,16 @@ const AcademicManagement: React.FC = () => {
                   <Form.Item name="name" rules={[{ required: true }]} style={{ width: 220 }}><Input placeholder="Nombre" /></Form.Item>
                   <Button type="primary" htmlType="submit" icon={<PlusOutlined />} />
                 </Form>
+                <div style={{ marginTop: 16 }}>
+                  <Input
+                    placeholder="Buscar materia..."
+                    allowClear
+                    onChange={e => setFilterSubjectName(e.target.value)}
+                    style={{ width: 300, marginBottom: 16 }}
+                  />
+                </div>
                 <Table
-                  dataSource={subjects}
+                  dataSource={subjects.filter(s => s.name.toLowerCase().includes(filterSubjectName.toLowerCase()))}
                   rowKey="id"
                   size="small"
                   style={{ marginTop: 16 }}
@@ -1342,11 +1351,11 @@ const AcademicManagement: React.FC = () => {
             label="Profesor"
             rules={[{ required: true, message: 'Seleccione un profesor' }]}
           >
-            <Select 
+            <Select
               placeholder="Seleccionar profesor"
               showSearch
               optionFilterProp="children"
-              filterOption={(input, option) => 
+              filterOption={(input, option) =>
                 option?.children?.toString().toLowerCase().includes(input.toLowerCase()) ?? false
               }
               style={{ width: '100%' }}
@@ -1358,17 +1367,17 @@ const AcademicManagement: React.FC = () => {
               ))}
             </Select>
           </Form.Item>
-          
+
           <Form.Item
             name="sectionId"
             label="Sección"
             rules={[{ required: true, message: 'Seleccione una sección' }]}
           >
-            <Select 
+            <Select
               placeholder="Seleccionar sección"
               showSearch
               optionFilterProp="children"
-              filterOption={(input, option) => 
+              filterOption={(input, option) =>
                 option?.children?.toString().toLowerCase().includes(input.toLowerCase()) ?? false
               }
               style={{ width: '100%' }}
@@ -1380,7 +1389,7 @@ const AcademicManagement: React.FC = () => {
               ))}
             </Select>
           </Form.Item>
-          
+
           <Form.Item>
             <Button type="primary" htmlType="submit" block>
               Asignar Profesor
