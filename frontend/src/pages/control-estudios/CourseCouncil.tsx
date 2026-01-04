@@ -39,6 +39,8 @@ interface PeriodGradeStructure {
 interface CouncilStudent {
   id: number;
   studentName: string;
+  studentDni: string;
+  documentType: string;
   subjects: {
     id: number;
     name: string;
@@ -82,7 +84,9 @@ const CourseCouncil: React.FC = () => {
 
       if (period) {
         setTerms(termsRes.data.sort((a: Term, b: Term) => a.order - b.order));
-        setStructure(structureRes.data);
+        setStructure(structureRes.data.sort((a: PeriodGradeStructure, b: PeriodGradeStructure) =>
+          (a.grade.order || 0) - (b.grade.order || 0)
+        ));
       }
 
       if (settingsRes.data.council_points_limit) {
@@ -199,72 +203,179 @@ const CourseCouncil: React.FC = () => {
   );
 
   const renderSectionSelector = () => {
-    const filteredSections: { section: Section, grade: Grade }[] = [];
+    // Agrupar secciones por grado
+    const sectionsByGrade: { grade: Grade, sections: Section[] }[] = [];
     structure.forEach(pg => {
-      pg.sections.forEach(sec => {
-        if (!filterYear || pg.grade.name.toLowerCase().includes(filterYear.toLowerCase())) {
-          filteredSections.push({ section: sec, grade: pg.grade });
-        }
-      });
+      const matchFilter = !filterYear || pg.grade.name.toLowerCase().includes(filterYear.toLowerCase());
+      if (matchFilter) {
+        sectionsByGrade.push({ grade: pg.grade, sections: pg.sections });
+      }
     });
 
     return (
-      <div style={{ padding: '20px 0' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 32 }}>
-          <Space>
-            <Button icon={<LeftOutlined />} onClick={() => setStep(0)}>Volver</Button>
-            <Title level={4} style={{ margin: 0 }}>Seleccione la Sección</Title>
+      <div style={{ padding: '0px 0' }}>
+        <style>{`
+          @keyframes slideInUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+          }
+          .section-group {
+            animation: slideInUp 0.5s ease-out both;
+          }
+          .section-card {
+            transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) !important;
+            border: 1px solid #f0f0f0 !important;
+          }
+          .section-card:hover {
+            transform: translateY(-5px) scale(1.02);
+            box-shadow: 0 12px 24px rgba(0,0,0,0.08) !important;
+            border-color: transparent !important;
+          }
+          .section-card:active {
+            transform: translateY(-2px) scale(1.01);
+          }
+          .section-letter {
+            transition: all 0.3s ease;
+          }
+          .section-card:hover .section-letter {
+            transform: rotate(-10deg) scale(1.1);
+          }
+          .grade-header {
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(8px);
+            padding: 12px 0;
+            margin-bottom: 24px;
+            border-bottom: 1px solid rgba(0,0,0,0.03);
+          }
+        `}</style>
+
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 40 }}>
+          <Space size="large">
+            <Button
+              icon={<LeftOutlined />}
+              onClick={() => setStep(0)}
+              style={{ borderRadius: '50%', width: 40, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            />
+            <div>
+              <Title level={2} style={{ margin: 0, fontWeight: 800 }}>Seleccione la Sección</Title>
+              <Text type="secondary">Elija el grupo académico para gestionar los puntos del consejo</Text>
+            </div>
           </Space>
           <Input
-            prefix={<FilterOutlined />}
-            placeholder="Filtrar por año/grado..."
-            style={{ width: 250 }}
+            prefix={<FilterOutlined style={{ color: '#bfbfbf' }} />}
+            placeholder="Buscar grado o año..."
+            size="large"
+            style={{ width: 300, borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}
             value={filterYear}
             onChange={e => setFilterYear(e.target.value)}
           />
         </div>
-        <Row gutter={[16, 16]}>
-          {filteredSections.map((item, idx) => (
-            <Col key={idx} xs={24} sm={12} md={8} lg={6}>
-              <Card
-                hoverable
-                size="small"
-                style={{
-                  borderRadius: 12,
-                  border: '1px solid #f0f0f0'
-                }}
-                onClick={() => {
-                  setSelectedSection(item);
-                  if (selectedTerm) fetchCouncilData(item.section.id, selectedTerm.id, item.grade.id);
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+
+        {sectionsByGrade.length === 0 ? (
+          <Empty
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+            description={<Text type="secondary">No se encontraron grados que coincidan</Text>}
+          />
+        ) : (
+          sectionsByGrade.map((group, groupIdx) => (
+            <div
+              key={group.grade.id}
+              className="section-group"
+              style={{
+                marginBottom: 48,
+                animationDelay: `${groupIdx * 0.1}s`
+              }}
+            >
+              <div className="grade-header">
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 16
+                }}>
                   <div style={{
-                    width: 40,
-                    height: 40,
-                    borderRadius: 8,
-                    background: item.grade.isDiversified ? '#fff2e8' : '#e6f7ff',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: 18,
-                    fontWeight: 'bold',
-                    color: item.grade.isDiversified ? '#fa541c' : '#1890ff'
-                  }}>
-                    {item.section.name}
-                  </div>
+                    width: 6,
+                    height: 32,
+                    borderRadius: 3,
+                    background: group.grade.isDiversified
+                      ? 'linear-gradient(to bottom, #fa541c, #ffbb96)'
+                      : 'linear-gradient(to bottom, #1890ff, #91d5ff)'
+                  }} />
                   <div>
-                    <div style={{ fontWeight: 600 }}>{item.grade.name}</div>
-                    <div style={{ fontSize: 12, color: '#8c8c8c' }}>
-                      {item.grade.isDiversified ? 'Diversificada' : 'Educación Media'}
-                    </div>
+                    <Title level={4} style={{ margin: 0, fontWeight: 700, letterSpacing: '-0.02em' }}>
+                      {group.grade.name}
+                    </Title>
+                    <Text style={{ fontSize: 12, color: '#8c8c8c', textTransform: 'uppercase', fontWeight: 600 }}>
+                      {group.grade.isDiversified ? 'Ciclo Diversificado' : 'Educación Media General'}
+                    </Text>
                   </div>
                 </div>
-              </Card>
-            </Col>
-          ))}
-          {filteredSections.length === 0 && <Col span={24}><Empty description="No se encontraron secciones" /></Col>}
-        </Row>
+              </div>
+
+              <Row gutter={[20, 20]}>
+                {group.sections.map((sec) => (
+                  <Col key={sec.id} xs={24} sm={12} md={8} lg={6}>
+                    <Card
+                      hoverable
+                      className="section-card"
+                      styles={{ body: { padding: '16px' } }}
+                      style={{
+                        borderRadius: 16,
+                        overflow: 'hidden'
+                      }}
+                      onClick={() => {
+                        setSelectedSection({ section: sec, grade: group.grade });
+                        if (selectedTerm) fetchCouncilData(sec.id, selectedTerm.id, group.grade.id);
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                        <div
+                          className="section-letter"
+                          style={{
+                            width: 52,
+                            height: 52,
+                            borderRadius: 12,
+                            background: group.grade.isDiversified ? '#fff2e8' : '#f0f5ff',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: 24,
+                            fontWeight: 900,
+                            color: group.grade.isDiversified ? '#fa541c' : '#1d39c4',
+                            flexShrink: 0,
+                            border: `1px solid ${group.grade.isDiversified ? '#ffd591' : '#adc6ff'}`
+                          }}
+                        >
+                          {sec.name.replace(/sección/gi, '').trim().charAt(0)}
+                        </div>
+                        <div style={{ flex: 1, overflow: 'hidden' }}>
+                          <div style={{
+                            fontWeight: 700,
+                            fontSize: 17,
+                            color: '#1f1f1f',
+                            marginBottom: 2
+                          }}>
+                            {sec.name.toLowerCase().includes('sección') ? sec.name : `Sección ${sec.name}`}
+                          </div>
+                          <Space split={<div style={{ width: 4, height: 4, borderRadius: '50%', background: '#d9d9d9' }} />}>
+                            <Text style={{ fontSize: 12, color: '#8c8c8c', fontWeight: 500 }}>
+                              {activePeriod?.name}
+                            </Text>
+                            <Tag color={group.grade.isDiversified ? 'orange' : 'processing'} style={{ border: 'none', borderRadius: 4, fontSize: 10, fontWeight: 700 }}>
+                              PROCESAR
+                            </Tag>
+                          </Space>
+                        </div>
+                      </div>
+                    </Card>
+                  </Col>
+                ))}
+              </Row>
+            </div>
+          ))
+        )}
       </div>
     );
   };
@@ -283,18 +394,35 @@ const CourseCouncil: React.FC = () => {
         width: 250,
         render: (text: string, record: CouncilStudent) => {
           const usedPoints = record.subjects.reduce((sum, s) => sum + (s.points || 0), 0);
+
+          let docTypeLetter = '';
+          switch (record.documentType) {
+            case 'Venezolano': docTypeLetter = 'V'; break;
+            case 'Extranjero': docTypeLetter = 'E'; break;
+            case 'Pasaporte': docTypeLetter = 'P'; break;
+            case 'Cedula Escolar': docTypeLetter = 'CE'; break;
+            default: docTypeLetter = '';
+          }
+
           return (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <Space>
-                <UserOutlined style={{ color: '#595959', fontSize: 16 }} />
-                <Text style={{ fontWeight: 700, fontSize: 15, color: '#262626' }}>{text}</Text>
+              <Space direction="vertical" size={0}>
+                <Space>
+                  <UserOutlined style={{ color: '#595959', fontSize: 13 }} />
+                  <Text style={{ fontWeight: 700, fontSize: 14, color: '#262626' }}>{text}</Text>
+                </Space>
+                <div style={{ paddingLeft: 20 }}>
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    <strong>{docTypeLetter}</strong>-{record.studentDni}
+                  </Text>
+                </div>
               </Space>
-              <div style={{ paddingLeft: 22 }}>
+              <div style={{ paddingLeft: 20 }}>
                 <Tag
                   color={usedPoints >= pointsLimit ? 'volcano' : 'blue'}
-                  style={{ fontWeight: 600, border: '1px solid currentColor' }}
+                  style={{ fontWeight: 600, border: 'none', borderRadius: 4, height: 20, lineHeight: '18px', fontSize: 11 }}
                 >
-                  Puntos: {usedPoints} / {pointsLimit}
+                  Pts: {usedPoints} / {pointsLimit}
                 </Tag>
               </div>
             </div>
@@ -400,7 +528,9 @@ const CourseCouncil: React.FC = () => {
           <Space direction="vertical">
             <Button icon={<LeftOutlined />} onClick={() => setStep(1)}>Cambiar Sección</Button>
             <div>
-              <Title level={4} style={{ margin: 0 }}>{selectedSection?.grade.name} - Sección {selectedSection?.section.name}</Title>
+              <Title level={4} style={{ margin: 0 }}>
+                {selectedSection?.grade.name} - {selectedSection?.section.name.toLowerCase().includes('sección') ? selectedSection?.section.name : `Sección ${selectedSection?.section.name}`}
+              </Title>
               <Text type="secondary">{selectedTerm?.name} • {activePeriod?.name}</Text>
             </div>
           </Space>
@@ -467,7 +597,7 @@ const CourseCouncil: React.FC = () => {
   }
 
   return (
-    <div style={{ maxWidth: 1200, margin: '0 auto' }}>
+    <div style={{ width: '100%', padding: '0 12px' }}>
       <Breadcrumb
         style={{ marginBottom: 24 }}
         items={[

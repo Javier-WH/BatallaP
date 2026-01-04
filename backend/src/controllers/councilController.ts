@@ -124,6 +124,8 @@ export const getCouncilData = async (req: Request, res: Response) => {
       return {
         id: ins.id,
         studentName: `${insAny.student?.lastName} ${insAny.student?.firstName}`,
+        studentDni: insAny.student?.document,
+        documentType: insAny.student?.documentType,
         subjects: sortedSubjects
       };
     });
