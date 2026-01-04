@@ -4,6 +4,8 @@ import {
   SchoolPeriod,
   Term
 } from '@/models/index';
+import sequelize from '@/config/database';
+import { Op } from 'sequelize';
 
 interface ChecklistStatus {
   total: number;
@@ -12,6 +14,7 @@ interface ChecklistStatus {
 
 interface ClosureStatusResponse {
   period: Pick<SchoolPeriod, 'id' | 'name' | 'period' | 'isActive'>;
+  nextPeriod?: Pick<SchoolPeriod, 'id' | 'name' | 'period'> | null;
   closure?: PeriodClosure | null;
   checklist: ChecklistStatus;
   blockedTerms: number;
@@ -47,6 +50,15 @@ export class PeriodClosureService {
 
     const blockedTerms = terms.filter((termRecord) => termRecord.isBlocked).length;
 
+    const nextPeriod = await SchoolPeriod.findOne({
+      where: { 
+        isActive: false,
+        startYear: { [Op.gt]: period.startYear }
+      },
+      order: [['startYear', 'ASC'], ['endYear', 'ASC']],
+      attributes: ['id', 'name', 'period']
+    });
+
     return {
       period: {
         id: period.id,
@@ -54,6 +66,11 @@ export class PeriodClosureService {
         period: period.period,
         isActive: period.isActive
       },
+      nextPeriod: nextPeriod ? {
+        id: nextPeriod.id,
+        name: nextPeriod.name,
+        period: nextPeriod.period
+      } : null,
       closure,
       checklist,
       blockedTerms,

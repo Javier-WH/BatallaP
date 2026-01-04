@@ -14,6 +14,11 @@ export interface ChecklistStatus {
 
 export interface ClosureStatusResponse {
   period: SchoolPeriod;
+  nextPeriod?: {
+    id: number;
+    name: string;
+    period: string;
+  } | null;
   closure?: {
     id: number;
     status: 'draft' | 'validating' | 'closed' | 'failed';
@@ -92,5 +97,42 @@ export const resolvePendingSubject = async (
   status: 'aprobada' | 'convalidada'
 ) => {
   const { data } = await api.post(`/periods/pending-subjects/${pendingSubjectId}/resolve`, { status });
+  return data;
+};
+
+export interface ClosureValidationResult {
+  valid: boolean;
+  errors: string[];
+  warnings: string[];
+}
+
+export interface ClosureExecutionResult {
+  success: boolean;
+  closureId: number;
+  stats: {
+    totalStudents: number;
+    approved: number;
+    withPendingSubjects: number;
+    failed: number;
+    newInscriptions: number;
+    pendingSubjectsCreated: number;
+  };
+  errors: string[];
+  log: Record<string, unknown>;
+}
+
+export const validatePeriodClosure = async (periodId: number) => {
+  const { data } = await api.get<ClosureValidationResult>(`/period-closure/${periodId}/validate`);
+  return data;
+};
+
+export const executePeriodClosure = async (periodId: number) => {
+  const { data } = await api.post<ClosureExecutionResult>(`/period-closure/${periodId}/execute`);
+  return data;
+};
+
+export const getPreviewOutcomes = async (periodId: number, status?: OutcomeRecord['status']) => {
+  const params = status ? { status } : undefined;
+  const { data } = await api.get<OutcomeRecord[]>(`/period-closure/${periodId}/preview`, { params });
   return data;
 };

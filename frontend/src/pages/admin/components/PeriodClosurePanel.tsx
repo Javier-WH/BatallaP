@@ -15,9 +15,12 @@ import {
   Space,
   Typography,
   Skeleton,
-  Popconfirm
+  Popconfirm,
+  Modal,
+  Alert,
+  Divider
 } from 'antd';
-import { SyncOutlined, CheckCircleOutlined, WarningOutlined } from '@ant-design/icons';
+import { SyncOutlined, CheckCircleOutlined, WarningOutlined, CloseCircleOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import {
   getActivePeriod,
@@ -28,7 +31,11 @@ import {
   type ClosureStatusResponse,
   type OutcomeRecord,
   type PendingSubjectRecord,
-  updateChecklistStatus
+  updateChecklistStatus,
+  validatePeriodClosure,
+  executePeriodClosure,
+  type ClosureValidationResult,
+  getPreviewOutcomes
 } from '@/services/periodClosure';
 
 const { Text } = Typography;
@@ -68,6 +75,11 @@ const PeriodClosurePanel: React.FC = () => {
   const [outcomeLoading, setOutcomeLoading] = useState(false);
   const [pendingLoading, setPendingLoading] = useState(false);
   const [resolvingId, setResolvingId] = useState<number | null>(null);
+  const [validationModalVisible, setValidationModalVisible] = useState(false);
+  const [validationResult, setValidationResult] = useState<ClosureValidationResult | null>(null);
+  const [validationLoading, setValidationLoading] = useState(false);
+  const [executionLoading, setExecutionLoading] = useState(false);
+  const [isPreviewMode, setIsPreviewMode] = useState(true);
 
   const [periodStatus, setPeriodStatus] = useState<ClosureStatusResponse | null>(null);
   const [outcomes, setOutcomes] = useState<OutcomeRecord[]>([]);
@@ -111,7 +123,9 @@ const PeriodClosurePanel: React.FC = () => {
       if (!activePeriodId) return;
       try {
         setOutcomeLoading(true);
-        const data = await getPeriodOutcomes(activePeriodId, status);
+        const data = isPreviewMode 
+          ? await getPreviewOutcomes(activePeriodId, status)
+          : await getPeriodOutcomes(activePeriodId, status);
         setOutcomes(data);
       } catch (error) {
         console.error(error);
@@ -120,7 +134,7 @@ const PeriodClosurePanel: React.FC = () => {
         setOutcomeLoading(false);
       }
     },
-    [activePeriodId]
+    [activePeriodId, isPreviewMode]
   );
 
   const reloadPending = useCallback(async () => {
@@ -331,6 +345,74 @@ const PeriodClosurePanel: React.FC = () => {
     }
   };
 
+  const handleValidateClosure = async () => {
+    if (!activePeriodId) return;
+    try {
+      setValidationLoading(true);
+      const validation = await validatePeriodClosure(activePeriodId);
+      setValidationResult(validation);
+      setValidationModalVisible(true);
+    } catch (error) {
+      console.error(error);
+      message.error('No se pudo validar el cierre del periodo.');
+    } finally {
+      setValidationLoading(false);
+    }
+  };
+
+  const handleExecuteClosure = async () => {
+    if (!activePeriodId) return;
+    try {
+      setExecutionLoading(true);
+      const result = await executePeriodClosure(activePeriodId);
+      
+      if (result.success) {
+        message.success('Cierre de periodo completado exitosamente');
+        Modal.success({
+          title: 'Cierre completado',
+          content: (
+            <div>
+              <p><strong>Estadísticas del cierre:</strong></p>
+              <ul>
+                <li>Total de estudiantes: {result.stats.totalStudents}</li>
+                <li>Aprobados: {result.stats.approved}</li>
+                <li>Con materias pendientes: {result.stats.withPendingSubjects}</li>
+                <li>Reprobados: {result.stats.failed}</li>
+                <li>Nuevas inscripciones creadas: {result.stats.newInscriptions}</li>
+                <li>Materias pendientes asignadas: {result.stats.pendingSubjectsCreated}</li>
+              </ul>
+            </div>
+          ),
+          width: 600
+        });
+        setValidationModalVisible(false);
+        setIsPreviewMode(false);
+        await loadAll();
+      } else {
+        message.error('No se pudo completar el cierre del periodo');
+        Modal.error({
+          title: 'Error en el cierre',
+          content: (
+            <div>
+              <p>Errores encontrados:</p>
+              <ul>
+                {result.errors.map((err: string, idx: number) => (
+                  <li key={idx}>{err}</li>
+                ))}
+              </ul>
+            </div>
+          ),
+          width: 600
+        });
+      }
+    } catch (error) {
+      console.error(error);
+      message.error('Error al ejecutar el cierre del periodo.');
+    } finally {
+      setExecutionLoading(false);
+    }
+  };
+
   if (statusLoading && !periodStatus) {
     return (
       <div className="p-6">
@@ -357,7 +439,7 @@ const PeriodClosurePanel: React.FC = () => {
           <Card
             title={
               <div className="flex items-center justify-between">
-                <span>Periodo activo</span>
+                <span>Periodo a cerrar</span>
                 <Button
                   size="small"
                   icon={<SyncOutlined spin={statusLoading} />}
@@ -370,10 +452,27 @@ const PeriodClosurePanel: React.FC = () => {
           >
             <Row gutter={16}>
               <Col span={12}>
-                <Statistic title="Nombre" value={periodStatus.period.name} />
+                <Statistic title="Periodo actual" value={periodStatus.period.name} />
+                <Text type="secondary" className="text-xs">
+                  {periodStatus.period.period}
+                </Text>
               </Col>
               <Col span={12}>
-                <Statistic title="Código" value={periodStatus.period.period} />
+                {periodStatus.nextPeriod ? (
+                  <>
+                    <Statistic title="Próximo periodo" value={periodStatus.nextPeriod.name} />
+                    <Text type="secondary" className="text-xs">
+                      {periodStatus.nextPeriod.period}
+                    </Text>
+                  </>
+                ) : (
+                  <>
+                    <Statistic title="Próximo periodo" value="No configurado" />
+                    <Text type="danger" className="text-xs">
+                      Debe crear el siguiente periodo antes de cerrar
+                    </Text>
+                  </>
+                )}
               </Col>
               <Col span={12}>
                 <Statistic
@@ -399,7 +498,7 @@ const PeriodClosurePanel: React.FC = () => {
           </Card>
         </Col>
         <Col xs={24} md={8}>
-          <Card title="Checklist rápido">
+          <Card title="Acciones de cierre">
             <Space direction="vertical" className="w-full">
               <Button
                 block
@@ -418,9 +517,20 @@ const PeriodClosurePanel: React.FC = () => {
               >
                 Confirmar checklist completo
               </Button>
+              <Divider style={{ margin: '12px 0' }} />
+              <Button
+                block
+                type="primary"
+                danger
+                icon={<CloseCircleOutlined />}
+                onClick={handleValidateClosure}
+                loading={validationLoading}
+                disabled={statusLoading || executionLoading}
+              >
+                Confirmar cierre completo
+              </Button>
               <Text type="secondary" className="text-xs">
-                Estas acciones requieren un checklist detallado en el futuro. Por ahora se
-                marcan como acciones rápidas sobre el periodo activo.
+                El cierre de periodo inscribirá automáticamente a los estudiantes en el siguiente periodo según su rendimiento académico.
               </Text>
             </Space>
           </Card>
@@ -430,7 +540,14 @@ const PeriodClosurePanel: React.FC = () => {
       <Card
         title={
           <div className="flex items-center justify-between">
-            <span>Resultados por estudiante</span>
+            <div className="flex items-center gap-2">
+              <span>Resultados por estudiante</span>
+              {isPreviewMode && (
+                <Tag color="blue" icon={<SyncOutlined spin={outcomeLoading} />}>
+                  Vista previa (cálculo en tiempo real)
+                </Tag>
+              )}
+            </div>
             <Segmented
               options={[
                 { label: 'Todos', value: 'todos' },
@@ -492,6 +609,99 @@ const PeriodClosurePanel: React.FC = () => {
           }}
         />
       </Card>
+
+      <Modal
+        title="Validación de cierre de periodo"
+        open={validationModalVisible}
+        onCancel={() => setValidationModalVisible(false)}
+        footer={[
+          <Button key="cancel" onClick={() => setValidationModalVisible(false)}>
+            Cancelar
+          </Button>,
+          <Button
+            key="execute"
+            type="primary"
+            danger
+            disabled={!validationResult?.valid}
+            loading={executionLoading}
+            onClick={handleExecuteClosure}
+          >
+            Ejecutar cierre
+          </Button>
+        ]}
+        width={700}
+      >
+        {validationResult && (
+          <div className="space-y-4">
+            {validationResult.valid ? (
+              <Alert
+                message="Validación exitosa"
+                description="El periodo está listo para ser cerrado. Se inscribirán automáticamente los estudiantes en el siguiente periodo."
+                type="success"
+                showIcon
+              />
+            ) : (
+              <Alert
+                message="Validación fallida"
+                description="Se encontraron errores que deben ser corregidos antes de cerrar el periodo."
+                type="error"
+                showIcon
+              />
+            )}
+
+            {validationResult.errors.length > 0 && (
+              <div>
+                <Text strong>Errores:</Text>
+                <ul className="mt-2 ml-4">
+                  {validationResult.errors.map((error: string, idx: number) => (
+                    <li key={idx} className="text-red-600">
+                      {error}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {validationResult.warnings.length > 0 && (
+              <div>
+                <Text strong>Advertencias:</Text>
+                <ul className="mt-2 ml-4">
+                  {validationResult.warnings.map((warning: string, idx: number) => (
+                    <li key={idx} className="text-orange-600">
+                      {warning}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {validationResult.valid && (
+              <Alert
+                message="Proceso de cierre"
+                description={
+                  <div>
+                    <p>Al ejecutar el cierre se realizarán las siguientes acciones:</p>
+                    <ul className="mt-2 ml-4">
+                      <li>Se calcularán las calificaciones finales de todos los estudiantes</li>
+                      <li>Se evaluará el rendimiento según las reglas de transición</li>
+                      <li>Los estudiantes aprobados se inscribirán en el siguiente grado</li>
+                      <li>Los estudiantes con materias pendientes (menos de 4) se inscribirán con arrastre</li>
+                      <li>Los estudiantes reprobados (4 o más materias) repetirán el grado</li>
+                      <li>El periodo actual se marcará como inactivo</li>
+                      <li>El siguiente periodo se activará automáticamente</li>
+                    </ul>
+                    <p className="mt-2 font-bold text-red-600">
+                      Esta acción no se puede deshacer. Asegúrese de tener un respaldo de la base de datos.
+                    </p>
+                  </div>
+                }
+                type="warning"
+                showIcon
+              />
+            )}
+          </div>
+        )}
+      </Modal>
     </div>
   );
 };
