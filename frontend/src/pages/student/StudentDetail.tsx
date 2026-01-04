@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Button, Card, Typography, Space, Tabs, Descriptions, Divider, List, Spin, Empty, Tag } from 'antd';
+import { Button, Card, Typography, Space, Tabs, Descriptions, List, Spin, Empty, Tag, Row, Col } from 'antd';
 import { ArrowLeftOutlined, FileTextOutlined, SolutionOutlined } from '@ant-design/icons';
 import StudentAcademicRecord from '@/components/shared/StudentAcademicRecord';
 import api from '@/services/api';
@@ -87,8 +87,8 @@ const StudentDetail: React.FC = () => {
     if (loading) return <div style={{ textAlign: 'center', padding: 40 }}><Spin /></div>;
     if (!studentData) return <Empty description="No se encontraron datos del estudiante" />;
 
-    const { guardians, inscription } = studentData;
-    
+    const { guardians } = studentData;
+
     // Helper to find guardian by relationship
     const getGuardian = (rel: string) => {
       return guardians?.find((g: any) => g.relationship === rel);
@@ -98,121 +98,107 @@ const StudentDetail: React.FC = () => {
     const fatherAssignment = getGuardian('father');
     const repAssignment = getGuardian('representative');
 
-    // If representative is one of the parents, we might want to highlight that,
-    // but typically we just show the Mother/Father sections and a Representative section if it's someone else ("other").
-    // However, the data structure stores links. If mother is rep, repAssignment might refer to the same profile or be handled via flags.
-    // Based on backend logic: assignments are created for mother, father, representative. 
-    // If mother is rep, she has relationship='mother' and isRepresentative=true.
-    // The previous logic in enrollment looked for relationship='representative' specifically for "other".
-    
-    // Let's render sections for Mother, Father, and "Legal Representative" if different or explicitly set.
-    
-    const renderGuardianSection = (assignment: any, title: string) => {
+    const renderGuardianSection = (assignment: any, title: string, icon: React.ReactNode) => {
       if (!assignment || !assignment.profile) return null;
       const { profile } = assignment;
       const isRep = assignment.isRepresentative;
 
-      const items = [
-        { key: 'name', label: 'Nombre', children: `${profile.firstName} ${profile.lastName}` },
-        { key: 'doc', label: 'Cédula', children: `${profile.documentType}-${profile.document}` },
-        { key: 'phone', label: 'Teléfono', children: profile.phone || 'N/A' },
-        { key: 'email', label: 'Email', children: profile.email || 'N/A' },
-        { 
-          key: 'address', 
-          label: 'Dirección', 
-          span: 2, 
-          children: (
-            <>
-              {profile.address}<br />
-              <Text type="secondary" style={{ fontSize: 12 }}>
-                {profile.residenceMunicipality}, {profile.residenceState}
-              </Text>
-            </>
-          ) 
-        },
-        { 
-          key: 'role', 
-          label: 'Rol', 
-          children: isRep ? <Tag color="blue">Representante Legal</Tag> : 'Familiar' 
-        }
-      ];
-
       return (
-        <>
-          <Descriptions
-            title={title}
-            bordered
-            column={2}
-            size="small"
-            style={{ marginTop: 16 }}
-            items={items}
-          />
-        </>
+        <Card
+          size="small"
+          className="inner-premium-card"
+          title={<Space><div className="icon-wrapper-mini">{icon}</div><Text strong>{title}</Text></Space>}
+          extra={isRep && <Tag color="gold" style={{ borderRadius: 6, fontWeight: 800 }}>REPRESENTANTE LEGAL</Tag>}
+          style={{ marginBottom: 16 }}
+        >
+          <Descriptions column={2} size="small" layout="vertical" className="dossier-descriptions">
+            <Descriptions.Item label="Nombre Completo">{profile.firstName} {profile.lastName}</Descriptions.Item>
+            <Descriptions.Item label="Identificación">{profile.documentType}-{profile.document}</Descriptions.Item>
+            <Descriptions.Item label="Teléfono / Email">
+              <Space direction="vertical" size={0}>
+                <Text style={{ fontSize: 13 }}>{profile.phone || 'N/A'}</Text>
+                <Text type="secondary" style={{ fontSize: 11 }}>{profile.email || 'Sin correo'}</Text>
+              </Space>
+            </Descriptions.Item>
+            <Descriptions.Item label="Dirección">
+              <Text style={{ fontSize: 12 }}>{profile.address}</Text>
+              <div style={{ fontSize: 10, color: '#8c8c8c' }}>{profile.residenceMunicipality}, {profile.residenceState}</div>
+            </Descriptions.Item>
+          </Descriptions>
+        </Card>
       );
     };
 
-    const personalItems = [
-      { key: 'name', label: 'Nombre Completo', children: `${studentData.firstName} ${studentData.lastName}` },
-      { key: 'doc', label: 'Cédula', children: studentData.document ? `${studentData.documentType}-${studentData.document}` : 'N/A' },
-      { key: 'birth', label: 'Fecha Nacimiento', children: studentData.birthdate ? dayjs(studentData.birthdate).format('DD/MM/YYYY') : 'N/A' },
-      { key: 'gender', label: 'Género', children: studentData.gender === 'M' ? 'Masculino' : 'Femenino' },
-      { key: 'birthplace', label: 'Lugar Nacimiento', span: 2, children: `${studentData.residence?.birthMunicipality || ''}, ${studentData.residence?.birthState || ''}` }
-    ];
-
-    const contactItems = [
-      { key: 'phones', label: 'Teléfonos', children: `${studentData.contact?.phone1 || ''} ${studentData.contact?.phone2 ? ' / ' + studentData.contact?.phone2 : ''}` },
-      { key: 'email', label: 'Email', children: studentData.contact?.email || 'N/A' },
-      { key: 'addr', label: 'Dirección', span: 2, children: studentData.contact?.address || 'N/A' },
-      { key: 'loc', label: 'Ubicación', span: 2, children: `${studentData.residence?.residenceParish || ''}, ${studentData.residence?.residenceMunicipality || ''}, ${studentData.residence?.residenceState || ''}` }
-    ];
-
-    const academicItems = [
-      { key: 'period', label: 'Periodo Actual', children: inscription?.period?.name || 'No inscrito' },
-      { key: 'grade', label: 'Grado/Año', children: inscription?.grade?.name || '-' },
-      { key: 'section', label: 'Sección', children: inscription?.section?.name || 'Sin asignar' },
-      { key: 'date', label: 'Fecha Inscripción', children: inscription ? dayjs(inscription.createdAt).format('DD/MM/YYYY HH:mm') : '-' }
-    ];
-
     return (
-      <div style={{ padding: '0 8px 24px' }}>
-        <Descriptions title="Información Personal" bordered column={2} size="small" items={personalItems} />
+      <div className="animate-card delay-1" style={{ padding: '0 4px' }}>
+        <Row gutter={24}>
+          <Col span={24} lg={12}>
+            <Title level={5} style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ width: 4, height: 18, background: '#1890ff', borderRadius: 2 }} />
+              Identidad Estudiantil
+            </Title>
+            <Card className="inner-premium-card" style={{ marginBottom: 24 }}>
+              <Descriptions column={2} size="small" layout="vertical" className="dossier-descriptions">
+                <Descriptions.Item label="Nombre">{studentData.firstName} {studentData.lastName}</Descriptions.Item>
+                <Descriptions.Item label="Documento">{studentData.documentType}-{studentData.document || 'N/A'}</Descriptions.Item>
+                <Descriptions.Item label="Nacimiento">{studentData.birthdate ? dayjs(studentData.birthdate).format('DD MMMM, YYYY') : 'N/A'}</Descriptions.Item>
+                <Descriptions.Item label="Género">{studentData.gender === 'M' ? 'Masculino' : 'Femenino'}</Descriptions.Item>
+                <Descriptions.Item label="Lugar de Nacimiento" span={2}>
+                  <Text style={{ fontSize: 13 }}>{studentData.residence?.birthMunicipality}, {studentData.residence?.birthState}</Text>
+                </Descriptions.Item>
+              </Descriptions>
+            </Card>
 
-        <Divider>Datos de Contacto y Residencia</Divider>
-        <Descriptions bordered column={2} size="small" items={contactItems} />
+            <Title level={5} style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ width: 4, height: 18, background: '#1890ff', borderRadius: 2 }} />
+              Contacto y Ubicación
+            </Title>
+            <Card className="inner-premium-card" style={{ marginBottom: 24 }}>
+              <Descriptions column={2} size="small" layout="vertical" className="dossier-descriptions">
+                <Descriptions.Item label="Teléfonos">{studentData.contact?.phone1 || 'N/A'} {studentData.contact?.phone2 ? ' / ' + studentData.contact?.phone2 : ''}</Descriptions.Item>
+                <Descriptions.Item label="Email">{studentData.contact?.email || 'N/A'}</Descriptions.Item>
+                <Descriptions.Item label="Residencia" span={2}>
+                  <Text style={{ fontSize: 13 }}>{studentData.contact?.address}</Text>
+                  <div style={{ fontSize: 11, color: '#8c8c8c' }}>{studentData.residence?.residenceParish}, {studentData.residence?.residenceMunicipality}, {studentData.residence?.residenceState}</div>
+                </Descriptions.Item>
+              </Descriptions>
+            </Card>
+          </Col>
 
-        <Divider>Información Académica</Divider>
-        <Descriptions bordered column={2} size="small" items={academicItems} />
+          <Col span={24} lg={12}>
+            <Title level={5} style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ width: 4, height: 18, background: '#722ed1', borderRadius: 2 }} />
+              Grupo Familiar
+            </Title>
+            {renderGuardianSection(motherAssignment, "Madre", <SolutionOutlined style={{ color: '#eb2f96' }} />)}
+            {renderGuardianSection(fatherAssignment, "Padre", <SolutionOutlined style={{ color: '#1890ff' }} />)}
+            {repAssignment && repAssignment.relationship === 'representative' &&
+              renderGuardianSection(repAssignment, "Representante (Detalle)", <SolutionOutlined style={{ color: '#faad14' }} />)}
 
-        <Divider>Representantes</Divider>
-        {renderGuardianSection(motherAssignment, "Datos de la Madre")}
-        {renderGuardianSection(fatherAssignment, "Datos del Padre")}
-        {/* Only show 'Representative' section if it's explicitly an 'other' relationship, 
-            otherwise mother/father sections already cover it with the tag */}
-        {repAssignment && repAssignment.relationship === 'representative' && 
-          renderGuardianSection(repAssignment, "Representante Legal (Otro)")}
-
-        {enrollmentQuestions.length > 0 && (
-          <>
-            <Divider>Preguntas Adicionales</Divider>
-            <List
-              size="small"
-              bordered
-              dataSource={enrollmentQuestions}
-              renderItem={(item) => (
-                <List.Item>
-                  <List.Item.Meta
-                    title={item.prompt}
-                    description={
-                      Array.isArray(item.answer) 
-                        ? item.answer.join(', ') 
-                        : (item.answer || 'Sin respuesta')
-                    }
+            {enrollmentQuestions.length > 0 && (
+              <>
+                <Title level={5} style={{ marginTop: 8, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ width: 4, height: 18, background: '#52c41a', borderRadius: 2 }} />
+                  Información Socio-Educativa
+                </Title>
+                <Card className="inner-premium-card" styles={{ body: { padding: 0 } }}>
+                  <List
+                    size="small"
+                    dataSource={enrollmentQuestions}
+                    renderItem={(item) => (
+                      <List.Item style={{ padding: '12px 20px', borderBottom: '1px solid #f0f0f0' }}>
+                        <List.Item.Meta
+                          title={<Text style={{ fontSize: 12, color: '#8c8c8c', textTransform: 'uppercase', fontWeight: 600 }}>{item.prompt}</Text>}
+                          description={<Text strong style={{ color: '#262626' }}>{Array.isArray(item.answer) ? item.answer.join(', ') : (item.answer || '-')}</Text>}
+                        />
+                      </List.Item>
+                    )}
                   />
-                </List.Item>
-              )}
-            />
-          </>
-        )}
+                </Card>
+              </>
+            )}
+          </Col>
+        </Row>
       </div>
     );
   };
@@ -221,9 +207,8 @@ const StudentDetail: React.FC = () => {
     {
       key: 'grades',
       label: (
-        <span>
-          <FileTextOutlined />
-          Calificaciones
+        <span className="premium-tab-label">
+          <FileTextOutlined /> Calificaciones
         </span>
       ),
       children: <StudentAcademicRecord personId={Number(personId)} />
@@ -231,9 +216,8 @@ const StudentDetail: React.FC = () => {
     {
       key: 'dossier',
       label: (
-        <span>
-          <SolutionOutlined />
-          Expediente
+        <span className="premium-tab-label">
+          <SolutionOutlined /> Expediente Digital
         </span>
       ),
       children: renderDossier()
@@ -241,30 +225,126 @@ const StudentDetail: React.FC = () => {
   ];
 
   return (
-    <div style={{ padding: 24 }}>
-      <Card bordered={false} style={{ marginBottom: 24 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Space direction="vertical" size={0}>
-            <Space>
+    <div style={{ padding: '24px 32px 48px' }}>
+      <style>{`
+        @keyframes fadeUp {
+          from { opacity: 0; transform: translateY(15px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-card {
+          animation: fadeUp 0.6s cubic-bezier(0.23, 1, 0.32, 1) both;
+        }
+        .delay-1 { animation-delay: 0.1s; }
+        
+        .premium-detail-card {
+          border-radius: 24px !important;
+          border: 1px solid rgba(0,0,0,0.06) !important;
+          box-shadow: 0 10px 40px rgba(0,0,0,0.04) !important;
+          overflow: hidden;
+        }
+
+        .inner-premium-card {
+          border-radius: 16px !important;
+          border: 1px solid #f0f0f0 !important;
+          transition: all 0.3s ease;
+        }
+        .inner-premium-card:hover {
+          border-color: #d9d9d9 !important;
+          box-shadow: 0 4px 12px rgba(0,0,0,0.02) !important;
+        }
+
+        .icon-wrapper-mini {
+          width: 24px;
+          height: 24px;
+          border-radius: 6px;
+          background: #f0f5ff;
+          display: flex;
+          alignItems: center;
+          justifyContent: center;
+          font-size: 12px;
+        }
+
+        .premium-tabs .ant-tabs-nav::before {
+          border-bottom: 2px solid #f0f0f0 !important;
+        }
+        .premium-tabs .ant-tabs-tab {
+          padding: 16px 24px !important;
+          font-weight: 700 !important;
+          font-size: 14px !important;
+          transition: all 0.3s ease !important;
+        }
+        .premium-tabs .ant-tabs-tab-active .premium-tab-label {
+          color: #1890ff;
+        }
+        
+        .dossier-descriptions .ant-descriptions-item-label {
+          color: #8c8c8c !important;
+          font-size: 11px !important;
+          text-transform: uppercase !important;
+          letter-spacing: 0.5px !important;
+          font-weight: 700 !important;
+          padding-bottom: 4px !important;
+        }
+        .dossier-descriptions .ant-descriptions-item-content {
+          font-weight: 600 !important;
+          color: #262626 !important;
+          padding-bottom: 12px !important;
+        }
+      `}</style>
+
+      {/* Header Section */}
+      <div style={{ marginBottom: 32 }} className="animate-card">
+        <Row justify="space-between" align="middle">
+          <Col>
+            <Space size="middle">
               <Button
-                type="text"
+                shape="circle"
+                size="large"
                 icon={<ArrowLeftOutlined />}
                 onClick={() => navigate(-1)}
+                style={{
+                  boxShadow: '0 4px 10px rgba(0,0,0,0.05)',
+                  border: 'none',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
               />
-              <Title level={4} style={{ margin: 0 }}>Detalle del Estudiante</Title>
+              <div>
+                <Title level={2} style={{ margin: 0, fontWeight: 800, letterSpacing: '-0.02em' }}>
+                  Detalle del Estudiante
+                </Title>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 4 }}>
+                  <Text style={{ fontSize: 16, fontWeight: 600, color: '#595959' }}>
+                    {studentData ? `${studentData.firstName} ${studentData.lastName}` : 'Cargando...'}
+                  </Text>
+                  {studentData?.inscription && (
+                    <Tag color="processing" style={{ borderRadius: 6, fontWeight: 700, border: 'none' }}>
+                      {studentData.inscription.grade?.name} — {studentData.inscription.section?.name}
+                    </Tag>
+                  )}
+                </div>
+              </div>
             </Space>
-            <Text type="secondary" style={{ marginLeft: 40 }}>
-              {studentData ? `${studentData.firstName} ${studentData.lastName}` : 'Cargando...'}
-            </Text>
-          </Space>
-          <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(-1)}>
-            Volver
-          </Button>
-        </div>
-      </Card>
+          </Col>
+          <Col>
+            <Button
+              size="large"
+              onClick={() => navigate(-1)}
+              style={{ borderRadius: 12, fontWeight: 700, padding: '0 24px' }}
+            >
+              Cerrar Vista
+            </Button>
+          </Col>
+        </Row>
+      </div>
 
-      <Card bordered={false}>
-        <Tabs defaultActiveKey="grades" items={tabsItems} />
+      <Card className="premium-detail-card animate-card delay-1" styles={{ body: { padding: '8px 24px 24px' } }}>
+        <Tabs
+          defaultActiveKey="grades"
+          items={tabsItems}
+          className="premium-tabs"
+        />
       </Card>
     </div>
   );
