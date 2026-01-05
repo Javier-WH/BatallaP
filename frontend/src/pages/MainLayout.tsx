@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Layout, Button, Tooltip, Badge, Modal } from 'antd';
+import { Layout, Button, Badge, Modal } from 'antd';
 import {
   LeftOutlined,
   RightOutlined,
@@ -9,7 +9,6 @@ import {
   BookOutlined,
   FileTextOutlined,
   SettingOutlined,
-  BellOutlined,
   CalendarOutlined
 } from '@ant-design/icons';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
@@ -199,9 +198,6 @@ const MainLayout: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-4">
-            <Tooltip title="Notificaciones">
-              <Button shape="circle" icon={<BellOutlined />} className="border-none shadow-none hover:bg-slate-100" />
-            </Tooltip>
             <div className="h-8 w-[1px] bg-slate-200" />
             <Button
               danger
