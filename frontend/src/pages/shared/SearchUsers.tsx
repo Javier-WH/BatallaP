@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { Input, Table, Card, Button, Space, Tag, message, Segmented, Typography } from 'antd';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { Input, Table, Card, Button, Space, Tag, message, Segmented, Typography, Tooltip } from 'antd';
 import { SearchOutlined, EditOutlined } from '@ant-design/icons';
 import api from '@/services/api';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 
 interface Role {
@@ -37,10 +37,21 @@ const SearchUsers: React.FC = () => {
   const [searchValue, setSearchValue] = useState('');
   const [roleFilter, setRoleFilter] = useState<string>('Todos');
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuth();
 
-  // Check if current user has Master role (Spanish: Master)
-  const isMaster = user?.roles?.includes('Master') || false;
+  // Check current user roles
+  const currentRoles = user?.roles ?? [];
+  const isMaster = currentRoles.includes('Master');
+  const isAdminUser = currentRoles.includes('Administrador');
+  const isControlUser = currentRoles.includes('Control de Estudios');
+
+  const moduleBasePath = useMemo(() => {
+    if (location.pathname.startsWith('/master')) return '/master';
+    if (location.pathname.startsWith('/control-estudios')) return '/control-estudios';
+    if (location.pathname.startsWith('/gestion-usuarios')) return '/gestion-usuarios';
+    return '/admin';
+  }, [location.pathname]);
 
   const fetchUsers = async (q: string = '') => {
     setLoading(true);
@@ -59,10 +70,21 @@ const SearchUsers: React.FC = () => {
     fetchUsers();
   }, []);
 
-  // Determine the base path based on user role
-  const getBasePath = () => {
-    return '/admin';
-  };
+  const canEditTarget = useCallback((roles: Role[] = []) => {
+    const roleNames = roles.map(role => role.name);
+    const targetHasMaster = roleNames.includes('Master');
+    const targetHasAdmin = roleNames.includes('Administrador');
+    const targetHasControl = roleNames.includes('Control de Estudios');
+
+    if (isMaster) return true;
+    if (isAdminUser) {
+      return !targetHasMaster && !targetHasAdmin;
+    }
+    if (isControlUser) {
+      return !targetHasMaster && !targetHasAdmin && !targetHasControl;
+    }
+    return false;
+  }, [isMaster, isAdminUser, isControlUser]);
 
   const columns = [
     {
@@ -126,15 +148,29 @@ const SearchUsers: React.FC = () => {
     {
       title: 'Acciones',
       key: 'actions',
-      render: (_: unknown, record: User) => (
-        <Button
-          type="link"
-          icon={<EditOutlined />}
-          onClick={() => navigate(`${getBasePath()}/edit/${record.id}`)}
-        >
-          Editar
-        </Button>
-      )
+      render: (_: unknown, record: User) => {
+        const editable = canEditTarget(record.roles || []);
+        const button = (
+          <Button
+            type="link"
+            icon={<EditOutlined />}
+            disabled={!editable}
+            onClick={() => {
+              if (!editable) return;
+              navigate(`${moduleBasePath}/edit/${record.id}`);
+            }}
+          >
+            Editar
+          </Button>
+        );
+
+        if (editable) return button;
+        return (
+          <Tooltip title="No tienes permisos para editar este usuario">
+            <span>{button}</span>
+          </Tooltip>
+        );
+      }
     }
   ];
 
