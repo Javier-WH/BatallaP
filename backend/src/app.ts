@@ -57,6 +57,7 @@ import settingRoutes from '@/routes/settingRoutes';
 import uploadRoutes from '@/routes/uploadRoutes';
 import termRoutes from '@/routes/termRoutes';
 import periodClosureRoutes from '@/routes/periodClosureRoutes';
+import dashboardRoutes from '@/routes/dashboardRoutes';
 import periodOutcomeRoutes from '@/routes/periodOutcomeRoutes';
 import residenceRoutes from '@/routes/residenceRoutes';
 import locationRoutes from '@/routes/locationRoutes';
@@ -93,5 +94,6 @@ app.use('/api/guardians', guardianRoutes);
 app.use('/api/council', councilRoutes);
 app.use('/api/period-closure', periodClosureRoutes);
 app.use('/api/periods', periodOutcomeRoutes);
+app.use('/api/dashboard', dashboardRoutes);
 
 export default app;

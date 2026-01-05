@@ -1,106 +1,233 @@
-import { Row, Col, Card, Tag, Button } from 'antd';
+import { useEffect, useMemo, useState } from 'react';
+import { Row, Col, Card, Tag, Button, Empty, Progress, List, Space, Typography, message } from 'antd';
 import {
   UserOutlined,
   CheckCircleOutlined,
   ClockCircleOutlined,
-  ArrowUpOutlined,
   FileTextOutlined,
   TeamOutlined
 } from '@ant-design/icons';
+import api from '@/services/api';
+
+const { Text, Title } = Typography;
+
+interface ControlPanelData {
+  period: { id: number; name: string; period: string };
+  students: { total: number; matriculated: number; pending: number };
+  lapses: {
+    total: number;
+    blocked: number;
+    terms: { id: number; name: string; order: number; isBlocked: boolean; openDate?: string; closeDate?: string }[];
+  };
+  council: {
+    checklist: { total: number; done: number };
+    blockedTerms: number;
+    totalTerms: number;
+  };
+  teachers: {
+    totalAssignments: number;
+    withoutPlans: number;
+    withoutGrades: number;
+    sampleWithoutPlans: AssignmentInsight[];
+    sampleWithoutGrades: AssignmentInsight[];
+  };
+}
+
+interface AssignmentInsight {
+  teacher: string;
+  subject: string;
+  grade: string;
+  section: string;
+}
 
 const ControlEstudiosDashboard: React.FC = () => {
-  // Mock data for visual appeal
-  const stats = [
-    { title: 'Estudiantes Inscritos', value: 842, icon: <TeamOutlined />, color: '#1e40af', trend: '+12% este mes' },
-    { title: 'Carga Académica', value: '94%', icon: <FileTextOutlined />, color: '#0ea5e9', trend: 'Periodo 2025-I' },
-    { title: 'Pendientes Matrícula', value: 24, icon: <ClockCircleOutlined />, color: '#f59e0b', trend: 'Acción requerida' },
-    { title: 'Calificaciones Listas', value: '82%', icon: <CheckCircleOutlined />, color: '#10b981', trend: 'Actualizado hoy' },
-  ];
+  const [data, setData] = useState<ControlPanelData | null>(null);
+  const [loading, setLoading] = useState(false);
 
-  const recentActivity = [
-    { id: 1, student: 'Ana García', action: 'Inscripción Completada', date: 'Hace 5 min', status: 'success' },
-    { id: 2, student: 'Luis Torres', action: 'Cambio de Sección', date: 'Hace 12 min', status: 'processing' },
-    { id: 3, student: 'María Rivas', action: 'Actualización de Datos', date: 'Hace 1 hora', status: 'default' },
-  ];
+  const checklistProgress = useMemo(() => {
+    if (!data) return 0;
+    const { total, done } = data.council.checklist;
+    if (total === 0) return 0;
+    return Math.round((done / total) * 100);
+  }, [data]);
+
+  useEffect(() => {
+    const fetchDashboard = async () => {
+      setLoading(true);
+      try {
+        const res = await api.get<ControlPanelData>('/dashboard/control');
+        setData(res.data);
+      } catch (error) {
+        console.error(error);
+        message.error('No se pudo cargar el panel de control.');
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchDashboard();
+  }, []);
+
+  if (loading && !data) {
+    return <Card loading />;
+  }
+
+  if (!data) {
+    return (
+      <Card>
+        <Empty description="No hay información disponible para el período activo." />
+      </Card>
+    );
+  }
 
   return (
     <div className="space-y-6">
-      {/* Welcome Header */}
-      <div className="flex flex-col gap-1">
-        <h1 className="text-2xl font-bold text-slate-900 leading-tight">Módulo de Control de Estudios</h1>
-        <p className="text-slate-500 font-medium">Resumen general y estado de la gestión académica institucional.</p>
+      <div className="space-y-1">
+        <h1 className="text-2xl font-bold text-slate-900 leading-tight">Panel Control de Estudios</h1>
+        <p className="text-slate-500 font-medium">
+          Seguimiento en tiempo real del período {data.period.period} — {data.period.name}
+        </p>
       </div>
 
-      {/* Stats Grid */}
       <Row gutter={[24, 24]}>
-        {stats.map((stat, idx) => (
-          <Col xs={24} sm={12} lg={6} key={idx}>
-            <Card className="glass-card hover:translate-y-[-4px] transition-all duration-300">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-slate-500 text-xs font-bold uppercase tracking-widest mb-1">{stat.title}</p>
-                  <h3 className="text-3xl font-black text-slate-900">{stat.value}</h3>
-                  <p className="text-[10px] items-center gap-1 mt-2 flex font-bold" style={{ color: stat.color }}>
-                    <ArrowUpOutlined /> {stat.trend}
-                  </p>
-                </div>
-                <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-xl shadow-inner" style={{ backgroundColor: `${stat.color}15`, color: stat.color }}>
-                  {stat.icon}
-                </div>
+        <Col xs={24} md={12}>
+          <Card className="glass-card summary-card">
+            <p className="text-slate-500 text-xs font-bold uppercase tracking-widest mb-2">Total Estudiantes</p>
+            <h2 className="text-5xl font-black text-slate-900">{data.students.total}</h2>
+            <p className="text-sm text-slate-500 mt-1">
+              {data.students.matriculated} matriculados · {data.students.pending} pendientes
+            </p>
+            <div className="flex gap-4 mt-4 text-xs text-slate-500">
+              <div className="flex items-center gap-2">
+                <Tag color="blue">En sección</Tag>
+                <span>{data.council.blockedTerms} lapsos bloqueados</span>
               </div>
-            </Card>
-          </Col>
-        ))}
-      </Row>
-
-      <Row gutter={[24, 24]}>
-        {/* Main Chart Area Placeholder */}
-        <Col xs={24} lg={16}>
-          <Card
-            title={<span className="text-slate-800 font-bold">Distribución por Grados</span>}
-            className="glass-card h-full"
-            extra={<Button type="link">Ver Detalles</Button>}
-          >
-            <div className="flex items-end justify-between h-64 gap-4 px-4">
-              {[65, 45, 85, 30, 95, 60].map((h, i) => (
-                <div key={i} className="flex-1 flex flex-col items-center gap-2 group">
-                  <div className="w-full bg-slate-100 rounded-t-xl relative overflow-hidden h-full">
-                    <div
-                      className="absolute bottom-0 w-full bg-gradient-to-t from-brand-primary to-brand-secondary transition-all duration-1000 group-hover:brightness-110"
-                      style={{ height: `${h}%` }}
-                    />
-                  </div>
-                  <span className="text-[10px] font-bold text-slate-400 capitalize">{i + 1}° Año</span>
-                </div>
-              ))}
+              <div className="flex items-center gap-2">
+                <Tag color="purple">Plan</Tag>
+                <span>{data.teachers.withoutPlans} materias sin plan</span>
+              </div>
             </div>
           </Card>
         </Col>
+        <Col xs={24} md={6}>
+          <Card>
+            <Space direction="vertical" size={2}>
+              <span className="text-slate-500 text-xs font-bold uppercase tracking-widest">Matriculados</span>
+              <Text style={{ fontSize: 32, fontWeight: 800 }}>{data.students.matriculated}</Text>
+              <Text type="secondary" style={{ fontSize: 12 }}>Estudiantes con inscripción confirmada</Text>
+            </Space>
+          </Card>
+        </Col>
+        <Col xs={24} md={6}>
+          <Card>
+            <Space direction="vertical" size={2}>
+              <span className="text-slate-500 text-xs font-bold uppercase tracking-widest">Inscritos pendientes</span>
+              <Text style={{ fontSize: 32, fontWeight: 800 }}>{data.students.pending}</Text>
+              <Text type="secondary" style={{ fontSize: 12 }}>Listos para completar matrícula</Text>
+            </Space>
+          </Card>
+        </Col>
+      </Row>
 
-        {/* Sidebar Activity */}
-        <Col xs={24} lg={8}>
+      <Row gutter={[24, 24]}>
+        <Col xs={24} lg={12}>
+          <Card title="Estado de Lapsos">
+            {data.lapses.terms.length === 0 ? (
+              <Empty description="No hay lapsos configurados." />
+            ) : (
+              <List
+                itemLayout="horizontal"
+                dataSource={data.lapses.terms}
+                renderItem={term => (
+                  <List.Item>
+                    <List.Item.Meta
+                      title={
+                        <Space>
+                          <strong>{term.order}. {term.name}</strong>
+                          <Tag color={term.isBlocked ? 'green' : 'orange'}>
+                            {term.isBlocked ? 'Cerrado' : 'Abierto'}
+                          </Tag>
+                        </Space>
+                      }
+                      description={
+                        <Text type="secondary" style={{ fontSize: 12 }}>
+                          {term.openDate ? `Apertura: ${new Date(term.openDate).toLocaleDateString()}` : 'Sin fecha'}
+                          {' · '}
+                          {term.closeDate ? `Cierre: ${new Date(term.closeDate).toLocaleDateString()}` : 'Sin fecha'}
+                        </Text>
+                      }
+                    />
+                  </List.Item>
+                )}
+              />
+            )}
+          </Card>
+        </Col>
+        <Col xs={24} lg={12}>
+          <Card title="Consejos de Curso">
+            <Space direction="vertical" className="w-full">
+              <div>
+                <Text type="secondary" style={{ fontSize: 12 }}>Avance checklist</Text>
+                <Progress percent={checklistProgress} status={checklistProgress === 100 ? 'success' : 'active'} />
+              </div>
+              <div className="flex justify-between text-sm">
+                <span>{data.council.checklist.done} completados de {data.council.checklist.total}</span>
+                <span>{data.council.blockedTerms}/{data.council.totalTerms} lapsos bloqueados</span>
+              </div>
+              <Button type="link" href="/control-estudios/consejos-curso">
+                Ir a Consejos de Curso
+              </Button>
+            </Space>
+          </Card>
+        </Col>
+      </Row>
+
+      <Row gutter={[24, 24]}>
+        <Col xs={24} lg={12}>
           <Card
-            title={<span className="text-slate-800 font-bold">Actividad Reciente</span>}
-            className="glass-card h-full"
+            title="Profesores sin plan de evaluación"
+            extra={<Tag color="red">{data.teachers.withoutPlans}</Tag>}
           >
-            <div className="space-y-6">
-              {recentActivity.map(act => (
-                <div key={act.id} className="flex gap-4">
-                  <div className="shrink-0 w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-500">
-                    <UserOutlined />
-                  </div>
-                  <div className="flex-1 flex flex-col min-w-0">
-                    <span className="text-sm font-bold text-slate-800 truncate">{act.student}</span>
-                    <span className="text-[11px] text-slate-500 font-medium">{act.action}</span>
-                    <span className="text-[10px] text-slate-400 mt-1">{act.date}</span>
-                  </div>
-                  <Tag color={act.status} className="h-fit rounded-lg border-none font-bold text-[10px] px-2">
-                    {act.status === 'success' ? 'Listo' : 'Pendiente'}
-                  </Tag>
-                </div>
-              ))}
-            </div>
-            <Button className="w-full mt-8 rounded-xl font-bold text-slate-600 border-slate-200">Ver todo el historial</Button>
+            {data.teachers.sampleWithoutPlans.length === 0 ? (
+              <Empty description="Todos los docentes tienen plan." />
+            ) : (
+              <List
+                dataSource={data.teachers.sampleWithoutPlans}
+                renderItem={(item, idx) => (
+                  <List.Item key={idx}>
+                    <div>
+                      <Text strong>{item.teacher}</Text>
+                      <div className="text-sm text-slate-500">
+                        {item.subject} · {item.grade} / {item.section}
+                      </div>
+                    </div>
+                  </List.Item>
+                )}
+              />
+            )}
+          </Card>
+        </Col>
+        <Col xs={24} lg={12}>
+          <Card
+            title="Profesores sin registros de notas"
+            extra={<Tag color="orange">{data.teachers.withoutGrades}</Tag>}
+          >
+            {data.teachers.sampleWithoutGrades.length === 0 ? (
+              <Empty description="Todos los docentes ya cargaron notas." />
+            ) : (
+              <List
+                dataSource={data.teachers.sampleWithoutGrades}
+                renderItem={(item, idx) => (
+                  <List.Item key={idx}>
+                    <div>
+                      <Text strong>{item.teacher}</Text>
+                      <div className="text-sm text-slate-500">
+                        {item.subject} · {item.grade} / {item.section}
+                      </div>
+                    </div>
+                  </List.Item>
+                )}
+              />
+            )}
           </Card>
         </Col>
       </Row>
