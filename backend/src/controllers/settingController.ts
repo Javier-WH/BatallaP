@@ -40,8 +40,14 @@ export const updateSettings = async (req: Request, res: Response) => {
 export const getSettingByKey = async (req: Request, res: Response) => {
   try {
     const { key } = req.params;
-    const setting = await Setting.findByPk(key);
-    if (!setting) return res.status(404).json({ message: 'Configuración no encontrada' });
+    const setting = await Setting.findOne({ where: { key } });
+    if (!setting) {
+      // Return default value for max_grade if not found
+      if (key === 'max_grade') {
+        return res.json({ key: 'max_grade', value: '20' });
+      }
+      return res.status(404).json({ message: 'Configuración no encontrada' });
+    }
     res.json(setting);
   } catch (error) {
     console.error(error);

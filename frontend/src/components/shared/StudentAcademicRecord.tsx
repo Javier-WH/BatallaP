@@ -20,7 +20,7 @@ interface SubjectInfo {
 }
 
 interface EvaluationPlan {
-  term?: number;
+  termId?: number;
   percentage?: number;
 }
 
@@ -54,8 +54,9 @@ const StudentAcademicRecord: React.FC<StudentAcademicRecordProps> = ({ personId 
       try {
         const res = await api.get('/settings/max_grade');
         if (res.data?.value) setMaxGrade(Number(res.data.value));
-      } catch (error) {
-        console.error('Error fetching max_grade', error);
+      } catch {
+        // Silently use default max_grade of 20 if endpoint doesn't exist
+        setMaxGrade(20);
       }
     };
     fetchSettings();
@@ -76,7 +77,7 @@ const StudentAcademicRecord: React.FC<StudentAcademicRecordProps> = ({ personId 
     if (personId) fetchRecord();
   }, [personId]);
 
-  if (loading) return <div style={{ textAlign: 'center', padding: 50 }}><Spin size="large" tip="Cargando historial académico..." /></div>;
+  if (loading) return <div style={{ textAlign: 'center', padding: 50 }}><Spin size="large" /></div>;
   if (records.length === 0) return (
     <div style={{ padding: '40px 0' }}>
       <Empty description="No se encontraron registros académicos para este estudiante." />
@@ -153,7 +154,7 @@ const StudentAcademicRecord: React.FC<StudentAcademicRecordProps> = ({ personId 
         Historial de Calificaciones
       </Title>
 
-      <Collapse defaultActiveKey={[records[0]?.id]} className="academic-collapse" accordion expandIconPosition="end">
+      <Collapse defaultActiveKey={[records[0]?.id]} className="academic-collapse" accordion expandIcon={() => null}>
         {records.map(record => (
           <Panel
             key={record.id}
@@ -217,7 +218,7 @@ const StudentAcademicRecord: React.FC<StudentAcademicRecordProps> = ({ personId 
                       return (
                         <Space size="middle">
                           {terms.map(t => {
-                            const quals = subject.qualifications?.filter(q => q.evaluationPlan?.term === t) || [];
+                            const quals = subject.qualifications?.filter(q => q.evaluationPlan?.termId === t) || [];
                             const totalScore = quals.reduce((acc: number, q) => acc + (Number(q.score) * (Number(q.evaluationPlan?.percentage) / 100)), 0);
                             const hasNotes = quals.length > 0;
 
@@ -249,7 +250,7 @@ const StudentAcademicRecord: React.FC<StudentAcademicRecordProps> = ({ personId 
                     render: (_: unknown, subject: InscriptionSubject) => {
                       const quals = subject.qualifications || [];
                       const termScores = [1, 2, 3].map(t => {
-                        const qL = quals.filter(q => q.evaluationPlan?.term === t);
+                        const qL = quals.filter(q => q.evaluationPlan?.termId === t);
                         if (qL.length === 0) return null;
                         return qL.reduce((acc: number, q: Qualification) => acc + (Number(q.score) * (Number(q.evaluationPlan?.percentage) / 100)), 0);
                       }).filter(s => s !== null);
