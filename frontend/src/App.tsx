@@ -37,6 +37,7 @@ import ControlEstudiosDashboard from '@/pages/control-estudios/Dashboard';
 import AcademicSettings from '@/pages/control-estudios/AcademicSettings';
 import MatriculationEnrollment from '@/pages/control-estudios/MatriculationEnrollment';
 import CourseCouncil from '@/pages/control-estudios/CourseCouncil';
+import RegisterRepresentative from '@/pages/admin/RegisterRepresentative';
 
 
 // Protected Route Component
@@ -102,6 +103,7 @@ function AppRoutes() {
           <Route path="register-staff" element={<RegisterStaff />} />
           <Route path="inscribir-estudiante" element={<EnrollStudent />} />
           <Route path="matricular-estudiante" element={<MatriculationEnrollment />} />
+          <Route path="registrar-representante" element={<RegisterRepresentative />} />
           <Route path="projection" element={<TeacherProjection />} />
           <Route path="planteles" element={<SchoolManagement />} />
           <Route path="enrollment-questions" element={<EnrollmentQuestions />} />
@@ -110,7 +112,14 @@ function AppRoutes() {
         </Route>
 
         {/* Nested Control de Estudios Module */}
-        <Route path="control-estudios" element={<RequireAuth allowedRoles={['Control de Estudios', 'Administrador', 'Master']}><ControlEstudiosLayout /></RequireAuth>}>
+        <Route
+          path="control-estudios"
+          element={
+            <RequireAuth allowedRoles={['Control de Estudios', 'Administrador', 'Master']}>
+              <ControlEstudiosLayout />
+            </RequireAuth>
+          }
+        >
           <Route index element={<ControlEstudiosDashboard />} />
           <Route path="matricular-estudiante" element={<MatriculationEnrollment />} />
           <Route path="configuracion" element={<AcademicSettings />} />
