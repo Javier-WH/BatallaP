@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Input, Table, Card, Button, Space, Tag, message } from 'antd';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Input, Table, Card, Button, Space, Tag, message, Segmented, Typography } from 'antd';
 import { SearchOutlined, EditOutlined } from '@ant-design/icons';
 import api from '@/services/api';
 import { useNavigate } from 'react-router-dom';
@@ -19,10 +19,23 @@ interface User {
 }
 
 const { Search } = Input;
+const { Title, Text } = Typography;
+
+const ROLE_FILTERS = [
+  { label: 'Todos', value: 'Todos' },
+  { label: 'Master', value: 'Master' },
+  { label: 'Administradores', value: 'Administrador' },
+  { label: 'Control de Estudios', value: 'Control de Estudios' },
+  { label: 'Profesores', value: 'Profesor' },
+  { label: 'Representantes', value: 'Representante' },
+  { label: 'Alumnos', value: 'Alumno' }
+] as const;
 
 const SearchUsers: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<User[]>([]);
+  const [searchValue, setSearchValue] = useState('');
+  const [roleFilter, setRoleFilter] = useState<string>('Todos');
   const navigate = useNavigate();
   const { user } = useAuth();
 
@@ -125,35 +138,104 @@ const SearchUsers: React.FC = () => {
     }
   ];
 
+  const filteredData = useMemo(() => {
+    if (roleFilter === 'Todos') return data;
+    return data.filter(user => user.roles?.some(role => role.name === roleFilter));
+  }, [data, roleFilter]);
+
+  const roleStats = useMemo(() => {
+    const stats: Record<string, number> = {};
+    ROLE_FILTERS.forEach(filter => {
+      if (filter.value !== 'Todos') {
+        stats[filter.value] = data.filter(user => user.roles?.some(role => role.name === filter.value)).length;
+      }
+    });
+    return stats;
+  }, [data]);
+
   return (
-    <div style={{ maxWidth: 1000, margin: '0 auto' }}>
+    <div className="space-y-6">
+      <div className="rounded-3xl bg-slate-900 text-white p-6 md:p-10 shadow-2xl">
+        <div className="space-y-3">
+          <Tag color="gold" className="border-none font-bold uppercase tracking-[0.3em] text-[10px] px-3 py-1 rounded-full">
+            Gestión de Usuarios
+          </Tag>
+          <Title level={2} style={{ color: '#fff', margin: 0 }}>Directorio unificado</Title>
+          <Text style={{ color: 'rgba(255,255,255,0.7)' }}>
+            Filtra rápidamente por rol y encuentra a cualquier miembro de la comunidad educativa.
+          </Text>
+          <div className="pt-4 flex flex-wrap gap-4 text-sm text-white/80">
+            <span>Total registrados: <strong>{data.length}</strong></span>
+            <span>Vista actual: <strong>{roleFilter === 'Todos' ? 'Todos los roles' : roleFilter}</strong></span>
+          </div>
+        </div>
+      </div>
+
       <Card
-        title="Buscar y Editar Usuarios"
-        extra={
-          isMaster && (
-            <Tag color="purple" style={{ margin: 0 }}>Modo Master</Tag>
-          )
+        className="border-none shadow-lg rounded-3xl"
+        bodyStyle={{ padding: '24px 24px 32px' }}
+        title={
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+            <div>
+              <Title level={4} style={{ margin: 0 }}>Buscar y editar usuarios</Title>
+              <Text type="secondary">Control centralizado de perfiles</Text>
+            </div>
+            {isMaster && (
+              <Tag color="purple" style={{ margin: 0 }}>Modo Master</Tag>
+            )}
+          </div>
         }
       >
-        <div style={{ marginBottom: 16 }}>
-          <Search
-            placeholder="Buscar por nombre o cédula"
-            allowClear
-            enterButton={<Button icon={<SearchOutlined />}>Buscar</Button>}
-            size="large"
-            onSearch={fetchUsers}
-            onChange={(e) => {
-              if (!e.target.value) fetchUsers(''); // Auto reload on clear
-            }}
+        <Space direction="vertical" size="large" className="w-full">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div className="flex-1 w-full">
+              <Search
+                placeholder="Buscar por nombre o cédula"
+                allowClear
+                value={searchValue}
+                enterButton={<Button icon={<SearchOutlined />}>Buscar</Button>}
+                size="large"
+                onSearch={(value) => {
+                  setSearchValue(value);
+                  fetchUsers(value);
+                }}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setSearchValue(value);
+                  if (!value) fetchUsers('');
+                }}
+              />
+            </div>
+            <Segmented
+              size="large"
+              value={roleFilter}
+              onChange={(val) => setRoleFilter(val.toString())}
+              options={ROLE_FILTERS.map(filter => ({ label: filter.label, value: filter.value }))}
+            />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+            {ROLE_FILTERS.filter(filter => filter.value !== 'Todos').map(filter => (
+              <div
+                key={filter.value}
+                className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3 flex items-center justify-between"
+              >
+                <div>
+                  <p className="text-[11px] uppercase text-slate-500 tracking-[0.3em] mb-1">{filter.label}</p>
+                  <p className="text-xl font-bold text-slate-900">{roleStats[filter.value] || 0}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <Table
+            columns={columns}
+            dataSource={filteredData}
+            rowKey="id"
+            loading={loading}
+            pagination={{ pageSize: 10 }}
           />
-        </div>
-        <Table
-          columns={columns}
-          dataSource={data}
-          rowKey="id"
-          loading={loading}
-          pagination={{ pageSize: 10 }}
-        />
+        </Space>
       </Card>
     </div>
   );
