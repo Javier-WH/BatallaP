@@ -173,6 +173,15 @@ const CourseCouncil: React.FC = () => {
     }
   };
 
+  const handleTermClick = (term: Term) => {
+    if (!term.isBlocked) {
+      message.warning('El lapso debe estar cerrado para realizar el consejo de curso.');
+      return;
+    }
+    setSelectedTerm(term);
+    setStep(1);
+  };
+
   const renderTermSelector = () => (
     <div style={{ padding: '0px 0' }}>
       <div style={{ textAlign: 'center', marginBottom: 60 }} className="animate-card">
@@ -184,40 +193,43 @@ const CourseCouncil: React.FC = () => {
         {terms.map((term, idx) => (
           <Col key={term.id} xs={24} sm={12} md={8} lg={6}>
             <Card
-              hoverable
+              hoverable={term.isBlocked}
               className={`premium-card animate-card delay-${(idx % 3) + 1}`}
               styles={{ body: { padding: '40px 24px' } }}
               style={{
                 textAlign: 'center',
-                transition: 'all 0.4s cubic-bezier(0.165, 0.84, 0.44, 1)'
+                transition: 'all 0.4s cubic-bezier(0.165, 0.84, 0.44, 1)',
+                cursor: term.isBlocked ? 'pointer' : 'not-allowed',
+                opacity: term.isBlocked ? 1 : 0.6
               }}
-              onClick={() => {
-                setSelectedTerm(term);
-                setStep(1);
-              }}
+              onClick={() => handleTermClick(term)}
             >
               <div style={{
                 width: 80,
                 height: 80,
                 borderRadius: 24,
-                background: term.isBlocked ? '#f5f5f5' : 'linear-gradient(135deg, #1890ff 0%, #096dd9 100%)',
+                background: term.isBlocked ? 'linear-gradient(135deg, #1890ff 0%, #096dd9 100%)' : '#f5f5f5',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 margin: '0 auto 24px',
-                boxShadow: term.isBlocked ? 'none' : '0 12px 24px rgba(24,144,255,0.25)',
+                boxShadow: term.isBlocked ? '0 12px 24px rgba(24,144,255,0.25)' : 'none',
                 transition: 'all 0.3s ease'
               }} className="icon-wrapper">
-                <CalendarOutlined style={{ fontSize: 36, color: term.isBlocked ? '#bfbfbf' : '#fff' }} />
+                <CalendarOutlined style={{ fontSize: 36, color: term.isBlocked ? '#fff' : '#bfbfbf' }} />
               </div>
 
               <Title level={3} style={{ margin: '0 0 8px 0', fontWeight: 800 }}>{term.name}</Title>
 
               <div style={{ marginTop: 16 }}>
                 {term.isBlocked ? (
-                  <Tag color="error" style={{ borderRadius: 20, padding: '2px 16px', fontWeight: 700, border: 'none', textTransform: 'uppercase', fontSize: 10 }}>Bloqueado</Tag>
+                  <Tag color="blue" style={{ borderRadius: 20, padding: '2px 16px', fontWeight: 700, border: 'none', textTransform: 'uppercase', fontSize: 10 }}>
+                    Lapso cerrado · Consejo habilitado
+                  </Tag>
                 ) : (
-                  <Tag color="success" style={{ borderRadius: 20, padding: '2px 16px', fontWeight: 700, border: 'none', textTransform: 'uppercase', fontSize: 10 }}>Fase Activa</Tag>
+                  <Tag color="warning" style={{ borderRadius: 20, padding: '2px 16px', fontWeight: 700, border: 'none', textTransform: 'uppercase', fontSize: 10 }}>
+                    Lapso activo · Cierre pendiente
+                  </Tag>
                 )}
               </div>
 
@@ -250,7 +262,10 @@ const CourseCouncil: React.FC = () => {
     structure.forEach(pg => {
       const matchFilter = !filterYear || pg.grade.name.toLowerCase().includes(filterYear.toLowerCase());
       if (matchFilter) {
-        sectionsByGrade.push({ grade: pg.grade, sections: pg.sections });
+        const sortedSections = [...pg.sections].sort((a, b) =>
+          a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
+        );
+        sectionsByGrade.push({ grade: pg.grade, sections: sortedSections });
       }
     });
 
@@ -570,7 +585,7 @@ const CourseCouncil: React.FC = () => {
                 size="middle"
                 value={subjectData.points}
                 onChange={(val) => handlePointChange(record.id, subjectData.inscriptionSubjectId, val)}
-                disabled={selectedTerm?.isBlocked}
+                disabled={!selectedTerm?.isBlocked}
                 className="premium-input-number"
                 style={{ width: 50, fontWeight: 700, borderRadius: 8 }}
               />
@@ -617,10 +632,10 @@ const CourseCouncil: React.FC = () => {
             </div>
           </Space>
           <Space size="large">
-            {selectedTerm?.isBlocked && (
+            {!selectedTerm?.isBlocked && (
               <Alert
-                message="Modo lectura"
-                description="El lapso está bloqueado para cambios."
+                message="Lapso activo"
+                description="Debe cerrar el lapso para modificar puntos del consejo."
                 type="warning"
                 showIcon
                 style={{ borderRadius: 14, padding: '4px 16px' }}
@@ -632,7 +647,7 @@ const CourseCouncil: React.FC = () => {
               icon={<SaveOutlined />}
               onClick={handleSave}
               loading={saving}
-              disabled={selectedTerm?.isBlocked}
+              disabled={!selectedTerm?.isBlocked}
               style={{
                 borderRadius: 14,
                 fontWeight: 800,
