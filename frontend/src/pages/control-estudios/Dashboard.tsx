@@ -1,15 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Row, Col, Card, Tag, Button, Empty, Progress, List, Space, Typography, message } from 'antd';
-import {
-  UserOutlined,
-  CheckCircleOutlined,
-  ClockCircleOutlined,
-  FileTextOutlined,
-  TeamOutlined
-} from '@ant-design/icons';
 import api from '@/services/api';
 
-const { Text, Title } = Typography;
+const { Text } = Typography;
 
 interface ControlPanelData {
   period: { id: number; name: string; period: string };
