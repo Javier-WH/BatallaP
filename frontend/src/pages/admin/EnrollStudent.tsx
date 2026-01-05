@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Card, Button, Form, Tag, message, Select, Row, Col, Input, DatePicker, Radio, Tabs, Alert, Checkbox, Upload, Modal } from 'antd';
-import type { UploadFile, RcFile } from 'antd/es/upload/interface';
+import { Card, Button, Form, message, Select, Row, Col, Input, DatePicker, Radio, Tabs, Alert, Checkbox, Upload, Modal } from 'antd';
+import type { UploadFile, RcFile, UploadChangeParam } from 'antd/es/upload/interface';
 import { UserAddOutlined, LoadingOutlined, UploadOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import api from '@/services/api';
@@ -161,6 +161,30 @@ const buildParishOptions = (
 
 type EnrollmentAnswerFormValues = Record<number, string | string[]>;
 
+type DocumentUploadResponse = {
+  path?: string;
+};
+
+type EnrollmentDocumentsFormValues = {
+  receivedCertificadoAprendizaje?: boolean;
+  receivedCartaBuenaConducta?: boolean;
+  receivedNotasCertificadas?: boolean;
+  receivedPartidaNacimiento?: boolean;
+  receivedCopiaCedulaEstudiante?: boolean;
+  receivedInformesMedicos?: boolean;
+  receivedFotoCarnetEstudiante?: boolean;
+  pathCedulaRepresentante?: UploadFile<DocumentUploadResponse>[];
+  pathFotoRepresentante?: UploadFile<DocumentUploadResponse>[];
+  pathFotoEstudiante?: UploadFile<DocumentUploadResponse>[];
+  pathInformesMedicos?: UploadFile<DocumentUploadResponse>[];
+};
+
+type NewStudentFormValues = Record<string, unknown> & {
+  documents?: EnrollmentDocumentsFormValues;
+  birthdate?: dayjs.Dayjs;
+  enrollmentAnswers?: EnrollmentAnswerFormValues;
+};
+
 const transformAnswers = (raw?: EnrollmentAnswerFormValues) => {
   if (!raw) return [];
   return Object.entries(raw).map(([key, value]) => ({
@@ -169,7 +193,9 @@ const transformAnswers = (raw?: EnrollmentAnswerFormValues) => {
   }));
 };
 
-const normFile = (e: any) => {
+const normFile = (
+  e: UploadChangeParam<UploadFile<DocumentUploadResponse>> | UploadFile<DocumentUploadResponse>[]
+) => {
   if (Array.isArray(e)) {
     return e;
   }
@@ -616,20 +642,23 @@ const EnrollStudent: React.FC = () => {
   };
 
   // Submit: New Student
-  const handleNewStudentSubmit = async (values: Record<string, unknown>) => {
+  const handleNewStudentSubmit = async (values: NewStudentFormValues) => {
     if (!activePeriod) {
       message.error('No hay periodo activo');
       return;
     }
 
     try {
-      const documents = (values.documents as any) || {};
+      const documents: EnrollmentDocumentsFormValues = values.documents ?? {};
       const transformedDocuments = {
         ...documents,
-        pathCedulaRepresentante: documents.pathCedulaRepresentante?.[0]?.response?.path || null,
-        pathFotoRepresentante: documents.pathFotoRepresentante?.[0]?.response?.path || null,
-        pathFotoEstudiante: documents.pathFotoEstudiante?.[0]?.response?.path || null,
-        pathInformesMedicos: documents.pathInformesMedicos?.map((f: any) => f.response?.path).filter(Boolean) || [],
+        pathCedulaRepresentante: documents.pathCedulaRepresentante?.[0]?.response?.path ?? null,
+        pathFotoRepresentante: documents.pathFotoRepresentante?.[0]?.response?.path ?? null,
+        pathFotoEstudiante: documents.pathFotoEstudiante?.[0]?.response?.path ?? null,
+        pathInformesMedicos:
+          documents.pathInformesMedicos
+            ?.map((file) => file.response?.path)
+            .filter((path): path is string => Boolean(path)) ?? [],
       };
 
       const payload = {
