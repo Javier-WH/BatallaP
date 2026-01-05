@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Form, Input, Button, DatePicker, Select, Radio, message, Card, Checkbox, Space, Tag } from 'antd';
-import { UserOutlined, TeamOutlined, AuditOutlined } from '@ant-design/icons';
+import { UserOutlined, AuditOutlined } from '@ant-design/icons';
 import api from '@/services/api';
 import type { AxiosError } from 'axios';
 import type { Dayjs } from 'dayjs';
@@ -25,7 +25,6 @@ const { Option } = Select;
 
 const ROLE_OPTIONS = [
   { value: 'Profesor', label: 'Profesor', icon: <UserOutlined />, color: 'green' },
-  { value: 'Representante', label: 'Representante', icon: <TeamOutlined />, color: 'blue' },
   { value: 'Control de Estudios', label: 'Control de Estudios', icon: <AuditOutlined />, color: 'purple' }
 ];
 
@@ -240,10 +239,10 @@ const RegisterStaff: React.FC = () => {
               {selectedRoles.map(role => (
                 <Tag
                   key={role}
-                  color={role === 'Teacher' ? 'green' : role === 'Tutor' ? 'blue' : 'purple'}
+                  color={role === 'Profesor' ? 'green' : 'purple'}
                   style={{ marginLeft: 4 }}
                 >
-                  {role === 'Teacher' ? 'Profesor' : role === 'Tutor' ? 'Representante' : 'Control de Estudios'}
+                  {role}
                 </Tag>
               ))}
               {selectedRoles.length === 0 && <Tag color="error">Ninguno</Tag>}
