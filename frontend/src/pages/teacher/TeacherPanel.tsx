@@ -66,10 +66,12 @@ class TeacherPanelErrorBoundary extends Component<ErrorBoundaryProps, ErrorBound
 }
 
 interface PlanItemFormValues {
-  description: string;
+  description?: string;
   objetivo: string;
   percentage: number;
   date: dayjs.Dayjs;
+  instrumentOption?: string;
+  customInstrument?: string;
 }
 
 interface Qualification {
@@ -154,6 +156,36 @@ interface Assignment {
   section: Section;
 }
 
+const evaluationInstruments = [
+  'Examen escrito',
+  'Prueba objetiva (selección múltiple o verdadero/falso)',
+  'Cuestionario diagnóstico',
+  'Exposición oral',
+  'Debate guiado',
+  'Mesa redonda',
+  'Proyecto integrador',
+  'Estudio de caso',
+  'Ensayo crítico',
+  'Portafolio digital',
+  'Trabajo de laboratorio',
+  'Bitácora de aprendizaje',
+  'Rúbrica de desempeño',
+  'Observación de clase',
+  'Demostración práctica',
+  'Simulación o role play',
+  'Mapa conceptual',
+  'Investigación de campo',
+  'Análisis de textos',
+  'Diseño de prototipo',
+  'Taller participativo',
+  'Diario reflexivo',
+  'Evaluación entre pares',
+  'Autoevaluación dirigida',
+  'Evaluación gamificada'
+];
+
+const CUSTOM_INSTRUMENT_VALUE = '__custom__';
+
 const TeacherPanel: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [assignments, setAssignments] = useState<Assignment[]>([]);
@@ -167,6 +199,7 @@ const TeacherPanel: React.FC = () => {
   const [planForm] = Form.useForm<PlanItemFormValues>();
   const [activeTab, setActiveTab] = useState('1');
   const [maxGrade, setMaxGrade] = useState<number>(20);
+  const instrumentSelection = Form.useWatch('instrumentOption', planForm);
 
   const isSelectedTermBlocked = useMemo(() => {
     if (!selectedTerm) return false;
@@ -306,8 +339,21 @@ const TeacherPanel: React.FC = () => {
       message.error('No se pudo encontrar la asignación seleccionada');
       return;
     }
+
+    const { instrumentOption, customInstrument, ...restValues } = values;
+    const selectedInstrument =
+      instrumentOption === CUSTOM_INSTRUMENT_VALUE
+        ? customInstrument?.trim()
+        : instrumentOption;
+
+    if (!selectedInstrument) {
+      message.error('Selecciona o especifica un instrumento de evaluación.');
+      return;
+    }
+
     const data = {
-      ...values,
+      ...restValues,
+      description: selectedInstrument,
       periodGradeSubjectId: assignment.periodGradeSubjectId,
       sectionId: assignment.sectionId,
       termId: selectedTerm
@@ -370,7 +416,7 @@ const TeacherPanel: React.FC = () => {
   };
 
   const planColumns: ColumnsType<EvaluationPlanItem> = [
-    { title: 'Descripción', dataIndex: 'description', key: 'description', width: 200 },
+    { title: 'Instrumento', dataIndex: 'description', key: 'description', width: 200 },
     { title: 'Objetivo', dataIndex: 'objetivo', key: 'objetivo', ellipsis: true },
     { title: 'Peso (%)', dataIndex: 'percentage', key: 'percentage', render: (val: number) => `${val}%`, width: 100 },
     { title: 'Fecha', dataIndex: 'date', key: 'date', render: (val: string) => dayjs(val).format('DD/MM/YYYY'), width: 120 },
@@ -385,7 +431,18 @@ const TeacherPanel: React.FC = () => {
                 icon={<EditOutlined />}
                 onClick={() => {
                   setEditingItem(record);
-                  planForm.setFieldsValue({ ...record, date: dayjs(record.date) });
+                  const matchedInstrument = evaluationInstruments.find(
+                    instrument => instrument.toLowerCase() === record.description.toLowerCase()
+                  );
+
+                  planForm.setFieldsValue({
+                    instrumentOption: matchedInstrument ?? CUSTOM_INSTRUMENT_VALUE,
+                    customInstrument: matchedInstrument ? undefined : record.description,
+                    objetivo: record.objetivo,
+                    percentage: Number(record.percentage),
+                    date: dayjs(record.date)
+                  });
+
                   setShowPlanModal(true);
                 }}
               />
@@ -672,9 +729,48 @@ const TeacherPanel: React.FC = () => {
         ]}
       >
         <Form form={planForm} layout="vertical" onFinish={handleSavePlanItem}>
-          <Form.Item name="description" label="Descripción de la actividad" rules={[{ required: true }]}>
-            <Input placeholder="Ej: Primer Parcial, Taller de Ecuaciones..." />
+          <Form.Item
+            name="instrumentOption"
+            label="Instrumento"
+            rules={[{ required: true, message: 'Selecciona un instrumento de evaluación' }]}
+          >
+            <Select
+              showSearch
+              placeholder="Selecciona el instrumento de evaluación"
+              optionFilterProp="children"
+              filterOption={(input, option) =>
+                String(option?.children ?? '')
+                  .toLowerCase()
+                  .includes(input.toLowerCase())
+              }
+              onChange={(value: string) => {
+                planForm.setFieldValue('instrumentOption', value);
+                if (value !== CUSTOM_INSTRUMENT_VALUE) {
+                  planForm.setFieldValue('customInstrument', undefined);
+                }
+              }}
+            >
+              {evaluationInstruments.map(instrument => (
+                <Option key={instrument} value={instrument}>
+                  {instrument}
+                </Option>
+              ))}
+              <Option value={CUSTOM_INSTRUMENT_VALUE}>Otro (especificar)</Option>
+            </Select>
           </Form.Item>
+
+          {instrumentSelection === CUSTOM_INSTRUMENT_VALUE && (
+            <Form.Item
+              name="customInstrument"
+              label="Describe el instrumento"
+              rules={[
+                { required: true, message: 'Ingresa el instrumento de evaluación' },
+                { min: 3, message: 'Debe tener al menos 3 caracteres' }
+              ]}
+            >
+              <Input placeholder="Ej: Evaluación práctica en laboratorio..." />
+            </Form.Item>
+          )}
           <Form.Item name="objetivo" label="Objetivo a evaluar" rules={[{ required: true }]}>
             <Input.TextArea 
               rows={3} 
