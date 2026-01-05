@@ -67,6 +67,7 @@ class TeacherPanelErrorBoundary extends Component<ErrorBoundaryProps, ErrorBound
 
 interface PlanItemFormValues {
   description: string;
+  objetivo: string;
   percentage: number;
   date: dayjs.Dayjs;
 }
@@ -98,6 +99,7 @@ interface StudentEnrollment {
 interface EvaluationPlanItem {
   id: number;
   description: string;
+  objetivo: string;
   percentage: number;
   date: string;
 }
@@ -368,9 +370,10 @@ const TeacherPanel: React.FC = () => {
   };
 
   const planColumns: ColumnsType<EvaluationPlanItem> = [
-    { title: 'Descripción', dataIndex: 'description', key: 'description' },
-    { title: 'Peso (%)', dataIndex: 'percentage', key: 'percentage', render: (val: number) => `${val}%` },
-    { title: 'Fecha', dataIndex: 'date', key: 'date', render: (val: string) => dayjs(val).format('DD/MM/YYYY') },
+    { title: 'Descripción', dataIndex: 'description', key: 'description', width: 200 },
+    { title: 'Objetivo', dataIndex: 'objetivo', key: 'objetivo', ellipsis: true },
+    { title: 'Peso (%)', dataIndex: 'percentage', key: 'percentage', render: (val: number) => `${val}%`, width: 100 },
+    { title: 'Fecha', dataIndex: 'date', key: 'date', render: (val: string) => dayjs(val).format('DD/MM/YYYY'), width: 120 },
     {
       title: 'Acciones',
       key: 'actions',
@@ -671,6 +674,12 @@ const TeacherPanel: React.FC = () => {
         <Form form={planForm} layout="vertical" onFinish={handleSavePlanItem}>
           <Form.Item name="description" label="Descripción de la actividad" rules={[{ required: true }]}>
             <Input placeholder="Ej: Primer Parcial, Taller de Ecuaciones..." />
+          </Form.Item>
+          <Form.Item name="objetivo" label="Objetivo a evaluar" rules={[{ required: true }]}>
+            <Input.TextArea 
+              rows={3} 
+              placeholder="Ej: Evaluar la comprensión de ecuaciones lineales y su aplicación en problemas prácticos..." 
+            />
           </Form.Item>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
             <Form.Item name="percentage" label="Porcentaje (1-100)" rules={[{ required: true }]}>
