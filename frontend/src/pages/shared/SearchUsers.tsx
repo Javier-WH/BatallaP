@@ -56,7 +56,7 @@ const SearchUsers: React.FC<{ initialRoleFilter?: string }> = ({ initialRoleFilt
   const fetchUsers = async (q: string = '') => {
     setLoading(true);
     try {
-      const response = await api.get(`/users?q=${q}`);
+      const response = await api.get(`/users?q=${q}&activeOnly=true`);
       setData(response.data);
     } catch (error) {
       console.error(error);
