@@ -104,6 +104,7 @@ function AppRoutes() {
           <Route path="inscribir-estudiante" element={<EnrollStudent />} />
           <Route path="matricular-estudiante" element={<MatriculationEnrollment />} />
           <Route path="registrar-representante" element={<RegisterRepresentative />} />
+          <Route path="gestion-representantes" element={<SearchUsers initialRoleFilter="Representante" />} />
           <Route path="projection" element={<TeacherProjection />} />
           <Route path="planteles" element={<SchoolManagement />} />
           <Route path="enrollment-questions" element={<EnrollmentQuestions />} />

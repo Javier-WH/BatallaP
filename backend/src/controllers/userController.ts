@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { User, Person, Role, Contact, PersonRole } from '@/models/index';
+import { User, Person, Role, Contact, PersonRole, GuardianProfile } from '@/models/index';
 import { Op } from 'sequelize';
 import bcrypt from 'bcrypt';
 
@@ -148,6 +148,8 @@ export const updateUser = async (req: Request, res: Response) => {
       username, password,
       // Contact
       phone1, phone2, email, address, whatsapp,
+      // Residence
+      residenceState, residenceMunicipality, residenceParish,
       // Role
       roleName
     } = req.body;
@@ -156,6 +158,14 @@ export const updateUser = async (req: Request, res: Response) => {
       include: [{ model: Role, as: 'roles', through: { attributes: [] } }]
     });
     if (!person) return res.status(404).json({ message: 'Person not found' });
+
+    // Try to find associated GuardianProfile BEFORE updating person (to match by current document)
+    const guardianProfile = await GuardianProfile.findOne({
+      where: {
+        document: person.document,
+        documentType: person.documentType
+      }
+    });
 
     // Permissions Check
     const currentUser = (req.session as any).user;
@@ -226,6 +236,29 @@ export const updateUser = async (req: Request, res: Response) => {
           await PersonRole.create({ personId: person.id, roleId: role.id });
         }
       }
+    }
+
+    // Sync with GuardianProfile if it exists
+    if (guardianProfile) {
+      const guardianUpdates: any = {};
+      
+      // Basic Info
+      if (firstName) guardianUpdates.firstName = firstName;
+      if (lastName) guardianUpdates.lastName = lastName;
+      if (documentType) guardianUpdates.documentType = documentType;
+      if (document) guardianUpdates.document = document;
+
+      // Contact Info (using variables from body, assuming they are what was used to update Contact)
+      if (phone1) guardianUpdates.phone = phone1;
+      if (email) guardianUpdates.email = email;
+      if (address) guardianUpdates.address = address;
+
+      // Residence Info (if provided in update)
+      if (residenceState) guardianUpdates.residenceState = residenceState;
+      if (residenceMunicipality) guardianUpdates.residenceMunicipality = residenceMunicipality;
+      if (residenceParish) guardianUpdates.residenceParish = residenceParish;
+
+      await guardianProfile.update(guardianUpdates);
     }
 
     res.json({ message: 'User updated successfully' });

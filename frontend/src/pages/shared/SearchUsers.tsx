@@ -31,11 +31,11 @@ const ROLE_FILTERS = [
   { label: 'Alumnos', value: 'Alumno' }
 ] as const;
 
-const SearchUsers: React.FC = () => {
+const SearchUsers: React.FC<{ initialRoleFilter?: string }> = ({ initialRoleFilter = 'Todos' }) => {
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<User[]>([]);
   const [searchValue, setSearchValue] = useState('');
-  const [roleFilter, setRoleFilter] = useState<string>('Todos');
+  const [roleFilter, setRoleFilter] = useState<string>(initialRoleFilter);
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuth();
