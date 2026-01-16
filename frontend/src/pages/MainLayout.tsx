@@ -9,7 +9,8 @@ import {
   BookOutlined,
   FileTextOutlined,
   SettingOutlined,
-  CalendarOutlined
+  CalendarOutlined,
+  TeamOutlined
 } from '@ant-design/icons';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
@@ -83,6 +84,13 @@ const MainLayout: React.FC = () => {
       label: 'Académico',
       roles: ['Profesor'],
       path: '/profesor'
+    },
+    {
+      key: 'representative-module',
+      icon: <TeamOutlined />,
+      label: 'Representante',
+      roles: ['Representante'],
+      path: '/representante'
     }
   ];
 

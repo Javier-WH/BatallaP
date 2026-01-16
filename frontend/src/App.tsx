@@ -40,6 +40,9 @@ import CourseCouncil from '@/pages/control-estudios/CourseCouncil';
 import RegisterRepresentative from '@/pages/admin/RegisterRepresentative';
 
 
+import RepresentativeLayout from '@/pages/representative/RepresentativeLayout';
+import MyStudents from '@/pages/representative/MyStudents';
+
 // Protected Route Component
 const RequireAuth = ({ children, allowedRoles }: { children: JSX.Element; allowedRoles?: string[] }) => {
   const { user, loading } = useAuth();
@@ -146,11 +149,16 @@ function AppRoutes() {
           <Route index element={<h1>Panel del Profesor</h1>} />
         </Route>
 
+        {/* Representative Module */}
+        <Route path="representante" element={<RequireAuth allowedRoles={['Representante']}><RepresentativeLayout /></RequireAuth>}>
+          <Route index element={<MyStudents />} />
+        </Route>
+
         {/* Academic Record Module */}
         <Route
           path="student/:personId"
           element={
-            <RequireAuth allowedRoles={['Administrador', 'Master', 'Control de Estudios']}>
+            <RequireAuth allowedRoles={['Administrador', 'Master', 'Control de Estudios', 'Representante']}>
               <StudentDetail />
             </RequireAuth>
           }
