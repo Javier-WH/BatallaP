@@ -140,7 +140,7 @@ const EditUser: React.FC = () => {
 
   const handleBack = () => {
     if (location.state?.from) {
-      navigate(location.state.from);
+      navigate(-1);
     } else {
       navigate(`${getBasePath()}/search`);
     }
@@ -237,7 +237,7 @@ const EditUser: React.FC = () => {
 
       message.success('Usuario actualizado exitosamente');
       if (location.state?.from) {
-        navigate(location.state.from);
+        navigate(-1);
       } else {
         navigate(`${getBasePath()}/search`);
       }

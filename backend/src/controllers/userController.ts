@@ -338,7 +338,14 @@ export const updateUser = async (req: Request, res: Response) => {
         if (!currentRepRelation || currentRepRelation.guardianId !== newRep.id) {
           // Unset previous representative
           if (currentRepRelation) {
-            await currentRepRelation.update({ isRepresentative: false });
+            // If the relationship is strictly 'representative', we must delete the row
+            // to avoid Unique Constraint violation on (studentId, relationship) when adding the new one.
+            if (currentRepRelation.relationship === 'representative') {
+              await currentRepRelation.destroy();
+            } else {
+              // If relationship is mother/father, just remove the representative flag
+              await currentRepRelation.update({ isRepresentative: false });
+            }
           }
 
           // Check if new rep is already a guardian (e.g. mother/father)

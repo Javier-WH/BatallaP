@@ -157,7 +157,9 @@ const SearchUsers: React.FC<{ initialRoleFilter?: string }> = ({ initialRoleFilt
             disabled={!editable}
             onClick={() => {
               if (!editable) return;
-              navigate(`${moduleBasePath}/edit/${record.id}`);
+              navigate(`${moduleBasePath}/edit/${record.id}`, { 
+                state: { from: location.pathname + location.search } 
+              });
             }}
           >
             Editar
