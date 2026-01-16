@@ -14,10 +14,28 @@ export const searchGuardian = async (req: Request, res: Response) => {
     const normalizedDoc = (document as string).trim();
     const typeValue = documentType as GuardianDocumentType;
 
-    const profile = await findGuardianProfile(typeValue, normalizedDoc);
+    // 1. Search for existing profile or person
+    const found = await findGuardianProfile(typeValue, normalizedDoc);
 
-    if (profile) {
-      return res.json(profile);
+    if (found) {
+      // 2. Ensure a real GuardianProfile record exists.
+      // If 'found' came from Person table, 'found.id' is Person.id, which is WRONG for GuardianProfile.
+      // We must find or create the actual GuardianProfile record to return the correct GuardianProfile.id.
+      const realProfile = await findOrCreateGuardianProfile({
+        firstName: found.firstName,
+        lastName: found.lastName,
+        document: found.document,
+        documentType: found.documentType,
+        email: found.email || '',
+        phone: found.phone || '',
+        address: found.address || '',
+        residenceState: found.residenceState || '',
+        residenceMunicipality: found.residenceMunicipality || '',
+        residenceParish: found.residenceParish || '',
+        occupation: found.occupation
+      });
+      
+      return res.json(realProfile);
     }
 
     if (createIfMissing === 'true') {

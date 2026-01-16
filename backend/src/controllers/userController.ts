@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { User, Person, Role, Contact, PersonRole, GuardianProfile, SchoolPeriod, Inscription, StudentGuardian } from '@/models/index';
+import sequelize from '@/config/database';
 import { Op } from 'sequelize';
 import bcrypt from 'bcrypt';
 
@@ -322,53 +323,89 @@ export const updateUser = async (req: Request, res: Response) => {
 
     // Update Representative (for Students) - If representativeId is provided
     const { representativeId } = req.body;
+    
     if (representativeId) {
-      // 1. Verify new representative exists
-      const newRep = await GuardianProfile.findByPk(representativeId);
-      if (newRep) {
-        // 2. Find current representative association
-        const currentRepRelation = await StudentGuardian.findOne({
-          where: {
-            studentId: person.id,
-            isRepresentative: true
-          }
-        });
-
-        // 3. Only proceed if it's a different representative
-        if (!currentRepRelation || currentRepRelation.guardianId !== newRep.id) {
-          // Unset previous representative
-          if (currentRepRelation) {
-            // If the relationship is strictly 'representative', we must delete the row
-            // to avoid Unique Constraint violation on (studentId, relationship) when adding the new one.
-            if (currentRepRelation.relationship === 'representative') {
-              await currentRepRelation.destroy();
-            } else {
-              // If relationship is mother/father, just remove the representative flag
-              await currentRepRelation.update({ isRepresentative: false });
-            }
-          }
-
-          // Check if new rep is already a guardian (e.g. mother/father)
-          const existingRelation = await StudentGuardian.findOne({
+      const transaction = await sequelize.transaction();
+      try {
+        console.log('[updateUser] Processing representative update. ID received:', representativeId);
+        
+        // 1. Verify new representative exists
+        const newRep = await GuardianProfile.findByPk(representativeId, { transaction });
+        
+        if (newRep) {
+          console.log('[updateUser] New representative found:', newRep.id, newRep.firstName);
+          
+          // 2. Find ALL current representative associations to ensure we clear any inconsistencies
+          // We need to find anyone who IS a representative OR has the 'representative' relationship
+          // to avoid unique constraint violations.
+          const currentRepRelations = await StudentGuardian.findAll({
             where: {
               studentId: person.id,
-              guardianId: newRep.id
-            }
+              [Op.or]: [
+                { isRepresentative: true },
+                { relationship: 'representative' }
+              ]
+            },
+            transaction
           });
+          
+          console.log(`[updateUser] Found ${currentRepRelations.length} existing representative(s).`);
 
-          if (existingRelation) {
-            // Promote existing guardian to representative
-            await existingRelation.update({ isRepresentative: true });
-          } else {
-            // Create new guardian association as representative
-            await StudentGuardian.create({
-              studentId: person.id,
-              guardianId: newRep.id,
-              isRepresentative: true,
-              relationship: 'representative'
-            });
+          let newRepAlreadyLinked = false;
+
+          // Iterate and clear old reps
+          for (const rel of currentRepRelations) {
+             if (Number(rel.guardianId) === Number(newRep.id)) {
+                // This guardian is already the rep.
+                newRepAlreadyLinked = true;
+                console.log(`[updateUser] Guardian ${rel.guardianId} is already representative. Keeping.`);
+             } else {
+                // This is an old rep, remove/demote
+                if (rel.relationship === 'representative') {
+                    console.log(`[updateUser] Destroying representative relation for guardian ${rel.guardianId}`);
+                    await rel.destroy({ transaction });
+                } else {
+                    console.log(`[updateUser] Demoting guardian ${rel.guardianId} (relationship: ${rel.relationship})`);
+                    await rel.update({ isRepresentative: false }, { transaction });
+                }
+             }
           }
+
+          // If the new rep wasn't in the list of current reps, we need to add/promote them
+          if (!newRepAlreadyLinked) {
+               // Check if they exist as a non-rep guardian (e.g. father/mother)
+               const existingRelation = await StudentGuardian.findOne({
+                  where: {
+                      studentId: person.id,
+                      guardianId: newRep.id
+                  },
+                  transaction
+               });
+               
+               if (existingRelation) {
+                   // Promote
+                   console.log('[updateUser] Promoting existing guardian to representative');
+                   await existingRelation.update({ isRepresentative: true }, { transaction });
+               } else {
+                   // Create
+                   console.log('[updateUser] Creating new representative association');
+                   await StudentGuardian.create({
+                      studentId: person.id,
+                      guardianId: newRep.id,
+                      isRepresentative: true,
+                      relationship: 'representative'
+                   }, { transaction });
+               }
+          }  
+        } else {
+          console.log('[updateUser] New representative profile not found in DB');
         }
+
+        await transaction.commit();
+      } catch (repError) {
+        await transaction.rollback();
+        console.error('[updateUser] Error updating representative:', repError);
+        throw repError; // Re-throw to ensure the user knows something went wrong
       }
     }
 

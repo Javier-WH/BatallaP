@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Card, Typography, List, Avatar, Tag, Button, Empty, Spin } from 'antd';
+import { Card, Typography, List, Avatar, Tag, Empty, Spin } from 'antd';
 import { UserOutlined, ArrowRightOutlined, TeamOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import api from '@/services/api';
@@ -78,22 +78,14 @@ const MyStudents: React.FC = () => {
           grid={{ gutter: 24, xs: 1, sm: 1, md: 2, lg: 3, xl: 3, xxl: 4 }}
           dataSource={students}
           renderItem={(student) => (
-            <List.Item>
+            <List.Item className="h-full">
               <Card
                 hoverable
-                className="w-full transition-all duration-300 hover:-translate-y-1 hover:shadow-lg border-slate-200"
-                actions={[
-                  <Button 
-                    type="link" 
-                    block 
-                    icon={<ArrowRightOutlined />}
-                    onClick={() => navigate(`/student/${student.id}`)}
-                  >
-                    Ver Expediente
-                  </Button>
-                ]}
+                className="group w-full h-full flex flex-col transition-all duration-300 hover:-translate-y-1 hover:shadow-lg border-slate-200 cursor-pointer"
+                styles={{ body: { flex: 1, display: 'flex', flexDirection: 'column' } }}
+                onClick={() => navigate(`/student/${student.id}`)}
               >
-                <div className="flex flex-col items-center text-center mb-4">
+                <div className="flex flex-col items-center text-center mb-4 flex-1">
                   <Avatar
                     size={80}
                     icon={<UserOutlined />}
@@ -101,7 +93,7 @@ const MyStudents: React.FC = () => {
                       student.gender === 'F' ? 'bg-pink-50 text-pink-500 border-pink-100' : 'bg-blue-50 text-blue-500 border-blue-100'
                     }`}
                   />
-                  <Title level={4} className="!mb-1">
+                  <Title level={4} className="!mb-1 line-clamp-2 min-h-[56px] flex items-center justify-center">
                     {student.firstName} {student.lastName}
                   </Title>
                   <Text type="secondary" className="mb-3 block">
@@ -109,9 +101,9 @@ const MyStudents: React.FC = () => {
                   </Text>
                   
                   {student.inscription ? (
-                    <div className="bg-slate-50 rounded-lg p-3 w-full border border-slate-100">
+                    <div className="bg-slate-50 rounded-lg p-3 w-full border border-slate-100 mt-auto">
                       <div className="flex flex-col gap-1">
-                        <Tag color="blue" className="m-0 text-center font-bold">
+                        <Tag color="blue" className="m-0 text-center font-bold text-wrap whitespace-normal">
                           {student.inscription.grade}
                         </Tag>
                         <Text className="text-xs text-slate-500 mt-1">
@@ -123,10 +115,16 @@ const MyStudents: React.FC = () => {
                       </div>
                     </div>
                   ) : (
-                    <Tag color="default" className="w-full text-center py-1">
+                    <Tag color="default" className="w-full text-center py-1 mt-auto">
                       Sin inscripción activa
                     </Tag>
                   )}
+                </div>
+                
+                <div className="text-center pt-2 border-t border-slate-50 mt-2">
+                  <Text type="secondary" className="text-xs group-hover:text-blue-500 transition-colors">
+                    Click para ver expediente <ArrowRightOutlined className="ml-1 text-[10px]" />
+                  </Text>
                 </div>
               </Card>
             </List.Item>
