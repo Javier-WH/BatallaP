@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Form, Input, Button, DatePicker, Select, Radio, message, Card, Spin, Tag, Divider, Alert, Popconfirm, List, Space } from 'antd';
-import { BookOutlined } from '@ant-design/icons';
+import { Form, Input, Button, DatePicker, Select, Radio, message, Card, Spin, Tag, Divider, Alert, Popconfirm, List, Space, Modal } from 'antd';
+import { BookOutlined, UserOutlined, SearchOutlined, SwapOutlined } from '@ant-design/icons';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '@/services/api';
 import dayjs, { Dayjs } from 'dayjs';
@@ -81,6 +81,22 @@ interface EditUserFormValues {
   roles: string[];
   gradeId?: number;
   sectionId?: number;
+  representativeId?: number;
+}
+
+interface GuardianProfile {
+  id: number;
+  firstName: string;
+  lastName: string;
+  document: string;
+  documentType: string;
+  email?: string;
+  phone?: string;
+}
+
+interface GuardianRelation {
+  isRepresentative: boolean;
+  profile?: GuardianProfile;
 }
 
 const { Option } = Select;
@@ -104,6 +120,15 @@ const EditUser: React.FC = () => {
   const [targetUserRoles, setTargetUserRoles] = useState<string[]>([]);
   const [hasAccount, setHasAccount] = useState(false);
   const [showAccountFields, setShowAccountFields] = useState(false);
+  
+  // Representative management
+  const [currentRepresentative, setCurrentRepresentative] = useState<GuardianProfile | null>(null);
+  const [isRepModalVisible, setIsRepModalVisible] = useState(false);
+  const [searchDocType, setSearchDocType] = useState('Venezolano');
+  const [searchDocNum, setSearchDocNum] = useState('');
+  const [foundGuardian, setFoundGuardian] = useState<GuardianProfile | null>(null);
+  const [searchingGuardian, setSearchingGuardian] = useState(false);
+  const [newRepresentativeId, setNewRepresentativeId] = useState<number | null>(null);
 
   const getBasePath = useCallback(() => {
     return '/admin';
@@ -137,6 +162,13 @@ const EditUser: React.FC = () => {
             setSelectedGradeId(data.inscription.gradeId);
           } catch (e) {
             console.error('Error loading structure:', e);
+          }
+        }
+
+        if (studentCheck && data.guardians) {
+          const rep = data.guardians.find((g: any) => g.isRepresentative);
+          if (rep && rep.profile) {
+            setCurrentRepresentative(rep.profile);
           }
         }
 
@@ -174,7 +206,8 @@ const EditUser: React.FC = () => {
     try {
       const payload = {
         ...values,
-        birthdate: values.birthdate ? values.birthdate.format('YYYY-MM-DD') : null
+        birthdate: values.birthdate ? values.birthdate.format('YYYY-MM-DD') : null,
+        representativeId: newRepresentativeId
       };
 
       await api.put(`/users/${id}`, payload);
@@ -221,6 +254,41 @@ const EditUser: React.FC = () => {
       message.error(axiosError.response?.data?.message || 'Error al eliminar acceso');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleSearchGuardian = async () => {
+    if (!searchDocNum) {
+      message.warning('Ingrese un número de documento');
+      return;
+    }
+    setSearchingGuardian(true);
+    setFoundGuardian(null);
+    try {
+      const { data } = await api.get('/guardians/search', {
+        params: {
+          documentType: searchDocType,
+          document: searchDocNum
+        }
+      });
+      setFoundGuardian(data);
+    } catch (error) {
+      message.error('Representante no encontrado');
+      setFoundGuardian(null);
+    } finally {
+      setSearchingGuardian(false);
+    }
+  };
+
+  const handleSelectRepresentative = () => {
+    if (foundGuardian) {
+      setCurrentRepresentative(foundGuardian);
+      setNewRepresentativeId(foundGuardian.id);
+      setIsRepModalVisible(false);
+      message.success('Representante seleccionado. Guarde los cambios para confirmar.');
+      // Reset search
+      setFoundGuardian(null);
+      setSearchDocNum('');
     }
   };
 
@@ -360,6 +428,58 @@ const EditUser: React.FC = () => {
               </div>
             </div>
 
+            {isStudent && (
+              <div style={{ gridColumn: 'span 2', marginTop: 16 }}>
+                <Divider />
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                  <h4 style={{ margin: 0, color: '#666' }}>Representante Legal</h4>
+                  <Button 
+                    icon={<SwapOutlined />} 
+                    onClick={() => setIsRepModalVisible(true)}
+                    size="small"
+                  >
+                    Cambiar Representante
+                  </Button>
+                </div>
+                
+                {currentRepresentative ? (
+                  <Card size="small" type="inner">
+                    <Space align="center" style={{ width: '100%', justifyContent: 'space-between' }}>
+                      <Space>
+                        <UserOutlined style={{ fontSize: 20, color: '#1890ff' }} />
+                        <div>
+                          <div style={{ fontWeight: 'bold' }}>
+                            {currentRepresentative.firstName} {currentRepresentative.lastName}
+                          </div>
+                          <div style={{ fontSize: '0.9em', color: '#888' }}>
+                            {currentRepresentative.documentType} {currentRepresentative.document}
+                          </div>
+                        </div>
+                      </Space>
+                      {newRepresentativeId && <Tag color="orange">Cambio pendiente</Tag>}
+                    </Space>
+                    <div style={{ marginTop: 8, fontSize: '0.9em' }}>
+                      <Space split={<Divider type="vertical" />}>
+                        <span>📞 {currentRepresentative.phone}</span>
+                        <span>✉️ {currentRepresentative.email || 'Sin email'}</span>
+                      </Space>
+                    </div>
+                  </Card>
+                ) : (
+                  <Alert 
+                    message="Sin Representante Asignado" 
+                    type="warning" 
+                    showIcon 
+                    action={
+                      <Button size="small" type="primary" onClick={() => setIsRepModalVisible(true)}>
+                        Asignar
+                      </Button>
+                    }
+                  />
+                )}
+              </div>
+            )}
+
             {isStudent && inscriptionData && (
               <>
                 <div style={{ gridColumn: 'span 2', marginTop: 16 }}>
@@ -449,6 +569,49 @@ const EditUser: React.FC = () => {
           </Form.Item>
         </Form>
       </Card>
+
+      <Modal
+        title="Buscar Representante"
+        open={isRepModalVisible}
+        onCancel={() => setIsRepModalVisible(false)}
+        footer={null}
+      >
+        <div style={{ marginBottom: 16 }}>
+          <Input.Group compact>
+            <Select
+              style={{ width: '35%' }}
+              value={searchDocType}
+              onChange={setSearchDocType}
+            >
+              <Option value="Venezolano">Venezolano</Option>
+              <Option value="Extranjero">Extranjero</Option>
+              <Option value="Pasaporte">Pasaporte</Option>
+            </Select>
+            <Input.Search
+              style={{ width: '65%' }}
+              placeholder="Número de documento"
+              value={searchDocNum}
+              onChange={(e) => setSearchDocNum(e.target.value)}
+              onSearch={handleSearchGuardian}
+              enterButton={<SearchOutlined />}
+              loading={searchingGuardian}
+            />
+          </Input.Group>
+        </div>
+
+        {foundGuardian && (
+          <Card
+            size="small"
+            title="Representante Encontrado"
+            extra={<Button type="primary" size="small" onClick={handleSelectRepresentative}>Seleccionar</Button>}
+          >
+            <p><strong>Nombre:</strong> {foundGuardian.firstName} {foundGuardian.lastName}</p>
+            <p><strong>Documento:</strong> {foundGuardian.documentType} {foundGuardian.document}</p>
+            <p><strong>Teléfono:</strong> {foundGuardian.phone}</p>
+            <p><strong>Email:</strong> {foundGuardian.email}</p>
+          </Card>
+        )}
+      </Modal>
     </div >
   );
 };

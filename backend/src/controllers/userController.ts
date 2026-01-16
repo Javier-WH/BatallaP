@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { User, Person, Role, Contact, PersonRole, GuardianProfile, SchoolPeriod, Inscription } from '@/models/index';
+import { User, Person, Role, Contact, PersonRole, GuardianProfile, SchoolPeriod, Inscription, StudentGuardian } from '@/models/index';
 import { Op } from 'sequelize';
 import bcrypt from 'bcrypt';
 
@@ -318,6 +318,51 @@ export const updateUser = async (req: Request, res: Response) => {
       if (residenceParish) guardianUpdates.residenceParish = residenceParish;
 
       await guardianProfile.update(guardianUpdates);
+    }
+
+    // Update Representative (for Students) - If representativeId is provided
+    const { representativeId } = req.body;
+    if (representativeId) {
+      // 1. Verify new representative exists
+      const newRep = await GuardianProfile.findByPk(representativeId);
+      if (newRep) {
+        // 2. Find current representative association
+        const currentRepRelation = await StudentGuardian.findOne({
+          where: {
+            studentId: person.id,
+            isRepresentative: true
+          }
+        });
+
+        // 3. Only proceed if it's a different representative
+        if (!currentRepRelation || currentRepRelation.guardianId !== newRep.id) {
+          // Unset previous representative
+          if (currentRepRelation) {
+            await currentRepRelation.update({ isRepresentative: false });
+          }
+
+          // Check if new rep is already a guardian (e.g. mother/father)
+          const existingRelation = await StudentGuardian.findOne({
+            where: {
+              studentId: person.id,
+              guardianId: newRep.id
+            }
+          });
+
+          if (existingRelation) {
+            // Promote existing guardian to representative
+            await existingRelation.update({ isRepresentative: true });
+          } else {
+            // Create new guardian association as representative
+            await StudentGuardian.create({
+              studentId: person.id,
+              guardianId: newRep.id,
+              isRepresentative: true,
+              relationship: 'representative'
+            });
+          }
+        }
+      }
     }
 
     res.json({ message: 'User updated successfully' });
