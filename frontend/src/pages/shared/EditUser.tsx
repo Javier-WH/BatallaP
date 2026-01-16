@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Form, Input, Button, DatePicker, Select, Radio, message, Card, Spin, Tag, Divider, Alert, Popconfirm, List, Space, Modal } from 'antd';
 import { BookOutlined, UserOutlined, SearchOutlined, SwapOutlined } from '@ant-design/icons';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import api from '@/services/api';
 import dayjs, { Dayjs } from 'dayjs';
 import { useAuth } from '@/context/AuthContext';
@@ -104,6 +104,7 @@ const { Option } = Select;
 const EditUser: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const { user: currentUser } = useAuth();
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -131,8 +132,19 @@ const EditUser: React.FC = () => {
   const [newRepresentativeId, setNewRepresentativeId] = useState<number | null>(null);
 
   const getBasePath = useCallback(() => {
+    const path = location.pathname;
+    if (path.startsWith('/master')) return '/master';
+    if (path.startsWith('/control-estudios')) return '/control-estudios';
     return '/admin';
-  }, []);
+  }, [location.pathname]);
+
+  const handleBack = () => {
+    if (location.state?.from) {
+      navigate(location.state.from);
+    } else {
+      navigate(`${getBasePath()}/search`);
+    }
+  };
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -166,7 +178,7 @@ const EditUser: React.FC = () => {
         }
 
         if (studentCheck && data.guardians) {
-          const rep = data.guardians.find((g: any) => g.isRepresentative);
+          const rep = data.guardians.find((g: GuardianRelation) => g.isRepresentative);
           if (rep && rep.profile) {
             setCurrentRepresentative(rep.profile);
           }
@@ -224,7 +236,11 @@ const EditUser: React.FC = () => {
       }
 
       message.success('Usuario actualizado exitosamente');
-      navigate(`${getBasePath()}/search`);
+      if (location.state?.from) {
+        navigate(location.state.from);
+      } else {
+        navigate(`${getBasePath()}/search`);
+      }
     } catch (error: unknown) {
       console.error(error);
       const axiosError = error as AxiosError<{ message?: string }>;
@@ -272,7 +288,7 @@ const EditUser: React.FC = () => {
         }
       });
       setFoundGuardian(data);
-    } catch (error) {
+    } catch {
       message.error('Representante no encontrado');
       setFoundGuardian(null);
     } finally {
@@ -303,7 +319,7 @@ const EditUser: React.FC = () => {
         extra={
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             {isMaster && <Tag color="purple">Modo Master</Tag>}
-            <Button onClick={() => navigate(`${getBasePath()}/search`)}>Volver</Button>
+            <Button onClick={handleBack}>Volver</Button>
           </div>
         }
       >
@@ -565,7 +581,7 @@ const EditUser: React.FC = () => {
             <Button type="primary" htmlType="submit" loading={submitting} block size="large">Guardar Cambios</Button>
           </Form.Item>
           <Form.Item>
-            <Button danger block onClick={() => navigate(`${getBasePath()}/search`)}>Cancelar</Button>
+            <Button danger block onClick={handleBack}>Cancelar</Button>
           </Form.Item>
         </Form>
       </Card>

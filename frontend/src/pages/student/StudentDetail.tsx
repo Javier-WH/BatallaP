@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { Button, Card, Typography, Space, Tabs, Descriptions, List, Spin, Empty, Tag, Row, Col } from 'antd';
-import { ArrowLeftOutlined, FileTextOutlined, SolutionOutlined } from '@ant-design/icons';
+import { ArrowLeftOutlined, FileTextOutlined, SolutionOutlined, EditOutlined } from '@ant-design/icons';
 import StudentAcademicRecord from '@/components/shared/StudentAcademicRecord';
 import api from '@/services/api';
 import dayjs from 'dayjs';
 import { getEnrollmentQuestionsForPerson, type EnrollmentQuestionResponse } from '@/services/enrollmentQuestions';
+import { useAuth } from '@/context/AuthContext';
 
 const { Title, Text } = Typography;
 
@@ -59,9 +60,23 @@ interface StudentData {
 const StudentDetail: React.FC = () => {
   const { personId } = useParams<{ personId: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
+  const { user } = useAuth();
   const [loading, setLoading] = useState(false);
   const [studentData, setStudentData] = useState<StudentData | null>(null);
   const [enrollmentQuestions, setEnrollmentQuestions] = useState<EnrollmentQuestionResponse[]>([]);
+
+  const canEdit = user?.roles?.some(role => ['Master', 'Administrador', 'Control de Estudios'].includes(role));
+
+  const handleEdit = () => {
+    let prefix = '/admin';
+    if (user?.roles?.includes('Master')) {
+      prefix = '/master';
+    } else if (user?.roles?.includes('Control de Estudios')) {
+      prefix = '/control-estudios';
+    }
+    navigate(`${prefix}/edit/${personId}`, { state: { from: location.pathname } });
+  };
 
   useEffect(() => {
     const fetchData = async () => {
@@ -91,14 +106,14 @@ const StudentDetail: React.FC = () => {
 
     // Helper to find guardian by relationship
     const getGuardian = (rel: string) => {
-      return guardians?.find((g: any) => g.relationship === rel);
+      return guardians?.find((g: StudentGuardian) => g.relationship === rel);
     };
 
     const motherAssignment = getGuardian('mother');
     const fatherAssignment = getGuardian('father');
     const repAssignment = getGuardian('representative');
 
-    const renderGuardianSection = (assignment: any, title: string, icon: React.ReactNode) => {
+    const renderGuardianSection = (assignment: StudentGuardian | undefined, title: string, icon: React.ReactNode) => {
       if (!assignment || !assignment.profile) return null;
       const { profile } = assignment;
       const isRep = assignment.isRepresentative;
@@ -328,6 +343,16 @@ const StudentDetail: React.FC = () => {
             </Space>
           </Col>
           <Col>
+            {canEdit && (
+              <Button
+                size="large"
+                icon={<EditOutlined />}
+                onClick={handleEdit}
+                style={{ borderRadius: 12, fontWeight: 700, padding: '0 24px', marginRight: 12 }}
+              >
+                Editar
+              </Button>
+            )}
             <Button
               size="large"
               onClick={() => navigate(-1)}

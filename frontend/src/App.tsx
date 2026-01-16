@@ -126,6 +126,8 @@ function AppRoutes() {
           <Route path="configuracion" element={<AcademicSettings />} />
           <Route path="academic" element={<AcademicManagement />} />
           <Route path="consejos-curso" element={<CourseCouncil />} />
+          <Route path="edit/:id" element={<EditUser />} />
+          <Route path="search" element={<SearchUsers />} />
         </Route>
 
 
