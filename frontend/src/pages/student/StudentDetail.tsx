@@ -57,11 +57,19 @@ interface StudentData {
   };
 }
 
-const StudentDetail: React.FC = () => {
-  const { personId } = useParams<{ personId: string }>();
+interface StudentDetailProps {
+  personId?: number;
+}
+
+const StudentDetail: React.FC<StudentDetailProps> = ({ personId: propId }) => {
+  const params = useParams<{ personId: string }>();
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuth();
+  
+  // Resolve personId from prop (if provided) or URL params
+  const personId = propId ? String(propId) : params.personId;
+
   const [loading, setLoading] = useState(false);
   const [studentData, setStudentData] = useState<StudentData | null>(null);
   const [enrollmentQuestions, setEnrollmentQuestions] = useState<EnrollmentQuestionResponse[]>([]);
