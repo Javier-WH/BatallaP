@@ -48,7 +48,7 @@ const AdminLayout: React.FC = () => {
     { path: '/admin/matricular-estudiante', icon: <UserAddOutlined />, label: 'Matrícula', tooltip: 'Matriculación de Estudiantes' },
     { path: '/admin/register-staff', icon: <TeamOutlined />, label: 'Personal', tooltip: 'Profesores y Representantes' },
     { path: '/admin/registrar-representante', icon: <IdcardOutlined />, label: 'Nuevo Representante', tooltip: 'Registro de Representantes' },
-    { path: '/admin/gestion-representantes', icon: <TeamOutlined />, label: 'Gestionar Repr.', tooltip: 'Editar Representantes' },
+    { path: '/admin/directorio', icon: <TeamOutlined />, label: 'Directorio', tooltip: 'Directorio de Usuarios' },
     { path: '/admin/projection', icon: <ProjectOutlined />, label: 'Proyección', tooltip: 'Asignación Académica' },
     { path: '/admin/planteles', icon: <BookOutlined />, label: 'Planteles', tooltip: 'Planteles Escolares' },
     { path: '/admin/enrollment-questions', icon: <QuestionCircleOutlined />, label: 'Preguntas', tooltip: 'Encuesta de Inscripción' },
