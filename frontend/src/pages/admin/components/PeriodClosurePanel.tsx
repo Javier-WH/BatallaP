@@ -37,7 +37,7 @@ import {
   type ClosureValidationResult,
   getPreviewOutcomes
 } from '@/services/periodClosure';
-import { createPeriod } from '@/services/academic';
+import { createPeriod } from '../../../services/academic';
 
 const { Text } = Typography;
 
