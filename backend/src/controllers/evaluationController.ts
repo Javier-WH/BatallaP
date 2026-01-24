@@ -13,7 +13,8 @@ import {
   Qualification,
   Inscription,
   InscriptionSubject,
-  Term
+  Term,
+  CouncilPoint
 } from '@/models/index';
 
 export const getMyAssignments = async (req: Request, res: Response) => {
@@ -295,6 +296,10 @@ export const getStudentFullAcademicRecord = async (req: Request, res: Response) 
               model: Qualification,
               as: 'qualifications',
               include: [{ model: EvaluationPlan, as: 'evaluationPlan' }]
+            },
+            {
+              model: CouncilPoint,
+              as: 'councilPoints'
             }
           ]
         }

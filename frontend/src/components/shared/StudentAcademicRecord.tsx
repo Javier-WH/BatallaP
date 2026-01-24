@@ -56,10 +56,17 @@ interface Qualification {
   evaluationPlan?: EvaluationPlan | null;
 }
 
+interface CouncilPoint {
+  id: number;
+  termId: number;
+  points: number;
+}
+
 interface InscriptionSubject {
   id: number;
   subject?: SubjectInfo | null;
   qualifications?: Qualification[];
+  councilPoints?: CouncilPoint[];
 }
 
 interface AcademicRecord {
@@ -69,6 +76,7 @@ interface AcademicRecord {
   section?: { name: string } | null;
   inscriptionSubjects: InscriptionSubject[];
 }
+
 
 interface ActiveSchoolPeriod {
   id: number;
@@ -371,9 +379,13 @@ const StudentAcademicRecord: React.FC<StudentAcademicRecordProps> = ({ personId,
           background: #fdfdfd;
           border: 1px solid #f5f5f5;
           border-radius: 8px;
-          padding: 8px 12px;
+          padding: 6px 12px;
           min-width: 85px;
-          text-align: center;
+          height: 72px;
+          display: flex;
+          flex-direction: column;
+          justify-content: space-between;
+          align-items: center;
         }
         .term-label {
           font-size: 10px;
@@ -381,7 +393,7 @@ const StudentAcademicRecord: React.FC<StudentAcademicRecordProps> = ({ personId,
           color: #bfbfbf;
           text-transform: uppercase;
           display: block;
-          margin-bottom: 4px;
+          margin-bottom: 2px;
         }
         `}</style>
 
@@ -456,17 +468,32 @@ const StudentAcademicRecord: React.FC<StudentAcademicRecordProps> = ({ personId,
                             {terms.map(t => {
                               const quals = subject.qualifications?.filter(q => q.evaluationPlan?.termId === t) || [];
                               const totalScore = quals.reduce((acc: number, q) => acc + (Number(q.score) * (Number(q.evaluationPlan?.percentage) / 100)), 0);
-                              const hasNotes = quals.length > 0;
+
+                              const councilPoint = subject.councilPoints?.find(cp => cp.termId === t);
+                              const points = councilPoint ? Number(councilPoint.points) : 0;
+                              const finalTermScore = totalScore + points;
+
+                              const hasNotes = quals.length > 0 || points > 0;
 
                               return (
                                 <div key={t} className="term-box">
                                   <span className="term-label">Lapso {t}</span>
+
+                                  {/* Reserved space for points to maintain alignment */}
+                                  <div style={{ minHeight: 14, lineHeight: 1, marginBottom: 2 }}>
+                                    {points > 0 && (
+                                      <span style={{ fontSize: 9, color: '#1890ff', fontWeight: 700 }}>
+                                        +{points} pts
+                                      </span>
+                                    )}
+                                  </div>
+
                                   {hasNotes ? (
                                     <Text strong style={{
-                                      color: totalScore >= (maxGrade / 2) ? '#52c41a' : '#f5222d',
+                                      color: finalTermScore >= (maxGrade / 2) ? '#52c41a' : '#f5222d',
                                       fontSize: 14
                                     }}>
-                                      {totalScore % 1 === 0 ? totalScore.toFixed(0) : totalScore.toFixed(2)}
+                                      {finalTermScore % 1 === 0 ? finalTermScore.toFixed(0) : finalTermScore.toFixed(2)}
                                     </Text>
                                   ) : (
                                     <Text style={{ color: '#d9d9d9' }}>—</Text>
@@ -487,8 +514,13 @@ const StudentAcademicRecord: React.FC<StudentAcademicRecordProps> = ({ personId,
                         const quals = subject.qualifications || [];
                         const termScores = [1, 2, 3].map(t => {
                           const qL = quals.filter(q => q.evaluationPlan?.termId === t);
-                          if (qL.length === 0) return null;
-                          return qL.reduce((acc: number, q: Qualification) => acc + (Number(q.score) * (Number(q.evaluationPlan?.percentage) / 100)), 0);
+                          const councilPoint = subject.councilPoints?.find(cp => cp.termId === t);
+                          const points = councilPoint ? Number(councilPoint.points) : 0;
+
+                          if (qL.length === 0 && points === 0) return null;
+
+                          const score = qL.reduce((acc: number, q: Qualification) => acc + (Number(q.score) * (Number(q.evaluationPlan?.percentage) / 100)), 0);
+                          return score + points;
                         }).filter(s => s !== null) as number[];
 
                         if (termScores.length === 0) return <Text type="secondary">—</Text>;
