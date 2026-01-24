@@ -1,6 +1,24 @@
 import { Request, Response } from 'express';
 import { Op } from 'sequelize';
-import { SchoolPeriod, Grade, Section, PeriodGrade, PeriodGradeSection, Subject, PeriodGradeSubject, Specialization, SubjectGroup, TeacherAssignment } from '@/models/index';
+import {
+  SchoolPeriod,
+  Grade,
+  Section,
+  PeriodGrade,
+  PeriodGradeSection,
+  Subject,
+  PeriodGradeSubject,
+  Specialization,
+  SubjectGroup,
+  TeacherAssignment,
+  Inscription,
+  InscriptionSubject,
+  PeriodClosure,
+  CouncilChecklist,
+  StudentPeriodOutcome,
+  PendingSubject
+} from '@/models/index';
+
 import sequelize from '@/config/database';
 
 // --- School Periods ---
@@ -95,15 +113,15 @@ export const createPeriod = async (req: Request, res: Response) => {
     });
 
     // New period is active if it's more recent than the current active period (or if there's no active period)
-    const shouldBeActive = !currentActivePeriod || 
-      (startYear > currentActivePeriod.startYear) || 
+    const shouldBeActive = !currentActivePeriod ||
+      (startYear > currentActivePeriod.startYear) ||
       (startYear === currentActivePeriod.startYear && endYear > currentActivePeriod.endYear);
 
     // If new period will be active, deactivate the current one
     if (shouldBeActive && currentActivePeriod) {
-      await SchoolPeriod.update({ isActive: false }, { 
-        where: { id: currentActivePeriod.id }, 
-        transaction 
+      await SchoolPeriod.update({ isActive: false }, {
+        where: { id: currentActivePeriod.id },
+        transaction
       });
     }
 
@@ -258,13 +276,84 @@ export const updatePeriod = async (req: Request, res: Response) => {
   }
 };
 
+
+
+// ... existing code ...
+
 export const deletePeriod = async (req: Request, res: Response) => {
+  const t = await sequelize.transaction();
   try {
     const { id } = req.params;
-    await SchoolPeriod.destroy({ where: { id } });
+
+    // 0. Clean up direct SchoolPeriod dependencies
+    await PeriodClosure.destroy({ where: { schoolPeriodId: id }, transaction: t });
+    await CouncilChecklist.destroy({ where: { schoolPeriodId: id }, transaction: t });
+    await PendingSubject.destroy({ where: { originPeriodId: id }, transaction: t });
+
+    // 0.1 Clean up Inscriptions and their child dependencies
+    const inscriptions = await Inscription.findAll({
+      where: { schoolPeriodId: id },
+      attributes: ['id'],
+      transaction: t
+    });
+    const inscriptionIds = inscriptions.map(i => i.id);
+
+    if (inscriptionIds.length > 0) {
+      await StudentPeriodOutcome.destroy({ where: { inscriptionId: { [Op.in]: inscriptionIds } }, transaction: t });
+      await PendingSubject.destroy({ where: { newInscriptionId: { [Op.in]: inscriptionIds } }, transaction: t });
+      await InscriptionSubject.destroy({ where: { inscriptionId: { [Op.in]: inscriptionIds } }, transaction: t });
+      // Finally delete the inscriptions
+      await Inscription.destroy({ where: { id: { [Op.in]: inscriptionIds } }, transaction: t });
+    }
+
+    // Find all PeriodGrades associated with this period
+    const periodGrades = await PeriodGrade.findAll({ where: { schoolPeriodId: id }, transaction: t });
+    const periodGradeIds = periodGrades.map(pg => pg.id);
+
+    if (periodGradeIds.length > 0) {
+      // 1. Delete TeacherAssignments linked to PeriodGradeSubjects of these PeriodGrades
+      // First find PeriodGradeSubjects to get their IDs
+      const periodGradeSubjects = await PeriodGradeSubject.findAll({
+        where: { periodGradeId: { [Op.in]: periodGradeIds } },
+        transaction: t
+      });
+      const periodGradeSubjectIds = periodGradeSubjects.map(pgs => pgs.id);
+
+      if (periodGradeSubjectIds.length > 0) {
+        await TeacherAssignment.destroy({
+          where: { periodGradeSubjectId: { [Op.in]: periodGradeSubjectIds } },
+          transaction: t
+        });
+      }
+
+      // 2. Delete PeriodGradeSubjects
+      await PeriodGradeSubject.destroy({
+        where: { periodGradeId: { [Op.in]: periodGradeIds } },
+        transaction: t
+      });
+
+      // 3. Delete PeriodGradeSections
+      await PeriodGradeSection.destroy({
+        where: { periodGradeId: { [Op.in]: periodGradeIds } },
+        transaction: t
+      });
+
+      // 4. Delete PeriodGrades
+      await PeriodGrade.destroy({
+        where: { id: { [Op.in]: periodGradeIds } },
+        transaction: t
+      });
+    }
+
+    // 5. Delete the SchoolPeriod
+    await SchoolPeriod.destroy({ where: { id }, transaction: t });
+
+    await t.commit();
     res.json({ message: 'Period deleted' });
   } catch (error) {
-    res.status(400).json({ error: 'No se puede eliminar porque está en uso' });
+    await t.rollback();
+    console.error('Error deletePeriod:', error);
+    res.status(500).json({ error: 'Error al eliminar el periodo escolar, verifique que no posea datos vinculados.' });
   }
 };
 
@@ -411,10 +500,12 @@ export const createSubjectGroup = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'El nombre del grupo es requerido' });
     }
 
-    const existing = await SubjectGroup.findOne({ where: sequelize.where(
-      sequelize.fn('LOWER', sequelize.col('name')),
-      sequelize.fn('LOWER', name),
-    ) });
+    const existing = await SubjectGroup.findOne({
+      where: sequelize.where(
+        sequelize.fn('LOWER', sequelize.col('name')),
+        sequelize.fn('LOWER', name),
+      )
+    });
 
     if (existing) {
       return res.status(400).json({ error: 'Ya existe un grupo de materias con ese nombre' });
@@ -553,17 +644,17 @@ export const removeSubjectFromGrade = async (req: Request, res: Response) => {
 export const getPeriodGradeSubject = async (req: Request, res: Response) => {
   try {
     const { periodGradeId, subjectId } = req.params;
-    const pgs = await PeriodGradeSubject.findOne({ 
-      where: { 
-        periodGradeId: Number(periodGradeId), 
-        subjectId: Number(subjectId) 
-      } 
+    const pgs = await PeriodGradeSubject.findOne({
+      where: {
+        periodGradeId: Number(periodGradeId),
+        subjectId: Number(subjectId)
+      }
     });
-    
+
     if (!pgs) {
       return res.status(404).json({ error: 'PeriodGradeSubject not found' });
     }
-    
+
     res.json(pgs);
   } catch (error) {
     console.error(error);

@@ -43,10 +43,11 @@ export class StudentPromotionEngine {
     });
 
     const status = StudentPromotionEngine.determineStatus(summary, rule);
-    const promotionGradeId = StudentPromotionEngine.getPromotionGradeId(
+    const promotionGradeId = await StudentPromotionEngine.getPromotionGradeId(
       inscription.gradeId,
       status,
-      rule
+      rule,
+      options
     );
 
     const graduatedAt =
@@ -111,16 +112,36 @@ export class StudentPromotionEngine {
     return 'materias_pendientes';
   }
 
-  private static getPromotionGradeId(
+  private static async getPromotionGradeId(
     currentGradeId: number,
     status: 'aprobado' | 'materias_pendientes' | 'reprobado',
-    rule?: SchoolPeriodTransitionRule | null
-  ): number | null {
+    rule: SchoolPeriodTransitionRule | null,
+    options: EvaluateOptions = {}
+  ): Promise<number | null> {
     if (status === 'reprobado') {
       return currentGradeId;
     }
 
-    return rule?.gradeToId ?? null;
+    if (rule?.gradeToId) {
+      return rule.gradeToId;
+    }
+
+    // Fallback: try to find next grade by order
+    const currentGrade = await Grade.findByPk(currentGradeId, {
+      transaction: options.transaction
+    });
+
+    if (currentGrade && typeof currentGrade.order === 'number') {
+      const nextGrade = await Grade.findOne({
+        where: { order: currentGrade.order + 1 },
+        transaction: options.transaction
+      });
+      if (nextGrade) {
+        return nextGrade.id;
+      }
+    }
+
+    return null;
   }
 }
 
