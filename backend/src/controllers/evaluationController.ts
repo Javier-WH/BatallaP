@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import { Op } from 'sequelize';
 import {
   Person,
   TeacherAssignment,
@@ -171,8 +172,11 @@ export const getStudentsForAssignment = async (req: Request, res: Response) => {
     const inscriptions = await Inscription.findAll({
       where: {
         schoolPeriodId: pg.schoolPeriodId,
-        gradeId: pg.gradeId,
-        sectionId
+        sectionId,
+        [Op.or]: [
+          { gradeId: pg.gradeId },
+          { escolaridad: 'materia_pendiente' }
+        ]
       },
       include: [
         { model: Person, as: 'student' },
@@ -180,7 +184,7 @@ export const getStudentsForAssignment = async (req: Request, res: Response) => {
           model: InscriptionSubject,
           as: 'inscriptionSubjects',
           where: { subjectId: periodGradeSubject.subjectId },
-          required: false, // Change to false to avoid filtering out students without subjects records yet
+          required: true, // Changed to true to filter only those enrolled in the subject
           include: [
             {
               model: Qualification,
