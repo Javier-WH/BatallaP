@@ -56,7 +56,7 @@ export class PeriodClosureExecutor {
     }
 
     const nextPeriod = await SchoolPeriod.findOne({
-      where: { 
+      where: {
         isActive: false,
         startYear: { [Op.gt]: period.startYear }
       },
@@ -152,7 +152,7 @@ export class PeriodClosureExecutor {
       const minApproval = minApprovalSetting ? Number(minApprovalSetting.value) : 10;
 
       const nextPeriod = await SchoolPeriod.findOne({
-        where: { 
+        where: {
           isActive: false,
           startYear: { [Op.gt]: (await SchoolPeriod.findByPk(schoolPeriodId, { transaction }))!.startYear }
         },
@@ -262,6 +262,7 @@ export class PeriodClosureExecutor {
 
           if (pendingSubjects.length > 0) {
             for (const pendingSubj of pendingSubjects) {
+              // Create pending subject Record
               await PendingSubject.create(
                 {
                   newInscriptionId: newInscription.id,
@@ -271,6 +272,16 @@ export class PeriodClosureExecutor {
                 },
                 { transaction }
               );
+
+              // Also enroll the student in this subject for the new period (cursar materia de arrastre)
+              await InscriptionSubject.create(
+                {
+                  inscriptionId: newInscription.id,
+                  subjectId: pendingSubj.subjectId
+                },
+                { transaction }
+              );
+
               stats.pendingSubjectsCreated++;
             }
           }

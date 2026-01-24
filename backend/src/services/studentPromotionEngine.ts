@@ -3,7 +3,8 @@ import {
   Grade,
   Inscription,
   SchoolPeriodTransitionRule,
-  StudentPeriodOutcome
+  StudentPeriodOutcome,
+  Setting
 } from '@/models/index';
 import { FinalGradeSummary, SubjectResultSummary } from './finalGradeCalculator';
 
@@ -42,7 +43,10 @@ export class StudentPromotionEngine {
       transaction: options.transaction
     });
 
-    const status = StudentPromotionEngine.determineStatus(summary, rule);
+    const maxFailedSetting = await Setting.findByPk('max_failed_subjects', { transaction: options.transaction });
+    const maxFailedSubjects = maxFailedSetting ? parseInt(maxFailedSetting.value, 10) : 3;
+
+    const status = StudentPromotionEngine.determineStatus(summary, maxFailedSubjects, rule);
     const promotionGradeId = await StudentPromotionEngine.getPromotionGradeId(
       inscription.gradeId,
       status,
@@ -95,17 +99,17 @@ export class StudentPromotionEngine {
 
   private static determineStatus(
     summary: FinalGradeSummary,
+    maxFailedSubjects: number,
     rule?: SchoolPeriodTransitionRule | null
   ): 'aprobado' | 'materias_pendientes' | 'reprobado' {
     const finalAverage = summary.finalAverage ?? 0;
     const minAverage = Number(rule?.minAverage ?? 10);
-    const maxPending = rule?.maxPendingSubjects ?? 0;
 
     if (summary.failedSubjects === 0 && finalAverage >= minAverage) {
       return 'aprobado';
     }
 
-    if (summary.failedSubjects > maxPending) {
+    if (summary.failedSubjects > maxFailedSubjects) {
       return 'reprobado';
     }
 

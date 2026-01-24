@@ -17,7 +17,9 @@ import {
   Skeleton,
   Popconfirm,
   Modal,
-  Alert
+  Alert,
+  Form,
+  Input
 } from 'antd';
 import { SyncOutlined, CloseCircleOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
@@ -35,6 +37,7 @@ import {
   type ClosureValidationResult,
   getPreviewOutcomes
 } from '@/services/periodClosure';
+import { createPeriod } from '@/services/academic';
 
 const { Text } = Typography;
 
@@ -48,9 +51,9 @@ const outcomeStatusMeta: Record<
     description: 'Promedio y materias dentro del mínimo.'
   },
   materias_pendientes: {
-    label: 'Materias pendientes',
+    label: 'Materia Pendiente',
     color: 'orange',
-    description: 'Avanza con arrastre de materias.'
+    description: 'Promovido con materia pendiente.'
   },
   reprobado: {
     label: 'Reprobado',
@@ -69,6 +72,10 @@ const pendingStatusMeta: Record<
 };
 
 const PeriodClosurePanel: React.FC = () => {
+  const [createPeriodModalVisible, setCreatePeriodModalVisible] = useState(false);
+  const [creatingPeriod, setCreatingPeriod] = useState(false);
+  const [nextPeriodForm] = Form.useForm();
+
   const [statusLoading, setStatusLoading] = useState(false);
   const [outcomeLoading, setOutcomeLoading] = useState(false);
   const [pendingLoading, setPendingLoading] = useState(false);
@@ -121,7 +128,7 @@ const PeriodClosurePanel: React.FC = () => {
       if (!activePeriodId) return;
       try {
         setOutcomeLoading(true);
-        const data = isPreviewMode 
+        const data = isPreviewMode
           ? await getPreviewOutcomes(activePeriodId, status)
           : await getPeriodOutcomes(activePeriodId, status);
         setOutcomes(data);
@@ -324,8 +331,43 @@ const PeriodClosurePanel: React.FC = () => {
   };
 
 
+  // ... existing loadAll ...
+
+  const handleCreateNextPeriod = async () => {
+    try {
+      const values = await nextPeriodForm.validateFields();
+      setCreatingPeriod(true);
+
+      await createPeriod(values);
+      message.success('Próximo periodo creado exitosamente.');
+      setCreatePeriodModalVisible(false);
+      await loadAll();
+    } catch (error) {
+      console.error(error);
+      message.error('Error al crear el periodo. Verifique los datos.');
+    } finally {
+      setCreatingPeriod(false);
+    }
+  };
+
   const handleValidateClosure = async () => {
-    if (!activePeriodId) return;
+    if (!activePeriodId || !periodStatus) return;
+
+    if (!periodStatus.nextPeriod) {
+      const currentPeriodName = periodStatus.period.period; // e.g. "2025-2026"
+      const parts = currentPeriodName.split('-');
+      if (parts.length === 2) {
+        const p1 = parseInt(parts[0], 10) + 1;
+        const p2 = parseInt(parts[1], 10) + 1;
+        nextPeriodForm.setFieldsValue({
+          name: `Año Escolar ${p1}-${p2}`,
+          period: `${p1}-${p2}`
+        });
+      }
+      setCreatePeriodModalVisible(true);
+      return;
+    }
+
     try {
       setValidationLoading(true);
       const validation = await validatePeriodClosure(activePeriodId);
@@ -344,7 +386,7 @@ const PeriodClosurePanel: React.FC = () => {
     try {
       setExecutionLoading(true);
       const result = await executePeriodClosure(activePeriodId);
-      
+
       if (result.success) {
         message.success('Cierre de periodo completado exitosamente');
         Modal.success({
@@ -570,6 +612,31 @@ const PeriodClosurePanel: React.FC = () => {
           }}
         />
       </Card>
+
+      <Modal
+        title="Crear Próximo Periodo"
+        open={createPeriodModalVisible}
+        onCancel={() => setCreatePeriodModalVisible(false)}
+        onOk={handleCreateNextPeriod}
+        confirmLoading={creatingPeriod}
+        okText="Crear y Continuar"
+      >
+        <Alert
+          message="Periodo Siguiente Requerido"
+          description="Para cerrar el periodo actual, debe existir un periodo escolar siguiente. Configúrelo ahora."
+          type="info"
+          showIcon
+          className="mb-4"
+        />
+        <Form form={nextPeriodForm} layout="vertical">
+          <Form.Item name="name" label="Nombre del Periodo" rules={[{ required: true }]}>
+            <Input placeholder="Ej. Año Escolar 2026-2027" />
+          </Form.Item>
+          <Form.Item name="period" label="Periodo (Año-Año)" rules={[{ required: true }]}>
+            <Input placeholder="Ej. 2026-2027" />
+          </Form.Item>
+        </Form>
+      </Modal>
 
       <Modal
         title="Validación de cierre de periodo"
