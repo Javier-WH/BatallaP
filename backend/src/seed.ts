@@ -87,14 +87,14 @@ const seed = async () => {
       'Educación Artística',
       'Orientación y Convivencia',
       'Instrucción Premilitar',
-      
+
       // Materias específicas de Ciencias
       'Ciencias de la Tierra',
       'Biología Celular',
       'Matemática Avanzada',
       'Física Avanzada',
       'Química Avanzada',
-      
+
       // Materias específicas de Humanidades
       'Historia Universal',
       'Geografía General',
@@ -102,7 +102,7 @@ const seed = async () => {
       'Psicología',
       'Sociología',
       'Educación para la Salud',
-      
+
       // Materias electivas y complementarias
       'Informática',
       'Dibujo Técnico',
@@ -253,7 +253,7 @@ const seed = async () => {
           firstName: 'Javier',
           lastName: 'Maestro',
           documentType: 'Venezolano',
-          document: 'V-12345678',
+          document: '12345678',
           gender: 'M',
           birthdate: new Date('1990-01-01'),
           userId: user.id

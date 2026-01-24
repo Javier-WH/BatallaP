@@ -152,6 +152,13 @@ const validateGuardianPayload = (
     return null;
   }
 
+  if (!required) {
+    const hasIdentity = !isEmptyValue(data?.firstName) || !isEmptyValue(data?.lastName) || !isEmptyValue(data?.document);
+    if (!hasIdentity) {
+      return null;
+    }
+  }
+
   const missingFields = guardianRequiredFields.filter((field) => isEmptyValue(data?.[field]));
   if (missingFields.length > 0) {
     throw new Error(`Faltan campos obligatorios para ${label}: ${missingFields.join(', ')}`);
