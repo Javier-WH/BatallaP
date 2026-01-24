@@ -14,7 +14,8 @@ import {
   PeriodGradeSection,
   Grade,
   Section,
-  Person
+  Person,
+  Subject
 } from '@/models/index';
 import { FinalGradeCalculator } from './finalGradeCalculator';
 import { StudentPromotionEngine } from './studentPromotionEngine';
@@ -215,6 +216,7 @@ export class PeriodClosureExecutor {
               schoolPeriodId: nextPeriod.id,
               gradeId: targetGradeId
             },
+            include: [{ model: Subject, as: 'subjects' }],
             transaction
           });
 
@@ -260,6 +262,18 @@ export class PeriodClosureExecutor {
 
           stats.newInscriptions++;
 
+          // Enroll in regular subjects for the new grade
+          if (targetPeriodGrade.subjects && targetPeriodGrade.subjects.length > 0) {
+            const regularSubjects = targetPeriodGrade.subjects.map((s: any) => ({
+              inscriptionId: newInscription.id,
+              subjectId: s.id
+            }));
+
+            if (regularSubjects.length > 0) {
+              await InscriptionSubject.bulkCreate(regularSubjects, { transaction });
+            }
+          }
+
           if (pendingSubjects.length > 0) {
             for (const pendingSubj of pendingSubjects) {
               // Create pending subject Record
@@ -274,13 +288,24 @@ export class PeriodClosureExecutor {
               );
 
               // Also enroll the student in this subject for the new period (cursar materia de arrastre)
-              await InscriptionSubject.create(
-                {
+              // Check if already enrolled (e.g. if repeating same grade) to avoid duplicates
+              const alreadyEnrolled = await InscriptionSubject.findOne({
+                where: {
                   inscriptionId: newInscription.id,
                   subjectId: pendingSubj.subjectId
                 },
-                { transaction }
-              );
+                transaction
+              });
+
+              if (!alreadyEnrolled) {
+                await InscriptionSubject.create(
+                  {
+                    inscriptionId: newInscription.id,
+                    subjectId: pendingSubj.subjectId
+                  },
+                  { transaction }
+                );
+              }
 
               stats.pendingSubjectsCreated++;
             }

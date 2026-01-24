@@ -15,7 +15,8 @@ import {
   Inscription,
   InscriptionSubject,
   Term,
-  CouncilPoint
+  CouncilPoint,
+  PendingSubject
 } from '@/models/index';
 
 export const getMyAssignments = async (req: Request, res: Response) => {
@@ -306,6 +307,11 @@ export const getStudentFullAcademicRecord = async (req: Request, res: Response) 
               as: 'councilPoints'
             }
           ]
+        },
+        {
+          model: PendingSubject,
+          as: 'pendingSubjects',
+          required: false
         }
       ],
       order: [
@@ -314,7 +320,24 @@ export const getStudentFullAcademicRecord = async (req: Request, res: Response) 
       ]
     });
 
-    res.json(records);
+    // Transform to add isPending flag
+    // Transform to add isPending flag
+    const recordsWithPendingFlag = records.map(record => {
+      const recordAny = record as any;
+      const pendingSubjectIds = new Set(recordAny.pendingSubjects?.map((ps: any) => ps.subjectId));
+      const recordJson = record.toJSON() as any;
+
+      if (recordJson.inscriptionSubjects) {
+        recordJson.inscriptionSubjects = recordJson.inscriptionSubjects.map((is: any) => ({
+          ...is,
+          isPending: pendingSubjectIds.has(is.subjectId)
+        }));
+      }
+
+      return recordJson;
+    });
+
+    res.json(recordsWithPendingFlag);
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Error al obtener historial' });

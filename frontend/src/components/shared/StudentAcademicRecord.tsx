@@ -442,6 +442,10 @@ const StudentAcademicRecord: React.FC<StudentAcademicRecordProps> = ({ personId,
                       render: (_: string, recordItem) => {
                         const groupName = recordItem.subject?.subjectGroup?.name;
                         const displayName = groupName ?? recordItem.subject?.name;
+                        // Check if it is a pending subject (logic to be confirmed with backend data)
+                        // For now, let's assume if the subject has a specific flag or we can check against a list of pending subjects if available.
+                        // Since I don't have the flag yet, I will add the UI logic expecting a 'isPending' property.
+                        const isPending = (recordItem as any).isPending;
 
                         return (
                           <Space size="middle">
@@ -449,7 +453,10 @@ const StudentAcademicRecord: React.FC<StudentAcademicRecordProps> = ({ personId,
                               <BookOutlined style={{ color: '#8c8c8c' }} />
                             </div>
                             <Space direction="vertical" size={0}>
-                              <Text strong style={{ color: '#262626', fontSize: 14 }}>{displayName}</Text>
+                              <Space>
+                                <Text strong style={{ color: '#262626', fontSize: 14 }}>{displayName}</Text>
+                                {isPending && <Tag color="warning" style={{ fontSize: 10, fontWeight: 700 }}>PENDIENTE</Tag>}
+                              </Space>
                               {groupName && groupName !== recordItem.subject?.name && (
                                 <Text type="secondary" style={{ fontSize: 11 }}>{recordItem.subject?.name}</Text>
                               )}
