@@ -51,8 +51,7 @@ export class PeriodClosureService {
     const blockedTerms = terms.filter((termRecord) => termRecord.isBlocked).length;
 
     const nextPeriod = await SchoolPeriod.findOne({
-      where: { 
-        isActive: false,
+      where: {
         startYear: { [Op.gt]: period.startYear }
       },
       order: [['startYear', 'ASC'], ['endYear', 'ASC']],

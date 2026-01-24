@@ -113,17 +113,11 @@ export const createPeriod = async (req: Request, res: Response) => {
     });
 
     // New period is active if it's more recent than the current active period (or if there's no active period)
-    const shouldBeActive = !currentActivePeriod ||
-      (startYear > currentActivePeriod.startYear) ||
-      (startYear === currentActivePeriod.startYear && endYear > currentActivePeriod.endYear);
+    // New period is active ONLY if there is no current active period.
+    // We do not want to auto-switch to a future period just because it's created.
+    const shouldBeActive = !currentActivePeriod;
 
-    // If new period will be active, deactivate the current one
-    if (shouldBeActive && currentActivePeriod) {
-      await SchoolPeriod.update({ isActive: false }, {
-        where: { id: currentActivePeriod.id },
-        transaction
-      });
-    }
+
 
     // Create the new period
     const created = await SchoolPeriod.create({
