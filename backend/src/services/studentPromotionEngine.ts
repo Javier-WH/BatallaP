@@ -46,13 +46,61 @@ export class StudentPromotionEngine {
     const maxFailedSetting = await Setting.findByPk('max_failed_subjects', { transaction: options.transaction });
     const maxFailedSubjects = maxFailedSetting ? parseInt(maxFailedSetting.value, 10) : 3;
 
-    const status = StudentPromotionEngine.determineStatus(summary, maxFailedSubjects, rule);
-    const promotionGradeId = await StudentPromotionEngine.getPromotionGradeId(
+    let status = StudentPromotionEngine.determineStatus(summary, maxFailedSubjects, rule);
+    let promotionGradeId = await StudentPromotionEngine.getPromotionGradeId(
       inscription.gradeId,
       status,
       rule,
       options
     );
+
+    // Logic: If a student fails a pending subject, they must repeat the year of that pending subject.
+    const { PendingSubject, PeriodGrade, Subject } = await import('@/models/index');
+
+    // Find active pending subjects for this inscription
+    const pendingSubjectsRecords = await PendingSubject.findAll({
+      where: {
+        newInscriptionId: inscription.id,
+        status: 'pendiente'
+      },
+      transaction: options.transaction
+    });
+
+    if (pendingSubjectsRecords.length > 0) {
+      // Check if any of the failed subjects is a pending subject
+      let failedPendingSubjectRecord = null;
+
+      for (const result of summary.subjectResults) {
+        if (result.status === 'reprobada') {
+          const match = pendingSubjectsRecords.find(ps => ps.subjectId === result.subjectId);
+          if (match) {
+            failedPendingSubjectRecord = match;
+            break;
+          }
+        }
+      }
+
+      if (failedPendingSubjectRecord) {
+        // Change status to reprobado immediately
+        status = 'reprobado';
+
+        // Find the grade of the pending subject to set as promotionGradeId (Repeat that grade)
+        const periodGrade = await PeriodGrade.findOne({
+          where: { schoolPeriodId: failedPendingSubjectRecord.originPeriodId },
+          include: [{
+            model: Subject,
+            as: 'subjects',
+            where: { id: failedPendingSubjectRecord.subjectId },
+            required: true
+          }],
+          transaction: options.transaction
+        });
+
+        if (periodGrade) {
+          promotionGradeId = periodGrade.gradeId;
+        }
+      }
+    }
 
     const graduatedAt =
       status === 'aprobado' && (rule?.autoGraduate || !promotionGradeId)
