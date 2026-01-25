@@ -54,6 +54,7 @@ const ESCOLARIDAD_OPTIONS: { label: string; value: EscolaridadStatus }[] = [
 type RepresentativeType = 'mother' | 'father' | 'other';
 
 interface GuardianProfile {
+  id?: number;
   document?: string;
   firstName?: string;
   lastName?: string;
@@ -487,8 +488,10 @@ const MatriculationEnrollment: React.FC = () => {
 
           const student = m.student || {};
           const guardians: StudentGuardian[] = student.guardians || [];
-          const findGuardianProfile = (relationship: string): GuardianProfile =>
-            (guardians.find((g: StudentGuardian) => g.relationship === relationship)?.profile || {}) as GuardianProfile;
+          const findGuardianProfile = (relationship: string): GuardianProfile => {
+            const profile = (guardians.find((g: StudentGuardian) => g.relationship === relationship)?.profile || {}) as GuardianProfile;
+            return profile;
+          };
 
           const representativeAssignment = guardians.find((g: StudentGuardian) => g.isRepresentative);
           const representativeRelationship = representativeAssignment?.relationship;
@@ -541,7 +544,7 @@ const MatriculationEnrollment: React.FC = () => {
         });
         const uniqueMap = new Map<string, MatriculationRow>();
 
-        mapped.forEach((row) => {
+        mapped.forEach((row: MatriculationRow) => {
           const uniqueKey = row.tempData.document || String(row.tempData.id);
           const existing = uniqueMap.get(uniqueKey);
 
@@ -695,6 +698,10 @@ const MatriculationEnrollment: React.FC = () => {
       updatedProfile = guardian;
       return { ...row, tempData: { ...row.tempData, [parentKey]: guardian } };
     }));
+
+    // If we have an ID, we should preserve it. BD update logic will depend on how backend handles it.
+    // If backend receives ID, it updates that ID. If no ID, it might search by doc/type.
+    // We already have ID in `guardian` object if it was loaded from DB.
 
     // Acumular cambios de guardián
     setPendingChanges(prev => ({

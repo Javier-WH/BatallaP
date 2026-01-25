@@ -18,6 +18,7 @@ export type GuardianProfilePayload = {
   address: string;
   occupation?: string;
   birthdate?: Date | null;
+  id?: number;
 };
 
 interface Options {
@@ -112,6 +113,20 @@ export const findOrCreateGuardianProfile = async (
   options: Options = {}
 ): Promise<GuardianProfile> => {
   const normalizedDocument = normalizeDocument(payload.document);
+
+  console.log('hola');
+
+  if (payload.id) {
+    const existing = await GuardianProfile.findByPk(payload.id, { transaction: options.transaction });
+    if (existing) {
+      await existing.update(
+        { ...payload, document: normalizedDocument },
+        options
+      );
+      return existing;
+    }
+    // If ID provided but not found, fall back to findOrCreate approach (maybe ID was wrong/deleted?)
+  }
 
   const [profile, created] = await GuardianProfile.findOrCreate({
     where: {
