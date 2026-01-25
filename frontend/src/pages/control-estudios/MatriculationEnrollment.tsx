@@ -32,6 +32,7 @@ import {
   TableOutlined,
   EditOutlined,
   FileExcelOutlined,
+  UserSwitchOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useNavigate } from 'react-router-dom';
@@ -41,6 +42,8 @@ import type { ColumnsType } from 'antd/es/table';
 import StudentSubjectsModal from '../admin/StudentSubjectsModal';
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
+import SearchGuardianModal from '@/components/shared/SearchGuardianModal';
+import type { GuardianProfileResponse } from '@/services/guardians';
 
 const { Text, Title } = Typography;
 const { Option } = Select;
@@ -362,6 +365,11 @@ const contextMenuItems: MenuProps['items'] = [
         key: 'cancel',
         icon: <CloseOutlined />,
         label: 'Cancelar'
+      },
+      {
+        key: 'change-representative',
+        icon: <UserSwitchOutlined />,
+        label: 'Cambiar Representante'
       }
     ]
   }
@@ -390,6 +398,7 @@ const MatriculationEnrollment: React.FC = () => {
     y: 0,
     rowId: null
   });
+  const [guardianModalVisible, setGuardianModalVisible] = useState(false);
   const contextMenuRef = useRef<HTMLDivElement | null>(null);
   const [searchValue, setSearchValue] = useState('');
   const [questions, setQuestions] = useState<EnrollmentQuestionResponse[]>([]);
@@ -909,7 +918,102 @@ const MatriculationEnrollment: React.FC = () => {
     if (key === 'cancel') {
       closeContextMenu();
     }
-  }, [handleContextEdit, closeContextMenu]);
+    if (key === 'change-representative') {
+      if (contextMenuState.rowId !== null) {
+        setGuardianModalVisible(true);
+      }
+      closeContextMenu();
+    }
+  }, [handleContextEdit, closeContextMenu, contextMenuState.rowId]);
+
+  const handleGuardianSelected = useCallback((guardian: GuardianProfileResponse) => {
+    if (contextMenuState.rowId === null) return;
+    const rowId = contextMenuState.rowId;
+
+    setMatriculations(prev => prev.map(row => {
+      if (row.id !== rowId) return row;
+
+      // Determine relationship/type based on existing guardians or set to 'other'
+      let newType: RepresentativeType = 'other';
+
+      const isMother = row.tempData.mother?.document === guardian.document && row.tempData.mother?.documentType === guardian.documentType;
+      const isFather = row.tempData.father?.document === guardian.document && row.tempData.father?.documentType === guardian.documentType;
+
+      if (isMother) newType = 'mother';
+      else if (isFather) newType = 'father';
+
+      const updatedTempData = { ...row.tempData };
+      updatedTempData.representativeType = newType;
+
+      if (newType === 'other') {
+        updatedTempData.representative = {
+          ...guardian,
+          // Ensure ID is passed if available
+          id: guardian.id
+        };
+      }
+
+      // Automatically prepare pending changes and trigger save
+      // Since this is a modal action, we want to auto-save ideally, or just set pending.
+      // Let's set pending and let the user know, or auto-save.
+      // Given the UX, auto-save is nice, but we rely on `handleUpdateRow` pattern.
+      // Let's replicate manual update behavior:
+
+      return { ...row, tempData: updatedTempData };
+    }));
+
+    // Construct pending changes
+    // We need to calculate this OUTSIDE the map to be clean, but inside is easier for access.
+    // Let's just create the payload we know we need.
+
+    // We need to find the row again to check mother/father? No, we have the guardian.
+
+    setPendingChanges(prev => {
+      const changes: any = { ...prev };
+
+      // We need to check against CURRENT row state before update?
+      // Actually, we can just fetch the row from current `matriculations` (it's not updated yet in this scope)
+      // but `setMatriculations` is async.
+      // Let's simpler logic: just assume we are setting representative.
+
+      // Re-evaluate type logic for pending changes
+      // We can't access row easily without finding it.
+      const row = matriculations.find(r => r.id === rowId);
+      if (!row) return changes;
+
+      let newType: RepresentativeType = 'other';
+      const isMother = row.tempData.mother?.document === guardian.document && row.tempData.mother?.documentType === guardian.documentType;
+      const isFather = row.tempData.father?.document === guardian.document && row.tempData.father?.documentType === guardian.documentType;
+
+      if (isMother) newType = 'mother';
+      else if (isFather) newType = 'father';
+
+      changes.representativeType = newType;
+
+      if (newType === 'other') {
+        // We must send the representative object
+        changes.representative = {
+          firstName: guardian.firstName,
+          lastName: guardian.lastName,
+          documentType: guardian.documentType,
+          document: guardian.document,
+          phone: guardian.phone,
+          email: guardian.email,
+          residenceState: guardian.residenceState,
+          residenceMunicipality: guardian.residenceMunicipality,
+          residenceParish: guardian.residenceParish,
+          address: guardian.address,
+          id: guardian.id
+        };
+      }
+
+      return changes;
+    });
+
+    setEditableRowId(rowId);
+    message.info('Representante actualizado. Presione Escape o cambie de fila para guardar.');
+
+  }, [contextMenuState.rowId, matriculations]);
 
   const handleContextMenu = (e: React.MouseEvent, rowId: number) => {
     e.preventDefault();
@@ -2948,6 +3052,11 @@ const MatriculationEnrollment: React.FC = () => {
           border-radius: 3px;
         }
       `}</style>
+      <SearchGuardianModal
+        visible={guardianModalVisible}
+        onCancel={() => setGuardianModalVisible(false)}
+        onSelect={handleGuardianSelected}
+      />
     </div>
   );
 };
