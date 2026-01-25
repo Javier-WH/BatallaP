@@ -539,7 +539,38 @@ const MatriculationEnrollment: React.FC = () => {
             }
           } as MatriculationRow;
         });
-        setMatriculations(mapped);
+        const uniqueMap = new Map<string, MatriculationRow>();
+
+        mapped.forEach((row) => {
+          const uniqueKey = row.tempData.document || String(row.tempData.id);
+          const existing = uniqueMap.get(uniqueKey);
+
+          if (existing) {
+            // Priority: Regular > Materia Pendiente
+            const isCurrentPrimary = row.tempData.escolaridad !== 'materia_pendiente';
+            const isExistingPrimary = existing.tempData.escolaridad !== 'materia_pendiente';
+
+            if (isCurrentPrimary && !isExistingPrimary) {
+              // Replace MP entry with Regular entry, keeping the MP flag AND override status to MP for display
+              row.tempData['hasPendingInscription'] = true;
+              row.tempData.escolaridad = 'materia_pendiente';
+              uniqueMap.set(uniqueKey, row);
+            } else if (!isCurrentPrimary && isExistingPrimary) {
+              // Keep Regular entry, add MP flag AND override status to MP for display
+              existing.tempData['hasPendingInscription'] = true;
+              existing.tempData.escolaridad = 'materia_pendiente';
+            } else {
+              // Should not happen (two regulars or two MPs), keep first
+            }
+          } else {
+            if (row.tempData.escolaridad === 'materia_pendiente') {
+              row.tempData['hasPendingInscription'] = true;
+            }
+            uniqueMap.set(uniqueKey, row);
+          }
+        });
+
+        setMatriculations(Array.from(uniqueMap.values()));
       }
 
       if (structRes.data) {
