@@ -17,6 +17,7 @@ export type GuardianProfilePayload = {
   residenceParish: string;
   address: string;
   occupation?: string;
+  birthdate?: Date | null;
 };
 
 interface Options {

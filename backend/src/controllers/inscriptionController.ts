@@ -31,6 +31,7 @@ type GuardianInput = {
   phone?: string;
   email?: string;
   occupation?: string;
+  birthdate?: string; // Expecting string (YYYY-MM-DD) from body
 };
 
 export const quickRegister = async (req: Request, res: Response) => {
@@ -178,7 +179,8 @@ const mapToGuardianProfilePayload = (data: CompleteGuardianInput): GuardianProfi
   residenceMunicipality: data.residenceMunicipality,
   residenceParish: data.residenceParish,
   address: data.address,
-  occupation: data.occupation
+  occupation: data.occupation,
+  birthdate: data.birthdate ? new Date(data.birthdate) : null
 });
 
 export const getMatriculations = async (req: Request, res: Response) => {

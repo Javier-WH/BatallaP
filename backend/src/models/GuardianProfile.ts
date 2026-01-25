@@ -16,6 +16,7 @@ interface GuardianProfileAttributes {
   residenceParish: string;
   address: string;
   occupation?: string;
+  birthdate?: Date | null;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -91,6 +92,10 @@ GuardianProfile.init(
     },
     occupation: {
       type: DataTypes.STRING,
+      allowNull: true
+    },
+    birthdate: {
+      type: DataTypes.DATEONLY,
       allowNull: true
     }
   },

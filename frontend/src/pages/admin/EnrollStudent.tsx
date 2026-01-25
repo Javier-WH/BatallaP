@@ -87,6 +87,7 @@ type GuardianData = {
   residenceMunicipality?: string;
   residenceParish?: string;
   address?: string;
+  birthdate?: dayjs.Dayjs;
 };
 
 const selectFilterOption = (input: string, option?: { label?: string }) =>
@@ -122,7 +123,8 @@ const mapProfileToGuardianForm = (profile: GuardianProfileResponse): GuardianDat
   residenceState: profile.residenceState,
   residenceMunicipality: profile.residenceMunicipality,
   residenceParish: profile.residenceParish,
-  address: profile.address
+  address: profile.address,
+  birthdate: profile.birthdate ? dayjs(profile.birthdate) : undefined
 });
 
 const buildGuardianCacheKey = (documentType?: GuardianDocumentType, document?: string) => {
@@ -665,6 +667,9 @@ const EnrollStudent: React.FC = () => {
         ...values,
         schoolPeriodId: activePeriod.id,
         birthdate: values.birthdate ? (values.birthdate as dayjs.Dayjs).format('YYYY-MM-DD') : null,
+        mother: values.mother ? { ...values.mother, birthdate: (values.mother as GuardianData).birthdate ? ((values.mother as GuardianData).birthdate as dayjs.Dayjs).format('YYYY-MM-DD') : null } : undefined,
+        father: values.father ? { ...values.father, birthdate: (values.father as GuardianData).birthdate ? ((values.father as GuardianData).birthdate as dayjs.Dayjs).format('YYYY-MM-DD') : null } : undefined,
+        representative: values.representative ? { ...values.representative, birthdate: (values.representative as GuardianData).birthdate ? ((values.representative as GuardianData).birthdate as dayjs.Dayjs).format('YYYY-MM-DD') : null } : undefined,
         enrollmentAnswers: transformAnswers(values.enrollmentAnswers as EnrollmentAnswerFormValues | undefined),
         documents: transformedDocuments
       };
@@ -1041,6 +1046,20 @@ const EnrollStudent: React.FC = () => {
                   </h4>
                   {renderGuardianDocumentControls('mother', motherFieldsRequired)}
 
+                  {motherIsRepresentative && (
+                    <Row gutter={16} style={{ marginTop: 16 }}>
+                      <Col span={12}>
+                        <Form.Item
+                          name={['mother', 'birthdate']}
+                          label="Fecha de Nacimiento"
+                          rules={[{ required: true, message: 'Ingrese la fecha de nacimiento' }]}
+                        >
+                          <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" placeholder="DD/MM/YYYY" />
+                        </Form.Item>
+                      </Col>
+                    </Row>
+                  )}
+
                   {showMotherDetails && (
                     <>
                       <Row gutter={16}>
@@ -1097,6 +1116,20 @@ const EnrollStudent: React.FC = () => {
                     Datos del Padre {fatherFieldsRequired ? '(Obligatorio)' : '(Opcional)'}
                   </h4>
                   {renderGuardianDocumentControls('father', fatherFieldsRequired)}
+
+                  {fatherIsRepresentative && (
+                    <Row gutter={16} style={{ marginTop: 16 }}>
+                      <Col span={12}>
+                        <Form.Item
+                          name={['father', 'birthdate']}
+                          label="Fecha de Nacimiento"
+                          rules={[{ required: true, message: 'Ingrese la fecha de nacimiento' }]}
+                        >
+                          <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" placeholder="DD/MM/YYYY" />
+                        </Form.Item>
+                      </Col>
+                    </Row>
+                  )}
 
                   {showFatherDetails && (
                     <>
@@ -1166,6 +1199,18 @@ const EnrollStudent: React.FC = () => {
                       Datos del Representante {representativeFieldsRequired ? '(Obligatorio)' : '(Opcional)'}
                     </h4>
                     {renderGuardianDocumentControls('representative', representativeFieldsRequired)}
+
+                    <Row gutter={16} style={{ marginTop: 16 }}>
+                      <Col span={12}>
+                        <Form.Item
+                          name={['representative', 'birthdate']}
+                          label="Fecha de Nacimiento"
+                          rules={representativeFieldsRequired ? [{ required: true, message: 'Ingrese la fecha de nacimiento' }] : []}
+                        >
+                          <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" placeholder="DD/MM/YYYY" />
+                        </Form.Item>
+                      </Col>
+                    </Row>
 
                     {showRepresentativeDetails && (
                       <>

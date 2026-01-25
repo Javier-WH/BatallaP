@@ -14,6 +14,7 @@ export interface GuardianProfileResponse {
   residenceMunicipality: string;
   residenceParish: string;
   address: string;
+  birthdate?: string; // ISO string from backend
 }
 
 export const searchGuardian = async (
