@@ -16,7 +16,8 @@ import {
   PeriodClosure,
   CouncilChecklist,
   StudentPeriodOutcome,
-  PendingSubject
+  PendingSubject,
+  Term
 } from '@/models/index';
 
 import sequelize from '@/config/database';
@@ -136,6 +137,22 @@ export const createPeriod = async (req: Request, res: Response) => {
     });
 
     if (previousPeriod) {
+      // Copy Terms (Lapsos) structure
+      const previousTerms = await Term.findAll({
+        where: { schoolPeriodId: previousPeriod.id },
+        order: [['order', 'ASC']],
+        transaction
+      });
+
+      for (const term of previousTerms) {
+        await Term.create({
+          schoolPeriodId: created.id,
+          name: term.name,
+          order: term.order,
+          isBlocked: false
+        }, { transaction });
+      }
+
       // Get all PeriodGrades from the previous period with their sections and subjects
       const previousPeriodGrades = await PeriodGrade.findAll({
         where: { schoolPeriodId: previousPeriod.id },
