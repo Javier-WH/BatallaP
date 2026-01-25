@@ -37,3 +37,8 @@ export const searchGuardian = async (
     throw error;
   }
 };
+
+export const createGuardian = async (data: Partial<GuardianProfileResponse>): Promise<GuardianProfileResponse> => {
+  const { data: created } = await api.post<GuardianProfileResponse>('/guardians', data);
+  return created;
+};

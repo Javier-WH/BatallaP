@@ -5,7 +5,7 @@ import { Person, User, StudentGuardian, GuardianProfile, Inscription, Grade, Sec
 
 export const searchGuardian = async (req: Request, res: Response) => {
   try {
-    const { documentType, document, createIfMissing } = req.query;
+    const { documentType, document } = req.query;
 
     if (!documentType || !document) {
       return res.status(400).json({ error: 'documentType y document son obligatorios' });
@@ -34,36 +34,48 @@ export const searchGuardian = async (req: Request, res: Response) => {
         residenceParish: found.residenceParish || '',
         occupation: found.occupation
       });
-      
+
       return res.json(realProfile);
-    }
-
-    if (createIfMissing === 'true') {
-      const { firstName, lastName, phone, email, residenceState, residenceMunicipality, residenceParish, address } = req.body || {};
-      if (!firstName || !lastName || !phone || !email || !residenceState || !residenceMunicipality || !residenceParish || !address) {
-        return res.status(400).json({ error: 'Datos insuficientes para crear un representante' });
-      }
-
-      const created = await findOrCreateGuardianProfile({
-        firstName,
-        lastName,
-        document: normalizedDoc,
-        documentType: typeValue,
-        phone,
-        email,
-        residenceState,
-        residenceMunicipality,
-        residenceParish,
-        address
-      });
-
-      return res.status(201).json(created);
     }
 
     return res.status(404).json({ error: 'Representante no encontrado' });
   } catch (error) {
     console.error('Error searching guardian:', error);
     return res.status(500).json({ error: 'Error buscando representante' });
+  }
+};
+
+export const createGuardian = async (req: Request, res: Response) => {
+  try {
+    const { firstName, lastName, documentType, document, phone, email, residenceState, residenceMunicipality, residenceParish, address } = req.body || {};
+
+    // Validate required fields
+    if (!firstName || !lastName || !documentType || !document) {
+      return res.status(400).json({ error: 'Datos básicos son obligatorios (Nombres, Apellidos, Documento)' });
+    }
+
+    const normalizedDoc = (document as string).trim();
+    const typeValue = documentType as GuardianDocumentType;
+
+    const created = await findOrCreateGuardianProfile({
+      firstName,
+      lastName,
+      document: normalizedDoc,
+      documentType: typeValue,
+      phone,
+      email,
+      residenceState,
+      residenceMunicipality,
+      residenceParish,
+      address,
+      // Add other fields if needed, e.g. occupation
+      occupation: req.body.occupation
+    });
+
+    return res.status(201).json(created);
+  } catch (error) {
+    console.error('Error creating guardian:', error);
+    return res.status(500).json({ error: 'Error creando representante' });
   }
 };
 
@@ -91,7 +103,7 @@ export const getMyStudents = async (req: Request, res: Response) => {
 
     if (!guardianProfile) {
       // User exists but is not registered as a guardian for any student yet
-      return res.json([]); 
+      return res.json([]);
     }
 
     // 3. Find all students linked to this guardian
@@ -123,9 +135,9 @@ export const getMyStudents = async (req: Request, res: Response) => {
     const students = studentGuardians.map(sg => {
       const student = (sg as any).student;
       if (!student) return null;
-      
-      const latestInscription = student.inscriptions && student.inscriptions.length > 0 
-        ? student.inscriptions[0] 
+
+      const latestInscription = student.inscriptions && student.inscriptions.length > 0
+        ? student.inscriptions[0]
         : null;
 
       return {
