@@ -40,6 +40,14 @@
   .nav-item-active {
     @apply flex items-center gap-3 px-4 py-3 rounded-xl mx-2 my-1 bg-white/10 text-white shadow-lg cursor-pointer;
   }
+  
+  .luxury-modal .ant-modal-content {
+      @apply rounded-3xl !important shadow-2xl border border-white/40 overflow-hidden;
+  }
+  
+  .luxury-modal .ant-modal-header {
+      @apply bg-white/50 backdrop-blur-sm border-b border-gray-100 p-6;
+  }
 }
 
 /* Ant Design overrides for luxury feel */
@@ -59,7 +67,7 @@
 
 .ant-select-selector,
 .ant-input {
-  @apply !rounded-xl;
+  @apply !rounded-xl border-gray-300 hover:border-blue-400 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 transition-all duration-300;
 }
 
 .ant-table-thead>tr>th {
