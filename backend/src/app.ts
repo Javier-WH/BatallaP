@@ -66,6 +66,7 @@ import studentPreviousSchoolRoutes from '@/routes/studentPreviousSchoolRoutes';
 import plantelRoutes from '@/routes/plantelRoutes';
 import enrollmentQuestionRoutes from '@/routes/enrollmentQuestionRoutes';
 import enrollmentAnswerRoutes from '@/routes/enrollmentAnswerRoutes';
+import bulkEnrollmentRoutes from '@/routes/bulkEnrollmentRoutes';
 import guardianRoutes from '@/routes/guardianRoutes';
 import councilRoutes from '@/routes/councilRoutes';
 
@@ -90,6 +91,7 @@ app.use('/api/matriculations', matriculationRoutes);
 app.use('/api/planteles', plantelRoutes);
 app.use('/api/enrollment-questions', enrollmentQuestionRoutes);
 app.use('/api/enrollment-answers', enrollmentAnswerRoutes);
+app.use('/api/inscriptions/bulk', bulkEnrollmentRoutes);
 app.use('/api/guardians', guardianRoutes);
 app.use('/api/council', councilRoutes);
 app.use('/api/period-closure', periodClosureRoutes);

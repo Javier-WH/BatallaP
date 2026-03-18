@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Card, Button, Form, message, Select, Row, Col, Input, DatePicker, Radio, Tabs, Alert, Checkbox, Upload, Modal } from 'antd';
+import { Card, Button, Form, message, Select, Row, Col, Input, DatePicker, Radio, Tabs, Alert, Checkbox, Upload, Modal, Progress, Table, Tag, Space, Divider } from 'antd';
 import type { UploadFile, RcFile, UploadChangeParam } from 'antd/es/upload/interface';
-import { UserAddOutlined, LoadingOutlined, UploadOutlined } from '@ant-design/icons';
+import type { ColumnsType } from 'antd/es/table';
+import { UserAddOutlined, LoadingOutlined, UploadOutlined, DownloadOutlined, InboxOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import api from '@/services/api';
 import EnrollmentQuestionFields from '@/components/EnrollmentQuestionFields';
@@ -9,9 +10,13 @@ import { getEnrollmentQuestions, getEnrollmentQuestionsForPerson } from '@/servi
 import type { EnrollmentQuestionResponse } from '@/services/enrollmentQuestions';
 import { searchGuardian } from '@/services/guardians';
 import type { GuardianDocumentType, GuardianProfileResponse } from '@/services/guardians';
+import { downloadTemplate, previewBulk, processBulk } from '@/services/bulkEnrollment';
+import type { PreviewRow, ProcessResponse } from '@/services/bulkEnrollment';
+import { saveAs } from 'file-saver';
 
 const { Option } = Select;
 const { TabPane } = Tabs;
+const { Dragger } = Upload;
 
 type VenezuelaMunicipality = {
   municipio: string;
@@ -88,6 +93,9 @@ type GuardianData = {
   residenceParish?: string;
   address?: string;
 };
+
+type PreviewTableRow = PreviewRow & { key: number };
+type ProcessTableRow = ProcessResponse['results'][number] & { key: number };
 
 const selectFilterOption = (input: string, option?: { label?: string }) =>
   (option?.label ?? '').toString().toLowerCase().includes(input.toLowerCase());
@@ -223,6 +231,15 @@ const EnrollStudent: React.FC = () => {
   const [existingEnrollmentQuestions, setExistingEnrollmentQuestions] = useState<EnrollmentQuestionResponse[]>([]);
   const [existingQuestionsLoading, setExistingQuestionsLoading] = useState(false);
 
+  // Bulk enrollment state
+  const [bulkPreviewRows, setBulkPreviewRows] = useState<PreviewRow[]>([]);
+  const [bulkStats, setBulkStats] = useState({ total: 0, valid: 0, invalid: 0 });
+  const [bulkTemplateLoading, setBulkTemplateLoading] = useState(false);
+  const [bulkPreviewLoading, setBulkPreviewLoading] = useState(false);
+  const [bulkProcessing, setBulkProcessing] = useState(false);
+  const [bulkResults, setBulkResults] = useState<ProcessResponse | null>(null);
+  const [bulkFileList, setBulkFileList] = useState<UploadFile[]>([]);
+
   // For section selector (controlled)
   const [selectedGradeId, setSelectedGradeId] = useState<number | null>(null);
   const [selectedGradeIdExisting, setSelectedGradeIdExisting] = useState<number | null>(null);
@@ -267,6 +284,95 @@ const EnrollStudent: React.FC = () => {
 
   const receivedInformesMedicos = Form.useWatch(['documents', 'receivedInformesMedicos'], newStudentForm);
 
+  const hasValidBulkRows = useMemo(
+    () => bulkPreviewRows.some((row) => row.payload && row.errors.length === 0),
+    [bulkPreviewRows]
+  );
+
+  const previewTableData = useMemo<PreviewTableRow[]>(
+    () =>
+      bulkPreviewRows.map((row, index) => ({
+        ...row,
+        key: row.rowNumber ?? index + 2
+      })),
+    [bulkPreviewRows]
+  );
+
+  const resultTableData = useMemo<ProcessTableRow[]>(
+    () =>
+      bulkResults
+        ? bulkResults.results.map((result, index) => ({
+            ...result,
+            key: result.rowNumber ?? index
+          }))
+        : [],
+    [bulkResults]
+  );
+
+  const bulkPreviewColumns = useMemo<ColumnsType<PreviewTableRow>>(
+    () => [
+      {
+        title: 'Fila',
+        dataIndex: 'rowNumber',
+        width: 80
+      },
+      {
+        title: 'Estado',
+        dataIndex: 'errors',
+        width: 120,
+        render: (errors: string[]) =>
+          errors && errors.length > 0 ? (
+            <Tag color="error">Errores</Tag>
+          ) : (
+            <Tag color="success">Válido</Tag>
+          )
+      },
+      {
+        title: 'Comentarios',
+        dataIndex: 'errors',
+        render: (errors: string[]) =>
+          errors && errors.length > 0 ? (
+            <Space direction="vertical" size="small">
+              {errors.map((err, idx) => (
+                <Tag color="warning" key={idx} style={{ whiteSpace: 'normal' }}>
+                  {err}
+                </Tag>
+              ))}
+            </Space>
+          ) : (
+            <span>Sin observaciones</span>
+          )
+      }
+    ],
+    []
+  );
+
+  const bulkResultColumns = useMemo<ColumnsType<ProcessTableRow>>(
+    () => [
+      {
+        title: 'Fila',
+        dataIndex: 'rowNumber',
+        width: 80
+      },
+      {
+        title: 'Resultado',
+        dataIndex: 'success',
+        width: 120,
+        render: (success: boolean) =>
+          success ? (
+            <Tag color="success">Registrado</Tag>
+          ) : (
+            <Tag color="error">Error</Tag>
+          )
+      },
+      {
+        title: 'Mensaje',
+        dataIndex: 'message'
+      }
+    ],
+    []
+  );
+
   const searchSchools = async (query: string) => {
     if (!query || query.length < 2) {
       setSchoolOptions([]);
@@ -287,6 +393,86 @@ const EnrollStudent: React.FC = () => {
     } finally {
       setLoadingSchools(false);
     }
+  };
+
+  const handleBulkTemplateDownload = async () => {
+    setBulkTemplateLoading(true);
+    try {
+      const buffer = await downloadTemplate();
+      const blob = new Blob([buffer], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      });
+      saveAs(blob, 'plantilla_inscripciones.xlsx');
+      message.success('Plantilla descargada');
+    } catch (error) {
+      console.error('Error descargando plantilla:', error);
+      message.error('No se pudo descargar la plantilla');
+    } finally {
+      setBulkTemplateLoading(false);
+    }
+  };
+
+  const resetBulkState = () => {
+    setBulkPreviewRows([]);
+    setBulkStats({ total: 0, valid: 0, invalid: 0 });
+    setBulkResults(null);
+    setBulkFileList([]);
+  };
+
+  const handleBulkPreviewUpload = async (file: RcFile) => {
+    setBulkPreviewLoading(true);
+    setBulkResults(null);
+    try {
+      const preview = await previewBulk(file);
+      setBulkPreviewRows(preview.rows);
+      setBulkStats({ total: preview.total, valid: preview.valid, invalid: preview.invalid });
+      setBulkFileList([
+        {
+          uid: file.uid,
+          name: file.name,
+          status: 'done',
+          originFileObj: file
+        } as UploadFile
+      ]);
+      message.success('Archivo leído correctamente');
+    } catch (error: any) {
+      console.error('Error previsualizando archivo:', error);
+      message.error(error?.response?.data?.error || 'No se pudo leer el archivo');
+      resetBulkState();
+    } finally {
+      setBulkPreviewLoading(false);
+    }
+    return false;
+  };
+
+  const handleBulkProcess = async () => {
+    if (!hasValidBulkRows) {
+      message.warning('No hay filas válidas para procesar');
+      return;
+    }
+    setBulkProcessing(true);
+    try {
+      const response = await processBulk(bulkPreviewRows);
+      setBulkResults(response);
+      message.success('Carga masiva procesada');
+    } catch (error: any) {
+      console.error('Error procesando carga masiva:', error);
+      message.error(error?.response?.data?.error || 'No se pudo procesar la carga');
+    } finally {
+      setBulkProcessing(false);
+    }
+  };
+
+  const bulkUploadProps = {
+    name: 'file',
+    multiple: false,
+    fileList: bulkFileList,
+    beforeUpload: handleBulkPreviewUpload,
+    onRemove: () => {
+      resetBulkState();
+    },
+    accept: '.xlsx',
+    disabled: bulkPreviewLoading || bulkProcessing
   };
 
   const handleGuardianLookup = useCallback(
@@ -1346,6 +1532,78 @@ const EnrollStudent: React.FC = () => {
                 </div>
               </Form.Item>
             </Form>
+          </TabPane>
+
+          {/* TAB BULK: INSCRIPCIÓN MASIVA */}
+          <TabPane tab="Inscripción masiva" key="bulk">
+            <Card type="inner" title="Carga de plantilla" style={{ marginBottom: 24 }}>
+              <Space direction="vertical" size="large" style={{ width: '100%' }}>
+                <Space wrap>
+                  <Button icon={<DownloadOutlined />} loading={bulkTemplateLoading} onClick={handleBulkTemplateDownload}>
+                    Descargar plantilla
+                  </Button>
+                  <Button
+                    type="primary"
+                    icon={<UploadOutlined />}
+                    disabled={!hasValidBulkRows || bulkProcessing}
+                    loading={bulkProcessing}
+                    onClick={handleBulkProcess}
+                  >
+                    Procesar estudiantes
+                  </Button>
+                </Space>
+                <Dragger {...bulkUploadProps} disabled={bulkPreviewLoading || bulkProcessing} maxCount={1}>
+                  <p className="ant-upload-drag-icon">
+                    <InboxOutlined />
+                  </p>
+                  <p className="ant-upload-text">Haz clic o arrastra un archivo Excel (.xlsx)</p>
+                  <p className="ant-upload-hint">Lee el archivo para validar los datos antes de inscribir</p>
+                </Dragger>
+                <div>
+                  <Space size="large">
+                    <span>Total filas: <strong>{bulkStats.total}</strong></span>
+                    <span>Válidas: <strong style={{ color: '#52c41a' }}>{bulkStats.valid}</strong></span>
+                    <span>Inválidas: <strong style={{ color: '#f5222d' }}>{bulkStats.invalid}</strong></span>
+                  </Space>
+                  {bulkProcessing && (
+                    <Progress
+                      percent={bulkResults ? Math.round((bulkResults.processed / bulkResults.total) * 100) : undefined}
+                      status="active"
+                      style={{ marginTop: 8 }}
+                    />
+                  )}
+                </div>
+              </Space>
+            </Card>
+
+            {bulkPreviewRows.length > 0 && (
+              <Card type="inner" title="Previsualización" style={{ marginBottom: 24 }}>
+                <Table
+                  dataSource={previewTableData}
+                  columns={bulkPreviewColumns}
+                  loading={bulkPreviewLoading}
+                  pagination={{ pageSize: 8 }}
+                  size="small"
+                  rowClassName={(record) => (record.errors.length ? 'row-error' : 'row-valid')}
+                />
+              </Card>
+            )}
+
+            {bulkResults && (
+              <Card type="inner" title="Resultado de la carga">
+                <Table
+                  dataSource={resultTableData}
+                  columns={bulkResultColumns}
+                  size="small"
+                  pagination={false}
+                />
+                <Divider />
+                <Space>
+                  <Tag color="success">Éxitos: {bulkResults.results.filter((r) => r.success).length}</Tag>
+                  <Tag color="error">Errores: {bulkResults.results.filter((r) => !r.success).length}</Tag>
+                </Space>
+              </Card>
+            )}
           </TabPane>
 
           {/* TAB 2: EXISTING STUDENT */}

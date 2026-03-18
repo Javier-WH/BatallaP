@@ -14,10 +14,10 @@ interface EnrollmentDocumentAttributes {
   receivedInformesMedicos: boolean;
   receivedFotoCarnetEstudiante: boolean;
   // Uploaded file paths
-  pathCedulaRepresentante?: string;
-  pathFotoRepresentante?: string;
-  pathFotoEstudiante?: string;
-  pathInformesMedicos?: string[]; // JSON array of paths
+  pathCedulaRepresentante?: string | null;
+  pathFotoRepresentante?: string | null;
+  pathFotoEstudiante?: string | null;
+  pathInformesMedicos?: string[] | null; // JSON array of paths
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -34,10 +34,10 @@ class EnrollmentDocument extends Model<EnrollmentDocumentAttributes, EnrollmentD
   public receivedCopiaCedulaEstudiante!: boolean;
   public receivedInformesMedicos!: boolean;
   public receivedFotoCarnetEstudiante!: boolean;
-  public pathCedulaRepresentante!: string;
-  public pathFotoRepresentante!: string;
-  public pathFotoEstudiante!: string;
-  public pathInformesMedicos!: string[];
+  public pathCedulaRepresentante!: string | null;
+  public pathFotoRepresentante!: string | null;
+  public pathFotoEstudiante!: string | null;
+  public pathInformesMedicos!: string[] | null;
 
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;

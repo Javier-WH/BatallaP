@@ -2,7 +2,7 @@ import { DataTypes, Model, Optional } from 'sequelize';
 import sequelize from '@/config/database';
 import Person from './Person';
 
-interface ContactAttributes {
+export interface ContactAttributes {
   id: number;
   phone1: string;
   phone2?: string;
@@ -13,7 +13,7 @@ interface ContactAttributes {
   personId: number;
 }
 
-interface ContactCreationAttributes extends Optional<ContactAttributes, 'id' | 'phone2' | 'email' | 'whatsapp' | 'socialMedia'> { }
+export interface ContactCreationAttributes extends Optional<ContactAttributes, 'id' | 'phone2' | 'email' | 'whatsapp' | 'socialMedia'> { }
 
 class Contact extends Model<ContactAttributes, ContactCreationAttributes> implements ContactAttributes {
   public id!: number;

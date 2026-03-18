@@ -1,8 +1,8 @@
 import User from './User';
-import Person from './Person';
+import Person, { PersonCreationAttributes } from './Person';
 import Role from './Role';
 import PersonRole from './PersonRole';
-import Contact from './Contact';
+import Contact, { ContactCreationAttributes } from './Contact';
 import PersonResidence from './PersonResidence';
 import StudentGuardian from './StudentGuardian';
 import StudentPreviousSchool from './StudentPreviousSchool';
@@ -272,9 +272,11 @@ SchoolPeriodTransitionRule.belongsTo(Grade, { foreignKey: 'gradeToId', as: 'grad
 export {
   User,
   Person,
+  PersonCreationAttributes,
   Role,
   PersonRole,
   Contact,
+  ContactCreationAttributes,
   PersonResidence,
   StudentGuardian,
   GuardianProfile,

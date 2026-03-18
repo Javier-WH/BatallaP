@@ -2,7 +2,7 @@ import { DataTypes, Model, Optional } from 'sequelize';
 import sequelize from '@/config/database';
 import User from './User';
 
-interface PersonAttributes {
+export interface PersonAttributes {
   id: number;
   firstName: string;
   lastName: string;
@@ -15,7 +15,7 @@ interface PersonAttributes {
   userId?: number | null;
 }
 
-interface PersonCreationAttributes extends Optional<PersonAttributes, 'id' | 'userId'> { }
+export interface PersonCreationAttributes extends Optional<PersonAttributes, 'id' | 'userId'> { }
 
 class Person extends Model<PersonAttributes, PersonCreationAttributes> implements PersonAttributes {
   public id!: number;
