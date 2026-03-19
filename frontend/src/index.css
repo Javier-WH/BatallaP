@@ -42,7 +42,7 @@
   }
   
   .luxury-modal .ant-modal-content {
-      @apply rounded-3xl !important shadow-2xl border border-white/40 overflow-hidden;
+      @apply !rounded-3xl !shadow-2xl !border !border-white/40 !overflow-hidden;
   }
   
   .luxury-modal .ant-modal-header {
