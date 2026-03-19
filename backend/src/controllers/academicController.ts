@@ -16,7 +16,13 @@ import {
   PeriodClosure,
   CouncilChecklist,
   StudentPeriodOutcome,
-  PendingSubject
+  PendingSubject,
+  Term,
+  Matriculation,
+  EnrollmentDocument,
+  EvaluationPlan,
+  Qualification,
+  CouncilPoint
 } from '@/models/index';
 
 import sequelize from '@/config/database';
@@ -136,6 +142,22 @@ export const createPeriod = async (req: Request, res: Response) => {
     });
 
     if (previousPeriod) {
+      // Copy Terms (Lapsos) structure
+      const previousTerms = await Term.findAll({
+        where: { schoolPeriodId: previousPeriod.id },
+        order: [['order', 'ASC']],
+        transaction
+      });
+
+      for (const term of previousTerms) {
+        await Term.create({
+          schoolPeriodId: created.id,
+          name: term.name,
+          order: term.order,
+          isBlocked: false
+        }, { transaction });
+      }
+
       // Get all PeriodGrades from the previous period with their sections and subjects
       const previousPeriodGrades = await PeriodGrade.findAll({
         where: { schoolPeriodId: previousPeriod.id },
@@ -283,6 +305,46 @@ export const deletePeriod = async (req: Request, res: Response) => {
     await PeriodClosure.destroy({ where: { schoolPeriodId: id }, transaction: t });
     await CouncilChecklist.destroy({ where: { schoolPeriodId: id }, transaction: t });
     await PendingSubject.destroy({ where: { originPeriodId: id }, transaction: t });
+
+    // 0.2 Clean up Matriculations (Fix for foreign key constraint)
+    const matriculations = await Matriculation.findAll({
+      where: { schoolPeriodId: id },
+      attributes: ['id'],
+      transaction: t
+    });
+    const matriculationIds = matriculations.map(m => m.id);
+    if (matriculationIds.length > 0) {
+      await EnrollmentDocument.destroy({ where: { matriculationId: { [Op.in]: matriculationIds } }, transaction: t });
+      await Matriculation.destroy({ where: { id: { [Op.in]: matriculationIds } }, transaction: t });
+    }
+
+    // 0.3 Clean up Terms and linked Evaluation Data
+    const terms = await Term.findAll({
+      where: { schoolPeriodId: id },
+      attributes: ['id'],
+      transaction: t
+    });
+    const termIds = terms.map(te => te.id);
+    if (termIds.length > 0) {
+      // CouncilPoints linked to Terms
+      await CouncilPoint.destroy({ where: { termId: { [Op.in]: termIds } }, transaction: t });
+
+      // EvaluationPlans and Qualifications linked to Terms
+      const evalPlans = await EvaluationPlan.findAll({
+        where: { termId: { [Op.in]: termIds } },
+        attributes: ['id'],
+        transaction: t
+      });
+      const evalPlanIds = evalPlans.map(ep => ep.id);
+
+      if (evalPlanIds.length > 0) {
+        await Qualification.destroy({ where: { evaluationPlanId: { [Op.in]: evalPlanIds } }, transaction: t });
+        await EvaluationPlan.destroy({ where: { id: { [Op.in]: evalPlanIds } }, transaction: t });
+      }
+
+      // Finally delete terms
+      await Term.destroy({ where: { id: { [Op.in]: termIds } }, transaction: t });
+    }
 
     // 0.1 Clean up Inscriptions and their child dependencies
     const inscriptions = await Inscription.findAll({

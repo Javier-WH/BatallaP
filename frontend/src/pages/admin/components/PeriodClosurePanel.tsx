@@ -62,6 +62,10 @@ const outcomeStatusMeta: Record<
   }
 };
 
+interface ExtendedOutcomeRecord extends OutcomeRecord {
+  _isPendingFailure?: boolean;
+}
+
 const pendingStatusMeta: Record<
   PendingSubjectRecord['status'],
   { label: string; color: string }
@@ -160,6 +164,52 @@ const PeriodClosurePanel: React.FC = () => {
     loadAll();
   }, [loadAll]);
 
+  const processedOutcomes = useMemo(() => {
+    const studentMap = new Map<number, ExtendedOutcomeRecord[]>();
+
+    outcomes.forEach(o => {
+      const sId = o.inscription.student?.id;
+      if (sId) {
+        if (!studentMap.has(sId)) studentMap.set(sId, []);
+        studentMap.get(sId)!.push({ ...o });
+      }
+    });
+
+    const result: ExtendedOutcomeRecord[] = [];
+
+    studentMap.forEach((records) => {
+      if (records.length === 1) {
+        // Only one record, check if it's a pending section that failed itself?
+        // Usually we just show it.
+        result.push(records[0]);
+      } else {
+        // Multiple records. Identify Main vs Pending Section
+        const pendingSection = records.find(r =>
+          r.inscription.section?.name?.toLowerCase().includes('materia pendiente')
+        );
+        const mainSection = records.find(r =>
+          !r.inscription.section?.name?.toLowerCase().includes('materia pendiente')
+        );
+
+        if (mainSection) {
+          // If the pending section failed, mark the main section as failed too
+          if (pendingSection && (pendingSection.status === 'reprobado' || pendingSection.failedSubjects > 0)) {
+            mainSection.status = 'reprobado';
+            mainSection._isPendingFailure = true;
+            // Also ensure we override the promotion grade to be "Repite" (null promotion grade usually means repeat in some logic, 
+            // but status=reprobado is the key).
+          }
+          result.push(mainSection);
+        } else {
+          // If for some reason we only have pending sections?
+          result.push(records[0]);
+        }
+      }
+    });
+
+    return result;
+  }, [outcomes]);
+
   const handleOutcomeFilterChange = (value: string | number) => {
     const asStatus = value as OutcomeRecord['status'] | 'todos';
     setSelectedOutcomeFilter(asStatus);
@@ -230,7 +280,10 @@ const PeriodClosurePanel: React.FC = () => {
     {
       title: 'Próximo curso',
       key: 'promotion',
-      render: (_: unknown, record: OutcomeRecord) => {
+      render: (_: unknown, record: ExtendedOutcomeRecord) => {
+        if (record._isPendingFailure) {
+          return <Tag color="red">Repite por Materia Pendiente</Tag>;
+        }
         if (record.status === 'reprobado') return <Text type="secondary">Repite</Text>;
         if (!record.promotionGrade) return <Text type="secondary">Egreso</Text>;
         return <Text>{record.promotionGrade.name}</Text>;
@@ -579,7 +632,7 @@ const PeriodClosurePanel: React.FC = () => {
         <Table
           rowKey="id"
           columns={outcomeColumns}
-          dataSource={outcomes}
+          dataSource={processedOutcomes}
           loading={outcomeLoading}
           pagination={{ pageSize: 8 }}
           locale={{

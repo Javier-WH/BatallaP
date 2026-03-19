@@ -20,7 +20,7 @@ interface InscriptionAttributes {
 }
 
 interface InscriptionCreationAttributes
-  extends Optional<InscriptionAttributes, 'id' | 'sectionId' | 'originPeriodId' | 'isRepeater'> {}
+  extends Optional<InscriptionAttributes, 'id' | 'sectionId' | 'originPeriodId' | 'isRepeater'> { }
 
 class Inscription extends Model<InscriptionAttributes, InscriptionCreationAttributes> implements InscriptionAttributes {
   public id!: number;
@@ -90,8 +90,8 @@ Inscription.init(
     tableName: 'inscriptions',
     indexes: [
       {
-        unique: true,
-        fields: ['schoolPeriodId', 'personId'] // Student can only be enrolled once per period
+        unique: false,
+        fields: ['schoolPeriodId', 'personId']
       }
     ]
   }

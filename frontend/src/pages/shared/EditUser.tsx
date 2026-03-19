@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Form, Input, Button, DatePicker, Select, Radio, message, Card, Spin, Tag, Divider, Alert, Popconfirm, List, Space, Modal } from 'antd';
-import { BookOutlined, UserOutlined, SearchOutlined, SwapOutlined } from '@ant-design/icons';
+import { Form, Input, Button, DatePicker, Select, Radio, message, Card, Spin, Tag, Divider, Alert, Popconfirm, List, Space } from 'antd';
+import { BookOutlined, UserOutlined, SwapOutlined } from '@ant-design/icons';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import api from '@/services/api';
 import dayjs, { Dayjs } from 'dayjs';
@@ -99,6 +99,8 @@ interface GuardianRelation {
   profile?: GuardianProfile;
 }
 
+import SearchGuardianModal from '@/components/shared/SearchGuardianModal';
+
 const { Option } = Select;
 
 const EditUser: React.FC = () => {
@@ -121,14 +123,10 @@ const EditUser: React.FC = () => {
   const [targetUserRoles, setTargetUserRoles] = useState<string[]>([]);
   const [hasAccount, setHasAccount] = useState(false);
   const [showAccountFields, setShowAccountFields] = useState(false);
-  
+
   // Representative management
   const [currentRepresentative, setCurrentRepresentative] = useState<GuardianProfile | null>(null);
   const [isRepModalVisible, setIsRepModalVisible] = useState(false);
-  const [searchDocType, setSearchDocType] = useState('Venezolano');
-  const [searchDocNum, setSearchDocNum] = useState('');
-  const [foundGuardian, setFoundGuardian] = useState<GuardianProfile | null>(null);
-  const [searchingGuardian, setSearchingGuardian] = useState(false);
   const [newRepresentativeId, setNewRepresentativeId] = useState<number | null>(null);
 
   const getBasePath = useCallback(() => {
@@ -273,40 +271,7 @@ const EditUser: React.FC = () => {
     }
   };
 
-  const handleSearchGuardian = async () => {
-    if (!searchDocNum) {
-      message.warning('Ingrese un número de documento');
-      return;
-    }
-    setSearchingGuardian(true);
-    setFoundGuardian(null);
-    try {
-      const { data } = await api.get('/guardians/search', {
-        params: {
-          documentType: searchDocType,
-          document: searchDocNum
-        }
-      });
-      setFoundGuardian(data);
-    } catch {
-      message.error('Representante no encontrado');
-      setFoundGuardian(null);
-    } finally {
-      setSearchingGuardian(false);
-    }
-  };
 
-  const handleSelectRepresentative = () => {
-    if (foundGuardian) {
-      setCurrentRepresentative(foundGuardian);
-      setNewRepresentativeId(foundGuardian.id);
-      setIsRepModalVisible(false);
-      message.success('Representante seleccionado. Guarde los cambios para confirmar.');
-      // Reset search
-      setFoundGuardian(null);
-      setSearchDocNum('');
-    }
-  };
 
   const targetHasRestrictedRoles = targetUserRoles.includes('Master') || targetUserRoles.includes('Administrador');
 
@@ -449,15 +414,15 @@ const EditUser: React.FC = () => {
                 <Divider />
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
                   <h4 style={{ margin: 0, color: '#666' }}>Representante Legal</h4>
-                  <Button 
-                    icon={<SwapOutlined />} 
+                  <Button
+                    icon={<SwapOutlined />}
                     onClick={() => setIsRepModalVisible(true)}
                     size="small"
                   >
                     Cambiar Representante
                   </Button>
                 </div>
-                
+
                 {currentRepresentative ? (
                   <Card size="small" type="inner">
                     <Space align="center" style={{ width: '100%', justifyContent: 'space-between' }}>
@@ -482,10 +447,10 @@ const EditUser: React.FC = () => {
                     </div>
                   </Card>
                 ) : (
-                  <Alert 
-                    message="Sin Representante Asignado" 
-                    type="warning" 
-                    showIcon 
+                  <Alert
+                    message="Sin Representante Asignado"
+                    type="warning"
+                    showIcon
                     action={
                       <Button size="small" type="primary" onClick={() => setIsRepModalVisible(true)}>
                         Asignar
@@ -586,48 +551,16 @@ const EditUser: React.FC = () => {
         </Form>
       </Card>
 
-      <Modal
-        title="Buscar Representante"
-        open={isRepModalVisible}
+      <SearchGuardianModal
+        visible={isRepModalVisible}
         onCancel={() => setIsRepModalVisible(false)}
-        footer={null}
-      >
-        <div style={{ marginBottom: 16 }}>
-          <Input.Group compact>
-            <Select
-              style={{ width: '35%' }}
-              value={searchDocType}
-              onChange={setSearchDocType}
-            >
-              <Option value="Venezolano">Venezolano</Option>
-              <Option value="Extranjero">Extranjero</Option>
-              <Option value="Pasaporte">Pasaporte</Option>
-            </Select>
-            <Input.Search
-              style={{ width: '65%' }}
-              placeholder="Número de documento"
-              value={searchDocNum}
-              onChange={(e) => setSearchDocNum(e.target.value)}
-              onSearch={handleSearchGuardian}
-              enterButton={<SearchOutlined />}
-              loading={searchingGuardian}
-            />
-          </Input.Group>
-        </div>
-
-        {foundGuardian && (
-          <Card
-            size="small"
-            title="Representante Encontrado"
-            extra={<Button type="primary" size="small" onClick={handleSelectRepresentative}>Seleccionar</Button>}
-          >
-            <p><strong>Nombre:</strong> {foundGuardian.firstName} {foundGuardian.lastName}</p>
-            <p><strong>Documento:</strong> {foundGuardian.documentType} {foundGuardian.document}</p>
-            <p><strong>Teléfono:</strong> {foundGuardian.phone}</p>
-            <p><strong>Email:</strong> {foundGuardian.email}</p>
-          </Card>
-        )}
-      </Modal>
+        onSelect={(guardian) => {
+          setCurrentRepresentative(guardian);
+          setNewRepresentativeId(guardian.id);
+          setIsRepModalVisible(false);
+          message.success('Representante seleccionado. Guarde los cambios para confirmar.');
+        }}
+      />
     </div >
   );
 };

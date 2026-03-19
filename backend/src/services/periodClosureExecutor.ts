@@ -240,12 +240,7 @@ export class PeriodClosureExecutor {
 
           const finalSectionId = targetSection ? inscription.sectionId : undefined;
 
-          let escolaridadStatus: 'regular' | 'repitiente' | 'materia_pendiente' = 'regular';
-          if (isRepeating) {
-            escolaridadStatus = 'repitiente';
-          } else if (outcome.status === 'materias_pendientes') {
-            escolaridadStatus = 'materia_pendiente';
-          }
+          const escolaridadStatus: 'regular' | 'repitiente' | 'materia_pendiente' = isRepeating ? 'repitiente' : 'regular';
 
           const newInscription = await Inscription.create(
             {
@@ -275,39 +270,61 @@ export class PeriodClosureExecutor {
           }
 
           if (pendingSubjects.length > 0) {
-            for (const pendingSubj of pendingSubjects) {
-              // Create pending subject Record
-              await PendingSubject.create(
-                {
-                  newInscriptionId: newInscription.id,
-                  subjectId: pendingSubj.subjectId,
-                  originPeriodId: schoolPeriodId,
-                  status: 'pendiente'
-                },
-                { transaction }
-              );
+            // 1. Find/Create "Materia Pendiente" Section
+            const [mpSection] = await Section.findOrCreate({
+              where: { name: 'Materia Pendiente' },
+              defaults: { name: 'Materia Pendiente' },
+              transaction
+            });
 
-              // Also enroll the student in this subject for the new period (cursar materia de arrastre)
-              // Check if already enrolled (e.g. if repeating same grade) to avoid duplicates
-              const alreadyEnrolled = await InscriptionSubject.findOne({
-                where: {
-                  inscriptionId: newInscription.id,
-                  subjectId: pendingSubj.subjectId
-                },
+            // 2. Ensure PeriodGrade exists for the OLD grade in the NEW period (to handle MP)
+            // The student failed subjects in 'inscription.gradeId', so they take them in that same grade level
+            // 2. Ensure PeriodGrade exists for the OLD grade in the NEW period (to handle MP)
+            const mpGradeId = inscription.gradeId;
+            const [mpPeriodGrade] = await PeriodGrade.findOrCreate({
+              where: { schoolPeriodId: nextPeriod.id, gradeId: mpGradeId },
+              defaults: { schoolPeriodId: nextPeriod.id, gradeId: mpGradeId },
+              transaction
+            });
+
+            if (mpPeriodGrade) {
+              // Link MP Section to PeriodGrade
+              await PeriodGradeSection.findOrCreate({
+                where: { periodGradeId: mpPeriodGrade.id, sectionId: mpSection.id },
+                defaults: { periodGradeId: mpPeriodGrade.id, sectionId: mpSection.id },
                 transaction
               });
 
-              if (!alreadyEnrolled) {
-                await InscriptionSubject.create(
-                  {
-                    inscriptionId: newInscription.id,
-                    subjectId: pendingSubj.subjectId
-                  },
-                  { transaction }
-                );
-              }
+              // 3. Create Separate Inscription for Materia Pendiente
+              // This inscription is in the OLD grade, in the MP section.
+              const mpInscription = await Inscription.create({
+                schoolPeriodId: nextPeriod.id,
+                gradeId: mpGradeId,
+                sectionId: mpSection.id,
+                personId: inscription.personId,
+                escolaridad: 'materia_pendiente',
+                originPeriodId: schoolPeriodId,
+                isRepeater: false
+              }, { transaction });
 
-              stats.pendingSubjectsCreated++;
+              stats.newInscriptions++;
+
+              // 4. Enroll Pending Subjects in the MP Inscription
+              for (const pendingSubj of pendingSubjects) {
+                await PendingSubject.create({
+                  newInscriptionId: mpInscription.id,
+                  subjectId: pendingSubj.subjectId,
+                  originPeriodId: schoolPeriodId,
+                  status: 'pendiente'
+                }, { transaction });
+
+                await InscriptionSubject.create({
+                  inscriptionId: mpInscription.id,
+                  subjectId: pendingSubj.subjectId
+                }, { transaction });
+
+                stats.pendingSubjectsCreated++;
+              }
             }
           }
 

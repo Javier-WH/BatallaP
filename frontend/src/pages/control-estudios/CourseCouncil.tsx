@@ -262,10 +262,14 @@ const CourseCouncil: React.FC = () => {
     structure.forEach(pg => {
       const matchFilter = !filterYear || pg.grade.name.toLowerCase().includes(filterYear.toLowerCase());
       if (matchFilter) {
-        const sortedSections = [...pg.sections].sort((a, b) =>
-          a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
-        );
-        sectionsByGrade.push({ grade: pg.grade, sections: sortedSections });
+        const sortedSections = [...pg.sections]
+          .filter(s => !s.name.toLowerCase().includes('materia pendiente'))
+          .sort((a, b) =>
+            a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
+          );
+        if (sortedSections.length > 0) {
+          sectionsByGrade.push({ grade: pg.grade, sections: sortedSections });
+        }
       }
     });
 

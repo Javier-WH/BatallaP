@@ -5,6 +5,7 @@ import {
   Inscription,
   InscriptionSubject,
   Qualification,
+  Term,
   Subject,
   SubjectFinalGrade
 } from '@/models/index';
@@ -57,12 +58,46 @@ export class FinalGradeCalculator {
             { model: CouncilPoint, as: 'councilPoints' },
             { model: Subject, as: 'subject' }
           ]
-        }
+        },
+
       ],
       transaction: options.transaction
     });
 
-    const inscriptionRecord = inscription as InscriptionWithSubjects | null;
+    // Correct way to get period ID
+    const inscriptionSimple = await Inscription.findByPk(inscriptionId, {
+      attributes: ['schoolPeriodId'],
+      transaction: options.transaction
+    });
+
+    if (!inscriptionSimple) throw new Error('Inscripción no encontrada');
+
+    // Fetch terms to know the divisor
+    const terms = await Term.findAll({
+      where: { schoolPeriodId: inscriptionSimple.schoolPeriodId },
+      transaction: options.transaction
+    });
+    const termCount = terms.length || 1;
+
+    // Re-fetch full inscription (using existing logic but simpler query structure if needed, keeping original works)
+    const inscriptionRecord = await Inscription.findByPk(inscriptionId, {
+      include: [
+        {
+          model: InscriptionSubject,
+          as: 'inscriptionSubjects',
+          include: [
+            {
+              model: Qualification,
+              as: 'qualifications',
+              include: [{ model: EvaluationPlan, as: 'evaluationPlan' }]
+            },
+            { model: CouncilPoint, as: 'councilPoints' },
+            { model: Subject, as: 'subject' }
+          ]
+        }
+      ],
+      transaction: options.transaction
+    }) as InscriptionWithSubjects | null;
 
     if (!inscriptionRecord || !inscriptionRecord.inscriptionSubjects) {
       throw new Error('Inscripción no encontrada o sin materias asociadas');
@@ -75,17 +110,56 @@ export class FinalGradeCalculator {
     let subjectCount = 0;
 
     for (const insSub of inscriptionRecord.inscriptionSubjects) {
-      const rawScore = (insSub.qualifications || []).reduce((acc: number, qualification: Qualification & { evaluationPlan?: EvaluationPlan | null }) => {
+      // Group scores by Term ID
+      const termScores: Record<number, number> = {};
+
+      terms.forEach((t: Term) => { termScores[t.id] = 0; });
+
+      // Calculate Qualifications per Term
+      (insSub.qualifications || []).forEach((qualification: Qualification & { evaluationPlan?: EvaluationPlan | null }) => {
         const score = Number(qualification.score) || 0;
         const percentage = Number(qualification.evaluationPlan?.percentage) || 0;
-        return acc + score * (percentage / 100);
-      }, 0);
+        const termId = qualification.evaluationPlan?.termId;
 
-      const councilPoints = (insSub.councilPoints || []).reduce((acc: number, point: CouncilPoint) => {
-        return acc + (Number(point.points) || 0);
-      }, 0);
+        if (termId && termScores[termId] !== undefined) {
+          termScores[termId] += score * (percentage / 100);
+        }
+      });
 
-      const finalScore = rawScore + councilPoints;
+      // Add Council Points per Term
+      (insSub.councilPoints || []).forEach((point: CouncilPoint) => {
+        const pVal = Number(point.points) || 0;
+        if (point.termId && termScores[point.termId] !== undefined) {
+          termScores[point.termId] += pVal;
+        }
+      });
+
+      // Sum all term scores
+      let totalAccumulated = 0;
+      Object.values(termScores).forEach(val => totalAccumulated += val);
+
+      // Average!
+      const finalScore = totalAccumulated / termCount;
+
+      console.log(`[DEBUG] Inscription ${inscriptionId} Subject ${insSub.subject?.name}: Terms found: ${terms.length}. TotalAcc: ${totalAccumulated}. Final: ${finalScore}`);
+
+
+      // Raw Score (sum of non-council points) calculation for display/statistics?
+      // For now, let's keep rawScore as the sum of qualification parts, but averaged? 
+      // The summary expects 'rawScore' and 'councilPoints'. 
+      // It's ambiguous when averaging. Let's just track the final calculation correctness first.
+
+      // Let's reconstruct 'rawScore' properly for the summary:
+      let totalRaw = 0;
+      let totalCouncil = 0;
+      (insSub.qualifications || []).forEach((q) => {
+        const s = Number(q.score) || 0;
+        const p = Number(q.evaluationPlan?.percentage) || 0;
+        totalRaw += s * (p / 100);
+        // Note: This is "Sum of raw scores". If we want "Average Raw Score", divide by termCount.
+      });
+      (insSub.councilPoints || []).forEach(p => totalCouncil += (Number(p.points) || 0));
+
       const status = finalScore >= minApproval ? 'aprobada' : 'reprobada';
 
       if (status === 'reprobada') {
@@ -99,8 +173,10 @@ export class FinalGradeCalculator {
         inscriptionSubjectId: insSub.id,
         subjectId: insSub.subjectId,
         subjectName: insSub.subject?.name,
-        rawScore: Number(rawScore.toFixed(2)),
-        councilPoints: Number(councilPoints.toFixed(2)),
+        // We present the "Averaged" values in the summary for consistency, or the raw sums?
+        // Given finalScore is averaged, these should probably be averaged components to make sense: raw + council = final
+        rawScore: Number((totalRaw / termCount).toFixed(2)),
+        councilPoints: Number((totalCouncil / termCount).toFixed(2)),
         finalScore: Number(finalScore.toFixed(2)),
         status
       };

@@ -14,7 +14,8 @@ import {
     PeriodGradeSubject,
     PeriodGradeSection,
     EvaluationPlan,
-    Qualification
+    Qualification,
+    Term
 } from '../models';
 import sequelize from '../config/database';
 
@@ -149,6 +150,15 @@ async function seedClosureTest() {
 
         // --- Enroll Subjects & Create Grades ---
 
+        // Get All Terms for period
+        const terms = await sequelize.models.Term.findAll({
+            where: { schoolPeriodId: activePeriod.id },
+            order: [['order', 'ASC']],
+            transaction: t
+        });
+
+        if (terms.length === 0) throw new Error('No terms found for active period');
+
         // We need PeriodGradeSubject IDs to link EvaluationPlans
         const pgsList = await PeriodGradeSubject.findAll({
             where: { periodGradeId: periodGrade.id },
@@ -157,7 +167,7 @@ async function seedClosureTest() {
 
         // Map subjectId -> PeriodGradeSubjectId
         const pgsMap = new Map();
-        pgsList.forEach(pgs => pgsMap.set(pgs.subjectId, pgs.id));
+        pgsList.forEach((pgs: any) => pgsMap.set(pgs.subjectId, pgs.id));
 
         let subjectCount = 0;
 
@@ -177,34 +187,48 @@ async function seedClosureTest() {
                 subjectId: subject.id
             }, { transaction: t });
 
-            // Create Evaluation Plan (100% weight single exam for simplicity)
-            const plan = await EvaluationPlan.create({
-                periodGradeSubjectId: pgsId,
-                sectionId: sectionA.id,
-                termId: 1, // Assuming Term 1 exists and is used
-                // name: 'Examen Final Simulado',
-                description: 'Nota única para prueba',
-                objetivo: 'Objetivo General',
-                percentage: 100,
-                date: new Date()
-            }, { transaction: t });
+            // Create Grades for EACH Term
+            for (const term of terms) {
+                const termId = (term as any).id;
 
-            // Grade Student 1: Always 20
-            await Qualification.create({
-                evaluationPlanId: plan.id,
-                inscriptionSubjectId: is1.id,
-                score: 20
-            }, { transaction: t });
+                // Clean up existing plans for this subject/term
+                await EvaluationPlan.destroy({
+                    where: {
+                        periodGradeSubjectId: pgsId,
+                        sectionId: sectionA.id,
+                        termId: termId
+                    },
+                    transaction: t
+                });
 
-            // Grade Student 2: 
-            // Fail first 2 subjects (09 pts), Pass rest (15 pts)
-            const score2 = subjectCount <= 2 ? 9 : 15;
+                // Create Evaluation Plan (100% weight single exam per term)
+                const plan = await EvaluationPlan.create({
+                    periodGradeSubjectId: pgsId,
+                    sectionId: sectionA.id,
+                    termId: termId,
+                    description: `Nota única Lapso ${termId}`,
+                    objetivo: 'Objetivo General',
+                    percentage: 100,
+                    date: new Date()
+                }, { transaction: t });
 
-            await Qualification.create({
-                evaluationPlanId: plan.id,
-                inscriptionSubjectId: is2.id,
-                score: score2
-            }, { transaction: t });
+                // Grade Student 1: Always 20
+                await Qualification.create({
+                    evaluationPlanId: plan.id,
+                    inscriptionSubjectId: is1.id,
+                    score: 20
+                }, { transaction: t });
+
+                // Grade Student 2: 
+                // Fail first 2 subjects (09 pts), Pass rest (15 pts)
+                const score2 = subjectCount <= 2 ? 9 : 15;
+
+                await Qualification.create({
+                    evaluationPlanId: plan.id,
+                    inscriptionSubjectId: is2.id,
+                    score: score2
+                }, { transaction: t });
+            }
         }
 
         await t.commit();
