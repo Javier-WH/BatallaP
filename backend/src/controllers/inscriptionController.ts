@@ -558,6 +558,7 @@ export const getInscriptions = async (req: Request, res: Response) => {
   try {
     const { schoolPeriodId, gradeId, sectionId, q, gender, escolaridad } = req.query;
     const where: any = {};
+    // NO filtrar por schoolPeriodId por defecto - mostrar todos los períodos
     if (schoolPeriodId) where.schoolPeriodId = schoolPeriodId;
     if (gradeId) where.gradeId = gradeId;
     if (sectionId) where.sectionId = sectionId;

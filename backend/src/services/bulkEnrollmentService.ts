@@ -60,9 +60,13 @@ const buildStructures = async (): Promise<CachedStructure> => {
   };
 };
 
-const headerToKey = new Map(
-  BULK_ENROLLMENT_COLUMNS.map((column) => [column.header.trim().toLowerCase(), column.key])
-);
+const headerToKey = new Map<string, string>();
+BULK_ENROLLMENT_COLUMNS.forEach((column) => {
+  const headerWithAsterisk = column.header.trim().toLowerCase();
+  const headerWithoutAsterisk = headerWithAsterisk.replace(/^\*\s*/, '');
+  headerToKey.set(headerWithAsterisk, column.key);
+  headerToKey.set(headerWithoutAsterisk, column.key);
+});
 
 const sanitizeString = (value: unknown): string => {
   if (value === null || value === undefined) {
@@ -82,6 +86,11 @@ const sanitizeString = (value: unknown): string => {
 
 const getColumnNumberByKey = (key: string): number => {
   const index = BULK_ENROLLMENT_COLUMNS.findIndex((column) => column.key === key);
+  return index + 1;
+};
+
+const getColumnNumberByKeyInColumns = (key: string, columns: typeof BULK_ENROLLMENT_COLUMNS): number => {
+  const index = columns.findIndex((column) => column.key === key);
   return index + 1;
 };
 
@@ -216,7 +225,10 @@ export type ProcessBulkRowInput = {
 const normalizeRow = (excelRow: Record<string, any>): Record<string, any> => {
   const normalized: Record<string, any> = {};
   for (const [header, value] of Object.entries(excelRow)) {
-    const key = headerToKey.get(header.trim().toLowerCase());
+    // Limpiar el header: quitar asterisco al inicio si existe, trim y lowercase
+    const cleanHeader = header.trim().toLowerCase().replace(/^\*\s*/, '');
+    const key = headerToKey.get(cleanHeader) || headerToKey.get(header.trim().toLowerCase());
+    
     if (key) {
       normalized[key] = value;
     }
@@ -228,13 +240,16 @@ export const parseBulkExcel = async (filePath: string): Promise<ParsedBulkRow[]>
   const workbook = XLSX.readFile(filePath, { cellDates: true });
   const sheetName = workbook.SheetNames[0];
   const sheet = workbook.Sheets[sheetName];
-  const sheetRows = XLSX.utils.sheet_to_json<Record<string, any>>(sheet, { defval: '' });
+  // Leer desde la fila 3 (índice 2) donde están los headers reales, después del título y fila vacía
+  const sheetRows = XLSX.utils.sheet_to_json<Record<string, any>>(sheet, { defval: '', range: 2 });
   const structures = await buildStructures();
   const results: ParsedBulkRow[] = [];
 
   sheetRows.forEach((excelRow, index) => {
-    const firstCell = String(excelRow[BULK_ENROLLMENT_COLUMNS[0].header] || '').trim();
-    if (!firstCell || firstCell === '(Obligatorio)') {
+    // La primera columna ahora es '* Nombres estudiante'
+    const firstColHeader = BULK_ENROLLMENT_COLUMNS[0].header;
+    const firstCell = String(excelRow[firstColHeader] || excelRow[firstColHeader.replace(/^\*\s*/, '')] || '').trim();
+    if (!firstCell) {
       return;
     }
 
@@ -457,12 +472,22 @@ export const generateTemplate = async (options: BulkTemplateOptions = {}) => {
   const workbook = new ExcelJS.Workbook();
   const worksheet = workbook.addWorksheet('Inscripciones');
 
-  const headerRow = worksheet.addRow(BULK_ENROLLMENT_COLUMNS.map((col) => col.header));
+  // 1. Título de identificación
+  const titleRow = worksheet.addRow(['PLANTILLA PARA INSCRIPCIÓN MASIVA DE ESTUDIANTES']);
+  titleRow.font = { bold: true, size: 14 };
+  titleRow.alignment = { horizontal: 'center' };
+  worksheet.mergeCells(1, 1, 1, 10);
+
+  worksheet.addRow([]); // Fila vacía de separación
+
+  // 3. Filtrar columnas: excluir solo las columnas de ID opcionales
+  const hiddenKeys = new Set(['schoolPeriodId', 'gradeId', 'sectionId']);
+  const visibleColumns = BULK_ENROLLMENT_COLUMNS.filter((col) => !hiddenKeys.has(col.key));
+
+  const headerRow = worksheet.addRow(visibleColumns.map((col) => col.header));
   headerRow.font = { bold: true };
 
-  worksheet.addRow(BULK_ENROLLMENT_COLUMNS.map((col) => (col.required ? '(Obligatorio)' : '')));
-
-  worksheet.columns = BULK_ENROLLMENT_COLUMNS.map((col) => ({ width: Math.min(Math.max(col.header.length + 5, 18), 40) }));
+  worksheet.columns = visibleColumns.map((col) => ({ width: Math.min(Math.max(col.header.length + 5, 18), 40) }));
 
   const catalogRanges = await createCatalogSheet(workbook);
   const validationConfig: Array<{ key: string; catalog: string; message: string }> = [
@@ -480,9 +505,43 @@ export const generateTemplate = async (options: BulkTemplateOptions = {}) => {
   ];
 
   validationConfig.forEach((validation) => {
-    const columnNumber = getColumnNumberByKey(validation.key);
+    const columnNumber = getColumnNumberByKeyInColumns(validation.key, visibleColumns);
     const formulaReference = catalogRanges.get(validation.catalog) || '';
-    applyDropdownValidation(worksheet, columnNumber, formulaReference, validation.message);
+    if (columnNumber > 0) {
+      applyDropdownValidation(worksheet, columnNumber, formulaReference, validation.message);
+    }
+  });
+
+  // 2. Configurar protección: desbloquear todas las celdas primero, luego bloquear solo headers
+  for (let row = 1; row <= templateDataEndRow; row += 1) {
+    for (let col = 1; col <= visibleColumns.length; col += 1) {
+      const cell = worksheet.getCell(row, col);
+      cell.protection = { locked: false };
+    }
+  }
+
+  // Bloquear solo las filas de encabezado (fila 1: título, fila 2: vacía, fila 3: headers)
+  for (let row = 1; row <= 3; row += 1) {
+    for (let col = 1; col <= visibleColumns.length; col += 1) {
+      const cell = worksheet.getCell(row, col);
+      cell.protection = { locked: true };
+    }
+  }
+
+  await worksheet.protect('inscripciones2025', {
+    selectLockedCells: true,
+    selectUnlockedCells: true,
+    formatCells: false,
+    formatColumns: false,
+    formatRows: false,
+    insertColumns: false,
+    insertRows: false,
+    insertHyperlinks: false,
+    deleteColumns: false,
+    deleteRows: false,
+    sort: false,
+    autoFilter: false,
+    pivotTables: false
   });
 
   const timestamp = dayjs().format('YYYYMMDD_HHmm');

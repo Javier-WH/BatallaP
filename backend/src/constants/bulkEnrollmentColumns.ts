@@ -22,35 +22,45 @@ const guardianFields: Array<{ field: string; label: string; description?: string
 ];
 
 export const BULK_ENROLLMENT_COLUMNS: BulkEnrollmentColumn[] = [
-  { key: 'schoolPeriod', header: 'Periodo escolar (nombre)', required: true },
-  { key: 'schoolPeriodId', header: 'ID periodo (opcional)' },
-  { key: 'grade', header: 'Grado (nombre)', required: true },
-  { key: 'gradeId', header: 'ID grado (opcional)' },
-  { key: 'section', header: 'Sección (nombre)' },
-  { key: 'sectionId', header: 'ID sección (opcional)' },
-  { key: 'escolaridad', header: 'Escolaridad (regular/repitiente/materia_pendiente)', required: true },
-  { key: 'documentType', header: 'Tipo de documento estudiante', required: true },
+  // Datos del estudiante - Identificación primero
+  { key: 'firstName', header: '* Nombres estudiante', required: true },
+  { key: 'lastName', header: '* Apellidos estudiante', required: true },
+  { key: 'documentType', header: '* Tipo de documento estudiante', required: true },
   { key: 'document', header: 'Documento estudiante' },
   { key: 'nationality', header: 'Nacionalidad (V/E) para Cédula Escolar' },
-  { key: 'firstName', header: 'Nombres estudiante', required: true },
-  { key: 'lastName', header: 'Apellidos estudiante', required: true },
-  { key: 'gender', header: 'Género (M/F)', required: true },
-  { key: 'birthdate', header: 'Fecha de nacimiento (YYYY-MM-DD o DD/MM/YYYY)', required: true },
-  { key: 'pathology', header: 'Patología' },
-  { key: 'livingWith', header: '¿Con quién vive?' },
-  { key: 'birthState', header: 'Estado de nacimiento', required: true },
-  { key: 'birthMunicipality', header: 'Municipio de nacimiento', required: true },
-  { key: 'birthParish', header: 'Parroquia de nacimiento', required: true },
-  { key: 'residenceState', header: 'Estado de residencia', required: true },
-  { key: 'residenceMunicipality', header: 'Municipio de residencia', required: true },
-  { key: 'residenceParish', header: 'Parroquia de residencia', required: true },
+
+  // Datos personales obligatorios
+  { key: 'gender', header: '* Género (M/F)', required: true },
+  { key: 'birthdate', header: '* Fecha de nacimiento (YYYY-MM-DD o DD/MM/YYYY)', required: true },
+
+  // Lugar de nacimiento (obligatorio)
+  { key: 'birthState', header: '* Estado de nacimiento', required: true },
+  { key: 'birthMunicipality', header: '* Municipio de nacimiento', required: true },
+  { key: 'birthParish', header: '* Parroquia de nacimiento', required: true },
+
+  // Residencia (obligatorio)
+  { key: 'residenceState', header: '* Estado de residencia', required: true },
+  { key: 'residenceMunicipality', header: '* Municipio de residencia', required: true },
+  { key: 'residenceParish', header: '* Parroquia de residencia', required: true },
   { key: 'address', header: 'Dirección de habitación' },
+
+  // Contacto del estudiante
   { key: 'phone1', header: 'Teléfono principal' },
   { key: 'phone2', header: 'Teléfono secundario' },
   { key: 'email', header: 'Correo del estudiante' },
   { key: 'whatsapp', header: 'Whatsapp' },
+
+  // Información adicional
+  { key: 'pathology', header: 'Patología' },
+  { key: 'livingWith', header: '¿Con quién vive?' },
   { key: 'previousSchoolIds', header: 'Planteles de procedencia (separados por ;)' },
-  { key: 'representativeType', header: 'Quién representa (mother/father/other)', description: 'Valores permitidos: mother, father, other' }
+
+  // Datos de inscripción
+  { key: 'schoolPeriod', header: '* Periodo escolar (nombre)', required: true },
+  { key: 'grade', header: '* Grado (nombre)', required: true },
+  { key: 'section', header: 'Sección (nombre)' },
+  { key: 'escolaridad', header: '* Escolaridad (regular/repitiente/materia_pendiente)', required: true },
+  { key: 'representativeType', header: '* Quién representa (mother/father/other)', required: true, description: 'Valores permitidos: mother, father, other' }
 ];
 
 guardianPrefixes.forEach((prefix) => {
