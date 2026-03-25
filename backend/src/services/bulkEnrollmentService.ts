@@ -12,6 +12,8 @@ const allowedDocumentTypes: GuardianDocumentType[] = ['Venezolano', 'Extranjero'
 const isGuardianDocumentType = (value: string): value is GuardianDocumentType =>
   allowedDocumentTypes.some((type) => type === value);
 const escolaridadOptions = ['regular', 'repitiente', 'materia_pendiente'];
+const templateDataStartRow = 2;
+const templateDataEndRow = 1000;
 
 type CachedStructure = {
   periodsById: Map<number, SchoolPeriod>;
@@ -62,7 +64,97 @@ const headerToKey = new Map(
   BULK_ENROLLMENT_COLUMNS.map((column) => [column.header.trim().toLowerCase(), column.key])
 );
 
-const sanitizeString = (value: unknown): string => (typeof value === 'string' ? value.trim() : '');
+const sanitizeString = (value: unknown): string => {
+  if (value === null || value === undefined) {
+    return '';
+  }
+
+  if (typeof value === 'string') {
+    return value.trim();
+  }
+
+  if (typeof value === 'number' || typeof value === 'bigint') {
+    return String(value).trim();
+  }
+
+  return '';
+};
+
+const getColumnNumberByKey = (key: string): number => {
+  const index = BULK_ENROLLMENT_COLUMNS.findIndex((column) => column.key === key);
+  return index + 1;
+};
+
+const createCatalogSheet = async (workbook: ExcelJS.Workbook) => {
+  const catalogSheet = workbook.addWorksheet('Catalogos');
+  catalogSheet.state = 'veryHidden';
+
+  const structures = await buildStructures();
+  const catalogs: Array<{ name: string; values: string[] }> = [
+    {
+      name: 'Periodos',
+      values: Array.from(structures.periodsById.values()).map((period) => period.period).filter(Boolean)
+    },
+    {
+      name: 'Grados',
+      values: Array.from(structures.gradesById.values()).map((grade) => grade.name).filter(Boolean)
+    },
+    {
+      name: 'Secciones',
+      values: Array.from(structures.sectionsById.values()).map((section) => section.name).filter(Boolean)
+    },
+    { name: 'Escolaridad', values: escolaridadOptions },
+    { name: 'Documentos', values: allowedDocumentTypes },
+    { name: 'Genero', values: ['M', 'F'] },
+    { name: 'Nacionalidad', values: ['V', 'E'] },
+    { name: 'Representa', values: ['mother', 'father', 'other'] }
+  ];
+
+  const namedRanges = new Map<string, string>();
+
+  catalogs.forEach((catalog, index) => {
+    const column = index + 1;
+    const columnLetter = catalogSheet.getColumn(column).letter;
+    const values = catalog.values.filter((value) => value.trim().length > 0);
+
+    catalogSheet.getCell(1, column).value = catalog.name;
+    values.forEach((value, valueIndex) => {
+      catalogSheet.getCell(valueIndex + 2, column).value = value;
+    });
+
+    const endRow = values.length > 0 ? values.length + 1 : 2;
+    const absoluteRange = `'Catalogos'!$${columnLetter}$2:$${columnLetter}$${endRow}`;
+    workbook.definedNames.add(absoluteRange, catalog.name);
+    namedRanges.set(catalog.name, `=${catalog.name}`);
+  });
+
+  return namedRanges;
+};
+
+const applyDropdownValidation = (
+  worksheet: ExcelJS.Worksheet,
+  columnNumber: number,
+  formulaReference: string,
+  errorMessage: string
+) => {
+  if (!columnNumber || !formulaReference) {
+    return;
+  }
+
+  for (let row = templateDataStartRow; row <= templateDataEndRow; row += 1) {
+    worksheet.getCell(row, columnNumber).dataValidation = {
+      type: 'list',
+      allowBlank: true,
+      formulae: [formulaReference],
+      showInputMessage: true,
+      promptTitle: 'Seleccione un valor',
+      prompt: 'Use la lista desplegable para evitar errores de formato.',
+      showErrorMessage: true,
+      errorTitle: 'Valor inválido',
+      error: errorMessage
+    };
+  }
+};
 
 const parseDateValue = (value: unknown) => {
   if (!value) return null;
@@ -371,6 +463,27 @@ export const generateTemplate = async (options: BulkTemplateOptions = {}) => {
   worksheet.addRow(BULK_ENROLLMENT_COLUMNS.map((col) => (col.required ? '(Obligatorio)' : '')));
 
   worksheet.columns = BULK_ENROLLMENT_COLUMNS.map((col) => ({ width: Math.min(Math.max(col.header.length + 5, 18), 40) }));
+
+  const catalogRanges = await createCatalogSheet(workbook);
+  const validationConfig: Array<{ key: string; catalog: string; message: string }> = [
+    { key: 'schoolPeriod', catalog: 'Periodos', message: 'Seleccione un período válido de la lista.' },
+    { key: 'grade', catalog: 'Grados', message: 'Seleccione un grado válido de la lista.' },
+    { key: 'section', catalog: 'Secciones', message: 'Seleccione una sección válida de la lista.' },
+    { key: 'escolaridad', catalog: 'Escolaridad', message: 'Seleccione una escolaridad válida.' },
+    { key: 'documentType', catalog: 'Documentos', message: 'Seleccione un tipo de documento válido.' },
+    { key: 'gender', catalog: 'Genero', message: 'Seleccione M o F.' },
+    { key: 'nationality', catalog: 'Nacionalidad', message: 'Seleccione V o E.' },
+    { key: 'representativeType', catalog: 'Representa', message: 'Seleccione quién representa al estudiante.' },
+    { key: 'mother.documentType', catalog: 'Documentos', message: 'Seleccione un tipo de documento válido.' },
+    { key: 'father.documentType', catalog: 'Documentos', message: 'Seleccione un tipo de documento válido.' },
+    { key: 'representative.documentType', catalog: 'Documentos', message: 'Seleccione un tipo de documento válido.' }
+  ];
+
+  validationConfig.forEach((validation) => {
+    const columnNumber = getColumnNumberByKey(validation.key);
+    const formulaReference = catalogRanges.get(validation.catalog) || '';
+    applyDropdownValidation(worksheet, columnNumber, formulaReference, validation.message);
+  });
 
   const timestamp = dayjs().format('YYYYMMDD_HHmm');
   const fileName = `plantilla_inscripciones_${timestamp}.xlsx`;
