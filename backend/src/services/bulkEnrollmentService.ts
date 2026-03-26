@@ -659,6 +659,17 @@ export const generateTemplate = async (options: BulkTemplateOptions = {}) => {
     defaultStudentLocation.parish
   );
 
+  // Autoseleccionar período activo cuando haya nombre de estudiante
+  const activePeriod = await SchoolPeriod.findOne({ where: { isActive: true } });
+  if (activePeriod) {
+    applyConditionalDefaultFormulaToColumn(
+      worksheet,
+      getColumnNumberByKeyInColumns('schoolPeriod', visibleColumns),
+      firstNameColumnNumber,
+      activePeriod.period
+    );
+  }
+
   // Valores por defecto condicionados para madre
   const motherFirstNameColumnNumber = getColumnNumberByKeyInColumns('mother.firstName', visibleColumns);
   applyConditionalDefaultFormulaToColumn(
