@@ -188,10 +188,11 @@ const mapToGuardianProfilePayload = (data: CompleteGuardianInput): GuardianProfi
 
 export const getMatriculations = async (req: Request, res: Response) => {
   try {
-    const { status = 'pending', schoolPeriodId, gradeId, sectionId, q } = req.query;
+    const { status, schoolPeriodId, gradeId, sectionId, q } = req.query;
 
     const where: any = {};
-    if (status) where.status = status;
+    if (status) where.status = status; // Solo filtrar si se especifica
+    // NO filtrar por schoolPeriodId por defecto - mostrar todos los períodos
     if (schoolPeriodId) where.schoolPeriodId = schoolPeriodId;
     if (gradeId) where.gradeId = gradeId;
     if (sectionId) where.sectionId = sectionId;

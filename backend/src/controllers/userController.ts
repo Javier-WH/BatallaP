@@ -6,7 +6,7 @@ import bcrypt from 'bcrypt';
 
 export const searchUsers = async (req: Request, res: Response) => {
   try {
-    const { q, activeOnly } = req.query;
+    const { q, activeOnly, schoolPeriodId } = req.query;
     const query = q ? String(q) : '';
 
     const whereClause: any = {};
@@ -19,7 +19,10 @@ export const searchUsers = async (req: Request, res: Response) => {
     }
 
     const activePeriod = await SchoolPeriod.findOne({ where: { isActive: true } });
-    console.log('[searchUsers] activePeriod:', activePeriod?.id, 'activeOnly:', activeOnly);
+    console.log('[searchUsers] activePeriod:', activePeriod?.id, 'activeOnly:', activeOnly, 'schoolPeriodId:', schoolPeriodId);
+
+    // Determinar qué período usar para el filtro
+    const targetPeriodId = schoolPeriodId ? Number(schoolPeriodId) : (activePeriod?.id);
 
     const people = await Person.findAll({
       where: whereClause,
@@ -38,7 +41,7 @@ export const searchUsers = async (req: Request, res: Response) => {
           model: Inscription,
           as: 'inscriptions',
           required: false,
-          where: activePeriod ? { schoolPeriodId: activePeriod.id } : undefined,
+          where: targetPeriodId ? { schoolPeriodId: targetPeriodId } : undefined,
           attributes: ['id', 'schoolPeriodId']
         }
       ],
@@ -50,9 +53,9 @@ export const searchUsers = async (req: Request, res: Response) => {
     if (String(activeOnly) === 'true') {
       const exemptRoles = ['master', 'administrador', 'control de estudios', 'profesor', 'representante', 'admin'];
 
-      if (!activePeriod) {
-        // If no active period, hide students unless they have an exempt role
-        console.log('[searchUsers] No active period found. Filtering students...');
+      if (!targetPeriodId) {
+        // If no specific period, hide students unless they have an exempt role
+        console.log('[searchUsers] No period specified. Filtering students...');
         results = people.filter(person => {
           const roles = (person as any).roles || [];
 
@@ -60,15 +63,15 @@ export const searchUsers = async (req: Request, res: Response) => {
           const hasExemptRole = roles.some((r: any) => exemptRoles.includes(r.name.toLowerCase()));
           if (hasExemptRole) return true;
 
-          // If is student (and not exempt), HIDE (since no active period)
+          // If is student (and not exempt), HIDE (since no period specified)
           const isStudent = roles.some((r: any) =>
             ['student', 'estudiante', 'alumno'].includes(r.name.toLowerCase())
           );
           return !isStudent;
         });
       } else {
-        // If active period exists
-        console.log('[searchUsers] Active period exists. Filtering non-matriculated students...');
+        // If period exists
+        console.log('[searchUsers] Period specified. Filtering non-matriculated students...');
         results = people.filter(person => {
           const roles = (person as any).roles || [];
 
@@ -84,7 +87,7 @@ export const searchUsers = async (req: Request, res: Response) => {
           // 3. If NOT a student (and not exempt, e.g. just a basic user), Keep them.
           if (!isStudent) return true;
 
-          // 4. If IS a Student (and NOT exempt), Check for Active Inscriptions
+          // 4. If IS a Student (and NOT exempt), Check for Inscriptions in the specified period
           const inscriptions = (person as any).inscriptions || [];
           const isMatriculated = inscriptions.length > 0;
 

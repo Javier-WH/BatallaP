@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Input, Table, Card, Button, Space, Tag, message, Segmented, Typography, Tooltip } from 'antd';
+import { Input, Table, Card, Button, Space, Tag, message, Segmented, Typography, Tooltip, Select } from 'antd';
 import { SearchOutlined, EditOutlined } from '@ant-design/icons';
 import api from '@/services/api';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -16,6 +16,12 @@ interface User {
   lastName: string;
   document: string;
   roles: Role[];
+}
+
+interface SchoolPeriod {
+  id: number;
+  name: string;
+  isActive: boolean;
 }
 
 const { Search } = Input;
@@ -36,6 +42,8 @@ const SearchUsers: React.FC<{ initialRoleFilter?: string }> = ({ initialRoleFilt
   const [data, setData] = useState<User[]>([]);
   const [searchValue, setSearchValue] = useState('');
   const [roleFilter, setRoleFilter] = useState<string>(initialRoleFilter);
+  const [allPeriods, setAllPeriods] = useState<SchoolPeriod[]>([]);
+  const [filterSchoolPeriod, setFilterSchoolPeriod] = useState<number | null>(null);
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuth();
@@ -53,10 +61,17 @@ const SearchUsers: React.FC<{ initialRoleFilter?: string }> = ({ initialRoleFilt
     return '/admin';
   }, [location.pathname]);
 
-  const fetchUsers = async (q: string = '') => {
+  const fetchUsers = useCallback(async (q: string = '') => {
     setLoading(true);
     try {
-      const response = await api.get(`/users?q=${q}&activeOnly=true`);
+      const params = new URLSearchParams();
+      params.append('q', q);
+      params.append('activeOnly', 'true');
+      if (filterSchoolPeriod) {
+        params.append('schoolPeriodId', filterSchoolPeriod.toString());
+      }
+      
+      const response = await api.get(`/users?${params.toString()}`);
       setData(response.data);
     } catch (error) {
       console.error(error);
@@ -64,10 +79,30 @@ const SearchUsers: React.FC<{ initialRoleFilter?: string }> = ({ initialRoleFilt
     } finally {
       setLoading(false);
     }
-  };
+  }, [filterSchoolPeriod]);
 
   useEffect(() => {
     fetchUsers();
+  }, [fetchUsers]);
+
+  useEffect(() => {
+    // Cargar todos los períodos y establecer el activo por defecto
+    const fetchPeriods = async () => {
+      try {
+        const response = await api.get('/academic/periods');
+        const periods = response.data;
+        setAllPeriods(periods);
+        
+        // Preseleccionar el período activo
+        const activePeriod = periods.find((p: SchoolPeriod) => p.isActive);
+        if (activePeriod) {
+          setFilterSchoolPeriod(activePeriod.id);
+        }
+      } catch (error) {
+        console.error('Error fetching periods:', error);
+      }
+    };
+    fetchPeriods();
   }, []);
 
   const canEditTarget = useCallback((roles: Role[] = []) => {
@@ -244,12 +279,28 @@ const SearchUsers: React.FC<{ initialRoleFilter?: string }> = ({ initialRoleFilt
                 }}
               />
             </div>
-            <Segmented
-              size="large"
-              value={roleFilter}
-              onChange={(val) => setRoleFilter(val.toString())}
-              options={ROLE_FILTERS.map(filter => ({ label: filter.label, value: filter.value }))}
-            />
+            <div className="flex gap-2">
+              <Select
+                placeholder="Período Escolar"
+                style={{ width: 180 }}
+                allowClear
+                value={filterSchoolPeriod}
+                onChange={setFilterSchoolPeriod}
+                size="large"
+              >
+                {allPeriods.map(p => (
+                  <Select.Option key={p.id} value={p.id}>
+                    {p.name} {p.isActive && '(Activo)'}
+                  </Select.Option>
+                ))}
+              </Select>
+              <Segmented
+                size="large"
+                value={roleFilter}
+                onChange={(val) => setRoleFilter(val.toString())}
+                options={ROLE_FILTERS.map(filter => ({ label: filter.label, value: filter.value }))}
+              />
+            </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">

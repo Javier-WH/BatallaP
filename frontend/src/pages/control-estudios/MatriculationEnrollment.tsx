@@ -408,6 +408,8 @@ const MatriculationEnrollment: React.FC = () => {
   const [filterSection, setFilterSection] = useState<number | null>(null);
   const [filterGender, setFilterGender] = useState<string | null>(null);
   const [filterEscolaridad, setFilterEscolaridad] = useState<'regular' | 'repitiente' | 'materia_pendiente' | null>(null);
+  const [filterSchoolPeriod, setFilterSchoolPeriod] = useState<number | null>(null);
+  const [allPeriods, setAllPeriods] = useState<SchoolPeriod[]>([]);
   const [filterMissing, setFilterMissing] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
@@ -446,12 +448,22 @@ const MatriculationEnrollment: React.FC = () => {
   useEffect(() => {
     const fetchInitialData = async () => {
       try {
-        const [periodRes, questionsRes] = await Promise.all([
+        const [periodRes, allPeriodsRes, questionsRes] = await Promise.all([
           api.get('/academic/periods/active'),
+          api.get('/academic/periods'),
           api.get('/enrollment-questions')
         ]);
         if (periodRes.data) setActivePeriod(periodRes.data);
         else message.warning('No hay un período académico activo configurado.');
+        if (allPeriodsRes.data) {
+          setAllPeriods(allPeriodsRes.data);
+          
+          // Preseleccionar el período activo
+          const activePeriod = allPeriodsRes.data.find((p: any) => p.isActive);
+          if (activePeriod) {
+            setFilterSchoolPeriod(activePeriod.id);
+          }
+        }
         if (questionsRes.data) setQuestions(questionsRes.data);
       } catch (error) {
         console.error('Error fetching initial data:', error);
@@ -464,21 +476,16 @@ const MatriculationEnrollment: React.FC = () => {
   }, []);
 
   const fetchData = useCallback(async () => {
-    if (!activePeriod) {
-      setLoading(false);
-      return;
-    }
     setLoading(true);
     try {
-      const pId = activePeriod.id;
       const endpoint = viewStatus === 'completed' ? '/inscriptions' : '/matriculations';
-      const params = {
+      const params: any = {
         status: viewStatus === 'pending' ? 'pending' : undefined,
-        schoolPeriodId: pId
+        schoolPeriodId: filterSchoolPeriod || undefined // Usar filtro si está seleccionado, sino no filtrar
       };
       const [dataRes, structRes] = await Promise.all([
         api.get(endpoint, { params }),
-        api.get(`/academic/structure/${pId}`)
+        api.get(`/academic/structure/${filterSchoolPeriod || activePeriod?.id}`)
       ]);
       if (dataRes.data) {
         const mapped = dataRes.data.map((item: MatriculationApiResponse) => {
@@ -603,7 +610,7 @@ const MatriculationEnrollment: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [viewStatus, activePeriod]);
+  }, [viewStatus, filterSchoolPeriod, activePeriod]);
 
   useEffect(() => {
     fetchData();
@@ -1059,6 +1066,7 @@ const MatriculationEnrollment: React.FC = () => {
       if (filterSection && item.sectionId !== filterSection) return false;
       if (filterGender && item.student.gender !== filterGender) return false;
       if (filterEscolaridad && item.tempData.escolaridad !== filterEscolaridad) return false;
+      if (filterSchoolPeriod && item.schoolPeriodId !== filterSchoolPeriod) return false;
       if (filterMissing) {
         if (filterMissing === 'guardians' && item.student.guardians?.some(g => g.isRepresentative)) return false;
         if (filterMissing === 'contact' && item.student.contact?.phone1) return false;
@@ -1072,7 +1080,7 @@ const MatriculationEnrollment: React.FC = () => {
       }
       return true;
     });
-  }, [matriculations, searchValue, filterGrade, filterSection, filterGender, filterEscolaridad, filterMissing, questions]);
+  }, [matriculations, searchValue, filterGrade, filterSection, filterGender, filterEscolaridad, filterSchoolPeriod, filterMissing, questions]);
 
   const currentData = useMemo(() => {
     const start = (currentPage - 1) * pageSize;
@@ -2676,6 +2684,18 @@ const MatriculationEnrollment: React.FC = () => {
             </Col>
             <Col xs={24} lg={16}>
               <Row gutter={[4, 4]} justify="end">
+                <Col>
+                  <Select
+                    placeholder="Período Escolar"
+                    size="small"
+                    style={{ width: 160 }}
+                    allowClear
+                    value={filterSchoolPeriod}
+                    onChange={setFilterSchoolPeriod}
+                  >
+                    {allPeriods.map(p => <Option key={p.id} value={p.id}>{p.name} {p.isActive && '(Activo)'}</Option>)}
+                  </Select>
+                </Col>
                 <Col>
                   <Select
                     placeholder="Grado"
