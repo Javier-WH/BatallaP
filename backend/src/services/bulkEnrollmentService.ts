@@ -14,6 +14,29 @@ const isGuardianDocumentType = (value: string): value is GuardianDocumentType =>
 const escolaridadOptions = ['regular', 'repitiente', 'materia_pendiente'];
 const templateDataStartRow = 2;
 const templateDataEndRow = 1000;
+const templateFirstDataRow = 4;
+
+const defaultStudentLocation = {
+  state: 'Guárico',
+  municipality: 'Monagas',
+  parish: 'Altagracia de Orituco'
+};
+
+type VenezuelaMunicipality = {
+  municipio: string;
+  parroquias: string[];
+};
+
+type VenezuelaState = {
+  estado: string;
+  municipios: VenezuelaMunicipality[];
+};
+
+type LocationCatalogs = {
+  states: string[];
+  municipalities: string[];
+  parishes: string[];
+};
 
 type CachedStructure = {
   periodsById: Map<number, SchoolPeriod>;
@@ -94,11 +117,54 @@ const getColumnNumberByKeyInColumns = (key: string, columns: typeof BULK_ENROLLM
   return index + 1;
 };
 
+const buildLocationCatalogs = async (): Promise<LocationCatalogs> => {
+  const jsonPath = path.join(process.cwd(), 'src', 'assets', 'venezuela.json');
+
+  try {
+    const fileContent = await fs.readFile(jsonPath, 'utf-8');
+    const data = JSON.parse(fileContent) as VenezuelaState[];
+
+    const states = new Set<string>();
+    const municipalities = new Set<string>();
+    const parishes = new Set<string>();
+
+    data.forEach((stateItem) => {
+      const state = sanitizeString(stateItem.estado);
+      if (state) states.add(state);
+
+      (stateItem.municipios || []).forEach((municipalityItem) => {
+        const municipality = sanitizeString(municipalityItem.municipio);
+        if (municipality) municipalities.add(municipality);
+
+        (municipalityItem.parroquias || []).forEach((parishItem) => {
+          const parish = sanitizeString(parishItem);
+          if (parish) parishes.add(parish);
+        });
+      });
+    });
+
+    const sorter = (a: string, b: string) => a.localeCompare(b, 'es');
+
+    return {
+      states: Array.from(states).sort(sorter),
+      municipalities: Array.from(municipalities).sort(sorter),
+      parishes: Array.from(parishes).sort(sorter)
+    };
+  } catch (error) {
+    return {
+      states: [defaultStudentLocation.state],
+      municipalities: [defaultStudentLocation.municipality],
+      parishes: [defaultStudentLocation.parish]
+    };
+  }
+};
+
 const createCatalogSheet = async (workbook: ExcelJS.Workbook) => {
   const catalogSheet = workbook.addWorksheet('Catalogos');
   catalogSheet.state = 'veryHidden';
 
   const structures = await buildStructures();
+  const locationCatalogs = await buildLocationCatalogs();
   const catalogs: Array<{ name: string; values: string[] }> = [
     {
       name: 'Periodos',
@@ -116,7 +182,10 @@ const createCatalogSheet = async (workbook: ExcelJS.Workbook) => {
     { name: 'Documentos', values: allowedDocumentTypes },
     { name: 'Genero', values: ['M', 'F'] },
     { name: 'Nacionalidad', values: ['V', 'E'] },
-    { name: 'Representa', values: ['mother', 'father', 'other'] }
+    { name: 'Representa', values: ['mother', 'father', 'other'] },
+    { name: 'EstadosVenezuela', values: locationCatalogs.states },
+    { name: 'MunicipiosVenezuela', values: locationCatalogs.municipalities },
+    { name: 'ParroquiasVenezuela', values: locationCatalogs.parishes }
   ];
 
   const namedRanges = new Map<string, string>();
@@ -161,6 +230,30 @@ const applyDropdownValidation = (
       showErrorMessage: true,
       errorTitle: 'Valor inválido',
       error: errorMessage
+    };
+  }
+};
+
+const applyConditionalDefaultFormulaToColumn = (
+  worksheet: ExcelJS.Worksheet,
+  targetColumnNumber: number,
+  triggerColumnNumber: number,
+  defaultValue: string
+) => {
+  if (!targetColumnNumber || !triggerColumnNumber || !defaultValue) {
+    return;
+  }
+
+  const triggerColumnLetter = worksheet.getColumn(triggerColumnNumber).letter;
+  if (!triggerColumnLetter) {
+    return;
+  }
+
+  const escapedDefaultValue = defaultValue.replace(/"/g, '""');
+
+  for (let row = templateFirstDataRow; row <= templateDataEndRow; row += 1) {
+    worksheet.getCell(row, targetColumnNumber).value = {
+      formula: `IF($${triggerColumnLetter}${row}<>"","${escapedDefaultValue}","")`
     };
   }
 };
@@ -499,6 +592,21 @@ export const generateTemplate = async (options: BulkTemplateOptions = {}) => {
     { key: 'gender', catalog: 'Genero', message: 'Seleccione M o F.' },
     { key: 'nationality', catalog: 'Nacionalidad', message: 'Seleccione V o E.' },
     { key: 'representativeType', catalog: 'Representa', message: 'Seleccione quién representa al estudiante.' },
+    { key: 'birthState', catalog: 'EstadosVenezuela', message: 'Seleccione un estado válido de la lista.' },
+    { key: 'birthMunicipality', catalog: 'MunicipiosVenezuela', message: 'Seleccione un municipio válido de la lista.' },
+    { key: 'birthParish', catalog: 'ParroquiasVenezuela', message: 'Seleccione una parroquia válida de la lista.' },
+    { key: 'residenceState', catalog: 'EstadosVenezuela', message: 'Seleccione un estado válido de la lista.' },
+    { key: 'residenceMunicipality', catalog: 'MunicipiosVenezuela', message: 'Seleccione un municipio válido de la lista.' },
+    { key: 'residenceParish', catalog: 'ParroquiasVenezuela', message: 'Seleccione una parroquia válida de la lista.' },
+    { key: 'mother.residenceState', catalog: 'EstadosVenezuela', message: 'Seleccione un estado válido de la lista.' },
+    { key: 'mother.residenceMunicipality', catalog: 'MunicipiosVenezuela', message: 'Seleccione un municipio válido de la lista.' },
+    { key: 'mother.residenceParish', catalog: 'ParroquiasVenezuela', message: 'Seleccione una parroquia válida de la lista.' },
+    { key: 'father.residenceState', catalog: 'EstadosVenezuela', message: 'Seleccione un estado válido de la lista.' },
+    { key: 'father.residenceMunicipality', catalog: 'MunicipiosVenezuela', message: 'Seleccione un municipio válido de la lista.' },
+    { key: 'father.residenceParish', catalog: 'ParroquiasVenezuela', message: 'Seleccione una parroquia válida de la lista.' },
+    { key: 'representative.residenceState', catalog: 'EstadosVenezuela', message: 'Seleccione un estado válido de la lista.' },
+    { key: 'representative.residenceMunicipality', catalog: 'MunicipiosVenezuela', message: 'Seleccione un municipio válido de la lista.' },
+    { key: 'representative.residenceParish', catalog: 'ParroquiasVenezuela', message: 'Seleccione una parroquia válida de la lista.' },
     { key: 'mother.documentType', catalog: 'Documentos', message: 'Seleccione un tipo de documento válido.' },
     { key: 'father.documentType', catalog: 'Documentos', message: 'Seleccione un tipo de documento válido.' },
     { key: 'representative.documentType', catalog: 'Documentos', message: 'Seleccione un tipo de documento válido.' }
@@ -511,6 +619,108 @@ export const generateTemplate = async (options: BulkTemplateOptions = {}) => {
       applyDropdownValidation(worksheet, columnNumber, formulaReference, validation.message);
     }
   });
+
+  // Valores por defecto condicionados: solo cuando haya nombre de estudiante
+  const firstNameColumnNumber = getColumnNumberByKeyInColumns('firstName', visibleColumns);
+  applyConditionalDefaultFormulaToColumn(
+    worksheet,
+    getColumnNumberByKeyInColumns('birthState', visibleColumns),
+    firstNameColumnNumber,
+    defaultStudentLocation.state
+  );
+  applyConditionalDefaultFormulaToColumn(
+    worksheet,
+    getColumnNumberByKeyInColumns('birthMunicipality', visibleColumns),
+    firstNameColumnNumber,
+    defaultStudentLocation.municipality
+  );
+  applyConditionalDefaultFormulaToColumn(
+    worksheet,
+    getColumnNumberByKeyInColumns('birthParish', visibleColumns),
+    firstNameColumnNumber,
+    defaultStudentLocation.parish
+  );
+  applyConditionalDefaultFormulaToColumn(
+    worksheet,
+    getColumnNumberByKeyInColumns('residenceState', visibleColumns),
+    firstNameColumnNumber,
+    defaultStudentLocation.state
+  );
+  applyConditionalDefaultFormulaToColumn(
+    worksheet,
+    getColumnNumberByKeyInColumns('residenceMunicipality', visibleColumns),
+    firstNameColumnNumber,
+    defaultStudentLocation.municipality
+  );
+  applyConditionalDefaultFormulaToColumn(
+    worksheet,
+    getColumnNumberByKeyInColumns('residenceParish', visibleColumns),
+    firstNameColumnNumber,
+    defaultStudentLocation.parish
+  );
+
+  // Valores por defecto condicionados para madre
+  const motherFirstNameColumnNumber = getColumnNumberByKeyInColumns('mother.firstName', visibleColumns);
+  applyConditionalDefaultFormulaToColumn(
+    worksheet,
+    getColumnNumberByKeyInColumns('mother.residenceState', visibleColumns),
+    motherFirstNameColumnNumber,
+    defaultStudentLocation.state
+  );
+  applyConditionalDefaultFormulaToColumn(
+    worksheet,
+    getColumnNumberByKeyInColumns('mother.residenceMunicipality', visibleColumns),
+    motherFirstNameColumnNumber,
+    defaultStudentLocation.municipality
+  );
+  applyConditionalDefaultFormulaToColumn(
+    worksheet,
+    getColumnNumberByKeyInColumns('mother.residenceParish', visibleColumns),
+    motherFirstNameColumnNumber,
+    defaultStudentLocation.parish
+  );
+
+  // Valores por defecto condicionados para padre
+  const fatherFirstNameColumnNumber = getColumnNumberByKeyInColumns('father.firstName', visibleColumns);
+  applyConditionalDefaultFormulaToColumn(
+    worksheet,
+    getColumnNumberByKeyInColumns('father.residenceState', visibleColumns),
+    fatherFirstNameColumnNumber,
+    defaultStudentLocation.state
+  );
+  applyConditionalDefaultFormulaToColumn(
+    worksheet,
+    getColumnNumberByKeyInColumns('father.residenceMunicipality', visibleColumns),
+    fatherFirstNameColumnNumber,
+    defaultStudentLocation.municipality
+  );
+  applyConditionalDefaultFormulaToColumn(
+    worksheet,
+    getColumnNumberByKeyInColumns('father.residenceParish', visibleColumns),
+    fatherFirstNameColumnNumber,
+    defaultStudentLocation.parish
+  );
+
+  // Valores por defecto condicionados para representante
+  const representativeFirstNameColumnNumber = getColumnNumberByKeyInColumns('representative.firstName', visibleColumns);
+  applyConditionalDefaultFormulaToColumn(
+    worksheet,
+    getColumnNumberByKeyInColumns('representative.residenceState', visibleColumns),
+    representativeFirstNameColumnNumber,
+    defaultStudentLocation.state
+  );
+  applyConditionalDefaultFormulaToColumn(
+    worksheet,
+    getColumnNumberByKeyInColumns('representative.residenceMunicipality', visibleColumns),
+    representativeFirstNameColumnNumber,
+    defaultStudentLocation.municipality
+  );
+  applyConditionalDefaultFormulaToColumn(
+    worksheet,
+    getColumnNumberByKeyInColumns('representative.residenceParish', visibleColumns),
+    representativeFirstNameColumnNumber,
+    defaultStudentLocation.parish
+  );
 
   // 2. Configurar protección: desbloquear todas las celdas primero, luego bloquear solo headers
   for (let row = 1; row <= templateDataEndRow; row += 1) {
