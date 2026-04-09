@@ -69,6 +69,7 @@ import enrollmentAnswerRoutes from '@/routes/enrollmentAnswerRoutes';
 import bulkEnrollmentRoutes from '@/routes/bulkEnrollmentRoutes';
 import guardianRoutes from '@/routes/guardianRoutes';
 import councilRoutes from '@/routes/councilRoutes';
+import gradeEditPermissionRoutes from '@/routes/gradeEditPermissionRoutes';
 
 app.get('/', (req, res) => {
   res.send('API is running...');
@@ -94,6 +95,7 @@ app.use('/api/enrollment-answers', enrollmentAnswerRoutes);
 app.use('/api/inscriptions/bulk', bulkEnrollmentRoutes);
 app.use('/api/guardians', guardianRoutes);
 app.use('/api/council', councilRoutes);
+app.use('/api/grade-edit-permissions', gradeEditPermissionRoutes);
 app.use('/api/period-closure', periodClosureRoutes);
 app.use('/api/periods', periodOutcomeRoutes);
 app.use('/api/dashboard', dashboardRoutes);

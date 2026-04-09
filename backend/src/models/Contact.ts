@@ -4,16 +4,16 @@ import Person from './Person';
 
 export interface ContactAttributes {
   id: number;
-  phone1: string;
+  phone1?: string;
   phone2?: string;
   email?: string;
-  address: string;
+  address?: string;
   whatsapp?: string;
   socialMedia?: object; // To store JSON data of social media
   personId: number;
 }
 
-export interface ContactCreationAttributes extends Optional<ContactAttributes, 'id' | 'phone2' | 'email' | 'whatsapp' | 'socialMedia'> { }
+export interface ContactCreationAttributes extends Optional<ContactAttributes, 'id' | 'phone1' | 'phone2' | 'email' | 'address' | 'whatsapp' | 'socialMedia'> { }
 
 class Contact extends Model<ContactAttributes, ContactCreationAttributes> implements ContactAttributes {
   public id!: number;
@@ -38,7 +38,7 @@ Contact.init(
     },
     phone1: {
       type: DataTypes.STRING,
-      allowNull: false,
+      allowNull: true,
     },
     phone2: {
       type: DataTypes.STRING,
@@ -53,7 +53,7 @@ Contact.init(
     },
     address: {
       type: DataTypes.TEXT, // Could be long
-      allowNull: false,
+      allowNull: true,
     },
     whatsapp: {
       type: DataTypes.STRING,

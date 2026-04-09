@@ -14,6 +14,7 @@ interface SubjectFinalGradeAttributes {
   calculatedAt: Date;
   createdAt?: Date;
   updatedAt?: Date;
+  inscriptionSubject?: any;
 }
 
 type SubjectFinalGradeCreationAttributes = Optional<
@@ -35,6 +36,8 @@ class SubjectFinalGrade
 
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
+
+  public inscriptionSubject?: any;
 }
 
 SubjectFinalGrade.init(

@@ -105,7 +105,25 @@ export const searchUsers = async (req: Request, res: Response) => {
     }
 
     console.log('[searchUsers] Count before:', people.length, 'After:', results.length);
-    res.json(results);
+
+    // Transform Person objects to User objects with Person data
+    const users = results
+      .map((person: any) => {
+        if (!person.user) return null;
+        return {
+          id: person.user.id,
+          username: person.user.username,
+          person: {
+            firstName: person.firstName,
+            lastName: person.lastName,
+            document: person.document
+          },
+          roles: person.roles
+        };
+      })
+      .filter(Boolean);
+
+    res.json(users);
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Error searching users' });

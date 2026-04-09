@@ -8,7 +8,8 @@ import {
   BookOutlined,
   QuestionCircleOutlined,
   ProjectOutlined,
-  IdcardOutlined
+  IdcardOutlined,
+  LockOutlined
 } from '@ant-design/icons';
 
 const NavButton: React.FC<{
@@ -52,6 +53,7 @@ const AdminLayout: React.FC = () => {
     { path: '/admin/projection', icon: <ProjectOutlined />, label: 'Proyección', tooltip: 'Asignación Académica' },
     { path: '/admin/planteles', icon: <BookOutlined />, label: 'Planteles', tooltip: 'Planteles Escolares' },
     { path: '/admin/enrollment-questions', icon: <QuestionCircleOutlined />, label: 'Preguntas', tooltip: 'Encuesta de Inscripción' },
+    { path: '/admin/permisos-edicion-notas', icon: <LockOutlined />, label: 'Permisos Notas', tooltip: 'Permisos de Edición de Notas' },
   ];
 
   return (

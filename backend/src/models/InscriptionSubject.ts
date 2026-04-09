@@ -7,6 +7,9 @@ interface InscriptionSubjectAttributes {
   id: number;
   inscriptionId: number;
   subjectId: number;
+  subject?: any;
+  inscription?: any;
+  finalGrade?: any;
 }
 
 interface InscriptionSubjectCreationAttributes extends Optional<InscriptionSubjectAttributes, 'id'> { }
@@ -18,6 +21,10 @@ class InscriptionSubject extends Model<InscriptionSubjectAttributes, Inscription
 
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
+
+  public subject?: any;
+  public inscription?: any;
+  public finalGrade?: any;
 }
 
 InscriptionSubject.init(

@@ -19,6 +19,7 @@ import AcademicManagement from '@/pages/master/AcademicManagement';
 import AdminLayout from '@/pages/admin/AdminLayout';
 import RegisterStaff from '@/pages/admin/RegisterStaff';
 import EnrollStudent from '@/pages/admin/EnrollStudent';
+import GradeEditPermissions from '@/pages/admin/GradeEditPermissions';
 
 
 import TeacherProjection from '@/pages/admin/TeacherProjection';
@@ -37,6 +38,7 @@ import ControlEstudiosDashboard from '@/pages/control-estudios/Dashboard';
 import AcademicSettings from '@/pages/control-estudios/AcademicSettings';
 import MatriculationEnrollment from '@/pages/control-estudios/MatriculationEnrollment';
 import CourseCouncil from '@/pages/control-estudios/CourseCouncil';
+import FinalGradesEdit from '@/pages/control-estudios/FinalGradesEdit';
 import RegisterRepresentative from '@/pages/admin/RegisterRepresentative';
 
 
@@ -117,6 +119,7 @@ function AppRoutes() {
           <Route path="enrollment-questions" element={<EnrollmentQuestions />} />
           <Route path="search" element={<SearchUsers />} />
           <Route path="edit/:id" element={<EditUser />} />
+          <Route path="permisos-edicion-notas" element={<GradeEditPermissions />} />
         </Route>
 
         {/* Nested Control de Estudios Module */}
@@ -133,6 +136,7 @@ function AppRoutes() {
           <Route path="configuracion" element={<AcademicSettings />} />
           <Route path="academic" element={<AcademicManagement />} />
           <Route path="consejos-curso" element={<CourseCouncil />} />
+          <Route path="editar-notas" element={<FinalGradesEdit />} />
           <Route path="edit/:id" element={<EditUser />} />
           <Route path="search" element={<SearchUsers />} />
         </Route>

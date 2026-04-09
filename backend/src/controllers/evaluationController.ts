@@ -16,7 +16,11 @@ import {
   InscriptionSubject,
   Term,
   CouncilPoint,
-  PendingSubject
+  PendingSubject,
+  SubjectFinalGrade,
+  GradeEditPermission,
+  GradeEditAudit,
+  User
 } from '@/models/index';
 
 export const getMyAssignments = async (req: Request, res: Response) => {
@@ -341,5 +345,460 @@ export const getStudentFullAcademicRecord = async (req: Request, res: Response) 
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Error al obtener historial' });
+  }
+};
+
+export const updateFinalGrade = async (req: Request, res: Response) => {
+  console.log('[updateFinalGrade] FUNCTION CALLED');
+  try {
+    const sessionUser = (req.session as any).user;
+    console.log('[updateFinalGrade] Session user:', sessionUser?.id, sessionUser?.roles);
+    if (!sessionUser) {
+      return res.status(401).json({ message: 'No autorizado' });
+    }
+
+    // Check if user has Control de Estudios role
+    const userRoles = sessionUser.roles || [];
+    console.log('[updateFinalGrade] User roles:', userRoles);
+    if (!userRoles.includes('Control de Estudios')) {
+      return res.status(403).json({ message: 'Solo Control de Estudios puede modificar notas finales' });
+    }
+
+    const { id } = req.params;
+    const { finalScore, status, reason, permissionId } = req.body;
+    console.log('[updateFinalGrade] Request params:', { id, finalScore, status, reason, permissionId });
+
+    if (!reason) {
+      return res.status(400).json({ message: 'La razón de la modificación es obligatoria' });
+    }
+
+    if (!permissionId) {
+      return res.status(400).json({ message: 'Se requiere el ID del permiso que autoriza la modificación' });
+    }
+
+    console.log('[updateFinalGrade] Validations passed');
+
+    // If id is null or 'new-', create a new record instead of updating
+    if (!id || id.toString().startsWith('new-')) {
+      console.log('[updateFinalGrade] Creating new grade (id is null or starts with new-)');
+      // Extract inscriptionSubjectId from the id
+      const inscriptionSubjectId = id?.toString().replace('new-', '') || req.body.inscriptionSubjectId;
+
+      if (!inscriptionSubjectId) {
+        return res.status(400).json({ message: 'Se requiere inscriptionSubjectId para crear nota final' });
+      }
+
+      // Check if SubjectFinalGrade already exists for this inscriptionSubject
+      const existingGrade = await SubjectFinalGrade.findOne({
+        where: { inscriptionSubjectId: Number(inscriptionSubjectId) }
+      });
+
+      if (existingGrade) {
+        console.log('[updateFinalGrade] Found existing grade, updating it');
+        // Update existing grade instead of creating new one
+        // Store previous values for audit
+        const previousScore = existingGrade.finalScore;
+        const previousStatus = existingGrade.status;
+
+        console.log(`[updateFinalGrade] Updating existing grade ID: ${existingGrade.id}, Previous score: ${previousScore}, New score: ${finalScore}`);
+
+        // Verify permission
+        const permission = await GradeEditPermission.findOne({
+          where: { id: permissionId, isActive: true }
+        });
+
+        if (!permission) {
+          return res.status(404).json({ message: 'Permiso no encontrado o inactivo' });
+        }
+
+        if (permission.grantedTo !== sessionUser.id) {
+          return res.status(403).json({ message: 'El permiso no pertenece al usuario actual' });
+        }
+
+        // Update the final grade
+        await existingGrade.update({
+          finalScore: finalScore !== undefined ? finalScore : existingGrade.finalScore,
+          status: status || existingGrade.status
+        });
+
+        console.log(`[updateFinalGrade] Grade updated successfully, new value: ${existingGrade.finalScore}`);
+
+        // Create audit record
+        await GradeEditAudit.create({
+          subjectFinalGradeId: existingGrade.id,
+          permissionId: permission.id,
+          editedBy: sessionUser.id,
+          previousScore,
+          newScore: finalScore,
+          previousStatus,
+          newStatus: existingGrade.status,
+          reason,
+          editedAt: new Date()
+        });
+
+        return res.json({ message: 'Nota final actualizada correctamente', finalGrade: existingGrade });
+      }
+
+      // Get inscription subject to verify period
+      const inscriptionSubject = await InscriptionSubject.findByPk(Number(inscriptionSubjectId), {
+        include: [
+          {
+            model: Inscription,
+            as: 'inscription',
+            include: [
+              {
+                model: SchoolPeriod,
+                as: 'period'
+              }
+            ]
+          }
+        ]
+      });
+
+      if (!inscriptionSubject) {
+        return res.status(404).json({ message: 'Inscripción de materia no encontrada' });
+      }
+
+      const schoolPeriod = (inscriptionSubject as any).inscription?.period;
+      if (!schoolPeriod) {
+        return res.status(400).json({ message: 'No se pudo determinar el período escolar' });
+      }
+
+      if (schoolPeriod.isActive) {
+        return res.status(403).json({ message: 'No se pueden modificar notas de períodos activos' });
+      }
+
+      // Verify permission
+      const permission = await GradeEditPermission.findOne({
+        where: { id: permissionId, isActive: true }
+      });
+
+      if (!permission) {
+        return res.status(404).json({ message: 'Permiso no encontrado o inactivo' });
+      }
+
+      if (permission.grantedTo !== sessionUser.id) {
+        return res.status(403).json({ message: 'El permiso no pertenece al usuario actual' });
+      }
+
+      if (permission.schoolPeriodId && permission.schoolPeriodId !== schoolPeriod.id) {
+        return res.status(403).json({ message: 'El permiso no cubre este período escolar' });
+      }
+
+      // Create new final grade
+      const newFinalGrade = await SubjectFinalGrade.create({
+        inscriptionSubjectId: Number(inscriptionSubjectId),
+        finalScore,
+        status: status || (finalScore >= 10 ? 'aprobada' : 'reprobada')
+      });
+
+      // Create audit record
+      await GradeEditAudit.create({
+        subjectFinalGradeId: newFinalGrade.id,
+        permissionId: permission.id,
+        editedBy: sessionUser.id,
+        previousScore: null,
+        newScore: finalScore,
+        previousStatus: null,
+        newStatus: newFinalGrade.status,
+        reason,
+        editedAt: new Date()
+      });
+
+      return res.json({ message: 'Nota final creada correctamente', finalGrade: newFinalGrade });
+    }
+
+    console.log('[updateFinalGrade] Updating by ID (not null/new)');
+
+    // Get the final grade record
+    console.log('[updateFinalGrade] Fetching grade with ID:', Number(id));
+    const finalGrade = await SubjectFinalGrade.findByPk(Number(id), {
+      include: [
+        {
+          model: InscriptionSubject,
+          as: 'inscriptionSubject',
+          include: [
+            {
+              model: Inscription,
+              as: 'inscription',
+              include: [
+                {
+                  model: SchoolPeriod,
+                  as: 'period'
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    });
+    console.log('[updateFinalGrade] Grade fetched:', finalGrade ? finalGrade.id : 'null');
+
+    if (!finalGrade) {
+      console.log('[updateFinalGrade] Grade not found');
+      return res.status(404).json({ message: 'Nota final no encontrada' });
+    }
+
+    // Verify that the school period is inactive
+    const schoolPeriod = (finalGrade as any).inscriptionSubject?.inscription?.period;
+    console.log('[updateFinalGrade] School period:', schoolPeriod?.id, schoolPeriod?.name, 'isActive:', schoolPeriod?.isActive);
+    if (!schoolPeriod) {
+      console.log('[updateFinalGrade] School period not found');
+      return res.status(400).json({ message: 'No se pudo determinar el período escolar' });
+    }
+
+    if (schoolPeriod.isActive) {
+      console.log('[updateFinalGrade] Period is active, cannot modify');
+      return res.status(403).json({ message: 'No se pueden modificar notas de períodos activos' });
+    }
+
+    // Verify the permission
+    console.log('[updateFinalGrade] Fetching permission ID:', permissionId);
+    const permission = await GradeEditPermission.findOne({
+      where: { id: permissionId, isActive: true }
+    });
+    console.log('[updateFinalGrade] Permission fetched:', permission ? permission.id : 'null');
+
+    if (!permission) {
+      return res.status(404).json({ message: 'Permiso no encontrado o inactivo' });
+    }
+
+    // Verify permission belongs to the current user
+    console.log('[updateFinalGrade] Checking permission ownership: permission.grantedTo:', permission.grantedTo, 'sessionUser.id:', sessionUser.id);
+    if (permission.grantedTo !== sessionUser.id) {
+      return res.status(403).json({ message: 'El permiso no pertenece al usuario actual' });
+    }
+
+    // Verify permission covers this school period (either global or specific)
+    console.log('[updateFinalGrade] Checking period coverage: permission.schoolPeriodId:', permission.schoolPeriodId, 'schoolPeriod.id:', schoolPeriod.id);
+    if (permission.schoolPeriodId && permission.schoolPeriodId !== schoolPeriod.id) {
+      return res.status(403).json({ message: 'El permiso no cubre este período escolar' });
+    }
+
+    // Store previous values for audit
+    const previousScore = finalGrade.finalScore;
+    const previousStatus = finalGrade.status;
+
+    console.log('[updateFinalGrade] Updating grade, previous score:', previousScore, 'new score:', finalScore);
+
+    // Update the final grade
+    await finalGrade.update({
+      finalScore: finalScore !== undefined ? finalScore : finalGrade.finalScore,
+      status: status || finalGrade.status
+    });
+
+    console.log('[updateFinalGrade] Grade updated successfully');
+
+    // Create audit record
+    console.log('[updateFinalGrade] Creating audit record');
+    await GradeEditAudit.create({
+      subjectFinalGradeId: finalGrade.id,
+      permissionId: permission.id,
+      editedBy: sessionUser.id,
+      previousScore,
+      newScore: finalGrade.finalScore,
+      previousStatus,
+      newStatus: finalGrade.status,
+      reason,
+      editedAt: new Date()
+    });
+
+    console.log('[updateFinalGrade] Audit record created, sending response');
+    res.json({ message: 'Nota final actualizada correctamente', finalGrade });
+  } catch (error: any) {
+    console.error('[updateFinalGrade] Error:', error);
+    res.status(500).json({ message: 'Error al actualizar nota final', error: error.message });
+  }
+};
+
+// Helper function to check if user has required role
+const hasRole = (user: any, roles: string[]): boolean => {
+  if (!user || !user.roles) return false;
+  const userRoles = user.roles.map((r: any) => typeof r === 'string' ? r : r.name);
+  return roles.some(role => userRoles.includes(role));
+};
+
+export const getFinalGradesByPeriod = async (req: Request, res: Response) => {
+  try {
+    const sessionUser = (req.session as any).user;
+    if (!sessionUser) {
+      return res.status(401).json({ message: 'No autorizado' });
+    }
+
+    // Only Control de Estudios can view final grades
+    if (!hasRole(sessionUser, ['Control de Estudios'])) {
+      return res.status(403).json({ message: 'Solo Control de Estudios puede ver las notas finales' });
+    }
+
+    const { schoolPeriodId } = req.query;
+
+    if (!schoolPeriodId) {
+      return res.status(400).json({ message: 'schoolPeriodId es requerido' });
+    }
+
+    // Verify the school period exists
+    const period = await SchoolPeriod.findByPk(Number(schoolPeriodId));
+    if (!period) {
+      return res.status(404).json({ message: 'Período escolar no encontrado' });
+    }
+
+    // Allow both active and inactive periods for viewing final grades
+    // The permission check will determine if editing is allowed
+
+    // Check if user has permission for this period
+    const globalPermission = await GradeEditPermission.findOne({
+      where: {
+        grantedTo: sessionUser.id,
+        schoolPeriodId: null,
+        isActive: true
+      }
+    });
+
+    const specificPermission = await GradeEditPermission.findOne({
+      where: {
+        grantedTo: sessionUser.id,
+        schoolPeriodId: Number(schoolPeriodId),
+        isActive: true
+      }
+    });
+
+    if (!globalPermission && !specificPermission) {
+      return res.status(403).json({ message: 'No tiene permiso para modificar notas de este período' });
+    }
+
+    // Get all inscriptions for this period
+    const inscriptions = await Inscription.findAll({
+      where: { schoolPeriodId: Number(schoolPeriodId) },
+      include: [
+        {
+          model: Person,
+          as: 'student',
+          attributes: ['id', 'firstName', 'lastName', 'document']
+        },
+        {
+          model: Grade,
+          as: 'grade'
+        },
+        {
+          model: Section,
+          as: 'section'
+        },
+        {
+          model: SchoolPeriod,
+          as: 'period'
+        }
+      ],
+      order: [
+        [{ model: Person, as: 'student' }, 'lastName', 'ASC'],
+        [{ model: Person, as: 'student' }, 'firstName', 'ASC']
+      ]
+    });
+
+    console.log(`[getFinalGradesByPeriod] Period ID: ${schoolPeriodId}, Total inscriptions found: ${inscriptions.length}`);
+
+    // Get all subjects for this period's grades
+    const periodGrades = await PeriodGrade.findAll({
+      where: { schoolPeriodId: Number(schoolPeriodId) },
+      include: [
+        {
+          model: Subject,
+          as: 'subjects'
+        }
+      ]
+    });
+
+    // Collect all subjects across all grades
+    const allSubjects = periodGrades.flatMap(pg => (pg as any).subjects || []);
+    console.log(`[getFinalGradesByPeriod] Total subjects found: ${allSubjects.length}`);
+
+    // Build result array
+    const result: any[] = [];
+
+    for (const inscription of inscriptions) {
+      console.log(`[getFinalGradesByPeriod] Processing inscription: ${inscription.id}, Student: ${inscription.student?.firstName} ${inscription.student?.lastName}`);
+
+      let inscriptionSubjects = await InscriptionSubject.findAll({
+        where: { inscriptionId: inscription.id },
+        include: [
+          {
+            model: Subject,
+            as: 'subject'
+          },
+          {
+            model: SubjectFinalGrade,
+            as: 'finalGrade'
+          }
+        ]
+      });
+
+      console.log(`[getFinalGradesByPeriod] Inscription ${inscription.id} has ${inscriptionSubjects.length} subjects`);
+
+      // If student has no subjects, create them based on their grade's subjects
+      if (inscriptionSubjects.length === 0) {
+        console.log(`[getFinalGradesByPeriod] Creating missing subjects for inscription ${inscription.id}`);
+
+        const periodGrade = await PeriodGrade.findOne({
+          where: { schoolPeriodId: Number(schoolPeriodId), gradeId: inscription.gradeId },
+          include: [
+            {
+              model: Subject,
+              as: 'subjects'
+            }
+          ]
+        });
+
+        if (periodGrade && (periodGrade as any).subjects) {
+          const subjectsToCreate = (periodGrade as any).subjects.map((subject: any) => ({
+            inscriptionId: inscription.id,
+            subjectId: subject.id
+          }));
+
+          await InscriptionSubject.bulkCreate(subjectsToCreate);
+
+          // Reload after creation
+          inscriptionSubjects = await InscriptionSubject.findAll({
+            where: { inscriptionId: inscription.id },
+            include: [
+              {
+                model: Subject,
+                as: 'subject'
+              },
+              {
+                model: SubjectFinalGrade,
+                as: 'finalGrade'
+              }
+            ]
+          });
+
+          console.log(`[getFinalGradesByPeriod] Created ${subjectsToCreate.length} subjects for inscription ${inscription.id}`);
+        }
+      }
+
+      for (const insSubject of inscriptionSubjects) {
+        const finalGrade = (insSubject as any).finalGrade;
+
+        result.push({
+          id: finalGrade?.id || null,
+          inscriptionSubjectId: insSubject.id,
+          finalScore: finalGrade?.finalScore || 0,
+          rawScore: finalGrade?.rawScore || null,
+          councilPoints: finalGrade?.councilPoints || null,
+          status: finalGrade?.status || 'reprobada',
+          calculatedAt: finalGrade?.calculatedAt || new Date(),
+          inscriptionSubject: {
+            id: insSubject.id,
+            subject: insSubject.subject,
+            inscription: inscription
+          }
+        });
+      }
+    }
+
+    console.log(`[getFinalGradesByPeriod] Total records returned: ${result.length}`);
+
+    res.json(result);
+  } catch (error: any) {
+    console.error('Error fetching final grades by period:', error);
+    res.status(500).json({ message: 'Error al obtener notas finales', error: error.message });
   }
 };

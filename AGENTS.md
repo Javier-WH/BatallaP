@@ -86,6 +86,8 @@ El sistema utiliza los siguientes modelos principales:
 | `PeriodGradeSubject` | Materias por grado en un período |
 | `Inscription` | Inscripciones de estudiantes |
 | `InscriptionSubject` | Materias inscrite por estudiante |
+| `GradeEditPermission` | Permisos para editar notas de períodos anteriores |
+| `GradeEditAudit` | Registro de auditoría de modificaciones de notas |
 
 ### Asociaciones Principales
 
@@ -144,11 +146,11 @@ Los componentes en esta carpeta detectan automáticamente el rol del usuario act
 
 | Rol | Descripción | Permisos principales |
 |-----|-------------|---------------------|
-| **Master** | Super administrador | Gestión completa del sistema académico |
-| **Administrador** | Administrador | Inscripciones, búsqueda de usuarios |
-| **Control de Estudios** | Control de Estudios | (Por implementar) |
+| **Master** | Super administrador | Gestión completa del sistema académico, gestión de permisos de edición de notas |
+| **Administrador** | Administrador | Inscripciones, búsqueda de usuarios, gestión de permisos de edición de notas |
+| **Control de Estudios** | Control de Estudios | Modificación de notas finales de períodos anteriores (con permiso), gestión académica |
 | **Profesor** | Profesor | Gestión de calificaciones y evaluaciones |
-| **Representante** | Representante | (Por implementar) |
+| **Representante** | Representante | Consulta de expedientes de estudiantes a su cargo |
 | **Alumno** | Estudiante | Acceso a calificaciones y evaluaciones |
 
 ---
@@ -217,6 +219,11 @@ El proyecto usa **path aliases** para imports más limpios:
 2. **Gestión de Usuarios** - CRUD completo con roles
 3. **Gestión Académica** - Períodos, grados, secciones, materias
 4. **Inscripciones** - Inscripción de estudiantes a períodos/grados/secciones
+5. **Permisos de Edición de Notas** - Sistema para modificar notas finales de períodos anteriores
+   - Master y Administrador pueden otorgar/revocar permisos
+   - Control de Estudios puede modificar notas finales con permiso activo
+   - Auditoría completa de todas las modificaciones de notas
+   - Permisos pueden ser globales (todos los períodos) o específicos por período
 
 ### 🚧 En Desarrollo / Pendientes
 - Sistema de calificaciones
@@ -255,7 +262,11 @@ Este proyecto ha trabajado en:
 - Estructura académica (períodos, grados, secciones, materias)
 - Módulo de inscripción de estudiantes
 - **Consolidación de componentes**: SearchUsers y EditUser unificados en `/pages/shared` con detección automática de permisos según rol (Master vs Admin)
+- **Sistema de Permisos de Edición de Notas**: Implementación completa para modificar notas finales de períodos anteriores
+  - Backend: Modelos GradeEditPermission y GradeEditAudit, controller gradeEditPermissionController, rutas gradeEditPermissionRoutes
+  - Frontend: Panel de administración GradeEditPermissions.tsx, servicio gradeEditPermissionService.ts
+  - Funcionalidad: Master/Admin otorgan permisos, Control de Estudios modifica notas con permiso activo y auditoría completa
 
 ---
 
-*Última actualización: Diciembre 2024*
+*Última actualización: Abril 2026*

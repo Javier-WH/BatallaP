@@ -4,6 +4,7 @@ import sequelize from '@/config/database';
 import '@/models/index'; // Register models
 import dotenv from 'dotenv';
 import path from 'path';
+import MigrationRunner from '@/config/migrationRunner';
 
 dotenv.config();
 
@@ -17,6 +18,10 @@ const startServer = async () => {
   try {
     await sequelize.authenticate();
     console.log('Database connected successfully.');
+
+    // Run pending migrations
+    const migrationRunner = new MigrationRunner();
+    await migrationRunner.runMigrations();
 
     // Sync models (create tables if not exist)
     // In production, use migrations instead of sync({ force: true/false })

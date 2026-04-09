@@ -8,7 +8,9 @@ import {
   getStudentsForAssignment,
   getQualifications,
   saveQualification,
-  getStudentFullAcademicRecord
+  getStudentFullAcademicRecord,
+  updateFinalGrade,
+  getFinalGradesByPeriod
 } from '@/controllers/evaluationController';
 
 const router = Router();
@@ -22,5 +24,7 @@ router.get('/students/:assignmentId', getStudentsForAssignment);
 router.get('/qualifications/:inscriptionSubjectId', getQualifications);
 router.post('/qualifications', saveQualification);
 router.get('/student-record/:personId', getStudentFullAcademicRecord);
+router.put('/final-grade/:id', updateFinalGrade);
+router.get('/final-grades-by-period', getFinalGradesByPeriod);
 
 export default router;

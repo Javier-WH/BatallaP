@@ -115,6 +115,8 @@ import StudentPeriodOutcome from './StudentPeriodOutcome';
 import PendingSubject from './PendingSubject';
 import SchoolPeriodTransitionRule from './SchoolPeriodTransitionRule';
 import EnrollmentDocument from './EnrollmentDocument';
+import GradeEditPermission from './GradeEditPermission';
+import GradeEditAudit from './GradeEditAudit';
 
 
 // ... (Existing User/Person/Role/Contact associations) ...
@@ -269,6 +271,29 @@ SchoolPeriodTransitionRule.belongsTo(Grade, { foreignKey: 'gradeFromId', as: 'gr
 Grade.hasMany(SchoolPeriodTransitionRule, { foreignKey: 'gradeToId', as: 'incomingTransitions' });
 SchoolPeriodTransitionRule.belongsTo(Grade, { foreignKey: 'gradeToId', as: 'gradeTo' });
 
+// Grade edit permission associations
+SchoolPeriod.hasMany(GradeEditPermission, { foreignKey: 'schoolPeriodId', as: 'editPermissions' });
+GradeEditPermission.belongsTo(SchoolPeriod, { foreignKey: 'schoolPeriodId', as: 'schoolPeriod' });
+
+User.hasMany(GradeEditPermission, { foreignKey: 'grantedBy', as: 'grantedPermissions' });
+GradeEditPermission.belongsTo(User, { foreignKey: 'grantedBy', as: 'granter' });
+
+User.hasMany(GradeEditPermission, { foreignKey: 'grantedTo', as: 'receivedPermissions' });
+GradeEditPermission.belongsTo(User, { foreignKey: 'grantedTo', as: 'recipient' });
+
+User.hasMany(GradeEditPermission, { foreignKey: 'revokedBy', as: 'revokedPermissions' });
+GradeEditPermission.belongsTo(User, { foreignKey: 'revokedBy', as: 'revoker' });
+
+// Grade edit audit associations
+SubjectFinalGrade.hasMany(GradeEditAudit, { foreignKey: 'subjectFinalGradeId', as: 'editAudits' });
+GradeEditAudit.belongsTo(SubjectFinalGrade, { foreignKey: 'subjectFinalGradeId', as: 'subjectFinalGrade' });
+
+GradeEditPermission.hasMany(GradeEditAudit, { foreignKey: 'permissionId', as: 'audits' });
+GradeEditAudit.belongsTo(GradeEditPermission, { foreignKey: 'permissionId', as: 'permission' });
+
+User.hasMany(GradeEditAudit, { foreignKey: 'editedBy', as: 'gradeEdits' });
+GradeEditAudit.belongsTo(User, { foreignKey: 'editedBy', as: 'editor' });
+
 export {
   User,
   Person,
@@ -308,5 +333,7 @@ export {
   StudentPeriodOutcome,
   PendingSubject,
   SchoolPeriodTransitionRule,
-  EnrollmentDocument
+  EnrollmentDocument,
+  GradeEditPermission,
+  GradeEditAudit
 };
