@@ -263,6 +263,15 @@ const GradeEditPermissions: React.FC = () => {
       )
     },
     {
+      title: 'Acta',
+      key: 'actCode',
+      render: (_: unknown, record: GradeEditAudit) => (
+        <Tag color="blue" icon={<FileTextOutlined />}>
+          {record.permission?.actCode || 'N/A'}
+        </Tag>
+      )
+    },
+    {
       title: 'Nota',
       key: 'score',
       render: (_: unknown, record: GradeEditAudit) => (

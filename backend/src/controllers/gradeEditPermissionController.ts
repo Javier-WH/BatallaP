@@ -265,15 +265,53 @@ export const getAuditLog = async (req: Request, res: Response) => {
       include: [
         {
           model: SubjectFinalGrade,
-          as: 'subjectFinalGrade'
+          as: 'subjectFinalGrade',
+          include: [
+            {
+              model: InscriptionSubject,
+              as: 'inscriptionSubject',
+              include: [
+                {
+                  model: Subject,
+                  as: 'subject'
+                },
+                {
+                  model: Inscription,
+                  as: 'inscription',
+                  include: [
+                    {
+                      model: Person,
+                      as: 'student'
+                    },
+                    {
+                      model: SchoolPeriod,
+                      as: 'period'
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
         },
         {
           model: GradeEditPermission,
-          as: 'permission'
+          as: 'permission',
+          include: [
+            {
+              model: User,
+              as: 'granter',
+              include: [{ model: Person, as: 'person' }]
+            },
+            {
+              model: SchoolPeriod,
+              as: 'schoolPeriod'
+            }
+          ]
         },
         {
           model: User,
-          as: 'editor'
+          as: 'editor',
+          include: [{ model: Person, as: 'person' }]
         }
       ],
       order: [['editedAt', 'DESC']],

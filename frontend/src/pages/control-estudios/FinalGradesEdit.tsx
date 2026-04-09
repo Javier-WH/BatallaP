@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Card, Table, Button, Select, Form, InputNumber, Input, Modal, message, Space, Tag, Typography, Row, Col, Alert, Spin } from 'antd';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Card, Table, Button, Select, Form, InputNumber, Input, Modal, message, Space, Tag, Typography, Row, Col, Alert, Spin, Checkbox } from 'antd';
 import {
   EditOutlined,
   SaveOutlined,
@@ -7,7 +7,8 @@ import {
   CheckCircleOutlined,
   WarningOutlined,
   LockOutlined,
-  ReloadOutlined
+  ReloadOutlined,
+  FilterOutlined
 } from '@ant-design/icons';
 import api from '@/services/api';
 import finalGradeEditService, { type FinalGrade } from '@/services/finalGradeEditService';
@@ -16,6 +17,7 @@ import { gradeEditPermissionService } from '@/services/gradeEditPermissionServic
 const { Title, Text } = Typography;
 const { TextArea } = Input;
 const { Option } = Select;
+const { Search } = Input;
 
 interface SchoolPeriod {
   id: number;
@@ -41,6 +43,14 @@ const FinalGradesEdit: React.FC = () => {
   const [showEditModal, setShowEditModal] = useState(false);
   const [selectedGrade, setSelectedGrade] = useState<FinalGrade | null>(null);
   const [editForm] = Form.useForm();
+  
+  // Filter states
+  const [searchText, setSearchText] = useState('');
+  const [filterGrade, setFilterGrade] = useState<string | null>(null);
+  const [filterSection, setFilterSection] = useState<string | null>(null);
+  const [filterSubject, setFilterSubject] = useState<string | null>(null);
+  const [filterFailedOnly, setFilterFailedOnly] = useState(false);
+  const [filterNoGradeOnly, setFilterNoGradeOnly] = useState(false);
 
   useEffect(() => {
     fetchSchoolPeriods();
@@ -260,6 +270,104 @@ const FinalGradesEdit: React.FC = () => {
     }
   ];
 
+  // Extract unique grades, sections and subjects for filters
+  const uniqueGrades = useMemo(() => {
+    const grades = new Set<string>();
+    finalGrades.forEach(grade => {
+      const gradeName = grade.inscriptionSubject?.inscription?.grade?.name;
+      if (gradeName) grades.add(gradeName);
+    });
+    return Array.from(grades).sort();
+  }, [finalGrades]);
+
+  const uniqueSections = useMemo(() => {
+    const sections = new Set<string>();
+    finalGrades.forEach(grade => {
+      const section = grade.inscriptionSubject?.inscription?.section?.name;
+      if (section) sections.add(section);
+    });
+    return Array.from(sections).sort();
+  }, [finalGrades]);
+
+  const uniqueSubjects = useMemo(() => {
+    const subjects = new Set<string>();
+    finalGrades.forEach(grade => {
+      const subject = grade.inscriptionSubject?.subject?.name;
+      if (subject) subjects.add(subject);
+    });
+    return Array.from(subjects).sort();
+  }, [finalGrades]);
+
+  // Filter grades based on search and filters
+  const filteredGrades = useMemo(() => {
+    return finalGrades.filter(grade => {
+      // Search filter (name, lastname, document)
+      if (searchText) {
+        const searchLower = searchText.toLowerCase();
+        const firstName = grade.inscriptionSubject?.inscription?.student?.firstName?.toLowerCase() || '';
+        const lastName = grade.inscriptionSubject?.inscription?.student?.lastName?.toLowerCase() || '';
+        const document = grade.inscriptionSubject?.inscription?.student?.document?.toLowerCase() || '';
+        const fullName = `${firstName} ${lastName}`;
+        
+        if (!fullName.includes(searchLower) && !document.includes(searchLower)) {
+          return false;
+        }
+      }
+
+      // Grade filter
+      if (filterGrade) {
+        const gradeName = grade.inscriptionSubject?.inscription?.grade?.name;
+        if (gradeName !== filterGrade) {
+          return false;
+        }
+      }
+
+      // Section filter
+      if (filterSection) {
+        const section = grade.inscriptionSubject?.inscription?.section?.name;
+        if (section !== filterSection) {
+          return false;
+        }
+      }
+
+      // Subject filter
+      if (filterSubject) {
+        const subject = grade.inscriptionSubject?.subject?.name;
+        if (subject !== filterSubject) {
+          return false;
+        }
+      }
+
+      // Failed only filter
+      if (filterFailedOnly) {
+        if (grade.status !== 'reprobada') {
+          return false;
+        }
+      }
+
+      // No grade only filter
+      if (filterNoGradeOnly) {
+        const numScore = Number(grade.finalScore);
+        if (numScore !== 0) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }, [finalGrades, searchText, filterGrade, filterSection, filterSubject, filterFailedOnly, filterNoGradeOnly]);
+
+  const clearFilters = () => {
+    setSearchText('');
+    setFilterGrade(null);
+    setFilterSection(null);
+    setFilterSubject(null);
+    setFilterFailedOnly(false);
+    setFilterNoGradeOnly(false);
+  };
+
+  const hasActiveFilters = searchText || filterGrade || filterSection || filterSubject || filterFailedOnly || filterNoGradeOnly;
+
   return (
     <div style={{ padding: '24px' }}>
       <Row justify="space-between" align="middle" style={{ marginBottom: '24px' }}>
@@ -318,7 +426,7 @@ const FinalGradesEdit: React.FC = () => {
 
       <Card>
         <Row gutter={[16, 16]} align="middle">
-          <Col xs={24} sm={12} md={8}>
+          <Col xs={24} sm={12} md={6}>
             <div>
               <Text strong style={{ display: 'block', marginBottom: 8 }}>
                 Período Escolar
@@ -339,6 +447,109 @@ const FinalGradesEdit: React.FC = () => {
               </Select>
             </div>
           </Col>
+
+          {selectedPeriod && (
+            <>
+              <Col xs={24} sm={12} md={6}>
+                <div>
+                  <Text strong style={{ display: 'block', marginBottom: 8 }}>
+                    Buscar Estudiante
+                  </Text>
+                  <Search
+                    placeholder="Nombre, apellido o CI"
+                    value={searchText}
+                    onChange={(e) => setSearchText(e.target.value)}
+                    allowClear
+                  />
+                </div>
+              </Col>
+
+              <Col xs={12} sm={6} md={2}>
+                <div>
+                  <Text strong style={{ display: 'block', marginBottom: 8 }}>
+                    Grado
+                  </Text>
+                  <Select
+                    style={{ width: '100%' }}
+                    placeholder="Todos"
+                    value={filterGrade}
+                    onChange={setFilterGrade}
+                    allowClear
+                  >
+                    {uniqueGrades.map(grade => (
+                      <Option key={grade} value={grade}>{grade}</Option>
+                    ))}
+                  </Select>
+                </div>
+              </Col>
+
+              <Col xs={12} sm={6} md={2}>
+                <div>
+                  <Text strong style={{ display: 'block', marginBottom: 8 }}>
+                    Sección
+                  </Text>
+                  <Select
+                    style={{ width: '100%' }}
+                    placeholder="Todas"
+                    value={filterSection}
+                    onChange={setFilterSection}
+                    allowClear
+                  >
+                    {uniqueSections.map(section => (
+                      <Option key={section} value={section}>{section}</Option>
+                    ))}
+                  </Select>
+                </div>
+              </Col>
+
+              <Col xs={12} sm={6} md={2}>
+                <div>
+                  <Text strong style={{ display: 'block', marginBottom: 8 }}>
+                    Materia
+                  </Text>
+                  <Select
+                    style={{ width: '100%' }}
+                    placeholder="Todas"
+                    value={filterSubject}
+                    onChange={setFilterSubject}
+                    allowClear
+                  >
+                    {uniqueSubjects.map(subject => (
+                      <Option key={subject} value={subject}>{subject}</Option>
+                    ))}
+                  </Select>
+                </div>
+              </Col>
+
+              <Col xs={24} sm={12} md={6}>
+                <div style={{ marginTop: 24 }}>
+                  <Space>
+                    <Checkbox
+                      checked={filterFailedOnly}
+                      onChange={(e) => setFilterFailedOnly(e.target.checked)}
+                    >
+                      Solo Reprobados
+                    </Checkbox>
+                    <Checkbox
+                      checked={filterNoGradeOnly}
+                      onChange={(e) => setFilterNoGradeOnly(e.target.checked)}
+                    >
+                      Sin Notas (0)
+                    </Checkbox>
+                    {hasActiveFilters && (
+                      <Button
+                        size="small"
+                        onClick={clearFilters}
+                        icon={<FilterOutlined />}
+                      >
+                        Limpiar
+                      </Button>
+                    )}
+                  </Space>
+                </div>
+              </Col>
+            </>
+          )}
         </Row>
 
         {selectedPeriod && (
@@ -359,13 +570,27 @@ const FinalGradesEdit: React.FC = () => {
               <Table
                 key={`grades-table-${finalGrades.length}-${finalGrades.map(g => `${g.inscriptionSubjectId}-${g.finalScore}`).join('-')}`}
                 columns={columns}
-                dataSource={finalGrades}
+                dataSource={filteredGrades}
                 rowKey={(record) => record.id || `new-${record.inscriptionSubjectId}`}
                 loading={loadingGrades}
                 pagination={{ pageSize: 20 }}
                 scroll={{ x: 1200 }}
                 size="middle"
               />
+            )}
+            {filteredGrades.length === 0 && finalGrades.length > 0 && (
+              <div style={{ textAlign: 'center', padding: '20px', marginTop: '16px' }}>
+                <Text type="secondary">
+                  No se encontraron resultados con los filtros aplicados.
+                </Text>
+                <Button
+                  type="link"
+                  onClick={clearFilters}
+                  style={{ marginTop: 8 }}
+                >
+                  Limpiar filtros
+                </Button>
+              </div>
             )}
           </div>
         )}
