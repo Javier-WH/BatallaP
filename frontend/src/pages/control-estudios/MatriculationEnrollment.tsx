@@ -400,17 +400,32 @@ const MatriculationEnrollment: React.FC = () => {
   });
   const [guardianModalVisible, setGuardianModalVisible] = useState(false);
   const contextMenuRef = useRef<HTMLDivElement | null>(null);
-  const [searchValue, setSearchValue] = useState('');
+  // Helper function to load filters from localStorage
+  const loadSavedFilters = () => {
+    try {
+      const savedFilters = localStorage.getItem('matriculation-filters');
+      if (savedFilters) {
+        return JSON.parse(savedFilters);
+      }
+    } catch (e) {
+      console.error('Error loading filters from localStorage:', e);
+    }
+    return {};
+  };
+
+  const savedFilters = loadSavedFilters();
+
+  const [searchValue, setSearchValue] = useState(savedFilters.searchValue || '');
   const [questions, setQuestions] = useState<EnrollmentQuestionResponse[]>([]);
-  const [visibleColumnKeys, setVisibleColumnKeys] = useState<string[]>(() => BASE_COLUMN_OPTIONS.map(option => option.key));
+  const [visibleColumnKeys, setVisibleColumnKeys] = useState<string[]>(() => savedFilters.visibleColumnKeys || BASE_COLUMN_OPTIONS.map(option => option.key));
   const [columnPopoverOpen, setColumnPopoverOpen] = useState(false);
-  const [filterGrade, setFilterGrade] = useState<number | null>(null);
-  const [filterSection, setFilterSection] = useState<number | null>(null);
-  const [filterGender, setFilterGender] = useState<string | null>(null);
-  const [filterEscolaridad, setFilterEscolaridad] = useState<'regular' | 'repitiente' | 'materia_pendiente' | null>(null);
-  const [filterSchoolPeriod, setFilterSchoolPeriod] = useState<number | null>(null);
+  const [filterGrade, setFilterGrade] = useState<number | null>(savedFilters.filterGrade ?? null);
+  const [filterSection, setFilterSection] = useState<number | null>(savedFilters.filterSection ?? null);
+  const [filterGender, setFilterGender] = useState<string | null>(savedFilters.filterGender ?? null);
+  const [filterEscolaridad, setFilterEscolaridad] = useState<'regular' | 'repitiente' | 'materia_pendiente' | null>(savedFilters.filterEscolaridad ?? null);
+  const [filterSchoolPeriod, setFilterSchoolPeriod] = useState<number | null>(savedFilters.filterSchoolPeriod ?? null);
   const [allPeriods, setAllPeriods] = useState<SchoolPeriod[]>([]);
-  const [filterMissing, setFilterMissing] = useState<string | null>(null);
+  const [filterMissing, setFilterMissing] = useState<string | null>(savedFilters.filterMissing ?? null);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
   const [sortedInfo, setSortedInfo] = useState<{ columnKey: string; order: 'ascend' | 'descend' } | null>(null);
@@ -418,6 +433,21 @@ const MatriculationEnrollment: React.FC = () => {
   const [scrollY, setScrollY] = useState(500);
   const headerRef = useRef<HTMLDivElement>(null);
   const bulkActionRef = useRef<HTMLDivElement>(null);
+
+  // Save filters to localStorage whenever they change
+  useEffect(() => {
+    const filters = {
+      searchValue,
+      visibleColumnKeys,
+      filterGrade,
+      filterSection,
+      filterGender,
+      filterEscolaridad,
+      filterSchoolPeriod,
+      filterMissing
+    };
+    localStorage.setItem('matriculation-filters', JSON.stringify(filters));
+  }, [searchValue, visibleColumnKeys, filterGrade, filterSection, filterGender, filterEscolaridad, filterSchoolPeriod, filterMissing]);
 
   useEffect(() => {
     const updateScrollY = () => {
@@ -457,11 +487,16 @@ const MatriculationEnrollment: React.FC = () => {
         else message.warning('No hay un período académico activo configurado.');
         if (allPeriodsRes.data) {
           setAllPeriods(allPeriodsRes.data);
-          
-          // Preseleccionar el período activo
-          const activePeriod = allPeriodsRes.data.find((p: any) => p.isActive);
-          if (activePeriod) {
-            setFilterSchoolPeriod(activePeriod.id);
+
+          // Only preseleccionar el período activo if no saved filter exists
+          const savedFilters = localStorage.getItem('matriculation-filters');
+          const hasSavedPeriodFilter = savedFilters ? JSON.parse(savedFilters).filterSchoolPeriod !== undefined : false;
+
+          if (!hasSavedPeriodFilter) {
+            const activePeriod = allPeriodsRes.data.find((p: any) => p.isActive);
+            if (activePeriod) {
+              setFilterSchoolPeriod(activePeriod.id);
+            }
           }
         }
         if (questionsRes.data) setQuestions(questionsRes.data);
