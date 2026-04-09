@@ -66,7 +66,6 @@ const SearchUsers: React.FC<{ initialRoleFilter?: string }> = ({ initialRoleFilt
     try {
       const params = new URLSearchParams();
       params.append('q', q);
-      params.append('activeOnly', 'true');
       if (filterSchoolPeriod) {
         params.append('schoolPeriodId', filterSchoolPeriod.toString());
       }

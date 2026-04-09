@@ -3,6 +3,7 @@ import dayjs from 'dayjs';
 import * as XLSX from 'xlsx';
 import fs from 'fs/promises';
 import path from 'path';
+import { ValidationError, UniqueConstraintError } from 'sequelize';
 import { BULK_ENROLLMENT_COLUMNS } from '@/constants/bulkEnrollmentColumns';
 import { SchoolPeriod, Grade, Section } from '@/models/index';
 import { registerAndEnrollStudent, RegisterAndEnrollPayload, GuardianInput } from '@/services/studentEnrollmentService';
@@ -545,11 +546,26 @@ export const processBulkEnrollment = async (rows: ProcessBulkRowInput[]): Promis
         personId: person.id,
         matriculationId: matriculation.id
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
+      let message = 'Error procesando la fila';
+
+      if (error instanceof UniqueConstraintError) {
+        const fields = error.errors.map((e) => `${e.path ?? 'campo desconocido'}: ${e.message}`).join('; ');
+        message = `Registro duplicado — ${fields}`;
+      } else if (error instanceof ValidationError) {
+        const details = error.errors.map((e) => {
+          const field = e.path ?? 'campo desconocido';
+          return `[${field}] ${e.message}`;
+        }).join('; ');
+        message = `Error de validación — ${details}`;
+      } else if (error instanceof Error) {
+        message = error.message;
+      }
+
       results.push({
         rowNumber: row.rowNumber,
         success: false,
-        message: error?.message || 'Error procesando la fila'
+        message
       });
     }
   }

@@ -12,6 +12,7 @@ import { searchGuardian } from '@/services/guardians';
 import type { GuardianDocumentType, GuardianProfileResponse } from '@/services/guardians';
 import { downloadTemplate, previewBulk, processBulk } from '@/services/bulkEnrollment';
 import type { PreviewRow, ProcessResponse } from '@/services/bulkEnrollment';
+import BulkRetryModal from '@/components/BulkRetryModal';
 import { saveAs } from 'file-saver';
 
 const { Option } = Select;
@@ -241,6 +242,11 @@ const EnrollStudent: React.FC = () => {
   const [bulkProcessing, setBulkProcessing] = useState(false);
   const [bulkResults, setBulkResults] = useState<ProcessResponse | null>(null);
   const [bulkFileList, setBulkFileList] = useState<UploadFile[]>([]);
+  const [retryModalOpen, setRetryModalOpen] = useState(false);
+  const [retryRowNumber, setRetryRowNumber] = useState(0);
+  const [retryPayload, setRetryPayload] = useState<Record<string, unknown> | null>(null);
+  const [retryErrors, setRetryErrors] = useState<string[]>([]);
+  const [retryProcessMessage, setRetryProcessMessage] = useState<string | undefined>(undefined);
 
   // For section selector (controlled)
   const [selectedGradeId, setSelectedGradeId] = useState<number | null>(null);
@@ -311,6 +317,15 @@ const EnrollStudent: React.FC = () => {
     [bulkResults]
   );
 
+  const openRetryModal = useCallback((rn: number, errs: string[], processMsg?: string) => {
+    const previewRow = bulkPreviewRows.find((r) => r.rowNumber === rn);
+    setRetryRowNumber(rn);
+    setRetryPayload(previewRow?.payload ? { ...previewRow.payload } : null);
+    setRetryErrors(errs);
+    setRetryProcessMessage(processMsg);
+    setRetryModalOpen(true);
+  }, [bulkPreviewRows]);
+
   const bulkPreviewColumns = useMemo<ColumnsType<PreviewTableRow>>(
     () => [
       {
@@ -322,9 +337,15 @@ const EnrollStudent: React.FC = () => {
         title: 'Estado',
         dataIndex: 'errors',
         width: 120,
-        render: (errors: string[]) =>
+        render: (errors: string[], record: PreviewTableRow) =>
           errors && errors.length > 0 ? (
-            <Tag color="error">Errores</Tag>
+            <Tag
+              color="error"
+              style={{ cursor: record.payload ? 'pointer' : 'default' }}
+              onClick={() => record.payload && openRetryModal(record.rowNumber, errors)}
+            >
+              Errores {record.payload ? '(editar)' : ''}
+            </Tag>
           ) : (
             <Tag color="success">Válido</Tag>
           )
@@ -332,9 +353,10 @@ const EnrollStudent: React.FC = () => {
       {
         title: 'Comentarios',
         dataIndex: 'errors',
-        render: (errors: string[]) =>
+        render: (errors: string[], record: PreviewTableRow) =>
           errors && errors.length > 0 ? (
-            <Space direction="vertical" size="small">
+            <Space direction="vertical" size="small" style={record.payload ? { cursor: 'pointer' } : undefined}
+              onClick={() => record.payload && openRetryModal(record.rowNumber, errors)}>
               {errors.map((err, idx) => (
                 <Tag color="warning" key={idx} style={{ whiteSpace: 'normal' }}>
                   {err}
@@ -346,7 +368,7 @@ const EnrollStudent: React.FC = () => {
           )
       }
     ],
-    []
+    [openRetryModal]
   );
 
   const bulkResultColumns = useMemo<ColumnsType<ProcessTableRow>>(
@@ -360,19 +382,33 @@ const EnrollStudent: React.FC = () => {
         title: 'Resultado',
         dataIndex: 'success',
         width: 120,
-        render: (success: boolean) =>
+        render: (success: boolean, record: ProcessTableRow) =>
           success ? (
             <Tag color="success">Registrado</Tag>
           ) : (
-            <Tag color="error">Error</Tag>
+            <Tag
+              color="error"
+              style={{ cursor: 'pointer' }}
+              onClick={() => openRetryModal(record.rowNumber, [], record.message)}
+            >
+              Error (editar)
+            </Tag>
           )
       },
       {
         title: 'Mensaje',
-        dataIndex: 'message'
+        dataIndex: 'message',
+        render: (msg: string, record: ProcessTableRow) =>
+          record.success ? (
+            <span>{msg}</span>
+          ) : (
+            <a onClick={() => openRetryModal(record.rowNumber, [], msg)} style={{ color: '#cf1322' }}>
+              {msg}
+            </a>
+          )
       }
     ],
-    []
+    [openRetryModal]
   );
 
   const searchSchools = async (query: string) => {
@@ -463,6 +499,20 @@ const EnrollStudent: React.FC = () => {
     } finally {
       setBulkProcessing(false);
     }
+  };
+
+  const handleRetrySuccess = (rowNumber: number) => {
+    if (bulkResults) {
+      setBulkResults({
+        ...bulkResults,
+        results: bulkResults.results.map((r) =>
+          r.rowNumber === rowNumber ? { ...r, success: true, message: 'Inscripción registrada (corregido)' } : r
+        )
+      });
+    }
+    setBulkPreviewRows((prev) =>
+      prev.map((r) => (r.rowNumber === rowNumber ? { ...r, errors: [] } : r))
+    );
   };
 
   const bulkUploadProps = {
@@ -1766,6 +1816,19 @@ const EnrollStudent: React.FC = () => {
       <Modal open={previewOpen} title={previewTitle} footer={null} onCancel={handleCancelPreview}>
         <img alt="example" style={{ width: '100%' }} src={previewImage} />
       </Modal>
+
+      <BulkRetryModal
+        open={retryModalOpen}
+        onClose={() => setRetryModalOpen(false)}
+        onSuccess={handleRetrySuccess}
+        rowNumber={retryRowNumber}
+        payload={retryPayload}
+        errors={retryErrors}
+        processMessage={retryProcessMessage}
+        enrollStructure={enrollStructure}
+        venezuelaLocations={venezuelaLocations}
+        activePeriod={activePeriod}
+      />
     </div >
   );
 };

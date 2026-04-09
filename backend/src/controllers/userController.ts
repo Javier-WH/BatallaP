@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { User, Person, Role, Contact, PersonRole, GuardianProfile, SchoolPeriod, Inscription, StudentGuardian } from '@/models/index';
+import { User, Person, Role, Contact, PersonRole, GuardianProfile, SchoolPeriod, Inscription, Matriculation, StudentGuardian } from '@/models/index';
 import sequelize from '@/config/database';
 import { Op } from 'sequelize';
 import bcrypt from 'bcrypt';
@@ -40,6 +40,13 @@ export const searchUsers = async (req: Request, res: Response) => {
         {
           model: Inscription,
           as: 'inscriptions',
+          required: false,
+          where: targetPeriodId ? { schoolPeriodId: targetPeriodId } : undefined,
+          attributes: ['id', 'schoolPeriodId']
+        },
+        {
+          model: Matriculation,
+          as: 'matriculations',
           required: false,
           where: targetPeriodId ? { schoolPeriodId: targetPeriodId } : undefined,
           attributes: ['id', 'schoolPeriodId']
@@ -87,9 +94,10 @@ export const searchUsers = async (req: Request, res: Response) => {
           // 3. If NOT a student (and not exempt, e.g. just a basic user), Keep them.
           if (!isStudent) return true;
 
-          // 4. If IS a Student (and NOT exempt), Check for Inscriptions in the specified period
+          // 4. If IS a Student (and NOT exempt), Check for Inscriptions or Matriculations in the specified period
           const inscriptions = (person as any).inscriptions || [];
-          const isMatriculated = inscriptions.length > 0;
+          const matriculations = (person as any).matriculations || [];
+          const isMatriculated = inscriptions.length > 0 || matriculations.length > 0;
 
           return isMatriculated;
         });

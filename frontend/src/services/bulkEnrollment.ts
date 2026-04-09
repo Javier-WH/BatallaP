@@ -23,6 +23,20 @@ export type ProcessResponse = {
   }>;
 };
 
+export type RetrySingleResponse = {
+  success: boolean;
+  message: string;
+  nameConflict?: boolean;
+  existingPerson?: {
+    id: number;
+    firstName: string;
+    lastName: string;
+    document: string;
+  };
+  personId?: number;
+  matriculationId?: number;
+};
+
 export const downloadTemplate = async () => {
   const response = await api.get<ArrayBuffer>('/inscriptions/bulk/template', {
     responseType: 'arraybuffer'
@@ -43,6 +57,17 @@ export const processBulk = async (rows: PreviewRow[]) => {
   const validRows = rows.filter((row) => row.payload && row.errors.length === 0);
   const { data } = await api.post<ProcessResponse>('/inscriptions/bulk/process', {
     rows: validRows
+  });
+  return data;
+};
+
+export const retrySingleRow = async (
+  payload: Record<string, unknown>,
+  updateExistingName = false
+): Promise<RetrySingleResponse> => {
+  const { data } = await api.post<RetrySingleResponse>('/inscriptions/bulk/retry-single', {
+    payload,
+    updateExistingName
   });
   return data;
 };
