@@ -434,6 +434,34 @@ const FinalGradesEdit: React.FC = () => {
             </Text>
           </div>
         )
+      },
+      {
+        title: 'Promedio Final',
+        key: 'finalAverage',
+        width: 120,
+        fixed: 'left' as const,
+        render: (_: unknown, record: StudentRow) => {
+          // Calculate average in real-time from subject grades
+          const grades = Object.values(record.grades);
+          const validGrades = grades.filter(g => g.score !== null && g.score !== undefined);
+          
+          if (validGrades.length === 0) {
+            return (
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                N/A
+              </Text>
+            );
+          }
+          
+          const total = validGrades.reduce((sum, g) => sum + (g.score || 0), 0);
+          const average = total / validGrades.length;
+          
+          return (
+            <Tag color={average >= 10 ? 'success' : 'error'} style={{ fontSize: 13, padding: '2px 8px' }}>
+              {average.toFixed(2)}
+            </Tag>
+          );
+        }
       }
     ];
 

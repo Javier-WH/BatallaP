@@ -26,6 +26,7 @@ import {
 } from '@/models/index';
 
 import sequelize from '@/config/database';
+import { PeriodOutcomeService } from '@/services/periodOutcomeService';
 
 // --- School Periods ---
 
@@ -35,6 +36,17 @@ export const getPeriods = async (req: Request, res: Response) => {
     res.json(periods);
   } catch (error) {
     res.status(500).json({ error: 'Error fetching periods' });
+  }
+};
+
+export const getStudentPeriodOutcomes = async (req: Request, res: Response) => {
+  try {
+    const { periodId } = req.params;
+    const outcomes = await PeriodOutcomeService.getOutcomesForPeriod(Number(periodId));
+    res.json(outcomes);
+  } catch (error) {
+    console.error('Error fetching student period outcomes:', error);
+    res.status(500).json({ error: 'Error fetching student period outcomes' });
   }
 };
 

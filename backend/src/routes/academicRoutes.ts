@@ -11,6 +11,7 @@ router.post('/periods', academic.createPeriod);
 router.put('/periods/:id/activate', academic.togglePeriodActive);
 router.put('/periods/:id', academic.updatePeriod);
 router.delete('/periods/:id', academic.deletePeriod);
+router.get('/periods/:periodId/outcomes', academic.getStudentPeriodOutcomes);
 
 // Catalogs
 router.get('/grades', academic.getGrades);
