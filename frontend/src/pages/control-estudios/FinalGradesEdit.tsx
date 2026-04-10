@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Card, Table, Button, Select, Form, InputNumber, Input, Modal, message, Space, Tag, Typography, Row, Col, Alert, Spin } from 'antd';
 import {
   SaveOutlined,
@@ -215,8 +215,43 @@ const FinalGradesEdit: React.FC = () => {
     setOriginalStudentRows(JSON.parse(JSON.stringify(groupedStudents)));
   }, [groupedStudents]);
 
+  // Keyboard navigation handler using data attributes
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+      e.preventDefault();
+      e.stopPropagation();
+      
+      const currentInput = e.target as HTMLInputElement;
+      const currentStudentId = parseInt(currentInput.dataset.studentId || '0');
+      const currentSubjectIndex = parseInt(currentInput.dataset.subjectIndex || '0');
+      
+      const currentRowIndex = studentRows.findIndex(row => row.studentId === currentStudentId);
+      
+      let nextStudentId = currentStudentId;
+      let nextSubjectIndex = currentSubjectIndex;
+      
+      if (e.key === 'ArrowUp' && currentRowIndex > 0) {
+        nextStudentId = studentRows[currentRowIndex - 1].studentId;
+      } else if (e.key === 'ArrowDown' && currentRowIndex < studentRows.length - 1) {
+        nextStudentId = studentRows[currentRowIndex + 1].studentId;
+      } else if (e.key === 'ArrowLeft' && currentSubjectIndex > 0) {
+        nextSubjectIndex = currentSubjectIndex - 1;
+      } else if (e.key === 'ArrowRight' && currentSubjectIndex < uniqueSubjects.length - 1) {
+        nextSubjectIndex = currentSubjectIndex + 1;
+      }
+      
+      const nextSelector = `input[data-student-id="${nextStudentId}"][data-subject-index="${nextSubjectIndex}"]`;
+      const nextInput = document.querySelector(nextSelector) as HTMLInputElement;
+      
+      if (nextInput) {
+        nextInput.focus();
+        nextInput.select();
+      }
+    }
+  }, [studentRows, uniqueSubjects]);
+
   // Handle grade change in cell
-  const handleGradeValueChange = (studentId: number, subjectKey: string, value: number) => {
+  const handleGradeValueChange = useCallback((studentId: number, subjectKey: string, value: number) => {
     setStudentRows(prev => prev.map(row => {
       if (row.studentId === studentId) {
         const newGrades = { ...row.grades };
@@ -226,7 +261,7 @@ const FinalGradesEdit: React.FC = () => {
       return row;
     }));
     setHasUnsavedChanges(true);
-  };
+  }, []);
 
   // Save all changes
   const handleSaveChanges = async (reason: string, actCode: string) => {
@@ -403,7 +438,7 @@ const FinalGradesEdit: React.FC = () => {
     ];
 
     // Add dynamic subject columns
-    const subjectColumns = uniqueSubjects.map(subjectKey => {
+    const subjectColumns = uniqueSubjects.map((subjectKey, subjectIndex) => {
       const subjectName = subjectKey.split('-')[1];
       return {
         title: subjectName,
@@ -411,6 +446,7 @@ const FinalGradesEdit: React.FC = () => {
         width: 120,
         render: (_: unknown, record: StudentRow) => {
           const gradeData = record.grades[subjectKey];
+          
           if (!gradeData) {
             return (
               <div style={{ textAlign: 'center', color: '#ccc' }}>
@@ -423,6 +459,7 @@ const FinalGradesEdit: React.FC = () => {
             <InputNumber
               value={gradeData.score}
               onChange={(value) => handleGradeValueChange(record.studentId, subjectKey, value || 0)}
+              onKeyDown={handleKeyDown}
               min={0}
               max={20}
               step={0.01}
@@ -430,6 +467,9 @@ const FinalGradesEdit: React.FC = () => {
               size="small"
               style={{ width: '100%' }}
               disabled={!hasPermission}
+              controls={false}
+              data-student-id={record.studentId}
+              data-subject-index={subjectIndex}
             />
           );
         }
@@ -437,7 +477,7 @@ const FinalGradesEdit: React.FC = () => {
     });
 
     return [...baseColumns, ...subjectColumns];
-  }, [uniqueSubjects, hasPermission]);
+  }, [uniqueSubjects, hasPermission, handleKeyDown, handleGradeValueChange]);
 
   return (
     <div style={{ padding: '24px' }}>
