@@ -46,6 +46,7 @@ export interface UpdateFinalGradeData {
   reason: string;
   permissionId: number;
   inscriptionSubjectId?: number;
+  actCode?: string;
 }
 
 const finalGradeEditService = {

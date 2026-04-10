@@ -50,6 +50,7 @@ export interface GradeEditAudit {
   newStatus: 'aprobada' | 'reprobada';
   reason: string;
   editedAt: string;
+  actCode?: string;
   subjectFinalGrade?: {
     inscriptionSubject?: {
       subject?: {

@@ -365,8 +365,8 @@ export const updateFinalGrade = async (req: Request, res: Response) => {
     }
 
     const { id } = req.params;
-    const { finalScore, status, reason, permissionId } = req.body;
-    console.log('[updateFinalGrade] Request params:', { id, finalScore, status, reason, permissionId });
+    const { finalScore, status, reason, permissionId, actCode } = req.body;
+    console.log('[updateFinalGrade] Request params:', { id, finalScore, status, reason, permissionId, actCode });
 
     if (!reason) {
       return res.status(400).json({ message: 'La razón de la modificación es obligatoria' });
@@ -433,7 +433,8 @@ export const updateFinalGrade = async (req: Request, res: Response) => {
           previousStatus,
           newStatus: existingGrade.status,
           reason,
-          editedAt: new Date()
+          editedAt: new Date(),
+          actCode
         });
 
         return res.json({ message: 'Nota final actualizada correctamente', finalGrade: existingGrade });
@@ -502,7 +503,8 @@ export const updateFinalGrade = async (req: Request, res: Response) => {
         previousStatus: null,
         newStatus: newFinalGrade.status,
         reason,
-        editedAt: new Date()
+        editedAt: new Date(),
+        actCode
       });
 
       return res.json({ message: 'Nota final creada correctamente', finalGrade: newFinalGrade });
@@ -600,7 +602,8 @@ export const updateFinalGrade = async (req: Request, res: Response) => {
       previousStatus,
       newStatus: finalGrade.status,
       reason,
-      editedAt: new Date()
+      editedAt: new Date(),
+      actCode
     });
 
     console.log('[updateFinalGrade] Audit record created, sending response');

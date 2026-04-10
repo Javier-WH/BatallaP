@@ -15,9 +15,10 @@ interface GradeEditAuditAttributes {
   newStatus: 'aprobada' | 'reprobada';
   reason: string;
   editedAt: Date;
+  actCode?: string;
 }
 
-interface GradeEditAuditCreationAttributes extends Optional<GradeEditAuditAttributes, 'id' | 'editedAt' | 'previousStatus'> {}
+interface GradeEditAuditCreationAttributes extends Optional<GradeEditAuditAttributes, 'id' | 'editedAt' | 'previousStatus' | 'actCode'> {}
 
 class GradeEditAudit extends Model<GradeEditAuditAttributes, GradeEditAuditCreationAttributes> implements GradeEditAuditAttributes {
   public id!: number;
@@ -30,6 +31,7 @@ class GradeEditAudit extends Model<GradeEditAuditAttributes, GradeEditAuditCreat
   public newStatus!: 'aprobada' | 'reprobada';
   public reason!: string;
   public editedAt!: Date;
+  public actCode?: string;
 
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
@@ -99,6 +101,11 @@ GradeEditAudit.init(
       allowNull: false,
       defaultValue: DataTypes.NOW,
       comment: 'Fecha y hora de la modificación',
+    },
+    actCode: {
+      type: DataTypes.STRING(100),
+      allowNull: true,
+      comment: 'Número de acta asociado a la modificación',
     },
   },
   {

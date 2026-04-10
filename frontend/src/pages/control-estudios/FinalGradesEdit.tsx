@@ -1,14 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Card, Table, Button, Select, Form, InputNumber, Input, Modal, message, Space, Tag, Typography, Row, Col, Alert, Spin, Checkbox } from 'antd';
+import { Card, Table, Button, Select, Form, InputNumber, Input, Modal, message, Space, Tag, Typography, Row, Col, Alert, Spin } from 'antd';
 import {
-  EditOutlined,
   SaveOutlined,
-  CloseOutlined,
   CheckCircleOutlined,
   WarningOutlined,
   LockOutlined,
-  ReloadOutlined,
-  FilterOutlined
+  ReloadOutlined
 } from '@ant-design/icons';
 import api from '@/services/api';
 import finalGradeEditService, { type FinalGrade } from '@/services/finalGradeEditService';
@@ -17,7 +14,6 @@ import { gradeEditPermissionService } from '@/services/gradeEditPermissionServic
 const { Title, Text } = Typography;
 const { TextArea } = Input;
 const { Option } = Select;
-const { Search } = Input;
 
 interface SchoolPeriod {
   id: number;
@@ -32,25 +28,30 @@ interface PermissionInfo {
   permission?: { id: number };
 }
 
+interface StudentRow {
+  studentId: number;
+  firstName: string;
+  lastName: string;
+  document: string;
+  grades: { [subjectId: string]: { score: number | null; status: string; id?: number; inscriptionSubjectId: number } };
+}
+
 const FinalGradesEdit: React.FC = () => {
   const [schoolPeriods, setSchoolPeriods] = useState<SchoolPeriod[]>([]);
   const [selectedPeriod, setSelectedPeriod] = useState<number | null>(null);
+  const [selectedGrade, setSelectedGrade] = useState<string | null>(null);
+  const [selectedSection, setSelectedSection] = useState<string | null>(null);
   const [finalGrades, setFinalGrades] = useState<FinalGrade[]>([]);
+  const [studentRows, setStudentRows] = useState<StudentRow[]>([]);
+  const [originalStudentRows, setOriginalStudentRows] = useState<StudentRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingGrades, setLoadingGrades] = useState(false);
   const [hasPermission, setHasPermission] = useState(false);
   const [permissionInfo, setPermissionInfo] = useState<PermissionInfo | null>(null);
-  const [showEditModal, setShowEditModal] = useState(false);
-  const [selectedGrade, setSelectedGrade] = useState<FinalGrade | null>(null);
-  const [editForm] = Form.useForm();
-  
-  // Filter states
-  const [searchText, setSearchText] = useState('');
-  const [filterGrade, setFilterGrade] = useState<string | null>(null);
-  const [filterSection, setFilterSection] = useState<string | null>(null);
-  const [filterSubject, setFilterSubject] = useState<string | null>(null);
-  const [filterFailedOnly, setFilterFailedOnly] = useState(false);
-  const [filterNoGradeOnly, setFilterNoGradeOnly] = useState(false);
+  const [showReasonModal, setShowReasonModal] = useState(false);
+  const [reasonForm] = Form.useForm();
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [pendingFilterChange, setPendingFilterChange] = useState<{ type: string; value: number | string | null } | null>(null);
 
   useEffect(() => {
     fetchSchoolPeriods();
@@ -60,7 +61,6 @@ const FinalGradesEdit: React.FC = () => {
     try {
       setLoading(true);
       const response = await api.get('/academic/periods');
-      // Show all periods (both active and inactive)
       setSchoolPeriods(response.data);
     } catch {
       message.error('Error al cargar períodos escolares');
@@ -87,9 +87,18 @@ const FinalGradesEdit: React.FC = () => {
     }
   };
 
-  const handlePeriodChange = async (periodId: number) => {
+  const handlePeriodChange = async (periodId: number | null) => {
+    if (hasUnsavedChanges) {
+      setPendingFilterChange({ type: 'period', value: periodId });
+      setShowReasonModal(true);
+      return;
+    }
+    
     setSelectedPeriod(periodId);
+    setSelectedGrade(null);
+    setSelectedSection(null);
     setFinalGrades([]);
+    setStudentRows([]);
     setHasPermission(false);
     setPermissionInfo(null);
 
@@ -97,7 +106,6 @@ const FinalGradesEdit: React.FC = () => {
 
     setLoadingGrades(true);
 
-    // Check permission first
     const hasPerm = await checkPermissionForPeriod(periodId);
 
     if (!hasPerm) {
@@ -121,27 +129,108 @@ const FinalGradesEdit: React.FC = () => {
     }
   };
 
-  const handleEditGrade = (grade: FinalGrade) => {
-    setSelectedGrade(grade);
-    setShowEditModal(true);
+  const handleGradeChange = (gradeName: string | null) => {
+    if (hasUnsavedChanges) {
+      setPendingFilterChange({ type: 'grade', value: gradeName });
+      setShowReasonModal(true);
+      return;
+    }
+    setSelectedGrade(gradeName);
   };
 
-  // Set form values when modal opens and grade is selected
-  useEffect(() => {
-    if (showEditModal && selectedGrade) {
-      editForm.setFieldsValue({
-        finalScore: selectedGrade.finalScore,
-        status: selectedGrade.status
-      });
+  const handleSectionChange = (sectionName: string | null) => {
+    if (hasUnsavedChanges) {
+      setPendingFilterChange({ type: 'section', value: sectionName });
+      setShowReasonModal(true);
+      return;
     }
-  }, [showEditModal, selectedGrade, editForm]);
+    setSelectedSection(sectionName);
+  };
 
-  const handleSaveGrade = async (values: {
-    finalScore: number;
-    status: 'aprobada' | 'reprobada';
-    reason: string;
-  }) => {
-    if (!selectedGrade || !permissionInfo) {
+  // Group grades by student and create dynamic columns
+  const { studentRows: groupedStudents, uniqueSubjects } = useMemo(() => {
+    if (!finalGrades.length || !selectedGrade || !selectedSection) {
+      return { studentRows: [], uniqueSubjects: [] };
+    }
+
+    // Filter by grade and section
+    const filtered = finalGrades.filter(grade => {
+      const gradeName = grade.inscriptionSubject?.inscription?.grade?.name;
+      const sectionName = grade.inscriptionSubject?.inscription?.section?.name;
+      return gradeName === selectedGrade && sectionName === selectedSection;
+    });
+
+    // Get unique subjects for this grade/section/period
+    const subjects = new Set<string>();
+    filtered.forEach(grade => {
+      const subject = grade.inscriptionSubject?.subject?.name;
+      const subjectId = grade.inscriptionSubject?.subject?.id;
+      if (subject && subjectId) {
+        subjects.add(`${subjectId}-${subject}`);
+      }
+    });
+    const uniqueSubjectsList = Array.from(subjects).sort();
+
+    // Group by student
+    const studentMap = new Map<number, StudentRow>();
+    
+    filtered.forEach(grade => {
+      const student = grade.inscriptionSubject?.inscription?.student;
+      const subject = grade.inscriptionSubject?.subject;
+      
+      if (!student || !subject) return;
+
+      const studentId = student.id;
+      
+      if (!studentMap.has(studentId)) {
+        studentMap.set(studentId, {
+          studentId,
+          firstName: student.firstName,
+          lastName: student.lastName,
+          document: student.document,
+          grades: {}
+        });
+      }
+
+      const studentRow = studentMap.get(studentId)!;
+      const subjectKey = `${subject.id}-${subject.name}`;
+      
+      studentRow.grades[subjectKey] = {
+        score: grade.finalScore !== null ? Number(grade.finalScore) : 0,
+        status: grade.status,
+        id: grade.id,
+        inscriptionSubjectId: grade.inscriptionSubjectId
+      };
+    });
+
+    return {
+      studentRows: Array.from(studentMap.values()),
+      uniqueSubjects: uniqueSubjectsList
+    };
+  }, [finalGrades, selectedGrade, selectedSection]);
+
+  // Update student rows when grouping changes
+  useEffect(() => {
+    setStudentRows(groupedStudents);
+    setOriginalStudentRows(JSON.parse(JSON.stringify(groupedStudents)));
+  }, [groupedStudents]);
+
+  // Handle grade change in cell
+  const handleGradeValueChange = (studentId: number, subjectKey: string, value: number) => {
+    setStudentRows(prev => prev.map(row => {
+      if (row.studentId === studentId) {
+        const newGrades = { ...row.grades };
+        newGrades[subjectKey] = { ...newGrades[subjectKey], score: value };
+        return { ...row, grades: newGrades };
+      }
+      return row;
+    }));
+    setHasUnsavedChanges(true);
+  };
+
+  // Save all changes
+  const handleSaveChanges = async (reason: string, actCode: string) => {
+    if (!permissionInfo || !selectedPeriod) {
       message.error('No se puede guardar: información faltante');
       return;
     }
@@ -154,123 +243,126 @@ const FinalGradesEdit: React.FC = () => {
         return;
       }
 
-      const gradeId = selectedGrade.id ? String(selectedGrade.id) : `new-${selectedGrade.inscriptionSubjectId}`;
-      console.log('[handleSaveGrade] Sending update request:', { gradeId, finalScore: values.finalScore, status: values.status, permissionId: permId, inscriptionSubjectId: selectedGrade.inscriptionSubjectId });
+      // Collect only actually changed grades by comparing with original
+      const changes: Array<{ gradeId?: number; inscriptionSubjectId: number; finalScore: number; status: 'aprobada' | 'reprobada' }> = [];
+      
+      studentRows.forEach(row => {
+        const originalRow = originalStudentRows.find(orig => orig.studentId === row.studentId);
+        if (!originalRow) return;
 
-      await finalGradeEditService.updateFinalGrade(gradeId, {
-        finalScore: values.finalScore,
-        status: values.status,
-        reason: values.reason,
-        permissionId: permId,
-        inscriptionSubjectId: selectedGrade.inscriptionSubjectId
+        Object.entries(row.grades).forEach(([subjectKey, gradeData]) => {
+          const originalGradeData = originalRow.grades[subjectKey];
+          
+          // Check if score actually changed
+          const originalScore = originalGradeData?.score ?? 0;
+          const currentScore = gradeData.score ?? 0;
+          
+          if (originalScore !== currentScore) {
+            changes.push({
+              gradeId: gradeData.id,
+              inscriptionSubjectId: gradeData.inscriptionSubjectId,
+              finalScore: currentScore,
+              status: currentScore >= 10 ? 'aprobada' : 'reprobada'
+            });
+          }
+        });
       });
 
-      console.log('[handleSaveGrade] Update successful');
-      message.success(selectedGrade.id ? 'Nota final actualizada correctamente' : 'Nota final creada correctamente');
-      setShowEditModal(false);
-      editForm.resetFields();
+      if (changes.length === 0) {
+        message.info('No hay cambios para guardar');
+        setHasUnsavedChanges(false);
+        setShowReasonModal(false);
+        reasonForm.resetFields();
+        setLoading(false);
+        return;
+      }
+
+      // Save each change
+      for (const change of changes) {
+        const gradeId = change.gradeId ? String(change.gradeId) : `new-${change.inscriptionSubjectId}`;
+        
+        await finalGradeEditService.updateFinalGrade(gradeId, {
+          finalScore: change.finalScore,
+          status: change.status,
+          reason,
+          permissionId: permId,
+          inscriptionSubjectId: change.inscriptionSubjectId,
+          actCode
+        });
+      }
+
+      message.success(`Notas actualizadas correctamente (${changes.length} cambio${changes.length > 1 ? 's' : ''})`);
+      setHasUnsavedChanges(false);
+      setShowReasonModal(false);
+      reasonForm.resetFields();
 
       // Reload grades
-      if (selectedPeriod) {
-        console.log('[handleSaveGrade] Reloading grades for period:', selectedPeriod);
-        const grades = await finalGradeEditService.getFinalGradesByPeriod(selectedPeriod);
-        console.log('[handleSaveGrade] Reloaded grades:', grades.length);
-        console.log('[handleSaveGrade] First grade in reloaded data:', grades[0]);
-        console.log('[handleSaveGrade] Looking for updated grade with inscriptionSubjectId:', selectedGrade.inscriptionSubjectId);
-        const updatedGrade = grades.find(g => g.inscriptionSubjectId === selectedGrade.inscriptionSubjectId);
-        console.log('[handleSaveGrade] Updated grade found:', updatedGrade ? updatedGrade.finalScore : 'not found');
-        setFinalGrades(grades);
-      }
+      const grades = await finalGradeEditService.getFinalGradesByPeriod(selectedPeriod);
+      setFinalGrades(grades);
     } catch (err: unknown) {
-      console.error('[handleSaveGrade] Error:', err);
+      console.error('Error saving changes:', err);
       const error = err as { response?: { data?: { message?: string } } };
-      message.error(error.response?.data?.message || 'Error al actualizar nota final');
+      message.error(error.response?.data?.message || 'Error al actualizar notas');
     } finally {
       setLoading(false);
     }
   };
 
-  const columns = [
-    {
-      title: 'Estudiante',
-      key: 'student',
-      width: 200,
-      render: (_: unknown, record: FinalGrade) => (
-        <div>
-          <div style={{ fontWeight: 600 }}>
-            {record.inscriptionSubject?.inscription?.student?.firstName} {record.inscriptionSubject?.inscription?.student?.lastName}
-          </div>
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            {record.inscriptionSubject?.inscription?.student?.document}
-          </Text>
-        </div>
-      )
-    },
-    {
-      title: 'Grado',
-      dataIndex: ['inscriptionSubject', 'inscription', 'grade', 'name'],
-      key: 'grade',
-      width: 100
-    },
-    {
-      title: 'Sección',
-      dataIndex: ['inscriptionSubject', 'inscription', 'section', 'name'],
-      key: 'section',
-      width: 80
-    },
-    {
-      title: 'Materia',
-      dataIndex: ['inscriptionSubject', 'subject', 'name'],
-      key: 'subject',
-      width: 200
-    },
-    {
-      title: 'Nota Final',
-      dataIndex: 'finalScore',
-      key: 'finalScore',
-      width: 100,
-      render: (score: number | null) => {
-        const numScore = Number(score);
-        const validScore = isNaN(numScore) ? 0 : numScore;
-        return (
-          <div>
-            <div style={{ fontSize: 16, fontWeight: 700, color: validScore >= 10 ? '#52c41a' : '#ff4d4f' }}>
-              {validScore.toFixed(2)}
-            </div>
-          </div>
-        );
-      }
-    },
-    {
-      title: 'Estado',
-      key: 'status',
-      width: 100,
-      dataIndex: 'status',
-      render: (status: string) => (
-        <Tag color={status === 'aprobada' ? 'success' : 'error'} style={{ fontWeight: 600 }}>
-          {status === 'aprobada' ? 'Aprobada' : 'Reprobada'}
-        </Tag>
-      )
-    },
-    {
-      title: 'Acciones',
-      key: 'actions',
-      width: 100,
-      render: (_: unknown, record: FinalGrade) => (
-        <Button
-          type="primary"
-          size="small"
-          icon={<EditOutlined />}
-          onClick={() => handleEditGrade(record)}
-          disabled={!hasPermission}
-        >
-          Editar
-        </Button>
-      )
+  // Handle unsaved changes warning
+  const handleUnsavedChangesConfirm = async () => {
+    const reason = reasonForm.getFieldValue('reason');
+    const actCode = reasonForm.getFieldValue('actCode');
+    
+    if (!reason) {
+      message.warning('Debe ingresar una razón para guardar los cambios');
+      return;
     }
-  ];
 
-  // Extract unique grades, sections and subjects for filters
+    if (!actCode) {
+      message.warning('Debe ingresar el número de acta');
+      return;
+    }
+
+    await handleSaveChanges(reason, actCode);
+
+    // Apply pending filter change
+    if (pendingFilterChange) {
+      const { type, value } = pendingFilterChange;
+      if (type === 'period') {
+        await handlePeriodChange(value as number | null);
+      } else if (type === 'grade') {
+        setSelectedGrade(value as string | null);
+      } else if (type === 'section') {
+        setSelectedSection(value as string | null);
+      }
+      setPendingFilterChange(null);
+    }
+  };
+
+  const handleDiscardChanges = () => {
+    setHasUnsavedChanges(false);
+    setShowReasonModal(false);
+    reasonForm.resetFields();
+
+    // Apply pending filter change without saving
+    if (pendingFilterChange) {
+      const { type, value } = pendingFilterChange;
+      if (type === 'period') {
+        setSelectedPeriod(value as number | null);
+        setSelectedGrade(null);
+        setSelectedSection(null);
+        setFinalGrades([]);
+        setStudentRows([]);
+      } else if (type === 'grade') {
+        setSelectedGrade(value as string | null);
+      } else if (type === 'section') {
+        setSelectedSection(value as string | null);
+      }
+      setPendingFilterChange(null);
+    }
+  };
+
+  // Extract unique grades and sections from all data (not filtered)
   const uniqueGrades = useMemo(() => {
     const grades = new Set<string>();
     finalGrades.forEach(grade => {
@@ -289,84 +381,63 @@ const FinalGradesEdit: React.FC = () => {
     return Array.from(sections).sort();
   }, [finalGrades]);
 
-  const uniqueSubjects = useMemo(() => {
-    const subjects = new Set<string>();
-    finalGrades.forEach(grade => {
-      const subject = grade.inscriptionSubject?.subject?.name;
-      if (subject) subjects.add(subject);
+  // Build dynamic columns
+  const columns = useMemo(() => {
+    const baseColumns = [
+      {
+        title: 'Estudiante',
+        key: 'student',
+        width: 250,
+        fixed: 'left' as const,
+        render: (_: unknown, record: StudentRow) => (
+          <div>
+            <div style={{ fontWeight: 600 }}>
+              {record.firstName} {record.lastName}
+            </div>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              {record.document}
+            </Text>
+          </div>
+        )
+      }
+    ];
+
+    // Add dynamic subject columns
+    const subjectColumns = uniqueSubjects.map(subjectKey => {
+      const subjectName = subjectKey.split('-')[1];
+      return {
+        title: subjectName,
+        key: subjectKey,
+        width: 120,
+        render: (_: unknown, record: StudentRow) => {
+          const gradeData = record.grades[subjectKey];
+          if (!gradeData) {
+            return (
+              <div style={{ textAlign: 'center', color: '#ccc' }}>
+                -
+              </div>
+            );
+          }
+
+          return (
+            <InputNumber
+              value={gradeData.score}
+              onChange={(value) => handleGradeValueChange(record.studentId, subjectKey, value || 0)}
+              min={0}
+              max={20}
+              step={0.01}
+              precision={2}
+              size="small"
+              style={{ width: '100%' }}
+              disabled={!hasPermission}
+            />
+          );
+        }
+      };
     });
-    return Array.from(subjects).sort();
-  }, [finalGrades]);
 
-  // Filter grades based on search and filters
-  const filteredGrades = useMemo(() => {
-    return finalGrades.filter(grade => {
-      // Search filter (name, lastname, document)
-      if (searchText) {
-        const searchLower = searchText.toLowerCase();
-        const firstName = grade.inscriptionSubject?.inscription?.student?.firstName?.toLowerCase() || '';
-        const lastName = grade.inscriptionSubject?.inscription?.student?.lastName?.toLowerCase() || '';
-        const document = grade.inscriptionSubject?.inscription?.student?.document?.toLowerCase() || '';
-        const fullName = `${firstName} ${lastName}`;
-        
-        if (!fullName.includes(searchLower) && !document.includes(searchLower)) {
-          return false;
-        }
-      }
-
-      // Grade filter
-      if (filterGrade) {
-        const gradeName = grade.inscriptionSubject?.inscription?.grade?.name;
-        if (gradeName !== filterGrade) {
-          return false;
-        }
-      }
-
-      // Section filter
-      if (filterSection) {
-        const section = grade.inscriptionSubject?.inscription?.section?.name;
-        if (section !== filterSection) {
-          return false;
-        }
-      }
-
-      // Subject filter
-      if (filterSubject) {
-        const subject = grade.inscriptionSubject?.subject?.name;
-        if (subject !== filterSubject) {
-          return false;
-        }
-      }
-
-      // Failed only filter
-      if (filterFailedOnly) {
-        if (grade.status !== 'reprobada') {
-          return false;
-        }
-      }
-
-      // No grade only filter
-      if (filterNoGradeOnly) {
-        const numScore = Number(grade.finalScore);
-        if (numScore !== 0) {
-          return false;
-        }
-      }
-
-      return true;
-    });
-  }, [finalGrades, searchText, filterGrade, filterSection, filterSubject, filterFailedOnly, filterNoGradeOnly]);
-
-  const clearFilters = () => {
-    setSearchText('');
-    setFilterGrade(null);
-    setFilterSection(null);
-    setFilterSubject(null);
-    setFilterFailedOnly(false);
-    setFilterNoGradeOnly(false);
-  };
-
-  const hasActiveFilters = searchText || filterGrade || filterSection || filterSubject || filterFailedOnly || filterNoGradeOnly;
+    return [...baseColumns, ...subjectColumns];
+  }, [uniqueSubjects, hasPermission]);
 
   return (
     <div style={{ padding: '24px' }}>
@@ -426,10 +497,10 @@ const FinalGradesEdit: React.FC = () => {
 
       <Card>
         <Row gutter={[16, 16]} align="middle">
-          <Col xs={24} sm={12} md={6}>
+          <Col xs={24} sm={8} md={6}>
             <div>
               <Text strong style={{ display: 'block', marginBottom: 8 }}>
-                Período Escolar
+                Período Escolar *
               </Text>
               <Select
                 style={{ width: '100%' }}
@@ -450,31 +521,17 @@ const FinalGradesEdit: React.FC = () => {
 
           {selectedPeriod && (
             <>
-              <Col xs={24} sm={12} md={6}>
+              <Col xs={24} sm={8} md={6}>
                 <div>
                   <Text strong style={{ display: 'block', marginBottom: 8 }}>
-                    Buscar Estudiante
-                  </Text>
-                  <Search
-                    placeholder="Nombre, apellido o CI"
-                    value={searchText}
-                    onChange={(e) => setSearchText(e.target.value)}
-                    allowClear
-                  />
-                </div>
-              </Col>
-
-              <Col xs={12} sm={6} md={2}>
-                <div>
-                  <Text strong style={{ display: 'block', marginBottom: 8 }}>
-                    Grado
+                    Grado *
                   </Text>
                   <Select
                     style={{ width: '100%' }}
-                    placeholder="Todos"
-                    value={filterGrade}
-                    onChange={setFilterGrade}
-                    allowClear
+                    placeholder="Seleccione grado"
+                    value={selectedGrade}
+                    onChange={handleGradeChange}
+                    size="large"
                   >
                     {uniqueGrades.map(grade => (
                       <Option key={grade} value={grade}>{grade}</Option>
@@ -483,17 +540,17 @@ const FinalGradesEdit: React.FC = () => {
                 </div>
               </Col>
 
-              <Col xs={12} sm={6} md={2}>
+              <Col xs={24} sm={8} md={6}>
                 <div>
                   <Text strong style={{ display: 'block', marginBottom: 8 }}>
-                    Sección
+                    Sección *
                   </Text>
                   <Select
                     style={{ width: '100%' }}
-                    placeholder="Todas"
-                    value={filterSection}
-                    onChange={setFilterSection}
-                    allowClear
+                    placeholder="Seleccione sección"
+                    value={selectedSection}
+                    onChange={handleSectionChange}
+                    size="large"
                   >
                     {uniqueSections.map(section => (
                       <Option key={section} value={section}>{section}</Option>
@@ -502,188 +559,130 @@ const FinalGradesEdit: React.FC = () => {
                 </div>
               </Col>
 
-              <Col xs={12} sm={6} md={2}>
-                <div>
-                  <Text strong style={{ display: 'block', marginBottom: 8 }}>
-                    Materia
-                  </Text>
-                  <Select
-                    style={{ width: '100%' }}
-                    placeholder="Todas"
-                    value={filterSubject}
-                    onChange={setFilterSubject}
-                    allowClear
-                  >
-                    {uniqueSubjects.map(subject => (
-                      <Option key={subject} value={subject}>{subject}</Option>
-                    ))}
-                  </Select>
-                </div>
-              </Col>
-
-              <Col xs={24} sm={12} md={6}>
+              <Col xs={24} sm={24} md={6}>
                 <div style={{ marginTop: 24 }}>
-                  <Space>
-                    <Checkbox
-                      checked={filterFailedOnly}
-                      onChange={(e) => setFilterFailedOnly(e.target.checked)}
-                    >
-                      Solo Reprobados
-                    </Checkbox>
-                    <Checkbox
-                      checked={filterNoGradeOnly}
-                      onChange={(e) => setFilterNoGradeOnly(e.target.checked)}
-                    >
-                      Sin Notas (0)
-                    </Checkbox>
-                    {hasActiveFilters && (
-                      <Button
-                        size="small"
-                        onClick={clearFilters}
-                        icon={<FilterOutlined />}
-                      >
-                        Limpiar
-                      </Button>
-                    )}
-                  </Space>
+                  <Button
+                    type="primary"
+                    icon={<SaveOutlined />}
+                    onClick={() => setShowReasonModal(true)}
+                    disabled={!hasPermission || !hasUnsavedChanges}
+                    loading={loading}
+                    block
+                  >
+                    Guardar Cambios
+                  </Button>
+                  {hasUnsavedChanges && (
+                    <Tag color="warning" style={{ marginTop: 8, display: 'block', textAlign: 'center' }}>
+                      Hay cambios sin guardar
+                    </Tag>
+                  )}
                 </div>
               </Col>
             </>
           )}
         </Row>
 
-        {selectedPeriod && (
+        {selectedPeriod && selectedGrade && selectedSection && (
           <div style={{ marginTop: '24px' }}>
             {loadingGrades ? (
               <div style={{ textAlign: 'center', padding: '40px' }}>
                 <Spin size="large" />
               </div>
-            ) : finalGrades.length === 0 ? (
+            ) : studentRows.length === 0 ? (
               <div style={{ textAlign: 'center', padding: '40px' }}>
                 <WarningOutlined style={{ fontSize: 48, color: '#faad14', marginBottom: 16 }} />
-                <Title level={4} style={{ marginBottom: 8 }}>No hay notas finales registradas</Title>
+                <Title level={4} style={{ marginBottom: 8 }}>No hay estudiantes inscritos</Title>
                 <Text type="secondary">
-                  No se encontraron notas finales para el período seleccionado. Es posible que las notas no hayan sido calculadas aún.
+                  No se encontraron estudiantes inscritos en este grado, sección y período.
                 </Text>
               </div>
             ) : (
               <Table
-                key={`grades-table-${finalGrades.length}-${finalGrades.map(g => `${g.inscriptionSubjectId}-${g.finalScore}`).join('-')}`}
                 columns={columns}
-                dataSource={filteredGrades}
-                rowKey={(record) => record.id || `new-${record.inscriptionSubjectId}`}
+                dataSource={studentRows}
+                rowKey="studentId"
                 loading={loadingGrades}
                 pagination={{ pageSize: 20 }}
                 scroll={{ x: 1200 }}
                 size="middle"
               />
             )}
-            {filteredGrades.length === 0 && finalGrades.length > 0 && (
-              <div style={{ textAlign: 'center', padding: '20px', marginTop: '16px' }}>
-                <Text type="secondary">
-                  No se encontraron resultados con los filtros aplicados.
-                </Text>
-                <Button
-                  type="link"
-                  onClick={clearFilters}
-                  style={{ marginTop: 8 }}
-                >
-                  Limpiar filtros
-                </Button>
-              </div>
-            )}
           </div>
         )}
       </Card>
 
       <Modal
-        title="Editar Nota Final"
-        open={showEditModal}
-        onCancel={() => {
-          setShowEditModal(false);
-          editForm.resetFields();
-        }}
+        title={pendingFilterChange ? "Cambios sin guardar" : "Guardar Cambios"}
+        open={showReasonModal}
+        onCancel={handleDiscardChanges}
         footer={null}
-        width={600}
+        width={500}
       >
-        {selectedGrade && (
-          <div>
-            <div style={{ marginBottom: '16px', padding: '12px', background: '#f5f5f5', borderRadius: 8 }}>
-              <Text strong>Estudiante:</Text>{' '}
-              {selectedGrade.inscriptionSubject?.inscription?.student?.firstName} {selectedGrade.inscriptionSubject?.inscription?.student?.lastName}
-              <br />
-              <Text strong>Materia:</Text>{' '}
-              {selectedGrade.inscriptionSubject?.subject?.name}
-              <br />
-              <Text strong>Nota actual:</Text>{' '}
-              <Tag color={selectedGrade.status === 'aprobada' ? 'success' : 'error'}>
-                {selectedGrade.finalScore !== null ? Number(selectedGrade.finalScore).toFixed(2) : 'N/A'} - {selectedGrade.status === 'aprobada' ? 'Aprobada' : 'Reprobada'}
-              </Tag>
-            </div>
-
-            <Form
-              form={editForm}
-              layout="vertical"
-              onFinish={handleSaveGrade}
+        <Alert
+          message={pendingFilterChange ? "Tiene cambios sin guardar" : "Confirmar cambios"}
+          description={pendingFilterChange 
+            ? "Tiene cambios sin guardar. ¿Desea guardar los cambios antes de cambiar de filtro o descartar los cambios?" 
+            : "Ingrese la razón de la modificación de notas."}
+          type="warning"
+          showIcon
+          style={{ marginBottom: 16 }}
+        />
+        
+        {!pendingFilterChange && (
+          <Form
+            form={reasonForm}
+            layout="vertical"
+          >
+            <Form.Item
+              name="actCode"
+              label="Número de Acta"
+              rules={[{ required: true, message: 'Ingrese el número de acta' }]}
             >
-              <Form.Item
-                name="finalScore"
-                label="Nueva Nota Final"
-                rules={[
-                  { required: true, message: 'Ingrese la nota final' },
-                  { type: 'number', min: 0, max: 20, message: 'La nota debe estar entre 0 y 20' }
-                ]}
-              >
-                <InputNumber
-                  style={{ width: '100%' }}
-                  min={0}
-                  max={20}
-                  step={0.01}
-                  precision={2}
-                  size="large"
-                />
-              </Form.Item>
-
-              <Form.Item
-                name="status"
-                label="Estado"
-                rules={[{ required: true, message: 'Seleccione el estado' }]}
-              >
-                <Select size="large">
-                  <Option value="aprobada">Aprobada</Option>
-                  <Option value="reprobada">Reprobada</Option>
-                </Select>
-              </Form.Item>
-
-              <Form.Item
-                name="reason"
-                label="Razón de la Modificación"
-                rules={[{ required: true, message: 'Ingrese la razón de la modificación' }]}
-              >
-                <TextArea
-                  rows={4}
-                  placeholder="Describa detalladamente el motivo de esta modificación..."
-                />
-              </Form.Item>
-
-              <Form.Item style={{ marginBottom: 0, textAlign: 'right' }}>
-                <Space>
-                  <Button onClick={() => setShowEditModal(false)} icon={<CloseOutlined />}>
-                    Cancelar
-                  </Button>
-                  <Button
-                    type="primary"
-                    htmlType="submit"
-                    icon={<SaveOutlined />}
-                    loading={loading}
-                  >
-                    Guardar Cambio
-                  </Button>
-                </Space>
-              </Form.Item>
-            </Form>
-          </div>
+              <Input
+                placeholder="Ej: ACTA-2024-001"
+                size="large"
+              />
+            </Form.Item>
+            <Form.Item
+              name="reason"
+              label="Razón de la Modificación"
+              rules={[{ required: true, message: 'Ingrese la razón de la modificación' }]}
+            >
+              <TextArea
+                rows={4}
+                placeholder="Describa detalladamente el motivo de esta modificación..."
+              />
+            </Form.Item>
+          </Form>
         )}
+
+        <div style={{ textAlign: 'right', marginTop: 16 }}>
+          <Space>
+            <Button onClick={handleDiscardChanges}>
+              {pendingFilterChange ? "Descartar Cambios" : "Cancelar"}
+            </Button>
+            {!pendingFilterChange && (
+              <Button
+                type="primary"
+                onClick={handleUnsavedChangesConfirm}
+                loading={loading}
+              >
+                Guardar
+              </Button>
+            )}
+            {pendingFilterChange && (
+              <Button
+                type="primary"
+                onClick={() => {
+                  setShowReasonModal(false);
+                  reasonForm.setFieldsValue({ reason: '' });
+                }}
+              >
+                Guardar Cambios
+              </Button>
+            )}
+          </Space>
+        </div>
       </Modal>
     </div>
   );
