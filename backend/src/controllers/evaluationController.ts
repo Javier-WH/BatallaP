@@ -20,7 +20,8 @@ import {
   SubjectFinalGrade,
   GradeEditPermission,
   GradeEditAudit,
-  User
+  User,
+  Plantel
 } from '@/models/index';
 
 export const getMyAssignments = async (req: Request, res: Response) => {
@@ -365,8 +366,21 @@ export const updateFinalGrade = async (req: Request, res: Response) => {
     }
 
     const { id } = req.params;
-    const { finalScore, status, reason, permissionId, actCode } = req.body;
-    console.log('[updateFinalGrade] Request params:', { id, finalScore, status, reason, permissionId, actCode });
+    const { finalScore, status, reason, permissionId, actCode, plantelId } = req.body;
+    console.log('[updateFinalGrade] Request params:', { id, finalScore, status, reason, permissionId, actCode, plantelId });
+
+    let normalizedPlantelId: number | null | undefined = undefined;
+    if (plantelId !== undefined) {
+      if (plantelId === null) {
+        normalizedPlantelId = null;
+      } else {
+        const plantel = await Plantel.findByPk(Number(plantelId));
+        if (!plantel) {
+          return res.status(400).json({ message: 'Plantel no encontrado' });
+        }
+        normalizedPlantelId = plantel.id;
+      }
+    }
 
     if (!reason) {
       return res.status(400).json({ message: 'La razón de la modificación es obligatoria' });
@@ -415,10 +429,13 @@ export const updateFinalGrade = async (req: Request, res: Response) => {
           return res.status(403).json({ message: 'El permiso no pertenece al usuario actual' });
         }
 
+        const previousPlantelId = existingGrade.plantelId;
+
         // Update the final grade
         await existingGrade.update({
           finalScore: finalScore !== undefined ? finalScore : existingGrade.finalScore,
-          status: status || existingGrade.status
+          status: status || existingGrade.status,
+          ...(normalizedPlantelId !== undefined ? { plantelId: normalizedPlantelId } : {})
         });
 
         console.log(`[updateFinalGrade] Grade updated successfully, new value: ${existingGrade.finalScore}`);
@@ -434,7 +451,9 @@ export const updateFinalGrade = async (req: Request, res: Response) => {
           newStatus: existingGrade.status,
           reason,
           editedAt: new Date(),
-          actCode
+          actCode,
+          previousPlantelId,
+          newPlantelId: existingGrade.plantelId
         });
 
         return res.json({ message: 'Nota final actualizada correctamente', finalGrade: existingGrade });
@@ -490,7 +509,8 @@ export const updateFinalGrade = async (req: Request, res: Response) => {
       const newFinalGrade = await SubjectFinalGrade.create({
         inscriptionSubjectId: Number(inscriptionSubjectId),
         finalScore,
-        status: status || (finalScore >= 10 ? 'aprobada' : 'reprobada')
+        status: status || (finalScore >= 10 ? 'aprobada' : 'reprobada'),
+        plantelId: normalizedPlantelId ?? null
       });
 
       // Create audit record
@@ -504,7 +524,9 @@ export const updateFinalGrade = async (req: Request, res: Response) => {
         newStatus: newFinalGrade.status,
         reason,
         editedAt: new Date(),
-        actCode
+        actCode,
+        previousPlantelId: null,
+        newPlantelId: newFinalGrade.plantelId
       });
 
       return res.json({ message: 'Nota final creada correctamente', finalGrade: newFinalGrade });
@@ -580,13 +602,15 @@ export const updateFinalGrade = async (req: Request, res: Response) => {
     // Store previous values for audit
     const previousScore = finalGrade.finalScore;
     const previousStatus = finalGrade.status;
+    const previousPlantelId = finalGrade.plantelId;
 
     console.log('[updateFinalGrade] Updating grade, previous score:', previousScore, 'new score:', finalScore);
 
     // Update the final grade
     await finalGrade.update({
       finalScore: finalScore !== undefined ? finalScore : finalGrade.finalScore,
-      status: status || finalGrade.status
+      status: status || finalGrade.status,
+      ...(normalizedPlantelId !== undefined ? { plantelId: normalizedPlantelId } : {})
     });
 
     console.log('[updateFinalGrade] Grade updated successfully');
@@ -603,7 +627,9 @@ export const updateFinalGrade = async (req: Request, res: Response) => {
       newStatus: finalGrade.status,
       reason,
       editedAt: new Date(),
-      actCode
+      actCode,
+      previousPlantelId,
+      newPlantelId: finalGrade.plantelId
     });
 
     console.log('[updateFinalGrade] Audit record created, sending response');
@@ -729,7 +755,10 @@ export const getFinalGradesByPeriod = async (req: Request, res: Response) => {
           },
           {
             model: SubjectFinalGrade,
-            as: 'finalGrade'
+            as: 'finalGrade',
+            required: false,
+            attributes: ['id', 'inscriptionSubjectId', 'finalScore', 'rawScore', 'councilPoints', 'status', 'calculatedAt', 'plantelId'],
+            include: [{ model: Plantel, as: 'plantel', required: false }]
           }
         ]
       });
@@ -768,7 +797,10 @@ export const getFinalGradesByPeriod = async (req: Request, res: Response) => {
               },
               {
                 model: SubjectFinalGrade,
-                as: 'finalGrade'
+                as: 'finalGrade',
+                required: false,
+                attributes: ['id', 'inscriptionSubjectId', 'finalScore', 'rawScore', 'councilPoints', 'status', 'calculatedAt', 'plantelId'],
+                include: [{ model: Plantel, as: 'plantel', required: false }]
               }
             ]
           });
@@ -788,6 +820,8 @@ export const getFinalGradesByPeriod = async (req: Request, res: Response) => {
           councilPoints: finalGrade?.councilPoints || null,
           status: finalGrade?.status || 'reprobada',
           calculatedAt: finalGrade?.calculatedAt || new Date(),
+          plantelId: finalGrade?.plantelId || null,
+          plantel: finalGrade?.plantel || null,
           inscriptionSubject: {
             id: insSubject.id,
             subject: insSubject.subject,

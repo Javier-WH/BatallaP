@@ -1,14 +1,21 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import React, { useState, useEffect } from 'react';
-import { Card, Form, Input, Button, Typography, message, Spin, Upload, Segmented } from 'antd';
+import { Card, Form, Input, Button, Typography, message, Spin, Upload, Segmented, AutoComplete } from 'antd';
 import { SettingOutlined, SaveOutlined, UploadOutlined, BankOutlined, BorderOutlined, CheckCircleOutlined } from '@ant-design/icons';
 import api from '@/services/api';
 import { useSchool } from '@/context/SchoolContext';
 
 const { Text } = Typography;
 
+interface PlantelOption {
+  code: string;
+  name: string;
+  state: string;
+}
+
 interface SettingsFormValues {
   institution_name?: string;
+  institution_dea_code?: string;
   institution_logo?: string;
   institution_logo_shape?: 'circle' | 'square';
 }
@@ -18,6 +25,7 @@ const SettingsManagement: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [logoPreview, setLogoPreview] = useState<string>('');
+  const [plantelOptions, setPlantelOptions] = useState<{ value: string; label: string }[]>([]);
   const { refreshSettings } = useSchool();
 
   useEffect(() => {
@@ -27,6 +35,7 @@ const SettingsManagement: React.FC = () => {
         const res = await api.get('/settings');
         form.setFieldsValue({
           institution_name: res.data.institution_name || '',
+          institution_dea_code: res.data.institution_dea_code || '',
           institution_logo: res.data.institution_logo || '',
           institution_logo_shape: res.data.institution_logo_shape || 'square',
         });
@@ -47,6 +56,23 @@ const SettingsManagement: React.FC = () => {
     };
     fetchSettings();
   }, [form]);
+
+  const handlePlantelSearch = async (searchText: string) => {
+    if (!searchText || searchText.length < 2) {
+      setPlantelOptions([]);
+      return;
+    }
+    try {
+      const response = await api.get('/planteles/search', { params: { q: searchText, limit: 10 } });
+      const options = response.data.map((p: PlantelOption) => ({
+        value: p.code,
+        label: `[${p.code}] — ${p.name} (${p.state})`
+      }));
+      setPlantelOptions(options);
+    } catch (error) {
+      console.error('Error searching planteles:', error);
+    }
+  };
 
   const onFinish = async (values: SettingsFormValues) => {
     setSaving(true);
@@ -104,6 +130,21 @@ const SettingsManagement: React.FC = () => {
                 <Input
                   placeholder="Ej: U.E. Colegio Batalla de la Victoria"
                   className="h-12 border-slate-200 focus:border-brand-primary focus:ring-4 focus:ring-brand-primary/10 rounded-xl transition-all"
+                />
+              </Form.Item>
+
+              <Form.Item
+                label={<span className="text-slate-700 font-bold">Código DEA de la Institución</span>}
+                name="institution_dea_code"
+                tooltip="Código DEA oficial del plantel educativo (se asociará a las notas finales)"
+              >
+                <AutoComplete
+                  options={plantelOptions}
+                  onSearch={handlePlantelSearch}
+                  placeholder="Buscar por código o nombre del plantel..."
+                  className="h-12"
+                  filterOption={false}
+                  allowClear
                 />
               </Form.Item>
 

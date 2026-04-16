@@ -8,6 +8,13 @@ export interface FinalGrade {
   councilPoints: number | null;
   status: 'aprobada' | 'reprobada';
   calculatedAt: string;
+  plantelId: number | null;
+  plantel?: {
+    id: number;
+    code: string;
+    name: string;
+    state: string;
+  };
   inscriptionSubject: {
     id: number;
     subject: {
@@ -47,6 +54,7 @@ export interface UpdateFinalGradeData {
   permissionId: number;
   inscriptionSubjectId?: number;
   actCode?: string;
+  plantelId?: number | null;
 }
 
 const finalGradeEditService = {

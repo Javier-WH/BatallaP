@@ -252,6 +252,9 @@ EnrollmentAnswer.belongsTo(Person, { foreignKey: 'personId', as: 'student' });
 InscriptionSubject.hasOne(SubjectFinalGrade, { foreignKey: 'inscriptionSubjectId', as: 'finalGrade' });
 SubjectFinalGrade.belongsTo(InscriptionSubject, { foreignKey: 'inscriptionSubjectId', as: 'inscriptionSubject' });
 
+SubjectFinalGrade.belongsTo(Plantel, { foreignKey: 'plantelId', as: 'plantel' });
+Plantel.hasMany(SubjectFinalGrade, { foreignKey: 'plantelId', as: 'finalGrades' });
+
 // Student period outcomes
 Inscription.hasOne(StudentPeriodOutcome, { foreignKey: 'inscriptionId', as: 'periodOutcome' });
 StudentPeriodOutcome.belongsTo(Inscription, { foreignKey: 'inscriptionId', as: 'inscription' });

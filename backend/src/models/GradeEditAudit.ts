@@ -16,9 +16,11 @@ interface GradeEditAuditAttributes {
   reason: string;
   editedAt: Date;
   actCode?: string;
+  previousPlantelId?: number | null;
+  newPlantelId?: number | null;
 }
 
-interface GradeEditAuditCreationAttributes extends Optional<GradeEditAuditAttributes, 'id' | 'editedAt' | 'previousStatus' | 'actCode'> {}
+interface GradeEditAuditCreationAttributes extends Optional<GradeEditAuditAttributes, 'id' | 'editedAt' | 'previousStatus' | 'actCode' | 'previousPlantelId' | 'newPlantelId'> {}
 
 class GradeEditAudit extends Model<GradeEditAuditAttributes, GradeEditAuditCreationAttributes> implements GradeEditAuditAttributes {
   public id!: number;
@@ -32,6 +34,8 @@ class GradeEditAudit extends Model<GradeEditAuditAttributes, GradeEditAuditCreat
   public reason!: string;
   public editedAt!: Date;
   public actCode?: string;
+  public previousPlantelId?: number | null;
+  public newPlantelId?: number | null;
 
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
@@ -106,6 +110,16 @@ GradeEditAudit.init(
       type: DataTypes.STRING(100),
       allowNull: true,
       comment: 'Número de acta asociado a la modificación',
+    },
+    previousPlantelId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      comment: 'Plantel asociado a la nota antes de la modificación',
+    },
+    newPlantelId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      comment: 'Plantel asociado a la nota después de la modificación',
     },
   },
   {

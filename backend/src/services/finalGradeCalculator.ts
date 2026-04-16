@@ -7,8 +7,22 @@ import {
   Qualification,
   Term,
   Subject,
-  SubjectFinalGrade
+  SubjectFinalGrade,
+  Plantel,
+  Setting
 } from '@/models/index';
+
+const resolveInstitutionPlantelId = async (transaction?: Transaction): Promise<number | null> => {
+  const setting = await Setting.findOne({ where: { key: 'institution_dea_code' }, transaction });
+  const deaCode = setting?.getDataValue('value');
+  if (!deaCode) return null;
+  const plantel = await Plantel.findOne({ where: { code: deaCode }, transaction });
+  if (!plantel) {
+    console.warn(`[FinalGradeCalculator] Plantel con código DEA "${deaCode}" no encontrado en la base de datos`);
+    return null;
+  }
+  return plantel.id;
+};
 
 type InscriptionWithSubjects = Inscription & {
   inscriptionSubjects?: (InscriptionSubject & {
@@ -104,6 +118,7 @@ export class FinalGradeCalculator {
     }
 
     const minApproval = options.minApproval ?? 10;
+    const institutionPlantelId = await resolveInstitutionPlantelId(options.transaction);
     const subjectResults: SubjectResultSummary[] = [];
     let failedSubjects = 0;
     let sumFinalScores = 0;
@@ -182,6 +197,11 @@ export class FinalGradeCalculator {
       };
       subjectResults.push(summary);
 
+      const existingGrade = await SubjectFinalGrade.findOne({
+        where: { inscriptionSubjectId: insSub.id },
+        transaction: options.transaction
+      });
+
       await SubjectFinalGrade.upsert(
         {
           inscriptionSubjectId: insSub.id,
@@ -189,7 +209,8 @@ export class FinalGradeCalculator {
           councilPoints: summary.councilPoints,
           finalScore: summary.finalScore,
           status: summary.status,
-          calculatedAt: new Date()
+          calculatedAt: new Date(),
+          plantelId: existingGrade?.plantelId ?? institutionPlantelId
         },
         { transaction: options.transaction }
       );

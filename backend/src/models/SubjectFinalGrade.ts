@@ -1,6 +1,7 @@
 import { DataTypes, Model, Optional } from 'sequelize';
 import sequelize from '@/config/database';
 import InscriptionSubject from './InscriptionSubject';
+import Plantel from './Plantel';
 
 export type SubjectFinalGradeStatus = 'aprobada' | 'reprobada';
 
@@ -12,6 +13,7 @@ interface SubjectFinalGradeAttributes {
   councilPoints?: number | null;
   status: SubjectFinalGradeStatus;
   calculatedAt: Date;
+  plantelId?: number | null;
   createdAt?: Date;
   updatedAt?: Date;
   inscriptionSubject?: any;
@@ -19,7 +21,7 @@ interface SubjectFinalGradeAttributes {
 
 type SubjectFinalGradeCreationAttributes = Optional<
   SubjectFinalGradeAttributes,
-  'id' | 'finalScore' | 'rawScore' | 'councilPoints' | 'status' | 'calculatedAt'
+  'id' | 'finalScore' | 'rawScore' | 'councilPoints' | 'status' | 'calculatedAt' | 'plantelId'
 >;
 
 class SubjectFinalGrade
@@ -33,6 +35,7 @@ class SubjectFinalGrade
   public councilPoints!: number | null;
   public status!: SubjectFinalGradeStatus;
   public calculatedAt!: Date;
+  public plantelId!: number | null;
 
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
@@ -77,6 +80,14 @@ SubjectFinalGrade.init(
       type: DataTypes.DATE,
       allowNull: false,
       defaultValue: DataTypes.NOW
+    },
+    plantelId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      references: {
+        model: Plantel,
+        key: 'id'
+      }
     }
   },
   {
