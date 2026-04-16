@@ -1,7 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { Button, Card, Typography, Space, Tabs, Descriptions, List, Spin, Empty, Tag, Row, Col } from 'antd';
-import { ArrowLeftOutlined, FileTextOutlined, SolutionOutlined, EditOutlined } from '@ant-design/icons';
+import { Button, Card, Typography, Space, Tabs, Descriptions, List, Spin, Empty, Tag, Row, Col, Drawer, message } from 'antd';
+import { ArrowLeftOutlined, FileTextOutlined, SolutionOutlined, EditOutlined, PrinterOutlined } from '@ant-design/icons';
+import { getPersonReports, type EnrollmentReportSummary } from '@/services/enrollmentReportService';
+import EnrollmentReportModal from '@/components/pdf/EnrollmentReportModal';
 import StudentAcademicRecord from '@/components/shared/StudentAcademicRecord';
 import api from '@/services/api';
 import dayjs from 'dayjs';
@@ -73,8 +75,37 @@ const StudentDetail: React.FC<StudentDetailProps> = ({ personId: propId }) => {
   const [loading, setLoading] = useState(false);
   const [studentData, setStudentData] = useState<StudentData | null>(null);
   const [enrollmentQuestions, setEnrollmentQuestions] = useState<EnrollmentQuestionResponse[]>([]);
+  const [reportsDrawerOpen, setReportsDrawerOpen] = useState(false);
+  const [reports, setReports] = useState<EnrollmentReportSummary[]>([]);
+  const [reportsLoading, setReportsLoading] = useState(false);
+  const [selectedReportUuid, setSelectedReportUuid] = useState<string | null>(null);
+  const [reportModalOpen, setReportModalOpen] = useState(false);
 
   const canEdit = user?.roles?.some(role => ['Master', 'Administrador', 'Control de Estudios'].includes(role));
+
+  const loadReports = useCallback(async () => {
+    if (!personId) return;
+    setReportsLoading(true);
+    try {
+      const data = await getPersonReports(Number(personId));
+      setReports(data);
+    } catch (error) {
+      console.error('Error loading enrollment reports:', error);
+      message.error('Error al cargar planillas de inscripción');
+    } finally {
+      setReportsLoading(false);
+    }
+  }, [personId]);
+
+  const handleOpenReportsDrawer = () => {
+    setReportsDrawerOpen(true);
+    loadReports();
+  };
+
+  const handleViewReport = (uuid: string) => {
+    setSelectedReportUuid(uuid);
+    setReportModalOpen(true);
+  };
 
   const handleEdit = () => {
     let prefix = '/admin';
@@ -351,6 +382,14 @@ const StudentDetail: React.FC<StudentDetailProps> = ({ personId: propId }) => {
             </Space>
           </Col>
           <Col>
+            <Button
+              size="large"
+              icon={<PrinterOutlined />}
+              onClick={handleOpenReportsDrawer}
+              style={{ borderRadius: 12, fontWeight: 700, padding: '0 24px', marginRight: 12 }}
+            >
+              Planillas
+            </Button>
             {canEdit && (
               <Button
                 size="large"
@@ -379,6 +418,70 @@ const StudentDetail: React.FC<StudentDetailProps> = ({ personId: propId }) => {
           className="premium-tabs"
         />
       </Card>
+
+      <Drawer
+        title="Planillas de Inscripción"
+        open={reportsDrawerOpen}
+        onClose={() => setReportsDrawerOpen(false)}
+        width={420}
+      >
+        {reportsLoading ? (
+          <div style={{ textAlign: 'center', padding: 40 }}><Spin /></div>
+        ) : reports.length === 0 ? (
+          <Empty description="No hay planillas de inscripción generadas" />
+        ) : (
+          <List
+            dataSource={reports}
+            renderItem={(report) => {
+              const snap = report.snapshotData;
+              return (
+                <List.Item
+                  actions={[
+                    <Button
+                      key="view"
+                      type="primary"
+                      size="small"
+                      icon={<PrinterOutlined />}
+                      onClick={() => handleViewReport(report.uuid)}
+                    >
+                      Ver PDF
+                    </Button>
+                  ]}
+                >
+                  <List.Item.Meta
+                    title={
+                      <Space>
+                        <Tag color="blue" style={{ borderRadius: 6, fontWeight: 700 }}>
+                          {snap?.period?.name}
+                        </Tag>
+                        <Tag color="processing" style={{ borderRadius: 6, fontWeight: 700 }}>
+                          {snap?.grade?.name}
+                        </Tag>
+                      </Space>
+                    }
+                    description={
+                      <Space direction="vertical" size={0}>
+                        <Text type="secondary" style={{ fontSize: 11 }}>
+                          Generado: {new Date(report.createdAt).toLocaleDateString('es-VE', { day: '2-digit', month: 'short', year: 'numeric' })}
+                        </Text>
+                        <Text type="secondary" style={{ fontSize: 10 }}>
+                          ID: {report.uuid.slice(0, 8)}...
+                        </Text>
+                      </Space>
+                    }
+                  />
+                </List.Item>
+              );
+            }}
+          />
+        )}
+      </Drawer>
+
+      <EnrollmentReportModal
+        open={reportModalOpen}
+        uuid={selectedReportUuid}
+        onClose={() => { setReportModalOpen(false); setSelectedReportUuid(null); }}
+      />
     </div>
   );
 };

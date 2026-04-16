@@ -9,6 +9,7 @@ import { GuardianProfilePayload } from '@/services/guardianProfileService';
 import { assignGuardians, GuardianAssignment } from '@/services/studentGuardianService';
 import { EscolaridadStatus } from '@/types/enrollment';
 import { registerAndEnrollStudent } from '@/services/studentEnrollmentService';
+import { generateEnrollmentReport } from '@/services/enrollmentReportService';
 
 const ESCOLARIDAD_VALUES: EscolaridadStatus[] = ['regular', 'repitiente', 'materia_pendiente'];
 const normalizeEscolaridad = (value?: unknown): EscolaridadStatus => {
@@ -537,6 +538,14 @@ export const enrollMatriculatedStudent = async (req: Request, res: Response) => 
     matriculation.inscriptionId = inscription.id;
     await matriculation.save({ transaction: t });
 
+    let reportUuid: string | undefined;
+    try {
+      const report = await generateEnrollmentReport(matriculation.id, t);
+      reportUuid = report.uuid;
+    } catch (reportError) {
+      console.warn('[enrollMatriculated] No se pudo generar reporte:', reportError);
+    }
+
     await t.commit();
     const result = await Matriculation.findByPk(id, {
       include: [
@@ -546,7 +555,8 @@ export const enrollMatriculatedStudent = async (req: Request, res: Response) => 
     });
     res.status(201).json({
       message: 'Estudiante inscrito exitosamente',
-      matriculation: result
+      matriculation: result,
+      reportUuid
     });
   } catch (error: any) {
     if (t) await t.rollback();
@@ -700,11 +710,20 @@ export const createInscription = async (req: Request, res: Response) => {
       }, { transaction: t });
     }
 
+    let reportUuid: string | undefined;
+    try {
+      const report = await generateEnrollmentReport(matriculation.id, t);
+      reportUuid = report.uuid;
+    } catch (reportError) {
+      console.warn('[createInscription] No se pudo generar reporte:', reportError);
+    }
+
     await t.commit();
 
     res.status(201).json({
       message: 'Solicitud de inscripción registrada exitosamente',
-      matriculation
+      matriculation,
+      reportUuid
     });
 
 
@@ -1049,11 +1068,12 @@ export const removeSubjectFromInscription = async (req: Request, res: Response) 
 // Register a new student (Person without User) and enroll them
 export const registerAndEnroll = async (req: Request, res: Response) => {
   try {
-    const { person, matriculation } = await registerAndEnrollStudent(req.body);
+    const { person, matriculation, reportUuid } = await registerAndEnrollStudent(req.body);
     res.status(201).json({
       message: 'Solicitud de inscripción registrada exitosamente',
       person,
-      matriculation
+      matriculation,
+      reportUuid
     });
   } catch (error: any) {
     console.error('[registerAndEnroll] Error:', error);

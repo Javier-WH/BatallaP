@@ -19,6 +19,7 @@ import { saveEnrollmentAnswers, EnrollmentAnswerPayload } from '@/services/enrol
 import { assignGuardians, GuardianAssignment } from '@/services/studentGuardianService';
 import { GuardianDocumentType } from '@/models/GuardianProfile';
 import { EscolaridadStatus } from '@/types/enrollment';
+import { generateEnrollmentReport } from '@/services/enrollmentReportService';
 
 const ESCOLARIDAD_VALUES: EscolaridadStatus[] = ['regular', 'repitiente', 'materia_pendiente'];
 
@@ -152,6 +153,7 @@ export type RegisterAndEnrollPayload = {
 export type RegisterAndEnrollResult = {
   person: Person;
   matriculation: Matriculation;
+  reportUuid?: string;
 };
 
 const toOptionalString = (value: unknown): string | undefined =>
@@ -408,11 +410,13 @@ export const registerAndEnrollStudent = async (
       }, { transaction: t });
     }
 
+    const report = await generateEnrollmentReport(matriculation.id, t);
+
     if (!options?.transaction) {
       await t.commit();
     }
 
-    return { person, matriculation };
+    return { person, matriculation, reportUuid: report.uuid };
   } catch (error) {
     if (!options?.transaction && t) {
       await t.rollback();

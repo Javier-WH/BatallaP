@@ -13,6 +13,7 @@ import type { GuardianDocumentType, GuardianProfileResponse } from '@/services/g
 import { downloadTemplate, previewBulk, processBulk } from '@/services/bulkEnrollment';
 import type { PreviewRow, ProcessResponse } from '@/services/bulkEnrollment';
 import BulkRetryModal from '@/components/BulkRetryModal';
+import EnrollmentReportModal from '@/components/pdf/EnrollmentReportModal';
 import { saveAs } from 'file-saver';
 
 const { Option } = Select;
@@ -243,6 +244,8 @@ const EnrollStudent: React.FC = () => {
   const [bulkResults, setBulkResults] = useState<ProcessResponse | null>(null);
   const [bulkFileList, setBulkFileList] = useState<UploadFile[]>([]);
   const [retryModalOpen, setRetryModalOpen] = useState(false);
+  const [reportModalOpen, setReportModalOpen] = useState(false);
+  const [reportUuid, setReportUuid] = useState<string | null>(null);
   const [retryRowNumber, setRetryRowNumber] = useState(0);
   const [retryPayload, setRetryPayload] = useState<Record<string, unknown> | null>(null);
   const [retryErrors, setRetryErrors] = useState<string[]>([]);
@@ -910,11 +913,25 @@ const EnrollStudent: React.FC = () => {
         documents: transformedDocuments
       };
 
-      await api.post('/inscriptions/register', payload);
+      const response = await api.post('/inscriptions/register', payload);
+      const reportUuid = response.data?.reportUuid as string | undefined;
 
       message.success('Solicitud de inscripción registrada exitosamente');
       newStudentForm.resetFields();
       setSelectedGradeId(null);
+
+      if (reportUuid) {
+        Modal.confirm({
+          title: 'Inscripción exitosa',
+          content: '¿Desea generar e imprimir la planilla de inscripción?',
+          okText: 'Sí, ver planilla',
+          cancelText: 'No, continuar',
+          onOk: () => {
+            setReportUuid(reportUuid);
+            setReportModalOpen(true);
+          },
+        });
+      }
     } catch (error: unknown) {
       console.error(error);
       const err = error as { response?: { data?: { error?: string; message?: string } } };
@@ -930,14 +947,29 @@ const EnrollStudent: React.FC = () => {
     }
 
     try {
-      await api.post('/inscriptions', {
+      const response = await api.post('/inscriptions', {
         ...values,
         schoolPeriodId: activePeriod.id,
         enrollmentAnswers: transformAnswers(values.enrollmentAnswers as EnrollmentAnswerFormValues | undefined),
       });
+      const reportUuid = response.data?.reportUuid as string | undefined;
+
       message.success('Solicitud de inscripción registrada exitosamente');
       existingStudentForm.resetFields();
       setSelectedGradeIdExisting(null);
+
+      if (reportUuid) {
+        Modal.confirm({
+          title: 'Inscripción exitosa',
+          content: '¿Desea generar e imprimir la planilla de inscripción?',
+          okText: 'Sí, ver planilla',
+          cancelText: 'No, continuar',
+          onOk: () => {
+            setReportUuid(reportUuid);
+            setReportModalOpen(true);
+          },
+        });
+      }
     } catch (error: unknown) {
       const err = error as { response?: { data?: { error?: string } } };
       message.error(err.response?.data?.error || 'Error en inscripción');
@@ -1828,6 +1860,11 @@ const EnrollStudent: React.FC = () => {
         enrollStructure={enrollStructure}
         venezuelaLocations={venezuelaLocations}
         activePeriod={activePeriod}
+      />
+      <EnrollmentReportModal
+        open={reportModalOpen}
+        uuid={reportUuid}
+        onClose={() => { setReportModalOpen(false); setReportUuid(null); }}
       />
     </div >
   );

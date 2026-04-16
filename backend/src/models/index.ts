@@ -117,6 +117,7 @@ import SchoolPeriodTransitionRule from './SchoolPeriodTransitionRule';
 import EnrollmentDocument from './EnrollmentDocument';
 import GradeEditPermission from './GradeEditPermission';
 import GradeEditAudit from './GradeEditAudit';
+import EnrollmentReport from './EnrollmentReport';
 
 
 // ... (Existing User/Person/Role/Contact associations) ...
@@ -294,6 +295,13 @@ GradeEditAudit.belongsTo(GradeEditPermission, { foreignKey: 'permissionId', as: 
 User.hasMany(GradeEditAudit, { foreignKey: 'editedBy', as: 'gradeEdits' });
 GradeEditAudit.belongsTo(User, { foreignKey: 'editedBy', as: 'editor' });
 
+// Enrollment reports
+EnrollmentReport.belongsTo(Matriculation, { foreignKey: 'matriculationId', as: 'matriculation' });
+Matriculation.hasMany(EnrollmentReport, { foreignKey: 'matriculationId', as: 'enrollmentReports' });
+
+EnrollmentReport.belongsTo(Person, { foreignKey: 'personId', as: 'student' });
+Person.hasMany(EnrollmentReport, { foreignKey: 'personId', as: 'enrollmentReports' });
+
 export {
   User,
   Person,
@@ -335,5 +343,6 @@ export {
   SchoolPeriodTransitionRule,
   EnrollmentDocument,
   GradeEditPermission,
-  GradeEditAudit
+  GradeEditAudit,
+  EnrollmentReport
 };
