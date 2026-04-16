@@ -7,7 +7,7 @@ import {
   StyleSheet,
   Image,
 } from '@react-pdf/renderer';
-import type { SnapshotData, GuardianSnapshot } from '@/services/enrollmentReportService';
+import type { SnapshotData } from '@/services/enrollmentReportService';
 
 const styles = StyleSheet.create({
   page: {
@@ -223,37 +223,6 @@ const SectionHeader: React.FC<{ title: string }> = ({ title }) => (
   </View>
 );
 
-const GuardianTable: React.FC<{ guardian: GuardianSnapshot; title: string }> = ({
-  guardian,
-  title,
-}) => {
-  const rows = [
-    { label: 'Nombre', value: `${guardian.firstName} ${guardian.lastName}` },
-    { label: 'Documento', value: `${guardian.documentType}-${guardian.document}` },
-    { label: 'Teléfono', value: guardian.phone },
-    { label: 'Email', value: guardian.email },
-    { label: 'Ocupación', value: guardian.occupation },
-    {
-      label: 'Residencia',
-      value: [guardian.residenceParish, guardian.residenceMunicipality, guardian.residenceState]
-        .filter(Boolean)
-        .join(', '),
-    },
-    { label: 'Dirección', value: guardian.address },
-  ];
-
-  return (
-    <View>
-      <SectionHeader title={title} />
-      <View style={styles.table}>
-        {rows.map((r, i) => (
-          <TableRow key={r.label} label={r.label} value={r.value} index={i} />
-        ))}
-      </View>
-    </View>
-  );
-};
-
 interface EnrollmentReportPDFProps {
   data: SnapshotData;
   uuid: string;
@@ -267,7 +236,7 @@ const EnrollmentReportPDF: React.FC<EnrollmentReportPDFProps> = ({
   createdAt,
   logoBase64,
 }) => {
-  const { institution, period, grade, student, mother, father, representative } = data;
+  const { institution, period, grade, student } = data;
 
   const genderLabel = student.gender === 'M' ? 'Masculino' : 'Femenino';
   const birthPlace = [student.birthParish, student.birthMunicipality, student.birthState]
@@ -351,51 +320,6 @@ const EnrollmentReportPDF: React.FC<EnrollmentReportPDFProps> = ({
           </View>
         </View>
 
-        {student.pathology && (
-          <View style={styles.table}>
-            <TableRow label="Patología" value={student.pathology} index={0} />
-          </View>
-        )}
-        {student.livingWith && (
-          <View style={styles.table}>
-            <TableRow label="Vive con" value={student.livingWith} index={1} />
-          </View>
-        )}
-
-        {/* Guardians */}
-        <View style={styles.twoCol}>
-          <View style={styles.col}>
-            {mother && <GuardianTable guardian={mother} title="Datos de la Madre" />}
-          </View>
-          <View style={styles.col}>
-            {father && <GuardianTable guardian={father} title="Datos del Padre" />}
-          </View>
-        </View>
-
-        {representative && (
-          <GuardianTable
-            guardian={representative.data}
-            title={`Representante Legal (${representative.relationship === 'mother' ? 'Madre' : representative.relationship === 'father' ? 'Padre' : 'Otro'})`}
-          />
-        )}
-
-        {/* Previous Schools */}
-        {data.previousSchools.length > 0 && (
-          <View>
-            <SectionHeader title="Plantel de Procedencia" />
-            <View style={styles.table}>
-              {data.previousSchools.map((school, i) => (
-                <TableRow
-                  key={i}
-                  label={`Plantel ${i + 1}`}
-                  value={`${school.plantelName}${school.plantelCode ? ` (${school.plantelCode})` : ''}${school.state ? ` — ${school.state}` : ''}`}
-                  index={i}
-                />
-              ))}
-            </View>
-          </View>
-        )}
-
         {/* Enrollment Answers */}
         {data.enrollmentAnswers.length > 0 && (
           <View>
@@ -456,7 +380,7 @@ const EnrollmentReportPDF: React.FC<EnrollmentReportPDFProps> = ({
         <View style={styles.signatureArea}>
           <View style={styles.signatureBlock}>
             <View style={styles.signatureLine} />
-            <Text style={styles.signatureLabel}>Firma del Representante</Text>
+            <Text style={styles.signatureLabel}>Firma del Emisor</Text>
           </View>
           <View style={styles.signatureBlock}>
             <View style={styles.signatureLine} />
