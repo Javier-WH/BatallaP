@@ -39,7 +39,15 @@ const states = [
 
 async function scrapeCodigosPlanteles() {
   const baseUrl = 'https://codigosplanteles.info';
-  const allPlanteles: PlantelData[] = [];
+  const filePath = path.resolve(process.cwd(), 'src/assets/planteles.json');
+  
+  // Load existing data if file exists
+  let allPlanteles: PlantelData[] = [];
+  if (fs.existsSync(filePath)) {
+    const existingData = fs.readFileSync(filePath, 'utf-8');
+    allPlanteles = JSON.parse(existingData);
+    console.log(`📂 Loaded ${allPlanteles.length} existing planteles from ${filePath}`);
+  }
 
   let browser;
   try {
@@ -54,8 +62,12 @@ async function scrapeCodigosPlanteles() {
     // Set user agent to avoid being blocked
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
 
-    // Scrape each state
-    for (let i = 0; i < states.length; i++) {
+    // Start from Sucre (index 18) since previous states are already completed
+    const startStateIndex = states.indexOf('sucre');
+    console.log(`\n🔄 Resuming from state ${startStateIndex + 1}/${states.length}: SUCRE`);
+    
+    // Scrape each state starting from Lara
+    for (let i = startStateIndex; i < states.length; i++) {
       const state = states[i];
       console.log(`\n🏫 Procesando estado ${i + 1}/${states.length}: ${state.toUpperCase()}`);
 
@@ -154,6 +166,11 @@ async function scrapeCodigosPlanteles() {
         }
 
         console.log(`✅ Completed ${state.toUpperCase()}: ${allPlanteles.length} total schools so far`);
+
+        // Save progress after each state
+        const filePath = path.resolve(process.cwd(), 'src/assets/planteles.json');
+        fs.writeFileSync(filePath, JSON.stringify(allPlanteles, null, 2), 'utf-8');
+        console.log(`💾 Progress saved to ${filePath}`);
 
         // Delay between states
         await new Promise(resolve => setTimeout(resolve, 1000));
