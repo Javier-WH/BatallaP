@@ -6,7 +6,7 @@ interface PlantelAttributes {
   code: string;
   name: string;
   state: string;
-  dependency: string;
+  dependency?: string;
   municipality?: string;
   parish?: string;
 }
@@ -48,7 +48,7 @@ Plantel.init(
     },
     dependency: {
       type: DataTypes.STRING(100),
-      allowNull: false,
+      allowNull: true,
     },
     municipality: {
       type: DataTypes.STRING(100),

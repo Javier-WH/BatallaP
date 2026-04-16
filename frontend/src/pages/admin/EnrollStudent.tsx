@@ -421,7 +421,7 @@ const EnrollStudent: React.FC = () => {
     try {
       const response = await api.get(`/planteles/search?q=${encodeURIComponent(query)}`);
       const options = response.data.map((school: SchoolSearchResult) => ({
-        label: `${school.name} (${school.code})`,
+        label: `${school.name} - ${school.state} (${school.code})`,
         value: school.code || school.name
       }));
       setSchoolOptions(options);

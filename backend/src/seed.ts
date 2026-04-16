@@ -179,7 +179,7 @@ const seed = async () => {
         for (let i = 0; i < plantelesData.length; i += batchSize) {
           const batch = plantelesData.slice(i, i + batchSize);
           const plantelesToInsert = batch.map((plantel: any) => ({
-            code: plantel.code,
+            code: plantel.deaCode,
             name: plantel.name,
             state: plantel.state,
             dependency: plantel.dependency,

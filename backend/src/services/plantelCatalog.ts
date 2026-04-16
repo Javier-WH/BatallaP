@@ -2,12 +2,13 @@ import fs from 'fs';
 import path from 'path';
 
 export type PlantelRecord = {
-  code?: string | null;
+  deaCode?: string | null;
   name: string;
   state?: string | null;
   municipality?: string | null;
   parish?: string | null;
   dependency?: string | null;
+  url?: string;
 };
 
 let cachedPlanteles: PlantelRecord[] | null = null;
@@ -52,7 +53,7 @@ export const searchPlanteles = (params: {
     if (normalizedQuery) {
       const combined = [
         plantel.name,
-        plantel.code,
+        plantel.deaCode,
         plantel.state,
         plantel.municipality,
         plantel.parish,
@@ -74,7 +75,7 @@ export const findPlantelByCode = (code: string): PlantelRecord | undefined => {
   if (!normalizedCode) return undefined;
   return loadPlanteles().find(
     (plantel) =>
-      normalize(plantel.code) === normalizedCode ||
+      normalize(plantel.deaCode) === normalizedCode ||
       normalize(plantel.name) === normalizedCode
   );
 };

@@ -40,12 +40,12 @@ const seedPlanteles = async () => {
       const batch = planteles.slice(i, i + batchSize);
 
       const plantelesToInsert = batch.map((plantel: any) => ({
-        code: plantel.code,
+        code: plantel.deaCode,
         name: plantel.name,
         state: plantel.state,
-        dependency: plantel.dependency,
-        municipality: plantel.municipality || undefined,
-        parish: plantel.parish || undefined
+        dependency: undefined,
+        municipality: undefined,
+        parish: undefined
       }));
 
       await Plantel.bulkCreate(plantelesToInsert, {
