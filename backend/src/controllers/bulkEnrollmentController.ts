@@ -6,6 +6,7 @@ import sequelize from '@/config/database';
 import excelUpload from '@/middlewares/excelUploadMiddleware';
 import { generateTemplate, previewBulkEnrollment, processBulkEnrollment, ProcessBulkRowInput } from '@/services/bulkEnrollmentService';
 import { registerAndEnrollStudent, normalizeEscolaridad } from '@/services/studentEnrollmentService';
+import { generateEnrollmentReport } from '@/services/enrollmentReportService';
 import { Person, Matriculation } from '@/models/index';
 
 export const downloadTemplate = async (_req: Request, res: Response) => {
@@ -110,6 +111,14 @@ export const retrySingleRow = async (req: Request, res: Response) => {
             { transaction: t }
           );
 
+          let reportUuid: string | undefined;
+          try {
+            const report = await generateEnrollmentReport(matriculation.id, t);
+            reportUuid = report.uuid;
+          } catch (reportError) {
+            console.warn('[retrySingleRow] No se pudo generar reporte:', reportError);
+          }
+
           await t.commit();
           return res.json({
             success: true,
@@ -117,7 +126,8 @@ export const retrySingleRow = async (req: Request, res: Response) => {
               ? 'Nombre actualizado e inscripción registrada'
               : 'Inscripción registrada (estudiante existente)',
             personId: existingPerson.id,
-            matriculationId: matriculation.id
+            matriculationId: matriculation.id,
+            reportUuid
           });
         } catch (innerError) {
           await t.rollback();
@@ -126,12 +136,13 @@ export const retrySingleRow = async (req: Request, res: Response) => {
       }
     }
 
-    const { person, matriculation } = await registerAndEnrollStudent(payload);
+    const { person, matriculation, reportUuid } = await registerAndEnrollStudent(payload);
     res.json({
       success: true,
       message: 'Inscripción registrada',
       personId: person.id,
-      matriculationId: matriculation.id
+      matriculationId: matriculation.id,
+      reportUuid
     });
   } catch (error: unknown) {
     let msg = 'Error procesando el registro';

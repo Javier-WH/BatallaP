@@ -532,19 +532,21 @@ export type ProcessBulkResult = {
   message: string;
   personId?: number;
   matriculationId?: number;
+  reportUuid?: string;
 };
 
 export const processBulkEnrollment = async (rows: ProcessBulkRowInput[]): Promise<ProcessBulkResult[]> => {
   const results: ProcessBulkResult[] = [];
   for (const row of rows) {
     try {
-      const { person, matriculation } = await registerAndEnrollStudent(row.payload);
+      const { person, matriculation, reportUuid } = await registerAndEnrollStudent(row.payload);
       results.push({
         rowNumber: row.rowNumber,
         success: true,
         message: 'Inscripción registrada',
         personId: person.id,
-        matriculationId: matriculation.id
+        matriculationId: matriculation.id,
+        reportUuid
       });
     } catch (error: unknown) {
       let message = 'Error procesando la fila';
