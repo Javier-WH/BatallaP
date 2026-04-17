@@ -1,0 +1,22 @@
+{
+  "name": "batallaproject-smoke-tests",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Smoke/integration test runner for BatallaProject backend",
+  "scripts": {
+    "test": "ts-node -r tsconfig-paths/register runner.ts",
+    "test:modules": "ts-node -r tsconfig-paths/register runner.ts --only=modules",
+    "test:flows": "ts-node -r tsconfig-paths/register runner.ts --only=flows",
+    "test:json": "ts-node -r tsconfig-paths/register runner.ts --json"
+  },
+  "dependencies": {
+    "axios": "^1.13.2",
+    "dotenv": "^17.2.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "ts-node": "^10.9.2",
+    "tsconfig-paths": "^4.2.0",
+    "typescript": "^5.9.3"
+  }
+}

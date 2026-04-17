@@ -1,0 +1,582 @@
+[
+  {
+    "name": "academic",
+    "kind": "module",
+    "tests": [
+      {
+        "name": "GET /academic/periods returns array",
+        "status": "passed",
+        "durationMs": 5
+      },
+      {
+        "name": "GET /academic/active returns active period",
+        "status": "passed",
+        "durationMs": 3
+      },
+      {
+        "name": "POST /academic/periods creates new period",
+        "status": "passed",
+        "durationMs": 45
+      },
+      {
+        "name": "POST /academic/periods rejects invalid format",
+        "status": "passed",
+        "durationMs": 4
+      },
+      {
+        "name": "PUT /academic/periods/:id updates period name",
+        "status": "passed",
+        "durationMs": 3
+      },
+      {
+        "name": "GET /academic/grades returns array",
+        "status": "passed",
+        "durationMs": 5
+      },
+      {
+        "name": "POST /academic/grades creates new grade",
+        "status": "passed",
+        "durationMs": 5
+      },
+      {
+        "name": "PUT /academic/grades/:id updates grade",
+        "status": "passed",
+        "durationMs": 5
+      },
+      {
+        "name": "GET /academic/sections returns array",
+        "status": "passed",
+        "durationMs": 3
+      },
+      {
+        "name": "POST /academic/sections creates new section",
+        "status": "passed",
+        "durationMs": 5
+      },
+      {
+        "name": "GET /academic/subjects returns array",
+        "status": "passed",
+        "durationMs": 5
+      },
+      {
+        "name": "POST /academic/subjects creates new subject",
+        "status": "passed",
+        "durationMs": 5
+      },
+      {
+        "name": "GET /academic/structure/:periodId returns structure",
+        "status": "passed",
+        "durationMs": 9
+      },
+      {
+        "name": "GET /academic/subject-groups returns array",
+        "status": "passed",
+        "durationMs": 2
+      },
+      {
+        "name": "GET /academic/specializations returns array",
+        "status": "passed",
+        "durationMs": 4
+      }
+    ],
+    "passed": 15,
+    "failed": 0,
+    "skipped": 0,
+    "durationMs": 224
+  },
+  {
+    "name": "auth",
+    "kind": "module",
+    "tests": [
+      {
+        "name": "GET /auth/me returns current session user",
+        "status": "passed",
+        "durationMs": 3
+      },
+      {
+        "name": "login with invalid password returns 401",
+        "status": "passed",
+        "durationMs": 51
+      },
+      {
+        "name": "login with non-existent user returns 401",
+        "status": "passed",
+        "durationMs": 2
+      },
+      {
+        "name": "/auth/me without session returns 401",
+        "status": "passed",
+        "durationMs": 0
+      },
+      {
+        "name": "logout invalidates session",
+        "status": "passed",
+        "durationMs": 60
+      },
+      {
+        "name": "session user exposes roles array",
+        "status": "passed",
+        "durationMs": 4
+      }
+    ],
+    "passed": 6,
+    "failed": 0,
+    "skipped": 0,
+    "durationMs": 173
+  },
+  {
+    "name": "evaluation",
+    "kind": "module",
+    "tests": [
+      {
+        "name": "GET /evaluation/my-assignments works",
+        "status": "passed",
+        "durationMs": 6
+      },
+      {
+        "name": "GET /evaluation/plan/:id without valid id returns error or empty array",
+        "status": "passed",
+        "durationMs": 4
+      },
+      {
+        "name": "POST /evaluation/plan without required fields returns 400",
+        "status": "passed",
+        "durationMs": 4
+      },
+      {
+        "name": "POST /evaluation/qualifications without required fields errors",
+        "status": "passed",
+        "durationMs": 2
+      },
+      {
+        "name": "GET /evaluation/final-grades-by-period without permission returns 403 or 200",
+        "status": "passed",
+        "durationMs": 82
+      },
+      {
+        "name": "GET /evaluation/final-grades-by-period without schoolPeriodId returns 400",
+        "status": "passed",
+        "durationMs": 3
+      },
+      {
+        "name": "GET /evaluation/students/:assignmentId with invalid id errors",
+        "status": "passed",
+        "durationMs": 4
+      },
+      {
+        "name": "GET /evaluation/student-record/:personId returns data or 404",
+        "status": "passed",
+        "durationMs": 5
+      }
+    ],
+    "passed": 8,
+    "failed": 0,
+    "skipped": 0,
+    "durationMs": 167
+  },
+  {
+    "name": "inscriptions",
+    "kind": "module",
+    "tests": [
+      {
+        "name": "GET /inscriptions returns array",
+        "status": "passed",
+        "durationMs": 44
+      },
+      {
+        "name": "GET /inscriptions?schoolPeriodId=X filters",
+        "status": "passed",
+        "durationMs": 49
+      },
+      {
+        "name": "GET /inscriptions/:id with invalid id returns 404",
+        "status": "passed",
+        "durationMs": 13
+      },
+      {
+        "name": "POST /inscriptions with missing required fields returns 400",
+        "status": "passed",
+        "durationMs": 7
+      },
+      {
+        "name": "GET /inscriptions/:id with valid id returns data",
+        "status": "passed",
+        "durationMs": 41
+      },
+      {
+        "name": "GET /matriculations returns data",
+        "status": "passed",
+        "durationMs": 19
+      }
+    ],
+    "passed": 6,
+    "failed": 0,
+    "skipped": 0,
+    "durationMs": 230
+  },
+  {
+    "name": "misc",
+    "kind": "module",
+    "tests": [
+      {
+        "name": "GET /settings returns data",
+        "status": "passed",
+        "durationMs": 3
+      },
+      {
+        "name": "GET /settings/:key returns setting or 404",
+        "status": "passed",
+        "durationMs": 4
+      },
+      {
+        "name": "GET /locations/venezuela returns location tree",
+        "status": "passed",
+        "durationMs": 4
+      },
+      {
+        "name": "GET /residences/:personId works or 404",
+        "status": "passed",
+        "durationMs": 3
+      },
+      {
+        "name": "GET /guardians/search returns results",
+        "status": "passed",
+        "durationMs": 3
+      },
+      {
+        "name": "GET /guardians/my-students returns array or 401/403",
+        "status": "passed",
+        "durationMs": 6
+      },
+      {
+        "name": "GET /council/data with params works",
+        "status": "passed",
+        "durationMs": 2
+      },
+      {
+        "name": "GET /period-closure/:id/status returns status",
+        "status": "passed",
+        "durationMs": 6
+      },
+      {
+        "name": "GET /period-closure/:id/validate returns validation",
+        "status": "passed",
+        "durationMs": 11
+      },
+      {
+        "name": "GET /period-closure/:id/preview returns preview",
+        "status": "passed",
+        "durationMs": 1031
+      },
+      {
+        "name": "GET /periods/:id/outcomes returns outcomes",
+        "status": "passed",
+        "durationMs": 12
+      },
+      {
+        "name": "GET /periods/:id/pending-subjects returns pending",
+        "status": "passed",
+        "durationMs": 4
+      },
+      {
+        "name": "GET /enrollment-questions returns list",
+        "status": "passed",
+        "durationMs": 4
+      },
+      {
+        "name": "GET /enrollment-answers/:personId returns answers",
+        "status": "passed",
+        "durationMs": 4
+      },
+      {
+        "name": "GET /grade-edit-permissions returns array",
+        "status": "passed",
+        "durationMs": 8
+      },
+      {
+        "name": "GET /grade-edit-permissions/check/:periodId returns check",
+        "status": "passed",
+        "durationMs": 5
+      },
+      {
+        "name": "GET /grade-edit-permissions/audit returns audit log",
+        "status": "passed",
+        "durationMs": 16
+      },
+      {
+        "name": "GET /dashboard/master returns metrics",
+        "status": "passed",
+        "durationMs": 12
+      },
+      {
+        "name": "GET /dashboard/control returns metrics",
+        "status": "passed",
+        "durationMs": 8
+      },
+      {
+        "name": "GET /users/:personId/student-previous-schools returns list",
+        "status": "passed",
+        "durationMs": 4
+      },
+      {
+        "name": "GET /upload/logo returns logo or 404",
+        "status": "passed",
+        "durationMs": 36
+      },
+      {
+        "name": "GET /inscriptions/bulk/template returns template",
+        "status": "passed",
+        "durationMs": 604
+      }
+    ],
+    "passed": 22,
+    "failed": 0,
+    "skipped": 0,
+    "durationMs": 1850
+  },
+  {
+    "name": "planteles",
+    "kind": "module",
+    "tests": [
+      {
+        "name": "GET /planteles returns array",
+        "status": "passed",
+        "durationMs": 238
+      },
+      {
+        "name": "GET /planteles/search?q=X returns results",
+        "status": "passed",
+        "durationMs": 3
+      },
+      {
+        "name": "GET /planteles/by-id/:id with invalid id returns 404",
+        "status": "passed",
+        "durationMs": 4
+      },
+      {
+        "name": "GET /planteles/by-id/:id with valid id returns plantel",
+        "status": "passed",
+        "durationMs": 7
+      }
+    ],
+    "passed": 4,
+    "failed": 0,
+    "skipped": 0,
+    "durationMs": 306
+  },
+  {
+    "name": "teachers",
+    "kind": "module",
+    "tests": [
+      {
+        "name": "GET /teachers returns array",
+        "status": "passed",
+        "durationMs": 6
+      },
+      {
+        "name": "GET /teachers/available/:periodId returns subjects",
+        "status": "passed",
+        "durationMs": 7
+      },
+      {
+        "name": "POST /teachers/assign with invalid data returns 400",
+        "status": "passed",
+        "durationMs": 4
+      },
+      {
+        "name": "GET /evaluation/my-assignments returns list",
+        "status": "passed",
+        "durationMs": 4
+      }
+    ],
+    "passed": 4,
+    "failed": 0,
+    "skipped": 0,
+    "durationMs": 77
+  },
+  {
+    "name": "terms",
+    "kind": "module",
+    "tests": [
+      {
+        "name": "GET /terms returns array",
+        "status": "passed",
+        "durationMs": 5
+      },
+      {
+        "name": "GET /terms?schoolPeriodId=X filters",
+        "status": "passed",
+        "durationMs": 3
+      },
+      {
+        "name": "POST /terms creates new term",
+        "status": "passed",
+        "durationMs": 6
+      },
+      {
+        "name": "POST /terms without name returns 400",
+        "status": "passed",
+        "durationMs": 3
+      },
+      {
+        "name": "PUT /terms/:id updates term",
+        "status": "passed",
+        "durationMs": 6
+      },
+      {
+        "name": "GET /terms/:id returns term",
+        "status": "passed",
+        "durationMs": 3
+      },
+      {
+        "name": "GET /terms/:id with invalid id returns 404",
+        "status": "passed",
+        "durationMs": 3
+      }
+    ],
+    "passed": 7,
+    "failed": 0,
+    "skipped": 0,
+    "durationMs": 92
+  },
+  {
+    "name": "users",
+    "kind": "module",
+    "tests": [
+      {
+        "name": "GET /users returns an array (search)",
+        "status": "passed",
+        "durationMs": 7
+      },
+      {
+        "name": "GET /users with search query",
+        "status": "passed",
+        "durationMs": 8
+      },
+      {
+        "name": "GET /users/:id returns user details",
+        "status": "passed",
+        "durationMs": 14
+      },
+      {
+        "name": "GET /users/:id with invalid id returns error",
+        "status": "passed",
+        "durationMs": 7
+      }
+    ],
+    "passed": 4,
+    "failed": 0,
+    "skipped": 0,
+    "durationMs": 90
+  },
+  {
+    "name": "01-login-roles",
+    "kind": "flow",
+    "tests": [
+      {
+        "name": "user Javier has the expected set of roles",
+        "status": "passed",
+        "durationMs": 3
+      },
+      {
+        "name": "with Master role, can call /users search",
+        "status": "passed",
+        "durationMs": 8
+      },
+      {
+        "name": "with Administrador role, can list inscriptions",
+        "status": "passed",
+        "durationMs": 40
+      },
+      {
+        "name": "with Control de Estudios role, can query permissions check",
+        "status": "passed",
+        "durationMs": 5
+      }
+    ],
+    "passed": 4,
+    "failed": 0,
+    "skipped": 0,
+    "durationMs": 110
+  },
+  {
+    "name": "02-academic-setup",
+    "kind": "flow",
+    "tests": [
+      {
+        "name": "creates a new school period",
+        "status": "passed",
+        "durationMs": 38
+      },
+      {
+        "name": "creates a new grade",
+        "status": "passed",
+        "durationMs": 6
+      },
+      {
+        "name": "creates a new section",
+        "status": "passed",
+        "durationMs": 4
+      },
+      {
+        "name": "creates a new subject",
+        "status": "passed",
+        "durationMs": 5
+      },
+      {
+        "name": "associates grade to period (period-grade)",
+        "status": "passed",
+        "durationMs": 4
+      },
+      {
+        "name": "GET /academic/structure/:periodId returns structure with our grade",
+        "status": "passed",
+        "durationMs": 9
+      },
+      {
+        "name": "creates a term for the new period",
+        "status": "passed",
+        "durationMs": 6
+      }
+    ],
+    "passed": 7,
+    "failed": 0,
+    "skipped": 0,
+    "durationMs": 153
+  },
+  {
+    "name": "03-grade-edit-permissions",
+    "kind": "flow",
+    "tests": [
+      {
+        "name": "GET /grade-edit-permissions returns list",
+        "status": "passed",
+        "durationMs": 7
+      },
+      {
+        "name": "POST /grade-edit-permissions grants permission for global (null period)",
+        "status": "passed",
+        "durationMs": 9
+      },
+      {
+        "name": "GET /grade-edit-permissions/check/:periodId returns true for granted user",
+        "status": "passed",
+        "durationMs": 4
+      },
+      {
+        "name": "DELETE /grade-edit-permissions/:id revokes permission",
+        "status": "passed",
+        "durationMs": 6
+      },
+      {
+        "name": "GET /grade-edit-permissions/audit returns audit log",
+        "status": "passed",
+        "durationMs": 16
+      }
+    ],
+    "passed": 5,
+    "failed": 0,
+    "skipped": 0,
+    "durationMs": 102
+  }
+]
