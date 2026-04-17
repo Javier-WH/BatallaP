@@ -1,0 +1,71 @@
+/* TipTap Image Resize - ResizableNodeView CSS */
+.ProseMirror img {
+  max-width: 100%;
+  height: auto;
+  cursor: move;
+}
+
+.ProseMirror img.ProseMirror-selectednode {
+  outline: 2px solid #1890ff;
+}
+
+/* ResizableNodeView container and wrapper */
+[data-resize-container] {
+  position: relative;
+}
+
+[data-resize-wrapper] {
+  position: relative;
+  display: block;
+}
+
+/* ResizableNodeView handles - Default styles from TipTap source */
+[data-resize-handle] {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  background: #1890ff;
+  border: 2px solid white;
+  border-radius: 50%;
+  z-index: 100;
+  cursor: pointer;
+}
+
+[data-resize-handle]:hover {
+  background: #40a9ff;
+  transform: scale(1.2);
+}
+
+/* Handle positioning is done inline by ResizableNodeView based on direction */
+/* These are the cursor styles for each direction */
+[data-resize-handle][data-resize-handle="top"] {
+  cursor: n-resize;
+}
+
+[data-resize-handle][data-resize-handle="bottom"] {
+  cursor: s-resize;
+}
+
+[data-resize-handle][data-resize-handle="left"] {
+  cursor: w-resize;
+}
+
+[data-resize-handle][data-resize-handle="right"] {
+  cursor: e-resize;
+}
+
+[data-resize-handle][data-resize-handle="top-left"] {
+  cursor: nw-resize;
+}
+
+[data-resize-handle][data-resize-handle="top-right"] {
+  cursor: ne-resize;
+}
+
+[data-resize-handle][data-resize-handle="bottom-left"] {
+  cursor: sw-resize;
+}
+
+[data-resize-handle][data-resize-handle="bottom-right"] {
+  cursor: se-resize;
+}

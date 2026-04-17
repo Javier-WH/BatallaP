@@ -29,6 +29,7 @@ import TeacherPanel from '@/pages/teacher/TeacherPanel';
 import AdminDashboard from '@/pages/admin/Dashboard';
 import StudentDetail from '@/pages/student/StudentDetail';
 import SettingsManagement from '@/pages/master/SettingsManagement';
+import GeneralDashboard from '@/pages/GeneralDashboard';
 import type { JSX } from 'react';
 import NotFound from '@/pages/NotFound';
 
@@ -95,7 +96,7 @@ function AppRoutes() {
 
       {/* General Dashboard (To be defined or shared) */}
       <Route path="/" element={<RequireAuth><MainLayout /></RequireAuth>}>
-        <Route path="dashboard" element={<h1>Bienvenido al Dashboard General</h1>} />
+        <Route path="dashboard" element={<GeneralDashboard />} />
 
         {/* Nested Master Module */}
         <Route path="master" element={<RequireAuth allowedRoles={['Master']}><MasterLayout /></RequireAuth>}>

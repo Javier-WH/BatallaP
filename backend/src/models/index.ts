@@ -118,6 +118,7 @@ import EnrollmentDocument from './EnrollmentDocument';
 import GradeEditPermission from './GradeEditPermission';
 import GradeEditAudit from './GradeEditAudit';
 import EnrollmentReport from './EnrollmentReport';
+import DashboardContent from './DashboardContent';
 
 
 // ... (Existing User/Person/Role/Contact associations) ...
@@ -347,5 +348,6 @@ export {
   EnrollmentDocument,
   GradeEditPermission,
   GradeEditAudit,
-  EnrollmentReport
+  EnrollmentReport,
+  DashboardContent
 };
