@@ -1,5 +1,7 @@
 import api from '@/services/api';
 
+export type GradeType = 'regular' | 'revision' | 'materia_pendiente' | 'revision_materia_pendiente' | 'transferencia' | 'equivalencia';
+
 export interface FinalGrade {
   id: number;
   inscriptionSubjectId: number;
@@ -15,6 +17,7 @@ export interface FinalGrade {
     name: string;
     state: string;
   };
+  gradeType?: GradeType | null;
   inscriptionSubject: {
     id: number;
     subject: {
@@ -55,6 +58,7 @@ export interface UpdateFinalGradeData {
   inscriptionSubjectId?: number;
   actCode?: string;
   plantelId?: number | null;
+  gradeType?: GradeType | null;
 }
 
 const finalGradeEditService = {

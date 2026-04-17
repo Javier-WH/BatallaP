@@ -9,9 +9,10 @@ import {
   BankOutlined
 } from '@ant-design/icons';
 import api from '@/services/api';
-import finalGradeEditService, { type FinalGrade } from '@/services/finalGradeEditService';
+import finalGradeEditService, { type FinalGrade, type GradeType } from '@/services/finalGradeEditService';
 import { gradeEditPermissionService } from '@/services/gradeEditPermissionService';
 import PlantelSelectorModal from '@/components/shared/PlantelSelectorModal';
+import StudentPlantelesModal from '@/components/shared/StudentPlantelesModal';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
@@ -35,7 +36,7 @@ interface StudentRow {
   firstName: string;
   lastName: string;
   document: string;
-  grades: { [subjectId: string]: { score: number | null; status: string; id?: number; inscriptionSubjectId: number; plantelId?: number | null; plantelCode?: string } };
+  grades: { [subjectId: string]: { score: number | null; status: string; id?: number; inscriptionSubjectId: number; plantelId?: number | null; plantelCode?: string; gradeType?: GradeType | null } };
 }
 
 const FinalGradesEdit: React.FC = () => {
@@ -56,6 +57,8 @@ const FinalGradesEdit: React.FC = () => {
   const [pendingFilterChange, setPendingFilterChange] = useState<{ type: string; value: number | string | null } | null>(null);
   const [plantelModalOpen, setPlantelModalOpen] = useState(false);
   const [plantelModalContext, setPlantelModalContext] = useState<{ studentId: number; subjectKey: string } | null>(null);
+  const [studentPlantelesModalOpen, setStudentPlantelesModalOpen] = useState(false);
+  const [studentPlantelesContext, setStudentPlantelesContext] = useState<{ studentId: number; studentName: string } | null>(null);
 
   useEffect(() => {
     fetchSchoolPeriods();
@@ -205,7 +208,8 @@ const FinalGradesEdit: React.FC = () => {
         id: grade.id,
         inscriptionSubjectId: grade.inscriptionSubjectId,
         plantelId: grade.plantelId,
-        plantelCode: grade.plantel?.code
+        plantelCode: grade.plantel?.code,
+        gradeType: grade.gradeType || 'regular'
       };
     });
 
@@ -283,10 +287,49 @@ const FinalGradesEdit: React.FC = () => {
     setPlantelModalOpen(false);
   }, []);
 
+  // Handle grade type change
+  const handleGradeTypeChange = useCallback((studentId: number, subjectKey: string, gradeType: GradeType) => {
+    setStudentRows(prev => prev.map(row => {
+      if (row.studentId === studentId) {
+        const newGrades = { ...row.grades };
+        newGrades[subjectKey] = { ...newGrades[subjectKey], gradeType };
+        return { ...row, grades: newGrades };
+      }
+      return row;
+    }));
+    setHasUnsavedChanges(true);
+  }, []);
+
   const handleOpenPlantelModal = useCallback((studentId: number, subjectKey: string) => {
     setPlantelModalContext({ studentId, subjectKey });
     setPlantelModalOpen(true);
   }, []);
+
+  // Handle opening student planteles modal
+  const handleOpenStudentPlantelesModal = useCallback((studentId: number, studentName: string) => {
+    setStudentPlantelesContext({ studentId, studentName });
+    setStudentPlantelesModalOpen(true);
+  }, []);
+
+  // Handle saving planteles from student modal
+  const handleSaveStudentPlanteles = useCallback((updates: { subjectKey: string; plantelId: number | null }[]) => {
+    if (!studentPlantelesContext) return;
+
+    setStudentRows(prev => prev.map(row => {
+      if (row.studentId === studentPlantelesContext!.studentId) {
+        const newGrades = { ...row.grades };
+        updates.forEach(update => {
+          if (newGrades[update.subjectKey]) {
+            newGrades[update.subjectKey] = { ...newGrades[update.subjectKey], plantelId: update.plantelId };
+          }
+        });
+        return { ...row, grades: newGrades };
+      }
+      return row;
+    }));
+    setHasUnsavedChanges(true);
+    setStudentPlantelesModalOpen(false);
+  }, [studentPlantelesContext]);
 
   // Save all changes
   const handleSaveChanges = async (reason: string, actCode: string) => {
@@ -304,7 +347,7 @@ const FinalGradesEdit: React.FC = () => {
       }
 
       // Collect only actually changed grades by comparing with original
-      const changes: Array<{ gradeId?: number; inscriptionSubjectId: number; finalScore: number; status: 'aprobada' | 'reprobada'; plantelId?: number | null }> = [];
+      const changes: Array<{ gradeId?: number; inscriptionSubjectId: number; finalScore: number; status: 'aprobada' | 'reprobada'; plantelId?: number | null; gradeType?: GradeType | null }> = [];
       
       studentRows.forEach(row => {
         const originalRow = originalStudentRows.find(orig => orig.studentId === row.studentId);
@@ -313,19 +356,22 @@ const FinalGradesEdit: React.FC = () => {
         Object.entries(row.grades).forEach(([subjectKey, gradeData]) => {
           const originalGradeData = originalRow.grades[subjectKey];
           
-          // Check if score or plantel actually changed
+          // Check if score, plantel, or gradeType actually changed
           const originalScore = originalGradeData?.score ?? 0;
           const currentScore = gradeData.score ?? 0;
           const originalPlantelId = originalGradeData?.plantelId ?? null;
           const currentPlantelId = gradeData.plantelId ?? null;
+          const originalGradeType = originalGradeData?.gradeType ?? 'regular';
+          const currentGradeType = gradeData.gradeType ?? 'regular';
           
-          if (originalScore !== currentScore || originalPlantelId !== currentPlantelId) {
+          if (originalScore !== currentScore || originalPlantelId !== currentPlantelId || originalGradeType !== currentGradeType) {
             changes.push({
               gradeId: gradeData.id,
               inscriptionSubjectId: gradeData.inscriptionSubjectId,
               finalScore: currentScore,
               status: currentScore >= 10 ? 'aprobada' : 'reprobada',
-              plantelId: currentPlantelId
+              plantelId: currentPlantelId,
+              gradeType: currentGradeType
             });
           }
         });
@@ -351,7 +397,8 @@ const FinalGradesEdit: React.FC = () => {
           permissionId: permId,
           inscriptionSubjectId: change.inscriptionSubjectId,
           actCode,
-          plantelId: change.plantelId
+          plantelId: change.plantelId,
+          gradeType: change.gradeType
         });
       }
 
@@ -450,17 +497,25 @@ const FinalGradesEdit: React.FC = () => {
     const baseColumns = [
       {
         title: 'Estudiante',
-        key: 'student',
-        width: 250,
+        dataIndex: 'studentName',
+        key: 'studentName',
         fixed: 'left' as const,
-        render: (_: unknown, record: StudentRow) => (
+        width: 200,
+        render: (studentName: string, record: StudentRow) => (
           <div>
-            <div style={{ fontWeight: 600 }}>
-              {record.firstName} {record.lastName}
-            </div>
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              {record.document}
-            </Text>
+            <Space>
+              <div>
+                <div style={{ fontWeight: 500 }}>{studentName}</div>
+                <div style={{ fontSize: '12px', color: '#666' }}>{record.document}</div>
+              </div>
+              <Button
+                size="small"
+                icon={<BankOutlined />}
+                onClick={() => handleOpenStudentPlantelesModal(record.studentId, studentName)}
+                disabled={!hasPermission}
+                title="Editar todos los planteles"
+              />
+            </Space>
           </div>
         )
       },
@@ -529,6 +584,20 @@ const FinalGradesEdit: React.FC = () => {
                 data-student-id={record.studentId}
                 data-subject-index={subjectIndex}
               />
+              <Select
+                value={gradeData.gradeType || 'regular'}
+                onChange={(value) => handleGradeTypeChange(record.studentId, subjectKey, value as GradeType)}
+                size="small"
+                style={{ width: 100, flexShrink: 0 }}
+                disabled={!hasPermission}
+              >
+                <Option value="regular">Regular</Option>
+                <Option value="revision">Revisión</Option>
+                <Option value="materia_pendiente">M. Pendiente</Option>
+                <Option value="revision_materia_pendiente">Rev. M.P.</Option>
+                <Option value="transferencia">Transferencia</Option>
+                <Option value="equivalencia">Equivalencia</Option>
+              </Select>
               <Button
                 size="small"
                 icon={<BankOutlined />}
@@ -544,7 +613,7 @@ const FinalGradesEdit: React.FC = () => {
     });
 
     return [...baseColumns, ...subjectColumns];
-  }, [uniqueSubjects, hasPermission, handleKeyDown, handleGradeValueChange, handleOpenPlantelModal]);
+  }, [uniqueSubjects, hasPermission, handleKeyDown, handleGradeValueChange, handleOpenPlantelModal, handleGradeTypeChange, handleOpenStudentPlantelesModal]);
 
   return (
     <div style={{ padding: '24px' }}>
@@ -727,6 +796,25 @@ const FinalGradesEdit: React.FC = () => {
           }
         }}
         onClose={() => setPlantelModalOpen(false)}
+      />
+
+      <StudentPlantelesModal
+        open={studentPlantelesModalOpen}
+        studentName={studentPlantelesContext?.studentName || ''}
+        subjects={
+          studentPlantelesContext
+            ? studentRows.find(r => r.studentId === studentPlantelesContext.studentId)?.grades
+                ? Object.entries(studentRows.find(r => r.studentId === studentPlantelesContext.studentId)!.grades).map(([subjectKey, gradeData]) => ({
+                    subjectKey,
+                    subjectName: subjectKey.split('-')[1] || subjectKey,
+                    plantelId: gradeData.plantelId,
+                    plantelCode: gradeData.plantelCode
+                  }))
+                : []
+            : []
+        }
+        onClose={() => setStudentPlantelesModalOpen(false)}
+        onSave={handleSaveStudentPlanteles}
       />
 
       <Modal

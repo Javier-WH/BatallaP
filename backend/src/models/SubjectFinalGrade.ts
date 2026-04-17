@@ -4,6 +4,7 @@ import InscriptionSubject from './InscriptionSubject';
 import Plantel from './Plantel';
 
 export type SubjectFinalGradeStatus = 'aprobada' | 'reprobada';
+export type GradeType = 'regular' | 'revision' | 'materia_pendiente' | 'revision_materia_pendiente' | 'transferencia' | 'equivalencia';
 
 interface SubjectFinalGradeAttributes {
   id: number;
@@ -14,6 +15,7 @@ interface SubjectFinalGradeAttributes {
   status: SubjectFinalGradeStatus;
   calculatedAt: Date;
   plantelId?: number | null;
+  gradeType?: GradeType | null;
   createdAt?: Date;
   updatedAt?: Date;
   inscriptionSubject?: any;
@@ -21,7 +23,7 @@ interface SubjectFinalGradeAttributes {
 
 type SubjectFinalGradeCreationAttributes = Optional<
   SubjectFinalGradeAttributes,
-  'id' | 'finalScore' | 'rawScore' | 'councilPoints' | 'status' | 'calculatedAt' | 'plantelId'
+  'id' | 'finalScore' | 'rawScore' | 'councilPoints' | 'status' | 'calculatedAt' | 'plantelId' | 'gradeType'
 >;
 
 class SubjectFinalGrade
@@ -36,6 +38,7 @@ class SubjectFinalGrade
   public status!: SubjectFinalGradeStatus;
   public calculatedAt!: Date;
   public plantelId!: number | null;
+  public gradeType!: GradeType | null;
 
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
@@ -88,6 +91,11 @@ SubjectFinalGrade.init(
         model: Plantel,
         key: 'id'
       }
+    },
+    gradeType: {
+      type: DataTypes.ENUM('regular', 'revision', 'materia_pendiente', 'revision_materia_pendiente', 'transferencia', 'equivalencia'),
+      allowNull: true,
+      defaultValue: 'regular'
     }
   },
   {

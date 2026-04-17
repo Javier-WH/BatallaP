@@ -366,8 +366,8 @@ export const updateFinalGrade = async (req: Request, res: Response) => {
     }
 
     const { id } = req.params;
-    const { finalScore, status, reason, permissionId, actCode, plantelId } = req.body;
-    console.log('[updateFinalGrade] Request params:', { id, finalScore, status, reason, permissionId, actCode, plantelId });
+    const { finalScore, status, reason, permissionId, actCode, plantelId, gradeType } = req.body;
+    console.log('[updateFinalGrade] Request params:', { id, finalScore, status, reason, permissionId, actCode, plantelId, gradeType });
 
     let normalizedPlantelId: number | null | undefined = undefined;
     if (plantelId !== undefined) {
@@ -610,7 +610,8 @@ export const updateFinalGrade = async (req: Request, res: Response) => {
     await finalGrade.update({
       finalScore: finalScore !== undefined ? finalScore : finalGrade.finalScore,
       status: status || finalGrade.status,
-      ...(normalizedPlantelId !== undefined ? { plantelId: normalizedPlantelId } : {})
+      ...(normalizedPlantelId !== undefined ? { plantelId: normalizedPlantelId } : {}),
+      ...(gradeType !== undefined ? { gradeType } : {})
     });
 
     console.log('[updateFinalGrade] Grade updated successfully');
@@ -757,7 +758,7 @@ export const getFinalGradesByPeriod = async (req: Request, res: Response) => {
             model: SubjectFinalGrade,
             as: 'finalGrade',
             required: false,
-            attributes: ['id', 'inscriptionSubjectId', 'finalScore', 'rawScore', 'councilPoints', 'status', 'calculatedAt', 'plantelId'],
+            attributes: ['id', 'inscriptionSubjectId', 'finalScore', 'rawScore', 'councilPoints', 'status', 'calculatedAt', 'plantelId', 'gradeType'],
             include: [{ model: Plantel, as: 'plantel', required: false }]
           }
         ]
@@ -799,7 +800,7 @@ export const getFinalGradesByPeriod = async (req: Request, res: Response) => {
                 model: SubjectFinalGrade,
                 as: 'finalGrade',
                 required: false,
-                attributes: ['id', 'inscriptionSubjectId', 'finalScore', 'rawScore', 'councilPoints', 'status', 'calculatedAt', 'plantelId'],
+                attributes: ['id', 'inscriptionSubjectId', 'finalScore', 'rawScore', 'councilPoints', 'status', 'calculatedAt', 'plantelId', 'gradeType'],
                 include: [{ model: Plantel, as: 'plantel', required: false }]
               }
             ]
@@ -822,6 +823,7 @@ export const getFinalGradesByPeriod = async (req: Request, res: Response) => {
           calculatedAt: finalGrade?.calculatedAt || new Date(),
           plantelId: finalGrade?.plantelId || null,
           plantel: finalGrade?.plantel || null,
+          gradeType: finalGrade?.gradeType || 'regular',
           inscriptionSubject: {
             id: insSubject.id,
             subject: insSubject.subject,

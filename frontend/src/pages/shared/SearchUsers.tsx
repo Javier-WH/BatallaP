@@ -85,24 +85,27 @@ const SearchUsers: React.FC<{ initialRoleFilter?: string }> = ({ initialRoleFilt
   }, [fetchUsers]);
 
   useEffect(() => {
-    // Cargar todos los períodos y establecer el activo por defecto
+    // Cargar todos los períodos
     const fetchPeriods = async () => {
       try {
         const response = await api.get('/academic/periods');
         const periods = response.data;
         setAllPeriods(periods);
-        
-        // Preseleccionar el período activo
-        const activePeriod = periods.find((p: SchoolPeriod) => p.isActive);
-        if (activePeriod) {
-          setFilterSchoolPeriod(activePeriod.id);
+
+        // Preseleccionar el período activo solo si NO es Master
+        // En modo Master, mostrar todos los usuarios sin filtro de período
+        if (!isMaster) {
+          const activePeriod = periods.find((p: SchoolPeriod) => p.isActive);
+          if (activePeriod) {
+            setFilterSchoolPeriod(activePeriod.id);
+          }
         }
       } catch (error) {
         console.error('Error fetching periods:', error);
       }
     };
     fetchPeriods();
-  }, []);
+  }, [isMaster]);
 
   const canEditTarget = useCallback((roles: Role[] = []) => {
     const roleNames = roles.map(role => role.name);

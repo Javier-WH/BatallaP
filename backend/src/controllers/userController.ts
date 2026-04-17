@@ -106,22 +106,21 @@ export const searchUsers = async (req: Request, res: Response) => {
 
     console.log('[searchUsers] Count before:', people.length, 'After:', results.length);
 
-    // Transform Person objects to User objects with Person data
-    const users = results
-      .map((person: any) => {
-        if (!person.user) return null;
-        return {
-          id: person.user.id,
-          username: person.user.username,
-          person: {
-            firstName: person.firstName,
-            lastName: person.lastName,
-            document: person.document
-          },
-          roles: person.roles
-        };
-      })
-      .filter(Boolean);
+    // Transform Person objects (include persons even without a user account)
+    const users = results.map((person: any) => ({
+      id: person.id,
+      userId: person.user?.id ?? null,
+      username: person.user?.username ?? null,
+      firstName: person.firstName,
+      lastName: person.lastName,
+      document: person.document,
+      person: {
+        firstName: person.firstName,
+        lastName: person.lastName,
+        document: person.document
+      },
+      roles: person.roles
+    }));
 
     res.json(users);
   } catch (error) {
