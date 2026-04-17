@@ -496,6 +496,24 @@ const FinalGradesEdit: React.FC = () => {
   const columns = useMemo(() => {
     const baseColumns = [
       {
+        title: '',
+        key: 'editRow',
+        fixed: 'left' as const,
+        width: 50,
+        render: (_: unknown, record: StudentRow) => {
+          const studentName = `${record.firstName} ${record.lastName}`;
+          return (
+            <Button
+              size="small"
+              icon={<BankOutlined />}
+              onClick={() => handleOpenStudentPlantelesModal(record.studentId, studentName)}
+              disabled={!hasPermission}
+              title="Configurar fila"
+            />
+          );
+        }
+      },
+      {
         title: 'Estudiante',
         dataIndex: 'studentName',
         key: 'studentName',
@@ -505,19 +523,10 @@ const FinalGradesEdit: React.FC = () => {
           const studentName = `${record.firstName} ${record.lastName}`;
           return (
             <div>
-              <Space>
-                <div>
-                  <div style={{ fontWeight: 500 }}>{studentName}</div>
-                  <div style={{ fontSize: '12px', color: '#666' }}>{record.document}</div>
-                </div>
-                <Button
-                  size="small"
-                  icon={<BankOutlined />}
-                  onClick={() => handleOpenStudentPlantelesModal(record.studentId, studentName)}
-                  disabled={!hasPermission}
-                  title="Editar todos los planteles"
-                />
-              </Space>
+              <div>
+                <div style={{ fontWeight: 500 }}>{studentName}</div>
+                <div style={{ fontSize: '12px', color: '#666' }}>{record.document}</div>
+              </div>
             </div>
           );
         }
