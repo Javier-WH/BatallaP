@@ -307,8 +307,8 @@ const FinalGradesEdit: React.FC = () => {
     setStudentPlantelesModalOpen(true);
   }, []);
 
-  // Handle saving planteles from student modal
-  const handleSaveStudentPlanteles = useCallback((updates: { subjectKey: string; plantelId: number | null }[]) => {
+  // Handle saving planteles and grade types from student modal
+  const handleSaveStudentPlanteles = useCallback((updates: { subjectKey: string; plantelId: number | null; gradeType: GradeType | null }[]) => {
     if (!studentPlantelesContext) return;
 
     setStudentRows(prev => prev.map(row => {
@@ -316,7 +316,11 @@ const FinalGradesEdit: React.FC = () => {
         const newGrades = { ...row.grades };
         updates.forEach(update => {
           if (newGrades[update.subjectKey]) {
-            newGrades[update.subjectKey] = { ...newGrades[update.subjectKey], plantelId: update.plantelId };
+            newGrades[update.subjectKey] = {
+              ...newGrades[update.subjectKey],
+              plantelId: update.plantelId,
+              gradeType: update.gradeType
+            };
           }
         });
         return { ...row, grades: newGrades };
@@ -497,23 +501,26 @@ const FinalGradesEdit: React.FC = () => {
         key: 'studentName',
         fixed: 'left' as const,
         width: 200,
-        render: (studentName: string, record: StudentRow) => (
-          <div>
-            <Space>
-              <div>
-                <div style={{ fontWeight: 500 }}>{studentName}</div>
-                <div style={{ fontSize: '12px', color: '#666' }}>{record.document}</div>
-              </div>
-              <Button
-                size="small"
-                icon={<BankOutlined />}
-                onClick={() => handleOpenStudentPlantelesModal(record.studentId, studentName)}
-                disabled={!hasPermission}
-                title="Editar todos los planteles"
-              />
-            </Space>
-          </div>
-        )
+        render: (_: unknown, record: StudentRow) => {
+          const studentName = `${record.firstName} ${record.lastName}`;
+          return (
+            <div>
+              <Space>
+                <div>
+                  <div style={{ fontWeight: 500 }}>{studentName}</div>
+                  <div style={{ fontSize: '12px', color: '#666' }}>{record.document}</div>
+                </div>
+                <Button
+                  size="small"
+                  icon={<BankOutlined />}
+                  onClick={() => handleOpenStudentPlantelesModal(record.studentId, studentName)}
+                  disabled={!hasPermission}
+                  title="Editar todos los planteles"
+                />
+              </Space>
+            </div>
+          );
+        }
       },
       {
         title: 'Promedio Final',
@@ -794,7 +801,8 @@ const FinalGradesEdit: React.FC = () => {
                     subjectKey,
                     subjectName: subjectKey.split('-')[1] || subjectKey,
                     plantelId: gradeData.plantelId,
-                    plantelCode: gradeData.plantelCode
+                    plantelCode: gradeData.plantelCode,
+                    gradeType: gradeData.gradeType
                   }))
                 : []
             : []

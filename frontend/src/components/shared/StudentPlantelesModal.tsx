@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
-import { Modal, Button, Space, Typography, Table } from 'antd';
+import { Modal, Button, Space, Typography, Select } from 'antd';
 import { BankOutlined } from '@ant-design/icons';
-import PlantelSelectorModal from './PlantelSelectorModal';
+import PlantelAsyncSelect from './PlantelAsyncSelect';
+import type { GradeType } from '@/services/finalGradeEditService';
 
 const { Text } = Typography;
+const { Option } = Select;
 
 interface SubjectPlanteles {
   subjectKey: string;
@@ -11,6 +13,7 @@ interface SubjectPlanteles {
   plantelId?: number | null;
   plantelCode?: string;
   plantelName?: string;
+  gradeType?: GradeType | null;
 }
 
 interface StudentPlantelesModalProps {
@@ -18,7 +21,7 @@ interface StudentPlantelesModalProps {
   studentName: string;
   subjects: SubjectPlanteles[];
   onClose: () => void;
-  onSave: (updates: { subjectKey: string; plantelId: number | null }[]) => void;
+  onSave: (updates: { subjectKey: string; plantelId: number | null; gradeType: GradeType | null }[]) => void;
 }
 
 const StudentPlantelesModal: React.FC<StudentPlantelesModalProps> = ({
@@ -28,120 +31,94 @@ const StudentPlantelesModal: React.FC<StudentPlantelesModalProps> = ({
   onClose,
   onSave
 }) => {
-  const [plantelModalOpen, setPlantelModalOpen] = useState(false);
-  const [selectedSubjectKey, setSelectedSubjectKey] = useState<string | null>(null);
-  const [localSubjects, setLocalSubjects] = useState<SubjectPlanteles[]>(subjects);
+  const [selectedPlantelId, setSelectedPlantelId] = useState<number | null>(null);
+  const [selectedPlantelCode, setSelectedPlantelCode] = useState<string>('');
+  const [selectedGradeType, setSelectedGradeType] = useState<GradeType | null>(null);
 
-  const handleOpenPlantelSelector = (subjectKey: string) => {
-    setSelectedSubjectKey(subjectKey);
-    setPlantelModalOpen(true);
-  };
-
-  const handlePlantelSelect = (plantel: { id: number; code: string; name: string; state: string }) => {
-    if (selectedSubjectKey) {
-      setLocalSubjects(prev => prev.map(s => {
-        if (s.subjectKey === selectedSubjectKey) {
-          return { ...s, plantelId: plantel.id, plantelCode: plantel.code, plantelName: plantel.name };
-        }
-        return s;
-      }));
+  // Initialize with current values from first subject if available
+  React.useEffect(() => {
+    if (open && subjects.length > 0) {
+      const firstSubject = subjects[0];
+      setSelectedPlantelId(firstSubject.plantelId || null);
+      setSelectedPlantelCode(firstSubject.plantelCode || '');
+      setSelectedGradeType(firstSubject.gradeType || null);
     }
-    setPlantelModalOpen(false);
-    setSelectedSubjectKey(null);
-  };
+  }, [open, subjects]);
 
   const handleSave = () => {
-    const updates = localSubjects.map(s => ({
+    const updates = subjects.map(s => ({
       subjectKey: s.subjectKey,
-      plantelId: s.plantelId || null
+      plantelId: selectedPlantelId,
+      gradeType: selectedGradeType
     }));
     onSave(updates);
   };
 
-  const columns = [
-    {
-      title: 'Materia',
-      dataIndex: 'subjectName',
-      key: 'subjectName',
-      width: 200
-    },
-    {
-      title: 'Plantel',
-      key: 'plantel',
-      render: (_: unknown, record: SubjectPlanteles) => (
-        <Space>
-          <Text>{record.plantelCode || record.plantelName || 'Sin asignar'}</Text>
-          <Button
-            size="small"
-            icon={<BankOutlined />}
-            onClick={() => handleOpenPlantelSelector(record.subjectKey)}
-          >
-            Cambiar
-          </Button>
-        </Space>
-      )
-    }
-  ];
-
-  const dataSource = localSubjects.map(s => ({
-    key: s.subjectKey,
-    subjectName: s.subjectName,
-    plantelCode: s.plantelCode,
-    plantelName: s.plantelName,
-    plantelId: s.plantelId,
-    subjectKey: s.subjectKey
-  }));
+  const handlePlantelChange = (plantelId: number | null, plantel?: { code: string; name: string }) => {
+    setSelectedPlantelId(plantelId);
+    setSelectedPlantelCode(plantel?.code || '');
+  };
 
   return (
-    <>
-      <Modal
-        title={
-          <Space>
-            <BankOutlined />
-            <span>Editar Planteles - {studentName}</span>
-          </Space>
-        }
-        open={open}
-        onCancel={onClose}
-        footer={
-          <Space>
-            <Button onClick={onClose}>Cancelar</Button>
-            <Button type="primary" onClick={handleSave}>
-              Guardar Cambios
-            </Button>
-          </Space>
-        }
-        width={600}
-      >
-        <div className="space-y-4">
-          <div className="bg-blue-50 p-3 rounded-lg">
-            <Text type="secondary" className="text-xs">Estudiante:</Text>
-            <div className="font-medium text-blue-900">{studentName}</div>
-          </div>
+    <Modal
+      title={
+        <Space>
+          <BankOutlined />
+          <span>Configurar Fila - {studentName}</span>
+        </Space>
+      }
+      open={open}
+      onCancel={onClose}
+      footer={
+        <Space>
+          <Button onClick={onClose}>Cancelar</Button>
+          <Button type="primary" onClick={handleSave}>
+            Aplicar a todas las materias
+          </Button>
+        </Space>
+      }
+      width={500}
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        <div style={{ backgroundColor: '#f0f7ff', padding: '12px', borderRadius: '8px' }}>
+          <Text type="secondary" style={{ fontSize: '12px', display: 'block' }}>Estudiante:</Text>
+          <div style={{ fontWeight: 500, color: '#1890ff', fontSize: '14px' }}>{studentName}</div>
+        </div>
 
-          <Table
-            columns={columns}
-            dataSource={dataSource}
-            pagination={false}
-            size="small"
+        <div>
+          <Text strong style={{ display: 'block', marginBottom: '8px' }}>Plantel de Procedencia</Text>
+          <PlantelAsyncSelect
+            value={selectedPlantelId}
+            currentLabel={selectedPlantelCode}
+            onChange={handlePlantelChange}
+            style={{ width: '100%' }}
+            placeholder="Seleccionar plantel..."
           />
         </div>
-      </Modal>
 
-      <PlantelSelectorModal
-        open={plantelModalOpen}
-        currentPlantelLabel={
-          selectedSubjectKey
-            ? localSubjects.find(s => s.subjectKey === selectedSubjectKey)?.plantelCode
-            : undefined
-        }
-        onSelect={handlePlantelSelect}
-        onClose={() => {
-          setPlantelModalOpen(false);
-          setSelectedSubjectKey(null);
-        }}
-      />
-    </>
+        <div>
+          <Text strong style={{ display: 'block', marginBottom: '8px' }}>Tipo de Nota</Text>
+          <Select
+            value={selectedGradeType}
+            onChange={setSelectedGradeType}
+            placeholder="Seleccionar tipo..."
+            style={{ width: '100%' }}
+            allowClear
+          >
+            <Option value="regular">Regular</Option>
+            <Option value="repitiente">Repitiente</Option>
+            <Option value="revisión">Revisión</Option>
+            <Option value="equivalencia">Equivalencia</Option>
+          </Select>
+        </div>
+
+        <div style={{ backgroundColor: '#fffbe6', padding: '12px', borderRadius: '8px', border: '1px solid #ffe58f' }}>
+          <Text style={{ fontSize: '12px', color: '#d48806' }}>
+            Esta configuración se aplicará a todas las materias del estudiante ({subjects.length} materias)
+          </Text>
+        </div>
+      </div>
+    </Modal>
   );
 };
 
