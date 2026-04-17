@@ -11,8 +11,8 @@ import {
 import api from '@/services/api';
 import finalGradeEditService, { type FinalGrade, type GradeType } from '@/services/finalGradeEditService';
 import { gradeEditPermissionService } from '@/services/gradeEditPermissionService';
-import PlantelSelectorModal from '@/components/shared/PlantelSelectorModal';
 import StudentPlantelesModal from '@/components/shared/StudentPlantelesModal';
+import PlantelAsyncSelect from '@/components/shared/PlantelAsyncSelect';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
@@ -55,8 +55,6 @@ const FinalGradesEdit: React.FC = () => {
   const [reasonForm] = Form.useForm();
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [pendingFilterChange, setPendingFilterChange] = useState<{ type: string; value: number | string | null } | null>(null);
-  const [plantelModalOpen, setPlantelModalOpen] = useState(false);
-  const [plantelModalContext, setPlantelModalContext] = useState<{ studentId: number; subjectKey: string } | null>(null);
   const [studentPlantelesModalOpen, setStudentPlantelesModalOpen] = useState(false);
   const [studentPlantelesContext, setStudentPlantelesContext] = useState<{ studentId: number; studentName: string } | null>(null);
 
@@ -273,20 +271,6 @@ const FinalGradesEdit: React.FC = () => {
     setHasUnsavedChanges(true);
   }, []);
 
-  // Handle plantel selection
-  const handlePlantelSelect = useCallback((studentId: number, subjectKey: string, plantel: { id: number; code: string; name: string; state: string }) => {
-    setStudentRows(prev => prev.map(row => {
-      if (row.studentId === studentId) {
-        const newGrades = { ...row.grades };
-        newGrades[subjectKey] = { ...newGrades[subjectKey], plantelId: plantel.id, plantelCode: plantel.code };
-        return { ...row, grades: newGrades };
-      }
-      return row;
-    }));
-    setHasUnsavedChanges(true);
-    setPlantelModalOpen(false);
-  }, []);
-
   // Handle grade type change
   const handleGradeTypeChange = useCallback((studentId: number, subjectKey: string, gradeType: GradeType) => {
     setStudentRows(prev => prev.map(row => {
@@ -300,9 +284,21 @@ const FinalGradesEdit: React.FC = () => {
     setHasUnsavedChanges(true);
   }, []);
 
-  const handleOpenPlantelModal = useCallback((studentId: number, subjectKey: string) => {
-    setPlantelModalContext({ studentId, subjectKey });
-    setPlantelModalOpen(true);
+  // Handle plantel change directly (without modal)
+  const handlePlantelChange = useCallback((studentId: number, subjectKey: string, plantelId: number | null, plantelCode?: string) => {
+    setStudentRows(prev => prev.map(row => {
+      if (row.studentId === studentId) {
+        const newGrades = { ...row.grades };
+        newGrades[subjectKey] = {
+          ...newGrades[subjectKey],
+          plantelId: plantelId,
+          plantelCode: plantelCode
+        };
+        return { ...row, grades: newGrades };
+      }
+      return row;
+    }));
+    setHasUnsavedChanges(true);
   }, []);
 
   // Handle opening student planteles modal
@@ -568,44 +564,46 @@ const FinalGradesEdit: React.FC = () => {
           }
 
           return (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <InputNumber
-                value={gradeData.score}
-                onChange={(value) => handleGradeValueChange(record.studentId, subjectKey, value || 0)}
-                onKeyDown={handleKeyDown}
-                min={0}
-                max={20}
-                step={0.01}
-                precision={2}
-                size="small"
-                style={{ flex: 1 }}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <PlantelAsyncSelect
+                value={gradeData.plantelId}
+                currentLabel={gradeData.plantelCode}
+                onChange={(plantelId, plantel) => handlePlantelChange(record.studentId, subjectKey, plantelId, plantel?.code)}
                 disabled={!hasPermission}
-                controls={false}
-                data-student-id={record.studentId}
-                data-subject-index={subjectIndex}
+                size="small"
+                style={{ width: '100%' }}
               />
-              <Select
-                value={gradeData.gradeType || 'regular'}
-                onChange={(value) => handleGradeTypeChange(record.studentId, subjectKey, value as GradeType)}
-                size="small"
-                style={{ width: 100, flexShrink: 0 }}
-                disabled={!hasPermission}
-              >
-                <Option value="regular">Regular</Option>
-                <Option value="revision">Revisión</Option>
-                <Option value="materia_pendiente">M. Pendiente</Option>
-                <Option value="revision_materia_pendiente">Rev. M.P.</Option>
-                <Option value="transferencia">Transferencia</Option>
-                <Option value="equivalencia">Equivalencia</Option>
-              </Select>
-              <Button
-                size="small"
-                icon={<BankOutlined />}
-                onClick={() => handleOpenPlantelModal(record.studentId, subjectKey)}
-                disabled={!hasPermission}
-                title={gradeData.plantelCode ? `Plantel: ${gradeData.plantelCode}` : 'Seleccionar plantel'}
-                style={{ flexShrink: 0 }}
-              />
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <InputNumber
+                  value={gradeData.score}
+                  onChange={(value) => handleGradeValueChange(record.studentId, subjectKey, value || 0)}
+                  onKeyDown={handleKeyDown}
+                  min={0}
+                  max={20}
+                  step={0.01}
+                  precision={2}
+                  size="small"
+                  style={{ flex: 1 }}
+                  disabled={!hasPermission}
+                  controls={false}
+                  data-student-id={record.studentId}
+                  data-subject-index={subjectIndex}
+                />
+                <Select
+                  value={gradeData.gradeType || 'regular'}
+                  onChange={(value) => handleGradeTypeChange(record.studentId, subjectKey, value as GradeType)}
+                  size="small"
+                  style={{ width: 100, flexShrink: 0 }}
+                  disabled={!hasPermission}
+                >
+                  <Option value="regular">Regular</Option>
+                  <Option value="revision">Revisión</Option>
+                  <Option value="materia_pendiente">M. Pendiente</Option>
+                  <Option value="revision_materia_pendiente">Rev. M.P.</Option>
+                  <Option value="transferencia">Transferencia</Option>
+                  <Option value="equivalencia">Equivalencia</Option>
+                </Select>
+              </div>
             </div>
           );
         }
@@ -613,7 +611,7 @@ const FinalGradesEdit: React.FC = () => {
     });
 
     return [...baseColumns, ...subjectColumns];
-  }, [uniqueSubjects, hasPermission, handleKeyDown, handleGradeValueChange, handleOpenPlantelModal, handleGradeTypeChange, handleOpenStudentPlantelesModal]);
+  }, [uniqueSubjects, hasPermission, handleKeyDown, handleGradeValueChange, handleGradeTypeChange, handleOpenStudentPlantelesModal, handlePlantelChange]);
 
   return (
     <div style={{ padding: '24px' }}>
@@ -786,17 +784,6 @@ const FinalGradesEdit: React.FC = () => {
           </div>
         )}
       </Card>
-
-      <PlantelSelectorModal
-        open={plantelModalOpen}
-        currentPlantelLabel={plantelModalContext ? studentRows.find(r => r.studentId === plantelModalContext.studentId)?.grades[plantelModalContext.subjectKey]?.plantelCode : undefined}
-        onSelect={(plantel) => {
-          if (plantelModalContext) {
-            handlePlantelSelect(plantelModalContext.studentId, plantelModalContext.subjectKey, plantel);
-          }
-        }}
-        onClose={() => setPlantelModalOpen(false)}
-      />
 
       <StudentPlantelesModal
         open={studentPlantelesModalOpen}

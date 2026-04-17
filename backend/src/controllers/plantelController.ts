@@ -45,6 +45,20 @@ export const listPlanteles = async (req: Request, res: Response) => {
   }
 };
 
+export const getPlantelById = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const plantel = await Plantel.findByPk(id);
+    if (!plantel) {
+      return res.status(404).json({ error: 'Plantel no encontrado' });
+    }
+    res.json(plantel);
+  } catch (error) {
+    console.error('Error retrieving plantel by id:', error);
+    res.status(500).json({ error: 'Error obteniendo el plantel' });
+  }
+};
+
 export const getPlantel = async (req: Request, res: Response) => {
   try {
     const { code } = req.params;

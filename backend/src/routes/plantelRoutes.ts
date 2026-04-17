@@ -2,6 +2,7 @@ import { Router } from 'express';
 import {
   listPlanteles,
   getPlantel,
+  getPlantelById,
   searchPlanteles,
   createPlantel,
   updatePlantel,
@@ -15,6 +16,9 @@ router.get('/', listPlanteles);
 
 // GET /api/planteles/search - Search planteles with suggestions
 router.get('/search', searchPlanteles);
+
+// GET /api/planteles/by-id/:id - Get plantel by numeric ID
+router.get('/by-id/:id', getPlantelById);
 
 // GET /api/planteles/:code - Get plantel by code or name
 router.get('/:code', getPlantel);
