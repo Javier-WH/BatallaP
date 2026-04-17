@@ -1,5 +1,4 @@
 import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
-import { Select, Spin } from 'antd';
 import api from '@/services/api';
 
 interface Plantel {
@@ -14,16 +13,9 @@ interface PlantelAsyncSelectProps {
   currentLabel?: string;
   onChange: (plantelId: number | null, plantel?: Plantel) => void;
   disabled?: boolean;
-  size?: 'small' | 'middle' | 'large';
   style?: React.CSSProperties;
   placeholder?: string;
   dropdownMinWidth?: number;
-}
-
-interface OptionItem {
-  value: number;
-  label: string;
-  plantel: Plantel;
 }
 
 const PlantelAsyncSelect: React.FC<PlantelAsyncSelectProps> = ({
@@ -31,33 +23,57 @@ const PlantelAsyncSelect: React.FC<PlantelAsyncSelectProps> = ({
   currentLabel,
   onChange,
   disabled,
-  size = 'small',
   style,
   placeholder = 'Plantel',
   dropdownMinWidth = 400,
 }) => {
-  const [options, setOptions] = useState<OptionItem[]>([]);
+  const [isOpen, setIsOpen] = useState(false);
+  const [options, setOptions] = useState<Plantel[]>([]);
+  const [searchValue, setSearchValue] = useState('');
   const [fetching, setFetching] = useState(false);
+  const [selectedPlantel, setSelectedPlantel] = useState<Plantel | null>(null);
+  const [isFocused, setIsFocused] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
   const fetchRef = useRef(0);
 
-  // Fetch plantel details when value is provided but not in options (to display label)
+  // Fetch selected plantel details when value changes
   useEffect(() => {
-    if (value && !options.some(o => o.value === value) && !currentLabel) {
+    if (value && !selectedPlantel) {
       (async () => {
         try {
           const { data } = await api.get(`/planteles/by-id/${value}`).catch(() => ({ data: null }));
           if (data) {
-            setOptions(prev => {
-              if (prev.some(o => o.value === data.id)) return prev;
-              return [...prev, { value: data.id, label: `${data.code} - ${data.name}`, plantel: data }];
-            });
+            setSelectedPlantel(data);
           }
         } catch {
           // ignore
         }
       })();
+    } else if (!value) {
+      setSelectedPlantel(null);
     }
-  }, [value, options, currentLabel]);
+  }, [value, selectedPlantel]);
+
+  // Also use currentLabel if available
+  useEffect(() => {
+    if (currentLabel && !selectedPlantel) {
+      const [code, name] = currentLabel.split(' - ');
+      if (code && name) {
+        setSelectedPlantel({ id: value || 0, code, name });
+      }
+    }
+  }, [currentLabel, selectedPlantel, value]);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const debouncedFetch = useMemo(() => {
     let timeout: ReturnType<typeof setTimeout> | null = null;
@@ -78,12 +94,7 @@ const PlantelAsyncSelect: React.FC<PlantelAsyncSelectProps> = ({
             params: { q: searchText, limit: 30 }
           });
           if (fetchId !== fetchRef.current) return;
-          const items: OptionItem[] = (data || []).map((p: Plantel) => ({
-            value: p.id,
-            label: `${p.code} - ${p.name}`,
-            plantel: p,
-          }));
-          setOptions(items);
+          setOptions(data || []);
         } catch (error) {
           console.error('Error searching planteles:', error);
           setOptions([]);
@@ -94,45 +105,166 @@ const PlantelAsyncSelect: React.FC<PlantelAsyncSelectProps> = ({
     };
   }, []);
 
-  const handleSearch = useCallback((text: string) => {
-    if (text) setFetching(true);
+  const handleSearchChange = useCallback((text: string) => {
+    setSearchValue(text);
     debouncedFetch(text);
   }, [debouncedFetch]);
 
-  const handleChange = useCallback((newValue: number | null) => {
-    const selected = options.find(o => o.value === newValue);
-    onChange(newValue ?? null, selected?.plantel);
-  }, [onChange, options]);
+  const handleSelect = useCallback((plantel: Plantel) => {
+    setSelectedPlantel(plantel);
+    onChange(plantel.id, plantel);
+    setIsOpen(false);
+    setSearchValue('');
+  }, [onChange]);
 
-  // Ensure the currently selected value has a label in options
-  const finalOptions = useMemo(() => {
-    if (value && currentLabel && !options.some(o => o.value === value)) {
-      return [
-        { value, label: currentLabel, plantel: { id: value, code: currentLabel, name: '' } },
-        ...options,
-      ];
-    }
-    return options;
-  }, [value, currentLabel, options]);
+  const handleClear = useCallback(() => {
+    setSelectedPlantel(null);
+    onChange(null);
+  }, [onChange]);
+
+  const displayCode = selectedPlantel?.code || '';
+  const displayName = selectedPlantel?.name || '';
 
   return (
-    <Select
-      value={value ?? undefined}
-      onChange={handleChange}
-      onSearch={handleSearch}
-      placeholder={placeholder}
-      size={size}
-      showSearch
-      allowClear
-      filterOption={false}
-      disabled={disabled}
-      style={style}
-      options={finalOptions}
-      notFoundContent={fetching ? <Spin size="small" /> : 'Escribe para buscar...'}
-      dropdownStyle={{ minWidth: dropdownMinWidth }}
-      popupMatchSelectWidth={false}
-      virtual
-    />
+    <div ref={dropdownRef} style={{ position: 'relative', ...style }}>
+      {/* Trigger button */}
+      <div
+        onClick={() => !disabled && setIsOpen(!isOpen)}
+        onFocus={() => setIsFocused(true)}
+        onBlur={() => setIsFocused(false)}
+        tabIndex={disabled ? -1 : 0}
+        style={{
+          padding: isFocused || isOpen ? '4px 8px' : '4px 8px',
+          minHeight: '36px',
+          height: '36px',
+          backgroundColor: isFocused || isOpen ? (disabled ? '#f5f5f5' : '#fff') : 'transparent',
+          border: '1px solid transparent',
+          borderRadius: '4px',
+          cursor: disabled ? 'not-allowed' : 'pointer',
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'center',
+          position: 'relative',
+          outline: 'none',
+        }}
+      >
+        {selectedPlantel ? (
+          <>
+            <div style={{ fontSize: '12px', fontWeight: 500, color: '#666', lineHeight: 1.2 }}>
+              {displayCode}
+            </div>
+            <div style={{ fontSize: '11px', color: '#999', lineHeight: 1.2 }}>
+              {displayName}
+            </div>
+            {!disabled && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleClear();
+                }}
+                style={{
+                  position: 'absolute',
+                  right: '-1px',
+                  top: '-3px',
+                  border: 'none',
+                  background: 'none',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  color: '#999',
+                  padding: '0 4px',
+                  lineHeight: 1,
+                }}
+              >
+                ×
+              </button>
+            )}
+          </>
+        ) : (
+          <span style={{ color: '#bfbfbf', fontSize: '13px' }}>{placeholder}</span>
+        )}
+      </div>
+
+      {/* Dropdown */}
+      {isOpen && (
+        <div
+          style={{
+            position: 'absolute',
+            top: '100%',
+            left: 0,
+            right: 0,
+            minWidth: dropdownMinWidth,
+            maxHeight: '300px',
+            backgroundColor: '#fff',
+            border: '1px solid #d9d9d9',
+            borderRadius: '4px',
+            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.15)',
+            zIndex: 1000,
+            marginTop: '4px',
+            overflow: 'hidden',
+          }}
+        >
+          {/* Search input in dropdown */}
+          <div style={{ padding: '8px', borderBottom: '1px solid #f0f0f0' }}>
+            <input
+              type="text"
+              value={searchValue}
+              onChange={(e) => handleSearchChange(e.target.value)}
+              placeholder="Buscar plantel..."
+              style={{
+                width: '100%',
+                padding: '6px 8px',
+                border: '1px solid #d9d9d9',
+                borderRadius: '4px',
+                fontSize: '13px',
+                boxSizing: 'border-box',
+              }}
+              autoFocus
+            />
+          </div>
+
+          {/* Options list */}
+          <div style={{ maxHeight: '250px', overflowY: 'auto' }}>
+            {fetching ? (
+              <div style={{ padding: '12px', textAlign: 'center', color: '#999' }}>
+                Buscando...
+              </div>
+            ) : options.length === 0 && searchValue.length >= 2 ? (
+              <div style={{ padding: '12px', textAlign: 'center', color: '#999' }}>
+                No se encontraron resultados
+              </div>
+            ) : options.length === 0 ? (
+              <div style={{ padding: '12px', textAlign: 'center', color: '#999' }}>
+                Escribe para buscar...
+              </div>
+            ) : (
+              options.map((plantel) => (
+                <div
+                  key={plantel.id}
+                  onClick={() => handleSelect(plantel)}
+                  style={{
+                    padding: '8px 12px',
+                    cursor: 'pointer',
+                    borderBottom: '1px solid #f5f5f5',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '2px',
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f5f5f5'}
+                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#fff'}
+                >
+                  <div style={{ fontSize: '12px', fontWeight: 500, color: '#333' }}>
+                    {plantel.code}
+                  </div>
+                  <div style={{ fontSize: '11px', color: '#666' }}>
+                    {plantel.name}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </div>
   );
 };
 

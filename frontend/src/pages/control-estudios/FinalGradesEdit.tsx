@@ -570,7 +570,6 @@ const FinalGradesEdit: React.FC = () => {
                 currentLabel={gradeData.plantelCode}
                 onChange={(plantelId, plantel) => handlePlantelChange(record.studentId, subjectKey, plantelId, plantel?.code)}
                 disabled={!hasPermission}
-                size="small"
                 style={{ width: '100%' }}
               />
               <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
