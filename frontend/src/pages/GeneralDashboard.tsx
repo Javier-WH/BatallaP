@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { Button, Modal } from 'antd';
-import { EditOutlined } from '@ant-design/icons';
+import { Button } from 'antd';
+import { EditOutlined, CloseOutlined } from '@ant-design/icons';
 import { useAuth } from '@/context/AuthContext';
 import DashboardContent from '@/components/DashboardContent';
-import DashboardEditor from '@/pages/shared/DashboardEditor';
+import DashboardEditorManual from '@/pages/shared/DashboardEditorManual';
 
 const GeneralDashboard: React.FC = () => {
   const { user } = useAuth();
@@ -38,17 +38,21 @@ const GeneralDashboard: React.FC = () => {
         )}
       </div>
 
-      <DashboardContent reloadKey={dashboardReloadKey} />
-
-      <Modal
-        title="Editar Contenido del Dashboard"
-        open={isEditing}
-        onCancel={() => setIsEditing(false)}
-        footer={null}
-        width={1000}
-      >
-        <DashboardEditor key={isEditing ? 'editor-open' : 'editor-closed'} onSaved={handleSaved} />
-      </Modal>
+      {isEditing ? (
+        <div>
+          <div className="flex justify-end mb-4">
+            <Button
+              icon={<CloseOutlined />}
+              onClick={() => setIsEditing(false)}
+            >
+              Cancelar
+            </Button>
+          </div>
+          <DashboardEditorManual key={isEditing ? 'editor-open' : 'editor-closed'} onSaved={handleSaved} />
+        </div>
+      ) : (
+        <DashboardContent reloadKey={dashboardReloadKey} />
+      )}
     </div>
   );
 };
