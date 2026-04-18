@@ -11,6 +11,18 @@ interface DashboardElement {
   height: number;
   content?: string;
   imageUrl?: string;
+  styles?: {
+    fontWeight?: string;
+    fontStyle?: string;
+    textDecoration?: string;
+    color?: string;
+    backgroundColor?: string;
+    fontSize?: string;
+    filter?: string;
+    border?: string;
+    borderRadius?: string;
+    opacity?: number;
+  };
 }
 
 interface DashboardContentData {
@@ -26,6 +38,7 @@ interface DashboardContentProps {
 
 const DashboardContent: React.FC<DashboardContentProps> = ({ reloadKey }) => {
   const [elements, setElements] = React.useState<DashboardElement[]>([]);
+  const [backgroundColor, setBackgroundColor] = React.useState('#ffffff');
   const [loading, setLoading] = React.useState(true);
 
   React.useEffect(() => {
@@ -35,7 +48,12 @@ const DashboardContent: React.FC<DashboardContentProps> = ({ reloadKey }) => {
         if (data.content) {
           try {
             const parsed = JSON.parse(data.content);
-            setElements(parsed);
+            if (Array.isArray(parsed)) {
+              setElements(parsed);
+            } else {
+              setElements(parsed.elements || []);
+              setBackgroundColor(parsed.backgroundColor || '#ffffff');
+            }
           } catch {
             // If content is not JSON (old HTML format), render as HTML
             setElements([]);
@@ -74,7 +92,7 @@ const DashboardContent: React.FC<DashboardContentProps> = ({ reloadKey }) => {
 
   return (
     <Card className="rounded-3xl border border-slate-100 shadow-xl shadow-slate-100/60">
-      <div className="relative min-h-[400px]">
+      <div className="relative" style={{ minHeight: 'calc(100vh - 200px)', backgroundColor }}>
         {elements.map((element) => (
           <div
             key={element.id}
@@ -89,6 +107,14 @@ const DashboardContent: React.FC<DashboardContentProps> = ({ reloadKey }) => {
             {element.type === 'text' ? (
               <div
                 className="p-2 prose prose-slate max-w-none"
+                style={{
+                  fontWeight: element.styles?.fontWeight,
+                  fontStyle: element.styles?.fontStyle,
+                  textDecoration: element.styles?.textDecoration,
+                  color: element.styles?.color,
+                  backgroundColor: element.styles?.backgroundColor,
+                  fontSize: element.styles?.fontSize,
+                }}
                 dangerouslySetInnerHTML={{ __html: element.content || '' }}
               />
             ) : (
@@ -97,6 +123,12 @@ const DashboardContent: React.FC<DashboardContentProps> = ({ reloadKey }) => {
                 alt="Dashboard element"
                 className="w-full h-full object-fill"
                 draggable={false}
+                style={{
+                  filter: element.styles?.filter,
+                  border: element.styles?.border,
+                  borderRadius: element.styles?.borderRadius,
+                  opacity: element.styles?.opacity,
+                }}
               />
             )}
           </div>
