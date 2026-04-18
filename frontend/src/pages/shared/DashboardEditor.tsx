@@ -1,12 +1,76 @@
 import React, { useCallback, useEffect } from 'react';
-import { useEditor, EditorContent } from '@tiptap/react';
+import { useEditor, EditorContent, Extension } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Image from '@tiptap/extension-image';
 import TextAlign from '@tiptap/extension-text-align';
-import { Button, Space, message, Upload } from 'antd';
+import { TextStyle } from '@tiptap/extension-text-style';
+import Color from '@tiptap/extension-color';
+import { Button, Space, message, Upload, Select } from 'antd';
 import { UploadOutlined, BoldOutlined, ItalicOutlined, UnderlineOutlined, OrderedListOutlined, UnorderedListOutlined, AlignLeftOutlined, AlignCenterOutlined, AlignRightOutlined, LinkOutlined, PictureOutlined, UndoOutlined, RedoOutlined } from '@ant-design/icons';
 import { getContent, updateContent, uploadImage, deleteImage } from '@/services/dashboardContentService';
 import './DashboardEditor.css';
+
+// Custom TextAlign extension that handles list alignment
+const CustomTextAlign = TextAlign.extend({
+  addGlobalAttributes() {
+    return [
+      {
+        types: this.options.types,
+        attributes: {
+          textAlign: {
+            default: 'left',
+            parseHTML: element => {
+              if (element.classList.contains('text-align-center')) return 'center';
+              if (element.classList.contains('text-align-right')) return 'right';
+              return element.style.textAlign || 'left';
+            },
+            renderHTML: attributes => {
+              if (!attributes.textAlign || attributes.textAlign === 'left') {
+                return {};
+              }
+              return {
+                class: `text-align-${attributes.textAlign}`,
+              };
+            },
+          },
+        },
+      },
+    ];
+  },
+});
+
+// Custom FontSize extension
+const FontSize = Extension.create({
+  name: 'fontSize',
+
+  addOptions() {
+    return {
+      types: ['textStyle'],
+    };
+  },
+
+  addGlobalAttributes() {
+    return [
+      {
+        types: this.options.types,
+        attributes: {
+          fontSize: {
+            default: null,
+            parseHTML: element => element.style.fontSize.replace(/['"]+/g, ''),
+            renderHTML: attributes => {
+              if (!attributes.fontSize) {
+                return {};
+              }
+              return {
+                style: `font-size: ${attributes.fontSize}`,
+              };
+            },
+          },
+        },
+      },
+    ];
+  },
+});
 
 interface DashboardContentData {
   id: number;
@@ -32,19 +96,22 @@ const DashboardEditor: React.FC<DashboardEditorProps> = ({ onSaved }) => {
           openOnClick: false,
         },
       }),
+      TextStyle,
+      Color,
+      FontSize,
       Image.configure({
         inline: false,
         allowBase64: false,
         resize: {
           enabled: true,
-          directions: ['top', 'right', 'bottom', 'left'],
+          directions: ['top-left', 'top-right', 'bottom-left', 'bottom-right'],
           minWidth: 50,
           minHeight: 50,
           alwaysPreserveAspectRatio: true,
         },
       }),
-      TextAlign.configure({
-        types: ['heading', 'paragraph'],
+      CustomTextAlign.configure({
+        types: ['heading', 'paragraph', 'listItem'],
       }),
     ],
     content: '',
@@ -236,6 +303,34 @@ const DashboardEditor: React.FC<DashboardEditorProps> = ({ onSaved }) => {
               onClick={() => editor.chain().focus().toggleUnderline().run()}
               type={editor.isActive('underline') ? 'primary' : 'default'}
               size="small"
+            />
+          </Space>
+
+          <div className="w-px h-6 bg-slate-300 mx-2" />
+
+          <Space>
+            <Select
+              defaultValue="16px"
+              size="small"
+              style={{ width: 100 }}
+              onChange={(value) => {
+                editor.chain().focus().setMark('textStyle', { fontSize: value }).run();
+              }}
+              options={[
+                { value: '12px', label: 'Pequeño' },
+                { value: '14px', label: 'Mediano' },
+                { value: '16px', label: 'Normal' },
+                { value: '18px', label: 'Grande' },
+                { value: '24px', label: 'Muy grande' },
+              ]}
+            />
+            <input
+              type="color"
+              onChange={(e) => {
+                editor.chain().focus().setColor(e.target.value).run();
+              }}
+              value={editor.getAttributes('textStyle').color || '#000000'}
+              style={{ width: 32, height: 32, cursor: 'pointer', border: '1px solid #d9d9d9', borderRadius: 4 }}
             />
           </Space>
           

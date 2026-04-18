@@ -1,3 +1,23 @@
+/* TipTap Editor Base Styles */
+.ProseMirror {
+  outline: none;
+  white-space: pre-wrap;
+}
+
+/* Text Alignment Classes */
+.ProseMirror .text-align-center {
+  text-align: center;
+}
+
+.ProseMirror .text-align-right {
+  text-align: right;
+}
+
+.ProseMirror .text-align-left {
+  text-align: left;
+}
+
+
 /* TipTap Image Resize - ResizableNodeView CSS */
 .ProseMirror img {
   max-width: 100%;
@@ -68,4 +88,25 @@
 
 [data-resize-handle][data-resize-handle="bottom-right"] {
   cursor: se-resize;
+}
+
+/* List Styles */
+.ProseMirror ul {
+  padding-left: 1.5em;
+  margin: 0.5em 0;
+  list-style-type: disc;
+}
+
+.ProseMirror ul li {
+  margin: 0.25em 0;
+}
+
+.ProseMirror ol {
+  padding-left: 1.5em;
+  margin: 0.5em 0;
+  list-style-type: decimal;
+}
+
+.ProseMirror ol li {
+  margin: 0.25em 0;
 }
