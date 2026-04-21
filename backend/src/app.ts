@@ -43,9 +43,6 @@ app.use(session({
   }
 }));
 
-// Sync session store table
-sessionStore.sync();
-
 // Import routes
 import authRoutes from '@/routes/authRoutes';
 import userRoutes from '@/routes/userRoutes';
@@ -72,6 +69,7 @@ import councilRoutes from '@/routes/councilRoutes';
 import gradeEditPermissionRoutes from '@/routes/gradeEditPermissionRoutes';
 import enrollmentReportRoutes from '@/routes/enrollmentReportRoutes';
 import dashboardContentRoutes from '@/routes/dashboardContentRoutes';
+import healthRoutes from '@/routes/healthRoutes';
 
 app.get('/', (req, res) => {
   res.send('API is running...');
@@ -103,5 +101,7 @@ app.use('/api/periods', periodOutcomeRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/enrollment-reports', enrollmentReportRoutes);
 app.use('/api/dashboard-content', dashboardContentRoutes);
+app.use('/api/health', healthRoutes);
 
+export { sessionStore };
 export default app;
