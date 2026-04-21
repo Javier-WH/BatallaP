@@ -1,272 +1,218 @@
-# AGENTS.md - Contexto del Proyecto
+# AGENTS.md — Índice maestro de BatallaProject
 
-> Este archivo proporciona contexto a modelos de IA y agentes que trabajan con este repositorio.
-
-## 📋 Descripción General
-
-**BatallaProject** es un **Sistema de Gestión Escolar** (School Management System) diseñado para administrar períodos académicos, inscripciones de estudiantes, gestión de usuarios y estructuras educativas.
+> **Punto de entrada para modelos de IA y desarrolladores.**
+> Este archivo funciona como índice. La documentación canónica vive en [`docs/`](./docs/).
 
 ---
 
-## 🏗️ Arquitectura del Proyecto
+## 📋 ¿Qué es este proyecto?
 
-El proyecto sigue una arquitectura **monorepo** con separación clara entre frontend y backend:
+**BatallaProject** es un **Sistema de Gestión Escolar** (School Management System) monorepo con:
+
+- **Backend**: API REST en Node.js + Express 5 + TypeScript + Sequelize 6 + MySQL.
+- **Frontend**: SPA React 19 + TypeScript + Vite 7 + Ant Design 6 + React Router 7.
+
+Administra períodos académicos, matriculación e inscripción de estudiantes, gestión de usuarios con 6 roles, planes de evaluación, calificaciones, consejos de curso, cierre de período con promoción automática, y edición auditada de notas de períodos cerrados.
+
+---
+
+## 🚀 Quick start
+
+```powershell
+# Raíz
+npm install
+npm run dev          # Levanta backend (3000) + frontend (5173)
+
+# Reset DB + seeds demo
+cd backend
+npm run db:sync
+```
+
+Detalles, variables de entorno y comandos completos: [`docs/development-setup.md`](./docs/development-setup.md).
+
+---
+
+## 🗺️ Mapa del repositorio
 
 ```
 BatallaProject/
-├── backend/          # API RESTful con Node.js + Express + TypeScript
-├── frontend/         # SPA con React + TypeScript + Vite
-└── AGENTS.md         # Este archivo
+├── AGENTS.md                       ← Estás aquí (índice maestro)
+├── docs/                           ← 📚 Documentación canónica
+│   ├── README.md                   ← Índice de /docs
+│   ├── development-setup.md        ← Instalación y ejecución
+│   ├── conventions.md              ← Convenciones de código
+│   ├── roles-permissions.md        ← Matriz de roles y rutas
+│   ├── backend-api.md              ← Referencia REST completa
+│   ├── backend-modules.md          ← Mapa de controllers/services/middlewares
+│   ├── frontend-modules.md         ← Mapa de páginas/services/components
+│   ├── database-models.md          ← Modelos y asociaciones Sequelize
+│   └── flows/                      ← Flujos de negocio
+│       ├── authentication.md
+│       ├── enrollment.md           ← Matriculación + inscripción + bulk Excel
+│       ├── grading.md              ← Plan de evaluación + notas
+│       ├── period-closure.md       ← Cierre de período + promoción
+│       └── grade-edit.md           ← Permisos de edición + auditoría
+├── backend/
+│   ├── src/
+│   │   ├── app.ts                  ← Express + middlewares + rutas
+│   │   ├── server.ts               ← Entry point
+│   │   ├── seed.ts                 ← Seed básico de usuarios
+│   │   ├── config/                 ← database.ts
+│   │   ├── controllers/            ← ★ AGENTS.md (lógica HTTP)
+│   │   ├── services/               ← ★ AGENTS.md (lógica de negocio)
+│   │   ├── routes/                 ← ★ AGENTS.md (Express routers)
+│   │   ├── models/                 ← ★ AGENTS.md (Sequelize + index.ts)
+│   │   ├── middlewares/            ← Multer (uploads)
+│   │   ├── seeders/                ← Seeds avanzados (academic, bulk matriculations)
+│   │   ├── migrations/             ← Migraciones manuales puntuales
+│   │   ├── assets/venezuela.json   ← Catálogo estados/municipios/parroquias
+│   │   └── __tests__/              ← Jest + supertest
+│   ├── public/uploads/             ← Logos, documentos, imágenes de dashboard
+│   ├── package.json
+│   └── README_TESTS.md
+├── frontend/
+│   ├── src/
+│   │   ├── main.tsx
+│   │   ├── App.tsx                 ← Router + RequireAuth
+│   │   ├── context/                ← AuthContext + SchoolContext
+│   │   ├── pages/                  ← ★ AGENTS.md (páginas por rol)
+│   │   │   ├── shared/             ← EditUser, SearchUsers, DashboardEditor
+│   │   │   ├── master/             ← AcademicManagement, Dashboard, Settings
+│   │   │   ├── admin/              ← EnrollStudent, GradeEditPermissions, …
+│   │   │   ├── control-estudios/   ← MatriculationEnrollment, CourseCouncil, FinalGradesEdit
+│   │   │   ├── teacher/            ← TeacherPanel
+│   │   │   ├── representative/     ← MyStudents
+│   │   │   └── student/            ← MyDossier, StudentDetail
+│   │   ├── services/               ← ★ AGENTS.md (axios clients)
+│   │   └── components/             ← ★ AGENTS.md (reutilizables)
+│   └── package.json
+├── tests/                          ← Tests de integración monorepo (ver tests/README.md)
+├── notes/                          ← Bitácoras de sesiones (no canónico)
+│   ├── arquitectura-cierre-periodos.md
+│   ├── sistema-edicion-notas.md
+│   └── progreso-guardianes-2025-12-24.md
+├── .windsurf/workflows/            ← Workflows slash-command
+│   └── roles-and-access.md
+├── ANALISIS_FUNCIONALIDAD.md
+├── CONTEXT_HANDOVER.md
+├── CHANGELOG_SESSION_2026_01_24.md
+└── package.json                    ← Scripts raíz (concurrently)
 ```
+
+**Archivos marcados con ★** tienen su propio `AGENTS.md` con detalle específico.
 
 ---
 
-## 🔧 Stack Tecnológico
+## 🔗 Enlaces rápidos por tarea
 
-### Backend (`/backend`)
-| Tecnología | Versión | Propósito |
-|------------|---------|-----------|
-| Node.js | - | Runtime |
-| Express | 5.x | Framework web |
-| TypeScript | 5.9.x | Lenguaje |
-| Sequelize | 6.x | ORM |
-| MySQL | - | Base de datos |
-| bcrypt | 6.x | Hashing de contraseñas |
-| express-session | 1.x | Manejo de sesiones |
+### Voy a modificar un endpoint
+1. [`docs/backend-api.md`](./docs/backend-api.md) – encontrar el endpoint.
+2. [`backend/src/controllers/AGENTS.md`](./backend/src/controllers/AGENTS.md) – convenciones.
+3. [`backend/src/models/AGENTS.md`](./backend/src/models/AGENTS.md) – aliases de asociaciones si hay includes.
 
-### Frontend (`/frontend`)
-| Tecnología | Versión | Propósito |
-|------------|---------|-----------|
-| React | 19.x | UI Library |
-| TypeScript | 5.9.x | Lenguaje |
-| Vite | 7.x | Bundler/Dev Server |
-| Ant Design | 6.x | Componentes UI |
-| React Router | 7.x | Enrutamiento |
-| Axios | 1.x | Cliente HTTP |
-| Sass | 1.x | Preprocesador CSS |
+### Voy a modificar una página del frontend
+1. [`docs/frontend-modules.md`](./docs/frontend-modules.md) – localizar la página.
+2. [`frontend/src/pages/AGENTS.md`](./frontend/src/pages/AGENTS.md) – convenciones.
+3. [`docs/roles-permissions.md`](./docs/roles-permissions.md) – verificar permisos.
 
----
+### Voy a trabajar en un flujo de negocio
+| Flujo | Documento |
+|-------|-----------|
+| Login / sesiones | [`docs/flows/authentication.md`](./docs/flows/authentication.md) |
+| Matricular/inscribir/bulk Excel | [`docs/flows/enrollment.md`](./docs/flows/enrollment.md) |
+| Notas, planes, consejo de curso | [`docs/flows/grading.md`](./docs/flows/grading.md) |
+| Cierre de período + promoción | [`docs/flows/period-closure.md`](./docs/flows/period-closure.md) |
+| Editar notas con permiso + auditoría | [`docs/flows/grade-edit.md`](./docs/flows/grade-edit.md) |
 
-## 📁 Estructura del Backend
+### Voy a añadir un rol o modificar accesos
+1. [`docs/roles-permissions.md`](./docs/roles-permissions.md)
+2. [`.windsurf/workflows/roles-and-access.md`](./.windsurf/workflows/roles-and-access.md) (checklist)
 
-```
-backend/src/
-├── app.ts              # Configuración de Express
-├── server.ts           # Punto de entrada del servidor
-├── seed.ts             # Datos iniciales para la BD
-├── config/             # Configuración (DB, etc.)
-├── controllers/        # Lógica de negocio
-│   ├── academicController.ts    # Gestión académica
-│   ├── authController.ts        # Autenticación
-│   ├── inscriptionController.ts # Inscripciones
-│   └── userController.ts        # Usuarios
-├── models/             # Modelos Sequelize
-├── routes/             # Definición de rutas API
-├── middlewares/        # Middlewares personalizados
-└── types/              # Tipos TypeScript
-```
-
-### Modelos de Datos
-
-El sistema utiliza los siguientes modelos principales:
-
-| Modelo | Descripción |
-|--------|-------------|
-| `User` | Credenciales de acceso |
-| `Person` | Datos personales (nombre, apellido, etc.) |
-| `Role` | Roles del sistema (admin, maestro, estudiante) |
-| `PersonRole` | Relación Many-to-Many Person ↔ Role |
-| `Contact` | Información de contacto |
-| `SchoolPeriod` | Períodos escolares (años académicos) |
-| `Grade` | Grados/Años escolares |
-| `Section` | Secciones (A, B, C...) |
-| `Subject` | Materias/Asignaturas |
-| `PeriodGrade` | Relación Period ↔ Grade |
-| `PeriodGradeSection` | Secciones por grado en un período |
-| `PeriodGradeSubject` | Materias por grado en un período |
-| `Inscription` | Inscripciones de estudiantes |
-| `InscriptionSubject` | Materias inscrite por estudiante |
-| `GradeEditPermission` | Permisos para editar notas de períodos anteriores |
-| `GradeEditAudit` | Registro de auditoría de modificaciones de notas |
-
-### Asociaciones Principales
-
-```
-User ──1:1──► Person ──1:1──► Contact
-                │
-                ├──M:N──► Role (through PersonRole)
-                │
-                └──1:N──► Inscription
-
-SchoolPeriod ──M:N──► Grade (through PeriodGrade)
-                           │
-                           ├──M:N──► Section (through PeriodGradeSection)
-                           └──M:N──► Subject (through PeriodGradeSubject)
-```
+### Voy a trabajar en la base de datos
+1. [`docs/database-models.md`](./docs/database-models.md)
+2. [`backend/src/models/AGENTS.md`](./backend/src/models/AGENTS.md)
+3. Asociaciones centralizadas en [`backend/src/models/index.ts`](./backend/src/models/index.ts).
 
 ---
 
-## 📁 Estructura del Frontend
+## 🔐 Roles del sistema
 
-```
-frontend/src/
-├── App.tsx             # Componente raíz con rutas
-├── main.tsx            # Punto de entrada
-├── assets/             # Recursos estáticos
-├── components/         # Componentes reutilizables
-├── context/            # React Context (estado global)
-├── hooks/              # Custom hooks
-├── pages/              # Páginas por rol
-│   ├── Login.tsx
-│   ├── MainLayout.tsx
-│   ├── shared/         # Componentes compartidos entre roles
-│   │   ├── SearchUsers.tsx         # Búsqueda unificada (detecta rol)
-│   │   └── EditUser.tsx            # Edición unificada (permisos por rol)
-│   ├── master/         # Páginas exclusivas de Master
-│   │   ├── AcademicManagement.tsx  # Gestión académica
-│   │   ├── RegisterUser.tsx        # Registro de usuarios
-│   │   └── MasterLayout.tsx        # Layout del módulo
-│   └── admin/          # Páginas exclusivas de Admin
-│       ├── EnrollStudent.tsx       # Inscripción de estudiantes
-│       ├── RegisterStaff.tsx       # Registro de personal (Profesor/Representante)
-│       └── AdminLayout.tsx         # Layout del módulo
-├── routes/             # Configuración de rutas
-├── services/           # Servicios API (Axios)
-└── styles/             # Estilos globales
-```
+Nombres **canónicos** (en español, case-sensitive):
 
-### Componentes Compartidos (`/pages/shared`)
-Los componentes en esta carpeta detectan automáticamente el rol del usuario actual:
-- **SearchUsers**: Muestra una etiqueta "Modo Master" cuando el usuario es Master
-- **EditUser**: Habilita/deshabilita la edición de roles Admin/Master según el rol del usuario actual
+`Master` · `Administrador` · `Control de Estudios` · `Profesor` · `Representante` · `Alumno`
+
+⚠️ **Nunca** usar `Admin`, `Teacher`, `Student` – rompe la protección de rutas. Ver [`docs/roles-permissions.md`](./docs/roles-permissions.md).
 
 ---
 
-## 🔐 Roles del Sistema
-
-| Rol | Descripción | Permisos principales |
-|-----|-------------|---------------------|
-| **Master** | Super administrador | Gestión completa del sistema académico, gestión de permisos de edición de notas |
-| **Administrador** | Administrador | Inscripciones, búsqueda de usuarios, gestión de permisos de edición de notas |
-| **Control de Estudios** | Control de Estudios | Modificación de notas finales de períodos anteriores (con permiso), gestión académica |
-| **Profesor** | Profesor | Gestión de calificaciones y evaluaciones |
-| **Representante** | Representante | Consulta de expedientes de estudiantes a su cargo |
-| **Alumno** | Estudiante | Acceso a calificaciones y evaluaciones |
-
----
-
-## 🚀 Comandos de Desarrollo
+## 🔧 Stack
 
 ### Backend
-```bash
-cd backend
-npm run dev      # Inicia servidor de desarrollo con nodemon
-npm run build    # Compila TypeScript
-npm run start    # Ejecuta build de producción
-```
+Node.js · Express 5 · TypeScript 5.9 · Sequelize 6 · MySQL 8 · bcrypt · express-session · connect-session-sequelize · ExcelJS · Puppeteer · multer · Jest + supertest
 
 ### Frontend
-```bash
-cd frontend
-npm run dev      # Inicia Vite dev server
-npm run build    # Build de producción
-npm run lint     # Ejecuta ESLint
-npm run preview  # Preview del build
-```
+React 19 · TypeScript 5.9 · Vite 7 · Ant Design 6 · React Router 7 · Axios · Sass · dayjs
 
 ---
 
-## 🔗 Configuración de Paths
-
-El proyecto usa **path aliases** para imports más limpios:
-
-### Backend (`tsconfig.json`)
-```json
-{
-  "paths": {
-    "@config/*": ["src/config/*"],
-    "@controllers/*": ["src/controllers/*"],
-    "@models/*": ["src/models/*"],
-    "@routes/*": ["src/routes/*"],
-    "@middlewares/*": ["src/middlewares/*"]
-  }
-}
-```
-
-### Frontend (`vite.config.ts` + `tsconfig.json`)
-- Usa `vite-tsconfig-paths` para resolver paths automáticamente
-
----
-
-## 🗄️ Base de Datos
-
-- **Motor**: MySQL
-- **ORM**: Sequelize 6
-- **Configuración**: `backend/.env`
-  ```env
-  DB_HOST=localhost
-  DB_USER=root
-  DB_PASSWORD=
-  DB_NAME=bp
-  ```
-
----
-
-## 📌 Funcionalidades Principales
+## 📌 Funcionalidades principales
 
 ### ✅ Implementadas
-1. **Autenticación** - Login con sesiones
-2. **Gestión de Usuarios** - CRUD completo con roles
-3. **Gestión Académica** - Períodos, grados, secciones, materias
-4. **Inscripciones** - Inscripción de estudiantes a períodos/grados/secciones
-5. **Permisos de Edición de Notas** - Sistema para modificar notas finales de períodos anteriores
-   - Master y Administrador pueden otorgar/revocar permisos
-   - Control de Estudios puede modificar notas finales con permiso activo
-   - Auditoría completa de todas las modificaciones de notas
-   - Permisos pueden ser globales (todos los períodos) o específicos por período
+1. Autenticación con sesiones persistidas en MySQL.
+2. CRUD completo de usuarios con 6 roles.
+3. Gestión académica: períodos, grados, secciones, materias, specializations, subject groups.
+4. Matriculación estándar + rápida + masiva (Excel).
+5. Inscripciones con representantes reutilizables (`GuardianProfile`).
+6. Asignación de profesores por materia+sección.
+7. Planes de evaluación y calificaciones por profesor.
+8. Consejos de curso con checklist.
+9. Cierre de período con promoción automática y `PendingSubject`.
+10. Sistema de permisos para editar notas finales de períodos cerrados, con auditoría completa.
+11. Reportes PDF de matrícula (Puppeteer).
+12. Dashboard editable con contenido administrable.
 
-### 🚧 En Desarrollo / Pendientes
-- Sistema de calificaciones
-- Dashboard de estudiantes
-- Dashboard de profesores
-- Reportes académicos
-
----
-
-## 💡 Convenciones de Código
-
-- **Idioma del código**: Inglés (nombres de variables, funciones, clases)
-- **Idioma de la UI**: Español
-- **Estilo de código**: TypeScript estricto
-- **Componentes React**: Functional components con hooks
-- **Estado global**: React Context API
-- **Estilos**: Ant Design + Sass para personalizaciones
+### 🚧 Pendientes / Mejoras identificadas
+- Middleware global `requireAuth` / `requireRole` (hoy cada controller valida individualmente).
+- Dashboard de estudiantes más rico.
+- Dashboard de profesores con métricas.
+- Reportes académicos extendidos.
 
 ---
 
-## 🐛 Notas para Debugging
+## 📝 Historial relevante
 
-1. El backend corre por defecto en `http://localhost:3000`
-2. El frontend (Vite) corre en `http://localhost:5173`
-3. CORS está configurado para permitir requests del frontend
-4. Las sesiones usan cookies, asegurar `credentials: 'include'` en Axios
+- Sistema de representantes reutilizables vía `GuardianProfile` (evita duplicados).
+- Normalización de roles al español canónico.
+- Consolidación de `SearchUsers` y `EditUser` en `/pages/shared` con permisos según rol.
+- Sistema de permisos + auditoría para edición de notas (Master/Admin otorgan, Control de Estudios ejecuta).
+- Carga masiva por Excel con named ranges y validación por fila.
+- Separación clara entre `Matriculation` (solicitud) e `Inscription` (inscripción formal).
 
----
-
-## 📝 Historial de Contexto
-
-Este proyecto ha trabajado en:
-- Configuración inicial del monorepo
-- Sistema de autenticación con sesiones
-- CRUD de usuarios con roles
-- Estructura académica (períodos, grados, secciones, materias)
-- Módulo de inscripción de estudiantes
-- **Consolidación de componentes**: SearchUsers y EditUser unificados en `/pages/shared` con detección automática de permisos según rol (Master vs Admin)
-- **Sistema de Permisos de Edición de Notas**: Implementación completa para modificar notas finales de períodos anteriores
-  - Backend: Modelos GradeEditPermission y GradeEditAudit, controller gradeEditPermissionController, rutas gradeEditPermissionRoutes
-  - Frontend: Panel de administración GradeEditPermissions.tsx, servicio gradeEditPermissionService.ts
-  - Funcionalidad: Master/Admin otorgan permisos, Control de Estudios modifica notas con permiso activo y auditoría completa
+Bitácoras específicas en [`notes/`](./notes/).
 
 ---
 
-*Última actualización: Abril 2026*
+## 💡 Convenciones resumidas
+
+- **Idioma del código**: inglés. **Idioma de la UI**: español.
+- **TypeScript**: modo estricto; evitar `any`.
+- **Transacciones**: `sequelize.transaction()` para operaciones multi-tabla.
+- **Asociaciones Sequelize**: SOLO en `backend/src/models/index.ts`.
+- **Protección de rutas (frontend)**: `<RequireAuth allowedRoles={[...]}>` en `App.tsx` con nombres de rol en español.
+- **Axios**: `withCredentials: true` (configurado en `frontend/src/services/api.ts`).
+
+Detalle en [`docs/conventions.md`](./docs/conventions.md).
+
+---
+
+## 🔄 Mantenimiento de la documentación
+
+Cuando introduzcas cambios relevantes:
+1. Actualiza el documento temático en `docs/` correspondiente.
+2. Si añades una carpeta/módulo nuevo, regístrala en este AGENTS.md.
+3. Si tocas un flujo de negocio, revisa el `docs/flows/*.md` relacionado.
+4. Para cambios en permisos/rutas, pasa por [`.windsurf/workflows/roles-and-access.md`](./.windsurf/workflows/roles-and-access.md).
+
+---
+
+*Documentación reorganizada en Abril 2026. Estructura híbrida: AGENTS.md centrales + `/docs` temático + AGENTS.md por carpeta compleja.*
