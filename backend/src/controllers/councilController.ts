@@ -12,6 +12,10 @@ import {
   Qualification,
   EvaluationPlan
 } from '@/models/index';
+import {
+  getSubjectOrderMap,
+  sortSubjectsByOrder,
+} from '@/services/subjectOrderService';
 
 export const getCouncilData = async (req: Request, res: Response) => {
   try {
@@ -84,22 +88,17 @@ export const getCouncilData = async (req: Request, res: Response) => {
 
     if (!pg) return res.json(inscriptions);
 
-    const pgSubjects = await PeriodGradeSubject.findAll({
-      where: { periodGradeId: pg.id },
-      order: [['order', 'ASC']]
-    });
-
-    const subjectOrderMap = new Map();
-    pgSubjects.forEach(pgs => subjectOrderMap.set(pgs.subjectId, pgs.order));
+    const subjectOrderMap = await getSubjectOrderMap(pg.id);
 
     // Map data for frontend
     const result = inscriptions.map(ins => {
       const insAny = ins as any;
-      const sortedSubjects = (insAny.inscriptionSubjects || []).sort((a: any, b: any) => {
-        const orderA = subjectOrderMap.get(a.subjectId) || 999;
-        const orderB = subjectOrderMap.get(b.subjectId) || 999;
-        return orderA - orderB;
-      }).map((is: any) => {
+      const sortedSubjects = sortSubjectsByOrder(
+        insAny.inscriptionSubjects || [],
+        (is: any) => is.subjectId,
+        (is: any) => is.subject?.name,
+        subjectOrderMap
+      ).map((is: any) => {
         // Calculate definitive grade for this term
         const qualifications = is.qualifications || [];
         const grade = qualifications.reduce((acc: number, q: any) => {

@@ -200,6 +200,7 @@ Bitácoras específicas en [`notes/`](./notes/).
 - **Asociaciones Sequelize**: SOLO en `backend/src/models/index.ts`.
 - **Protección de rutas (frontend)**: `<RequireAuth allowedRoles={[...]}>` en `App.tsx` con nombres de rol en español.
 - **Axios**: `withCredentials: true` (configurado en `frontend/src/services/api.ts`).
+- **Orden de materias**: Usar `PeriodGradeSubject.order` via `subjectOrderService`. Ver [`docs/conventions.md#orden-canonico-de-materias`](./docs/conventions.md#orden-canonico-de-materias).
 
 Detalle en [`docs/conventions.md`](./docs/conventions.md).
 

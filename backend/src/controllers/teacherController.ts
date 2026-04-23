@@ -65,7 +65,9 @@ export const getAvailableSubjectsForPeriod = async (req: Request, res: Response)
   try {
     const { periodId } = req.params;
 
-    // Get all subjects defined for the period across all grades
+    // Get all subjects defined for the period across all grades.
+    // Order: periodGradeId ASC first (groups by grade), then PeriodGradeSubject.order ASC
+    // (canonical order within each grade). See subjectOrderService for the rule.
     const subjects = await PeriodGradeSubject.findAll({
       include: [
         {
@@ -75,7 +77,11 @@ export const getAvailableSubjectsForPeriod = async (req: Request, res: Response)
           include: [{ model: Grade, as: 'grade' }]
         },
         { model: Subject, as: 'subject' }
-      ]
+      ],
+      order: [
+        ['periodGradeId', 'ASC'],
+        ['order', 'ASC'],
+      ],
     });
 
     // Get all assigned subjects/sections to filter out or mark as assigned

@@ -39,6 +39,16 @@ export class PeriodOutcomeService {
       order: [['failedSubjects', 'DESC']]
     });
 
+    // Pending subjects within each outcome: sort alphabetically by subject.name
+    // (cross-grade collection; canonical PeriodGrade order doesn't apply directly).
+    outcomes.forEach((o: any) => {
+      if (Array.isArray(o.inscription?.pendingSubjects)) {
+        o.inscription.pendingSubjects.sort((a: any, b: any) =>
+          (a.subject?.name ?? '').localeCompare(b.subject?.name ?? '', 'es', { sensitivity: 'base' })
+        );
+      }
+    });
+
     return outcomes;
   }
 

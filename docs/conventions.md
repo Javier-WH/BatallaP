@@ -118,3 +118,40 @@ Ver [`roles-permissions.md`](./roles-permissions.md) para matriz completa.
 - `frontend/src/App.tsx` (definición de rutas y `allowedRoles`).
 
 Siempre revisar [`.windsurf/workflows/roles-and-access.md`](../.windsurf/workflows/roles-and-access.md) antes de modificar accesos/rutas.
+
+## Orden canónico de materias
+
+**Regla**: Toda lista de materias que se muestre en UI, se exporte en PDF o se envíe al frontend debe ordenarse por `PeriodGradeSubject.order` ASC del `PeriodGrade` correspondiente al contexto (período + grado de la inscripción), con fallback a `Subject.name` ASC cuando `order` sea nulo.
+
+### Fuente de verdad
+
+- El orden **no** está en la tabla `Subject` (catálogo reutilizable).
+- El orden canónico vive en la tabla pivote `period_grade_subjects.order`, scoped por `(periodGradeId = schoolPeriodId + gradeId)`.
+- Esto permite que la misma materia tenga distinto orden en distintos grados/períodos.
+
+### Helper backend
+
+Usar `backend/src/services/subjectOrderService.ts`:
+- `getSubjectOrderMap(periodGradeId)` → `Map<subjectId, number>`
+- `getSubjectOrderMapByGradeAndPeriod(gradeId, schoolPeriodId)`
+- `sortSubjectsByOrder<T>(items, getSubjectId, getSubjectName, orderMap)` con fallback alfabético.
+- `sortSubjectsWithPendingAtEnd<T>` para listas con materias pendientes (estas van al final).
+
+### Aplicación
+
+**Backend** – Ordenar en controllers/servicios ANTES de enviar respuesta:
+- `evaluationController`: `getStudentFullAcademicRecord`, `getFinalGradesByPeriod`
+- `finalGradeCalculator`: `calculateForInscription`
+- `periodOutcomeService`: `getOutcomesForPeriod` (pendientes alfabéticamente)
+- `teacherController`: `getAvailableSubjectsForPeriod`
+- `inscriptionController`: `getInscriptions`, `getInscriptionById`
+- `councilController`: `getCouncilData`
+- `academicController`: `getPeriodStructure` (ya ordena por through)
+
+**Frontend** – Confíar en el orden del backend. No hacer `sort((a,b)=>a.name.localeCompare(b.name))` en listas de materias. Los sorts encontrados son para otras entidades (estudiantes, grados, secciones).
+
+### Materias pendientes
+
+Cuando una inscripción arrastra materias pendientes de un grado anterior:
+- Materias del grado actual primero (en su orden canónico).
+- Materias pendientes al final como bloque separado, ordenadas alfabéticamente por nombre.

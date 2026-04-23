@@ -23,6 +23,11 @@ import {
   User,
   Plantel
 } from '@/models/index';
+import {
+  getSubjectOrderMapByGradeAndPeriod,
+  sortSubjectsWithPendingAtEnd,
+  sortSubjectsByOrder,
+} from '@/services/subjectOrderService';
 
 export const getMyAssignments = async (req: Request, res: Response) => {
   try {
@@ -321,26 +326,42 @@ export const getStudentFullAcademicRecord = async (req: Request, res: Response) 
       ],
       order: [
         [{ model: SchoolPeriod, as: 'period' }, 'id', 'DESC'],
-        [{ model: InscriptionSubject, as: 'inscriptionSubjects' }, { model: Subject, as: 'subject' }, 'name', 'ASC']
       ]
     });
 
-    // Transform to add isPending flag
-    // Transform to add isPending flag
-    const recordsWithPendingFlag = records.map(record => {
-      const recordAny = record as any;
-      const pendingSubjectIds = new Set(recordAny.pendingSubjects?.map((ps: any) => ps.subjectId));
-      const recordJson = record.toJSON() as any;
+    // Apply canonical subject order per inscription (PeriodGradeSubject.order)
+    // with pendings appended at the end. See subjectOrderService for rules.
+    const recordsWithPendingFlag = await Promise.all(
+      records.map(async (record) => {
+        const recordAny = record as any;
+        const pendingSubjectIds = new Set(
+          recordAny.pendingSubjects?.map((ps: any) => ps.subjectId) ?? []
+        );
+        const recordJson = record.toJSON() as any;
 
-      if (recordJson.inscriptionSubjects) {
-        recordJson.inscriptionSubjects = recordJson.inscriptionSubjects.map((is: any) => ({
-          ...is,
-          isPending: pendingSubjectIds.has(is.subjectId)
-        }));
-      }
+        if (recordJson.inscriptionSubjects) {
+          const withFlags = recordJson.inscriptionSubjects.map((is: any) => ({
+            ...is,
+            isPending: pendingSubjectIds.has(is.subjectId),
+          }));
 
-      return recordJson;
-    });
+          const orderMap = await getSubjectOrderMapByGradeAndPeriod(
+            recordJson.gradeId,
+            recordJson.schoolPeriodId
+          );
+
+          recordJson.inscriptionSubjects = sortSubjectsWithPendingAtEnd(
+            withFlags,
+            (is: any) => is.subjectId,
+            (is: any) => is.subject?.name,
+            (is: any) => !!is.isPending,
+            orderMap
+          );
+        }
+
+        return recordJson;
+      })
+    );
 
     res.json(recordsWithPendingFlag);
   } catch (error) {
@@ -744,6 +765,16 @@ export const getFinalGradesByPeriod = async (req: Request, res: Response) => {
     // Build result array
     const result: any[] = [];
 
+    // Cache orderMaps por gradeId (todas las inscripciones comparten schoolPeriodId)
+    const orderMapCache = new Map<number, Map<number, number>>();
+    const resolveOrderMap = async (gradeId: number | null | undefined) => {
+      if (!gradeId) return new Map<number, number>();
+      if (orderMapCache.has(gradeId)) return orderMapCache.get(gradeId)!;
+      const map = await getSubjectOrderMapByGradeAndPeriod(gradeId, Number(schoolPeriodId));
+      orderMapCache.set(gradeId, map);
+      return map;
+    };
+
     for (const inscription of inscriptions) {
       console.log(`[getFinalGradesByPeriod] Processing inscription: ${inscription.id}, Student: ${inscription.student?.firstName} ${inscription.student?.lastName}`);
 
@@ -809,6 +840,15 @@ export const getFinalGradesByPeriod = async (req: Request, res: Response) => {
           console.log(`[getFinalGradesByPeriod] Created ${subjectsToCreate.length} subjects for inscription ${inscription.id}`);
         }
       }
+
+      // Apply canonical subject order
+      const orderMap = await resolveOrderMap(inscription.gradeId);
+      inscriptionSubjects = sortSubjectsByOrder(
+        inscriptionSubjects,
+        (is: any) => is.subjectId,
+        (is: any) => is.subject?.name,
+        orderMap
+      ) as typeof inscriptionSubjects;
 
       for (const insSubject of inscriptionSubjects) {
         const finalGrade = (insSubject as any).finalGrade;

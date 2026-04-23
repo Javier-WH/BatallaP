@@ -1,6 +1,10 @@
 import { Request, Response } from 'express';
 import { Op, Transaction } from 'sequelize';
 import { Inscription, Person, Role, Subject, PeriodGrade, InscriptionSubject, SchoolPeriod, Grade, Section, Contact, PersonRole, PersonResidence, StudentGuardian, Matriculation, GuardianProfile, StudentPreviousSchool, Plantel, EnrollmentAnswer, EnrollmentQuestion, EnrollmentDocument } from '../models';
+import {
+  getSubjectOrderMapByGradeAndPeriod,
+  sortSubjectsByOrder,
+} from '@/services/subjectOrderService';
 import sequelize from '../config/database';
 import { saveEnrollmentAnswers } from '@/services/enrollmentAnswerService';
 import { GuardianDocumentType } from '@/models/GuardianProfile';
@@ -624,7 +628,34 @@ export const getInscriptions = async (req: Request, res: Response) => {
       ],
       order: [['createdAt', 'DESC']]
     });
-    res.json(inscriptions);
+
+    // Apply canonical subject order per inscription
+    const orderMapCache = new Map<string, Map<number, number>>();
+    const resolveOrderMap = async (gradeId: number | null, schoolPeriodId: number | null) => {
+      const key = `${gradeId}:${schoolPeriodId}`;
+      if (orderMapCache.has(key)) return orderMapCache.get(key)!;
+      const m = await getSubjectOrderMapByGradeAndPeriod(gradeId, schoolPeriodId);
+      orderMapCache.set(key, m);
+      return m;
+    };
+
+    const result = await Promise.all(
+      inscriptions.map(async (ins) => {
+        const json = ins.toJSON() as any;
+        if (Array.isArray(json.subjects) && json.subjects.length) {
+          const orderMap = await resolveOrderMap(json.gradeId, json.schoolPeriodId);
+          json.subjects = sortSubjectsByOrder(
+            json.subjects,
+            (s: any) => s.id,
+            (s: any) => s.name,
+            orderMap
+          );
+        }
+        return json;
+      })
+    );
+
+    res.json(result);
   } catch (error) {
     console.error('Error en getInscriptions:', error);
     res.status(500).json({ error: 'Error obteniendo inscripciones' });
@@ -644,7 +675,20 @@ export const getInscriptionById = async (req: Request, res: Response) => {
       ]
     });
     if (!inscription) return res.status(404).json({ error: 'Inscripción no encontrada' });
-    res.json(inscription);
+
+    // Apply canonical subject order
+    const json = inscription.toJSON() as any;
+    if (Array.isArray(json.subjects) && json.subjects.length) {
+      const orderMap = await getSubjectOrderMapByGradeAndPeriod(json.gradeId, json.schoolPeriodId);
+      json.subjects = sortSubjectsByOrder(
+        json.subjects,
+        (s: any) => s.id,
+        (s: any) => s.name,
+        orderMap
+      );
+    }
+
+    res.json(json);
   } catch (error) {
     res.status(500).json({ error: 'Error obteniendo inscripción', details: error });
   }

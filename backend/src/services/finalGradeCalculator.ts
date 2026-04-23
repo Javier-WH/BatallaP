@@ -11,6 +11,10 @@ import {
   Plantel,
   Setting
 } from '@/models/index';
+import {
+  getSubjectOrderMapByGradeAndPeriod,
+  sortSubjectsByOrder,
+} from './subjectOrderService';
 
 const resolveInstitutionPlantelId = async (transaction?: Transaction): Promise<number | null> => {
   const setting = await Setting.findOne({ where: { key: 'institution_dea_code' }, transaction });
@@ -80,7 +84,7 @@ export class FinalGradeCalculator {
 
     // Correct way to get period ID
     const inscriptionSimple = await Inscription.findByPk(inscriptionId, {
-      attributes: ['schoolPeriodId'],
+      attributes: ['schoolPeriodId', 'gradeId'],
       transaction: options.transaction
     });
 
@@ -116,6 +120,19 @@ export class FinalGradeCalculator {
     if (!inscriptionRecord || !inscriptionRecord.inscriptionSubjects) {
       throw new Error('Inscripción no encontrada o sin materias asociadas');
     }
+
+    // Apply canonical subject order before iterating
+    const orderMap = await getSubjectOrderMapByGradeAndPeriod(
+      inscriptionSimple.gradeId,
+      inscriptionSimple.schoolPeriodId,
+      options.transaction
+    );
+    inscriptionRecord.inscriptionSubjects = sortSubjectsByOrder(
+      inscriptionRecord.inscriptionSubjects,
+      (is) => is.subjectId,
+      (is) => is.subject?.name,
+      orderMap
+    );
 
     const minApproval = options.minApproval ?? 10;
     const institutionPlantelId = await resolveInstitutionPlantelId(options.transaction);
