@@ -29,6 +29,8 @@ import {
 import api from '@/services/api';
 import { useGradeRounding } from '@/context/GradeRoundingContext';
 import { formatGrade } from '@/utils/gradeFormat';
+import { fetchLetterGrades, numericToLetter } from '@/utils/letterGradeFormat';
+import type { LetterGrade } from '@/utils/letterGradeFormat';
 
 const { Title, Text } = Typography;
 const { Panel } = Collapse;
@@ -45,6 +47,7 @@ interface SubjectGroup {
 interface SubjectInfo {
   name: string;
   subjectGroup?: SubjectGroup | null;
+  usesLiteralGrades?: boolean;
 }
 
 interface EvaluationPlan {
@@ -156,6 +159,7 @@ const StudentAcademicRecord: React.FC<StudentAcademicRecordProps> = ({ personId,
   const [adminLoading, setAdminLoading] = useState(false);
   const [adminError, setAdminError] = useState<string | null>(null);
   const [adminData, setAdminData] = useState<AdminOverviewData | null>(null);
+  const [letterGrades, setLetterGrades] = useState<LetterGrade[]>([]);
   const { enableRounding } = useGradeRounding();
 
   useEffect(() => {
@@ -170,6 +174,16 @@ const StudentAcademicRecord: React.FC<StudentAcademicRecordProps> = ({ personId,
       }
     };
     fetchSettings();
+  }, [mode]);
+
+  useEffect(() => {
+    if (mode !== 'student') return;
+    const fetchLetterGradeConfig = async () => {
+      const grades = await fetchLetterGrades();
+      console.log('[StudentAcademicRecord] Letter grades loaded:', grades);
+      setLetterGrades(grades);
+    };
+    fetchLetterGradeConfig();
   }, [mode]);
 
   useEffect(() => {
@@ -503,7 +517,14 @@ const StudentAcademicRecord: React.FC<StudentAcademicRecordProps> = ({ personId,
                                       color: finalTermScore >= (maxGrade / 2) ? '#52c41a' : '#f5222d',
                                       fontSize: 14
                                     }}>
-                                      {formatGrade(finalTermScore, enableRounding)}
+                                      {(() => {
+                                        const usesLiteral = subject.subject?.usesLiteralGrades;
+                                        console.log('[StudentAcademicRecord] Term score:', finalTermScore, 'usesLiteralGrades:', usesLiteral, 'letterGrades:', letterGrades);
+                                        if (usesLiteral) {
+                                          return numericToLetter(finalTermScore, letterGrades);
+                                        }
+                                        return formatGrade(finalTermScore, enableRounding);
+                                      })()}
                                     </Text>
                                   ) : (
                                     <Text style={{ color: '#d9d9d9' }}>—</Text>
@@ -546,7 +567,14 @@ const StudentAcademicRecord: React.FC<StudentAcademicRecordProps> = ({ personId,
                             margin: '0 auto'
                           }}>
                             <Text strong style={{ color: avg >= (maxGrade / 2) ? '#1890ff' : '#f5222d', fontSize: 15 }}>
-                              {formatGrade(avg, enableRounding)}
+                              {(() => {
+                                const usesLiteral = subject.subject?.usesLiteralGrades;
+                                console.log('[StudentAcademicRecord] Final score:', avg, 'usesLiteralGrades:', usesLiteral, 'letterGrades:', letterGrades);
+                                if (usesLiteral) {
+                                  return numericToLetter(avg, letterGrades);
+                                }
+                                return formatGrade(avg, enableRounding);
+                              })()}
                             </Text>
                           </div>
                         );

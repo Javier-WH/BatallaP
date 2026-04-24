@@ -329,6 +329,13 @@ export const getStudentFullAcademicRecord = async (req: Request, res: Response) 
       ]
     });
 
+    // Log to verify usesLiteralGrades is being returned
+    if (records.length > 0) {
+      const firstRecord = records[0];
+      const firstSubject = (firstRecord as any).inscriptionSubjects?.[0]?.subject;
+      console.log('[getStudentFullAcademicRecord] First subject data:', JSON.stringify(firstSubject, null, 2));
+    }
+
     // Apply canonical subject order per inscription (PeriodGradeSubject.order)
     // with pendings appended at the end. See subjectOrderService for rules.
     const recordsWithPendingFlag = await Promise.all(

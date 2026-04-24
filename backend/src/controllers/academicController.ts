@@ -536,9 +536,11 @@ export const updateSubject = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const { name, subjectGroupId, usesLiteralGrades } = req.body as { name?: string; subjectGroupId?: number | null; usesLiteralGrades?: boolean };
+    console.log('[updateSubject] Received data:', { id, name, subjectGroupId, usesLiteralGrades });
     await Subject.update({ name, subjectGroupId: subjectGroupId ?? null, usesLiteralGrades: usesLiteralGrades ?? false }, { where: { id } });
     res.json({ message: 'Subject updated' });
   } catch (error) {
+    console.error('[updateSubject] Error:', error);
     res.status(500).json({ error: 'Error updating subject' });
   }
 };

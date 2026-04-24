@@ -19,8 +19,7 @@ import {
   Collapse,
   Typography,
   Tooltip,
-  Empty,
-  Switch
+  Empty
 } from 'antd';
 import {
   PlusOutlined,
@@ -772,6 +771,7 @@ const AcademicManagement: React.FC = () => {
       });
     } else if (type === 'subject') {
       const subjectRecord = record as Subject;
+      console.log('[openEditCatalog] Subject data:', subjectRecord);
       editCatalogForm.setFieldsValue({
         name: subjectRecord.name,
         subjectGroupId: subjectRecord.subjectGroupId ?? null,
@@ -785,6 +785,7 @@ const AcademicManagement: React.FC = () => {
 
   const handleEditCatalog = async (values: { name: string; isDiversified?: boolean; subjectGroupId?: number | null; usesLiteralGrades?: boolean }) => {
     if (!editCatalogTarget) return;
+    console.log('[handleEditCatalog] Form values:', values);
     try {
       let url = '';
       switch (editCatalogTarget.type) {
@@ -1680,7 +1681,7 @@ const AcademicManagement: React.FC = () => {
                   />
                 </Form.Item>
                 <Form.Item name="usesLiteralGrades" valuePropName="checked" style={{ marginBottom: 24 }}>
-                  <Switch /><Text style={{ fontWeight: 600, marginLeft: 8 }}>Usar Notas Literales (A, B, C...)</Text>
+                  <Checkbox>Usar Notas Literales (A, B, C...)</Checkbox>
                 </Form.Item>
               </>
             )}
