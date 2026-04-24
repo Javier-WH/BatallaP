@@ -7,7 +7,6 @@ import {
   TeamOutlined,
   BookOutlined,
   QuestionCircleOutlined,
-  ProjectOutlined,
   IdcardOutlined,
   LockOutlined
 } from '@ant-design/icons';
@@ -50,7 +49,6 @@ const AdminLayout: React.FC = () => {
     { path: '/admin/register-staff', icon: <TeamOutlined />, label: 'Personal', tooltip: 'Profesores y Representantes' },
     { path: '/admin/registrar-representante', icon: <IdcardOutlined />, label: 'Nuevo Representante', tooltip: 'Registro de Representantes' },
     { path: '/admin/directorio', icon: <TeamOutlined />, label: 'Directorio', tooltip: 'Directorio de Usuarios' },
-    { path: '/admin/projection', icon: <ProjectOutlined />, label: 'Proyección', tooltip: 'Asignación Académica' },
     { path: '/admin/planteles', icon: <BookOutlined />, label: 'Planteles', tooltip: 'Planteles Escolares' },
     { path: '/admin/enrollment-questions', icon: <QuestionCircleOutlined />, label: 'Preguntas', tooltip: 'Encuesta de Inscripción' },
     { path: '/admin/permisos-edicion-notas', icon: <LockOutlined />, label: 'Permisos Notas', tooltip: 'Permisos de Edición de Notas' },
