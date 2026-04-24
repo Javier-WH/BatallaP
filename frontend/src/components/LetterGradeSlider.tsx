@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { Slider, Input, Button, Typography, Popconfirm, message, Tooltip } from 'antd';
+import { Slider, Input, InputNumber, Button, Typography, Popconfirm, message, Tooltip } from 'antd';
 import { PlusOutlined, DeleteOutlined, InfoCircleOutlined } from '@ant-design/icons';
 
 const { Text } = Typography;
@@ -36,6 +36,14 @@ const LetterGradeSlider: React.FC<LetterGradeSliderProps> = ({
   const handleSliderChange = (values: number[]) => {
     // Slider returns values in ascending order, need to map them to grades sorted by max
     const sortedGrades = [...grades].sort((a, b) => a.max - b.max);
+    
+    // Prevent moving the first handle (min) and last handle (max)
+    // They should always be 0 and maxGrade respectively
+    if (values[0] !== 0 || values[values.length - 1] !== maxGrade) {
+      // Reset to original values if extremes were moved
+      return;
+    }
+    
     const newGrades = sortedGrades.map((grade, index) => ({
       ...grade,
       max: values[index] !== undefined ? values[index] : grade.max
@@ -49,29 +57,65 @@ const LetterGradeSlider: React.FC<LetterGradeSliderProps> = ({
     updateGrades(newGrades);
   };
 
+  const handleMaxChange = (index: number, newMax: number) => {
+    const sortedGrades = [...grades].sort((a, b) => a.max - b.max);
+    const currentIndex = sortedGrades.findIndex(g => grades.indexOf(g) === index);
+    
+    // Prevent moving the first (min) and last (max) handles
+    if (currentIndex === 0 && newMax !== 0) {
+      message.warning('El valor mínimo debe ser 0');
+      return;
+    }
+    if (currentIndex === sortedGrades.length - 1 && newMax !== maxGrade) {
+      message.warning(`El valor máximo debe ser ${maxGrade}`);
+      return;
+    }
+    
+    // Validate range
+    if (newMax < 0 || newMax > maxGrade) {
+      message.warning(`El valor debe estar entre 0 y ${maxGrade}`);
+      return;
+    }
+    
+    const newGrades = [...grades];
+    newGrades[index].max = newMax;
+    updateGrades(newGrades);
+  };
+
   const handleAddLetter = () => {
     if (grades.length >= 10) {
       message.warning('Máximo 10 letras permitidas');
       return;
     }
     
-    // Find the smallest gap to insert the new letter
-    const sortedGrades = [...grades].sort((a, b) => b.max - a.max);
-    let bestInsertIndex = 0;
-    let maxGap = 0;
+    // Always add the new letter at the end (lowest position with value 0)
+    // Find the current lowest grade
+    const sortedGrades = [...grades].sort((a, b) => a.max - b.max);
+    const lowestGrade = sortedGrades[0];
+    const nextGrade = sortedGrades[1];
     
-    for (let i = 0; i < sortedGrades.length - 1; i++) {
-      const gap = sortedGrades[i].max - sortedGrades[i + 1].max;
-      if (gap > maxGap) {
-        maxGap = gap;
-        bestInsertIndex = i;
-      }
+    // Calculate a new position for the lowest grade
+    // Ensure it's at least 1 to avoid overlap with the new letter at 0
+    let newLowestValue: number;
+    if (nextGrade) {
+      newLowestValue = Math.max(1, Math.floor(nextGrade.max / 2));
+    } else {
+      // If no next grade, use a reasonable fraction of maxGrade
+      newLowestValue = Math.max(1, Math.ceil(maxGrade / (grades.length + 1)));
     }
     
-    const insertValue = Math.floor((sortedGrades[bestInsertIndex].max + sortedGrades[bestInsertIndex + 1].max) / 2);
-    const newLetter = String.fromCharCode(65 + grades.length); // A, B, C, ...
+    // Update the current lowest grade to the new position
+    const newGrades = grades.map(g => {
+      if (g.max === lowestGrade.max) {
+        return { ...g, max: newLowestValue };
+      }
+      return g;
+    });
     
-    const newGrades = [...grades, { letter: newLetter, max: insertValue }];
+    // Add the new letter at position 0
+    const newLetter = String.fromCharCode(65 + newGrades.length); // A, B, C, ...
+    newGrades.push({ letter: newLetter, max: 0 });
+    
     updateGrades(newGrades);
   };
 
@@ -81,7 +125,21 @@ const LetterGradeSlider: React.FC<LetterGradeSliderProps> = ({
       return;
     }
     
+    // Only allow removing the last letter (lowest max value)
+    const sortedGrades = [...grades].sort((a, b) => b.max - a.max);
+    const gradeToRemove = grades[index];
+    const lowestGrade = sortedGrades[sortedGrades.length - 1];
+    
+    if (gradeToRemove.max !== lowestGrade.max) {
+      message.warning('Solo se puede eliminar la última letra (la más baja)');
+      return;
+    }
+    
+    // Remove the lowest grade and set the next lowest to 0
     const newGrades = grades.filter((_, i) => i !== index);
+    const newSortedGrades = [...newGrades].sort((a, b) => a.max - b.max);
+    newSortedGrades[0].max = 0;
+    
     updateGrades(newGrades);
   };
 
@@ -113,6 +171,7 @@ const LetterGradeSlider: React.FC<LetterGradeSliderProps> = ({
   };
 
   const sortedGrades = [...grades].sort((a, b) => b.max - a.max);
+  const lowestGrade = sortedGrades[sortedGrades.length - 1];
 
   return (
     <div style={{ padding: '20px 0' }}>
@@ -175,9 +234,15 @@ const LetterGradeSlider: React.FC<LetterGradeSliderProps> = ({
               </div>
 
               <div style={{ width: 80, textAlign: 'right' }}>
-                <Text strong style={{ fontSize: 16, color: '#262626' }}>
-                  {grade.max}
-                </Text>
+                <InputNumber
+                  value={grade.max}
+                  onChange={(value) => handleMaxChange(originalIndex, value || 0)}
+                  min={0}
+                  max={maxGrade}
+                  size="small"
+                  style={{ width: 70, fontWeight: 700 }}
+                  disabled={grade.max === 0 || grade.max === maxGrade}
+                />
                 <Text style={{ fontSize: 11, color: '#8c8c8c', marginLeft: 2 }}>pts</Text>
               </div>
 
@@ -188,13 +253,14 @@ const LetterGradeSlider: React.FC<LetterGradeSliderProps> = ({
                 okText="Eliminar"
                 cancelText="Cancelar"
                 okButtonProps={{ danger: true }}
+                disabled={grade.max !== lowestGrade.max}
               >
                 <Button
                   type="text"
                   danger
                   icon={<DeleteOutlined />}
                   size="small"
-                  disabled={grades.length <= 2}
+                  disabled={grades.length <= 2 || grade.max !== lowestGrade.max}
                   style={{ borderRadius: 6 }}
                 />
               </Popconfirm>
