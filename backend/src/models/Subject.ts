@@ -5,6 +5,7 @@ interface SubjectAttributes {
   id: number;
   name: string;
   subjectGroupId?: number | null;
+  usesLiteralGrades?: boolean;
 }
 
 interface SubjectCreationAttributes extends Optional<SubjectAttributes, 'id'> { }
@@ -13,6 +14,7 @@ class Subject extends Model<SubjectAttributes, SubjectCreationAttributes> implem
   public id!: number;
   public name!: string;
   public subjectGroupId?: number | null;
+  public usesLiteralGrades?: boolean;
 
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
@@ -33,6 +35,11 @@ Subject.init(
     subjectGroupId: {
       type: DataTypes.INTEGER,
       allowNull: true,
+    },
+    usesLiteralGrades: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
     },
   },
   {

@@ -19,7 +19,8 @@ import {
   Collapse,
   Typography,
   Tooltip,
-  Empty
+  Empty,
+  Switch
 } from 'antd';
 import {
   PlusOutlined,
@@ -89,6 +90,7 @@ type SubjectGroup = BaseCatalogItem;
 interface Subject extends BaseCatalogItem {
   subjectGroupId?: number | null;
   subjectGroup?: SubjectGroup | null;
+  usesLiteralGrades?: boolean;
 }
 
 type Specialization = BaseCatalogItem;
@@ -773,6 +775,7 @@ const AcademicManagement: React.FC = () => {
       editCatalogForm.setFieldsValue({
         name: subjectRecord.name,
         subjectGroupId: subjectRecord.subjectGroupId ?? null,
+        usesLiteralGrades: subjectRecord.usesLiteralGrades ?? false,
       });
     } else {
       editCatalogForm.setFieldsValue({ name: record.name });
@@ -780,7 +783,7 @@ const AcademicManagement: React.FC = () => {
     setEditCatalogVisible(true);
   };
 
-  const handleEditCatalog = async (values: { name: string; isDiversified?: boolean; subjectGroupId?: number | null }) => {
+  const handleEditCatalog = async (values: { name: string; isDiversified?: boolean; subjectGroupId?: number | null; usesLiteralGrades?: boolean }) => {
     if (!editCatalogTarget) return;
     try {
       let url = '';
@@ -800,6 +803,7 @@ const AcademicManagement: React.FC = () => {
         await api.put(`${url}/${editCatalogTarget.id}`, {
           name: values.name,
           subjectGroupId: values.subjectGroupId ?? null,
+          usesLiteralGrades: values.usesLiteralGrades ?? false,
         });
       } else {
         await api.put(`${url}/${editCatalogTarget.id}`, { name: values.name });
@@ -1666,14 +1670,19 @@ const AcademicManagement: React.FC = () => {
             )}
 
             {editCatalogTarget?.type === 'subject' && (
-              <Form.Item name="subjectGroupId" label={<Text style={{ fontWeight: 700 }}>Grupo de Materia</Text>}>
-                <Select
-                  allowClear
-                  placeholder="Sin grupo asignado"
-                  size="large"
-                  options={subjectGroups.map((g) => ({ label: g.name, value: g.id }))}
-                />
-              </Form.Item>
+              <>
+                <Form.Item name="subjectGroupId" label={<Text style={{ fontWeight: 700 }}>Grupo de Materia</Text>}>
+                  <Select
+                    allowClear
+                    placeholder="Sin grupo asignado"
+                    size="large"
+                    options={subjectGroups.map((g) => ({ label: g.name, value: g.id }))}
+                  />
+                </Form.Item>
+                <Form.Item name="usesLiteralGrades" valuePropName="checked" style={{ marginBottom: 24 }}>
+                  <Switch /><Text style={{ fontWeight: 600, marginLeft: 8 }}>Usar Notas Literales (A, B, C...)</Text>
+                </Form.Item>
+              </>
             )}
 
             <Button type="primary" htmlType="submit" block size="large" style={{

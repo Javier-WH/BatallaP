@@ -527,16 +527,16 @@ export const getSubjects = async (req: Request, res: Response) => {
 };
 
 export const createSubject = async (req: Request, res: Response) => {
-  const { name, subjectGroupId } = req.body as { name: string; subjectGroupId?: number | null };
-  const subject = await Subject.create({ name, subjectGroupId: subjectGroupId ?? null });
+  const { name, subjectGroupId, usesLiteralGrades } = req.body as { name: string; subjectGroupId?: number | null; usesLiteralGrades?: boolean };
+  const subject = await Subject.create({ name, subjectGroupId: subjectGroupId ?? null, usesLiteralGrades: usesLiteralGrades ?? false });
   res.json(subject);
 };
 
 export const updateSubject = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { name, subjectGroupId } = req.body as { name?: string; subjectGroupId?: number | null };
-    await Subject.update({ name, subjectGroupId: subjectGroupId ?? null }, { where: { id } });
+    const { name, subjectGroupId, usesLiteralGrades } = req.body as { name?: string; subjectGroupId?: number | null; usesLiteralGrades?: boolean };
+    await Subject.update({ name, subjectGroupId: subjectGroupId ?? null, usesLiteralGrades: usesLiteralGrades ?? false }, { where: { id } });
     res.json({ message: 'Subject updated' });
   } catch (error) {
     res.status(500).json({ error: 'Error updating subject' });

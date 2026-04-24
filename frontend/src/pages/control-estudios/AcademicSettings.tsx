@@ -15,6 +15,8 @@ import {
 import dayjs from 'dayjs';
 import api from '@/services/api';
 import { useGradeRounding } from '@/context/GradeRoundingContext';
+import LetterGradeSlider from '@/components/LetterGradeSlider';
+import type { LetterGrade } from '@/components/LetterGradeSlider';
 
 const { Text, Title } = Typography;
 
@@ -38,6 +40,7 @@ interface SettingsFormValues {
   grade_lock_mode?: boolean;
   council_points_limit?: number;
   enable_grade_rounding?: boolean;
+  letter_grades?: LetterGrade[];
 }
 
 interface TermFormValues {
@@ -57,6 +60,7 @@ const AcademicSettings: React.FC = () => {
   const [showTermModal, setShowTermModal] = useState(false);
   const [editingTerm, setEditingTerm] = useState<Term | null>(null);
   const [termSubmitting, setTermSubmitting] = useState(false);
+  const [letterGrades, setLetterGrades] = useState<LetterGrade[]>([]);
   const { refreshSetting } = useGradeRounding();
 
   const fetchSettings = useCallback(async () => {
@@ -70,6 +74,27 @@ const AcademicSettings: React.FC = () => {
         council_points_limit: res.data.council_points_limit !== undefined ? Number(res.data.council_points_limit) : 2,
         enable_grade_rounding: res.data.enable_grade_rounding === 'true',
       });
+      
+      // Load letter grades configuration
+      if (res.data.letter_grades) {
+        try {
+          const parsed = typeof res.data.letter_grades === 'string' 
+            ? JSON.parse(res.data.letter_grades) 
+            : res.data.letter_grades;
+          setLetterGrades(parsed.scale || []);
+        } catch (e) {
+          console.error('Error parsing letter_grades', e);
+          setLetterGrades([]);
+        }
+      } else {
+        setLetterGrades([
+          { letter: 'A', max: 20 },
+          { letter: 'B', max: 15 },
+          { letter: 'C', max: 10 },
+          { letter: 'D', max: 5 },
+          { letter: 'E', max: 0 }
+        ]);
+      }
     } catch (error) {
       console.error('Error fetching settings', error);
       message.error('Error al cargar configuraciones');
@@ -105,7 +130,8 @@ const AcademicSettings: React.FC = () => {
       const payload = {
         ...values,
         grade_lock_mode: String(values.grade_lock_mode),
-        enable_grade_rounding: String(values.enable_grade_rounding)
+        enable_grade_rounding: String(values.enable_grade_rounding),
+        letter_grades: JSON.stringify({ scale: letterGrades })
       };
       await api.post('/settings', { settings: payload });
       message.success('Configuraciones guardadas correctamente');
@@ -475,6 +501,21 @@ const AcademicSettings: React.FC = () => {
                 <Form.Item name="enable_grade_rounding" valuePropName="checked" noStyle>
                   <Switch />
                 </Form.Item>
+              </div>
+
+              <div style={{
+                background: '#fff7e6',
+                padding: '20px',
+                borderRadius: 16,
+                marginTop: 8,
+                marginBottom: 24,
+                border: '1px dashed #ffe7ba'
+              }}>
+                <LetterGradeSlider
+                  value={letterGrades}
+                  onChange={setLetterGrades}
+                  maxGrade={form.getFieldValue('max_grade') || 20}
+                />
               </div>
 
               <Button
