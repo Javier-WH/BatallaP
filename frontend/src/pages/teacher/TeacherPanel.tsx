@@ -6,6 +6,8 @@ import type { ColumnsType } from 'antd/es/table';
 import { isAxiosError } from 'axios';
 import api from '@/services/api';
 import dayjs from 'dayjs';
+import { useGradeRounding } from '@/context/GradeRoundingContext';
+import { formatGrade } from '@/utils/gradeFormat';
 
 const { Option } = Select;
 const { Title, Text } = Typography;
@@ -200,6 +202,7 @@ const TeacherPanel: React.FC = () => {
   const [activeTab, setActiveTab] = useState('1');
   const [maxGrade, setMaxGrade] = useState<number>(20);
   const instrumentSelection = Form.useWatch('instrumentOption', planForm);
+  const { enableRounding } = useGradeRounding();
 
   const isSelectedTermBlocked = useMemo(() => {
     if (!selectedTerm) return false;
@@ -695,7 +698,7 @@ const TeacherPanel: React.FC = () => {
                               })}
                               <td style={{ padding: '8px 16px', borderBottom: '1px solid #f0f0f0', textAlign: 'center', background: '#fafafa', fontWeight: 'bold' }}>
                                 <Tag color={rowTotal >= (maxGrade * 0.5) ? 'green' : 'red'} style={{ margin: 0 }}>
-                                  {rowTotal.toFixed(2)}
+                                  {formatGrade(rowTotal, enableRounding)}
                                 </Tag>
                               </td>
                             </tr>

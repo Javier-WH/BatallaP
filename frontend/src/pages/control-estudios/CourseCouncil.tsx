@@ -8,6 +8,8 @@ import {
   UserOutlined
 } from '@ant-design/icons';
 import api from '@/services/api';
+import { useGradeRounding } from '@/context/GradeRoundingContext';
+import { formatGrade } from '@/utils/gradeFormat';
 
 const { Title, Text } = Typography;
 
@@ -70,6 +72,7 @@ const CourseCouncil: React.FC = () => {
   const [pointsLimit, setPointsLimit] = useState<number>(2);
 
   const [filterYear, setFilterYear] = useState<string>('');
+  const { enableRounding } = useGradeRounding();
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -509,7 +512,7 @@ const CourseCouncil: React.FC = () => {
           return (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', background: average < 10 ? '#fff1f0' : '#f0f5ff', padding: '4px', borderRadius: 8 }}>
               <Text style={{ fontSize: 16, fontWeight: 900, color: average < 10 ? '#cf1322' : '#096dd9' }}>
-                {average.toFixed(2)}
+                {formatGrade(average, enableRounding)}
               </Text>
               <Text style={{ fontSize: 9, fontWeight: 800, color: average < 10 ? '#cf1322' : '#096dd9', textTransform: 'uppercase' }}>Final</Text>
             </div>
@@ -579,7 +582,7 @@ const CourseCouncil: React.FC = () => {
 
               <Tooltip title="Nota Base">
                 <Text style={{ fontSize: 14, color: baseGrade < 10 ? '#cf1322' : '#262626', width: 35, textAlign: 'center', fontWeight: 600 }}>
-                  {baseGrade}
+                  {formatGrade(baseGrade, enableRounding)}
                 </Text>
               </Tooltip>
 
@@ -606,7 +609,7 @@ const CourseCouncil: React.FC = () => {
                   border: `1px solid ${totalGrade < 10 ? '#ffa39e' : '#b7eb8f'}`
                 }}>
                   <Text style={{ fontSize: 14, fontWeight: 800, color: totalGrade < 10 ? '#cf1322' : '#389e0d' }}>
-                    {totalGrade}
+                    {formatGrade(totalGrade, enableRounding)}
                   </Text>
                 </div>
               </Tooltip>

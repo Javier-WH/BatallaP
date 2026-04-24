@@ -6,15 +6,19 @@ export const getSetting = async (req: Request, res: Response) => {
   try {
     const { key } = req.params;
     const setting = await Setting.findOne({ where: { key } });
-    
+
     if (!setting) {
       // Return a default value for max_grade if not found
       if (key === 'max_grade') {
         return res.json({ key: 'max_grade', value: '20' });
       }
+      // Return a default value for enable_grade_rounding if not found
+      if (key === 'enable_grade_rounding') {
+        return res.json({ key: 'enable_grade_rounding', value: 'false' });
+      }
       return res.status(404).json({ message: 'Configuración no encontrada' });
     }
-    
+
     res.json(setting);
   } catch (error) {
     console.error('Error al obtener configuración:', error);
@@ -66,6 +70,10 @@ export const getSettings = async (req: Request, res: Response) => {
         // Return default for max_grade if not found
         if (key === 'max_grade') {
           return { key: 'max_grade', value: '20' };
+        }
+        // Return default for enable_grade_rounding if not found
+        if (key === 'enable_grade_rounding') {
+          return { key: 'enable_grade_rounding', value: 'false' };
         }
         return { key, value: '' };
       }

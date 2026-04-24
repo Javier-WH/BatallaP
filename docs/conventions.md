@@ -155,3 +155,55 @@ Usar `backend/src/services/subjectOrderService.ts`:
 Cuando una inscripción arrastra materias pendientes de un grado anterior:
 - Materias del grado actual primero (en su orden canónico).
 - Materias pendientes al final como bloque separado, ordenadas alfabéticamente por nombre.
+
+## Formateo y redondeo de notas
+
+**Regla**: Toda nota numérica que se muestre en la UI debe usar la función `formatGrade()` de `frontend/src/utils/gradeFormat.ts`, la cual aplica el redondeo según la configuración global.
+
+### Configuración global
+
+- El setting `enable_grade_rounding` (key: `'enable_grade_rounding'`, value: `'true'`/`'false'`) se gestiona en "Parámetros Académicos" (`AcademicSettings.tsx`).
+- El backend **siempre** retorna valores exactos de la base de datos.
+- El frontend es responsable de aplicar el redondeo **solo para visualización**.
+- Cuando el setting cambia, el contexto `GradeRoundingContext` se actualiza automáticamente y todos los componentes que lo usan re-renderizan sin necesidad de recargar la página.
+
+### Helper frontend
+
+Usar `frontend/src/utils/gradeFormat.ts`:
+
+```typescript
+import { formatGrade } from '@/utils/gradeFormat';
+import { useGradeRounding } from '@/context/GradeRoundingContext';
+
+// En el componente
+const { enableRounding } = useGradeRounding();
+
+// Al mostrar una nota
+<Text>{formatGrade(gradeValue, enableRounding)}</Text>
+```
+
+### Comportamiento
+
+| Setting activado | Formato | Ejemplos |
+|-----------------|---------|----------|
+| **true** | 1 decimal, redondeo estándar (10.5 → 11) | `10.5` → `11.0`, `10.24` → `10.2`, `9.99` → `10.0` |
+| **false** (default) | 2 decimales, sin redondeo | `10.5` → `10.50`, `10.24` → `10.24`, `9.99` → `9.99` |
+
+### Aplicación
+
+**Frontend** – Aplicar en todo componente que muestre notas numéricas:
+- `TeacherPanel.tsx`: rowTotal
+- `StudentAcademicRecord.tsx`: finalTermScore, avg
+- `FinalGradesEdit.tsx`: average
+- `CourseCouncil.tsx`: average, baseGrade, totalGrade
+
+⚠️ **No aplicar** en:
+- `InputNumber` para edición (mantener `precision={2}` para entrada exacta)
+- Valores que se envían al backend (siempre enviar valores exactos)
+
+### Regla de implementación
+
+Al agregar una nueva vista que muestre notas:
+1. Importar `useGradeRounding` y `formatGrade`
+2. Usar `formatGrade(valor, enableRounding)` en todos los displays de notas
+3. Mantener los inputs de edición sin redondeo (valores exactos)

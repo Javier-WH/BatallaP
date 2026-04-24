@@ -3,6 +3,7 @@ import Login from '@/pages/Login';
 import MainLayout from '@/pages/MainLayout';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { SchoolProvider } from '@/context/SchoolContext';
+import { GradeRoundingProvider } from '@/context/GradeRoundingContext';
 import '@/index.css';
 
 // Shared Components
@@ -189,7 +190,9 @@ function App() {
     <Router>
       <SchoolProvider>
         <AuthProvider>
-          <AppRoutes />
+          <GradeRoundingProvider>
+            <AppRoutes />
+          </GradeRoundingProvider>
         </AuthProvider>
       </SchoolProvider>
     </Router>

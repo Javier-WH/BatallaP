@@ -14,6 +14,7 @@ import {
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import api from '@/services/api';
+import { useGradeRounding } from '@/context/GradeRoundingContext';
 
 const { Text, Title } = Typography;
 
@@ -36,6 +37,7 @@ interface SettingsFormValues {
   passing_grade?: number;
   grade_lock_mode?: boolean;
   council_points_limit?: number;
+  enable_grade_rounding?: boolean;
 }
 
 interface TermFormValues {
@@ -55,6 +57,7 @@ const AcademicSettings: React.FC = () => {
   const [showTermModal, setShowTermModal] = useState(false);
   const [editingTerm, setEditingTerm] = useState<Term | null>(null);
   const [termSubmitting, setTermSubmitting] = useState(false);
+  const { refreshSetting } = useGradeRounding();
 
   const fetchSettings = useCallback(async () => {
     setLoading(true);
@@ -65,6 +68,7 @@ const AcademicSettings: React.FC = () => {
         passing_grade: res.data.passing_grade !== undefined ? Number(res.data.passing_grade) : 10,
         grade_lock_mode: res.data.grade_lock_mode === 'true',
         council_points_limit: res.data.council_points_limit !== undefined ? Number(res.data.council_points_limit) : 2,
+        enable_grade_rounding: res.data.enable_grade_rounding === 'true',
       });
     } catch (error) {
       console.error('Error fetching settings', error);
@@ -100,10 +104,13 @@ const AcademicSettings: React.FC = () => {
     try {
       const payload = {
         ...values,
-        grade_lock_mode: String(values.grade_lock_mode)
+        grade_lock_mode: String(values.grade_lock_mode),
+        enable_grade_rounding: String(values.enable_grade_rounding)
       };
       await api.post('/settings', { settings: payload });
       message.success('Configuraciones guardadas correctamente');
+      // Refresh the rounding setting globally so changes take effect immediately
+      await refreshSetting();
     } catch (error) {
       console.error('Error saving settings', error);
       message.error('Error al guardar configuraciones');
@@ -446,6 +453,26 @@ const AcademicSettings: React.FC = () => {
                   <Text style={{ fontSize: 11, color: '#8c8c8c' }}>Restringir por fecha automáticamente</Text>
                 </div>
                 <Form.Item name="grade_lock_mode" valuePropName="checked" noStyle>
+                  <Switch />
+                </Form.Item>
+              </div>
+
+              <div style={{
+                background: '#f0f9ff',
+                padding: '16px 20px',
+                borderRadius: 16,
+                marginTop: 8,
+                marginBottom: 24,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                border: '1px dashed #91caff'
+              }}>
+                <div>
+                  <Text style={{ display: 'block', fontWeight: 700, fontSize: 14, color: '#0050b3' }}>Redondeo de Notas</Text>
+                  <Text style={{ fontSize: 11, color: '#8c8c8c' }}>Activar para redondear al mostrar (10.5 → 11, 10.24 → 10.2)</Text>
+                </div>
+                <Form.Item name="enable_grade_rounding" valuePropName="checked" noStyle>
                   <Switch />
                 </Form.Item>
               </div>

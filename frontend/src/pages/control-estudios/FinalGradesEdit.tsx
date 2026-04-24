@@ -13,6 +13,8 @@ import finalGradeEditService, { type FinalGrade, type GradeType } from '@/servic
 import { gradeEditPermissionService } from '@/services/gradeEditPermissionService';
 import StudentPlantelesModal from '@/components/shared/StudentPlantelesModal';
 import PlantelAsyncSelect from '@/components/shared/PlantelAsyncSelect';
+import { useGradeRounding } from '@/context/GradeRoundingContext';
+import { formatGrade } from '@/utils/gradeFormat';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
@@ -49,14 +51,14 @@ const FinalGradesEdit: React.FC = () => {
   const [originalStudentRows, setOriginalStudentRows] = useState<StudentRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingGrades, setLoadingGrades] = useState(false);
-  const [hasPermission, setHasPermission] = useState(false);
-  const [permissionInfo, setPermissionInfo] = useState<PermissionInfo | null>(null);
+  const [permission, setPermission] = useState<PermissionInfo | null>(null);
   const [showReasonModal, setShowReasonModal] = useState(false);
   const [reasonForm] = Form.useForm();
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [pendingFilterChange, setPendingFilterChange] = useState<{ type: string; value: number | string | null } | null>(null);
   const [studentPlantelesModalOpen, setStudentPlantelesModalOpen] = useState(false);
   const [studentPlantelesContext, setStudentPlantelesContext] = useState<{ studentId: number; studentName: string } | null>(null);
+  const { enableRounding } = useGradeRounding();
 
   useEffect(() => {
     fetchSchoolPeriods();
@@ -77,14 +79,12 @@ const FinalGradesEdit: React.FC = () => {
   const checkPermissionForPeriod = async (periodId: number) => {
     try {
       const response = await gradeEditPermissionService.checkPermission(periodId);
-      setHasPermission(response.hasPermission);
-      setPermissionInfo(response);
+      setPermission(response);
       return response.hasPermission;
     } catch (err: unknown) {
       const error = err as { response?: { status: number } };
       if (error.response?.status === 403) {
-        setHasPermission(false);
-        setPermissionInfo({ hasPermission: false, reason: 'No tiene permiso para este período' });
+        setPermission({ hasPermission: false, reason: 'No tiene permiso para este período' });
         return false;
       }
       console.error('Error checking permission:', err);
@@ -104,8 +104,7 @@ const FinalGradesEdit: React.FC = () => {
     setSelectedSection(null);
     setFinalGrades([]);
     setStudentRows([]);
-    setHasPermission(false);
-    setPermissionInfo(null);
+    setPermission(null);
 
     if (!periodId) return;
 
@@ -333,14 +332,14 @@ const FinalGradesEdit: React.FC = () => {
 
   // Save all changes
   const handleSaveChanges = async (reason: string, actCode: string) => {
-    if (!permissionInfo || !selectedPeriod) {
+    if (!permission || !selectedPeriod) {
       message.error('No se puede guardar: información faltante');
       return;
     }
 
     try {
       setLoading(true);
-      const permId = permissionInfo.permission?.id || (permissionInfo as { id?: number }).id;
+      const permId = permission.permission?.id || (permission as { id?: number }).id;
       if (!permId) {
         message.error('No se puede guardar: ID de permiso no encontrado');
         return;
@@ -507,7 +506,7 @@ const FinalGradesEdit: React.FC = () => {
               size="small"
               icon={<BankOutlined />}
               onClick={() => handleOpenStudentPlantelesModal(record.studentId, studentName)}
-              disabled={!hasPermission}
+              disabled={!permission?.hasPermission}
               title="Configurar fila"
             />
           );
@@ -554,7 +553,7 @@ const FinalGradesEdit: React.FC = () => {
           
           return (
             <Tag color={average >= 10 ? 'success' : 'error'} style={{ fontSize: 13, padding: '2px 8px' }}>
-              {average.toFixed(2)}
+              {formatGrade(average, enableRounding)}
             </Tag>
           );
         }
@@ -585,7 +584,7 @@ const FinalGradesEdit: React.FC = () => {
                 value={gradeData.plantelId}
                 currentLabel={gradeData.plantelCode}
                 onChange={(plantelId, plantel) => handlePlantelChange(record.studentId, subjectKey, plantelId, plantel?.code)}
-                disabled={!hasPermission}
+                disabled={!permission?.hasPermission}
                 style={{ width: '100%' }}
               />
               <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -599,7 +598,7 @@ const FinalGradesEdit: React.FC = () => {
                   precision={2}
                   size="small"
                   style={{ flex: 1 }}
-                  disabled={!hasPermission}
+                  disabled={!permission?.hasPermission}
                   controls={false}
                   data-student-id={record.studentId}
                   data-subject-index={subjectIndex}
@@ -609,7 +608,7 @@ const FinalGradesEdit: React.FC = () => {
                   onChange={(value) => handleGradeTypeChange(record.studentId, subjectKey, value as GradeType)}
                   size="small"
                   style={{ width: 100, flexShrink: 0 }}
-                  disabled={!hasPermission}
+                  disabled={!permission?.hasPermission}
                 >
                   <Option value="regular">Regular</Option>
                   <Option value="revision">Revisión</Option>
@@ -626,7 +625,7 @@ const FinalGradesEdit: React.FC = () => {
     });
 
     return [...baseColumns, ...subjectColumns];
-  }, [uniqueSubjects, hasPermission, handleKeyDown, handleGradeValueChange, handleGradeTypeChange, handleOpenStudentPlantelesModal, handlePlantelChange]);
+  }, [uniqueSubjects, permission?.hasPermission, enableRounding, handleKeyDown, handleGradeValueChange, handleGradeTypeChange, handleOpenStudentPlantelesModal, handlePlantelChange]);
 
   return (
     <div style={{ padding: '24px' }}>
@@ -660,10 +659,10 @@ const FinalGradesEdit: React.FC = () => {
         </Col>
       </Row>
 
-      {!hasPermission && selectedPeriod && permissionInfo && (
+      {!permission?.hasPermission && selectedPeriod && permission && (
         <Alert
           message="Sin Permisos"
-          description={permissionInfo.reason || 'No tiene permiso para modificar notas de este período'}
+          description={permission.reason || 'No tiene permiso para modificar notas de este período'}
           type="warning"
           icon={<WarningOutlined />}
           showIcon
@@ -672,7 +671,7 @@ const FinalGradesEdit: React.FC = () => {
         />
       )}
 
-      {hasPermission && selectedPeriod && (
+      {permission?.hasPermission && selectedPeriod && (
         <Alert
           message="Permisos Activos"
           description="Tiene permiso para modificar notas de este período. Todas las modificaciones quedarán registradas en el historial de auditoría."
@@ -754,7 +753,7 @@ const FinalGradesEdit: React.FC = () => {
                     type="primary"
                     icon={<SaveOutlined />}
                     onClick={() => setShowReasonModal(true)}
-                    disabled={!hasPermission || !hasUnsavedChanges}
+                    disabled={!permission?.hasPermission || !hasUnsavedChanges}
                     loading={loading}
                     block
                   >

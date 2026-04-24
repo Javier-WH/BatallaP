@@ -27,6 +27,8 @@ import {
   DeploymentUnitOutlined
 } from '@ant-design/icons';
 import api from '@/services/api';
+import { useGradeRounding } from '@/context/GradeRoundingContext';
+import { formatGrade } from '@/utils/gradeFormat';
 
 const { Title, Text } = Typography;
 const { Panel } = Collapse;
@@ -154,6 +156,7 @@ const StudentAcademicRecord: React.FC<StudentAcademicRecordProps> = ({ personId,
   const [adminLoading, setAdminLoading] = useState(false);
   const [adminError, setAdminError] = useState<string | null>(null);
   const [adminData, setAdminData] = useState<AdminOverviewData | null>(null);
+  const { enableRounding } = useGradeRounding();
 
   useEffect(() => {
     if (mode !== 'student') return;
@@ -500,7 +503,7 @@ const StudentAcademicRecord: React.FC<StudentAcademicRecordProps> = ({ personId,
                                       color: finalTermScore >= (maxGrade / 2) ? '#52c41a' : '#f5222d',
                                       fontSize: 14
                                     }}>
-                                      {finalTermScore % 1 === 0 ? finalTermScore.toFixed(0) : finalTermScore.toFixed(2)}
+                                      {formatGrade(finalTermScore, enableRounding)}
                                     </Text>
                                   ) : (
                                     <Text style={{ color: '#d9d9d9' }}>—</Text>
@@ -543,7 +546,7 @@ const StudentAcademicRecord: React.FC<StudentAcademicRecordProps> = ({ personId,
                             margin: '0 auto'
                           }}>
                             <Text strong style={{ color: avg >= (maxGrade / 2) ? '#1890ff' : '#f5222d', fontSize: 15 }}>
-                              {avg % 1 === 0 ? avg.toFixed(0) : avg.toFixed(1)}
+                              {formatGrade(avg, enableRounding)}
                             </Text>
                           </div>
                         );
