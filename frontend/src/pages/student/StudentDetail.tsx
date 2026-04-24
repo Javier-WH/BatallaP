@@ -152,7 +152,7 @@ const StudentDetail: React.FC<StudentDetailProps> = ({ personId: propId }) => {
     const fatherAssignment = getGuardian('father');
     const repAssignment = getGuardian('representative');
 
-    const renderGuardianSection = (assignment: StudentGuardian | undefined, title: string, icon: React.ReactNode) => {
+    const renderGuardianSection = (assignment: StudentGuardian | undefined, title: string, icon: React.ReactNode, accentColor: string) => {
       if (!assignment || !assignment.profile) return null;
       const { profile } = assignment;
       const isRep = assignment.isRepresentative;
@@ -161,22 +161,31 @@ const StudentDetail: React.FC<StudentDetailProps> = ({ personId: propId }) => {
         <Card
           size="small"
           className="inner-premium-card"
-          title={<Space><div className="icon-wrapper-mini">{icon}</div><Text strong>{title}</Text></Space>}
-          extra={isRep && <Tag color="gold" style={{ borderRadius: 6, fontWeight: 800 }}>REPRESENTANTE LEGAL</Tag>}
+          title={
+            <Space>
+              <div style={{ width: 28, height: 28, borderRadius: 8, background: accentColor, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                {icon}
+              </div>
+              <Text strong style={{ color: '#0f172a', fontSize: 13, fontWeight: 700 }}>{title}</Text>
+            </Space>
+          }
+          extra={isRep && <Tag color="warning" style={{ borderRadius: 6, fontWeight: 800, fontSize: 10, margin: 0 }}>REPRESENTANTE LEGAL</Tag>}
           style={{ marginBottom: 16 }}
+          headStyle={{ borderBottom: '1px solid #f1f5f9', padding: '12px 20px' }}
+          bodyStyle={{ padding: '16px 20px' }}
         >
           <Descriptions column={2} size="small" layout="vertical" className="dossier-descriptions">
             <Descriptions.Item label="Nombre Completo">{profile.firstName} {profile.lastName}</Descriptions.Item>
             <Descriptions.Item label="Identificación">{profile.documentType}-{profile.document}</Descriptions.Item>
             <Descriptions.Item label="Teléfono / Email">
               <Space direction="vertical" size={0}>
-                <Text style={{ fontSize: 13 }}>{profile.phone || 'N/A'}</Text>
-                <Text type="secondary" style={{ fontSize: 11 }}>{profile.email || 'Sin correo'}</Text>
+                <Text style={{ fontSize: 13, color: '#0f172a' }}>{profile.phone || 'N/A'}</Text>
+                <Text type="secondary" style={{ fontSize: 11, color: '#64748b' }}>{profile.email || 'Sin correo'}</Text>
               </Space>
             </Descriptions.Item>
             <Descriptions.Item label="Dirección">
-              <Text style={{ fontSize: 12 }}>{profile.address}</Text>
-              <div style={{ fontSize: 10, color: '#8c8c8c' }}>{profile.residenceMunicipality}, {profile.residenceState}</div>
+              <Text style={{ fontSize: 13, color: '#0f172a' }}>{profile.address}</Text>
+              <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>{profile.residenceMunicipality}, {profile.residenceState}</div>
             </Descriptions.Item>
           </Descriptions>
         </Card>
@@ -187,63 +196,63 @@ const StudentDetail: React.FC<StudentDetailProps> = ({ personId: propId }) => {
       <div className="animate-card delay-1" style={{ padding: '0 4px' }}>
         <Row gutter={24}>
           <Col span={24} lg={12}>
-            <Title level={5} style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
-              <div style={{ width: 4, height: 18, background: '#1890ff', borderRadius: 2 }} />
-              Identidad Estudiantil
-            </Title>
-            <Card className="inner-premium-card" style={{ marginBottom: 24 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+              <div className="section-title-bar" />
+              <Title level={5} style={{ margin: 0, fontWeight: 700, color: '#0f172a', fontSize: 15 }}>Identidad Estudiantil</Title>
+            </div>
+            <Card className="inner-premium-card" style={{ marginBottom: 24 }} bodyStyle={{ padding: '20px 24px' }}>
               <Descriptions column={2} size="small" layout="vertical" className="dossier-descriptions">
                 <Descriptions.Item label="Nombre">{studentData.firstName} {studentData.lastName}</Descriptions.Item>
                 <Descriptions.Item label="Documento">{studentData.documentType}-{studentData.document || 'N/A'}</Descriptions.Item>
                 <Descriptions.Item label="Nacimiento">{studentData.birthdate ? dayjs(studentData.birthdate).format('DD MMMM, YYYY') : 'N/A'}</Descriptions.Item>
                 <Descriptions.Item label="Género">{studentData.gender === 'M' ? 'Masculino' : 'Femenino'}</Descriptions.Item>
                 <Descriptions.Item label="Lugar de Nacimiento" span={2}>
-                  <Text style={{ fontSize: 13 }}>{studentData.residence?.birthMunicipality}, {studentData.residence?.birthState}</Text>
+                  <Text style={{ fontSize: 13, color: '#0f172a' }}>{studentData.residence?.birthMunicipality}, {studentData.residence?.birthState}</Text>
                 </Descriptions.Item>
               </Descriptions>
             </Card>
 
-            <Title level={5} style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
-              <div style={{ width: 4, height: 18, background: '#1890ff', borderRadius: 2 }} />
-              Contacto y Ubicación
-            </Title>
-            <Card className="inner-premium-card" style={{ marginBottom: 24 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+              <div className="section-title-bar" />
+              <Title level={5} style={{ margin: 0, fontWeight: 700, color: '#0f172a', fontSize: 15 }}>Contacto y Ubicación</Title>
+            </div>
+            <Card className="inner-premium-card" style={{ marginBottom: 24 }} bodyStyle={{ padding: '20px 24px' }}>
               <Descriptions column={2} size="small" layout="vertical" className="dossier-descriptions">
                 <Descriptions.Item label="Teléfonos">{studentData.contact?.phone1 || 'N/A'} {studentData.contact?.phone2 ? ' / ' + studentData.contact?.phone2 : ''}</Descriptions.Item>
                 <Descriptions.Item label="Email">{studentData.contact?.email || 'N/A'}</Descriptions.Item>
                 <Descriptions.Item label="Residencia" span={2}>
-                  <Text style={{ fontSize: 13 }}>{studentData.contact?.address}</Text>
-                  <div style={{ fontSize: 11, color: '#8c8c8c' }}>{studentData.residence?.residenceParish}, {studentData.residence?.residenceMunicipality}, {studentData.residence?.residenceState}</div>
+                  <Text style={{ fontSize: 13, color: '#0f172a' }}>{studentData.contact?.address}</Text>
+                  <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>{studentData.residence?.residenceParish}, {studentData.residence?.residenceMunicipality}, {studentData.residence?.residenceState}</div>
                 </Descriptions.Item>
               </Descriptions>
             </Card>
           </Col>
 
           <Col span={24} lg={12}>
-            <Title level={5} style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
-              <div style={{ width: 4, height: 18, background: '#722ed1', borderRadius: 2 }} />
-              Grupo Familiar
-            </Title>
-            {renderGuardianSection(motherAssignment, "Madre", <SolutionOutlined style={{ color: '#eb2f96' }} />)}
-            {renderGuardianSection(fatherAssignment, "Padre", <SolutionOutlined style={{ color: '#1890ff' }} />)}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+              <div className="section-title-bar" />
+              <Title level={5} style={{ margin: 0, fontWeight: 700, color: '#0f172a', fontSize: 15 }}>Grupo Familiar</Title>
+            </div>
+            {renderGuardianSection(motherAssignment, "Madre", <SolutionOutlined style={{ color: '#ffffff' }} />, '#fce7f3')}
+            {renderGuardianSection(fatherAssignment, "Padre", <SolutionOutlined style={{ color: '#ffffff' }} />, '#dbeafe')}
             {repAssignment && repAssignment.relationship === 'representative' &&
-              renderGuardianSection(repAssignment, "Representante (Detalle)", <SolutionOutlined style={{ color: '#faad14' }} />)}
+              renderGuardianSection(repAssignment, "Representante (Detalle)", <SolutionOutlined style={{ color: '#ffffff' }} />, '#fef3c7')}
 
             {enrollmentQuestions.length > 0 && (
               <>
-                <Title level={5} style={{ marginTop: 8, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <div style={{ width: 4, height: 18, background: '#52c41a', borderRadius: 2 }} />
-                  Información Socio-Educativa
-                </Title>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 8, marginBottom: 16 }}>
+                  <div className="section-title-bar" />
+                  <Title level={5} style={{ margin: 0, fontWeight: 700, color: '#0f172a', fontSize: 15 }}>Información Socio-Educativa</Title>
+                </div>
                 <Card className="inner-premium-card" styles={{ body: { padding: 0 } }}>
                   <List
                     size="small"
                     dataSource={enrollmentQuestions}
                     renderItem={(item) => (
-                      <List.Item style={{ padding: '12px 20px', borderBottom: '1px solid #f0f0f0' }}>
+                      <List.Item style={{ padding: '14px 24px', borderBottom: '1px solid #f1f5f9' }}>
                         <List.Item.Meta
-                          title={<Text style={{ fontSize: 12, color: '#8c8c8c', textTransform: 'uppercase', fontWeight: 600 }}>{item.prompt}</Text>}
-                          description={<Text strong style={{ color: '#262626' }}>{Array.isArray(item.answer) ? item.answer.join(', ') : (item.answer || '-')}</Text>}
+                          title={<Text style={{ fontSize: 11, color: '#94a3b8', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.05em' }}>{item.prompt}</Text>}
+                          description={<Text strong style={{ color: '#0f172a', fontSize: 13 }}>{Array.isArray(item.answer) ? item.answer.join(', ') : (item.answer || '-')}</Text>}
                         />
                       </List.Item>
                     )}
@@ -291,20 +300,22 @@ const StudentDetail: React.FC<StudentDetailProps> = ({ personId: propId }) => {
         .delay-1 { animation-delay: 0.1s; }
         
         .premium-detail-card {
-          border-radius: 24px !important;
-          border: 1px solid rgba(0,0,0,0.06) !important;
-          box-shadow: 0 10px 40px rgba(0,0,0,0.04) !important;
+          border-radius: 20px !important;
+          border: 1px solid #e2e8f0 !important;
+          box-shadow: 0 10px 40px rgba(15, 23, 42, 0.04) !important;
           overflow: hidden;
+          background: #ffffff !important;
         }
 
         .inner-premium-card {
-          border-radius: 16px !important;
-          border: 1px solid #f0f0f0 !important;
+          border-radius: 14px !important;
+          border: 1px solid #e2e8f0 !important;
           transition: all 0.3s ease;
+          background: #ffffff !important;
         }
         .inner-premium-card:hover {
-          border-color: #d9d9d9 !important;
-          box-shadow: 0 4px 12px rgba(0,0,0,0.02) !important;
+          border-color: #cbd5e1 !important;
+          box-shadow: 0 4px 16px rgba(15, 23, 42, 0.04) !important;
         }
 
         .icon-wrapper-mini {
@@ -313,100 +324,132 @@ const StudentDetail: React.FC<StudentDetailProps> = ({ personId: propId }) => {
           border-radius: 6px;
           background: #f0f5ff;
           display: flex;
-          alignItems: center;
-          justifyContent: center;
+          align-items: center;
+          justify-content: center;
           font-size: 12px;
         }
 
         .premium-tabs .ant-tabs-nav::before {
-          border-bottom: 2px solid #f0f0f0 !important;
+          border-bottom: 1.5px solid #e2e8f0 !important;
         }
         .premium-tabs .ant-tabs-tab {
-          padding: 16px 24px !important;
-          font-weight: 700 !important;
+          padding: 16px 28px !important;
+          font-weight: 600 !important;
           font-size: 14px !important;
           transition: all 0.3s ease !important;
+          color: #64748b !important;
+          letter-spacing: 0.01em;
+        }
+        .premium-tabs .ant-tabs-tab:hover {
+          color: #1e40af !important;
+        }
+        .premium-tabs .ant-tabs-tab-active {
+          background: linear-gradient(180deg, transparent 95%, #1e40af 95%) !important;
         }
         .premium-tabs .ant-tabs-tab-active .premium-tab-label {
-          color: #1890ff;
+          color: #1e40af !important;
+          font-weight: 700 !important;
+        }
+        .premium-tabs .ant-tabs-ink-bar {
+          background: #1e40af !important;
+          height: 2.5px !important;
+          border-radius: 2px !important;
         }
         
         .dossier-descriptions .ant-descriptions-item-label {
-          color: #8c8c8c !important;
-          font-size: 11px !important;
+          color: #94a3b8 !important;
+          font-size: 10px !important;
           text-transform: uppercase !important;
-          letter-spacing: 0.5px !important;
+          letter-spacing: 0.08em !important;
           font-weight: 700 !important;
-          padding-bottom: 4px !important;
+          padding-bottom: 6px !important;
         }
         .dossier-descriptions .ant-descriptions-item-content {
           font-weight: 600 !important;
-          color: #262626 !important;
-          padding-bottom: 12px !important;
+          color: #0f172a !important;
+          padding-bottom: 14px !important;
+          font-size: 13px !important;
+        }
+        .section-title-bar {
+          width: 3px;
+          height: 16px;
+          border-radius: 2px;
+          background: #1e40af;
+          flex-shrink: 0;
         }
       `}</style>
 
       {/* Header Section */}
       <div style={{ marginBottom: 32 }} className="animate-card">
-        <Row justify="space-between" align="middle">
+        <Row justify="space-between" align="middle" gutter={[16, 16]}>
           <Col>
-            <Space size="middle">
+            <Space size="middle" align="center">
               <Button
                 shape="circle"
                 size="large"
                 icon={<ArrowLeftOutlined />}
                 onClick={() => navigate(-1)}
                 style={{
-                  boxShadow: '0 4px 10px rgba(0,0,0,0.05)',
-                  border: 'none',
+                  boxShadow: '0 4px 12px rgba(15,23,42,0.08)',
+                  border: '1px solid #e2e8f0',
                   display: 'flex',
                   alignItems: 'center',
-                  justifyContent: 'center'
+                  justifyContent: 'center',
+                  background: '#ffffff'
                 }}
               />
               <div>
-                <Title level={2} style={{ margin: 0, fontWeight: 800, letterSpacing: '-0.02em' }}>
+                <Title level={2} style={{ margin: 0, fontWeight: 800, letterSpacing: '-0.02em', color: '#0f172a', fontSize: 28 }}>
                   Detalle del Estudiante
                 </Title>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 4 }}>
-                  <Text style={{ fontSize: 16, fontWeight: 600, color: '#595959' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 6 }}>
+                  <Text style={{ fontSize: 15, fontWeight: 600, color: '#475569' }}>
                     {studentData ? `${studentData.firstName} ${studentData.lastName}` : 'Cargando...'}
                   </Text>
                   {studentData?.inscription && (
-                    <Tag color="processing" style={{ borderRadius: 6, fontWeight: 700, border: 'none' }}>
-                      {studentData.inscription.grade?.name} — {studentData.inscription.section?.name}
-                    </Tag>
+                    <>
+                      <span style={{ color: '#cbd5e1', fontSize: 12 }}>|</span>
+                      <Tag style={{ borderRadius: 8, fontWeight: 700, border: 'none', background: '#e0e7ff', color: '#1e40af', fontSize: 12, padding: '2px 10px' }}>
+                        {studentData.inscription.grade?.name}
+                      </Tag>
+                      <Tag style={{ borderRadius: 8, fontWeight: 700, border: 'none', background: '#f1f5f9', color: '#475569', fontSize: 12, padding: '2px 10px' }}>
+                        Sección {studentData.inscription.section?.name}
+                      </Tag>
+                    </>
                   )}
                 </div>
               </div>
             </Space>
           </Col>
           <Col>
-            <Button
-              size="large"
-              icon={<PrinterOutlined />}
-              onClick={handleOpenReportsDrawer}
-              style={{ borderRadius: 12, fontWeight: 700, padding: '0 24px', marginRight: 12 }}
-            >
-              Planillas
-            </Button>
-            {canEdit && (
+            <Space>
               <Button
                 size="large"
-                icon={<EditOutlined />}
-                onClick={handleEdit}
-                style={{ borderRadius: 12, fontWeight: 700, padding: '0 24px', marginRight: 12 }}
+                icon={<PrinterOutlined />}
+                onClick={handleOpenReportsDrawer}
+                style={{ borderRadius: 10, fontWeight: 700, padding: '0 20px', border: '1px solid #e2e8f0', background: '#ffffff', color: '#475569' }}
               >
-                Editar
+                Planillas
               </Button>
-            )}
-            <Button
-              size="large"
-              onClick={() => navigate(-1)}
-              style={{ borderRadius: 12, fontWeight: 700, padding: '0 24px' }}
-            >
-              Cerrar Vista
-            </Button>
+              {canEdit && (
+                <Button
+                  size="large"
+                  type="primary"
+                  icon={<EditOutlined />}
+                  onClick={handleEdit}
+                  style={{ borderRadius: 10, fontWeight: 700, padding: '0 20px', background: '#1e40af', boxShadow: '0 4px 14px rgba(30,64,175,0.25)' }}
+                >
+                  Editar
+                </Button>
+              )}
+              <Button
+                size="large"
+                onClick={() => navigate(-1)}
+                style={{ borderRadius: 10, fontWeight: 700, padding: '0 20px', border: '1px solid #e2e8f0', background: '#ffffff', color: '#475569' }}
+              >
+                Cerrar Vista
+              </Button>
+            </Space>
           </Col>
         </Row>
       </div>
