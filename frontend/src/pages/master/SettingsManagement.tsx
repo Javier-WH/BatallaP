@@ -37,6 +37,7 @@ const SettingsManagement: React.FC = () => {
   const [panelHeaderColor, setPanelHeaderColor] = useState('#0f172a');
   const [contentBgColor, setContentBgColor] = useState('#ffffff');
   const [accentColor, setAccentColor] = useState('#1e40af');
+  const [headerTextColor, setHeaderTextColor] = useState('#ffffff');
   const { refreshSettings } = useSchool();
 
   useEffect(() => {
@@ -52,6 +53,7 @@ const SettingsManagement: React.FC = () => {
         const phc = res.data.theme_panel_header || '#0f172a';
         const cbc = res.data.theme_content_bg || '#ffffff';
         const ac = res.data.theme_accent_color || '#1e40af';
+        const htc = res.data.theme_header_text_color || '#ffffff';
 
         setPrimaryColor(pc);
         setSecondaryColor(sc);
@@ -61,6 +63,7 @@ const SettingsManagement: React.FC = () => {
         setPanelHeaderColor(phc);
         setContentBgColor(cbc);
         setAccentColor(ac);
+        setHeaderTextColor(htc);
 
         form.setFieldsValue({
           institution_name: res.data.institution_name || '',
@@ -75,6 +78,7 @@ const SettingsManagement: React.FC = () => {
           theme_panel_header: phc,
           theme_content_bg: cbc,
           theme_accent_color: ac,
+          theme_header_text_color: htc,
         });
 
         try {
@@ -127,6 +131,7 @@ const SettingsManagement: React.FC = () => {
         theme_panel_header: panelHeaderColor,
         theme_content_bg: contentBgColor,
         theme_accent_color: accentColor,
+        theme_header_text_color: headerTextColor,
       };
 
       await api.post('/settings', { settings: finalPayload });
@@ -152,16 +157,16 @@ const SettingsManagement: React.FC = () => {
       <div className="max-w-4xl mx-auto space-y-8 pb-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
         {/* Page Header */}
         <div className="flex flex-col gap-1">
-        <h1 className="text-3xl font-black text-slate-900 tracking-tight flex items-center gap-3">
+        <h1 className="text-3xl font-black text-[var(--color-text-main)] tracking-tight flex items-center gap-3">
           <BankOutlined className="text-brand-primary" /> Institución
         </h1>
         <p className="text-slate-500 font-medium">Define la identidad visual y el nombre oficial que aparecerá en todo el sistema y reportes.</p>
       </div>
 
         <Card className="glass-card overflow-hidden !p-0">
-        <div className="bg-slate-900 px-8 py-6">
-          <h2 className="text-white text-xl font-bold">Identidad Institucional</h2>
-          <p className="text-slate-400 text-xs font-medium uppercase tracking-widest mt-1">Configuración del Perfil Maestro</p>
+        <div className="theme-panel-header px-8 py-6">
+          <h2 className="text-[var(--color-header-text)] text-xl font-bold">Identidad Institucional</h2>
+          <p className="text-[var(--color-header-text)]/60 text-xs font-medium uppercase tracking-widest mt-1">Configuración del Perfil Maestro</p>
         </div>
 
         <Form
@@ -276,7 +281,7 @@ const SettingsManagement: React.FC = () => {
                       className={`max-h-full max-w-full object-contain drop-shadow-2xl translate-y-2 group-hover:scale-110 transition-transform duration-500 ${form.getFieldValue('institution_logo_shape') === 'circle' ? 'rounded-full' : 'rounded-xl'}`}
                     />
                     <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center backdrop-blur-sm">
-                      <div className="bg-white px-4 py-2 rounded-xl text-slate-900 font-black text-[10px] uppercase tracking-widest shadow-xl">Cambiar Logo</div>
+                      <div className="bg-white px-4 py-2 rounded-xl text-[var(--color-text-main)] font-black text-[10px] uppercase tracking-widest shadow-xl">Cambiar Logo</div>
                     </div>
                   </div>
                 ) : (
@@ -284,10 +289,10 @@ const SettingsManagement: React.FC = () => {
                     <div className="w-16 h-16 bg-white rounded-2xl shadow-sm mx-auto flex items-center justify-center">
                       <UploadOutlined className="text-3xl text-brand-primary" />
                     </div>
-                    <div>
-                      <p className="text-slate-900 font-bold">Haz clic o arrastra el logo</p>
-                      <p className="text-slate-500 text-xs font-medium">PNG, JPG (Máx. 5MB)</p>
-                    </div>
+                    <div className="text-center mt-4">
+                    <p className="text-[var(--color-text-main)] font-bold">Haz clic o arrastra el logo</p>
+                    <p className="text-slate-500 text-xs mt-1">PNG, JPG hasta 5MB</p>
+                  </div>
                   </div>
                 )}
               </Upload.Dragger>
@@ -295,9 +300,9 @@ const SettingsManagement: React.FC = () => {
           </div>
 
           <div className="mt-12">
-            <div className="bg-slate-900 px-8 py-6 rounded-t-2xl mx-[-2rem]">
-              <h2 className="text-white text-xl font-bold">Apariencia y Colores</h2>
-              <p className="text-slate-400 text-xs font-medium uppercase tracking-widest mt-1">Configuración del Tema Global</p>
+            <div className="theme-panel-header px-8 py-6 rounded-t-2xl mx-[-2rem]">
+              <h2 className="text-[var(--color-header-text)] text-xl font-bold">Apariencia y Colores</h2>
+              <p className="text-[var(--color-header-text)]/60 text-xs font-medium uppercase tracking-widest mt-1">Configuración del Tema Global</p>
             </div>
             
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 py-8">
@@ -468,6 +473,27 @@ const SettingsManagement: React.FC = () => {
                   </div>
                 </div>
               </div>
+
+              {/* Header Text Color */}
+              <div>
+                <label className="text-slate-700 font-bold block mb-2">Textos sobre Oscuros</label>
+                <p className="text-xs text-slate-400 mb-3">Color de texto en Encabezados y Barra Lateral.</p>
+                <div className="flex items-center gap-4">
+                  <input
+                    type="color"
+                    value={headerTextColor}
+                    onChange={(e) => {
+                      setHeaderTextColor(e.target.value);
+                      form.setFieldsValue({ theme_header_text_color: e.target.value });
+                    }}
+                    className="h-12 w-16 rounded-xl border-2 border-slate-200 cursor-pointer p-0.5 bg-white"
+                  />
+                  <div className="flex flex-col gap-1">
+                    <span className="text-sm font-bold text-slate-700 uppercase tracking-wider">{headerTextColor}</span>
+                    <div className="h-2 w-24 rounded-full" style={{ backgroundColor: headerTextColor }} />
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -477,7 +503,7 @@ const SettingsManagement: React.FC = () => {
               htmlType="submit"
               icon={<SaveOutlined />}
               loading={saving}
-              className="h-14 px-12 bg-slate-900 border-none text-white font-black rounded-2xl shadow-2xl shadow-indigo-500/20 hover:scale-105 transition-all text-sm uppercase tracking-widest"
+              className="h-14 px-12 theme-panel-header border-none text-[var(--color-header-text)] font-black rounded-2xl shadow-2xl hover:scale-105 transition-all text-sm uppercase tracking-widest"
             >
               Guardar Identidad
             </Button>

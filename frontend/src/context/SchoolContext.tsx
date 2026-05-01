@@ -13,6 +13,7 @@ interface SchoolSettings {
   themePanelHeader: string;
   themeContentBg: string;
   themeAccentColor: string;
+  themeHeaderText: string;
 }
 
 interface SchoolContextType {
@@ -34,6 +35,7 @@ const defaultSettings: SchoolSettings = {
   themePanelHeader: '#0f172a',
   themeContentBg: '#ffffff',
   themeAccentColor: '#1e40af',
+  themeHeaderText: '#ffffff',
 };
 
 /** Applies all theme CSS vars to root */
@@ -47,6 +49,7 @@ function applyThemeToDOM(s: SchoolSettings) {
   root.setProperty('--color-panel-header', s.themePanelHeader);
   root.setProperty('--color-content-bg', s.themeContentBg);
   root.setProperty('--color-accent', s.themeAccentColor);
+  root.setProperty('--color-header-text', s.themeHeaderText);
   root.setProperty('--ant-primary-color', s.themePrimaryColor);
 }
 
@@ -82,6 +85,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         themePanelHeader: d.theme_panel_header || defaultSettings.themePanelHeader,
         themeContentBg: d.theme_content_bg || defaultSettings.themeContentBg,
         themeAccentColor: d.theme_accent_color || defaultSettings.themeAccentColor,
+        themeHeaderText: d.theme_header_text_color || defaultSettings.themeHeaderText,
       };
 
       applyThemeToDOM(resolved);

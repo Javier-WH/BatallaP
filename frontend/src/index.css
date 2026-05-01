@@ -12,6 +12,7 @@
   --color-panel-header: #0f172a;
   --color-content-bg: #ffffff;
   --color-accent: #1e40af;
+  --color-header-text: #ffffff;
   --font-inter: "Inter", sans-serif;
 }
 
@@ -36,20 +37,20 @@
 
   .luxury-button {
     background-color: var(--color-luxury-sidebar);
-    @apply px-6 py-2 text-white font-medium rounded-xl hover:opacity-90 transition-all shadow-lg active:scale-95;
+    @apply px-6 py-2 text-header-text font-medium rounded-xl hover:opacity-90 transition-all shadow-lg active:scale-95;
   }
 
   .premium-sidebar {
     background-color: var(--color-luxury-sidebar);
-    @apply h-screen text-white shadow-2xl transition-all duration-300;
+    @apply h-screen text-header-text shadow-2xl transition-all duration-300;
   }
 
   .nav-item {
-    @apply flex items-center gap-3 px-4 py-3 rounded-xl mx-2 my-1 transition-all text-slate-400 hover:text-white hover:bg-white/5 cursor-pointer;
+    @apply flex items-center gap-3 px-4 py-3 rounded-xl mx-2 my-1 transition-all text-header-text/70 hover:text-header-text hover:bg-white/5 cursor-pointer;
   }
 
   .nav-item-active {
-    @apply flex items-center gap-3 px-4 py-3 rounded-xl mx-2 my-1 bg-white/10 text-white shadow-lg cursor-pointer;
+    @apply flex items-center gap-3 px-4 py-3 rounded-xl mx-2 my-1 bg-white/10 text-header-text shadow-lg cursor-pointer;
   }
   
   .luxury-modal .ant-modal-content {
@@ -63,7 +64,7 @@
   /* Dynamic panel headers (Settings, Cards, etc.) */
   .theme-panel-header {
     background-color: var(--color-panel-header);
-    color: #fff;
+    color: var(--color-header-text);
   }
 
   /* Dynamic page background */

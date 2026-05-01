@@ -85,19 +85,19 @@ const MasterDashboard: React.FC = () => {
   return (
     <div className="h-full overflow-y-auto pr-4">
       <div className="space-y-8 pb-8">
-        <div className="relative overflow-hidden rounded-3xl bg-slate-900 p-8 md:p-12 text-white shadow-2xl">
+        <div className="relative overflow-hidden rounded-3xl theme-panel-header p-8 md:p-12 text-header-text shadow-2xl">
           <div className="relative z-10 space-y-4 max-w-3xl">
             <Tag color="gold" className="border-none font-bold uppercase tracking-widest text-[10px] px-3 py-1 rounded-full">
               Acceso de Súper Usuario
             </Tag>
             <h1 className="text-4xl md:text-5xl font-black tracking-tight leading-tight">{institution.name}</h1>
-            {institution.motto && <p className="text-slate-300 text-lg font-medium">“{institution.motto}”</p>}
-            <div className="pt-2 flex flex-wrap gap-4 text-sm text-slate-300">
+            {institution.motto && <p className="text-header-text/80 text-lg font-medium">“{institution.motto}”</p>}
+            <div className="pt-2 flex flex-wrap gap-4 text-sm text-header-text/70">
               <span>Código institucional: {institution.code || 'N/D'}</span>
               <span>Total usuarios: {users.total}</span>
             </div>
             <div className="pt-4 flex flex-wrap gap-4">
-              <Button type="primary" size="large" className="bg-white text-slate-900 border-none font-bold rounded-2xl h-12 px-8 flex items-center gap-2 group">
+              <Button type="primary" size="large" className="bg-white text-[var(--color-text-main)] border-none font-bold rounded-2xl h-12 px-8 flex items-center gap-2 group">
                 Configurar Institución <ArrowRightOutlined className="group-hover:translate-x-1 transition-transform" />
               </Button>
               <Button ghost size="large" className="border-white/20 text-white font-bold rounded-2xl h-12 px-8">
@@ -145,11 +145,11 @@ const MasterDashboard: React.FC = () => {
                 <div className="grid grid-cols-2 gap-6">
                   <div>
                     <p className="text-xs text-slate-500 uppercase tracking-widest">Sin plan de evaluación</p>
-                    <p className="text-3xl font-black text-slate-900">{academic.teachers.withoutPlans}</p>
+                    <p className="text-3xl font-black text-[var(--color-text-main)]">{academic.teachers.withoutPlans}</p>
                   </div>
                   <div>
                     <p className="text-xs text-slate-500 uppercase tracking-widest">Sin cargado de notas</p>
-                    <p className="text-3xl font-black text-slate-900">{academic.teachers.withoutGrades}</p>
+                    <p className="text-3xl font-black text-[var(--color-text-main)]">{academic.teachers.withoutGrades}</p>
                   </div>
                 </div>
               )}

@@ -133,14 +133,14 @@ const MainLayout: React.FC = () => {
               />
             </div>
             {!collapsed && (
-              <div className="flex flex-col flex-1 min-w-0 text-white">
+              <div className="flex flex-col flex-1 min-w-0 text-header-text">
                 <span
                   className="text-sm font-bold tracking-tight leading-tight"
                   style={{ whiteSpace: 'normal', wordBreak: 'break-word' }}
                 >
                   {settings.name}
                 </span>
-                <span className="text-[10px] uppercase font-bold text-slate-400 tracking-widest mt-1">Gestión Educativa</span>
+                <span className="text-[10px] uppercase font-bold text-header-text/70 tracking-widest mt-1">Gestión Educativa</span>
               </div>
             )}
           </div>
