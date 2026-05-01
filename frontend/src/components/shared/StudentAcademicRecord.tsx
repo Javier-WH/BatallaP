@@ -783,6 +783,24 @@ const StudentAcademicRecord: React.FC<StudentAcademicRecordProps> = ({ personId,
             padding: 20px;
             position: relative;
             overflow: hidden;
+            background: var(--color-input-bg) !important;
+          }
+          .student-total-card, .student-split-card {
+            background: var(--color-input-bg) !important;
+            border-radius: 20px !important;
+          }
+          .student-summary-grid {
+             display: grid;
+             grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+             gap: 20px;
+             margin-bottom: 24px;
+          }
+          .summary-label {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.15em;
+            color: #94a3b8;
+            font-weight: 700;
           }
           .admin-metric-icon {
             width: 48px;
