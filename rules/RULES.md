@@ -94,6 +94,14 @@ Toda tabla o listado de datos (materias, notas, planes de evaluación, etc.) deb
 - Los inputs de texto (`ant-input`) y selectores (`ant-select`) **no deben tener esquinas redondeadas**. Deben ser completamente cuadrados (`border-radius: 0`).
 - Esta regla se aplica globalmente vía CSS en `frontend/src/index.css` mediante la clase `.ant-input` y `.ant-select-selector` con `@apply !rounded-none`.
 
+### R14: Uso de Colores Dinámicos del Tema Institucional
+Todo nuevo componente o modificación en la interfaz gráfica **debe abstenerse** de usar clases de colores en crudo (ej: `bg-slate-900`, `text-blue-500`, `bg-white`) en contenedores estructurales o botones primarios. Se **DEBEN** usar las variables de entorno configurables por el usuario para garantizar que la plataforma encaje con la Identidad Institucional:
+- **`bg-brand-primary` / `text-brand-primary`**: Para acentos principales.
+- **`theme-page-bg`**: Para fondos de pantallas completas o Layouts.
+- **`theme-panel-header`**: Para encabezados de módulos oscuros.
+- **`text-header-text` / `text-[var(--color-header-text)]`**: Para texto que deba leerse sobre sidebars o encabezados.
+- El objeto central está en `SchoolContext.tsx` y las variables de Tailwind auto-generadas viven integradas localmente en `index.css`.
+
 ---
 
 ## 🟡 Archivos críticos (requieren Safety Commit antes de modificar)
