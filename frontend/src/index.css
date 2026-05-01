@@ -188,3 +188,26 @@ input[type=number] {
   opacity: 0.9 !important;
   background-color: var(--color-accent) !important;
 }
+
+/* Radio Button Styling (matching Segmented/Tabs logic) */
+.ant-radio-button-wrapper {
+  background-color: var(--color-inactive) !important;
+  color: var(--color-text-main) !important;
+  border: 1px solid transparent !important;
+  transition: all 0.2s ease-in-out !important;
+}
+
+.ant-radio-button-wrapper-checked:not(.ant-radio-button-wrapper-disabled) {
+  background-color: var(--color-accent) !important;
+  color: var(--color-header-text) !important;
+  border-color: transparent !important;
+}
+
+/* Hide the separator line between radio buttons */
+.ant-radio-button-wrapper:not(:first-child)::before {
+  background-color: transparent !important;
+}
+
+.ant-radio-button-wrapper-checked:not(.ant-radio-button-wrapper-disabled) .ant-radio-button-wrapper-btn {
+  color: var(--color-header-text) !important;
+}

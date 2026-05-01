@@ -133,6 +133,7 @@ const SettingsManagement: React.FC = () => {
         ...payload,
         theme_primary_color: primaryColor,
         theme_secondary_color: secondaryColor,
+        theme_brand_secondary: brandSecondaryColor,
         theme_text_color: textColor,
         theme_sidebar_color: sidebarColor,
         theme_page_bg: pageBgColor,
@@ -140,6 +141,7 @@ const SettingsManagement: React.FC = () => {
         theme_content_bg: contentBgColor,
         theme_accent_color: accentColor,
         theme_header_text_color: headerTextColor,
+        theme_input_bg: inputBgColor,
       };
 
       await api.post('/settings', { settings: finalPayload });

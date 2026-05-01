@@ -116,14 +116,19 @@ const ThemeWrapper = ({ children }: { children: React.ReactNode }) => {
           },
           Radio: {
             colorPrimary: settings.themeAccentColor || '#1e40af',
-            colorBorder: settings.themeSecondaryColor || '#0ea5e9',
+            buttonBg: settings.themeSecondaryColor || '#e2e8f0',
+            buttonCheckedBg: settings.themeAccentColor || '#1e40af',
+            buttonColor: settings.themeTextColor || '#0f172a',
+            colorText: settings.themeTextColor || '#0f172a',
           },
           Segmented: {
             itemSelectedBg: settings.themeAccentColor || '#1e40af',
-            itemSelectedColor: '#ffffff',
-            trackBg: settings.themeSecondaryColor || '#0ea5e9',
-            itemColor: 'rgba(255, 255, 255, 0.8)',
-            itemHoverColor: '#ffffff',
+            itemSelectedColor: settings.themeHeaderText || '#ffffff',
+            trackBg: settings.themeSecondaryColor || '#e2e8f0',
+            itemColor: settings.themeTextColor || '#0f172a',
+          },
+          DatePicker: {
+            colorBgContainer: settings.themeInputBg || '#ffffff',
           },
           Input: {
             colorBgContainer: settings.themeInputBg || '#ffffff',
