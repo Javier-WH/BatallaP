@@ -53,7 +53,7 @@
 /* Ant Design overrides for luxury feel */
 :root {
   --ant-primary-color: #1e40af;
-  --ant-border-radius-base: 12px;
+  --ant-border-radius-base: 0px !important;
   --ant-box-shadow-base: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
 }
 
@@ -66,7 +66,9 @@
 }
 
 .ant-select-selector,
-.ant-input {
+.ant-input,
+.ant-input-number,
+.ant-picker {
   @apply !rounded-none border-gray-300 hover:border-blue-400 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 transition-all duration-300;
 }
 
@@ -74,7 +76,15 @@
   @apply !bg-slate-50/50;
 }
 
+.table-row-light {
+  background-color: #fafafa;
+}
+
 /* Hide spin buttons for number inputs for cross-browser consistency */
+.ant-input-number-handler-wrap {
+  display: none !important;
+}
+
 /* Chrome, Safari, Edge, Opera */
 input::-webkit-outer-spin-button,
 input::-webkit-inner-spin-button {
