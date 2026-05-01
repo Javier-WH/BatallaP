@@ -10,6 +10,8 @@ interface EvaluationPlanAttributes {
   termId: number; // Reference to Term model instead of hardcoded numbers
   description: string;
   objetivo: string;
+  tecnica: string;
+  identificador: string;
   percentage: number;
   date: Date;
 }
@@ -23,6 +25,8 @@ class EvaluationPlan extends Model<EvaluationPlanAttributes, EvaluationPlanCreat
   public termId!: number; // Reference to Term model
   public description!: string;
   public objetivo!: string;
+  public tecnica!: string;
+  public identificador!: string;
   public percentage!: number;
   public date!: Date;
 
@@ -57,6 +61,14 @@ EvaluationPlan.init(
     },
     objetivo: {
       type: DataTypes.TEXT,
+      allowNull: false
+    },
+    tecnica: {
+      type: DataTypes.STRING(30),
+      allowNull: false
+    },
+    identificador: {
+      type: DataTypes.STRING(15),
       allowNull: false
     },
     percentage: {

@@ -38,3 +38,11 @@
 **Archivos modificados**:
 - `frontend/src/index.css`
 - `rules/RULES.md`
+
+## 2026-05-01 — Rediseño del Panel del Profesor y Actualización de DB
+
+**Descripción**: Se rediseñó el panel del profesor reemplazando el select de asignaciones por Tabs, agregando campos `tecnica` e `identificador` al Plan de Evaluación, y reposicionando el botón de creación. Se actualizó el modelo `EvaluationPlan` y se forzó la sincronización de la DB.
+**Archivos modificados**:
+- `backend/src/models/EvaluationPlan.ts`
+- `frontend/src/pages/teacher/TeacherPanel.tsx`
+- `rules/progress/completed.md`

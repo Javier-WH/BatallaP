@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, Component, useMemo } from 'react';
 import type { ReactNode, ErrorInfo } from 'react';
-import { Tabs, Card, Select, Table, Button, Modal, Form, Input, DatePicker, message, Space, Tag, Divider, Typography, InputNumber, Alert } from 'antd';
+import { Tabs, Card, Select, Table, Button, Modal, Form, Input, DatePicker, message, Space, Tag, Typography, InputNumber, Alert } from 'antd';
 import { BookOutlined, PlusOutlined, DeleteOutlined, EditOutlined, LockOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { isAxiosError } from 'axios';
@@ -70,6 +70,8 @@ class TeacherPanelErrorBoundary extends Component<ErrorBoundaryProps, ErrorBound
 interface PlanItemFormValues {
   description?: string;
   objetivo: string;
+  tecnica: string;
+  identificador: string;
   percentage: number;
   date: dayjs.Dayjs;
   instrumentOption?: string;
@@ -104,6 +106,8 @@ interface EvaluationPlanItem {
   id: number;
   description: string;
   objetivo: string;
+  tecnica: string;
+  identificador: string;
   percentage: number;
   date: string;
 }
@@ -357,6 +361,8 @@ const TeacherPanel: React.FC = () => {
     const data = {
       ...restValues,
       description: selectedInstrument,
+      tecnica: values.tecnica,
+      identificador: values.identificador,
       periodGradeSubjectId: assignment.periodGradeSubjectId,
       sectionId: assignment.sectionId,
       termId: selectedTerm
@@ -419,7 +425,9 @@ const TeacherPanel: React.FC = () => {
   };
 
   const planColumns: ColumnsType<EvaluationPlanItem> = [
-    { title: 'Instrumento', dataIndex: 'description', key: 'description', width: 200 },
+    { title: 'ID', dataIndex: 'identificador', key: 'identificador', width: 100 },
+    { title: 'Instrumento', dataIndex: 'description', key: 'description', width: 150 },
+    { title: 'Técnica', dataIndex: 'tecnica', key: 'tecnica', width: 150 },
     { title: 'Objetivo', dataIndex: 'objetivo', key: 'objetivo', ellipsis: true },
     { title: 'Peso (%)', dataIndex: 'percentage', key: 'percentage', render: (val: number) => `${val}%`, width: 100 },
     { title: 'Fecha', dataIndex: 'date', key: 'date', render: (val: string) => dayjs(val).format('DD/MM/YYYY'), width: 120 },
@@ -441,6 +449,8 @@ const TeacherPanel: React.FC = () => {
                   planForm.setFieldsValue({
                     instrumentOption: matchedInstrument ?? CUSTOM_INSTRUMENT_VALUE,
                     customInstrument: matchedInstrument ? undefined : record.description,
+                    tecnica: record.tecnica,
+                    identificador: record.identificador,
                     objetivo: record.objetivo,
                     percentage: Number(record.percentage),
                     date: dayjs(record.date)
@@ -489,31 +499,23 @@ const TeacherPanel: React.FC = () => {
           color: white !important;
           font-weight: bold;
         }
+        .assignment-tabs .ant-tabs-tab {
+          height: auto !important;
+          padding: 8px 16px !important;
+        }
+        .assignment-tabs .ant-tabs-tab-btn {
+          width: 100%;
+        }
       `}</style>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
         <BookOutlined style={{ fontSize: 24, color: '#1890ff' }} />
         <Title level={4} style={{ margin: 0 }}>Panel del Profesor</Title>
       </div>
 
-      <Card style={{ marginBottom: 24 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
+      <Card style={{ marginBottom: 16 }} styles={{ body: { padding: '12px 24px' } }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' }}>
+          <Title level={5} style={{ margin: 0 }}>Mis Asignaciones</Title>
           <Space>
-            <Text strong>Asignación:</Text>
-            <Select
-              style={{ width: 400 }}
-              placeholder="Seleccione Materia/Sección"
-              value={selectedAssignmentId}
-              onChange={setSelectedAssignmentId}
-            >
-              {assignments.map(as => (
-                <Option key={as?.id || Math.random()} value={as?.id}>
-                  {as?.periodGradeSubject?.subject?.name} - {as?.periodGradeSubject?.periodGrade?.grade?.name} ({as?.section?.name})
-                </Option>
-              ))}
-            </Select>
-          </Space>
-
-          <Space >
             <Text strong>Lapso:</Text>
             <Select
               style={{ width: 200 }}
@@ -532,17 +534,38 @@ const TeacherPanel: React.FC = () => {
                 </Option>
               ))}
             </Select>
-
           </Space>
         </div>
       </Card>
+
+      <Tabs
+        activeKey={selectedAssignmentId?.toString()}
+        onChange={(key) => setSelectedAssignmentId(Number(key))}
+        type="card"
+        style={{ marginBottom: 24 }}
+        className="assignment-tabs"
+        items={assignments.map(as => ({
+          key: as.id.toString(),
+          label: (
+            <div style={{ textAlign: 'left', padding: '4px 8px' }}>
+              <div style={{ fontSize: '15px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <BookOutlined /> {as.periodGradeSubject.subject.name}
+              </div>
+              <div style={{ fontSize: '11px', color: '#8c8c8c', fontWeight: 400, marginTop: 2 }}>
+                {as.periodGradeSubject.periodGrade.grade.name} ({as.section.name})
+              </div>
+            </div>
+          )
+        }))}
+      />
+
       {selectedTerm && availableTerms.find(t => t.id === selectedTerm)?.isBlocked && (
         <Alert
           message="Lapso bloqueado"
-          description="Este lapso está bloqueado. Puedes ver la información pero no modificarla."
+          description="Este lapso está bloqueado. No puedes modificar la planificación ni las notas."
           type="warning"
           showIcon
-          style={{ marginTop: 8 }}
+          style={{ marginBottom: 24 }}
         />
       )}
 
@@ -555,8 +578,18 @@ const TeacherPanel: React.FC = () => {
             key: '1',
             label: 'Plan de Evaluación',
             children: (
-              <Card
-                extra={
+              <Card>
+                <Table<EvaluationPlanItem>
+                  loading={loading}
+                  columns={planColumns}
+                  dataSource={evaluationPlan}
+                  rowKey="id"
+                  pagination={false}
+                  bordered
+                  rowClassName={(_, index) => (index % 2 === 1 ? 'table-row-light' : '')}
+                />
+                
+                <div style={{ marginTop: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <Button
                     type="primary"
                     icon={<PlusOutlined />}
@@ -569,20 +602,13 @@ const TeacherPanel: React.FC = () => {
                   >
                     Agregar Evaluación
                   </Button>
-                }>
-                <Table<EvaluationPlanItem>
-                  loading={loading}
-                  columns={planColumns}
-                  dataSource={evaluationPlan}
-                  rowKey="id"
-                  pagination={false}
-                />
-                <Divider />
-                <div style={{ textAlign: 'right' }}>
-                  <Text strong>Total Planificado (Lapso {selectedTerm}): </Text>
-                  <Tag color={totalPercentage > 100 ? 'red' : totalPercentage === 100 ? 'green' : 'orange'}>
-                    {totalPercentage}% / 100%
-                  </Tag>
+                  
+                  <div style={{ textAlign: 'right' }}>
+                    <Text strong>Total Planificado: </Text>
+                    <Tag color={totalPercentage > 100 ? 'red' : totalPercentage === 100 ? 'green' : 'orange'}>
+                      {totalPercentage}% / 100%
+                    </Tag>
+                  </div>
                 </div>
               </Card>
             )
@@ -621,7 +647,7 @@ const TeacherPanel: React.FC = () => {
                         .sort((a, b) => {
                           const nameA = `${a.student?.lastName} ${a.student?.firstName}`.toLowerCase();
                           const nameB = `${b.student?.lastName} ${b.student?.firstName}`.toLowerCase();
-                          return nameB.localeCompare(nameA); // Order descendiente
+                          return nameA.localeCompare(nameB); // Order A-Z
                         })
                         .map((enrollment, rowIndex) => {
                           const insSub = enrollment.inscriptionSubjects?.[0];
@@ -635,9 +661,16 @@ const TeacherPanel: React.FC = () => {
                             }
                           });
 
+                          const isEven = rowIndex % 2 === 0;
+
                           return (
                             <tr key={enrollment.id} className="grading-row">
-                              <td style={{ padding: '8px 16px', borderBottom: '1px solid #f0f0f0', background: '#fff' }}>
+                              <td style={{ 
+                                padding: '8px 16px', 
+                                borderBottom: '1px solid #f0f0f0', 
+                                borderRight: '1px solid #f0f0f0',
+                                background: isEven ? '#ffffff' : '#fafafa' 
+                              }}>
                                 <div style={{ fontWeight: 500 }}>{enrollment.student?.lastName}, {enrollment.student?.firstName}</div>
                                 <div style={{ fontSize: '12px', color: '#8c8c8c' }}>{enrollment.student?.document}</div>
                               </td>
@@ -645,8 +678,14 @@ const TeacherPanel: React.FC = () => {
                                 const q = studentQuals.find((sq: Qualification) => sq.evaluationPlanId === item.id);
                                 const currentScore = q ? q.score : null;
 
-                                return (
-                                  <td key={item.id} style={{ padding: '4px 8px', borderBottom: '1px solid #f0f0f0', textAlign: 'center' }}>
+                                  return (
+                                    <td key={item.id} style={{ 
+                                      padding: '4px 8px', 
+                                      borderBottom: '1px solid #f0f0f0', 
+                                      borderRight: '1px solid #f0f0f0',
+                                      textAlign: 'center',
+                                      background: isEven ? '#ffffff' : '#fafafa' 
+                                    }}>
                                     <InputNumber
                                       id={`grade-${rowIndex}-${colIndex}`}
                                       min={0}
@@ -696,7 +735,14 @@ const TeacherPanel: React.FC = () => {
                                   </td>
                                 );
                               })}
-                              <td style={{ padding: '8px 16px', borderBottom: '1px solid #f0f0f0', textAlign: 'center', background: '#fafafa', fontWeight: 'bold' }}>
+                              <td style={{ 
+                                padding: '8px 16px', 
+                                borderBottom: '1px solid #f0f0f0', 
+                                borderRight: '1px solid #f0f0f0', 
+                                textAlign: 'center', 
+                                background: isEven ? '#fafafa' : '#f5f5f5', // Slightly darker for total
+                                fontWeight: 'bold' 
+                              }}>
                                 <Tag color={rowTotal >= (maxGrade * 0.5) ? 'green' : 'red'} style={{ margin: 0 }}>
                                   {formatGrade(rowTotal, enableRounding)}
                                 </Tag>
@@ -774,12 +820,30 @@ const TeacherPanel: React.FC = () => {
               <Input placeholder="Ej: Evaluación práctica en laboratorio..." />
             </Form.Item>
           )}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+            <Form.Item 
+              name="identificador" 
+              label="Identificador" 
+              rules={[{ required: true, message: 'Requerido' }, { max: 15, message: 'Máximo 15 caracteres' }]}
+            >
+              <Input placeholder="Ej: PRUEBA-1" maxLength={15} />
+            </Form.Item>
+            <Form.Item 
+              name="tecnica" 
+              label="Técnica" 
+              rules={[{ required: true, message: 'Requerido' }, { max: 30, message: 'Máximo 30 caracteres' }]}
+            >
+              <Input placeholder="Ej: Observación Directa" maxLength={30} />
+            </Form.Item>
+          </div>
+
           <Form.Item name="objetivo" label="Objetivo a evaluar" rules={[{ required: true }]}>
             <Input.TextArea 
               rows={3} 
-              placeholder="Ej: Evaluar la comprensión de ecuaciones lineales y su aplicación en problemas prácticos..." 
+              placeholder="Ej: Evaluar la comprensión de ecuaciones lineales..." 
             />
           </Form.Item>
+          
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
             <Form.Item name="percentage" label="Porcentaje (1-100)" rules={[{ required: true }]}>
               <InputNumber min={1} max={100} style={{ width: '100%' }} />
