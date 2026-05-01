@@ -41,6 +41,11 @@
 - [ ] Confiar en el orden del backend (`PeriodGradeSubject.order`)
 - [ ] Materias pendientes al final si aplica
 
+### 7. Tablas y Listados (si aplica)
+- [ ] Columnas claramente identificadas (headers en negrita o fondo sutil)
+- [ ] Filas alternas (zebra striping / striped) habilitadas
+- [ ] Colores claros y coherentes con el diseño
+
 ## Documentación
 - [ ] Actualizar `docs/frontend-modules.md`
 - [ ] Actualizar `docs/roles-permissions.md` si agrega accesos nuevos

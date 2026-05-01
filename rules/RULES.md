@@ -79,6 +79,21 @@ Las calificaciones numéricas se muestran con estas reglas:
 - Valores enviados al backend siempre exactos (sin redondeo).
 - Helper: `frontend/src/utils/gradeFormat.ts` + `GradeRoundingContext`.
 
+### R11: Estilo de Tablas y Listados
+Toda tabla o listado de datos (materias, notas, planes de evaluación, etc.) debe cumplir con:
+- **Identificación clara de columnas**: Encabezados con peso visual (negrita o fondo sutil) que permitan distinguir las columnas a simple vista.
+- **Filas alternas (Zebra striping)**: Las filas deben tener dos colores diferentes alternados para facilitar la lectura.
+- **Colores**: Usar tonos claros que armonicen con el diseño general.
+- **Implementación**: Usar la propiedad `bordered` y `striped` (vía `rowClassName`) de los componentes Table de Ant Design.
+
+### R12: Inputs de tipo número (sin flechas)
+- Por compatibilidad y diseño, los inputs de tipo número **no deben mostrar** las flechas (spin buttons) de incremento/decremento.
+- Esta regla se aplica globalmente vía CSS en `frontend/src/index.css`. No reintroducir estilos que las habiliten.
+
+### R13: Esquinas de inputs (sin redondeo)
+- Los inputs de texto (`ant-input`) y selectores (`ant-select`) **no deben tener esquinas redondeadas**. Deben ser completamente cuadrados (`border-radius: 0`).
+- Esta regla se aplica globalmente vía CSS en `frontend/src/index.css` mediante la clase `.ant-input` y `.ant-select-selector` con `@apply !rounded-none`.
+
 ---
 
 ## 🟡 Archivos críticos (requieren Safety Commit antes de modificar)
