@@ -30,7 +30,8 @@ const SettingsManagement: React.FC = () => {
   const [logoPreview, setLogoPreview] = useState<string>('');
   const [plantelOptions, setPlantelOptions] = useState<{ value: string; label: string }[]>([]);
   const [primaryColor, setPrimaryColor] = useState('#1e40af');
-  const [secondaryColor, setSecondaryColor] = useState('#0ea5e9');
+  const [secondaryColor, setSecondaryColor] = useState('#e2e8f0'); // Color Inactivo
+  const [brandSecondaryColor, setBrandSecondaryColor] = useState('#0ea5e9'); // Nuevo Color Secundario
   const [textColor, setTextColor] = useState('#0f172a');
   const [sidebarColor, setSidebarColor] = useState('#0f172a');
   const [pageBgColor, setPageBgColor] = useState('#f8fafc');
@@ -38,6 +39,7 @@ const SettingsManagement: React.FC = () => {
   const [contentBgColor, setContentBgColor] = useState('#ffffff');
   const [accentColor, setAccentColor] = useState('#1e40af');
   const [headerTextColor, setHeaderTextColor] = useState('#ffffff');
+  const [inputBgColor, setInputBgColor] = useState('#ffffff');
   const { refreshSettings } = useSchool();
 
   useEffect(() => {
@@ -46,7 +48,8 @@ const SettingsManagement: React.FC = () => {
       try {
         const res = await api.get('/settings');
         const pc = res.data.theme_primary_color || '#1e40af';
-        const sc = res.data.theme_secondary_color || '#0ea5e9';
+        const sc = res.data.theme_secondary_color || '#e2e8f0';
+        const bsc = res.data.theme_brand_secondary || '#0ea5e9';
         const tc = res.data.theme_text_color || '#0f172a';
         const sbc = res.data.theme_sidebar_color || '#0f172a';
         const pbg = res.data.theme_page_bg || '#f8fafc';
@@ -54,9 +57,11 @@ const SettingsManagement: React.FC = () => {
         const cbc = res.data.theme_content_bg || '#ffffff';
         const ac = res.data.theme_accent_color || '#1e40af';
         const htc = res.data.theme_header_text_color || '#ffffff';
+        const ibc = res.data.theme_input_bg || '#ffffff';
 
         setPrimaryColor(pc);
         setSecondaryColor(sc);
+        setBrandSecondaryColor(bsc);
         setTextColor(tc);
         setSidebarColor(sbc);
         setPageBgColor(pbg);
@@ -64,6 +69,7 @@ const SettingsManagement: React.FC = () => {
         setContentBgColor(cbc);
         setAccentColor(ac);
         setHeaderTextColor(htc);
+        setInputBgColor(ibc);
 
         form.setFieldsValue({
           institution_name: res.data.institution_name || '',
@@ -72,6 +78,7 @@ const SettingsManagement: React.FC = () => {
           institution_logo_shape: res.data.institution_logo_shape || 'square',
           theme_primary_color: pc,
           theme_secondary_color: sc,
+          theme_brand_secondary: bsc,
           theme_text_color: tc,
           theme_sidebar_color: sbc,
           theme_page_bg: pbg,
@@ -79,6 +86,7 @@ const SettingsManagement: React.FC = () => {
           theme_content_bg: cbc,
           theme_accent_color: ac,
           theme_header_text_color: htc,
+          theme_input_bg: ibc,
         });
 
         try {
@@ -327,10 +335,10 @@ const SettingsManagement: React.FC = () => {
                 </div>
               </div>
 
-              {/* Secondary Color */}
+              {/* Inactive Color */}
               <div>
-                <label className="text-slate-700 font-bold block mb-2">Color Secundario</label>
-                <p className="text-xs text-slate-400 mb-3">Badges, enlaces y estados info.</p>
+                <label className="text-slate-700 font-bold block mb-2">Color Inactivo</label>
+                <p className="text-xs text-slate-400 mb-3">Estados desactivados, tabs inactivos y bordes tenues.</p>
                 <div className="flex items-center gap-4">
                   <input
                     type="color"
@@ -348,9 +356,30 @@ const SettingsManagement: React.FC = () => {
                 </div>
               </div>
 
+              {/* Brand Secondary Color */}
+              <div>
+                <label className="text-slate-700 font-bold block mb-2">Color Secundario</label>
+                <p className="text-xs text-slate-400 mb-3">Color de marca secundario para variaciones visuales.</p>
+                <div className="flex items-center gap-4">
+                  <input
+                    type="color"
+                    value={brandSecondaryColor}
+                    onChange={(e) => {
+                      setBrandSecondaryColor(e.target.value);
+                      form.setFieldsValue({ theme_brand_secondary: e.target.value });
+                    }}
+                    className="h-12 w-16 rounded-xl border-2 border-slate-200 cursor-pointer p-0.5 bg-white"
+                  />
+                  <div className="flex flex-col gap-1">
+                    <span className="text-sm font-bold text-slate-700 uppercase tracking-wider">{brandSecondaryColor}</span>
+                    <div className="h-2 w-24 rounded-full" style={{ backgroundColor: brandSecondaryColor }} />
+                  </div>
+                </div>
+              </div>
+
               {/* Text Color */}
               <div>
-                <label className="text-slate-700 font-bold block mb-2">Color de Texto Base</label>
+                <label className="text-slate-700 font-bold block mb-2">Texto Base</label>
                 <p className="text-xs text-slate-400 mb-3">Color base del texto de la app.</p>
                 <div className="flex items-center gap-4">
                   <input
@@ -371,7 +400,7 @@ const SettingsManagement: React.FC = () => {
 
               {/* Sidebar Color */}
               <div>
-                <label className="text-slate-700 font-bold block mb-2">Color de Barra Lateral</label>
+                <label className="text-slate-700 font-bold block mb-2">Barra Lateral</label>
                 <p className="text-xs text-slate-400 mb-3">Color de fondo para el menú principal lateral.</p>
                 <div className="flex items-center gap-4">
                   <input
@@ -455,7 +484,7 @@ const SettingsManagement: React.FC = () => {
 
               {/* Accent Color */}
               <div>
-                <label className="text-slate-700 font-bold block mb-2">Color de Encabezado Secundario</label>
+                <label className="text-slate-700 font-bold block mb-2">Encabezado Secundario</label>
                 <p className="text-xs text-slate-400 mb-3">Detalles sutiles e iconos decorativos.</p>
                 <div className="flex items-center gap-4">
                   <input
@@ -490,7 +519,28 @@ const SettingsManagement: React.FC = () => {
                   />
                   <div className="flex flex-col gap-1">
                     <span className="text-sm font-bold text-slate-700 uppercase tracking-wider">{headerTextColor}</span>
-                    <div className="h-2 w-24 rounded-full" style={{ backgroundColor: headerTextColor }} />
+                    <div className="h-2 w-24 rounded-full" style={{ backgroundColor: headerTextColor, border: '1px solid #ccc' }} />
+                  </div>
+                </div>
+              </div>
+
+              {/* Input Background Color */}
+              <div>
+                <label className="text-slate-700 font-bold block mb-2">Campos de Texto</label>
+                <p className="text-xs text-slate-400 mb-3">Color de fondo para los inputs y selects.</p>
+                <div className="flex items-center gap-4">
+                  <input
+                    type="color"
+                    value={inputBgColor}
+                    onChange={(e) => {
+                      setInputBgColor(e.target.value);
+                      form.setFieldsValue({ theme_input_bg: e.target.value });
+                    }}
+                    className="h-12 w-16 rounded-xl border-2 border-slate-200 cursor-pointer p-0.5 bg-white"
+                  />
+                  <div className="flex flex-col gap-1">
+                    <span className="text-sm font-bold text-slate-700 uppercase tracking-wider">{inputBgColor}</span>
+                    <div className="h-2 w-24 rounded-full" style={{ backgroundColor: inputBgColor, border: '1px solid #ccc' }} />
                   </div>
                 </div>
               </div>

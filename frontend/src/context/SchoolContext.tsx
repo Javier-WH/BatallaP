@@ -6,7 +6,8 @@ interface SchoolSettings {
   logo: string;
   logoShape: 'circle' | 'square';
   themePrimaryColor: string;
-  themeSecondaryColor: string;
+  themeSecondaryColor: string; // This is now "Color Inactivo"
+  themeBrandSecondary: string; // This is the NEW "Color Secundario"
   themeTextColor: string;
   themeSidebarColor: string;
   themePageBg: string;
@@ -14,6 +15,7 @@ interface SchoolSettings {
   themeContentBg: string;
   themeAccentColor: string;
   themeHeaderText: string;
+  themeInputBg: string;
 }
 
 interface SchoolContextType {
@@ -28,7 +30,8 @@ const defaultSettings: SchoolSettings = {
   logo: '/logo-placeholder.png',
   logoShape: 'square',
   themePrimaryColor: '#1e40af',
-  themeSecondaryColor: '#0ea5e9',
+  themeSecondaryColor: '#e2e8f0', // Inactive (slate-200ish)
+  themeBrandSecondary: '#0ea5e9', // New Brand Secondary
   themeTextColor: '#0f172a',
   themeSidebarColor: '#0f172a',
   themePageBg: '#f8fafc',
@@ -36,13 +39,15 @@ const defaultSettings: SchoolSettings = {
   themeContentBg: '#ffffff',
   themeAccentColor: '#1e40af',
   themeHeaderText: '#ffffff',
+  themeInputBg: '#ffffff',
 };
 
 /** Applies all theme CSS vars to root */
 function applyThemeToDOM(s: SchoolSettings) {
   const root = document.documentElement.style;
   root.setProperty('--color-brand-primary', s.themePrimaryColor);
-  root.setProperty('--color-brand-secondary', s.themeSecondaryColor);
+  root.setProperty('--color-brand-secondary', s.themeBrandSecondary); // New one
+  root.setProperty('--color-inactive', s.themeSecondaryColor); // Renamed in logic
   root.setProperty('--color-text-main', s.themeTextColor);
   root.setProperty('--color-luxury-sidebar', s.themeSidebarColor);
   root.setProperty('--color-page-bg', s.themePageBg);
@@ -50,6 +55,7 @@ function applyThemeToDOM(s: SchoolSettings) {
   root.setProperty('--color-content-bg', s.themeContentBg);
   root.setProperty('--color-accent', s.themeAccentColor);
   root.setProperty('--color-header-text', s.themeHeaderText);
+  root.setProperty('--color-input-bg', s.themeInputBg);
   root.setProperty('--ant-primary-color', s.themePrimaryColor);
 }
 
@@ -79,6 +85,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         logoShape: schoolLogoShape as 'circle' | 'square',
         themePrimaryColor: d.theme_primary_color || defaultSettings.themePrimaryColor,
         themeSecondaryColor: d.theme_secondary_color || defaultSettings.themeSecondaryColor,
+        themeBrandSecondary: d.theme_brand_secondary || defaultSettings.themeBrandSecondary,
         themeTextColor: d.theme_text_color || defaultSettings.themeTextColor,
         themeSidebarColor: d.theme_sidebar_color || defaultSettings.themeSidebarColor,
         themePageBg: d.theme_page_bg || defaultSettings.themePageBg,
@@ -86,6 +93,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         themeContentBg: d.theme_content_bg || defaultSettings.themeContentBg,
         themeAccentColor: d.theme_accent_color || defaultSettings.themeAccentColor,
         themeHeaderText: d.theme_header_text_color || defaultSettings.themeHeaderText,
+        themeInputBg: d.theme_input_bg || defaultSettings.themeInputBg,
       };
 
       applyThemeToDOM(resolved);

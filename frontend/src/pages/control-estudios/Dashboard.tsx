@@ -83,7 +83,7 @@ const ControlEstudiosDashboard: React.FC = () => {
 
       <Row gutter={[24, 24]}>
         <Col xs={24} md={12}>
-          <Card className="glass-card summary-card">
+          <Card className="summary-card">
             <p className="text-slate-500 text-xs font-bold uppercase tracking-widest mb-2">Total Estudiantes</p>
             <h2 className="text-5xl font-black text-slate-900">{data.students.total}</h2>
             <p className="text-sm text-slate-500 mt-1">

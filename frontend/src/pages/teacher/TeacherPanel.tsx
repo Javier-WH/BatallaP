@@ -510,6 +510,13 @@ const TeacherPanel: React.FC = () => {
           font-weight: 600;
           box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
         }
+        .ant-table-thead > tr > th {
+          background-color: color-mix(in srgb, var(--color-input-bg), black 5%) !important;
+          color: var(--color-text-main) !important;
+        }
+        .ant-table-tbody > tr > td {
+          background-color: var(--color-input-bg) !important;
+        }
       `}</style>
       
       {/* Header */}
@@ -524,7 +531,7 @@ const TeacherPanel: React.FC = () => {
         {/* Subjects & Terms combined in a single card-like block or flex */}
         <div className="xl:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Asignaturas Seleccionables */}
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 flex flex-col theme-content-bg">
+          <div className="rounded-2xl shadow-sm border border-slate-100 p-5 flex flex-col" style={{ backgroundColor: 'var(--color-brand-secondary)' }}>
             <span className="text-[10px] font-bold uppercase tracking-widest mb-3" style={{ color: 'var(--color-text-main)', opacity: 0.5 }}>Seleccionar Asignatura</span>
             <div className="flex gap-3 overflow-x-auto pb-2 shrink-0">
               {assignments.map(as => {
@@ -535,7 +542,7 @@ const TeacherPanel: React.FC = () => {
                     onClick={() => setSelectedAssignmentId(as.id)}
                     className="cursor-pointer min-w-[160px] rounded-xl p-3 transition-all flex items-center gap-3 border-none"
                     style={{
-                      backgroundColor: isSelected ? 'var(--color-accent)' : 'var(--color-brand-secondary)',
+                      backgroundColor: isSelected ? 'var(--color-accent)' : 'var(--color-inactive)',
                       color: isSelected ? 'var(--color-header-text)' : 'var(--color-text-main)'
                     }}
                   >
@@ -564,12 +571,12 @@ const TeacherPanel: React.FC = () => {
           </div>
 
           {/* Lazos */}
-          <div className="rounded-2xl shadow-sm border border-slate-100 p-5 flex flex-col justify-center theme-content-bg">
+          <div className="rounded-2xl shadow-sm border border-slate-100 p-5 flex flex-col justify-center" style={{ backgroundColor: 'var(--color-brand-secondary)' }}>
             <div className="flex items-center justify-between mb-3">
               <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--color-text-main)', opacity: 0.5 }}>Lapso Académico</span>
               {isSelectedTermBlocked && <Tag color="error">Cerrado</Tag>}
             </div>
-            <div className="flex p-1 gap-2 rounded-xl w-full" style={{ backgroundColor: 'var(--color-page-bg)' }}>
+            <div className="flex p-1 gap-2 rounded-xl w-full" style={{ backgroundColor: 'var(--color-input-bg)' }}>
               {availableTerms.map(term => {
                 const isSelected = selectedTerm === term.id;
                 return (
@@ -578,7 +585,7 @@ const TeacherPanel: React.FC = () => {
                     onClick={() => setSelectedTerm(term.id)}
                     className="flex-1 py-2 text-sm font-bold rounded-lg transition-all flex justify-center items-center gap-2 border-none"
                     style={{
-                      backgroundColor: isSelected ? 'var(--color-accent)' : 'var(--color-brand-secondary)',
+                      backgroundColor: isSelected ? 'var(--color-accent)' : 'var(--color-inactive)',
                       color: isSelected ? 'var(--color-header-text)' : 'var(--color-text-main)'
                     }}
                   >
@@ -593,7 +600,7 @@ const TeacherPanel: React.FC = () => {
         </div>
 
         {/* Progress Planificado */}
-        <div className="rounded-2xl shadow-sm border border-slate-100 p-6 flex flex-col justify-center relative overflow-hidden theme-content-bg">
+        <div className="rounded-2xl shadow-sm border border-slate-100 p-6 flex flex-col justify-center relative overflow-hidden" style={{ backgroundColor: 'var(--color-brand-secondary)' }}>
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-black text-lg m-0" style={{ color: 'var(--color-text-main)' }}>Total Planificado</h3>
             <span className={`text-[10px] uppercase font-bold px-3 py-1 rounded-full ${totalPercentage === 100 ? 'bg-green-100 text-green-700' : totalPercentage > 100 ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-700'}`}>
@@ -641,7 +648,7 @@ const TeacherPanel: React.FC = () => {
       )}
 
       {/* Main Tabs content equivalent */}
-      <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 mb-8">
+      <div className="p-6 rounded-2xl shadow-sm border border-slate-100 mb-8" style={{ backgroundColor: 'var(--color-brand-secondary)' }}>
         <Tabs
           activeKey={activeTab}
           onChange={setActiveTab}
@@ -657,11 +664,16 @@ const TeacherPanel: React.FC = () => {
                     dataSource={evaluationPlan}
                     rowKey="id"
                     pagination={false}
-                    className="border border-slate-100 rounded-xl overflow-hidden"
+                    className="border border-slate-200 rounded-xl overflow-hidden"
+                    style={{ backgroundColor: 'color-mix(in srgb, var(--color-input-bg), black 3%)' }}
                   />
                   
                   <div
-                    className={`mt-4 w-full h-14 flex items-center justify-center rounded-xl transition-all cursor-pointer ${isSelectedTermBlocked || !selectedAssignmentId ? 'bg-slate-50 text-slate-300 pointer-events-none' : 'bg-slate-100/50 text-brand-primary hover:bg-slate-100'}`}
+                    className={`mt-4 w-full h-14 flex items-center justify-center rounded-xl transition-all cursor-pointer border-none shadow-sm ${isSelectedTermBlocked || !selectedAssignmentId ? 'opacity-50 pointer-events-none' : 'hover:scale-[1.01]'}`}
+                    style={{ 
+                      backgroundColor: isSelectedTermBlocked || !selectedAssignmentId ? 'var(--color-brand-secondary)' : 'var(--color-accent)',
+                      color: isSelectedTermBlocked || !selectedAssignmentId ? 'var(--color-text-main)' : 'var(--color-header-text)' 
+                    }}
                     onClick={() => {
                       if(isSelectedTermBlocked || !selectedAssignmentId) return;
                       setEditingItem(null);
@@ -669,12 +681,12 @@ const TeacherPanel: React.FC = () => {
                       setShowPlanModal(true);
                     }}
                   >
-                    <PlusOutlined className="text-3xl opacity-40 font-bold" />
+                    <PlusOutlined className="text-3xl font-bold" />
                   </div>
 
                   <div className="mt-6 flex justify-between items-center px-2">
-                     <span className="text-slate-400 font-medium text-sm">Mostrando {evaluationPlan.length} evaluaciones registradas</span>
-                     <span className="text-slate-800 font-black">Total Peso Acumulado: {totalPercentage}%</span>
+                     <span className="font-medium text-sm" style={{ color: 'var(--color-text-main)' }}>Mostrando {evaluationPlan.length} evaluaciones registradas</span>
+                     <span className="font-black" style={{ color: 'var(--color-text-main)' }}>Total Peso Acumulado: {totalPercentage}%</span>
                   </div>
                 </div>
               )
@@ -683,7 +695,7 @@ const TeacherPanel: React.FC = () => {
             key: '2',
             label: 'Calificaciones',
             children: evaluationPlan.length === 0 ? (
-              <Card style={{ textAlign: 'center', padding: '40px 0' }}>
+              <Card style={{ textAlign: 'center', padding: '40px 0', backgroundColor: 'var(--color-input-bg)', border: 'none' }}>
                 <div style={{ marginBottom: 24 }}>
                   <Title level={4}>No hay Plan de Evaluación definido</Title>
                   <Text type="secondary">Para poder calificar este lapso, primero debe definir las actividades y sus porcentajes.</Text>
@@ -693,10 +705,10 @@ const TeacherPanel: React.FC = () => {
                 </Button>
               </Card>
             ) : (
-              <Card bodyStyle={{ padding: 0 }} style={{ overflow: 'hidden' }}>
+              <Card bodyStyle={{ padding: 0 }} style={{ overflow: 'hidden', backgroundColor: 'var(--color-input-bg)', border: 'none' }}>
                 <div style={{ overflowX: 'auto', maxHeight: 'calc(100vh - 350px)' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                    <thead style={{ position: 'sticky', top: 0, zIndex: 10, background: '#fafafa' }}>
+                    <thead style={{ position: 'sticky', top: 0, zIndex: 10, background: 'color-mix(in srgb, var(--color-input-bg), black 7%)' }}>
                       <tr>
                         <th style={{ padding: '12px 16px', borderBottom: '1px solid #f0f0f0', textAlign: 'left', minWidth: 250 }}>Estudiante</th>
                         {evaluationPlan.map((item) => (
@@ -735,7 +747,7 @@ const TeacherPanel: React.FC = () => {
                                 padding: '8px 16px', 
                                 borderBottom: '1px solid #f0f0f0', 
                                 borderRight: '1px solid #f0f0f0',
-                                background: isEven ? '#ffffff' : '#fafafa' 
+                                background: 'var(--color-input-bg)' 
                               }}>
                                 <div style={{ fontWeight: 500 }}>{enrollment.student?.lastName}, {enrollment.student?.firstName}</div>
                                 <div style={{ fontSize: '12px', color: '#8c8c8c' }}>{enrollment.student?.document}</div>
@@ -750,7 +762,7 @@ const TeacherPanel: React.FC = () => {
                                       borderBottom: '1px solid #f0f0f0', 
                                       borderRight: '1px solid #f0f0f0',
                                       textAlign: 'center',
-                                      background: isEven ? 'var(--color-content-bg)' : 'var(--color-page-bg)' 
+                                      background: 'var(--color-input-bg)' 
                                     }}>
                                     <InputNumber
                                       id={`grade-${rowIndex}-${colIndex}`}
@@ -806,7 +818,7 @@ const TeacherPanel: React.FC = () => {
                                 borderBottom: '1px solid #f0f0f0', 
                                 borderRight: '1px solid #f0f0f0', 
                                 textAlign: 'center', 
-                                background: isEven ? 'var(--color-page-bg)' : 'var(--color-content-bg)', 
+                                background: 'var(--color-input-bg)', 
                                 fontWeight: 'bold',
                                 color: 'var(--color-text-main)'
                               }}>

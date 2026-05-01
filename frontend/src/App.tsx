@@ -124,6 +124,26 @@ const ThemeWrapper = ({ children }: { children: React.ReactNode }) => {
             trackBg: settings.themeSecondaryColor || '#0ea5e9',
             itemColor: 'rgba(255, 255, 255, 0.8)',
             itemHoverColor: '#ffffff',
+          },
+          Input: {
+            colorBgContainer: settings.themeInputBg || '#ffffff',
+          },
+          InputNumber: {
+            colorBgContainer: settings.themeInputBg || '#ffffff',
+          },
+          Select: {
+            colorBgContainer: settings.themeInputBg || '#ffffff',
+          },
+          Table: {
+            colorBgContainer: settings.themeInputBg || '#ffffff',
+            headerBg: 'color-mix(in srgb, ' + (settings.themeInputBg || '#ffffff') + ', black 5%)',
+          },
+          Card: {
+            colorBgContainer: settings.themeBrandSecondary || '#ffffff',
+          },
+          Menu: {
+            colorItemBg: settings.themeBrandSecondary || 'transparent',
+            colorSubItemBg: settings.themeBrandSecondary || 'transparent',
           }
         }
       }}

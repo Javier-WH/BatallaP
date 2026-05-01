@@ -4,6 +4,7 @@
 @theme {
   --color-brand-primary: #1e40af;
   --color-brand-secondary: #0ea5e9;
+  --color-inactive: #e2e8f0;
   --color-text-main: #0f172a;
   --color-luxury-gold: #d4af37;
   --color-luxury-sidebar: #0f172a;
@@ -127,9 +128,9 @@ input[type=number] {
 }
 
 /* Global Tabs Styling using Theme Variables */
-/* Inactive Tabs use "Color Secundario" for background and "Texto Base" for text */
+/* Inactive Tabs use "Color Inactivo" for background and "Texto Base" for text */
 .ant-tabs-tab {
-  background-color: var(--color-brand-secondary) !important;
+  background-color: var(--color-inactive) !important;
   color: var(--color-text-main) !important;
   border-radius: 8px !important;
   padding: 8px 20px !important;
@@ -165,9 +166,9 @@ input[type=number] {
 }
 
 /* Global Button Styling using Theme Variables (matched to Tabs logic) */
-/* Inactive/Default buttons use "Color Secundario" for background and "Texto Base" for text */
+/* Inactive/Default buttons use "Color Inactivo" for background and "Texto Base" for text */
 .ant-btn:not(.ant-btn-primary):not(.ant-btn-text):not(.ant-btn-link) {
-  background-color: var(--color-brand-secondary) !important;
+  background-color: var(--color-inactive) !important;
   color: var(--color-text-main) !important;
   border-color: transparent !important;
 }
