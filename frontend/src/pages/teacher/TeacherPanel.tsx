@@ -494,9 +494,6 @@ const TeacherPanel: React.FC = () => {
 
 
   const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?.percentage || 0), 0) || 0;
-  const currentAssignment = assignments.find(a => a.id === selectedAssignmentId);
-  const currentSubjectName = currentAssignment?.periodGradeSubject.subject.name || 'Selecciona...';
-
   return (
     <div className="h-full overflow-y-auto theme-page-bg p-4 md:p-8">
       <style>{`
@@ -518,14 +515,7 @@ const TeacherPanel: React.FC = () => {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-8">
         <div>
-          <div className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2 mb-2">
-            <span>Dashboard</span>
-            <span className="text-slate-300">&gt;</span>
-            <span>Mis Asignaturas</span>
-            <span className="text-slate-300">&gt;</span>
-            <span className="text-brand-primary">{currentSubjectName}</span>
-          </div>
-          <h1 className="text-3xl font-black text-slate-800 tracking-tight">Configuración del Plan de Evaluación</h1>
+          <h1 className="text-3xl font-black tracking-tight" style={{ color: 'var(--color-text-main)' }}>Configuración del Plan de Evaluación</h1>
         </div>
       </div>
 
@@ -534,8 +524,8 @@ const TeacherPanel: React.FC = () => {
         {/* Subjects & Terms combined in a single card-like block or flex */}
         <div className="xl:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Asignaturas Seleccionables */}
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 flex flex-col">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">Seleccionar Asignatura</span>
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 flex flex-col theme-content-bg">
+            <span className="text-[10px] font-bold uppercase tracking-widest mb-3" style={{ color: 'var(--color-text-main)', opacity: 0.5 }}>Seleccionar Asignatura</span>
             <div className="flex gap-3 overflow-x-auto pb-2 shrink-0">
               {assignments.map(as => {
                 const isSelected = as.id === selectedAssignmentId;
@@ -574,9 +564,9 @@ const TeacherPanel: React.FC = () => {
           </div>
 
           {/* Lazos */}
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 flex flex-col justify-center">
+          <div className="rounded-2xl shadow-sm border border-slate-100 p-5 flex flex-col justify-center theme-content-bg">
             <div className="flex items-center justify-between mb-3">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Lapso Académico</span>
+              <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--color-text-main)', opacity: 0.5 }}>Lapso Académico</span>
               {isSelectedTermBlocked && <Tag color="error">Cerrado</Tag>}
             </div>
             <div className="flex p-1 gap-2 rounded-xl w-full" style={{ backgroundColor: 'var(--color-page-bg)' }}>
@@ -603,9 +593,9 @@ const TeacherPanel: React.FC = () => {
         </div>
 
         {/* Progress Planificado */}
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 flex flex-col justify-center relative overflow-hidden">
+        <div className="rounded-2xl shadow-sm border border-slate-100 p-6 flex flex-col justify-center relative overflow-hidden theme-content-bg">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="font-black text-slate-800 text-lg m-0">Total Planificado</h3>
+            <h3 className="font-black text-lg m-0" style={{ color: 'var(--color-text-main)' }}>Total Planificado</h3>
             <span className={`text-[10px] uppercase font-bold px-3 py-1 rounded-full ${totalPercentage === 100 ? 'bg-green-100 text-green-700' : totalPercentage > 100 ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-700'}`}>
               {totalPercentage}% Completado
             </span>
@@ -614,13 +604,16 @@ const TeacherPanel: React.FC = () => {
           
           <div className="h-3 w-full bg-slate-100 rounded-full mt-2 mb-2 relative overflow-hidden">
             <div 
-              className={`h-full rounded-full transition-all duration-1000 ${totalPercentage === 100 ? 'bg-green-500' : totalPercentage > 100 ? 'bg-red-500' : 'bg-brand-primary'}`} 
-              style={{ width: `${Math.min(totalPercentage, 100)}%` }} 
+              className={`h-full rounded-full transition-all duration-1000 ${totalPercentage === 100 ? 'bg-green-500' : totalPercentage > 100 ? 'bg-red-500' : ''}`} 
+              style={{ 
+                width: `${Math.min(totalPercentage, 100)}%`,
+                backgroundColor: (totalPercentage <= 100 && totalPercentage !== 100) ? 'var(--color-luxury-sidebar)' : undefined 
+              }} 
             />
           </div>
           <div className="flex justify-between text-[11px] font-bold text-slate-500 mb-4">
             <span>0%</span>
-            <span className="text-brand-primary">{totalPercentage}% de 100%</span>
+            <span style={{ color: 'var(--color-luxury-sidebar)' }}>{totalPercentage}% de 100%</span>
             <span>100%</span>
           </div>
           
@@ -757,7 +750,7 @@ const TeacherPanel: React.FC = () => {
                                       borderBottom: '1px solid #f0f0f0', 
                                       borderRight: '1px solid #f0f0f0',
                                       textAlign: 'center',
-                                      background: isEven ? '#ffffff' : '#fafafa' 
+                                      background: isEven ? 'var(--color-content-bg)' : 'var(--color-page-bg)' 
                                     }}>
                                     <InputNumber
                                       id={`grade-${rowIndex}-${colIndex}`}
@@ -813,8 +806,9 @@ const TeacherPanel: React.FC = () => {
                                 borderBottom: '1px solid #f0f0f0', 
                                 borderRight: '1px solid #f0f0f0', 
                                 textAlign: 'center', 
-                                background: isEven ? '#fafafa' : '#f5f5f5', // Slightly darker for total
-                                fontWeight: 'bold' 
+                                background: isEven ? 'var(--color-page-bg)' : 'var(--color-content-bg)', 
+                                fontWeight: 'bold',
+                                color: 'var(--color-text-main)'
                               }}>
                                 <Tag color={rowTotal >= (maxGrade * 0.5) ? 'green' : 'red'} style={{ margin: 0 }}>
                                   {formatGrade(rowTotal, enableRounding)}

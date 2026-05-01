@@ -306,10 +306,10 @@ const SettingsManagement: React.FC = () => {
             </div>
             
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 py-8">
-              {/* Primary Color */}
+              {/* Warnings Color */}
               <div>
-                <label className="text-slate-700 font-bold block mb-2">Color Primario</label>
-                <p className="text-xs text-slate-400 mb-3">Botones, menús y acentos visuales.</p>
+                <label className="text-slate-700 font-bold block mb-2">Color de Advertencias</label>
+                <p className="text-xs text-slate-400 mb-3">Alertas y estados críticos.</p>
                 <div className="flex items-center gap-4">
                   <input
                     type="color"

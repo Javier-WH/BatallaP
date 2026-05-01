@@ -166,12 +166,15 @@ const MainLayout: React.FC = () => {
           {!collapsed && (
             <div className="p-4 mx-2 mb-4 bg-white/5 rounded-2xl border border-white/5">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-brand-primary flex items-center justify-center text-white border-2 border-white/20">
-                  <UserOutlined />
+                <div 
+                  className="w-10 h-10 rounded-full flex items-center justify-center border-2 border-white/20 shadow-inner"
+                  style={{ backgroundColor: 'var(--color-panel-header)' }}
+                >
+                  <UserOutlined className="text-header-text" />
                 </div>
                 <div className="flex flex-col truncate">
-                  <span className="text-sm font-bold text-white truncate">{user?.firstName} {user?.lastName}</span>
-                  <span className="text-[10px] text-slate-400 font-medium truncate italic">{user?.roles[0]}</span>
+                  <span className="text-sm font-bold truncate text-header-text">{user?.firstName} {user?.lastName}</span>
+                  <span className="text-[10px] font-medium truncate italic text-header-text opacity-60">{user?.roles[0]}</span>
                 </div>
               </div>
             </div>
@@ -197,14 +200,17 @@ const MainLayout: React.FC = () => {
             {/* Global Context Indicator: Active Period */}
             {activePeriod && (
               <div className="ml-2 hidden md:flex items-center gap-3 animate-in fade-in slide-in-from-left-4 duration-500">
-                <div className="w-10 h-10 rounded-xl bg-blue-50/50 flex items-center justify-center text-brand-primary border border-blue-100/50">
-                  <CalendarOutlined className="text-lg" />
+                <div 
+                  className="w-10 h-10 rounded-xl flex items-center justify-center border border-blue-100/20 shadow-inner"
+                  style={{ backgroundColor: 'rgba(255, 255, 255, 0.15)' }}
+                >
+                  <CalendarOutlined className="text-lg" style={{ color: 'var(--color-panel-header)' }} />
                 </div>
                 <div className="flex flex-col">
-                  <span className="text-[10px] font-black text-white/80 uppercase tracking-[0.2em] leading-none mb-1">
+                  <span className="text-[10px] font-black uppercase tracking-[0.2em] leading-none mb-1 opacity-70 text-header-text">
                     Periodo Activo
                   </span>
-                  <span className="text-sm font-black text-white leading-tight drop-shadow-sm">
+                  <span className="text-sm font-black leading-tight drop-shadow-sm text-header-text">
                     {activePeriod.name}
                   </span>
                 </div>
