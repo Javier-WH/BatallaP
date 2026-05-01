@@ -1,0 +1,124 @@
+{
+  "version": 1,
+  "lastUpdated": "2026-05-01T14:50:00-04:00",
+  "tasks": [
+    {
+      "id": "TASK-001",
+      "title": "Tests para cierre de períodos",
+      "description": "Crear tests completos para el flujo de cierre de período: validación, preview, ejecución, promoción y materias pendientes.",
+      "priority": "high",
+      "status": "pending",
+      "category": "testing",
+      "affectedFiles": [
+        "backend/src/services/periodClosureExecutor.ts",
+        "backend/src/services/periodClosurePreview.ts",
+        "backend/src/services/studentPromotionEngine.ts",
+        "backend/src/services/finalGradeCalculator.ts"
+      ],
+      "relatedDocs": ["docs/flows/period-closure.md"],
+      "estimatedComplexity": "high"
+    },
+    {
+      "id": "TASK-002",
+      "title": "Reportes: Boletín de calificaciones",
+      "description": "Crear reporte PDF oficial de calificaciones por estudiante por período (boletín).",
+      "priority": "high",
+      "status": "pending",
+      "category": "feature",
+      "affectedFiles": [],
+      "relatedDocs": ["docs/flows/grading.md"],
+      "estimatedComplexity": "high"
+    },
+    {
+      "id": "TASK-003",
+      "title": "Reportes: Notas certificadas",
+      "description": "Generar reporte PDF de notas certificadas para trámites oficiales.",
+      "priority": "high",
+      "status": "pending",
+      "category": "feature",
+      "affectedFiles": [],
+      "relatedDocs": ["docs/flows/grading.md"],
+      "estimatedComplexity": "medium"
+    },
+    {
+      "id": "TASK-004",
+      "title": "Reportes: Resúmenes académicos",
+      "description": "Crear resúmenes de rendimiento por grado/sección/período.",
+      "priority": "medium",
+      "status": "pending",
+      "category": "feature",
+      "affectedFiles": [],
+      "relatedDocs": [],
+      "estimatedComplexity": "medium"
+    },
+    {
+      "id": "TASK-005",
+      "title": "Refactorizar roles: magic strings → IDs",
+      "description": "Migrar las comparaciones de roles de strings ('Master', 'Administrador') a constantes tipadas con IDs numéricos.",
+      "priority": "medium",
+      "status": "pending",
+      "category": "refactor",
+      "affectedFiles": [
+        "frontend/src/App.tsx",
+        "backend/src/controllers/*.ts",
+        "docs/roles-permissions.md"
+      ],
+      "relatedDocs": ["rules/RULES.md (R2)"],
+      "estimatedComplexity": "medium"
+    },
+    {
+      "id": "TASK-006",
+      "title": "Ajustar formatGrade() al nuevo comportamiento de redondeo",
+      "description": "Modificar frontend/src/utils/gradeFormat.ts para que: ≥0.5 redondea arriba, <0.5 no redondea, máximo 1 decimal siempre.",
+      "priority": "medium",
+      "status": "pending",
+      "category": "bugfix",
+      "affectedFiles": [
+        "frontend/src/utils/gradeFormat.ts",
+        "frontend/src/context/GradeRoundingContext.tsx"
+      ],
+      "relatedDocs": ["rules/RULES.md (R10)", "docs/conventions.md"],
+      "estimatedComplexity": "low"
+    },
+    {
+      "id": "TASK-007",
+      "title": "Middleware centralizado requireAuth/requireRole",
+      "description": "Crear middlewares de Express reutilizables para autenticación y autorización por rol, reemplazando validaciones manuales en controllers.",
+      "priority": "medium",
+      "status": "pending",
+      "category": "refactor",
+      "affectedFiles": [
+        "backend/src/middlewares/",
+        "backend/src/routes/*.ts"
+      ],
+      "relatedDocs": ["rules/RULES.md (RF2)"],
+      "estimatedComplexity": "medium"
+    },
+    {
+      "id": "TASK-008",
+      "title": "Validación con Zod en endpoints",
+      "description": "Implementar Zod para validar payloads de entrada en endpoints del backend, empezando por los más críticos.",
+      "priority": "low",
+      "status": "pending",
+      "category": "refactor",
+      "affectedFiles": [
+        "backend/src/controllers/*.ts",
+        "backend/src/middlewares/"
+      ],
+      "relatedDocs": ["rules/RULES.md (RF1)"],
+      "estimatedComplexity": "medium"
+    },
+    {
+      "id": "TASK-009",
+      "title": "Mejoras de UI en vistas inadecuadas",
+      "description": "Identificar y mejorar las vistas que el usuario marcó como inadecuadas. Requiere feedback específico del usuario sobre cuáles vistas.",
+      "priority": "medium",
+      "status": "pending",
+      "category": "ui",
+      "affectedFiles": [],
+      "relatedDocs": [],
+      "estimatedComplexity": "variable",
+      "notes": "Necesita feedback del usuario sobre qué vistas específicas mejorar."
+    }
+  ]
+}

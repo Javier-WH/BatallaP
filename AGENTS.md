@@ -2,6 +2,11 @@
 
 > **Punto de entrada para modelos de IA y desarrolladores.**
 > Este archivo funciona como índice. La documentación canónica vive en [`docs/`](./docs/).
+>
+> ⚠️ **Agentes de IA**: Antes de modificar código, leer **obligatoriamente**:
+> 1. [`rules/RULES.md`](./rules/RULES.md) — Reglas de Oro (qué NUNCA cambiar)
+> 2. [`rules/BUSINESS_MODEL.md`](./rules/BUSINESS_MODEL.md) — Modelo de negocio
+> 3. [`rules/tasks/active_task.json`](./rules/tasks/active_task.json) — Tarea activa
 
 ---
 
@@ -37,6 +42,16 @@ Detalles, variables de entorno y comandos completos: [`docs/development-setup.md
 ```
 BatallaProject/
 ├── AGENTS.md                       ← Estás aquí (índice maestro)
+├── rules/                          ← 🏗️ Harness Engineering (arnés para agentes IA)
+│   ├── README.md                   ← Qué es el arnés y cómo usarlo
+│   ├── RULES.md                    ← ⚖️ Reglas de Oro (obligatorio para agentes)
+│   ├── BUSINESS_MODEL.md           ← 🏫 Modelo de negocio escolar completo
+│   ├── STATUS.md                   ← 📊 Estado funcional del proyecto
+│   ├── verify.ps1                  ← 🔍 Script de verificación (Gates 0-3)
+│   ├── progress/                   ← 📝 Memoria externa (estado de tareas)
+│   ├── tasks/                      ← 📋 Backlog y tarea activa (JSON)
+│   ├── checklists/                 ← ✅ Checklists reutilizables
+│   └── orchestration/              ← 🎯 Protocolo líder + delegación
 ├── docs/                           ← 📚 Documentación canónica
 │   ├── README.md                   ← Índice de /docs
 │   ├── development-setup.md        ← Instalación y ejecución
@@ -87,15 +102,12 @@ BatallaProject/
 │   │   └── components/             ← ★ AGENTS.md (reutilizables)
 │   └── package.json
 ├── tests/                          ← Tests de integración monorepo (ver tests/README.md)
-├── notes/                          ← Bitácoras de sesiones (no canónico)
+├── notes/                          ← Bitácoras de sesiones (archivo histórico)
 │   ├── arquitectura-cierre-periodos.md
 │   ├── sistema-edicion-notas.md
 │   └── progreso-guardianes-2025-12-24.md
 ├── .windsurf/workflows/            ← Workflows slash-command
 │   └── roles-and-access.md
-├── ANALISIS_FUNCIONALIDAD.md
-├── CONTEXT_HANDOVER.md
-├── CHANGELOG_SESSION_2026_01_24.md
 └── package.json                    ← Scripts raíz (concurrently)
 ```
 
@@ -104,6 +116,12 @@ BatallaProject/
 ---
 
 ## 🔗 Enlaces rápidos por tarea
+
+### Soy un agente de IA y voy a empezar a trabajar
+1. [`rules/RULES.md`](./rules/RULES.md) — Reglas de Oro (OBLIGATORIO)
+2. [`rules/BUSINESS_MODEL.md`](./rules/BUSINESS_MODEL.md) — Entender el negocio
+3. [`rules/tasks/active_task.json`](./rules/tasks/active_task.json) — Tarea activa
+4. [`rules/checklists/pre-delivery.md`](./rules/checklists/pre-delivery.md) — Checklist antes de entregar
 
 ### Voy a modificar un endpoint
 1. [`docs/backend-api.md`](./docs/backend-api.md) – encontrar el endpoint.
@@ -194,7 +212,7 @@ Bitácoras específicas en [`notes/`](./notes/).
 
 ## 💡 Convenciones resumidas
 
-- **Idioma del código**: inglés. **Idioma de la UI**: español.
+- **Idioma del código y comentarios**: inglés. **Idioma de la UI**: español.
 - **TypeScript**: modo estricto; evitar `any`.
 - **Transacciones**: `sequelize.transaction()` para operaciones multi-tabla.
 - **Asociaciones Sequelize**: SOLO en `backend/src/models/index.ts`.
