@@ -494,176 +494,198 @@ const TeacherPanel: React.FC = () => {
 
 
   const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?.percentage || 0), 0) || 0;
+  const currentAssignment = assignments.find(a => a.id === selectedAssignmentId);
+  const currentSubjectName = currentAssignment?.periodGradeSubject.subject.name || 'Selecciona...';
 
   return (
-    <div style={{ padding: '24px' }}>
+    <div className="h-full overflow-y-auto theme-page-bg p-4 md:p-8">
       <style>{`
-        .grading-row:hover {
-          background-color: #f0f7ff !important;
-        }
-        .grading-row td {
-          transition: background-color 0.2s;
-        }
-        .grading-table-container::-webkit-scrollbar {
-          height: 8px;
-          width: 8px;
-        }
-        .grading-table-container::-webkit-scrollbar-thumb {
-          background: #e1e1e1;
-          border-radius: 4px;
-        }
-        .grading-table-container::-webkit-scrollbar-track {
-          background: #f5f5f5;
-        }
-        .custom-segmented {
-          background: #f0f0f0;
-          padding: 4px;
-        }
-        .custom-segmented .ant-segmented-item-selected {
-          background-color: #1890ff !important;
-          color: white !important;
-          font-weight: bold;
-        }
-        .assignment-tabs .ant-tabs-tab {
-          height: auto !important;
-          padding: 8px 16px !important;
-          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
-          border-bottom: none !important;
-        }
-        .assignment-tabs .ant-tabs-tab-btn {
-          width: 100%;
-        }
-        .ant-tabs-card .ant-tabs-tab-active {
-          background-color: #1e40af !important;
-          border-color: #1e40af !important;
-          box-shadow: 0 4px 12px rgba(30, 64, 175, 0.2);
-        }
-        .ant-tabs-card .ant-tabs-tab-active .ant-tabs-tab-btn,
-        .ant-tabs-card .ant-tabs-tab-active .ant-tabs-tab-btn *,
-        .ant-tabs-card .ant-tabs-tab-active .ant-tabs-tab-btn div {
-          color: white !important;
-        }
+        .grading-row:hover { background-color: #f8fafc !important; }
+        .grading-row td { transition: background-color 0.2s; }
+        /* Luxury Scrollbar */
+        .grading-table-container::-webkit-scrollbar { height: 8px; width: 8px; }
+        .grading-table-container::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        .grading-table-container::-webkit-scrollbar-track { background: #f1f5f9; }
         
-        /* Content container matching active tab */
-        .content-tabs .ant-tabs-nav {
-            margin-bottom: 0 !important;
-        }
-        .content-tabs .ant-tabs-content-holder {
-            border: 1px solid #1e40af;
-            border-top: none;
-            background: #fff;
-        }
-        .content-tabs .ant-tabs-tab-active {
-            border-bottom: 1px solid #1e40af !important;
+        .luxury-segmented .ant-segmented-item-selected {
+          background-color: var(--color-brand-primary, #1e40af) !important;
+          color: white !important;
+          font-weight: 600;
+          box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
         }
       `}</style>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-        <BookOutlined style={{ fontSize: 24, color: '#1890ff' }} />
-        <Title level={4} style={{ margin: 0 }}>Panel del Profesor</Title>
+      
+      {/* Header */}
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-8">
+        <div>
+          <div className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2 mb-2">
+            <span>Dashboard</span>
+            <span className="text-slate-300">&gt;</span>
+            <span>Mis Asignaturas</span>
+            <span className="text-slate-300">&gt;</span>
+            <span className="text-brand-primary">{currentSubjectName}</span>
+          </div>
+          <h1 className="text-3xl font-black text-slate-800 tracking-tight">Configuración del Plan de Evaluación</h1>
+        </div>
       </div>
 
-      <Card style={{ marginBottom: 16 }} styles={{ body: { padding: '12px 24px' } }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' }}>
-          <Title level={5} style={{ margin: 0 }}>Mis Asignaciones</Title>
-          <Space>
-            <Text strong>Lapso:</Text>
-            <Select
-              style={{ width: 200 }}
-              placeholder="Seleccione Lapso"
-              value={selectedTerm}
-              onChange={setSelectedTerm}
-              disabled={availableTerms.length === 0}
-            >
-              {availableTerms.map(term => (
-                <Option key={term.id} value={term.id}>
-                  <Space>
-                    {term.name}
-                    {term.isBlocked && <LockOutlined style={{ color: '#ff4d4f' }} />}
-                    {term.isBlocked && <Text type="danger">(Bloqueado)</Text>}
-                  </Space>
-                </Option>
-              ))}
-            </Select>
-          </Space>
-        </div>
-      </Card>
-
-      <Tabs
-        activeKey={selectedAssignmentId?.toString()}
-        onChange={(key) => setSelectedAssignmentId(Number(key))}
-        type="card"
-        style={{ marginBottom: 24 }}
-        className="assignment-tabs"
-        items={assignments.map(as => ({
-          key: as.id.toString(),
-          label: (
-            <div style={{ textAlign: 'left', padding: '4px 8px' }}>
-              <div style={{ fontSize: '15px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
-                <BookOutlined /> {as.periodGradeSubject.subject.name}
-              </div>
-              <div style={{ fontSize: '11px', color: '#8c8c8c', fontWeight: 400, marginTop: 2 }}>
-                {as.periodGradeSubject.periodGrade.grade.name} ({as.section.name})
-              </div>
+      {/* Top Grid Panels */}
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 mb-8">
+        {/* Subjects & Terms combined in a single card-like block or flex */}
+        <div className="xl:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Asignaturas Seleccionables */}
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 flex flex-col">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">Seleccionar Asignatura</span>
+            <div className="flex gap-3 overflow-x-auto pb-2 shrink-0">
+              {assignments.map(as => {
+                const isSelected = as.id === selectedAssignmentId;
+                return (
+                  <div
+                    key={as.id}
+                    onClick={() => setSelectedAssignmentId(as.id)}
+                    className="cursor-pointer min-w-[160px] rounded-xl p-3 transition-all flex items-center gap-3 border-none"
+                    style={{
+                      backgroundColor: isSelected ? 'var(--color-accent)' : 'var(--color-brand-secondary)',
+                      color: isSelected ? 'var(--color-header-text)' : 'var(--color-text-main)'
+                    }}
+                  >
+                    <div 
+                      className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0"
+                      style={{
+                        backgroundColor: isSelected ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.05)',
+                        color: 'inherit'
+                      }}
+                    >
+                      <BookOutlined className="text-lg" />
+                    </div>
+                    <div>
+                      <div className="font-bold text-sm" style={{ color: 'inherit' }}>
+                        {as.periodGradeSubject.subject.name}
+                      </div>
+                      <div className="text-[10px] font-medium" style={{ opacity: 0.8, color: 'inherit' }}>
+                        Sec. {as.section.name}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+              {assignments.length === 0 && <div className="text-slate-400 text-sm py-4">No hay asignaturas</div>}
             </div>
-          )
-        }))}
-      />
+          </div>
 
-      {selectedTerm && availableTerms.find(t => t.id === selectedTerm)?.isBlocked && (
+          {/* Lazos */}
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 flex flex-col justify-center">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Lapso Académico</span>
+              {isSelectedTermBlocked && <Tag color="error">Cerrado</Tag>}
+            </div>
+            <div className="flex p-1 gap-2 rounded-xl w-full" style={{ backgroundColor: 'var(--color-page-bg)' }}>
+              {availableTerms.map(term => {
+                const isSelected = selectedTerm === term.id;
+                return (
+                  <button
+                    key={term.id}
+                    onClick={() => setSelectedTerm(term.id)}
+                    className="flex-1 py-2 text-sm font-bold rounded-lg transition-all flex justify-center items-center gap-2 border-none"
+                    style={{
+                      backgroundColor: isSelected ? 'var(--color-accent)' : 'var(--color-brand-secondary)',
+                      color: isSelected ? 'var(--color-header-text)' : 'var(--color-text-main)'
+                    }}
+                  >
+                    {term.name}
+                    {term.isBlocked && <LockOutlined style={{ opacity: 0.8 }} />}
+                  </button>
+                );
+              })}
+              {availableTerms.length === 0 && <div className="text-slate-400 text-sm text-center w-full py-2">Sin lapsos</div>}
+            </div>
+          </div>
+        </div>
+
+        {/* Progress Planificado */}
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 flex flex-col justify-center relative overflow-hidden">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-black text-slate-800 text-lg m-0">Total Planificado</h3>
+            <span className={`text-[10px] uppercase font-bold px-3 py-1 rounded-full ${totalPercentage === 100 ? 'bg-green-100 text-green-700' : totalPercentage > 100 ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-700'}`}>
+              {totalPercentage}% Completado
+            </span>
+          </div>
+          <p className="text-xs font-semibold text-slate-400 mb-2">Avance del periodo actual</p>
+          
+          <div className="h-3 w-full bg-slate-100 rounded-full mt-2 mb-2 relative overflow-hidden">
+            <div 
+              className={`h-full rounded-full transition-all duration-1000 ${totalPercentage === 100 ? 'bg-green-500' : totalPercentage > 100 ? 'bg-red-500' : 'bg-brand-primary'}`} 
+              style={{ width: `${Math.min(totalPercentage, 100)}%` }} 
+            />
+          </div>
+          <div className="flex justify-between text-[11px] font-bold text-slate-500 mb-4">
+            <span>0%</span>
+            <span className="text-brand-primary">{totalPercentage}% de 100%</span>
+            <span>100%</span>
+          </div>
+          
+          {totalPercentage < 100 && (
+            <div className="bg-orange-50 text-orange-700 text-xs p-3 rounded-xl border border-orange-100 font-medium flex gap-2 items-start mt-auto">
+               <span>ℹ️</span> Faltan {100 - totalPercentage}% por asignar para completar el plan de evaluación.
+            </div>
+          )}
+          {totalPercentage === 100 && (
+             <div className="bg-green-50 text-green-700 text-xs p-3 rounded-xl border border-green-100 font-medium flex gap-2 items-start mt-auto">
+               <span>✅</span> Exito. Planificación distribuida correctamente al 100%.
+            </div>
+          )}
+        </div>
+      </div>
+
+      {isSelectedTermBlocked && (
         <Alert
           message="Lapso bloqueado"
           description="Este lapso está bloqueado. No puedes modificar la planificación ni las notas."
           type="warning"
           showIcon
-          style={{ marginBottom: 24 }}
+           className="mb-8 rounded-xl border-orange-200 bg-orange-50"
         />
       )}
 
-      <Tabs
-        activeKey={activeTab}
-        onChange={setActiveTab}
-        type="card"
-        className="content-tabs"
-        items={[
-          {
-            key: '1',
-            label: 'Plan de Evaluación',
-            children: (
-              <Card>
-                <Table<EvaluationPlanItem>
-                  loading={loading}
-                  columns={planColumns}
-                  dataSource={evaluationPlan}
-                  rowKey="id"
-                  pagination={false}
-                  bordered
-                  rowClassName={(_, index) => (index % 2 === 1 ? 'table-row-light' : '')}
-                />
-                
-                <div style={{ marginTop: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <Button
-                    type="primary"
-                    icon={<PlusOutlined />}
-                    disabled={isSelectedTermBlocked}
+      {/* Main Tabs content equivalent */}
+      <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 mb-8">
+        <Tabs
+          activeKey={activeTab}
+          onChange={setActiveTab}
+          items={[
+            {
+              key: '1',
+              label: <span className="font-bold text-[15px] px-4 py-1">Evaluaciones Programadas</span>,
+              children: (
+                <div className="pt-4">
+                  <Table<EvaluationPlanItem>
+                    loading={loading}
+                    columns={planColumns}
+                    dataSource={evaluationPlan}
+                    rowKey="id"
+                    pagination={false}
+                    className="border border-slate-100 rounded-xl overflow-hidden"
+                  />
+                  
+                  <div
+                    className={`mt-4 w-full h-14 flex items-center justify-center rounded-xl transition-all cursor-pointer ${isSelectedTermBlocked || !selectedAssignmentId ? 'bg-slate-50 text-slate-300 pointer-events-none' : 'bg-slate-100/50 text-brand-primary hover:bg-slate-100'}`}
                     onClick={() => {
+                      if(isSelectedTermBlocked || !selectedAssignmentId) return;
                       setEditingItem(null);
                       planForm.resetFields();
                       setShowPlanModal(true);
                     }}
                   >
-                    Agregar Evaluación
-                  </Button>
-                  
-                  <div style={{ textAlign: 'right' }}>
-                    <Text strong>Total Planificado: </Text>
-                    <Tag color={totalPercentage > 100 ? 'red' : totalPercentage === 100 ? 'green' : 'orange'}>
-                      {totalPercentage}% / 100%
-                    </Tag>
+                    <PlusOutlined className="text-3xl opacity-40 font-bold" />
+                  </div>
+
+                  <div className="mt-6 flex justify-between items-center px-2">
+                     <span className="text-slate-400 font-medium text-sm">Mostrando {evaluationPlan.length} evaluaciones registradas</span>
+                     <span className="text-slate-800 font-black">Total Peso Acumulado: {totalPercentage}%</span>
                   </div>
                 </div>
-              </Card>
-            )
-          },
+              )
+            },
           {
             key: '2',
             label: 'Calificaciones',
@@ -814,6 +836,7 @@ const TeacherPanel: React.FC = () => {
           }
         ]}
       />
+      </div>
 
       <Modal
         title={editingItem ? "Editar Evaluación" : "Nueva Evaluación"}

@@ -220,7 +220,7 @@ const SettingsManagement: React.FC = () => {
                     { label: 'Cuadrado', value: 'square', icon: <BorderOutlined /> },
                     { label: 'Redondo', value: 'circle', icon: <CheckCircleOutlined /> },
                   ]}
-                  className="rounded-xl p-1 bg-slate-100"
+                  className="rounded-xl p-1"
                 />
               </Form.Item>
 
@@ -455,7 +455,7 @@ const SettingsManagement: React.FC = () => {
 
               {/* Accent Color */}
               <div>
-                <label className="text-slate-700 font-bold block mb-2">Color de Acento</label>
+                <label className="text-slate-700 font-bold block mb-2">Color de Encabezado Secundario</label>
                 <p className="text-xs text-slate-400 mb-3">Detalles sutiles e iconos decorativos.</p>
                 <div className="flex items-center gap-4">
                   <input

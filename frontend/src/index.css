@@ -125,3 +125,65 @@ input::-webkit-inner-spin-button {
 input[type=number] {
   -moz-appearance: textfield;
 }
+
+/* Global Tabs Styling using Theme Variables */
+/* Inactive Tabs use "Color Secundario" for background and "Texto Base" for text */
+.ant-tabs-tab {
+  background-color: var(--color-brand-secondary) !important;
+  color: var(--color-text-main) !important;
+  border-radius: 8px !important;
+  padding: 8px 20px !important;
+  margin-right: 8px !important;
+  border: none !important;
+  transition: all 0.3s ease !important;
+}
+
+.ant-tabs-tab .ant-tabs-tab-btn {
+  color: inherit !important;
+  font-weight: 500;
+}
+
+/* Active Tabs use "Color Encabezado Secundario" for background and "Texto sobre Oscuros" for text */
+.ant-tabs-tab.ant-tabs-tab-active {
+  background-color: var(--color-accent) !important;
+  color: var(--color-header-text) !important;
+}
+
+.ant-tabs-tab.ant-tabs-tab-active .ant-tabs-tab-btn {
+  color: var(--color-header-text) !important;
+  font-weight: bold;
+}
+
+/* Hide the default ink bar since tabs act as blocky pills */
+.ant-tabs-ink-bar {
+  display: none !important;
+}
+
+/* Adjust the container padding slightly */
+.ant-tabs-nav::before {
+  border-bottom: none !important;
+}
+
+/* Global Button Styling using Theme Variables (matched to Tabs logic) */
+/* Inactive/Default buttons use "Color Secundario" for background and "Texto Base" for text */
+.ant-btn:not(.ant-btn-primary):not(.ant-btn-text):not(.ant-btn-link) {
+  background-color: var(--color-brand-secondary) !important;
+  color: var(--color-text-main) !important;
+  border-color: transparent !important;
+}
+
+.ant-btn:not(.ant-btn-primary):not(.ant-btn-text):not(.ant-btn-link):hover {
+  opacity: 0.8 !important;
+}
+
+/* Active/Primary buttons use "Color Encabezado Secundario" for background and "Texto sobre Oscuros" for text */
+.ant-btn-primary {
+  background-color: var(--color-accent) !important;
+  color: var(--color-header-text) !important;
+  border-color: transparent !important;
+}
+
+.ant-btn-primary:hover {
+  opacity: 0.9 !important;
+  background-color: var(--color-accent) !important;
+}

@@ -108,6 +108,22 @@ const ThemeWrapper = ({ children }: { children: React.ReactNode }) => {
           Layout: {
             headerBg: settings.themePanelHeader || '#0f172a',
             siderBg: settings.themeSidebarColor || '#0f172a',
+          },
+          Checkbox: {
+            colorPrimary: settings.themeAccentColor || '#1e40af',
+            colorPrimaryHover: settings.themeAccentColor || '#1e40af',
+            colorBorder: settings.themeSecondaryColor || '#0ea5e9',
+          },
+          Radio: {
+            colorPrimary: settings.themeAccentColor || '#1e40af',
+            colorBorder: settings.themeSecondaryColor || '#0ea5e9',
+          },
+          Segmented: {
+            itemSelectedBg: settings.themeAccentColor || '#1e40af',
+            itemSelectedColor: '#ffffff',
+            trackBg: settings.themeSecondaryColor || '#0ea5e9',
+            itemColor: 'rgba(255, 255, 255, 0.8)',
+            itemHoverColor: '#ffffff',
           }
         }
       }}
