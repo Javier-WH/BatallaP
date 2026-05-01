@@ -336,6 +336,31 @@ const TeacherPanel: React.FC = () => {
     fetchPlanAndStudents();
   }, [fetchPlanAndStudents]);
 
+  if (!loading && assignments.length === 0) {
+    return (
+      <div style={{ padding: '24px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+          <BookOutlined style={{ fontSize: 24, color: '#1890ff' }} />
+          <Title level={4} style={{ margin: 0 }}>Panel del Profesor</Title>
+        </div>
+        <Card style={{ textAlign: 'center', padding: '40px 0' }}>
+          <Empty
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+            description={
+              <div style={{ maxWidth: 400, margin: '0 auto' }}>
+                <Title level={5}>No tienes materias asignadas</Title>
+                <Text type="secondary">
+                  Actualmente no tienes asignaciones de materia y sección para el período académico activo. 
+                  Si consideras que esto es un error, por favor contacta al personal administrativo o de control de estudios.
+                </Text>
+              </div>
+            }
+          />
+        </Card>
+      </div>
+    );
+  }
+
   const handleSavePlanItem = async (values: PlanItemFormValues) => {
     if (isSelectedTermBlocked) {
       message.warning('Este lapso está bloqueado. No puedes modificar el plan de evaluación.');
