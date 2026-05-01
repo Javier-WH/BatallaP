@@ -107,7 +107,7 @@ const MainLayout: React.FC = () => {
   );
 
   return (
-    <Layout className="h-screen bg-slate-50 overflow-hidden">
+    <Layout className="h-screen overflow-hidden theme-page-bg">
       <Sider
         trigger={null}
         collapsible

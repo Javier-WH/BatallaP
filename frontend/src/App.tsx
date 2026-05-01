@@ -1,8 +1,9 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { ConfigProvider } from 'antd';
 import Login from '@/pages/Login';
 import MainLayout from '@/pages/MainLayout';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
-import { SchoolProvider } from '@/context/SchoolContext';
+import { SchoolProvider, useSchool } from '@/context/SchoolContext';
 import { GradeRoundingProvider } from '@/context/GradeRoundingContext';
 import '@/index.css';
 
@@ -88,6 +89,33 @@ const PublicRoute = ({ children }: { children: JSX.Element }) => {
 
   return children;
 }
+
+// Theme wrapper that applies Ant Design ConfigProvider with dynamic colors
+const ThemeWrapper = ({ children }: { children: React.ReactNode }) => {
+  const { settings } = useSchool();
+
+  return (
+    <ConfigProvider
+      theme={{
+        token: {
+          colorPrimary: settings.themePrimaryColor || '#1e40af',
+          colorInfo: settings.themeSecondaryColor || '#0ea5e9',
+          colorTextBase: settings.themeTextColor || '#0f172a',
+          colorBgLayout: settings.themePageBg || '#f8fafc',
+          colorBgContainer: settings.themeContentBg || '#ffffff',
+        },
+        components: {
+          Layout: {
+            headerBg: settings.themePanelHeader || '#0f172a',
+            siderBg: settings.themeSidebarColor || '#0f172a',
+          }
+        }
+      }}
+    >
+      {children}
+    </ConfigProvider>
+  );
+};
 
 
 function AppRoutes() {
@@ -190,14 +218,17 @@ function App() {
   return (
     <Router>
       <SchoolProvider>
-        <AuthProvider>
-          <GradeRoundingProvider>
-            <AppRoutes />
-          </GradeRoundingProvider>
-        </AuthProvider>
+        <ThemeWrapper>
+          <AuthProvider>
+            <GradeRoundingProvider>
+              <AppRoutes />
+            </GradeRoundingProvider>
+          </AuthProvider>
+        </ThemeWrapper>
       </SchoolProvider>
     </Router>
   );
 }
 
 export default App;
+

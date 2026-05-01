@@ -48,10 +48,10 @@ const ControlEstudiosLayout: React.FC = () => {
   return (
     <div className="flex flex-col h-full min-h-0">
       {/* Control de Estudios Toolbar */}
-      <div className="sticky top-0 z-40 bg-slate-50/80 backdrop-blur-md pb-4 pt-0 px-6">
-        <div className="bg-white/70 backdrop-blur-sm p-2 rounded-2xl border border-white flex items-center gap-2 shadow-sm">
-          <div className="px-4 py-1 border-r border-slate-200 mr-2 shrink-0">
-            <span className="text-[10px] uppercase font-black text-slate-400 tracking-[0.2em]">Académico</span>
+      <div className="sticky top-0 z-40 backdrop-blur-md pb-4 pt-0 px-6">
+        <div className="bg-white/70 backdrop-blur-sm p-2 rounded-2xl border border-white/50 flex items-center gap-2 shadow-sm">
+          <div className="px-4 py-1 border-r border-slate-200/50 mr-2 shrink-0">
+            <span className="text-[10px] uppercase font-black text-slate-500 tracking-[0.2em]">Académico</span>
           </div>
           {tools.map(tool => (
             <NavButton

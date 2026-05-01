@@ -527,9 +527,34 @@ const TeacherPanel: React.FC = () => {
         .assignment-tabs .ant-tabs-tab {
           height: auto !important;
           padding: 8px 16px !important;
+          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+          border-bottom: none !important;
         }
         .assignment-tabs .ant-tabs-tab-btn {
           width: 100%;
+        }
+        .ant-tabs-card .ant-tabs-tab-active {
+          background-color: #1e40af !important;
+          border-color: #1e40af !important;
+          box-shadow: 0 4px 12px rgba(30, 64, 175, 0.2);
+        }
+        .ant-tabs-card .ant-tabs-tab-active .ant-tabs-tab-btn,
+        .ant-tabs-card .ant-tabs-tab-active .ant-tabs-tab-btn *,
+        .ant-tabs-card .ant-tabs-tab-active .ant-tabs-tab-btn div {
+          color: white !important;
+        }
+        
+        /* Content container matching active tab */
+        .content-tabs .ant-tabs-nav {
+            margin-bottom: 0 !important;
+        }
+        .content-tabs .ant-tabs-content-holder {
+            border: 1px solid #1e40af;
+            border-top: none;
+            background: #fff;
+        }
+        .content-tabs .ant-tabs-tab-active {
+            border-bottom: 1px solid #1e40af !important;
         }
       `}</style>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
@@ -598,6 +623,7 @@ const TeacherPanel: React.FC = () => {
         activeKey={activeTab}
         onChange={setActiveTab}
         type="card"
+        className="content-tabs"
         items={[
           {
             key: '1',

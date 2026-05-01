@@ -4,14 +4,22 @@
 @theme {
   --color-brand-primary: #1e40af;
   --color-brand-secondary: #0ea5e9;
+  --color-text-main: #0f172a;
   --color-luxury-gold: #d4af37;
   --color-luxury-sidebar: #0f172a;
+  --color-page-bg: #f8fafc;
+  --color-panel-bg: #0f172a;
+  --color-panel-header: #0f172a;
+  --color-content-bg: #ffffff;
+  --color-accent: #1e40af;
   --font-inter: "Inter", sans-serif;
 }
 
 @layer base {
   body {
-    @apply font-inter bg-slate-50 text-slate-900;
+    @apply font-inter;
+    background-color: var(--color-page-bg, #f8fafc);
+    color: var(--color-text-main, #0f172a);
   }
 
   .font-headline {
@@ -22,15 +30,18 @@
 
 @layer components {
   .glass-card {
-    @apply bg-white/70 backdrop-blur-md border border-white/20 shadow-xl rounded-2xl;
+    background-color: color-mix(in srgb, var(--color-content-bg) 70%, transparent);
+    @apply backdrop-blur-md border border-white/20 shadow-xl rounded-2xl;
   }
 
   .luxury-button {
-    @apply px-6 py-2 bg-luxury-sidebar text-white font-medium rounded-xl hover:bg-slate-800 transition-all shadow-lg active:scale-95;
+    background-color: var(--color-luxury-sidebar);
+    @apply px-6 py-2 text-white font-medium rounded-xl hover:opacity-90 transition-all shadow-lg active:scale-95;
   }
 
   .premium-sidebar {
-    @apply h-screen bg-luxury-sidebar text-white shadow-2xl transition-all duration-300;
+    background-color: var(--color-luxury-sidebar);
+    @apply h-screen text-white shadow-2xl transition-all duration-300;
   }
 
   .nav-item {
@@ -48,11 +59,27 @@
   .luxury-modal .ant-modal-header {
       @apply bg-white/50 backdrop-blur-sm border-b border-gray-100 p-6;
   }
+
+  /* Dynamic panel headers (Settings, Cards, etc.) */
+  .theme-panel-header {
+    background-color: var(--color-panel-header);
+    color: #fff;
+  }
+
+  /* Dynamic page background */
+  .theme-page-bg {
+    background-color: var(--color-page-bg);
+  }
+
+  /* Dynamic content cards */
+  .theme-content-bg {
+    background-color: var(--color-content-bg);
+  }
 }
 
 /* Ant Design overrides for luxury feel */
 :root {
-  --ant-primary-color: #1e40af;
+  --ant-primary-color: var(--color-brand-primary);
   --ant-border-radius-base: 0px !important;
   --ant-box-shadow-base: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
 }
@@ -96,4 +123,4 @@ input::-webkit-inner-spin-button {
 /* Firefox */
 input[type=number] {
   -moz-appearance: textfield;
-}
+}

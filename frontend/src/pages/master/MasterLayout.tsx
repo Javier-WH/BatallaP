@@ -50,11 +50,11 @@ const MasterLayout: React.FC = () => {
   return (
     <div className="flex flex-col h-full min-h-0">
       {/* Master Sub-Navigation */}
-      <div className="sticky top-0 z-40 bg-slate-50/80 backdrop-blur-md pb-4 pt-0 px-6">
-        <div className="bg-white/70 backdrop-blur-sm p-2 rounded-2xl border border-white flex items-center gap-2 shadow-sm overflow-x-auto scrollbar-hide">
-          <div className="px-4 py-1 border-r border-slate-200 mr-2 shrink-0 flex items-center gap-2">
+      <div className="sticky top-0 z-40 backdrop-blur-md pb-4 pt-0 px-6">
+        <div className="bg-white/70 backdrop-blur-sm p-2 rounded-2xl border border-white/50 flex items-center gap-2 shadow-sm overflow-x-auto scrollbar-hide">
+          <div className="px-4 py-1 border-r border-slate-200/50 mr-2 shrink-0 flex items-center gap-2">
             <SecurityScanOutlined className="text-brand-primary text-lg" />
-            <span className="text-[10px] uppercase font-black text-slate-400 tracking-[0.2em]">Súper Usuario</span>
+            <span className="text-[10px] uppercase font-black text-slate-500 tracking-[0.2em]">Súper Usuario</span>
           </div>
           {tools.map(tool => (
             <NavButton
