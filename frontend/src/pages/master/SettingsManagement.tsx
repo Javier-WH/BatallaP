@@ -173,19 +173,19 @@ const SettingsManagement: React.FC = () => {
         <p className="text-slate-500 font-medium">Define la identidad visual y el nombre oficial que aparecerá en todo el sistema y reportes.</p>
       </div>
 
-        <Card className="glass-card overflow-hidden !p-0">
-        <div className="theme-panel-header px-8 py-6">
-          <h2 className="text-[var(--color-header-text)] text-xl font-bold">Identidad Institucional</h2>
-          <p className="text-[var(--color-header-text)]/60 text-xs font-medium uppercase tracking-widest mt-1">Configuración del Perfil Maestro</p>
-        </div>
+        <Card className="glass-card overflow-hidden" styles={{ body: { padding: 0 } }}>
+          <div style={{ padding: '48px' }}>
+            <div className="theme-panel-header px-12 py-8 mx-[-48px] mt-[-48px] mb-12 block">
+              <h2 className="text-[var(--color-header-text)] text-xl font-bold">Identidad Institucional</h2>
+              <p className="text-[var(--color-header-text)]/60 text-xs font-medium uppercase tracking-widest mt-1">Configuración del Perfil Maestro</p>
+            </div>
 
-        <Form
-          form={form}
-          layout="vertical"
-          onFinish={onFinish}
-          className="p-8"
-          requiredMark={false}
-        >
+            <Form
+              form={form}
+              layout="vertical"
+              onFinish={onFinish}
+              requiredMark={false}
+            >
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
             <div className="space-y-6">
               <Form.Item
@@ -281,7 +281,7 @@ const SettingsManagement: React.FC = () => {
 
                   return false;
                 }}
-                className="!rounded-3xl border-2 border-dashed border-slate-200 bg-slate-50/50 hover:bg-white hover:border-brand-primary transition-all overflow-hidden"
+                className="!rounded-3xl !border-none bg-slate-100/30 transition-all overflow-hidden"
               >
                 {logoPreview ? (
                   <div className="p-4 relative group h-48 flex flex-col items-center justify-center">
@@ -309,11 +309,11 @@ const SettingsManagement: React.FC = () => {
             </div>
           </div>
 
-          <div className="mt-12">
-            <div className="theme-panel-header px-8 py-6 rounded-t-2xl mx-[-2rem]">
-              <h2 className="text-[var(--color-header-text)] text-xl font-bold">Apariencia y Colores</h2>
-              <p className="text-[var(--color-header-text)]/60 text-xs font-medium uppercase tracking-widest mt-1">Configuración del Tema Global</p>
-            </div>
+            <div className="mt-8">
+              <div className="theme-panel-header px-12 py-8 rounded-t-2xl mx-[-48px]">
+                <h2 className="text-[var(--color-header-text)] text-xl font-bold">Apariencia y Colores</h2>
+                <p className="text-[var(--color-header-text)]/60 text-xs font-medium uppercase tracking-widest mt-1">Configuración del Tema Global</p>
+              </div>
             
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 py-8">
               {/* Warnings Color */}
@@ -560,7 +560,8 @@ const SettingsManagement: React.FC = () => {
               Guardar Identidad
             </Button>
           </div>
-        </Form>
+            </Form>
+          </div>
         </Card>
       </div>
     </div>
