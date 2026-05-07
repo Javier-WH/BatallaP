@@ -1,13 +1,15 @@
 import React, { useState, useEffect, useCallback, Component, useMemo } from 'react';
 import type { ReactNode, ErrorInfo } from 'react';
 import { Tabs, Card, Select, Table, Button, Modal, Form, Input, DatePicker, message, Space, Tag, Typography, InputNumber, Alert, Empty } from 'antd';
-import { BookOutlined, PlusOutlined, DeleteOutlined, EditOutlined, LockOutlined } from '@ant-design/icons';
+import { BookOutlined, PlusOutlined, DeleteOutlined, EditOutlined, LockOutlined, FilePdfOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { isAxiosError } from 'axios';
 import api from '@/services/api';
 import dayjs from 'dayjs';
 import { useGradeRounding } from '@/context/GradeRoundingContext';
 import { formatGrade } from '@/utils/gradeFormat';
+import EvaluationPlanPDFModal from '@/components/pdf/EvaluationPlanPDFModal';
+import type { EvaluationPlanHeaderData, EvaluationPlanItemData } from '@/components/pdf/EvaluationPlanPDF';
 
 const { Option } = Select;
 const { Title, Text } = Typography;
@@ -219,6 +221,7 @@ const TeacherPanel: React.FC = () => {
   const [planForm] = Form.useForm<PlanItemFormValues>();
   const [activeTab, setActiveTab] = useState('1');
   const [maxGrade, setMaxGrade] = useState<number>(20);
+  const [showPDFModal, setShowPDFModal] = useState(false);
   const instrumentSelection = Form.useWatch('instrumentOption', planForm);
   const { enableRounding } = useGradeRounding();
 
@@ -720,10 +723,19 @@ const TeacherPanel: React.FC = () => {
                     <PlusOutlined className="text-3xl font-bold" />
                   </div>
 
-                  <div className="mt-6 flex justify-between items-center px-2">
-                     <span className="font-medium text-sm" style={{ color: 'var(--color-text-main)' }}>Mostrando {evaluationPlan.length} evaluaciones registradas</span>
-                     <span className="font-black" style={{ color: 'var(--color-text-main)' }}>Total Peso Acumulado: {totalPercentage}%</span>
-                  </div>
+<div className="mt-6 flex justify-between items-center px-2">
+                      <span className="font-medium text-sm" style={{ color: 'var(--color-text-main)' }}>Mostrando {evaluationPlan.length} evaluaciones registradas</span>
+                      <div className="flex items-center gap-4">
+                        <Button
+                          icon={<FilePdfOutlined />}
+                          onClick={() => setShowPDFModal(true)}
+                          disabled={!selectedAssignmentId || evaluationPlan.length === 0}
+                        >
+                          Generar PDF
+                        </Button>
+                        <span className="font-black" style={{ color: 'var(--color-text-main)' }}>Total Peso Acumulado: {totalPercentage}%</span>
+                      </div>
+                   </div>
                 </div>
               )
             },
@@ -1000,6 +1012,38 @@ const TeacherPanel: React.FC = () => {
           </Form.Item>
         </Form>
       </Modal>
+
+      <EvaluationPlanPDFModal
+        open={showPDFModal}
+        onClose={() => setShowPDFModal(false)}
+        header={(() => {
+          const assignment = assignments.find(a => a.id === selectedAssignmentId);
+          if (!assignment) return null as unknown as EvaluationPlanHeaderData;
+          const termObj = availableTerms.find(t => t.id === selectedTerm);
+          return {
+            periodName: assignment.periodGradeSubject?.periodGrade?.schoolPeriod?.name || '-',
+            gradeName: assignment.periodGradeSubject?.periodGrade?.grade?.name || '-',
+            subjectName: assignment.periodGradeSubject?.subject?.name || '-',
+            sectionName: assignment.section?.name || '-',
+            termName: termObj?.name || '-',
+          };
+        })()}
+        items={evaluationPlan.map(ep => ({
+          identificador: ep.identificador,
+          description: ep.description,
+          tecnica: ep.tecnica,
+          objetivo: ep.objetivo,
+          tipoEvaluacion: ep.tipoEvaluacion,
+          formaEvaluacion: ep.formaEvaluacion,
+          indicador: ep.indicador,
+          temaGenerador: ep.temaGenerador,
+          referentesTeoricos: ep.referentesTeoricos,
+          referentesEticos: ep.referentesEticos,
+          estrategiaEvaluacion: ep.estrategiaEvaluacion,
+          percentage: Number(ep.percentage),
+          date: ep.date,
+        }))}
+      />
     </div>
   );
 };
