@@ -76,6 +76,13 @@ interface PlanItemFormValues {
   date: dayjs.Dayjs;
   instrumentOption?: string;
   customInstrument?: string;
+  temaGenerador?: string;
+  referentesTeoricos?: string;
+  referentesEticos?: string;
+  estrategiaEvaluacion?: string;
+  tipoEvaluacion?: string;
+  formaEvaluacion?: string;
+  indicador?: string;
 }
 
 interface Qualification {
@@ -110,6 +117,13 @@ interface EvaluationPlanItem {
   identificador: string;
   percentage: number;
   date: string;
+  temaGenerador?: string;
+  referentesTeoricos?: string;
+  referentesEticos?: string;
+  estrategiaEvaluacion?: string;
+  tipoEvaluacion?: string;
+  formaEvaluacion?: string;
+  indicador?: string;
 }
 
 interface Subject {
@@ -390,7 +404,14 @@ const TeacherPanel: React.FC = () => {
       identificador: values.identificador,
       periodGradeSubjectId: assignment.periodGradeSubjectId,
       sectionId: assignment.sectionId,
-      termId: selectedTerm
+      termId: selectedTerm,
+      temaGenerador: values.temaGenerador,
+      referentesTeoricos: values.referentesTeoricos,
+      referentesEticos: values.referentesEticos,
+      estrategiaEvaluacion: values.estrategiaEvaluacion,
+      tipoEvaluacion: values.tipoEvaluacion,
+      formaEvaluacion: values.formaEvaluacion,
+      indicador: values.indicador
     };
 
     try {
@@ -450,15 +471,23 @@ const TeacherPanel: React.FC = () => {
   };
 
   const planColumns: ColumnsType<EvaluationPlanItem> = [
-    { title: 'ID', dataIndex: 'identificador', key: 'identificador', width: 100 },
-    { title: 'Instrumento', dataIndex: 'description', key: 'description', width: 150 },
-    { title: 'Técnica', dataIndex: 'tecnica', key: 'tecnica', width: 150 },
-    { title: 'Objetivo', dataIndex: 'objetivo', key: 'objetivo', ellipsis: true },
-    { title: 'Peso (%)', dataIndex: 'percentage', key: 'percentage', render: (val: number) => `${val}%`, width: 100 },
-    { title: 'Fecha', dataIndex: 'date', key: 'date', render: (val: string) => dayjs(val).format('DD/MM/YYYY'), width: 120 },
+    { title: 'ID', dataIndex: 'identificador', key: 'identificador', width: 80 },
+    { title: 'Instrumento', dataIndex: 'description', key: 'description', width: 120 },
+    { title: 'Técnica', dataIndex: 'tecnica', key: 'tecnica', width: 100 },
+    { title: 'Tipo', dataIndex: 'tipoEvaluacion', key: 'tipoEvaluacion', width: 90 },
+    { title: 'Forma', dataIndex: 'formaEvaluacion', key: 'formaEvaluacion', width: 90 },
+    { title: 'Indicador', dataIndex: 'indicador', key: 'indicador', ellipsis: true, width: 150 },
+    { title: 'Tema Generador', dataIndex: 'temaGenerador', key: 'temaGenerador', ellipsis: true, width: 150 },
+    { title: 'Referentes Teóricos', dataIndex: 'referentesTeoricos', key: 'referentesTeoricos', ellipsis: true, width: 150 },
+    { title: 'Referentes Éticos', dataIndex: 'referentesEticos', key: 'referentesEticos', ellipsis: true, width: 150 },
+    { title: 'Estrategia', dataIndex: 'estrategiaEvaluacion', key: 'estrategiaEvaluacion', ellipsis: true, width: 150 },
+    { title: 'Objetivo', dataIndex: 'objetivo', key: 'objetivo', ellipsis: true, width: 150 },
+    { title: 'Peso (%)', dataIndex: 'percentage', key: 'percentage', render: (val: number) => `${val}%`, width: 70 },
+    { title: 'Fecha', dataIndex: 'date', key: 'date', render: (val: string) => dayjs(val).format('DD/MM/YYYY'), width: 90 },
     {
       title: 'Acciones',
       key: 'actions',
+      width: 90,
       render: (_: unknown, record: EvaluationPlanItem) => (
         <Space>
           {!isSelectedTermBlocked && (
@@ -478,7 +507,14 @@ const TeacherPanel: React.FC = () => {
                     identificador: record.identificador,
                     objetivo: record.objetivo,
                     percentage: Number(record.percentage),
-                    date: dayjs(record.date)
+                    date: dayjs(record.date),
+                    temaGenerador: record.temaGenerador,
+                    referentesTeoricos: record.referentesTeoricos,
+                    referentesEticos: record.referentesEticos,
+                    estrategiaEvaluacion: record.estrategiaEvaluacion,
+                    tipoEvaluacion: record.tipoEvaluacion,
+                    formaEvaluacion: record.formaEvaluacion,
+                    indicador: record.indicador
                   });
 
                   setShowPlanModal(true);
@@ -932,6 +968,36 @@ const TeacherPanel: React.FC = () => {
               <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
             </Form.Item>
           </div>
+
+          <Form.Item name="temaGenerador" label="Tema Generador">
+            <Input.TextArea rows={2} placeholder="Describe el tema generador..." />
+          </Form.Item>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+            <Form.Item name="referentesTeoricos" label="Referentes Teóricos">
+              <Input.TextArea rows={2} placeholder="Fundamentos teóricos..." />
+            </Form.Item>
+            <Form.Item name="referentesEticos" label="Referentes Éticos e Indispensables">
+              <Input.TextArea rows={2} placeholder="Consideraciones éticas..." />
+            </Form.Item>
+          </div>
+
+          <Form.Item name="estrategiaEvaluacion" label="Estrategia de Evaluación">
+            <Input.TextArea rows={2} placeholder="Describe la estrategia de evaluación..." />
+          </Form.Item>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+            <Form.Item name="tipoEvaluacion" label="Tipo de Evaluación">
+              <Input placeholder="Ej: Diagnóstica, Formativa, Sumativa" />
+            </Form.Item>
+            <Form.Item name="formaEvaluacion" label="Forma de Evaluación">
+              <Input placeholder="Ej: Individual, Grupal" />
+            </Form.Item>
+          </div>
+
+          <Form.Item name="indicador" label="Indicador">
+            <Input.TextArea rows={2} placeholder="Describe el indicador de desempeño..." />
+          </Form.Item>
         </Form>
       </Modal>
     </div>

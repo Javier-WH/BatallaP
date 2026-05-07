@@ -7,13 +7,20 @@ interface EvaluationPlanAttributes {
   id: number;
   periodGradeSubjectId: number;
   sectionId: number;
-  termId: number; // Reference to Term model instead of hardcoded numbers
+  termId: number;
   description: string;
   objetivo: string;
   tecnica: string;
   identificador: string;
   percentage: number;
   date: Date;
+  temaGenerador?: string;
+  referentesTeoricos?: string;
+  referentesEticos?: string;
+  estrategiaEvaluacion?: string;
+  tipoEvaluacion?: string;
+  formaEvaluacion?: string;
+  indicador?: string;
 }
 
 interface EvaluationPlanCreationAttributes extends Optional<EvaluationPlanAttributes, 'id'> { }
@@ -22,13 +29,20 @@ class EvaluationPlan extends Model<EvaluationPlanAttributes, EvaluationPlanCreat
   public id!: number;
   public periodGradeSubjectId!: number;
   public sectionId!: number;
-  public termId!: number; // Reference to Term model
+  public termId!: number;
   public description!: string;
   public objetivo!: string;
   public tecnica!: string;
   public identificador!: string;
   public percentage!: number;
   public date!: Date;
+  public temaGenerador?: string;
+  public referentesTeoricos?: string;
+  public referentesEticos?: string;
+  public estrategiaEvaluacion?: string;
+  public tipoEvaluacion?: string;
+  public formaEvaluacion?: string;
+  public indicador?: string;
 
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
@@ -82,6 +96,34 @@ EvaluationPlan.init(
     date: {
       type: DataTypes.DATEONLY,
       allowNull: false
+    },
+    temaGenerador: {
+      type: DataTypes.TEXT,
+      allowNull: true
+    },
+    referentesTeoricos: {
+      type: DataTypes.TEXT,
+      allowNull: true
+    },
+    referentesEticos: {
+      type: DataTypes.TEXT,
+      allowNull: true
+    },
+    estrategiaEvaluacion: {
+      type: DataTypes.TEXT,
+      allowNull: true
+    },
+    tipoEvaluacion: {
+      type: DataTypes.STRING(100),
+      allowNull: true
+    },
+    formaEvaluacion: {
+      type: DataTypes.STRING(100),
+      allowNull: true
+    },
+    indicador: {
+      type: DataTypes.TEXT,
+      allowNull: true
     }
   },
   {

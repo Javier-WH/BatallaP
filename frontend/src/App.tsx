@@ -149,7 +149,15 @@ const ThemeWrapper = ({ children }: { children: React.ReactNode }) => {
           Menu: {
             colorItemBg: settings.themeBrandSecondary || 'transparent',
             colorSubItemBg: settings.themeBrandSecondary || 'transparent',
-          }
+          },
+          Pagination: {
+            colorPrimary: '#1677ff',
+            colorPrimaryHover: '#4096ff',
+          },
+          Empty: {
+            colorFill: '#1677ff',
+            color: '#1677ff',
+          },
         }
       }}
     >
