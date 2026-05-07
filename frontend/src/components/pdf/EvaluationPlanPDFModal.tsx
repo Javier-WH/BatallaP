@@ -40,11 +40,20 @@ const EvaluationPlanPDFModal: React.FC<EvaluationPlanPDFModalProps> = ({
         // No logo available
       }
 
+      let instName = '';
+      try {
+        const settingRes = await api.get('/settings/institution_name');
+        instName = settingRes.data?.value || '';
+      } catch {
+        // No institution name configured
+      }
+
       const doc = (
         <EvaluationPlanPDF
           header={header}
           items={items}
           logoBase64={logoBase64}
+          institutionName={instName}
         />
       );
 

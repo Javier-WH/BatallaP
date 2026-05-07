@@ -181,6 +181,7 @@ interface EvaluationPlanPDFProps {
   header: EvaluationPlanHeaderData;
   items: EvaluationPlanItemData[];
   logoBase64?: string | null;
+  institutionName: string;
 }
 
 const SummaryHeader = () => (
@@ -211,7 +212,7 @@ const summaryRow = (item: EvaluationPlanItemData, index: number) => (
   </View>
 );
 
-const EvaluationPlanPDF: React.FC<EvaluationPlanPDFProps> = ({ header, items, logoBase64 }) => {
+const EvaluationPlanPDF: React.FC<EvaluationPlanPDFProps> = ({ header, items, logoBase64, institutionName }) => {
   const totalPeso = items.reduce((acc, i) => acc + (i.percentage || 0), 0);
 
   return (
@@ -221,7 +222,9 @@ const EvaluationPlanPDF: React.FC<EvaluationPlanPDFProps> = ({ header, items, lo
         <View style={styles.headerRow}>
           {logoBase64 && <Image style={styles.logo} src={logoBase64} />}
           <View style={styles.headerCenter}>
-            <Text style={styles.institutionName}>Institución Educativa</Text>
+            {institutionName ? (
+              <Text style={styles.institutionName}>{institutionName}</Text>
+            ) : null}
             <Text style={styles.subtitle}>República Bolivariana de Venezuela</Text>
           </View>
           {logoBase64 && <View style={{ width: 45 }} />}
