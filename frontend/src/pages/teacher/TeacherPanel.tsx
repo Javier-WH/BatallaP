@@ -176,6 +176,11 @@ interface Assignment {
   sectionId: number;
   periodGradeSubject: PeriodGradeSubject;
   section: Section;
+  teacher?: {
+    id: number;
+    firstName: string;
+    lastName: string;
+  };
 }
 
 const evaluationInstruments = [
@@ -1026,6 +1031,9 @@ const TeacherPanel: React.FC = () => {
             subjectName: assignment.periodGradeSubject?.subject?.name || '-',
             sectionName: assignment.section?.name || '-',
             termName: termObj?.name || '-',
+            teacherName: assignment.teacher
+              ? `${assignment.teacher.firstName} ${assignment.teacher.lastName}`
+              : '-',
           };
         })()}
         items={evaluationPlan.map(ep => ({

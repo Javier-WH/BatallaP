@@ -133,21 +133,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   // Detail table
-  detailTable: {
-    marginBottom: 8,
-  },
-  cellDetailLabel: {
-    width: '20%',
-    padding: '2 4',
-    fontSize: 7,
-    fontFamily: 'Helvetica-Bold',
-    color: '#555',
-  },
-  cellDetailValue: {
-    width: '30%',
-    padding: '2 4',
-    fontSize: 7,
-  },
   // Footer
   footer: {
     position: 'absolute',
@@ -189,6 +174,7 @@ export interface EvaluationPlanHeaderData {
   subjectName: string;
   sectionName: string;
   termName: string;
+  teacherName: string;
 }
 
 interface EvaluationPlanPDFProps {
@@ -260,6 +246,9 @@ const EvaluationPlanPDF: React.FC<EvaluationPlanPDFProps> = ({ header, items, lo
             <Text style={styles.badgeLabel}>Materia: </Text>
             <Text style={styles.badgeValue}>{header.subjectName}</Text>
           </View>
+        </View>
+
+        <View style={styles.badgeRow}>
           <View style={styles.badge}>
             <Text style={styles.badgeLabel}>Sección: </Text>
             <Text style={styles.badgeValue}>{header.sectionName}</Text>
@@ -267,6 +256,10 @@ const EvaluationPlanPDF: React.FC<EvaluationPlanPDFProps> = ({ header, items, lo
           <View style={styles.badge}>
             <Text style={styles.badgeLabel}>Lapso: </Text>
             <Text style={styles.badgeValue}>{header.termName}</Text>
+          </View>
+          <View style={styles.badge}>
+            <Text style={styles.badgeLabel}>Profesor: </Text>
+            <Text style={styles.badgeValue}>{header.teacherName || '-'}</Text>
           </View>
         </View>
 
@@ -286,35 +279,6 @@ const EvaluationPlanPDF: React.FC<EvaluationPlanPDFProps> = ({ header, items, lo
             <Text style={styles.badgeValue}>{totalPeso}%</Text>
           </View>
         </View>
-
-        {/* Detail Section */}
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Detalle Pedagógico por Evaluación</Text>
-        </View>
-        {items.map((item, index) => (
-          <View key={`detail-${index}`} style={[styles.tableRow, index % 2 === 1 ? styles.tableRowAlt : {}]}>
-            <Text style={styles.cellDetailLabel}>Objetivo</Text>
-            <Text style={styles.cellDetailValue}>{item.objetivo || '-'}</Text>
-            <Text style={styles.cellDetailLabel}>Indicador</Text>
-            <Text style={styles.cellDetailValue}>{item.indicador || '-'}</Text>
-          </View>
-        ))}
-        {items.map((item, index) => (
-          <View key={`detail2-${index}`} style={[styles.tableRow, index % 2 === 1 ? styles.tableRowAlt : {}]}>
-            <Text style={styles.cellDetailLabel}>Tema Generador</Text>
-            <Text style={styles.cellDetailValue}>{item.temaGenerador || '-'}</Text>
-            <Text style={styles.cellDetailLabel}>Estrategia</Text>
-            <Text style={styles.cellDetailValue}>{item.estrategiaEvaluacion || '-'}</Text>
-          </View>
-        ))}
-        {items.map((item, index) => (
-          <View key={`detail3-${index}`} style={[styles.tableRow, index % 2 === 1 ? styles.tableRowAlt : {}]}>
-            <Text style={styles.cellDetailLabel}>Ref. Teóricos</Text>
-            <Text style={styles.cellDetailValue}>{item.referentesTeoricos || '-'}</Text>
-            <Text style={styles.cellDetailLabel}>Ref. Éticos</Text>
-            <Text style={styles.cellDetailValue}>{item.referentesEticos || '-'}</Text>
-          </View>
-        ))}
 
         {/* Footer */}
         <View style={styles.footer} fixed>

@@ -62,7 +62,8 @@ export const getMyAssignments = async (req: Request, res: Response) => {
             }
           ]
         },
-        { model: Section, as: 'section' }
+        { model: Section, as: 'section' },
+        { model: Person, as: 'teacher' }
       ],
       order: [['id', 'DESC']]
     });
