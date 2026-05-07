@@ -619,7 +619,7 @@ const TeacherPanel: React.FC = () => {
                   </div>
                 );
               })}
-              {assignments.length === 0 && <div className="text-slate-400 text-sm py-4">No hay asignaturas</div>}
+              {assignments.length === 0 && <div className="text-[var(--color-text-muted)] text-sm py-4">No hay asignaturas</div>}
             </div>
           </div>
 
@@ -647,7 +647,7 @@ const TeacherPanel: React.FC = () => {
                   </button>
                 );
               })}
-              {availableTerms.length === 0 && <div className="text-slate-400 text-sm text-center w-full py-2">Sin lapsos</div>}
+              {availableTerms.length === 0 && <div className="text-[var(--color-text-muted)] text-sm text-center w-full py-2">Sin lapsos</div>}
             </div>
           </div>
         </div>
@@ -660,7 +660,7 @@ const TeacherPanel: React.FC = () => {
               {totalPercentage}% Completado
             </span>
           </div>
-          <p className="text-xs font-semibold text-slate-400 mb-2">Avance del periodo actual</p>
+          <p className="text-xs font-semibold text-[var(--color-text-muted)] mb-2">Avance del periodo actual</p>
           
           <div className="h-3 w-full bg-slate-100 rounded-full mt-2 mb-2 relative overflow-hidden">
             <div 
@@ -671,7 +671,7 @@ const TeacherPanel: React.FC = () => {
               }} 
             />
           </div>
-          <div className="flex justify-between text-[11px] font-bold text-slate-500 mb-4">
+          <div className="flex justify-between text-[11px] font-bold text-[var(--color-text-muted)] mb-4">
             <span>0%</span>
             <span style={{ color: 'var(--color-luxury-sidebar)' }}>{totalPercentage}% de 100%</span>
             <span>100%</span>

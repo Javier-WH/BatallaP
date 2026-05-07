@@ -40,6 +40,7 @@ const SettingsManagement: React.FC = () => {
   const [accentColor, setAccentColor] = useState('#1e40af');
   const [headerTextColor, setHeaderTextColor] = useState('#ffffff');
   const [inputBgColor, setInputBgColor] = useState('#ffffff');
+  const [mutedTextColor, setMutedTextColor] = useState('#94a3b8');
   const { refreshSettings } = useSchool();
 
   useEffect(() => {
@@ -58,6 +59,7 @@ const SettingsManagement: React.FC = () => {
         const ac = res.data.theme_accent_color || '#1e40af';
         const htc = res.data.theme_header_text_color || '#ffffff';
         const ibc = res.data.theme_input_bg || '#ffffff';
+        const mtc = res.data.theme_muted_text_color || '#94a3b8';
 
         setPrimaryColor(pc);
         setSecondaryColor(sc);
@@ -70,6 +72,7 @@ const SettingsManagement: React.FC = () => {
         setAccentColor(ac);
         setHeaderTextColor(htc);
         setInputBgColor(ibc);
+        setMutedTextColor(mtc);
 
         form.setFieldsValue({
           institution_name: res.data.institution_name || '',
@@ -87,6 +90,7 @@ const SettingsManagement: React.FC = () => {
           theme_accent_color: ac,
           theme_header_text_color: htc,
           theme_input_bg: ibc,
+          theme_muted_text_color: mtc,
         });
 
         try {
@@ -142,6 +146,7 @@ const SettingsManagement: React.FC = () => {
         theme_accent_color: accentColor,
         theme_header_text_color: headerTextColor,
         theme_input_bg: inputBgColor,
+        theme_muted_text_color: mutedTextColor,
       };
 
       await api.post('/settings', { settings: finalPayload });
@@ -158,7 +163,7 @@ const SettingsManagement: React.FC = () => {
   if (loading) return (
     <div className="flex flex-col items-center justify-center p-24 gap-4">
       <Spin size="large" />
-      <Text className="text-slate-400 font-bold uppercase tracking-widest text-[10px]">Sincronizando Parámetros...</Text>
+      <Text className="text-[var(--color-text-muted)] font-bold uppercase tracking-widest text-[10px]">Sincronizando Parámetros...</Text>
     </div>
   );
 
@@ -170,7 +175,7 @@ const SettingsManagement: React.FC = () => {
         <h1 className="text-3xl font-black text-[var(--color-text-main)] tracking-tight flex items-center gap-3">
           <BankOutlined className="text-brand-primary" /> Institución
         </h1>
-        <p className="text-slate-500 font-medium">Define la identidad visual y el nombre oficial que aparecerá en todo el sistema y reportes.</p>
+        <p className="text-[var(--color-text-muted)] font-medium">Define la identidad visual y el nombre oficial que aparecerá en todo el sistema y reportes.</p>
       </div>
 
         <Card className="glass-card overflow-hidden" styles={{ body: { padding: 0 } }}>
@@ -189,7 +194,7 @@ const SettingsManagement: React.FC = () => {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
             <div className="space-y-6">
               <Form.Item
-                label={<span className="text-slate-700 font-bold">Nombre de la Institución</span>}
+                label={<span className="text-[var(--color-text-main)] font-bold">Nombre de la Institución</span>}
                 name="institution_name"
                 rules={[{ required: true, message: 'El nombre es obligatorio' }]}
               >
@@ -200,7 +205,7 @@ const SettingsManagement: React.FC = () => {
               </Form.Item>
 
               <Form.Item
-                label={<span className="text-slate-700 font-bold">Código DEA de la Institución</span>}
+                label={<span className="text-[var(--color-text-main)] font-bold">Código DEA de la Institución</span>}
                 name="institution_dea_code"
                 tooltip="Código DEA oficial del plantel educativo (se asociará a las notas finales)"
               >
@@ -215,7 +220,7 @@ const SettingsManagement: React.FC = () => {
               </Form.Item>
 
               <Form.Item
-                label={<span className="text-slate-700 font-bold">Forma del Logo</span>}
+                label={<span className="text-[var(--color-text-main)] font-bold">Forma del Logo</span>}
                 name="institution_logo_shape"
               >
                 <Segmented
@@ -250,7 +255,7 @@ const SettingsManagement: React.FC = () => {
             </div>
 
             <div className="space-y-4">
-              <span className="text-slate-700 font-bold block mb-2">Escudo / Logo Oficial</span>
+              <span className="text-[var(--color-text-main)] font-bold block mb-2">Escudo / Logo Oficial</span>
               <Upload.Dragger
                 name="logo"
                 showUploadList={false}
@@ -301,7 +306,7 @@ const SettingsManagement: React.FC = () => {
                     </div>
                     <div className="text-center mt-4">
                     <p className="text-[var(--color-text-main)] font-bold">Haz clic o arrastra el logo</p>
-                    <p className="text-slate-500 text-xs mt-1">PNG, JPG hasta 5MB</p>
+                    <p className="text-[var(--color-text-muted)] text-xs mt-1">PNG, JPG hasta 5MB</p>
                   </div>
                   </div>
                 )}
@@ -318,8 +323,8 @@ const SettingsManagement: React.FC = () => {
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 py-8">
               {/* Warnings Color */}
               <div>
-                <label className="text-slate-700 font-bold block mb-2">Color de Advertencias</label>
-                <p className="text-xs text-slate-400 mb-3">Alertas y estados críticos.</p>
+                <label className="text-[var(--color-text-main)] font-bold block mb-2">Color de Advertencias</label>
+                <p className="text-xs text-[var(--color-text-muted)] mb-3">Alertas y estados críticos.</p>
                 <div className="flex items-center gap-4">
                   <input
                     type="color"
@@ -331,7 +336,7 @@ const SettingsManagement: React.FC = () => {
                     className="h-12 w-16 rounded-xl border-2 border-slate-200 cursor-pointer p-0.5 bg-white"
                   />
                   <div className="flex flex-col gap-1">
-                    <span className="text-sm font-bold text-slate-700 uppercase tracking-wider">{primaryColor}</span>
+                    <span className="text-sm font-bold text-[var(--color-text-main)] uppercase tracking-wider">{primaryColor}</span>
                     <div className="h-2 w-24 rounded-full" style={{ backgroundColor: primaryColor }} />
                   </div>
                 </div>
@@ -339,8 +344,8 @@ const SettingsManagement: React.FC = () => {
 
               {/* Inactive Color */}
               <div>
-                <label className="text-slate-700 font-bold block mb-2">Color Inactivo</label>
-                <p className="text-xs text-slate-400 mb-3">Estados desactivados, tabs inactivos y bordes tenues.</p>
+                <label className="text-[var(--color-text-main)] font-bold block mb-2">Color Inactivo</label>
+                <p className="text-xs text-[var(--color-text-muted)] mb-3">Estados desactivados, tabs inactivos y bordes tenues.</p>
                 <div className="flex items-center gap-4">
                   <input
                     type="color"
@@ -352,7 +357,7 @@ const SettingsManagement: React.FC = () => {
                     className="h-12 w-16 rounded-xl border-2 border-slate-200 cursor-pointer p-0.5 bg-white"
                   />
                   <div className="flex flex-col gap-1">
-                    <span className="text-sm font-bold text-slate-700 uppercase tracking-wider">{secondaryColor}</span>
+                    <span className="text-sm font-bold text-[var(--color-text-main)] uppercase tracking-wider">{secondaryColor}</span>
                     <div className="h-2 w-24 rounded-full" style={{ backgroundColor: secondaryColor }} />
                   </div>
                 </div>
@@ -360,8 +365,8 @@ const SettingsManagement: React.FC = () => {
 
               {/* Brand Secondary Color */}
               <div>
-                <label className="text-slate-700 font-bold block mb-2">Color Secundario</label>
-                <p className="text-xs text-slate-400 mb-3">Color de marca secundario para variaciones visuales.</p>
+                <label className="text-[var(--color-text-main)] font-bold block mb-2">Color Secundario</label>
+                <p className="text-xs text-[var(--color-text-muted)] mb-3">Color de marca secundario para variaciones visuales.</p>
                 <div className="flex items-center gap-4">
                   <input
                     type="color"
@@ -373,7 +378,7 @@ const SettingsManagement: React.FC = () => {
                     className="h-12 w-16 rounded-xl border-2 border-slate-200 cursor-pointer p-0.5 bg-white"
                   />
                   <div className="flex flex-col gap-1">
-                    <span className="text-sm font-bold text-slate-700 uppercase tracking-wider">{brandSecondaryColor}</span>
+                    <span className="text-sm font-bold text-[var(--color-text-main)] uppercase tracking-wider">{brandSecondaryColor}</span>
                     <div className="h-2 w-24 rounded-full" style={{ backgroundColor: brandSecondaryColor }} />
                   </div>
                 </div>
@@ -381,8 +386,8 @@ const SettingsManagement: React.FC = () => {
 
               {/* Text Color */}
               <div>
-                <label className="text-slate-700 font-bold block mb-2">Texto Base</label>
-                <p className="text-xs text-slate-400 mb-3">Color base del texto de la app.</p>
+                <label className="text-[var(--color-text-main)] font-bold block mb-2">Texto Base</label>
+                <p className="text-xs text-[var(--color-text-muted)] mb-3">Color base del texto de la app.</p>
                 <div className="flex items-center gap-4">
                   <input
                     type="color"
@@ -394,7 +399,7 @@ const SettingsManagement: React.FC = () => {
                     className="h-12 w-16 rounded-xl border-2 border-slate-200 cursor-pointer p-0.5 bg-white"
                   />
                   <div className="flex flex-col gap-1">
-                    <span className="text-sm font-bold text-slate-700 uppercase tracking-wider">{textColor}</span>
+                    <span className="text-sm font-bold text-[var(--color-text-main)] uppercase tracking-wider">{textColor}</span>
                     <div className="h-2 w-24 rounded-full" style={{ backgroundColor: textColor }} />
                   </div>
                 </div>
@@ -402,8 +407,8 @@ const SettingsManagement: React.FC = () => {
 
               {/* Sidebar Color */}
               <div>
-                <label className="text-slate-700 font-bold block mb-2">Barra Lateral</label>
-                <p className="text-xs text-slate-400 mb-3">Color de fondo para el menú principal lateral.</p>
+                <label className="text-[var(--color-text-main)] font-bold block mb-2">Barra Lateral</label>
+                <p className="text-xs text-[var(--color-text-muted)] mb-3">Color de fondo para el menú principal lateral.</p>
                 <div className="flex items-center gap-4">
                   <input
                     type="color"
@@ -415,7 +420,7 @@ const SettingsManagement: React.FC = () => {
                     className="h-12 w-16 rounded-xl border-2 border-slate-200 cursor-pointer p-0.5 bg-white"
                   />
                   <div className="flex flex-col gap-1">
-                    <span className="text-sm font-bold text-slate-700 uppercase tracking-wider">{sidebarColor}</span>
+                    <span className="text-sm font-bold text-[var(--color-text-main)] uppercase tracking-wider">{sidebarColor}</span>
                     <div className="h-2 w-24 rounded-full" style={{ backgroundColor: sidebarColor }} />
                   </div>
                 </div>
@@ -423,8 +428,8 @@ const SettingsManagement: React.FC = () => {
 
               {/* Page Background */}
               <div>
-                <label className="text-slate-700 font-bold block mb-2">Fondo de Página</label>
-                <p className="text-xs text-slate-400 mb-3">Color de fondo global del layout.</p>
+                <label className="text-[var(--color-text-main)] font-bold block mb-2">Fondo de Página</label>
+                <p className="text-xs text-[var(--color-text-muted)] mb-3">Color de fondo global del layout.</p>
                 <div className="flex items-center gap-4">
                   <input
                     type="color"
@@ -436,7 +441,7 @@ const SettingsManagement: React.FC = () => {
                     className="h-12 w-16 rounded-xl border-2 border-slate-200 cursor-pointer p-0.5 bg-white"
                   />
                   <div className="flex flex-col gap-1">
-                    <span className="text-sm font-bold text-slate-700 uppercase tracking-wider">{pageBgColor}</span>
+                    <span className="text-sm font-bold text-[var(--color-text-main)] uppercase tracking-wider">{pageBgColor}</span>
                     <div className="h-2 w-24 rounded-full" style={{ backgroundColor: pageBgColor }} />
                   </div>
                 </div>
@@ -444,8 +449,8 @@ const SettingsManagement: React.FC = () => {
 
               {/* Panel Header */}
               <div>
-                <label className="text-slate-700 font-bold block mb-2">Encabezado de Panel</label>
-                <p className="text-xs text-slate-400 mb-3">Fondo para los títulos superiores en cada vista.</p>
+                <label className="text-[var(--color-text-main)] font-bold block mb-2">Encabezado de Panel</label>
+                <p className="text-xs text-[var(--color-text-muted)] mb-3">Fondo para los títulos superiores en cada vista.</p>
                 <div className="flex items-center gap-4">
                   <input
                     type="color"
@@ -457,7 +462,7 @@ const SettingsManagement: React.FC = () => {
                     className="h-12 w-16 rounded-xl border-2 border-slate-200 cursor-pointer p-0.5 bg-white"
                   />
                   <div className="flex flex-col gap-1">
-                    <span className="text-sm font-bold text-slate-700 uppercase tracking-wider">{panelHeaderColor}</span>
+                    <span className="text-sm font-bold text-[var(--color-text-main)] uppercase tracking-wider">{panelHeaderColor}</span>
                     <div className="h-2 w-24 rounded-full" style={{ backgroundColor: panelHeaderColor }} />
                   </div>
                 </div>
@@ -465,8 +470,8 @@ const SettingsManagement: React.FC = () => {
 
               {/* Content Background */}
               <div>
-                <label className="text-slate-700 font-bold block mb-2">Fondo de Contenido</label>
-                <p className="text-xs text-slate-400 mb-3">Fondo de las tarjetas blancas (tablas, formularios).</p>
+                <label className="text-[var(--color-text-main)] font-bold block mb-2">Fondo de Contenido</label>
+                <p className="text-xs text-[var(--color-text-muted)] mb-3">Fondo de las tarjetas blancas (tablas, formularios).</p>
                 <div className="flex items-center gap-4">
                   <input
                     type="color"
@@ -478,7 +483,7 @@ const SettingsManagement: React.FC = () => {
                     className="h-12 w-16 rounded-xl border-2 border-slate-200 cursor-pointer p-0.5 bg-white"
                   />
                   <div className="flex flex-col gap-1">
-                    <span className="text-sm font-bold text-slate-700 uppercase tracking-wider">{contentBgColor}</span>
+                    <span className="text-sm font-bold text-[var(--color-text-main)] uppercase tracking-wider">{contentBgColor}</span>
                     <div className="h-2 w-24 rounded-full" style={{ border: '1px solid #ccc', backgroundColor: contentBgColor }} />
                   </div>
                 </div>
@@ -486,8 +491,8 @@ const SettingsManagement: React.FC = () => {
 
               {/* Accent Color */}
               <div>
-                <label className="text-slate-700 font-bold block mb-2">Encabezado Secundario</label>
-                <p className="text-xs text-slate-400 mb-3">Detalles sutiles e iconos decorativos.</p>
+                <label className="text-[var(--color-text-main)] font-bold block mb-2">Encabezado Secundario</label>
+                <p className="text-xs text-[var(--color-text-muted)] mb-3">Detalles sutiles e iconos decorativos.</p>
                 <div className="flex items-center gap-4">
                   <input
                     type="color"
@@ -499,7 +504,7 @@ const SettingsManagement: React.FC = () => {
                     className="h-12 w-16 rounded-xl border-2 border-slate-200 cursor-pointer p-0.5 bg-white"
                   />
                   <div className="flex flex-col gap-1">
-                    <span className="text-sm font-bold text-slate-700 uppercase tracking-wider">{accentColor}</span>
+                    <span className="text-sm font-bold text-[var(--color-text-main)] uppercase tracking-wider">{accentColor}</span>
                     <div className="h-2 w-24 rounded-full" style={{ backgroundColor: accentColor }} />
                   </div>
                 </div>
@@ -507,8 +512,8 @@ const SettingsManagement: React.FC = () => {
 
               {/* Header Text Color */}
               <div>
-                <label className="text-slate-700 font-bold block mb-2">Textos sobre Oscuros</label>
-                <p className="text-xs text-slate-400 mb-3">Color de texto en Encabezados y Barra Lateral.</p>
+                <label className="text-[var(--color-text-main)] font-bold block mb-2">Textos sobre Oscuros</label>
+                <p className="text-xs text-[var(--color-text-muted)] mb-3">Color de texto en Encabezados y Barra Lateral.</p>
                 <div className="flex items-center gap-4">
                   <input
                     type="color"
@@ -520,7 +525,7 @@ const SettingsManagement: React.FC = () => {
                     className="h-12 w-16 rounded-xl border-2 border-slate-200 cursor-pointer p-0.5 bg-white"
                   />
                   <div className="flex flex-col gap-1">
-                    <span className="text-sm font-bold text-slate-700 uppercase tracking-wider">{headerTextColor}</span>
+                    <span className="text-sm font-bold text-[var(--color-text-main)] uppercase tracking-wider">{headerTextColor}</span>
                     <div className="h-2 w-24 rounded-full" style={{ backgroundColor: headerTextColor, border: '1px solid #ccc' }} />
                   </div>
                 </div>
@@ -528,8 +533,8 @@ const SettingsManagement: React.FC = () => {
 
               {/* Input Background Color */}
               <div>
-                <label className="text-slate-700 font-bold block mb-2">Campos de Texto</label>
-                <p className="text-xs text-slate-400 mb-3">Color de fondo para los inputs y selects.</p>
+                <label className="text-[var(--color-text-main)] font-bold block mb-2">Campos de Texto</label>
+                <p className="text-xs text-[var(--color-text-muted)] mb-3">Color de fondo para los inputs y selects.</p>
                 <div className="flex items-center gap-4">
                   <input
                     type="color"
@@ -541,13 +546,34 @@ const SettingsManagement: React.FC = () => {
                     className="h-12 w-16 rounded-xl border-2 border-slate-200 cursor-pointer p-0.5 bg-white"
                   />
                   <div className="flex flex-col gap-1">
-                    <span className="text-sm font-bold text-slate-700 uppercase tracking-wider">{inputBgColor}</span>
+                    <span className="text-sm font-bold text-[var(--color-text-main)] uppercase tracking-wider">{inputBgColor}</span>
                     <div className="h-2 w-24 rounded-full" style={{ backgroundColor: inputBgColor, border: '1px solid #ccc' }} />
+                  </div>
+                </div>
+                </div>
+              </div>
+
+              {/* Muted Text Color */}
+              <div>
+                <label className="text-[var(--color-text-main)] font-bold block mb-2">Texto Secundario</label>
+                <p className="text-xs text-[var(--color-text-muted)] mb-3">Color para textos secundarios, descripciones y ayudas visuales.</p>
+                <div className="flex items-center gap-4">
+                  <input
+                    type="color"
+                    value={mutedTextColor}
+                    onChange={(e) => {
+                      setMutedTextColor(e.target.value);
+                      form.setFieldsValue({ theme_muted_text_color: e.target.value });
+                    }}
+                    className="h-12 w-16 rounded-xl border-2 border-slate-200 cursor-pointer p-0.5 bg-white"
+                  />
+                  <div className="flex flex-col gap-1">
+                    <span className="text-sm font-bold text-[var(--color-text-main)] uppercase tracking-wider">{mutedTextColor}</span>
+                    <div className="h-2 w-24 rounded-full" style={{ backgroundColor: mutedTextColor, border: '1px solid #ccc' }} />
                   </div>
                 </div>
               </div>
             </div>
-          </div>
 
           <div className="mt-8 flex justify-end">
             <Button

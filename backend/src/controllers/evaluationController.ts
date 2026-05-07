@@ -98,7 +98,7 @@ export const getEvaluationPlan = async (req: Request, res: Response) => {
 export const createEvaluationItem = async (req: Request, res: Response) => {
   try {
     // Prevent creating plan items on blocked terms
-    const { termId } = req.body;
+    const { termId, periodGradeSubjectId, sectionId, identificador } = req.body;
     if (termId) {
       const term = await Term.findByPk(termId);
       if (!term) {
@@ -106,6 +106,16 @@ export const createEvaluationItem = async (req: Request, res: Response) => {
       }
       if (term.isBlocked) {
         return res.status(403).json({ message: 'Lapso bloqueado; no se pueden modificar el plan de evaluación' });
+      }
+    }
+
+    // Check for duplicate identificador within same subject+section+term
+    if (identificador) {
+      const existing = await EvaluationPlan.findOne({
+        where: { periodGradeSubjectId, sectionId, termId, identificador }
+      });
+      if (existing) {
+        return res.status(400).json({ message: `El identificador "${identificador}" ya existe en este plan de evaluación` });
       }
     }
 
@@ -129,6 +139,26 @@ export const updateEvaluationItem = async (req: Request, res: Response) => {
     }
     if (term.isBlocked) {
       return res.status(403).json({ message: 'Lapso bloqueado; no se pueden modificar el plan de evaluación' });
+    }
+
+    // Check for duplicate identificador within same subject+section+term
+    const newIdentificador = req.body.identificador ?? item.identificador;
+    const pgsId = req.body.periodGradeSubjectId ?? item.periodGradeSubjectId;
+    const secId = req.body.sectionId ?? item.sectionId;
+    const tId = req.body.termId ?? item.termId;
+    if (newIdentificador) {
+      const existing = await EvaluationPlan.findOne({
+        where: {
+          periodGradeSubjectId: pgsId,
+          sectionId: secId,
+          termId: tId,
+          identificador: newIdentificador,
+          id: { [Op.ne]: Number(id) }
+        }
+      });
+      if (existing) {
+        return res.status(400).json({ message: `El identificador "${newIdentificador}" ya existe en este plan de evaluación` });
+      }
     }
 
     await item.update(req.body);

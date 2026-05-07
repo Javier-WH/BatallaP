@@ -16,6 +16,7 @@ interface SchoolSettings {
   themeAccentColor: string;
   themeHeaderText: string;
   themeInputBg: string;
+  themeMutedTextColor: string;
 }
 
 interface SchoolContextType {
@@ -40,6 +41,7 @@ const defaultSettings: SchoolSettings = {
   themeAccentColor: '#1e40af',
   themeHeaderText: '#ffffff',
   themeInputBg: '#ffffff',
+  themeMutedTextColor: '#94a3b8',
 };
 
 /** Applies all theme CSS vars to root */
@@ -56,6 +58,7 @@ function applyThemeToDOM(s: SchoolSettings) {
   root.setProperty('--color-accent', s.themeAccentColor);
   root.setProperty('--color-header-text', s.themeHeaderText);
   root.setProperty('--color-input-bg', s.themeInputBg);
+  root.setProperty('--color-text-muted', s.themeMutedTextColor);
   root.setProperty('--ant-primary-color', s.themePrimaryColor);
 }
 
@@ -94,6 +97,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         themeAccentColor: d.theme_accent_color || defaultSettings.themeAccentColor,
         themeHeaderText: d.theme_header_text_color || defaultSettings.themeHeaderText,
         themeInputBg: d.theme_input_bg || defaultSettings.themeInputBg,
+        themeMutedTextColor: d.theme_muted_text_color || defaultSettings.themeMutedTextColor,
       };
 
       applyThemeToDOM(resolved);
