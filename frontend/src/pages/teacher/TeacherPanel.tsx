@@ -236,6 +236,15 @@ const TeacherPanel: React.FC = () => {
     return term?.isBlocked ?? false;
   }, [availableTerms, selectedTerm]);
 
+  const selectedTermDateRange = useMemo(() => {
+    if (!selectedTerm) return { openDate: null as dayjs.Dayjs | null, closeDate: null as dayjs.Dayjs | null };
+    const term = availableTerms.find(t => t.id === selectedTerm);
+    return {
+      openDate: term?.openDate ? dayjs(term.openDate) : null,
+      closeDate: term?.closeDate ? dayjs(term.closeDate) : null,
+    };
+  }, [availableTerms, selectedTerm]);
+
   useEffect(() => {
     const fetchMaxGrade = async () => {
       try {
@@ -981,8 +990,37 @@ const TeacherPanel: React.FC = () => {
             <Form.Item name="percentage" label="Porcentaje (1-100)" rules={[{ required: true }]}>
               <InputNumber min={1} max={100} style={{ width: '100%' }} />
             </Form.Item>
-            <Form.Item name="date" label="Fecha de Evaluación" rules={[{ required: true }]}>
-              <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
+            <Form.Item
+              name="date"
+              label="Fecha de Evaluación"
+              rules={[
+                { required: true, message: 'Fecha requerida' },
+                {
+                  validator: (_, value) => {
+                    if (!value) return Promise.resolve();
+                    const { openDate, closeDate } = selectedTermDateRange;
+                    if (openDate && value.isBefore(openDate, 'day')) {
+                      return Promise.reject(`La fecha debe ser a partir del ${openDate.format('DD/MM/YYYY')} (inicio del lapso)`);
+                    }
+                    if (closeDate && value.isAfter(closeDate, 'day')) {
+                      return Promise.reject(`La fecha debe ser hasta el ${closeDate.format('DD/MM/YYYY')} (cierre del lapso)`);
+                    }
+                    return Promise.resolve();
+                  },
+                },
+              ]}
+            >
+              <DatePicker
+                style={{ width: '100%' }}
+                format="DD/MM/YYYY"
+                disabledDate={(current) => {
+                  if (!current) return false;
+                  const { openDate, closeDate } = selectedTermDateRange;
+                  if (openDate && current.isBefore(openDate, 'day')) return true;
+                  if (closeDate && current.isAfter(closeDate, 'day')) return true;
+                  return false;
+                }}
+              />
             </Form.Item>
           </div>
 
