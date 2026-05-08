@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Card, Tabs, Table, Button, message, Tag, Typography, InputNumber, Alert, Empty, Spin } from 'antd';
-import { BookOutlined, UserOutlined, ArrowLeftOutlined } from '@ant-design/icons';
+import { BookOutlined, UserOutlined, ArrowLeftOutlined, DownloadOutlined, FilePdfOutlined } from '@ant-design/icons';
 import api from '@/services/api';
 import dayjs from 'dayjs';
 import { useGradeRounding } from '@/context/GradeRoundingContext';
 import { formatGrade } from '@/utils/gradeFormat';
+import EvaluationPlanPDFModal from '@/components/pdf/EvaluationPlanPDFModal';
+import type { EvaluationPlanHeaderData, EvaluationPlanItemData } from '@/components/pdf/EvaluationPlanPDF';
 
 const { Title, Text } = Typography;
 
@@ -78,6 +80,7 @@ const ManageGrades: React.FC = () => {
   const [students, setStudents] = useState<StudentEnrollment[]>([]);
   const [maxGrade, setMaxGrade] = useState<number>(20);
   const [activeTab, setActiveTab] = useState('1');
+  const [showPDFModal, setShowPDFModal] = useState(false);
   const { enableRounding } = useGradeRounding();
 
   const isSelectedTermBlocked = useMemo(() => {
@@ -208,6 +211,26 @@ const ManageGrades: React.FC = () => {
   }, [evaluationPlan, students]);
 
   const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?.percentage || 0), 0) || 0;
+
+  const downloadExcel = async (filled: boolean) => {
+    if (!selectedAssignment?.id) return;
+    try {
+      const res = await api.get(`/evaluation/export-grades/${selectedAssignment.id}`, {
+        params: { filled: filled ? 'true' : 'false' },
+        responseType: 'blob'
+      });
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', filled ? 'calificaciones.xlsx' : 'plantilla-calificaciones.xlsx');
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch {
+      message.error('Error al descargar Excel');
+    }
+  };
 
   const planColumns = [
     { title: 'ID', dataIndex: 'identificador', key: 'identificador', width: 80 },
@@ -343,6 +366,11 @@ const ManageGrades: React.FC = () => {
                           ? `⚠ ${pendingGradesCount.missing} de ${pendingGradesCount.total} alumnos con notas pendientes`
                           : `✓ Todos los alumnos calificados (${pendingGradesCount.total})`}
                       </span>
+                      <div className="flex items-center gap-2">
+                        <Button icon={<FilePdfOutlined />} size="small" onClick={() => setShowPDFModal(true)} disabled={evaluationPlan.length === 0}>PDF</Button>
+                        <Button icon={<DownloadOutlined />} size="small" onClick={() => downloadExcel(true)} disabled={students.length === 0}>Excel con notas</Button>
+                        <Button icon={<DownloadOutlined />} size="small" onClick={() => downloadExcel(false)}>Excel vacío</Button>
+                      </div>
                     </div>
                     <div style={{ overflowX: 'auto', maxHeight: 'calc(100vh - 400px)' }}>
                       <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
@@ -424,6 +452,40 @@ const ManageGrades: React.FC = () => {
           />
         </>
       )}
+
+      <EvaluationPlanPDFModal
+        open={showPDFModal}
+        onClose={() => setShowPDFModal(false)}
+        header={(() => {
+          if (!selectedAssignment) return null as unknown as EvaluationPlanHeaderData;
+          const termObj = availableTerms.find(t => t.id === selectedTerm);
+          return {
+            periodName: selectedAssignment.periodGradeSubject?.periodGrade?.schoolPeriod?.name || '-',
+            gradeName: selectedAssignment.periodGradeSubject?.periodGrade?.grade?.name || '-',
+            subjectName: selectedAssignment.periodGradeSubject?.subject?.name || '-',
+            sectionName: selectedAssignment.section?.name || '-',
+            termName: termObj?.name || '-',
+            teacherName: selectedAssignment.teacher
+              ? `${selectedAssignment.teacher.firstName} ${selectedAssignment.teacher.lastName}`
+              : '-',
+          };
+        })()}
+        items={evaluationPlan.map(ep => ({
+          identificador: ep.identificador,
+          description: ep.description,
+          tecnica: ep.tecnica,
+          objetivo: ep.objetivo,
+          tipoEvaluacion: ep.tipoEvaluacion,
+          formaEvaluacion: ep.formaEvaluacion,
+          indicador: ep.indicador,
+          temaGenerador: ep.temaGenerador,
+          referentesTeoricos: ep.referentesTeoricos,
+          referentesEticos: ep.referentesEticos,
+          estrategiaEvaluacion: ep.estrategiaEvaluacion,
+          percentage: Number(ep.percentage),
+          date: ep.date,
+        }))}
+      />
     </div>
   );
 };
