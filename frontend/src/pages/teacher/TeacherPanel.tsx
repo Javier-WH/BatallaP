@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, Component, useMemo } from 'react';
 import type { ReactNode, ErrorInfo } from 'react';
 import { Tabs, Card, Select, Table, Button, Modal, Form, Input, DatePicker, message, Space, Tag, Typography, InputNumber, Alert, Empty } from 'antd';
-import { BookOutlined, PlusOutlined, DeleteOutlined, EditOutlined, LockOutlined, FilePdfOutlined } from '@ant-design/icons';
+import { BookOutlined, PlusOutlined, DeleteOutlined, EditOutlined, LockOutlined, FilePdfOutlined, DownloadOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { isAxiosError } from 'axios';
 import api from '@/services/api';
@@ -244,6 +244,20 @@ const TeacherPanel: React.FC = () => {
       closeDate: term?.closeDate ? dayjs(term.closeDate) : null,
     };
   }, [availableTerms, selectedTerm]);
+
+  const pendingGradesCount = useMemo(() => {
+    if (evaluationPlan.length === 0 || students.length === 0) return { missing: 0, total: 0 };
+    let missing = 0;
+    students.forEach(enrollment => {
+      const insSub = enrollment.inscriptionSubjects?.[0];
+      const quals = insSub?.qualifications || [];
+      const hasAll = evaluationPlan.every(plan => {
+        return quals.some((q: Qualification) => q.evaluationPlanId === plan.id && q.score !== null && q.score > 0);
+      });
+      if (!hasAll) missing++;
+    });
+    return { missing, total: students.length };
+  }, [evaluationPlan, students]);
 
   useEffect(() => {
     const fetchMaxGrade = async () => {
@@ -546,12 +560,34 @@ const TeacherPanel: React.FC = () => {
   ];
 
 
-  const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?.percentage || 0), 0) || 0;
+const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?.percentage || 0), 0) || 0;
+
+  const downloadExcel = async (filled: boolean) => {
+    if (!selectedAssignmentId) return;
+    try {
+      const res = await api.get(`/evaluation/export-grades/${selectedAssignmentId}`, {
+        params: { filled: filled ? 'true' : 'false' },
+        responseType: 'blob'
+      });
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', filled ? 'calificaciones.xlsx' : 'plantilla-calificaciones.xlsx');
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch {
+      message.error('Error al descargar Excel');
+    }
+  };
+
   return (
     <div className="h-full overflow-y-auto theme-page-bg p-4 md:p-8">
       <style>{`
         .grading-row:hover { background-color: #f8fafc !important; }
         .grading-row td { transition: background-color 0.2s; }
+        .grading-cell .ant-input-number-input { text-align: center !important; }
         /* Luxury Scrollbar */
         .grading-table-container::-webkit-scrollbar { height: 8px; width: 8px; }
         .grading-table-container::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
@@ -767,19 +803,57 @@ const TeacherPanel: React.FC = () => {
                 </Button>
               </Card>
             ) : (
-              <Card bodyStyle={{ padding: 0 }} style={{ overflow: 'hidden', backgroundColor: 'var(--color-input-bg)', border: 'none' }}>
+              <>
+                <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+                  <div className="flex items-center gap-3">
+                    {students.length > 0 && (
+                      <span style={{
+                        fontSize: '13px',
+                        color: pendingGradesCount.missing > 0 ? 'var(--color-brand-primary)' : '#16a34a',
+                        fontWeight: 600,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 4
+                      }}>
+                        {pendingGradesCount.missing > 0
+                          ? `⚠ ${pendingGradesCount.missing} de ${pendingGradesCount.total} alumnos con notas pendientes`
+                          : `✓ Todos los alumnos calificados (${pendingGradesCount.total})`
+                        }
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      icon={<DownloadOutlined />}
+                      size="small"
+                      onClick={() => downloadExcel(true)}
+                      disabled={!selectedAssignmentId || students.length === 0}
+                    >
+                      Excel con notas
+                    </Button>
+                    <Button
+                      icon={<DownloadOutlined />}
+                      size="small"
+                      onClick={() => downloadExcel(false)}
+                      disabled={!selectedAssignmentId}
+                    >
+                      Excel vacío
+                    </Button>
+                  </div>
+                </div>
+                <Card bodyStyle={{ padding: 0 }} style={{ overflow: 'hidden', backgroundColor: 'var(--color-input-bg)', border: 'none' }}>
                 <div style={{ overflowX: 'auto', maxHeight: 'calc(100vh - 350px)' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
                     <thead style={{ position: 'sticky', top: 0, zIndex: 10, background: 'color-mix(in srgb, var(--color-input-bg), black 7%)' }}>
                       <tr>
-                        <th style={{ padding: '12px 16px', borderBottom: '1px solid #f0f0f0', textAlign: 'left', minWidth: 250 }}>Estudiante</th>
+                        <th style={{ padding: '12px 16px', borderBottom: '1px solid #f0f0f0', textAlign: 'left', width: 250 }}>Estudiante</th>
                         {evaluationPlan.map((item) => (
-                          <th key={item.id} style={{ padding: '12px 8px', borderBottom: '1px solid #f0f0f0', textAlign: 'center', minWidth: 100 }}>
-                            <div style={{ fontSize: '13px', fontWeight: 600 }}>{item.description}</div>
+                          <th key={item.id} style={{ padding: '12px 6px', borderBottom: '1px solid #f0f0f0', textAlign: 'center', width: 120, minWidth: 120, maxWidth: 120 }}>
+                            <div style={{ fontSize: '12px', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.description + (item.tipoEvaluacion ? ` (${item.tipoEvaluacion})` : '')}>{item.description}</div>
                             <div style={{ fontSize: '11px', color: '#8c8c8c' }}>{item.percentage}%</div>
                           </th>
                         ))}
-                        <th style={{ padding: '12px 16px', borderBottom: '1px solid #f0f0f0', textAlign: 'center', minWidth: 80 }}>Total</th>
+                        <th style={{ padding: '12px 16px', borderBottom: '1px solid #f0f0f0', textAlign: 'center', width: 80 }}>Total</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -809,7 +883,8 @@ const TeacherPanel: React.FC = () => {
                                 padding: '8px 16px', 
                                 borderBottom: '1px solid #f0f0f0', 
                                 borderRight: '1px solid #f0f0f0',
-                                background: 'var(--color-input-bg)' 
+                                background: 'var(--color-input-bg)',
+                                width: 250
                               }}>
                                 <div style={{ fontWeight: 500 }}>{enrollment.student?.lastName}, {enrollment.student?.firstName}</div>
                                 <div style={{ fontSize: '12px', color: '#8c8c8c' }}>{enrollment.student?.document}</div>
@@ -819,12 +894,15 @@ const TeacherPanel: React.FC = () => {
                                 const currentScore = q ? q.score : null;
 
                                   return (
-                                    <td key={item.id} style={{ 
-                                      padding: '4px 8px', 
+                                    <td key={item.id} className="grading-cell" style={{ 
+                                      padding: '4px 6px', 
                                       borderBottom: '1px solid #f0f0f0', 
                                       borderRight: '1px solid #f0f0f0',
                                       textAlign: 'center',
-                                      background: 'var(--color-input-bg)' 
+                                      background: 'var(--color-input-bg)',
+                                      width: 120,
+                                      minWidth: 120,
+                                      maxWidth: 120
                                     }}>
                                     <InputNumber
                                       id={`grade-${rowIndex}-${colIndex}`}
@@ -832,7 +910,8 @@ const TeacherPanel: React.FC = () => {
                                       max={maxGrade}
                                       precision={2}
                                       value={currentScore}
-                                      style={{ width: '80px' }}
+                                      style={{ width: '72px' }}
+                                      controls={false}
                                       disabled={isSelectedTermBlocked}
                                       onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
                                         if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter'].includes(e.key)) {
@@ -882,7 +961,8 @@ const TeacherPanel: React.FC = () => {
                                 textAlign: 'center', 
                                 background: 'var(--color-input-bg)', 
                                 fontWeight: 'bold',
-                                color: 'var(--color-text-main)'
+                                color: 'var(--color-text-main)',
+                                width: 80
                               }}>
                                 <Tag color={rowTotal >= (maxGrade * 0.5) ? 'green' : 'red'} style={{ margin: 0 }}>
                                   {formatGrade(rowTotal, enableRounding)}
@@ -900,6 +980,7 @@ const TeacherPanel: React.FC = () => {
                   </div>
                 )}
               </Card>
+              </>
             )
           }
         ]}
@@ -988,7 +1069,7 @@ const TeacherPanel: React.FC = () => {
           
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
             <Form.Item name="percentage" label="Porcentaje (1-100)" rules={[{ required: true }]}>
-              <InputNumber min={1} max={100} style={{ width: '100%' }} />
+              <InputNumber min={1} max={100} style={{ width: '100%' }} controls={false} />
             </Form.Item>
             <Form.Item
               name="date"

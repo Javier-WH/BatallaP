@@ -115,6 +115,15 @@
   display: none !important;
 }
 
+.ant-input-number-handler {
+  display: none !important;
+}
+
+.ant-input-number-affix-wrapper .ant-input-number,
+.ant-input-number .ant-input-number-input {
+  padding-right: 8px !important;
+}
+
 /* Chrome, Safari, Edge, Opera */
 input::-webkit-outer-spin-button,
 input::-webkit-inner-spin-button {

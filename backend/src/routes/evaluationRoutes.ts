@@ -10,7 +10,8 @@ import {
   saveQualification,
   getStudentFullAcademicRecord,
   updateFinalGrade,
-  getFinalGradesByPeriod
+  getFinalGradesByPeriod,
+  exportGradesExcel
 } from '@/controllers/evaluationController';
 
 const router = Router();
@@ -26,5 +27,6 @@ router.post('/qualifications', saveQualification);
 router.get('/student-record/:personId', getStudentFullAcademicRecord);
 router.put('/final-grade/:id', updateFinalGrade);
 router.get('/final-grades-by-period', getFinalGradesByPeriod);
+router.get('/export-grades/:assignmentId', exportGradesExcel);
 
 export default router;

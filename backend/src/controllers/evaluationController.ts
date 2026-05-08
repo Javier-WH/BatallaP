@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { Op } from 'sequelize';
+import ExcelJS from 'exceljs';
 import {
   Person,
   TeacherAssignment,
@@ -917,5 +918,190 @@ export const getFinalGradesByPeriod = async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Error fetching final grades by period:', error);
     res.status(500).json({ message: 'Error al obtener notas finales', error: error.message });
+  }
+};
+
+export const exportGradesExcel = async (req: Request, res: Response) => {
+  try {
+    const { assignmentId } = req.params;
+    const { filled } = req.query;
+
+    const assignment = await TeacherAssignment.findByPk(Number(assignmentId), {
+      include: [
+        {
+          model: PeriodGradeSubject,
+          as: 'periodGradeSubject',
+          include: [
+            { model: Subject, as: 'subject' },
+            {
+              model: PeriodGrade,
+              as: 'periodGrade',
+              include: [
+                { model: Grade, as: 'grade' },
+                { model: SchoolPeriod, as: 'schoolPeriod' }
+              ]
+            }
+          ]
+        },
+        { model: Section, as: 'section' },
+        { model: Person, as: 'teacher' }
+      ]
+    });
+
+    if (!assignment) return res.status(404).json({ message: 'Asignación no encontrada' });
+
+    const pg = await PeriodGrade.findByPk((assignment as any).periodGradeSubject.periodGradeId);
+    if (!pg) return res.status(404).json({ message: 'Estructura no encontrada' });
+
+    const evaluationPlans = await EvaluationPlan.findAll({
+      where: { periodGradeSubjectId: assignment.periodGradeSubjectId, sectionId: assignment.sectionId },
+      order: [['date', 'ASC']]
+    });
+
+    const inscriptions = await Inscription.findAll({
+      where: {
+        schoolPeriodId: pg.schoolPeriodId,
+        sectionId: assignment.sectionId,
+        [Op.or]: [{ gradeId: pg.gradeId }, { escolaridad: 'materia_pendiente' }]
+      },
+      include: [
+        {
+          model: Person,
+          as: 'student',
+          attributes: ['id', 'firstName', 'lastName', 'document']
+        },
+        {
+          model: InscriptionSubject,
+          as: 'inscriptionSubjects',
+          where: { subjectId: (assignment as any).periodGradeSubject.subjectId },
+          required: true,
+          include: [
+            {
+              model: Qualification,
+              as: 'qualifications',
+              include: [{ model: EvaluationPlan, as: 'evaluationPlan' }]
+            }
+          ]
+        }
+      ],
+      order: [
+        [{ model: Person, as: 'student' }, 'lastName', 'ASC'],
+        [{ model: Person, as: 'student' }, 'firstName', 'ASC']
+      ]
+    });
+
+    const subject = (assignment as any).periodGradeSubject.subject;
+    const section = (assignment as any).section;
+    const grade = (assignment as any).periodGradeSubject.periodGrade.grade;
+    const period = (assignment as any).periodGradeSubject.periodGrade.schoolPeriod;
+
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet('Calificaciones');
+
+    // Header info rows
+    sheet.mergeCells('A1:F1');
+    const titleCell = sheet.getCell('A1');
+    titleCell.value = `Plan de Evaluación - ${subject.name} - ${section.name}`;
+    titleCell.font = { bold: true, size: 14 };
+    titleCell.alignment = { horizontal: 'center' };
+
+    sheet.mergeCells('A2:F2');
+    const subtitleCell = sheet.getCell('A2');
+    subtitleCell.value = `${period.name} - ${grade.name}`;
+    subtitleCell.font = { size: 11 };
+    subtitleCell.alignment = { horizontal: 'center' };
+
+    sheet.getRow(3).values = [];
+
+    // Column headers (starts row 4)
+    const headerRow = sheet.getRow(4);
+    headerRow.getCell(1).value = 'Apellidos';
+    headerRow.getCell(2).value = 'Nombres';
+    headerRow.getCell(3).value = 'Documento';
+
+    let col = 4;
+    evaluationPlans.forEach((plan: any) => {
+      const cell = headerRow.getCell(col);
+      cell.value = `${plan.identificador || plan.description}\n(${plan.percentage}%)`;
+      cell.alignment = { wrapText: true, horizontal: 'center' };
+      col++;
+    });
+    headerRow.getCell(col).value = 'Total';
+
+    headerRow.eachCell(cell => {
+      cell.font = { bold: true };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E40AF' } };
+      cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+      cell.alignment = { horizontal: 'center', vertical: 'middle' };
+      cell.border = { top: { style: 'thin' }, bottom: { style: 'thin' }, left: { style: 'thin' }, right: { style: 'thin' } };
+    });
+
+    // Student rows
+    let rowNum = 5;
+    const isFilled = filled !== 'false';
+
+    inscriptions.forEach((inscription: any) => {
+      const row = sheet.getRow(rowNum);
+      row.getCell(1).value = inscription.student?.lastName || '';
+      row.getCell(2).value = inscription.student?.firstName || '';
+      row.getCell(3).value = inscription.student?.document || '';
+
+      const insSub = inscription.inscriptionSubjects?.[0];
+      const studentQuals: any[] = insSub?.qualifications || [];
+
+      let colNum = 4;
+      let rowTotal = 0;
+      evaluationPlans.forEach((plan: any) => {
+        const q = studentQuals.find((sq: any) => sq.evaluationPlanId === plan.id);
+        const cell = row.getCell(colNum);
+        if (isFilled && q) {
+          cell.value = Number(q.score);
+          rowTotal += (Number(q.score) * Number(plan.percentage)) / 100;
+        }
+        cell.alignment = { horizontal: 'center' };
+        cell.numFmt = '0.00';
+        cell.border = { top: { style: 'thin' }, bottom: { style: 'thin' }, left: { style: 'thin' }, right: { style: 'thin' } };
+        colNum++;
+      });
+
+      if (isFilled) {
+        const totalCell = row.getCell(colNum);
+        totalCell.value = Math.round(rowTotal * 100) / 100;
+        totalCell.numFmt = '0.00';
+        totalCell.font = { bold: true };
+      }
+      const lastCell = row.getCell(colNum);
+      lastCell.alignment = { horizontal: 'center' };
+      lastCell.border = { top: { style: 'thin' }, bottom: { style: 'thin' }, left: { style: 'thin' }, right: { style: 'thin' } };
+
+      // Apply borders to student name columns too
+      for (let c = 1; c <= 3; c++) {
+        row.getCell(c).border = { top: { style: 'thin' }, bottom: { style: 'thin' }, left: { style: 'thin' }, right: { style: 'thin' } };
+      }
+
+      rowNum++;
+    });
+
+    // Column widths
+    sheet.getColumn(1).width = 25;
+    sheet.getColumn(2).width = 25;
+    sheet.getColumn(3).width = 15;
+    for (let i = 4; i <= 3 + evaluationPlans.length; i++) {
+      sheet.getColumn(i).width = 14;
+    }
+    sheet.getColumn(4 + evaluationPlans.length).width = 10;
+
+    const buffer = await workbook.xlsx.writeBuffer();
+
+    const fileName = isFilled
+      ? `calificaciones-${subject.name.replace(/\s+/g, '_')}.xlsx`
+      : `plantilla-calificaciones-${subject.name.replace(/\s+/g, '_')}.xlsx`;
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    res.send(buffer);
+  } catch (error: any) {
+    console.error('[exportGradesExcel] Error:', error);
+    res.status(500).json({ message: error.message || 'Error al exportar calificaciones' });
   }
 };
