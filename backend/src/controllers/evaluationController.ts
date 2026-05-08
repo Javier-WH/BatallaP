@@ -998,14 +998,17 @@ export const exportGradesExcel = async (req: Request, res: Response) => {
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet('Calificaciones');
 
+    const totalCols = 3 + evaluationPlans.length + 1;
+    const lastCol = sheet.getColumn(totalCols).letter;
+
     // Header info rows
-    sheet.mergeCells('A1:F1');
+    sheet.mergeCells(`A1:${lastCol}1`);
     const titleCell = sheet.getCell('A1');
     titleCell.value = `Plan de Evaluación - ${subject.name} - ${section.name}`;
     titleCell.font = { bold: true, size: 14 };
     titleCell.alignment = { horizontal: 'center' };
 
-    sheet.mergeCells('A2:F2');
+    sheet.mergeCells(`A2:${lastCol}2`);
     const subtitleCell = sheet.getCell('A2');
     subtitleCell.value = `${period.name} - ${grade.name}`;
     subtitleCell.font = { size: 11 };
@@ -1013,38 +1016,55 @@ export const exportGradesExcel = async (req: Request, res: Response) => {
 
     sheet.getRow(3).values = [];
 
-    // Column headers (starts row 4)
-    const headerRow = sheet.getRow(4);
-    headerRow.getCell(1).value = 'Apellidos';
-    headerRow.getCell(2).value = 'Nombres';
-    headerRow.getCell(3).value = 'Documento';
+    // Header row 1 (row 4): text labels + evaluation IDs
+    const headerRow1 = sheet.getRow(4);
+    headerRow1.getCell(1).value = 'Cédula';
+    headerRow1.getCell(2).value = 'Apellidos';
+    headerRow1.getCell(3).value = 'Nombres';
 
     let col = 4;
     evaluationPlans.forEach((plan: any) => {
-      const cell = headerRow.getCell(col);
-      cell.value = `${plan.identificador || plan.description}\n(${plan.percentage}%)`;
-      cell.alignment = { wrapText: true, horizontal: 'center' };
+      headerRow1.getCell(col).value = plan.identificador || plan.description;
       col++;
     });
-    headerRow.getCell(col).value = 'Total';
+    headerRow1.getCell(col).value = 'Total';
 
-    headerRow.eachCell(cell => {
-      cell.font = { bold: true };
-      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E40AF' } };
-      cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-      cell.alignment = { horizontal: 'center', vertical: 'middle' };
-      cell.border = { top: { style: 'thin' }, bottom: { style: 'thin' }, left: { style: 'thin' }, right: { style: 'thin' } };
+    // Merge name columns across rows 4-5
+    sheet.mergeCells('A4:A5');
+    sheet.mergeCells('B4:B5');
+    sheet.mergeCells('C4:C5');
+    // Merge Total column across rows 4-5
+    const totalCol = sheet.getColumn(col).letter;
+    sheet.mergeCells(`${totalCol}4:${totalCol}5`);
+
+    // Header row 2 (row 5): percentages
+    const headerRow2 = sheet.getRow(5);
+    col = 4;
+    evaluationPlans.forEach((plan: any) => {
+      headerRow2.getCell(col).value = `${plan.percentage}%`;
+      col++;
     });
 
+    const headerStyle = (row: any) => {
+      row.eachCell((cell: any) => {
+        cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E40AF' } };
+        cell.alignment = { horizontal: 'center', vertical: 'middle' };
+        cell.border = { top: { style: 'thin' }, bottom: { style: 'thin' }, left: { style: 'thin' }, right: { style: 'thin' } };
+      });
+    };
+    headerStyle(headerRow1);
+    headerStyle(headerRow2);
+
     // Student rows
-    let rowNum = 5;
+    let rowNum = 6;
     const isFilled = filled !== 'false';
 
     inscriptions.forEach((inscription: any) => {
       const row = sheet.getRow(rowNum);
-      row.getCell(1).value = inscription.student?.lastName || '';
-      row.getCell(2).value = inscription.student?.firstName || '';
-      row.getCell(3).value = inscription.student?.document || '';
+      row.getCell(1).value = inscription.student?.document || '';
+      row.getCell(2).value = inscription.student?.lastName || '';
+      row.getCell(3).value = inscription.student?.firstName || '';
 
       const insSub = inscription.inscriptionSubjects?.[0];
       const studentQuals: any[] = insSub?.qualifications || [];
@@ -1083,9 +1103,9 @@ export const exportGradesExcel = async (req: Request, res: Response) => {
     });
 
     // Column widths
-    sheet.getColumn(1).width = 25;
+    sheet.getColumn(1).width = 15;
     sheet.getColumn(2).width = 25;
-    sheet.getColumn(3).width = 15;
+    sheet.getColumn(3).width = 25;
     for (let i = 4; i <= 3 + evaluationPlans.length; i++) {
       sheet.getColumn(i).width = 14;
     }
