@@ -22,7 +22,8 @@ import {
   GradeEditPermission,
   GradeEditAudit,
   User,
-  Plantel
+  Plantel,
+  QualificationAudit
 } from '@/models/index';
 import {
   getSubjectOrderMapByGradeAndPeriod,
@@ -310,7 +311,20 @@ export const saveQualification = async (req: Request, res: Response) => {
     });
 
     if (!created) {
+      const previousScore = qualification.score;
       await qualification.update({ score, observations });
+
+      // Record audit if score changed
+      const sessionUser = (req.session as any).user;
+      if (sessionUser && Number(previousScore) !== Number(score)) {
+        await QualificationAudit.create({
+          qualificationId: qualification.id,
+          editedBy: sessionUser.id,
+          previousScore,
+          newScore: score,
+          editedAt: new Date(),
+        });
+      }
     }
 
     res.json(qualification);
@@ -1181,5 +1195,119 @@ export const getAllAssignments = async (req: Request, res: Response) => {
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Error al obtener asignaciones' });
+  }
+};
+
+export const getQualificationAudits = async (req: Request, res: Response) => {
+  try {
+    const { assignmentId } = req.params;
+
+    const assignment = await TeacherAssignment.findByPk(Number(assignmentId), {
+      include: [{
+        model: PeriodGradeSubject,
+        as: 'periodGradeSubject',
+        include: [{ model: Subject, as: 'subject' }]
+      }]
+    });
+
+    if (!assignment) return res.status(404).json({ message: 'Asignación no encontrada' });
+
+    const plans = await EvaluationPlan.findAll({
+      where: {
+        periodGradeSubjectId: assignment.periodGradeSubjectId,
+        sectionId: assignment.sectionId
+      },
+      attributes: ['id']
+    });
+
+    const planIds = plans.map(p => p.id);
+    if (planIds.length === 0) return res.json([]);
+
+    const audits = await QualificationAudit.findAll({
+      include: [
+        {
+          model: Qualification,
+          as: 'qualification',
+          where: { evaluationPlanId: { [Op.in]: planIds } },
+          required: true,
+          include: [
+            { model: EvaluationPlan, as: 'evaluationPlan', attributes: ['id', 'identificador', 'description'] },
+            {
+              model: InscriptionSubject,
+              as: 'inscriptionSubject',
+              include: [
+                { model: Subject, as: 'subject', attributes: ['id', 'name'] },
+                {
+                  model: Inscription,
+                  as: 'inscription',
+                  attributes: ['id'],
+                  include: [
+                    { model: Person, as: 'student', attributes: ['id', 'firstName', 'lastName', 'document'] }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        { model: User, as: 'editor', attributes: ['id', 'username'],
+          include: [{ model: Person, as: 'person', attributes: ['id', 'firstName', 'lastName'] }]
+        }
+      ],
+      order: [['editedAt', 'DESC']],
+      limit: 200
+    });
+
+    res.json(audits);
+  } catch (error: any) {
+    console.error('[getQualificationAudits] Error:', error);
+    res.status(500).json({ message: 'Error al obtener auditoría' });
+  }
+};
+
+export const getAllQualificationAudits = async (_req: Request, res: Response) => {
+  try {
+    const audits = await QualificationAudit.findAll({
+      include: [
+        {
+          model: Qualification,
+          as: 'qualification',
+          required: true,
+          include: [
+            {
+              model: EvaluationPlan,
+              as: 'evaluationPlan',
+              attributes: ['id', 'identificador', 'description', 'percentage'],
+            },
+            {
+              model: InscriptionSubject,
+              as: 'inscriptionSubject',
+              include: [
+                { model: Subject, as: 'subject', attributes: ['id', 'name'] },
+                {
+                  model: Inscription,
+                  as: 'inscription',
+                  attributes: ['id', 'schoolPeriodId', 'gradeId'],
+                  include: [
+                    { model: Person, as: 'student', attributes: ['id', 'firstName', 'lastName', 'document'] },
+                    { model: Grade, as: 'grade', attributes: ['id', 'name'] },
+                    { model: SchoolPeriod, as: 'period', attributes: ['id', 'name'] },
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        { model: User, as: 'editor', attributes: ['id', 'username'],
+          include: [{ model: Person, as: 'person', attributes: ['id', 'firstName', 'lastName'] }]
+        }
+      ],
+      order: [['editedAt', 'DESC']],
+      limit: 200
+    });
+
+    res.json(audits);
+  } catch (error: any) {
+    console.error('[getAllQualificationAudits] Error:', error);
+    res.status(500).json({ message: 'Error al obtener auditoría' });
   }
 };

@@ -123,11 +123,19 @@ export const gradeEditPermissionService = {
 
   updateFinalGrade: async (id: number, data: {
     finalScore?: number;
-    status?: 'aprobada' | 'reprobada';
+    status?: string;
     reason: string;
     permissionId: number;
+    actCode?: string;
+    plantelId?: number | null;
+    gradeType?: string;
   }) => {
     const response = await api.put(`/evaluation/final-grade/${id}`, data);
+    return response.data;
+  },
+
+  getQualificationAudits: async () => {
+    const response = await api.get('/evaluation/all-qualification-audits');
     return response.data;
   }
 };

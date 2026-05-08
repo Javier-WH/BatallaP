@@ -119,6 +119,7 @@ import GradeEditPermission from './GradeEditPermission';
 import GradeEditAudit from './GradeEditAudit';
 import EnrollmentReport from './EnrollmentReport';
 import DashboardContent from './DashboardContent';
+import QualificationAudit from './QualificationAudit';
 
 
 // ... (Existing User/Person/Role/Contact associations) ...
@@ -299,6 +300,13 @@ GradeEditAudit.belongsTo(GradeEditPermission, { foreignKey: 'permissionId', as: 
 User.hasMany(GradeEditAudit, { foreignKey: 'editedBy', as: 'gradeEdits' });
 GradeEditAudit.belongsTo(User, { foreignKey: 'editedBy', as: 'editor' });
 
+// Qualification audit associations
+Qualification.hasMany(QualificationAudit, { foreignKey: 'qualificationId', as: 'audits' });
+QualificationAudit.belongsTo(Qualification, { foreignKey: 'qualificationId', as: 'qualification' });
+
+User.hasMany(QualificationAudit, { foreignKey: 'editedBy', as: 'qualificationEdits' });
+QualificationAudit.belongsTo(User, { foreignKey: 'editedBy', as: 'editor' });
+
 // Enrollment reports
 EnrollmentReport.belongsTo(Matriculation, { foreignKey: 'matriculationId', as: 'matriculation' });
 Matriculation.hasMany(EnrollmentReport, { foreignKey: 'matriculationId', as: 'enrollmentReports' });
@@ -349,5 +357,6 @@ export {
   GradeEditPermission,
   GradeEditAudit,
   EnrollmentReport,
-  DashboardContent
+  DashboardContent,
+  QualificationAudit
 };

@@ -8,11 +8,13 @@ import {
   HistoryOutlined,
   UserOutlined,
   FileTextOutlined,
-  LockOutlined
+  LockOutlined,
+  EditOutlined
 } from '@ant-design/icons';
 import api from '@/services/api';
 import { gradeEditPermissionService } from '@/services/gradeEditPermissionService';
 import type { GradeEditPermission, GradeEditAudit } from '@/services/gradeEditPermissionService';
+import type { ColumnsType } from 'antd/es/table';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
@@ -37,6 +39,7 @@ interface SchoolPeriod {
 const GradeEditPermissions: React.FC = () => {
   const [permissions, setPermissions] = useState<GradeEditPermission[]>([]);
   const [auditLog, setAuditLog] = useState<GradeEditAudit[]>([]);
+  const [qualAuditLog, setQualAuditLog] = useState<any[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [schoolPeriods, setSchoolPeriods] = useState<SchoolPeriod[]>([]);
   const [loading, setLoading] = useState(false);
@@ -46,6 +49,7 @@ const GradeEditPermissions: React.FC = () => {
   useEffect(() => {
     fetchPermissions();
     fetchAuditLog();
+    fetchQualAuditLog();
     fetchUsers();
     fetchSchoolPeriods();
   }, []);
@@ -66,8 +70,17 @@ const GradeEditPermissions: React.FC = () => {
     try {
       const data = await gradeEditPermissionService.getAuditLog({ limit: 100 });
       setAuditLog(data);
-    } catch (err) {
-      console.error('Error fetching audit log:', err);
+    } catch {
+      message.error('Error al cargar historial');
+    }
+  };
+
+  const fetchQualAuditLog = async () => {
+    try {
+      const data = await gradeEditPermissionService.getQualificationAudits();
+      setQualAuditLog(data);
+    } catch {
+      // Silently fail - qualification audits are optional
     }
   };
 
@@ -216,6 +229,91 @@ const GradeEditPermissions: React.FC = () => {
             </Popconfirm>
           )}
         </Space>
+      )
+    }
+  ];
+
+  const qualAuditColumns: ColumnsType<any> = [
+    {
+      title: 'Fecha',
+      dataIndex: 'editedAt',
+      key: 'editedAt',
+      width: 160,
+      render: (date: string) => (
+        <Text style={{ fontSize: 12 }}>
+          {new Date(date).toLocaleString('es-VE')}
+        </Text>
+      )
+    },
+    {
+      title: 'Estudiante',
+      key: 'student',
+      render: (_: unknown, record: any) => {
+        const student = record.qualification?.inscriptionSubject?.inscription?.student;
+        return <Text>{student ? `${student.firstName} ${student.lastName}` : 'N/A'}</Text>;
+      }
+    },
+    {
+      title: 'Documento',
+      key: 'document',
+      width: 120,
+      render: (_: unknown, record: any) => (
+        <Text>{record.qualification?.inscriptionSubject?.inscription?.student?.document || 'N/A'}</Text>
+      )
+    },
+    {
+      title: 'Materia',
+      key: 'subject',
+      render: (_: unknown, record: any) => (
+        <Text>{record.qualification?.inscriptionSubject?.subject?.name || 'N/A'}</Text>
+      )
+    },
+    {
+      title: 'Grado',
+      key: 'grade',
+      width: 100,
+      render: (_: unknown, record: any) => (
+        <Text>{record.qualification?.inscriptionSubject?.inscription?.grade?.name || 'N/A'}</Text>
+      )
+    },
+    {
+      title: 'Período',
+      key: 'period',
+      width: 120,
+      render: (_: unknown, record: any) => (
+        <Text>{record.qualification?.inscriptionSubject?.inscription?.period?.name || 'N/A'}</Text>
+      )
+    },
+    {
+      title: 'Evaluación',
+      key: 'evaluation',
+      render: (_: unknown, record: any) => (
+        <Text style={{ fontSize: 12 }}>
+          {record.qualification?.evaluationPlan?.identificador || record.qualification?.evaluationPlan?.description || 'N/A'}
+        </Text>
+      )
+    },
+    {
+      title: 'Nota',
+      key: 'score',
+      width: 80,
+      render: (_: unknown, record: any) => (
+        <Space direction="vertical" size={0}>
+          <Text delete style={{ color: '#ff4d4f', fontSize: 12 }}>{record.previousScore ?? '—'}</Text>
+          <Text strong style={{ color: '#52c41a', fontSize: 12 }}>{record.newScore}</Text>
+        </Space>
+      )
+    },
+    {
+      title: 'Modificado por',
+      key: 'editor',
+      width: 140,
+      render: (_: unknown, record: any) => (
+        <Text style={{ fontSize: 12 }}>
+          {record.editor?.person
+            ? `${record.editor.person.firstName} ${record.editor.person.lastName}`
+            : record.editor?.username || 'N/A'}
+        </Text>
       )
     }
   ];
@@ -386,6 +484,28 @@ const GradeEditPermissions: React.FC = () => {
                   loading={loading}
                   pagination={{ pageSize: 10 }}
                   scroll={{ x: 1200 }}
+                />
+              </Card>
+            )
+          },
+          {
+            key: 'qual-audit',
+            label: (
+              <span>
+                <EditOutlined />
+                Calificaciones Editadas
+              </span>
+            ),
+            children: (
+              <Card>
+                <Table
+                  columns={qualAuditColumns}
+                  dataSource={qualAuditLog}
+                  rowKey="id"
+                  loading={loading}
+                  pagination={{ pageSize: 10 }}
+                  scroll={{ x: 1200 }}
+                  locale={{ emptyText: 'No hay registros de ediciones de calificaciones' }}
                 />
               </Card>
             )
