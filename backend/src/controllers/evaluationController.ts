@@ -1060,6 +1060,14 @@ export const exportGradesExcel = async (req: Request, res: Response) => {
     let rowNum = 6;
     const isFilled = filled !== 'false';
 
+    // Build formula parts for Total column
+    const totalFormulaParts: string[] = [];
+    evaluationPlans.forEach((plan: any, idx: number) => {
+      const colLetter = sheet.getColumn(4 + idx).letter;
+      const pct = Number(plan.percentage) / 100;
+      totalFormulaParts.push(`${colLetter}{row}*${pct}`);
+    });
+
     inscriptions.forEach((inscription: any) => {
       const row = sheet.getRow(rowNum);
       row.getCell(1).value = inscription.student?.document || '';
@@ -1084,15 +1092,17 @@ export const exportGradesExcel = async (req: Request, res: Response) => {
         colNum++;
       });
 
+      const totalCell = row.getCell(colNum);
+      const formula = totalFormulaParts.map(p => p.replace('{row}', String(rowNum))).join('+');
       if (isFilled) {
-        const totalCell = row.getCell(colNum);
-        totalCell.value = Math.round(rowTotal * 100) / 100;
-        totalCell.numFmt = '0.00';
-        totalCell.font = { bold: true };
+        totalCell.value = { formula, result: Math.round(rowTotal * 100) / 100 } as any;
+      } else {
+        totalCell.value = { formula } as any;
       }
-      const lastCell = row.getCell(colNum);
-      lastCell.alignment = { horizontal: 'center' };
-      lastCell.border = { top: { style: 'thin' }, bottom: { style: 'thin' }, left: { style: 'thin' }, right: { style: 'thin' } };
+      totalCell.numFmt = '0.00';
+      totalCell.font = { bold: true };
+      totalCell.alignment = { horizontal: 'center' };
+      totalCell.border = { top: { style: 'thin' }, bottom: { style: 'thin' }, left: { style: 'thin' }, right: { style: 'thin' } };
 
       // Apply borders to student name columns too
       for (let c = 1; c <= 3; c++) {
