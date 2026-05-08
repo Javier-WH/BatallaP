@@ -1,0 +1,431 @@
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { Card, Tabs, Table, Button, message, Tag, Typography, InputNumber, Alert, Empty, Spin } from 'antd';
+import { BookOutlined, UserOutlined, ArrowLeftOutlined } from '@ant-design/icons';
+import api from '@/services/api';
+import dayjs from 'dayjs';
+import { useGradeRounding } from '@/context/GradeRoundingContext';
+import { formatGrade } from '@/utils/gradeFormat';
+
+const { Title, Text } = Typography;
+
+interface Term {
+  id: number;
+  name: string;
+  isBlocked: boolean;
+  openDate?: string;
+  closeDate?: string;
+  schoolPeriodId: number;
+  order: number;
+}
+
+interface Assignment {
+  id: number;
+  periodGradeSubjectId: number;
+  sectionId: number;
+  periodGradeSubject: {
+    id: number;
+    subject: { id: number; name: string };
+    periodGrade: {
+      id: number;
+      grade: { id: number; name: string; order: number };
+      schoolPeriod: { id: number; name: string; isActive: boolean };
+    };
+  };
+  section: { id: number; name: string };
+  teacher: { id: number; firstName: string; lastName: string; document: string };
+}
+
+interface EvaluationPlanItem {
+  id: number;
+  description: string;
+  objetivo: string;
+  tecnica: string;
+  identificador: string;
+  percentage: number;
+  date: string;
+  temaGenerador?: string;
+  referentesTeoricos?: string;
+  referentesEticos?: string;
+  estrategiaEvaluacion?: string;
+  tipoEvaluacion?: string;
+  formaEvaluacion?: string;
+  indicador?: string;
+}
+
+interface Qualification {
+  id: number;
+  evaluationPlanId: number;
+  score: number;
+  observations?: string;
+}
+
+interface StudentEnrollment {
+  id: number;
+  student: { firstName: string; lastName: string; document: string };
+  inscriptionSubjects: Array<{
+    id: number;
+    qualifications: Qualification[];
+  }>;
+}
+
+const ManageGrades: React.FC = () => {
+  const [loading, setLoading] = useState(false);
+  const [allAssignments, setAllAssignments] = useState<Assignment[]>([]);
+  const [selectedAssignment, setSelectedAssignment] = useState<Assignment | null>(null);
+  const [availableTerms, setAvailableTerms] = useState<Term[]>([]);
+  const [selectedTerm, setSelectedTerm] = useState<number | null>(null);
+  const [evaluationPlan, setEvaluationPlan] = useState<EvaluationPlanItem[]>([]);
+  const [students, setStudents] = useState<StudentEnrollment[]>([]);
+  const [maxGrade, setMaxGrade] = useState<number>(20);
+  const [activeTab, setActiveTab] = useState('1');
+  const { enableRounding } = useGradeRounding();
+
+  const isSelectedTermBlocked = useMemo(() => {
+    if (!selectedTerm) return false;
+    const term = availableTerms.find(t => t.id === selectedTerm);
+    return term?.isBlocked ?? false;
+  }, [availableTerms, selectedTerm]);
+
+  // Group assignments by grade
+  const groupedAssignments = useMemo(() => {
+    const groups = new Map<number, { gradeName: string; assignments: Assignment[] }>();
+    allAssignments.forEach(a => {
+      const pg = a.periodGradeSubject?.periodGrade;
+      const grade = pg?.grade;
+      if (!grade) return;
+      if (!groups.has(grade.id)) {
+        groups.set(grade.id, { gradeName: grade.name, assignments: [] });
+      }
+      groups.get(grade.id)!.assignments.push(a);
+    });
+    return Array.from(groups.values());
+  }, [allAssignments]);
+
+  useEffect(() => {
+    fetchAllAssignments();
+    fetchTerms();
+    fetchMaxGrade();
+  }, []);
+
+  const fetchMaxGrade = async () => {
+    try {
+      const res = await api.get('/settings/max_grade');
+      if (res.data?.value) setMaxGrade(Number(res.data.value));
+    } catch { /* ignore */ }
+  };
+
+  const fetchAllAssignments = async () => {
+    setLoading(true);
+    try {
+      const res = await api.get('/evaluation/all-assignments');
+      setAllAssignments(res.data);
+    } catch {
+      message.error('Error al cargar asignaciones');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchTerms = async () => {
+    try {
+      const periodRes = await api.get('/academic/active');
+      if (periodRes.data) {
+        const termsRes = await api.get(`/terms?schoolPeriodId=${periodRes.data.id}`);
+        setAvailableTerms(termsRes.data);
+        const activeTerm = termsRes.data.find((t: Term) => !t.isBlocked);
+        if (activeTerm) setSelectedTerm(activeTerm.id);
+        else if (termsRes.data.length > 0) setSelectedTerm(termsRes.data[0].id);
+      }
+    } catch { /* ignore */ }
+  };
+
+  const fetchPlanAndStudents = useCallback(async () => {
+    if (!selectedAssignment || !selectedTerm) return;
+    setLoading(true);
+    try {
+      const [planRes, studentsRes] = await Promise.all([
+        api.get(`/evaluation/plan/${selectedAssignment.periodGradeSubjectId}?term=${selectedTerm}&sectionId=${selectedAssignment.sectionId}`),
+        api.get(`/evaluation/students/${selectedAssignment.id}`)
+      ]);
+      setEvaluationPlan(planRes.data || []);
+      setStudents(studentsRes.data || []);
+    } catch {
+      message.error('Error al cargar datos del lapso');
+      setEvaluationPlan([]);
+      setStudents([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [selectedAssignment, selectedTerm]);
+
+  useEffect(() => {
+    fetchPlanAndStudents();
+  }, [fetchPlanAndStudents]);
+
+  const handleSaveScoreInGrid = async (enrollment: StudentEnrollment, evalPlanId: number, score: number | null) => {
+    if (isSelectedTermBlocked) {
+      message.warning('Este lapso está bloqueado.');
+      return;
+    }
+    const inscriptionSubjectId = enrollment.inscriptionSubjects?.[0]?.id;
+    try {
+      await api.post('/evaluation/qualifications', {
+        evaluationPlanId: evalPlanId,
+        inscriptionSubjectId,
+        inscriptionId: enrollment.id,
+        score: score === null ? 0 : score,
+        observations: ''
+      });
+      fetchPlanAndStudents();
+    } catch {
+      message.error('Error al guardar nota');
+    }
+  };
+
+  const handleSelectAssignment = (assignment: Assignment) => {
+    setSelectedAssignment(assignment);
+    setActiveTab('1');
+  };
+
+  const handleBack = () => {
+    setSelectedAssignment(null);
+    setEvaluationPlan([]);
+    setStudents([]);
+  };
+
+  const pendingGradesCount = useMemo(() => {
+    if (evaluationPlan.length === 0 || students.length === 0) return { missing: 0, total: 0 };
+    let missing = 0;
+    students.forEach(enrollment => {
+      const insSub = enrollment.inscriptionSubjects?.[0];
+      const quals = insSub?.qualifications || [];
+      const hasAll = evaluationPlan.every(plan => {
+        return quals.some((q: Qualification) => q.evaluationPlanId === plan.id && q.score !== null && q.score > 0);
+      });
+      if (!hasAll) missing++;
+    });
+    return { missing, total: students.length };
+  }, [evaluationPlan, students]);
+
+  const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?.percentage || 0), 0) || 0;
+
+  const planColumns = [
+    { title: 'ID', dataIndex: 'identificador', key: 'identificador', width: 80 },
+    { title: 'Instrumento', dataIndex: 'description', key: 'description', ellipsis: true, width: 150 },
+    { title: 'Técnica', dataIndex: 'tecnica', key: 'tecnica', width: 100 },
+    { title: 'Tipo', dataIndex: 'tipoEvaluacion', key: 'tipoEvaluacion', width: 90 },
+    { title: 'Forma', dataIndex: 'formaEvaluacion', key: 'formaEvaluacion', width: 90 },
+    { title: 'Objetivo', dataIndex: 'objetivo', key: 'objetivo', ellipsis: true, width: 150 },
+    { title: 'Indicador', dataIndex: 'indicador', key: 'indicador', ellipsis: true, width: 150 },
+    { title: 'Peso (%)', dataIndex: 'percentage', key: 'percentage', render: (v: number) => `${v}%`, width: 70 },
+    { title: 'Fecha', dataIndex: 'date', key: 'date', render: (v: string) => dayjs(v).format('DD/MM/YYYY'), width: 90 },
+  ];
+
+  return (
+    <div className="h-full overflow-y-auto p-4 md:p-6" style={{ backgroundColor: 'var(--color-page-bg)' }}>
+      {!selectedAssignment ? (
+        <>
+          <div className="mb-6">
+            <h1 className="text-2xl font-black" style={{ color: 'var(--color-text-main)' }}>Calificaciones por Sección</h1>
+            <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+              Selecciona una sección para ver y editar sus calificaciones
+            </p>
+          </div>
+
+          <Spin spinning={loading}>
+            {groupedAssignments.length === 0 ? (
+              <Card style={{ backgroundColor: 'var(--color-content-bg)' }}>
+                <Empty description="No hay secciones configuradas en el período activo" />
+              </Card>
+            ) : (
+              groupedAssignments.map((group) => (
+                <div key={group.gradeName} className="mb-6">
+                  <div className="flex items-center gap-2 mb-3">
+                    <BookOutlined style={{ color: 'var(--color-brand-primary)' }} />
+                    <Title level={5} style={{ margin: 0, color: 'var(--color-text-main)' }}>
+                      {group.gradeName}
+                    </Title>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                    {group.assignments.map((a) => (
+                      <Card
+                        key={a.id}
+                        hoverable
+                        size="small"
+                        onClick={() => handleSelectAssignment(a)}
+                        style={{ cursor: 'pointer', backgroundColor: 'var(--color-content-bg)' }}
+                      >
+                        <div className="flex flex-col gap-1">
+                          <div className="flex items-center justify-between">
+                            <Tag color="blue">{a.section.name}</Tag>
+                            <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-main)' }}>
+                              {a.periodGradeSubject.subject.name}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1" style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>
+                            <UserOutlined />
+                            <span>{a.teacher?.firstName} {a.teacher?.lastName}</span>
+                          </div>
+                        </div>
+                      </Card>
+                    ))}
+                  </div>
+                </div>
+              ))
+            )}
+          </Spin>
+        </>
+      ) : (
+        <>
+          {/* Back button and header */}
+          <div className="flex items-center gap-3 mb-4">
+            <Button icon={<ArrowLeftOutlined />} onClick={handleBack}>Volver</Button>
+            <div>
+              <Title level={4} style={{ margin: 0, color: 'var(--color-text-main)' }}>
+                {selectedAssignment.periodGradeSubject.subject.name}
+              </Title>
+              <Text style={{ color: 'var(--color-text-muted)', fontSize: 13 }}>
+                {selectedAssignment.periodGradeSubject.periodGrade.grade.name} • Sección {selectedAssignment.section.name} • Prof. {selectedAssignment.teacher?.firstName} {selectedAssignment.teacher?.lastName}
+              </Text>
+            </div>
+          </div>
+
+          {/* Term selector */}
+          <div className="flex items-center gap-2 mb-4 flex-wrap">
+            {availableTerms.map(term => (
+              <Button
+                key={term.id}
+                size="small"
+                type={selectedTerm === term.id ? 'primary' : 'default'}
+                onClick={() => setSelectedTerm(term.id)}
+              >
+                {term.name}
+                {term.isBlocked && ' 🔒'}
+              </Button>
+            ))}
+          </div>
+
+          {isSelectedTermBlocked && (
+            <Alert message="Lapso bloqueado. No se pueden modificar calificaciones." type="warning" showIcon className="mb-4" />
+          )}
+
+          <Tabs activeKey={activeTab} onChange={setActiveTab}
+            items={[
+              {
+                key: '1',
+                label: 'Plan de Evaluación',
+                children: (
+                  <Table
+                    loading={loading}
+                    columns={planColumns}
+                    dataSource={evaluationPlan}
+                    rowKey="id"
+                    pagination={false}
+                    size="small"
+                    scroll={{ x: 1000 }}
+                    style={{ backgroundColor: 'var(--color-content-bg)' }}
+                  />
+                )
+              },
+              {
+                key: '2',
+                label: 'Calificaciones',
+                children: evaluationPlan.length === 0 ? (
+                  <Card style={{ backgroundColor: 'var(--color-input-bg)', textAlign: 'center', padding: 40 }}>
+                    <Title level={4}>No hay Plan de Evaluación</Title>
+                    <Text type="secondary">Primero debe definirse el plan de evaluación para este lapso.</Text>
+                  </Card>
+                ) : (
+                  <Card bodyStyle={{ padding: 0 }} style={{ overflow: 'hidden', backgroundColor: 'var(--color-input-bg)' }}>
+                    <div className="flex items-center justify-between p-3 flex-wrap gap-2">
+                      <span style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>
+                        {pendingGradesCount.missing > 0
+                          ? `⚠ ${pendingGradesCount.missing} de ${pendingGradesCount.total} alumnos con notas pendientes`
+                          : `✓ Todos los alumnos calificados (${pendingGradesCount.total})`}
+                      </span>
+                    </div>
+                    <div style={{ overflowX: 'auto', maxHeight: 'calc(100vh - 400px)' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+                        <thead style={{ position: 'sticky', top: 0, zIndex: 10, background: 'color-mix(in srgb, var(--color-input-bg), black 7%)' }}>
+                          <tr>
+                            <th style={{ padding: '10px 12px', borderBottom: '1px solid #f0f0f0', textAlign: 'left', width: 220 }}>Estudiante</th>
+                            {evaluationPlan.map(item => (
+                              <th key={item.id} style={{ padding: '10px 4px', borderBottom: '1px solid #f0f0f0', textAlign: 'center', width: 120 }}>
+                                <div style={{ fontSize: 11, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.identificador || item.description}</div>
+                                <div style={{ fontSize: 10, color: '#8c8c8c' }}>{item.percentage}%</div>
+                              </th>
+                            ))}
+                            <th style={{ padding: '10px 12px', borderBottom: '1px solid #f0f0f0', textAlign: 'center', width: 70 }}>Total</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {[...students]
+                            .sort((a, b) => {
+                              const nameA = `${a.student?.lastName} ${a.student?.firstName}`.toLowerCase();
+                              const nameB = `${b.student?.lastName} ${b.student?.firstName}`.toLowerCase();
+                              return nameA.localeCompare(nameB);
+                            })
+                            .map((enrollment, rowIndex) => {
+                              const insSub = enrollment.inscriptionSubjects?.[0];
+                              const studentQuals = insSub?.qualifications || [];
+                              let rowTotal = 0;
+                              evaluationPlan.forEach(item => {
+                                const q = studentQuals.find((sq: Qualification) => sq.evaluationPlanId === item.id);
+                                if (q) rowTotal += (Number(q.score) * Number(item.percentage)) / 100;
+                              });
+
+                              return (
+                                <tr key={enrollment.id}>
+                                  <td style={{ padding: '8px 12px', borderBottom: '1px solid #f0f0f0', borderRight: '1px solid #f0f0f0', background: 'var(--color-input-bg)' }}>
+                                    <div style={{ fontWeight: 500 }}>{enrollment.student?.lastName}, {enrollment.student?.firstName}</div>
+                                    <div style={{ fontSize: 11, color: '#8c8c8c' }}>{enrollment.student?.document}</div>
+                                  </td>
+                                  {evaluationPlan.map((item, colIndex) => {
+                                    const q = studentQuals.find((sq: Qualification) => sq.evaluationPlanId === item.id);
+                                    return (
+                                      <td key={item.id} style={{ padding: '4px', borderBottom: '1px solid #f0f0f0', borderRight: '1px solid #f0f0f0', textAlign: 'center', background: 'var(--color-input-bg)', width: 120 }}>
+                                        <InputNumber
+                                          min={0} max={maxGrade} precision={2}
+                                          value={q ? q.score : null}
+                                          style={{ width: '72px' }}
+                                          controls={false}
+                                          disabled={isSelectedTermBlocked}
+                                          onBlur={(e) => {
+                                            const val = (e.target as HTMLInputElement).value === '' ? null : Number((e.target as HTMLInputElement).value);
+                                            const currentScore = q ? q.score : null;
+                                            if (val !== currentScore) {
+                                              handleSaveScoreInGrid(enrollment, item.id, val);
+                                            }
+                                          }}
+                                        />
+                                      </td>
+                                    );
+                                  })}
+                                  <td style={{ padding: '8px 12px', borderBottom: '1px solid #f0f0f0', textAlign: 'center', background: 'var(--color-input-bg)', fontWeight: 'bold', color: 'var(--color-text-main)', width: 70 }}>
+                                    <Tag color={rowTotal >= (maxGrade * 0.5) ? 'green' : 'red'}>
+                                      {formatGrade(rowTotal, enableRounding)}
+                                    </Tag>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                        </tbody>
+                      </table>
+                    </div>
+                    {students.length === 0 && (
+                      <div style={{ padding: 40, textAlign: 'center' }}>
+                        <Alert message="No hay estudiantes inscritos en esta sección" type="info" />
+                      </div>
+                    )}
+                  </Card>
+                )
+              }
+            ]}
+          />
+        </>
+      )}
+    </div>
+  );
+};
+
+export default ManageGrades;

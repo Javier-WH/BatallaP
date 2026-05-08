@@ -1,7 +1,7 @@
 import React from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { Button, Tooltip } from 'antd';
-import { DashboardOutlined, SettingOutlined, UserAddOutlined, CheckCircleFilled, BookOutlined, LockOutlined, ProjectOutlined } from '@ant-design/icons';
+import { DashboardOutlined, SettingOutlined, UserAddOutlined, CheckCircleFilled, BookOutlined, LockOutlined, ProjectOutlined, EditOutlined } from '@ant-design/icons';
 
 const NavButton: React.FC<{
   icon: React.ReactNode;
@@ -42,6 +42,7 @@ const ControlEstudiosLayout: React.FC = () => {
     { path: '/control-estudios/configuracion', icon: <SettingOutlined />, label: 'Configuración', tooltip: 'Ajustes Académicos' },
     { path: '/control-estudios/consejos-curso', icon: <CheckCircleFilled />, label: 'Consejos', tooltip: 'Consejos de Curso y Evaluación' },
     { path: '/control-estudios/proyeccion', icon: <ProjectOutlined />, label: 'Proyección', tooltip: 'Asignación Académica' },
+    { path: '/control-estudios/calificaciones', icon: <EditOutlined />, label: 'Calificaciones', tooltip: 'Ver y editar calificaciones por sección' },
     { path: '/control-estudios/editar-notas', icon: <LockOutlined />, label: 'Editar Notas', tooltip: 'Edición de Notas Finales' },
   ];
 

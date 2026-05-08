@@ -42,6 +42,7 @@ import AcademicSettings from '@/pages/control-estudios/AcademicSettings';
 import MatriculationEnrollment from '@/pages/control-estudios/MatriculationEnrollment';
 import CourseCouncil from '@/pages/control-estudios/CourseCouncil';
 import FinalGradesEdit from '@/pages/control-estudios/FinalGradesEdit';
+import ManageGrades from '@/pages/control-estudios/ManageGrades';
 import RegisterRepresentative from '@/pages/admin/RegisterRepresentative';
 
 
@@ -217,6 +218,7 @@ function AppRoutes() {
           <Route path="consejos-curso" element={<CourseCouncil />} />
           <Route path="proyeccion" element={<TeacherProjection />} />
           <Route path="editar-notas" element={<FinalGradesEdit />} />
+          <Route path="calificaciones" element={<ManageGrades />} />
           <Route path="edit/:id" element={<EditUser />} />
           <Route path="search" element={<SearchUsers />} />
         </Route>

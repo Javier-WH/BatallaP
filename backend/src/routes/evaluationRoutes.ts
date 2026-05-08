@@ -11,7 +11,8 @@ import {
   getStudentFullAcademicRecord,
   updateFinalGrade,
   getFinalGradesByPeriod,
-  exportGradesExcel
+  exportGradesExcel,
+  getAllAssignments
 } from '@/controllers/evaluationController';
 
 const router = Router();
@@ -28,5 +29,6 @@ router.get('/student-record/:personId', getStudentFullAcademicRecord);
 router.put('/final-grade/:id', updateFinalGrade);
 router.get('/final-grades-by-period', getFinalGradesByPeriod);
 router.get('/export-grades/:assignmentId', exportGradesExcel);
+router.get('/all-assignments', getAllAssignments);
 
 export default router;

@@ -1135,3 +1135,51 @@ export const exportGradesExcel = async (req: Request, res: Response) => {
     res.status(500).json({ message: error.message || 'Error al exportar calificaciones' });
   }
 };
+
+export const getAllAssignments = async (req: Request, res: Response) => {
+  try {
+    const user = (req.session as any).user;
+    if (!user) return res.status(401).json({ message: 'No autorizado' });
+
+    const assignments = await TeacherAssignment.findAll({
+      include: [
+        {
+          model: PeriodGradeSubject,
+          as: 'periodGradeSubject',
+          required: true,
+          include: [
+            { model: Subject, as: 'subject' },
+            {
+              model: PeriodGrade,
+              as: 'periodGrade',
+              required: true,
+              include: [
+                { model: Grade, as: 'grade' },
+                {
+                  model: SchoolPeriod,
+                  as: 'schoolPeriod',
+                  required: true,
+                  where: { isActive: true }
+                }
+              ]
+            }
+          ]
+        },
+        { model: Section, as: 'section' },
+        { model: Person, as: 'teacher' }
+      ],
+      order: [
+        [{ model: PeriodGradeSubject, as: 'periodGradeSubject' },
+         { model: PeriodGrade, as: 'periodGrade' },
+         { model: Grade, as: 'grade' }, 'id', 'ASC'],
+        [{ model: Section, as: 'section' }, 'name', 'ASC'],
+        [{ model: PeriodGradeSubject, as: 'periodGradeSubject' }, 'order', 'ASC']
+      ]
+    });
+
+    res.json(assignments);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Error al obtener asignaciones' });
+  }
+};
