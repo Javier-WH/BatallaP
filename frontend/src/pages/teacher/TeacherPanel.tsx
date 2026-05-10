@@ -435,7 +435,7 @@ const TeacherPanel: React.FC = () => {
       sectionId: assignment.sectionId,
       termId: selectedTerm,
       percentage: values.percentage,
-      date: values.date,
+      date: values.date ? values.date.format('YYYY-MM-DD') : undefined,
       temaGenerador: values.temaGenerador,
       referentesTeoricos: refTeoricos.filter(t => t.trim() !== ''),
       referentesEticos: selectedEticos,
@@ -613,6 +613,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
         .grading-row:hover { background-color: #f8fafc !important; }
         .grading-row td { transition: background-color 0.2s; }
         .grading-cell .ant-input-number-input { text-align: center !important; }
+        .ant-table-tbody > tr.ant-table-row:hover > td { background-color: #e8f0fe !important; }
         /* Luxury Scrollbar */
         .grading-table-container::-webkit-scrollbar { height: 8px; width: 8px; }
         .grading-table-container::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }

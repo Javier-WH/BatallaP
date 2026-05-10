@@ -75,7 +75,7 @@ EvaluationPlan.init(
     },
     objetivo: {
       type: DataTypes.TEXT,
-      allowNull: false
+      allowNull: true
     },
     tecnica: {
       type: DataTypes.STRING(30),

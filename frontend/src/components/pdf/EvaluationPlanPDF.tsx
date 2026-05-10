@@ -204,29 +204,27 @@ interface EvaluationPlanPDFProps {
 
 const SummaryHeader = () => (
   <View style={styles.tableHeader}>
-    <Text style={[styles.cellHeader, { width: '7%' }]}>ID</Text>
-    <Text style={[styles.cellHeader, { width: '12%' }]}>Tema Generador</Text>
-    <Text style={[styles.cellHeader, { width: '13%' }]}>Ref. Teóricos</Text>
-    <Text style={[styles.cellHeader, { width: '13%' }]}>Ref. Éticos e Indis.</Text>
-    <Text style={[styles.cellHeader, { width: '11%' }]}>Técnicas e Instrumento</Text>
-    <Text style={[styles.cellHeader, { width: '12%' }]}>Estrategia de eval.</Text>
-    <Text style={[styles.cellHeader, { width: '13%' }]}>Indicador</Text>
-    <Text style={[styles.cellHeader, { width: '7%' }]}>Puntaje</Text>
-    <Text style={[styles.cellHeader, { width: '7%' }]}>Fecha</Text>
+    <Text style={[styles.cellHeader, { width: '13%' }]}>Tema Generador</Text>
+    <Text style={[styles.cellHeader, { width: '14%' }]}>Ref. Teóricos</Text>
+    <Text style={[styles.cellHeader, { width: '14%' }]}>Ref. Éticos e Indis.</Text>
+    <Text style={[styles.cellHeader, { width: '12%' }]}>Técnicas e Instrumento</Text>
+    <Text style={[styles.cellHeader, { width: '13%' }]}>Estrategia de eval.</Text>
+    <Text style={[styles.cellHeader, { width: '14%' }]}>Indicador</Text>
+    <Text style={[styles.cellHeader, { width: '8%' }]}>Puntaje</Text>
+    <Text style={[styles.cellHeader, { width: '8%' }]}>Fecha</Text>
   </View>
 );
 
 const summaryRow = (item: EvaluationPlanItemData, index: number) => (
   <View key={index} style={[styles.tableRow, index % 2 === 1 ? styles.tableRowAlt : {}]}>
-    <Text style={[styles.cellCenter, { width: '7%' }]}>{item.identificador || '-'}</Text>
-    <Text style={[styles.cell, { width: '12%' }]}>{item.temaGenerador || '-'}</Text>
-    <Text style={[styles.cell, { width: '13%', fontSize: 6 }]}>{bulletList(item.referentesTeoricos)}</Text>
-    <Text style={[styles.cell, { width: '13%', fontSize: 6 }]}>{bulletTags(item.referentesEticos)}</Text>
-    <Text style={[styles.cell, { width: '11%' }]}>{item.tecnica || '-'}</Text>
-    <Text style={[styles.cell, { width: '12%' }]}>{item.description || '-'}</Text>
-    <Text style={[styles.cell, { width: '13%', fontSize: 6 }]}>{bulletList(item.indicador)}</Text>
-    <Text style={[styles.cellCenter, { width: '7%' }]}>{item.percentage}%</Text>
-    <Text style={[styles.cellCenter, { width: '7%' }]}>{item.date ? new Date(item.date).toLocaleDateString('es-VE') : '-'}</Text>
+    <Text style={[styles.cell, { width: '13%' }]}>{item.temaGenerador || '-'}</Text>
+    <Text style={[styles.cell, { width: '14%', fontSize: 6 }]}>{bulletList(item.referentesTeoricos)}</Text>
+    <Text style={[styles.cell, { width: '14%', fontSize: 6 }]}>{bulletTags(item.referentesEticos)}</Text>
+    <Text style={[styles.cell, { width: '12%' }]}>{item.tecnica || '-'}</Text>
+    <Text style={[styles.cell, { width: '13%' }]}>{item.description || '-'}</Text>
+    <Text style={[styles.cell, { width: '14%', fontSize: 6 }]}>{bulletList(item.indicador)}</Text>
+    <Text style={[styles.cellCenter, { width: '8%' }]}>{item.percentage}%</Text>
+    <Text style={[styles.cellCenter, { width: '8%' }]}>{item.date ? new Date(item.date).toLocaleDateString('es-VE') : '-'}</Text>
   </View>
 );
 

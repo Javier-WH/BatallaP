@@ -111,6 +111,10 @@
   border-color: #d1d5db !important;
 }
 
+.ant-table-bordered .ant-table-tbody > tr.ant-table-row:hover > td {
+  background-color: #e8f0fe !important;
+}
+
 .table-row-light {
   background-color: #fafafa;
 }
