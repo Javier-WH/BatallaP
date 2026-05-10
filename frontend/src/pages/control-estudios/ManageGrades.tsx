@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Card, Tabs, Table, Button, message, Tag, Typography, InputNumber, Alert, Empty, Spin } from 'antd';
+import { Card, Tabs, Table, Button, message, Tag, Typography, InputNumber, Alert, Empty, Spin, Space } from 'antd';
 import { BookOutlined, UserOutlined, ArrowLeftOutlined, DownloadOutlined, FilePdfOutlined } from '@ant-design/icons';
 import api from '@/services/api';
 import dayjs from 'dayjs';
@@ -234,13 +234,37 @@ const ManageGrades: React.FC = () => {
 
   const planColumns = [
     { title: 'ID', dataIndex: 'identificador', key: 'identificador', width: 80 },
-    { title: 'Instrumento', dataIndex: 'description', key: 'description', ellipsis: true, width: 150 },
-    { title: 'Técnica', dataIndex: 'tecnica', key: 'tecnica', width: 100 },
-    { title: 'Tipo', dataIndex: 'tipoEvaluacion', key: 'tipoEvaluacion', width: 90 },
-    { title: 'Forma', dataIndex: 'formaEvaluacion', key: 'formaEvaluacion', width: 90 },
-    { title: 'Objetivo', dataIndex: 'objetivo', key: 'objetivo', ellipsis: true, width: 150 },
-    { title: 'Indicador', dataIndex: 'indicador', key: 'indicador', ellipsis: true, width: 150 },
-    { title: 'Peso (%)', dataIndex: 'percentage', key: 'percentage', render: (v: number) => `${v}%`, width: 70 },
+    { title: 'Tema Generador', dataIndex: 'temaGenerador', key: 'temaGenerador', ellipsis: true, width: 150 },
+    { title: 'Referentes Teóricos', key: 'refTeoricos', width: 180,
+      render: (_: unknown, r: any) => {
+        const items = typeof r.referentesTeoricos === 'string' ? (() => { try { return JSON.parse(r.referentesTeoricos); } catch { return [r.referentesTeoricos]; } })() : r.referentesTeoricos;
+        if (Array.isArray(items) && items.length > 0) {
+          return <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12 }}>{items.map((t: string, i: number) => <li key={i}>{t}</li>)}</ul>;
+        }
+        return <span style={{ fontSize: 12 }}>{Array.isArray(items) ? '-' : (r.referentesTeoricos || '-')}</span>;
+      }
+    },
+    { title: 'Referentes Éticos e Indispensables', key: 'refEticos', width: 180,
+      render: (_: unknown, r: any) => {
+        const items = typeof r.referentesEticos === 'string' ? (() => { try { return JSON.parse(r.referentesEticos); } catch { return [r.referentesEticos]; } })() : r.referentesEticos;
+        if (Array.isArray(items) && items.length > 0) {
+          return <Space size={[2, 2]} wrap>{items.map((c: string) => <Tag key={c} style={{ fontSize: 11 }}>{c}</Tag>)}</Space>;
+        }
+        return <span style={{ fontSize: 12 }}>-</span>;
+      }
+    },
+    { title: 'Técnicas e Instrumento', dataIndex: 'tecnica', key: 'tecnica', width: 120 },
+    { title: 'Estrategia de evaluación', dataIndex: 'description', key: 'description', width: 120 },
+    { title: 'Indicador', key: 'indicadorCol', width: 180,
+      render: (_: unknown, r: any) => {
+        const items = typeof r.indicador === 'string' ? (() => { try { return JSON.parse(r.indicador); } catch { return [r.indicador]; } })() : r.indicador;
+        if (Array.isArray(items) && items.length > 0) {
+          return <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12 }}>{items.map((t: string, i: number) => <li key={i}>{t}</li>)}</ul>;
+        }
+        return <span style={{ fontSize: 12 }}>{Array.isArray(items) ? '-' : (r.indicador || '-')}</span>;
+      }
+    },
+    { title: 'Puntaje', dataIndex: 'percentage', key: 'percentage', render: (v: number) => `${v}%`, width: 70 },
     { title: 'Fecha', dataIndex: 'date', key: 'date', render: (v: string) => dayjs(v).format('DD/MM/YYYY'), width: 90 },
   ];
 
@@ -345,6 +369,7 @@ const ManageGrades: React.FC = () => {
                     rowKey="id"
                     pagination={false}
                     size="small"
+                    bordered
                     scroll={{ x: 1000 }}
                     style={{ backgroundColor: 'var(--color-content-bg)' }}
                   />

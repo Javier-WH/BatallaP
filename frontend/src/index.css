@@ -106,6 +106,11 @@
   @apply !bg-slate-50/50;
 }
 
+.ant-table-bordered .ant-table-thead > tr > th,
+.ant-table-bordered .ant-table-tbody > tr > td {
+  border-color: #d1d5db !important;
+}
+
 .table-row-light {
   background-color: #fafafa;
 }

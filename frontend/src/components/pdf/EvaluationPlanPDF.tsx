@@ -156,17 +156,35 @@ export interface EvaluationPlanItemData {
   identificador: string;
   description: string;
   tecnica: string;
-  objetivo: string;
+  objetivo?: string;
   tipoEvaluacion?: string;
   formaEvaluacion?: string;
-  indicador?: string;
+  indicador?: string | string[];
   temaGenerador?: string;
-  referentesTeoricos?: string;
-  referentesEticos?: string;
+  referentesTeoricos?: string | string[];
+  referentesEticos?: string | string[];
   estrategiaEvaluacion?: string;
   percentage: number;
   date: string;
 }
+
+const bulletList = (val: string | string[] | undefined): string => {
+  if (!val) return '-';
+  const items = typeof val === 'string' ? (() => { try { return JSON.parse(val); } catch { return [val]; } })() : val;
+  if (Array.isArray(items) && items.length > 0) {
+    return items.map((t: string) => `• ${t}`).join('\n');
+  }
+  return '-';
+};
+
+const bulletTags = (val: string | string[] | undefined): string => {
+  if (!val) return '-';
+  const items = typeof val === 'string' ? (() => { try { return JSON.parse(val); } catch { return [val]; } })() : val;
+  if (Array.isArray(items) && items.length > 0) {
+    return items.join(', ');
+  }
+  return '-';
+};
 
 export interface EvaluationPlanHeaderData {
   periodName: string;
@@ -186,29 +204,29 @@ interface EvaluationPlanPDFProps {
 
 const SummaryHeader = () => (
   <View style={styles.tableHeader}>
-    <Text style={[styles.cellHeader, { width: '8%' }]}>ID</Text>
-    <Text style={[styles.cellHeader, { width: '17%' }]}>Instrumento</Text>
-    <Text style={[styles.cellHeader, { width: '11%' }]}>Técnica</Text>
-    <Text style={[styles.cellHeader, { width: '10%' }]}>Tipo</Text>
-    <Text style={[styles.cellHeader, { width: '10%' }]}>Forma</Text>
-    <Text style={[styles.cellHeader, { width: '12%' }]}>Indicador</Text>
-    <Text style={[styles.cellHeader, { width: '7%' }]}>Peso</Text>
-    <Text style={[styles.cellHeader, { width: '12%' }]}>Fecha</Text>
-    <Text style={[styles.cellHeader, { width: '13%' }]}>Estrategia</Text>
+    <Text style={[styles.cellHeader, { width: '7%' }]}>ID</Text>
+    <Text style={[styles.cellHeader, { width: '12%' }]}>Tema Generador</Text>
+    <Text style={[styles.cellHeader, { width: '13%' }]}>Ref. Teóricos</Text>
+    <Text style={[styles.cellHeader, { width: '13%' }]}>Ref. Éticos e Indis.</Text>
+    <Text style={[styles.cellHeader, { width: '11%' }]}>Técnicas e Instrumento</Text>
+    <Text style={[styles.cellHeader, { width: '12%' }]}>Estrategia de eval.</Text>
+    <Text style={[styles.cellHeader, { width: '13%' }]}>Indicador</Text>
+    <Text style={[styles.cellHeader, { width: '7%' }]}>Puntaje</Text>
+    <Text style={[styles.cellHeader, { width: '7%' }]}>Fecha</Text>
   </View>
 );
 
 const summaryRow = (item: EvaluationPlanItemData, index: number) => (
   <View key={index} style={[styles.tableRow, index % 2 === 1 ? styles.tableRowAlt : {}]}>
-    <Text style={[styles.cellCenter, { width: '8%' }]}>{item.identificador || '-'}</Text>
-    <Text style={[styles.cell, { width: '17%' }]}>{item.description || '-'}</Text>
+    <Text style={[styles.cellCenter, { width: '7%' }]}>{item.identificador || '-'}</Text>
+    <Text style={[styles.cell, { width: '12%' }]}>{item.temaGenerador || '-'}</Text>
+    <Text style={[styles.cell, { width: '13%', fontSize: 6 }]}>{bulletList(item.referentesTeoricos)}</Text>
+    <Text style={[styles.cell, { width: '13%', fontSize: 6 }]}>{bulletTags(item.referentesEticos)}</Text>
     <Text style={[styles.cell, { width: '11%' }]}>{item.tecnica || '-'}</Text>
-    <Text style={[styles.cellCenter, { width: '10%' }]}>{item.tipoEvaluacion || '-'}</Text>
-    <Text style={[styles.cellCenter, { width: '10%' }]}>{item.formaEvaluacion || '-'}</Text>
-    <Text style={[styles.cell, { width: '12%' }]}>{item.indicador || '-'}</Text>
+    <Text style={[styles.cell, { width: '12%' }]}>{item.description || '-'}</Text>
+    <Text style={[styles.cell, { width: '13%', fontSize: 6 }]}>{bulletList(item.indicador)}</Text>
     <Text style={[styles.cellCenter, { width: '7%' }]}>{item.percentage}%</Text>
-    <Text style={[styles.cellCenter, { width: '12%' }]}>{item.date ? new Date(item.date).toLocaleDateString('es-VE') : '-'}</Text>
-    <Text style={[styles.cell, { width: '13%' }]}>{item.estrategiaEvaluacion || '-'}</Text>
+    <Text style={[styles.cellCenter, { width: '7%' }]}>{item.date ? new Date(item.date).toLocaleDateString('es-VE') : '-'}</Text>
   </View>
 );
 
@@ -278,7 +296,7 @@ const EvaluationPlanPDF: React.FC<EvaluationPlanPDFProps> = ({ header, items, lo
         {/* Weight summary */}
         <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 8 }}>
           <View style={styles.badge}>
-            <Text style={styles.badgeLabel}>Peso Total: </Text>
+            <Text style={styles.badgeLabel}>Puntaje Total: </Text>
             <Text style={styles.badgeValue}>{totalPeso}%</Text>
           </View>
         </View>
