@@ -994,6 +994,15 @@ const playBeep = () => {
                                       pattern="[0-9]*"
                                       defaultValue={currentScore ?? ''}
                                       key={`${enrollment.id}-${item.id}`}
+                                      style={{
+                                        width: '48px',
+                                        textAlign: 'center',
+                                        border: '1px solid #d1d5db',
+                                        borderRadius: 4,
+                                        fontSize: 12,
+                                        padding: 0,
+                                        outline: 'none',
+                                      }}
                                       disabled={isSelectedTermBlocked}
                                       onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
                                         if (e.key === '.' || e.key === ',' || e.key === 'e' || e.key === 'E' || e.key === '-' || e.key === '+') {

@@ -501,6 +501,15 @@ const ManageGrades: React.FC = () => {
                                           pattern="[0-9]*"
                                           defaultValue={q ? q.score : ''}
                                           key={`${enrollment.id}-${item.id}`}
+                                          style={{
+                                            width: '48px',
+                                            textAlign: 'center',
+                                            border: '1px solid #d1d5db',
+                                            borderRadius: 4,
+                                            fontSize: 12,
+                                            padding: 0,
+                                            outline: 'none',
+                                          }}
                                           disabled={isSelectedTermBlocked}
                                           onKeyDown={(e) => {
                                             if (e.key === '.' || e.key === ',' || e.key === 'e' || e.key === 'E' || e.key === '-' || e.key === '+') {
