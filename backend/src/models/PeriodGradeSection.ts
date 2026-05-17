@@ -7,14 +7,16 @@ interface PeriodGradeSectionAttributes {
   id: number;
   periodGradeId: number;
   sectionId: number;
+  color: string;
 }
 
-interface PeriodGradeSectionCreationAttributes extends Optional<PeriodGradeSectionAttributes, 'id'> { }
+interface PeriodGradeSectionCreationAttributes extends Optional<PeriodGradeSectionAttributes, 'id' | 'color'> { }
 
 class PeriodGradeSection extends Model<PeriodGradeSectionAttributes, PeriodGradeSectionCreationAttributes> implements PeriodGradeSectionAttributes {
   public id!: number;
   public periodGradeId!: number;
   public sectionId!: number;
+  public color!: string;
 
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
@@ -36,7 +38,12 @@ PeriodGradeSection.init(
       type: DataTypes.INTEGER,
       references: { model: Section, key: 'id' },
       allowNull: false
-    }
+    },
+    color: {
+      type: DataTypes.STRING(7),
+      allowNull: false,
+      defaultValue: '#ffffff',
+    },
   },
   {
     sequelize,

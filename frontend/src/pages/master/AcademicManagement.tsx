@@ -499,6 +499,16 @@ const AcademicManagement: React.FC = () => {
     }
   };
 
+  const handleSectionColorChange = async (periodGradeId: number, sectionId: number, color: string) => {
+    try {
+      await api.put(`/academic/structure/section/${periodGradeId}/${sectionId}/color`, { color });
+      fetchStructure();
+    } catch (error) {
+      console.error(error);
+      message.error('Error al cambiar color');
+    }
+  };
+
   // Función para abrir el modal de asignación de profesor
   const handleOpenAssignTeacher = async (periodGradeId: number, subjectId: number) => {
     try {
@@ -1183,7 +1193,7 @@ const AcademicManagement: React.FC = () => {
 
                             <div style={{ background: '#fafafa', borderRadius: 12, padding: 12, minHeight: 60 }}>
                               <Space wrap>
-                                {item.sections?.map((sec: Section) => (
+                                {item.sections?.map((sec: any) => (
                                   <Tag
                                     key={sec.id}
                                     closable
@@ -1199,7 +1209,19 @@ const AcademicManagement: React.FC = () => {
                                       gap: 6
                                     }}
                                   >
-                                    <Text style={{ color: '#1890ff', fontSize: 12 }}>SECCIÓN</Text>
+                                    <input
+                                      type="color"
+                                      value={sec.PeriodGradeSection?.color || '#ffffff'}
+                                      onChange={(e) => handleSectionColorChange(item.id, sec.id, e.target.value)}
+                                      style={{
+                                        width: 18,
+                                        height: 18,
+                                        border: 'none',
+                                        borderRadius: 4,
+                                        cursor: 'pointer',
+                                        padding: 0,
+                                      }}
+                                    />
                                     <Text style={{ fontWeight: 800 }}>{sec.name}</Text>
                                   </Tag>
                                 ))}

@@ -639,7 +639,7 @@ export const getPeriodStructure = async (req: Request, res: Response) => {
         {
           model: Section,
           as: 'sections',
-          through: { attributes: ['id'] }
+          through: { attributes: ['id', 'color'] }
         },
         {
           model: Subject,
@@ -772,11 +772,25 @@ export const addSectionToGrade = async (req: Request, res: Response) => {
 
 export const removeSectionFromGrade = async (req: Request, res: Response) => {
   try {
-    const { periodGradeId, sectionId } = req.body; // or ID of the relation
-    // If we receive the pair
+    const periodGradeId = Number(req.params.periodGradeId || req.body.periodGradeId);
+    const sectionId = Number(req.params.sectionId || req.body.sectionId);
     await PeriodGradeSection.destroy({ where: { periodGradeId, sectionId } });
     res.json({ message: 'Deleted' });
   } catch (error) {
     res.status(500).json({ error: 'Error removing section' });
+  }
+};
+
+export const updateSectionColor = async (req: Request, res: Response) => {
+  try {
+    const { periodGradeId, sectionId } = req.params;
+    const { color } = req.body;
+    const pgs = await PeriodGradeSection.findOne({ where: { periodGradeId: Number(periodGradeId), sectionId: Number(sectionId) } });
+    if (!pgs) return res.status(404).json({ error: 'Relación grado-sección no encontrada' });
+    pgs.color = color;
+    await pgs.save();
+    res.json(pgs);
+  } catch (error) {
+    res.status(500).json({ error: 'Error updating section color' });
   }
 };

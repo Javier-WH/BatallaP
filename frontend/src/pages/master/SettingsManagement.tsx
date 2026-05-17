@@ -18,6 +18,8 @@ interface SettingsFormValues {
   institution_dea_code?: string;
   institution_logo?: string;
   institution_logo_shape?: 'circle' | 'square';
+  director_name?: string;
+  director_document?: string;
   theme_primary_color?: string;
   theme_secondary_color?: string;
   theme_text_color?: string;
@@ -41,6 +43,8 @@ const SettingsManagement: React.FC = () => {
   const [headerTextColor, setHeaderTextColor] = useState('#ffffff');
   const [inputBgColor, setInputBgColor] = useState('#ffffff');
   const [mutedTextColor, setMutedTextColor] = useState('#94a3b8');
+  const [directorName, setDirectorName] = useState('');
+  const [directorDocument, setDirectorDocument] = useState('');
   const { refreshSettings } = useSchool();
 
   useEffect(() => {
@@ -73,12 +77,16 @@ const SettingsManagement: React.FC = () => {
         setHeaderTextColor(htc);
         setInputBgColor(ibc);
         setMutedTextColor(mtc);
+        setDirectorName(res.data.director_name || '');
+        setDirectorDocument(res.data.director_document || '');
 
         form.setFieldsValue({
           institution_name: res.data.institution_name || '',
           institution_dea_code: res.data.institution_dea_code || '',
           institution_logo: res.data.institution_logo || '',
           institution_logo_shape: res.data.institution_logo_shape || 'square',
+          director_name: res.data.director_name || '',
+          director_document: res.data.director_document || '',
           theme_primary_color: pc,
           theme_secondary_color: sc,
           theme_brand_secondary: bsc,
@@ -135,6 +143,8 @@ const SettingsManagement: React.FC = () => {
       // Manually include the color states because they are native inputs without Form.Item
       const finalPayload = {
         ...payload,
+        director_name: directorName,
+        director_document: directorDocument,
         theme_primary_color: primaryColor,
         theme_secondary_color: secondaryColor,
         theme_brand_secondary: brandSecondaryColor,
@@ -216,6 +226,28 @@ const SettingsManagement: React.FC = () => {
                   className="h-12"
                   filterOption={false}
                   allowClear
+                />
+              </Form.Item>
+
+              <Form.Item
+                label={<span className="text-[var(--color-text-main)] font-bold">Nombre del Director</span>}
+                name="director_name"
+              >
+                <Input
+                  placeholder="Nombre completo del director"
+                  className="h-12 border-slate-200 focus:border-brand-primary focus:ring-4 focus:ring-brand-primary/10 rounded-xl transition-all"
+                  onChange={(e) => setDirectorName(e.target.value)}
+                />
+              </Form.Item>
+
+              <Form.Item
+                label={<span className="text-[var(--color-text-main)] font-bold">Cédula del Director</span>}
+                name="director_document"
+              >
+                <Input
+                  placeholder="V-12345678"
+                  className="h-12 border-slate-200 focus:border-brand-primary focus:ring-4 focus:ring-brand-primary/10 rounded-xl transition-all"
+                  onChange={(e) => setDirectorDocument(e.target.value)}
                 />
               </Form.Item>
 

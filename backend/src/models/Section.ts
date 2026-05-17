@@ -26,7 +26,7 @@ Section.init(
     name: {
       type: DataTypes.STRING,
       allowNull: false,
-      unique: true // 'A', 'B', 'C' definition
+      unique: true
     },
   },
   {
