@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import { useAuth } from '@/context/AuthContext';
 import {
   Button,
   Card,
@@ -24,6 +25,7 @@ import {
   ReloadOutlined,
   SearchOutlined,
   UserOutlined,
+  UserAddOutlined,
   CheckCircleOutlined,
   BookOutlined,
   EyeOutlined,
@@ -377,6 +379,7 @@ const contextMenuItems: MenuProps['items'] = [
 
 const MatriculationEnrollment: React.FC = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [activePeriod, setActivePeriod] = useState<SchoolPeriod | null>(null);
   const [viewStatus, setViewStatus] = useState<'pending' | 'completed'>('pending');
   const [matriculations, setMatriculations] = useState<MatriculationRow[]>([]);
@@ -2683,6 +2686,11 @@ const MatriculationEnrollment: React.FC = () => {
               <div className="flex flex-col items-start gap-1">
                 <Space>
                   <Title level={5} style={{ margin: 0 }}>Matrícula Estudiantes</Title>
+                  {user?.roles?.includes('Administrador') && (
+                    <Button type="primary" size="small" icon={<UserAddOutlined />} onClick={() => navigate('/admin/inscribir-estudiante')}>
+                      Inscribir Estudiante
+                    </Button>
+                  )}
                 </Space>
                 <div className="flex items-center gap-2">
                   <Radio.Group

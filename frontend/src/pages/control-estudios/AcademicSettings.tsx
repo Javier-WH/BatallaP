@@ -41,6 +41,9 @@ interface SettingsFormValues {
   council_points_limit?: number;
   enable_grade_rounding?: boolean;
   letter_grades?: LetterGrade[];
+  remedial_min_grade?: number;
+  remedial_max_grade?: number;
+  remedial_failure_percentage?: number;
 }
 
 interface TermFormValues {
@@ -73,6 +76,9 @@ const AcademicSettings: React.FC = () => {
         grade_lock_mode: res.data.grade_lock_mode === 'true',
         council_points_limit: res.data.council_points_limit !== undefined ? Number(res.data.council_points_limit) : 2,
         enable_grade_rounding: res.data.enable_grade_rounding === 'true',
+        remedial_min_grade: res.data.remedial_min_grade !== undefined ? Number(res.data.remedial_min_grade) : 1,
+        remedial_max_grade: res.data.remedial_max_grade !== undefined ? Number(res.data.remedial_max_grade) : 9,
+        remedial_failure_percentage: res.data.remedial_failure_percentage !== undefined ? Number(res.data.remedial_failure_percentage) : 50,
       });
       
       // Load letter grades configuration
@@ -516,6 +522,47 @@ const AcademicSettings: React.FC = () => {
                   onChange={setLetterGrades}
                   maxGrade={form.getFieldValue('max_grade') || 20}
                 />
+              </div>
+
+              <div style={{
+                background: '#f0f5ff',
+                padding: '20px',
+                borderRadius: 16,
+                marginTop: 8,
+                marginBottom: 24,
+                border: '1px dashed #adc6ff'
+              }}>
+                <Text style={{ display: 'block', fontWeight: 700, fontSize: 14, marginBottom: 16, color: '#1d39c4' }}>
+                  Configuración de Remedial
+                </Text>
+                <Row gutter={16}>
+                  <Col span={12}>
+                    <Form.Item
+                      name="remedial_min_grade"
+                      label={<Text style={{ fontWeight: 600, fontSize: 12 }}>Nota Mínima para Remedial</Text>}
+                      tooltip="Nota desde la cual un estudiante es candidato a remedial"
+                    >
+                      <InputNumber min={0} max={20} style={{ width: '100%', height: 40 }} />
+                    </Form.Item>
+                  </Col>
+                  <Col span={12}>
+                    <Form.Item
+                      name="remedial_max_grade"
+                      label={<Text style={{ fontWeight: 600, fontSize: 12 }}>Nota Máxima para Remedial</Text>}
+                      tooltip="Nota hasta la cual un estudiante es candidato a remedial"
+                    >
+                      <InputNumber min={0} max={20} style={{ width: '100%', height: 40 }} />
+                    </Form.Item>
+                  </Col>
+                </Row>
+                <Form.Item
+                  name="remedial_failure_percentage"
+                  label={<Text style={{ fontWeight: 600, fontSize: 12 }}>% de Reprobados en la Sección para Remedial</Text>}
+                  tooltip="Porcentaje mínimo de estudiantes reprobados en la sección para activar remedial"
+                  rules={[{ required: true, message: 'Requerido' }]}
+                >
+                  <InputNumber min={0} max={100} style={{ width: '100%', height: 40 }} addonAfter="%" />
+                </Form.Item>
               </div>
 
               <Button

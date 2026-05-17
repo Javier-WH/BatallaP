@@ -222,6 +222,7 @@ const TeacherPanel: React.FC = () => {
   const [planForm] = Form.useForm<PlanItemFormValues>();
   const [activeTab, setActiveTab] = useState('1');
   const [maxGrade, setMaxGrade] = useState<number>(20);
+  const [passingGrade, setPassingGrade] = useState<number>(10);
   const [showPDFModal, setShowPDFModal] = useState(false);
   const instrumentSelection = Form.useWatch('estrategiaOption', planForm);
   const [refTeoricos, setRefTeoricos] = useState<string[]>(['']);
@@ -258,14 +259,40 @@ const TeacherPanel: React.FC = () => {
     return { missing, total: students.length };
   }, [evaluationPlan, students]);
 
+  const evalStats = useMemo(() => {
+    const map = new Map<number, { failed: number; failedPct: number; missing: number; missingPct: number; date: string }>();
+    if (students.length === 0) return map;
+    evaluationPlan.forEach(ep => {
+      let failed = 0;
+      let missing = 0;
+      students.forEach(enrollment => {
+        const insSub = enrollment.inscriptionSubjects?.[0];
+        const q = insSub?.qualifications?.find((sq: Qualification) => sq.evaluationPlanId === ep.id);
+        if (!q || q.score === null || q.score === 0) {
+          missing++;
+        } else if (q.score < passingGrade) {
+          failed++;
+        }
+      });
+      map.set(ep.id, {
+        failed,
+        failedPct: students.length > 0 ? Math.round((failed / students.length) * 100) : 0,
+        missing,
+        missingPct: students.length > 0 ? Math.round((missing / students.length) * 100) : 0,
+        date: ep.date,
+      });
+    });
+    return map;
+  }, [evaluationPlan, students, passingGrade]);
+
   useEffect(() => {
     const fetchMaxGrade = async () => {
       try {
-        const res = await api.get('/settings/max_grade');
-        if (res.data?.value) setMaxGrade(Number(res.data.value));
+        const res = await api.get('/settings');
+        if (res.data?.max_grade) setMaxGrade(Number(res.data.max_grade));
+        if (res.data?.passing_grade) setPassingGrade(Number(res.data.passing_grade));
       } catch {
-
-        console.error('Error fetching max_grade setting');
+        console.error('Error fetching settings');
       }
     };
     fetchMaxGrade();
@@ -612,7 +639,12 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
       <style>{`
         .grading-row:hover { background-color: #f8fafc !important; }
         .grading-row td { transition: background-color 0.2s; }
-        .grading-cell .ant-input-number-input { text-align: center !important; }
+        .grading-cell .ant-input-number-input { text-align: center !important; padding: 0 !important; }
+        @keyframes flash-red {
+          0%, 100% { outline: 3px solid #ef4444; }
+          50% { outline: 3px solid transparent; }
+        }
+        .grade-invalid.ant-input-number { animation: flash-red 0.5s ease-in-out 3; }
         .ant-table-tbody > tr.ant-table-row:hover > td { background-color: #e8f0fe !important; }
         /* Luxury Scrollbar */
         .grading-table-container::-webkit-scrollbar { height: 8px; width: 8px; }
@@ -873,17 +905,35 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                 </div>
                 <Card bodyStyle={{ padding: 0 }} style={{ overflow: 'hidden', backgroundColor: 'var(--color-input-bg)', border: 'none' }}>
                 <div style={{ overflowX: 'auto', maxHeight: 'calc(100vh - 350px)' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
-                    <thead style={{ position: 'sticky', top: 0, zIndex: 10, background: 'color-mix(in srgb, var(--color-input-bg), black 7%)' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', fontSize: 12, border: '1px solid #d1d5db' }}>
+                    <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
                       <tr>
-                        <th style={{ padding: '12px 16px', borderBottom: '1px solid #f0f0f0', textAlign: 'left', width: 250 }}>Estudiante</th>
-                        {evaluationPlan.map((item) => (
-                          <th key={item.id} style={{ padding: '12px 6px', borderBottom: '1px solid #f0f0f0', textAlign: 'center', width: 120, minWidth: 120, maxWidth: 120 }}>
-                            <div style={{ fontSize: '12px', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.description + (item.tipoEvaluacion ? ` (${item.tipoEvaluacion})` : '')}>{item.description}</div>
-                            <div style={{ fontSize: '11px', color: '#8c8c8c' }}>{item.percentage}%</div>
+                        <th style={{ padding: '4px 6px', border: '1px solid #d1d5db', textAlign: 'center', width: 100, backgroundColor: '#e5e7eb', fontWeight: 700, fontSize: 11 }}>Cédula</th>
+                        <th style={{ padding: '4px 6px', border: '1px solid #d1d5db', textAlign: 'left', width: 180, backgroundColor: '#e5e7eb', fontWeight: 700, fontSize: 11 }}>Estudiante</th>
+                        {evaluationPlan.map((item) => {
+                          const stats = evalStats.get(item.id);
+                          return (
+                          <th key={item.id} style={{ padding: '3px 4px', border: '1px solid #d1d5db', textAlign: 'center', width: 100, backgroundColor: '#e5e7eb', verticalAlign: 'top' }}>
+                            <div style={{ fontSize: 9, color: '#b45309', lineHeight: 1.2 }}>
+                              Apl. {stats?.failed ?? 0} ({stats?.failedPct ?? 0}%)
+                            </div>
+                            <div style={{ fontSize: 9, color: '#dc2626', lineHeight: 1.2, marginTop: 1 }}>
+                              Ina. ({stats?.missingPct ?? 0}%)
+                            </div>
+                            <br />
+                            <div style={{ fontSize: 9, fontWeight: 600, lineHeight: 1.2 }}>
+                              {item.date ? new Date(item.date).toLocaleDateString('es-VE') : '—'}
+                            </div>
+                            <div style={{ fontSize: 9, fontWeight: 700, lineHeight: 1.2, marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.identificador}>
+                              {item.identificador || '—'}
+                            </div>
+                            <div style={{ fontSize: 9, color: '#6b7280', lineHeight: 1.2, marginTop: 1 }}>
+                              {item.percentage}%
+                            </div>
                           </th>
-                        ))}
-                        <th style={{ padding: '12px 16px', borderBottom: '1px solid #f0f0f0', textAlign: 'center', width: 80 }}>Total</th>
+                          );
+                        })}
+                        <th style={{ padding: '3px 6px', border: '1px solid #d1d5db', textAlign: 'center', width: 60, backgroundColor: '#e5e7eb', fontWeight: 700, fontSize: 11 }}>Total</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -891,7 +941,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                         .sort((a, b) => {
                           const nameA = `${a.student?.lastName} ${a.student?.firstName}`.toLowerCase();
                           const nameB = `${b.student?.lastName} ${b.student?.firstName}`.toLowerCase();
-                          return nameA.localeCompare(nameB); // Order A-Z
+                          return nameA.localeCompare(nameB);
                         })
                         .map((enrollment, rowIndex) => {
                           const insSub = enrollment.inscriptionSubjects?.[0];
@@ -905,42 +955,42 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                             }
                           });
 
-                          const isEven = rowIndex % 2 === 0;
-
                           return (
                             <tr key={enrollment.id} className="grading-row">
-                              <td style={{ 
-                                padding: '8px 16px', 
-                                borderBottom: '1px solid #f0f0f0', 
-                                borderRight: '1px solid #f0f0f0',
-                                background: 'var(--color-input-bg)',
-                                width: 250
-                              }}>
-                                <div style={{ fontWeight: 500 }}>{enrollment.student?.lastName}, {enrollment.student?.firstName}</div>
-                                <div style={{ fontSize: '12px', color: '#8c8c8c' }}>{enrollment.student?.document}</div>
+                              <td style={{ padding: '2px 4px', border: '1px solid #d1d5db', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-input-bg)' : '#f9fafb', fontSize: 11, fontWeight: 500 }}>
+                                {enrollment.student?.document || '-'}
+                              </td>
+                              <td style={{ padding: '2px 6px', border: '1px solid #d1d5db', textAlign: 'left', background: rowIndex % 2 === 0 ? 'var(--color-input-bg)' : '#f9fafb', fontSize: 12 }}>
+                                {enrollment.student?.lastName}, {enrollment.student?.firstName}
                               </td>
                               {evaluationPlan.map((item, colIndex) => {
                                 const q = studentQuals.find((sq: Qualification) => sq.evaluationPlanId === item.id);
                                 const currentScore = q ? q.score : null;
 
-                                  return (
-                                    <td key={item.id} className="grading-cell" style={{ 
-                                      padding: '4px 6px', 
-                                      borderBottom: '1px solid #f0f0f0', 
-                                      borderRight: '1px solid #f0f0f0',
-                                      textAlign: 'center',
-                                      background: 'var(--color-input-bg)',
-                                      width: 120,
-                                      minWidth: 120,
-                                      maxWidth: 120
-                                    }}>
+const playBeep = () => {
+    try {
+      const ctx = new AudioContext();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'square';
+      osc.frequency.value = 800;
+      gain.gain.value = 0.1;
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.15);
+    } catch { /* audio not available */ }
+  };
+
+  return (
+                                    <td key={item.id} className="grading-cell" style={{ padding: '2px', border: '1px solid #d1d5db', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-input-bg)' : '#f9fafb', width: 100 }}>
                                     <InputNumber
                                       id={`grade-${rowIndex}-${colIndex}`}
                                       min={0}
                                       max={maxGrade}
-                                      precision={2}
+                                      precision={0}
                                       value={currentScore}
-                                      style={{ width: '72px' }}
+                                      style={{ width: '48px' }}
                                       controls={false}
                                       disabled={isSelectedTermBlocked}
                                       onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -975,7 +1025,20 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                                         }
                                       }}
                                       onBlur={(e: React.FocusEvent<HTMLInputElement>) => {
-                                        const val = (e.target as HTMLInputElement).value === '' ? null : Number((e.target as HTMLInputElement).value);
+                                        const raw = (e.target as HTMLInputElement).value;
+                                        if (raw === '') return;
+                                        const val = Number(raw);
+                                        const inputEl = e.target;
+                                        if (val < 0 || val > maxGrade) {
+                                          playBeep();
+                                          const wrapper = (e.target as HTMLElement).closest('.ant-input-number');
+                                          if (wrapper) {
+                                            (e.target as HTMLInputElement).value = '';
+                                            wrapper.classList.add('grade-invalid');
+                                            setTimeout(() => wrapper.classList.remove('grade-invalid'), 1500);
+                                          }
+                                          return;
+                                        }
                                         if (val !== currentScore) {
                                           handleSaveScoreInGrid(enrollment, item.id, val);
                                         }
@@ -984,16 +1047,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                                   </td>
                                 );
                               })}
-                              <td style={{ 
-                                padding: '8px 16px', 
-                                borderBottom: '1px solid #f0f0f0', 
-                                borderRight: '1px solid #f0f0f0', 
-                                textAlign: 'center', 
-                                background: 'var(--color-input-bg)', 
-                                fontWeight: 'bold',
-                                color: 'var(--color-text-main)',
-                                width: 80
-                              }}>
+                              <td style={{ padding: '2px 4px', border: '1px solid #d1d5db', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-input-bg)' : '#f9fafb', fontWeight: 700, fontSize: 12, width: 60 }}>
                                 <Tag color={rowTotal >= (maxGrade * 0.5) ? 'green' : 'red'} style={{ margin: 0 }}>
                                   {formatGrade(rowTotal, enableRounding)}
                                 </Tag>

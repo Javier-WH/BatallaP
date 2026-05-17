@@ -79,6 +79,7 @@ const ManageGrades: React.FC = () => {
   const [evaluationPlan, setEvaluationPlan] = useState<EvaluationPlanItem[]>([]);
   const [students, setStudents] = useState<StudentEnrollment[]>([]);
   const [maxGrade, setMaxGrade] = useState<number>(20);
+  const [passingGrade, setPassingGrade] = useState<number>(10);
   const [activeTab, setActiveTab] = useState('1');
   const [showPDFModal, setShowPDFModal] = useState(false);
   const { enableRounding } = useGradeRounding();
@@ -112,8 +113,9 @@ const ManageGrades: React.FC = () => {
 
   const fetchMaxGrade = async () => {
     try {
-      const res = await api.get('/settings/max_grade');
-      if (res.data?.value) setMaxGrade(Number(res.data.value));
+      const res = await api.get('/settings');
+      if (res.data?.max_grade) setMaxGrade(Number(res.data.max_grade));
+      if (res.data?.passing_grade) setPassingGrade(Number(res.data.passing_grade));
     } catch { /* ignore */ }
   };
 
@@ -210,6 +212,32 @@ const ManageGrades: React.FC = () => {
     return { missing, total: students.length };
   }, [evaluationPlan, students]);
 
+  const evalStats = useMemo(() => {
+    const map = new Map<number, { failed: number; failedPct: number; missing: number; missingPct: number; date: string }>();
+    if (students.length === 0) return map;
+    evaluationPlan.forEach(ep => {
+      let failed = 0;
+      let missing = 0;
+      students.forEach(enrollment => {
+        const insSub = enrollment.inscriptionSubjects?.[0];
+        const q = insSub?.qualifications?.find((sq: Qualification) => sq.evaluationPlanId === ep.id);
+        if (!q || q.score === null || q.score === 0) {
+          missing++;
+        } else if (q.score < passingGrade) {
+          failed++;
+        }
+      });
+      map.set(ep.id, {
+        failed,
+        failedPct: students.length > 0 ? Math.round((failed / students.length) * 100) : 0,
+        missing,
+        missingPct: students.length > 0 ? Math.round((missing / students.length) * 100) : 0,
+        date: ep.date,
+      });
+    });
+    return map;
+  }, [evaluationPlan, students, passingGrade]);
+
   const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?.percentage || 0), 0) || 0;
 
   const downloadExcel = async (filled: boolean) => {
@@ -270,6 +298,13 @@ const ManageGrades: React.FC = () => {
 
   return (
     <div className="h-full overflow-y-auto p-4 md:p-6" style={{ backgroundColor: 'var(--color-page-bg)' }}>
+      <style>{`
+        @keyframes flash-red {
+          0%, 100% { outline: 3px solid #ef4444; }
+          50% { outline: 3px solid transparent; }
+        }
+        .grade-invalid.ant-input-number { animation: flash-red 0.5s ease-in-out 3; }
+      `}</style>
       {!selectedAssignment ? (
         <>
           <div className="mb-6">
@@ -398,17 +433,35 @@ const ManageGrades: React.FC = () => {
                       </div>
                     </div>
                     <div style={{ overflowX: 'auto', maxHeight: 'calc(100vh - 400px)' }}>
-                      <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
-                        <thead style={{ position: 'sticky', top: 0, zIndex: 10, background: 'color-mix(in srgb, var(--color-input-bg), black 7%)' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', fontSize: 12, border: '1px solid #d1d5db' }}>
+                        <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
                           <tr>
-                            <th style={{ padding: '10px 12px', borderBottom: '1px solid #f0f0f0', textAlign: 'left', width: 220 }}>Estudiante</th>
-                            {evaluationPlan.map(item => (
-                              <th key={item.id} style={{ padding: '10px 4px', borderBottom: '1px solid #f0f0f0', textAlign: 'center', width: 120 }}>
-                                <div style={{ fontSize: 11, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.identificador || item.description}</div>
-                                <div style={{ fontSize: 10, color: '#8c8c8c' }}>{item.percentage}%</div>
+                            <th style={{ padding: '4px 6px', border: '1px solid #d1d5db', textAlign: 'center', width: 100, backgroundColor: '#e5e7eb', fontWeight: 700, fontSize: 11 }}>Cédula</th>
+                            <th style={{ padding: '4px 6px', border: '1px solid #d1d5db', textAlign: 'left', width: 180, backgroundColor: '#e5e7eb', fontWeight: 700, fontSize: 11 }}>Estudiante</th>
+                            {evaluationPlan.map(item => {
+                              const stats = evalStats.get(item.id);
+                              return (
+                              <th key={item.id} style={{ padding: '3px 4px', border: '1px solid #d1d5db', textAlign: 'center', width: 100, backgroundColor: '#e5e7eb', verticalAlign: 'top' }}>
+                                <div style={{ fontSize: 9, color: '#b45309', lineHeight: 1.2 }}>
+                                  Apl. {stats?.failed ?? 0} ({stats?.failedPct ?? 0}%)
+                                </div>
+                                <div style={{ fontSize: 9, color: '#dc2626', lineHeight: 1.2, marginTop: 1 }}>
+                                  Ina. ({stats?.missingPct ?? 0}%)
+                                </div>
+                                <br />
+                                <div style={{ fontSize: 9, fontWeight: 600, lineHeight: 1.2 }}>
+                                  {item.date ? new Date(item.date).toLocaleDateString('es-VE') : '—'}
+                                </div>
+                                <div style={{ fontSize: 9, fontWeight: 700, lineHeight: 1.2, marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.identificador}>
+                                  {item.identificador || '—'}
+                                </div>
+                                <div style={{ fontSize: 9, color: '#6b7280', lineHeight: 1.2, marginTop: 1 }}>
+                                  {item.percentage}%
+                                </div>
                               </th>
-                            ))}
-                            <th style={{ padding: '10px 12px', borderBottom: '1px solid #f0f0f0', textAlign: 'center', width: 70 }}>Total</th>
+                              );
+                            })}
+                            <th style={{ padding: '3px 6px', border: '1px solid #d1d5db', textAlign: 'center', width: 60, backgroundColor: '#e5e7eb', fontWeight: 700, fontSize: 11 }}>Total</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -429,23 +482,52 @@ const ManageGrades: React.FC = () => {
 
                               return (
                                 <tr key={enrollment.id}>
-                                  <td style={{ padding: '8px 12px', borderBottom: '1px solid #f0f0f0', borderRight: '1px solid #f0f0f0', background: 'var(--color-input-bg)' }}>
-                                    <div style={{ fontWeight: 500 }}>{enrollment.student?.lastName}, {enrollment.student?.firstName}</div>
-                                    <div style={{ fontSize: 11, color: '#8c8c8c' }}>{enrollment.student?.document}</div>
+                                  <td style={{ padding: '2px 4px', border: '1px solid #d1d5db', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-input-bg)' : '#f9fafb', fontSize: 11, fontWeight: 500 }}>
+                                    {enrollment.student?.document || '-'}
+                                  </td>
+                                  <td style={{ padding: '2px 6px', border: '1px solid #d1d5db', textAlign: 'left', background: rowIndex % 2 === 0 ? 'var(--color-input-bg)' : '#f9fafb', fontSize: 12 }}>
+                                    {enrollment.student?.lastName}, {enrollment.student?.firstName}
                                   </td>
                                   {evaluationPlan.map((item, colIndex) => {
                                     const q = studentQuals.find((sq: Qualification) => sq.evaluationPlanId === item.id);
-                                    return (
-                                      <td key={item.id} style={{ padding: '4px', borderBottom: '1px solid #f0f0f0', borderRight: '1px solid #f0f0f0', textAlign: 'center', background: 'var(--color-input-bg)', width: 120 }}>
+  const playBeep = () => {
+    try {
+      const ctx = new AudioContext();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'square';
+      osc.frequency.value = 800;
+      gain.gain.value = 0.1;
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.15);
+    } catch { /* audio not available */ }
+  };
+
+  return (
+                                      <td key={item.id} style={{ padding: '2px', border: '1px solid #d1d5db', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-input-bg)' : '#f9fafb', width: 100 }}>
                                         <InputNumber
-                                          min={0} max={maxGrade} precision={2}
+                                          min={0} max={maxGrade} precision={0}
                                           value={q ? q.score : null}
-                                          style={{ width: '72px' }}
+                                          style={{ width: '48px' }}
                                           controls={false}
                                           disabled={isSelectedTermBlocked}
                                           onBlur={(e) => {
-                                            const val = (e.target as HTMLInputElement).value === '' ? null : Number((e.target as HTMLInputElement).value);
+                                            const raw = (e.target as HTMLInputElement).value;
+                                            if (raw === '') return;
+                                            const val = Number(raw);
                                             const currentScore = q ? q.score : null;
+                                            if (val < 0 || val > maxGrade) {
+                                              playBeep();
+                                              const wrapper = (e.target as HTMLElement).closest('.ant-input-number');
+                                              if (wrapper) {
+                                                (e.target as HTMLInputElement).value = '';
+                                                wrapper.classList.add('grade-invalid');
+                                                setTimeout(() => wrapper.classList.remove('grade-invalid'), 1500);
+                                              }
+                                              return;
+                                            }
                                             if (val !== currentScore) {
                                               handleSaveScoreInGrid(enrollment, item.id, val);
                                             }
@@ -454,7 +536,7 @@ const ManageGrades: React.FC = () => {
                                       </td>
                                     );
                                   })}
-                                  <td style={{ padding: '8px 12px', borderBottom: '1px solid #f0f0f0', textAlign: 'center', background: 'var(--color-input-bg)', fontWeight: 'bold', color: 'var(--color-text-main)', width: 70 }}>
+                                  <td style={{ padding: '2px 4px', border: '1px solid #d1d5db', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-input-bg)' : '#f9fafb', fontWeight: 700, fontSize: 12, width: 60 }}>
                                     <Tag color={rowTotal >= (maxGrade * 0.5) ? 'green' : 'red'}>
                                       {formatGrade(rowTotal, enableRounding)}
                                     </Tag>

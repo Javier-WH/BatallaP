@@ -115,6 +115,10 @@
   background-color: #e8f0fe !important;
 }
 
+.grading-cell .ant-input-number-input {
+  padding: 0 !important;
+}
+
 .table-row-light {
   background-color: #fafafa;
 }
