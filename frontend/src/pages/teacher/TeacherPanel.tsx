@@ -634,6 +634,21 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
     }
   };
 
+  const playBeep = () => {
+    try {
+      const ctx = new AudioContext();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'square';
+      osc.frequency.value = 800;
+      gain.gain.value = 0.1;
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.15);
+    } catch { /* audio not available */ }
+  };
+
   return (
     <div className="h-full overflow-y-auto theme-page-bg p-4 md:p-8">
       <style>{`
@@ -913,7 +928,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                         {evaluationPlan.map((item) => {
                           const stats = evalStats.get(item.id);
                           return (
-                          <th key={item.id} style={{ padding: '3px 4px', border: '1px solid #d1d5db', textAlign: 'center', width: 100, backgroundColor: '#e5e7eb', verticalAlign: 'top' }}>
+                          <th key={item.id} colSpan={2} style={{ padding: '3px 4px', border: '1px solid #d1d5db', textAlign: 'center', width: 120, backgroundColor: '#e5e7eb', verticalAlign: 'top' }}>
                             <div style={{ fontSize: 9, color: '#b45309', lineHeight: 1.2 }}>
                               Apl. {stats?.failed ?? 0} ({stats?.failedPct ?? 0}%)
                             </div>
@@ -967,23 +982,9 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                                 const q = studentQuals.find((sq: Qualification) => sq.evaluationPlanId === item.id);
                                 const currentScore = q ? q.score : null;
 
-const playBeep = () => {
-    try {
-      const ctx = new AudioContext();
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = 'square';
-      osc.frequency.value = 800;
-      gain.gain.value = 0.1;
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start();
-      osc.stop(ctx.currentTime + 0.15);
-    } catch { /* audio not available */ }
-  };
-
-  return (
-                                    <td key={item.id} className="grading-cell" style={{ padding: '2px', border: '1px solid #d1d5db', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-input-bg)' : '#f9fafb', width: 100 }}>
+                                return (
+                                  <>
+                                  <td key={`${item.id}-a`} className="grading-cell" style={{ padding: '2px', border: '1px solid #d1d5db', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-input-bg)' : '#f9fafb', width: 60 }}>
                                     <input
                                       type="number"
                                       id={`grade-${rowIndex}-${colIndex}`}
@@ -1057,6 +1058,8 @@ const playBeep = () => {
                                       }}
                                     />
                                   </td>
+                                  <td key={`${item.id}-b`} style={{ padding: '2px', border: '1px solid #d1d5db', background: rowIndex % 2 === 0 ? 'var(--color-input-bg)' : '#f9fafb', width: 60 }}></td>
+                                  </>
                                 );
                               })}
                               <td style={{ padding: '2px 4px', border: '1px solid #d1d5db', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-input-bg)' : '#f9fafb', fontWeight: 700, fontSize: 12, width: 60 }}>

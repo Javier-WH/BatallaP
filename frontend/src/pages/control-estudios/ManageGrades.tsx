@@ -441,7 +441,7 @@ const ManageGrades: React.FC = () => {
                             {evaluationPlan.map(item => {
                               const stats = evalStats.get(item.id);
                               return (
-                              <th key={item.id} style={{ padding: '3px 4px', border: '1px solid #d1d5db', textAlign: 'center', width: 100, backgroundColor: '#e5e7eb', verticalAlign: 'top' }}>
+                              <th key={item.id} colSpan={2} style={{ padding: '3px 4px', border: '1px solid #d1d5db', textAlign: 'center', width: 120, backgroundColor: '#e5e7eb', verticalAlign: 'top' }}>
                                 <div style={{ fontSize: 9, color: '#b45309', lineHeight: 1.2 }}>
                                   Apl. {stats?.failed ?? 0} ({stats?.failedPct ?? 0}%)
                                 </div>
@@ -491,7 +491,8 @@ const ManageGrades: React.FC = () => {
                                    {evaluationPlan.map((item, colIndex) => {
                                     const q = studentQuals.find((sq: Qualification) => sq.evaluationPlanId === item.id);
                                     return (
-                                      <td key={item.id} className="grading-cell" style={{ padding: '2px', border: '1px solid #d1d5db', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-input-bg)' : '#f9fafb', width: 100 }}>
+                                      <>
+                                      <td key={`${item.id}-a`} className="grading-cell" style={{ padding: '2px', border: '1px solid #d1d5db', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-input-bg)' : '#f9fafb', width: 60 }}>
                                         <input
                                           type="number"
                                           min={0}
@@ -543,6 +544,8 @@ const ManageGrades: React.FC = () => {
                                           }}
                                         />
                                       </td>
+                                      <td key={`${item.id}-b`} style={{ padding: '2px', border: '1px solid #d1d5db', background: rowIndex % 2 === 0 ? 'var(--color-input-bg)' : '#f9fafb', width: 60 }}></td>
+                                      </>
                                     );
                                   })}
                                   <td style={{ padding: '2px 4px', border: '1px solid #d1d5db', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-input-bg)' : '#f9fafb', fontWeight: 700, fontSize: 12, width: 60 }}>
