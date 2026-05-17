@@ -644,7 +644,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
           0%, 100% { outline: 3px solid #ef4444; }
           50% { outline: 3px solid transparent; }
         }
-        .grade-invalid.ant-input-number { animation: flash-red 0.5s ease-in-out 3; }
+        .grade-invalid { animation: flash-red 0.5s ease-in-out 3; }
         .ant-table-tbody > tr.ant-table-row:hover > td { background-color: #e8f0fe !important; }
         /* Luxury Scrollbar */
         .grading-table-container::-webkit-scrollbar { height: 8px; width: 8px; }
@@ -984,16 +984,22 @@ const playBeep = () => {
 
   return (
                                     <td key={item.id} className="grading-cell" style={{ padding: '2px', border: '1px solid #d1d5db', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-input-bg)' : '#f9fafb', width: 100 }}>
-                                    <InputNumber
+                                    <input
+                                      type="number"
                                       id={`grade-${rowIndex}-${colIndex}`}
                                       min={0}
                                       max={maxGrade}
-                                      precision={0}
-                                      value={currentScore}
-                                      style={{ width: '48px' }}
-                                      controls={false}
+                                      step={1}
+                                      inputMode="numeric"
+                                      pattern="[0-9]*"
+                                      defaultValue={currentScore ?? ''}
+                                      key={`${enrollment.id}-${item.id}`}
                                       disabled={isSelectedTermBlocked}
                                       onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
+                                        if (e.key === '.' || e.key === ',' || e.key === 'e' || e.key === 'E' || e.key === '-' || e.key === '+') {
+                                          e.preventDefault();
+                                          return;
+                                        }
                                         if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter'].includes(e.key)) {
                                           if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
                                             e.preventDefault();
@@ -1012,28 +1018,25 @@ const playBeep = () => {
                                           const nextInputId = `grade-${nextRow}-${nextCol}`;
                                           setTimeout(() => {
                                             const nextInput = document.getElementById(nextInputId);
-                                            if (nextInput) {
-                                              const inner = nextInput.querySelector('input');
-                                              if (inner) {
-                                                inner.focus();
-                                                inner.select();
-                                              } else {
-                                                nextInput.focus();
-                                              }
-                                            }
+                                            if (nextInput) nextInput.focus();
                                           }, 0);
                                         }
                                       }}
+                                      onInput={(e: React.FormEvent<HTMLInputElement>) => {
+                                        (e.target as HTMLInputElement).value = (e.target as HTMLInputElement).value.replace(/[^0-9]/g, '');
+                                      }}
                                       onBlur={(e: React.FocusEvent<HTMLInputElement>) => {
-                                        const raw = (e.target as HTMLInputElement).value;
+                                        e.target.style.borderColor = '#d1d5db';
+                                        e.target.style.boxShadow = 'none';
+                                        const raw = (e.target as HTMLInputElement).value.replace(/[^0-9]/g, '');
+                                        (e.target as HTMLInputElement).value = raw;
                                         if (raw === '') return;
-                                        const val = Number(raw);
-                                        const inputEl = e.target;
+                                        const val = parseInt(raw, 10);
                                         if (val < 0 || val > maxGrade) {
                                           playBeep();
-                                          const wrapper = (e.target as HTMLElement).closest('.ant-input-number');
+                                          const wrapper = e.target.closest('.grading-cell');
                                           if (wrapper) {
-                                            (e.target as HTMLInputElement).value = '';
+                                            e.target.value = '';
                                             wrapper.classList.add('grade-invalid');
                                             setTimeout(() => wrapper.classList.remove('grade-invalid'), 1500);
                                           }

@@ -303,7 +303,7 @@ const ManageGrades: React.FC = () => {
           0%, 100% { outline: 3px solid #ef4444; }
           50% { outline: 3px solid transparent; }
         }
-        .grade-invalid.ant-input-number { animation: flash-red 0.5s ease-in-out 3; }
+        .grade-invalid { animation: flash-red 0.5s ease-in-out 3; }
       `}</style>
       {!selectedAssignment ? (
         <>
@@ -488,41 +488,41 @@ const ManageGrades: React.FC = () => {
                                   <td style={{ padding: '2px 6px', border: '1px solid #d1d5db', textAlign: 'left', background: rowIndex % 2 === 0 ? 'var(--color-input-bg)' : '#f9fafb', fontSize: 12 }}>
                                     {enrollment.student?.lastName}, {enrollment.student?.firstName}
                                   </td>
-                                  {evaluationPlan.map((item, colIndex) => {
+                                   {evaluationPlan.map((item, colIndex) => {
                                     const q = studentQuals.find((sq: Qualification) => sq.evaluationPlanId === item.id);
-  const playBeep = () => {
-    try {
-      const ctx = new AudioContext();
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = 'square';
-      osc.frequency.value = 800;
-      gain.gain.value = 0.1;
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start();
-      osc.stop(ctx.currentTime + 0.15);
-    } catch { /* audio not available */ }
-  };
-
-  return (
-                                      <td key={item.id} style={{ padding: '2px', border: '1px solid #d1d5db', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-input-bg)' : '#f9fafb', width: 100 }}>
-                                        <InputNumber
-                                          min={0} max={maxGrade} precision={0}
-                                          value={q ? q.score : null}
-                                          style={{ width: '48px' }}
-                                          controls={false}
+                                    return (
+                                      <td key={item.id} className="grading-cell" style={{ padding: '2px', border: '1px solid #d1d5db', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-input-bg)' : '#f9fafb', width: 100 }}>
+                                        <input
+                                          type="number"
+                                          min={0}
+                                          max={maxGrade}
+                                          step={1}
+                                          inputMode="numeric"
+                                          pattern="[0-9]*"
+                                          defaultValue={q ? q.score : ''}
+                                          key={`${enrollment.id}-${item.id}`}
                                           disabled={isSelectedTermBlocked}
+                                          onKeyDown={(e) => {
+                                            if (e.key === '.' || e.key === ',' || e.key === 'e' || e.key === 'E' || e.key === '-' || e.key === '+') {
+                                              e.preventDefault();
+                                            }
+                                          }}
+                                          onInput={(e: React.FormEvent<HTMLInputElement>) => {
+                                            (e.target as HTMLInputElement).value = (e.target as HTMLInputElement).value.replace(/[^0-9]/g, '');
+                                          }}
                                           onBlur={(e) => {
-                                            const raw = (e.target as HTMLInputElement).value;
+                                            e.target.style.borderColor = '#d1d5db';
+                                            e.target.style.boxShadow = 'none';
+                                            const raw = e.target.value.replace(/[^0-9]/g, '');
+                                            e.target.value = raw;
                                             if (raw === '') return;
-                                            const val = Number(raw);
+                                            const val = parseInt(raw, 10);
                                             const currentScore = q ? q.score : null;
                                             if (val < 0 || val > maxGrade) {
                                               playBeep();
-                                              const wrapper = (e.target as HTMLElement).closest('.ant-input-number');
+                                              const wrapper = e.target.closest('.grading-cell');
                                               if (wrapper) {
-                                                (e.target as HTMLInputElement).value = '';
+                                                e.target.value = '';
                                                 wrapper.classList.add('grade-invalid');
                                                 setTimeout(() => wrapper.classList.remove('grade-invalid'), 1500);
                                               }
