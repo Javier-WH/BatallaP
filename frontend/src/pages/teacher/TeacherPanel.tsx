@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, Component, useMemo } from 'react';
 import type { ReactNode, ErrorInfo } from 'react';
-import { Tabs, Card, Select, Table, Button, Modal, Form, Input, DatePicker, message, Space, Tag, Typography, InputNumber, Alert, Empty } from 'antd';
+import { Tabs, Card, Select, Table, Button, Modal, Form, Input, DatePicker, message, Space, Tag, Typography, InputNumber, Alert, Empty, Tooltip } from 'antd';
 import { BookOutlined, PlusOutlined, DeleteOutlined, EditOutlined, LockOutlined, FilePdfOutlined, DownloadOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { isAxiosError } from 'axios';
@@ -88,6 +88,7 @@ interface Qualification {
   evaluationPlanId: number;
   score: number;
   observations?: string;
+  remedialScore?: number;
 }
 
 interface InscriptionSubject {
@@ -223,6 +224,9 @@ const TeacherPanel: React.FC = () => {
   const [activeTab, setActiveTab] = useState('1');
   const [maxGrade, setMaxGrade] = useState<number>(20);
   const [passingGrade, setPassingGrade] = useState<number>(10);
+  const [remedialFailurePercentage, setRemedialFailurePercentage] = useState<number>(30);
+  const [remedialMinGrade, setRemedialMinGrade] = useState<number>(1);
+  const [remedialMaxGrade, setRemedialMaxGrade] = useState<number>(9);
   const [showPDFModal, setShowPDFModal] = useState(false);
   const instrumentSelection = Form.useWatch('estrategiaOption', planForm);
   const [refTeoricos, setRefTeoricos] = useState<string[]>(['']);
@@ -291,6 +295,15 @@ const TeacherPanel: React.FC = () => {
         const res = await api.get('/settings');
         if (res.data?.max_grade) setMaxGrade(Number(res.data.max_grade));
         if (res.data?.passing_grade) setPassingGrade(Number(res.data.passing_grade));
+        if (res.data?.remedial_failure_percentage !== undefined) {
+          setRemedialFailurePercentage(Number(res.data.remedial_failure_percentage));
+        }
+        if (res.data?.remedial_min_grade !== undefined) {
+          setRemedialMinGrade(Number(res.data.remedial_min_grade));
+        }
+        if (res.data?.remedial_max_grade !== undefined) {
+          setRemedialMaxGrade(Number(res.data.remedial_max_grade));
+        }
       } catch {
         console.error('Error fetching settings');
       }
@@ -503,7 +516,7 @@ const TeacherPanel: React.FC = () => {
   };
 
 
-  const handleSaveScoreInGrid = async (enrollment: StudentEnrollment, evalPlanId: number, score: number | null) => {
+  const handleSaveScoreInGrid = async (enrollment: StudentEnrollment, evalPlanId: number, score: number | null, remedialScore?: number | null) => {
     if (isSelectedTermBlocked) {
       message.warning('Este lapso está bloqueado. No puedes modificar calificaciones.');
       return;
@@ -516,12 +529,34 @@ const TeacherPanel: React.FC = () => {
         inscriptionSubjectId,
         inscriptionId: enrollment.id,
         score: score === null ? 0 : score,
+        remedialScore: remedialScore !== undefined && remedialScore !== null ? remedialScore : undefined,
         observations: ''
       });
-      // message.success(`Nota guardada para ${enrollment.student?.lastName}`);
       fetchPlanAndStudents();
     } catch {
       message.error('Error al guardar nota');
+    }
+  };
+
+  const handleSaveRemedialScoreInGrid = async (enrollment: StudentEnrollment, evalPlanId: number, remedialScore: number | null) => {
+    if (isSelectedTermBlocked) {
+      message.warning('Este lapso está bloqueado. No puedes modificar calificaciones.');
+      return;
+    }
+    const inscriptionSubjectId = enrollment.inscriptionSubjects?.[0]?.id;
+
+    try {
+      await api.post('/evaluation/qualifications', {
+        evaluationPlanId: evalPlanId,
+        inscriptionSubjectId,
+        inscriptionId: enrollment.id,
+        remedialScore: remedialScore,
+        observations: ''
+      });
+      // message.success(`Nota remedial guardada para ${enrollment.student?.lastName}`);
+      fetchPlanAndStudents();
+    } catch {
+      message.error('Error al guardar nota remedial');
     }
   };
 
@@ -920,15 +955,16 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                 </div>
                 <Card bodyStyle={{ padding: 0 }} style={{ overflow: 'hidden', backgroundColor: 'var(--color-input-bg)', border: 'none' }}>
                 <div style={{ overflowX: 'auto', maxHeight: 'calc(100vh - 350px)' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', fontSize: 12, border: '1px solid #d1d5db' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, border: '1px solid #d1d5db' }}>
                     <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
                       <tr>
-                        <th style={{ padding: '4px 6px', border: '1px solid #d1d5db', textAlign: 'center', width: 100, backgroundColor: '#e5e7eb', fontWeight: 700, fontSize: 11 }}>Cédula</th>
-                        <th style={{ padding: '4px 6px', border: '1px solid #d1d5db', textAlign: 'left', width: 180, backgroundColor: '#e5e7eb', fontWeight: 700, fontSize: 11 }}>Estudiante</th>
+                        <th style={{ padding: '4px 6px', border: '1px solid transparent', textAlign: 'center', backgroundColor: '#e5e7eb', fontWeight: 700, fontSize: 11, whiteSpace: 'nowrap' }}>Cédula</th>
+                        <th style={{ padding: '4px 6px', border: '1px solid transparent', textAlign: 'left', backgroundColor: '#e5e7eb', fontWeight: 700, fontSize: 11, whiteSpace: 'nowrap' }}>Estudiante</th>
                         {evaluationPlan.map((item) => {
                           const stats = evalStats.get(item.id);
+                          const hasRemedial = (stats?.failedPct ?? 0) >= remedialFailurePercentage;
                           return (
-                          <th key={item.id} colSpan={2} style={{ padding: '3px 4px', border: '1px solid #d1d5db', textAlign: 'center', width: 120, backgroundColor: '#e5e7eb', verticalAlign: 'top' }}>
+                          <th key={item.id} colSpan={hasRemedial ? 2 : 1} style={{ padding: '3px 4px', border: '1px solid transparent', textAlign: 'center', backgroundColor: '#e5e7eb', verticalAlign: 'top', whiteSpace: 'nowrap' }}>
                             <div style={{ fontSize: 9, color: '#b45309', lineHeight: 1.2 }}>
                               Apl. {stats?.failed ?? 0} ({stats?.failedPct ?? 0}%)
                             </div>
@@ -948,7 +984,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                           </th>
                           );
                         })}
-                        <th style={{ padding: '3px 6px', border: '1px solid #d1d5db', textAlign: 'center', width: 60, backgroundColor: '#e5e7eb', fontWeight: 700, fontSize: 11 }}>Total</th>
+                        <th style={{ padding: '3px 6px', border: '1px solid transparent', textAlign: 'center', backgroundColor: '#e5e7eb', fontWeight: 700, fontSize: 11, whiteSpace: 'nowrap' }}>Total</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -972,19 +1008,22 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
 
                           return (
                             <tr key={enrollment.id} className="grading-row">
-                              <td style={{ padding: '2px 4px', border: '1px solid #d1d5db', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-input-bg)' : '#f9fafb', fontSize: 11, fontWeight: 500 }}>
+                              <td style={{ padding: '2px 4px', border: '1px solid transparent', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-input-bg)' : '#f9fafb', fontSize: 11, fontWeight: 500 }}>
                                 {enrollment.student?.document || '-'}
                               </td>
-                              <td style={{ padding: '2px 6px', border: '1px solid #d1d5db', textAlign: 'left', background: rowIndex % 2 === 0 ? 'var(--color-input-bg)' : '#f9fafb', fontSize: 12 }}>
+                              <td style={{ padding: '2px 6px', border: '1px solid transparent', textAlign: 'left', background: rowIndex % 2 === 0 ? 'var(--color-input-bg)' : '#f9fafb', fontSize: 12 }}>
                                 {enrollment.student?.lastName}, {enrollment.student?.firstName}
                               </td>
                               {evaluationPlan.map((item, colIndex) => {
                                 const q = studentQuals.find((sq: Qualification) => sq.evaluationPlanId === item.id);
                                 const currentScore = q ? q.score : null;
+                                const stats = evalStats.get(item.id);
+                                const hasRemedial = (stats?.failedPct ?? 0) >= remedialFailurePercentage;
+                                const isRemedialEligible = currentScore !== null && currentScore > 0 && currentScore >= remedialMinGrade && currentScore <= remedialMaxGrade;
 
                                 return (
-                                  <>
-                                  <td key={`${item.id}-a`} className="grading-cell" style={{ padding: '2px', border: '1px solid #d1d5db', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-input-bg)' : '#f9fafb', width: 60 }}>
+                                  <React.Fragment key={item.id}>
+                                  <td key={`${item.id}-a`} className="grading-cell" style={{ padding: '2px', border: '1px solid transparent', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-input-bg)' : '#f9fafb', width: '50px' }}>
                                     <input
                                       type="number"
                                       id={`grade-${rowIndex}-${colIndex}`}
@@ -993,18 +1032,20 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                                       step={1}
                                       inputMode="numeric"
                                       pattern="[0-9]*"
-                                      defaultValue={currentScore ?? ''}
+                                      defaultValue={currentScore !== null ? Math.round(currentScore) : ''}
                                       key={`${enrollment.id}-${item.id}`}
                                       style={{
                                         width: '48px',
                                         textAlign: 'center',
-                                        border: '1px solid #d1d5db',
+                                        border: '1px solid transparent',
                                         borderRadius: 4,
                                         fontSize: 12,
                                         padding: 0,
                                         outline: 'none',
+                                        color: currentScore !== null && currentScore > 0 && currentScore < passingGrade ? '#dc2626' : undefined,
+                                        fontWeight: currentScore !== null && currentScore > 0 && currentScore < passingGrade ? 700 : undefined,
                                       }}
-                                      disabled={isSelectedTermBlocked}
+                                      disabled={isSelectedTermBlocked || (q?.remedialScore != null && q.remedialScore > 0)}
                                       onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
                                         if (e.key === '.' || e.key === ',' || e.key === 'e' || e.key === 'E' || e.key === '-' || e.key === '+') {
                                           e.preventDefault();
@@ -1017,15 +1058,37 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
 
                                           let nextRow = rowIndex;
                                           let nextCol = colIndex;
+                                          let targetType = 'grade';
+
                                           if (e.key === 'ArrowUp') nextRow--;
                                           if (e.key === 'ArrowDown' || e.key === 'Enter') {
                                             if (e.key === 'Enter') e.preventDefault();
                                             nextRow++;
                                           }
-                                          if (e.key === 'ArrowLeft') nextCol--;
-                                          if (e.key === 'ArrowRight') nextCol++;
+                                          if (e.key === 'ArrowLeft') {
+                                            const prevCol = colIndex - 1;
+                                            if (prevCol >= 0) {
+                                              const prevItem = evaluationPlan[prevCol];
+                                              const prevStats = evalStats.get(prevItem.id);
+                                              const prevHasRemedial = (prevStats?.failedPct ?? 0) >= remedialFailurePercentage;
+                                              nextCol = prevCol;
+                                              if (prevHasRemedial) {
+                                                targetType = 'remedial';
+                                              } else {
+                                                targetType = 'grade';
+                                              }
+                                            }
+                                          }
+                                          if (e.key === 'ArrowRight') {
+                                            if (hasRemedial) {
+                                              targetType = 'remedial';
+                                            } else {
+                                              nextCol = colIndex + 1;
+                                              targetType = 'grade';
+                                            }
+                                          }
 
-                                          const nextInputId = `grade-${nextRow}-${nextCol}`;
+                                          const nextInputId = `${targetType}-${nextRow}-${nextCol}`;
                                           setTimeout(() => {
                                             const nextInput = document.getElementById(nextInputId);
                                             if (nextInput) nextInput.focus();
@@ -1036,7 +1099,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                                         (e.target as HTMLInputElement).value = (e.target as HTMLInputElement).value.replace(/[^0-9]/g, '');
                                       }}
                                       onBlur={(e: React.FocusEvent<HTMLInputElement>) => {
-                                        e.target.style.borderColor = '#d1d5db';
+                                        e.target.style.borderColor = 'transparent';
                                         e.target.style.boxShadow = 'none';
                                         const raw = (e.target as HTMLInputElement).value.replace(/[^0-9]/g, '');
                                         (e.target as HTMLInputElement).value = raw;
@@ -1058,11 +1121,120 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                                       }}
                                     />
                                   </td>
-                                  <td key={`${item.id}-b`} style={{ padding: '2px', border: '1px solid #d1d5db', background: rowIndex % 2 === 0 ? 'var(--color-input-bg)' : '#f9fafb', width: 60 }}></td>
-                                  </>
+                                  {hasRemedial && (
+                                    <td key={`${item.id}-b`} className="grading-cell remedial-cell" style={{ padding: '2px', border: '1px solid transparent', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-input-bg)' : '#f9fafb', width: '50px' }}>
+                                      <Tooltip
+                                        mouseEnterDelay={0}
+                                        title={
+                                          !isRemedialEligible && currentScore !== null && currentScore > 0
+                                            ? (currentScore < remedialMinGrade
+                                                ? `Nota por debajo de la mínima para remedial (${remedialMinGrade})`
+                                                : currentScore > remedialMaxGrade
+                                                  ? `Nota por encima de la máxima para remedial (${remedialMaxGrade})`
+                                                  : '')
+                                            : undefined
+                                        }
+                                      >
+                                      <input
+                                        type="number"
+                                        id={`remedial-${rowIndex}-${colIndex}`}
+                                        min={0}
+                                        max={maxGrade}
+                                        step={1}
+                                        inputMode="numeric"
+                                        pattern="[0-9]*"
+                                        defaultValue={q?.remedialScore != null ? Math.round(q.remedialScore) : ''}
+                                        key={`rem-${enrollment.id}-${item.id}`}
+                                        style={{
+                                          width: '48px',
+                                          textAlign: 'center',
+                                          border: '1px solid transparent',
+                                          borderRadius: 4,
+                                          fontSize: 12,
+                                          padding: 0,
+                                          outline: 'none',
+                                          backgroundColor: !isRemedialEligible && currentScore !== null && currentScore > 0
+                                            ? (currentScore < remedialMinGrade ? '#fef2f2' : currentScore > remedialMaxGrade ? '#f0fdf4' : undefined)
+                                            : undefined,
+                                          cursor: !isRemedialEligible && currentScore !== null && currentScore > 0 ? 'not-allowed' : undefined,
+                                        }}
+                                        disabled={isSelectedTermBlocked || !isRemedialEligible}
+                                        onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
+                                          if (e.key === '.' || e.key === ',' || e.key === 'e' || e.key === 'E' || e.key === '-' || e.key === '+') {
+                                            e.preventDefault();
+                                            return;
+                                          }
+                                          if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter'].includes(e.key)) {
+                                            if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+                                              e.preventDefault();
+                                            }
+
+                                            let nextRow = rowIndex;
+                                            let nextCol = colIndex;
+                                            let targetType = 'remedial';
+
+                                            if (e.key === 'ArrowUp') nextRow--;
+                                            if (e.key === 'ArrowDown' || e.key === 'Enter') {
+                                              if (e.key === 'Enter') e.preventDefault();
+                                              nextRow++;
+                                            }
+                                            if (e.key === 'ArrowLeft') {
+                                              // Focus the regular grade input of the same evaluation on the same row
+                                              targetType = 'grade';
+                                            }
+                                            if (e.key === 'ArrowRight') {
+                                              // Focus the regular grade input of the next evaluation on the same row
+                                              nextCol++;
+                                              targetType = 'grade';
+                                            }
+
+                                            const nextInputId = `${targetType}-${nextRow}-${nextCol}`;
+                                            setTimeout(() => {
+                                              const nextInput = document.getElementById(nextInputId);
+                                              if (nextInput) nextInput.focus();
+                                            }, 0);
+                                          }
+                                        }}
+                                        onInput={(e: React.FormEvent<HTMLInputElement>) => {
+                                          (e.target as HTMLInputElement).value = (e.target as HTMLInputElement).value.replace(/[^0-9]/g, '');
+                                        }}
+                                        onBlur={(e: React.FocusEvent<HTMLInputElement>) => {
+                                          e.target.style.borderColor = '#d1d5db';
+                                          e.target.style.boxShadow = 'none';
+                                          const raw = (e.target as HTMLInputElement).value.replace(/[^0-9]/g, '');
+                                          (e.target as HTMLInputElement).value = raw;
+                                          
+                                          const currentRemedialScore = q ? q.remedialScore : null;
+                                          if (raw === '') {
+                                            if (currentRemedialScore !== null) {
+                                              handleSaveRemedialScoreInGrid(enrollment, item.id, null);
+                                            }
+                                            return;
+                                          }
+                                          
+                                          const val = parseInt(raw, 10);
+                                          if (val < 0 || val > maxGrade) {
+                                            playBeep();
+                                            const wrapper = e.target.closest('.grading-cell');
+                                            if (wrapper) {
+                                              e.target.value = currentRemedialScore !== null ? String(currentRemedialScore) : '';
+                                              wrapper.classList.add('grade-invalid');
+                                              setTimeout(() => wrapper.classList.remove('grade-invalid'), 1500);
+                                            }
+                                            return;
+                                          }
+                                          if (val !== currentRemedialScore) {
+                                            handleSaveRemedialScoreInGrid(enrollment, item.id, val);
+                                          }
+                                        }}
+                                      />
+                                      </Tooltip>
+                                    </td>
+                                  )}
+                                  </React.Fragment>
                                 );
                               })}
-                              <td style={{ padding: '2px 4px', border: '1px solid #d1d5db', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-input-bg)' : '#f9fafb', fontWeight: 700, fontSize: 12, width: 60 }}>
+                              <td style={{ padding: '2px 4px', border: '1px solid transparent', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-input-bg)' : '#f9fafb', fontWeight: 700, fontSize: 12 }}>
                                 <Tag color={rowTotal >= (maxGrade * 0.5) ? 'green' : 'red'} style={{ margin: 0 }}>
                                   {formatGrade(rowTotal, enableRounding)}
                                 </Tag>

@@ -9,9 +9,10 @@ interface QualificationAttributes {
   inscriptionSubjectId: number;
   score: number;
   observations?: string;
+  remedialScore?: number;
 }
 
-interface QualificationCreationAttributes extends Optional<QualificationAttributes, 'id' | 'observations'> { }
+interface QualificationCreationAttributes extends Optional<QualificationAttributes, 'id' | 'observations' | 'remedialScore'> { }
 
 class Qualification extends Model<QualificationAttributes, QualificationCreationAttributes> implements QualificationAttributes {
   public id!: number;
@@ -19,6 +20,7 @@ class Qualification extends Model<QualificationAttributes, QualificationCreation
   public inscriptionSubjectId!: number;
   public score!: number;
   public observations!: string;
+  public remedialScore!: number;
 
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
@@ -44,6 +46,13 @@ Qualification.init(
     score: {
       type: DataTypes.DECIMAL(5, 2),
       allowNull: false,
+      validate: {
+        min: 0
+      }
+    },
+    remedialScore: {
+      type: DataTypes.DECIMAL(5, 2),
+      allowNull: true,
       validate: {
         min: 0
       }

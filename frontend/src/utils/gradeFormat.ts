@@ -21,15 +21,7 @@ export function formatGrade(grade: number | null | undefined, enableRounding: bo
     return '-';
   }
 
-  if (enableRounding) {
-    // Round to 1 decimal using standard rounding (10.5 → 11, 10.24 → 10.2)
-    const rounded = Math.round(numGrade * 10) / 10;
-    // Format to 1 decimal place
-    return rounded.toFixed(1);
-  } else {
-    // Format to 2 decimals (current behavior)
-    return numGrade.toFixed(2);
-  }
+  return String(Math.round(numGrade));
 }
 
 /**
@@ -49,11 +41,5 @@ export function formatGradeValue(grade: number | null | undefined, enableRoundin
     return 0;
   }
 
-  if (enableRounding) {
-    // Round to 1 decimal using standard rounding (10.5 → 11, 10.24 → 10.2)
-    return Math.round(numGrade * 10) / 10;
-  } else {
-    // Return original value
-    return numGrade;
-  }
+  return Math.round(numGrade);
 }

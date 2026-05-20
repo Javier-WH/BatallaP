@@ -433,15 +433,15 @@ const ManageGrades: React.FC = () => {
                       </div>
                     </div>
                     <div style={{ overflowX: 'auto', maxHeight: 'calc(100vh - 400px)' }}>
-                      <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', fontSize: 12, border: '1px solid #d1d5db' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, border: '1px solid #d1d5db' }}>
                         <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
                           <tr>
-                            <th style={{ padding: '4px 6px', border: '1px solid #d1d5db', textAlign: 'center', width: 100, backgroundColor: '#e5e7eb', fontWeight: 700, fontSize: 11 }}>Cédula</th>
-                            <th style={{ padding: '4px 6px', border: '1px solid #d1d5db', textAlign: 'left', width: 180, backgroundColor: '#e5e7eb', fontWeight: 700, fontSize: 11 }}>Estudiante</th>
+                            <th style={{ padding: '4px 6px', border: '1px solid transparent', textAlign: 'center', backgroundColor: '#e5e7eb', fontWeight: 700, fontSize: 11, whiteSpace: 'nowrap' }}>Cédula</th>
+                            <th style={{ padding: '4px 6px', border: '1px solid transparent', textAlign: 'left', backgroundColor: '#e5e7eb', fontWeight: 700, fontSize: 11, whiteSpace: 'nowrap' }}>Estudiante</th>
                             {evaluationPlan.map(item => {
                               const stats = evalStats.get(item.id);
                               return (
-                              <th key={item.id} colSpan={2} style={{ padding: '3px 4px', border: '1px solid #d1d5db', textAlign: 'center', width: 120, backgroundColor: '#e5e7eb', verticalAlign: 'top' }}>
+                              <th key={item.id} colSpan={2} style={{ padding: '3px 4px', border: '1px solid transparent', textAlign: 'center', backgroundColor: '#e5e7eb', verticalAlign: 'top', whiteSpace: 'nowrap' }}>
                                 <div style={{ fontSize: 9, color: '#b45309', lineHeight: 1.2 }}>
                                   Apl. {stats?.failed ?? 0} ({stats?.failedPct ?? 0}%)
                                 </div>
@@ -461,7 +461,7 @@ const ManageGrades: React.FC = () => {
                               </th>
                               );
                             })}
-                            <th style={{ padding: '3px 6px', border: '1px solid #d1d5db', textAlign: 'center', width: 60, backgroundColor: '#e5e7eb', fontWeight: 700, fontSize: 11 }}>Total</th>
+                            <th style={{ padding: '3px 6px', border: '1px solid transparent', textAlign: 'center', backgroundColor: '#e5e7eb', fontWeight: 700, fontSize: 11, whiteSpace: 'nowrap' }}>Total</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -482,17 +482,17 @@ const ManageGrades: React.FC = () => {
 
                               return (
                                 <tr key={enrollment.id}>
-                                  <td style={{ padding: '2px 4px', border: '1px solid #d1d5db', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-input-bg)' : '#f9fafb', fontSize: 11, fontWeight: 500 }}>
+                                  <td style={{ padding: '2px 4px', border: '1px solid transparent', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-input-bg)' : '#f9fafb', fontSize: 11, fontWeight: 500 }}>
                                     {enrollment.student?.document || '-'}
                                   </td>
-                                  <td style={{ padding: '2px 6px', border: '1px solid #d1d5db', textAlign: 'left', background: rowIndex % 2 === 0 ? 'var(--color-input-bg)' : '#f9fafb', fontSize: 12 }}>
+                                  <td style={{ padding: '2px 6px', border: '1px solid transparent', textAlign: 'left', background: rowIndex % 2 === 0 ? 'var(--color-input-bg)' : '#f9fafb', fontSize: 12 }}>
                                     {enrollment.student?.lastName}, {enrollment.student?.firstName}
                                   </td>
                                    {evaluationPlan.map((item, colIndex) => {
                                     const q = studentQuals.find((sq: Qualification) => sq.evaluationPlanId === item.id);
                                     return (
                                       <>
-                                      <td key={`${item.id}-a`} className="grading-cell" style={{ padding: '2px', border: '1px solid #d1d5db', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-input-bg)' : '#f9fafb', width: 60 }}>
+                                      <td key={`${item.id}-a`} className="grading-cell" style={{ padding: '2px', border: '1px solid transparent', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-input-bg)' : '#f9fafb', width: '50px' }}>
                                         <input
                                           type="number"
                                           min={0}
@@ -500,16 +500,18 @@ const ManageGrades: React.FC = () => {
                                           step={1}
                                           inputMode="numeric"
                                           pattern="[0-9]*"
-                                          defaultValue={q ? q.score : ''}
+                                          defaultValue={q?.score != null ? Math.round(q.score) : ''}
                                           key={`${enrollment.id}-${item.id}`}
                                           style={{
                                             width: '48px',
                                             textAlign: 'center',
-                                            border: '1px solid #d1d5db',
+                                            border: '1px solid transparent',
                                             borderRadius: 4,
                                             fontSize: 12,
                                             padding: 0,
                                             outline: 'none',
+                                            color: q?.score != null && q.score > 0 && q.score < passingGrade ? '#dc2626' : undefined,
+                                            fontWeight: q?.score != null && q.score > 0 && q.score < passingGrade ? 700 : undefined,
                                           }}
                                           disabled={isSelectedTermBlocked}
                                           onKeyDown={(e) => {
@@ -521,7 +523,7 @@ const ManageGrades: React.FC = () => {
                                             (e.target as HTMLInputElement).value = (e.target as HTMLInputElement).value.replace(/[^0-9]/g, '');
                                           }}
                                           onBlur={(e) => {
-                                            e.target.style.borderColor = '#d1d5db';
+                                            e.target.style.borderColor = 'transparent';
                                             e.target.style.boxShadow = 'none';
                                             const raw = e.target.value.replace(/[^0-9]/g, '');
                                             e.target.value = raw;
@@ -544,11 +546,11 @@ const ManageGrades: React.FC = () => {
                                           }}
                                         />
                                       </td>
-                                      <td key={`${item.id}-b`} style={{ padding: '2px', border: '1px solid #d1d5db', background: rowIndex % 2 === 0 ? 'var(--color-input-bg)' : '#f9fafb', width: 60 }}></td>
+                                      <td key={`${item.id}-b`} style={{ padding: '2px', border: '1px solid transparent', background: rowIndex % 2 === 0 ? 'var(--color-input-bg)' : '#f9fafb', width: '50px' }}></td>
                                       </>
                                     );
                                   })}
-                                  <td style={{ padding: '2px 4px', border: '1px solid #d1d5db', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-input-bg)' : '#f9fafb', fontWeight: 700, fontSize: 12, width: 60 }}>
+                                  <td style={{ padding: '2px 4px', border: '1px solid transparent', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-input-bg)' : '#f9fafb', fontWeight: 700, fontSize: 12 }}>
                                     <Tag color={rowTotal >= (maxGrade * 0.5) ? 'green' : 'red'}>
                                       {formatGrade(rowTotal, enableRounding)}
                                     </Tag>

@@ -312,7 +312,7 @@ export const getQualifications = async (req: Request, res: Response) => {
 
 export const saveQualification = async (req: Request, res: Response) => {
   try {
-    const { evaluationPlanId, inscriptionSubjectId, score, observations, inscriptionId } = req.body;
+    const { evaluationPlanId, inscriptionSubjectId, score, remedialScore, observations, inscriptionId } = req.body;
 
     let finalInscriptionSubjectId = inscriptionSubjectId;
 
@@ -358,16 +358,27 @@ export const saveQualification = async (req: Request, res: Response) => {
     // Check if exists to update, else create
     const [qualification, created] = await Qualification.findOrCreate({
       where: { evaluationPlanId, inscriptionSubjectId: finalInscriptionSubjectId },
-      defaults: { evaluationPlanId, inscriptionSubjectId: finalInscriptionSubjectId, score, observations }
+      defaults: {
+        evaluationPlanId,
+        inscriptionSubjectId: finalInscriptionSubjectId,
+        score: score !== undefined ? score : 0,
+        remedialScore: remedialScore !== undefined ? remedialScore : null,
+        observations
+      }
     });
 
     if (!created) {
       const previousScore = qualification.score;
-      await qualification.update({ score, observations });
+      
+      const updateData: any = { observations };
+      if (score !== undefined) updateData.score = score;
+      if (remedialScore !== undefined) updateData.remedialScore = remedialScore;
+
+      await qualification.update(updateData);
 
       // Record audit if score changed
       const sessionUser = (req.session as any).user;
-      if (sessionUser && Number(previousScore) !== Number(score)) {
+      if (sessionUser && score !== undefined && Number(previousScore) !== Number(score)) {
         await QualificationAudit.create({
           qualificationId: qualification.id,
           editedBy: sessionUser.id,
