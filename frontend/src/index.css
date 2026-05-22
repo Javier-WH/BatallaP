@@ -32,19 +32,38 @@
 }
 
 @layer components {
+  /* === MINIMALIST CARD SURFACE === */
+  /* Standard card: white/contentBg, subtle 1px border, soft shadow, rounded */
+  .app-card {
+    background-color: var(--color-content-bg);
+    border: 1px solid rgba(15, 23, 42, 0.08);
+    border-radius: 16px;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 1px 3px rgba(15, 23, 42, 0.02);
+  }
+
+  .app-card-hover {
+    transition: box-shadow 0.2s ease, border-color 0.2s ease;
+  }
+  .app-card-hover:hover {
+    border-color: rgba(15, 23, 42, 0.14);
+    box-shadow: 0 4px 12px rgba(15, 23, 42, 0.06), 0 2px 4px rgba(15, 23, 42, 0.04);
+  }
+
   .glass-card {
-    background-color: color-mix(in srgb, var(--color-content-bg) 70%, transparent);
-    @apply backdrop-blur-md border border-white/20 shadow-xl rounded-2xl;
+    background-color: var(--color-content-bg);
+    border: 1px solid rgba(15, 23, 42, 0.08);
+    border-radius: 16px;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 1px 3px rgba(15, 23, 42, 0.02);
   }
 
   .luxury-button {
-    background-color: var(--color-luxury-sidebar);
-    @apply px-6 py-2 text-header-text font-medium rounded-xl hover:opacity-90 transition-all shadow-lg active:scale-95;
+    background-color: var(--color-accent);
+    @apply px-6 py-2 text-header-text font-medium rounded-xl hover:opacity-90 transition-all shadow-sm active:scale-95;
   }
 
   .premium-sidebar {
     background-color: var(--color-luxury-sidebar);
-    @apply h-screen text-header-text shadow-2xl transition-all duration-300;
+    @apply h-screen text-header-text shadow-lg transition-all duration-300;
   }
 
   .nav-item {
@@ -54,16 +73,19 @@
   .nav-item-active {
     @apply flex items-center gap-3 px-4 py-3 rounded-xl mx-2 my-1 bg-white/10 text-header-text shadow-lg cursor-pointer;
   }
-  
+
   .luxury-modal .ant-modal-content {
-      @apply !rounded-3xl !shadow-2xl !border !border-white/40 !overflow-hidden;
-  }
-  
-  .luxury-modal .ant-modal-header {
-      @apply bg-white/50 backdrop-blur-sm border-b border-gray-100 p-6;
+      @apply !rounded-2xl !shadow-xl !overflow-hidden;
+      border: 1px solid rgba(15, 23, 42, 0.08) !important;
   }
 
-  /* Dynamic panel headers (Settings, Cards, etc.) */
+  .luxury-modal .ant-modal-header {
+      background-color: var(--color-content-bg) !important;
+      border-bottom: 1px solid rgba(15, 23, 42, 0.06) !important;
+      @apply p-6;
+  }
+
+  /* Dynamic panel headers (page heroes / dark hero band) */
   .theme-panel-header {
     background-color: var(--color-panel-header);
     color: var(--color-header-text);
@@ -78,41 +100,129 @@
   .theme-content-bg {
     background-color: var(--color-content-bg);
   }
+
+  /* Page header (title + subtitle block above content) */
+  .app-page-header {
+    @apply flex flex-col gap-1 mb-6;
+  }
+  .app-page-header h1 {
+    color: var(--color-text-main);
+    @apply text-2xl md:text-3xl font-black tracking-tight;
+  }
+  .app-page-header p {
+    color: var(--color-text-muted);
+    @apply font-medium text-sm;
+  }
 }
 
-/* Ant Design overrides for luxury feel */
+/* Ant Design overrides for consistent minimalist look */
 :root {
   --ant-primary-color: var(--color-brand-primary);
-  --ant-border-radius-base: 0px !important;
-  --ant-box-shadow-base: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
 }
 
+/* === CARDS: minimalist white container with subtle border === */
 .ant-card {
-  @apply rounded-2xl border-none shadow-sm;
+  background-color: var(--color-content-bg) !important;
+  border: 1px solid rgba(15, 23, 42, 0.08) !important;
+  border-radius: 16px !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 1px 3px rgba(15, 23, 42, 0.02) !important;
+}
+
+.ant-card-head {
+  border-bottom: 1px solid rgba(15, 23, 42, 0.06) !important;
+  background-color: transparent !important;
+  min-height: 52px !important;
+}
+
+.ant-card-head-title {
+  color: var(--color-text-main) !important;
+  font-weight: 700 !important;
 }
 
 .ant-btn {
-  @apply rounded-xl font-medium;
+  border-radius: 10px !important;
+  font-weight: 500 !important;
 }
 
+/* Form inputs: consistent rounded look (NOT square) — matches card radius */
 .ant-select-selector,
 .ant-input,
 .ant-input-number,
+.ant-input-affix-wrapper,
 .ant-picker {
-  @apply !rounded-none border-gray-300 hover:border-blue-400 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 transition-all duration-300;
+  border-radius: 10px !important;
+  border-color: rgba(15, 23, 42, 0.12) !important;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease !important;
 }
 
-.ant-table-thead>tr>th {
-  @apply !bg-slate-50/50;
+.ant-select-selector:hover,
+.ant-input:hover,
+.ant-input-number:hover,
+.ant-input-affix-wrapper:hover,
+.ant-picker:hover {
+  border-color: var(--color-accent) !important;
+}
+
+.ant-input:focus,
+.ant-input-focused,
+.ant-input-number-focused,
+.ant-input-affix-wrapper-focused,
+.ant-picker-focused {
+  border-color: var(--color-accent) !important;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 15%, transparent) !important;
+}
+
+/* === TABLES: well-defined columns and rows, themed === */
+.ant-table {
+  background-color: var(--color-content-bg) !important;
+  border-radius: 12px !important;
+  overflow: hidden;
+}
+
+.ant-table-thead > tr > th {
+  background-color: color-mix(in srgb, var(--color-text-main) 4%, var(--color-content-bg)) !important;
+  color: var(--color-text-main) !important;
+  font-weight: 600 !important;
+  font-size: 12px !important;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08) !important;
+}
+
+.ant-table-tbody > tr > td {
+  border-bottom: 1px solid rgba(15, 23, 42, 0.06) !important;
+  color: var(--color-text-main) !important;
+}
+
+.ant-table-tbody > tr.ant-table-row:hover > td,
+.ant-table-tbody > tr.ant-table-row-hover > td {
+  background-color: color-mix(in srgb, var(--color-accent) 6%, transparent) !important;
+}
+
+/* Table column separators (subtle vertical lines) */
+.ant-table-thead > tr > th:not(:last-child)::before {
+  background-color: rgba(15, 23, 42, 0.08) !important;
+  width: 1px !important;
+  height: 1.4em !important;
 }
 
 .ant-table-bordered .ant-table-thead > tr > th,
 .ant-table-bordered .ant-table-tbody > tr > td {
-  border-color: #d1d5db !important;
+  border-color: rgba(15, 23, 42, 0.08) !important;
 }
 
 .ant-table-bordered .ant-table-tbody > tr.ant-table-row:hover > td {
-  background-color: #e8f0fe !important;
+  background-color: color-mix(in srgb, var(--color-accent) 6%, transparent) !important;
+}
+
+/* Table footer / pagination block */
+.ant-table-pagination.ant-pagination {
+  margin: 16px !important;
+}
+
+/* List items: subtle separation */
+.ant-list-item {
+  border-bottom: 1px solid rgba(15, 23, 42, 0.06) !important;
 }
 
 .grading-cell .ant-input-number-input {
@@ -190,14 +300,14 @@ input[type=number] {
 
 /* Global Button Styling using Theme Variables (matched to Tabs logic) */
 /* Inactive/Default buttons use "Color Inactivo" for background and "Texto Base" for text */
-.ant-btn:not(.ant-btn-primary):not(.ant-btn-text):not(.ant-btn-link) {
+.ant-btn:not(.ant-btn-primary):not(.ant-btn-text):not(.ant-btn-link):not(.ant-btn-dangerous) {
   background-color: var(--color-inactive) !important;
   color: var(--color-text-main) !important;
   border-color: transparent !important;
 }
 
-.ant-btn:not(.ant-btn-primary):not(.ant-btn-text):not(.ant-btn-link):hover {
-  opacity: 0.8 !important;
+.ant-btn:not(.ant-btn-primary):not(.ant-btn-text):not(.ant-btn-link):not(.ant-btn-dangerous):hover {
+  opacity: 0.85 !important;
 }
 
 /* Active/Primary buttons use "Color Encabezado Secundario" for background and "Texto sobre Oscuros" for text */

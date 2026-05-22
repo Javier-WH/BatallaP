@@ -157,6 +157,7 @@ const SearchUsers: React.FC<{ initialRoleFilter?: string }> = ({ initialRoleFilt
             type="link"
             icon={<EditOutlined />}
             disabled={!editable}
+            style={{ color: editable ? 'var(--color-accent)' : undefined }}
             onClick={() => {
               if (!editable) return;
               navigate(`${moduleBasePath}/edit/${record.id}`, { 

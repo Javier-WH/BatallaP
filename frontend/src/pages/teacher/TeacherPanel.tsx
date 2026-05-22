@@ -687,7 +687,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
   return (
     <div className="h-full overflow-y-auto theme-page-bg p-4 md:p-8">
       <style>{`
-        .grading-row:hover { background-color: #f8fafc !important; }
+        .grading-row:hover { background-color: color-mix(in srgb, var(--color-accent) 4%, transparent) !important; }
         .grading-row td { transition: background-color 0.2s; }
         .grading-cell .ant-input-number-input { text-align: center !important; padding: 0 !important; }
         @keyframes flash-red {
@@ -695,24 +695,24 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
           50% { outline: 3px solid transparent; }
         }
         .grade-invalid { animation: flash-red 0.5s ease-in-out 3; }
-        .ant-table-tbody > tr.ant-table-row:hover > td { background-color: #e8f0fe !important; }
+        /* table row hover handled by global theme rules */
         /* Luxury Scrollbar */
         .grading-table-container::-webkit-scrollbar { height: 8px; width: 8px; }
-        .grading-table-container::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
-        .grading-table-container::-webkit-scrollbar-track { background: #f1f5f9; }
+        .grading-table-container::-webkit-scrollbar-thumb { background: rgba(15, 23, 42, 0.18); border-radius: 4px; }
+        .grading-table-container::-webkit-scrollbar-track { background: rgba(15, 23, 42, 0.04); }
         
         .luxury-segmented .ant-segmented-item-selected {
-          background-color: var(--color-brand-primary, #1e40af) !important;
+          background-color: var(--color-accent) !important;
           color: white !important;
           font-weight: 600;
           box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
         }
         .ant-table-thead > tr > th {
-          background-color: color-mix(in srgb, var(--color-input-bg), black 5%) !important;
+          background-color: color-mix(in srgb, var(--color-text-main) 4%, var(--color-content-bg)) !important;
           color: var(--color-text-main) !important;
         }
         .ant-table-tbody > tr > td {
-          background-color: var(--color-input-bg) !important;
+          background-color: var(--color-content-bg) !important;
         }
       `}</style>
       
@@ -955,16 +955,16 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                 </div>
                 <Card bodyStyle={{ padding: 0 }} style={{ overflow: 'hidden', backgroundColor: 'var(--color-input-bg)', border: 'none' }}>
                 <div style={{ overflowX: 'auto', maxHeight: 'calc(100vh - 350px)' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, border: '1px solid #d1d5db' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, border: '1px solid var(--color-text-muted)' }}>
                     <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
                       <tr>
-                        <th style={{ padding: '4px 6px', border: '1px solid #d1d5db', textAlign: 'center', backgroundColor: '#e5e7eb', fontWeight: 700, fontSize: 11, whiteSpace: 'nowrap' }}>Cédula</th>
-                        <th style={{ padding: '4px 6px', border: '1px solid #d1d5db', textAlign: 'left', backgroundColor: '#e5e7eb', fontWeight: 700, fontSize: 11, whiteSpace: 'nowrap' }}>Estudiante</th>
+                        <th style={{ padding: '4px 6px', border: '1px solid var(--color-text-muted)', textAlign: 'center', backgroundColor: '#e5e7eb', fontWeight: 700, fontSize: 11, whiteSpace: 'nowrap' }}>Cédula</th>
+                        <th style={{ padding: '4px 6px', border: '1px solid var(--color-text-muted)', textAlign: 'left', backgroundColor: '#e5e7eb', fontWeight: 700, fontSize: 11, whiteSpace: 'nowrap' }}>Estudiante</th>
                         {evaluationPlan.map((item) => {
                           const stats = evalStats.get(item.id);
                           const hasRemedial = (stats?.failedPct ?? 0) >= remedialFailurePercentage;
                           return (
-                          <th key={item.id} colSpan={hasRemedial ? 2 : 1} style={{ padding: '3px 4px', border: '1px solid #d1d5db', textAlign: 'center', backgroundColor: '#e5e7eb', verticalAlign: 'top', whiteSpace: 'nowrap' }}>
+                          <th key={item.id} colSpan={hasRemedial ? 2 : 1} style={{ padding: '3px 4px', border: '1px solid var(--color-text-muted)', textAlign: 'center', backgroundColor: '#e5e7eb', verticalAlign: 'top', whiteSpace: 'nowrap' }}>
                             <div style={{ fontSize: 9, color: '#b45309', lineHeight: 1.2 }}>
                               Apl. {stats?.failed ?? 0} ({stats?.failedPct ?? 0}%)
                             </div>
@@ -978,13 +978,13 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                             <div style={{ fontSize: 9, fontWeight: 700, lineHeight: 1.2, marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.identificador}>
                               {item.identificador || '—'}
                             </div>
-                            <div style={{ fontSize: 9, color: '#6b7280', lineHeight: 1.2, marginTop: 1 }}>
+                            <div style={{ fontSize: 9, color: 'var(--color-text-muted)', lineHeight: 1.2, marginTop: 1 }}>
                               {item.percentage}%
                             </div>
                           </th>
                           );
                         })}
-                        <th style={{ padding: '3px 6px', border: '1px solid #d1d5db', textAlign: 'center', backgroundColor: '#e5e7eb', fontWeight: 700, fontSize: 11, whiteSpace: 'nowrap' }}>Total</th>
+                        <th style={{ padding: '3px 6px', border: '1px solid var(--color-text-muted)', textAlign: 'center', backgroundColor: '#e5e7eb', fontWeight: 700, fontSize: 11, whiteSpace: 'nowrap' }}>Total</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1008,10 +1008,10 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
 
                           return (
                             <tr key={enrollment.id} className="grading-row">
-                              <td style={{ padding: '2px 4px', border: '1px solid #d1d5db', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-input-bg)' : '#f9fafb', fontSize: 11, fontWeight: 500 }}>
+                              <td style={{ padding: '2px 4px', border: '1px solid var(--color-text-muted)', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-input-bg)' : '#f9fafb', fontSize: 11, fontWeight: 500 }}>
                                 {enrollment.student?.document || '-'}
                               </td>
-                              <td style={{ padding: '2px 6px', border: '1px solid #d1d5db', textAlign: 'left', background: rowIndex % 2 === 0 ? 'var(--color-input-bg)' : '#f9fafb', fontSize: 12 }}>
+                              <td style={{ padding: '2px 6px', border: '1px solid var(--color-text-muted)', textAlign: 'left', background: rowIndex % 2 === 0 ? 'var(--color-input-bg)' : '#f9fafb', fontSize: 12 }}>
                                 {enrollment.student?.lastName}, {enrollment.student?.firstName}
                               </td>
                               {evaluationPlan.map((item, colIndex) => {
@@ -1023,7 +1023,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
 
                                 return (
                                   <React.Fragment key={item.id}>
-                                  <td key={`${item.id}-a`} className="grading-cell" style={{ padding: '2px', border: '1px solid #d1d5db', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-input-bg)' : '#f9fafb', width: '50px' }}>
+                                  <td key={`${item.id}-a`} className="grading-cell" style={{ padding: '2px', border: '1px solid var(--color-text-muted)', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-input-bg)' : '#f9fafb', width: '50px' }}>
                                     <input
                                       type="number"
                                       id={`grade-${rowIndex}-${colIndex}`}
@@ -1037,7 +1037,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                                       style={{
                                         width: '48px',
                                         textAlign: 'center',
-                                        border: '1px solid #d1d5db',
+                                        border: '1px solid var(--color-text-muted)',
                                         borderRadius: 4,
                                         fontSize: 12,
                                         padding: 0,
@@ -1122,7 +1122,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                                     />
                                   </td>
                                   {hasRemedial && (
-                                    <td key={`${item.id}-b`} className="grading-cell remedial-cell" style={{ padding: '2px', border: '1px solid #d1d5db', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-input-bg)' : '#f9fafb', width: '50px' }}>
+                                    <td key={`${item.id}-b`} className="grading-cell remedial-cell" style={{ padding: '2px', border: '1px solid var(--color-text-muted)', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-input-bg)' : '#f9fafb', width: '50px' }}>
                                       <Tooltip
                                         mouseEnterDelay={0}
                                         title={
@@ -1240,7 +1240,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                                   </React.Fragment>
                                 );
                               })}
-                              <td style={{ padding: '2px 4px', border: '1px solid #d1d5db', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-input-bg)' : '#f9fafb', fontWeight: 700, fontSize: 12 }}>
+                              <td style={{ padding: '2px 4px', border: '1px solid var(--color-text-muted)', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-input-bg)' : '#f9fafb', fontWeight: 700, fontSize: 12 }}>
                                 <Tag color={rowTotal >= (maxGrade * 0.5) ? 'green' : 'red'} style={{ margin: 0 }}>
                                   {formatGrade(rowTotal, enableRounding)}
                                 </Tag>

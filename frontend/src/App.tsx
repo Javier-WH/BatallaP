@@ -95,69 +95,83 @@ const PublicRoute = ({ children }: { children: JSX.Element }) => {
 const ThemeWrapper = ({ children }: { children: React.ReactNode }) => {
   const { settings } = useSchool();
 
+  const primary = settings.themePrimaryColor || '#1e40af';
+  const accent = settings.themeAccentColor || primary;
+  const contentBg = settings.themeContentBg || '#ffffff';
+  const inputBg = settings.themeInputBg || '#ffffff';
+  const textMain = settings.themeTextColor || '#0f172a';
+  const inactive = settings.themeSecondaryColor || '#e2e8f0';
+  const headerText = settings.themeHeaderText || '#ffffff';
+
   return (
     <ConfigProvider
       theme={{
         token: {
-          colorPrimary: settings.themePrimaryColor || '#1e40af',
-          colorInfo: settings.themeSecondaryColor || '#0ea5e9',
-          colorTextBase: settings.themeTextColor || '#0f172a',
+          colorPrimary: primary,
+          colorInfo: settings.themeBrandSecondary || '#0ea5e9',
+          colorTextBase: textMain,
           colorBgLayout: settings.themePageBg || '#f8fafc',
-          colorBgContainer: settings.themeContentBg || '#ffffff',
+          colorBgContainer: contentBg,
+          colorBorder: 'rgba(15, 23, 42, 0.08)',
+          colorBorderSecondary: 'rgba(15, 23, 42, 0.06)',
+          borderRadius: 12,
+          borderRadiusLG: 16,
+          fontFamily: 'Inter, system-ui, sans-serif',
         },
         components: {
           Layout: {
-            headerBg: settings.themePanelHeader || '#0f172a',
+            headerBg: contentBg,
             siderBg: settings.themeSidebarColor || '#0f172a',
+            bodyBg: settings.themePageBg || '#f8fafc',
           },
           Checkbox: {
-            colorPrimary: settings.themeAccentColor || '#1e40af',
-            colorPrimaryHover: settings.themeAccentColor || '#1e40af',
-            colorBorder: settings.themeSecondaryColor || '#0ea5e9',
+            colorPrimary: accent,
+            colorPrimaryHover: accent,
           },
           Radio: {
-            colorPrimary: settings.themeAccentColor || '#1e40af',
-            buttonBg: settings.themeSecondaryColor || '#e2e8f0',
-            buttonCheckedBg: settings.themeAccentColor || '#1e40af',
-            buttonColor: settings.themeTextColor || '#0f172a',
-            colorText: settings.themeTextColor || '#0f172a',
+            colorPrimary: accent,
+            buttonBg: inactive,
+            buttonCheckedBg: accent,
+            buttonColor: textMain,
+            colorText: textMain,
           },
           Segmented: {
-            itemSelectedBg: settings.themeAccentColor || '#1e40af',
-            itemSelectedColor: settings.themeHeaderText || '#ffffff',
-            trackBg: settings.themeSecondaryColor || '#e2e8f0',
-            itemColor: settings.themeTextColor || '#0f172a',
+            itemSelectedBg: accent,
+            itemSelectedColor: headerText,
+            trackBg: inactive,
+            itemColor: textMain,
           },
-          DatePicker: {
-            colorBgContainer: settings.themeInputBg || '#ffffff',
-          },
-          Input: {
-            colorBgContainer: settings.themeInputBg || '#ffffff',
-          },
-          InputNumber: {
-            colorBgContainer: settings.themeInputBg || '#ffffff',
-          },
-          Select: {
-            colorBgContainer: settings.themeInputBg || '#ffffff',
-          },
+          DatePicker: { colorBgContainer: inputBg },
+          Input: { colorBgContainer: inputBg },
+          InputNumber: { colorBgContainer: inputBg },
+          Select: { colorBgContainer: inputBg },
           Table: {
-            colorBgContainer: settings.themeInputBg || '#ffffff',
-            headerBg: 'color-mix(in srgb, ' + (settings.themeInputBg || '#ffffff') + ', black 5%)',
+            colorBgContainer: contentBg,
+            headerBg: 'color-mix(in srgb, ' + textMain + ' 4%, ' + contentBg + ')',
+            headerColor: textMain,
+            rowHoverBg: 'color-mix(in srgb, ' + accent + ' 6%, transparent)',
+            borderColor: 'rgba(15, 23, 42, 0.06)',
+            headerSplitColor: 'rgba(15, 23, 42, 0.06)',
           },
           Card: {
-            colorBgContainer: settings.themeBrandSecondary || '#ffffff',
+            colorBgContainer: contentBg,
+            colorBorderSecondary: 'rgba(15, 23, 42, 0.08)',
+          },
+          Modal: {
+            contentBg: contentBg,
+            headerBg: contentBg,
           },
           Menu: {
-            colorItemBg: settings.themeBrandSecondary || 'transparent',
-            colorSubItemBg: settings.themeBrandSecondary || 'transparent',
+            itemBg: 'transparent',
+            subMenuItemBg: 'transparent',
           },
           Pagination: {
-            colorPrimary: '#1677ff',
-            colorPrimaryHover: '#4096ff',
+            colorPrimary: primary,
+            colorPrimaryHover: accent,
           },
-          Empty: {
-            colorFill: '#1677ff',
-            color: '#1677ff',
+          Empty: {},
+          Tag: {
+            defaultBg: 'color-mix(in srgb, ' + textMain + ' 4%, ' + contentBg + ')',
           },
         }
       }}

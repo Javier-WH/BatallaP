@@ -85,7 +85,7 @@ const MasterDashboard: React.FC = () => {
   return (
     <div className="h-full overflow-y-auto pr-4">
       <div className="space-y-8 pb-8">
-        <div className="relative overflow-hidden rounded-3xl theme-panel-header p-8 md:p-12 text-header-text shadow-2xl">
+        <div className="relative overflow-hidden rounded-2xl theme-panel-header p-8 md:p-10 text-header-text" style={{ border: '1px solid rgba(255,255,255,0.06)' }}>
           <div className="relative z-10 space-y-4 max-w-3xl">
             <Tag color="gold" className="border-none font-bold uppercase tracking-widest text-[10px] px-3 py-1 rounded-full">
               Acceso de Súper Usuario
@@ -97,16 +97,25 @@ const MasterDashboard: React.FC = () => {
               <span>Total usuarios: {users.total}</span>
             </div>
             <div className="pt-4 flex flex-wrap gap-4">
-              <Button type="primary" size="large" className="bg-white text-[var(--color-text-main)] border-none font-bold rounded-2xl h-12 px-8 flex items-center gap-2 group">
+              <Button
+                size="large"
+                className="font-semibold rounded-xl h-11 px-6 flex items-center gap-2 group border-none"
+                style={{ backgroundColor: 'var(--color-content-bg)', color: 'var(--color-text-main)' }}
+              >
                 Configurar Institución <ArrowRightOutlined className="group-hover:translate-x-1 transition-transform" />
               </Button>
-              <Button ghost size="large" className="border-white/20 text-white font-bold rounded-2xl h-12 px-8">
+              <Button
+                ghost
+                size="large"
+                className="font-semibold rounded-xl h-11 px-6"
+                style={{ borderColor: 'rgba(255,255,255,0.25)', color: 'var(--color-header-text)' }}
+              >
                 Ver Reportes Globales
               </Button>
             </div>
           </div>
-          <div className="absolute top-0 right-0 w-1/2 h-full bg-gradient-to-l from-brand-primary/20 to-transparent pointer-events-none" />
-          <div className="absolute -bottom-24 -right-24 w-96 h-96 bg-brand-primary/10 rounded-full blur-3xl" />
+          {/* subtle highlight, no heavy gradients */}
+          <div className="absolute -top-24 -right-24 w-80 h-80 rounded-full pointer-events-none opacity-20" style={{ background: 'radial-gradient(closest-side, var(--color-accent), transparent)' }} />
         </div>
 
         <Row gutter={[24, 24]}>

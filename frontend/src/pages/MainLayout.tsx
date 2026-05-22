@@ -195,22 +195,36 @@ const MainLayout: React.FC = () => {
       </Sider>
 
       <Layout className="h-screen flex flex-col">
-        <Header className="bg-white/80 backdrop-blur-md border-b border-slate-200 px-6 h-20 flex items-center justify-between z-50 shrink-0">
+        <Header
+          className="px-6 h-16 flex items-center justify-between z-50 shrink-0"
+          style={{
+            backgroundColor: 'var(--color-content-bg)',
+            borderBottom: '1px solid rgba(15, 23, 42, 0.08)',
+          }}
+        >
           <div className="flex items-center gap-4">
             {/* Global Context Indicator: Active Period */}
             {activePeriod && (
               <div className="ml-2 hidden md:flex items-center gap-3 animate-in fade-in slide-in-from-left-4 duration-500">
-                <div 
-                  className="w-10 h-10 rounded-xl flex items-center justify-center border border-blue-100/20 shadow-inner"
-                  style={{ backgroundColor: 'rgba(255, 255, 255, 0.15)' }}
+                <div
+                  className="w-9 h-9 rounded-lg flex items-center justify-center"
+                  style={{
+                    backgroundColor: 'color-mix(in srgb, var(--color-accent) 10%, transparent)',
+                  }}
                 >
-                  <CalendarOutlined className="text-lg" style={{ color: 'var(--color-panel-header)' }} />
+                  <CalendarOutlined className="text-base" style={{ color: 'var(--color-accent)' }} />
                 </div>
                 <div className="flex flex-col">
-                  <span className="text-[10px] font-black uppercase tracking-[0.2em] leading-none mb-1 opacity-70 text-header-text">
+                  <span
+                    className="text-[10px] font-bold uppercase tracking-[0.18em] leading-none mb-1"
+                    style={{ color: 'var(--color-text-muted)' }}
+                  >
                     Periodo Activo
                   </span>
-                  <span className="text-sm font-black leading-tight drop-shadow-sm text-header-text">
+                  <span
+                    className="text-sm font-bold leading-tight"
+                    style={{ color: 'var(--color-text-main)' }}
+                  >
                     {activePeriod.name}
                   </span>
                 </div>
@@ -220,14 +234,13 @@ const MainLayout: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-4">
-            <div className="h-8 w-[1px] bg-slate-200" />
             <Button
               danger
               type="primary"
               ghost
               icon={<LogoutOutlined />}
               onClick={handleLogout}
-              className="rounded-xl font-bold border-2"
+              className="rounded-lg font-semibold"
             >
               Cerrar Sesión
             </Button>

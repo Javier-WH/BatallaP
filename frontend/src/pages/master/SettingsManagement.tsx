@@ -588,7 +588,7 @@ const SettingsManagement: React.FC = () => {
               {/* Muted Text Color */}
               <div>
                 <label className="text-[var(--color-text-main)] font-bold block mb-2">Texto Secundario</label>
-                <p className="text-xs text-[var(--color-text-muted)] mb-3">Color para textos secundarios, descripciones y ayudas visuales.</p>
+                <p className="text-xs text-[var(--color-text-muted)] mb-3">Color para textos secundarios, descripciones, bordes de tabla, líneas divisorias y ayudas visuales.</p>
                 <div className="flex items-center gap-4">
                   <input
                     type="color"

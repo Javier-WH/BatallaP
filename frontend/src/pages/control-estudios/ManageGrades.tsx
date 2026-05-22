@@ -433,15 +433,15 @@ const ManageGrades: React.FC = () => {
                       </div>
                     </div>
                     <div style={{ overflowX: 'auto', maxHeight: 'calc(100vh - 400px)' }}>
-                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, border: '1px solid #d1d5db' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, border: '1px solid var(--color-text-muted)' }}>
                         <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
                           <tr>
-                            <th style={{ padding: '4px 6px', border: '1px solid transparent', textAlign: 'center', backgroundColor: '#e5e7eb', fontWeight: 700, fontSize: 11, whiteSpace: 'nowrap' }}>Cédula</th>
-                            <th style={{ padding: '4px 6px', border: '1px solid transparent', textAlign: 'left', backgroundColor: '#e5e7eb', fontWeight: 700, fontSize: 11, whiteSpace: 'nowrap' }}>Estudiante</th>
+                            <th style={{ padding: '4px 6px', border: '1px solid var(--color-text-muted)', textAlign: 'center', backgroundColor: '#e5e7eb', fontWeight: 700, fontSize: 11, whiteSpace: 'nowrap' }}>Cédula</th>
+                            <th style={{ padding: '4px 6px', border: '1px solid var(--color-text-muted)', textAlign: 'left', backgroundColor: '#e5e7eb', fontWeight: 700, fontSize: 11, whiteSpace: 'nowrap' }}>Estudiante</th>
                             {evaluationPlan.map(item => {
                               const stats = evalStats.get(item.id);
                               return (
-                              <th key={item.id} colSpan={2} style={{ padding: '3px 4px', border: '1px solid transparent', textAlign: 'center', backgroundColor: '#e5e7eb', verticalAlign: 'top', whiteSpace: 'nowrap' }}>
+                              <th key={item.id} colSpan={2} style={{ padding: '3px 4px', border: '1px solid var(--color-text-muted)', textAlign: 'center', backgroundColor: '#e5e7eb', verticalAlign: 'top', whiteSpace: 'nowrap' }}>
                                 <div style={{ fontSize: 9, color: '#b45309', lineHeight: 1.2 }}>
                                   Apl. {stats?.failed ?? 0} ({stats?.failedPct ?? 0}%)
                                 </div>
@@ -455,13 +455,13 @@ const ManageGrades: React.FC = () => {
                                 <div style={{ fontSize: 9, fontWeight: 700, lineHeight: 1.2, marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.identificador}>
                                   {item.identificador || '—'}
                                 </div>
-                                <div style={{ fontSize: 9, color: '#6b7280', lineHeight: 1.2, marginTop: 1 }}>
+                                <div style={{ fontSize: 9, color: 'var(--color-text-muted)', lineHeight: 1.2, marginTop: 1 }}>
                                   {item.percentage}%
                                 </div>
                               </th>
                               );
                             })}
-                            <th style={{ padding: '3px 6px', border: '1px solid transparent', textAlign: 'center', backgroundColor: '#e5e7eb', fontWeight: 700, fontSize: 11, whiteSpace: 'nowrap' }}>Total</th>
+                            <th style={{ padding: '3px 6px', border: '1px solid var(--color-text-muted)', textAlign: 'center', backgroundColor: '#e5e7eb', fontWeight: 700, fontSize: 11, whiteSpace: 'nowrap' }}>Total</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -482,17 +482,17 @@ const ManageGrades: React.FC = () => {
 
                               return (
                                 <tr key={enrollment.id}>
-                                  <td style={{ padding: '2px 4px', border: '1px solid transparent', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-input-bg)' : '#f9fafb', fontSize: 11, fontWeight: 500 }}>
+                                  <td style={{ padding: '2px 4px', border: '1px solid var(--color-text-muted)', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-input-bg)' : '#f9fafb', fontSize: 11, fontWeight: 500 }}>
                                     {enrollment.student?.document || '-'}
                                   </td>
-                                  <td style={{ padding: '2px 6px', border: '1px solid transparent', textAlign: 'left', background: rowIndex % 2 === 0 ? 'var(--color-input-bg)' : '#f9fafb', fontSize: 12 }}>
+                                  <td style={{ padding: '2px 6px', border: '1px solid var(--color-text-muted)', textAlign: 'left', background: rowIndex % 2 === 0 ? 'var(--color-input-bg)' : '#f9fafb', fontSize: 12 }}>
                                     {enrollment.student?.lastName}, {enrollment.student?.firstName}
                                   </td>
                                    {evaluationPlan.map((item, colIndex) => {
                                     const q = studentQuals.find((sq: Qualification) => sq.evaluationPlanId === item.id);
                                     return (
                                       <>
-                                      <td key={`${item.id}-a`} className="grading-cell" style={{ padding: '2px', border: '1px solid transparent', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-input-bg)' : '#f9fafb', width: '50px' }}>
+                                      <td key={`${item.id}-a`} className="grading-cell" style={{ padding: '2px', border: '1px solid var(--color-text-muted)', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-input-bg)' : '#f9fafb', width: '50px' }}>
                                         <input
                                           type="number"
                                           min={0}
@@ -546,11 +546,11 @@ const ManageGrades: React.FC = () => {
                                           }}
                                         />
                                       </td>
-                                      <td key={`${item.id}-b`} style={{ padding: '2px', border: '1px solid transparent', background: rowIndex % 2 === 0 ? 'var(--color-input-bg)' : '#f9fafb', width: '50px' }}></td>
+                                      <td key={`${item.id}-b`} style={{ padding: '2px', border: '1px solid var(--color-text-muted)', background: rowIndex % 2 === 0 ? 'var(--color-input-bg)' : '#f9fafb', width: '50px' }}></td>
                                       </>
                                     );
                                   })}
-                                  <td style={{ padding: '2px 4px', border: '1px solid transparent', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-input-bg)' : '#f9fafb', fontWeight: 700, fontSize: 12 }}>
+                                  <td style={{ padding: '2px 4px', border: '1px solid var(--color-text-muted)', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-input-bg)' : '#f9fafb', fontWeight: 700, fontSize: 12 }}>
                                     <Tag color={rowTotal >= (maxGrade * 0.5) ? 'green' : 'red'}>
                                       {formatGrade(rowTotal, enableRounding)}
                                     </Tag>
