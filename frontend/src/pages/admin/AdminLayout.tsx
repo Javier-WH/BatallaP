@@ -11,6 +11,7 @@ import {
   IdcardOutlined,
   LockOutlined,
   DownOutlined,
+  SettingOutlined,
 } from '@ant-design/icons';
 
 const NavButton: React.FC<{
@@ -48,8 +49,6 @@ const AdminLayout: React.FC = () => {
     { path: '/admin', icon: <DashboardOutlined />, label: 'Panel', tooltip: 'Panel Principal Admin' },
     { path: '/admin/matricular-estudiante', icon: <UserAddOutlined />, label: 'Matrícula', tooltip: 'Matriculación de Estudiantes' },
     { path: '/admin/directorio', icon: <TeamOutlined />, label: 'Directorio', tooltip: 'Directorio de Usuarios' },
-    { path: '/admin/planteles', icon: <BookOutlined />, label: 'Planteles', tooltip: 'Planteles Escolares' },
-    { path: '/admin/enrollment-questions', icon: <QuestionCircleOutlined />, label: 'Preguntas', tooltip: 'Encuesta de Inscripción' },
     { path: '/admin/permisos-edicion-notas', icon: <LockOutlined />, label: 'Permisos Notas', tooltip: 'Permisos de Edición de Notas' },
   ];
 
@@ -60,6 +59,13 @@ const AdminLayout: React.FC = () => {
   ];
 
   const isInscribirActive = location.pathname === '/admin/inscribir-estudiante' || location.pathname === '/admin/register-staff' || location.pathname === '/admin/registrar-representante';
+
+  const configItems: MenuProps['items'] = [
+    { key: '/admin/planteles', icon: <BookOutlined />, label: 'Planteles' },
+    { key: '/admin/enrollment-questions', icon: <QuestionCircleOutlined />, label: 'Preguntas' },
+  ];
+
+  const isConfigActive = location.pathname === '/admin/planteles' || location.pathname === '/admin/enrollment-questions';
 
   return (
     <div className="flex flex-col h-full min-h-0">
@@ -97,6 +103,29 @@ const AdminLayout: React.FC = () => {
             >
               <UserAddOutlined />
               <span className="text-sm">Inscribir</span>
+              <DownOutlined style={{ fontSize: 10 }} />
+            </Button>
+          </Dropdown>
+          <Dropdown
+            menu={{
+              items: configItems,
+              onClick: ({ key }) => navigate(key),
+            }}
+            trigger={['click']}
+          >
+            <Button
+              type="text"
+              style={{ border: 'none', boxShadow: 'none' }}
+              className={`
+                h-10 px-4 flex items-center gap-2 rounded-xl transition-all font-semibold
+                ${isConfigActive
+                  ? 'bg-brand-primary text-white shadow-lg shadow-blue-500/30'
+                  : 'text-slate-500 hover:bg-slate-100'
+                }
+              `}
+            >
+              <SettingOutlined />
+              <span className="text-sm">Configuración</span>
               <DownOutlined style={{ fontSize: 10 }} />
             </Button>
           </Dropdown>
