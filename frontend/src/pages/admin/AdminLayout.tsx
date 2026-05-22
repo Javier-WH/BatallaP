@@ -1,6 +1,7 @@
 import React from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { Button, Tooltip } from 'antd';
+import { Button, Tooltip, Dropdown } from 'antd';
+import type { MenuProps } from 'antd';
 import {
   DashboardOutlined,
   UserAddOutlined,
@@ -8,7 +9,8 @@ import {
   BookOutlined,
   QuestionCircleOutlined,
   IdcardOutlined,
-  LockOutlined
+  LockOutlined,
+  DownOutlined,
 } from '@ant-design/icons';
 
 const NavButton: React.FC<{
@@ -45,13 +47,19 @@ const AdminLayout: React.FC = () => {
   const tools = [
     { path: '/admin', icon: <DashboardOutlined />, label: 'Panel', tooltip: 'Panel Principal Admin' },
     { path: '/admin/matricular-estudiante', icon: <UserAddOutlined />, label: 'Matrícula', tooltip: 'Matriculación de Estudiantes' },
-    { path: '/admin/register-staff', icon: <TeamOutlined />, label: 'Personal', tooltip: 'Profesores y Representantes' },
-    { path: '/admin/registrar-representante', icon: <IdcardOutlined />, label: 'Nuevo Representante', tooltip: 'Registro de Representantes' },
     { path: '/admin/directorio', icon: <TeamOutlined />, label: 'Directorio', tooltip: 'Directorio de Usuarios' },
     { path: '/admin/planteles', icon: <BookOutlined />, label: 'Planteles', tooltip: 'Planteles Escolares' },
     { path: '/admin/enrollment-questions', icon: <QuestionCircleOutlined />, label: 'Preguntas', tooltip: 'Encuesta de Inscripción' },
     { path: '/admin/permisos-edicion-notas', icon: <LockOutlined />, label: 'Permisos Notas', tooltip: 'Permisos de Edición de Notas' },
   ];
+
+  const inscribirItems: MenuProps['items'] = [
+    { key: '/admin/inscribir-estudiante', icon: <UserAddOutlined />, label: 'Estudiante' },
+    { key: '/admin/register-staff', icon: <TeamOutlined />, label: 'Personal' },
+    { key: '/admin/registrar-representante', icon: <IdcardOutlined />, label: 'Representante' },
+  ];
+
+  const isInscribirActive = location.pathname === '/admin/inscribir-estudiante' || location.pathname === '/admin/register-staff' || location.pathname === '/admin/registrar-representante';
 
   return (
     <div className="flex flex-col h-full min-h-0">
@@ -69,6 +77,29 @@ const AdminLayout: React.FC = () => {
               onClick={() => navigate(tool.path)}
             />
           ))}
+          <Dropdown
+            menu={{
+              items: inscribirItems,
+              onClick: ({ key }) => navigate(key),
+            }}
+            trigger={['click']}
+          >
+            <Button
+              type="text"
+              style={{ border: 'none', boxShadow: 'none' }}
+              className={`
+                h-10 px-4 flex items-center gap-2 rounded-xl transition-all font-semibold
+                ${isInscribirActive
+                  ? 'bg-brand-primary text-white shadow-lg shadow-blue-500/30'
+                  : 'text-slate-500 hover:bg-slate-100'
+                }
+              `}
+            >
+              <UserAddOutlined />
+              <span className="text-sm">Inscribir</span>
+              <DownOutlined style={{ fontSize: 10 }} />
+            </Button>
+          </Dropdown>
         </div>
       </div>
 
