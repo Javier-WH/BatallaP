@@ -1,4 +1,6 @@
 import { Request, Response } from 'express';
+import fs from 'fs';
+import path from 'path';
 
 export const uploadLogo = async (req: Request, res: Response) => {
   try {
@@ -6,8 +8,16 @@ export const uploadLogo = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'No se ha enviado ninguna imagen' });
     }
 
-    // La imagen ya se guardó con el nombre 'institution_logo' + extensión
-    // No necesitamos guardar nada en la base de datos
+    // Clean up old logo files with different extensions
+    const uploadDir = path.join(__dirname, '../../public/uploads/images');
+    try {
+      const oldFiles = fs.readdirSync(uploadDir).filter(f => f.startsWith('institution_logo'));
+      oldFiles.forEach(f => {
+        if (f !== req.file!.filename) {
+          fs.unlinkSync(path.join(uploadDir, f));
+        }
+      });
+    } catch { /* safe to ignore */ }
 
     res.json({
       message: 'Logo subido exitosamente',

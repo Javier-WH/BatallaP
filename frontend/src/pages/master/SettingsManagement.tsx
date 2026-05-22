@@ -288,7 +288,8 @@ const SettingsManagement: React.FC = () => {
 
             <div className="space-y-4">
               <span className="text-[var(--color-text-main)] font-bold block mb-2">Escudo / Logo Oficial</span>
-              <Upload.Dragger
+              <Upload
+                dragger
                 name="logo"
                 showUploadList={false}
                 beforeUpload={(file) => {
@@ -304,9 +305,7 @@ const SettingsManagement: React.FC = () => {
                   const formData = new FormData();
                   formData.append('logo', file);
 
-                  api.post('/upload/logo', formData, {
-                    headers: { 'Content-Type': 'multipart/form-data' }
-                  })
+                  api.post('/upload/logo', formData)
                     .then(async () => {
                       message.success('Logo actualizado');
                       await refreshSettings();
@@ -342,7 +341,7 @@ const SettingsManagement: React.FC = () => {
                   </div>
                   </div>
                 )}
-              </Upload.Dragger>
+              </Upload>
             </div>
           </div>
 

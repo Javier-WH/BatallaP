@@ -14,7 +14,6 @@ router.post('/logo', upload.single('logo'), uploadLogo);
 router.get('/logo', (req: Request, res: Response) => {
   const uploadDir = path.join(__dirname, '../../public/uploads/images');
 
-  // Buscar archivos que empiecen con 'institution_logo'
   const files = fs.readdirSync(uploadDir).filter(file =>
     file.startsWith('institution_logo')
   );
@@ -23,7 +22,7 @@ router.get('/logo', (req: Request, res: Response) => {
     return res.status(404).json({ message: 'Logo no encontrado' });
   }
 
-  // Tomar el primer archivo encontrado
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
   const logoFile = path.join(uploadDir, files[0]);
   res.sendFile(logoFile);
 });
