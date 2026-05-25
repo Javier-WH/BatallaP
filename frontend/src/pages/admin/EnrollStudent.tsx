@@ -225,6 +225,8 @@ const getBase64 = (file: RcFile): Promise<string> =>
 const EnrollStudent: React.FC = () => {
   // State
   const [activePeriod, setActivePeriod] = useState<SchoolPeriod | null>(null);
+  const [allPeriods, setAllPeriods] = useState<SchoolPeriod[]>([]);
+  const [selectedPeriodId, setSelectedPeriodId] = useState<number | null>(null);
   const [enrollStructure, setEnrollStructure] = useState<EnrollStructureItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [venezuelaLocations, setVenezuelaLocations] = useState<VenezuelaState[]>([]);
@@ -633,6 +635,18 @@ const EnrollStudent: React.FC = () => {
     </Row>
   );
 
+  const handlePeriodChange = async (periodId: number) => {
+    setSelectedPeriodId(periodId);
+    setSelectedGradeId(null);
+    newStudentForm.setFieldsValue({ gradeId: undefined, sectionId: undefined });
+    try {
+      const structureRes = await api.get(`/academic/structure/${periodId}`);
+      setEnrollStructure(structureRes.data);
+    } catch {
+      message.error('Error al cargar estructura del período');
+    }
+  };
+
   // Load Active Period and its structure on mount
   useEffect(() => {
     const init = async () => {
@@ -640,6 +654,7 @@ const EnrollStudent: React.FC = () => {
       try {
         // 1. Get periods and find active
         const periodsRes = await api.get('/academic/periods');
+        setAllPeriods(periodsRes.data);
         const active = periodsRes.data.find((p: SchoolPeriod) => p.isActive);
 
         if (!active) {
@@ -649,6 +664,7 @@ const EnrollStudent: React.FC = () => {
         }
 
         setActivePeriod(active);
+        setSelectedPeriodId(active.id);
 
         // 2. Load structure for active period
         const structureRes = await api.get(`/academic/structure/${active.id}`);
@@ -884,7 +900,7 @@ const EnrollStudent: React.FC = () => {
 
   // Submit: New Student
   const handleNewStudentSubmit = async (values: NewStudentFormValues) => {
-    if (!activePeriod) {
+    if (!selectedPeriodId) {
       message.error('No hay periodo activo');
       return;
     }
@@ -904,7 +920,7 @@ const EnrollStudent: React.FC = () => {
 
       const payload = {
         ...values,
-        schoolPeriodId: activePeriod.id,
+        schoolPeriodId: selectedPeriodId,
         birthdate: values.birthdate ? (values.birthdate as dayjs.Dayjs).format('YYYY-MM-DD') : null,
         mother: values.mother ? { ...values.mother, birthdate: (values.mother as GuardianData).birthdate ? ((values.mother as GuardianData).birthdate as dayjs.Dayjs).format('YYYY-MM-DD') : null } : undefined,
         father: values.father ? { ...values.father, birthdate: (values.father as GuardianData).birthdate ? ((values.father as GuardianData).birthdate as dayjs.Dayjs).format('YYYY-MM-DD') : null } : undefined,
@@ -941,7 +957,7 @@ const EnrollStudent: React.FC = () => {
 
   // Submit: Existing Student
   const handleExistingStudentSubmit = async (values: Record<string, unknown>) => {
-    if (!activePeriod) {
+    if (!selectedPeriodId) {
       message.error('No hay periodo activo');
       return;
     }
@@ -949,7 +965,7 @@ const EnrollStudent: React.FC = () => {
     try {
       const response = await api.post('/inscriptions', {
         ...values,
-        schoolPeriodId: activePeriod.id,
+        schoolPeriodId: selectedPeriodId,
         enrollmentAnswers: transformAnswers(values.enrollmentAnswers as EnrollmentAnswerFormValues | undefined),
       });
       const reportUuid = response.data?.reportUuid as string | undefined;
@@ -1144,6 +1160,28 @@ const EnrollStudent: React.FC = () => {
                 <h4 style={{ color: '#1890ff', margin: '24px 0 16px', borderBottom: '1px solid #f0f0f0', paddingBottom: 8 }}>
                   Académico
                 </h4>
+                <Row gutter={16}>
+                  <Col span={8}>
+                    <Form.Item label="Período Escolar">
+                      <Select
+                        value={selectedPeriodId}
+                        onChange={(val) => handlePeriodChange(val)}
+                        placeholder="Seleccione período"
+                      >
+                      {allPeriods.filter(p => p.isActive || (activePeriod && p.startYear >= activePeriod.startYear)).map(p => {
+                        const isFuture = activePeriod && p.startYear > activePeriod.startYear;
+                        return (
+                        <Option key={p.id} value={p.id}>
+                          {p.name}
+                          {p.isActive && <Tag color="green" style={{ marginLeft: 8, fontSize: 10 }}>Activo</Tag>}
+                          {isFuture && <Tag color="blue" style={{ marginLeft: 8, fontSize: 10 }}>Preinscripción</Tag>}
+                        </Option>
+                        );
+                      })}
+                      </Select>
+                    </Form.Item>
+                  </Col>
+                </Row>
                 <Row gutter={16}>
                   <Col span={8}>
                     <Form.Item
@@ -1766,6 +1804,25 @@ const EnrollStudent: React.FC = () => {
                         : null
                   }
                 />
+              </Form.Item>
+
+              <Form.Item label="Período Escolar">
+                <Select
+                  value={selectedPeriodId}
+                  onChange={(val) => handlePeriodChange(val)}
+                  placeholder="Seleccione período"
+                >
+                  {allPeriods.filter(p => p.isActive || (activePeriod && p.startYear >= activePeriod.startYear)).map(p => {
+                    const isFuture = activePeriod && p.startYear > activePeriod.startYear;
+                    return (
+                    <Option key={p.id} value={p.id}>
+                      {p.name}
+                      {p.isActive && <Tag color="green" style={{ marginLeft: 8, fontSize: 10 }}>Activo</Tag>}
+                      {isFuture && <Tag color="blue" style={{ marginLeft: 8, fontSize: 10 }}>Preinscripción</Tag>}
+                    </Option>
+                    );
+                  })}
+                </Select>
               </Form.Item>
 
               <Row gutter={16}>
