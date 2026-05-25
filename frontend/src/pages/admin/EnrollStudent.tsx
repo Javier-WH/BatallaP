@@ -1098,7 +1098,25 @@ const EnrollStudent: React.FC = () => {
                   </Col>
                   <Col span={12}>
                     <Form.Item name="birthdate" label="Fecha Nacimiento" rules={[{ required: true }]}>
-                      <DatePicker style={{ width: '100%' }} format="YYYY-MM-DD" />
+                      <DatePicker style={{ width: '100%' }} format="YYYY-MM-DD" defaultPickerValue={dayjs().subtract(10, 'year')} />
+                    </Form.Item>
+                    <Form.Item noStyle shouldUpdate={(prev, cur) => prev.birthdate !== cur.birthdate}>
+                      {({ getFieldValue }) => {
+                        const bdate = getFieldValue('birthdate');
+                        if (!bdate) return null;
+                        const years = dayjs().diff(bdate, 'year');
+                        const months = dayjs().diff(bdate, 'month') % 12;
+                        const label = years > 0
+                          ? `${years} año${years !== 1 ? 's' : ''}${months > 0 ? ` y ${months} mes${months !== 1 ? 'es' : ''}` : ''}`
+                          : `${months} mes${months !== 1 ? 'es' : ''}`;
+                        return (
+                          <div style={{ marginTop: -8, marginBottom: 8 }}>
+                            <Tag color="blue" style={{ fontSize: 13, fontWeight: 600, borderRadius: 8 }}>
+                              {label}
+                            </Tag>
+                          </div>
+                        );
+                      }}
                     </Form.Item>
                   </Col>
                 </Row>
