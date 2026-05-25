@@ -925,7 +925,13 @@ const EnrollStudent: React.FC = () => {
         document: (() => {
           const docType = values.documentType as string;
           const doc = values.document as string;
-          if (docType === 'Cedula Escolar' || docType === 'Pasaporte') return doc;
+          const nationality = values.nationality as string;
+          if (docType === 'Pasaporte') return doc;
+          if (docType === 'Cedula Escolar') {
+            if (nationality === 'Venezolano') return doc ? `V${doc}` : doc;
+            if (nationality === 'Extranjero') return doc ? `E${doc}` : doc;
+            return doc;
+          }
           if (docType === 'Venezolano') return doc ? `V${doc}` : doc;
           if (docType === 'Extranjero') return doc ? `E${doc}` : doc;
           return doc;
@@ -1085,63 +1091,64 @@ const EnrollStudent: React.FC = () => {
                         initialValue="Venezolano"
                       >
                         <Select>
-                          <Option value="Venezolano">V</Option>
-                          <Option value="Extranjero">E</Option>
+                          <Option value="Venezolano">Venezolano</Option>
+                          <Option value="Extranjero">Extranjero</Option>
                         </Select>
                       </Form.Item>
                     </Col>
                   )}
                   <Col span={studentDocumentType === 'Cedula Escolar' ? 12 : 16}>
-                    <Form.Item
-                      name="document"
-                      label="Documento"
-                      rules={[
-                        { required: true },
-                        ({ getFieldValue }) => ({
-                          validator(_, value) {
-                            if (!value) return Promise.resolve();
-                            const docType = getFieldValue('documentType');
-                            if (docType === 'Cedula Escolar') return Promise.resolve();
-                            const clean = String(value).replace(/^[VE]-/, '');
-                            if (docType === 'Venezolano' && !/^\d{5,8}$/.test(clean)) {
-                              return Promise.reject('Formato: solo dígitos (5-8)');
-                            }
-                            if (docType === 'Extranjero' && !/^\d{5,8}$/.test(clean)) {
-                              return Promise.reject('Formato: solo dígitos (5-8)');
-                            }
-                            return Promise.resolve();
-                          },
-                        }),
-                        ({ getFieldValue }) => ({
-                          validator(_, value) {
-                            if (!value) return Promise.resolve();
-                            const motherDoc = getFieldValue(['mother', 'document']);
-                            const fatherDoc = getFieldValue(['father', 'document']);
-                            const repDoc = getFieldValue(['representative', 'document']);
-                            if (motherDoc && value === motherDoc) return Promise.reject('La cédula no puede ser igual a la de la madre');
-                            if (fatherDoc && value === fatherDoc) return Promise.reject('La cédula no puede ser igual a la del padre');
-                            if (repDoc && value === repDoc) return Promise.reject('La cédula no puede ser igual a la del representante');
-                            return Promise.resolve();
-                          },
-                        }),
-                      ]}
-                    >
-                      <Input
-                        placeholder={studentDocumentType === 'Cedula Escolar' ? 'Vacío para autogenerar' : ''}
-                        addonBefore={
-                          studentDocumentType === 'Venezolano' ? 'V-' :
-                          studentDocumentType === 'Extranjero' ? 'E-' :
-                          undefined
-                        }
-                        onChange={(e) => {
-                          const docType = studentDocumentType;
-                          if (docType === 'Venezolano' || docType === 'Extranjero') {
-                            const prefix = docType === 'Venezolano' ? 'V-' : 'E-';
-                            let val = e.target.value.replace(/^[VE]-/, '').replace(/[^0-9]/g, '');
-                            newStudentForm.setFieldValue('document', val);
-                          }
-                        }}
-                      />
+                    <Form.Item noStyle shouldUpdate={(prev, cur) => prev.documentType !== cur.documentType || prev.nationality !== cur.nationality}>
+                      {({ getFieldValue }) => {
+                        const docType = getFieldValue('documentType') as string;
+                        const nat = getFieldValue('nationality') as string;
+                        const prefix = (docType === 'Venezolano' || (docType === 'Cedula Escolar' && nat === 'Venezolano')) ? 'V-'
+                          : (docType === 'Extranjero' || (docType === 'Cedula Escolar' && nat === 'Extranjero')) ? 'E-'
+                          : undefined;
+                        return (
+                          <Form.Item
+                            name="document"
+                            label="Documento"
+                            rules={[
+                              { required: true },
+                              ({ getFieldValue }) => ({
+                                validator(_, value) {
+                                  if (!value) return Promise.resolve();
+                                  const dt = getFieldValue('documentType');
+                                  if (dt === 'Cedula Escolar') return Promise.resolve();
+                                  if ((dt === 'Venezolano' || dt === 'Extranjero') && !/^\d{5,8}$/.test(value)) {
+                                    return Promise.reject('Formato: solo dígitos (5-8)');
+                                  }
+                                  return Promise.resolve();
+                                },
+                              }),
+                              ({ getFieldValue }) => ({
+                                validator(_, value) {
+                                  if (!value) return Promise.resolve();
+                                  const motherDoc = getFieldValue(['mother', 'document']);
+                                  const fatherDoc = getFieldValue(['father', 'document']);
+                                  const repDoc = getFieldValue(['representative', 'document']);
+                                  if (motherDoc && value === motherDoc) return Promise.reject('La cédula no puede ser igual a la de la madre');
+                                  if (fatherDoc && value === fatherDoc) return Promise.reject('La cédula no puede ser igual a la del padre');
+                                  if (repDoc && value === repDoc) return Promise.reject('La cédula no puede ser igual a la del representante');
+                                  return Promise.resolve();
+                                },
+                              }),
+                            ]}
+                          >
+                            <Input
+                              placeholder={docType === 'Cedula Escolar' ? 'Vacío para autogenerar' : ''}
+                              addonBefore={prefix}
+                              onChange={(e) => {
+                                if (docType === 'Venezolano' || docType === 'Extranjero' || docType === 'Cedula Escolar') {
+                                  let val = e.target.value.replace(/^[VE]-/, '').replace(/[^0-9]/g, '');
+                                  newStudentForm.setFieldValue('document', val);
+                                }
+                              }}
+                            />
+                          </Form.Item>
+                        );
+                      }}
                     </Form.Item>
                   </Col>
                 </Row>
