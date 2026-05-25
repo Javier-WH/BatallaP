@@ -921,6 +921,7 @@ const EnrollStudent: React.FC = () => {
       const payload = {
         ...values,
         pathology: values.pathology === 'ninguna' ? null : (values.pathology === 'otra' ? (values.customPathology as string) : values.pathology),
+        livingWith: values.livingWith === 'otro' ? (values.customLivingWith as string) : values.livingWith,
         schoolPeriodId: selectedPeriodId,
         birthdate: values.birthdate ? (values.birthdate as dayjs.Dayjs).format('YYYY-MM-DD') : null,
         mother: values.mother ? { ...values.mother, birthdate: (values.mother as GuardianData).birthdate ? ((values.mother as GuardianData).birthdate as dayjs.Dayjs).format('YYYY-MM-DD') : null } : undefined,
@@ -1298,7 +1299,40 @@ const EnrollStudent: React.FC = () => {
                   </Col>
                   <Col span={12}>
                     <Form.Item name="livingWith" label="¿Con quién vive?">
-                      <Input placeholder="Ej: Madre y Padre" />
+                      <Select
+                        showSearch
+                        placeholder="Seleccione una opción"
+                        optionFilterProp="label"
+                        onChange={(val: string) => {
+                          if (val !== 'otro') {
+                            newStudentForm.setFieldsValue({ customLivingWith: undefined });
+                          }
+                        }}
+                        options={[
+                          { value: 'ambos_padres', label: 'Con ambos padres' },
+                          { value: 'madre', label: 'Con la madre' },
+                          { value: 'padre', label: 'Con el padre' },
+                          { value: 'abuelos', label: 'Con los abuelos' },
+                          { value: 'familiar', label: 'Con un familiar (tíos, hermanos)' },
+                          { value: 'tutor_legal', label: 'Con un tutor legal' },
+                          { value: 'madre_padrastro', label: 'Con la madre y padrastro' },
+                          { value: 'padre_madrastra', label: 'Con el padre y madrastra' },
+                          { value: 'custodia_compartida', label: 'Custodia compartida (ambos hogares)' },
+                          { value: 'residencia_estudiantil', label: 'En residencia estudiantil / internado' },
+                          { value: 'independiente', label: 'Vive de forma independiente' },
+                          { value: 'otro', label: 'Otro (especificar)' },
+                        ]}
+                      />
+                    </Form.Item>
+                    <Form.Item noStyle shouldUpdate={(prev, cur) => prev.livingWith !== cur.livingWith}>
+                      {({ getFieldValue }) => {
+                        const val = getFieldValue('livingWith');
+                        return val === 'otro' ? (
+                          <Form.Item name="customLivingWith" label="Especifique con quién vive">
+                            <Input placeholder="Describa la situación de convivencia" />
+                          </Form.Item>
+                        ) : null;
+                      }}
                     </Form.Item>
                   </Col>
                 </Row>
