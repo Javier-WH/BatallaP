@@ -1162,24 +1162,26 @@ const EnrollStudent: React.FC = () => {
                 <h4 style={{ color: '#1890ff', margin: '24px 0 16px', borderBottom: '1px solid #f0f0f0', paddingBottom: 8 }}>
                   Académico
                 </h4>
-                <Row gutter={16}>
-                  <Col span={8}>
-                    <Form.Item label="Período Escolar">
+                <Row gutter={16} style={{ marginBottom: 16 }}>
+                  <Col span={16}>
+                    <Form.Item label="Período Escolar" style={{ marginBottom: 0 }}>
                       <Select
+                        size="large"
                         value={selectedPeriodId}
                         onChange={(val) => handlePeriodChange(val)}
                         placeholder="Seleccione período"
                       >
-                      {allPeriods.filter(p => p.isActive || (activePeriod && p.startYear >= activePeriod.startYear)).map(p => {
-                        const isFuture = activePeriod && p.startYear > activePeriod.startYear;
-                        return (
-                        <Option key={p.id} value={p.id}>
-                          {p.name}
-                          {p.isActive && <Tag color="green" style={{ marginLeft: 8, fontSize: 10 }}>Activo</Tag>}
-                          {isFuture && <Tag color="blue" style={{ marginLeft: 8, fontSize: 10 }}>Preinscripción</Tag>}
-                        </Option>
-                        );
-                      })}
+                        {allPeriods.filter(p => p.isActive || (activePeriod && p.startYear >= activePeriod.startYear)).map(p => {
+                          const isFuture = activePeriod && p.startYear > activePeriod.startYear;
+                          return (
+                          <Option key={p.id} value={p.id}>
+                            <span style={{ fontWeight: 600 }}>{p.name}</span>
+                            <span style={{ color: 'var(--color-text-muted)', fontSize: 11, marginLeft: 8 }}>{p.period}</span>
+                            {p.isActive && <Tag color="green" style={{ marginLeft: 8, fontSize: 10 }}>Activo</Tag>}
+                            {isFuture && <Tag color="blue" style={{ marginLeft: 8, fontSize: 10 }}>Preinscripción</Tag>}
+                          </Option>
+                          );
+                        })}
                       </Select>
                     </Form.Item>
                   </Col>
@@ -1883,6 +1885,7 @@ const EnrollStudent: React.FC = () => {
 
               <Form.Item label="Período Escolar">
                 <Select
+                  size="large"
                   value={selectedPeriodId}
                   onChange={(val) => handlePeriodChange(val)}
                   placeholder="Seleccione período"
@@ -1891,7 +1894,8 @@ const EnrollStudent: React.FC = () => {
                     const isFuture = activePeriod && p.startYear > activePeriod.startYear;
                     return (
                     <Option key={p.id} value={p.id}>
-                      {p.name}
+                      <span style={{ fontWeight: 600 }}>{p.name}</span>
+                      <span style={{ color: 'var(--color-text-muted)', fontSize: 11, marginLeft: 8 }}>{p.period}</span>
                       {p.isActive && <Tag color="green" style={{ marginLeft: 8, fontSize: 10 }}>Activo</Tag>}
                       {isFuture && <Tag color="blue" style={{ marginLeft: 8, fontSize: 10 }}>Preinscripción</Tag>}
                     </Option>
