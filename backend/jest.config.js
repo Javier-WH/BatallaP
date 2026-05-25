@@ -11,7 +11,9 @@ module.exports = {
     '^@models/(.*)$': '<rootDir>/src/models/$1',
     '^@routes/(.*)$': '<rootDir>/src/routes/$1',
     '^@middlewares/(.*)$': '<rootDir>/src/middlewares/$1',
-    '^@services/(.*)$': '<rootDir>/src/services/$1'
+    '^@services/(.*)$': '<rootDir>/src/services/$1',
+    '^uuid$': '<rootDir>/src/__tests__/__mocks__/uuid.js',
+    '^uuid/(.*)$': '<rootDir>/src/__tests__/__mocks__/uuid.js',
   },
   transform: {
     '^.+\\.ts$': ['ts-jest', {
