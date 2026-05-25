@@ -922,6 +922,14 @@ const EnrollStudent: React.FC = () => {
         ...values,
         pathology: values.pathology === 'ninguna' ? null : (values.pathology === 'otra' ? (values.customPathology as string) : values.pathology),
         livingWith: values.livingWith === 'otro' ? (values.customLivingWith as string) : values.livingWith,
+        document: (() => {
+          const docType = values.documentType as string;
+          const doc = values.document as string;
+          if (docType === 'Cedula Escolar' || docType === 'Pasaporte') return doc;
+          if (docType === 'Venezolano') return doc ? `V${doc}` : doc;
+          if (docType === 'Extranjero') return doc ? `E${doc}` : doc;
+          return doc;
+        })(),
         schoolPeriodId: selectedPeriodId,
         birthdate: values.birthdate ? (values.birthdate as dayjs.Dayjs).format('YYYY-MM-DD') : null,
         mother: values.mother ? { ...values.mother, birthdate: (values.mother as GuardianData).birthdate ? ((values.mother as GuardianData).birthdate as dayjs.Dayjs).format('YYYY-MM-DD') : null } : undefined,
@@ -1041,12 +1049,18 @@ const EnrollStudent: React.FC = () => {
                 </h4>
                 <Row gutter={16}>
                   <Col span={12}>
-                    <Form.Item name="firstName" label="Nombres" rules={[{ required: true }]}>
+                    <Form.Item name="firstName" label="Nombres" rules={[
+                      { required: true },
+                      { pattern: /^[a-zA-ZáéíóúÁÉÍÓÚüÜñÑ\s]+$/, message: 'No se permiten números' },
+                    ]}>
                       <Input />
                     </Form.Item>
                   </Col>
                   <Col span={12}>
-                    <Form.Item name="lastName" label="Apellidos" rules={[{ required: true }]}>
+                    <Form.Item name="lastName" label="Apellidos" rules={[
+                      { required: true },
+                      { pattern: /^[a-zA-ZáéíóúÁÉÍÓÚüÜñÑ\s]+$/, message: 'No se permiten números' },
+                    ]}>
                       <Input />
                     </Form.Item>
                   </Col>
@@ -1055,10 +1069,10 @@ const EnrollStudent: React.FC = () => {
                   <Col span={studentDocumentType === 'Cedula Escolar' ? 6 : 8}>
                     <Form.Item name="documentType" label="Tipo Doc" rules={[{ required: true }]}>
                       <Select>
-                        <Option value="Venezolano">V</Option>
-                        <Option value="Extranjero">E</Option>
-                        <Option value="Pasaporte">P</Option>
-                        <Option value="Cedula Escolar">CE</Option>
+                        <Option value="Venezolano">Venezolano</Option>
+                        <Option value="Extranjero">Extranjero</Option>
+                        <Option value="Pasaporte">Pasaporte</Option>
+                        <Option value="Cedula Escolar">Cédula Escolar</Option>
                       </Select>
                     </Form.Item>
                   </Col>
@@ -1081,9 +1095,53 @@ const EnrollStudent: React.FC = () => {
                     <Form.Item
                       name="document"
                       label="Documento"
-                      rules={studentDocumentType === 'Cedula Escolar' ? [] : [{ required: true }]}
+                      rules={[
+                        { required: true },
+                        ({ getFieldValue }) => ({
+                          validator(_, value) {
+                            if (!value) return Promise.resolve();
+                            const docType = getFieldValue('documentType');
+                            if (docType === 'Cedula Escolar') return Promise.resolve();
+                            const clean = String(value).replace(/^[VE]-/, '');
+                            if (docType === 'Venezolano' && !/^\d{5,8}$/.test(clean)) {
+                              return Promise.reject('Formato: solo dígitos (5-8)');
+                            }
+                            if (docType === 'Extranjero' && !/^\d{5,8}$/.test(clean)) {
+                              return Promise.reject('Formato: solo dígitos (5-8)');
+                            }
+                            return Promise.resolve();
+                          },
+                        }),
+                        ({ getFieldValue }) => ({
+                          validator(_, value) {
+                            if (!value) return Promise.resolve();
+                            const motherDoc = getFieldValue(['mother', 'document']);
+                            const fatherDoc = getFieldValue(['father', 'document']);
+                            const repDoc = getFieldValue(['representative', 'document']);
+                            if (motherDoc && value === motherDoc) return Promise.reject('La cédula no puede ser igual a la de la madre');
+                            if (fatherDoc && value === fatherDoc) return Promise.reject('La cédula no puede ser igual a la del padre');
+                            if (repDoc && value === repDoc) return Promise.reject('La cédula no puede ser igual a la del representante');
+                            return Promise.resolve();
+                          },
+                        }),
+                      ]}
                     >
-                      <Input placeholder={studentDocumentType === 'Cedula Escolar' ? 'Vacío para autogenerar' : ''} />
+                      <Input
+                        placeholder={studentDocumentType === 'Cedula Escolar' ? 'Vacío para autogenerar' : ''}
+                        addonBefore={
+                          studentDocumentType === 'Venezolano' ? 'V-' :
+                          studentDocumentType === 'Extranjero' ? 'E-' :
+                          undefined
+                        }
+                        onChange={(e) => {
+                          const docType = studentDocumentType;
+                          if (docType === 'Venezolano' || docType === 'Extranjero') {
+                            const prefix = docType === 'Venezolano' ? 'V-' : 'E-';
+                            let val = e.target.value.replace(/^[VE]-/, '').replace(/[^0-9]/g, '');
+                            newStudentForm.setFieldValue('document', val);
+                          }
+                        }}
+                      />
                     </Form.Item>
                   </Col>
                 </Row>
@@ -1097,7 +1155,32 @@ const EnrollStudent: React.FC = () => {
                     </Form.Item>
                   </Col>
                   <Col span={12}>
-                    <Form.Item name="birthdate" label="Fecha Nacimiento" rules={[{ required: true }]}>
+                    <Form.Item name="birthdate" label="Fecha Nacimiento" rules={[
+                      { required: true },
+                      () => ({
+                        validator(_, value) {
+                          if (!value) return Promise.resolve();
+                          if (value.isAfter(dayjs(), 'day')) {
+                            return Promise.reject('La fecha no puede ser futura');
+                          }
+                          return Promise.resolve();
+                        },
+                      }),
+                      ({ getFieldValue }) => ({
+                        validator(_, value) {
+                          if (!value) return Promise.resolve();
+                          const motherBirthdate = getFieldValue(['mother', 'birthdate']);
+                          const fatherBirthdate = getFieldValue(['father', 'birthdate']);
+                          if (motherBirthdate && value.isBefore(motherBirthdate)) {
+                            return Promise.reject('El estudiante no puede ser mayor que la madre');
+                          }
+                          if (fatherBirthdate && value.isBefore(fatherBirthdate)) {
+                            return Promise.reject('El estudiante no puede ser mayor que el padre');
+                          }
+                          return Promise.resolve();
+                        },
+                      }),
+                    ]}>
                       <DatePicker style={{ width: '100%' }} format="YYYY-MM-DD" defaultPickerValue={dayjs().subtract(10, 'year')} />
                     </Form.Item>
                     <Form.Item noStyle shouldUpdate={(prev, cur) => prev.birthdate !== cur.birthdate}>
@@ -1465,8 +1548,11 @@ const EnrollStudent: React.FC = () => {
                     <>
                       <Row gutter={16}>
                         <Col span={12}>
-                          <Form.Item name={['mother', 'firstName']} label="Nombres" rules={motherFieldsRequired ? [{ required: true }] : []}>
-                            <Input />
+                          <Form.Item name={['mother', 'firstName']} label="Nombres" rules={motherFieldsRequired ? [{ required: true }, { pattern: /^[a-zA-ZáéíóúÁÉÍÓÚüÜñÑ\s]+$/, message: 'No se permiten números' }] : [{ pattern: /^[a-zA-ZáéíóúÁÉÍÓÚüÜñÑ\s]+$/, message: 'No se permiten números' }]}>
+                          </Form.Item>
+                        </Col>
+                        <Col span={12}>
+                          <Form.Item name={['mother', 'lastName']} label="Apellidos" rules={motherFieldsRequired ? [{ required: true }, { pattern: /^[a-zA-ZáéíóúÁÉÍÓÚüÜñÑ\s]+$/, message: 'No se permiten números' }] : [{ pattern: /^[a-zA-ZáéíóúÁÉÍÓÚüÜñÑ\s]+$/, message: 'No se permiten números' }]}>
                           </Form.Item>
                         </Col>
                         <Col span={12}>
@@ -1477,7 +1563,7 @@ const EnrollStudent: React.FC = () => {
                       </Row>
                       <Row gutter={16}>
                         <Col span={12}>
-                          <Form.Item name={['mother', 'phone']} label="Teléfono" rules={motherFieldsRequired ? [{ required: true }] : []}>
+                          <Form.Item name={['mother', 'phone']} label="Teléfono" rules={motherFieldsRequired ? [{ required: true }, { pattern: /^(04|02)\d{2}-\d{7}$/, message: 'Formato: 04XX-XXXXXXX o 02XX-XXXXXXX' }] : [{ pattern: /^(04|02)\d{2}-\d{7}$/, message: 'Formato: 04XX-XXXXXXX o 02XX-XXXXXXX' }]}>
                             <Input />
                           </Form.Item>
                         </Col>
@@ -1536,8 +1622,11 @@ const EnrollStudent: React.FC = () => {
                     <>
                       <Row gutter={16}>
                         <Col span={12}>
-                          <Form.Item name={['father', 'firstName']} label="Nombres" rules={fatherFieldsRequired ? [{ required: true }] : []}>
-                            <Input />
+                          <Form.Item name={['father', 'firstName']} label="Nombres" rules={fatherFieldsRequired ? [{ required: true }, { pattern: /^[a-zA-ZáéíóúÁÉÍÓÚüÜñÑ\s]+$/, message: 'No se permiten números' }] : [{ pattern: /^[a-zA-ZáéíóúÁÉÍÓÚüÜñÑ\s]+$/, message: 'No se permiten números' }]}>
+                          </Form.Item>
+                        </Col>
+                        <Col span={12}>
+                          <Form.Item name={['father', 'lastName']} label="Apellidos" rules={fatherFieldsRequired ? [{ required: true }, { pattern: /^[a-zA-ZáéíóúÁÉÍÓÚüÜñÑ\s]+$/, message: 'No se permiten números' }] : [{ pattern: /^[a-zA-ZáéíóúÁÉÍÓÚüÜñÑ\s]+$/, message: 'No se permiten números' }]}>
                           </Form.Item>
                         </Col>
                         <Col span={12}>
@@ -1548,7 +1637,7 @@ const EnrollStudent: React.FC = () => {
                       </Row>
                       <Row gutter={16}>
                         <Col span={12}>
-                          <Form.Item name={['father', 'phone']} label="Teléfono" rules={fatherFieldsRequired ? [{ required: true }] : []}>
+                          <Form.Item name={['father', 'phone']} label="Teléfono" rules={fatherFieldsRequired ? [{ required: true }, { pattern: /^(04|02)\d{2}-\d{7}$/, message: 'Formato: 04XX-XXXXXXX o 02XX-XXXXXXX' }] : [{ pattern: /^(04|02)\d{2}-\d{7}$/, message: 'Formato: 04XX-XXXXXXX o 02XX-XXXXXXX' }]}>
                             <Input />
                           </Form.Item>
                         </Col>
@@ -1617,8 +1706,11 @@ const EnrollStudent: React.FC = () => {
                       <>
                         <Row gutter={16}>
                           <Col span={12}>
-                            <Form.Item name={['representative', 'firstName']} label="Nombres" rules={representativeFieldsRequired ? [{ required: true }] : []}>
-                              <Input />
+                            <Form.Item name={['representative', 'firstName']} label="Nombres" rules={representativeFieldsRequired ? [{ required: true }, { pattern: /^[a-zA-ZáéíóúÁÉÍÓÚüÜñÑ\s]+$/, message: 'No se permiten números' }] : [{ pattern: /^[a-zA-ZáéíóúÁÉÍÓÚüÜñÑ\s]+$/, message: 'No se permiten números' }]}>
+                            </Form.Item>
+                          </Col>
+                          <Col span={12}>
+                            <Form.Item name={['representative', 'lastName']} label="Apellidos" rules={representativeFieldsRequired ? [{ required: true }, { pattern: /^[a-zA-ZáéíóúÁÉÍÓÚüÜñÑ\s]+$/, message: 'No se permiten números' }] : [{ pattern: /^[a-zA-ZáéíóúÁÉÍÓÚüÜñÑ\s]+$/, message: 'No se permiten números' }]}>
                             </Form.Item>
                           </Col>
                           <Col span={12}>
@@ -1629,7 +1721,7 @@ const EnrollStudent: React.FC = () => {
                         </Row>
                         <Row gutter={16}>
                           <Col span={12}>
-                            <Form.Item name={['representative', 'phone']} label="Teléfono" rules={representativeFieldsRequired ? [{ required: true }] : []}>
+                            <Form.Item name={['representative', 'phone']} label="Teléfono" rules={representativeFieldsRequired ? [{ required: true }, { pattern: /^(04|02)\d{2}-\d{7}$/, message: 'Formato: 04XX-XXXXXXX o 02XX-XXXXXXX' }] : [{ pattern: /^(04|02)\d{2}-\d{7}$/, message: 'Formato: 04XX-XXXXXXX o 02XX-XXXXXXX' }]}>
                               <Input />
                             </Form.Item>
                           </Col>
