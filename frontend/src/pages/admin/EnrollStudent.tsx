@@ -920,6 +920,7 @@ const EnrollStudent: React.FC = () => {
 
       const payload = {
         ...values,
+        pathology: values.pathology === 'ninguna' ? null : (values.pathology === 'otra' ? (values.customPathology as string) : values.pathology),
         schoolPeriodId: selectedPeriodId,
         birthdate: values.birthdate ? (values.birthdate as dayjs.Dayjs).format('YYYY-MM-DD') : null,
         mother: values.mother ? { ...values.mother, birthdate: (values.mother as GuardianData).birthdate ? ((values.mother as GuardianData).birthdate as dayjs.Dayjs).format('YYYY-MM-DD') : null } : undefined,
@@ -1252,7 +1253,47 @@ const EnrollStudent: React.FC = () => {
                 <Row gutter={16}>
                   <Col span={12}>
                     <Form.Item name="pathology" label="¿Sufre alguna patología?">
-                      <Input placeholder="Indique patología o 'Ninguna'" />
+                      <Select
+                        showSearch
+                        placeholder="Seleccione una patología"
+                        optionFilterProp="label"
+                        options={[
+                          { value: 'ninguna', label: 'Ninguna' },
+                          { value: 'asma', label: 'Asma' },
+                          { value: 'alergias', label: 'Alergias (alimentarias, estacionales)' },
+                          { value: 'dermatitis', label: 'Dermatitis / Problemas de piel' },
+                          { value: 'miopia', label: 'Miopía / Problemas de visión' },
+                          { value: 'hipoacusia', label: 'Hipoacusia / Problemas de audición' },
+                          { value: 'tdah', label: 'TDAH (Déficit de atención)' },
+                          { value: 'dislexia', label: 'Dislexia / Dificultades de aprendizaje' },
+                          { value: 'autismo', label: 'Trastorno del Espectro Autista (TEA)' },
+                          { value: 'ansiedad', label: 'Ansiedad / Trastornos emocionales' },
+                          { value: 'epilepsia', label: 'Epilepsia / Convulsiones' },
+                          { value: 'diabetes', label: 'Diabetes (Tipo 1 o 2)' },
+                          { value: 'obesidad', label: 'Obesidad / Sobrepeso' },
+                          { value: 'anemia', label: 'Anemia' },
+                          { value: 'celiaquia', label: 'Enfermedad Celíaca' },
+                          { value: 'lactosa', label: 'Intolerancia a la lactosa' },
+                          { value: 'escoliosis', label: 'Escoliosis / Problemas posturales' },
+                          { value: 'cardiopatia', label: 'Cardiopatía congénita' },
+                          { value: 'renales', label: 'Problemas renales / urinarios' },
+                          { value: 'migrana', label: 'Migraña / Cefaleas frecuentes' },
+                          { value: 'tiroides', label: 'Problemas de tiroides' },
+                          { value: 'lenguaje', label: 'Trastorno del lenguaje / habla' },
+                          { value: 'motriz', label: 'Discapacidad motriz' },
+                          { value: 'otra', label: 'Otra (especificar)' },
+                        ]}
+                      />
+                    </Form.Item>
+                    <Form.Item noStyle shouldUpdate={(prev, cur) => prev.pathology !== cur.pathology}>
+                      {({ getFieldValue }) => {
+                        const path = getFieldValue('pathology');
+                        return path === 'otra' ? (
+                          <Form.Item name="customPathology" label="Especifique la patología">
+                            <Input placeholder="Describa la patología" />
+                          </Form.Item>
+                        ) : null;
+                      }}
                     </Form.Item>
                   </Col>
                   <Col span={12}>
