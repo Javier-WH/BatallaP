@@ -1100,8 +1100,6 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                                         (e.target as HTMLInputElement).value = (e.target as HTMLInputElement).value.replace(/[^0-9]/g, '');
                                       }}
                                       onBlur={(e: React.FocusEvent<HTMLInputElement>) => {
-                                        e.target.style.borderColor = 'transparent';
-                                        e.target.style.boxShadow = 'none';
                                         const raw = (e.target as HTMLInputElement).value.replace(/[^0-9]/g, '');
                                         (e.target as HTMLInputElement).value = raw;
                                         if (raw === '') return;
@@ -1149,14 +1147,16 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                                         style={{
                                           width: '48px',
                                           textAlign: 'center',
-                                          border: '1px solid transparent',
-                                          borderRadius: 4,
+                                          border: 'none',
+                                          outline: 'none',
+                                          background: 'transparent',
                                           fontSize: 12,
                                           padding: 0,
-                                          outline: 'none',
                                           backgroundColor: !isRemedialEligible && currentScore !== null && currentScore > 0
                                             ? (currentScore < remedialMinGrade ? '#fef2f2' : currentScore > remedialMaxGrade ? '#f0fdf4' : undefined)
                                             : undefined,
+                                          color: q?.remedialScore != null && q.remedialScore > 0 && q.remedialScore < passingGrade ? '#dc2626' : undefined,
+                                          fontWeight: q?.remedialScore != null && q.remedialScore > 0 && q.remedialScore < passingGrade ? 700 : undefined,
                                           cursor: !isRemedialEligible && currentScore !== null && currentScore > 0 ? 'not-allowed' : undefined,
                                         }}
                                         disabled={isSelectedTermBlocked || !isRemedialEligible}
@@ -1199,15 +1199,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                                         onInput={(e: React.FormEvent<HTMLInputElement>) => {
                                           (e.target as HTMLInputElement).value = (e.target as HTMLInputElement).value.replace(/[^0-9]/g, '');
                                         }}
-                                        onFocus={(e) => {
-                                          if (isRemedialEligible && !isSelectedTermBlocked) {
-                                            e.target.style.borderColor = '#3b82f6';
-                                            e.target.style.boxShadow = '0 0 0 2px rgba(59,130,246,0.2)';
-                                          }
-                                        }}
                                         onBlur={(e: React.FocusEvent<HTMLInputElement>) => {
-                                          e.target.style.borderColor = 'transparent';
-                                          e.target.style.boxShadow = 'none';
                                           const raw = (e.target as HTMLInputElement).value.replace(/[^0-9]/g, '');
                                           (e.target as HTMLInputElement).value = raw;
                                           

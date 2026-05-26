@@ -526,8 +526,6 @@ const ManageGrades: React.FC = () => {
                                             (e.target as HTMLInputElement).value = (e.target as HTMLInputElement).value.replace(/[^0-9]/g, '');
                                           }}
                                           onBlur={(e) => {
-                                            e.target.style.borderColor = 'transparent';
-                                            e.target.style.boxShadow = 'none';
                                             const raw = e.target.value.replace(/[^0-9]/g, '');
                                             e.target.value = raw;
                                             if (raw === '') return;
