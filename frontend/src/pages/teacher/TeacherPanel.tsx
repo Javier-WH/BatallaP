@@ -1037,11 +1037,11 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                                       style={{
                                         width: '48px',
                                         textAlign: 'center',
-                                        border: '1px solid var(--color-text-muted)',
-                                        borderRadius: 4,
+                                        border: 'none',
+                                        outline: 'none',
+                                        background: 'transparent',
                                         fontSize: 12,
                                         padding: 0,
-                                        outline: 'none',
                                         color: currentScore !== null && currentScore > 0 && currentScore < passingGrade ? '#dc2626' : undefined,
                                         fontWeight: currentScore !== null && currentScore > 0 && currentScore < passingGrade ? 700 : undefined,
                                       }}

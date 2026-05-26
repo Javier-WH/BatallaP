@@ -505,11 +505,11 @@ const ManageGrades: React.FC = () => {
                                           style={{
                                             width: '48px',
                                             textAlign: 'center',
-                                            border: '1px solid transparent',
-                                            borderRadius: 4,
+                                            border: 'none',
+                                            outline: 'none',
+                                            background: 'transparent',
                                             fontSize: 12,
                                             padding: 0,
-                                            outline: 'none',
                                             color: q?.score != null && q.score > 0 && q.score < passingGrade ? '#dc2626' : undefined,
                                             fontWeight: q?.score != null && q.score > 0 && q.score < passingGrade ? 700 : undefined,
                                           }}
