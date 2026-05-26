@@ -477,7 +477,10 @@ const ManageGrades: React.FC = () => {
                               let rowTotal = 0;
                               evaluationPlan.forEach(item => {
                                 const q = studentQuals.find((sq: Qualification) => sq.evaluationPlanId === item.id);
-                                if (q) rowTotal += (Number(q.score) * Number(item.percentage)) / 100;
+                                if (q) {
+                                  const effectiveScore = q.remedialScore != null && q.remedialScore > 0 ? q.remedialScore : q.score;
+                                  rowTotal += (Number(effectiveScore) * Number(item.percentage)) / 100;
+                                }
                               });
 
                               return (

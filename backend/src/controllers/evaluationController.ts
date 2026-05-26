@@ -1160,7 +1160,8 @@ export const exportGradesExcel = async (req: Request, res: Response) => {
         const cell = row.getCell(colNum);
         if (isFilled && q) {
           cell.value = Number(q.score);
-          rowTotal += (Number(q.score) * Number(plan.percentage)) / 100;
+          const effectiveScore = q.remedialScore != null && Number(q.remedialScore) > 0 ? Number(q.remedialScore) : Number(q.score);
+          rowTotal += (effectiveScore * Number(plan.percentage)) / 100;
         }
         cell.alignment = { horizontal: 'center' };
         cell.numFmt = '0.00';
