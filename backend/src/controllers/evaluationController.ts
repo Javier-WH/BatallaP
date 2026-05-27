@@ -312,7 +312,7 @@ export const getQualifications = async (req: Request, res: Response) => {
 
 export const saveQualification = async (req: Request, res: Response) => {
   try {
-    const { evaluationPlanId, inscriptionSubjectId, score, remedialScore, observations, inscriptionId } = req.body;
+    const { evaluationPlanId, inscriptionSubjectId, score, remedialScore, isAbsent, observations, inscriptionId } = req.body;
 
     let finalInscriptionSubjectId = inscriptionSubjectId;
 
@@ -363,6 +363,7 @@ export const saveQualification = async (req: Request, res: Response) => {
         inscriptionSubjectId: finalInscriptionSubjectId,
         score: score !== undefined ? score : 0,
         remedialScore: remedialScore !== undefined ? remedialScore : null,
+        isAbsent: isAbsent || false,
         observations
       }
     });
@@ -373,6 +374,7 @@ export const saveQualification = async (req: Request, res: Response) => {
       const updateData: any = { observations };
       if (score !== undefined) updateData.score = score;
       if (remedialScore !== undefined) updateData.remedialScore = remedialScore;
+      if (isAbsent !== undefined) updateData.isAbsent = isAbsent;
 
       await qualification.update(updateData);
 

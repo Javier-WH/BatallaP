@@ -10,9 +10,10 @@ interface QualificationAttributes {
   score: number;
   observations?: string;
   remedialScore?: number;
+  isAbsent: boolean;
 }
 
-interface QualificationCreationAttributes extends Optional<QualificationAttributes, 'id' | 'observations' | 'remedialScore'> { }
+interface QualificationCreationAttributes extends Optional<QualificationAttributes, 'id' | 'observations' | 'remedialScore' | 'isAbsent'> { }
 
 class Qualification extends Model<QualificationAttributes, QualificationCreationAttributes> implements QualificationAttributes {
   public id!: number;
@@ -21,6 +22,7 @@ class Qualification extends Model<QualificationAttributes, QualificationCreation
   public score!: number;
   public observations!: string;
   public remedialScore!: number;
+  public isAbsent!: boolean;
 
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
@@ -56,6 +58,11 @@ Qualification.init(
       validate: {
         min: 0
       }
+    },
+    isAbsent: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
     },
     observations: {
       type: DataTypes.TEXT,

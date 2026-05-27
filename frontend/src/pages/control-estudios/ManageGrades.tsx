@@ -179,11 +179,53 @@ const ManageGrades: React.FC = () => {
         inscriptionSubjectId,
         inscriptionId: enrollment.id,
         score: score === null ? 0 : score,
+        isAbsent: false,
         observations: ''
       });
       fetchPlanAndStudents();
     } catch {
       message.error('Error al guardar nota');
+    }
+  };
+
+  const handleToggleAbsent = async (enrollment: StudentEnrollment, evalPlanId: number, currentIsAbsent?: boolean) => {
+    if (isSelectedTermBlocked) {
+      message.warning('Este lapso está bloqueado.');
+      return;
+    }
+
+    // Optimistic update: toggle locally immediately
+    setStudents(prev => prev.map(s => {
+      if (s.id !== enrollment.id) return s;
+      const insSub = s.inscriptionSubjects?.[0];
+      if (!insSub) return s;
+      const quals = insSub.qualifications?.some(q => q.evaluationPlanId === evalPlanId)
+        ? insSub.qualifications.map(q => q.evaluationPlanId === evalPlanId
+          ? { ...q, isAbsent: !currentIsAbsent, score: !currentIsAbsent ? 0 : q.score }
+          : q)
+        : [...(insSub.qualifications || []), {
+            id: 0, evaluationPlanId: evalPlanId, score: 0, isAbsent: !currentIsAbsent
+          }];
+      return {
+        ...s,
+        inscriptionSubjects: [{ ...insSub, qualifications: quals }]
+      };
+    }));
+
+    // Sync with backend
+    const inscriptionSubjectId = enrollment.inscriptionSubjects?.[0]?.id;
+    try {
+      await api.post('/evaluation/qualifications', {
+        evaluationPlanId: evalPlanId,
+        inscriptionSubjectId,
+        inscriptionId: enrollment.id,
+        isAbsent: !currentIsAbsent,
+        score: !currentIsAbsent ? 0 : undefined,
+        observations: ''
+      });
+    } catch {
+      message.error('Error al cambiar estado de inasistencia');
+      fetchPlanAndStudents(); // revert to server state on error
     }
   };
 
@@ -304,6 +346,22 @@ const ManageGrades: React.FC = () => {
           50% { outline: 3px solid transparent; }
         }
         .grade-invalid { animation: flash-red 0.5s ease-in-out 3; }
+        .grading-absent { position: relative; }
+        .grading-absent::before {
+          content: 'NP';
+          position: absolute;
+          inset: 0;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: #fef2f2;
+          color: #dc2626;
+          font-weight: 700;
+          font-size: 14px;
+          pointer-events: none;
+          z-index: 1;
+        }
+        .grading-absent input { opacity: 0; }
       `}</style>
       {!selectedAssignment ? (
         <>
@@ -478,8 +536,12 @@ const ManageGrades: React.FC = () => {
                               evaluationPlan.forEach(item => {
                                 const q = studentQuals.find((sq: Qualification) => sq.evaluationPlanId === item.id);
                                 if (q) {
-                                  const effectiveScore = q.remedialScore != null && q.remedialScore > 0 ? q.remedialScore : q.score;
-                                  rowTotal += (Number(effectiveScore) * Number(item.percentage)) / 100;
+                                  if (q.isAbsent) {
+                                    // absent counts as 0
+                                  } else {
+                                    const effectiveScore = q.remedialScore != null && q.remedialScore > 0 ? q.remedialScore : q.score;
+                                    rowTotal += (Number(effectiveScore) * Number(item.percentage)) / 100;
+                                  }
                                 }
                               });
 
@@ -495,7 +557,13 @@ const ManageGrades: React.FC = () => {
                                     const q = studentQuals.find((sq: Qualification) => sq.evaluationPlanId === item.id);
                                     return (
                                       <>
-                                      <td key={`${item.id}-a`} className="grading-cell" style={{ padding: '2px', border: '1px solid var(--color-text-muted)', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-input-bg)' : '#f9fafb', width: '50px' }}>
+                                      <td key={`${item.id}-a`} className={`grading-cell${q?.isAbsent ? ' grading-absent' : ''}`} style={{ padding: '2px', border: '1px solid var(--color-text-muted)', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-input-bg)' : '#f9fafb', width: '50px', cursor: 'context-menu' }}
+                                        title="Click derecho: marcar/desmarcar inasistente"
+                                        onContextMenu={(e) => {
+                                          e.preventDefault();
+                                          handleToggleAbsent(enrollment, item.id, q?.isAbsent);
+                                        }}
+                                      >
                                         <input
                                           type="number"
                                           min={0}
@@ -503,7 +571,7 @@ const ManageGrades: React.FC = () => {
                                           step={1}
                                           inputMode="numeric"
                                           pattern="[0-9]*"
-                                          defaultValue={q?.score != null ? Math.round(q.score) : ''}
+                                          defaultValue={q?.isAbsent ? '0' : (q?.score != null ? Math.round(q.score) : '')}
                                           key={`${enrollment.id}-${item.id}`}
                                           style={{
                                             width: '48px',

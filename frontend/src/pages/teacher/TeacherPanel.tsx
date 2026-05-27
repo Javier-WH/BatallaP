@@ -89,6 +89,7 @@ interface Qualification {
   score: number;
   observations?: string;
   remedialScore?: number;
+  isAbsent?: boolean;
 }
 
 interface InscriptionSubject {
@@ -530,11 +531,53 @@ const TeacherPanel: React.FC = () => {
         inscriptionId: enrollment.id,
         score: score === null ? 0 : score,
         remedialScore: remedialScore !== undefined && remedialScore !== null ? remedialScore : undefined,
+        isAbsent: false,
         observations: ''
       });
       fetchPlanAndStudents();
     } catch {
       message.error('Error al guardar nota');
+    }
+  };
+
+  const handleToggleAbsent = async (enrollment: StudentEnrollment, evalPlanId: number, currentIsAbsent?: boolean) => {
+    if (isSelectedTermBlocked) {
+      message.warning('Este lapso está bloqueado.');
+      return;
+    }
+
+    // Optimistic update: toggle locally immediately
+    setStudents(prev => prev.map(s => {
+      if (s.id !== enrollment.id) return s;
+      const insSub = s.inscriptionSubjects?.[0];
+      if (!insSub) return s;
+      const quals = insSub.qualifications?.some(q => q.evaluationPlanId === evalPlanId)
+        ? insSub.qualifications.map(q => q.evaluationPlanId === evalPlanId
+          ? { ...q, isAbsent: !currentIsAbsent, score: !currentIsAbsent ? 0 : q.score }
+          : q)
+        : [...(insSub.qualifications || []), {
+            id: 0, evaluationPlanId: evalPlanId, score: 0, isAbsent: !currentIsAbsent
+          }];
+      return {
+        ...s,
+        inscriptionSubjects: [{ ...insSub, qualifications: quals }]
+      };
+    }));
+
+    // Sync with backend
+    const inscriptionSubjectId = enrollment.inscriptionSubjects?.[0]?.id;
+    try {
+      await api.post('/evaluation/qualifications', {
+        evaluationPlanId: evalPlanId,
+        inscriptionSubjectId,
+        inscriptionId: enrollment.id,
+        isAbsent: !currentIsAbsent,
+        score: !currentIsAbsent ? 0 : undefined,
+        observations: ''
+      });
+    } catch {
+      message.error('Error al cambiar estado de inasistencia');
+      fetchPlanAndStudents(); // revert to server state on error
     }
   };
 
@@ -695,6 +738,22 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
           50% { outline: 3px solid transparent; }
         }
         .grade-invalid { animation: flash-red 0.5s ease-in-out 3; }
+        .grading-absent { position: relative; }
+        .grading-absent::before {
+          content: 'NP';
+          position: absolute;
+          inset: 0;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: #fef2f2;
+          color: #dc2626;
+          font-weight: 700;
+          font-size: 14px;
+          pointer-events: none;
+          z-index: 1;
+        }
+        .grading-absent input { opacity: 0; }
         /* table row hover handled by global theme rules */
         /* Luxury Scrollbar */
         .grading-table-container::-webkit-scrollbar { height: 8px; width: 8px; }
@@ -1002,8 +1061,12 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                           evaluationPlan.forEach(item => {
                             const q = studentQuals.find((sq: Qualification) => sq.evaluationPlanId === item.id);
                               if (q) {
-                                const effectiveScore = q.remedialScore != null && q.remedialScore > 0 ? q.remedialScore : q.score;
-                                rowTotal += (Number(effectiveScore) * Number(item.percentage)) / 100;
+                                if (q.isAbsent) {
+                                  // absent counts as 0
+                                } else {
+                                  const effectiveScore = q.remedialScore != null && q.remedialScore > 0 ? q.remedialScore : q.score;
+                                  rowTotal += (Number(effectiveScore) * Number(item.percentage)) / 100;
+                                }
                               }
                           });
 
@@ -1024,7 +1087,13 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
 
                                 return (
                                   <React.Fragment key={item.id}>
-                                  <td key={`${item.id}-a`} className="grading-cell" style={{ padding: '2px', border: '1px solid var(--color-text-muted)', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-input-bg)' : '#f9fafb', width: '50px' }}>
+                                  <td key={`${item.id}-a`} className={`grading-cell${q?.isAbsent ? ' grading-absent' : ''}`} style={{ padding: '2px', border: '1px solid var(--color-text-muted)', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-input-bg)' : '#f9fafb', width: '50px', cursor: 'context-menu' }}
+                                    title="Click derecho: marcar/desmarcar inasistente"
+                                    onContextMenu={(e) => {
+                                      e.preventDefault();
+                                      handleToggleAbsent(enrollment, item.id, q?.isAbsent);
+                                    }}
+                                  >
                                     <input
                                       type="number"
                                       id={`grade-${rowIndex}-${colIndex}`}
@@ -1033,7 +1102,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                                       step={1}
                                       inputMode="numeric"
                                       pattern="[0-9]*"
-                                      defaultValue={currentScore !== null ? Math.round(currentScore) : ''}
+                                      defaultValue={q?.isAbsent ? '0' : (currentScore !== null ? Math.round(currentScore) : '')}
                                       key={`${enrollment.id}-${item.id}`}
                                       style={{
                                         width: '48px',

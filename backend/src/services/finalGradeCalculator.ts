@@ -149,7 +149,9 @@ export class FinalGradeCalculator {
 
       // Calculate Qualifications per Term
       (insSub.qualifications || []).forEach((qualification: Qualification & { evaluationPlan?: EvaluationPlan | null }) => {
-        const score = Number(qualification.score) || 0;
+        const score = (qualification as any).remedialScore != null && Number((qualification as any).remedialScore) > 0
+          ? Number((qualification as any).remedialScore)
+          : Number(qualification.score) || 0;
         const percentage = Number(qualification.evaluationPlan?.percentage) || 0;
         const termId = qualification.evaluationPlan?.termId;
 
@@ -185,10 +187,11 @@ export class FinalGradeCalculator {
       let totalRaw = 0;
       let totalCouncil = 0;
       (insSub.qualifications || []).forEach((q) => {
-        const s = Number(q.score) || 0;
+        const s = (q as any).remedialScore != null && Number((q as any).remedialScore) > 0
+          ? Number((q as any).remedialScore)
+          : Number(q.score) || 0;
         const p = Number(q.evaluationPlan?.percentage) || 0;
         totalRaw += s * (p / 100);
-        // Note: This is "Sum of raw scores". If we want "Average Raw Score", divide by termCount.
       });
       (insSub.councilPoints || []).forEach(p => totalCouncil += (Number(p.points) || 0));
 
