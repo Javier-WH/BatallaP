@@ -201,7 +201,7 @@ const ManageGrades: React.FC = () => {
       if (!insSub) return s;
       const quals = insSub.qualifications?.some(q => q.evaluationPlanId === evalPlanId)
         ? insSub.qualifications.map(q => q.evaluationPlanId === evalPlanId
-          ? { ...q, isAbsent: !currentIsAbsent, score: !currentIsAbsent ? 0 : q.score }
+          ? { ...q, isAbsent: !currentIsAbsent, score: !currentIsAbsent ? 0 : q.score, remedialScore: !currentIsAbsent ? null : q.remedialScore }
           : q)
         : [...(insSub.qualifications || []), {
             id: 0, evaluationPlanId: evalPlanId, score: 0, isAbsent: !currentIsAbsent
@@ -221,6 +221,7 @@ const ManageGrades: React.FC = () => {
         inscriptionId: enrollment.id,
         isAbsent: !currentIsAbsent,
         score: !currentIsAbsent ? 0 : undefined,
+        remedialScore: !currentIsAbsent ? null : undefined,
         observations: ''
       });
     } catch {
@@ -561,6 +562,7 @@ const ManageGrades: React.FC = () => {
                                         title="Click derecho: marcar/desmarcar inasistente"
                                         onContextMenu={(e) => {
                                           e.preventDefault();
+                                          e.stopPropagation();
                                           handleToggleAbsent(enrollment, item.id, q?.isAbsent);
                                         }}
                                       >
@@ -572,7 +574,7 @@ const ManageGrades: React.FC = () => {
                                           inputMode="numeric"
                                           pattern="[0-9]*"
                                           defaultValue={q?.isAbsent ? '0' : (q?.score != null ? Math.round(q.score) : '')}
-                                          key={`${enrollment.id}-${item.id}`}
+                                          key={`${enrollment.id}-${item.id}${q?.isAbsent ? '-a' : ''}`}
                                           style={{
                                             width: '48px',
                                             textAlign: 'center',
@@ -615,7 +617,7 @@ const ManageGrades: React.FC = () => {
                                           }}
                                         />
                                       </td>
-                                      <td key={`${item.id}-b`} style={{ padding: '2px', border: '1px solid var(--color-text-muted)', background: rowIndex % 2 === 0 ? 'var(--color-input-bg)' : '#f9fafb', width: '50px' }}></td>
+                                      <td key={`${item.id}-b`} style={{ padding: '2px', border: '1px solid var(--color-text-muted)', background: rowIndex % 2 === 0 ? 'var(--color-input-bg)' : '#f9fafb', width: '50px' }} onContextMenu={(e) => e.preventDefault()}></td>
                                       </>
                                     );
                                   })}

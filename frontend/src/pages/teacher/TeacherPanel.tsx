@@ -553,7 +553,7 @@ const TeacherPanel: React.FC = () => {
       if (!insSub) return s;
       const quals = insSub.qualifications?.some(q => q.evaluationPlanId === evalPlanId)
         ? insSub.qualifications.map(q => q.evaluationPlanId === evalPlanId
-          ? { ...q, isAbsent: !currentIsAbsent, score: !currentIsAbsent ? 0 : q.score }
+          ? { ...q, isAbsent: !currentIsAbsent, score: !currentIsAbsent ? 0 : q.score, remedialScore: !currentIsAbsent ? null : q.remedialScore }
           : q)
         : [...(insSub.qualifications || []), {
             id: 0, evaluationPlanId: evalPlanId, score: 0, isAbsent: !currentIsAbsent
@@ -573,6 +573,7 @@ const TeacherPanel: React.FC = () => {
         inscriptionId: enrollment.id,
         isAbsent: !currentIsAbsent,
         score: !currentIsAbsent ? 0 : undefined,
+        remedialScore: !currentIsAbsent ? null : undefined,
         observations: ''
       });
     } catch {
@@ -1081,9 +1082,10 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                               {evaluationPlan.map((item, colIndex) => {
                                 const q = studentQuals.find((sq: Qualification) => sq.evaluationPlanId === item.id);
                                 const currentScore = q ? q.score : null;
+                                const isAbsent = q?.isAbsent || false;
                                 const stats = evalStats.get(item.id);
                                 const hasRemedial = (stats?.failedPct ?? 0) >= remedialFailurePercentage;
-                                const isRemedialEligible = currentScore !== null && currentScore > 0 && currentScore >= remedialMinGrade && currentScore <= remedialMaxGrade;
+                                const isRemedialEligible = !isAbsent && currentScore !== null && currentScore > 0 && currentScore >= remedialMinGrade && currentScore <= remedialMaxGrade;
 
                                 return (
                                   <React.Fragment key={item.id}>
@@ -1091,6 +1093,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                                     title="Click derecho: marcar/desmarcar inasistente"
                                     onContextMenu={(e) => {
                                       e.preventDefault();
+                                      e.stopPropagation();
                                       handleToggleAbsent(enrollment, item.id, q?.isAbsent);
                                     }}
                                   >
@@ -1103,7 +1106,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                                       inputMode="numeric"
                                       pattern="[0-9]*"
                                       defaultValue={q?.isAbsent ? '0' : (currentScore !== null ? Math.round(currentScore) : '')}
-                                      key={`${enrollment.id}-${item.id}`}
+                                      key={`${enrollment.id}-${item.id}${q?.isAbsent ? '-a' : ''}`}
                                       style={{
                                         width: '48px',
                                         textAlign: 'center',
@@ -1115,7 +1118,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                                         color: currentScore !== null && currentScore > 0 && currentScore < passingGrade ? '#dc2626' : undefined,
                                         fontWeight: currentScore !== null && currentScore > 0 && currentScore < passingGrade ? 700 : undefined,
                                       }}
-                                      disabled={isSelectedTermBlocked || (q?.remedialScore != null && q.remedialScore > 0)}
+                                      disabled={isSelectedTermBlocked || (q?.remedialScore != null && q.remedialScore > 0 && isRemedialEligible)}
                                       onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
                                         if (e.key === '.' || e.key === ',' || e.key === 'e' || e.key === 'E' || e.key === '-' || e.key === '+') {
                                           e.preventDefault();
@@ -1184,13 +1187,17 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                                           return;
                                         }
                                         if (val !== currentScore) {
-                                          handleSaveScoreInGrid(enrollment, item.id, val);
+                                          // Clear remedial if grade is no longer eligible
+                                          const needsRemedialClear = val <= 0 || val < remedialMinGrade || val > remedialMaxGrade;
+                                          handleSaveScoreInGrid(enrollment, item.id, val, needsRemedialClear ? null : undefined);
                                         }
                                       }}
                                     />
                                   </td>
                                   {hasRemedial && (
-                                    <td key={`${item.id}-b`} className="grading-cell remedial-cell" style={{ padding: '2px', border: '1px solid var(--color-text-muted)', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-input-bg)' : '#f9fafb', width: '50px' }}>
+                                    <td key={`${item.id}-b`} className="grading-cell remedial-cell" style={{ padding: '2px', border: '1px solid var(--color-text-muted)', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-input-bg)' : '#f9fafb', width: '50px' }}
+                                      onContextMenu={(e) => e.preventDefault()}
+                                    >
                                       <Tooltip
                                         mouseEnterDelay={0}
                                         title={
