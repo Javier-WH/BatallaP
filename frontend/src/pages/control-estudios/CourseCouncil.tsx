@@ -54,6 +54,13 @@ interface CouncilStudent {
     grade: number;
     hasOtherTermsPoints: boolean;
     otherTermsInfo?: { termName: string, points: number }[];
+    previousTermsData?: {
+      termId: number;
+      termName: string;
+      baseGrade: number;
+      councilPoints: number;
+      finalGrade: number;
+    }[];
   }[];
 }
 
@@ -456,6 +463,13 @@ const CourseCouncil: React.FC = () => {
       });
     });
 
+    // Collect previous term names from the first student's first subject
+    const prevTermNames: { termId: number, termName: string }[] = [];
+    if (studentsData.length > 0 && studentsData[0].subjects.length > 0) {
+      const firstSubPrevTerms = studentsData[0].subjects[0].previousTermsData || [];
+      firstSubPrevTerms.forEach(pt => prevTermNames.push({ termId: pt.termId, termName: pt.termName }));
+    }
+
     const columns = [
       {
         title: 'Estudiante',
@@ -519,104 +533,164 @@ const CourseCouncil: React.FC = () => {
           );
         }
       },
-      ...columnDefinitions.map(colDef => ({
-        title: (
-          <Tooltip title={colDef.title}>
-            <div style={{
-              whiteSpace: 'nowrap',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              maxWidth: 160,
-              fontSize: 12,
-              fontWeight: 800,
-              textTransform: 'uppercase',
-              color: '#595959'
-            }}>
-              {colDef.title}
-            </div>
-          </Tooltip>
-        ),
-        key: colDef.key,
-        width: 180,
-        align: 'center' as const,
-        render: (_: any, record: CouncilStudent) => {
-          const subjectData = colDef.groupId
-            ? record.subjects.find(s => s.groupId === colDef.groupId)
-            : record.subjects.find(s => s.id === colDef.subjectId);
+      ...columnDefinitions.map(colDef => {
+        // Build children: one subcolumn per previous term + current term columns
+        const children: any[] = [];
 
-          if (!subjectData) return <Text type="secondary">-</Text>;
+        // Previous term subcolumns
+        prevTermNames.forEach((ptn) => {
+          children.push({
+            title: (
+              <div style={{ fontSize: 9, fontWeight: 700, color: '#8c8c8c', textTransform: 'uppercase' }}>
+                {ptn.termName}
+              </div>
+            ),
+            key: `${colDef.key}-prev-${ptn.termId}`,
+            width: 55,
+            align: 'center' as const,
+            render: (_: any, record: CouncilStudent) => {
+              const subjectData = colDef.groupId
+                ? record.subjects.find(s => s.groupId === colDef.groupId)
+                : record.subjects.find(s => s.id === colDef.subjectId);
 
-          const prevPointsTotal = subjectData.otherTermsInfo?.reduce((sum, info) => sum + info.points, 0) || 0;
-          const currentPoints = subjectData.points || 0;
-          const baseGrade = subjectData.grade || 0;
-          const totalGrade = Math.round((baseGrade + currentPoints) * 100) / 100;
+              if (!subjectData) return <Text type="secondary">-</Text>;
 
-          return (
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-              <Tooltip
-                title={
-                  <div style={{ padding: 4 }}>
-                    {colDef.groupId && <div style={{ marginBottom: 6, borderBottom: '1px solid rgba(255,255,255,0.2)', paddingBottom: 4 }}><strong>Materia:</strong> {subjectData.name}</div>}
-                    {prevPointsTotal > 0 ? (
-                      <>
-                        <div style={{ marginBottom: 4 }}><strong>Desglose de puntos previos:</strong></div>
-                        {subjectData.otherTermsInfo?.map((info: any, idx: number) => (
-                          <div key={idx} style={{ fontSize: 11, opacity: 0.9 }}>
-                            • {info.termName}: <strong>+{info.points}</strong>
-                          </div>
-                        ))}
-                      </>
-                    ) : (
-                      "No hay puntos previos"
-                    )}
-                  </div>
-                }
-              >
-                <Tag
-                  color={prevPointsTotal > 0 ? "orange" : "default"}
-                  style={{ fontSize: 10, padding: 0, margin: 0, lineHeight: '20px', width: 28, height: 20, textAlign: 'center', fontWeight: 700, borderRadius: 6, border: 'none' }}
+              const pt = (subjectData.previousTermsData || []).find(p => p.termId === ptn.termId);
+              if (!pt) return <Text type="secondary">-</Text>;
+
+              return (
+                <Tooltip
+                  title={
+                    <div style={{ padding: 4 }}>
+                      <div style={{ marginBottom: 4, fontWeight: 700 }}>{pt.termName}</div>
+                      <div>Nota base: <strong>{formatGrade(pt.baseGrade, enableRounding)}</strong></div>
+                      <div>Puntos de consejo: <strong>+{pt.councilPoints}</strong></div>
+                      <div>Nota final: <strong>{formatGrade(pt.finalGrade, enableRounding)}</strong></div>
+                    </div>
+                  }
                 >
-                  {prevPointsTotal > 0 ? `+${prevPointsTotal}` : '0'}
-                </Tag>
-              </Tooltip>
+                  <div style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    padding: '2px 0',
+                  }}>
+                    <Text style={{ fontSize: 9, fontWeight: 700, color: pt.councilPoints > 0 ? '#fa8c16' : '#bfbfbf', lineHeight: '11px' }}>
+                      +{pt.councilPoints}
+                    </Text>
+                    <Text style={{ fontSize: 13, fontWeight: 800, color: pt.finalGrade < 10 ? '#cf1322' : '#389e0d' }}>
+                      {formatGrade(pt.finalGrade, enableRounding)}
+                    </Text>
+                  </div>
+                </Tooltip>
+              );
+            }
+          });
+        });
 
-              <Tooltip title="Nota Base">
-                <Text style={{ fontSize: 14, color: baseGrade < 10 ? '#cf1322' : '#262626', width: 35, textAlign: 'center', fontWeight: 600 }}>
-                  {formatGrade(baseGrade, enableRounding)}
-                </Text>
-              </Tooltip>
-
-              <InputNumber
-                min={0}
-                max={pointsLimit}
-                size="middle"
-                value={subjectData.points}
-                onChange={(val) => handlePointChange(record.id, subjectData.inscriptionSubjectId, val)}
-                disabled={!selectedTerm?.isBlocked}
-                className="premium-input-number"
-                style={{ width: 50, fontWeight: 700, borderRadius: 8 }}
-              />
-
-              <Tooltip title="Nota Final">
-                <div style={{
-                  width: 38,
-                  height: 28,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  background: totalGrade < 10 ? '#fff1f0' : '#f6ffed',
-                  borderRadius: 6,
-                  border: `1px solid ${totalGrade < 10 ? '#ffa39e' : '#b7eb8f'}`
-                }}>
-                  <Text style={{ fontSize: 14, fontWeight: 800, color: totalGrade < 10 ? '#cf1322' : '#389e0d' }}>
-                    {formatGrade(totalGrade, enableRounding)}
+        // Current term subcolumns: Base, Pts, Final
+        children.push(
+          {
+            title: <div style={{ fontSize: 9, fontWeight: 700, color: '#8c8c8c', textTransform: 'uppercase' }}>Base</div>,
+            key: `${colDef.key}-base`,
+            width: 45,
+            align: 'center' as const,
+            render: (_: any, record: CouncilStudent) => {
+              const subjectData = colDef.groupId
+                ? record.subjects.find(s => s.groupId === colDef.groupId)
+                : record.subjects.find(s => s.id === colDef.subjectId);
+              if (!subjectData) return <Text type="secondary">-</Text>;
+              const baseGrade = subjectData.grade || 0;
+              return (
+                <Tooltip title="Nota Base del lapso actual">
+                  <Text style={{ fontSize: 14, color: baseGrade < 10 ? '#cf1322' : '#262626', fontWeight: 600 }}>
+                    {formatGrade(baseGrade, enableRounding)}
                   </Text>
-                </div>
-              </Tooltip>
-            </div>
-          );
-        }
-      }))
+                </Tooltip>
+              );
+            }
+          },
+          {
+            title: <div style={{ fontSize: 9, fontWeight: 700, color: '#8c8c8c', textTransform: 'uppercase' }}>Pts</div>,
+            key: `${colDef.key}-pts`,
+            width: 50,
+            align: 'center' as const,
+            render: (_: any, record: CouncilStudent) => {
+              const subjectData = colDef.groupId
+                ? record.subjects.find(s => s.groupId === colDef.groupId)
+                : record.subjects.find(s => s.id === colDef.subjectId);
+              if (!subjectData) return <Text type="secondary">-</Text>;
+              return (
+                <InputNumber
+                  min={0}
+                  max={pointsLimit}
+                  size="small"
+                  value={subjectData.points}
+                  onChange={(val) => handlePointChange(record.id, subjectData.inscriptionSubjectId, val)}
+                  disabled={!selectedTerm?.isBlocked}
+                  className="premium-input-number"
+                  style={{ width: 42, fontWeight: 700, borderRadius: 6 }}
+                />
+              );
+            }
+          },
+          {
+            title: <div style={{ fontSize: 9, fontWeight: 700, color: '#8c8c8c', textTransform: 'uppercase' }}>Final</div>,
+            key: `${colDef.key}-final`,
+            width: 48,
+            align: 'center' as const,
+            render: (_: any, record: CouncilStudent) => {
+              const subjectData = colDef.groupId
+                ? record.subjects.find(s => s.groupId === colDef.groupId)
+                : record.subjects.find(s => s.id === colDef.subjectId);
+              if (!subjectData) return <Text type="secondary">-</Text>;
+              const baseGrade = subjectData.grade || 0;
+              const currentPoints = subjectData.points || 0;
+              const totalGrade = Math.round((baseGrade + currentPoints) * 100) / 100;
+              return (
+                <Tooltip title="Nota Final del lapso">
+                  <div style={{
+                    width: 34,
+                    height: 24,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    background: totalGrade < 10 ? '#fff1f0' : '#f6ffed',
+                    borderRadius: 5,
+                    border: `1px solid ${totalGrade < 10 ? '#ffa39e' : '#b7eb8f'}`
+                  }}>
+                    <Text style={{ fontSize: 13, fontWeight: 800, color: totalGrade < 10 ? '#cf1322' : '#389e0d' }}>
+                      {formatGrade(totalGrade, enableRounding)}
+                    </Text>
+                  </div>
+                </Tooltip>
+              );
+            }
+          }
+        );
+
+        return {
+          title: (
+            <Tooltip title={colDef.title}>
+              <div style={{
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                maxWidth: 200,
+                fontSize: 12,
+                fontWeight: 800,
+                textTransform: 'uppercase',
+                color: '#595959'
+              }}>
+                {colDef.title}
+              </div>
+            </Tooltip>
+          ),
+          key: colDef.key,
+          align: 'center' as const,
+          children,
+        };
+      })
     ];
 
     return (

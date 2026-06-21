@@ -61,8 +61,7 @@ export const getCouncilData = async (req: Request, res: Response) => {
               include: [
                 {
                   model: EvaluationPlan,
-                  as: 'evaluationPlan',
-                  where: { termId: Number(termId) }
+                  as: 'evaluationPlan'
                 }
               ],
               required: false
@@ -90,6 +89,16 @@ export const getCouncilData = async (req: Request, res: Response) => {
 
     const subjectOrderMap = await getSubjectOrderMap(pg.id);
 
+    // Fetch all terms for this school period, sorted by order
+    const allTerms = await Term.findAll({
+      where: { schoolPeriodId: term.schoolPeriodId },
+      order: [['order', 'ASC']],
+      raw: true
+    });
+
+    // Terms before the selected one (previous terms)
+    const previousTerms = allTerms.filter((t: any) => t.order < term.order);
+
     // Map data for frontend
     const result = inscriptions.map(ins => {
       const insAny = ins as any;
@@ -99,19 +108,44 @@ export const getCouncilData = async (req: Request, res: Response) => {
         (is: any) => is.subject?.name,
         subjectOrderMap
       ).map((is: any) => {
-        // Calculate definitive grade for this term
-        const qualifications = is.qualifications || [];
-        const grade = qualifications.reduce((acc: number, q: any) => {
-          if (q.isAbsent) return acc;
-          const score = q.remedialScore != null && Number(q.remedialScore) > 0
-            ? Number(q.remedialScore)
-            : Number(q.score) || 0;
-          const percentage = Number(q.evaluationPlan?.percentage) || 0;
-          return acc + (score * (percentage / 100));
-        }, 0);
+        const allQualifications = is.qualifications || [];
+        const allCouncilPoints = is.councilPoints || [];
 
-        const currentTermPoints = (is.councilPoints || []).find((cp: any) => cp.termId === Number(termId));
-        const otherTermsPoints = (is.councilPoints || []).filter((cp: any) => cp.termId !== Number(termId) && cp.points > 0);
+        // Calculate base grade for a specific term from its qualifications
+        const calculateTermBaseGrade = (termId: number): number => {
+          return allQualifications
+            .filter((q: any) => q.evaluationPlan?.termId === termId)
+            .reduce((acc: number, q: any) => {
+              if (q.isAbsent) return acc;
+              const score = q.remedialScore != null && Number(q.remedialScore) > 0
+                ? Number(q.remedialScore)
+                : Number(q.score) || 0;
+              const percentage = Number(q.evaluationPlan?.percentage) || 0;
+              return acc + (score * (percentage / 100));
+            }, 0);
+        };
+
+        // Current term grade
+        const currentTermGrade = calculateTermBaseGrade(Number(termId));
+
+        // Current term council points
+        const currentTermPoints = allCouncilPoints.find((cp: any) => cp.termId === Number(termId));
+        const otherTermsPoints = allCouncilPoints.filter((cp: any) => cp.termId !== Number(termId) && cp.points > 0);
+
+        // Build previous terms data: for each previous term, calculate base grade + council points = final grade
+        const previousTermsData = previousTerms.map((pt: any) => {
+          const ptBaseGrade = calculateTermBaseGrade(pt.id);
+          const ptCouncilPoint = allCouncilPoints.find((cp: any) => cp.termId === pt.id);
+          const ptPoints = ptCouncilPoint?.points || 0;
+          const ptFinalGrade = Math.round((ptBaseGrade + ptPoints) * 100) / 100;
+          return {
+            termId: pt.id,
+            termName: pt.name,
+            baseGrade: Math.round(ptBaseGrade * 100) / 100,
+            councilPoints: ptPoints,
+            finalGrade: ptFinalGrade
+          };
+        });
 
         return {
           id: is.subjectId,
@@ -121,12 +155,13 @@ export const getCouncilData = async (req: Request, res: Response) => {
           inscriptionSubjectId: is.id,
           points: currentTermPoints?.points || 0,
           councilPointId: currentTermPoints?.id,
-          grade: Math.round(grade * 100) / 100,
+          grade: Math.round(currentTermGrade * 100) / 100,
           hasOtherTermsPoints: otherTermsPoints.length > 0,
           otherTermsInfo: otherTermsPoints.map((cp: any) => ({
             termName: cp.term?.name,
             points: cp.points
-          }))
+          })),
+          previousTermsData
         };
       });
 
