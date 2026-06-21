@@ -188,27 +188,32 @@ const ManageGrades: React.FC = () => {
     }
   };
 
-  const handleToggleAbsent = async (enrollment: StudentEnrollment, evalPlanId: number, currentIsAbsent?: boolean) => {
+const handleToggleAbsent = async (enrollment: StudentEnrollment, evalPlanId: number, currentIsAbsent?: boolean) => {
     if (isSelectedTermBlocked) {
       message.warning('Este lapso está bloqueado.');
       return;
     }
 
+    const insSub = enrollment.inscriptionSubjects?.[0];
+    const existingQ = insSub?.qualifications?.find(q => q.evaluationPlanId === evalPlanId);
+    const previousScore = existingQ?.score;
+    const previousRemedial = existingQ?.remedialScore;
+
     // Optimistic update: toggle locally immediately
     setStudents(prev => prev.map(s => {
       if (s.id !== enrollment.id) return s;
-      const insSub = s.inscriptionSubjects?.[0];
-      if (!insSub) return s;
-      const quals = insSub.qualifications?.some(q => q.evaluationPlanId === evalPlanId)
-        ? insSub.qualifications.map(q => q.evaluationPlanId === evalPlanId
-          ? { ...q, isAbsent: !currentIsAbsent, score: !currentIsAbsent ? 0 : q.score, remedialScore: !currentIsAbsent ? null : q.remedialScore }
+      const insSubS = s.inscriptionSubjects?.[0];
+      if (!insSubS) return s;
+      const quals = insSubS.qualifications?.some(q => q.evaluationPlanId === evalPlanId)
+        ? insSubS.qualifications.map(q => q.evaluationPlanId === evalPlanId
+          ? { ...q, isAbsent: !currentIsAbsent, score: !currentIsAbsent ? 0 : (previousScore ?? q.score), remedialScore: !currentIsAbsent ? null : (previousRemedial ?? q.remedialScore) }
           : q)
-        : [...(insSub.qualifications || []), {
+        : [...(insSubS.qualifications || []), {
             id: 0, evaluationPlanId: evalPlanId, score: 0, isAbsent: !currentIsAbsent
           }];
       return {
         ...s,
-        inscriptionSubjects: [{ ...insSub, qualifications: quals }]
+        inscriptionSubjects: [{ ...insSubS, qualifications: quals }]
       };
     }));
 
@@ -220,8 +225,8 @@ const ManageGrades: React.FC = () => {
         inscriptionSubjectId,
         inscriptionId: enrollment.id,
         isAbsent: !currentIsAbsent,
-        score: !currentIsAbsent ? 0 : undefined,
-        remedialScore: !currentIsAbsent ? null : undefined,
+        score: !currentIsAbsent ? 0 : (previousScore ?? undefined),
+        remedialScore: !currentIsAbsent ? null : (previousRemedial ?? undefined),
         observations: ''
       });
     } catch {
@@ -248,7 +253,7 @@ const ManageGrades: React.FC = () => {
       const insSub = enrollment.inscriptionSubjects?.[0];
       const quals = insSub?.qualifications || [];
       const hasAll = evaluationPlan.every(plan => {
-        return quals.some((q: Qualification) => q.evaluationPlanId === plan.id && q.score !== null && q.score > 0);
+        return quals.some((q: Qualification) => q.evaluationPlanId === plan.id && (!!q.isAbsent || (q.score !== null && q.score > 0)));
       });
       if (!hasAll) missing++;
     });
@@ -264,8 +269,12 @@ const ManageGrades: React.FC = () => {
       students.forEach(enrollment => {
         const insSub = enrollment.inscriptionSubjects?.[0];
         const q = insSub?.qualifications?.find((sq: Qualification) => sq.evaluationPlanId === ep.id);
-        if (!q || q.score === null || q.score === 0) {
+        if (!!q?.isAbsent) {
           missing++;
+        } else if (!q || q.score === null) {
+          // No grade at all
+        } else if (q.score <= 0) {
+          failed++;
         } else if (q.score < passingGrade) {
           failed++;
         }
@@ -556,9 +565,10 @@ const ManageGrades: React.FC = () => {
                                   </td>
                                    {evaluationPlan.map((item, colIndex) => {
                                     const q = studentQuals.find((sq: Qualification) => sq.evaluationPlanId === item.id);
+                                    const isAbsent = !!(q?.isAbsent);
                                     return (
                                       <>
-                                      <td key={`${item.id}-a`} className={`grading-cell${q?.isAbsent ? ' grading-absent' : ''}`} style={{ padding: '2px', border: '1px solid var(--color-text-muted)', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-input-bg)' : '#f9fafb', width: '50px', cursor: 'context-menu' }}
+                                      <td key={`${item.id}-a`} className={`grading-cell${isAbsent ? ' grading-absent' : ''}`} style={{ padding: '2px', border: '1px solid var(--color-text-muted)', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-input-bg)' : '#f9fafb', width: '50px', cursor: 'context-menu' }}
                                         title="Click derecho: marcar/desmarcar inasistente"
                                         onContextMenu={(e) => {
                                           e.preventDefault();
@@ -573,8 +583,8 @@ const ManageGrades: React.FC = () => {
                                           step={1}
                                           inputMode="numeric"
                                           pattern="[0-9]*"
-                                          defaultValue={q?.isAbsent ? '0' : (q?.score != null ? Math.round(q.score) : '')}
-                                          key={`${enrollment.id}-${item.id}${q?.isAbsent ? '-a' : ''}`}
+                                          defaultValue={isAbsent ? '' : (q?.score != null ? Math.round(q.score) : '')}
+                                          key={`${enrollment.id}-${item.id}${isAbsent ? '-a' : ''}`}
                                           style={{
                                             width: '48px',
                                             textAlign: 'center',

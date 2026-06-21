@@ -149,6 +149,7 @@ export class FinalGradeCalculator {
 
       // Calculate Qualifications per Term
       (insSub.qualifications || []).forEach((qualification: Qualification & { evaluationPlan?: EvaluationPlan | null }) => {
+        if ((qualification as any).isAbsent) return;
         const score = (qualification as any).remedialScore != null && Number((qualification as any).remedialScore) > 0
           ? Number((qualification as any).remedialScore)
           : Number(qualification.score) || 0;
@@ -187,6 +188,7 @@ export class FinalGradeCalculator {
       let totalRaw = 0;
       let totalCouncil = 0;
       (insSub.qualifications || []).forEach((q) => {
+        if ((q as any).isAbsent) return;
         const s = (q as any).remedialScore != null && Number((q as any).remedialScore) > 0
           ? Number((q as any).remedialScore)
           : Number(q.score) || 0;

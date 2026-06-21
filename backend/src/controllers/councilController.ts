@@ -102,7 +102,10 @@ export const getCouncilData = async (req: Request, res: Response) => {
         // Calculate definitive grade for this term
         const qualifications = is.qualifications || [];
         const grade = qualifications.reduce((acc: number, q: any) => {
-          const score = Number(q.score) || 0;
+          if (q.isAbsent) return acc;
+          const score = q.remedialScore != null && Number(q.remedialScore) > 0
+            ? Number(q.remedialScore)
+            : Number(q.score) || 0;
           const percentage = Number(q.evaluationPlan?.percentage) || 0;
           return acc + (score * (percentage / 100));
         }, 0);

@@ -1162,8 +1162,10 @@ export const exportGradesExcel = async (req: Request, res: Response) => {
         const cell = row.getCell(colNum);
         if (isFilled && q) {
           cell.value = Number(q.score);
-          const effectiveScore = q.remedialScore != null && Number(q.remedialScore) > 0 ? Number(q.remedialScore) : Number(q.score);
-          rowTotal += (effectiveScore * Number(plan.percentage)) / 100;
+          if (!q.isAbsent) {
+            const effectiveScore = q.remedialScore != null && Number(q.remedialScore) > 0 ? Number(q.remedialScore) : Number(q.score);
+            rowTotal += (effectiveScore * Number(plan.percentage)) / 100;
+          }
         }
         cell.alignment = { horizontal: 'center' };
         cell.numFmt = '0.00';
