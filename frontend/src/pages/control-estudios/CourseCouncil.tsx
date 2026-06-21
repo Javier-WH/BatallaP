@@ -593,12 +593,12 @@ const CourseCouncil: React.FC = () => {
         });
         }
 
-        // Current term subcolumns: Base, Pts, Final
+        // Current term subcolumns: Base (named as current term), Pts, Final
         children.push(
           {
-            title: <div style={{ fontSize: 9, fontWeight: 700, color: '#8c8c8c', textTransform: 'uppercase' }}>Base</div>,
+            title: <div style={{ fontSize: 9, fontWeight: 700, color: '#1890ff', textTransform: 'uppercase' }}>{selectedTerm?.name}</div>,
             key: `${colDef.key}-base`,
-            width: 45,
+            width: 55,
             align: 'center' as const,
             onCell: (prevTermNames.length === 0 || !showPreviousTerms) ? () => ({ style: { borderLeft: '3px solid #d9d9d9' } }) : undefined,
             onHeaderCell: (prevTermNames.length === 0 || !showPreviousTerms) ? () => ({ style: { borderLeft: '3px solid #d9d9d9' } }) : undefined,
