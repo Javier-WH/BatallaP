@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Card, Button, Table, InputNumber, Space, Typography, Row, Col, Tag, Input, Empty, Spin, message, Tooltip, Alert, Breadcrumb } from 'antd';
+import { Card, Button, Table, InputNumber, Space, Typography, Row, Col, Tag, Input, Empty, Spin, message, Tooltip, Alert, Breadcrumb, Checkbox } from 'antd';
 import {
   LeftOutlined,
   SaveOutlined,
@@ -79,6 +79,7 @@ const CourseCouncil: React.FC = () => {
   const [pointsLimit, setPointsLimit] = useState<number>(2);
 
   const [filterYear, setFilterYear] = useState<string>('');
+  const [showPreviousTerms, setShowPreviousTerms] = useState<boolean>(true);
   const { enableRounding } = useGradeRounding();
 
   const fetchData = useCallback(async () => {
@@ -537,8 +538,9 @@ const CourseCouncil: React.FC = () => {
         // Build children: one subcolumn per previous term + current term columns
         const children: any[] = [];
 
-        // Previous term subcolumns
-        prevTermNames.forEach((ptn, ptnIdx) => {
+        // Previous term subcolumns (only if showPreviousTerms is enabled)
+        if (showPreviousTerms) {
+          prevTermNames.forEach((ptn, ptnIdx) => {
           children.push({
             title: (
               <div style={{ fontSize: 9, fontWeight: 700, color: '#8c8c8c', textTransform: 'uppercase' }}>
@@ -589,6 +591,7 @@ const CourseCouncil: React.FC = () => {
             }
           });
         });
+        }
 
         // Current term subcolumns: Base, Pts, Final
         children.push(
@@ -597,8 +600,8 @@ const CourseCouncil: React.FC = () => {
             key: `${colDef.key}-base`,
             width: 45,
             align: 'center' as const,
-            onCell: prevTermNames.length === 0 ? () => ({ style: { borderLeft: '3px solid #d9d9d9' } }) : undefined,
-            onHeaderCell: prevTermNames.length === 0 ? () => ({ style: { borderLeft: '3px solid #d9d9d9' } }) : undefined,
+            onCell: (prevTermNames.length === 0 || !showPreviousTerms) ? () => ({ style: { borderLeft: '3px solid #d9d9d9' } }) : undefined,
+            onHeaderCell: (prevTermNames.length === 0 || !showPreviousTerms) ? () => ({ style: { borderLeft: '3px solid #d9d9d9' } }) : undefined,
             render: (_: any, record: CouncilStudent) => {
               const subjectData = colDef.groupId
                 ? record.subjects.find(s => s.groupId === colDef.groupId)
@@ -717,7 +720,16 @@ const CourseCouncil: React.FC = () => {
               </Space>
             </div>
           </Space>
-          <Space size="large">
+          <Space size="large" align="center">
+            {prevTermNames.length > 0 && (
+              <Checkbox
+                checked={showPreviousTerms}
+                onChange={(e) => setShowPreviousTerms(e.target.checked)}
+                style={{ fontWeight: 600 }}
+              >
+                Mostrar lapsos anteriores
+              </Checkbox>
+            )}
             {!selectedTerm?.isBlocked && (
               <Alert
                 message="Lapso activo"
