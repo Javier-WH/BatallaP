@@ -478,7 +478,17 @@ const AcademicSettings: React.FC = () => {
                     name="council_points_per_subject_limit"
                     label={<Text style={{ fontWeight: 700, fontSize: 13 }}>Créditos de Consejo (Por Materia)</Text>}
                     tooltip="Límite máximo de puntos que el consejo puede otorgar a una sola materia"
-                    rules={[{ required: true }]}
+                    rules={[
+                      { required: true },
+                      ({ getFieldValue }) => ({
+                        validator(_, value) {
+                          if (value !== undefined && value > getFieldValue('council_points_limit')) {
+                            return Promise.reject(new Error('El límite por materia no puede ser mayor al límite total'));
+                          }
+                          return Promise.resolve();
+                        },
+                      }),
+                    ]}
                   >
                     <InputNumber min={0} max={20} style={{ width: '100%', height: 44, display: 'flex', alignItems: 'center' }} />
                   </Form.Item>
