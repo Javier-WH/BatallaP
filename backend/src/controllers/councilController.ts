@@ -10,7 +10,8 @@ import {
   PeriodGradeSubject,
   Term,
   Qualification,
-  EvaluationPlan
+  EvaluationPlan,
+  Setting
 } from '@/models/index';
 import {
   getSubjectOrderMap,
@@ -208,6 +209,51 @@ export const saveCouncilPoint = async (req: Request, res: Response) => {
 export const bulkSaveCouncilPoints = async (req: Request, res: Response) => {
   try {
     const { updates } = req.body; // Array of { inscriptionSubjectId, termId, points }
+
+    // Fetch limits from settings
+    const [totalLimitSetting, perSubjectLimitSetting] = await Promise.all([
+      Setting.findOne({ where: { key: 'council_points_limit' } }),
+      Setting.findOne({ where: { key: 'council_points_per_subject_limit' } })
+    ]);
+    const totalLimit = totalLimitSetting ? Number(totalLimitSetting.value) : 2;
+    const perSubjectLimit = perSubjectLimitSetting ? Number(perSubjectLimitSetting.value) : 2;
+
+    // Validate per-subject limit
+    for (const update of updates) {
+      if (Number(update.points) > perSubjectLimit) {
+        return res.status(400).json({
+          message: `El límite de puntos por materia es de ${perSubjectLimit}. Se intentó asignar ${update.points}.`
+        });
+      }
+    }
+
+    // Validate total limit per student (group by inscriptionSubjectId's parent inscription)
+    // Group updates by inscription via InscriptionSubject
+    const inscriptionSubjectIds = updates.map((u: any) => u.inscriptionSubjectId);
+    const insSubs = await InscriptionSubject.findAll({
+      where: { id: inscriptionSubjectIds },
+      attributes: ['id', 'inscriptionId']
+    });
+
+    const inscriptionMap = new Map<number, number[]>();
+    insSubs.forEach((is: any) => {
+      const arr = inscriptionMap.get(is.inscriptionId) || [];
+      arr.push(is.id);
+      inscriptionMap.set(is.inscriptionId, arr);
+    });
+
+    for (const [inscriptionId, subIds] of inscriptionMap) {
+      // Sum points from updates for this inscription
+      const totalFromUpdates = updates
+        .filter((u: any) => subIds.includes(u.inscriptionSubjectId))
+        .reduce((sum: number, u: any) => sum + Number(u.points || 0), 0);
+
+      if (totalFromUpdates > totalLimit) {
+        return res.status(400).json({
+          message: `El límite total de puntos por alumno es de ${totalLimit}. Se intentó asignar ${totalFromUpdates}.`
+        });
+      }
+    }
 
     for (const update of updates) {
       const [point, created] = await CouncilPoint.findOrCreate({

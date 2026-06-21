@@ -77,6 +77,7 @@ const CourseCouncil: React.FC = () => {
   const [selectedSection, setSelectedSection] = useState<{ section: Section, grade: Grade } | null>(null);
   const [studentsData, setStudentsData] = useState<CouncilStudent[]>([]);
   const [pointsLimit, setPointsLimit] = useState<number>(2);
+  const [pointsPerSubjectLimit, setPointsPerSubjectLimit] = useState<number>(2);
 
   const [filterYear, setFilterYear] = useState<string>('');
   const [showPreviousTerms, setShowPreviousTerms] = useState<boolean>(true);
@@ -104,6 +105,9 @@ const CourseCouncil: React.FC = () => {
 
       if (settingsRes.data.council_points_limit) {
         setPointsLimit(Number(settingsRes.data.council_points_limit));
+      }
+      if (settingsRes.data.council_points_per_subject_limit) {
+        setPointsPerSubjectLimit(Number(settingsRes.data.council_points_per_subject_limit));
       }
     } catch (error) {
       console.error('Error fetching data', error);
@@ -136,6 +140,14 @@ const CourseCouncil: React.FC = () => {
     if (!student) return;
 
     const newValue = value || 0;
+
+    // Validate per-subject limit
+    if (newValue > pointsPerSubjectLimit) {
+      message.warning(`El límite de puntos por materia es de ${pointsPerSubjectLimit}.`);
+      return;
+    }
+
+    // Validate total limit
     const currentTotal = student.subjects.reduce((sum, s) => {
       if (s.inscriptionSubjectId === inscriptionSubjectId) return sum;
       return sum + (s.points || 0);
@@ -508,7 +520,7 @@ const CourseCouncil: React.FC = () => {
                   color={usedPoints >= pointsLimit ? 'volcano' : 'blue'}
                   style={{ fontWeight: 700, border: 'none', borderRadius: 4, height: 20, lineHeight: '18px', fontSize: 10, textTransform: 'uppercase' }}
                 >
-                  USADO: {usedPoints} / {pointsLimit}
+                  TOTAL: {usedPoints} / {pointsLimit} · MÁX/MATERIA: {pointsPerSubjectLimit}
                 </Tag>
               </div>
             </div>
@@ -630,7 +642,7 @@ const CourseCouncil: React.FC = () => {
               return (
                 <InputNumber
                   min={0}
-                  max={pointsLimit}
+                  max={pointsPerSubjectLimit}
                   size="small"
                   value={subjectData.points}
                   onChange={(val) => handlePointChange(record.id, subjectData.inscriptionSubjectId, val)}
