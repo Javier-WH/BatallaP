@@ -88,6 +88,7 @@ type Section = BaseCatalogItem;
 type SubjectGroup = BaseCatalogItem;
 
 interface Subject extends BaseCatalogItem {
+  abbreviation?: string | null;
   subjectGroupId?: number | null;
   subjectGroup?: SubjectGroup | null;
   usesLiteralGrades?: boolean;
@@ -785,6 +786,7 @@ const AcademicManagement: React.FC = () => {
       console.log('[openEditCatalog] Subject data:', subjectRecord);
       editCatalogForm.setFieldsValue({
         name: subjectRecord.name,
+        abbreviation: subjectRecord.abbreviation ?? null,
         subjectGroupId: subjectRecord.subjectGroupId ?? null,
         usesLiteralGrades: subjectRecord.usesLiteralGrades ?? false,
       });
@@ -794,7 +796,7 @@ const AcademicManagement: React.FC = () => {
     setEditCatalogVisible(true);
   };
 
-  const handleEditCatalog = async (values: { name: string; isDiversified?: boolean; subjectGroupId?: number | null; usesLiteralGrades?: boolean }) => {
+  const handleEditCatalog = async (values: { name: string; isDiversified?: boolean; subjectGroupId?: number | null; usesLiteralGrades?: boolean; abbreviation?: string | null }) => {
     if (!editCatalogTarget) return;
     console.log('[handleEditCatalog] Form values:', values);
     try {
@@ -814,6 +816,7 @@ const AcademicManagement: React.FC = () => {
       } else if (editCatalogTarget.type === 'subject') {
         await api.put(`${url}/${editCatalogTarget.id}`, {
           name: values.name,
+          abbreviation: values.abbreviation ?? null,
           subjectGroupId: values.subjectGroupId ?? null,
           usesLiteralGrades: values.usesLiteralGrades ?? false,
         });
@@ -884,7 +887,14 @@ const AcademicManagement: React.FC = () => {
           const subjectRecord = record as Subject;
           return (
             <Space size="middle" direction="vertical" style={{ gap: 0 }}>
-              <Text style={{ fontWeight: 700, color: '#262626', fontSize: 15 }}>{text}</Text>
+              <Space size="small">
+                <Text style={{ fontWeight: 700, color: '#262626', fontSize: 15 }}>{text}</Text>
+                {subjectRecord.abbreviation && (
+                  <Tag color="cyan" style={{ borderRadius: 4, fontWeight: 700, border: 'none', fontSize: 10, margin: 0 }}>
+                    {subjectRecord.abbreviation}
+                  </Tag>
+                )}
+              </Space>
               {subjectRecord.subjectGroup && (
                 <Tag color="processing" style={{ borderRadius: 4, fontWeight: 600, border: 'none', fontSize: 10, margin: 0 }}>
                   <ProjectOutlined style={{ marginRight: 4 }} /> {subjectRecord.subjectGroup.name.toUpperCase()}
@@ -1514,6 +1524,9 @@ const AcademicManagement: React.FC = () => {
                           <Form.Item name="name" rules={[{ required: true }]} style={{ width: 280 }}>
                             <Input placeholder="Nombre de la materia" size="middle" style={{ borderRadius: 8 }} />
                           </Form.Item>
+                          <Form.Item name="abbreviation" style={{ width: 120 }}>
+                            <Input placeholder="Abrev." size="middle" style={{ borderRadius: 8 }} maxLength={10} />
+                          </Form.Item>
                           <Button type="primary" htmlType="submit" icon={<PlusOutlined />} style={{ borderRadius: 8, height: 32 }}>Crear Materia</Button>
                         </Form>
 
@@ -1702,6 +1715,9 @@ const AcademicManagement: React.FC = () => {
 
             {editCatalogTarget?.type === 'subject' && (
               <>
+                <Form.Item name="abbreviation" label={<Text style={{ fontWeight: 700 }}>Abreviatura</Text>}>
+                  <Input placeholder="Ej: CA, EF, MAT" size="large" maxLength={10} />
+                </Form.Item>
                 <Form.Item name="subjectGroupId" label={<Text style={{ fontWeight: 700 }}>Grupo de Materia</Text>}>
                   <Select
                     allowClear

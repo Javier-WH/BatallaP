@@ -2,7 +2,7 @@ import React from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { Button, Tooltip, Dropdown } from 'antd';
 import type { MenuProps } from 'antd';
-import { DashboardOutlined, SettingOutlined, UserAddOutlined, CheckCircleFilled, BookOutlined, LockOutlined, ProjectOutlined, EditOutlined, DownOutlined } from '@ant-design/icons';
+import { DashboardOutlined, SettingOutlined, UserAddOutlined, CheckCircleFilled, BookOutlined, LockOutlined, ProjectOutlined, EditOutlined, DownOutlined, FileExcelOutlined } from '@ant-design/icons';
 
 const NavButton: React.FC<{
   icon: React.ReactNode;
@@ -43,6 +43,7 @@ const ControlEstudiosLayout: React.FC = () => {
     { path: '/control-estudios/configuracion', icon: <SettingOutlined />, label: 'Configuración', tooltip: 'Ajustes Académicos' },
     { path: '/control-estudios/consejos-curso', icon: <CheckCircleFilled />, label: 'Consejos', tooltip: 'Consejos de Curso y Evaluación' },
     { path: '/control-estudios/proyeccion', icon: <ProjectOutlined />, label: 'Proyección', tooltip: 'Asignación Académica' },
+    { path: '/control-estudios/resumen-rendimiento', icon: <FileExcelOutlined />, label: 'Resumen', tooltip: 'Resumen de Rendimiento Estudiantil' },
   ];
 
   const notasItems: MenuProps['items'] = [
