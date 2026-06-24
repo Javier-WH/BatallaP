@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import path from 'path';
 import ExcelJS from 'exceljs';
 import {
   Inscription,
@@ -7,6 +8,7 @@ import {
   InscriptionSubject,
   Subject,
   SubjectFinalGrade,
+  SubjectGroup,
   PeriodGrade,
   Term,
   Qualification,
@@ -15,11 +17,65 @@ import {
   SchoolPeriod,
   Grade,
   Section,
+  Setting,
+  Plantel,
 } from '@/models/index';
 import {
   getSubjectOrderMap,
   sortSubjectsByOrder,
 } from '@/services/subjectOrderService';
+
+// Map grade order to template sheet name
+const gradeOrderToSheetName: Record<number, string> = {
+  1: '1er Año',
+  2: '1er Año', // 2nd year uses same template as 1st year
+  3: '3er Año',
+  4: '4to Año',
+  5: '5to Año',
+};
+
+// Venezuelan state abbreviations
+const stateAbbreviations: Record<string, string> = {
+  'GUÁRICO': 'GU',
+  'MIRANDA': 'MI',
+  'CARABOBO': 'CA',
+  'ZULIA': 'ZU',
+  'ARAGUA': 'AR',
+  'BARINAS': 'BA',
+  'BOLÍVAR': 'BO',
+  'COJEDES': 'CO',
+  'PORTUGUESA': 'PO',
+  'LARA': 'LA',
+  'YARACUY': 'YA',
+  'FALCÓN': 'FA',
+  'VARGAS': 'VA',
+  'MÉRIDA': 'ME',
+  'TRUJILLO': 'TR',
+  'TÁCHIRA': 'TA',
+  'APURE': 'AP',
+  'GUÁIRA': 'GU',
+  'NUEVA ESPARTA': 'NE',
+  'SUCRE': 'SU',
+  'ANZOÁTEGUI': 'AN',
+  'MONAGAS': 'MO',
+  'DELTA AMACURO': 'DA',
+  'AMAZONAS': 'AM',
+  'DISTRITO CAPITAL': 'DC',
+  'DEPENDENCIAS FEDERALES': 'DF',
+};
+
+function getStateAbbrev(stateName: string): string {
+  if (!stateName) return '';
+  const upper = stateName.toUpperCase().trim();
+  return stateAbbreviations[upper] || upper.substring(0, 2);
+}
+
+async function getInstitutionSettings(): Promise<Record<string, string>> {
+  const settings = await Setting.findAll();
+  const map: Record<string, string> = {};
+  settings.forEach((s: any) => { map[s.key] = s.value; });
+  return map;
+}
 
 export const exportPerformanceSummary = async (req: Request, res: Response) => {
   try {
@@ -38,6 +94,10 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
     const section = await Section.findByPk(Number(sectionId));
     if (!section) return res.status(404).json({ message: 'Sección no encontrada' });
 
+    // Determine which template sheet to use
+    const gradeOrder = grade.order || 1;
+    const sheetName = gradeOrderToSheetName[gradeOrder] || '1er Año';
+
     // Get PeriodGrade for subject ordering
     const pg = await PeriodGrade.findOne({
       where: { schoolPeriodId: Number(schoolPeriodId), gradeId: Number(gradeId) },
@@ -51,6 +111,15 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
       raw: true,
     });
     const termCount = terms.length || 1;
+
+    // Get institution settings
+    const settings = await getInstitutionSettings();
+
+    // Get Plantel info
+    let plantel: any = null;
+    if (settings.institution_dea_code) {
+      plantel = await Plantel.findOne({ where: { code: settings.institution_dea_code } });
+    }
 
     // Get all inscriptions for this section/grade/period
     const inscriptions = await Inscription.findAll({
@@ -77,6 +146,7 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
             {
               model: Subject,
               as: 'subject',
+              include: [{ model: SubjectGroup, as: 'subjectGroup' }],
             },
             {
               model: SubjectFinalGrade,
@@ -110,8 +180,8 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
     // Get subject order map
     const subjectOrderMap = await getSubjectOrderMap(pg.id);
 
-    // Sort subjects for each inscription and collect the unique subject list
-    const subjectMap = new Map<number, { id: number; name: string; abbreviation: string | null }>();
+    // Collect all unique subjects across all inscriptions (ordered)
+    const subjectMap = new Map<number, { id: number; name: string; abbreviation: string | null; subjectGroupId: number | null; subjectGroupName: string | null }>();
 
     inscriptions.forEach((ins: any) => {
       const sorted = sortSubjectsByOrder(
@@ -126,6 +196,8 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
             id: is.subject.id,
             name: is.subject.name,
             abbreviation: is.subject.abbreviation || null,
+            subjectGroupId: is.subject.subjectGroupId || null,
+            subjectGroupName: is.subject.subjectGroup?.name || null,
           });
         }
       });
@@ -133,24 +205,20 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
 
     const allSubjects = Array.from(subjectMap.values());
 
-    // Find EF subject (Educación Física) - match by name or abbreviation
-    const efSubject = allSubjects.find(s =>
-      s.name.toLowerCase().includes('educación física') ||
-      s.name.toLowerCase().includes('educacion fisica') ||
-      s.abbreviation?.toUpperCase() === 'EF'
+    // Identify grouped subjects (subjects that belong to a SubjectGroup - these are participation subjects)
+    const groupedSubjectIds = new Set(
+      allSubjects.filter(s => s.subjectGroupId !== null).map(s => s.id)
     );
 
-    // Other subjects (excluding EF)
-    const otherSubjects = allSubjects.filter(s => s.id !== efSubject?.id);
+    // Non-grouped subjects = regular academic subjects (go in the ÁREAS DE FORMACIÓN columns)
+    const academicSubjects = allSubjects.filter(s => !groupedSubjectIds.has(s.id));
 
     // Helper: calculate final score for an inscription subject
     const calculateFinalScore = (insSub: any): number | null => {
-      // If SubjectFinalGrade exists, use it
       if (insSub.finalGrade && insSub.finalGrade.finalScore != null) {
         return Number(insSub.finalGrade.finalScore);
       }
 
-      // Otherwise calculate from qualifications + council points
       const termScores: Record<number, number> = {};
       terms.forEach((t: any) => { termScores[t.id] = 0; });
 
@@ -180,84 +248,163 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
       return Math.round(finalScore * 100) / 100;
     };
 
-    // Build the Excel
+    // Read the template file
+    const templatePath = path.resolve(process.cwd(), 'templates/ResumenFinal_Template.xlsx');
     const workbook = new ExcelJS.Workbook();
-    const sheet = workbook.addWorksheet('Resumen de Rendimiento');
+    await workbook.xlsx.readFile(templatePath);
 
-    // Column layout:
-    // 1: Nro
-    // 2: Apellidos
-    // 3: Nombres
-    // 4: Lugar de Nacimiento
-    // 5: EF (Educación Física) - fixed column
-    // 6: Día
-    // 7: Mes
-    // 8: Año
-    // 9+: Other subjects (abbreviated headers)
+    // Get the appropriate worksheet
+    let sheet = workbook.getWorksheet(sheetName);
+    if (!sheet) {
+      // Fallback: use first worksheet
+      sheet = workbook.worksheets[0];
+    }
 
-    const fixedColCount = 8;
-    const totalCols = fixedColCount + otherSubjects.length;
-    const lastCol = sheet.getColumn(totalCols).letter;
+    // Remove other worksheets - keep only the one we need
+    const sheetsToRemove = workbook.worksheets.filter(ws => ws.name !== sheet!.name);
+    sheetsToRemove.forEach(ws => workbook.removeWorksheet(ws.id!));
 
-    // Title rows
-    sheet.mergeCells(`A1:${lastCol}1`);
-    const titleCell = sheet.getCell('A1');
-    titleCell.value = `Resumen de Rendimiento Estudiantil - ${grade.name} - Sección ${section.name}`;
-    titleCell.font = { bold: true, size: 14 };
-    titleCell.alignment = { horizontal: 'center' };
+    // Fill institution data (rows 1-10)
+    // Row 3: Año Escolar (cols 13-15 merged)
+    if (period.name) {
+      sheet.getCell('M3').value = period.name;
+    }
 
-    sheet.mergeCells(`A2:${lastCol}2`);
-    const subtitleCell = sheet.getCell('A2');
-    subtitleCell.value = `${period.name} (${period.period})`;
-    subtitleCell.font = { size: 11 };
-    subtitleCell.alignment = { horizontal: 'center' };
+    // Row 4: Tipo de Evaluación (cols 14-15 merged)
+    sheet.getCell('N4').value = 'REVISIÓN DE MATERIA PENDIENTE';
 
-    // Header row (row 4)
-    const headerRow = sheet.getRow(4);
-    headerRow.getCell(1).value = 'Nro';
-    headerRow.getCell(2).value = 'Apellidos';
-    headerRow.getCell(3).value = 'Nombres';
-    headerRow.getCell(4).value = 'Lugar de Nacimiento';
-    headerRow.getCell(5).value = 'EF';
-    headerRow.getCell(6).value = 'Día';
-    headerRow.getCell(7).value = 'Mes';
-    headerRow.getCell(8).value = 'Año';
+    // Row 7: Código de Institución + Denominación
+    if (settings.institution_dea_code || plantel?.code) {
+      sheet.getCell('C7').value = settings.institution_dea_code || plantel?.code || '';
+    }
+    const institutionName = settings.institution_name || plantel?.name || '';
+    if (institutionName) {
+      sheet.getCell('I7').value = institutionName;
+    }
 
-    // Other subject columns with abbreviated headers
-    otherSubjects.forEach((subj, idx) => {
-      const col = fixedColCount + 1 + idx;
-      const header = subj.abbreviation || subj.name;
-      headerRow.getCell(col).value = header;
-    });
+    // Row 8: Dirección
+    if (settings.institution_address) {
+      sheet.getCell('C8').value = settings.institution_address;
+    }
 
-    // Style header row
-    headerRow.eachCell((cell: any) => {
-      cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E40AF' } };
-      cell.alignment = { horizontal: 'center', vertical: 'middle' };
-      cell.border = { top: { style: 'thin' }, bottom: { style: 'thin' }, left: { style: 'thin' }, right: { style: 'thin' } };
-    });
+    // Row 9: Municipio + Entidad Federal + CDCEE
+    if (plantel?.municipality) {
+      sheet.getCell('C9').value = plantel.municipality;
+    }
+    if (plantel?.state) {
+      sheet.getCell('G9').value = plantel.state;
+    }
+    if (settings.institution_cdcee) {
+      sheet.getCell('N9').value = settings.institution_cdcee;
+    }
 
-    // Data rows
-    let rowNum = 5;
+    // Row 10: Director + Cédula
+    if (settings.director_name) {
+      sheet.getCell('C10').value = settings.director_name;
+    }
+    if (settings.director_document) {
+      sheet.getCell('N10').value = settings.director_document;
+    }
+
+    // Row 8: Teléfono
+    if (settings.institution_phone) {
+      sheet.getCell('U8').value = settings.institution_phone;
+    }
+
+    // Now fill the subject headers in row 15 (columns 14+)
+    // The template already has fixed abbreviation headers (CA, ILE, MA, etc.)
+    // We need to map our academic subjects to those columns by abbreviation
+    const r15 = sheet.getRow(15);
+    const templateSubjectCols: { col: number; abbreviation: string }[] = [];
+    for (let c = 14; c <= sheet.columnCount; c++) {
+      const v = r15.getCell(c).value;
+      if (v && typeof v === 'string' && v.trim().length > 0 && v !== 'PARTICIPACIÓN EN GRUPOS DE CREACIÓN, RECREACIÓN Y PRODUCCIÓN') {
+        templateSubjectCols.push({ col: c, abbreviation: v.trim().toUpperCase() });
+      }
+    }
+
+    // Map academic subjects to template columns by abbreviation
+    const subjectToColMap = new Map<number, number>();
+    for (const tmplCol of templateSubjectCols) {
+      const matchingSubject = academicSubjects.find(s =>
+        s.abbreviation && s.abbreviation.toUpperCase() === tmplCol.abbreviation
+      );
+      if (matchingSubject) {
+        subjectToColMap.set(matchingSubject.id, tmplCol.col);
+      }
+    }
+
+    // For academic subjects without a matching template column, we'll try to place them
+    // in unused template columns or append after the last subject column
+    const usedCols = new Set(templateSubjectCols.map(t => t.col));
+    let nextAvailableCol = templateSubjectCols.length > 0
+      ? Math.max(...templateSubjectCols.map(t => t.col)) + 1
+      : 14;
+
+    for (const subj of academicSubjects) {
+      if (!subjectToColMap.has(subj.id)) {
+        // Find next unused template column
+        while (usedCols.has(nextAvailableCol)) nextAvailableCol++;
+        subjectToColMap.set(subj.id, nextAvailableCol);
+        usedCols.add(nextAvailableCol);
+        // Write the abbreviation header
+        const cell = sheet.getRow(15).getCell(nextAvailableCol);
+        cell.value = subj.abbreviation || subj.name;
+        cell.font = { bold: true, size: 8 };
+        cell.alignment = { horizontal: 'center' };
+      }
+    }
+
+    // Find the PARTICIPACIÓN column (last content column in row 15)
+    let participationCol = sheet.columnCount;
+    for (let c = sheet.columnCount; c >= 14; c--) {
+      const v = r15.getCell(c).value;
+      if (v && typeof v === 'string' && v.includes('PARTICIPACIÓN')) {
+        participationCol = c;
+        break;
+      }
+    }
+
+    // Fill student data rows (starting at row 16)
+    let rowNum = 16;
     inscriptions.forEach((ins: any, index: number) => {
       const row = sheet.getRow(rowNum);
       const student = ins.student;
       const residence = student?.residence;
 
-      // Nro
-      row.getCell(1).value = index + 1;
-      // Apellidos
-      row.getCell(2).value = student?.lastName || '';
-      // Nombres
-      row.getCell(3).value = student?.firstName || '';
-      // Lugar de Nacimiento (birthState + birthMunicipality)
-      const birthPlace = residence
-        ? `${residence.birthState || ''}, ${residence.birthMunicipality || ''}`.replace(/^,\s*|,\s*$/g, '').trim()
-        : '';
-      row.getCell(4).value = birthPlace;
+      // Col 1: N°
+      row.getCell(1).value = String(index + 1).padStart(2, '0');
 
-      // EF score
+      // Col 2-3: Cédula de Identidad (merged B-C)
+      const docType = student?.documentType === 'Venezolano' ? 'V' :
+                      student?.documentType === 'Extranjero' ? 'E' :
+                      student?.documentType === 'Pasaporte' ? 'P' : 'V';
+      row.getCell(2).value = `${docType} ${student?.document || ''}`;
+
+      // Col 4-5: Apellidos (merged D-E)
+      row.getCell(4).value = student?.lastName || '';
+
+      // Col 6-7: Nombres (merged F-G)
+      row.getCell(6).value = student?.firstName || '';
+
+      // Col 8: Lugar de Nacimiento (municipality)
+      row.getCell(8).value = residence?.birthMunicipality || '';
+
+      // Col 9: EF (Entidad Federal - state abbreviation)
+      row.getCell(9).value = getStateAbbrev(residence?.birthState || '');
+
+      // Col 10: SEXO
+      row.getCell(10).value = student?.gender || '';
+
+      // Col 11-13: Fecha de Nacimiento (Día, Mes, Año)
+      if (student?.birthdate) {
+        const birthDate = new Date(student.birthdate);
+        row.getCell(11).value = birthDate.getDate();
+        row.getCell(12).value = birthDate.getMonth() + 1;
+        row.getCell(13).value = birthDate.getFullYear();
+      }
+
+      // Sort inscription subjects
       const insSubjects = sortSubjectsByOrder(
         ins.inscriptionSubjects || [],
         (is: any) => is.subjectId,
@@ -265,69 +412,32 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
         subjectOrderMap
       );
 
-      let efScore: number | null = null;
-      if (efSubject) {
-        const efInsSub = insSubjects.find((is: any) => is.subjectId === efSubject.id);
-        if (efInsSub) {
-          efScore = calculateFinalScore(efInsSub);
-        }
-      }
-      row.getCell(5).value = efScore ?? '';
-      row.getCell(5).numFmt = '0.00';
-      row.getCell(5).alignment = { horizontal: 'center' };
+      // Fill subject grades
+      for (const subj of academicSubjects) {
+        const col = subjectToColMap.get(subj.id);
+        if (!col) continue;
 
-      // Birth date split
-      if (student?.birthdate) {
-        const birthDate = new Date(student.birthdate);
-        row.getCell(6).value = birthDate.getDate();
-        row.getCell(7).value = birthDate.getMonth() + 1;
-        row.getCell(8).value = birthDate.getFullYear();
-      } else {
-        row.getCell(6).value = '';
-        row.getCell(7).value = '';
-        row.getCell(8).value = '';
-      }
-      row.getCell(6).alignment = { horizontal: 'center' };
-      row.getCell(7).alignment = { horizontal: 'center' };
-      row.getCell(8).alignment = { horizontal: 'center' };
-
-      // Other subjects scores
-      otherSubjects.forEach((subj, idx) => {
-        const col = fixedColCount + 1 + idx;
         const insSub = insSubjects.find((is: any) => is.subjectId === subj.id);
         if (insSub) {
           const score = calculateFinalScore(insSub);
           row.getCell(col).value = score ?? '';
-          row.getCell(col).numFmt = '0.00';
         } else {
           row.getCell(col).value = '';
         }
-        row.getCell(col).alignment = { horizontal: 'center' };
-      });
+      }
 
-      // Apply borders to all cells in the row
-      for (let c = 1; c <= totalCols; c++) {
-        row.getCell(c).border = { top: { style: 'thin' }, bottom: { style: 'thin' }, left: { style: 'thin' }, right: { style: 'thin' } };
+      // Fill PARTICIPACIÓN column with grouped subject name
+      const groupedInsSub = insSubjects.find((is: any) =>
+        groupedSubjectIds.has(is.subjectId)
+      );
+      if (groupedInsSub) {
+        row.getCell(participationCol).value = groupedInsSub.subject?.name || '';
+      } else {
+        row.getCell(participationCol).value = '';
       }
 
       rowNum++;
     });
-
-    // Column widths
-    sheet.getColumn(1).width = 6;
-    sheet.getColumn(2).width = 25;
-    sheet.getColumn(3).width = 25;
-    sheet.getColumn(4).width = 30;
-    sheet.getColumn(5).width = 8;
-    sheet.getColumn(6).width = 8;
-    sheet.getColumn(7).width = 8;
-    sheet.getColumn(8).width = 10;
-    for (let i = fixedColCount + 1; i <= totalCols; i++) {
-      sheet.getColumn(i).width = 10;
-    }
-
-    // Freeze panes (freeze header row and first 3 columns)
-    sheet.views = [{ state: 'frozen', xSplit: 3, ySplit: 4 }];
 
     const buffer = await workbook.xlsx.writeBuffer();
 
