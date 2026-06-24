@@ -133,7 +133,7 @@ const SettingsManagement: React.FC = () => {
       const response = await api.get('/planteles/search', { params: { q: searchText, limit: 10 } });
       const options = response.data.map((p: PlantelOption) => ({
         value: p.code,
-        label: `[${p.code}] â ${p.name} (${p.state})`
+        label: `[${p.code}] — ${p.name} (${p.state})`
       }));
       setPlantelOptions(options);
     } catch (error) {
@@ -179,7 +179,7 @@ const SettingsManagement: React.FC = () => {
   if (loading) return (
     <div className="flex flex-col items-center justify-center p-24 gap-4">
       <Spin size="large" />
-      <Text className="text-[var(--color-text-muted)] font-bold uppercase tracking-widest text-[10px]">Sincronizando ParÃ¡metros...</Text>
+      <Text className="text-[var(--color-text-muted)] font-bold uppercase tracking-widest text-[10px]">Sincronizando Parámetros...</Text>
     </div>
   );
 
@@ -189,16 +189,16 @@ const SettingsManagement: React.FC = () => {
         {/* Page Header */}
         <div className="flex flex-col gap-1">
         <h1 className="text-3xl font-black text-[var(--color-text-main)] tracking-tight flex items-center gap-3">
-          <BankOutlined className="text-brand-primary" /> InstituciÃ³n
+          <BankOutlined className="text-brand-primary" /> Institución
         </h1>
-        <p className="text-[var(--color-text-muted)] font-medium">Define la identidad visual y el nombre oficial que aparecerÃ¡ en todo el sistema y reportes.</p>
+        <p className="text-[var(--color-text-muted)] font-medium">Define la identidad visual y el nombre oficial que aparecerá en todo el sistema y reportes.</p>
       </div>
 
         <Card className="glass-card overflow-hidden" styles={{ body: { padding: 0 } }}>
           <div style={{ padding: '48px' }}>
             <div className="theme-panel-header px-12 py-8 mx-[-48px] mt-[-48px] mb-12 block">
               <h2 className="text-[var(--color-header-text)] text-xl font-bold">Identidad Institucional</h2>
-              <p className="text-[var(--color-header-text)]/60 text-xs font-medium uppercase tracking-widest mt-1">ConfiguraciÃ³n del Perfil Maestro</p>
+              <p className="text-[var(--color-header-text)]/60 text-xs font-medium uppercase tracking-widest mt-1">Configuración del Perfil Maestro</p>
             </div>
 
             <Form
@@ -210,7 +210,7 @@ const SettingsManagement: React.FC = () => {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
             <div className="space-y-6">
               <Form.Item
-                label={<span className="text-[var(--color-text-main)] font-bold">Nombre de la InstituciÃ³n</span>}
+                label={<span className="text-[var(--color-text-main)] font-bold">Nombre de la Institución</span>}
                 name="institution_name"
                 rules={[{ required: true, message: 'El nombre es obligatorio' }]}
               >
@@ -221,14 +221,14 @@ const SettingsManagement: React.FC = () => {
               </Form.Item>
 
               <Form.Item
-                label={<span className="text-[var(--color-text-main)] font-bold">CÃ³digo DEA de la InstituciÃ³n</span>}
+                label={<span className="text-[var(--color-text-main)] font-bold">Código DEA de la Institución</span>}
                 name="institution_dea_code"
-                tooltip="CÃ³digo DEA oficial del plantel educativo (se asociarÃ¡ a las notas finales)"
+                tooltip="Código DEA oficial del plantel educativo (se asociará a las notas finales)"
               >
                 <AutoComplete
                   options={plantelOptions}
                   onSearch={handlePlantelSearch}
-                  placeholder="Buscar por cÃ³digo o nombre del plantel..."
+                  placeholder="Buscar por código o nombre del plantel..."
                   className="h-12"
                   filterOption={false}
                   allowClear
@@ -247,7 +247,7 @@ const SettingsManagement: React.FC = () => {
               </Form.Item>
 
               <Form.Item
-                label={<span className="text-[var(--color-text-main)] font-bold">CÃ©dula del Director</span>}
+                label={<span className="text-[var(--color-text-main)] font-bold">Cédula del Director</span>}
                 name="director_document"
               >
                 <Input
@@ -258,17 +258,17 @@ const SettingsManagement: React.FC = () => {
               </Form.Item>
 
               <Form.Item
-                label={<span className="text-[var(--color-text-main)] font-bold">Direccion de la Institucion</span>}
+                label={<span className="text-[var(--color-text-main)] font-bold">Dirección de la Institución</span>}
                 name="institution_address"
               >
                 <Input
-                  placeholder="CALLE JOSE MARTI NRO 4 - ALTAGRACIA DE ORITUCO - ESTADO GUARICO"
+                  placeholder="Ej: Calle José Martí Nro 4 - Altagracia de Orituco - Estado Guárico"
                   className="h-12 border-slate-200 focus:border-brand-primary focus:ring-4 focus:ring-brand-primary/10 rounded-xl transition-all"
                 />
               </Form.Item>
 
               <Form.Item
-                label={<span className="text-[var(--color-text-main)] font-bold">Telefono de la Institucion</span>}
+                label={<span className="text-[var(--color-text-main)] font-bold">Teléfono de la Institución</span>}
                 name="institution_phone"
               >
                 <Input
@@ -283,7 +283,7 @@ const SettingsManagement: React.FC = () => {
                 tooltip="Circuito de Desarrollo Comunal Educativo Ecclesial"
               >
                 <Input
-                  placeholder="Ej: GUARICO"
+                  placeholder="Ej: Guárico"
                   className="h-12 border-slate-200 focus:border-brand-primary focus:ring-4 focus:ring-brand-primary/10 rounded-xl transition-all"
                 />
               </Form.Item>
@@ -316,7 +316,7 @@ const SettingsManagement: React.FC = () => {
                   <div className="space-y-1">
                     <p className="text-sm font-bold text-blue-900">Nota Importante</p>
                     <p className="text-xs text-blue-700/80 leading-relaxed">
-                      El nombre y el logo se sincronizan automÃ¡ticamente con el login y los encabezados de todos los mÃ³dulos del sistema.
+                      El nombre y el logo se sincronizan automáticamente con el login y los encabezados de todos los módulos del sistema.
                     </p>
                   </div>
                 </div>
@@ -331,11 +331,11 @@ const SettingsManagement: React.FC = () => {
                 showUploadList={false}
                 beforeUpload={(file) => {
                   if (!file.type.startsWith('image/')) {
-                    message.error('Solo se permiten imÃ¡genes');
+                    message.error('Solo se permiten imágenes');
                     return Upload.LIST_IGNORE;
                   }
                   if (file.size > 5 * 1024 * 1024) {
-                    message.error('MÃ¡ximo 5MB');
+                    message.error('Máximo 5MB');
                     return Upload.LIST_IGNORE;
                   }
 
@@ -385,14 +385,14 @@ const SettingsManagement: React.FC = () => {
             <div className="mt-8">
               <div className="theme-panel-header px-12 py-8 rounded-t-2xl mx-[-48px]">
                 <h2 className="text-[var(--color-header-text)] text-xl font-bold">Apariencia y Colores</h2>
-                <p className="text-[var(--color-header-text)]/60 text-xs font-medium uppercase tracking-widest mt-1">ConfiguraciÃ³n del Tema Global</p>
+                <p className="text-[var(--color-header-text)]/60 text-xs font-medium uppercase tracking-widest mt-1">Configuración del Tema Global</p>
               </div>
             
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 py-8">
               {/* Warnings Color */}
               <div>
                 <label className="text-[var(--color-text-main)] font-bold block mb-2">Color de Advertencias</label>
-                <p className="text-xs text-[var(--color-text-muted)] mb-3">Alertas y estados crÃ­ticos.</p>
+                <p className="text-xs text-[var(--color-text-muted)] mb-3">Alertas y estados críticos.</p>
                 <div className="flex items-center gap-4">
                   <input
                     type="color"
@@ -476,7 +476,7 @@ const SettingsManagement: React.FC = () => {
               {/* Sidebar Color */}
               <div>
                 <label className="text-[var(--color-text-main)] font-bold block mb-2">Barra Lateral</label>
-                <p className="text-xs text-[var(--color-text-muted)] mb-3">Color de fondo para el menÃº principal lateral.</p>
+                <p className="text-xs text-[var(--color-text-muted)] mb-3">Color de fondo para el menú principal lateral.</p>
                 <div className="flex items-center gap-4">
                   <input
                     type="color"
@@ -496,7 +496,7 @@ const SettingsManagement: React.FC = () => {
 
               {/* Page Background */}
               <div>
-                <label className="text-[var(--color-text-main)] font-bold block mb-2">Fondo de PÃ¡gina</label>
+                <label className="text-[var(--color-text-main)] font-bold block mb-2">Fondo de Página</label>
                 <p className="text-xs text-[var(--color-text-muted)] mb-3">Color de fondo global del layout.</p>
                 <div className="flex items-center gap-4">
                   <input
@@ -518,7 +518,7 @@ const SettingsManagement: React.FC = () => {
               {/* Panel Header */}
               <div>
                 <label className="text-[var(--color-text-main)] font-bold block mb-2">Encabezado de Panel</label>
-                <p className="text-xs text-[var(--color-text-muted)] mb-3">Fondo para los tÃ­tulos superiores en cada vista.</p>
+                <p className="text-xs text-[var(--color-text-muted)] mb-3">Fondo para los títulos superiores en cada vista.</p>
                 <div className="flex items-center gap-4">
                   <input
                     type="color"
@@ -624,7 +624,7 @@ const SettingsManagement: React.FC = () => {
               {/* Muted Text Color */}
               <div>
                 <label className="text-[var(--color-text-main)] font-bold block mb-2">Texto Secundario</label>
-                <p className="text-xs text-[var(--color-text-muted)] mb-3">Color para textos secundarios, descripciones, bordes de tabla, lÃ­neas divisorias y ayudas visuales.</p>
+                <p className="text-xs text-[var(--color-text-muted)] mb-3">Color para textos secundarios, descripciones, bordes de tabla, líneas divisorias y ayudas visuales.</p>
                 <div className="flex items-center gap-4">
                   <input
                     type="color"

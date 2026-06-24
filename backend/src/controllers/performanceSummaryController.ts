@@ -70,6 +70,13 @@ function getStateAbbrev(stateName: string): string {
   return stateAbbreviations[upper] || upper.substring(0, 2);
 }
 
+function padNumber(n: number | null | undefined): number | string | null {
+  if (n == null) return null;
+  if (n < 0) return n;
+  if (n < 10) return `0${n}`;
+  return n;
+}
+
 async function getInstitutionSettings(): Promise<Record<string, string>> {
   const settings = await Setting.findAll();
   const map: Record<string, string> = {};
@@ -399,8 +406,8 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
       // Col 11-13: Fecha de Nacimiento (Día, Mes, Año)
       if (student?.birthdate) {
         const birthDate = new Date(student.birthdate);
-        row.getCell(11).value = birthDate.getDate();
-        row.getCell(12).value = birthDate.getMonth() + 1;
+        row.getCell(11).value = padNumber(birthDate.getDate());
+        row.getCell(12).value = padNumber(birthDate.getMonth() + 1);
         row.getCell(13).value = birthDate.getFullYear();
       }
 
@@ -420,7 +427,7 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
         const insSub = insSubjects.find((is: any) => is.subjectId === subj.id);
         if (insSub) {
           const score = calculateFinalScore(insSub);
-          row.getCell(col).value = score ?? '';
+          row.getCell(col).value = score != null ? padNumber(score) : '';
         } else {
           row.getCell(col).value = '';
         }
