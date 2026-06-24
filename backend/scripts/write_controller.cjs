@@ -1,4 +1,7 @@
-import { Request, Response } from 'express';
+﻿const fs = require('fs');
+const path = require('path');
+
+const code = `import { Request, Response } from 'express';
 import path from 'path';
 import ExcelJS from 'exceljs';
 import {
@@ -449,7 +452,7 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
 
     const buffer = await workbook.xlsx.writeBuffer();
 
-    const fileName = 'resumen-rendimiento-' + grade.name.replace(/s+/g, '_') + '-' + section.name.replace(/s+/g, '_') + '.xlsx';
+    const fileName = 'resumen-rendimiento-' + grade.name.replace(/\s+/g, '_') + '-' + section.name.replace(/\s+/g, '_') + '.xlsx';
 
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', 'attachment; filename="' + fileName + '"');
@@ -459,3 +462,7 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
     res.status(500).json({ message: error.message || 'Error al exportar resumen de rendimiento' });
   }
 };
+`;
+
+fs.writeFileSync(path.resolve(process.cwd(), 'src/controllers/performanceSummaryController.ts'), code, 'utf8');
+console.log('Controller written:', code.split(/\n/).length, 'lines');
