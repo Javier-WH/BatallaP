@@ -359,6 +359,20 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
         cell.value = subj.abbreviation || subj.name;
         cell.font = { bold: true, size: 8 };
         cell.alignment = { horizontal: 'center' };
+        // Copy borders from the previous template column
+        const refCol = nextAvailableCol - 1;
+        const refHeaderCell = sheet.getRow(15).getCell(refCol);
+        if (refHeaderCell.border) {
+          cell.border = JSON.parse(JSON.stringify(refHeaderCell.border));
+        }
+        // Apply borders to data rows (16+) for this new column
+        for (let r = 16; r <= 16 + inscriptions.length; r++) {
+          const dataCell = sheet.getRow(r).getCell(nextAvailableCol);
+          const refDataCell = sheet.getRow(r).getCell(refCol);
+          if (refDataCell.border) {
+            dataCell.border = JSON.parse(JSON.stringify(refDataCell.border));
+          }
+        }
       }
     }
 
@@ -445,6 +459,33 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
 
       rowNum++;
     });
+
+    // Ensure all subject columns (header + data rows) have borders
+    // Some template columns may lack borders (e.g. Educación Física)
+    // We copy border style from a known-good adjacent column
+    const allSubjectCols = Array.from(new Set([...subjectToColMap.values()]));
+    if (allSubjectCols.length > 0) {
+      // Find a reference column with borders (use col 13 or the first subject col - 1)
+      const refCol = allSubjectCols[0] > 13 ? allSubjectCols[0] - 1 : 13;
+      const refHeaderBorder = sheet.getRow(15).getCell(refCol).border;
+      for (const col of allSubjectCols) {
+        const headerCell = sheet.getRow(15).getCell(col);
+        if (!headerCell.border || (!headerCell.border.top && !headerCell.border.bottom)) {
+          if (refHeaderBorder) {
+            headerCell.border = JSON.parse(JSON.stringify(refHeaderBorder));
+          }
+        }
+        for (let r = 16; r < rowNum; r++) {
+          const dataCell = sheet.getRow(r).getCell(col);
+          if (!dataCell.border || (!dataCell.border.top && !dataCell.border.bottom)) {
+            const refBorder = sheet.getRow(r).getCell(refCol).border;
+            if (refBorder) {
+              dataCell.border = JSON.parse(JSON.stringify(refBorder));
+            }
+          }
+        }
+      }
+    }
 
     const buffer = await workbook.xlsx.writeBuffer();
 
