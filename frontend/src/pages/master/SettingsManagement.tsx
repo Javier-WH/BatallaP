@@ -21,6 +21,7 @@ interface SettingsFormValues {
   director_name?: string;
   director_document?: string;
   institution_address?: string;
+  institution_municipality?: string;
   institution_phone?: string;
   institution_cdcee?: string;
   theme_primary_color?: string;
@@ -91,6 +92,7 @@ const SettingsManagement: React.FC = () => {
           director_name: res.data.director_name || '',
           director_document: res.data.director_document || '',
           institution_address: res.data.institution_address || '',
+          institution_municipality: res.data.institution_municipality || '',
           institution_phone: res.data.institution_phone || '',
           institution_cdcee: res.data.institution_cdcee || '',
           theme_primary_color: pc,
@@ -263,6 +265,17 @@ const SettingsManagement: React.FC = () => {
               >
                 <Input
                   placeholder="Ej: Calle José Martí Nro 4 - Altagracia de Orituco - Estado Guárico"
+                  className="h-12 border-slate-200 focus:border-brand-primary focus:ring-4 focus:ring-brand-primary/10 rounded-xl transition-all"
+                />
+              </Form.Item>
+
+              <Form.Item
+                label={<span className="text-[var(--color-text-main)] font-bold">Municipio de la Institución</span>}
+                name="institution_municipality"
+                tooltip="Municipio donde se ubica la institución. Se usa en el resumen de rendimiento (named range: inst_municipality)."
+              >
+                <Input
+                  placeholder="Ej: Francisco José Muñoz"
                   className="h-12 border-slate-200 focus:border-brand-primary focus:ring-4 focus:ring-brand-primary/10 rounded-xl transition-all"
                 />
               </Form.Item>

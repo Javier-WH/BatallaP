@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import path from 'path';
+import fs from 'fs';
 import ExcelJS from 'exceljs';
 import {
   Inscription,
@@ -139,7 +140,7 @@ function fillSheetByNamedRanges(
   setByRange('inst_name', settings.institution_name || plantel?.name || '');
   setByRange('inst_address', settings.institution_address || '');
   setByRange('inst_phone', settings.institution_phone || '');
-  setByRange('inst_municipality', plantel?.municipality || '');
+  setByRange('inst_municipality', settings.institution_municipality || plantel?.municipality || '');
   setByRange('inst_state', plantel?.state || '');
   setByRange('inst_cdcee', settings.institution_cdcee || '');
   setByRange('inst_director', settings.director_name || '');
@@ -209,7 +210,7 @@ function fillSheetByNamedRanges(
 
 export const exportPerformanceSummary = async (req: Request, res: Response) => {
   try {
-    const { schoolPeriodId, gradeId, sectionId } = req.query;
+    const { schoolPeriodId, gradeId, sectionId, template } = req.query;
 
     if (!schoolPeriodId || !gradeId || !sectionId) {
       return res.status(400).json({ message: 'schoolPeriodId, gradeId y sectionId son requeridos' });
@@ -347,7 +348,22 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
       return Math.round(finalScore * 100) / 100;
     };
 
-    const templatePath = path.resolve(process.cwd(), 'templates/ResumenFinal_Template.xlsx');
+    // Resolve template path: allow override via ?template=, fallback to default
+    const templatesRoot = path.resolve(process.cwd(), 'templates');
+    let templatePath: string;
+    if (template && typeof template === 'string') {
+      const requested = path.basename(template);
+      const candidate = path.join(templatesRoot, requested);
+      if (!candidate.startsWith(templatesRoot) || !fs.existsSync(candidate)) {
+        return res.status(404).json({ message: 'La plantilla seleccionada no existe' });
+      }
+      templatePath = candidate;
+    } else {
+      templatePath = path.resolve(templatesRoot, 'ResumenFinal_Template.xlsx');
+      if (!fs.existsSync(templatePath)) {
+        return res.status(404).json({ message: 'No hay plantilla configurada. Sube una plantilla desde la gestión de resumen.' });
+      }
+    }
 
     const namedRanges = readTemplateNamedRanges(templatePath);
 
@@ -360,61 +376,69 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
     }
     const actualSheetName = sheet!.name;
 
-    // Discover subject columns from named ranges
+    // Sort academic subjects by canonical order (subjectOrderMap) so subj_i
+    // always maps to the same subject regardless of insertion order.
+    const sortedAcademicSubjects = [...academicSubjects].sort((a, b) => {
+      const orderA = subjectOrderMap.get(a.id) ?? 999;
+      const orderB = subjectOrderMap.get(b.id) ?? 999;
+      return orderA - orderB;
+    });
+
+    // Discover subj_i named ranges and WRITE the abbreviation of the i-th
+    // subject (in canonical order) into that cell. The map is subjIndex → subjectId
+    // so that fillSheetByNamedRanges can look up which subject a column belongs to.
     const subjectColList: { col: number; abbr: string }[] = [];
+    const subjectToSubjIndex = new Map<number, number>();
     let subjIdx = 1;
     while (true) {
       const ref = namedRanges.getCell(actualSheetName, 'subj_' + subjIdx);
       if (!ref) break;
-      const cellValue = sheet!.getCell(ref.cell).value;
-      const abbr = (typeof cellValue === 'string' ? cellValue.trim() : String(cellValue || '')).toUpperCase();
-      if (abbr) {
-        subjectColList.push({ col: ref.col, abbr });
+      const subj = sortedAcademicSubjects[subjIdx - 1];
+      if (subj) {
+        const abbrText = subj.abbreviation || subj.name;
+        sheet!.getCell(ref.cell).value = abbrText;
+        subjectColList.push({ col: ref.col, abbr: abbrText.toUpperCase() });
+        subjectToSubjIndex.set(subjIdx, subj.id);
       }
       subjIdx++;
     }
 
-    // Map academic subjects to subject column indices by abbreviation
-    const subjectToSubjIndex = new Map<number, number>();
-    for (let i = 0; i < subjectColList.length; i++) {
-      const matchingSubject = academicSubjects.find(s =>
-        s.abbreviation && s.abbreviation.toUpperCase() === subjectColList[i].abbr
-      );
-      if (matchingSubject) {
-        subjectToSubjIndex.set(matchingSubject.id, i + 1);
-      }
-    }
+    // For academic subjects without a subj_i named range, append after last subject.
+    // IMPORTANT: only auto-append columns for the default shipped template. Custom user
+    // templates must be respected strictly: missing subj_i named ranges means those
+    // subjects simply won't be rendered (avoids corrupting the user's layout).
+    const isDefaultTemplate = path.basename(templatePath).toLowerCase() === 'resumenfinal_template.xlsx';
+    if (isDefaultTemplate) {
+      const maxSubjCol = subjectColList.length > 0
+        ? Math.max(...subjectColList.map(s => s.col))
+        : 13;
+      let nextCol = maxSubjCol + 1;
+      for (const subj of sortedAcademicSubjects) {
+        if (![...subjectToSubjIndex.values()].includes(subj.id)) {
+          const newSubjIdx = subjectColList.length + 1;
+          subjectColList.push({ col: nextCol, abbr: (subj.abbreviation || subj.name).toUpperCase() });
+          subjectToSubjIndex.set(newSubjIdx, subj.id);
 
-    // For academic subjects without a matching template column, append after last subject
-    const maxSubjCol = subjectColList.length > 0
-      ? Math.max(...subjectColList.map(s => s.col))
-      : 13;
-    let nextCol = maxSubjCol + 1;
-    for (const subj of academicSubjects) {
-      if (!subjectToSubjIndex.has(subj.id)) {
-        const newSubjIdx = subjectColList.length + 1;
-        subjectColList.push({ col: nextCol, abbr: (subj.abbreviation || subj.name).toUpperCase() });
-        subjectToSubjIndex.set(subj.id, newSubjIdx);
+          const headerCell = sheet!.getRow(15).getCell(nextCol);
+          headerCell.value = subj.abbreviation || subj.name;
+          headerCell.font = { bold: true, size: 8 };
+          headerCell.alignment = { horizontal: 'center' };
 
-        const headerCell = sheet!.getRow(15).getCell(nextCol);
-        headerCell.value = subj.abbreviation || subj.name;
-        headerCell.font = { bold: true, size: 8 };
-        headerCell.alignment = { horizontal: 'center' };
-
-        const refCol = nextCol - 1;
-        const refHeaderCell = sheet!.getRow(15).getCell(refCol);
-        if (refHeaderCell.border) {
-          headerCell.border = JSON.parse(JSON.stringify(refHeaderCell.border));
-        }
-        for (let r = 16; r <= 16 + MAX_STUDENTS_PER_SHEET; r++) {
-          const dataCell = sheet!.getRow(r).getCell(nextCol);
-          const refDataCell = sheet!.getRow(r).getCell(refCol);
-          if (refDataCell.border) {
-            dataCell.border = JSON.parse(JSON.stringify(refDataCell.border));
+          const refCol = nextCol - 1;
+          const refHeaderCell = sheet!.getRow(15).getCell(refCol);
+          if (refHeaderCell.border) {
+            headerCell.border = JSON.parse(JSON.stringify(refHeaderCell.border));
           }
-        }
+          for (let r = 16; r <= 16 + MAX_STUDENTS_PER_SHEET; r++) {
+            const dataCell = sheet!.getRow(r).getCell(nextCol);
+            const refDataCell = sheet!.getRow(r).getCell(refCol);
+            if (refDataCell.border) {
+              dataCell.border = JSON.parse(JSON.stringify(refDataCell.border));
+            }
+          }
 
-        nextCol++;
+          nextCol++;
+        }
       }
     }
 
