@@ -399,6 +399,11 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
         sheet!.getCell(ref.cell).value = abbrText;
         subjectColList.push({ col: ref.col, abbr: abbrText.toUpperCase() });
         subjectToSubjIndex.set(subjIdx, subj.id);
+        // Also write the full subject name into subjname_i if defined
+        const nameRef = namedRanges.getCell(actualSheetName, 'subjname_' + subjIdx);
+        if (nameRef) {
+          sheet!.getCell(nameRef.cell).value = subj.name;
+        }
       }
       subjIdx++;
     }

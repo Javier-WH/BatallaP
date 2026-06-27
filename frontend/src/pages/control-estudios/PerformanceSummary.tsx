@@ -258,7 +258,8 @@ const PerformanceSummary: React.FC = () => {
 
                 <Divider style={{ margin: '10px 0' }} />
                 <div style={{ fontWeight: 700, color: '#0f172a', marginBottom: 6 }}>Encabezados de materias</div>
-                <LegendRow name="subj_i" desc="Abreviatura de la materia i (i = 1, 2, …). Celda con el texto de la abreviatura; se casa con la materia configurada en Gestión Académica. Las materias sin columna se añaden automáticamente al final." />
+                <LegendRow name="subj_i" desc="Abreviatura de la materia i (i = 1, 2, …). El sistema la escribe automáticamente con la abreviatura configurada en Gestión Académica. Define además la columna de la nota grade_i_n." />
+                <LegendRow name="subjname_i" desc="Nombre completo de la materia i (ej: «Castellano y Literatura»). Opcional: el sistema lo escribe si el named range existe en la plantilla." />
 
                 <Divider style={{ margin: '10px 0' }} />
                 <div style={{ fontWeight: 700, color: '#0f172a', marginBottom: 6 }}>Notas por estudiante y materia</div>
