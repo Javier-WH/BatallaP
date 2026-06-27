@@ -92,6 +92,16 @@ function cloneWorksheet(workbook: ExcelJS.Workbook, sourceSheet: ExcelJS.Workshe
     views: sourceSheet.model.views,
   });
 
+  // Copy column widths
+  if (sourceSheet.columns) {
+    sourceSheet.columns.forEach((col, idx) => {
+      if (col && col.width != null) {
+        newSheet.getColumn(idx + 1).width = col.width;
+      }
+    });
+  }
+
+  // Copy cell values, styles and row heights
   sourceSheet.eachRow({ includeEmpty: true }, (row, rowNum) => {
     row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
       const newCell = newSheet.getRow(rowNum).getCell(colNumber);
@@ -99,13 +109,37 @@ function cloneWorksheet(workbook: ExcelJS.Workbook, sourceSheet: ExcelJS.Workshe
       if (cell.style) {
         newCell.style = JSON.parse(JSON.stringify(cell.style));
       }
+      if (cell.numFmt) {
+        newCell.numFmt = cell.numFmt;
+      }
+      if (cell.font) {
+        newCell.font = JSON.parse(JSON.stringify(cell.font));
+      }
+      if (cell.alignment) {
+        newCell.alignment = JSON.parse(JSON.stringify(cell.alignment));
+      }
+      if (cell.border) {
+        newCell.border = JSON.parse(JSON.stringify(cell.border));
+      }
+      if (cell.fill) {
+        newCell.fill = JSON.parse(JSON.stringify(cell.fill));
+      }
     });
+    if (row.height != null) {
+      newSheet.getRow(rowNum).height = row.height;
+    }
   });
 
+  // Copy merged cell ranges
   if (sourceSheet.model.merges) {
     sourceSheet.model.merges.forEach((merge: string) => {
       newSheet.mergeCells(merge);
     });
+  }
+
+  // Copy page setup and print options if present
+  if (sourceSheet.pageSetup) {
+    newSheet.pageSetup = JSON.parse(JSON.stringify(sourceSheet.pageSetup));
   }
 
   return newSheet;
@@ -127,39 +161,36 @@ function fillSheetByNamedRanges(
   subjectOrderMap: Map<number, number>,
   studentOffset: number,
 ): void {
+  // Only writes when value is non-empty. Empty/undefined values leave the
+  // cell untouched, preserving the template's decorative content (e.g. "***"
+  // placeholders) for unused student rows.
   const setByRange = (name: string, value: any) => {
+    if (value === undefined || value === null || value === '') return;
     const ref = namedRanges.getCell(sheetName, name);
     if (ref) {
       sheet.getCell(ref.cell).value = value;
     }
   };
 
-  setByRange('inst_period', period?.name || '');
+  setByRange('inst_period', period?.name);
   setByRange('inst_eval_type', 'REVISION DE MATERIA PENDIENTE');
-  setByRange('inst_code', settings.institution_dea_code || plantel?.code || '');
-  setByRange('inst_name', settings.institution_name || plantel?.name || '');
-  setByRange('inst_address', settings.institution_address || '');
-  setByRange('inst_phone', settings.institution_phone || '');
-  setByRange('inst_municipality', settings.institution_municipality || plantel?.municipality || '');
-  setByRange('inst_state', plantel?.state || '');
-  setByRange('inst_cdcee', settings.institution_cdcee || '');
-  setByRange('inst_director', settings.director_name || '');
-  setByRange('inst_director_doc', settings.director_document || '');
+  setByRange('inst_code', settings.institution_dea_code || plantel?.code);
+  setByRange('inst_name', settings.institution_name || plantel?.name);
+  setByRange('inst_address', settings.institution_address);
+  setByRange('inst_phone', settings.institution_phone);
+  setByRange('inst_municipality', settings.institution_municipality || plantel?.municipality);
+  setByRange('inst_state', plantel?.state);
+  setByRange('inst_cdcee', settings.institution_cdcee);
+  setByRange('inst_director', settings.director_name);
+  setByRange('inst_director_doc', settings.director_document);
 
   for (let n = 1; n <= MAX_STUDENTS_PER_SHEET; n++) {
     const studentIdx = studentOffset + (n - 1);
     const ins = students[studentIdx];
 
-    if (!ins) {
-      const blankFields = ['std_num', 'std_doc', 'std_ln', 'std_fn', 'std_bp', 'std_ef', 'std_sx', 'std_bd', 'std_bm', 'std_by', 'std_part'];
-      for (const f of blankFields) {
-        setByRange(f + '_' + n, '');
-      }
-      for (let i = 1; i <= subjectColList.length; i++) {
-        setByRange('grade_' + i + '_' + n, '');
-      }
-      continue;
-    }
+    // If no student for this row, do nothing — keep the template's placeholder
+    // (e.g. "***") intact.
+    if (!ins) continue;
 
     const student = ins.student;
     const residence = student?.residence;
@@ -170,17 +201,17 @@ function fillSheetByNamedRanges(
                     student?.documentType === 'Extranjero' ? 'E' :
                     student?.documentType === 'Pasaporte' ? 'P' : 'V';
     setByRange('std_doc_' + n, docType + ' ' + (student?.document || ''));
-    setByRange('std_ln_' + n, student?.lastName || '');
-    setByRange('std_fn_' + n, student?.firstName || '');
-    setByRange('std_bp_' + n, residence?.birthMunicipality || '');
+    setByRange('std_ln_' + n, student?.lastName);
+    setByRange('std_fn_' + n, student?.firstName);
+    setByRange('std_bp_' + n, residence?.birthMunicipality);
     setByRange('std_ef_' + n, getStateAbbrev(residence?.birthState || ''));
-    setByRange('std_sx_' + n, student?.gender || '');
+    setByRange('std_sx_' + n, student?.gender);
 
     if (student?.birthdate) {
       const birthDate = new Date(student.birthdate);
       setByRange('std_bd_' + n, padNumber(birthDate.getDate()));
       setByRange('std_bm_' + n, padNumber(birthDate.getMonth() + 1));
-      setByRange('std_by_' + n, birthDate.getFullYear());
+      setByRange('std_by_' + n, padNumber(birthDate.getFullYear() % 100));
     }
 
     const insSubjects = sortSubjectsByOrder(
@@ -192,19 +223,20 @@ function fillSheetByNamedRanges(
 
     for (let i = 0; i < subjectColList.length; i++) {
       const subjId = subjectToSubjIndex.get(i + 1);
-      if (!subjId) {
-        setByRange('grade_' + (i + 1) + '_' + n, '');
-        continue;
-      }
+      if (!subjId) continue;
       const insSub = insSubjects.find((is: any) => is.subjectId === subjId);
       const score = insSub ? calculateFinalScore(insSub) : null;
-      setByRange('grade_' + (i + 1) + '_' + n, score != null ? padNumber(score) : '');
+      if (score != null) {
+        setByRange('grade_' + (i + 1) + '_' + n, padNumber(score));
+      }
     }
 
     const groupedInsSub = insSubjects.find((is: any) =>
       groupedSubjectIds.has(is.subjectId)
     );
-    setByRange('std_part_' + n, groupedInsSub?.subject?.name || '');
+    if (groupedInsSub?.subject?.name) {
+      setByRange('std_part_' + n, groupedInsSub.subject.name);
+    }
   }
 }
 
@@ -447,34 +479,166 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
       }
     }
 
-    const totalSheets = Math.ceil(inscriptions.length / MAX_STUDENTS_PER_SHEET);
+const totalSheets = Math.ceil(inscriptions.length / MAX_STUDENTS_PER_SHEET);
 
-    fillSheetByNamedRanges(
-      sheet!, actualSheetName, namedRanges, settings, plantel, period,
-      inscriptions, academicSubjects, groupedSubjectIds,
-      subjectColList, subjectToSubjIndex,
-      calculateFinalScore, subjectOrderMap, 0,
-    );
+    // Helper that fills a workbook opened from a file path with the subjects
+    // and the page of students at studentOffset. Saves the filled workbook
+    // back to the same file so the next stage can read it from disk.
+    const fillWorkbookFromPath = async (
+      sourcePath: string,
+      studentOffset: number
+    ): Promise<{ wb: ExcelJS.Workbook; wsName: string }> => {
+      const wb = new ExcelJS.Workbook();
+      await wb.xlsx.readFile(sourcePath);
+      const ws = wb.getWorksheet(actualSheetName) || wb.worksheets[0];
+      const wsName = ws!.name;
+      const localNR = readTemplateNamedRanges(sourcePath);
 
-    for (let sheetNum = 1; sheetNum < totalSheets; sheetNum++) {
-      const newSheetName = actualSheetName + ' (' + (sheetNum + 1) + ')';
-      const clonedSheet = cloneWorksheet(workbook, sheet!, newSheetName);
+      // Write subject abbreviations / full names
+      for (let i = 1; i <= sortedAcademicSubjects.length; i++) {
+        const ref = localNR.getCell(wsName, 'subj_' + i);
+        const nameRef = localNR.getCell(wsName, 'subjname_' + i);
+        const subj = sortedAcademicSubjects[i - 1];
+        if (subj) {
+          const abbrText = subj.abbreviation || subj.name;
+          if (ref) ws!.getCell(ref.cell).value = abbrText;
+          if (nameRef) ws!.getCell(nameRef.cell).value = subj.name;
+        }
+      }
 
       fillSheetByNamedRanges(
-        clonedSheet, actualSheetName, namedRanges, settings, plantel, period,
+        ws!, wsName, localNR, settings, plantel, period,
         inscriptions, academicSubjects, groupedSubjectIds,
         subjectColList, subjectToSubjIndex,
-        calculateFinalScore, subjectOrderMap, sheetNum * MAX_STUDENTS_PER_SHEET,
+        calculateFinalScore, subjectOrderMap, studentOffset
       );
+
+      // Persist the filled workbook back to disk so the final assembly step
+      // (which re-reads from the file) actually gets the data.
+      await wb.xlsx.writeFile(sourcePath);
+      return { wb, wsName };
+    };
+
+    // If we only have one page, use the workbook we already loaded in memory.
+    if (totalSheets === 1) {
+      fillSheetByNamedRanges(
+        sheet!, actualSheetName, namedRanges, settings, plantel, period,
+        inscriptions, academicSubjects, groupedSubjectIds,
+        subjectColList, subjectToSubjIndex,
+        calculateFinalScore, subjectOrderMap, 0
+      );
+    } else {
+      // Multiple pages: BEFORE filling, copy the template to N temp files so
+      // every page starts from the same identical template (logo, borders,
+      // *** decorative text, etc.). Then fill each copy independently.
+      const os = await import('os');
+      const pathMod = await import('path');
+      const fsMod = await import('fs/promises');
+      const tmpRoot = await fsMod.mkdtemp(pathMod.join(os.tmpdir(), 'resumen-'));
+      const pagePaths: string[] = [];
+      for (let i = 0; i < totalSheets; i++) {
+        const p = pathMod.join(tmpRoot, `page-${i + 1}.xlsx`);
+        await fsMod.copyFile(templatePath, p);
+        pagePaths.push(p);
+      }
+
+      try {
+        // Fill each temp file with its own student range
+        for (let i = 0; i < pagePaths.length; i++) {
+          await fillWorkbookFromPath(pagePaths[i], i * MAX_STUDENTS_PER_SHEET);
+        }
+
+        // Build the final workbook by loading page 1 and then attaching the
+        // other pages as additional worksheets. We rename them and copy
+        // column widths / row heights so each page is fully identical visually.
+        const finalWb = new ExcelJS.Workbook();
+        await finalWb.xlsx.readFile(pagePaths[0]);
+
+        // Drop any other sheets in the first page workbook (only the filled one)
+        const keepName = finalWb.worksheets[0]!.name;
+        finalWb.worksheets
+          .filter(ws => ws.name !== keepName)
+          .forEach(ws => finalWb.removeWorksheet(ws.id!));
+
+        // Attach pages 2..N from their temp files
+        for (let i = 1; i < pagePaths.length; i++) {
+          const aux = new ExcelJS.Workbook();
+          await aux.xlsx.readFile(pagePaths[i]);
+          const auxSheet = aux.worksheets[0]!;
+          // Drop the other aux sheets just in case
+          aux.worksheets
+            .filter(ws => ws.id !== auxSheet.id)
+            .forEach(ws => aux.removeWorksheet(ws.id!));
+
+          // Copy the aux sheet into finalWb as a new worksheet
+          const newName = `${keepName} (${i + 1})`;
+          const copied = finalWb.addWorksheet(newName, {
+            properties: auxSheet.model.properties,
+            views: auxSheet.model.views,
+          });
+          if (auxSheet.columns) {
+            auxSheet.columns.forEach((col, idx) => {
+              if (col && col.width != null) copied.getColumn(idx + 1).width = col.width;
+            });
+          }
+          auxSheet.eachRow({ includeEmpty: true }, (row, rowNum) => {
+            row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+              const newCell = copied.getRow(rowNum).getCell(colNumber);
+              newCell.value = cell.value;
+              if (cell.style) newCell.style = JSON.parse(JSON.stringify(cell.style));
+              if (cell.numFmt) newCell.numFmt = cell.numFmt;
+            });
+            if (row.height != null) copied.getRow(rowNum).height = row.height;
+          });
+          if (auxSheet.model.merges) {
+            auxSheet.model.merges.forEach((merge: string) => copied.mergeCells(merge));
+          }
+
+          // Copy images (e.g. the logo) from the aux workbook into the
+          // copied sheet. ExcelJS stores media in the workbook; we have to
+          // re-attach each image with the same anchor position.
+          const auxImages = auxSheet.getImages();
+          const auxMedia: any[] = (aux as any).model?.media || [];
+          for (const img of auxImages) {
+            const media = auxMedia[(img as any).imageId];
+            if (!media || !media.buffer) continue;
+            const newImageId = finalWb.addImage({
+              buffer: media.buffer,
+              extension: media.extension || 'png',
+            });
+            const makeAnchor = (a: any) => ({
+              nativeCol: a.nativeCol,
+              nativeColOff: a.nativeColOff,
+              nativeRow: a.nativeRow,
+              nativeRowOff: a.nativeRowOff,
+            });
+            (copied as any).addImage(newImageId, {
+              tl: makeAnchor(img.range.tl),
+              br: makeAnchor(img.range.br),
+              editAs: (img as any).range.editAs,
+            });
+          }
+        }
+
+        const buffer = await finalWb.xlsx.writeBuffer();
+
+        const fileName = 'resumen-rendimiento-' + grade.name.replace(/s+/g, '_') + '-' + section.name.replace(/s+/g, '_') + '.xlsx';
+
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', 'attachment; filename="' + fileName + '"');
+        res.send(buffer);
+        return;
+      } finally {
+        // Clean up temp files
+        await fsMod.rm(tmpRoot, { recursive: true, force: true });
+      }
     }
 
-    // Remove other worksheets
-    const filledSheetNames = new Set([actualSheetName]);
-    for (let i = 1; i < totalSheets; i++) {
-      filledSheetNames.add(actualSheetName + ' (' + (i + 1) + ')');
-    }
-    const sheetsToRemove = workbook.worksheets.filter(ws => !filledSheetNames.has(ws.name));
-    sheetsToRemove.forEach(ws => workbook.removeWorksheet(ws.id!));
+    // Single-page path: keep the original workbook we already loaded.
+    // Drop any extra sheets that may exist in the template besides the filled one.
+    workbook.worksheets
+      .filter(ws => ws.id !== sheet!.id)
+      .forEach(ws => workbook.removeWorksheet(ws.id!));
 
     const buffer = await workbook.xlsx.writeBuffer();
 
