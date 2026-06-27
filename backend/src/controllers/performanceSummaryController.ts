@@ -591,7 +591,12 @@ const totalSheets = Math.ceil(inscriptions.length / MAX_STUDENTS_PER_SHEET);
             if (row.height != null) copied.getRow(rowNum).height = row.height;
           });
           if (auxSheet.model.merges) {
-            auxSheet.model.merges.forEach((merge: string) => copied.mergeCells(merge));
+            // Use mergeCellsWithoutStyle (not mergeCells) to avoid re-ordering
+            // cellXfs in the destination workbook, which would convert the
+            // right border on column Z (the table edge) into a left border
+            // on the copied sheet. The cell styles are already in place from
+            // the per-cell style copy above.
+            auxSheet.model.merges.forEach((merge: string) => (copied as any).mergeCellsWithoutStyle(merge));
           }
 
           // Copy images (e.g. the logo) from the aux workbook into the
