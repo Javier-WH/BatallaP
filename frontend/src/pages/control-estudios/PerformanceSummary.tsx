@@ -138,6 +138,10 @@ const PerformanceSummary: React.FC = () => {
       message.warning('Seleccione periodo, grado y sección');
       return;
     }
+    if (!selectedTemplate) {
+      message.warning('Debe seleccionar una plantilla (o asignar una al grado/sección)');
+      return;
+    }
 
     setExporting(true);
     try {
@@ -280,7 +284,7 @@ const PerformanceSummary: React.FC = () => {
                   icon={<DownloadOutlined />}
                   onClick={handleExport}
                   loading={exporting}
-                  disabled={!selectedGradeId || !selectedSectionId}
+                  disabled={!selectedGradeId || !selectedSectionId || !selectedTemplate}
                   style={{
                     width: '100%',
                     height: 40,
@@ -364,7 +368,7 @@ const PerformanceSummary: React.FC = () => {
             </Tag>
           ) : (
             <Text type="secondary" style={{ alignSelf: 'center', fontSize: 13 }}>
-              Sin plantilla asignada al período (usando ResumenFinal_Template.xlsx)
+              Sin plantilla asignada. Asigna una desde "Gestionar plantillas" o selecciona una manualmente.
             </Text>
           )}
         </div>

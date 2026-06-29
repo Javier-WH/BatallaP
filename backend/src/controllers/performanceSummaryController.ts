@@ -249,8 +249,22 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
   try {
     const { schoolPeriodId, gradeId, sectionId, template } = req.query;
 
-    if (!schoolPeriodId || !gradeId || !sectionId) {
-      return res.status(400).json({ message: 'schoolPeriodId, gradeId y sectionId son requeridos' });
+    // Validate the three required identifiers. They must be numeric strings
+    // (positive integers) so the rest of the pipeline can safely Number()
+    // them without producing NaN.
+    const numericFields: Array<[string, unknown]> = [
+      ['schoolPeriodId', schoolPeriodId],
+      ['gradeId', gradeId],
+      ['sectionId', sectionId],
+    ];
+    for (const [name, raw] of numericFields) {
+      if (raw === undefined || raw === null || raw === '') {
+        return res.status(400).json({ message: `${name} es requerido` });
+      }
+      const n = Number(raw);
+      if (!Number.isFinite(n) || !Number.isInteger(n) || n <= 0) {
+        return res.status(400).json({ message: `${name} debe ser un número entero positivo` });
+      }
     }
 
     const period = await SchoolPeriod.findByPk(Number(schoolPeriodId));
@@ -389,14 +403,15 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
 //   1. ?template= override in the query string
 //   2. Template assigned to the (grade, section) combination
 //   3. Template assigned to the grade (any section)
-//   4. The default ResumenFinal_Template.xlsx shipped in the repository
+// A template MUST be selected by the caller. There is no default fallback
+// so that a missing assignment surfaces as a clear error.
     const templatesRoot = path.resolve(process.cwd(), 'templates');
-    let templatePath: string;
+    let templatePath: string | null = null;
     if (template && typeof template === 'string') {
       const requested = path.basename(template);
       const candidate = path.join(templatesRoot, requested);
       if (!candidate.startsWith(templatesRoot) || !fs.existsSync(candidate)) {
-        return res.status(404).json({ message: 'La plantilla seleccionada no existe' });
+        return res.status(400).json({ message: 'La plantilla seleccionada no existe' });
       }
       templatePath = candidate;
     } else {
@@ -412,12 +427,12 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
       const assignment = sectionAssignment || gradeAssignment;
       if (assignment && fs.existsSync(path.join(templatesRoot, path.basename(assignment.value)))) {
         templatePath = path.join(templatesRoot, path.basename(assignment.value));
-      } else {
-        templatePath = path.resolve(templatesRoot, 'ResumenFinal_Template.xlsx');
-        if (!fs.existsSync(templatePath)) {
-          return res.status(404).json({ message: 'No hay plantilla configurada. Sube una plantilla desde la gestión de resumen.' });
-        }
       }
+    }
+    if (!templatePath) {
+      return res.status(400).json({
+        message: 'Debe seleccionar una plantilla (mediante ?template= en la URL o asignada al grado/sección).',
+      });
     }
 
     const namedRanges = readTemplateNamedRanges(templatePath);
