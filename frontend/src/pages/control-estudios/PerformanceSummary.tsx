@@ -32,29 +32,37 @@ interface PeriodGradeStructure {
   sections: Section[];
 }
 
+interface SchoolPeriod {
+  id: number;
+  period: string;
+  name: string;
+  isActive: boolean;
+}
+
 const PerformanceSummary: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [structure, setStructure] = useState<PeriodGradeStructure[]>([]);
-  const [activePeriod, setActivePeriod] = useState<any>(null);
+  const [allPeriods, setAllPeriods] = useState<SchoolPeriod[]>([]);
+  const [selectedPeriodId, setSelectedPeriodId] = useState<number | null>(null);
   const [selectedGradeId, setSelectedGradeId] = useState<number | null>(null);
   const [selectedSectionId, setSelectedSectionId] = useState<number | null>(null);
   const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
+  const [userOverrodeTemplate, setUserOverrodeTemplate] = useState(false);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const activeRes = await api.get('/academic/active');
+      const [activeRes, periodsRes] = await Promise.all([
+        api.get('/academic/active'),
+        api.get('/academic/periods'),
+      ]);
       const period = activeRes.data;
-      setActivePeriod(period);
-
-      if (period) {
-        const structureRes = await api.get(`/academic/structure/${period.id}`);
-        setStructure(structureRes.data.sort((a: PeriodGradeStructure, b: PeriodGradeStructure) =>
-          (a.grade.order || 0) - (b.grade.order || 0)
-        ));
-      }
+      const periods: SchoolPeriod[] = Array.isArray(periodsRes.data) ? periodsRes.data : [];
+      setAllPeriods(periods);
+      const initialPeriodId = period?.id ?? periods[0]?.id ?? null;
+      setSelectedPeriodId((prev) => prev ?? initialPeriodId);
     } catch (error) {
       console.error('Error fetching data', error);
       message.error('Error al cargar la información inicial');
@@ -63,13 +71,71 @@ const PerformanceSummary: React.FC = () => {
     }
   }, []);
 
+  const fetchStructure = useCallback(async (periodId: number | null) => {
+    if (!periodId) {
+      setStructure([]);
+      return;
+    }
+    try {
+      const structureRes = await api.get(`/academic/structure/${periodId}`);
+      const data = Array.isArray(structureRes.data) ? structureRes.data : [];
+      setStructure(data.sort((a: PeriodGradeStructure, b: PeriodGradeStructure) =>
+        (a.grade.order || 0) - (b.grade.order || 0)
+      ));
+    } catch (error) {
+      console.error('Error fetching structure', error);
+      setStructure([]);
+    }
+  }, []);
+
+  // Load periods on mount
   useEffect(() => {
     fetchData();
   }, [fetchData]);
 
+  // When the selected period changes, fetch its structure.
+  useEffect(() => {
+    if (!selectedPeriodId) {
+      setStructure([]);
+      return;
+    }
+    fetchStructure(selectedPeriodId);
+  }, [selectedPeriodId, fetchStructure]);
+
+  // When the selected (grade, section) changes, auto-load the template
+  // assigned to that combination (or to the grade alone). The user can
+  // override the template manually in the modal.
+  useEffect(() => {
+    if (!selectedGradeId) {
+      setSelectedTemplate(null);
+      return;
+    }
+    const params = selectedSectionId ? `?sectionId=${selectedSectionId}` : '';
+    api.get(`/templates/assignment/${selectedGradeId}${params}`)
+      .then((res) => {
+        const assigned = res.data?.templateName || null;
+        setSelectedTemplate(assigned);
+      })
+      .catch(() => setSelectedTemplate(null));
+  }, [selectedGradeId, selectedSectionId]);
+
+  // If the user picks a different period, reset the override flag and
+  // dependent selections.
+  useEffect(() => {
+    setUserOverrodeTemplate(false);
+    setSelectedGradeId(null);
+    setSelectedSectionId(null);
+  }, [selectedPeriodId]);
+
+  // Reset the override flag when the user changes the grade or section,
+  // so the new (grade, section) can auto-load its assigned template.
+  useEffect(() => {
+    setUserOverrodeTemplate(false);
+  }, [selectedGradeId, selectedSectionId]);
+
   const handleExport = async () => {
-    if (!activePeriod || !selectedGradeId || !selectedSectionId) {
-      message.warning('Seleccione un grado y una sección');
+    if (!selectedPeriodId || !selectedGradeId || !selectedSectionId) {
+      message.warning('Seleccione periodo, grado y sección');
       return;
     }
 
@@ -77,7 +143,7 @@ const PerformanceSummary: React.FC = () => {
     try {
       const response = await api.get('/performance-summary/export', {
         params: {
-          schoolPeriodId: activePeriod.id,
+          schoolPeriodId: selectedPeriodId,
           gradeId: selectedGradeId,
           sectionId: selectedSectionId,
           template: selectedTemplate || undefined,
@@ -155,62 +221,80 @@ const PerformanceSummary: React.FC = () => {
         </div>
 
         {structure.length === 0 ? (
-          <Empty description="No hay estructura académica configurada para el período activo" />
+          <Empty description="No hay estructura acadAcmica configurada para el perA-odo activo" />
         ) : (
-          <Row gutter={[24, 24]} justify="center" align="middle">
-            <Col xs={24} sm={10} md={7}>
-              <Text style={{ fontWeight: 700, display: 'block', marginBottom: 8 }}>Grado</Text>
-              <Select
-                placeholder="Seleccione un grado"
-                style={{ width: '100%' }}
-                size="large"
-                value={selectedGradeId}
-                onChange={(val) => {
-                  setSelectedGradeId(val);
-                  setSelectedSectionId(null);
-                }}
-                options={structure.map(s => ({
-                  label: s.grade.name,
-                  value: s.grade.id,
-                }))}
-              />
-            </Col>
-            <Col xs={24} sm={10} md={7}>
-              <Text style={{ fontWeight: 700, display: 'block', marginBottom: 8 }}>Sección</Text>
-              <Select
-                placeholder="Seleccione una sección"
-                style={{ width: '100%' }}
-                size="large"
-                value={selectedSectionId}
-                disabled={!selectedGradeId}
-                onChange={(val) => setSelectedSectionId(val)}
-                options={availableSections.map(s => ({
-                  label: s.name,
-                  value: s.id,
-                }))}
-              />
-            </Col>
-            <Col xs={24} sm={4} md={4} style={{ display: 'flex', alignItems: 'flex-end' }}>
-              <Button
-                type="primary"
-                size="large"
-                icon={<DownloadOutlined />}
-                onClick={handleExport}
-                loading={exporting}
-                disabled={!selectedGradeId || !selectedSectionId}
-                style={{
-                  width: '100%',
-                  height: 40,
-                  borderRadius: 10,
-                  fontWeight: 700,
-                  background: '#059669',
-                  border: 'none',
-                }}
-              >
-                Exportar
-              </Button>
-            </Col>
-          </Row>
+          <>
+            <Row gutter={[24, 24]} justify="center" align="middle">
+              <Col xs={24} sm={10} md={7}>
+                <Text style={{ fontWeight: 700, display: 'block', marginBottom: 8 }}>Periodo AcadA@mico</Text>
+                <Select
+                  placeholder="Seleccione un periodo"
+                  style={{ width: '100%' }}
+                  size="large"
+                  value={selectedPeriodId}
+                  onChange={(val) => setSelectedPeriodId(val)}
+                  options={allPeriods.map(p => ({
+                    label: `${p.name}${p.isActive ? ' (activo)' : ''}`,
+                    value: p.id,
+                  }))}
+                />
+              </Col>
+              <Col xs={24} sm={10} md={7}>
+                <Text style={{ fontWeight: 700, display: 'block', marginBottom: 8 }}>Grado</Text>
+                <Select
+                  placeholder="Seleccione un grado"
+                  style={{ width: '100%' }}
+                  size="large"
+                  value={selectedGradeId}
+                  onChange={(val) => {
+                    setSelectedGradeId(val);
+                    setSelectedSectionId(null);
+                  }}
+                  options={structure.map(s => ({
+                    label: s.grade.name,
+                    value: s.grade.id,
+                  }))}
+                />
+              </Col>
+              <Col xs={24} sm={10} md={7}>
+                <Text style={{ fontWeight: 700, display: 'block', marginBottom: 8 }}>Sección</Text>
+                <Select
+                  placeholder="Seleccione una sección"
+                  style={{ width: '100%' }}
+                  size="large"
+                  value={selectedSectionId}
+                  disabled={!selectedGradeId}
+                  onChange={(val) => setSelectedSectionId(val)}
+                  options={availableSections.map(s => ({
+                    label: s.name,
+                    value: s.id,
+                  }))}
+                />
+              </Col>
+            </Row>
+            <Row gutter={[24, 24]} justify="center" align="middle" style={{ marginTop: 16 }}>
+              <Col xs={24} sm={8} md={6} style={{ display: 'flex', alignItems: 'flex-end' }}>
+                <Button
+                  type="primary"
+                  size="large"
+                  icon={<DownloadOutlined />}
+                  onClick={handleExport}
+                  loading={exporting}
+                  disabled={!selectedGradeId || !selectedSectionId}
+                  style={{
+                    width: '100%',
+                    height: 40,
+                    borderRadius: 10,
+                    fontWeight: 700,
+                    background: '#059669',
+                    border: 'none',
+                  }}
+                >
+                  Exportar
+                </Button>
+              </Col>
+            </Row>
+          </>
         )}
 
         <div style={{ marginTop: 24, display: 'flex', justifyContent: 'center', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -276,11 +360,11 @@ const PerformanceSummary: React.FC = () => {
           </Popover>
           {selectedTemplate ? (
             <Tag icon={<CheckCircleOutlined />} color="success" style={{ display: 'inline-flex', alignItems: 'center', alignSelf: 'center' }}>
-              Plantilla: {selectedTemplate}
+              Plantilla: {selectedTemplate}{!userOverrodeTemplate ? ' (asignada al período)' : ''}
             </Tag>
           ) : (
             <Text type="secondary" style={{ alignSelf: 'center', fontSize: 13 }}>
-              Usando plantilla por defecto (ResumenFinal_Template.xlsx)
+              Sin plantilla asignada al período (usando ResumenFinal_Template.xlsx)
             </Text>
           )}
         </div>
@@ -307,7 +391,12 @@ const PerformanceSummary: React.FC = () => {
         open={templateModalOpen}
         onClose={() => setTemplateModalOpen(false)}
         selectedTemplate={selectedTemplate}
-        onSelect={(name) => setSelectedTemplate(name || null)}
+        defaultGradeId={selectedGradeId}
+        defaultSectionId={selectedSectionId}
+        onSelect={(name) => {
+          setSelectedTemplate(name || null);
+          setUserOverrodeTemplate(true);
+        }}
       />
     </div>
   );

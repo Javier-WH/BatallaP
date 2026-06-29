@@ -380,7 +380,11 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
       return Math.round(finalScore * 100) / 100;
     };
 
-    // Resolve template path: allow override via ?template=, fallback to default
+    // Resolve template path. Precedence:
+//   1. ?template= override in the query string
+//   2. Template assigned to the (grade, section) combination
+//   3. Template assigned to the grade (any section)
+//   4. The default ResumenFinal_Template.xlsx shipped in the repository
     const templatesRoot = path.resolve(process.cwd(), 'templates');
     let templatePath: string;
     if (template && typeof template === 'string') {
@@ -391,9 +395,23 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
       }
       templatePath = candidate;
     } else {
-      templatePath = path.resolve(templatesRoot, 'ResumenFinal_Template.xlsx');
-      if (!fs.existsSync(templatePath)) {
-        return res.status(404).json({ message: 'No hay plantilla configurada. Sube una plantilla desde la gestión de resumen.' });
+      // Look up the template assigned to this grade / section
+      const { Setting } = await import('@/models/index');
+      const tryKey = (k: string) => Setting.findOne({ where: { key: k } });
+      const gradeId = String(grade.id);
+      const sectionId = section.id;
+      const sectionKey = `template_assignment:grade:${gradeId}:section:${sectionId}`;
+      const gradeKey = `template_assignment:grade:${gradeId}`;
+      const sectionAssignment = await tryKey(sectionKey);
+      const gradeAssignment = sectionAssignment ? null : await tryKey(gradeKey);
+      const assignment = sectionAssignment || gradeAssignment;
+      if (assignment && fs.existsSync(path.join(templatesRoot, path.basename(assignment.value)))) {
+        templatePath = path.join(templatesRoot, path.basename(assignment.value));
+      } else {
+        templatePath = path.resolve(templatesRoot, 'ResumenFinal_Template.xlsx');
+        if (!fs.existsSync(templatePath)) {
+          return res.status(404).json({ message: 'No hay plantilla configurada. Sube una plantilla desde la gestión de resumen.' });
+        }
       }
     }
 
