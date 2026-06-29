@@ -629,40 +629,36 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
     };
 
     // Render one or more pages for a given student group with the given
-    // evaluation type. Returns the number of pages generated.
+    // evaluation type. Returns the array of generated worksheet names.
     const renderGroup = (
       group: any[],
       evalType: string,
       groupLabel: string
-    ): number => {
-      if (group.length === 0) return 0;
+    ): string[] => {
+      if (group.length === 0) return [];
       const pages = Math.ceil(group.length / MAX_STUDENTS_PER_SHEET);
-      // Page 1 fills the original `sheet!` in-place (which already has all
-      // template formatting). Additional pages are clones.
+      const generated: string[] = [];
+      // We clone a fresh copy of the template for every page (including page 1)
+      // so each group can have its own name without clashing. The original
+      // `sheet!` is left untouched and dropped at the end.
       for (let pageIdx = 0; pageIdx < pages; pageIdx++) {
-        if (pageIdx === 0) {
-          fillGroupPage(sheet!, group, 0, evalType);
-        } else {
-          const newName = `${actualSheetName} (${groupLabel} ${pageIdx + 1})`;
-          const cloned = cloneSheetInPlace(sheet!, newName);
-          fillGroupPage(cloned, group, pageIdx * MAX_STUDENTS_PER_SHEET, evalType);
-        }
+        const newName = pages === 1
+          ? `${actualSheetName} (${groupLabel})`
+          : `${actualSheetName} (${groupLabel} ${pageIdx + 1})`;
+        const cloned = cloneSheetInPlace(sheet!, newName);
+        fillGroupPage(cloned, group, pageIdx * MAX_STUDENTS_PER_SHEET, evalType);
+        generated.push(newName);
       }
-      return pages;
+      return generated;
     };
 
-    const approvedPages = renderGroup(approvedInscriptions, 'Regulares', 'Regulares');
-    const failedPages = renderGroup(failedInscriptions, 'REVISION DE MATERIA PENDIENTE', 'REVISION');
+    const approvedSheetNames = renderGroup(approvedInscriptions, 'Regulares', 'Regulares');
+    const failedSheetNames = renderGroup(failedInscriptions, 'REVISION DE MATERIA PENDIENTE', 'REVISION');
 
-    // Drop the un-filled template sheets (3er Año, 4to Año, 5to Año).
-    // Keep `actualSheetName` and any cloned pages we just created.
-    const keepNames = new Set<string>([actualSheetName]);
-    if (approvedPages > 0) {
-      for (let i = 1; i < approvedPages; i++) keepNames.add(`${actualSheetName} (Regulares ${i + 1})`);
-    }
-    if (failedPages > 0) {
-      for (let i = 1; i < failedPages; i++) keepNames.add(`${actualSheetName} (REVISION ${i + 1})`);
-    }
+    // Drop the un-filled template sheets (3er Año, 4to Año, 5to Año) and
+    // the original `sheet!` (which is just a template we cloned from). Keep
+    // only the rendered group pages.
+    const keepNames = new Set<string>([...approvedSheetNames, ...failedSheetNames]);
     workbook.worksheets
       .filter(ws => !keepNames.has(ws.name))
       .forEach(ws => workbook.removeWorksheet(ws.id!));
