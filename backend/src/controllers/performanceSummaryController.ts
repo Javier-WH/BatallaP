@@ -160,20 +160,25 @@ function fillSheetByNamedRanges(
   calculateFinalScore: (insSub: any) => number | null,
   subjectOrderMap: Map<number, number>,
   studentOffset: number,
+  sourceSheetName?: string,
 ): void {
   // Only writes when value is non-empty. Empty/undefined values leave the
   // cell untouched, preserving the template's decorative content (e.g. "***"
   // placeholders) for unused student rows.
+  // For cloned pages (e.g. "1er Año (Regulares 2)"), the named ranges are
+  // registered for the original sheet (e.g. "1er Año"), so we look up
+  // coordinates by the original sheet's name and write to the same absolute
+  // coordinates in the destination sheet.
+  const lookupSheetName = sourceSheetName || sheetName;
   const setByRange = (name: string, value: any) => {
     if (value === undefined || value === null || value === '') return;
-    const ref = namedRanges.getCell(sheetName, name);
+    const ref = namedRanges.getCell(lookupSheetName, name);
     if (ref) {
       sheet.getCell(ref.cell).value = value;
     }
   };
 
   setByRange('inst_period', period?.name);
-  setByRange('inst_eval_type', 'REVISION DE MATERIA PENDIENTE');
   setByRange('inst_code', settings.institution_dea_code || plantel?.code);
   setByRange('inst_name', settings.institution_name || plantel?.name);
   setByRange('inst_address', settings.institution_address);
@@ -497,176 +502,173 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
       }
     }
 
-const totalSheets = Math.ceil(inscriptions.length / MAX_STUDENTS_PER_SHEET);
-
-    // Helper that fills a workbook opened from a file path with the subjects
-    // and the page of students at studentOffset. Saves the filled workbook
-    // back to the same file so the next stage can read it from disk.
-    const fillWorkbookFromPath = async (
-      sourcePath: string,
-      studentOffset: number
-    ): Promise<{ wb: ExcelJS.Workbook; wsName: string }> => {
-      const wb = new ExcelJS.Workbook();
-      await wb.xlsx.readFile(sourcePath);
-      const ws = wb.getWorksheet(actualSheetName) || wb.worksheets[0];
-      const wsName = ws!.name;
-      const localNR = readTemplateNamedRanges(sourcePath);
-
-      // Write subject abbreviations / full names
-      for (let i = 1; i <= sortedAcademicSubjects.length; i++) {
-        const ref = localNR.getCell(wsName, 'subj_' + i);
-        const nameRef = localNR.getCell(wsName, 'subjname_' + i);
-        const subj = sortedAcademicSubjects[i - 1];
-        if (subj) {
-          const abbrText = subj.abbreviation || subj.name;
-          if (ref) ws!.getCell(ref.cell).value = abbrText;
-          if (nameRef) ws!.getCell(nameRef.cell).value = subj.name;
-        }
-      }
-
-      fillSheetByNamedRanges(
-        ws!, wsName, localNR, settings, plantel, period,
-        inscriptions, academicSubjects, groupedSubjectIds,
-        subjectColList, subjectToSubjIndex,
-        calculateFinalScore, subjectOrderMap, studentOffset
+// Classify students into approved and failed based on the calculated
+    // final score per academic subject. A student fails the period if any
+    // academic subject ends up below passingGrade.
+    const passingGrade = Number(settings.passing_grade) || 10;
+    const isFailed = (ins: any): boolean => {
+      const sortedSubs = sortSubjectsByOrder(
+        ins.inscriptionSubjects || [],
+        (is: any) => is.subjectId,
+        (is: any) => is.subject?.name,
+        subjectOrderMap
       );
-
-      // Persist the filled workbook back to disk so the final assembly step
-      // (which re-reads from the file) actually gets the data.
-      await wb.xlsx.writeFile(sourcePath);
-      return { wb, wsName };
+      for (const is of sortedSubs) {
+        // Only consider academic subjects; skip grouped/elective subjects.
+        if (groupedSubjectIds.has(is.subjectId)) continue;
+        const score = calculateFinalScore(is);
+        if (score == null) continue;
+        if (score < passingGrade) return true;
+      }
+      return false;
     };
 
-    // If we only have one page, use the workbook we already loaded in memory.
-    if (totalSheets === 1) {
-      fillSheetByNamedRanges(
-        sheet!, actualSheetName, namedRanges, settings, plantel, period,
-        inscriptions, academicSubjects, groupedSubjectIds,
-        subjectColList, subjectToSubjIndex,
-        calculateFinalScore, subjectOrderMap, 0
-      );
-    } else {
-      // Multiple pages: BEFORE filling, copy the template to N temp files so
-      // every page starts from the same identical template (logo, borders,
-      // *** decorative text, etc.). Then fill each copy independently.
-      const os = await import('os');
-      const pathMod = await import('path');
-      const fsMod = await import('fs/promises');
-      const tmpRoot = await fsMod.mkdtemp(pathMod.join(os.tmpdir(), 'resumen-'));
-      const pagePaths: string[] = [];
-      for (let i = 0; i < totalSheets; i++) {
-        const p = pathMod.join(tmpRoot, `page-${i + 1}.xlsx`);
-        await fsMod.copyFile(templatePath, p);
-        pagePaths.push(p);
+    const failedInscriptions = inscriptions.filter(isFailed);
+    const approvedInscriptions = inscriptions.filter(ins => !isFailed(ins));
+
+    // Helper that clones a worksheet inside the same workbook (preserves
+    // styles, borders, images, merges, decorative text like ***). Cloning
+    // within the same workbook is what keeps the right border on column Z
+    // intact on the copied sheet.
+    const cloneSheetInPlace = (
+      sourceWs: ExcelJS.Worksheet,
+      newName: string
+    ): ExcelJS.Worksheet => {
+      const cloned = workbook.addWorksheet(newName);
+      sourceWs.eachRow({ includeEmpty: true }, (row, rowNum) => {
+        row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+          const c = cloned.getRow(rowNum).getCell(colNumber);
+          c.value = cell.value;
+          if (cell.style) c.style = JSON.parse(JSON.stringify(cell.style));
+          if (cell.numFmt) c.numFmt = cell.numFmt;
+        });
+        if (row.height != null) cloned.getRow(rowNum).height = row.height;
+      });
+      if (sourceWs.columns) {
+        sourceWs.columns.forEach((col, idx) => {
+          if (col && col.width != null) cloned.getColumn(idx + 1).width = col.width;
+        });
       }
+      // Use mergeCellsWithoutStyle (not mergeCells) to avoid re-ordering
+      // cellXfs in the workbook, which would convert the right border on
+      // column Z (the table edge) into a left border on the cloned sheet.
+      if (sourceWs.model.merges) {
+        sourceWs.model.merges.forEach((merge: string) => (cloned as any).mergeCellsWithoutStyle(merge));
+      }
+      return cloned;
+    };
 
-      try {
-        // Fill each temp file with its own student range
-        for (let i = 0; i < pagePaths.length; i++) {
-          await fillWorkbookFromPath(pagePaths[i], i * MAX_STUDENTS_PER_SHEET);
-        }
-
-        // Build the final workbook by loading page 1 and then attaching the
-        // other pages as additional worksheets. We rename them and copy
-        // column widths / row heights so each page is fully identical visually.
-        const finalWb = new ExcelJS.Workbook();
-        await finalWb.xlsx.readFile(pagePaths[0]);
-
-        // Drop any other sheets in the first page workbook (only the filled one)
-        const keepName = finalWb.worksheets[0]!.name;
-        finalWb.worksheets
-          .filter(ws => ws.name !== keepName)
-          .forEach(ws => finalWb.removeWorksheet(ws.id!));
-
-        // Attach pages 2..N from their temp files
-        for (let i = 1; i < pagePaths.length; i++) {
-          const aux = new ExcelJS.Workbook();
-          await aux.xlsx.readFile(pagePaths[i]);
-          const auxSheet = aux.worksheets[0]!;
-          // Drop the other aux sheets just in case
-          aux.worksheets
-            .filter(ws => ws.id !== auxSheet.id)
-            .forEach(ws => aux.removeWorksheet(ws.id!));
-
-          // Copy the aux sheet into finalWb as a new worksheet
-          const newName = `${keepName} (${i + 1})`;
-          const copied = finalWb.addWorksheet(newName, {
-            properties: auxSheet.model.properties,
-            views: auxSheet.model.views,
-          });
-          if (auxSheet.columns) {
-            auxSheet.columns.forEach((col, idx) => {
-              if (col && col.width != null) copied.getColumn(idx + 1).width = col.width;
-            });
-          }
-          auxSheet.eachRow({ includeEmpty: true }, (row, rowNum) => {
-            row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
-              const newCell = copied.getRow(rowNum).getCell(colNumber);
-              newCell.value = cell.value;
-              if (cell.style) newCell.style = JSON.parse(JSON.stringify(cell.style));
-              if (cell.numFmt) newCell.numFmt = cell.numFmt;
-            });
-            if (row.height != null) copied.getRow(rowNum).height = row.height;
-          });
-          if (auxSheet.model.merges) {
-            // Use mergeCellsWithoutStyle (not mergeCells) to avoid re-ordering
-            // cellXfs in the destination workbook, which would convert the
-            // right border on column Z (the table edge) into a left border
-            // on the copied sheet. The cell styles are already in place from
-            // the per-cell style copy above.
-            auxSheet.model.merges.forEach((merge: string) => (copied as any).mergeCellsWithoutStyle(merge));
-          }
-
-          // Copy images (e.g. the logo) from the aux workbook into the
-          // copied sheet. ExcelJS stores media in the workbook; we have to
-          // re-attach each image with the same anchor position.
-          const auxImages = auxSheet.getImages();
-          const auxMedia: any[] = (aux as any).model?.media || [];
-          for (const img of auxImages) {
-            const media = auxMedia[(img as any).imageId];
-            if (!media || !media.buffer) continue;
-            const newImageId = finalWb.addImage({
-              buffer: media.buffer,
-              extension: media.extension || 'png',
-            });
-            const makeAnchor = (a: any) => ({
-              nativeCol: a.nativeCol,
-              nativeColOff: a.nativeColOff,
-              nativeRow: a.nativeRow,
-              nativeRowOff: a.nativeRowOff,
-            });
-            (copied as any).addImage(newImageId, {
-              tl: makeAnchor(img.range.tl),
-              br: makeAnchor(img.range.br),
-              editAs: (img as any).range.editAs,
-            });
-          }
-        }
-
-        const buffer = await finalWb.xlsx.writeBuffer();
-
-        const fileName = 'resumen-rendimiento-' + grade.name.replace(/s+/g, '_') + '-' + section.name.replace(/s+/g, '_') + '.xlsx';
-
-        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-        res.setHeader('Content-Disposition', 'attachment; filename="' + fileName + '"');
-        res.send(buffer);
-        return;
-      } finally {
-        // Clean up temp files
-        await fsMod.rm(tmpRoot, { recursive: true, force: true });
+    // Helper that registers the template images in the workbook before any
+    // cloning happens, so cellXfs stays stable during the clone.
+    const originalImages = sheet!.getImages();
+    const originalMedia: any[] = (workbook as any).model?.media || [];
+    const preImageIds: number[] = [];
+    for (const img of originalImages) {
+      const media = originalMedia[(img as any).imageId];
+      if (media && media.buffer) {
+        preImageIds.push(workbook.addImage({
+          buffer: media.buffer,
+          extension: media.extension || 'png',
+        }) as number);
+      } else {
+        preImageIds.push(-1);
       }
     }
 
-    // Single-page path: keep the original workbook we already loaded.
-    // Drop any extra sheets that may exist in the template besides the filled one.
+    // Helper that fills a single worksheet (already inside `workbook`) with
+    // a given group of students at the given student offset. The worksheet is
+    // expected to already be cloned from the template and named accordingly.
+    const fillGroupPage = (
+      ws: ExcelJS.Worksheet,
+      studentList: any[],
+      studentOffset: number,
+      evalType: string
+    ) => {
+      // Attach pre-registered images with the template's anchors
+      const makeAnchor = (a: any) => ({
+        nativeCol: a.nativeCol,
+        nativeColOff: a.nativeColOff,
+        nativeRow: a.nativeRow,
+        nativeRowOff: a.nativeRowOff,
+      });
+      for (let i = 0; i < originalImages.length; i++) {
+        const img = originalImages[i];
+        if (preImageIds[i] < 0) continue;
+        (ws as any).addImage(preImageIds[i], {
+          tl: makeAnchor(img.range.tl),
+          br: makeAnchor(img.range.br),
+          editAs: (img as any).range.editAs,
+        });
+      }
+
+      // Write subject abbreviations / full names
+      for (let i = 1; i <= sortedAcademicSubjects.length; i++) {
+        const ref = namedRanges.getCell(actualSheetName, 'subj_' + i);
+        const nameRef = namedRanges.getCell(actualSheetName, 'subjname_' + i);
+        const subj = sortedAcademicSubjects[i - 1];
+        if (subj) {
+          const abbrText = subj.abbreviation || subj.name;
+          if (ref) ws.getCell(ref.cell).value = abbrText;
+          if (nameRef) ws.getCell(nameRef.cell).value = subj.name;
+        }
+      }
+
+      // Fill the student rows
+      fillSheetByNamedRanges(
+        ws, ws.name, namedRanges, settings, plantel, period,
+        studentList, academicSubjects, groupedSubjectIds,
+        subjectColList, subjectToSubjIndex,
+        calculateFinalScore, subjectOrderMap, studentOffset,
+        actualSheetName  // named ranges registered under the original sheet
+      );
+
+      // Override the evaluation type for this group. We do it after the
+      // generic fill so it is not overwritten by the hard-coded default.
+      const ref = namedRanges.getCell(actualSheetName, 'inst_eval_type');
+      if (ref) ws.getCell(ref.cell).value = evalType;
+    };
+
+    // Render one or more pages for a given student group with the given
+    // evaluation type. Returns the number of pages generated.
+    const renderGroup = (
+      group: any[],
+      evalType: string,
+      groupLabel: string
+    ): number => {
+      if (group.length === 0) return 0;
+      const pages = Math.ceil(group.length / MAX_STUDENTS_PER_SHEET);
+      // Page 1 fills the original `sheet!` in-place (which already has all
+      // template formatting). Additional pages are clones.
+      for (let pageIdx = 0; pageIdx < pages; pageIdx++) {
+        if (pageIdx === 0) {
+          fillGroupPage(sheet!, group, 0, evalType);
+        } else {
+          const newName = `${actualSheetName} (${groupLabel} ${pageIdx + 1})`;
+          const cloned = cloneSheetInPlace(sheet!, newName);
+          fillGroupPage(cloned, group, pageIdx * MAX_STUDENTS_PER_SHEET, evalType);
+        }
+      }
+      return pages;
+    };
+
+    const approvedPages = renderGroup(approvedInscriptions, 'Regulares', 'Regulares');
+    const failedPages = renderGroup(failedInscriptions, 'REVISION DE MATERIA PENDIENTE', 'REVISION');
+
+    // Drop the un-filled template sheets (3er Año, 4to Año, 5to Año).
+    // Keep `actualSheetName` and any cloned pages we just created.
+    const keepNames = new Set<string>([actualSheetName]);
+    if (approvedPages > 0) {
+      for (let i = 1; i < approvedPages; i++) keepNames.add(`${actualSheetName} (Regulares ${i + 1})`);
+    }
+    if (failedPages > 0) {
+      for (let i = 1; i < failedPages; i++) keepNames.add(`${actualSheetName} (REVISION ${i + 1})`);
+    }
     workbook.worksheets
-      .filter(ws => ws.id !== sheet!.id)
+      .filter(ws => !keepNames.has(ws.name))
       .forEach(ws => workbook.removeWorksheet(ws.id!));
 
     const buffer = await workbook.xlsx.writeBuffer();
-
     const fileName = 'resumen-rendimiento-' + grade.name.replace(/s+/g, '_') + '-' + section.name.replace(/s+/g, '_') + '.xlsx';
-
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', 'attachment; filename="' + fileName + '"');
     res.send(buffer);
