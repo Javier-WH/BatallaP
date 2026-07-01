@@ -161,6 +161,8 @@ function fillSheetByNamedRanges(
   subjectOrderMap: Map<number, number>,
   studentOffset: number,
   sourceSheetName?: string,
+  gradeName?: string,
+  sectionName?: string,
 ): void {
   // Only writes when value is non-empty. Empty/undefined values leave the
   // cell untouched, preserving the template's decorative content (e.g. "***"
@@ -179,7 +181,8 @@ function fillSheetByNamedRanges(
   };
 
   setByRange('inst_period', period?.name);
-  setByRange('inst_code', settings.institution_dea_code || plantel?.code);
+  setByRange('inst_code', settings.institution_code || settings.institution_dea_code || plantel?.code);
+  setByRange('inst_level', settings.institution_level);
   setByRange('inst_name', settings.institution_name || plantel?.name);
   setByRange('inst_address', settings.institution_address);
   setByRange('inst_phone', settings.institution_phone);
@@ -188,6 +191,8 @@ function fillSheetByNamedRanges(
   setByRange('inst_cdcee', settings.institution_cdcee);
   setByRange('inst_director', settings.director_name);
   setByRange('inst_director_doc', settings.director_document);
+  setByRange('inst_grade', gradeName);
+  setByRange('inst_section', sectionName);
 
   for (let n = 1; n <= MAX_STUDENTS_PER_SHEET; n++) {
     const studentIdx = studentOffset + (n - 1);
@@ -634,7 +639,9 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
         studentList, academicSubjects, groupedSubjectIds,
         subjectColList, subjectToSubjIndex,
         calculateFinalScore, subjectOrderMap, studentOffset,
-        actualSheetName  // named ranges registered under the original sheet
+        actualSheetName,  // named ranges registered under the original sheet
+        grade?.name,
+        section?.name,
       );
 
       // Override the evaluation type for this group. We do it after the

@@ -318,7 +318,8 @@ const PerformanceSummary: React.FC = () => {
                 <div style={{ fontWeight: 700, color: '#0f172a', marginBottom: 6 }}>Datos de la institución y el período</div>
                 <LegendRow name="inst_period" desc="Nombre del período académico activo (ej. 2025-2026)." />
                 <LegendRow name="inst_eval_type" desc="Tipo de evaluación (texto fijo: REVISION DE MATERIA PENDIENTE)." />
-                <LegendRow name="inst_code" desc="Código DEA de la institución." />
+                <LegendRow name="inst_code" desc="Código del plantel según el MPPE (ej. 31059) o Código DEA si no se configuró." />
+                <LegendRow name="inst_level" desc="Tipo/nivel de educación del plantel (ej. EDUCACIÓN MEDIA GENERAL)." />
                 <LegendRow name="inst_name" desc="Nombre de la institución." />
                 <LegendRow name="inst_address" desc="Dirección de la institución." />
                 <LegendRow name="inst_phone" desc="Teléfono de la institución." />
@@ -327,6 +328,8 @@ const PerformanceSummary: React.FC = () => {
                 <LegendRow name="inst_cdcee" desc="Código CDCEE de la institución." />
                 <LegendRow name="inst_director" desc="Nombre del director(a)." />
                 <LegendRow name="inst_director_doc" desc="Cédula del director(a)." />
+                <LegendRow name="inst_grade" desc="Nombre del grado/año cursado (ej. 1er Año, PRIMERO)." />
+                <LegendRow name="inst_section" desc="Nombre de la sección (ej. B)." />
 
                 <Divider style={{ margin: '10px 0' }} />
                 <div style={{ fontWeight: 700, color: '#0f172a', marginBottom: 6 }}>
