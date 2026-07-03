@@ -688,8 +688,16 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
       return generated;
     };
 
-    const approvedSheetNames = renderGroup(approvedInscriptions, 'Regulares', 'Regulares', true);
-    const failedSheetNames = renderGroup(failedInscriptions, 'REVISION DE MATERIA PENDIENTE', 'REVISION', false);
+    // If approved group is empty, let REVISION use the original sheet in-place
+    // (isFirst: true) so named-range formulas resolve correctly. Otherwise
+    // approved gets the original sheet and REVISION uses clones.
+    const approvedFirst = approvedInscriptions.length > 0;
+    const approvedSheetNames = renderGroup(
+      approvedInscriptions, 'Regulares', 'Regulares', approvedFirst,
+    );
+    const failedSheetNames = renderGroup(
+      failedInscriptions, 'REVISION DE MATERIA PENDIENTE', 'REVISION', !approvedFirst,
+    );
 
     // Drop the un-filled template sheets (3er Año, 4to Año, 5to Año) and
     // the original `sheet!` if it was NOT used (no students at all). Keep
@@ -698,6 +706,23 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
     workbook.worksheets
       .filter(ws => !keepNames.has(ws.name))
       .forEach(ws => workbook.removeWorksheet(ws.id!));
+
+    // Re-register ALL named ranges from the template so that formulas like
+    // =subj_1 survive the removeWorksheet + clone operations. ExcelJS drops
+    // definedNames when sheets are removed, so we rebuild them here.
+    for (const [sheetName, namesMap] of namedRanges.bySheet) {
+      for (const [name, ref] of namesMap) {
+        const sheetLabel = sheetName.includes(' ')
+          ? `'${sheetName}'`
+          : sheetName;
+        const locStr = `${sheetLabel}!$${ref.cell}`;
+        try {
+          workbook.definedNames.add(locStr, name);
+        } catch {
+          // name may already exist (original sheet kept); ignore
+        }
+      }
+    }
 
     const buffer = await workbook.xlsx.writeBuffer();
     const fileName = 'resumen-rendimiento-' + grade.name.replace(/s+/g, '_') + '-' + section.name.replace(/s+/g, '_') + '.xlsx';
