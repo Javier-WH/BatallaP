@@ -685,6 +685,25 @@ const MatriculationEnrollment: React.FC = () => {
     }
   }, [editableRowId, pendingChanges, matriculations, viewStatus, fetchData]);
 
+  const saveStudentChangesDirect = useCallback(async (row: MatriculationRow, subjectIds: number[]) => {
+    try {
+      const endpoint = viewStatus === 'completed'
+        ? `/inscriptions/${row.inscriptionId || row.id}`
+        : `/matriculations/${row.id}`;
+
+      message.loading({ content: 'Guardando materia de grupo...', key: 'save-subject' });
+      const payload: any = { subjectIds };
+      await api.patch(endpoint, payload);
+      message.success({ content: 'Materia de grupo guardada', key: 'save-subject', duration: 2 });
+      setEditableRowId(null);
+      setPendingChanges({});
+      await fetchData();
+    } catch (error) {
+      console.error('[saveStudentChangesDirect] Error:', error);
+      message.error({ content: 'Error al guardar materia de grupo', key: 'save-subject' });
+    }
+  }, [viewStatus, fetchData]);
+
   const handleGlobalEscape = useCallback(async (event: KeyboardEvent) => {
     // Solo manejar Escape, no Enter (Enter se maneja en blur del input)
     if (event.key === 'Escape') {
@@ -841,6 +860,36 @@ const MatriculationEnrollment: React.FC = () => {
       return row;
     }));
   };
+
+  const handleBulkSubjectSave = useCallback(async (subjectIds: number[]) => {
+    const rows = matriculations.filter(r => selectedRowKeys.includes(r.id));
+    if (rows.length === 0) return;
+
+    message.loading({ content: `Asignando materia de grupo a ${rows.length} estudiante(s)...`, key: 'bulk-subject' });
+
+    let errors = 0;
+    for (const row of rows) {
+      const inscriptionId = row.inscriptionId;
+      if (!inscriptionId) {
+        errors++;
+        continue;
+      }
+      try {
+        await api.patch(`/inscriptions/${inscriptionId}`, { subjectIds });
+      } catch (error) {
+        console.error(`[handleBulkSubjectSave] Error para inscripción ${inscriptionId}:`, error);
+        errors++;
+      }
+    }
+
+    if (errors === 0) {
+      message.success({ content: 'Materia de grupo asignada correctamente', key: 'bulk-subject', duration: 2 });
+    } else {
+      message.warning({ content: `Asignada con ${errors} error(es)`, key: 'bulk-subject', duration: 3 });
+    }
+
+    await fetchData();
+  }, [matriculations, selectedRowKeys, fetchData]);
 
   const handleOpenSubjectModal = () => {
     if (selectedRowKeys.length !== 1) return;
@@ -1865,7 +1914,6 @@ const MatriculationEnrollment: React.FC = () => {
                 size="small"
                 placeholder="Seleccione"
                 onFocus={async () => {
-                  // Activar modo de edición al hacer clic en el Select
                   if (editableRowId !== record.id) {
                     if (editableRowId !== null) {
                       await saveStudentChanges();
@@ -1875,11 +1923,10 @@ const MatriculationEnrollment: React.FC = () => {
                   }
                 }}
                 onChange={async (v) => {
-                  handleUpdateRow(record.id, 'subjectIds', v ? [v] : []);
-                  // Activar guardado automático después de cambiar materia de grupo
-                  setTimeout(() => {
-                    window.dispatchEvent(new CustomEvent('cell-input-changed'));
-                  }, 100);
+                  console.log('[MatriculationEnrollment] Group subject onChange:', { v, recordId: record.id });
+                  const newSubjectIds = v !== undefined && v !== null ? [Number(v)] : [];
+                  handleUpdateRow(record.id, 'subjectIds', newSubjectIds);
+                  await saveStudentChangesDirect(record, newSubjectIds);
                 }}
               >
                 {groupSubjects.map(s => <Option key={s.id} value={s.id}>{s.name}</Option>)}
@@ -2936,7 +2983,11 @@ const MatriculationEnrollment: React.FC = () => {
                             placeholder="Asignar Materia..."
                             size="small"
                             style={{ width: '100%' }}
-                            onChange={v => handleBulkUpdate('subjectIds', v ? [v] : [])}
+                            onChange={v => {
+                              const newIds = v !== undefined && v !== null ? [Number(v)] : [];
+                              handleBulkUpdate('subjectIds', newIds);
+                              handleBulkSubjectSave(newIds);
+                            }}
                             allowClear
                             options={bulkGroupSubjects.map(s => ({ label: s.name, value: s.id }))}
                           />
@@ -2958,7 +3009,11 @@ const MatriculationEnrollment: React.FC = () => {
                             placeholder="Asignar..."
                             size="small"
                             style={{ width: 160 }}
-                            onChange={v => handleBulkUpdate('subjectIds', v ? [v] : [])}
+                            onChange={v => {
+                              const newIds = v !== undefined && v !== null ? [Number(v)] : [];
+                              handleBulkUpdate('subjectIds', newIds);
+                              handleBulkSubjectSave(newIds);
+                            }}
                             allowClear
                             options={bulkGroupSubjects.map(s => ({ label: s.name, value: s.id }))}
                           />

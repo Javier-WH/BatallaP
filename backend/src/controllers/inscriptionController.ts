@@ -1034,13 +1034,26 @@ export const updateInscription = async (req: Request, res: Response) => {
           console.log(`[UpdateInscription] Removed old group subjects`);
         }
 
+        // Also ensure any previous group InscriptionSubject records are cleaned up
+        // (defensive: handle case where periodGrade.subjects had no grouped subjects)
+        if (allGroupSubjectIds.length === 0 && subjectIds.length > 0) {
+          console.log(`[UpdateInscription] No grouped subjects found in grade, destroying by subjectIds directly`);
+          await InscriptionSubject.destroy({
+            where: {
+              inscriptionId: id,
+              subjectId: { [Op.in]: subjectIds.map((sid: any) => Number(sid)).filter((sid: number) => Number.isFinite(sid)) }
+            },
+            transaction: t
+          });
+        }
+
         // Add new group subjects
         if (subjectIds.length > 0) {
           const newGroupSubjects = subjectIds.map((subjectId: number) => ({
             inscriptionId: inscription.id,
             subjectId: subjectId
           }));
-          await InscriptionSubject.bulkCreate(newGroupSubjects, { transaction: t });
+          await InscriptionSubject.bulkCreate(newGroupSubjects, { transaction: t, ignoreDuplicates: true });
           console.log(`[UpdateInscription] Added ${subjectIds.length} new group subjects`);
         }
       }
@@ -1385,18 +1398,29 @@ export const updateMatriculation = async (req: Request, res: Response) => {
               },
               transaction: t
             });
+          } else if (subjectIds.length > 0) {
+            // Defensive: no grouped subjects found in grade, destroy by subjectIds directly
+            await InscriptionSubject.destroy({
+              where: {
+                inscriptionId: inscription.id,
+                subjectId: { [Op.in]: subjectIds.map((sid: any) => Number(sid)).filter((sid: number) => Number.isFinite(sid)) }
+              },
+              transaction: t
+            });
           }
 
-          // Add new group subjects
-          const selectedGroupIds = subjectIds
-            .map((sid: any) => Number(sid))
-            .filter((sid: number) => Number.isFinite(sid) && allGroupSubjectIds.includes(sid));
-          if (selectedGroupIds.length > 0) {
-            const newGroupSubjects = selectedGroupIds.map((subjectId: number) => ({
-              inscriptionId: inscription.id,
-              subjectId
-            }));
-            await InscriptionSubject.bulkCreate(newGroupSubjects, { transaction: t });
+          // Add new group subjects (use subjectIds directly, don't validate against allGroupSubjectIds)
+          if (subjectIds.length > 0) {
+            const newGroupSubjects = subjectIds
+              .map((sid: any) => Number(sid))
+              .filter((sid: number) => Number.isFinite(sid))
+              .map((subjectId: number) => ({
+                inscriptionId: inscription.id,
+                subjectId
+              }));
+            if (newGroupSubjects.length > 0) {
+              await InscriptionSubject.bulkCreate(newGroupSubjects, { transaction: t, ignoreDuplicates: true });
+            }
           }
         }
       }
