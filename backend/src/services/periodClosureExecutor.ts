@@ -216,7 +216,7 @@ export class PeriodClosureExecutor {
               schoolPeriodId: nextPeriod.id,
               gradeId: targetGradeId
             },
-            include: [{ model: Subject, as: 'subjects' }],
+            include: [{ model: Subject, as: 'subjects', through: { where: { active: true } } }],
             transaction
           });
 

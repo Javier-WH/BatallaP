@@ -643,7 +643,7 @@ export const getPeriodStructure = async (req: Request, res: Response) => {
         {
           model: Subject,
           as: 'subjects',
-          through: { attributes: ['id', 'order'] },
+          through: { attributes: ['id', 'order'], where: { active: true } },
           include: [{ model: SubjectGroup, as: 'subjectGroup' }]
         }
       ],
@@ -668,7 +668,18 @@ export const addSubjectToGrade = async (req: Request, res: Response) => {
     // Determine next order for this periodGrade
     const maxExisting = await PeriodGradeSubject.max('order', { where: { periodGradeId } });
     const nextOrder = Number.isFinite(maxExisting as number) ? (Number(maxExisting) || 0) + 1 : 1;
-    const pgs = await PeriodGradeSubject.create({ periodGradeId, subjectId, order: nextOrder });
+
+    // Check if a soft-deleted record already exists (reactivate instead of create)
+    const existing = await PeriodGradeSubject.unscoped().findOne({
+      where: { periodGradeId, subjectId },
+    });
+    let pgs;
+    if (existing) {
+      await existing.update({ active: true, order: nextOrder });
+      pgs = existing;
+    } else {
+      pgs = await PeriodGradeSubject.create({ periodGradeId, subjectId, order: nextOrder });
+    }
 
     // For core subjects (no subjectGroupId), auto-create InscriptionSubject
     // records so existing students get the new subject immediately.

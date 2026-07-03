@@ -503,7 +503,7 @@ export const enrollMatriculatedStudent = async (req: Request, res: Response) => 
 
     const periodGrade = await PeriodGrade.findOne({
       where: { schoolPeriodId: targetPeriodId, gradeId: targetGradeId },
-      include: [{ model: Subject, as: 'subjects' }],
+      include: [{ model: Subject, as: 'subjects', through: { where: { active: true } } }],
       transaction: t
     });
 
@@ -975,7 +975,7 @@ export const updateInscription = async (req: Request, res: Response) => {
           schoolPeriodId: inscription.schoolPeriodId,
           gradeId: gradeId
         },
-        include: [{ model: Subject, as: 'subjects' }],
+        include: [{ model: Subject, as: 'subjects', through: { where: { active: true } } }],
         transaction: t
       });
 
@@ -1013,7 +1013,7 @@ export const updateInscription = async (req: Request, res: Response) => {
           schoolPeriodId: inscription.schoolPeriodId,
           gradeId: inscription.gradeId
         },
-        include: [{ model: Subject, as: 'subjects' }],
+        include: [{ model: Subject, as: 'subjects', through: { where: { active: true } } }],
         transaction: t
       });
 
@@ -1341,7 +1341,7 @@ export const updateMatriculation = async (req: Request, res: Response) => {
             schoolPeriodId: inscription.schoolPeriodId,
             gradeId: gradeId
           },
-          include: [{ model: Subject, as: 'subjects' }],
+          include: [{ model: Subject, as: 'subjects', through: { where: { active: true } } }],
           transaction: t
         });
 
