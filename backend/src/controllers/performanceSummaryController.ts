@@ -653,33 +653,46 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
 
     // Render one or more pages for a given student group with the given
     // evaluation type. Returns the array of generated worksheet names.
+    // The FIRST group rendered uses the original `sheet!` in-place (keeping
+    // its original name `actualSheetName`) so that workbook-level defined
+    // names (named ranges like subj_1, inst_code, etc.) which point to
+    // `'1er Año'!$X$Y` remain valid. Formulas like `=subj_1` in the
+    // template will resolve correctly. Subsequent groups and extra pages
+    // are clones with different names.
+    let originalSheetUsed = false;
     const renderGroup = (
       group: any[],
       evalType: string,
-      groupLabel: string
+      groupLabel: string,
+      isFirst: boolean
     ): string[] => {
       if (group.length === 0) return [];
       const pages = Math.ceil(group.length / MAX_STUDENTS_PER_SHEET);
       const generated: string[] = [];
-      // We clone a fresh copy of the template for every page (including page 1)
-      // so each group can have its own name without clashing. The original
-      // `sheet!` is left untouched and dropped at the end.
       for (let pageIdx = 0; pageIdx < pages; pageIdx++) {
-        const newName = pages === 1
-          ? `${actualSheetName} (${groupLabel})`
-          : `${actualSheetName} (${groupLabel} ${pageIdx + 1})`;
-        const cloned = cloneSheetInPlace(sheet!, newName);
-        fillGroupPage(cloned, group, pageIdx * MAX_STUDENTS_PER_SHEET, evalType);
-        generated.push(newName);
+        let targetSheet: ExcelJS.Worksheet;
+        let targetName: string;
+        if (isFirst && pageIdx === 0 && !originalSheetUsed) {
+          // Use the original template sheet in-place, keep its original
+          // name so named ranges stay valid.
+          targetSheet = sheet!;
+          targetName = actualSheetName;
+          originalSheetUsed = true;
+        } else {
+          targetName = `${actualSheetName} (${groupLabel} ${pageIdx + 1})`;
+          targetSheet = cloneSheetInPlace(sheet!, targetName);
+        }
+        fillGroupPage(targetSheet, group, pageIdx * MAX_STUDENTS_PER_SHEET, evalType);
+        generated.push(targetName);
       }
       return generated;
     };
 
-    const approvedSheetNames = renderGroup(approvedInscriptions, 'Regulares', 'Regulares');
-    const failedSheetNames = renderGroup(failedInscriptions, 'REVISION DE MATERIA PENDIENTE', 'REVISION');
+    const approvedSheetNames = renderGroup(approvedInscriptions, 'Regulares', 'Regulares', true);
+    const failedSheetNames = renderGroup(failedInscriptions, 'REVISION DE MATERIA PENDIENTE', 'REVISION', false);
 
     // Drop the un-filled template sheets (3er Año, 4to Año, 5to Año) and
-    // the original `sheet!` (which is just a template we cloned from). Keep
+    // the original `sheet!` if it was NOT used (no students at all). Keep
     // only the rendered group pages.
     const keepNames = new Set<string>([...approvedSheetNames, ...failedSheetNames]);
     workbook.worksheets
