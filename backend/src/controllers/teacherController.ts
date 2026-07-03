@@ -157,6 +157,12 @@ export const assignTeacherToSubject = async (req: Request, res: Response) => {
       });
     }
 
+    // Verify the PeriodGradeSubject exists and is active (default scope)
+    const pgs = await PeriodGradeSubject.findByPk(periodGradeSubjectId);
+    if (!pgs) {
+      return res.status(404).json({ message: 'La materia no existe o no está activa en este grado' });
+    }
+
     const assignment = await TeacherAssignment.create({
       teacherId,
       periodGradeSubjectId,

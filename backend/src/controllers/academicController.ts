@@ -381,7 +381,7 @@ export const deletePeriod = async (req: Request, res: Response) => {
     if (periodGradeIds.length > 0) {
       // 1. Delete TeacherAssignments linked to PeriodGradeSubjects of these PeriodGrades
       // First find PeriodGradeSubjects to get their IDs
-      const periodGradeSubjects = await PeriodGradeSubject.findAll({
+      const periodGradeSubjects = await PeriodGradeSubject.unscoped().findAll({
         where: { periodGradeId: { [Op.in]: periodGradeIds } },
         transaction: t
       });
@@ -669,6 +669,30 @@ export const addSubjectToGrade = async (req: Request, res: Response) => {
     const maxExisting = await PeriodGradeSubject.max('order', { where: { periodGradeId } });
     const nextOrder = Number.isFinite(maxExisting as number) ? (Number(maxExisting) || 0) + 1 : 1;
     const pgs = await PeriodGradeSubject.create({ periodGradeId, subjectId, order: nextOrder });
+
+    // For core subjects (no subjectGroupId), auto-create InscriptionSubject
+    // records so existing students get the new subject immediately.
+    const subject = await Subject.findByPk(subjectId);
+    if (subject && !subject.subjectGroupId) {
+      const periodGrade = await PeriodGrade.findByPk(periodGradeId);
+      if (periodGrade) {
+        const inscriptions = await Inscription.findAll({
+          where: {
+            schoolPeriodId: periodGrade.schoolPeriodId,
+            gradeId: periodGrade.gradeId,
+          },
+          attributes: ['id'],
+        });
+        const toCreate = inscriptions.map((ins: any) => ({
+          inscriptionId: ins.id,
+          subjectId,
+        }));
+        if (toCreate.length > 0) {
+          await InscriptionSubject.bulkCreate(toCreate, { ignoreDuplicates: true });
+        }
+      }
+    }
+
     res.json(pgs);
   } catch (error) {
     res.status(500).json({ error: 'Error adding subject' });
@@ -703,7 +727,14 @@ export const updateSubjectOrderForGrade = async (req: Request, res: Response) =>
 export const removeSubjectFromGrade = async (req: Request, res: Response) => {
   try {
     const { periodGradeId, subjectId } = req.body;
-    await PeriodGradeSubject.destroy({ where: { periodGradeId, subjectId } });
+    // Soft-delete: mark as inactive instead of destroying. This preserves
+    // InscriptionSubject, EvaluationPlan, TeacherAssignment, and Qualification
+    // records for historical data. If the subject is re-added later, all data
+    // reappears because the PeriodGradeSubject record is reactivated.
+    await PeriodGradeSubject.unscoped().update(
+      { active: false },
+      { where: { periodGradeId, subjectId } },
+    );
     res.json({ message: 'Deleted' });
   } catch (error) {
     res.status(500).json({ error: 'Error removing subject' });

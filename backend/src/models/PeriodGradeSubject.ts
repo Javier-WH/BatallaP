@@ -8,15 +8,17 @@ interface PeriodGradeSubjectAttributes {
   periodGradeId: number;
   subjectId: number;
   order?: number | null;
+  active: boolean;
 }
 
-interface PeriodGradeSubjectCreationAttributes extends Optional<PeriodGradeSubjectAttributes, 'id'> { }
+interface PeriodGradeSubjectCreationAttributes extends Optional<PeriodGradeSubjectAttributes, 'id' | 'active'> { }
 
 class PeriodGradeSubject extends Model<PeriodGradeSubjectAttributes, PeriodGradeSubjectCreationAttributes> implements PeriodGradeSubjectAttributes {
   public id!: number;
   public periodGradeId!: number;
   public subjectId!: number;
   public order?: number | null;
+  public active!: boolean;
 
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
@@ -43,10 +45,18 @@ PeriodGradeSubject.init(
       type: DataTypes.INTEGER,
       allowNull: true,
     },
+    active: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: true,
+    },
   },
   {
     sequelize,
     tableName: 'period_grade_subjects',
+    defaultScope: {
+      where: { active: true },
+    },
     indexes: [
       {
         unique: true,

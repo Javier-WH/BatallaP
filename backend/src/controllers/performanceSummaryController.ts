@@ -11,6 +11,7 @@ import {
   SubjectFinalGrade,
   SubjectGroup,
   PeriodGrade,
+  PeriodGradeSubject,
   Term,
   Qualification,
   EvaluationPlan,
@@ -362,6 +363,28 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
         }
       });
     });
+
+    // Also seed subjectMap from the grade's curriculum (PeriodGradeSubject) so
+    // that subjects added to the grade appear in the Excel even if no student
+    // has an InscriptionSubject for them yet.
+    const pgSubjects = await PeriodGradeSubject.findAll({
+      where: { periodGradeId: pg.id },
+      include: [
+        { model: Subject, as: 'subject', include: [{ model: SubjectGroup, as: 'subjectGroup' }] },
+      ],
+    });
+    for (const pgs of pgSubjects) {
+      const subj = (pgs as any).subject;
+      if (subj && !subjectMap.has(subj.id)) {
+        subjectMap.set(subj.id, {
+          id: subj.id,
+          name: subj.name,
+          abbreviation: subj.abbreviation || null,
+          subjectGroupId: subj.subjectGroupId || null,
+          subjectGroupName: subj.subjectGroup?.name || null,
+        });
+      }
+    }
 
     const allSubjects = Array.from(subjectMap.values());
 
