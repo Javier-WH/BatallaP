@@ -603,7 +603,9 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
       ws: ExcelJS.Worksheet,
       studentList: any[],
       studentOffset: number,
-      evalType: string
+      evalType: string,
+      sectionTotal: number,
+      pageCount: number,
     ) => {
       // Attach pre-registered images with the template's anchors
       const makeAnchor = (a: any) => ({
@@ -649,6 +651,15 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
       // generic fill so it is not overwritten by the hard-coded default.
       const ref = namedRanges.getCell(actualSheetName, 'inst_eval_type');
       if (ref) ws.getCell(ref.cell).value = evalType;
+
+      // Total students in the section and students on this page
+      const setLocal = (name: string, value: any) => {
+        if (value === undefined || value === null || value === '') return;
+        const r = namedRanges.getCell(actualSheetName, name);
+        if (r) ws.getCell(r.cell).value = value;
+      };
+      setLocal('std_total', sectionTotal);
+      setLocal('std_page_count', pageCount);
     };
 
     // Render one or more pages for a given student group with the given
@@ -682,7 +693,9 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
           targetName = `${actualSheetName} (${groupLabel} ${pageIdx + 1})`;
           targetSheet = cloneSheetInPlace(sheet!, targetName);
         }
-        fillGroupPage(targetSheet, group, pageIdx * MAX_STUDENTS_PER_SHEET, evalType);
+        const studentOffset = pageIdx * MAX_STUDENTS_PER_SHEET;
+        const pageCount = Math.min(group.length - studentOffset, MAX_STUDENTS_PER_SHEET);
+        fillGroupPage(targetSheet, group, studentOffset, evalType, inscriptions.length, pageCount);
         generated.push(targetName);
       }
       return generated;
