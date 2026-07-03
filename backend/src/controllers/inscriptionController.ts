@@ -1158,7 +1158,8 @@ export const updateMatriculation = async (req: Request, res: Response) => {
       escolaridad,
       pathology,
       livingWith,
-      documents
+      documents,
+      subjectIds
     } = req.body;
 
     console.log('[updateMatriculation] ID:', id);
@@ -1355,6 +1356,47 @@ export const updateMatriculation = async (req: Request, res: Response) => {
 
           if (subjectsToAdd.length > 0) {
             await InscriptionSubject.bulkCreate(subjectsToAdd, { transaction: t });
+          }
+        }
+      }
+
+      // Handle group subject updates (when subjectIds is provided)
+      if (Array.isArray(subjectIds)) {
+        const periodGrade = await PeriodGrade.findOne({
+          where: {
+            schoolPeriodId: inscription.schoolPeriodId,
+            gradeId: inscription.gradeId
+          },
+          include: [{ model: Subject, as: 'subjects', through: { where: { active: true } } }],
+          transaction: t
+        });
+
+        if (periodGrade && periodGrade.subjects) {
+          const allGroupSubjectIds = periodGrade.subjects
+            .filter((s: any) => s.subjectGroupId !== null && s.subjectGroupId !== undefined)
+            .map((s: any) => s.id);
+
+          // Remove all existing group subjects for this inscription
+          if (allGroupSubjectIds.length > 0) {
+            await InscriptionSubject.destroy({
+              where: {
+                inscriptionId: inscription.id,
+                subjectId: { [Op.in]: allGroupSubjectIds }
+              },
+              transaction: t
+            });
+          }
+
+          // Add new group subjects
+          const selectedGroupIds = subjectIds
+            .map((sid: any) => Number(sid))
+            .filter((sid: number) => Number.isFinite(sid) && allGroupSubjectIds.includes(sid));
+          if (selectedGroupIds.length > 0) {
+            const newGroupSubjects = selectedGroupIds.map((subjectId: number) => ({
+              inscriptionId: inscription.id,
+              subjectId
+            }));
+            await InscriptionSubject.bulkCreate(newGroupSubjects, { transaction: t });
           }
         }
       }
