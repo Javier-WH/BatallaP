@@ -318,7 +318,8 @@ const PerformanceSummary: React.FC = () => {
                 <div style={{ fontWeight: 700, color: '#0f172a', marginBottom: 6 }}>Datos de la institución y el período</div>
                 <LegendRow name="inst_period" desc="Nombre del período académico activo (ej. 2025-2026)." />
                 <LegendRow name="inst_eval_type" desc="Tipo de evaluación (texto fijo: REVISION DE MATERIA PENDIENTE)." />
-                <LegendRow name="inst_code" desc="Código del plantel según el MPPE (ej. 31059) o Código DEA si no se configuró." />
+                <LegendRow name="inst_code" desc="Código DEA de la institución." />
+                <LegendRow name="inst_education_code" desc="Código del nivel/modalidad educativa según el MPPE (ej. 31059)." />
                 <LegendRow name="inst_level" desc="Tipo/nivel de educación del plantel (ej. EDUCACIÓN MEDIA GENERAL)." />
                 <LegendRow name="inst_name" desc="Nombre de la institución." />
                 <LegendRow name="inst_address" desc="Dirección de la institución." />

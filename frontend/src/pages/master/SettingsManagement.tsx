@@ -16,6 +16,8 @@ interface PlantelOption {
 interface SettingsFormValues {
   institution_name?: string;
   institution_dea_code?: string;
+  institution_code?: string;
+  institution_level?: string;
   institution_logo?: string;
   institution_logo_shape?: 'circle' | 'square';
   director_name?: string;
@@ -95,6 +97,8 @@ const SettingsManagement: React.FC = () => {
           institution_municipality: res.data.institution_municipality || '',
           institution_phone: res.data.institution_phone || '',
           institution_cdcee: res.data.institution_cdcee || '',
+          institution_code: res.data.institution_code || '',
+          institution_level: res.data.institution_level || '',
           theme_primary_color: pc,
           theme_secondary_color: sc,
           theme_brand_secondary: bsc,
@@ -290,13 +294,35 @@ const SettingsManagement: React.FC = () => {
                 />
               </Form.Item>
 
-              <Form.Item
+<Form.Item
                 label={<span className="text-[var(--color-text-main)] font-bold">CDCEE</span>}
                 name="institution_cdcee"
                 tooltip="Circuito de Desarrollo Comunal Educativo Ecclesial"
               >
                 <Input
-                  placeholder="Ej: Guárico"
+                  placeholder="Ej: GuA�rico"
+                  className="h-12 border-slate-200 focus:border-brand-primary focus:ring-4 focus:ring-brand-primary/10 rounded-xl transition-all"
+                />
+              </Form.Item>
+
+              <Form.Item
+                label={<span className="text-[var(--color-text-main)] font-bold">Código del Plantel</span>}
+                name="institution_code"
+                tooltip="Código numérico del plantel según el MPPE (ej. 31059)"
+              >
+                <Input
+                  placeholder="Ej: 31059"
+                  className="h-12 border-slate-200 focus:border-brand-primary focus:ring-4 focus:ring-brand-primary/10 rounded-xl transition-all"
+                />
+              </Form.Item>
+
+              <Form.Item
+                label={<span className="text-[var(--color-text-main)] font-bold">Tipo de Educación</span>}
+                name="institution_level"
+                tooltip="Nivel educativo del plantel (se muestra en el resumen de rendimiento)"
+              >
+                <Input
+                  placeholder="Ej: EDUCACIÓN MEDIA GENERAL"
                   className="h-12 border-slate-200 focus:border-brand-primary focus:ring-4 focus:ring-brand-primary/10 rounded-xl transition-all"
                 />
               </Form.Item>

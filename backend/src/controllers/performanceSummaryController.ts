@@ -181,7 +181,8 @@ function fillSheetByNamedRanges(
   };
 
   setByRange('inst_period', period?.name);
-  setByRange('inst_code', settings.institution_code || settings.institution_dea_code || plantel?.code);
+  setByRange('inst_code', settings.institution_dea_code || plantel?.code);
+  setByRange('inst_education_code', settings.institution_code);
   setByRange('inst_level', settings.institution_level);
   setByRange('inst_name', settings.institution_name || plantel?.name);
   setByRange('inst_address', settings.institution_address);
