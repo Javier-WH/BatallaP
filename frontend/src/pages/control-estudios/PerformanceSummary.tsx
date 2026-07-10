@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Card, Button, Select, Space, Typography, Row, Col, Spin, message, Empty, Tag, Popover, Divider } from 'antd';
-import { DownloadOutlined, FileExcelOutlined, FolderOpenOutlined, CheckCircleOutlined, InfoCircleOutlined } from '@ant-design/icons';
+import { DownloadOutlined, FileExcelOutlined, FileTextOutlined, FolderOpenOutlined, CheckCircleOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import api from '@/services/api';
 import TemplateManagerModal from '@/components/TemplateManagerModal';
+import BoletinModal from '@/components/pdf/BoletinModal';
 
 const { Title, Text } = Typography;
 
@@ -49,6 +50,7 @@ const PerformanceSummary: React.FC = () => {
   const [selectedSectionId, setSelectedSectionId] = useState<number | null>(null);
   const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
+  const [boletinModalOpen, setBoletinModalOpen] = useState(false);
   const [userOverrodeTemplate, setUserOverrodeTemplate] = useState(false);
 
   const fetchData = useCallback(async () => {
@@ -277,7 +279,7 @@ const PerformanceSummary: React.FC = () => {
               </Col>
             </Row>
             <Row gutter={[24, 24]} justify="center" align="middle" style={{ marginTop: 16 }}>
-              <Col xs={24} sm={8} md={6} style={{ display: 'flex', alignItems: 'flex-end' }}>
+              <Col xs={24} sm={8} md={4} style={{ display: 'flex', alignItems: 'flex-end' }}>
                 <Button
                   type="primary"
                   size="large"
@@ -295,6 +297,25 @@ const PerformanceSummary: React.FC = () => {
                   }}
                 >
                   Exportar
+                </Button>
+              </Col>
+              <Col xs={24} sm={8} md={4} style={{ display: 'flex', alignItems: 'flex-end' }}>
+                <Button
+                  size="large"
+                  icon={<FileTextOutlined />}
+                  onClick={() => setBoletinModalOpen(true)}
+                  disabled={!selectedGradeId}
+                  style={{
+                    width: '100%',
+                    height: 40,
+                    borderRadius: 10,
+                    fontWeight: 700,
+                    background: '#1a3a5c',
+                    border: 'none',
+                    color: '#fff',
+                  }}
+                >
+                  Generar Boletines
                 </Button>
               </Col>
             </Row>
@@ -405,6 +426,16 @@ const PerformanceSummary: React.FC = () => {
           setSelectedTemplate(name || null);
           setUserOverrodeTemplate(true);
         }}
+      />
+
+      <BoletinModal
+        open={boletinModalOpen}
+        onClose={() => setBoletinModalOpen(false)}
+        allPeriods={allPeriods}
+        structure={structure}
+        selectedPeriodId={selectedPeriodId}
+        selectedGradeId={selectedGradeId}
+        selectedSectionId={selectedSectionId}
       />
     </div>
   );

@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import { Op } from 'sequelize';
 import path from 'path';
 import fs from 'fs';
 import ExcelJS from 'exceljs';
@@ -765,8 +766,156 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', 'attachment; filename="' + fileName + '"');
     res.send(buffer);
-  } catch (error: any) {
+} catch (error: any) {
     console.error('[exportPerformanceSummary] Error:', error);
     res.status(500).json({ message: error.message || 'Error al exportar resumen de rendimiento' });
+  }
+};
+
+export const getBoletinData = async (req: Request, res: Response) => {
+  try {
+    const schoolPeriodId = parseInt(req.query.schoolPeriodId as string, 10);
+    const gradeId = parseInt(req.query.gradeId as string, 10);
+    const sectionId = req.query.sectionId ? parseInt(req.query.sectionId as string, 10) : undefined;
+    const inscriptionId = req.query.inscriptionId ? parseInt(req.query.inscriptionId as string, 10) : undefined;
+
+    if (!schoolPeriodId || !gradeId) {
+      return res.status(400).json({ message: 'schoolPeriodId y gradeId son obligatorios' });
+    }
+
+    const [period, grade, settingsRows] = await Promise.all([
+      SchoolPeriod.findByPk(schoolPeriodId),
+      Grade.findByPk(gradeId),
+      Setting.findAll(),
+    ]);
+
+    if (!period) return res.status(404).json({ message: 'Período no encontrado' });
+    if (!grade) return res.status(404).json({ message: 'Grado no encontrado' });
+
+    const settings: Record<string, string> = {};
+    settingsRows.forEach((s: any) => { settings[s.key] = s.value; });
+
+    const periodGrade = await PeriodGrade.findOne({
+      where: { schoolPeriodId, gradeId },
+    });
+    const subjectOrderMap = periodGrade ? await getSubjectOrderMap(periodGrade.id) : new Map<number, number>();
+
+    const terms = await Term.findAll({
+      where: { schoolPeriodId },
+      order: [['order', 'ASC']],
+    });
+    const termCount = terms.length || 1;
+
+    const inscWhere: any = { schoolPeriodId, gradeId };
+    if (sectionId) inscWhere.sectionId = sectionId;
+    if (inscriptionId) inscWhere.id = inscriptionId;
+
+    const inscriptions = await Inscription.findAll({
+      where: inscWhere,
+      include: [
+        {
+          model: Person,
+          as: 'student',
+          include: [{ model: PersonResidence, as: 'residence' }],
+        },
+        { model: Section, as: 'section' },
+        {
+          model: InscriptionSubject,
+          as: 'inscriptionSubjects',
+          include: [
+            { model: Subject, as: 'subject', include: [{ model: SubjectGroup, as: 'subjectGroup' }] },
+            { model: SubjectFinalGrade, as: 'finalGrade' },
+            {
+              model: Qualification,
+              as: 'qualifications',
+              include: [{ model: EvaluationPlan, as: 'evaluationPlan' }],
+            },
+            { model: CouncilPoint, as: 'councilPoints' },
+          ],
+        },
+      ],
+      order: [
+        [{ model: Section, as: 'section' }, 'name', 'ASC'],
+        [{ model: Person, as: 'student' }, 'lastName', 'ASC'],
+        [{ model: Person, as: 'student' }, 'firstName', 'ASC'],
+      ],
+    });
+
+    const students = inscriptions.map((ins: any) => {
+      const insSubs = sortSubjectsByOrder(
+        (ins.inscriptionSubjects || []).filter((is: any) => !is.subject?.subjectGroupId),
+        (is: any) => is.subjectId,
+        (is: any) => is.subject?.name || '',
+        subjectOrderMap,
+      );
+
+      const subjects = insSubs.map((is: any) => {
+        const termScores: Record<number, number> = {};
+        terms.forEach((t: any) => { termScores[t.id] = 0; });
+
+        (is.qualifications || []).forEach((q: any) => {
+          if (q.isAbsent) return;
+          const score = q.remedialScore != null && Number(q.remedialScore) > 0
+            ? Number(q.remedialScore) : Number(q.score) || 0;
+          const percentage = Number(q.evaluationPlan?.percentage) || 0;
+          const termId = q.evaluationPlan?.termId;
+          if (termId && termScores[termId] !== undefined) {
+            termScores[termId] += score * (percentage / 100);
+          }
+        });
+
+        (is.councilPoints || []).forEach((cp: any) => {
+          const pVal = Number(cp.points) || 0;
+          if (cp.termId && termScores[cp.termId] !== undefined) {
+            termScores[cp.termId] += pVal;
+          }
+        });
+
+        let finalScore: number | null = null;
+        if (is.finalGrade && is.finalGrade.finalScore != null) {
+          finalScore = Number(is.finalGrade.finalScore);
+        } else {
+          let total = 0;
+          Object.values(termScores).forEach((v) => { total += v; });
+          finalScore = Math.round((total / termCount) * 100) / 100;
+        }
+
+        return {
+          id: is.subjectId,
+          name: is.subject?.name || '',
+          lapsos: terms.map((t: any) => ({
+            termId: t.id,
+            termName: t.name,
+            score: Math.round((termScores[t.id] || 0) * 100) / 100,
+          })),
+          finalScore,
+          status: is.finalGrade?.status || (finalScore !== null && finalScore >= Number(settings.passing_grade || 10) ? 'aprobada' : 'reprobada'),
+        };
+      });
+
+      return {
+        inscriptionId: ins.id,
+        firstName: ins.student?.firstName || '',
+        lastName: ins.student?.lastName || '',
+        document: ins.student?.document || '',
+        sectionName: ins.section?.name || '',
+        subjects,
+      };
+    });
+
+    res.json({
+      institution: {
+        name: settings.institution_name || '',
+        period: period.name || period.period || '',
+        code: settings.institution_code || '',
+        principal: settings.principal_name || '',
+      },
+      grade: { id: grade.id, name: grade.name },
+      terms: terms.map((t: any) => ({ id: t.id, name: t.name, order: t.order })),
+      students,
+    });
+  } catch (error: any) {
+    console.error('[getBoletinData] Error:', error);
+    res.status(500).json({ message: error.message || 'Error al obtener datos de boletín' });
   }
 };
