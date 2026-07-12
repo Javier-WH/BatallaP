@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { Modal, Spin, Button, Radio, Select, message, Space } from 'antd';
-import { DownloadOutlined } from '@ant-design/icons';
+import { Modal, Spin, Button, Radio, Select, message, Space, Tabs, Input, Alert } from 'antd';
+import { DownloadOutlined, FileExcelOutlined, FileTextOutlined } from '@ant-design/icons';
 import { pdf } from '@react-pdf/renderer';
 import BoletinPDF from './BoletinPDF';
 import type { BoletinData } from './BoletinPDF';
@@ -21,6 +21,7 @@ interface BoletinModalProps {
 }
 
 type Scope = 'all' | 'section' | 'single';
+type ModalTab = 'boletin' | 'certified';
 
 const BoletinModal: React.FC<BoletinModalProps> = ({
   open,
@@ -31,6 +32,7 @@ const BoletinModal: React.FC<BoletinModalProps> = ({
   selectedGradeId: initialGradeId,
   selectedSectionId: initialSectionId,
 }) => {
+  const [activeTab, setActiveTab] = useState<ModalTab>('boletin');
   const [scope, setScope] = useState<Scope>('section');
   const [periodId, setPeriodId] = useState<number | null>(initialPeriodId);
   const [gradeId, setGradeId] = useState<number | null>(initialGradeId);
@@ -40,6 +42,13 @@ const BoletinModal: React.FC<BoletinModalProps> = ({
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [data, setData] = useState<BoletinData | null>(null);
   const [studentOptions, setStudentOptions] = useState<{ label: string; value: number }[]>([]);
+
+  // For certified grades tab
+  const [certifiedPersonId, setCertifiedPersonId] = useState<number | null>(null);
+  const [certifiedTemplate, setCertifiedTemplate] = useState<string | null>(null);
+  const [templateList, setTemplateList] = useState<string[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<{ label: string; value: number }[]>([]);
 
   const selectedGrade = structure.find((s) => s.grade.id === gradeId);
   const availableSections = selectedGrade?.sections || [];
@@ -66,6 +75,20 @@ const BoletinModal: React.FC<BoletinModalProps> = ({
     setInscriptionId(null);
     return () => { cancelled = true; };
   }, [scope, periodId, gradeId, sectionId]);
+
+  // Fetch available templates for certified grades
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    api.get('/templates').then((res) => {
+      if (cancelled) return;
+      const names = (res.data || []).map((t: any) => t.name || t.filename || t).filter(Boolean);
+      setTemplateList(names);
+    }).catch(() => {
+      if (!cancelled) setTemplateList([]);
+    });
+    return () => { cancelled = true; };
+  }, [open]);
 
   const generate = useCallback(async () => {
     if (!periodId || !gradeId) {
@@ -98,7 +121,6 @@ const BoletinModal: React.FC<BoletinModalProps> = ({
       }
 
       setData(boletinData);
-
       const doc = <BoletinPDF data={boletinData} />;
       const blob = await pdf(doc).toBlob();
       const url = URL.createObjectURL(blob);
@@ -122,6 +144,75 @@ const BoletinModal: React.FC<BoletinModalProps> = ({
     }
   }, [pdfUrl, gradeId, scope]);
 
+  // Certified grades search
+  const handleSearch = useCallback(async (query: string) => {
+    setSearchQuery(query);
+    if (query.trim().length < 3) {
+      setSearchResults([]);
+      return;
+    }
+    try {
+      const res = await api.get('/users/search', { params: { q: query.trim() } });
+      const results = (res.data || []).map((p: any) => ({
+        label: `${p.lastName || ''} ${p.firstName || ''} (C.I. ${p.document || '—'})`,
+        value: p.id,
+      }));
+      setSearchResults(results);
+    } catch {
+      setSearchResults([]);
+    }
+  }, []);
+
+  const exportCertifiedGrades = useCallback(async () => {
+    if (!certifiedPersonId) {
+      message.warning('Seleccione un estudiante');
+      return;
+    }
+    if (!certifiedTemplate) {
+      message.warning('Seleccione una plantilla');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const response = await api.get('/certified-grades/export', {
+        params: { personId: certifiedPersonId, template: certifiedTemplate },
+        responseType: 'blob',
+      });
+
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      const fileName = response.headers['content-disposition']
+        ?.split('filename="')[1]?.split('"')[0]
+        || 'notas-certificadas.xlsx';
+      link.setAttribute('download', fileName);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      message.success('Notas certificadas exportadas correctamente');
+    } catch (error: any) {
+      console.error('[BoletinModal] Error exporting certified grades:', error);
+      if (error.response?.data) {
+        const reader = new FileReader();
+        reader.onload = () => {
+          try {
+            const err = JSON.parse(reader.result as string);
+            message.error(err.message || 'Error al exportar');
+          } catch {
+            message.error('Error al exportar las notas certificadas');
+          }
+        };
+        reader.readAsText(error.response.data);
+      } else {
+        message.error('Error al exportar las notas certificadas');
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [certifiedPersonId, certifiedTemplate]);
+
   const handleClose = () => {
     if (pdfUrl) {
       URL.revokeObjectURL(pdfUrl);
@@ -129,6 +220,11 @@ const BoletinModal: React.FC<BoletinModalProps> = ({
     }
     setData(null);
     setPdfUrl(null);
+    setActiveTab('boletin');
+    setCertifiedPersonId(null);
+    setCertifiedTemplate(null);
+    setSearchQuery('');
+    setSearchResults([]);
     onClose();
   };
 
@@ -136,9 +232,9 @@ const BoletinModal: React.FC<BoletinModalProps> = ({
     <Modal
       open={open}
       onCancel={handleClose}
-      title="Generar Boletines de Calificaciones"
+      title="Generar Documentos de Calificaciones"
       width={900}
-      footer={pdfUrl ? (
+      footer={pdfUrl && activeTab === 'boletin' ? (
         <Space>
           <Button onClick={handleClose}>Cerrar</Button>
           <Button type="primary" icon={<DownloadOutlined />} onClick={handleDownload}>
@@ -147,122 +243,222 @@ const BoletinModal: React.FC<BoletinModalProps> = ({
         </Space>
       ) : null}
       destroyOnClose
-      styles={{ body: { minHeight: '60vh' } }}
+      styles={{ body: { minHeight: '55vh' } }}
     >
-      {!pdfUrl ? (
-        <div style={{ maxWidth: 500, margin: '0 auto' }}>
+      <Tabs
+        activeKey={activeTab}
+        onChange={(k) => { setActiveTab(k as ModalTab); if (pdfUrl) { URL.revokeObjectURL(pdfUrl); setPdfUrl(null); } setData(null); }}
+        items={[
+          { key: 'boletin', label: 'Boletines (PDF)', icon: <FileTextOutlined /> },
+          { key: 'certified', label: 'Notas Certificadas (Excel)', icon: <FileExcelOutlined /> },
+        ]}
+        style={{ marginBottom: 16 }}
+      />
+
+      {activeTab === 'boletin' && (
+        <>
+          {!pdfUrl ? (
+            <div style={{ maxWidth: 500, margin: '0 auto' }}>
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ display: 'block', fontWeight: 700, marginBottom: 6 }}>Modo de generación</label>
+                <Radio.Group value={scope} onChange={(e) => setScope(e.target.value)}>
+                  <Radio.Button value="all">Todos</Radio.Button>
+                  <Radio.Button value="section">Por Sección</Radio.Button>
+                  <Radio.Button value="single">Estudiante</Radio.Button>
+                </Radio.Group>
+              </div>
+
+              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
+                <div style={{ flex: '1 1 200px' }}>
+                  <label style={{ display: 'block', fontWeight: 700, marginBottom: 6, fontSize: 13 }}>Período</label>
+                  <Select
+                    placeholder="Período"
+                    style={{ width: '100%' }}
+                    value={periodId}
+                    onChange={(v: number) => setPeriodId(v)}
+                    options={allPeriods.map((p) => ({ label: `${p.name}${p.isActive ? ' (activo)' : ''}`, value: p.id }))}
+                  />
+                </div>
+                <div style={{ flex: '1 1 150px' }}>
+                  <label style={{ display: 'block', fontWeight: 700, marginBottom: 6, fontSize: 13 }}>Grado</label>
+                  <Select
+                    placeholder="Grado"
+                    style={{ width: '100%' }}
+                    value={gradeId}
+                    onChange={(v: number) => { setGradeId(v); setSectionId(null); setInscriptionId(null); }}
+                    options={structure.map((s) => ({ label: s.grade.name, value: s.grade.id }))}
+                  />
+                </div>
+              </div>
+
+              {scope === 'section' && (
+                <div style={{ marginBottom: 16 }}>
+                  <label style={{ display: 'block', fontWeight: 700, marginBottom: 6, fontSize: 13 }}>Sección</label>
+                  <Select
+                    placeholder="Sección"
+                    style={{ width: '100%' }}
+                    value={sectionId}
+                    disabled={!gradeId}
+                    onChange={(v: number) => setSectionId(v)}
+                    options={availableSections.map((sec) => ({ label: sec.name, value: sec.id }))}
+                  />
+                </div>
+              )}
+
+              {scope === 'single' && (
+                <>
+                  <div style={{ marginBottom: 16 }}>
+                    <label style={{ display: 'block', fontWeight: 700, marginBottom: 6, fontSize: 13 }}>Sección (opcional)</label>
+                    <Select
+                      placeholder="Todas las secciones"
+                      style={{ width: '100%' }}
+                      value={sectionId}
+                      disabled={!gradeId}
+                      allowClear
+                      onChange={(v: number | undefined) => setSectionId(v ?? null)}
+                      options={availableSections.map((sec) => ({ label: sec.name, value: sec.id }))}
+                    />
+                  </div>
+                  <div style={{ marginBottom: 16 }}>
+                    <label style={{ display: 'block', fontWeight: 700, marginBottom: 6, fontSize: 13 }}>Estudiante</label>
+                    <Select
+                      placeholder="Seleccione un estudiante"
+                      style={{ width: '100%' }}
+                      value={inscriptionId}
+                      showSearch
+                      filterOption={(input, option) => (option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
+                      disabled={!gradeId || studentOptions.length === 0}
+                      onChange={(v: number) => setInscriptionId(v)}
+                      options={studentOptions}
+                      notFoundContent={gradeId ? 'Sin estudiantes' : 'Primero seleccione un grado'}
+                    />
+                  </div>
+                </>
+              )}
+
+              <div style={{ textAlign: 'center', marginTop: 24 }}>
+                {loading ? (
+                  <Spin tip="Generando..." />
+                ) : (
+                  <Button
+                    type="primary"
+                    size="large"
+                    icon={<DownloadOutlined />}
+                    onClick={generate}
+                    disabled={!periodId || !gradeId || (scope === 'section' && !sectionId) || (scope === 'single' && !inscriptionId)}
+                    style={{ borderRadius: 10, fontWeight: 700, height: 44 }}
+                  >
+                    Generar Boletín{scope === 'all' ? 'es' : ''}
+                  </Button>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div>
+              {data && (
+                <div style={{ textAlign: 'center', marginBottom: 8, fontSize: 12, color: '#666' }}>
+                  {data.students.length} estudiante(s) — {data.institution.name} — {data.grade.name}
+                </div>
+              )}
+              <iframe
+                src={pdfUrl}
+                style={{ width: '100%', height: '60vh', border: '1px solid #e2e8f0', borderRadius: 8 }}
+                title="Boletín de Calificaciones"
+              />
+            </div>
+          )}
+        </>
+      )}
+
+      {activeTab === 'certified' && (
+        <div style={{ maxWidth: 600, margin: '0 auto' }}>
+          <Alert
+            message="Notas Certificadas"
+            description="Seleccione un estudiante y una plantilla de Excel. El sistema rellenará los nombres de celda (named ranges) con los datos del estudiante y todas sus notas de todos los períodos cursados."
+            type="info"
+            style={{ marginBottom: 20, borderRadius: 8 }}
+          />
+
           <div style={{ marginBottom: 16 }}>
-            <label style={{ display: 'block', fontWeight: 700, marginBottom: 6 }}>Modo de generación</label>
-            <Radio.Group value={scope} onChange={(e) => setScope(e.target.value)}>
-              <Radio.Button value="all">Todos</Radio.Button>
-              <Radio.Button value="section">Por Sección</Radio.Button>
-              <Radio.Button value="single">Estudiante</Radio.Button>
-            </Radio.Group>
+            <label style={{ display: 'block', fontWeight: 700, marginBottom: 6, fontSize: 13 }}>Buscar Estudiante</label>
+            <Input.Search
+              placeholder="Buscar por nombre o cédula..."
+              value={searchQuery}
+              onChange={(e) => handleSearch(e.target.value)}
+              enterButton
+              style={{ marginBottom: 8 }}
+            />
+            <Select
+              placeholder="Resultados de búsqueda..."
+              style={{ width: '100%' }}
+              value={certifiedPersonId}
+              onChange={(v: number) => setCertifiedPersonId(v)}
+              options={searchResults}
+              showSearch
+              filterOption={false}
+              notFoundContent={searchQuery.length < 3 ? 'Escriba al menos 3 caracteres' : 'Sin resultados'}
+            />
           </div>
 
-          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
-            <div style={{ flex: '1 1 200px' }}>
-              <label style={{ display: 'block', fontWeight: 700, marginBottom: 6, fontSize: 13 }}>Período</label>
-              <Select
-                placeholder="Período"
-                style={{ width: '100%' }}
-                value={periodId}
-                onChange={(v: number) => setPeriodId(v)}
-                options={allPeriods.map((p) => ({ label: `${p.name}${p.isActive ? ' (activo)' : ''}`, value: p.id }))}
-              />
-            </div>
-            <div style={{ flex: '1 1 150px' }}>
-              <label style={{ display: 'block', fontWeight: 700, marginBottom: 6, fontSize: 13 }}>Grado</label>
-              <Select
-                placeholder="Grado"
-                style={{ width: '100%' }}
-                value={gradeId}
-                onChange={(v: number) => { setGradeId(v); setSectionId(null); setInscriptionId(null); }}
-                options={structure.map((s) => ({ label: s.grade.name, value: s.grade.id }))}
-              />
-            </div>
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ display: 'block', fontWeight: 700, marginBottom: 6, fontSize: 13 }}>Plantilla de Excel</label>
+            <Select
+              placeholder="Seleccione una plantilla"
+              style={{ width: '100%' }}
+              value={certifiedTemplate}
+              onChange={(v: string) => setCertifiedTemplate(v)}
+              options={templateList.map((t) => ({ label: t, value: t }))}
+              notFoundContent="Suba una plantilla a /templates"
+            />
           </div>
 
-          {scope === 'section' && (
-            <div style={{ marginBottom: 16 }}>
-              <label style={{ display: 'block', fontWeight: 700, marginBottom: 6, fontSize: 13 }}>Sección</label>
-              <Select
-                placeholder="Sección"
-                style={{ width: '100%' }}
-                value={sectionId}
-                disabled={!gradeId}
-                onChange={(v: number) => setSectionId(v)}
-                options={availableSections.map((sec) => ({ label: sec.name, value: sec.id }))}
-              />
-            </div>
-          )}
-
-          {scope === 'single' && (
-            <>
-              <div style={{ marginBottom: 16 }}>
-                <label style={{ display: 'block', fontWeight: 700, marginBottom: 6, fontSize: 13 }}>Sección (opcional)</label>
-                <Select
-                  placeholder="Todas las secciones"
-                  style={{ width: '100%' }}
-                  value={sectionId}
-                  disabled={!gradeId}
-                  allowClear
-                  onChange={(v: number | undefined) => setSectionId(v ?? null)}
-                  options={availableSections.map((sec) => ({ label: sec.name, value: sec.id }))}
-                />
-              </div>
-              <div style={{ marginBottom: 16 }}>
-                <label style={{ display: 'block', fontWeight: 700, marginBottom: 6, fontSize: 13 }}>Estudiante</label>
-                <Select
-                  placeholder="Seleccione un estudiante (puede buscar por nombre o cédula)"
-                  style={{ width: '100%' }}
-                  value={inscriptionId}
-                  showSearch
-                  filterOption={(input, option) => (option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
-                  disabled={!gradeId || studentOptions.length === 0}
-                  onChange={(v: number) => setInscriptionId(v)}
-                  options={studentOptions}
-                  notFoundContent={gradeId ? 'Sin estudiantes' : 'Primero seleccione un grado'}
-                />
-              </div>
-            </>
-          )}
-
-          <div style={{ textAlign: 'center', marginTop: 24 }}>
+          <div style={{ textAlign: 'center', marginTop: 28 }}>
             {loading ? (
-              <Spin tip="Generando boletín..." />
+              <Spin tip="Generando..." />
             ) : (
               <Button
                 type="primary"
                 size="large"
-                icon={<DownloadOutlined />}
-                onClick={generate}
-                disabled={!periodId || !gradeId || (scope === 'section' && !sectionId) || (scope === 'single' && !inscriptionId)}
-                style={{ borderRadius: 10, fontWeight: 700, height: 44 }}
+                icon={<FileExcelOutlined />}
+                onClick={exportCertifiedGrades}
+                disabled={!certifiedPersonId || !certifiedTemplate}
+                style={{
+                  borderRadius: 10,
+                  fontWeight: 700,
+                  height: 44,
+                  background: '#059669',
+                  border: 'none',
+                }}
               >
-                Generar Boletín{scope === 'all' ? 'es' : ''}
+                Exportar Notas Certificadas
               </Button>
             )}
           </div>
-        </div>
-      ) : (
-        <div>
-          {data && (
-            <div style={{ textAlign: 'center', marginBottom: 8, fontSize: 12, color: '#666' }}>
-              {data.students.length} estudiante(s) · {data.institution.name} · {data.grade.name}
+
+          <div style={{ marginTop: 20, padding: 12, background: '#f8fafc', borderRadius: 8, fontSize: 12, color: '#475569' }}>
+            <strong>Named ranges que rellena el sistema:</strong>
+            <div style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+              {[
+                'plantel_code', 'plantel_name', 'education_code', 'education_type',
+                'expedition_place_date', 'plantel_address', 'plantel_municipality',
+                'plantel_phone', 'plantel_state', 'cdcee',
+                'student_doc', 'student_birthdate', 'student_lastname', 'student_firstname',
+                'student_birth_country', 'student_birth_state', 'student_birth_municipality',
+              ].map((n) => (
+                <code key={n} style={{ background: '#e2e8f0', padding: '2px 6px', borderRadius: 4, fontSize: 11 }}>{n}</code>
+              ))}
             </div>
-          )}
-          {loading ? (
-            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '55vh' }}>
-              <Spin size="large" tip="Generando..." />
+            <div style={{ marginTop: 8 }}>
+              <strong>Notas por año/lapso:</strong>
+              <div style={{ marginTop: 4, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                <code style={{ background: '#e2e8f0', padding: '2px 6px', borderRadius: 4, fontSize: 11 }}>year_1, year_2, ...</code>
+                <code style={{ background: '#e2e8f0', padding: '2px 6px', borderRadius: 4, fontSize: 11 }}>y1_s1_name, y1_s2_name, ...</code>
+                <code style={{ background: '#e2e8f0', padding: '2px 6px', borderRadius: 4, fontSize: 11 }}>y1_s1_l1, y1_s1_l2, ...</code>
+                <code style={{ background: '#e2e8f0', padding: '2px 6px', borderRadius: 4, fontSize: 11 }}>y1_s1_def, y1_s2_def, ...</code>
+                <code style={{ background: '#e2e8f0', padding: '2px 6px', borderRadius: 4, fontSize: 11 }}>y1_lapso_1, y1_lapso_2, ...</code>
+              </div>
             </div>
-          ) : (
-            <iframe
-              src={pdfUrl}
-              style={{ width: '100%', height: '60vh', border: '1px solid #e2e8f0', borderRadius: 8 }}
-              title="Boletín de Calificaciones"
-            />
-          )}
+          </div>
         </div>
       )}
     </Modal>

@@ -315,7 +315,7 @@ const PerformanceSummary: React.FC = () => {
                     color: '#fff',
                   }}
                 >
-                  Generar Boletines
+                  Documentos
                 </Button>
               </Col>
             </Row>
