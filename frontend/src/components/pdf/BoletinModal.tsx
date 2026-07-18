@@ -1,10 +1,17 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { Modal, Spin, Button, Radio, Select, message, Space, Tabs, Input, Alert } from 'antd';
-import { DownloadOutlined, FileExcelOutlined, FileTextOutlined } from '@ant-design/icons';
+import { Modal, Spin, Button, Radio, Select, message, Space, Tabs, Input, Alert, Popover } from 'antd';
+import { DownloadOutlined, FileExcelOutlined, FileTextOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import { pdf } from '@react-pdf/renderer';
 import BoletinPDF from './BoletinPDF';
 import type { BoletinData } from './BoletinPDF';
 import api from '@/services/api';
+
+const LegendRow: React.FC<{ name: string; desc: string }> = ({ name, desc }) => (
+  <div style={{ display: 'flex', gap: 8, padding: '2px 0', borderBottom: '1px dashed #e2e8f0' }}>
+    <code style={{ color: '#15803d', fontWeight: 700, whiteSpace: 'nowrap', minWidth: 140, fontSize: 11 }}>{name}</code>
+    <span style={{ color: '#475569', fontSize: 11.5, flex: 1 }}>{desc}</span>
+  </div>
+);
 
 interface Section { id: number; name: string; }
 interface PeriodGradeStructure { id: number; grade: { id: number; name: string; order: number }; sections: Section[]; }
@@ -152,7 +159,7 @@ const BoletinModal: React.FC<BoletinModalProps> = ({
       return;
     }
     try {
-      const res = await api.get('/users/search', { params: { q: query.trim() } });
+      const res = await api.get('/users', { params: { q: query.trim() } });
       const results = (res.data || []).map((p: any) => ({
         label: `${p.lastName || ''} ${p.firstName || ''} (C.I. ${p.document || '—'})`,
         value: p.id,
@@ -435,29 +442,60 @@ const BoletinModal: React.FC<BoletinModalProps> = ({
             )}
           </div>
 
-          <div style={{ marginTop: 20, padding: 12, background: '#f8fafc', borderRadius: 8, fontSize: 12, color: '#475569' }}>
-            <strong>Named ranges que rellena el sistema:</strong>
-            <div style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-              {[
-                'plantel_code', 'plantel_name', 'education_code', 'education_type',
-                'expedition_place_date', 'plantel_address', 'plantel_municipality',
-                'plantel_phone', 'plantel_state', 'cdcee',
-                'student_doc', 'student_birthdate', 'student_lastname', 'student_firstname',
-                'student_birth_country', 'student_birth_state', 'student_birth_municipality',
-              ].map((n) => (
-                <code key={n} style={{ background: '#e2e8f0', padding: '2px 6px', borderRadius: 4, fontSize: 11 }}>{n}</code>
-              ))}
-            </div>
-            <div style={{ marginTop: 8 }}>
-              <strong>Notas por año/lapso:</strong>
-              <div style={{ marginTop: 4, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                <code style={{ background: '#e2e8f0', padding: '2px 6px', borderRadius: 4, fontSize: 11 }}>year_1, year_2, ...</code>
-                <code style={{ background: '#e2e8f0', padding: '2px 6px', borderRadius: 4, fontSize: 11 }}>y1_s1_name, y1_s2_name, ...</code>
-                <code style={{ background: '#e2e8f0', padding: '2px 6px', borderRadius: 4, fontSize: 11 }}>y1_s1_l1, y1_s1_l2, ...</code>
-                <code style={{ background: '#e2e8f0', padding: '2px 6px', borderRadius: 4, fontSize: 11 }}>y1_s1_def, y1_s2_def, ...</code>
-                <code style={{ background: '#e2e8f0', padding: '2px 6px', borderRadius: 4, fontSize: 11 }}>y1_lapso_1, y1_lapso_2, ...</code>
-              </div>
-            </div>
+          <div style={{ marginTop: 20, textAlign: 'center' }}>
+            <Popover
+              trigger="click"
+              placement="top"
+              title="Named ranges que rellena el sistema (Notas Certificadas)"
+              content={
+                <div style={{ maxWidth: 520, maxHeight: 420, overflowY: 'auto', fontSize: 12, lineHeight: 1.4 }}>
+                  <div style={{ fontWeight: 700, color: '#0f172a', marginBottom: 4 }}>Datos del Plantel / Institución</div>
+                  <LegendRow name="plantel_code" desc="Código DEA de la institución." />
+                  <LegendRow name="plantel_name" desc="Nombre de la institución." />
+                  <LegendRow name="education_code" desc="Código del nivel/modalidad educativa según el MPPE (ej. 31059)." />
+                  <LegendRow name="education_type" desc="Tipo/nivel de educación (ej. EDUCACIÓN MEDIA GENERAL)." />
+                  <LegendRow name="plantel_address" desc="Dirección de la institución." />
+                  <LegendRow name="plantel_municipality" desc="Municipio de la institución." />
+                  <LegendRow name="plantel_phone" desc="Teléfono de la institución." />
+                  <LegendRow name="plantel_state" desc="Estado de la institución." />
+                  <LegendRow name="cdcee" desc="Código CDCEE de la institución." />
+                  <LegendRow name="expedition_place_date" desc="Lugar y fecha de expedición (ej. «Altagracia de Orituco, 30 de abril del 2022»)." />
+
+                  <div style={{ fontWeight: 700, color: '#0f172a', marginTop: 10, marginBottom: 4 }}>Datos del Estudiante</div>
+                  <LegendRow name="student_doc" desc="Cédula del estudiante." />
+                  <LegendRow name="student_birthdate" desc="Fecha de nacimiento en formato texto (ej. «15 de marzo de 2008»)." />
+                  <LegendRow name="student_lastname" desc="Apellidos del estudiante." />
+                  <LegendRow name="student_firstname" desc="Nombres del estudiante." />
+                  <LegendRow name="student_birth_country" desc="País de nacimiento (ej. Venezuela)." />
+                  <LegendRow name="student_birth_state" desc="Estado de nacimiento del estudiante." />
+                  <LegendRow name="student_birth_municipality" desc="Municipio de nacimiento del estudiante." />
+
+                  <div style={{ fontWeight: 700, color: '#0f172a', marginTop: 10, marginBottom: 4 }}>Datos por Año Aprobado</div>
+                  <LegendRow name="year_N_name" desc="Nombre del grado del año N (ej. «Primer Año»). N = 1, 2, 3... Solo años aprobados." />
+                  <LegendRow name="year_N_period" desc="Período escolar del año N (ej. «2024-2025»)." />
+                  <LegendRow name="yN_lapso_K" desc="Nombre del lapso K del año N (ej. «Primer Lapso»)." />
+
+                  <div style={{ fontWeight: 700, color: '#0f172a', marginTop: 10, marginBottom: 4 }}>Notas por Materia (año N, materia M)</div>
+                  <LegendRow name="yN_sM_name" desc="Nombre de la materia M del año N (ej. «Matemática»)." />
+                  <LegendRow name="yN_sM_lK" desc="Calificación del lapso K en número (ej. «14.0»)." />
+                  <LegendRow name="yN_sM_num" desc="Definitiva de la materia en número (ej. «15.0»)." />
+                  <LegendRow name="yN_sM_letters" desc="Definitiva de la materia en letras (ej. «quince», «catorce coma cinco»)." />
+                  <LegendRow name="yN_sM_month" desc="Mes de aprobación en letras (ej. «julio»)." />
+                  <LegendRow name="yN_sM_year" desc="Año de aprobación (ej. «2025»)." />
+
+                  <div style={{ marginTop: 10, fontSize: 11, color: '#666', borderTop: '1px solid #e2e8f0', paddingTop: 6 }}>
+                    <b>N</b> = número de año aprobado (1, 2, 3, 4, 5...) — los años reprobados se omiten.<br />
+                    <b>M</b> = número de materia dentro del año (1, 2, 3...) — en orden canónico.<br />
+                    <b>K</b> = número de lapso dentro del año (1, 2, 3...).<br />
+                    Los <b>named ranges</b> deben estar definidos en el .xlsx (Fórmulas › Gestor de nombres en Excel). El sistema solo rellena los que existan.
+                  </div>
+                </div>
+              }
+            >
+              <Button type="link" icon={<InfoCircleOutlined />} style={{ fontSize: 12 }}>
+                Ver named ranges disponibles
+              </Button>
+            </Popover>
           </div>
         </div>
       )}

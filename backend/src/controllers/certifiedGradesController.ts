@@ -57,6 +57,40 @@ function formatScore(score: number | null): string {
   return n.toFixed(1);
 }
 
+const monthsES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+
+function monthNameES(monthNum: number): string {
+  if (monthNum < 1 || monthNum > 12) return '';
+  return monthsES[monthNum - 1];
+}
+
+function numberToSpanishWords(n: number): string {
+  const integerPart = Math.floor(n);
+  const decimalPart = Math.round((n - integerPart) * 10);
+
+  const units = ['cero', 'uno', 'dos', 'tres', 'cuatro', 'cinco', 'seis', 'siete', 'ocho', 'nueve',
+    'diez', 'once', 'doce', 'trece', 'catorce', 'quince', 'dieciseis', 'diecisiete', 'dieciocho', 'diecinueve', 'veinte'];
+  const tens = ['', '', 'veinti', 'treinta', 'cuarenta', 'cincuenta', 'sesenta', 'setenta', 'ochenta', 'noventa'];
+
+  function convertInt(num: number): string {
+    if (num <= 20) return units[num];
+    if (num < 30) {
+      const remainder = num - 20;
+      return remainder === 0 ? 'veinte' : `veinti${units[remainder]}`;
+    }
+    const ten = Math.floor(num / 10);
+    const unit = num % 10;
+    if (unit === 0) return tens[ten];
+    return `${tens[ten]} y ${units[unit]}`;
+  }
+
+  let result = convertInt(integerPart);
+  if (decimalPart > 0) {
+    result += ` coma ${units[decimalPart] || decimalPart}`;
+  }
+  return result;
+}
+
 export const exportCertifiedGrades = async (req: Request, res: Response) => {
   try {
     const personId = parseInt(req.query.personId as string, 10);
@@ -181,6 +215,9 @@ export const exportCertifiedGrades = async (req: Request, res: Response) => {
           finalScore = Math.round((total / termCount) * 100) / 100;
         }
 
+        const status = is.finalGrade?.status || (finalScore !== null && finalScore >= Number(settings.passing_grade || 10) ? 'aprobada' : 'reprobada');
+        const approvedDate = is.finalGrade?.calculatedAt ? new Date(is.finalGrade.calculatedAt) : null;
+
         return {
           id: is.subjectId,
           name: is.subject?.name || '',
@@ -190,6 +227,9 @@ export const exportCertifiedGrades = async (req: Request, res: Response) => {
             score: Math.round((termScores[t.id] || 0) * 100) / 100,
           })),
           finalScore,
+          status,
+          approvedMonth: approvedDate ? approvedDate.getMonth() + 1 : null,
+          approvedYear: approvedDate ? approvedDate.getFullYear() : null,
         };
       });
 
@@ -253,7 +293,12 @@ export const exportCertifiedGrades = async (req: Request, res: Response) => {
 
     let yearIdx = 1;
     for (const year of years) {
-      setter(`year_${yearIdx}`, year.periodName);
+      const allApproved = year.subjects.length > 0 && year.subjects.every((s: any) => s.status === 'aprobada');
+      if (!allApproved) continue;
+
+      setter(`year_${yearIdx}_name`, year.gradeName);
+      setter(`year_${yearIdx}_period`, year.periodName);
+
       let subjIdx = 1;
       for (const subj of year.subjects) {
         setter(`y${yearIdx}_s${subjIdx}_name`, subj.name);
@@ -262,7 +307,10 @@ export const exportCertifiedGrades = async (req: Request, res: Response) => {
           setter(`y${yearIdx}_s${subjIdx}_l${lapsoIdx}`, formatScore(lapse.score));
           lapsoIdx++;
         }
-        setter(`y${yearIdx}_s${subjIdx}_def`, formatScore(subj.finalScore));
+        setter(`y${yearIdx}_s${subjIdx}_num`, formatScore(subj.finalScore));
+        setter(`y${yearIdx}_s${subjIdx}_letters`, subj.finalScore !== null ? numberToSpanishWords(subj.finalScore) : '');
+        setter(`y${yearIdx}_s${subjIdx}_month`, subj.approvedMonth ? monthNameES(subj.approvedMonth) : '');
+        setter(`y${yearIdx}_s${subjIdx}_year`, subj.approvedYear ? String(subj.approvedYear) : '');
         subjIdx++;
       }
       let termIdx = 1;
