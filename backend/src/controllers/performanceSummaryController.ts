@@ -883,6 +883,7 @@ export const getBoletinData = async (req: Request, res: Response) => {
         return {
           id: is.subjectId,
           name: is.subject?.name || '',
+          usesLiteralGrades: is.subject?.usesLiteralGrades || false,
           lapsos: terms.map((t: any) => ({
             termId: t.id,
             termName: t.name,

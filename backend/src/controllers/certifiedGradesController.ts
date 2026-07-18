@@ -64,6 +64,18 @@ function monthNameES(monthNum: number): string {
   return monthsES[monthNum - 1];
 }
 
+function numericToLetter(numericGrade: number, letterGrades: { letter: string; max: number }[]): string {
+  if (!letterGrades || letterGrades.length === 0) return String(numericGrade);
+  const sorted = [...letterGrades].sort((a, b) => b.max - a.max);
+  for (let i = 0; i < sorted.length; i++) {
+    const current = sorted[i];
+    const next = sorted[i + 1];
+    if (!next) return numericGrade <= current.max ? current.letter : String(numericGrade);
+    if (numericGrade > next.max && numericGrade <= current.max) return current.letter;
+  }
+  return String(numericGrade);
+}
+
 function numberToSpanishWords(n: number): string {
   const integerPart = Math.floor(n);
   const decimalPart = Math.round((n - integerPart) * 10);
@@ -125,6 +137,15 @@ export const exportCertifiedGrades = async (req: Request, res: Response) => {
       plantel = await Plantel.findOne({ where: { code: settings.institution_dea_code } });
     }
 
+    const letterGradesConfig: { letter: string; max: number }[] = (() => {
+      try {
+        const raw = settings.letter_grades;
+        if (!raw) return [];
+        const parsed = JSON.parse(raw);
+        return parsed.scale || parsed || [];
+      } catch { return []; }
+    })();
+
     const inscriptions = await Inscription.findAll({
       where: { personId },
       include: [
@@ -184,6 +205,11 @@ export const exportCertifiedGrades = async (req: Request, res: Response) => {
         orderMap,
       );
 
+      const groupSubjects = (ins.inscriptionSubjects || [])
+        .filter((is: any) => is.subject?.subjectGroupId)
+        .map((is: any) => is.subject?.name || '')
+        .filter(Boolean);
+
       const subjects = insSubs.map((is: any) => {
         const termScores: Record<number, number> = {};
         terms.forEach((t: any) => { termScores[t.id] = 0; });
@@ -221,6 +247,7 @@ export const exportCertifiedGrades = async (req: Request, res: Response) => {
         return {
           id: is.subjectId,
           name: is.subject?.name || '',
+          usesLiteralGrades: is.subject?.usesLiteralGrades || false,
           lapsos: terms.map((t: any) => ({
             termId: t.id,
             termName: t.name,
@@ -238,6 +265,7 @@ export const exportCertifiedGrades = async (req: Request, res: Response) => {
         gradeName: ins.grade?.name || '',
         sectionName: ins.section?.name || '',
         terms: terms.map((t: any) => ({ id: t.id, name: t.name, order: t.order })),
+        groupSubjects,
         subjects,
       };
     });
@@ -254,6 +282,14 @@ export const exportCertifiedGrades = async (req: Request, res: Response) => {
     }
 
     const sheetName = sheet.name;
+    const existingNames = new Set<string>();
+    const namedRangeModel = (workbook as any).definedNames?.model;
+    if (namedRangeModel) {
+      for (const d of namedRangeModel) {
+        if (d.name) existingNames.add(d.name);
+      }
+    }
+    let overflowRow = 1;
 
     const setter = (name: string, value: string | number) => {
       if (!value || value === '' || value === 0) return;
@@ -263,11 +299,29 @@ export const exportCertifiedGrades = async (req: Request, res: Response) => {
         return;
       }
       try {
-        const definedName = (workbook.definedNames as any).get(name);
-        if (definedName) {
-          sheet.getCell(definedName).value = value;
+        const dns = (workbook as any).definedNames?.model;
+        if (dns) {
+          const dn = dns.find((d: any) => d.name === name);
+          if (dn && dn.ranges && dn.ranges.length > 0) {
+            const rangeRef = dn.ranges[0];
+            const match = rangeRef.match(/\$([A-Z]+)\$(\d+)$/);
+            if (match) {
+              sheet.getCell(match[1] + match[2]).value = value;
+              return;
+            }
+          }
         }
       } catch { /* ignore if named range not found */ }
+      // Named range not found in template — register dynamically
+      if (!existingNames.has(name)) {
+        existingNames.add(name);
+        const cellAddr = `$B$${30 + overflowRow}`;
+        overflowRow++;
+        try {
+          (workbook as any).definedNames.add(name, `'${sheetName}'!${cellAddr}`);
+          sheet.getCell(cellAddr.replace(/\$/g, '')).value = value;
+        } catch { /* ignore */ }
+      }
     };
 
     const residence = (person as any).residence;
@@ -298,6 +352,7 @@ export const exportCertifiedGrades = async (req: Request, res: Response) => {
 
       setter(`year_${yearIdx}_name`, year.gradeName);
       setter(`year_${yearIdx}_period`, year.periodName);
+      setter(`std_part_${yearIdx}`, year.groupSubjects.join(', '));
 
       let subjIdx = 1;
       for (const subj of year.subjects) {
@@ -307,7 +362,7 @@ export const exportCertifiedGrades = async (req: Request, res: Response) => {
           setter(`y${yearIdx}_s${subjIdx}_l${lapsoIdx}`, formatScore(lapse.score));
           lapsoIdx++;
         }
-        setter(`y${yearIdx}_s${subjIdx}_num`, formatScore(subj.finalScore));
+        setter(`y${yearIdx}_s${subjIdx}_num`, subj.usesLiteralGrades && subj.finalScore !== null ? numericToLetter(subj.finalScore, letterGradesConfig) : formatScore(subj.finalScore));
         setter(`y${yearIdx}_s${subjIdx}_letters`, subj.finalScore !== null ? numberToSpanishWords(subj.finalScore) : '');
         setter(`y${yearIdx}_s${subjIdx}_month`, subj.approvedMonth ? monthNameES(subj.approvedMonth) : '');
         setter(`y${yearIdx}_s${subjIdx}_year`, subj.approvedYear ? String(subj.approvedYear) : '');
@@ -414,6 +469,11 @@ export const getCertifiedGradesData = async (req: Request, res: Response) => {
         orderMap,
       );
 
+      const groupSubjects = (ins.inscriptionSubjects || [])
+        .filter((is: any) => is.subject?.subjectGroupId)
+        .map((is: any) => is.subject?.name || '')
+        .filter(Boolean);
+
       const subjects = insSubs.map((is: any) => {
         const termScores: Record<number, number> = {};
         terms.forEach((t: any) => { termScores[t.id] = 0; });
@@ -448,6 +508,7 @@ export const getCertifiedGradesData = async (req: Request, res: Response) => {
         return {
           id: is.subjectId,
           name: is.subject?.name || '',
+          usesLiteralGrades: is.subject?.usesLiteralGrades || false,
           lapsos: terms.map((t: any) => ({
             termId: t.id,
             termName: t.name,
@@ -462,6 +523,7 @@ export const getCertifiedGradesData = async (req: Request, res: Response) => {
         gradeName: ins.grade?.name || '',
         sectionName: ins.section?.name || '',
         terms: terms.map((t: any) => ({ id: t.id, name: t.name, order: t.order })),
+        groupSubjects,
         subjects,
       };
     });

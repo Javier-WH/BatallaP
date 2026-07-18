@@ -8,9 +8,11 @@ import {
 } from '@react-pdf/renderer';
 
 export interface BoletinTerm { id: number; name: string; order: number | null; }
+export interface LetterGrade { letter: string; max: number; }
 export interface BoletinSubject {
   id: number;
   name: string;
+  usesLiteralGrades?: boolean;
   lapsos: { termId: number; termName: string; score: number }[];
   finalScore: number | null;
   status: string;
@@ -28,6 +30,7 @@ export interface BoletinData {
   grade: { id: number; name: string };
   terms: BoletinTerm[];
   students: BoletinStudent[];
+  letterGrades?: LetterGrade[];
 }
 
 const styles = StyleSheet.create({
@@ -154,13 +157,32 @@ const formatScore = (score: number | null): string => {
   return n.toFixed(1);
 };
 
+const numericToLetter = (numericGrade: number, letterGrades: LetterGrade[]): string => {
+  if (!letterGrades || letterGrades.length === 0) return String(numericGrade);
+  const sorted = [...letterGrades].sort((a, b) => b.max - a.max);
+  for (let i = 0; i < sorted.length; i++) {
+    const current = sorted[i];
+    const next = sorted[i + 1];
+    if (!next) return numericGrade <= current.max ? current.letter : String(numericGrade);
+    if (numericGrade > next.max && numericGrade <= current.max) return current.letter;
+  }
+  return String(numericGrade);
+};
+
+const formatScoreForSubject = (score: number | null, usesLiteral: boolean, letterGrades: LetterGrade[]): string => {
+  if (score === null || score === undefined) return '';
+  if (usesLiteral) return numericToLetter(score, letterGrades);
+  return formatScore(score);
+};
+
 const BoletinStudentPage: React.FC<{
   student: BoletinStudent;
   institution: BoletinData['institution'];
   grade: BoletinData['grade'];
   terms: BoletinTerm[];
+  letterGrades: LetterGrade[];
   studentIndex: number;
-}> = ({ student, institution, grade, terms, studentIndex }) => {
+}> = ({ student, institution, grade, terms, letterGrades, studentIndex }) => {
   return (
     <Page size="LETTER" style={styles.page} key={studentIndex}>
       <View style={styles.header}>
@@ -211,11 +233,11 @@ const BoletinStudentPage: React.FC<{
                 const lapseScore = subj.lapsos.find((l) => l.termId === t.id);
                 return (
                   <Text key={t.id} style={styles.colTerm}>
-                    {formatScore(lapseScore ? lapseScore.score : 0)}
+                    {formatScoreForSubject(lapseScore ? lapseScore.score : 0, subj.usesLiteralGrades || false, letterGrades)}
                   </Text>
                 );
               })}
-              <Text style={styles.colFinal}>{formatScore(subj.finalScore)}</Text>
+              <Text style={styles.colFinal}>{formatScoreForSubject(subj.finalScore, subj.usesLiteralGrades || false, letterGrades)}</Text>
             </View>
           );
         })}
@@ -249,6 +271,7 @@ const BoletinPDF: React.FC<BoletinPDFProps> = ({ data }) => {
           institution={data.institution}
           grade={data.grade}
           terms={data.terms}
+          letterGrades={data.letterGrades || []}
           studentIndex={idx}
         />
       ))}

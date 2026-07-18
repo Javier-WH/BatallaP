@@ -3,7 +3,7 @@ import { Modal, Spin, Button, Radio, Select, message, Space, Tabs, Input, Alert,
 import { DownloadOutlined, FileExcelOutlined, FileTextOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import { pdf } from '@react-pdf/renderer';
 import BoletinPDF from './BoletinPDF';
-import type { BoletinData } from './BoletinPDF';
+import type { BoletinData, LetterGrade } from './BoletinPDF';
 import api from '@/services/api';
 
 const LegendRow: React.FC<{ name: string; desc: string }> = ({ name, desc }) => (
@@ -56,9 +56,27 @@ const BoletinModal: React.FC<BoletinModalProps> = ({
   const [templateList, setTemplateList] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<{ label: string; value: number }[]>([]);
+  const [letterGrades, setLetterGrades] = useState<LetterGrade[]>([]);
 
   const selectedGrade = structure.find((s) => s.grade.id === gradeId);
   const availableSections = selectedGrade?.sections || [];
+
+  useEffect(() => {
+    api.get('/settings').then((res) => {
+      if (res.data?.letter_grades) {
+        try {
+          const parsed = typeof res.data.letter_grades === 'string'
+            ? JSON.parse(res.data.letter_grades)
+            : res.data.letter_grades;
+          if (parsed.scale && Array.isArray(parsed.scale)) {
+            setLetterGrades(parsed.scale);
+          } else if (Array.isArray(parsed)) {
+            setLetterGrades(parsed);
+          }
+        } catch { /* ignore */ }
+      }
+    }).catch(() => { /* ignore */ });
+  }, []);
 
   useEffect(() => {
     if (scope !== 'single' || !periodId || !gradeId) {
@@ -119,7 +137,7 @@ const BoletinModal: React.FC<BoletinModalProps> = ({
       if (scope === 'single') params.inscriptionId = inscriptionId;
 
       const res = await api.get('/performance-summary/boletin-data', { params });
-      const boletinData = res.data as BoletinData;
+      const boletinData = { ...res.data, letterGrades } as BoletinData;
 
       if (!boletinData.students || boletinData.students.length === 0) {
         message.warning('No se encontraron estudiantes con los criterios seleccionados');
