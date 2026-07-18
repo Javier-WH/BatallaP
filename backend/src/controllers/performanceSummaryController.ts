@@ -79,6 +79,18 @@ function padNumber(n: number | null | undefined): number | string | null {
   return n;
 }
 
+function numericToLetter(numericGrade: number, letterGrades: { letter: string; max: number }[]): string {
+  if (!letterGrades || letterGrades.length === 0) return String(numericGrade);
+  const sorted = [...letterGrades].sort((a, b) => b.max - a.max);
+  for (let i = 0; i < sorted.length; i++) {
+    const current = sorted[i];
+    const next = sorted[i + 1];
+    if (!next) return numericGrade <= current.max ? current.letter : String(numericGrade);
+    if (numericGrade > next.max && numericGrade <= current.max) return current.letter;
+  }
+  return String(numericGrade);
+}
+
 async function getInstitutionSettings(): Promise<Record<string, string>> {
   const settings = await Setting.findAll();
   const map: Record<string, string> = {};
@@ -165,6 +177,7 @@ function fillSheetByNamedRanges(
   sourceSheetName?: string,
   gradeName?: string,
   sectionName?: string,
+  letterGradesConfig?: { letter: string; max: number }[],
 ): void {
   // Only writes when value is non-empty. Empty/undefined values leave the
   // cell untouched, preserving the template's decorative content (e.g. "***"
@@ -181,6 +194,12 @@ function fillSheetByNamedRanges(
       sheet.getCell(ref.cell).value = value;
     }
   };
+
+  const lowestLetter = (() => {
+    if (!letterGradesConfig || letterGradesConfig.length === 0) return '';
+    const sorted = [...letterGradesConfig].sort((a, b) => a.max - b.max);
+    return sorted[0].letter;
+  })();
 
   setByRange('inst_period', period?.name);
   setByRange('inst_code', settings.institution_dea_code || plantel?.code);
@@ -239,8 +258,17 @@ function fillSheetByNamedRanges(
       if (!subjId) continue;
       const insSub = insSubjects.find((is: any) => is.subjectId === subjId);
       const score = insSub ? calculateFinalScore(insSub) : null;
-      if (score != null) {
-        setByRange('grade_' + (i + 1) + '_' + n, padNumber(score));
+      const col = subjectColList[i].col;
+      const row = 15 + n;
+      const isLiteral = insSub?.subject?.usesLiteralGrades ?? academicSubjects.find((s: any) => s.id === subjId)?.usesLiteralGrades;
+      if (isLiteral) {
+        if (score != null) {
+          sheet.getRow(row).getCell(col).value = numericToLetter(score, letterGradesConfig || []);
+        } else if (lowestLetter) {
+          sheet.getRow(row).getCell(col).value = lowestLetter;
+        }
+      } else if (score != null) {
+        sheet.getRow(row).getCell(col).value = padNumber(score);
       }
     }
 
@@ -301,6 +329,15 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
 
     const settings = await getInstitutionSettings();
 
+    const letterGradesConfig: { letter: string; max: number }[] = (() => {
+      try {
+        const raw = settings.letter_grades;
+        if (!raw) return [];
+        const parsed = JSON.parse(raw);
+        return parsed.scale || parsed || [];
+      } catch { return []; }
+    })();
+
     let plantel: any = null;
     if (settings.institution_dea_code) {
       plantel = await Plantel.findOne({ where: { code: settings.institution_dea_code } });
@@ -343,7 +380,7 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
 
     const subjectOrderMap = await getSubjectOrderMap(pg.id);
 
-    const subjectMap = new Map<number, { id: number; name: string; abbreviation: string | null; subjectGroupId: number | null; subjectGroupName: string | null }>();
+    const subjectMap = new Map<number, { id: number; name: string; abbreviation: string | null; subjectGroupId: number | null; subjectGroupName: string | null; usesLiteralGrades: boolean }>();
 
     inscriptions.forEach((ins: any) => {
       const sorted = sortSubjectsByOrder(
@@ -360,6 +397,7 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
             abbreviation: is.subject.abbreviation || null,
             subjectGroupId: is.subject.subjectGroupId || null,
             subjectGroupName: is.subject.subjectGroup?.name || null,
+            usesLiteralGrades: is.subject.usesLiteralGrades || false,
           });
         }
       });
@@ -383,6 +421,7 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
           abbreviation: subj.abbreviation || null,
           subjectGroupId: subj.subjectGroupId || null,
           subjectGroupName: subj.subjectGroup?.name || null,
+          usesLiteralGrades: subj.usesLiteralGrades || false,
         });
       }
     }
@@ -512,7 +551,7 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
     // IMPORTANT: only auto-append columns for the default shipped template. Custom user
     // templates must be respected strictly: missing subj_i named ranges means those
     // subjects simply won't be rendered (avoids corrupting the user's layout).
-    const isDefaultTemplate = path.basename(templatePath).toLowerCase() === 'resumenfinal_template.xlsx';
+    const isDefaultTemplate = path.basename(templatePath).toLowerCase().startsWith('resumenfinal');
     if (isDefaultTemplate) {
       const maxSubjCol = subjectColList.length > 0
         ? Math.max(...subjectColList.map(s => s.col))
@@ -669,6 +708,7 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
         actualSheetName,  // named ranges registered under the original sheet
         grade?.name,
         section?.name,
+        letterGradesConfig,
       );
 
       // Override the evaluation type for this group. We do it after the
