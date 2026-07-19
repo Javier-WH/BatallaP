@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Card, Button, Select, Space, Typography, Row, Col, Spin, message, Empty, Tag, Popover, Divider } from 'antd';
+import { Card, Button, Select, Space, Typography, Row, Col, Spin, message, Empty, Tag, Popover, Divider, Radio } from 'antd';
 import { DownloadOutlined, FileExcelOutlined, FileTextOutlined, FolderOpenOutlined, CheckCircleOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import api from '@/services/api';
 import TemplateManagerModal from '@/components/TemplateManagerModal';
@@ -48,6 +48,7 @@ const PerformanceSummary: React.FC = () => {
   const [selectedPeriodId, setSelectedPeriodId] = useState<number | null>(null);
   const [selectedGradeId, setSelectedGradeId] = useState<number | null>(null);
   const [selectedSectionId, setSelectedSectionId] = useState<number | null>(null);
+  const [studentGroup, setStudentGroup] = useState<'regulares' | 'revision'>('regulares');
   const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
   const [boletinModalOpen, setBoletinModalOpen] = useState(false);
@@ -153,6 +154,7 @@ const PerformanceSummary: React.FC = () => {
           gradeId: selectedGradeId,
           sectionId: selectedSectionId,
           template: selectedTemplate || undefined,
+          group: studentGroup,
         },
         responseType: 'blob',
       });
@@ -276,6 +278,24 @@ const PerformanceSummary: React.FC = () => {
                     value: s.id,
                   }))}
                 />
+              </Col>
+            </Row>
+            <Row gutter={[24, 24]} justify="center" align="middle" style={{ marginTop: 16 }}>
+              <Col xs={24} style={{ textAlign: 'center' }}>
+                <Text style={{ fontWeight: 700, display: 'block', marginBottom: 8 }}>Grupo de estudiantes</Text>
+                <Radio.Group
+                  value={studentGroup}
+                  onChange={(e) => setStudentGroup(e.target.value)}
+                  size="large"
+                  buttonStyle="solid"
+                >
+                  <Radio.Button value="regulares" style={{ borderRadius: '8px 0 0 8px', fontWeight: 600, padding: '4px 24px' }}>
+                    Regulares (Aprobados)
+                  </Radio.Button>
+                  <Radio.Button value="revision" style={{ borderRadius: '0 8px 8px 0', fontWeight: 600, padding: '4px 24px' }}>
+                    Revisión (Reprobados)
+                  </Radio.Button>
+                </Radio.Group>
               </Col>
             </Row>
             <Row gutter={[24, 24]} justify="center" align="middle" style={{ marginTop: 16 }}>

@@ -189,7 +189,13 @@ function fillSheetByNamedRanges(
   const lookupSheetName = sourceSheetName || sheetName;
   const setByRange = (name: string, value: any) => {
     if (value === undefined || value === null || value === '') return;
-    const ref = namedRanges.getCell(lookupSheetName, name);
+    let ref = namedRanges.getCell(lookupSheetName, name);
+    if (!ref) {
+      for (const sn of namedRanges.bySheet.keys()) {
+        ref = namedRanges.getCell(sn, name);
+        if (ref) break;
+      }
+    }
     if (ref) {
       sheet.getCell(ref.cell).value = value;
     }
@@ -515,6 +521,21 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
     }
     const actualSheetName = sheet!.name;
 
+    // Helper: find a named range across any sheet. All named ranges in the
+    // template are stored under '1er Año', but actualSheetName may differ
+    // for higher grades (3er Año, 4to Año, etc.). This fallback ensures
+    // lookups succeed regardless of the current sheet context.
+    const findRef = (name: string) => {
+      let r = namedRanges.getCell(actualSheetName, name);
+      if (!r) {
+        for (const sn of namedRanges.bySheet.keys()) {
+          r = namedRanges.getCell(sn, name);
+          if (r) break;
+        }
+      }
+      return r;
+    };
+
     // Sort academic subjects by canonical order (subjectOrderMap) so subj_i
     // always maps to the same subject regardless of insertion order.
     const sortedAcademicSubjects = [...academicSubjects].sort((a, b) => {
@@ -530,7 +551,7 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
     const subjectToSubjIndex = new Map<number, number>();
     let subjIdx = 1;
     while (true) {
-      const ref = namedRanges.getCell(actualSheetName, 'subj_' + subjIdx);
+      const ref = findRef('subj_' + subjIdx);
       if (!ref) break;
       const subj = sortedAcademicSubjects[subjIdx - 1];
       if (subj) {
@@ -539,7 +560,7 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
         subjectColList.push({ col: ref.col, abbr: abbrText.toUpperCase() });
         subjectToSubjIndex.set(subjIdx, subj.id);
         // Also write the full subject name into subjname_i if defined
-        const nameRef = namedRanges.getCell(actualSheetName, 'subjname_' + subjIdx);
+        const nameRef = findRef('subjname_' + subjIdx);
         if (nameRef) {
           sheet!.getCell(nameRef.cell).value = subj.name;
         }
@@ -547,44 +568,10 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
       subjIdx++;
     }
 
-    // For academic subjects without a subj_i named range, append after last subject.
-    // IMPORTANT: only auto-append columns for the default shipped template. Custom user
-    // templates must be respected strictly: missing subj_i named ranges means those
-    // subjects simply won't be rendered (avoids corrupting the user's layout).
-    const isDefaultTemplate = path.basename(templatePath).toLowerCase().startsWith('resumenfinal');
-    if (isDefaultTemplate) {
-      const maxSubjCol = subjectColList.length > 0
-        ? Math.max(...subjectColList.map(s => s.col))
-        : 13;
-      let nextCol = maxSubjCol + 1;
-      for (const subj of sortedAcademicSubjects) {
-        if (![...subjectToSubjIndex.values()].includes(subj.id)) {
-          const newSubjIdx = subjectColList.length + 1;
-          subjectColList.push({ col: nextCol, abbr: (subj.abbreviation || subj.name).toUpperCase() });
-          subjectToSubjIndex.set(newSubjIdx, subj.id);
-
-          const headerCell = sheet!.getRow(15).getCell(nextCol);
-          headerCell.value = subj.abbreviation || subj.name;
-          headerCell.font = { bold: true, size: 8 };
-          headerCell.alignment = { horizontal: 'center' };
-
-          const refCol = nextCol - 1;
-          const refHeaderCell = sheet!.getRow(15).getCell(refCol);
-          if (refHeaderCell.border) {
-            headerCell.border = JSON.parse(JSON.stringify(refHeaderCell.border));
-          }
-          for (let r = 16; r <= 16 + MAX_STUDENTS_PER_SHEET; r++) {
-            const dataCell = sheet!.getRow(r).getCell(nextCol);
-            const refDataCell = sheet!.getRow(r).getCell(refCol);
-            if (refDataCell.border) {
-              dataCell.border = JSON.parse(JSON.stringify(refDataCell.border));
-            }
-          }
-
-          nextCol++;
-        }
-      }
-    }
+    // Note: the template defines subj_I named ranges for up to 9 subjects.
+    // Only subjects with a corresponding subj_i named range are written.
+    // Subjects beyond the template's named ranges are silently skipped to
+    // preserve the Excel layout (no auto-appending columns).
 
 // Classify students into approved and failed based on the calculated
     // final score per academic subject. A student fails the period if any
@@ -606,6 +593,8 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
       }
       return false;
     };
+
+    const group = (req.query.group as string) || 'regulares';
 
     const failedInscriptions = inscriptions.filter(isFailed);
     const approvedInscriptions = inscriptions.filter(ins => !isFailed(ins));
@@ -689,8 +678,8 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
 
       // Write subject abbreviations / full names
       for (let i = 1; i <= sortedAcademicSubjects.length; i++) {
-        const ref = namedRanges.getCell(actualSheetName, 'subj_' + i);
-        const nameRef = namedRanges.getCell(actualSheetName, 'subjname_' + i);
+        const ref = findRef('subj_' + i);
+        const nameRef = findRef('subjname_' + i);
         const subj = sortedAcademicSubjects[i - 1];
         if (subj) {
           const abbrText = subj.abbreviation || subj.name;
@@ -713,13 +702,13 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
 
       // Override the evaluation type for this group. We do it after the
       // generic fill so it is not overwritten by the hard-coded default.
-      const ref = namedRanges.getCell(actualSheetName, 'inst_eval_type');
-      if (ref) ws.getCell(ref.cell).value = evalType;
+      const evalRef = findRef('inst_eval_type');
+      if (evalRef) ws.getCell(evalRef.cell).value = evalType;
 
       // Total students in the section and students on this page
       const setLocal = (name: string, value: any) => {
         if (value === undefined || value === null || value === '') return;
-        const r = namedRanges.getCell(actualSheetName, name);
+        const r = findRef(name);
         if (r) ws.getCell(r.cell).value = value;
       };
       setLocal('std_total', sectionTotal);
@@ -765,16 +754,25 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
       return generated;
     };
 
-    // If approved group is empty, let REVISION use the original sheet in-place
-    // (isFirst: true) so named-range formulas resolve correctly. Otherwise
-    // approved gets the original sheet and REVISION uses clones.
-    const approvedFirst = approvedInscriptions.length > 0;
-    const approvedSheetNames = renderGroup(
-      approvedInscriptions, 'Regulares', 'Regulares', approvedFirst,
-    );
-    const failedSheetNames = renderGroup(
-      failedInscriptions, 'REVISION DE MATERIA PENDIENTE', 'REVISION', !approvedFirst,
-    );
+    let approvedSheetNames: string[] = [];
+    let failedSheetNames: string[] = [];
+
+    if (group === 'revision') {
+      if (failedInscriptions.length === 0) {
+        return res.status(404).json({ message: 'No hay estudiantes reprobados en esta sección' });
+      }
+      failedSheetNames = renderGroup(
+        failedInscriptions, 'REVISION DE MATERIA PENDIENTE', 'REVISION', true,
+      );
+    } else {
+      if (approvedInscriptions.length === 0) {
+        return res.status(404).json({ message: 'No hay estudiantes aprobados en esta sección' });
+      }
+      // Default 'regulares': only approved students
+      approvedSheetNames = renderGroup(
+        approvedInscriptions, 'Regulares', 'Regulares', true,
+      );
+    }
 
     // Drop the un-filled template sheets (3er Año, 4to Año, 5to Año) and
     // the original `sheet!` if it was NOT used (no students at all). Keep
