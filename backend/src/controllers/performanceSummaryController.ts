@@ -597,7 +597,8 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
       const subj = sortedAcademicSubjects[subjIdx - 1];
       if (subj) {
         const abbrText = subj.abbreviation || subj.name;
-        sheet!.getCell(ref.cell).value = abbrText;
+        const headerText = subj.subjectGroupId ? 'PGCRP' : abbrText;
+        sheet!.getCell(ref.cell).value = headerText;
         subjectColList.push({ col: ref.col, abbr: abbrText.toUpperCase() });
         subjectToSubjIndex.set(subjIdx, subj.id);
         // Also write the full subject name into subjname_i if defined
@@ -747,14 +748,15 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
         });
       }
 
-      // Write subject abbreviations / full names
+      // Write subject headers
       for (let i = 1; i <= sortedAcademicSubjects.length; i++) {
         const ref = findRef('subj_' + i);
         const nameRef = findRef('subjname_' + i);
         const subj = sortedAcademicSubjects[i - 1];
         if (subj) {
           const abbrText = subj.abbreviation || subj.name;
-          if (ref) ws.getCell(ref.cell).value = abbrText;
+          const headerText = subj.subjectGroupId ? 'PGCRP' : abbrText;
+          if (ref) ws.getCell(ref.cell).value = headerText;
           if (nameRef) ws.getCell(nameRef.cell).value = subj.name;
         }
       }
