@@ -786,11 +786,33 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
       const evalRef = findRef('inst_eval_type');
       if (evalRef) ws.getCell(evalRef.cell).value = evalType;
 
-      // Total students in the section and students on this page
+      // Total students in the section and students on this page.
+      // Before writing, unmerge any range that contains the target cell so
+      // the value isn't swallowed by a merged range (e.g. std_total at P66
+      // and std_page_count at X66 sit inside the F66:Z66 merge).
       const setLocal = (name: string, value: any) => {
         if (value === undefined || value === null || value === '') return;
         const r = findRef(name);
-        if (r) ws.getCell(r.cell).value = value;
+        if (r) {
+          const mergeList: string[] = (ws as any).model?.merges || [];
+          for (let mi = mergeList.length - 1; mi >= 0; mi--) {
+            const parts3 = mergeList[mi].split(':');
+            if (parts3.length === 2) {
+              const colToIdx2 = (c: string) => { let idx = 0; for (let ci = 0; ci < c.length; ci++) { idx = idx * 26 + (c.charCodeAt(ci) - 64); } return idx - 1; };
+              const pa = parts3[0].match(/^([A-Z]+)(\d+)$/);
+              const pb = parts3[1].match(/^([A-Z]+)(\d+)$/);
+              if (pa && pb) {
+                const ra = parseInt(pa[2], 10), rb = parseInt(pb[2], 10);
+                const ca = colToIdx2(pa[1]), cb = colToIdx2(pb[1]);
+                if (r.row >= ra && r.row <= rb && (r.col - 1) >= ca && (r.col - 1) <= cb) {
+                  ws.unMergeCells(mergeList[mi]);
+                  break;
+                }
+              }
+            }
+          }
+          ws.getCell(r.cell).value = value;
+        }
       };
       setLocal('std_total', sectionTotal);
       setLocal('std_page_count', pageCount);
