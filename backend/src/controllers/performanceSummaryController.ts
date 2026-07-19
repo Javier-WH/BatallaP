@@ -604,7 +604,10 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
         // Also write the full subject name into subjname_i if defined
         const nameRef = findRef('subjname_' + subjIdx);
         if (nameRef) {
-          sheet!.getCell(nameRef.cell).value = subj.name;
+          const nameText = subj.subjectGroupId
+            ? 'Participación en Grupos de \r\nCreación, Recreación y Producción'
+            : subj.name;
+          sheet!.getCell(nameRef.cell).value = nameText;
         }
       }
       subjIdx++;
@@ -757,7 +760,12 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
           const abbrText = subj.abbreviation || subj.name;
           const headerText = subj.subjectGroupId ? 'PGCRP' : abbrText;
           if (ref) ws.getCell(ref.cell).value = headerText;
-          if (nameRef) ws.getCell(nameRef.cell).value = subj.name;
+          if (nameRef) {
+            const nameText = subj.subjectGroupId
+              ? 'Participación en Grupos de \r\nCreación, Recreación y Producción'
+              : subj.name;
+            ws.getCell(nameRef.cell).value = nameText;
+          }
         }
       }
 
