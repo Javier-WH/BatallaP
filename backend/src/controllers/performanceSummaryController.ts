@@ -22,6 +22,7 @@ import {
   Section,
   Setting,
   Plantel,
+  TeacherAssignment,
 } from '@/models/index';
 import {
   getSubjectOrderMap,
@@ -440,6 +441,38 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
 
     const academicSubjects = allSubjects.filter(s => !groupedSubjectIds.has(s.id));
 
+    // Query teacher assignments for this section + periodGrade. Build map:
+    // subjectId → { fullName, docWithType }
+    const teacherAssignments = await TeacherAssignment.findAll({
+      where: { sectionId: section.id },
+      include: [
+        {
+          model: PeriodGradeSubject,
+          as: 'periodGradeSubject',
+          required: true,
+          where: { periodGradeId: pg.id },
+        },
+        {
+          model: Person,
+          as: 'teacher',
+          attributes: ['firstName', 'lastName', 'documentType', 'document'],
+        },
+      ],
+    });
+    const teacherMap = new Map<number, { fullName: string; docWithType: string }>();
+    for (const ta of teacherAssignments) {
+      const pgs = (ta as any).periodGradeSubject;
+      const teacher = (ta as any).teacher;
+      if (pgs && teacher) {
+        const docType = teacher.documentType === 'Venezolano' ? 'V' :
+                        teacher.documentType === 'Extranjero' ? 'E' : 'V';
+        teacherMap.set(pgs.subjectId, {
+          fullName: `${teacher.lastName || ''} ${teacher.firstName || ''}`.trim(),
+          docWithType: docType + ' ' + (teacher.document || ''),
+        });
+      }
+    }
+
     const calculateFinalScore = (insSub: any): number | null => {
       if (insSub.finalGrade && insSub.finalGrade.finalScore != null) {
         return Number(insSub.finalGrade.finalScore);
@@ -572,6 +605,36 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
     // Only subjects with a corresponding subj_i named range are written.
     // Subjects beyond the template's named ranges are silently skipped to
     // preserve the Excel layout (no auto-appending columns).
+
+    // Write teacher name and document for each subject in the "V. Profesores
+    // por Áreas" section (rows 58-65). Layout per row:
+    //   col F-G → teacher name (merged F:G)
+    //   col H   → teacher doc (Cédula de Identidad)
+    //   col I-O → Firma (merged I:O)
+    // Row 66 (subject 9) is skipped because F66:Z66 is merged.
+    const setTeacherData = (ws: ExcelJS.Worksheet) => {
+      for (let i = 1; i <= sortedAcademicSubjects.length; i++) {
+        const row = 57 + i;
+        if (row > 65) break;
+        const subj = sortedAcademicSubjects[i - 1];
+        if (!subj) continue;
+        const teacher = teacherMap.get(subj.id);
+        if (!teacher) continue;
+
+        // Create named ranges (first sheet only)
+        if (ws === sheet) {
+          try { workbook.definedNames.add(`'${actualSheetName}'!$F$${row}`, 'teacher_name_' + i); } catch {}
+          try { workbook.definedNames.add(`'${actualSheetName}'!$H$${row}`, 'teacher_doc_' + i); } catch {}
+        }
+
+        ws.getRow(row).getCell(6).value = teacher.fullName;   // col F — teacher name
+        ws.getRow(row).getCell(8).value = teacher.docWithType; // col H — teacher doc
+      }
+    };
+
+    // Write teacher data on the original template sheet (will be inherited by
+    // cloned sheets via cloneSheetInPlace).
+    setTeacherData(sheet!);
 
 // Classify students into approved and failed based on the calculated
     // final score per academic subject. A student fails the period if any
