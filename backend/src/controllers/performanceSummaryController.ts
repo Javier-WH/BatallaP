@@ -435,11 +435,19 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
 
     const allSubjects = Array.from(subjectMap.values());
 
+    // Only include subjects that are in the grade's official curriculum
+    // (PeriodGradeSubject). Subjects from student inscriptions that don't
+    // belong to this grade (e.g. Biology from a different grade) are excluded
+    // so they don't leak into the Excel columns.
+    const pgSubjectIds = new Set(pgSubjects.map(pgs => (pgs as any).subjectId).filter(Boolean));
+
     const groupedSubjectIds = new Set(
       allSubjects.filter(s => s.subjectGroupId !== null).map(s => s.id)
     );
 
-    const academicSubjects = allSubjects.filter(s => !groupedSubjectIds.has(s.id));
+    const academicSubjects = allSubjects.filter(s =>
+      pgSubjectIds.has(s.id)
+    );
 
     // Query teacher assignments for this section + periodGrade. Build map:
     // subjectId → { fullName, docWithType }
