@@ -826,7 +826,10 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
     // `'1er Año'!$X$Y` remain valid. Formulas like `=subj_1` in the
     // template will resolve correctly. Subsequent groups and extra pages
     // are clones with different names.
-    let originalSheetUsed = false;
+    //
+    // IMPORTANT: all clones are created BEFORE any fillGroupPage call so that
+    // the template sheet isn't yet filled with student data. Otherwise each
+    // clone would inherit the previous page's students in un-overwritten rows.
     const renderGroup = (
       group: any[],
       evalType: string,
@@ -835,26 +838,29 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
     ): string[] => {
       if (group.length === 0) return [];
       const pages = Math.ceil(group.length / MAX_STUDENTS_PER_SHEET);
-      const generated: string[] = [];
+      const pageSheets: ExcelJS.Worksheet[] = [];
+      const pageNames: string[] = [];
+
+      // Phase 1: create all worksheets (clone from clean template)
       for (let pageIdx = 0; pageIdx < pages; pageIdx++) {
-        let targetSheet: ExcelJS.Worksheet;
-        let targetName: string;
-        if (isFirst && pageIdx === 0 && !originalSheetUsed) {
-          // Use the original template sheet in-place, keep its original
-          // name so named ranges stay valid.
-          targetSheet = sheet!;
-          targetName = actualSheetName;
-          originalSheetUsed = true;
+        if (isFirst && pageIdx === 0) {
+          pageSheets[0] = sheet!;
+          pageNames[0] = actualSheetName;
         } else {
-          targetName = `${actualSheetName} (${groupLabel} ${pageIdx + 1})`;
-          targetSheet = cloneSheetInPlace(sheet!, targetName);
+          const name = `${actualSheetName} (${groupLabel} ${pageIdx + 1})`;
+          pageSheets.push(cloneSheetInPlace(sheet!, name));
+          pageNames.push(name);
         }
+      }
+
+      // Phase 2: fill each sheet with its slice of students
+      for (let pageIdx = 0; pageIdx < pages; pageIdx++) {
         const studentOffset = pageIdx * MAX_STUDENTS_PER_SHEET;
         const pageCount = Math.min(group.length - studentOffset, MAX_STUDENTS_PER_SHEET);
-        fillGroupPage(targetSheet, group, studentOffset, evalType, inscriptions.length, pageCount);
-        generated.push(targetName);
+        fillGroupPage(pageSheets[pageIdx], group, studentOffset, evalType, inscriptions.length, pageCount);
       }
-      return generated;
+
+      return pageNames;
     };
 
     let approvedSheetNames: string[] = [];
