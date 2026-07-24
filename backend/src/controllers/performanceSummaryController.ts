@@ -841,16 +841,21 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
       const pageSheets: ExcelJS.Worksheet[] = [];
       const pageNames: string[] = [];
 
-      // Phase 1: create all worksheets (clone from clean template)
+      // Phase 1: create all worksheets (clone from clean template).
+      // Naming: 1er Año (1), 1er Año (2), ... (no group labels).
       for (let pageIdx = 0; pageIdx < pages; pageIdx++) {
         if (isFirst && pageIdx === 0) {
           pageSheets[0] = sheet!;
-          pageNames[0] = actualSheetName;
+          pageNames[0] = `${actualSheetName} (${pageIdx + 1})`;
         } else {
-          const name = `${actualSheetName} (${groupLabel} ${pageIdx + 1})`;
+          const name = `${actualSheetName} (${pageIdx + 1})`;
           pageSheets.push(cloneSheetInPlace(sheet!, name));
           pageNames.push(name);
         }
+      }
+      // Rename original sheet in-place so it matches the (1) convention.
+      if (isFirst && pages > 0 && pageSheets[0] === sheet!) {
+        sheet!.name = pageNames[0];
       }
 
       // Phase 2: fill each sheet with its slice of students
@@ -894,16 +899,27 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
     // Re-register ALL named ranges from the template so that formulas like
     // =subj_1 survive the removeWorksheet + clone operations. ExcelJS drops
     // definedNames when sheets are removed, so we rebuild them here.
+    // If the original sheet was renamed (e.g. "1er Año" → "1er Año (1)"),
+    // use the new name so formulas resolve correctly.
+    const sheetNameMap = new Map<string, string>();
+    for (const ws of workbook.worksheets) {
+      for (const [origName] of namedRanges.bySheet) {
+        if (ws.name.startsWith(origName)) {
+          sheetNameMap.set(origName, ws.name);
+        }
+      }
+    }
     for (const [sheetName, namesMap] of namedRanges.bySheet) {
+      const actualWsName = sheetNameMap.get(sheetName) || sheetName;
       for (const [name, ref] of namesMap) {
-        const sheetLabel = sheetName.includes(' ')
-          ? `'${sheetName}'`
-          : sheetName;
+        const sheetLabel = actualWsName.includes(' ')
+          ? `'${actualWsName}'`
+          : actualWsName;
         const locStr = `${sheetLabel}!$${ref.cell}`;
         try {
           workbook.definedNames.add(locStr, name);
         } catch {
-          // name may already exist (original sheet kept); ignore
+          // name may already exist; ignore
         }
       }
     }
