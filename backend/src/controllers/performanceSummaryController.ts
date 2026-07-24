@@ -595,6 +595,32 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
       }
     }
 
+    const passingGrade = Number(settings.passing_grade) || 10;
+
+    // Count failed students per subject (score < passingGrade)
+    const failedCountBySubject = new Map<number, number>();
+    for (const ins of inscriptions) {
+      for (const is of (ins as any).inscriptionSubjects || []) {
+        if (!is.subjectId || groupedSubjectIds.has(is.subjectId)) continue;
+        const score = calculateFinalScore(is);
+        if (score != null && score < passingGrade) {
+          failedCountBySubject.set(is.subjectId, (failedCountBySubject.get(is.subjectId) || 0) + 1);
+        }
+      }
+    }
+
+    // Count approved students per subject (score >= passingGrade)
+    const passedCountBySubject = new Map<number, number>();
+    for (const ins of inscriptions) {
+      for (const is of (ins as any).inscriptionSubjects || []) {
+        if (!is.subjectId || groupedSubjectIds.has(is.subjectId)) continue;
+        const score = calculateFinalScore(is);
+        if (score != null && score >= passingGrade) {
+          passedCountBySubject.set(is.subjectId, (passedCountBySubject.get(is.subjectId) || 0) + 1);
+        }
+      }
+    }
+
     // Discover subj_i named ranges and WRITE the abbreviation of the i-th
     // subject (in canonical order) into that cell. The map is subjIndex → subjectId
     // so that fillSheetByNamedRanges can look up which subject a column belongs to.
@@ -629,6 +655,28 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
           const countCell = colPart + '67';
           try { workbook.definedNames.add(`'${actualSheetName}'!$${colPart}$67`, 'subj_count_' + subjIdx); } catch {}
           sheet!.getCell(countCell).value = countVal;
+        }
+        // Write failed-student count per subject
+        const failedVal = failedCountBySubject.get(subj.id) || 0;
+        const failedRef = findRef('subj_failed_' + subjIdx);
+        if (failedRef) {
+          sheet!.getCell(failedRef.cell).value = failedVal;
+        } else if (ref) {
+          const colPart2 = ref.cell.replace(/\d+$/, '');
+          const failedCell = colPart2 + '68';
+          try { workbook.definedNames.add(`'${actualSheetName}'!$${colPart2}$68`, 'subj_failed_' + subjIdx); } catch {}
+          sheet!.getCell(failedCell).value = failedVal;
+        }
+        // Write approved-student count per subject
+        const passedVal = passedCountBySubject.get(subj.id) || 0;
+        const passedRef = findRef('subj_passed_' + subjIdx);
+        if (passedRef) {
+          sheet!.getCell(passedRef.cell).value = passedVal;
+        } else if (ref) {
+          const colPart3 = ref.cell.replace(/\d+$/, '');
+          const passedCell = colPart3 + '69';
+          try { workbook.definedNames.add(`'${actualSheetName}'!$${colPart3}$69`, 'subj_passed_' + subjIdx); } catch {}
+          sheet!.getCell(passedCell).value = passedVal;
         }
       }
       subjIdx++;
@@ -672,7 +720,6 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
 // Classify students into approved and failed based on the calculated
     // final score per academic subject. A student fails the period if any
     // academic subject ends up below passingGrade.
-    const passingGrade = Number(settings.passing_grade) || 10;
     const isFailed = (ins: any): boolean => {
       const sortedSubs = sortSubjectsByOrder(
         ins.inscriptionSubjects || [],
@@ -777,6 +824,8 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
         const ref = findRef('subj_' + i);
         const nameRef = findRef('subjname_' + i);
         const countRef = findRef('subj_count_' + i);
+        const failedRef = findRef('subj_failed_' + i);
+        const passedRef = findRef('subj_passed_' + i);
         const subj = sortedAcademicSubjects[i - 1];
         if (subj) {
           const abbrText = subj.abbreviation || subj.name;
@@ -790,6 +839,12 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
           }
           if (countRef) {
             ws.getCell(countRef.cell).value = studentCountBySubject.get(subj.id) || 0;
+          }
+          if (failedRef) {
+            ws.getCell(failedRef.cell).value = failedCountBySubject.get(subj.id) || 0;
+          }
+          if (passedRef) {
+            ws.getCell(passedRef.cell).value = passedCountBySubject.get(subj.id) || 0;
           }
         }
       }
