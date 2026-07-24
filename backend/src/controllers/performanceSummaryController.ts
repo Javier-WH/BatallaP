@@ -621,6 +621,18 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
       }
     }
 
+    // Count zero-score students per subject (exactly 0 = inasistentes)
+    const zeroCountBySubject = new Map<number, number>();
+    for (const ins of inscriptions) {
+      for (const is of (ins as any).inscriptionSubjects || []) {
+        if (!is.subjectId || groupedSubjectIds.has(is.subjectId)) continue;
+        const score = calculateFinalScore(is);
+        if (score != null && score === 0) {
+          zeroCountBySubject.set(is.subjectId, (zeroCountBySubject.get(is.subjectId) || 0) + 1);
+        }
+      }
+    }
+
     // Discover subj_i named ranges and WRITE the abbreviation of the i-th
     // subject (in canonical order) into that cell. The map is subjIndex → subjectId
     // so that fillSheetByNamedRanges can look up which subject a column belongs to.
@@ -677,6 +689,17 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
           const passedCell = colPart3 + '69';
           try { workbook.definedNames.add(`'${actualSheetName}'!$${colPart3}$69`, 'subj_passed_' + subjIdx); } catch {}
           sheet!.getCell(passedCell).value = passedVal;
+        }
+        // Write zero-score (inasistentes) count per subject
+        const zeroVal = zeroCountBySubject.get(subj.id) || 0;
+        const zeroRef = findRef('subj_zero_' + subjIdx);
+        if (zeroRef) {
+          sheet!.getCell(zeroRef.cell).value = zeroVal;
+        } else if (ref) {
+          const colPart4 = ref.cell.replace(/\d+$/, '');
+          const zeroCell = colPart4 + '70';
+          try { workbook.definedNames.add(`'${actualSheetName}'!$${colPart4}$70`, 'subj_zero_' + subjIdx); } catch {}
+          sheet!.getCell(zeroCell).value = zeroVal;
         }
       }
       subjIdx++;
@@ -826,6 +849,7 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
         const countRef = findRef('subj_count_' + i);
         const failedRef = findRef('subj_failed_' + i);
         const passedRef = findRef('subj_passed_' + i);
+        const zeroRef = findRef('subj_zero_' + i);
         const subj = sortedAcademicSubjects[i - 1];
         if (subj) {
           const abbrText = subj.abbreviation || subj.name;
@@ -845,6 +869,9 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
           }
           if (passedRef) {
             ws.getCell(passedRef.cell).value = passedCountBySubject.get(subj.id) || 0;
+          }
+          if (zeroRef) {
+            ws.getCell(zeroRef.cell).value = zeroCountBySubject.get(subj.id) || 0;
           }
         }
       }
