@@ -633,6 +633,8 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
       }
     }
 
+    const totalStudents = inscriptions.length;
+
     // Discover subj_i named ranges and WRITE the abbreviation of the i-th
     // subject (in canonical order) into that cell. The map is subjIndex → subjectId
     // so that fillSheetByNamedRanges can look up which subject a column belongs to.
@@ -700,6 +702,17 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
           const zeroCell = colPart4 + '70';
           try { workbook.definedNames.add(`'${actualSheetName}'!$${colPart4}$70`, 'subj_zero_' + subjIdx); } catch {}
           sheet!.getCell(zeroCell).value = zeroVal;
+        }
+        // Write unenrolled count per subject (total - enrolled)
+        const unenrolledVal = totalStudents - (studentCountBySubject.get(subj.id) || 0);
+        const unenrolledRef = findRef('subj_unenrolled_' + subjIdx);
+        if (unenrolledRef) {
+          sheet!.getCell(unenrolledRef.cell).value = unenrolledVal;
+        } else if (ref) {
+          const colPart5 = ref.cell.replace(/\d+$/, '');
+          const unenrolledCell = colPart5 + '71';
+          try { workbook.definedNames.add(`'${actualSheetName}'!$${colPart5}$71`, 'subj_unenrolled_' + subjIdx); } catch {}
+          sheet!.getCell(unenrolledCell).value = unenrolledVal;
         }
       }
       subjIdx++;
@@ -850,6 +863,7 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
         const failedRef = findRef('subj_failed_' + i);
         const passedRef = findRef('subj_passed_' + i);
         const zeroRef = findRef('subj_zero_' + i);
+        const unenrolledRef = findRef('subj_unenrolled_' + i);
         const subj = sortedAcademicSubjects[i - 1];
         if (subj) {
           const abbrText = subj.abbreviation || subj.name;
@@ -872,6 +886,9 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
           }
           if (zeroRef) {
             ws.getCell(zeroRef.cell).value = zeroCountBySubject.get(subj.id) || 0;
+          }
+          if (unenrolledRef) {
+            ws.getCell(unenrolledRef.cell).value = totalStudents - (studentCountBySubject.get(subj.id) || 0);
           }
         }
       }
