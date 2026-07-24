@@ -585,6 +585,16 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
       return orderA - orderB;
     });
 
+    // Count enrolled students per subject across all inscriptions
+    const studentCountBySubject = new Map<number, number>();
+    for (const ins of inscriptions) {
+      for (const is of (ins as any).inscriptionSubjects || []) {
+        if (is.subjectId) {
+          studentCountBySubject.set(is.subjectId, (studentCountBySubject.get(is.subjectId) || 0) + 1);
+        }
+      }
+    }
+
     // Discover subj_i named ranges and WRITE the abbreviation of the i-th
     // subject (in canonical order) into that cell. The map is subjIndex → subjectId
     // so that fillSheetByNamedRanges can look up which subject a column belongs to.
@@ -608,6 +618,17 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
             ? 'Participación en Grupos de \r\nCreación, Recreación y Producción'
             : subj.name;
           sheet!.getCell(nameRef.cell).value = nameText;
+        }
+        // Write enrolled-student count per subject in the same column
+        const countVal = studentCountBySubject.get(subj.id) || 0;
+        const countRef = findRef('subj_count_' + subjIdx);
+        if (countRef) {
+          sheet!.getCell(countRef.cell).value = countVal;
+        } else if (ref) {
+          const colPart = ref.cell.replace(/\d+$/, '');
+          const countCell = colPart + '67';
+          try { workbook.definedNames.add(`'${actualSheetName}'!$${colPart}$67`, 'subj_count_' + subjIdx); } catch {}
+          sheet!.getCell(countCell).value = countVal;
         }
       }
       subjIdx++;
@@ -755,6 +776,7 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
       for (let i = 1; i <= sortedAcademicSubjects.length; i++) {
         const ref = findRef('subj_' + i);
         const nameRef = findRef('subjname_' + i);
+        const countRef = findRef('subj_count_' + i);
         const subj = sortedAcademicSubjects[i - 1];
         if (subj) {
           const abbrText = subj.abbreviation || subj.name;
@@ -765,6 +787,9 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
               ? 'Participación en Grupos de \r\nCreación, Recreación y Producción'
               : subj.name;
             ws.getCell(nameRef.cell).value = nameText;
+          }
+          if (countRef) {
+            ws.getCell(countRef.cell).value = studentCountBySubject.get(subj.id) || 0;
           }
         }
       }
