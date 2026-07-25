@@ -190,6 +190,7 @@ function fillSheetByNamedRanges(
   const lookupSheetName = sourceSheetName || sheetName;
   const setByRange = (name: string, value: any) => {
     if (value === undefined || value === null || value === '') return;
+    if (typeof value === 'string') value = value.toUpperCase();
     let ref = namedRanges.getCell(lookupSheetName, name);
     if (!ref) {
       for (const sn of namedRanges.bySheet.keys()) {
@@ -242,8 +243,8 @@ function fillSheetByNamedRanges(
     setByRange('std_doc_' + n, docType + ' ' + (student?.document || ''));
     setByRange('std_ln_' + n, student?.lastName);
     setByRange('std_fn_' + n, student?.firstName);
-    setByRange('std_bp_' + n, residence?.birthMunicipality);
-    setByRange('std_ef_' + n, getStateAbbrev(residence?.birthState || ''));
+    setByRange('std_bp_' + n, residence?.birthMunicipality?.toUpperCase());
+    setByRange('std_ef_' + n, getStateAbbrev(residence?.birthState || '').toUpperCase());
     setByRange('std_sx_' + n, student?.gender);
 
     if (student?.birthdate) {
