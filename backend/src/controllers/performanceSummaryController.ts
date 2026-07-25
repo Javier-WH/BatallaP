@@ -666,9 +666,7 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
           sheet!.getCell(countRef.cell).value = countVal;
         } else if (ref) {
           const colPart = ref.cell.replace(/\d+$/, '');
-          const countCell = colPart + '67';
-          try { workbook.definedNames.add(`'${actualSheetName}'!$${colPart}$67`, 'subj_count_' + subjIdx); } catch {}
-          sheet!.getCell(countCell).value = countVal;
+          sheet!.getCell(colPart + '67').value = countVal;
         }
         // Write failed-student count per subject
         const failedVal = failedCountBySubject.get(subj.id) || 0;
@@ -677,9 +675,7 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
           sheet!.getCell(failedRef.cell).value = failedVal;
         } else if (ref) {
           const colPart2 = ref.cell.replace(/\d+$/, '');
-          const failedCell = colPart2 + '68';
-          try { workbook.definedNames.add(`'${actualSheetName}'!$${colPart2}$68`, 'subj_failed_' + subjIdx); } catch {}
-          sheet!.getCell(failedCell).value = failedVal;
+          sheet!.getCell(colPart2 + '68').value = failedVal;
         }
         // Write approved-student count per subject
         const passedVal = passedCountBySubject.get(subj.id) || 0;
@@ -688,9 +684,7 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
           sheet!.getCell(passedRef.cell).value = passedVal;
         } else if (ref) {
           const colPart3 = ref.cell.replace(/\d+$/, '');
-          const passedCell = colPart3 + '69';
-          try { workbook.definedNames.add(`'${actualSheetName}'!$${colPart3}$69`, 'subj_passed_' + subjIdx); } catch {}
-          sheet!.getCell(passedCell).value = passedVal;
+          sheet!.getCell(colPart3 + '69').value = passedVal;
         }
         // Write zero-score (inasistentes) count per subject
         const zeroVal = zeroCountBySubject.get(subj.id) || 0;
@@ -699,9 +693,7 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
           sheet!.getCell(zeroRef.cell).value = zeroVal;
         } else if (ref) {
           const colPart4 = ref.cell.replace(/\d+$/, '');
-          const zeroCell = colPart4 + '70';
-          try { workbook.definedNames.add(`'${actualSheetName}'!$${colPart4}$70`, 'subj_zero_' + subjIdx); } catch {}
-          sheet!.getCell(zeroCell).value = zeroVal;
+          sheet!.getCell(colPart4 + '70').value = zeroVal;
         }
         // Write unenrolled count per subject (total - enrolled)
         const unenrolledVal = totalStudents - (studentCountBySubject.get(subj.id) || 0);
@@ -710,9 +702,7 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
           sheet!.getCell(unenrolledRef.cell).value = unenrolledVal;
         } else if (ref) {
           const colPart5 = ref.cell.replace(/\d+$/, '');
-          const unenrolledCell = colPart5 + '71';
-          try { workbook.definedNames.add(`'${actualSheetName}'!$${colPart5}$71`, 'subj_unenrolled_' + subjIdx); } catch {}
-          sheet!.getCell(unenrolledCell).value = unenrolledVal;
+          sheet!.getCell(colPart5 + '71').value = unenrolledVal;
         }
       }
       subjIdx++;
@@ -737,12 +727,6 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
         if (!subj) continue;
         const teacher = teacherMap.get(subj.id);
         if (!teacher) continue;
-
-        // Create named ranges (first sheet only)
-        if (ws === sheet) {
-          try { workbook.definedNames.add(`'${actualSheetName}'!$F$${row}`, 'teacher_name_' + i); } catch {}
-          try { workbook.definedNames.add(`'${actualSheetName}'!$H$${row}`, 'teacher_doc_' + i); } catch {}
-        }
 
         ws.getRow(row).getCell(6).value = teacher.fullName;   // col F — teacher name
         ws.getRow(row).getCell(8).value = teacher.docWithType; // col H — teacher doc
@@ -790,7 +774,7 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
       sourceWs.eachRow({ includeEmpty: true }, (row, rowNum) => {
         row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
           const c = cloned.getRow(rowNum).getCell(colNumber);
-          c.value = cell.value;
+          c.value = cell.value && typeof cell.value === 'object' ? JSON.parse(JSON.stringify(cell.value)) : cell.value;
           if (cell.style) c.style = JSON.parse(JSON.stringify(cell.style));
           if (cell.numFmt) c.numFmt = cell.numFmt;
         });
@@ -940,6 +924,42 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
       };
       setLocal('std_total', sectionTotal);
       setLocal('std_page_count', pageCount);
+
+      // Replace formula references to named ranges with direct cell
+      // references so that formulas resolve correctly in every cloned
+      // sheet. Only use named ranges from the matching template sheet
+      // (e.g. '1er Año' for '1er Año (1)') to avoid cross-sheet
+      // collisions where the same name (e.g. subj_1) exists on every
+      // template sheet pointing to different columns.
+      const nameToRef = new Map<string, string>();
+      for (const [origName, namesMap] of namedRanges.bySheet) {
+        if (ws.name.startsWith(origName)) {
+          for (const [name, ref] of namesMap) {
+            nameToRef.set(name, `'${ws.name}'!$${ref.cell}`);
+          }
+        }
+      }
+      ws.eachRow((row) => {
+        row.eachCell((cell) => {
+          const v = cell.value;
+          if (v && typeof v === 'object' && 'formula' in v) {
+            let formula = (v as any).formula;
+            if (!formula) return;
+            let changed = false;
+            for (const [name, cellRef] of nameToRef) {
+              const re = new RegExp(`\\b${name}\\b`, 'g');
+              const newFormula = formula.replace(re, cellRef);
+              if (newFormula !== formula) {
+                formula = newFormula;
+                changed = true;
+              }
+            }
+            if (changed) {
+              (v as any).formula = formula;
+            }
+          }
+        });
+      });
     };
 
     // Render one or more pages for a given student group with the given
@@ -1020,30 +1040,46 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
       .filter(ws => !keepNames.has(ws.name))
       .forEach(ws => workbook.removeWorksheet(ws.id!));
 
-    // Re-register ALL named ranges from the template so that formulas like
-    // =subj_1 survive the removeWorksheet + clone operations. ExcelJS drops
-    // definedNames when sheets are removed, so we rebuild them here.
-    // If the original sheet was renamed (e.g. "1er Año" → "1er Año (1)"),
-    // use the new name so formulas resolve correctly.
-    const sheetNameMap = new Map<string, string>();
+    // Re-register all named ranges as global entries with fully-qualified
+    // sheet references (matching how the template itself stores them).
+    // Excel handles duplicate global names gracefully by picking the one
+    // matching the current sheet context. This avoids the issues with
+    // localSheetId that caused Excel to reject the file.
+    // Clear existing named ranges and re-add for remaining worksheets.
+    (workbook as any)._definedNames.matrixMap = {};
+
+    const addWithSheet = (name: string, wsName: string, cell: string) => {
+      const sheetLabel = wsName.includes(' ') ? `'${wsName}'` : wsName;
+      try {
+        workbook.definedNames.add(`${sheetLabel}!$${cell}`, name);
+      } catch {}
+    };
+
     for (const ws of workbook.worksheets) {
-      for (const [origName] of namedRanges.bySheet) {
-        if (ws.name.startsWith(origName)) {
-          sheetNameMap.set(origName, ws.name);
+      const wsName = ws.name;
+      // Template named ranges
+      for (const [origName, namesMap] of namedRanges.bySheet) {
+        if (wsName.startsWith(origName)) {
+          for (const [name, ref] of namesMap) {
+            addWithSheet(name, wsName, ref.cell);
+          }
         }
       }
-    }
-    for (const [sheetName, namesMap] of namedRanges.bySheet) {
-      const actualWsName = sheetNameMap.get(sheetName) || sheetName;
-      for (const [name, ref] of namesMap) {
-        const sheetLabel = actualWsName.includes(' ')
-          ? `'${actualWsName}'`
-          : actualWsName;
-        const locStr = `${sheetLabel}!$${ref.cell}`;
-        try {
-          workbook.definedNames.add(locStr, name);
-        } catch {
-          // name may already exist; ignore
+      // Dynamic named ranges (subject counts, teacher info)
+      for (let i = 1; i <= sortedAcademicSubjects.length; i++) {
+        const ref = findRef('subj_' + i);
+        if (ref) {
+          const colPart = ref.cell.replace(/\d+$/, '');
+          addWithSheet('subj_count_' + i, wsName, `${colPart}67`);
+          addWithSheet('subj_failed_' + i, wsName, `${colPart}68`);
+          addWithSheet('subj_passed_' + i, wsName, `${colPart}69`);
+          addWithSheet('subj_zero_' + i, wsName, `${colPart}70`);
+          addWithSheet('subj_unenrolled_' + i, wsName, `${colPart}71`);
+        }
+        const teacherRow = 57 + i;
+        if (teacherRow <= 65) {
+          addWithSheet('teacher_name_' + i, wsName, `F${teacherRow}`);
+          addWithSheet('teacher_doc_' + i, wsName, `H${teacherRow}`);
         }
       }
     }
