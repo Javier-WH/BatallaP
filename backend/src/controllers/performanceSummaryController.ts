@@ -893,7 +893,7 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
       // Override the evaluation type for this group. We do it after the
       // generic fill so it is not overwritten by the hard-coded default.
       const evalRef = findRef('inst_eval_type');
-      if (evalRef) ws.getCell(evalRef.cell).value = evalType;
+      if (evalRef) ws.getCell(evalRef.cell).value = String(evalType).toUpperCase();
 
       // Total students in the section and students on this page.
       // Before writing, unmerge any range that contains the target cell so
@@ -1021,15 +1021,15 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
         return res.status(404).json({ message: 'No hay estudiantes reprobados en esta sección' });
       }
       failedSheetNames = renderGroup(
-        failedInscriptions, 'REVISION DE MATERIA PENDIENTE', 'REVISION', true,
+        failedInscriptions, 'Revisión', 'REVISION', true,
       );
     } else {
-      if (approvedInscriptions.length === 0) {
-        return res.status(404).json({ message: 'No hay estudiantes aprobados en esta sección' });
+      if (inscriptions.length === 0) {
+        return res.status(404).json({ message: 'No hay estudiantes en esta sección' });
       }
-      // Default 'regulares': only approved students
+      // Final: include all students (approved + failed)
       approvedSheetNames = renderGroup(
-        approvedInscriptions, 'Regulares', 'Regulares', true,
+        inscriptions, 'Final', 'Regulares', true,
       );
     }
 

@@ -173,7 +173,7 @@ const PerformanceSummary: React.FC = () => {
       return;
     }
     if (!selectedTemplate) {
-      message.warning('Debe seleccionar una plantilla (o asignar una al grado/sección)');
+      setTemplateModalOpen(true);
       return;
     }
     setExporting(true);
@@ -372,7 +372,7 @@ const PerformanceSummary: React.FC = () => {
                         <Col xs={24} style={{ textAlign: 'center' }}>
                           <Text style={{ fontWeight: 700, display: 'block', marginBottom: 8 }}>Grupo de estudiantes</Text>
                           <Radio.Group value={studentGroup} onChange={(e) => setStudentGroup(e.target.value)} size="large" buttonStyle="solid">
-                            <Radio.Button value="regulares" style={{ borderRadius: '8px 0 0 8px', fontWeight: 600, padding: '4px 24px' }}>Regulares (Aprobados)</Radio.Button>
+                            <Radio.Button value="regulares" style={{ borderRadius: '8px 0 0 8px', fontWeight: 600, padding: '4px 24px' }}>Final (Aprobados)</Radio.Button>
                             <Radio.Button value="revision" style={{ borderRadius: '0 8px 8px 0', fontWeight: 600, padding: '4px 24px' }}>Revisión (Reprobados)</Radio.Button>
                           </Radio.Group>
                         </Col>
@@ -398,7 +398,7 @@ const PerformanceSummary: React.FC = () => {
                         <div style={{ maxWidth: 520, fontSize: 12.5, lineHeight: 1.5 }}>
                           <div style={{ fontWeight: 700, color: '#0f172a', marginBottom: 6 }}>Datos de la institución y el período</div>
                           <LegendRow name="inst_period" desc="Nombre del período académico activo (ej. 2025-2026)." />
-                          <LegendRow name="inst_eval_type" desc="Tipo de evaluación (texto fijo: REVISION DE MATERIA PENDIENTE)." />
+                          <LegendRow name="inst_eval_type" desc="Tipo de evaluación: Final (aprobados) o Revisión (reprobados)." />
                           <LegendRow name="inst_code" desc="Código DEA de la institución." />
                           <LegendRow name="inst_education_code" desc="Código del nivel/modalidad educativa según el MPPE (ej. 31059)." />
                           <LegendRow name="inst_level" desc="Tipo/nivel de educación del plantel (ej. EDUCACIÓN MEDIA GENERAL)." />
@@ -432,6 +432,14 @@ const PerformanceSummary: React.FC = () => {
                           <Divider style={{ margin: '10px 0' }} />
                           <div style={{ fontWeight: 700, color: '#0f172a', marginBottom: 6 }}>Notas por estudiante y materia</div>
                           <LegendRow name="grade_i_n" desc="Nota final del estudiante n en la materia de la columna i." />
+                          <Divider style={{ margin: '10px 0' }} />
+                          <div style={{ fontWeight: 700, color: '#0f172a', marginBottom: 6 }}>Totales por hoja</div>
+                          <LegendRow name="std_total" desc="Total de estudiantes en la hoja." />
+                          <LegendRow name="std_page_count" desc="Número de estudiantes en la página actual." />
+                          <Divider style={{ margin: '10px 0' }} />
+                          <div style={{ fontWeight: 700, color: '#0f172a', marginBottom: 6 }}>Datos del docente por materia</div>
+                          <LegendRow name="teacher_name_i" desc="Nombre del docente de la materia i." />
+                          <LegendRow name="teacher_doc_i" desc="Cédula del docente de la materia i." />
                           <Divider style={{ margin: '10px 0' }} />
                           <div style={{ fontWeight: 700, color: '#0f172a', marginBottom: 6 }}>Conteos por materia (fila 67-71)</div>
                           <LegendRow name="subj_count_i" desc="Total inscritos en la materia i." />
