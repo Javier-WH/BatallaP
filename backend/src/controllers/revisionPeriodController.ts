@@ -150,10 +150,12 @@ export const getRevisionStudents = async (req: Request, res: Response) => {
         entry.subjects.push({
           inscriptionSubjectId: insSub.id,
           subjectName: insSub.subject?.name || '',
+          abbreviation: insSub.subject?.abbreviation || insSub.subject?.name || '',
           originalScore: null,
           originalStatus: null,
           maxOpportunities: revisionPeriod.maxOpportunities,
           revisions: subjectRevisionsMap.get(insSub.id) || [],
+          passed: false,
         });
       }
 
@@ -230,10 +232,12 @@ export const getRevisionStudents = async (req: Request, res: Response) => {
           subjects.push({
             inscriptionSubjectId: insSub.id,
             subjectName: insSub.subject?.name || '',
+            abbreviation: insSub.subject?.abbreviation || insSub.subject?.name || '',
             originalScore: finalScore,
             originalStatus: 'reprobada',
             maxOpportunities: 3,
             revisions: [],
+            passed: false,
           });
         }
       }

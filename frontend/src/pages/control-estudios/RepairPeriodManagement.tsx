@@ -45,10 +45,12 @@ interface RevisionItem {
 interface StudentSubject {
   inscriptionSubjectId: number;
   subjectName: string;
+  abbreviation: string;
   originalScore: number | null;
   originalStatus: string | null;
   maxOpportunities: number;
   revisions: RevisionItem[];
+  passed: boolean;
 }
 
 interface StudentRevision {
@@ -137,33 +139,57 @@ const RepairPeriodManagement: React.FC = () => {
     closed: 'Cerrado',
   };
 
-  const columns = [
-    { title: 'Estudiante', dataIndex: 'studentName', key: 'studentName', sorter: (a: StudentRevision, b: StudentRevision) => a.studentName.localeCompare(b.studentName) },
-    { title: 'Documento', dataIndex: 'document', key: 'document' },
-    { title: 'Grado', dataIndex: 'grade', key: 'grade' },
-    { title: 'Sección', dataIndex: 'section', key: 'section' },
-    {
-      title: 'Materias en reparación', dataIndex: 'subjects', key: 'subjects',
-      render: (subjects: StudentSubject[]) => (
-        <Space direction="vertical" size={2}>
-          {subjects.map((s, i) => (
-            <div key={i} style={{ fontSize: 12 }}>
-              <Text strong>{s.subjectName}</Text>
-              {' — '}
-              <Text type="secondary">Original: {s.originalScore ?? '—'}</Text>
-              {' | '}
-              <Space size={4}>
-                {s.revisions.map((r, j) => (
-                  <Tag key={j} color={r.status === 'approved' ? 'success' : r.status === 'failed' ? 'error' : 'default'}>
-                    Op{r.opportunity}: {r.score?.toFixed(2) ?? '—'}
-                  </Tag>
-                ))}
-              </Space>
-            </div>
-          ))}
+  // Build dynamic columns: one per unique subject abbreviation
+  const allSubjects = Array.from(
+    new Map(
+      students.flatMap(s => s.subjects).map(s => [s.abbreviation, s])
+    ).values()
+  );
+
+  const columns: any[] = [
+    { title: 'N°', key: 'idx', width: 50, fixed: 'left' as const, render: (_: any, __: any, idx: number) => idx + 1 },
+    { title: 'Apellidos y Nombres', key: 'studentName', width: 220, fixed: 'left' as const,
+      render: (_: any, record: StudentRevision) => (
+        <Space direction="vertical" size={0}>
+          <Text strong style={{ fontSize: 13 }}>{record.studentName}</Text>
+          <Text type="secondary" style={{ fontSize: 11 }}>{record.document} — {record.grade} {record.section}</Text>
         </Space>
       ),
     },
+    ...allSubjects.map(s => ({
+      title: (
+        <div style={{ textAlign: 'center', fontSize: 11, lineHeight: 1.3 }}>
+          <div style={{ fontWeight: 700 }}>{s.abbreviation}</div>
+          {!isPreview && s.revisions.length > 0 && (
+            <div style={{ color: '#888', fontSize: 10 }}>
+              {s.revisions.map(r => (
+                <Tag key={r.id} color={r.status === 'approved' ? 'success' : r.status === 'failed' ? 'error' : 'default'}
+                  style={{ fontSize: 9, padding: '0 4px', margin: '1px' }}>
+                  {r.score?.toFixed(1) ?? '—'}
+                </Tag>
+              ))}
+            </div>
+          )}
+        </div>
+      ),
+      key: `subj_${s.abbreviation}`,
+      width: 70,
+      align: 'center' as const,
+      render: (_: any, record: StudentRevision) => {
+        const subj = record.subjects.find(sub => sub.abbreviation === s.abbreviation);
+        if (!subj) return null;
+        if (isPreview) {
+          return <Text type="danger" style={{ fontSize: 18, fontWeight: 900 }}>✕</Text>;
+        }
+        const approved = subj.revisions.some(r => r.status === 'approved');
+        const hasFailed = subj.revisions.some(r => r.status === 'failed');
+        const pending = subj.revisions.some(r => r.status === 'pending');
+        if (approved) return <Tag color="success" style={{ fontSize: 11 }}>✓</Tag>;
+        if (pending) return <Tag color="default" style={{ fontSize: 11 }}>—</Tag>;
+        if (hasFailed) return <Text type="danger" style={{ fontSize: 18, fontWeight: 900 }}>✕</Text>;
+        return null;
+      },
+    })),
   ];
 
   return (
@@ -256,6 +282,8 @@ const RepairPeriodManagement: React.FC = () => {
                 columns={columns}
                 rowKey="studentId"
                 size="small"
+                scroll={{ x: Math.max(400, allSubjects.length * 75 + 280) }}
+                sticky={{ offsetHeader: 0 }}
                 pagination={{ pageSize: 20 }}
                 locale={{ emptyText: 'No hay estudiantes en reparación' }}
               />
