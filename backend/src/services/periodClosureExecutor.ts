@@ -10,12 +10,15 @@ import {
   StudentPeriodOutcome,
   PendingSubject,
   InscriptionSubject,
+  InscriptionSubjectRevision,
   PeriodGrade,
   PeriodGradeSection,
   Grade,
   Section,
   Person,
-  Subject
+  Subject,
+  RevisionPeriod,
+  SubjectFinalGrade
 } from '@/models/index';
 import { FinalGradeCalculator } from './finalGradeCalculator';
 import { StudentPromotionEngine } from './studentPromotionEngine';
@@ -91,6 +94,12 @@ export class PeriodClosureExecutor {
       errors.push(
         `Todos los consejos de curso deben estar completados. Completados: ${completedChecklist}/${totalChecklist}`
       );
+    }
+
+    // Validate RevisionPeriod status
+    const revisionPeriod = await RevisionPeriod.findOne({ where: { schoolPeriodId } });
+    if (revisionPeriod && revisionPeriod.status !== 'closed') {
+      errors.push('El período de reparación debe estar cerrado antes de ejecutar el cierre de período');
     }
 
     const inscriptions = await Inscription.findAll({
@@ -184,6 +193,55 @@ export class PeriodClosureExecutor {
       };
 
       const processLog: Record<string, unknown>[] = [];
+
+      // Apply repair grades before calculating final grades
+      const repairPeriod = await RevisionPeriod.findOne({
+        where: { schoolPeriodId },
+        transaction,
+      });
+      if (repairPeriod && repairPeriod.status === 'closed') {
+        console.log('[PeriodClosureExecutor] Applying repair grades...');
+        const revisions = await InscriptionSubjectRevision.findAll({
+          where: { revisionPeriodId: repairPeriod.id },
+          include: [
+            {
+              model: InscriptionSubject,
+              as: 'inscriptionSubject',
+              include: [{ model: Subject, as: 'subject' }],
+            },
+          ],
+          transaction,
+        });
+
+        const bestScoresBySubject = new Map<number, { score: number; approved: boolean }>();
+        for (const rev of revisions) {
+          if (rev.score == null) continue;
+          const current = bestScoresBySubject.get(rev.inscriptionSubjectId);
+          if (!current || rev.score > current.score) {
+            bestScoresBySubject.set(rev.inscriptionSubjectId, {
+              score: rev.score,
+              approved: rev.score >= repairPeriod.passingGrade,
+            });
+          }
+        }
+
+        for (const [inscriptionSubjectId, best] of bestScoresBySubject) {
+          const existingGrade = await SubjectFinalGrade.findOne({
+            where: { inscriptionSubjectId },
+            transaction,
+          });
+          if (existingGrade) {
+            await existingGrade.update({
+              originalScore: existingGrade.finalScore,
+              originalStatus: existingGrade.status,
+              finalScore: best.score,
+              status: best.approved ? 'aprobada' : 'reprobada',
+              gradeType: 'revision',
+            }, { transaction });
+          }
+        }
+        console.log(`[PeriodClosureExecutor] Repair grades applied to ${bestScoresBySubject.size} subjects`);
+      }
 
       for (const inscription of inscriptions) {
         try {

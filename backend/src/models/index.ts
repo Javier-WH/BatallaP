@@ -120,6 +120,8 @@ import GradeEditAudit from './GradeEditAudit';
 import EnrollmentReport from './EnrollmentReport';
 import DashboardContent from './DashboardContent';
 import QualificationAudit from './QualificationAudit';
+import RevisionPeriod from './RevisionPeriod';
+import InscriptionSubjectRevision from './InscriptionSubjectRevision';
 
 
 // ... (Existing User/Person/Role/Contact associations) ...
@@ -273,6 +275,19 @@ PendingSubject.belongsTo(SchoolPeriod, { foreignKey: 'originPeriodId', as: 'orig
 
 // Transition rules
 Grade.hasOne(SchoolPeriodTransitionRule, { foreignKey: 'gradeFromId', as: 'transitionRule' });
+
+// Revision period associations
+SchoolPeriod.hasOne(RevisionPeriod, { foreignKey: 'schoolPeriodId', as: 'revisionPeriod' });
+RevisionPeriod.belongsTo(SchoolPeriod, { foreignKey: 'schoolPeriodId', as: 'schoolPeriod' });
+
+RevisionPeriod.hasMany(InscriptionSubjectRevision, { foreignKey: 'revisionPeriodId', as: 'revisions' });
+InscriptionSubjectRevision.belongsTo(RevisionPeriod, { foreignKey: 'revisionPeriodId', as: 'revisionPeriod' });
+
+InscriptionSubject.hasMany(InscriptionSubjectRevision, { foreignKey: 'inscriptionSubjectId', as: 'revisions' });
+InscriptionSubjectRevision.belongsTo(InscriptionSubject, { foreignKey: 'inscriptionSubjectId', as: 'inscriptionSubject' });
+
+Person.hasMany(InscriptionSubjectRevision, { foreignKey: 'gradedBy', as: 'gradedRevisions' });
+InscriptionSubjectRevision.belongsTo(Person, { foreignKey: 'gradedBy', as: 'grader' });
 SchoolPeriodTransitionRule.belongsTo(Grade, { foreignKey: 'gradeFromId', as: 'gradeFrom' });
 Grade.hasMany(SchoolPeriodTransitionRule, { foreignKey: 'gradeToId', as: 'incomingTransitions' });
 SchoolPeriodTransitionRule.belongsTo(Grade, { foreignKey: 'gradeToId', as: 'gradeTo' });
@@ -358,5 +373,7 @@ export {
   GradeEditAudit,
   EnrollmentReport,
   DashboardContent,
-  QualificationAudit
+  QualificationAudit,
+  RevisionPeriod,
+  InscriptionSubjectRevision
 };

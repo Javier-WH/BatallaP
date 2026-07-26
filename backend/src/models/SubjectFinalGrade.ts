@@ -10,6 +10,8 @@ interface SubjectFinalGradeAttributes {
   id: number;
   inscriptionSubjectId: number;
   finalScore?: number | null;
+  originalScore?: number | null;
+  originalStatus?: string | null;
   rawScore?: number | null;
   councilPoints?: number | null;
   status: SubjectFinalGradeStatus;
@@ -33,6 +35,8 @@ class SubjectFinalGrade
   public id!: number;
   public inscriptionSubjectId!: number;
   public finalScore!: number | null;
+  public originalScore!: number | null;
+  public originalStatus!: string | null;
   public rawScore!: number | null;
   public councilPoints!: number | null;
   public status!: SubjectFinalGradeStatus;
@@ -63,6 +67,14 @@ SubjectFinalGrade.init(
     },
     finalScore: {
       type: DataTypes.DECIMAL(5, 2),
+      allowNull: true
+    },
+    originalScore: {
+      type: DataTypes.DECIMAL(5, 2),
+      allowNull: true
+    },
+    originalStatus: {
+      type: DataTypes.ENUM('aprobada', 'reprobada'),
       allowNull: true
     },
     rawScore: {

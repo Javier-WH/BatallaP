@@ -20,9 +20,11 @@ siguiente grado. Si no, siguen el flujo normal de `materias_pendientes` o
 ## 2. Ciclo de vida del periodo escolar (nuevo flujo)
 
 ```
-Lapso 1 ──► Lapso 2 ──► Lapso 3 ──► Consejos de Curso ──► Período de
-                                                           Reparación ──► Cierre de
-                                                                           Período
+Lapso 1 ──► Consejo de curso Lapso 1
+       ──► Lapso 2 ──► Consejo de curso Lapso 2
+       ──► Lapso 3 ──► Consejo de curso Lapso 3
+       ──► Período de Reparación
+       ──► Cierre de Período
 ```
 
 **Antes** (implementado actualmente):
@@ -56,7 +58,8 @@ Representa una ventana de reparacion dentro de un `SchoolPeriod`.
 - Solo puede haber **un** `RevisionPeriod` por `SchoolPeriod`.
 - `status` solo puede cambiar en orden: `pending -> open -> closed`.
 - Solo se puede abrir si todos los terminos del periodo estan bloqueados
-  y **todos** los `CouncilChecklist` tienen `status = 'done'`.
+  y **todos** los `CouncilChecklist` del periodo (uno por cada lapso)
+  tienen `status = 'done'`.
 
 ### 3.2 `InscriptionSubjectRevision`
 
@@ -89,29 +92,42 @@ Cada intento de reparacion de una materia por un estudiante.
 
 ## 4. Cambios a modelos existentes
 
-### 4.1 `CouncilChecklist` — Nuevo estado
+### 4.1 `CouncilChecklist` — Ya existe, se usa por lapso
 
-Agregar `'revision'` al ENUM de `status`:
+El modelo `CouncilChecklist` ya soporta consejos por lapso (tiene `termId`).
+El flujo actual en `CourseCouncil.tsx` ya permite seleccionar un termino
+bloqueado para hacer el consejo de ese lapso. No se requieren cambios
+estructurales al modelo.
 
-```
-ENUM('open','in_review','done','revision')
-```
+**Flujo por lapso**:
+1. Se bloquea Lapso 1 → Control de Estudios ejecuta consejo de curso del Lapso 1
+2. Se bloquea Lapso 2 → Control de Estudios ejecuta consejo de curso del Lapso 2
+3. Se bloquea Lapso 3 → Control de Estudios ejecuta consejo de curso del Lapso 3
+4. Solo cuando los 3 consejos estan `'done'`, se habilita la apertura del
+   periodo de reparacion.
 
-- `'revision'` indica que el consejo de curso determino que un estudiante debe
-  ir a reparacion en ciertas materias.
-- La transicion es: `in_review -> done` (todos pasaron) o `in_review -> revision`
-  (hay estudiantes a reparacion).
+### 4.2 `SubjectFinalGrade` — Cambios para preservar historial
 
-### 4.2 `SubjectFinalGrade.gradeType` — Usar los valores existentes
+Ya existen `'revision'` y `'revision_materia_pendiente'` en el ENUM `gradeType`.
 
-Ya existen `'revision'` y `'revision_materia_pendiente'` en el ENUM. Durante el
-calculo de notas finales del periodo de reparacion, se deben usar:
+**Regla de negocio**: Si un estudiante tiene nota de reparacion, **siempre**
+reemplaza la nota original. La nota original se conserva como registro historico.
 
-| Situacion | gradeType |
-|-----------|-----------|
-| Estudiante reprobo en lapso regular, reparo y aprobo | `'revision'` |
-| Estudiante reprobo en lapso regular, reparo y NO aprobo | `'regular'` (mantiene la original) |
-| Estudiante con materia pendiente que reparo y aprobo | `'revision_materia_pendiente'` |
+**Cambio al modelo**: Agregar campo `originalScore` para preservar la nota
+anterior cuando una reparacion la reemplaza.
+
+| Campo nuevo | Tipo | Descripcion |
+|-------------|------|-------------|
+| `originalScore` | DECIMAL(5,2) nullable | Nota original antes de la reparacion |
+| `originalStatus` | ENUM('aprobada','reprobada') nullable | Status original antes de la reparacion |
+
+**Logica de reemplazo**:
+
+| Situacion | finalScore | gradeType | originalScore |
+|-----------|-----------|-----------|---------------|
+| Estudiante reprueba (08), repara y aprueba (12) | **12** | `'revision'` | 08 |
+| Estudiante reprueba (07), repara y NO aprueba (05) | **05** | `'revision'` | 07 |
+| Estudiante con materia pendiente que reparo y aprobo | **nota reparacion** | `'revision_materia_pendiente'` | nota previa |
 
 ---
 
@@ -150,7 +166,8 @@ Logica de negocio para el ciclo de vida del periodo de reparacion.
 
 ```
 openRevisionPeriod(schoolPeriodId, transaction?)
-- Valida que todos los CouncilChecklist esten en 'done'
+- Valida que todos los CouncilChecklist del periodo (uno por lapso)
+  tengan status = 'done'
 - Crea/actualiza RevisionPeriod con status='open'
 - Crea InscriptionSubjectRevision (opportunity=1, status='pending')
   para cada materia reprobada de cada estudiante
@@ -174,9 +191,14 @@ calculateRepairFinalScore(inscriptionSubjectId, revisionPeriodId): number | null
 ```
 applyRepairGrades(schoolPeriodId, transaction?)
 - Para cada estudiante con reparaciones:
-  - Calcula MAX(score) por materia
-  - Si MAX(score) >= passingGrade: crea/actualiza SubjectFinalGrade
-    con gradeType='revision' y status='aprobada'
+  - Obtiene la mejor nota de reparacion (MAX score entre oportunidades)
+  - Si la nota de reparacion existe:
+    - Guarda el finalScore/originalStatus actual en originalScore/originalStatus
+    - Sobrescribe finalScore con la nota de reparacion
+    - Actualiza status (>= passingGrade → 'aprobada', < → 'reprobada')
+    - Cambia gradeType a 'revision'
+  - Si el estudiante no tiene nota de reparacion (no se presento):
+    - Mantiene la nota original sin cambios
 - Este servicio se llama desde finalGradeCalculator o desde el executor
   de cierre
 ```
@@ -193,13 +215,13 @@ applyRepairGrades(schoolPeriodId, transaction?)
 
 **Calculo de notas** (antes de `FinalGradeCalculator`):
 - Llamar a `applyRepairGrades()` para que las notas de reparacion
-  sobrescriban las originales si son mayores.
+  **reemplacen** las originales. La nota original se preserva en `originalScore`.
 
 **Logica de promocion**:
 - Sin cambios. El `StudentPromotionEngine` ya clasifica basado en
-  `SubjectFinalGrade.finalScore`. Si la nota de reparacion es mayor que
-  la original y >= passingGrade, el estudiante pasa de `reprobado` a
-  `aprobado` o `materias_pendientes`.
+  `SubjectFinalGrade.finalScore`. Si la nota de reparacion reemplaza una
+  nota reprobada y alcanza el `passingGrade`, el estudiante pasa de
+  `reprobado` a `aprobado` o `materias_pendientes`.
 
 ### 7.2 `finalGradeCalculator.ts`
 
@@ -212,8 +234,10 @@ interface FinalGradeOptions {
 ```
 
 Si `repairGrades` tiene una entrada para un `InscriptionSubject`:
-- Usar `Math.max(originalScore, repairGrade)` como nota final.
-- Marcar `gradeType = 'revision'` si la nota de reparacion es la que queda.
+- **Reemplazar** `finalScore` con la nota de reparacion.
+- Guardar la nota original en `originalScore`.
+- Marcar `gradeType = 'revision'`.
+- El `status` se recalcula con el nuevo `finalScore`.
 
 ### 7.3 `periodClosureService.ts`
 
@@ -246,13 +270,16 @@ app.use('/api/revision-grades', revisionGradeRoutes);
 
 **Componentes**:
 1. **Estado del periodo**: Muestra si esta `pending`, `open` o `closed`.
-2. **Boton "Abrir periodo de reparacion"**: Disponible cuando los consejos
-   de curso estan completos. Llama a `POST /open`.
-3. **Tabla de estudiantes en reparacion**: Muestra grado, seccion, estudiante,
+2. **Estado de consejos por lapso**: Muestra el status de cada
+   `CouncilChecklist` (Lapso 1, Lapso 2, Lapso 3). Solo cuando los 3
+   estan `'done'` se habilita la apertura.
+3. **Boton "Abrir periodo de reparacion"**: Disponible cuando los 3
+   consejos de curso estan completos. Llama a `POST /open`.
+4. **Tabla de estudiantes en reparacion**: Muestra grado, seccion, estudiante,
    materias reprobadas, oportunidades usadas y notas.
-4. **Boton "Cerrar periodo de reparacion"**: Disponible cuando todas las
+5. **Boton "Cerrar periodo de reparacion"**: Disponible cuando todas las
    revisiones estan calificadas. Llama a `POST /close`.
-5. **Resumen**: Cuantos estudiantes repararon, cuantos aprobaron, cuantos no.
+6. **Resumen**: Cuantos estudiantes repararon, cuantos aprobaron, cuantos no.
 
 ### 9.2 `teacher/RepairGradesPanel.tsx`
 
@@ -277,15 +304,13 @@ app.use('/api/revision-grades', revisionGradeRoutes);
 
 ### 10.1 `control-estudios/CourseCouncil.tsx`
 
-Agregar despues del wizard de consejos de curso:
+El consejo de curso ya esta disenado por lapso (el usuario selecciona un
+termino bloqueado en el wizard). No se requieren cambios estructurales.
 
-- **Seccion "Derivar a reparacion"**: Checkbox por estudiante/materia para
-  marcar que va a reparacion. Esto actualiza `CouncilChecklist.status` a
-  `'revision'` en vez de `'done'`.
-
-*Alternativa simplificada*: Si no se quiere modificar la UI del consejo,
-simplemente se asume que cualquier materia con nota < passingGrade va a
-reparacion automaticamente. No se necesita el flag.
+**Validacion adicional**: Al hacer el consejo del ultimo lapso, el
+`CouncilChecklist` debe marcarse como `'done'`. Solo cuando los 3 lapsos
+tienen checklist `'done'`, el `RepairPeriodManagement` habilita la apertura
+del periodo de reparacion.
 
 ### 10.2 `Sidebar` de `ControlEstudiosLayout.tsx`
 
@@ -351,12 +376,15 @@ CREATE TABLE inscription_subject_revisions (
 );
 ```
 
-### 11.3 Modificar ENUM de `CouncilChecklist.status`
+### 11.3 Agregar campos `originalScore` y `originalStatus` a `subject_final_grades`
 
 ```sql
-ALTER TABLE council_checklists
-  MODIFY COLUMN status ENUM('open','in_review','done','revision') NOT NULL DEFAULT 'open';
+ALTER TABLE subject_final_grades
+  ADD COLUMN originalScore DECIMAL(5,2) NULL AFTER finalScore,
+  ADD COLUMN originalStatus ENUM('aprobada','reprobada') NULL AFTER originalScore;
 ```
+
+Estos campos preservan la nota original cuando una reparacion la reemplaza.
 
 ---
 
@@ -379,23 +407,28 @@ separadas permiten override si se necesita.
 ### Escenario: Estudiante "Juan" reprueba Matematica (nota 08) y Fisica (nota 07)
 
 1. **Lapsos regulares**: Juan obtiene notas en todas sus materias.
-2. **Consejos de curso**: Se revisan los casos. Juan reprueba 2 materias.
-3. **Apertura de reparacion** (Control de Estudios):
+2. **Consejo Lapso 1**: Se bloquea Lapso 1, se hace consejo de curso.
+3. **Consejo Lapso 2**: Se bloquea Lapso 2, se hace consejo de curso.
+4. **Consejo Lapso 3**: Se bloquea Lapso 3, se hace consejo de curso.
+   Juan termina con Matematica (08) y Fisica (07) reprobadas.
+5. **Apertura de reparacion** (Control de Estudios):
+   - Los 3 consejos estan `'done'`.
    - Se abre el `RevisionPeriod`.
    - Se crean `InscriptionSubjectRevision` (opportunity=1, status=pending)
      para Matematica y Fisica.
-4. **Profesor califica** (Profesor → RepairGradesPanel):
+6. **Profesor califica** (Profesor → RepairGradesPanel):
    - Profesor de Matematica coloca nota de reparacion: **12** (aprobado).
    - Profesor de Fisica coloca nota de reparacion: **06** (reprobado).
    - Opportunity 1 se consume. Como Fisica sigue reprobada, se crea
-     opportunity=2 automaticamente (si `maxOpportunities` lo permite).
-5. **Segunda oportunidad** Fisica:
+     opportunity=2 automaticamente.
+7. **Segunda oportunidad** Fisica:
    - Profesor coloca nota: **11** (aprobado).
-6. **Cierre de reparacion** (Control de Estudios):
+8. **Cierre de reparacion** (Control de Estudios):
    - `RevisionPeriod.status = 'closed'`.
-7. **Cierre de periodo** (Control de Estudios):
-   - `applyRepairGrades()` ejecuta: Matematica 12 >= 10 → `status='aprobada'`,
-     Fisica 11 >= 10 → `status='aprobada'`.
+9. **Cierre de periodo** (Control de Estudios):
+   - `applyRepairGrades()` ejecuta:
+     - Matematica: `finalScore = 12`, `originalScore = 08`, `gradeType = 'revision'`, `status = 'aprobada'`
+     - Fisica: `finalScore = 11`, `originalScore = 07`, `gradeType = 'revision'`, `status = 'aprobada'`
    - Juan ahora tiene 0 materias reprobadas → `aprobado`.
    - Se inscribe como alumno regular en el siguiente grado.
 
@@ -405,7 +438,7 @@ separadas permiten override si se necesita.
 
 | Fase | Tareas | Depende de |
 |------|--------|------------|
-| **Fase 1** | Modelos: `RevisionPeriod`, `InscriptionSubjectRevision` + migraciones | — |
+| **Fase 1** | Modelos: `RevisionPeriod`, `InscriptionSubjectRevision` + migraciones + nuevos campos en `SubjectFinalGrade` | — |
 | **Fase 2** | `revisionPeriodService.ts` (open/close) | Fase 1 |
 | **Fase 3** | `revisionPeriodController.ts` (endpoints CRUD) | Fase 2 |
 | **Fase 4** | `revisionGradeService.ts` + `revisionGradeController.ts` | Fase 1 |
@@ -413,7 +446,6 @@ separadas permiten override si se necesita.
 | **Fase 6** | Frontend `RepairGradesPanel.tsx` (profesor) | Fase 4 |
 | **Fase 7** | Integracion en `finalGradeCalculator.ts` + `periodClosureExecutor.ts` | Fase 2, Fase 4 |
 | **Fase 8** | Sidebar + App.tsx routes | Fase 5, Fase 6 |
-| **Fase 9** | Modificar `CouncilChecklist.status` ENUM | Fase 1 |
 
 ---
 
@@ -428,22 +460,35 @@ separadas permiten override si se necesita.
 
 ### Reglas de negocio importantes
 - Los estudiantes **aprobados no participan** en reparacion.
+- **Todos los estudiantes con al menos 1 materia reprobada pueden reparar,
+  sin límite de cantidad.** Un estudiante con 8 materias reprobadas tiene 8
+  revisiones creadas. Si las aprueba todas, puede ser promovido como regular.
+- La reparacion solo se habilita cuando **todos los consejos de curso** de
+  todos los lapsos estan completos (`CouncilChecklist.status = 'done'` para
+  cada lapso del periodo).
 - Cada materia reprobada genera automaticamente `opportunity=1`.
 - El profesor coloca la nota. Si `score >= passingGrade`, `status='approved'`
   y no se generan mas oportunidades para esa materia.
 - Si `score < passingGrade`, `status='failed'` y se genera la siguiente
   oportunidad (hasta `maxOpportunities`).
-- La nota final de reparacion es `MAX(score)` de todas las oportunidades.
+- La nota final de reparacion para una materia es `MAX(score)` de todas las
+  oportunidades de esa materia.
+- **Si existe nota de reparacion, siempre reemplaza la nota original**.
+  La nota original se preserva en `SubjectFinalGrade.originalScore` como
+  registro historico.
 - El `RevisionPeriod` solo se puede cerrar si NO hay registros con
   `status='pending'`.
 - Si un estudiante no se presenta a ninguna oportunidad, su status queda
-  `'pending'`. Al cerrar, esas pasan a `'failed'` automaticamente.
+  `'pending'`. Al cerrar, esas pasan a `'failed'` automaticamente y el
+  estudiante mantiene su nota original.
 
 ### Valores existentes a reutilizar
 - `SubjectFinalGrade.gradeType`: ya tiene `'revision'` y
   `'revision_materia_pendiente'`.
+- `SubjectFinalGrade`: agregar `originalScore` y `originalStatus` para
+  preservar la nota original cuando es reemplazada por reparacion.
 - `Setting`: `passing_grade` (default 10), `max_grade` (default 20).
-- `CouncilChecklist`: extender ENUM para incluir `'revision'`.
+- `CouncilChecklist`: ya existe con `termId`, soporta un checklist por lapso.
 
 ### Archivos clave de referencia
 

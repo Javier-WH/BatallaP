@@ -73,6 +73,8 @@ import gradeEditPermissionRoutes from '@/routes/gradeEditPermissionRoutes';
 import enrollmentReportRoutes from '@/routes/enrollmentReportRoutes';
 import dashboardContentRoutes from '@/routes/dashboardContentRoutes';
 import healthRoutes from '@/routes/healthRoutes';
+import revisionPeriodRoutes from '@/routes/revisionPeriodRoutes';
+import revisionGradeRoutes from '@/routes/revisionGradeRoutes';
 
 app.get('/', (req, res) => {
   res.send('API is running...');
@@ -108,6 +110,8 @@ app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/enrollment-reports', enrollmentReportRoutes);
 app.use('/api/dashboard-content', dashboardContentRoutes);
 app.use('/api/health', healthRoutes);
+app.use('/api/revision-periods', revisionPeriodRoutes);
+app.use('/api/revision-grades', revisionGradeRoutes);
 
 export { sessionStore };
 export default app;

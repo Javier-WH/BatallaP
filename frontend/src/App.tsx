@@ -28,6 +28,7 @@ import TeacherProjection from '@/pages/control-estudios/TeacherProjection';
 import SchoolManagement from '@/pages/admin/SchoolManagement';
 import EnrollmentQuestions from '@/pages/admin/EnrollmentQuestions';
 import TeacherPanel from '@/pages/teacher/TeacherPanel';
+import RepairGradesPanel from '@/pages/teacher/RepairGradesPanel';
 import AdminDashboard from '@/pages/admin/Dashboard';
 import StudentDetail from '@/pages/student/StudentDetail';
 import SettingsManagement from '@/pages/master/SettingsManagement';
@@ -44,6 +45,7 @@ import CourseCouncil from '@/pages/control-estudios/CourseCouncil';
 import FinalGradesEdit from '@/pages/control-estudios/FinalGradesEdit';
 import ManageGrades from '@/pages/control-estudios/ManageGrades';
 import PerformanceSummary from '@/pages/control-estudios/PerformanceSummary';
+import RepairPeriodManagement from '@/pages/control-estudios/RepairPeriodManagement';
 import RegisterRepresentative from '@/pages/admin/RegisterRepresentative';
 
 
@@ -235,6 +237,7 @@ function AppRoutes() {
           <Route path="editar-notas" element={<FinalGradesEdit />} />
           <Route path="calificaciones" element={<ManageGrades />} />
           <Route path="resumen-rendimiento" element={<PerformanceSummary />} />
+          <Route path="reparacion" element={<RepairPeriodManagement />} />
           <Route path="edit/:id" element={<EditUser />} />
           <Route path="search" element={<SearchUsers />} />
         </Route>
@@ -254,6 +257,7 @@ function AppRoutes() {
         <Route path="profesor" element={<RequireAuth allowedRoles={['Profesor']}><TeacherPanel /></RequireAuth>}>
           <Route index element={<h1>Panel del Profesor</h1>} />
         </Route>
+        <Route path="profesor/reparacion" element={<RequireAuth allowedRoles={['Profesor']}><RepairGradesPanel /></RequireAuth>} />
 
         {/* Representative Module */}
         <Route path="representante" element={<RequireAuth allowedRoles={['Representante']}><RepresentativeLayout /></RequireAuth>}>

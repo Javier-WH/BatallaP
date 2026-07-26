@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback, Component, useMemo } from 'react';
 import type { ReactNode, ErrorInfo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Tabs, Card, Select, Table, Button, Modal, Form, Input, DatePicker, message, Space, Tag, Typography, InputNumber, Alert, Empty, Tooltip } from 'antd';
-import { BookOutlined, PlusOutlined, DeleteOutlined, EditOutlined, LockOutlined, FilePdfOutlined, DownloadOutlined } from '@ant-design/icons';
+import { BookOutlined, PlusOutlined, DeleteOutlined, EditOutlined, LockOutlined, FilePdfOutlined, DownloadOutlined, ToolOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { isAxiosError } from 'axios';
 import api from '@/services/api';
@@ -212,6 +213,7 @@ const evaluationInstruments = [
 const CUSTOM_INSTRUMENT_VALUE = '__custom__';
 
 const TeacherPanel: React.FC = () => {
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [selectedAssignmentId, setSelectedAssignmentId] = useState<number | null>(null);
@@ -743,6 +745,11 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
 
   return (
     <div className="h-full overflow-y-auto theme-page-bg p-4 md:p-8">
+      <div style={{ marginBottom: 16 }}>
+        <Button type="primary" icon={<ToolOutlined />} onClick={() => navigate('/profesor/reparacion')}>
+          Reparación de Materias
+        </Button>
+      </div>
       <style>{`
         .grading-row:hover { background-color: color-mix(in srgb, var(--color-accent) 4%, transparent) !important; }
         .grading-row td { transition: background-color 0.2s; }
