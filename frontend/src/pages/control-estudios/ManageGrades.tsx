@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Card, Tabs, Table, Button, message, Tag, Typography, Alert, Empty, Spin, Space } from 'antd';
-import { BookOutlined, UserOutlined, ArrowLeftOutlined, DownloadOutlined, FilePdfOutlined, EditOutlined, DeleteOutlined, PlusOutlined } from '@ant-design/icons';
+import { Card, Tabs, Table, Button, message, Tag, Typography, Alert, Empty, Spin, Space, Dropdown, Modal, Descriptions } from 'antd';
+import { BookOutlined, UserOutlined, ArrowLeftOutlined, DownloadOutlined, FilePdfOutlined, EditOutlined, DeleteOutlined, PlusOutlined, HistoryOutlined } from '@ant-design/icons';
 import api from '@/services/api';
 import dayjs from 'dayjs';
 import { useGradeRounding } from '@/context/GradeRoundingContext';
@@ -102,6 +102,9 @@ const ManageGrades: React.FC = () => {
   const [showPDFModal, setShowPDFModal] = useState(false);
   const [showPlanModal, setShowPlanModal] = useState(false);
   const [editingItem, setEditingItem] = useState<EvaluationPlanItem | null>(null);
+  const [auditModal, setAuditModal] = useState<{ open: boolean; studentName?: string; itemLabel?: string }>({ open: false });
+  const [auditHistory, setAuditHistory] = useState<any[]>([]);
+  const [auditLoading, setAuditLoading] = useState(false);
   const { enableRounding } = useGradeRounding();
 
   const isSelectedTermBlocked = useMemo(() => {
@@ -261,6 +264,27 @@ const handleToggleAbsent = async (enrollment: StudentEnrollment, evalPlanId: num
     } catch {
       message.error('Error al cambiar estado de inasistencia');
       fetchPlanAndStudents(); // revert to server state on error
+    }
+  };
+
+  const openAuditHistory = async (q: Qualification | undefined, studentName: string, itemLabel: string) => {
+    if (!selectedAssignment) return;
+    if (!q || !q.id) {
+      message.info('Esta nota aún no tiene historial (no hay calificación registrada)');
+      return;
+    }
+    setAuditModal({ open: true, studentName, itemLabel });
+    setAuditLoading(true);
+    setAuditHistory([]);
+    try {
+      const res = await api.get(`/evaluation/qualification-audits/${selectedAssignment.id}`);
+      const all = res.data as any[];
+      const filtered = all.filter((a: any) => a.qualificationId === q.id);
+      setAuditHistory(filtered);
+    } catch {
+      message.error('Error al cargar el historial de la nota');
+    } finally {
+      setAuditLoading(false);
     }
   };
 
@@ -654,13 +678,27 @@ const handleToggleAbsent = async (enrollment: StudentEnrollment, evalPlanId: num
                                     return (
                                       <>
                                       <td key={`${item.id}-a`} className={`grading-cell${isAbsent ? ' grading-absent' : ''}`} style={{ padding: '2px', border: '1px solid var(--color-text-muted)', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-input-bg)' : '#f9fafb', width: '50px', cursor: 'context-menu' }}
-                                        title="Click derecho: marcar/desmarcar inasistente"
-                                        onContextMenu={(e) => {
-                                          e.preventDefault();
-                                          e.stopPropagation();
-                                          handleToggleAbsent(enrollment, item.id, q?.isAbsent);
-                                        }}
+                                        title="Click derecho: opciones de la nota"
                                       >
+                                        <Dropdown
+                                          trigger={['contextMenu']}
+                                          menu={{
+                                            items: [
+                                              {
+                                                key: 'details',
+                                                icon: <HistoryOutlined />,
+                                                label: 'Ver detalles',
+                                                onClick: () => openAuditHistory(q, `${enrollment.student?.lastName}, ${enrollment.student?.firstName}`, item.identificador || item.description || ''),
+                                              },
+                                              {
+                                                key: 'absent',
+                                                label: isAbsent ? 'Desmarcar inasistente' : 'Marcar inasistente',
+                                                onClick: () => handleToggleAbsent(enrollment, item.id, q?.isAbsent),
+                                              },
+                                            ],
+                                          }}
+                                        >
+                                          <div style={{ display: 'flex', justifyContent: 'center' }}>
                                         <input
                                           type="number"
                                           id={`grade-${rowIndex}-${colIndex}`}
@@ -732,6 +770,8 @@ const handleToggleAbsent = async (enrollment: StudentEnrollment, evalPlanId: num
                                             }
                                           }}
                                         />
+                                          </div>
+                                        </Dropdown>
                                       </td>
                                       <td key={`${item.id}-b`} style={{ padding: '2px', border: '1px solid var(--color-text-muted)', background: rowIndex % 2 === 0 ? 'var(--color-input-bg)' : '#f9fafb', width: '50px' }} onContextMenu={(e) => e.preventDefault()}></td>
                                       </>
@@ -809,6 +849,62 @@ const handleToggleAbsent = async (enrollment: StudentEnrollment, evalPlanId: num
           existingItems={evaluationPlan}
         />
       )}
+
+      <Modal
+        title="Historial de cambios de la nota"
+        open={auditModal.open}
+        onCancel={() => setAuditModal(prev => ({ ...prev, open: false }))}
+        footer={[
+          <Button key="close" onClick={() => setAuditModal(prev => ({ ...prev, open: false }))}>Cerrar</Button>,
+        ]}
+        width={700}
+      >
+        <Descriptions size="small" column={1} style={{ marginBottom: 16 }}>
+          <Descriptions.Item label="Estudiante">{auditModal.studentName || '—'}</Descriptions.Item>
+          <Descriptions.Item label="Evaluación">{auditModal.itemLabel || '—'}</Descriptions.Item>
+        </Descriptions>
+        {auditLoading ? (
+          <div style={{ textAlign: 'center', padding: 24 }}>
+            <Spin />
+          </div>
+        ) : auditHistory.length === 0 ? (
+          <Empty description="No hay cambios registrados para esta nota" />
+        ) : (
+          <Table
+            dataSource={auditHistory}
+            rowKey="id"
+            size="small"
+            pagination={false}
+            columns={[
+              {
+                title: 'Fecha',
+                dataIndex: 'editedAt',
+                width: 170,
+                render: (v: string) => (v ? new Date(v).toLocaleString('es-VE') : '—'),
+              },
+              {
+                title: 'Usuario',
+                dataIndex: 'editor',
+                render: (e: { person?: { firstName?: string; lastName?: string }; username?: string }) =>
+                  e?.person
+                    ? `${e.person.firstName || ''} ${e.person.lastName || ''}`.trim() || e.username || '—'
+                    : e?.username || '—',
+              },
+              {
+                title: 'Nota anterior',
+                dataIndex: 'previousScore',
+                align: 'center',
+                render: (v: number | null) => (v != null ? v : '—'),
+              },
+              {
+                title: 'Nota nueva',
+                dataIndex: 'newScore',
+                align: 'center',
+              },
+            ]}
+          />
+        )}
+      </Modal>
     </div>
   );
 };
