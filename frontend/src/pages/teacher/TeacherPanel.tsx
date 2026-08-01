@@ -80,6 +80,8 @@ interface Qualification {
   remedialScore?: number | null;
   isAbsent?: boolean;
   editedByOther?: boolean;
+  lastEditDate?: string | null;
+  lastEditUser?: string;
 }
 
 interface InscriptionSubject {
@@ -1009,7 +1011,9 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                                         color: currentScore !== null && currentScore > 0 && currentScore < passingGrade ? '#dc2626' : undefined,
                                         fontWeight: currentScore !== null && currentScore > 0 && currentScore < passingGrade ? 700 : undefined,
                                       }}
-                                      title={q?.editedByOther ? 'Nota editada por otra persona (Control de Estudios u otro rol)' : undefined}
+                                      title={q?.editedByOther
+                                        ? `Editada el ${new Date(q.lastEditDate || '').toLocaleString('es-VE')} por ${q.lastEditUser || 'usuario desconocido'}`
+                                        : undefined}
                                       disabled={isSelectedTermBlocked || (q?.remedialScore != null && q.remedialScore > 0 && isRemedialEligible)}
                                       onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
                                         if (e.key === '.' || e.key === ',' || e.key === 'e' || e.key === 'E' || e.key === '-' || e.key === '+') {

@@ -75,6 +75,8 @@ interface Qualification {
   remedialScore?: number | null;
   isAbsent?: boolean;
   editedByOther?: boolean;
+  lastEditDate?: string | null;
+  lastEditUser?: string;
 }
 
 interface StudentEnrollment {
@@ -682,7 +684,9 @@ const handleToggleAbsent = async (enrollment: StudentEnrollment, evalPlanId: num
                                             color: q?.score != null && q.score > 0 && q.score < passingGrade ? '#dc2626' : undefined,
                                             fontWeight: q?.score != null && q.score > 0 && q.score < passingGrade ? 700 : undefined,
                                           }}
-                                          title={q?.editedByOther ? 'Nota editada por otra persona (diferente al profesor)' : undefined}
+                                          title={q?.editedByOther
+                                            ? `Editada el ${new Date(q.lastEditDate || '').toLocaleString('es-VE')} por ${q.lastEditUser || 'usuario desconocido'}`
+                                            : undefined}
                                           disabled={isSelectedTermBlocked}
                                           onKeyDown={(e) => {
                                             if (e.key === '.' || e.key === ',' || e.key === 'e' || e.key === 'E' || e.key === '-' || e.key === '+') {

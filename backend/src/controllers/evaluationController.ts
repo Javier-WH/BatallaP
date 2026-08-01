@@ -274,7 +274,18 @@ export const getStudentsForAssignment = async (req: Request, res: Response) => {
               as: 'qualifications',
               include: [
                 { model: EvaluationPlan, as: 'evaluationPlan' },
-                { model: QualificationAudit, as: 'audits' }
+                {
+                  model: QualificationAudit,
+                  as: 'audits',
+                  include: [
+                    {
+                      model: User,
+                      as: 'editor',
+                      attributes: ['id', 'username'],
+                      include: [{ model: Person, as: 'person', attributes: ['firstName', 'lastName'] }]
+                    }
+                  ]
+                }
               ]
             }
           ]
@@ -294,9 +305,20 @@ export const getStudentsForAssignment = async (req: Request, res: Response) => {
                 try { if (typeof q.evaluationPlan.referentesEticos === 'string') q.evaluationPlan.referentesEticos = JSON.parse(q.evaluationPlan.referentesEticos); } catch {}
                 try { if (typeof q.evaluationPlan.indicador === 'string') q.evaluationPlan.indicador = JSON.parse(q.evaluationPlan.indicador); } catch {}
               }
-              q.editedByOther = Array.isArray(q.audits)
-                ? q.audits.some((a: any) => a.editedBy !== professorUserId)
-                : false;
+              const foreignAudits = Array.isArray(q.audits)
+                ? q.audits.filter((a: any) => a.editedBy !== professorUserId)
+                : [];
+              q.editedByOther = foreignAudits.length > 0;
+              if (q.editedByOther) {
+                const last = [...foreignAudits].sort(
+                  (a: any, b: any) => new Date(b.editedAt).getTime() - new Date(a.editedAt).getTime()
+                )[0];
+                const editorPerson = last?.editor?.person;
+                q.lastEditDate = last?.editedAt ?? null;
+                q.lastEditUser = editorPerson
+                  ? `${editorPerson.firstName || ''} ${editorPerson.lastName || ''}`.trim()
+                  : last?.editor?.username || '';
+              }
               delete q.audits;
             });
           }
