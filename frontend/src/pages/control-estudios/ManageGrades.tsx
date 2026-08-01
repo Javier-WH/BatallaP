@@ -220,53 +220,6 @@ const ManageGrades: React.FC = () => {
     }
   };
 
-const handleToggleAbsent = async (enrollment: StudentEnrollment, evalPlanId: number, currentIsAbsent?: boolean) => {
-    if (isSelectedTermBlocked) {
-      message.warning('Este lapso está bloqueado.');
-      return;
-    }
-
-    const insSub = enrollment.inscriptionSubjects?.[0];
-    const existingQ = insSub?.qualifications?.find(q => q.evaluationPlanId === evalPlanId);
-    const previousScore = existingQ?.score;
-    const previousRemedial = existingQ?.remedialScore;
-
-    // Optimistic update: toggle locally immediately
-    setStudents(prev => prev.map(s => {
-      if (s.id !== enrollment.id) return s;
-      const insSubS = s.inscriptionSubjects?.[0];
-      if (!insSubS) return s;
-      const quals = insSubS.qualifications?.some(q => q.evaluationPlanId === evalPlanId)
-        ? insSubS.qualifications.map(q => q.evaluationPlanId === evalPlanId
-          ? { ...q, isAbsent: !currentIsAbsent, score: !currentIsAbsent ? 0 : (previousScore ?? q.score), remedialScore: !currentIsAbsent ? null : (previousRemedial ?? q.remedialScore) }
-          : q)
-        : [...(insSubS.qualifications || []), {
-            id: 0, evaluationPlanId: evalPlanId, score: 0, isAbsent: !currentIsAbsent
-          }];
-      return {
-        ...s,
-        inscriptionSubjects: [{ ...insSubS, qualifications: quals }]
-      };
-    }));
-
-    // Sync with backend
-    const inscriptionSubjectId = enrollment.inscriptionSubjects?.[0]?.id;
-    try {
-      await api.post('/evaluation/qualifications', {
-        evaluationPlanId: evalPlanId,
-        inscriptionSubjectId,
-        inscriptionId: enrollment.id,
-        isAbsent: !currentIsAbsent,
-        score: !currentIsAbsent ? 0 : (previousScore ?? undefined),
-        remedialScore: !currentIsAbsent ? null : (previousRemedial ?? undefined),
-        observations: ''
-      });
-    } catch {
-      message.error('Error al cambiar estado de inasistencia');
-      fetchPlanAndStudents(); // revert to server state on error
-    }
-  };
-
   const openAuditHistory = async (q: Qualification | undefined, studentName: string, itemLabel: string) => {
     if (!selectedAssignment) return;
     if (!q || !q.id) {
@@ -445,22 +398,6 @@ const handleToggleAbsent = async (enrollment: StudentEnrollment, evalPlanId: num
           50% { outline: 3px solid transparent; }
         }
         .grade-invalid { animation: flash-red 0.5s ease-in-out 3; }
-        .grading-absent { position: relative; }
-        .grading-absent::before {
-          content: 'NP';
-          position: absolute;
-          inset: 0;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          background: #fef2f2;
-          color: #dc2626;
-          font-weight: 700;
-          font-size: 14px;
-          pointer-events: none;
-          z-index: 1;
-        }
-        .grading-absent input { opacity: 0; }
       `}</style>
       {!selectedAssignment ? (
         <>
@@ -677,7 +614,7 @@ const handleToggleAbsent = async (enrollment: StudentEnrollment, evalPlanId: num
                                     const isAbsent = !!(q?.isAbsent);
                                     return (
                                       <>
-                                      <td key={`${item.id}-a`} className={`grading-cell${isAbsent ? ' grading-absent' : ''}`} style={{ padding: '2px', border: '1px solid var(--color-text-muted)', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-input-bg)' : '#f9fafb', width: '50px', cursor: 'context-menu' }}
+                                      <td key={`${item.id}-a`} className="grading-cell" style={{ padding: '2px', border: '1px solid var(--color-text-muted)', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-input-bg)' : '#f9fafb', width: '50px', cursor: 'context-menu' }}
                                         title="Click derecho: opciones de la nota"
                                       >
                                         <Dropdown
@@ -689,11 +626,6 @@ const handleToggleAbsent = async (enrollment: StudentEnrollment, evalPlanId: num
                                                 icon: <HistoryOutlined />,
                                                 label: 'Ver detalles',
                                                 onClick: () => openAuditHistory(q, `${enrollment.student?.lastName}, ${enrollment.student?.firstName}`, item.identificador || item.description || ''),
-                                              },
-                                              {
-                                                key: 'absent',
-                                                label: isAbsent ? 'Desmarcar inasistente' : 'Marcar inasistente',
-                                                onClick: () => handleToggleAbsent(enrollment, item.id, q?.isAbsent),
                                               },
                                             ],
                                           }}
