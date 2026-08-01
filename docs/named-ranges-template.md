@@ -30,7 +30,7 @@ El template utiliza Named Ranges para llenar datos por nombre de celda.
 |---|---|---|
 | std_num_N | N de lista | A |
 | std_doc_N | Cedula | B |
-| std_ln_N | Apellidos | D |
+| std_ln_N | Apellidos |  D|
 | std_fn_N | Nombres | F |
 | std_bp_N | Lugar Nacimiento | H |
 | std_ef_N | Entidad Federal | I |
