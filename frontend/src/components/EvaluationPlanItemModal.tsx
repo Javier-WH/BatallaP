@@ -492,7 +492,7 @@ const EvaluationPlanItemModal: React.FC<EvaluationPlanItemModalProps> = ({
         </div>
         {isDateBeforePrevious && (
           <Alert
-            type="warning"
+            type="error"
             showIcon
             style={{ marginBottom: 16 }}
             message="Fecha anterior a la evaluación previa"
