@@ -782,6 +782,7 @@ const handleToggleAbsent = async (enrollment: StudentEnrollment, evalPlanId: num
           termId={selectedTerm}
           selectedTermDateRange={selectedTermDateRange}
           schoolPeriod={selectedAssignment.periodGradeSubject?.periodGrade?.schoolPeriod}
+          existingItems={evaluationPlan}
         />
       )}
     </div>

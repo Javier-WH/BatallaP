@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Modal, Form, Input, DatePicker, Button, Select, InputNumber, message } from 'antd';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Modal, Form, Input, DatePicker, Button, Select, InputNumber, Checkbox, Alert, message } from 'antd';
 import { isAxiosError } from 'axios';
 import api from '@/services/api';
 import dayjs from 'dayjs';
@@ -57,6 +57,7 @@ export interface EvaluationPlanItemModalProps {
   termId: number;
   selectedTermDateRange: { openDate: dayjs.Dayjs | null; closeDate: dayjs.Dayjs | null };
   schoolPeriod?: SchoolPeriodInfo | string;
+  existingItems?: EvaluationPlanItem[];
 }
 
 export function getSchoolPeriodDateRange(periodInput?: SchoolPeriodInfo | string) {
@@ -148,12 +149,38 @@ const EvaluationPlanItemModal: React.FC<EvaluationPlanItemModalProps> = ({
   termId,
   selectedTermDateRange,
   schoolPeriod,
+  existingItems,
 }) => {
   const [planForm] = Form.useForm<PlanItemFormValues>();
   const instrumentSelection = Form.useWatch('estrategiaOption', planForm);
+  const selectedDate = Form.useWatch('date', planForm);
   const [refTeoricos, setRefTeoricos] = useState<string[]>(['']);
   const [indicadores, setIndicadores] = useState<string[]>(['']);
   const [selectedEticos, setSelectedEticos] = useState<string[]>([]);
+  const [allowOutOfOrder, setAllowOutOfOrder] = useState<boolean>(false);
+
+  // Determine the latest evaluation item in existing items (excluding current editing item)
+  const latestPreviousItem = useMemo(() => {
+    if (!existingItems || existingItems.length === 0) return null;
+    const filtered = existingItems.filter(item => !editingItem || item.id !== editingItem.id);
+    if (filtered.length === 0) return null;
+    return filtered.reduce((max, curr) => {
+      if (!max.date) return curr;
+      if (!curr.date) return max;
+      return dayjs(curr.date).isAfter(dayjs(max.date)) ? curr : max;
+    }, filtered[0]);
+  }, [existingItems, editingItem]);
+
+  // Check if selected date is strictly before the latest previous evaluation date
+  const isDateBeforePrevious = useMemo(() => {
+    if (!selectedDate || !latestPreviousItem?.date) return false;
+    return selectedDate.isBefore(dayjs(latestPreviousItem.date), 'day');
+  }, [selectedDate, latestPreviousItem]);
+
+  // Reset allowOutOfOrder when date or modal state changes
+  useEffect(() => {
+    setAllowOutOfOrder(false);
+  }, [open, selectedDate]);
 
   // Pre-fill form when editing or reset when creating
   useEffect(() => {
@@ -190,6 +217,11 @@ const EvaluationPlanItemModal: React.FC<EvaluationPlanItemModalProps> = ({
   }, [open, editingItem, planForm]);
 
   const handleSavePlanItem = async (values: PlanItemFormValues) => {
+    if (isDateBeforePrevious && !allowOutOfOrder) {
+      message.warning('La fecha es anterior a la evaluación previa. Debes marcar la casilla de confirmación para guardar.');
+      return;
+    }
+
     const { estrategiaOption, customEstrategia } = values;
     const selectedEstrategia =
       estrategiaOption === CUSTOM_INSTRUMENT_VALUE
@@ -244,7 +276,22 @@ const EvaluationPlanItemModal: React.FC<EvaluationPlanItemModalProps> = ({
       destroyOnHidden
       footer={[
         <Button key="cancel" onClick={onClose}>Cancelar</Button>,
-        <Button key="submit" type="primary" onClick={() => planForm.submit()}>
+        isDateBeforePrevious && (
+          <Checkbox
+            key="outOfOrderCheck"
+            checked={allowOutOfOrder}
+            onChange={(e) => setAllowOutOfOrder(e.target.checked)}
+            style={{ marginRight: 8 }}
+          >
+            Confirmar fecha anterior a la evaluación previa
+          </Checkbox>
+        ),
+        <Button
+          key="submit"
+          type="primary"
+          disabled={isDateBeforePrevious && !allowOutOfOrder}
+          onClick={() => planForm.submit()}
+        >
           {editingItem ? 'Actualizar' : 'Guardar'}
         </Button>
       ]}
@@ -453,6 +500,15 @@ const EvaluationPlanItemModal: React.FC<EvaluationPlanItemModalProps> = ({
             />
           </Form.Item>
         </div>
+        {isDateBeforePrevious && (
+          <Alert
+            type="warning"
+            showIcon
+            style={{ marginBottom: 16 }}
+            message="Fecha anterior a la evaluación previa"
+            description={`La fecha seleccionada (${selectedDate?.format('DD/MM/YYYY')}) es anterior a la evaluación previa "${latestPreviousItem?.identificador || ''}" (${dayjs(latestPreviousItem?.date).format('DD/MM/YYYY')}). Para guardar, debes marcar la casilla de confirmación.`}
+          />
+        )}
       </Form>
     </Modal>
   );
