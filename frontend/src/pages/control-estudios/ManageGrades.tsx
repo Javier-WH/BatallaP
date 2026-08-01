@@ -74,6 +74,7 @@ interface Qualification {
   observations?: string;
   remedialScore?: number | null;
   isAbsent?: boolean;
+  editedByOther?: boolean;
 }
 
 interface StudentEnrollment {
@@ -670,14 +671,17 @@ const handleToggleAbsent = async (enrollment: StudentEnrollment, evalPlanId: num
                                           style={{
                                             width: '48px',
                                             textAlign: 'center',
-                                            border: 'none',
+                                            border: q?.editedByOther ? '1px solid #93c5fd' : 'none',
                                             outline: 'none',
-                                            background: 'transparent',
+                                            borderRadius: q?.editedByOther ? 4 : undefined,
+                                            boxShadow: q?.editedByOther ? '0 0 0 1px #bfdbfe inset' : undefined,
+                                            background: q?.editedByOther ? '#eff6ff' : 'transparent',
                                             fontSize: 12,
-                                            padding: 0,
+                                            padding: q?.editedByOther ? '1px' : 0,
                                             color: q?.score != null && q.score > 0 && q.score < passingGrade ? '#dc2626' : undefined,
                                             fontWeight: q?.score != null && q.score > 0 && q.score < passingGrade ? 700 : undefined,
                                           }}
+                                          title={q?.editedByOther ? 'Nota editada por otra persona (diferente al profesor)' : undefined}
                                           disabled={isSelectedTermBlocked}
                                           onKeyDown={(e) => {
                                             if (e.key === '.' || e.key === ',' || e.key === 'e' || e.key === 'E' || e.key === '-' || e.key === '+') {

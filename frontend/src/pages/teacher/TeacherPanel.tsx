@@ -79,6 +79,7 @@ interface Qualification {
   observations?: string;
   remedialScore?: number | null;
   isAbsent?: boolean;
+  editedByOther?: boolean;
 }
 
 interface InscriptionSubject {
@@ -998,14 +999,17 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                                       style={{
                                         width: '48px',
                                         textAlign: 'center',
-                                        border: 'none',
+                                        border: q?.editedByOther ? '1px solid #93c5fd' : 'none',
                                         outline: 'none',
-                                        background: 'transparent',
+                                        borderRadius: q?.editedByOther ? 4 : undefined,
+                                        boxShadow: q?.editedByOther ? '0 0 0 1px #bfdbfe inset' : undefined,
+                                        background: q?.editedByOther ? '#eff6ff' : 'transparent',
                                         fontSize: 12,
-                                        padding: 0,
+                                        padding: q?.editedByOther ? '1px' : 0,
                                         color: currentScore !== null && currentScore > 0 && currentScore < passingGrade ? '#dc2626' : undefined,
                                         fontWeight: currentScore !== null && currentScore > 0 && currentScore < passingGrade ? 700 : undefined,
                                       }}
+                                      title={q?.editedByOther ? 'Nota editada por otra persona (Control de Estudios u otro rol)' : undefined}
                                       disabled={isSelectedTermBlocked || (q?.remedialScore != null && q.remedialScore > 0 && isRemedialEligible)}
                                       onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
                                         if (e.key === '.' || e.key === ',' || e.key === 'e' || e.key === 'E' || e.key === '-' || e.key === '+') {

@@ -239,7 +239,14 @@ export const getStudentsForAssignment = async (req: Request, res: Response) => {
 
     if (!assignment) return res.status(404).json({ message: 'Asignación no encontrada' });
 
-    const { periodGradeSubject, sectionId } = assignment as any;
+    const { periodGradeSubject, sectionId, teacherId } = assignment as any;
+
+    // Determine the assigned professor's user id to detect edits by other users
+    let professorUserId: number | null = null;
+    if (teacherId) {
+      const teacherPerson = await Person.findByPk(teacherId, { attributes: ['userId'] });
+      professorUserId = (teacherPerson as any)?.userId ?? null;
+    }
 
     // Get period and grade from the periodGrade record
     const pg = await PeriodGrade.findByPk(periodGradeSubject.periodGradeId);
@@ -265,7 +272,10 @@ export const getStudentsForAssignment = async (req: Request, res: Response) => {
             {
               model: Qualification,
               as: 'qualifications',
-              include: [{ model: EvaluationPlan, as: 'evaluationPlan' }]
+              include: [
+                { model: EvaluationPlan, as: 'evaluationPlan' },
+                { model: QualificationAudit, as: 'audits' }
+              ]
             }
           ]
         }
@@ -284,6 +294,10 @@ export const getStudentsForAssignment = async (req: Request, res: Response) => {
                 try { if (typeof q.evaluationPlan.referentesEticos === 'string') q.evaluationPlan.referentesEticos = JSON.parse(q.evaluationPlan.referentesEticos); } catch {}
                 try { if (typeof q.evaluationPlan.indicador === 'string') q.evaluationPlan.indicador = JSON.parse(q.evaluationPlan.indicador); } catch {}
               }
+              q.editedByOther = Array.isArray(q.audits)
+                ? q.audits.some((a: any) => a.editedBy !== professorUserId)
+                : false;
+              delete q.audits;
             });
           }
         });
