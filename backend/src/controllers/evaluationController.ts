@@ -422,6 +422,7 @@ export const saveQualification = async (req: Request, res: Response) => {
           editedBy: sessionUser.id,
           previousScore,
           newScore: score,
+          comment: typeof req.body.comment === 'string' && req.body.comment.trim() !== '' ? req.body.comment.trim() : null,
           editedAt: new Date(),
         });
       }

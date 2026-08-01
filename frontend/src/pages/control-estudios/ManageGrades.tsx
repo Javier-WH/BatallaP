@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Card, Tabs, Table, Button, message, Tag, Typography, Alert, Empty, Spin, Space, Dropdown, Modal, Descriptions } from 'antd';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { Card, Tabs, Table, Button, message, Tag, Typography, Alert, Empty, Spin, Space, Dropdown, Modal, Descriptions, Input } from 'antd';
 import { BookOutlined, UserOutlined, ArrowLeftOutlined, DownloadOutlined, FilePdfOutlined, EditOutlined, DeleteOutlined, PlusOutlined, HistoryOutlined } from '@ant-design/icons';
 import api from '@/services/api';
 import dayjs from 'dayjs';
@@ -105,6 +105,10 @@ const ManageGrades: React.FC = () => {
   const [auditModal, setAuditModal] = useState<{ open: boolean; studentName?: string; itemLabel?: string }>({ open: false });
   const [auditHistory, setAuditHistory] = useState<any[]>([]);
   const [auditLoading, setAuditLoading] = useState(false);
+  const [commentModal, setCommentModal] = useState<{ open: boolean; enrollment?: StudentEnrollment; evalPlanId?: number; value?: number; inputId?: string; originalValue?: number }>({ open: false });
+  const isRightClickRef = useRef(false);
+  const [commentText, setCommentText] = useState('');
+  const [commentSaving, setCommentSaving] = useState(false);
   const { enableRounding } = useGradeRounding();
 
   const isSelectedTermBlocked = useMemo(() => {
@@ -199,25 +203,56 @@ const ManageGrades: React.FC = () => {
     fetchPlanAndStudents();
   }, [fetchPlanAndStudents]);
 
-  const handleSaveScoreInGrid = async (enrollment: StudentEnrollment, evalPlanId: number, score: number | null) => {
+  const handleSaveScoreInGrid = async (enrollment: StudentEnrollment, evalPlanId: number, score: number | null, comment?: string) => {
     if (isSelectedTermBlocked) {
       message.warning('Este lapso está bloqueado.');
       return;
     }
     const inscriptionSubjectId = enrollment.inscriptionSubjects?.[0]?.id;
+    console.log('[save] score=', score, 'comment=', comment, 'insSub=', inscriptionSubjectId);
     try {
-      await api.post('/evaluation/qualifications', {
+      const resp = await api.post('/evaluation/qualifications', {
         evaluationPlanId: evalPlanId,
         inscriptionSubjectId,
         inscriptionId: enrollment.id,
         score: score === null ? 0 : score,
         isAbsent: false,
-        observations: ''
+        observations: '',
+        comment: comment?.trim() || undefined,
       });
+      console.log('[save] respuesta:', resp.status, 'id=', resp.data?.id, 'score=', resp.data?.score);
       fetchPlanAndStudents();
-    } catch {
+    } catch (err) {
+      console.error('[save] error:', err);
       message.error('Error al guardar nota');
     }
+  };
+
+  const confirmCommentSave = async () => {
+    const { enrollment, evalPlanId, value } = commentModal;
+    console.log('[confirm] enrollment=', enrollment?.id, 'evalPlanId=', evalPlanId, 'value=', value, 'comment=', commentText);
+    if (!enrollment || evalPlanId === undefined || value === undefined) {
+      console.log('[confirm] ABORT: datos incompletos');
+      return;
+    }
+    setCommentSaving(true);
+    try {
+      await handleSaveScoreInGrid(enrollment, evalPlanId, value, commentText);
+      setCommentModal({ open: false });
+      setCommentText('');
+    } finally {
+      setCommentSaving(false);
+    }
+  };
+
+  const cancelCommentSave = () => {
+    const { inputId, originalValue } = commentModal;
+    if (inputId) {
+      const el = document.getElementById(inputId) as HTMLInputElement | null;
+      if (el) el.value = originalValue != null ? String(originalValue) : '';
+    }
+    setCommentModal({ open: false });
+    setCommentText('');
   };
 
   const openAuditHistory = async (q: Qualification | undefined, studentName: string, itemLabel: string) => {
@@ -233,8 +268,10 @@ const ManageGrades: React.FC = () => {
       const res = await api.get(`/evaluation/qualification-audits/${selectedAssignment.id}`);
       const all = res.data as any[];
       const filtered = all.filter((a: any) => a.qualificationId === q.id);
+      console.log('[audit] q.id=', q.id, 'assignmentId=', selectedAssignment.id, 'total=', all.length, 'filtered=', filtered.length);
       setAuditHistory(filtered);
-    } catch {
+    } catch (e) {
+      console.error('[audit] error:', e);
       message.error('Error al cargar el historial de la nota');
     } finally {
       setAuditLoading(false);
@@ -630,7 +667,12 @@ const ManageGrades: React.FC = () => {
                                             ],
                                           }}
                                         >
-                                          <div style={{ display: 'flex', justifyContent: 'center' }}>
+                                          <div
+                                            style={{ display: 'flex', justifyContent: 'center' }}
+                                            onMouseDown={(e) => { if (e.button === 2) isRightClickRef.current = true; }}
+                                            onMouseUp={() => { isRightClickRef.current = false; }}
+                                            onMouseLeave={() => { isRightClickRef.current = false; }}
+                                          >
                                         <input
                                           type="number"
                                           id={`grade-${rowIndex}-${colIndex}`}
@@ -682,6 +724,11 @@ const ManageGrades: React.FC = () => {
                                             (e.target as HTMLInputElement).value = (e.target as HTMLInputElement).value.replace(/[^0-9]/g, '');
                                           }}
                                           onBlur={(e) => {
+                                            const rt = e.relatedTarget as HTMLElement | null;
+                                            if (isRightClickRef.current || (rt && rt.closest('.ant-dropdown'))) {
+                                              isRightClickRef.current = false;
+                                              return;
+                                            }
                                             const raw = e.target.value.replace(/[^0-9]/g, '');
                                             e.target.value = raw;
                                             if (raw === '') return;
@@ -698,7 +745,15 @@ const ManageGrades: React.FC = () => {
                                               return;
                                             }
                                             if (val !== currentScore) {
-                                              handleSaveScoreInGrid(enrollment, item.id, val);
+                                              setCommentModal({
+                                                open: true,
+                                                enrollment,
+                                                evalPlanId: item.id,
+                                                value: val,
+                                                inputId: (e.target as HTMLInputElement).id,
+                                                originalValue: currentScore ?? undefined,
+                                              });
+                                              setCommentText('');
                                             }
                                           }}
                                         />
@@ -833,9 +888,40 @@ const ManageGrades: React.FC = () => {
                 dataIndex: 'newScore',
                 align: 'center',
               },
+              {
+                title: 'Comentario',
+                dataIndex: 'comment',
+                render: (v: string | null) => (v && v.trim() !== '' ? v : <Text type="secondary" style={{ fontStyle: 'italic' }}>Sin comentario</Text>),
+              },
             ]}
           />
         )}
+      </Modal>
+
+      <Modal
+        title="Comentario de la nota"
+        open={commentModal.open}
+        onCancel={cancelCommentSave}
+        onOk={confirmCommentSave}
+        confirmLoading={commentSaving}
+        okText="Guardar"
+        cancelText="Cancelar"
+        okButtonProps={{ disabled: commentSaving }}
+      >
+        <p style={{ marginBottom: 8 }}>
+          Estás modificando la nota a{' '}
+          <strong>{commentModal.enrollment?.student?.lastName}, {commentModal.enrollment?.student?.firstName}</strong>
+          {' '}a <strong>{commentModal.value}</strong>. Escribe la razón de la modificación (opcional):
+        </p>
+        <Input.TextArea
+          autoFocus
+          rows={3}
+          value={commentText}
+          onChange={(e) => setCommentText(e.target.value)}
+          placeholder="Escribe el motivo del cambio (puede quedar vacío)..."
+          maxLength={500}
+          showCount
+        />
       </Modal>
     </div>
   );

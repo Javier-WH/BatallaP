@@ -9,10 +9,11 @@ interface QualificationAuditAttributes {
   editedBy: number;
   previousScore: number | null;
   newScore: number;
+  comment?: string | null;
   editedAt: Date;
 }
 
-interface QualificationAuditCreationAttributes extends Optional<QualificationAuditAttributes, 'id'> {}
+interface QualificationAuditCreationAttributes extends Optional<QualificationAuditAttributes, 'id' | 'comment'> {}
 
 class QualificationAudit
   extends Model<QualificationAuditAttributes, QualificationAuditCreationAttributes>
@@ -53,6 +54,10 @@ QualificationAudit.init(
     newScore: {
       type: DataTypes.DECIMAL(5, 2),
       allowNull: false,
+    },
+    comment: {
+      type: DataTypes.TEXT,
+      allowNull: true,
     },
     editedAt: {
       type: DataTypes.DATE,
