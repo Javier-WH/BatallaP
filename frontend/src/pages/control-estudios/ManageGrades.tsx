@@ -158,12 +158,6 @@ const ManageGrades: React.FC = () => {
     return Array.from(map.values());
   }, [allAssignments]);
 
-  useEffect(() => {
-    if (gradeOptions.length > 0 && selectedGrades.length === 0) {
-      setSelectedGrades(gradeOptions.map(g => g.id));
-    }
-  }, [gradeOptions, selectedGrades]);
-
   const filteredAssignments = useMemo(() => {
     return allAssignments.filter(a => {
       const grade = a.periodGradeSubject?.periodGrade?.grade;
