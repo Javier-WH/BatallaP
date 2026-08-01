@@ -646,7 +646,7 @@ const handleToggleAbsent = async (enrollment: StudentEnrollment, evalPlanId: num
                                   <td style={{ padding: '2px 6px', border: '1px solid var(--color-text-muted)', textAlign: 'left', background: rowIndex % 2 === 0 ? 'var(--color-input-bg)' : '#f9fafb', fontSize: 12 }}>
                                     {enrollment.student?.lastName}, {enrollment.student?.firstName}
                                   </td>
-                                   {evaluationPlan.map((item) => {
+                                   {evaluationPlan.map((item, colIndex) => {
                                     const q = studentQuals.find((sq: Qualification) => sq.evaluationPlanId === item.id);
                                     const isAbsent = !!(q?.isAbsent);
                                     return (
@@ -661,6 +661,7 @@ const handleToggleAbsent = async (enrollment: StudentEnrollment, evalPlanId: num
                                       >
                                         <input
                                           type="number"
+                                          id={`grade-${rowIndex}-${colIndex}`}
                                           min={0}
                                           max={maxGrade}
                                           step={1}
@@ -686,6 +687,21 @@ const handleToggleAbsent = async (enrollment: StudentEnrollment, evalPlanId: num
                                           onKeyDown={(e) => {
                                             if (e.key === '.' || e.key === ',' || e.key === 'e' || e.key === 'E' || e.key === '-' || e.key === '+') {
                                               e.preventDefault();
+                                              return;
+                                            }
+                                            if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+                                              e.preventDefault();
+                                              let nextRow = rowIndex;
+                                              let nextCol = colIndex;
+                                              if (e.key === 'ArrowUp') nextRow--;
+                                              if (e.key === 'ArrowDown') nextRow++;
+                                              if (e.key === 'ArrowLeft') nextCol--;
+                                              if (e.key === 'ArrowRight') nextCol++;
+                                              if (nextRow < 0 || nextRow >= students.length || nextCol < 0 || nextCol >= evaluationPlan.length) return;
+                                              setTimeout(() => {
+                                                const el = document.getElementById(`grade-${nextRow}-${nextCol}`) as HTMLInputElement | null;
+                                                if (el) el.focus();
+                                              }, 0);
                                             }
                                           }}
                                           onInput={(e: React.FormEvent<HTMLInputElement>) => {
