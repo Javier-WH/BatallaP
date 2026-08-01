@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Card, Tabs, Table, Button, message, Tag, Typography, Alert, Empty, Spin, Space, Dropdown, Modal, Descriptions, Input, Checkbox, Select } from 'antd';
+import { Card, Tabs, Table, Button, message, Tag, Typography, Alert, Empty, Spin, Space, Dropdown, Modal, Descriptions, Input, Select } from 'antd';
 import { BookOutlined, UserOutlined, ArrowLeftOutlined, DownloadOutlined, FilePdfOutlined, EditOutlined, DeleteOutlined, PlusOutlined, HistoryOutlined } from '@ant-design/icons';
 import api from '@/services/api';
 import dayjs from 'dayjs';
@@ -491,11 +491,20 @@ const ManageGrades: React.FC = () => {
             <Space direction="vertical" size={12} style={{ width: '100%' }}>
               <div className="flex items-center gap-2 flex-wrap">
                 <Text strong>Años:</Text>
-                <Checkbox.Group
-                  options={gradeOptions.map(g => ({ label: g.name, value: g.id }))}
-                  value={selectedGrades}
-                  onChange={(vals) => setSelectedGrades(vals as number[])}
-                />
+                <Space size={[6, 6]} wrap>
+                  {gradeOptions.map(g => (
+                    <Tag.CheckableTag
+                      key={g.id}
+                      checked={selectedGrades.includes(g.id)}
+                      onChange={(checked) => {
+                        setSelectedGrades(prev => checked ? [...prev, g.id] : prev.filter(id => id !== g.id));
+                      }}
+                      style={{ fontSize: 13, padding: '2px 12px' }}
+                    >
+                      {g.name}
+                    </Tag.CheckableTag>
+                  ))}
+                </Space>
               </div>
               <div className="flex items-center gap-2 flex-wrap">
                 <Text strong>Profesor:</Text>
