@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Card, Tabs, Table, Button, message, Tag, Typography, Alert, Empty, Spin, Space, Dropdown, Modal, Descriptions, Input } from 'antd';
+import { Card, Tabs, Table, Button, message, Tag, Typography, Alert, Empty, Spin, Space, Dropdown, Modal, Descriptions, Input, Checkbox, Select } from 'antd';
 import { BookOutlined, UserOutlined, ArrowLeftOutlined, DownloadOutlined, FilePdfOutlined, EditOutlined, DeleteOutlined, PlusOutlined, HistoryOutlined } from '@ant-design/icons';
 import api from '@/services/api';
 import dayjs from 'dayjs';
@@ -22,6 +22,8 @@ const playBeep = () => {
     osc.stop(ctx.currentTime + 0.15);
   } catch { /* ignore */ }
 };
+
+const normalizeText = (s?: string) => (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
 interface Term {
   id: number;
@@ -109,6 +111,9 @@ const ManageGrades: React.FC = () => {
   const isRightClickRef = useRef(false);
   const [commentText, setCommentText] = useState('');
   const [commentSaving, setCommentSaving] = useState(false);
+  const [selectedGrades, setSelectedGrades] = useState<number[]>([]);
+  const [selectedTeacher, setSelectedTeacher] = useState<number | null>(null);
+  const [selectedSubjects, setSelectedSubjects] = useState<number[]>([]);
   const { enableRounding } = useGradeRounding();
 
   const isSelectedTermBlocked = useMemo(() => {
@@ -127,9 +132,52 @@ const ManageGrades: React.FC = () => {
   }, [availableTerms, selectedTerm]);
 
   // Group assignments by grade
+  const gradeOptions = useMemo(() => {
+    const map = new Map<number, { id: number; name: string; order: number }>();
+    allAssignments.forEach(a => {
+      const grade = a.periodGradeSubject?.periodGrade?.grade;
+      if (grade) map.set(grade.id, grade);
+    });
+    return Array.from(map.values()).sort((x, y) => x.order - y.order || x.id - y.id);
+  }, [allAssignments]);
+
+  const teacherOptions = useMemo(() => {
+    const map = new Map<number, { id: number; name: string }>();
+    allAssignments.forEach(a => {
+      if (a.teacher?.id) map.set(a.teacher.id, { id: a.teacher.id, name: `${a.teacher.firstName} ${a.teacher.lastName}` });
+    });
+    return Array.from(map.values());
+  }, [allAssignments]);
+
+  const subjectOptions = useMemo(() => {
+    const map = new Map<number, { id: number; name: string }>();
+    allAssignments.forEach(a => {
+      const s = a.periodGradeSubject?.subject;
+      if (s?.id) map.set(s.id, { id: s.id, name: s.name });
+    });
+    return Array.from(map.values());
+  }, [allAssignments]);
+
+  useEffect(() => {
+    if (gradeOptions.length > 0 && selectedGrades.length === 0) {
+      setSelectedGrades(gradeOptions.map(g => g.id));
+    }
+  }, [gradeOptions, selectedGrades]);
+
+  const filteredAssignments = useMemo(() => {
+    return allAssignments.filter(a => {
+      const grade = a.periodGradeSubject?.periodGrade?.grade;
+      if (selectedGrades.length > 0 && grade && !selectedGrades.includes(grade.id)) return false;
+      if (selectedTeacher != null && a.teacher?.id !== selectedTeacher) return false;
+      const subject = a.periodGradeSubject?.subject;
+      if (selectedSubjects.length > 0 && subject && !selectedSubjects.includes(subject.id)) return false;
+      return true;
+    });
+  }, [allAssignments, selectedGrades, selectedTeacher, selectedSubjects]);
+
   const groupedAssignments = useMemo(() => {
     const groups = new Map<number, { gradeName: string; assignments: Assignment[] }>();
-    allAssignments.forEach(a => {
+    filteredAssignments.forEach(a => {
       const pg = a.periodGradeSubject?.periodGrade;
       const grade = pg?.grade;
       if (!grade) return;
@@ -139,7 +187,7 @@ const ManageGrades: React.FC = () => {
       groups.get(grade.id)!.assignments.push(a);
     });
     return Array.from(groups.values());
-  }, [allAssignments]);
+  }, [filteredAssignments]);
 
   useEffect(() => {
     fetchAllAssignments();
@@ -445,10 +493,48 @@ const ManageGrades: React.FC = () => {
             </p>
           </div>
 
+          <Card size="small" style={{ marginBottom: 16, backgroundColor: 'var(--color-content-bg)' }}>
+            <Space direction="vertical" size={12} style={{ width: '100%' }}>
+              <div className="flex items-center gap-2 flex-wrap">
+                <Text strong>Años:</Text>
+                <Checkbox.Group
+                  options={gradeOptions.map(g => ({ label: g.name, value: g.id }))}
+                  value={selectedGrades}
+                  onChange={(vals) => setSelectedGrades(vals as number[])}
+                />
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <Text strong>Profesor:</Text>
+                <Select
+                  allowClear
+                  showSearch
+                  placeholder="Filtrar por profesor"
+                  style={{ width: 260 }}
+                  options={teacherOptions.map(t => ({ label: t.name, value: t.id }))}
+                  value={selectedTeacher}
+                  onChange={(val: number | null) => setSelectedTeacher(val)}
+                  filterOption={(input, option) => normalizeText(String(option?.label ?? '')).includes(normalizeText(input))}
+                />
+                <Text strong>Materia:</Text>
+                <Select
+                  mode="multiple"
+                  allowClear
+                  placeholder="Filtrar por materia"
+                  style={{ minWidth: 260 }}
+                  options={subjectOptions.map(s => ({ label: s.name, value: s.id }))}
+                  value={selectedSubjects}
+                  onChange={(vals) => setSelectedSubjects(vals as number[])}
+                  maxTagCount="responsive"
+                  filterOption={(input, option) => normalizeText(String(option?.label ?? '')).includes(normalizeText(input))}
+                />
+              </div>
+            </Space>
+          </Card>
+
           <Spin spinning={loading}>
             {groupedAssignments.length === 0 ? (
               <Card style={{ backgroundColor: 'var(--color-content-bg)' }}>
-                <Empty description="No hay secciones configuradas en el período activo" />
+                <Empty description={allAssignments.length === 0 ? 'No hay secciones configuradas en el período activo' : 'No hay asignaciones que coincidan con los filtros seleccionados'} />
               </Card>
             ) : (
               groupedAssignments.map((group) => (
