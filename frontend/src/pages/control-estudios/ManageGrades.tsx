@@ -1,14 +1,27 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Card, Tabs, Table, Button, message, Tag, Typography, InputNumber, Alert, Empty, Spin, Space } from 'antd';
-import { BookOutlined, UserOutlined, ArrowLeftOutlined, DownloadOutlined, FilePdfOutlined } from '@ant-design/icons';
+import { Card, Tabs, Table, Button, message, Tag, Typography, Alert, Empty, Spin, Space } from 'antd';
+import { BookOutlined, UserOutlined, ArrowLeftOutlined, DownloadOutlined, FilePdfOutlined, EditOutlined, DeleteOutlined, PlusOutlined } from '@ant-design/icons';
 import api from '@/services/api';
 import dayjs from 'dayjs';
 import { useGradeRounding } from '@/context/GradeRoundingContext';
 import { formatGrade } from '@/utils/gradeFormat';
 import EvaluationPlanPDFModal from '@/components/pdf/EvaluationPlanPDFModal';
-import type { EvaluationPlanHeaderData, EvaluationPlanItemData } from '@/components/pdf/EvaluationPlanPDF';
+import type { EvaluationPlanHeaderData } from '@/components/pdf/EvaluationPlanPDF';
+import EvaluationPlanItemModal from '@/components/EvaluationPlanItemModal';
 
 const { Title, Text } = Typography;
+
+const playBeep = () => {
+  try {
+    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(440, ctx.currentTime);
+    osc.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.15);
+  } catch { /* ignore */ }
+};
 
 interface Term {
   id: number;
@@ -59,6 +72,8 @@ interface Qualification {
   evaluationPlanId: number;
   score: number;
   observations?: string;
+  remedialScore?: number | null;
+  isAbsent?: boolean;
 }
 
 interface StudentEnrollment {
@@ -82,12 +97,23 @@ const ManageGrades: React.FC = () => {
   const [passingGrade, setPassingGrade] = useState<number>(10);
   const [activeTab, setActiveTab] = useState('1');
   const [showPDFModal, setShowPDFModal] = useState(false);
+  const [showPlanModal, setShowPlanModal] = useState(false);
+  const [editingItem, setEditingItem] = useState<EvaluationPlanItem | null>(null);
   const { enableRounding } = useGradeRounding();
 
   const isSelectedTermBlocked = useMemo(() => {
     if (!selectedTerm) return false;
     const term = availableTerms.find(t => t.id === selectedTerm);
     return term?.isBlocked ?? false;
+  }, [availableTerms, selectedTerm]);
+
+  const selectedTermDateRange = useMemo(() => {
+    if (!selectedTerm) return { openDate: null as dayjs.Dayjs | null, closeDate: null as dayjs.Dayjs | null };
+    const term = availableTerms.find(t => t.id === selectedTerm);
+    return {
+      openDate: term?.openDate ? dayjs(term.openDate) : null,
+      closeDate: term?.closeDate ? dayjs(term.closeDate) : null,
+    };
   }, [availableTerms, selectedTerm]);
 
   // Group assignments by grade
@@ -246,6 +272,20 @@ const handleToggleAbsent = async (enrollment: StudentEnrollment, evalPlanId: num
     setStudents([]);
   };
 
+  const handleDeletePlanItem = async (id: number) => {
+    if (isSelectedTermBlocked) {
+      message.warning('Este lapso está bloqueado. No se puede modificar el plan de evaluación.');
+      return;
+    }
+    try {
+      await api.delete(`/evaluation/plan/${id}`);
+      message.success('Item eliminado');
+      fetchPlanAndStudents();
+    } catch {
+      message.error('Error al eliminar');
+    }
+  };
+
   const pendingGradesCount = useMemo(() => {
     if (evaluationPlan.length === 0 || students.length === 0) return { missing: 0, total: 0 };
     let missing = 0;
@@ -346,6 +386,28 @@ const handleToggleAbsent = async (enrollment: StudentEnrollment, evalPlanId: num
     },
     { title: 'Puntaje', dataIndex: 'percentage', key: 'percentage', render: (v: number) => `${v}%`, width: 70 },
     { title: 'Fecha', dataIndex: 'date', key: 'date', render: (v: string) => dayjs(v).format('DD/MM/YYYY'), width: 90 },
+    {
+      title: 'Acciones',
+      key: 'actions',
+      width: 90,
+      render: (_: unknown, record: EvaluationPlanItem) => (
+        <Space>
+          {!isSelectedTermBlocked && (
+            <>
+              <Button
+                icon={<EditOutlined />}
+                size="small"
+                onClick={() => {
+                  setEditingItem(record);
+                  setShowPlanModal(true);
+                }}
+              />
+              <Button icon={<DeleteOutlined />} size="small" danger onClick={() => handleDeletePlanItem(record.id)} />
+            </>
+          )}
+        </Space>
+      )
+    }
   ];
 
   return (
@@ -456,7 +518,7 @@ const handleToggleAbsent = async (enrollment: StudentEnrollment, evalPlanId: num
           </div>
 
           {isSelectedTermBlocked && (
-            <Alert message="Lapso bloqueado. No se pueden modificar calificaciones." type="warning" showIcon className="mb-4" />
+            <Alert message="Lapso bloqueado. No se pueden modificar calificaciones ni el plan de evaluación." type="warning" showIcon className="mb-4" />
           )}
 
           <Tabs activeKey={activeTab} onChange={setActiveTab}
@@ -465,17 +527,37 @@ const handleToggleAbsent = async (enrollment: StudentEnrollment, evalPlanId: num
                 key: '1',
                 label: 'Plan de Evaluación',
                 children: (
-                  <Table
-                    loading={loading}
-                    columns={planColumns}
-                    dataSource={evaluationPlan}
-                    rowKey="id"
-                    pagination={false}
-                    size="small"
-                    bordered
-                    scroll={{ x: 1000 }}
-                    style={{ backgroundColor: 'var(--color-content-bg)' }}
-                  />
+                  <>
+                    <Table
+                      loading={loading}
+                      columns={planColumns}
+                      dataSource={evaluationPlan}
+                      rowKey="id"
+                      pagination={false}
+                      size="small"
+                      bordered
+                      scroll={{ x: 1000 }}
+                      style={{ backgroundColor: 'var(--color-content-bg)' }}
+                    />
+                    {!isSelectedTermBlocked && selectedAssignment && (
+                      <div
+                        className="mt-4 w-full h-14 flex items-center justify-center rounded-xl transition-all cursor-pointer border-none shadow-sm hover:scale-[1.01]"
+                        style={{ 
+                          backgroundColor: 'var(--color-accent)',
+                          color: 'var(--color-header-text)' 
+                        }}
+                        onClick={() => {
+                          setEditingItem(null);
+                          setShowPlanModal(true);
+                        }}
+                      >
+                        <PlusOutlined className="text-3xl font-bold" />
+                      </div>
+                    )}
+                    <div className="mt-4 flex justify-end items-center px-2">
+                      <span className="font-black" style={{ color: 'var(--color-text-main)' }}>Total Puntaje Acumulado: {totalPercentage}%</span>
+                    </div>
+                  </>
                 )
               },
               {
@@ -563,7 +645,7 @@ const handleToggleAbsent = async (enrollment: StudentEnrollment, evalPlanId: num
                                   <td style={{ padding: '2px 6px', border: '1px solid var(--color-text-muted)', textAlign: 'left', background: rowIndex % 2 === 0 ? 'var(--color-input-bg)' : '#f9fafb', fontSize: 12 }}>
                                     {enrollment.student?.lastName}, {enrollment.student?.firstName}
                                   </td>
-                                   {evaluationPlan.map((item, colIndex) => {
+                                   {evaluationPlan.map((item) => {
                                     const q = studentQuals.find((sq: Qualification) => sq.evaluationPlanId === item.id);
                                     const isAbsent = !!(q?.isAbsent);
                                     return (
@@ -688,6 +770,19 @@ const handleToggleAbsent = async (enrollment: StudentEnrollment, evalPlanId: num
           date: ep.date,
         }))}
       />
+
+      {selectedAssignment && selectedTerm && (
+        <EvaluationPlanItemModal
+          open={showPlanModal}
+          onClose={() => setShowPlanModal(false)}
+          onSaved={fetchPlanAndStudents}
+          editingItem={editingItem}
+          periodGradeSubjectId={selectedAssignment.periodGradeSubjectId}
+          sectionId={selectedAssignment.sectionId}
+          termId={selectedTerm}
+          selectedTermDateRange={selectedTermDateRange}
+        />
+      )}
     </div>
   );
 };

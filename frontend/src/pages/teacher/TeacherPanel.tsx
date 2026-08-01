@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, Component, useMemo } from 'react';
 import type { ReactNode, ErrorInfo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Tabs, Card, Select, Table, Button, Modal, Form, Input, DatePicker, message, Space, Tag, Typography, InputNumber, Alert, Empty, Tooltip } from 'antd';
+import { Tabs, Card, Table, Button, message, Space, Tag, Typography, Alert, Empty, Tooltip } from 'antd';
 import { BookOutlined, PlusOutlined, DeleteOutlined, EditOutlined, LockOutlined, FilePdfOutlined, DownloadOutlined, ToolOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { isAxiosError } from 'axios';
@@ -10,9 +10,9 @@ import dayjs from 'dayjs';
 import { useGradeRounding } from '@/context/GradeRoundingContext';
 import { formatGrade } from '@/utils/gradeFormat';
 import EvaluationPlanPDFModal from '@/components/pdf/EvaluationPlanPDFModal';
-import type { EvaluationPlanHeaderData, EvaluationPlanItemData } from '@/components/pdf/EvaluationPlanPDF';
+import type { EvaluationPlanHeaderData } from '@/components/pdf/EvaluationPlanPDF';
+import EvaluationPlanItemModal from '@/components/EvaluationPlanItemModal';
 
-const { Option } = Select;
 const { Title, Text } = Typography;
 
 // Error Boundary Component
@@ -70,26 +70,14 @@ class TeacherPanelErrorBoundary extends Component<ErrorBoundaryProps, ErrorBound
   }
 }
 
-interface PlanItemFormValues {
-  description?: string;
-  tecnica: string;
-  identificador: string;
-  percentage: number;
-  date: dayjs.Dayjs;
-  estrategiaOption?: string;
-  customEstrategia?: string;
-  temaGenerador?: string;
-  referentesTeoricosStr?: string[];
-  referentesEticosSel?: string[];
-  indicadoresStr?: string[];
-}
+
 
 interface Qualification {
   id: number;
   evaluationPlanId: number;
   score: number;
   observations?: string;
-  remedialScore?: number;
+  remedialScore?: number | null;
   isAbsent?: boolean;
 }
 
@@ -182,35 +170,7 @@ interface Assignment {
   };
 }
 
-const evaluationInstruments = [
-  'Examen escrito',
-  'Prueba objetiva (selección múltiple o verdadero/falso)',
-  'Cuestionario diagnóstico',
-  'Exposición oral',
-  'Debate guiado',
-  'Mesa redonda',
-  'Proyecto integrador',
-  'Estudio de caso',
-  'Ensayo crítico',
-  'Portafolio digital',
-  'Trabajo de laboratorio',
-  'Bitácora de aprendizaje',
-  'Rúbrica de desempeño',
-  'Observación de clase',
-  'Demostración práctica',
-  'Simulación o role play',
-  'Mapa conceptual',
-  'Investigación de campo',
-  'Análisis de textos',
-  'Diseño de prototipo',
-  'Taller participativo',
-  'Diario reflexivo',
-  'Evaluación entre pares',
-  'Autoevaluación dirigida',
-  'Evaluación gamificada'
-];
 
-const CUSTOM_INSTRUMENT_VALUE = '__custom__';
 
 const TeacherPanel: React.FC = () => {
   const navigate = useNavigate();
@@ -223,7 +183,6 @@ const TeacherPanel: React.FC = () => {
   const [students, setStudents] = useState<StudentEnrollment[]>([]);
   const [showPlanModal, setShowPlanModal] = useState(false);
   const [editingItem, setEditingItem] = useState<EvaluationPlanItem | null>(null);
-  const [planForm] = Form.useForm<PlanItemFormValues>();
   const [activeTab, setActiveTab] = useState('1');
   const [maxGrade, setMaxGrade] = useState<number>(20);
   const [passingGrade, setPassingGrade] = useState<number>(10);
@@ -231,10 +190,6 @@ const TeacherPanel: React.FC = () => {
   const [remedialMinGrade, setRemedialMinGrade] = useState<number>(1);
   const [remedialMaxGrade, setRemedialMaxGrade] = useState<number>(9);
   const [showPDFModal, setShowPDFModal] = useState(false);
-  const instrumentSelection = Form.useWatch('estrategiaOption', planForm);
-  const [refTeoricos, setRefTeoricos] = useState<string[]>(['']);
-  const [indicadores, setIndicadores] = useState<string[]>(['']);
-  const [selectedEticos, setSelectedEticos] = useState<string[]>([]);
   const { enableRounding } = useGradeRounding();
 
   const isSelectedTermBlocked = useMemo(() => {
@@ -453,61 +408,7 @@ const TeacherPanel: React.FC = () => {
     );
   }
 
-  const handleSavePlanItem = async (values: PlanItemFormValues) => {
-    if (isSelectedTermBlocked) {
-      message.warning('Este lapso está bloqueado. No puedes modificar el plan de evaluación.');
-      return;
-    }
-    const assignment = assignments.find(a => a.id === selectedAssignmentId);
-    if (!assignment) {
-      message.error('No se pudo encontrar la asignación seleccionada');
-      return;
-    }
 
-    const { estrategiaOption, customEstrategia, ...restValues } = values;
-    const selectedEstrategia =
-      estrategiaOption === CUSTOM_INSTRUMENT_VALUE
-        ? customEstrategia?.trim()
-        : estrategiaOption;
-
-    if (!selectedEstrategia) {
-      message.error('Selecciona o especifica una estrategia de evaluación.');
-      return;
-    }
-
-    const data = {
-      description: selectedEstrategia,
-      tecnica: values.tecnica,
-      identificador: values.identificador,
-      periodGradeSubjectId: assignment.periodGradeSubjectId,
-      sectionId: assignment.sectionId,
-      termId: selectedTerm,
-      percentage: values.percentage,
-      date: values.date ? values.date.format('YYYY-MM-DD') : undefined,
-      temaGenerador: values.temaGenerador,
-      referentesTeoricos: refTeoricos.filter(t => t.trim() !== ''),
-      referentesEticos: selectedEticos,
-      indicador: indicadores.filter(t => t.trim() !== ''),
-    };
-
-    try {
-      if (editingItem) {
-        await api.put(`/evaluation/plan/${editingItem.id}`, data);
-        message.success('Item actualizado');
-      } else {
-        await api.post('/evaluation/plan', data);
-        message.success('Item creado');
-      }
-      setShowPlanModal(false);
-      fetchPlanAndStudents();
-    } catch (error: unknown) {
-      if (isAxiosError<{ message?: string }>(error)) {
-        message.error(error.response?.data?.message || 'Error al guardar');
-      } else {
-        message.error('Error al guardar');
-      }
-    }
-  };
 
   const handleDeletePlanItem = async (id: number) => {
     if (isSelectedTermBlocked) {
@@ -665,35 +566,6 @@ const handleToggleAbsent = async (enrollment: StudentEnrollment, evalPlanId: num
                 icon={<EditOutlined />}
                 onClick={() => {
                   setEditingItem(record);
-
-                  const refTeoricosParsed = typeof record.referentesTeoricos === 'string'
-                    ? (() => { try { return JSON.parse(record.referentesTeoricos); } catch { return []; } })()
-                    : (Array.isArray(record.referentesTeoricos) ? record.referentesTeoricos : []);
-                  const eticosParsed = typeof record.referentesEticos === 'string'
-                    ? (() => { try { return JSON.parse(record.referentesEticos); } catch { return []; } })()
-                    : (Array.isArray(record.referentesEticos) ? record.referentesEticos : []);
-                  const indicadoresParsed = typeof record.indicador === 'string'
-                    ? (() => { try { return JSON.parse(record.indicador); } catch { return []; } })()
-                    : (Array.isArray(record.indicador) ? record.indicador : []);
-
-                  setRefTeoricos(refTeoricosParsed.length > 0 ? refTeoricosParsed : ['']);
-                  setIndicadores(indicadoresParsed.length > 0 ? indicadoresParsed : ['']);
-                  setSelectedEticos(eticosParsed);
-
-                  const matchedInstrument = evaluationInstruments.find(
-                    instrument => instrument.toLowerCase() === record.description.toLowerCase()
-                  );
-
-                  planForm.setFieldsValue({
-                    estrategiaOption: matchedInstrument ?? CUSTOM_INSTRUMENT_VALUE,
-                    customEstrategia: matchedInstrument ? undefined : record.description,
-                    tecnica: record.tecnica,
-                    identificador: record.identificador,
-                    percentage: Number(record.percentage),
-                    date: dayjs(record.date),
-                    temaGenerador: record.temaGenerador,
-                  });
-
                   setShowPlanModal(true);
                 }}
               />
@@ -955,10 +827,6 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                     onClick={() => {
                       if(isSelectedTermBlocked || !selectedAssignmentId) return;
                       setEditingItem(null);
-                      planForm.resetFields();
-                      setRefTeoricos(['']);
-                      setIndicadores(['']);
-                      setSelectedEticos([]);
                       setShowPlanModal(true);
                     }}
                   >
@@ -1353,208 +1221,22 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
       />
       </div>
 
-      <Modal
-        title={editingItem ? "Editar Evaluación" : "Nueva Evaluación"}
-        open={showPlanModal}
-        onCancel={() => setShowPlanModal(false)}
-        onOk={() => planForm.submit()}
-        destroyOnHidden
-        footer={[
-          <Button key="cancel" onClick={() => setShowPlanModal(false)}>Cancelar</Button>,
-          <Button key="submit" type="primary" onClick={() => planForm.submit()}>
-            {editingItem ? 'Actualizar' : 'Guardar'}
-          </Button>
-        ]}
-      >
-        <Form form={planForm} layout="vertical" onFinish={handleSavePlanItem}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-            <Form.Item 
-              name="identificador" 
-              label="Identificador" 
-              rules={[{ required: true, message: 'Requerido' }, { max: 15, message: 'Máximo 15 caracteres' }]}
-            >
-              <Input placeholder="Ej: PRUEBA-1" maxLength={15} />
-            </Form.Item>
-            <Form.Item name="temaGenerador" label="Tema Generador">
-              <Input placeholder="Describe el tema generador..." />
-            </Form.Item>
-          </div>
-
-          <Form.Item label="Referentes Teóricos">
-            {refTeoricos.map((item, idx) => (
-              <div key={idx} style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-                <Input
-                  value={item}
-                  placeholder={`Referente teórico ${idx + 1}`}
-                  onChange={(e) => {
-                    const copy = [...refTeoricos];
-                    copy[idx] = e.target.value;
-                    setRefTeoricos(copy);
-                  }}
-                />
-                {refTeoricos.length > 1 && (
-                  <Button danger size="small" onClick={() => setRefTeoricos(refTeoricos.filter((_, i) => i !== idx))}>✕</Button>
-                )}
-              </div>
-            ))}
-            <Button type="dashed" size="small" onClick={() => setRefTeoricos([...refTeoricos, ''])} block>
-              + Agregar referente teórico
-            </Button>
-          </Form.Item>
-
-          <Form.Item label="Referentes Éticos e Indispensables">
-            <Select
-              mode="multiple"
-              placeholder="Selecciona los referentes éticos e indispensables"
-              value={selectedEticos}
-              onChange={(values) => setSelectedEticos(values)}
-              options={[
-                { label: 'Referentes Éticos', options: [
-                  { value: 'A', label: 'A - Educar con, por y para todas y todos' },
-                  { value: 'B', label: 'B - Educar en, por y para la ciudadanía participativa y protagónica' },
-                  { value: 'C', label: 'C - Educar en, por y para el amor a la Patria, la soberanía y la autodeterminación' },
-                  { value: 'D', label: 'D - Educar en, por y para el amor, el respeto y la afirmación de la condición humana' },
-                  { value: 'E', label: 'E - Educar en, por y para la interculturalidad y la valoración de la diversidad' },
-                  { value: 'F', label: 'F - Educar en, por y para el trabajo productivo y la transformación social' },
-                  { value: 'G', label: 'G - Educar en, por y para la preservación de la vida en el planeta' },
-                  { value: 'H', label: 'H - Educar en, por y para la libertad y una visión crítica del mundo' },
-                  { value: 'I', label: 'I - Educar en, por y para la curiosidad y la investigación' },
-                ]},
-                { label: 'Referentes Indispensables', options: [
-                  { value: '1', label: '1 - Democracia Participativa y Protagónica, Igualdad, No Discriminación, DDHH, Equidad de Género' },
-                  { value: '2', label: '2 - Sociedad Multiétnica y Pluricultural, Diversidad e Interculturalidad, Patrimonio Cultural' },
-                  { value: '3', label: '3 - Independencia, Soberanía y Autodeterminación de los Pueblos, Mundo Multipolar' },
-                  { value: '4', label: '4 - Ideario Bolivariano, Unidad Latinoamericana y Caribeña' },
-                  { value: '5', label: '5 - Conocimiento del Espacio Geográfico e Historia de Venezuela, Familias y Comunidades' },
-                  { value: '6', label: '6 - Preservación de la Vida en el Planeta, Salud y Buen Vivir' },
-                  { value: '7', label: '7 - Petróleo y Energía' },
-                  { value: '8', label: '8 - Ciencia, Tecnología e Innovación' },
-                  { value: '9', label: '9 - Adolescencia y Juventud, Sexualidad Responsable, Educación Vial' },
-                  { value: '10', label: '10 - Actividad Física, Deporte y Recreación' },
-                  { value: '11', label: '11 - Seguridad y Soberanía Alimentaria' },
-                  { value: '12', label: '12 - Proceso Social de Trabajo' },
-                  { value: '13', label: '13 - Defensa Integral de la Nación' },
-                  { value: '14', label: '14 - Comunicación y Medios de Comunicación' },
-                ]},
-              ]}
-              filterOption={(input, option) =>
-                String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
-              }
-            />
-          </Form.Item>
-
-          <Form.Item 
-            name="tecnica" 
-            label="Técnicas e Instrumento" 
-            rules={[{ required: true, message: 'Requerido' }, { max: 30, message: 'Máximo 30 caracteres' }]}
-          >
-            <Input placeholder="Ej: Observación Directa" maxLength={30} />
-          </Form.Item>
-
-          <Form.Item
-            name="estrategiaOption"
-            label="Estrategia de evaluación"
-            rules={[{ required: true, message: 'Selecciona una estrategia de evaluación' }]}
-          >
-            <Select
-              showSearch
-              placeholder="Selecciona la estrategia de evaluación"
-              optionFilterProp="children"
-              filterOption={(input, option) =>
-                String(option?.children ?? '')
-                  .toLowerCase()
-                  .includes(input.toLowerCase())
-              }
-              onChange={(value: string) => {
-                planForm.setFieldValue('estrategiaOption', value);
-                if (value !== CUSTOM_INSTRUMENT_VALUE) {
-                  planForm.setFieldValue('customEstrategia', undefined);
-                }
-              }}
-            >
-              {evaluationInstruments.map(instrument => (
-                <Option key={instrument} value={instrument}>
-                  {instrument}
-                </Option>
-              ))}
-              <Option value={CUSTOM_INSTRUMENT_VALUE}>Otro (especificar)</Option>
-            </Select>
-          </Form.Item>
-
-          {instrumentSelection === CUSTOM_INSTRUMENT_VALUE && (
-            <Form.Item
-              name="customEstrategia"
-              label="Describe la estrategia"
-              rules={[
-                { required: true, message: 'Ingresa la estrategia de evaluación' },
-                { min: 3, message: 'Debe tener al menos 3 caracteres' }
-              ]}
-            >
-              <Input placeholder="Ej: Evaluación práctica en laboratorio..." />
-            </Form.Item>
-          )}
-
-          <Form.Item label="Indicador">
-            {indicadores.map((item, idx) => (
-              <div key={idx} style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-                <Input
-                  value={item}
-                  placeholder={`Indicador ${idx + 1}`}
-                  onChange={(e) => {
-                    const copy = [...indicadores];
-                    copy[idx] = e.target.value;
-                    setIndicadores(copy);
-                  }}
-                />
-                {indicadores.length > 1 && (
-                  <Button danger size="small" onClick={() => setIndicadores(indicadores.filter((_, i) => i !== idx))}>✕</Button>
-                )}
-              </div>
-            ))}
-            <Button type="dashed" size="small" onClick={() => setIndicadores([...indicadores, ''])} block>
-              + Agregar indicador
-            </Button>
-          </Form.Item>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-            <Form.Item name="percentage" label="Puntaje (1-100%)" rules={[{ required: true }]}>
-              <InputNumber min={1} max={100} style={{ width: '100%' }} controls={false} />
-            </Form.Item>
-            <Form.Item
-              name="date"
-              label="Fecha de Evaluación"
-              rules={[
-                { required: true, message: 'Fecha requerida' },
-                {
-                  validator: (_, value) => {
-                    if (!value) return Promise.resolve();
-                    const { openDate, closeDate } = selectedTermDateRange;
-                    if (openDate && value.isBefore(openDate, 'day')) {
-                      return Promise.reject(`La fecha debe ser a partir del ${openDate.format('DD/MM/YYYY')} (inicio del lapso)`);
-                    }
-                    if (closeDate && value.isAfter(closeDate, 'day')) {
-                      return Promise.reject(`La fecha debe ser hasta el ${closeDate.format('DD/MM/YYYY')} (cierre del lapso)`);
-                    }
-                    return Promise.resolve();
-                  },
-                },
-              ]}
-            >
-              <DatePicker
-                style={{ width: '100%' }}
-                format="DD/MM/YYYY"
-                disabledDate={(current) => {
-                  if (!current) return false;
-                  const { openDate, closeDate } = selectedTermDateRange;
-                  if (openDate && current.isBefore(openDate, 'day')) return true;
-                  if (closeDate && current.isAfter(closeDate, 'day')) return true;
-                  return false;
-                }}
-              />
-            </Form.Item>
-          </div>
-        </Form>
-      </Modal>
+      {selectedAssignmentId && selectedTerm && (() => {
+        const assignment = assignments.find(a => a.id === selectedAssignmentId);
+        if (!assignment) return null;
+        return (
+          <EvaluationPlanItemModal
+            open={showPlanModal}
+            onClose={() => setShowPlanModal(false)}
+            onSaved={fetchPlanAndStudents}
+            editingItem={editingItem}
+            periodGradeSubjectId={assignment.periodGradeSubjectId}
+            sectionId={assignment.sectionId}
+            termId={selectedTerm}
+            selectedTermDateRange={selectedTermDateRange}
+          />
+        );
+      })()}
 
       <EvaluationPlanPDFModal
         open={showPDFModal}
