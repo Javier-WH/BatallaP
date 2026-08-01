@@ -1234,6 +1234,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
             sectionId={assignment.sectionId}
             termId={selectedTerm}
             selectedTermDateRange={selectedTermDateRange}
+            schoolPeriod={assignment.periodGradeSubject?.periodGrade?.schoolPeriod}
           />
         );
       })()}

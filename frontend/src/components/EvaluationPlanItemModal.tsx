@@ -39,6 +39,14 @@ interface PlanItemFormValues {
   indicadoresStr?: string[];
 }
 
+export interface SchoolPeriodInfo {
+  id?: number;
+  name?: string;
+  period?: string;
+  startYear?: number;
+  endYear?: number;
+}
+
 export interface EvaluationPlanItemModalProps {
   open: boolean;
   onClose: () => void;
@@ -48,6 +56,42 @@ export interface EvaluationPlanItemModalProps {
   sectionId: number;
   termId: number;
   selectedTermDateRange: { openDate: dayjs.Dayjs | null; closeDate: dayjs.Dayjs | null };
+  schoolPeriod?: SchoolPeriodInfo | string;
+}
+
+export function getSchoolPeriodDateRange(periodInput?: SchoolPeriodInfo | string) {
+  if (!periodInput) return { minPeriodDate: null, maxPeriodDate: null, periodLabel: '' };
+
+  let startYear: number | undefined;
+  let endYear: number | undefined;
+
+  if (typeof periodInput === 'object') {
+    if (periodInput.startYear && periodInput.endYear) {
+      startYear = Number(periodInput.startYear);
+      endYear = Number(periodInput.endYear);
+    } else {
+      const str = periodInput.period || periodInput.name || '';
+      const match = str.match(/\b(20\d{2})\s*[-/]\s*(20\d{2})\b/);
+      if (match) {
+        startYear = parseInt(match[1], 10);
+        endYear = parseInt(match[2], 10);
+      }
+    }
+  } else if (typeof periodInput === 'string') {
+    const match = periodInput.match(/\b(20\d{2})\s*[-/]\s*(20\d{2})\b/);
+    if (match) {
+      startYear = parseInt(match[1], 10);
+      endYear = parseInt(match[2], 10);
+    }
+  }
+
+  if (startYear && endYear) {
+    const minPeriodDate = dayjs(`${startYear}-09-01`);
+    const maxPeriodDate = dayjs(`${endYear}-08-31`);
+    return { minPeriodDate, maxPeriodDate, periodLabel: `${startYear}-${endYear}` };
+  }
+
+  return { minPeriodDate: null, maxPeriodDate: null, periodLabel: '' };
 }
 
 // ── Constants ──────────────────────────────────────────────────────────────────
@@ -103,6 +147,7 @@ const EvaluationPlanItemModal: React.FC<EvaluationPlanItemModalProps> = ({
   sectionId,
   termId,
   selectedTermDateRange,
+  schoolPeriod,
 }) => {
   const [planForm] = Form.useForm<PlanItemFormValues>();
   const instrumentSelection = Form.useWatch('estrategiaOption', planForm);
@@ -366,6 +411,17 @@ const EvaluationPlanItemModal: React.FC<EvaluationPlanItemModalProps> = ({
               {
                 validator: (_, value) => {
                   if (!value) return Promise.resolve();
+
+                  // 1. Validar límites del período escolar (1 Sep startYear -> 31 Ago endYear)
+                  const { minPeriodDate, maxPeriodDate, periodLabel } = getSchoolPeriodDateRange(schoolPeriod);
+                  if (minPeriodDate && value.isBefore(minPeriodDate, 'day')) {
+                    return Promise.reject(`La fecha debe ser a partir del 01/09/${minPeriodDate.year()} (inicio del período escolar${periodLabel ? ` ${periodLabel}` : ''})`);
+                  }
+                  if (maxPeriodDate && value.isAfter(maxPeriodDate, 'day')) {
+                    return Promise.reject(`La fecha debe ser hasta el 31/08/${maxPeriodDate.year()} (cierre del período escolar${periodLabel ? ` ${periodLabel}` : ''})`);
+                  }
+
+                  // 2. Validar límites del lapso académico activo
                   const { openDate, closeDate } = selectedTermDateRange;
                   if (openDate && value.isBefore(openDate, 'day')) {
                     return Promise.reject(`La fecha debe ser a partir del ${openDate.format('DD/MM/YYYY')} (inicio del lapso)`);
@@ -383,9 +439,15 @@ const EvaluationPlanItemModal: React.FC<EvaluationPlanItemModalProps> = ({
               format="DD/MM/YYYY"
               disabledDate={(current) => {
                 if (!current) return false;
+
+                const { minPeriodDate, maxPeriodDate } = getSchoolPeriodDateRange(schoolPeriod);
+                if (minPeriodDate && current.isBefore(minPeriodDate, 'day')) return true;
+                if (maxPeriodDate && current.isAfter(maxPeriodDate, 'day')) return true;
+
                 const { openDate, closeDate } = selectedTermDateRange;
                 if (openDate && current.isBefore(openDate, 'day')) return true;
                 if (closeDate && current.isAfter(closeDate, 'day')) return true;
+
                 return false;
               }}
             />
