@@ -276,16 +276,6 @@ const EvaluationPlanItemModal: React.FC<EvaluationPlanItemModalProps> = ({
       destroyOnHidden
       footer={[
         <Button key="cancel" onClick={onClose}>Cancelar</Button>,
-        isDateBeforePrevious && (
-          <Checkbox
-            key="outOfOrderCheck"
-            checked={allowOutOfOrder}
-            onChange={(e) => setAllowOutOfOrder(e.target.checked)}
-            style={{ marginRight: 8 }}
-          >
-            Confirmar fecha anterior a la evaluación previa
-          </Checkbox>
-        ),
         <Button
           key="submit"
           type="primary"
@@ -508,6 +498,15 @@ const EvaluationPlanItemModal: React.FC<EvaluationPlanItemModalProps> = ({
             message="Fecha anterior a la evaluación previa"
             description={`La fecha seleccionada (${selectedDate?.format('DD/MM/YYYY')}) es anterior a la evaluación previa "${latestPreviousItem?.identificador || ''}" (${dayjs(latestPreviousItem?.date).format('DD/MM/YYYY')}). Para guardar, debes marcar la casilla de confirmación.`}
           />
+        )}
+        {isDateBeforePrevious && (
+          <Checkbox
+            checked={allowOutOfOrder}
+            onChange={(e) => setAllowOutOfOrder(e.target.checked)}
+            style={{ marginBottom: 16 }}
+          >
+            Confirmar fecha anterior a la evaluación previa
+          </Checkbox>
         )}
       </Form>
     </Modal>
