@@ -1185,7 +1185,7 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
     sheet.mergeCells('C3:D3');
     const periodCell = sheet.getCell('C3');
     periodCell.value = period.name || '';
-    periodCell.font = { bold: true, size: 12 };
+    periodCell.font = { bold: false, size: 12 };
     periodCell.alignment = { horizontal: 'center', vertical: 'middle' };
 
     // Right block (Educación Media General / DEA / momento) spans eval cols..last
@@ -1223,6 +1223,7 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
       const labelCell = sheet.getCell(`C${r}`);
       labelCell.value = label;
       labelCell.font = { bold: true, size: 10 };
+      // C5-C7 already bold via font above
       labelCell.alignment = { horizontal: 'right', vertical: 'middle' };
       // C5-C6: no borders; C7: bottom border only
       labelCell.border = r === 7
