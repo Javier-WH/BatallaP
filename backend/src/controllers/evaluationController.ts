@@ -1159,8 +1159,8 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
     const LIGHT_GREEN = 'FFE2EFDA';
 
     // ── Encabezado institucional (filas 1-7) ──────────────────
-    // Logo: merged block B1:B7
-    sheet.mergeCells('B1:B7');
+    // Logo: merged block A1:B7, logo centered within
+    sheet.mergeCells('A1:B7');
     try {
       const uploadDir = path.join(__dirname, '../../public/uploads/images');
       const logoFile = fs.existsSync(path.join(uploadDir, 'institution_logo.png'))
@@ -1170,7 +1170,7 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
         const ext = logoFile.split('.').pop()?.toLowerCase() as 'jpeg' | 'png' | 'gif' | undefined;
         if (ext) {
           const imageId = workbook.addImage({ filename: path.join(uploadDir, logoFile), extension: ext });
-          sheet.addImage(imageId, { tl: { col: 1.1, row: 0.3 }, ext: { width: 99.84, height: 99.84 } });
+          sheet.addImage(imageId, { tl: { col: 0.22, row: 0.61 }, ext: { width: 99.84, height: 99.84 } });
         }
       }
     } catch { /* logo opcional */ }
@@ -1217,17 +1217,25 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
       [6, 'Asignatura:', subject.name, false],
       [7, 'Sección:', `${grade.name} ${section.name}`, true]
     ];
+    const thinSide = { style: 'thin' as const };
+    const noSide = { style: 'thin' as const, color: { argb: 'FFFFFFFF' } };
     leftInfo.forEach(([r, label, value, big]) => {
       const labelCell = sheet.getCell(`C${r}`);
       labelCell.value = label;
       labelCell.font = { bold: true, size: 10 };
       labelCell.alignment = { horizontal: 'right', vertical: 'middle' };
-      labelCell.border = thinBorder;
+      // C5-C6: no borders; C7: bottom border only
+      labelCell.border = r === 7
+        ? { top: noSide, bottom: thinSide, left: noSide, right: noSide }
+        : { top: noSide, bottom: noSide, left: noSide, right: noSide };
       const valueCell = sheet.getCell(`D${r}`);
       valueCell.value = value;
       valueCell.font = big ? { bold: true, size: 14 } : { size: 10 };
       valueCell.alignment = { horizontal: 'center', vertical: 'middle' };
-      valueCell.border = thinBorder;
+      // D5-D6: right border only; D7: bottom and right border
+      valueCell.border = r === 7
+        ? { top: noSide, bottom: thinSide, left: noSide, right: thinSide }
+        : { top: noSide, bottom: noSide, left: noSide, right: thinSide };
     });
 
     // Per-evaluation header block (rows 5-7): date (blue) / name (gray) / percentage
