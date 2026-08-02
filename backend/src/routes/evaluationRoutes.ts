@@ -12,6 +12,7 @@ import {
   updateFinalGrade,
   getFinalGradesByPeriod,
   exportGradesExcel,
+  exportGradesExcelOficial,
   getAllAssignments,
   getQualificationAudits,
   getAllQualificationAudits
@@ -31,6 +32,7 @@ router.get('/student-record/:personId', getStudentFullAcademicRecord);
 router.put('/final-grade/:id', updateFinalGrade);
 router.get('/final-grades-by-period', getFinalGradesByPeriod);
 router.get('/export-grades/:assignmentId', exportGradesExcel);
+router.get('/export-grades-oficial/:assignmentId', exportGradesExcelOficial);
 router.get('/all-assignments', getAllAssignments);
 router.get('/qualification-audits/:assignmentId', getQualificationAudits);
 router.get('/all-qualification-audits', getAllQualificationAudits);

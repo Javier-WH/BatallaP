@@ -395,13 +395,33 @@ const ManageGrades: React.FC = () => {
     if (!selectedAssignment?.id) return;
     try {
       const res = await api.get(`/evaluation/export-grades/${selectedAssignment.id}`, {
-        params: { filled: filled ? 'true' : 'false' },
+        params: { filled: filled ? 'true' : 'false', term: selectedTerm ?? undefined },
         responseType: 'blob'
       });
       const url = window.URL.createObjectURL(new Blob([res.data]));
       const link = document.createElement('a');
       link.href = url;
       link.setAttribute('download', filled ? 'calificaciones.xlsx' : 'plantilla-calificaciones.xlsx');
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch {
+      message.error('Error al descargar Excel');
+    }
+  };
+
+  const downloadExcelOficial = async () => {
+    if (!selectedAssignment?.id) return;
+    try {
+      const res = await api.get(`/evaluation/export-grades-oficial/${selectedAssignment.id}`, {
+        params: { filled: 'true', term: selectedTerm ?? undefined },
+        responseType: 'blob'
+      });
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', 'planilla-calificaciones.xlsx');
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -669,6 +689,7 @@ const ManageGrades: React.FC = () => {
                       <div className="flex items-center gap-2">
                         <Button icon={<FilePdfOutlined />} size="small" onClick={() => setShowPDFModal(true)} disabled={evaluationPlan.length === 0}>PDF</Button>
                         <Button icon={<DownloadOutlined />} size="small" onClick={() => downloadExcel(true)} disabled={students.length === 0}>Excel con notas</Button>
+                        <Button icon={<DownloadOutlined />} size="small" type="primary" onClick={downloadExcelOficial} disabled={students.length === 0}>Planilla oficial</Button>
                         <Button icon={<DownloadOutlined />} size="small" onClick={() => downloadExcel(false)}>Excel vacío</Button>
                       </div>
                     </div>
