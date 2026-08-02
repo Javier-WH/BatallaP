@@ -1087,12 +1087,12 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
       order: [['date', 'ASC']]
     });
 
-    const [institutionShortName, institutionDeaCode] = await Promise.all([
+    const [institutionShortName, institutionCode] = await Promise.all([
       Setting.findOne({ where: { key: 'institution_short_name' } }),
-      Setting.findOne({ where: { key: 'institution_dea_code' } })
+      Setting.findOne({ where: { key: 'institution_code' } })
     ]);
     const instName = institutionShortName?.getDataValue('value') || '';
-    const deaCode = institutionDeaCode?.getDataValue('value') || '';
+    const studyModeCode = institutionCode?.getDataValue('value') || '';
 
     const inscriptions = await Inscription.findAll({
       where: {
@@ -1200,10 +1200,10 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
     emgCell.font = { size: 9 };
     emgCell.alignment = { horizontal: 'center', vertical: 'bottom' };
 
-    // Row 3: DEA code (same row as school period)
+    // Row 3: Código de modalidad de estudios (same row as school period)
     sheet.mergeCells(`${rightStart}3:${lastEvalColLetter}3`);
     const deaCell = sheet.getCell(`${rightStart}3`);
-    deaCell.value = deaCode || '';
+    deaCell.value = studyModeCode || '';
     deaCell.font = { size: 9 };
     deaCell.alignment = { horizontal: 'center', vertical: 'middle' };
 
