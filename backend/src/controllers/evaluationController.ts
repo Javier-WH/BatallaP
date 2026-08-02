@@ -1135,11 +1135,11 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
     const sheet = workbook.addWorksheet('Calificaciones');
 
     // Column layout:
-    // 1 = #, 2 = CÉDULA, 3 = APELLIDOS Y NOMBRES,
+    // 1 = #, 2 = CÉDULA, 3-4 = APELLIDOS Y NOMBRES (merged C+D),
     // per evaluation: 3 cols (NOT | REM | %),
     // then DEF, then Observaciones
     const nEvals = evaluationPlans.length;
-    const firstEvalCol = 4;
+    const firstEvalCol = 5;
     const defCol = firstEvalCol + nEvals * 3;
     const obsCol = defCol + 1;
     const totalCols = obsCol;
@@ -1158,8 +1158,8 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
     const LIGHT_GREEN = 'FFE2EFDA';
 
     // ── Encabezado institucional (filas 1-6) ──────────────────
-    // Logo: merged block A1:A6
-    sheet.mergeCells('A1:A6');
+    // Logo: merged block B1:B6
+    sheet.mergeCells('B1:B6');
     try {
       const uploadDir = path.join(__dirname, '../../public/uploads/images');
       const logoFile = fs.existsSync(path.join(uploadDir, 'institution_logo.png'))
@@ -1169,20 +1169,20 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
         const ext = logoFile.split('.').pop()?.toLowerCase() as 'jpeg' | 'png' | 'gif' | undefined;
         if (ext) {
           const imageId = workbook.addImage({ filename: path.join(uploadDir, logoFile), extension: ext });
-          sheet.addImage(imageId, { tl: { col: 0.1, row: 0.2 }, ext: { width: 90, height: 95 } });
+          sheet.addImage(imageId, { tl: { col: 1.1, row: 0.3 }, ext: { width: 85, height: 110 } });
         }
       }
     } catch { /* logo opcional */ }
 
-    // Left block (institution name + period) spans cols B..C, rows 1-2 / 3
-    sheet.mergeCells('B1:C2');
-    const instCell = sheet.getCell('B1');
+    // Left block (institution name + period) spans cols C..D, rows 1-2 / 3
+    sheet.mergeCells('C1:D2');
+    const instCell = sheet.getCell('C1');
     instCell.value = instName || 'U.E.C. BATALLA DE LA VICTORIA';
     instCell.font = { bold: true, size: 16 };
     instCell.alignment = { horizontal: 'center', vertical: 'middle' };
 
-    sheet.mergeCells('B3:C3');
-    const periodCell = sheet.getCell('B3');
+    sheet.mergeCells('C3:D3');
+    const periodCell = sheet.getCell('C3');
     periodCell.value = period.name || '';
     periodCell.font = { bold: true, size: 12 };
     periodCell.alignment = { horizontal: 'center', vertical: 'middle' };
@@ -1207,7 +1207,7 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
     momentoCell.font = { bold: true, size: 13 };
     momentoCell.alignment = { horizontal: 'center', vertical: 'middle' };
 
-    // Left labels: Docente / Asignatura / Sección (rows 4-6, cols B-C)
+    // Left labels: Docente / Asignatura / Sección (rows 4-6, cols C-D)
     const teacherName = `${(assignment as any).teacher?.firstName || ''} ${(assignment as any).teacher?.lastName || ''}`.trim();
     const leftInfo: Array<[number, string, string, boolean]> = [
       [4, 'Docente:', teacherName || '—', false],
@@ -1215,12 +1215,12 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
       [6, 'Sección:', `${grade.name} ${section.name}`, true]
     ];
     leftInfo.forEach(([r, label, value, big]) => {
-      const labelCell = sheet.getCell(`B${r}`);
+      const labelCell = sheet.getCell(`C${r}`);
       labelCell.value = label;
       labelCell.font = { bold: true, size: 10 };
       labelCell.alignment = { horizontal: 'right', vertical: 'middle' };
       labelCell.border = thinBorder;
-      const valueCell = sheet.getCell(`C${r}`);
+      const valueCell = sheet.getCell(`D${r}`);
       valueCell.value = value;
       valueCell.font = big ? { bold: true, size: 14 } : { size: 10 };
       valueCell.alignment = { horizontal: 'center', vertical: 'middle' };
@@ -1266,6 +1266,7 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
     const headerRow = sheet.getRow(7);
     headerRow.getCell(1).value = '#';
     headerRow.getCell(2).value = 'CÉDULA';
+    sheet.mergeCells('C7:D7');
     headerRow.getCell(3).value = 'APELLIDOS Y NOMBRES';
     evaluationPlans.forEach((_plan: any, idx: number) => {
       const c1 = firstEvalCol + idx * 3;
@@ -1304,6 +1305,7 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
       numCell.border = thinBorder;
 
       const cedCell = row.getCell(2);
+      sheet.mergeCells(`C${rowNum}:D${rowNum}`);
       const nameCell = row.getCell(3);
       if (inscription) {
         const doc = inscription.student?.document || '';
@@ -1316,6 +1318,7 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
       nameCell.font = { size: 10 };
       nameCell.alignment = { horizontal: 'left', vertical: 'middle' };
       nameCell.border = thinBorder;
+      row.getCell(4).border = thinBorder;
 
       const insSub = inscription?.inscriptionSubjects?.[0];
       const studentQuals: any[] = insSub?.qualifications || [];
@@ -1378,7 +1381,8 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
     // Column widths
     sheet.getColumn(1).width = 4;
     sheet.getColumn(2).width = 14;
-    sheet.getColumn(3).width = 42;
+    sheet.getColumn(3).width = 18;
+    sheet.getColumn(4).width = 26;
     for (let idx = 0; idx < nEvals; idx++) {
       const c1 = firstEvalCol + idx * 3;
       sheet.getColumn(c1).width = 6;
