@@ -1320,7 +1320,7 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
         top: thinSide2,
         bottom: thinSide2,
         left: isEvalFirstCol ? thickSide : thinSide2,
-        right: isEvalLastCol ? thickSide : thinSide2
+        right: (isEvalLastCol || c === defCol) ? thickSide : thinSide2
       };
     }
     headerRow.height = 22;
@@ -1433,7 +1433,12 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
       defCell.font = { bold: true, size: 9 };
       defCell.alignment = { horizontal: 'center', vertical: 'middle' };
       defCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: LIGHT_GREEN } };
-      defCell.border = thinBorder;
+      defCell.border = {
+        top: thinSide2,
+        bottom: thinSide2,
+        left: thickSide,
+        right: thickSide
+      };
 
       // Observaciones column
       const obsCell = row.getCell(obsCol);
@@ -1450,6 +1455,7 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
     ];
 
     summaryRows.forEach(([rowNum, label, key]) => {
+      const isLastSummaryRow = key === 'absent';
       const row = sheet.getRow(rowNum);
       sheet.mergeCells(`C${rowNum}:D${rowNum}`);
       const labelCell = row.getCell(3);
@@ -1467,10 +1473,15 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
         const percentageCell = row.getCell(c1 + 2);
         countCell.value = count;
         percentageCell.value = `${percentage}%`;
-        [row.getCell(c1), row.getCell(c1 + 1), percentageCell].forEach(cell => {
+        [row.getCell(c1), row.getCell(c1 + 1), percentageCell].forEach((cell, ci) => {
           cell.font = { size: 9 };
           cell.alignment = { horizontal: 'center', vertical: 'middle' };
-          cell.border = thinBorder;
+          cell.border = {
+            top: thinSide2,
+            bottom: isLastSummaryRow ? thickSide : thinSide2,
+            left: ci === 0 ? thickSide : thinSide2,
+            right: ci === 2 ? thickSide : thinSide2
+          };
         });
       });
 
@@ -1480,7 +1491,12 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
       finalCell.value = `${finalPercentage}%`;
       finalCell.font = { size: 9 };
       finalCell.alignment = { horizontal: 'center', vertical: 'middle' };
-      finalCell.border = thinBorder;
+      finalCell.border = {
+        top: thinSide2,
+        bottom: isLastSummaryRow ? thickSide : thinSide2,
+        left: thickSide,
+        right: thickSide
+      };
       row.getCell(obsCol).border = thinBorder;
       row.height = 19 * 0.75;
     });
