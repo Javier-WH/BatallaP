@@ -1466,36 +1466,19 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
 
     summaryRows.forEach(([rowNum, label, key]) => {
       const isLastSummaryRow = key === 'absent';
+      const isFirstSummaryRow = key === 'approved';
       const row = sheet.getRow(rowNum);
-      // Outer contour: thick left on col 1, thick bottom on last row
-      row.getCell(1).border = {
-        top: thinSide2,
+      // Merge A:D for label, left-aligned and bold
+      sheet.mergeCells(`A${rowNum}:D${rowNum}`);
+      const labelCell = row.getCell(1);
+      labelCell.value = label;
+      labelCell.font = { bold: true, size: 9 };
+      labelCell.alignment = { horizontal: 'left', vertical: 'middle' };
+      labelCell.border = {
+        top: isFirstSummaryRow ? thickSide : thinSide2,
         bottom: isLastSummaryRow ? thickSide : thinSide2,
         left: thickSide,
-        right: thinSide2
-      };
-      row.getCell(2).border = {
-        top: thinSide2,
-        bottom: isLastSummaryRow ? thickSide : thinSide2,
-        left: thinSide2,
-        right: thinSide2
-      };
-      sheet.mergeCells(`C${rowNum}:D${rowNum}`);
-      const labelCell = row.getCell(3);
-      labelCell.value = label;
-      labelCell.font = { size: 9 };
-      labelCell.alignment = { horizontal: 'right', vertical: 'middle' };
-      labelCell.border = {
-        top: thinSide2,
-        bottom: isLastSummaryRow ? thickSide : thinSide2,
-        left: thinSide2,
-        right: thinSide2
-      };
-      row.getCell(4).border = {
-        top: thinSide2,
-        bottom: isLastSummaryRow ? thickSide : thinSide2,
-        left: thinSide2,
-        right: thinSide2
+        right: thickSide
       };
 
       evaluationStats.forEach((stats, idx) => {
@@ -1510,7 +1493,7 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
           cell.font = { size: 9 };
           cell.alignment = { horizontal: 'center', vertical: 'middle' };
           cell.border = {
-            top: thinSide2,
+            top: isFirstSummaryRow ? thickSide : thinSide2,
             bottom: isLastSummaryRow ? thickSide : thinSide2,
             left: ci === 0 ? thickSide : thinSide2,
             right: ci === 2 ? thickSide : thinSide2
@@ -1525,13 +1508,13 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
       finalCell.font = { size: 9 };
       finalCell.alignment = { horizontal: 'center', vertical: 'middle' };
       finalCell.border = {
-        top: thinSide2,
+        top: isFirstSummaryRow ? thickSide : thinSide2,
         bottom: isLastSummaryRow ? thickSide : thinSide2,
         left: thickSide,
         right: thickSide
       };
       row.getCell(obsCol).border = {
-        top: thinSide2,
+        top: isFirstSummaryRow ? thickSide : thinSide2,
         bottom: isLastSummaryRow ? thickSide : thinSide2,
         left: thinSide2,
         right: thickSide
