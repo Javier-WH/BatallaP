@@ -1152,6 +1152,8 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
       left: { style: 'thin' as const },
       right: { style: 'thin' as const }
     };
+    const thickSide = { style: 'medium' as const };
+    const thinSide2 = { style: 'thin' as const };
 
     const DARK_BLUE = 'FF1F3864';
     const MED_BLUE = 'FF2E5FA3';
@@ -1246,6 +1248,14 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
       const l1 = sheet.getColumn(c1).letter;
       const l3 = sheet.getColumn(c1 + 2).letter;
 
+      // Outer border for this evaluation block (thick left/right)
+      const evalOuterBorder = {
+        left: thickSide,
+        right: thickSide,
+        top: thinSide2,
+        bottom: thinSide2
+      };
+
       // Row 5: date (blue background, white text)
       sheet.mergeCells(`${l1}5:${l3}5`);
       const dateCell = sheet.getCell(`${l1}5`);
@@ -1253,7 +1263,7 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
       dateCell.font = { bold: true, size: 9, color: { argb: 'FFFFFFFF' } };
       dateCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: MED_BLUE } };
       dateCell.alignment = { horizontal: 'center', vertical: 'middle' };
-      dateCell.border = thinBorder;
+      dateCell.border = { ...evalOuterBorder, top: thickSide };
 
       // Row 6: evaluation name (gray background)
       sheet.mergeCells(`${l1}6:${l3}6`);
@@ -1262,7 +1272,7 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
       nameCell.font = { bold: true, size: 9 };
       nameCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: GRAY } };
       nameCell.alignment = { horizontal: 'center', vertical: 'middle' };
-      nameCell.border = thinBorder;
+      nameCell.border = evalOuterBorder;
 
       // Row 7: percentage
       sheet.mergeCells(`${l1}7:${l3}7`);
@@ -1270,7 +1280,7 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
       pctCell.value = `${Number(plan.percentage)}%`;
       pctCell.font = { bold: true, size: 9 };
       pctCell.alignment = { horizontal: 'center', vertical: 'middle' };
-      pctCell.border = thinBorder;
+      pctCell.border = { ...evalOuterBorder, bottom: thickSide };
     });
 
     // Row heights (px → ExcelJS points: px * 0.75)
@@ -1303,7 +1313,15 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
       cell.font = { bold: true, size: 9, color: { argb: 'FFFFFFFF' } };
       cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: DARK_BLUE } };
       cell.alignment = { horizontal: 'center', vertical: 'middle' };
-      cell.border = thinBorder;
+      // Thick left border on first col of each evaluation block, thick right on last col
+      const isEvalFirstCol = evaluationPlans.some((_p: any, idx: number) => c === firstEvalCol + idx * 3);
+      const isEvalLastCol = evaluationPlans.some((_p: any, idx: number) => c === firstEvalCol + idx * 3 + 2);
+      cell.border = {
+        top: thinSide2,
+        bottom: thinSide2,
+        left: isEvalFirstCol ? thickSide : thinSide2,
+        right: isEvalLastCol ? thickSide : thinSide2
+      };
     }
     headerRow.height = 22;
 
@@ -1379,15 +1397,25 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
           }
         }
 
-        [notCell, remCell].forEach(cell => {
+        [notCell, remCell].forEach((cell, ci) => {
           cell.font = { size: 9 };
           cell.alignment = { horizontal: 'center', vertical: 'middle' };
-          cell.border = thinBorder;
+          cell.border = {
+            top: thinSide2,
+            bottom: thinSide2,
+            left: ci === 0 ? thickSide : thinSide2,
+            right: thinSide2
+          };
         });
         pctCell.font = { bold: true, size: 9 };
         pctCell.numFmt = '0.00';
         pctCell.alignment = { horizontal: 'center', vertical: 'middle' };
-        pctCell.border = thinBorder;
+        pctCell.border = {
+          top: thinSide2,
+          bottom: thinSide2,
+          left: thinSide2,
+          right: thickSide
+        };
       });
 
       // DEF column (light green)
