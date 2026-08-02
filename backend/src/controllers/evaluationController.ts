@@ -1309,26 +1309,26 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
     headerRow.getCell(defCol).value = 'DEF';
     headerRow.getCell(obsCol).value = 'Observaciones';
 
-    const whiteSide = { style: 'thin' as const, color: { argb: 'FFFFFFFF' } };
+    const whiteSide = { style: 'medium' as const, color: { argb: 'FFFFFFFF' } };
+    const whiteThin = { style: 'thin' as const, color: { argb: 'FFFFFFFF' } };
 
     for (let c = 1; c <= totalCols; c++) {
       const cell = headerRow.getCell(c);
       cell.font = { bold: true, size: 9, color: { argb: 'FFFFFFFF' } };
       cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: DARK_BLUE } };
       cell.alignment = { horizontal: 'center', vertical: 'middle' };
-      // Thick left border on first col of each evaluation block, thick right on last col
       const isEvalFirstCol = evaluationPlans.some((_p: any, idx: number) => c === firstEvalCol + idx * 3);
       const isEvalLastCol = evaluationPlans.some((_p: any, idx: number) => c === firstEvalCol + idx * 3 + 2);
-      // B8 to DEF (inclusive): white left/right borders
-      // A8 right border white, R8 (obsCol) left border white
-      const isWhiteBorderCol = c >= 2 && c <= defCol;
-      const isWhiteRight = c === 1;
-      const isWhiteLeft = c === obsCol;
+      // Outer contour stays black thick; every internal border is white, keeping its thickness
+      const isOuterLeft = c === 1;
+      const isOuterRight = c === obsCol;
+      const isThickLeft = isEvalFirstCol || c === defCol;
+      const isThickRight = isEvalLastCol || c === defCol;
       cell.border = {
         top: thickSide,
         bottom: thinSide2,
-        left: isWhiteLeft ? whiteSide : (isWhiteBorderCol ? whiteSide : ((isEvalFirstCol || c === 1) ? thickSide : thinSide2)),
-        right: isWhiteRight ? whiteSide : (isWhiteBorderCol ? whiteSide : ((isEvalLastCol || c === defCol || c === obsCol) ? thickSide : thinSide2))
+        left: isOuterLeft ? thickSide : (isThickLeft ? whiteSide : whiteThin),
+        right: isOuterRight ? thickSide : (isThickRight ? whiteSide : whiteThin)
       };
     }
     headerRow.height = 22;
