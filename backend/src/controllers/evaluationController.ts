@@ -1132,6 +1132,7 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
     const period = (assignment as any).periodGradeSubject.periodGrade.schoolPeriod;
 
     const workbook = new ExcelJS.Workbook();
+    (workbook as any).font = { name: 'Calibri', size: 10 };
     const sheet = workbook.addWorksheet('Calificaciones');
 
     // Column layout:
@@ -1169,7 +1170,7 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
         const ext = logoFile.split('.').pop()?.toLowerCase() as 'jpeg' | 'png' | 'gif' | undefined;
         if (ext) {
           const imageId = workbook.addImage({ filename: path.join(uploadDir, logoFile), extension: ext });
-          sheet.addImage(imageId, { tl: { col: 1.1, row: 0.3 }, ext: { width: 85, height: 125 } });
+          sheet.addImage(imageId, { tl: { col: 1.1, row: 0.3 }, ext: { width: 99.84, height: 99.84 } });
         }
       }
     } catch { /* logo opcional */ }
@@ -1262,9 +1263,17 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
       pctCell.border = thinBorder;
     });
 
-    for (let r = 1; r <= 7; r++) sheet.getRow(r).height = 20;
+    // Row heights (px → ExcelJS points: px * 0.75)
+    sheet.getRow(1).height = 19 * 0.75;  // 19px
+    sheet.getRow(2).height = 20 * 0.75;  // 20px
+    sheet.getRow(3).height = 16 * 0.75;  // 16px
+    sheet.getRow(4).height = 20 * 0.75;  // 20px
+    sheet.getRow(5).height = 16 * 0.75;  // 16px
+    sheet.getRow(6).height = 16 * 0.75;  // 16px
+    sheet.getRow(7).height = 16 * 0.75;  // 16px
 
     // ── Fila 8: encabezado de tabla ───────────────────────────
+    sheet.getRow(8).height = 26 * 0.75;  // 26px
     const headerRow = sheet.getRow(8);
     headerRow.getCell(1).value = '#';
     headerRow.getCell(2).value = 'CÉDULA';
@@ -1377,14 +1386,14 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
       const obsCell = row.getCell(obsCol);
       obsCell.border = thinBorder;
 
-      row.height = 18;
+      row.height = 19 * 0.75;  // 19px
     }
 
-    // Column widths
-    sheet.getColumn(1).width = 4;
-    sheet.getColumn(2).width = 14;
-    sheet.getColumn(3).width = 18;
-    sheet.getColumn(4).width = 26;
+    // Column widths (pixel → character width: px / 7 ≈ char width)
+    sheet.getColumn(1).width = 3.3;   // A: 23px
+    sheet.getColumn(2).width = 14.7;  // B: 103px
+    sheet.getColumn(3).width = 9.4;   // C: 66px
+    sheet.getColumn(4).width = 39.3;  // D: 275px
     for (let idx = 0; idx < nEvals; idx++) {
       const c1 = firstEvalCol + idx * 3;
       sheet.getColumn(c1).width = 6;
