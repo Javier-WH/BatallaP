@@ -1159,6 +1159,7 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
     const MED_BLUE = 'FF2E5FA3';
     const GRAY = 'FFD9D9D9';
     const LIGHT_GREEN = 'FFE2EFDA';
+    const ZEBRA = 'FFF2F5FA';
 
     // ── Encabezado institucional (filas 1-7) ──────────────────
     // Logo: merged block A1:B7, logo centered within
@@ -1337,6 +1338,10 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
       const rowNum = firstDataRow + i;
       const row = sheet.getRow(rowNum);
       const inscription: any = inscriptions[i];
+      const isZebraRow = i % 2 === 1;
+      const zebraFill = isZebraRow
+        ? { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: ZEBRA } }
+        : undefined;
 
       // Column #: sequential number (also for empty rows, as in the model)
       const numCell = row.getCell(1);
@@ -1362,10 +1367,13 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
       cedCell.font = { size: 9 };
       cedCell.alignment = { horizontal: 'left', vertical: 'middle' };
       cedCell.border = thinBorder;
+      if (zebraFill) cedCell.fill = zebraFill;
       nameCell.font = { size: 9 };
       nameCell.alignment = { horizontal: 'left', vertical: 'middle' };
       nameCell.border = thinBorder;
+      if (zebraFill) nameCell.fill = zebraFill;
       row.getCell(4).border = thinBorder;
+      if (zebraFill) row.getCell(4).fill = zebraFill;
 
       const insSub = inscription?.inscriptionSubjects?.[0];
       const studentQuals: any[] = insSub?.qualifications || [];
@@ -1394,7 +1402,7 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
               else evaluationStats[idx].failed += 1;
             }
             const weighted = (effectiveScore * Number(plan.percentage)) / 100;
-            pctCell.value = Math.round(weighted * 100) / 100;
+            pctCell.value = Math.round(weighted);
             rowTotal += weighted;
           } else {
             pctCell.value = 0;
@@ -1404,7 +1412,9 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
 
         [notCell, remCell].forEach((cell, ci) => {
           cell.font = { size: 9 };
+          cell.numFmt = '00';
           cell.alignment = { horizontal: 'center', vertical: 'middle' };
+          if (zebraFill) cell.fill = zebraFill;
           cell.border = {
             top: thinSide2,
             bottom: thinSide2,
@@ -1413,8 +1423,9 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
           };
         });
         pctCell.font = { bold: true, size: 9 };
-        pctCell.numFmt = '0.00';
+        pctCell.numFmt = '00';
         pctCell.alignment = { horizontal: 'center', vertical: 'middle' };
+        if (zebraFill) pctCell.fill = zebraFill;
         pctCell.border = {
           top: thinSide2,
           bottom: thinSide2,
@@ -1447,6 +1458,7 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
 
       // Observaciones column
       const obsCell = row.getCell(obsCol);
+      if (zebraFill) obsCell.fill = zebraFill;
       obsCell.border = {
         top: thinSide2,
         bottom: thinSide2,
@@ -1519,7 +1531,7 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
         left: thinSide2,
         right: thickSide
       };
-      row.height = 19 * 0.75;
+      row.height = 14 * 0.75;  // 14px
     });
 
     // Column widths (pixel → character width: px / 7 ≈ char width)
