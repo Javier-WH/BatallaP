@@ -1311,6 +1311,9 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
     const firstDataRow = 9;
     const minRows = Math.max(inscriptions.length, 30);
 
+    const evaluationStats = evaluationPlans.map(() => ({ approved: 0, failed: 0, absent: 0 }));
+    const finalStats = { approved: 0, failed: 0, absent: 0 };
+
     for (let i = 0; i < minRows; i++) {
       const rowNum = firstDataRow + i;
       const row = sheet.getRow(rowNum);
@@ -1355,17 +1358,23 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
           if (q) {
             if (q.isAbsent) {
               notCell.value = 'NP';
+              evaluationStats[idx].absent += 1;
             } else {
               notCell.value = Number(q.score);
             }
             const hasRem = q.remedialScore != null && Number(q.remedialScore) > 0;
             if (hasRem) remCell.value = Number(q.remedialScore);
             const effectiveScore = q.isAbsent ? 0 : (hasRem ? Number(q.remedialScore) : Number(q.score));
+            if (!q.isAbsent) {
+              if (effectiveScore >= 10) evaluationStats[idx].approved += 1;
+              else evaluationStats[idx].failed += 1;
+            }
             const weighted = (effectiveScore * Number(plan.percentage)) / 100;
             pctCell.value = Math.round(weighted * 100) / 100;
             rowTotal += weighted;
           } else {
             pctCell.value = 0;
+            evaluationStats[idx].absent += 1;
           }
         }
 
@@ -1383,8 +1392,14 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
       // DEF column (light green)
       const defCell = row.getCell(defCol);
       if (isFilled && inscription) {
-        defCell.value = Math.round(rowTotal);
+        const finalGrade = Math.round(rowTotal);
+        defCell.value = finalGrade;
         defCell.numFmt = '00';
+        const hasAnyQualification = studentQuals.some((q: any) => evaluationPlans.some((plan: any) => q.evaluationPlanId === plan.id));
+        const hasAbsentQualification = studentQuals.some((q: any) => evaluationPlans.some((plan: any) => q.evaluationPlanId === plan.id) && q.isAbsent);
+        if (!hasAnyQualification || hasAbsentQualification) finalStats.absent += 1;
+        else if (finalGrade >= 10) finalStats.approved += 1;
+        else finalStats.failed += 1;
       }
       defCell.font = { bold: true, size: 9 };
       defCell.alignment = { horizontal: 'center', vertical: 'middle' };
@@ -1397,6 +1412,49 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
 
       row.height = 19 * 0.75;  // 19px
     }
+
+    const summaryTotal = inscriptions.length || 1;
+    const summaryRows: Array<[number, string, 'approved' | 'failed' | 'absent']> = [
+      [firstDataRow + minRows, 'Aprobados:', 'approved'],
+      [firstDataRow + minRows + 1, 'Reprobados:', 'failed'],
+      [firstDataRow + minRows + 2, 'Inasistentes:', 'absent']
+    ];
+
+    summaryRows.forEach(([rowNum, label, key]) => {
+      const row = sheet.getRow(rowNum);
+      sheet.mergeCells(`C${rowNum}:D${rowNum}`);
+      const labelCell = row.getCell(3);
+      labelCell.value = label;
+      labelCell.font = { size: 9 };
+      labelCell.alignment = { horizontal: 'right', vertical: 'middle' };
+      labelCell.border = thinBorder;
+      row.getCell(4).border = thinBorder;
+
+      evaluationStats.forEach((stats, idx) => {
+        const c1 = firstEvalCol + idx * 3;
+        const count = stats[key];
+        const percentage = Math.round((count * 100) / summaryTotal);
+        const countCell = row.getCell(c1);
+        const percentageCell = row.getCell(c1 + 2);
+        countCell.value = count;
+        percentageCell.value = `${percentage}%`;
+        [row.getCell(c1), row.getCell(c1 + 1), percentageCell].forEach(cell => {
+          cell.font = { size: 9 };
+          cell.alignment = { horizontal: 'center', vertical: 'middle' };
+          cell.border = thinBorder;
+        });
+      });
+
+      const finalCount = finalStats[key];
+      const finalPercentage = Math.round((finalCount * 100) / summaryTotal);
+      const finalCell = row.getCell(defCol);
+      finalCell.value = `${finalPercentage}%`;
+      finalCell.font = { size: 9 };
+      finalCell.alignment = { horizontal: 'center', vertical: 'middle' };
+      finalCell.border = thinBorder;
+      row.getCell(obsCol).border = thinBorder;
+      row.height = 19 * 0.75;
+    });
 
     // Column widths (pixel → character width: px / 7 ≈ char width)
     sheet.getColumn(1).width = 3.3;   // A: 23px
