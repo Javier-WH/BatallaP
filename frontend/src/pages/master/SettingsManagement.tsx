@@ -15,6 +15,7 @@ interface PlantelOption {
 
 interface SettingsFormValues {
   institution_name?: string;
+  institution_short_name?: string;
   institution_dea_code?: string;
   institution_code?: string;
   institution_level?: string;
@@ -88,6 +89,7 @@ const SettingsManagement: React.FC = () => {
 
         form.setFieldsValue({
           institution_name: res.data.institution_name || '',
+          institution_short_name: res.data.institution_short_name || '',
           institution_dea_code: res.data.institution_dea_code || '',
           institution_logo: res.data.institution_logo || '',
           institution_logo_shape: res.data.institution_logo_shape || 'square',
@@ -227,6 +229,17 @@ const SettingsManagement: React.FC = () => {
               </Form.Item>
 
               <Form.Item
+                label={<span className="text-[var(--color-text-main)] font-bold">Nombre Abreviado de la Institución</span>}
+                name="institution_short_name"
+                tooltip="Versión abreviada del nombre (se usa en encabezados, reportes y constancias)"
+              >
+                <Input
+                  placeholder="Ej: U.E. Colegio Batalla"
+                  className="h-12 border-slate-200 focus:border-brand-primary focus:ring-4 focus:ring-brand-primary/10 rounded-xl transition-all"
+                />
+              </Form.Item>
+
+              <Form.Item
                 label={<span className="text-[var(--color-text-main)] font-bold">Código DEA de la Institución</span>}
                 name="institution_dea_code"
                 tooltip="Código DEA oficial del plantel educativo (se asociará a las notas finales)"
@@ -306,9 +319,9 @@ const SettingsManagement: React.FC = () => {
               </Form.Item>
 
               <Form.Item
-                label={<span className="text-[var(--color-text-main)] font-bold">Código del Plantel</span>}
+                label={<span className="text-[var(--color-text-main)] font-bold">Código de modalidad de estudios</span>}
                 name="institution_code"
-                tooltip="Código numérico del plantel según el MPPE (ej. 31059)"
+                tooltip="Código de modalidad de estudios según el MPPE (ej. 31059)"
               >
                 <Input
                   placeholder="Ej: 31059"
@@ -317,7 +330,7 @@ const SettingsManagement: React.FC = () => {
               </Form.Item>
 
               <Form.Item
-                label={<span className="text-[var(--color-text-main)] font-bold">Tipo de Educación</span>}
+                label={<span className="text-[var(--color-text-main)] font-bold">Modalidad de estudio</span>}
                 name="institution_level"
                 tooltip="Nivel educativo del plantel (se muestra en el resumen de rendimiento)"
               >

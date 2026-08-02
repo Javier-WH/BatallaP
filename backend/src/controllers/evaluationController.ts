@@ -1087,11 +1087,11 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
       order: [['date', 'ASC']]
     });
 
-    const [institutionName, institutionDeaCode] = await Promise.all([
-      Setting.findOne({ where: { key: 'institution_name' } }),
+    const [institutionShortName, institutionDeaCode] = await Promise.all([
+      Setting.findOne({ where: { key: 'institution_short_name' } }),
       Setting.findOne({ where: { key: 'institution_dea_code' } })
     ]);
-    const instName = institutionName?.getDataValue('value') || '';
+    const instName = institutionShortName?.getDataValue('value') || '';
     const deaCode = institutionDeaCode?.getDataValue('value') || '';
 
     const inscriptions = await Inscription.findAll({
