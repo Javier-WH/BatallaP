@@ -1132,7 +1132,7 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
     const period = (assignment as any).periodGradeSubject.periodGrade.schoolPeriod;
 
     const workbook = new ExcelJS.Workbook();
-    (workbook as any).font = { name: 'Calibri', size: 10 };
+    (workbook as any).font = { name: 'Calibri', size: 9 };
     const sheet = workbook.addWorksheet('Calificaciones');
 
     // Column layout:
@@ -1179,13 +1179,13 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
     sheet.mergeCells('C1:D2');
     const instCell = sheet.getCell('C1');
     instCell.value = instName || 'U.E.C. BATALLA DE LA VICTORIA';
-    instCell.font = { bold: true, size: 16 };
+    instCell.font = { bold: true, size: 18 };
     instCell.alignment = { horizontal: 'center', vertical: 'middle' };
 
     sheet.mergeCells('C3:D3');
     const periodCell = sheet.getCell('C3');
     periodCell.value = period.name || '';
-    periodCell.font = { bold: false, size: 12 };
+    periodCell.font = { bold: false, size: 11 };
     periodCell.alignment = { horizontal: 'center', vertical: 'middle' };
 
     // Right block (Educación Media General / DEA / momento) spans eval cols..last
@@ -1193,21 +1193,21 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
     sheet.mergeCells(`${rightStart}1:${lastColLetter}2`);
     const emgCell = sheet.getCell(`${rightStart}1`);
     emgCell.value = 'Educación Media General';
-    emgCell.font = { size: 11 };
+    emgCell.font = { size: 9 };
     emgCell.alignment = { horizontal: 'center', vertical: 'bottom' };
 
     // Row 3: DEA code (same row as school period)
     sheet.mergeCells(`${rightStart}3:${lastColLetter}3`);
     const deaCell = sheet.getCell(`${rightStart}3`);
     deaCell.value = deaCode || '';
-    deaCell.font = { size: 11 };
+    deaCell.font = { size: 9 };
     deaCell.alignment = { horizontal: 'center', vertical: 'middle' };
 
     // Row 4: momento/lapso (left side of row 4 stays empty)
     sheet.mergeCells(`${rightStart}4:${lastColLetter}4`);
     const momentoCell = sheet.getCell(`${rightStart}4`);
     momentoCell.value = termName || '';
-    momentoCell.font = { bold: true, size: 13 };
+    momentoCell.font = { bold: true, size: 9 };
     momentoCell.alignment = { horizontal: 'center', vertical: 'middle' };
 
     // Left labels: Docente / Asignatura / Sección (rows 5-7, cols C-D)
@@ -1222,7 +1222,7 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
     leftInfo.forEach(([r, label, value, big]) => {
       const labelCell = sheet.getCell(`C${r}`);
       labelCell.value = label;
-      labelCell.font = { bold: true, size: 10 };
+      labelCell.font = { bold: true, size: 9 };
       // C5-C7 already bold via font above
       labelCell.alignment = { horizontal: 'right', vertical: 'middle' };
       // C5-C6: no borders; C7: bottom border only
@@ -1231,7 +1231,7 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
         : { top: noSide, bottom: noSide, left: noSide, right: noSide };
       const valueCell = sheet.getCell(`D${r}`);
       valueCell.value = value;
-      valueCell.font = big ? { bold: true, size: 14 } : { size: 10 };
+      valueCell.font = big ? { bold: true, size: 12 } : { size: 9 };
       valueCell.alignment = { horizontal: 'center', vertical: 'middle' };
       // D5-D6: right border only; D7: bottom and right border
       valueCell.border = r === 7
@@ -1249,7 +1249,7 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
       sheet.mergeCells(`${l1}5:${l3}5`);
       const dateCell = sheet.getCell(`${l1}5`);
       dateCell.value = plan.date ? new Date(plan.date).toLocaleDateString('es-VE', { day: '2-digit', month: '2-digit', year: '2-digit' }) : '—';
-      dateCell.font = { bold: true, size: 10, color: { argb: 'FFFFFFFF' } };
+      dateCell.font = { bold: true, size: 9, color: { argb: 'FFFFFFFF' } };
       dateCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: MED_BLUE } };
       dateCell.alignment = { horizontal: 'center', vertical: 'middle' };
       dateCell.border = thinBorder;
@@ -1258,7 +1258,7 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
       sheet.mergeCells(`${l1}6:${l3}6`);
       const nameCell = sheet.getCell(`${l1}6`);
       nameCell.value = plan.identificador || plan.description;
-      nameCell.font = { bold: true, size: 10 };
+      nameCell.font = { bold: true, size: 9 };
       nameCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: GRAY } };
       nameCell.alignment = { horizontal: 'center', vertical: 'middle' };
       nameCell.border = thinBorder;
@@ -1267,7 +1267,7 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
       sheet.mergeCells(`${l1}7:${l3}7`);
       const pctCell = sheet.getCell(`${l1}7`);
       pctCell.value = `${Number(plan.percentage)}%`;
-      pctCell.font = { bold: true, size: 10 };
+      pctCell.font = { bold: true, size: 9 };
       pctCell.alignment = { horizontal: 'center', vertical: 'middle' };
       pctCell.border = thinBorder;
     });
@@ -1299,7 +1299,7 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
 
     for (let c = 1; c <= totalCols; c++) {
       const cell = headerRow.getCell(c);
-      cell.font = { bold: true, size: 10, color: { argb: 'FFFFFFFF' } };
+      cell.font = { bold: true, size: 9, color: { argb: 'FFFFFFFF' } };
       cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: DARK_BLUE } };
       cell.alignment = { horizontal: 'center', vertical: 'middle' };
       cell.border = thinBorder;
@@ -1319,7 +1319,7 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
       // Column #: sequential number (also for empty rows, as in the model)
       const numCell = row.getCell(1);
       numCell.value = String(i + 1).padStart(2, '0');
-      numCell.font = { bold: true, size: 10 };
+      numCell.font = { bold: true, size: 9 };
       numCell.alignment = { horizontal: 'center', vertical: 'middle' };
       numCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: GRAY } };
       numCell.border = thinBorder;
@@ -1332,10 +1332,10 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
         cedCell.value = doc ? `V ${doc}`.trim() : '';
         nameCell.value = `${inscription.student?.lastName || ''} ${inscription.student?.firstName || ''}`.trim().toUpperCase();
       }
-      cedCell.font = { size: 10 };
+      cedCell.font = { size: 9 };
       cedCell.alignment = { horizontal: 'left', vertical: 'middle' };
       cedCell.border = thinBorder;
-      nameCell.font = { size: 10 };
+      nameCell.font = { size: 9 };
       nameCell.alignment = { horizontal: 'left', vertical: 'middle' };
       nameCell.border = thinBorder;
       row.getCell(4).border = thinBorder;
@@ -1370,11 +1370,11 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
         }
 
         [notCell, remCell].forEach(cell => {
-          cell.font = { size: 10 };
+          cell.font = { size: 9 };
           cell.alignment = { horizontal: 'center', vertical: 'middle' };
           cell.border = thinBorder;
         });
-        pctCell.font = { bold: true, size: 10 };
+        pctCell.font = { bold: true, size: 9 };
         pctCell.numFmt = '0.00';
         pctCell.alignment = { horizontal: 'center', vertical: 'middle' };
         pctCell.border = thinBorder;
@@ -1386,7 +1386,7 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
         defCell.value = Math.round(rowTotal);
         defCell.numFmt = '00';
       }
-      defCell.font = { bold: true, size: 10 };
+      defCell.font = { bold: true, size: 9 };
       defCell.alignment = { horizontal: 'center', vertical: 'middle' };
       defCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: LIGHT_GREEN } };
       defCell.border = thinBorder;
