@@ -1157,9 +1157,9 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
     const GRAY = 'FFD9D9D9';
     const LIGHT_GREEN = 'FFE2EFDA';
 
-    // ── Encabezado institucional (filas 1-6) ──────────────────
-    // Logo: merged block B1:B6
-    sheet.mergeCells('B1:B6');
+    // ── Encabezado institucional (filas 1-7) ──────────────────
+    // Logo: merged block B1:B7
+    sheet.mergeCells('B1:B7');
     try {
       const uploadDir = path.join(__dirname, '../../public/uploads/images');
       const logoFile = fs.existsSync(path.join(uploadDir, 'institution_logo.png'))
@@ -1169,7 +1169,7 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
         const ext = logoFile.split('.').pop()?.toLowerCase() as 'jpeg' | 'png' | 'gif' | undefined;
         if (ext) {
           const imageId = workbook.addImage({ filename: path.join(uploadDir, logoFile), extension: ext });
-          sheet.addImage(imageId, { tl: { col: 1.1, row: 0.3 }, ext: { width: 85, height: 110 } });
+          sheet.addImage(imageId, { tl: { col: 1.1, row: 0.3 }, ext: { width: 85, height: 125 } });
         }
       }
     } catch { /* logo opcional */ }
@@ -1189,30 +1189,32 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
 
     // Right block (Educación Media General / DEA / momento) spans eval cols..last
     const rightStart = sheet.getColumn(firstEvalCol).letter;
-    sheet.mergeCells(`${rightStart}1:${lastColLetter}1`);
+    sheet.mergeCells(`${rightStart}1:${lastColLetter}2`);
     const emgCell = sheet.getCell(`${rightStart}1`);
     emgCell.value = 'Educación Media General';
     emgCell.font = { size: 11 };
-    emgCell.alignment = { horizontal: 'center', vertical: 'middle' };
+    emgCell.alignment = { horizontal: 'center', vertical: 'bottom' };
 
-    sheet.mergeCells(`${rightStart}2:${lastColLetter}2`);
-    const deaCell = sheet.getCell(`${rightStart}2`);
+    // Row 3: DEA code (same row as school period)
+    sheet.mergeCells(`${rightStart}3:${lastColLetter}3`);
+    const deaCell = sheet.getCell(`${rightStart}3`);
     deaCell.value = deaCode || '';
     deaCell.font = { size: 11 };
     deaCell.alignment = { horizontal: 'center', vertical: 'middle' };
 
-    sheet.mergeCells(`${rightStart}3:${lastColLetter}3`);
-    const momentoCell = sheet.getCell(`${rightStart}3`);
+    // Row 4: momento/lapso (left side of row 4 stays empty)
+    sheet.mergeCells(`${rightStart}4:${lastColLetter}4`);
+    const momentoCell = sheet.getCell(`${rightStart}4`);
     momentoCell.value = termName || '';
     momentoCell.font = { bold: true, size: 13 };
     momentoCell.alignment = { horizontal: 'center', vertical: 'middle' };
 
-    // Left labels: Docente / Asignatura / Sección (rows 4-6, cols C-D)
+    // Left labels: Docente / Asignatura / Sección (rows 5-7, cols C-D)
     const teacherName = `${(assignment as any).teacher?.firstName || ''} ${(assignment as any).teacher?.lastName || ''}`.trim();
     const leftInfo: Array<[number, string, string, boolean]> = [
-      [4, 'Docente:', teacherName || '—', false],
-      [5, 'Asignatura:', subject.name, false],
-      [6, 'Sección:', `${grade.name} ${section.name}`, true]
+      [5, 'Docente:', teacherName || '—', false],
+      [6, 'Asignatura:', subject.name, false],
+      [7, 'Sección:', `${grade.name} ${section.name}`, true]
     ];
     leftInfo.forEach(([r, label, value, big]) => {
       const labelCell = sheet.getCell(`C${r}`);
@@ -1227,46 +1229,46 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
       valueCell.border = thinBorder;
     });
 
-    // Per-evaluation header block (rows 4-6): date (blue) / name (gray) / percentage
+    // Per-evaluation header block (rows 5-7): date (blue) / name (gray) / percentage
     evaluationPlans.forEach((plan: any, idx: number) => {
       const c1 = firstEvalCol + idx * 3;
       const l1 = sheet.getColumn(c1).letter;
       const l3 = sheet.getColumn(c1 + 2).letter;
 
-      // Row 4: date (blue background, white text)
-      sheet.mergeCells(`${l1}4:${l3}4`);
-      const dateCell = sheet.getCell(`${l1}4`);
+      // Row 5: date (blue background, white text)
+      sheet.mergeCells(`${l1}5:${l3}5`);
+      const dateCell = sheet.getCell(`${l1}5`);
       dateCell.value = plan.date ? new Date(plan.date).toLocaleDateString('es-VE', { day: '2-digit', month: '2-digit', year: '2-digit' }) : '—';
       dateCell.font = { bold: true, size: 10, color: { argb: 'FFFFFFFF' } };
       dateCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: MED_BLUE } };
       dateCell.alignment = { horizontal: 'center', vertical: 'middle' };
       dateCell.border = thinBorder;
 
-      // Row 5: evaluation name (gray background)
-      sheet.mergeCells(`${l1}5:${l3}5`);
-      const nameCell = sheet.getCell(`${l1}5`);
+      // Row 6: evaluation name (gray background)
+      sheet.mergeCells(`${l1}6:${l3}6`);
+      const nameCell = sheet.getCell(`${l1}6`);
       nameCell.value = plan.identificador || plan.description;
       nameCell.font = { bold: true, size: 10 };
       nameCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: GRAY } };
       nameCell.alignment = { horizontal: 'center', vertical: 'middle' };
       nameCell.border = thinBorder;
 
-      // Row 6: percentage
-      sheet.mergeCells(`${l1}6:${l3}6`);
-      const pctCell = sheet.getCell(`${l1}6`);
+      // Row 7: percentage
+      sheet.mergeCells(`${l1}7:${l3}7`);
+      const pctCell = sheet.getCell(`${l1}7`);
       pctCell.value = `${Number(plan.percentage)}%`;
       pctCell.font = { bold: true, size: 10 };
       pctCell.alignment = { horizontal: 'center', vertical: 'middle' };
       pctCell.border = thinBorder;
     });
 
-    for (let r = 1; r <= 6; r++) sheet.getRow(r).height = 20;
+    for (let r = 1; r <= 7; r++) sheet.getRow(r).height = 20;
 
-    // ── Fila 7: encabezado de tabla ───────────────────────────
-    const headerRow = sheet.getRow(7);
+    // ── Fila 8: encabezado de tabla ───────────────────────────
+    const headerRow = sheet.getRow(8);
     headerRow.getCell(1).value = '#';
     headerRow.getCell(2).value = 'CÉDULA';
-    sheet.mergeCells('C7:D7');
+    sheet.mergeCells('C8:D8');
     headerRow.getCell(3).value = 'APELLIDOS Y NOMBRES';
     evaluationPlans.forEach((_plan: any, idx: number) => {
       const c1 = firstEvalCol + idx * 3;
@@ -1286,9 +1288,9 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
     }
     headerRow.height = 22;
 
-    // ── Filas de estudiantes (desde fila 8) ───────────────────
+    // ── Filas de estudiantes (desde fila 9) ───────────────────
     const isFilled = filled !== 'false';
-    const firstDataRow = 8;
+    const firstDataRow = 9;
     const minRows = Math.max(inscriptions.length, 30);
 
     for (let i = 0; i < minRows; i++) {
