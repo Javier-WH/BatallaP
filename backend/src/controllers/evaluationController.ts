@@ -1309,6 +1309,8 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
     headerRow.getCell(defCol).value = 'DEF';
     headerRow.getCell(obsCol).value = 'Observaciones';
 
+    const whiteSide = { style: 'thin' as const, color: { argb: 'FFFFFFFF' } };
+
     for (let c = 1; c <= totalCols; c++) {
       const cell = headerRow.getCell(c);
       cell.font = { bold: true, size: 9, color: { argb: 'FFFFFFFF' } };
@@ -1317,11 +1319,16 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
       // Thick left border on first col of each evaluation block, thick right on last col
       const isEvalFirstCol = evaluationPlans.some((_p: any, idx: number) => c === firstEvalCol + idx * 3);
       const isEvalLastCol = evaluationPlans.some((_p: any, idx: number) => c === firstEvalCol + idx * 3 + 2);
+      // B8 to DEF (inclusive): white left/right borders
+      // A8 right border white, R8 (obsCol) left border white
+      const isWhiteBorderCol = c >= 2 && c <= defCol;
+      const isWhiteRight = c === 1;
+      const isWhiteLeft = c === obsCol;
       cell.border = {
         top: thickSide,
         bottom: thinSide2,
-        left: (isEvalFirstCol || c === 1) ? thickSide : thinSide2,
-        right: (isEvalLastCol || c === defCol || c === obsCol) ? thickSide : thinSide2
+        left: isWhiteLeft ? whiteSide : (isWhiteBorderCol ? whiteSide : ((isEvalFirstCol || c === 1) ? thickSide : thinSide2)),
+        right: isWhiteRight ? whiteSide : (isWhiteBorderCol ? whiteSide : ((isEvalLastCol || c === defCol || c === obsCol) ? thickSide : thinSide2))
       };
     }
     headerRow.height = 22;
