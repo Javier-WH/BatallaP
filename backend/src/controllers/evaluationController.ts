@@ -1188,26 +1188,27 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
     periodCell.font = { bold: false, size: 11 };
     periodCell.alignment = { horizontal: 'center', vertical: 'middle' };
 
-    // Right block (Educación Media General / DEA / momento) spans eval cols..last
+    // Right block (Educación Media General / DEA / momento) spans only eval columns
     const rightStart = sheet.getColumn(firstEvalCol).letter;
-    sheet.mergeCells(`${rightStart}1:${lastColLetter}2`);
+    const lastEvalColLetter = sheet.getColumn(defCol - 1).letter;
+    sheet.mergeCells(`${rightStart}1:${lastEvalColLetter}2`);
     const emgCell = sheet.getCell(`${rightStart}1`);
     emgCell.value = 'Educación Media General';
     emgCell.font = { size: 9 };
     emgCell.alignment = { horizontal: 'center', vertical: 'bottom' };
 
     // Row 3: DEA code (same row as school period)
-    sheet.mergeCells(`${rightStart}3:${lastColLetter}3`);
+    sheet.mergeCells(`${rightStart}3:${lastEvalColLetter}3`);
     const deaCell = sheet.getCell(`${rightStart}3`);
     deaCell.value = deaCode || '';
     deaCell.font = { size: 9 };
     deaCell.alignment = { horizontal: 'center', vertical: 'middle' };
 
     // Row 4: momento/lapso (left side of row 4 stays empty)
-    sheet.mergeCells(`${rightStart}4:${lastColLetter}4`);
+    sheet.mergeCells(`${rightStart}4:${lastEvalColLetter}4`);
     const momentoCell = sheet.getCell(`${rightStart}4`);
     momentoCell.value = termName || '';
-    momentoCell.font = { bold: true, size: 9 };
+    momentoCell.font = { bold: true, size: 12 };
     momentoCell.alignment = { horizontal: 'center', vertical: 'middle' };
 
     // Left labels: Docente / Asignatura / Sección (rows 5-7, cols C-D)
