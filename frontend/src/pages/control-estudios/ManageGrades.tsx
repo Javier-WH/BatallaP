@@ -688,8 +688,7 @@ const ManageGrades: React.FC = () => {
                       </span>
                       <div className="flex items-center gap-2">
                         <Button icon={<FilePdfOutlined />} size="small" onClick={() => setShowPDFModal(true)} disabled={evaluationPlan.length === 0}>PDF</Button>
-                        <Button icon={<DownloadOutlined />} size="small" onClick={() => downloadExcel(true)} disabled={students.length === 0}>Excel con notas</Button>
-                        <Button icon={<DownloadOutlined />} size="small" type="primary" onClick={downloadExcelOficial} disabled={students.length === 0}>Planilla oficial</Button>
+                        <Button icon={<DownloadOutlined />} size="small" type="primary" onClick={downloadExcelOficial} disabled={students.length === 0}>Acta de notas</Button>
                         <Button icon={<DownloadOutlined />} size="small" onClick={() => downloadExcel(false)}>Excel vacío</Button>
                       </div>
                     </div>
