@@ -155,19 +155,35 @@ const RepairGradesPanel: React.FC = () => {
 
   return (
     <div style={{ padding: 24, maxWidth: 1200, margin: '0 auto' }}>
-      <Title level={3} style={{ marginBottom: 24 }}>Reparación de Materias</Title>
+      <div style={{
+        position: 'sticky',
+        top: 0,
+        zIndex: 100,
+        background: '#fff',
+        padding: '12px 0',
+        marginBottom: 16,
+        borderBottom: '1px solid #f0f0f0'
+      }}>
+        <Title level={3} style={{ marginBottom: 12 }}>Reparación de Materias</Title>
+        {assignments.length > 0 && (
+          <Space style={{ marginBottom: 0 }}>
+            <Text strong>Materia:</Text>
+            <Select style={{ width: 400 }} value={selectedPgsId} onChange={setSelectedPgsId} options={assignmentOptions} />
+            <Button icon={<ReloadOutlined />} onClick={fetchAssignments}>Actualizar</Button>
+            {detail && (
+              <Button type="primary" icon={<SaveOutlined />} onClick={handleSave} loading={saving}>
+                Guardar notas
+              </Button>
+            )}
+          </Space>
+        )}
+      </div>
 
       <Spin spinning={loading}>
         {assignments.length === 0 ? (
           <Empty description="No tienes materias con estudiantes pendientes de reparación" />
         ) : (
           <>
-            <Space style={{ marginBottom: 16 }}>
-              <Text strong>Materia:</Text>
-              <Select style={{ width: 400 }} value={selectedPgsId} onChange={setSelectedPgsId} options={assignmentOptions} />
-              <Button icon={<ReloadOutlined />} onClick={fetchAssignments}>Actualizar</Button>
-            </Space>
-
             {detail && (
               <>
                 <Alert type="info" message={`Nota de aprobación: ${detail.passingGrade}`}
@@ -254,10 +270,6 @@ const RepairGradesPanel: React.FC = () => {
                   </Card>
                   );
                 })}
-
-                <Button type="primary" icon={<SaveOutlined />} onClick={handleSave} loading={saving} size="large" style={{ marginTop: 16 }}>
-                  Guardar notas
-                </Button>
               </>
             )}
           </>
