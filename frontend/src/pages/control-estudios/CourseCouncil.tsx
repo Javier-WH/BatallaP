@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Card, Button, Table, InputNumber, Space, Typography, Row, Col, Tag, Input, Empty, Spin, message, Tooltip, Alert, Breadcrumb, Checkbox } from 'antd';
+import { Card, Button, Table, InputNumber, Space, Typography, Row, Col, Tag, Input, Empty, Spin, message, Tooltip, Alert, Breadcrumb, Checkbox, Modal } from 'antd';
 import {
   LeftOutlined,
   SaveOutlined,
   FilterOutlined,
   CalendarOutlined,
-  UserOutlined
+  UserOutlined,
+  CheckCircleOutlined,
+  WarningOutlined
 } from '@ant-design/icons';
 import api from '@/services/api';
 import { useGradeRounding } from '@/context/GradeRoundingContext';
@@ -79,6 +81,13 @@ const CourseCouncil: React.FC = () => {
   const [pointsLimit, setPointsLimit] = useState<number>(2);
   const [pointsPerSubjectLimit, setPointsPerSubjectLimit] = useState<number>(2);
 
+  const [councilDone, setCouncilDone] = useState(false);
+  const [missingPointsStudents, setMissingPointsStudents] = useState<CouncilStudent[]>([]);
+  const [showMissingModal, setShowMissingModal] = useState(false);
+  const [markingDone, setMarkingDone] = useState(false);
+  const [bulkMarking, setBulkMarking] = useState(false);
+  const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number }>({ done: 0, total: 0 });
+
   const [filterYear, setFilterYear] = useState<string>('');
   const [showPreviousTerms, setShowPreviousTerms] = useState<boolean>(true);
   const { enableRounding } = useGradeRounding();
@@ -124,8 +133,14 @@ const CourseCouncil: React.FC = () => {
   const fetchCouncilData = async (sectionId: number, termId: number, gradeId: number) => {
     setLoading(true);
     try {
-      const res = await api.get(`/council/data?sectionId=${sectionId}&termId=${termId}&gradeId=${gradeId}`);
+      const [res, checklistRes] = await Promise.all([
+        api.get(`/council/data?sectionId=${sectionId}&termId=${termId}&gradeId=${gradeId}`),
+        activePeriod
+          ? api.get(`/period-closure/${activePeriod.id}/checklist?gradeId=${gradeId}&sectionId=${sectionId}&termId=${termId}`)
+          : Promise.resolve({ data: null })
+      ]);
       setStudentsData(res.data);
+      setCouncilDone(checklistRes.data?.status === 'done');
       setStep(2);
     } catch (error) {
       console.error('Error fetching council data', error);
@@ -196,6 +211,129 @@ const CourseCouncil: React.FC = () => {
     }
   };
 
+  const validateMissingPoints = (): CouncilStudent[] => {
+    return studentsData.filter(student => {
+      const hasFailingGrade = student.subjects.some(s => (s.grade || 0) < 10);
+      const totalPoints = student.subjects.reduce((sum, s) => sum + (s.points || 0), 0);
+      return hasFailingGrade && totalPoints === 0;
+    });
+  };
+
+  const confirmMarkDone = async () => {
+    if (!activePeriod || !selectedTerm || !selectedSection) return;
+    setMarkingDone(true);
+    try {
+      await api.post(`/period-closure/${activePeriod.id}/checklist`, {
+        gradeId: selectedSection.grade.id,
+        sectionId: selectedSection.section.id,
+        termId: selectedTerm.id,
+        status: 'done'
+      });
+      setCouncilDone(true);
+      message.success('Consejo de curso marcado como completado');
+    } catch (error) {
+      console.error('Error marking council as done', error);
+      message.error('Error al marcar como completado');
+    } finally {
+      setMarkingDone(false);
+    }
+  };
+
+  const handleMarkDone = async (checked: boolean) => {
+    if (!activePeriod || !selectedTerm || !selectedSection) return;
+
+    if (!checked) {
+      setMarkingDone(true);
+      try {
+        await api.post(`/period-closure/${activePeriod.id}/checklist`, {
+          gradeId: selectedSection.grade.id,
+          sectionId: selectedSection.section.id,
+          termId: selectedTerm.id,
+          status: 'open'
+        });
+        setCouncilDone(false);
+        message.success('Consejo de curso reabierto');
+      } catch (error) {
+        console.error('Error reopening council', error);
+        message.error('Error al actualizar el estado del consejo');
+      } finally {
+        setMarkingDone(false);
+      }
+      return;
+    }
+
+    const missing = validateMissingPoints();
+    if (missing.length > 0) {
+      Modal.confirm({
+        title: 'Estudiantes sin puntos asignados',
+        content: `Hay ${missing.length} estudiante(s) con materias reprobadas que no tienen puntos de consejo. ¿Desea marcar el consejo como completado de todas formas?`,
+        okText: 'Sí, marcar como completado',
+        cancelText: 'No, revisar primero',
+        okButtonProps: { danger: true },
+        onOk: () => confirmMarkDone(),
+      });
+      return;
+    }
+
+    confirmMarkDone();
+  };
+
+  const handleBulkMarkAllDone = async () => {
+    if (!activePeriod || terms.length === 0 || structure.length === 0) return;
+
+    const blockedTerms = terms.filter(t => t.isBlocked);
+    if (blockedTerms.length === 0) {
+      message.warning('No hay lapsos bloqueados. Debe bloquear los lapsos primero.');
+      return;
+    }
+
+    const combinations: Array<{ gradeId: number; sectionId: number; termId: number }> = [];
+    structure.forEach(pg => {
+      pg.sections.forEach(sec => {
+        if (sec.name.toLowerCase().includes('materia pendiente')) return;
+        blockedTerms.forEach(term => {
+          combinations.push({ gradeId: pg.grade.id, sectionId: sec.id, termId: term.id });
+        });
+      });
+    });
+
+    if (combinations.length === 0) {
+      message.warning('No hay combinaciones de grado/sección para marcar.');
+      return;
+    }
+
+    Modal.confirm({
+      title: 'Marcar todos los consejos como completados',
+      content: `Se marcarán ${combinations.length} consejos de curso (${blockedTerms.length} lapsos × grados/secciones) como completados. ¿Desea continuar?`,
+      okText: 'Sí, marcar todos',
+      cancelText: 'Cancelar',
+      onOk: async () => {
+        setBulkMarking(true);
+        setBulkProgress({ done: 0, total: combinations.length });
+        let successCount = 0;
+        let failCount = 0;
+        for (let i = 0; i < combinations.length; i++) {
+          const { gradeId, sectionId, termId } = combinations[i];
+          try {
+            await api.post(`/period-closure/${activePeriod.id}/checklist`, {
+              gradeId, sectionId, termId, status: 'done'
+            });
+            successCount++;
+          } catch {
+            failCount++;
+          }
+          setBulkProgress({ done: i + 1, total: combinations.length });
+        }
+        setBulkMarking(false);
+        if (failCount === 0) {
+          message.success(`${successCount} consejos de curso marcados como completados`);
+        } else {
+          message.warning(`${successCount} marcados, ${failCount} fallaron`);
+        }
+      }
+    });
+  };
+
   const handleTermClick = (term: Term) => {
     if (!term.isBlocked) {
       message.warning('El lapso debe estar cerrado para realizar el consejo de curso.');
@@ -210,6 +348,30 @@ const CourseCouncil: React.FC = () => {
       <div style={{ textAlign: 'center', marginBottom: 60 }} className="animate-card">
         <Title level={1} style={{ margin: 0, fontWeight: 900, letterSpacing: '-0.04em' }}>Seleccione el Lapso</Title>
         <Text type="secondary" style={{ fontSize: 16, fontWeight: 500 }}>Identifique el periodo académico para el procesamiento de puntos</Text>
+      </div>
+
+      <div style={{ textAlign: 'center', marginBottom: 32 }}>
+        <Button
+          type="primary"
+          size="large"
+          icon={<CheckCircleOutlined />}
+          onClick={handleBulkMarkAllDone}
+          loading={bulkMarking}
+          disabled={terms.length === 0 || structure.length === 0 || !terms.some(t => t.isBlocked)}
+          style={{
+            borderRadius: 14,
+            fontWeight: 800,
+            height: 48,
+            padding: '0 32px',
+            background: '#52c41a',
+            border: 'none',
+            boxShadow: '0 8px 20px rgba(82,196,77,0.25)'
+          }}
+        >
+          {bulkMarking
+            ? `Marcando... ${bulkProgress.done}/${bulkProgress.total}`
+            : 'Marcar todos los consejos como completados'}
+        </Button>
       </div>
 
       <Row gutter={[32, 32]} justify="center">
@@ -445,6 +607,8 @@ const CourseCouncil: React.FC = () => {
         <Button icon={<LeftOutlined />} onClick={() => setStep(1)} style={{ marginTop: 24 }}>Volver a Secciones</Button>
       </div>
     );
+
+    const missingPoints = validateMissingPoints();
 
     // Generate dynamic columns based on subjects or subject groups
     const columnDefinitions: { title: string, key: string, groupId?: number, subjectId?: number }[] = [];
@@ -770,8 +934,66 @@ const CourseCouncil: React.FC = () => {
             >
               Guardar Calificaciones
             </Button>
+            <Checkbox
+              checked={councilDone}
+              onChange={(e) => handleMarkDone(e.target.checked)}
+              disabled={markingDone || !selectedTerm?.isBlocked}
+              style={{
+                fontWeight: 800,
+                fontSize: 14,
+                padding: '10px 20px',
+                borderRadius: 14,
+                height: 52,
+                display: 'flex',
+                alignItems: 'center',
+                background: councilDone ? '#f6ffed' : '#fff',
+                border: `2px solid ${councilDone ? '#52c41a' : '#d9d9d9'}`,
+                transition: 'all 0.3s ease',
+              }}
+            >
+              {councilDone ? (
+                <span style={{ color: '#389e0d', display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <CheckCircleOutlined /> Consejo completado
+                </span>
+              ) : (
+                'Marcar como completado'
+              )}
+            </Checkbox>
           </Space>
         </div>
+
+        {missingPoints.length > 0 && !councilDone && (
+          <Alert
+            message={`${missingPoints.length} estudiante(s) con materias reprobadas sin puntos de consejo`}
+            type="warning"
+            showIcon
+            icon={<WarningOutlined />}
+            style={{ marginBottom: 16, borderRadius: 14 }}
+            action={
+              <Button
+                size="small"
+                type="primary"
+                ghost
+                onClick={() => {
+                  setMissingPointsStudents(missingPoints);
+                  setShowMissingModal(true);
+                }}
+              >
+                Ver estudiantes
+              </Button>
+            }
+          />
+        )}
+
+        {councilDone && (
+          <Alert
+            message="Consejo de curso completado"
+            description="Este consejo de curso ha sido marcado como completado. Puede desmarcarlo si necesita realizar cambios."
+            type="success"
+            showIcon
+            style={{ marginBottom: 16, borderRadius: 14 }}
+          />
+        )}
 
         <Card
           className="premium-table-card"
@@ -903,6 +1125,55 @@ const CourseCouncil: React.FC = () => {
       {step === 0 && renderTermSelector()}
       {step === 1 && renderSectionSelector()}
       {step === 2 && renderDataTable()}
+
+      <Modal
+        title="Estudiantes sin puntos de consejo"
+        open={showMissingModal}
+        onCancel={() => setShowMissingModal(false)}
+        footer={<Button onClick={() => setShowMissingModal(false)}>Cerrar</Button>}
+        width={600}
+      >
+        <Text type="secondary" style={{ display: 'block', marginBottom: 16 }}>
+          Los siguientes estudiantes tienen materias reprobadas pero no se les han asignado puntos de consejo de curso:
+        </Text>
+        <Table
+          dataSource={missingPointsStudents}
+          columns={[
+            { title: 'Estudiante', dataIndex: 'studentName', key: 'studentName' },
+            {
+              title: 'Cédula',
+              key: 'studentDni',
+              render: (_: unknown, record: CouncilStudent) => {
+                let prefix = '';
+                switch (record.documentType) {
+                  case 'Venezolano': prefix = 'V'; break;
+                  case 'Extranjero': prefix = 'E'; break;
+                  case 'Pasaporte': prefix = 'P'; break;
+                  case 'Cedula Escolar': prefix = 'CE'; break;
+                }
+                return `${prefix}-${record.studentDni}`;
+              }
+            },
+            {
+              title: 'Materias reprobadas',
+              key: 'failingSubjects',
+              render: (_: unknown, record: CouncilStudent) => {
+                const failing = record.subjects.filter(s => (s.grade || 0) < 10);
+                return (
+                  <Space wrap>
+                    {failing.map(s => (
+                      <Tag key={s.id} color="red">{s.name}: {formatGrade(s.grade, enableRounding)}</Tag>
+                    ))}
+                  </Space>
+                );
+              }
+            },
+          ]}
+          rowKey="id"
+          pagination={false}
+          size="small"
+        />
+      </Modal>
     </div>
   );
 };

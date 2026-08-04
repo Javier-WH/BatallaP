@@ -11,6 +11,12 @@ interface CouncilStatus {
   allDone: boolean;
 }
 
+interface TermsStatus {
+  totalTerms: number;
+  blockedTerms: number;
+  allBlocked: boolean;
+}
+
 interface RevisionStats {
   totalStudents: number;
   totalSubjects: number;
@@ -32,6 +38,7 @@ interface RevisionPeriodData {
 interface Summary {
   revisionPeriod: RevisionPeriodData | null;
   councilStatus: CouncilStatus;
+  termsStatus: TermsStatus;
   stats?: RevisionStats;
 }
 
@@ -194,7 +201,10 @@ const RepairPeriodManagement: React.FC = () => {
 
   return (
     <div style={{ padding: 24, maxWidth: 1200, margin: '0 auto' }}>
-      <Title level={3} style={{ marginBottom: 24 }}>Período de Reparación</Title>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+        <Title level={3} style={{ margin: 0 }}>Período de Reparación</Title>
+        <Button icon={<ReloadOutlined />} onClick={fetchData} loading={loading}>Actualizar</Button>
+      </div>
 
       <Spin spinning={loading}>
         {summary && (
@@ -218,26 +228,26 @@ const RepairPeriodManagement: React.FC = () => {
               </Col>
               <Col span={6}>
                 <Card>
-                  <Statistic title="Estudiantes en reparación" value={summary.stats?.totalStudents || 0} />
+                  <Statistic title="Lapsos bloqueados" value={`${summary.termsStatus?.blockedTerms ?? 0}/${summary.termsStatus?.totalTerms ?? 0}`}
+                    valueStyle={{ color: summary.termsStatus?.allBlocked ? '#52c41a' : '#faad14' }} />
                 </Card>
               </Col>
               <Col span={6}>
                 <Card>
-                  <Statistic title="Materias" value={`${summary.stats?.approvedCount || 0} aprobadas / ${summary.stats?.failedCount || 0} reprobadas / ${summary.stats?.pendingCount || 0} pendientes`}
-                    valueStyle={{ fontSize: 16 }} />
+                  <Statistic title="Estudiantes en reparación" value={summary.stats?.totalStudents || 0} />
                 </Card>
               </Col>
             </Row>
 
-            {summary.revisionPeriod?.status === 'pending' && (
+            {(!summary.revisionPeriod || summary.revisionPeriod.status === 'pending') && (
               <Alert
                 type="info"
                 message="El período de reparación aún no ha sido abierto"
-                description="Asegúrese de que todos los consejos de curso estén completos antes de abrirlo."
+                description="Asegúrese de que todos los lapsos estén bloqueados y todos los consejos de curso estén completos antes de abrirlo."
                 showIcon
                 action={
                   <Button type="primary" icon={<PlayCircleOutlined />} onClick={handleOpen} loading={acting}
-                    disabled={!summary.councilStatus.allDone}>
+                    disabled={!summary.councilStatus.allDone || !summary.termsStatus?.allBlocked}>
                     Abrir período de reparación
                   </Button>
                 }

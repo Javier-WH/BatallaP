@@ -9,7 +9,9 @@ import {
   Subject,
   SubjectFinalGrade,
   Plantel,
-  Setting
+  Setting,
+  InscriptionSubjectRevision,
+  RevisionPeriod
 } from '@/models/index';
 import {
   getSubjectOrderMapByGradeAndPeriod,
@@ -136,6 +138,29 @@ export class FinalGradeCalculator {
 
     const minApproval = options.minApproval ?? 10;
     const institutionPlantelId = await resolveInstitutionPlantelId(options.transaction);
+
+    // Fetch revision period and repair grades if the revision period is closed
+    const revisionPeriod = await RevisionPeriod.findOne({
+      where: { schoolPeriodId: inscriptionSimple.schoolPeriodId },
+      transaction: options.transaction,
+    });
+    let repairPassingGrade: number | null = null;
+    let repairScoresBySubject: Map<number, number> = new Map();
+    if (revisionPeriod && revisionPeriod.status === 'closed') {
+      repairPassingGrade = revisionPeriod.passingGrade;
+      const revisions = await InscriptionSubjectRevision.findAll({
+        where: { revisionPeriodId: revisionPeriod.id },
+        transaction: options.transaction,
+      });
+      for (const rev of revisions) {
+        if (rev.score == null) continue;
+        const current = repairScoresBySubject.get(rev.inscriptionSubjectId);
+        if (current == null || rev.score > current) {
+          repairScoresBySubject.set(rev.inscriptionSubjectId, Number(rev.score));
+        }
+      }
+    }
+
     const subjectResults: SubjectResultSummary[] = [];
     let failedSubjects = 0;
     let sumFinalScores = 0;
@@ -197,25 +222,45 @@ export class FinalGradeCalculator {
       });
       (insSub.councilPoints || []).forEach(p => totalCouncil += (Number(p.points) || 0));
 
-      const status = finalScore >= minApproval ? 'aprobada' : 'reprobada';
+      // Check if there's a repair grade for this subject
+      const repairScore = repairScoresBySubject.get(insSub.id);
+      const hasRepair = repairScore != null;
 
-      if (status === 'reprobada') {
+      let effectiveFinalScore: number;
+      let effectiveStatus: 'aprobada' | 'reprobada';
+      let gradeType: 'regular' | 'revision' = 'regular';
+      let originalScore: number | null = null;
+      let originalStatus: string | null = null;
+
+      if (hasRepair) {
+        // Repair grade replaces the original completely
+        effectiveFinalScore = repairScore!;
+        effectiveStatus = repairPassingGrade != null
+          ? (repairScore! >= repairPassingGrade ? 'aprobada' : 'reprobada')
+          : (repairScore! >= minApproval ? 'aprobada' : 'reprobada');
+        gradeType = 'revision';
+        originalScore = Number(finalScore.toFixed(2));
+        originalStatus = finalScore >= minApproval ? 'aprobada' : 'reprobada';
+      } else {
+        effectiveFinalScore = finalScore;
+        effectiveStatus = finalScore >= minApproval ? 'aprobada' : 'reprobada';
+      }
+
+      if (effectiveStatus === 'reprobada') {
         failedSubjects += 1;
       }
 
       subjectCount += 1;
-      sumFinalScores += finalScore;
+      sumFinalScores += effectiveFinalScore;
 
       const summary: SubjectResultSummary = {
         inscriptionSubjectId: insSub.id,
         subjectId: insSub.subjectId,
         subjectName: insSub.subject?.name,
-        // We present the "Averaged" values in the summary for consistency, or the raw sums?
-        // Given finalScore is averaged, these should probably be averaged components to make sense: raw + council = final
         rawScore: Number((totalRaw / termCount).toFixed(2)),
         councilPoints: Number((totalCouncil / termCount).toFixed(2)),
-        finalScore: Number(finalScore.toFixed(2)),
-        status
+        finalScore: Number(effectiveFinalScore.toFixed(2)),
+        status: effectiveStatus
       };
       subjectResults.push(summary);
 
@@ -232,7 +277,10 @@ export class FinalGradeCalculator {
           finalScore: summary.finalScore,
           status: summary.status,
           calculatedAt: new Date(),
-          plantelId: existingGrade?.plantelId ?? institutionPlantelId
+          plantelId: existingGrade?.plantelId ?? institutionPlantelId,
+          gradeType,
+          originalScore: hasRepair ? originalScore : (existingGrade?.originalScore ?? null),
+          originalStatus: hasRepair ? originalStatus : (existingGrade?.originalStatus ?? null)
         },
         { transaction: options.transaction }
       );

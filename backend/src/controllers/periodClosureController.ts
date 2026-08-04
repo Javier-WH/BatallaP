@@ -20,6 +20,38 @@ export const getClosureStatus = async (req: Request, res: Response) => {
   }
 };
 
+export const getChecklistEntry = async (req: Request, res: Response) => {
+  try {
+    const { periodId } = req.params;
+    const parsedId = Number(periodId);
+    if (!parsedId || Number.isNaN(parsedId)) {
+      return res.status(400).json({ message: 'periodId inválido' });
+    }
+
+    const { gradeId, sectionId, termId } = req.query as {
+      gradeId?: string;
+      sectionId?: string;
+      termId?: string;
+    };
+
+    if (!gradeId || !sectionId || !termId) {
+      return res.status(400).json({ message: 'gradeId, sectionId y termId son requeridos' });
+    }
+
+    const entry = await PeriodClosureService.getChecklistEntry({
+      schoolPeriodId: parsedId,
+      gradeId: Number(gradeId),
+      sectionId: Number(sectionId),
+      termId: Number(termId),
+    });
+
+    return res.json(entry);
+  } catch (error) {
+    console.error('Error getting council checklist entry', error);
+    return res.status(500).json({ message: 'Error al obtener checklist del consejo' });
+  }
+};
+
 export const upsertChecklistEntry = async (req: Request, res: Response) => {
   try {
     const { periodId } = req.params;

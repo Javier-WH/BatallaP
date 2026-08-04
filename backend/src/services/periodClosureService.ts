@@ -77,6 +77,23 @@ export class PeriodClosureService {
     };
   }
 
+  static async getChecklistEntry(params: {
+    schoolPeriodId: number;
+    gradeId: number;
+    sectionId: number;
+    termId: number;
+  }) {
+    const entry = await CouncilChecklist.findOne({
+      where: {
+        schoolPeriodId: params.schoolPeriodId,
+        gradeId: params.gradeId,
+        sectionId: params.sectionId,
+        termId: params.termId,
+      },
+    });
+    return entry;
+  }
+
   static async upsertChecklistEntry(params: {
     schoolPeriodId: number;
     gradeId: number;

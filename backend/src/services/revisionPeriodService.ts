@@ -21,6 +21,11 @@ export interface RevisionPeriodSummary {
     doneChecklists: number;
     allDone: boolean;
   };
+  termsStatus: {
+    totalTerms: number;
+    blockedTerms: number;
+    allBlocked: boolean;
+  };
   stats?: {
     totalStudents: number;
     totalSubjects: number;
@@ -53,6 +58,13 @@ export class RevisionPeriodService {
     const totalChecklists = councilChecklists.length;
     const doneChecklists = councilChecklists.filter(c => c.status === 'done').length;
 
+    const allTerms = await Term.findAll({
+      where: { schoolPeriodId },
+      transaction,
+    });
+    const totalTerms = allTerms.length;
+    const blockedTerms = allTerms.filter(t => t.isBlocked).length;
+
     let stats;
     if (revisionPeriod) {
       const revisions = await InscriptionSubjectRevision.findAll({
@@ -82,6 +94,7 @@ export class RevisionPeriodService {
     return {
       revisionPeriod,
       councilStatus: { totalChecklists, doneChecklists, allDone: totalChecklists > 0 && totalChecklists === doneChecklists },
+      termsStatus: { totalTerms, blockedTerms, allBlocked: totalTerms > 0 && blockedTerms === totalTerms },
       stats,
     };
   }
