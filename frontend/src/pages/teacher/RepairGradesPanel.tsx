@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Card, Select, Table, InputNumber, Button, Space, Typography, Spin, message, Tag, Empty, Alert } from 'antd';
-import { SaveOutlined, ReloadOutlined } from '@ant-design/icons';
+import { Card, Select, InputNumber, Button, Space, Typography, Spin, message, Tag, Empty, Alert, Dropdown, Modal } from 'antd';
+import { SaveOutlined, ReloadOutlined, EditOutlined, LockOutlined } from '@ant-design/icons';
 import api from '@/services/api';
 
 const { Title, Text } = Typography;
@@ -36,6 +36,10 @@ const RepairGradesPanel: React.FC = () => {
   const [selectedPgsId, setSelectedPgsId] = useState<number | null>(null);
   const [detail, setDetail] = useState<AssignmentDetail | null>(null);
   const [grades, setGrades] = useState<Record<number, number | null>>({});
+  const [editingRevision, setEditingRevision] = useState<RevisionItem | null>(null);
+  const [editingStudent, setEditingStudent] = useState<StudentRevisionData | null>(null);
+  const [editModalValue, setEditModalValue] = useState<number | null>(null);
+  const [editModalSaving, setEditModalSaving] = useState(false);
 
   const fetchAssignments = async () => {
     setLoading(true);
@@ -110,6 +114,39 @@ const RepairGradesPanel: React.FC = () => {
     }
   };
 
+  const handleEditRevision = async () => {
+    if (!editingRevision || editModalValue == null) return;
+    setEditModalSaving(true);
+    try {
+      const activePeriodRes = await api.get('/academic/periods');
+      const activePeriod = (activePeriodRes.data as any[]).find((p: any) => p.isActive);
+      if (!activePeriod) { message.error('No hay período activo'); setEditModalSaving(false); return; }
+
+      const res = await api.put(`/revision-periods/${activePeriod.id}/revisions/bulk`, {
+        grades: [{ revisionId: editingRevision.id, score: editModalValue }]
+      });
+      message.success(res.data.message || 'Nota actualizada');
+      setEditingRevision(null);
+      setEditModalValue(null);
+      // Reload detail
+      if (selectedPgsId) {
+        const detailRes = await api.get(`/revision-grades/my-assignments/${selectedPgsId}`);
+        setDetail(detailRes.data);
+        const updated: Record<number, number | null> = {};
+        (detailRes.data.students || []).forEach((s: StudentRevisionData) => {
+          (s.revisions || []).forEach((r: RevisionItem) => {
+            updated[r.id] = r.score;
+          });
+        });
+        setGrades(updated);
+      }
+    } catch (error: any) {
+      message.error(error?.response?.data?.message || 'Error al actualizar');
+    } finally {
+      setEditModalSaving(false);
+    }
+  };
+
   const assignmentOptions = assignments.map((a: any) => ({
     value: a.periodGradeSubjectId,
     label: `${a.subjectName} — ${a.gradeName} ${a.sectionName}`,
@@ -145,23 +182,51 @@ const RepairGradesPanel: React.FC = () => {
                       </Space>
                     }>
                     <Space wrap>
-                      {student.revisions.map((rev) => (
+                      {student.revisions.map((rev) => {
+                        const isLocked = rev.status === 'approved' || rev.status === 'failed';
+                        const contextMenuItems = [{
+                          key: 'edit',
+                          label: 'Editar nota',
+                          icon: <EditOutlined />,
+                          onClick: () => {
+                            setEditingStudent(student);
+                            setEditingRevision(rev);
+                            setEditModalValue(rev.score);
+                          }
+                        }];
+                        return (
                         <div key={rev.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
                           <Text style={{ fontSize: 12 }}>Oportunidad {rev.opportunity}:</Text>
-                          <InputNumber
-                            min={0}
-                            max={detail.passingGrade > 0 ? detail.passingGrade * 2 : 20}
-                            step={0.01}
-                            value={grades[rev.id] ?? undefined}
-                            onChange={(val) => setGrades(prev => ({ ...prev, [rev.id]: val }))}
-                            style={{ width: 80 }}
-                            disabled={rev.status === 'approved'}
-                          />
+                          <Dropdown menu={{ items: contextMenuItems }} trigger={['contextMenu']}>
+                            <div style={{ position: 'relative', display: 'inline-block' }}>
+                              <InputNumber
+                                min={0}
+                                max={detail.passingGrade > 0 ? detail.passingGrade * 2 : 20}
+                                step={0.01}
+                                value={grades[rev.id] ?? undefined}
+                                onChange={(val) => setGrades(prev => ({ ...prev, [rev.id]: val }))}
+                                style={{ width: 80 }}
+                                disabled={isLocked}
+                              />
+                              {isLocked && (
+                                <LockOutlined style={{
+                                  position: 'absolute',
+                                  right: 6,
+                                  top: '50%',
+                                  transform: 'translateY(-50%)',
+                                  fontSize: 10,
+                                  color: '#999',
+                                  pointerEvents: 'none'
+                                }} />
+                              )}
+                            </div>
+                          </Dropdown>
                           <Tag color={rev.status === 'approved' ? 'success' : rev.status === 'failed' ? 'error' : 'default'}>
                             {rev.status === 'approved' ? 'Aprobado' : rev.status === 'failed' ? 'Reprobado' : 'Pendiente'}
                           </Tag>
                         </div>
-                      ))}
+                        );
+                      })}
                     </Space>
                   </Card>
                 ))}
@@ -174,6 +239,29 @@ const RepairGradesPanel: React.FC = () => {
           </>
         )}
       </Spin>
+
+      <Modal
+        title={`Editar nota — ${editingStudent?.studentName ?? ''} (Oportunidad ${editingRevision?.opportunity ?? ''})`}
+        open={!!editingRevision}
+        onCancel={() => { setEditingRevision(null); setEditModalValue(null); }}
+        onOk={handleEditRevision}
+        confirmLoading={editModalSaving}
+        okText="Guardar"
+        cancelText="Cancelar"
+      >
+        <div style={{ marginBottom: 8 }}>
+          <Text type="secondary">Esta nota ya fue guardada. Ingrese la nueva nota para reemplazarla.</Text>
+        </div>
+        <InputNumber
+          min={0}
+          max={detail?.passingGrade && detail.passingGrade > 0 ? detail.passingGrade * 2 : 20}
+          step={0.01}
+          value={editModalValue ?? undefined}
+          onChange={(val) => setEditModalValue(val)}
+          style={{ width: '100%' }}
+          autoFocus
+        />
+      </Modal>
     </div>
   );
 };
