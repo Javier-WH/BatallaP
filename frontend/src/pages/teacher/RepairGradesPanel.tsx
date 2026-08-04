@@ -17,6 +17,7 @@ interface StudentRevisionData {
   studentId: number;
   studentName: string;
   document: string;
+  documentType: string;
   originalScore: number | null;
   maxOpportunities: number;
   revisions: RevisionItem[];
@@ -172,14 +173,36 @@ const RepairGradesPanel: React.FC = () => {
                 <Alert type="info" message={`Nota de aprobación: ${detail.passingGrade}`}
                   style={{ marginBottom: 16 }} />
 
-                {detail.students.map((student) => (
+                {detail.students.map((student) => {
+                  const nationalityMap: Record<string, string> = {
+                    'Venezolano': 'V',
+                    'Extranjero': 'E',
+                    'Pasaporte': 'P',
+                    'Cedula Escolar': 'CE'
+                  };
+                  const natPrefix = nationalityMap[student.documentType] || 'V';
+                  return (
                   <Card key={student.inscriptionSubjectId} size="small" style={{ marginBottom: 12 }}
                     title={
-                      <Space>
-                        <Text strong>{student.studentName}</Text>
-                        <Tag>{student.document}</Tag>
-                        <Text type="secondary">Nota original reprobada: {student.originalScore ?? '—'}</Text>
-                      </Space>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <div>
+                          <div style={{ fontWeight: 700, fontSize: 14, lineHeight: 1.3 }}>{student.studentName}</div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 }}>
+                            <Tag style={{
+                              margin: 0,
+                              fontSize: 10,
+                              fontWeight: 600,
+                              borderRadius: 4,
+                              padding: 0,
+                              color: '#888',
+                              border: 'none',
+                              background: 'transparent'
+                            }}>{natPrefix}</Tag>
+                            <Text style={{ fontSize: 12, color: '#666' }}>{student.document}</Text>
+                          </div>
+                        </div>
+                        <Text type="secondary" style={{ fontSize: 12 }}>Nota original: <Text strong style={{ color: '#ff4d4f' }}>{student.originalScore ?? '—'}</Text></Text>
+                      </div>
                     }>
                     <Space wrap>
                       {student.revisions.map((rev) => {
@@ -229,7 +252,8 @@ const RepairGradesPanel: React.FC = () => {
                       })}
                     </Space>
                   </Card>
-                ))}
+                  );
+                })}
 
                 <Button type="primary" icon={<SaveOutlined />} onClick={handleSave} loading={saving} size="large" style={{ marginTop: 16 }}>
                   Guardar notas

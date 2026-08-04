@@ -216,6 +216,8 @@ export const getMyRevisionAssignmentDetail = async (req: Request, res: Response)
         studentName: ins?.student
           ? `${ins.student.lastName || ''} ${ins.student.firstName || ''}`.trim()
           : '',
+        document: ins?.student?.document || '',
+        documentType: ins?.student?.documentType || '',
         grade: ins?.grade?.name || '',
         section: ins?.section?.name || '',
         originalScore: null,
