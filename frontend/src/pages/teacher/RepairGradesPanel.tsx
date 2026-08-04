@@ -189,7 +189,10 @@ const RepairGradesPanel: React.FC = () => {
                 <Alert type="info" message={`Nota de aprobación: ${detail.passingGrade}`}
                   style={{ marginBottom: 16 }} />
 
-                {detail.students.map((student) => {
+                {detail.students.length === 0 ? (
+                  <Empty description="No hay estudiantes pendientes de reparación en esta materia" />
+                ) : (
+                detail.students.map((student) => {
                   const nationalityMap: Record<string, string> = {
                     'Venezolano': 'V',
                     'Extranjero': 'E',
@@ -269,7 +272,8 @@ const RepairGradesPanel: React.FC = () => {
                     </Space>
                   </Card>
                   );
-                })}
+                })
+                )}
               </>
             )}
           </>

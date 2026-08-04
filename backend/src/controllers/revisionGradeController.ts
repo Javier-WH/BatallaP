@@ -160,11 +160,14 @@ export const getMyRevisionAssignmentDetail = async (req: Request, res: Response)
     const pgs = await PeriodGradeSubject.findByPk(periodGradeSubjectId, {
       include: [
         { model: Subject, as: 'subject' },
+        { model: PeriodGrade, as: 'periodGrade' },
       ],
     });
     if (!pgs) {
       return res.status(404).json({ message: 'Asignación no encontrada' });
     }
+
+    const pgsGradeId = (pgs as any).periodGrade?.gradeId;
 
     const revisionEntries = await InscriptionSubjectRevision.findAll({
       where: { revisionPeriodId: revisionPeriod.id },
@@ -182,7 +185,10 @@ export const getMyRevisionAssignmentDetail = async (req: Request, res: Response)
             {
               model: Inscription,
               as: 'inscription',
-              where: { schoolPeriodId: activePeriod.id },
+              where: {
+                schoolPeriodId: activePeriod.id,
+                ...(pgsGradeId ? { gradeId: pgsGradeId } : {}),
+              },
               include: [
                 { association: 'student' },
                 { association: 'grade' },
