@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Card, Button, Input, Collapse, Space, Tag, Popconfirm, Checkbox } from 'antd';
+import { Card, Button, Input, Collapse, Space, Tag, Popconfirm } from 'antd';
 import { PlusOutlined, DeleteOutlined, EditOutlined, CheckOutlined, CloseOutlined } from '@ant-design/icons';
 
 interface ThematicContentData {
@@ -307,25 +307,30 @@ const ContentTab: React.FC<ContentTabProps> = ({
           <div style={{ maxHeight: 200, overflowY: 'auto', marginBottom: 12 }}>
             {thematicComponents.map(comp => (
               <div key={comp.id} style={{ marginBottom: 8 }}>
-                <div style={{ fontWeight: 600, fontSize: 11, color: '#666', marginBottom: 2 }}>
+                <div style={{ fontWeight: 600, fontSize: 11, color: '#666', marginBottom: 4 }}>
                   {comp.title}
                 </div>
-                {(comp.contents || []).map(content => (
-                  <div key={content.id} style={{ paddingLeft: 16 }}>
-                    <Checkbox
-                      checked={selectedContentIds.includes(content.id)}
-                      onChange={e => {
-                        if (e.target.checked) {
-                          setSelectedContentIds([...selectedContentIds, content.id]);
-                        } else {
-                          setSelectedContentIds(selectedContentIds.filter(id => id !== content.id));
-                        }
-                      }}
-                    >
-                      {content.title}
-                    </Checkbox>
-                  </div>
-                ))}
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', paddingLeft: 16 }}>
+                  {(comp.contents || []).map(content => {
+                    const selected = selectedContentIds.includes(content.id);
+                    return (
+                      <Button
+                        key={content.id}
+                        size="small"
+                        type={selected ? 'primary' : 'default'}
+                        onClick={() => {
+                          if (selected) {
+                            setSelectedContentIds(selectedContentIds.filter(id => id !== content.id));
+                          } else {
+                            setSelectedContentIds([...selectedContentIds, content.id]);
+                          }
+                        }}
+                      >
+                        {selected && <CheckOutlined />} {content.title}
+                      </Button>
+                    );
+                  })}
+                </div>
               </div>
             ))}
           </div>
