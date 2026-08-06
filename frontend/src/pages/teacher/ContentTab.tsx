@@ -391,17 +391,32 @@ const ContentTab: React.FC<ContentTabProps> = ({
                   </Popconfirm>
                 </Space>
               ),
-              children: (
-                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                  {learning.associations.map((assoc, aIdx) => (
-                    <div key={aIdx} style={{ display: 'flex', gap: 2, alignItems: 'center' }}>
-                      <Tag color="cyan" style={{ fontSize: 12 }}>{assoc.number}</Tag>
-                      <Tag color="blue" style={{ fontSize: 12 }}>{assoc.componentTitle}</Tag>
-                      <Tag style={{ fontSize: 12 }}>{assoc.contentTitle}</Tag>
-                    </div>
-                  ))}
-                </div>
-              ),
+              children: (() => {
+                const grouped: Record<string, typeof learning.associations> = {};
+                learning.associations.forEach(assoc => {
+                  if (!grouped[assoc.componentTitle]) grouped[assoc.componentTitle] = [];
+                  grouped[assoc.componentTitle].push(assoc);
+                });
+                return (
+                  <div>
+                    {Object.entries(grouped).map(([compTitle, assocs]) => (
+                      <div key={compTitle} style={{ marginBottom: 8 }}>
+                        <div style={{ fontWeight: 600, fontSize: 11, color: '#666', marginBottom: 4 }}>
+                          <Tag color="blue" style={{ fontSize: 12 }}>{compTitle}</Tag>
+                        </div>
+                        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', paddingLeft: 16 }}>
+                          {assocs.map((assoc, aIdx) => (
+                            <div key={aIdx} style={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+                              <Tag color="cyan" style={{ fontSize: 12 }}>{assoc.number}</Tag>
+                              <Tag style={{ fontSize: 12 }}>{assoc.contentTitle}</Tag>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })(),
             }))}
           />
         </div>
