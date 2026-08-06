@@ -62,6 +62,7 @@ const ContentTab: React.FC<ContentTabProps> = ({
   const [editingLearningId, setEditingLearningId] = useState<number | null>(null);
   const [editingLearningDesc, setEditingLearningDesc] = useState('');
   const [editingLearningContentIds, setEditingLearningContentIds] = useState<number[]>([]);
+  const [openLearningKeys, setOpenLearningKeys] = useState<number[]>([]);
   const [addingComponent, setAddingComponent] = useState(false);
 
   const handleAddComponent = () => {
@@ -301,6 +302,8 @@ const ContentTab: React.FC<ContentTabProps> = ({
           <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 12 }}>Aprendizajes Esperados</div>
           <Collapse
             accordion={false}
+            activeKey={openLearningKeys}
+            onChange={keys => setOpenLearningKeys(keys as unknown as number[])}
             items={allLearnings.map((learning) => ({
               key: learning.id,
               label: (
@@ -336,6 +339,9 @@ const ContentTab: React.FC<ContentTabProps> = ({
                         const content = comp?.contents?.find(ct => ct.title === a.contentTitle);
                         return content?.id;
                       }).filter((id): id is number => id !== undefined));
+                      if (!openLearningKeys.includes(learning.id)) {
+                        setOpenLearningKeys([...openLearningKeys, learning.id]);
+                      }
                     }}
                   />
                   <Popconfirm
