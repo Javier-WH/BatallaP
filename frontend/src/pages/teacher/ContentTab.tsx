@@ -61,11 +61,13 @@ const ContentTab: React.FC<ContentTabProps> = ({
   const [selectedContentIds, setSelectedContentIds] = useState<number[]>([]);
   const [editingLearningId, setEditingLearningId] = useState<number | null>(null);
   const [editingLearningDesc, setEditingLearningDesc] = useState('');
+  const [addingComponent, setAddingComponent] = useState(false);
 
   const handleAddComponent = () => {
     if (!newComponentTitle.trim()) return;
     onCreateComponent(newComponentTitle.trim());
     setNewComponentTitle('');
+    setAddingComponent(false);
   };
 
   const handleSaveComponentEdit = () => {
@@ -121,7 +123,7 @@ const ContentTab: React.FC<ContentTabProps> = ({
     setEditingLearningDesc('');
   };
 
-  if (thematicComponents.length === 0 && !isBlocked) {
+  if (thematicComponents.length === 0 && !isBlocked && !addingComponent) {
     return (
       <div>
         <Card style={{ textAlign: 'center', padding: '32px 0', backgroundColor: 'var(--color-input-bg)', border: 'none' }}>
@@ -129,18 +131,10 @@ const ContentTab: React.FC<ContentTabProps> = ({
             <span style={{ fontSize: 16, fontWeight: 600 }}>No hay componentes temáticos creados</span>
             <p style={{ color: '#666', marginTop: 4 }}>Crea el primer componente temático para este lapso.</p>
           </div>
-        </Card>
-        <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
-          <Input
-            placeholder="Título del componente temático"
-            value={newComponentTitle}
-            onChange={e => setNewComponentTitle(e.target.value)}
-            onPressEnter={handleAddComponent}
-          />
-          <Button type="primary" icon={<PlusOutlined />} onClick={handleAddComponent}>
-            Crear
+          <Button type="dashed" icon={<PlusOutlined />} onClick={() => setAddingComponent(true)}>
+            Agregar componente temático
           </Button>
-        </div>
+        </Card>
       </div>
     );
   }
@@ -264,17 +258,31 @@ const ContentTab: React.FC<ContentTabProps> = ({
         }))}
       />
 
-      {!isBlocked && (
+      {!isBlocked && !addingComponent && (
+        <div style={{ display: 'flex', gap: 8, marginTop: 16, alignItems: 'center' }}>
+          <Button type="dashed" icon={<PlusOutlined />} onClick={() => setAddingComponent(true)}>
+            Agregar componente temático
+          </Button>
+          {allContents.length > 0 && (
+            <Button icon={<PlusOutlined />} onClick={() => setShowLearningModal(true)}>
+              Aprendizaje Esperado
+            </Button>
+          )}
+        </div>
+      )}
+
+      {addingComponent && (
         <div style={{ display: 'flex', gap: 8, marginTop: 16, alignItems: 'center' }}>
           <Input
-            placeholder="Nuevo componente temático"
+            autoFocus
+            placeholder="Título del componente temático"
             value={newComponentTitle}
             onChange={e => setNewComponentTitle(e.target.value)}
             onPressEnter={handleAddComponent}
+            style={{ width: 300 }}
           />
-          <Button type="primary" icon={<PlusOutlined />} onClick={handleAddComponent}>
-            Agregar
-          </Button>
+          <Button type="primary" icon={<CheckOutlined />} onClick={handleAddComponent} />
+          <Button icon={<CloseOutlined />} onClick={() => { setAddingComponent(false); setNewComponentTitle(''); }} />
           {allContents.length > 0 && (
             <Button icon={<PlusOutlined />} onClick={() => setShowLearningModal(true)}>
               Aprendizaje Esperado
