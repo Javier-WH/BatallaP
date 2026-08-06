@@ -125,6 +125,7 @@ import InscriptionSubjectRevision from './InscriptionSubjectRevision';
 import ThematicComponent from './ThematicComponent';
 import ThematicContent from './ThematicContent';
 import ExpectedLearning from './ExpectedLearning';
+import ExpectedLearningContent from './ExpectedLearningContent';
 import EvaluationCriteria from './EvaluationCriteria';
 
 
@@ -219,8 +220,8 @@ ThematicComponent.belongsTo(Term, { foreignKey: 'termId', as: 'term' });
 ThematicComponent.hasMany(ThematicContent, { foreignKey: 'thematicComponentId', as: 'contents' });
 ThematicContent.belongsTo(ThematicComponent, { foreignKey: 'thematicComponentId', as: 'thematicComponent' });
 
-ThematicContent.hasMany(ExpectedLearning, { foreignKey: 'thematicContentId', as: 'learnings' });
-ExpectedLearning.belongsTo(ThematicContent, { foreignKey: 'thematicContentId', as: 'thematicContent' });
+ThematicContent.belongsToMany(ExpectedLearning, { through: { model: ExpectedLearningContent, unique: false }, foreignKey: 'contentId', otherKey: 'learningId', as: 'learnings' });
+ExpectedLearning.belongsToMany(ThematicContent, { through: { model: ExpectedLearningContent, unique: false }, foreignKey: 'learningId', otherKey: 'contentId', as: 'contents' });
 
 EvaluationPlan.belongsTo(ThematicComponent, { foreignKey: 'thematicComponentId', as: 'thematicComponent' });
 ThematicComponent.hasMany(EvaluationPlan, { foreignKey: 'thematicComponentId', as: 'evaluationPlans' });
@@ -403,5 +404,6 @@ export {
   ThematicComponent,
   ThematicContent,
   ExpectedLearning,
+  ExpectedLearningContent,
   EvaluationCriteria
 };

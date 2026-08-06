@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Card, Button, Input, Collapse, Space, Tag, Popconfirm, Modal, Checkbox } from 'antd';
+import { Card, Button, Input, Collapse, Space, Tag, Popconfirm, Checkbox } from 'antd';
 import { PlusOutlined, DeleteOutlined, EditOutlined, CheckOutlined, CloseOutlined } from '@ant-design/icons';
 
 interface ThematicContentData {
@@ -56,9 +56,9 @@ const ContentTab: React.FC<ContentTabProps> = ({
   const [newContentTitle, setNewContentTitle] = useState('');
   const [editingContentId, setEditingContentId] = useState<number | null>(null);
   const [editingContentTitle, setEditingContentTitle] = useState('');
-  const [showLearningModal, setShowLearningModal] = useState(false);
   const [newLearningDesc, setNewLearningDesc] = useState('');
   const [selectedContentIds, setSelectedContentIds] = useState<number[]>([]);
+  const [addingLearning, setAddingLearning] = useState(false);
   const [editingLearningId, setEditingLearningId] = useState<number | null>(null);
   const [editingLearningDesc, setEditingLearningDesc] = useState('');
   const [addingComponent, setAddingComponent] = useState(false);
@@ -98,22 +98,34 @@ const ContentTab: React.FC<ContentTabProps> = ({
     onCreateLearning(selectedContentIds, newLearningDesc.trim());
     setNewLearningDesc('');
     setSelectedContentIds([]);
-    setShowLearningModal(false);
+    setAddingLearning(false);
   };
 
   const allContents = thematicComponents.flatMap(comp =>
     (comp.contents || []).map(c => ({ ...c, componentTitle: comp.title }))
   );
 
-  const allLearnings = thematicComponents.flatMap(comp =>
-    (comp.contents || []).flatMap(content =>
-      (content.learnings || []).map(learning => ({
-        ...learning,
-        contentTitle: content.title,
-        componentTitle: comp.title,
-      }))
-    )
-  );
+  const allLearnings = (() => {
+    const map = new Map<number, { id: number; description: string; order: number; associations: { contentTitle: string; componentTitle: string }[] }>();
+    thematicComponents.forEach(comp => {
+      (comp.contents || []).forEach(content => {
+        (content.learnings || []).forEach(learning => {
+          const existing = map.get(learning.id);
+          if (existing) {
+            existing.associations.push({ contentTitle: content.title, componentTitle: comp.title });
+          } else {
+            map.set(learning.id, {
+              id: learning.id,
+              description: learning.description,
+              order: learning.order,
+              associations: [{ contentTitle: content.title, componentTitle: comp.title }],
+            });
+          }
+        });
+      });
+    });
+    return Array.from(map.values());
+  })();
 
   const handleSaveLearningEdit = () => {
     if (editingLearningId !== null && editingLearningDesc.trim()) {
@@ -258,16 +270,11 @@ const ContentTab: React.FC<ContentTabProps> = ({
         }))}
       />
 
-      {!isBlocked && !addingComponent && (
+      {!isBlocked && !addingComponent && !addingLearning && (
         <div style={{ display: 'flex', gap: 8, marginTop: 16, alignItems: 'center' }}>
           <Button type="dashed" icon={<PlusOutlined />} onClick={() => setAddingComponent(true)}>
             Agregar componente temático
           </Button>
-          {allContents.length > 0 && (
-            <Button icon={<PlusOutlined />} onClick={() => setShowLearningModal(true)}>
-              Aprendizaje Esperado
-            </Button>
-          )}
         </div>
       )}
 
@@ -283,88 +290,85 @@ const ContentTab: React.FC<ContentTabProps> = ({
           />
           <Button type="primary" icon={<CheckOutlined />} onClick={handleAddComponent} />
           <Button icon={<CloseOutlined />} onClick={() => { setAddingComponent(false); setNewComponentTitle(''); }} />
-          {allContents.length > 0 && (
-            <Button icon={<PlusOutlined />} onClick={() => setShowLearningModal(true)}>
-              Aprendizaje Esperado
-            </Button>
-          )}
         </div>
       )}
 
-      <Modal
-        title="Nuevo Aprendizaje Esperado"
-        open={showLearningModal}
-        onCancel={() => setShowLearningModal(false)}
-        onOk={handleAddLearning}
-        okText="Crear"
-        cancelText="Cancelar"
-        okButtonProps={{ disabled: !newLearningDesc.trim() || selectedContentIds.length === 0 }}
-      >
-        <Input.TextArea
-          placeholder="Escribe el aprendizaje esperado..."
-          value={newLearningDesc}
-          onChange={e => setNewLearningDesc(e.target.value)}
-          rows={3}
-          style={{ marginBottom: 16 }}
-        />
-        <div style={{ marginBottom: 8, fontWeight: 600 }}>Asociar a contenidos:</div>
-        <div style={{ maxHeight: 300, overflowY: 'auto', border: '1px solid #d9d9d9', borderRadius: 6, padding: 8 }}>
-          {thematicComponents.map(comp => (
-            <div key={comp.id} style={{ marginBottom: 12 }}>
-              <div style={{ fontWeight: 600, fontSize: 12, color: '#666', marginBottom: 4 }}>
-                {comp.title}
-              </div>
-              {(comp.contents || []).map(content => (
-                <div key={content.id} style={{ paddingLeft: 16 }}>
-                  <Checkbox
-                    checked={selectedContentIds.includes(content.id)}
-                    onChange={e => {
-                      if (e.target.checked) {
-                        setSelectedContentIds([...selectedContentIds, content.id]);
-                      } else {
-                        setSelectedContentIds(selectedContentIds.filter(id => id !== content.id));
-                      }
-                    }}
-                  >
-                    {content.title}
-                  </Checkbox>
+      {addingLearning && (
+        <div style={{ marginTop: 16, padding: 16, border: '1px solid #d9d9d9', borderRadius: 8, background: 'var(--color-input-bg, #fafafa)' }}>
+          <Input.TextArea
+            autoFocus
+            placeholder="Escribe el aprendizaje esperado..."
+            value={newLearningDesc}
+            onChange={e => setNewLearningDesc(e.target.value)}
+            rows={2}
+            style={{ marginBottom: 12 }}
+          />
+          <div style={{ marginBottom: 8, fontWeight: 600, fontSize: 13 }}>Asociar a contenidos:</div>
+          <div style={{ maxHeight: 200, overflowY: 'auto', marginBottom: 12 }}>
+            {thematicComponents.map(comp => (
+              <div key={comp.id} style={{ marginBottom: 8 }}>
+                <div style={{ fontWeight: 600, fontSize: 11, color: '#666', marginBottom: 2 }}>
+                  {comp.title}
                 </div>
-              ))}
-            </div>
-          ))}
+                {(comp.contents || []).map(content => (
+                  <div key={content.id} style={{ paddingLeft: 16 }}>
+                    <Checkbox
+                      checked={selectedContentIds.includes(content.id)}
+                      onChange={e => {
+                        if (e.target.checked) {
+                          setSelectedContentIds([...selectedContentIds, content.id]);
+                        } else {
+                          setSelectedContentIds(selectedContentIds.filter(id => id !== content.id));
+                        }
+                      }}
+                    >
+                      {content.title}
+                    </Checkbox>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+          <Space>
+            <Button type="primary" icon={<CheckOutlined />} onClick={handleAddLearning} disabled={!newLearningDesc.trim() || selectedContentIds.length === 0}>
+              Crear
+            </Button>
+            <Button icon={<CloseOutlined />} onClick={() => { setAddingLearning(false); setNewLearningDesc(''); setSelectedContentIds([]); }}>
+              Cancelar
+            </Button>
+          </Space>
         </div>
-      </Modal>
+      )}
 
       {allLearnings.length > 0 && (
         <div style={{ marginTop: 24 }}>
           <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 12 }}>Aprendizajes Esperados</div>
-          {allLearnings.map(learning => (
-            <div key={learning.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 8, padding: '8px 12px', background: 'var(--color-input-bg, #fafafa)', borderRadius: 8 }}>
-              <div style={{ flex: 1 }}>
-                {editingLearningId === learning.id ? (
-                  <Space>
-                    <Input
-                      size="small"
-                      value={editingLearningDesc}
-                      onChange={e => setEditingLearningDesc(e.target.value)}
-                      onPressEnter={handleSaveLearningEdit}
-                      style={{ width: 350 }}
-                    />
-                    <Button size="small" icon={<CheckOutlined />} onClick={handleSaveLearningEdit} />
-                    <Button size="small" icon={<CloseOutlined />} onClick={() => setEditingLearningId(null)} />
-                  </Space>
-                ) : (
-                  <>
-                    <span style={{ fontSize: 13 }}>{learning.description}</span>
-                    <div style={{ marginTop: 4, display: 'flex', gap: 4 }}>
-                      <Tag color="blue" style={{ fontSize: 11 }}>{learning.componentTitle}</Tag>
-                      <Tag color="cyan" style={{ fontSize: 11 }}>{learning.contentTitle}</Tag>
-                    </div>
-                  </>
-                )}
-              </div>
-              {!isBlocked && editingLearningId !== learning.id && (
-                <Space>
+          <Collapse
+            accordion={false}
+            items={allLearnings.map((learning, lIdx) => ({
+              key: learning.id,
+              label: (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1 }}>
+                  <Tag color="purple">{lIdx + 1}</Tag>
+                  {editingLearningId === learning.id ? (
+                    <Space>
+                      <Input
+                        size="small"
+                        value={editingLearningDesc}
+                        onChange={e => setEditingLearningDesc(e.target.value)}
+                        onPressEnter={handleSaveLearningEdit}
+                        style={{ width: 350 }}
+                      />
+                      <Button size="small" icon={<CheckOutlined />} onClick={handleSaveLearningEdit} />
+                      <Button size="small" icon={<CloseOutlined />} onClick={() => setEditingLearningId(null)} />
+                    </Space>
+                  ) : (
+                    <span style={{ fontWeight: 500 }}>{learning.description}</span>
+                  )}
+                </div>
+              ),
+              extra: !isBlocked && editingLearningId !== learning.id && (
+                <Space onClick={e => e.stopPropagation()}>
                   <Button
                     size="small"
                     type="text"
@@ -381,9 +385,29 @@ const ContentTab: React.FC<ContentTabProps> = ({
                     <Button size="small" type="text" danger icon={<DeleteOutlined />} />
                   </Popconfirm>
                 </Space>
-              )}
-            </div>
-          ))}
+              ),
+              children: (
+                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                  {learning.associations.map((assoc, aIdx) => (
+                    <div key={aIdx} style={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+                      <Tag color="blue" style={{ fontSize: 12 }}>{assoc.componentTitle}</Tag>
+                      <Tag color="cyan" style={{ fontSize: 12 }}>{assoc.contentTitle}</Tag>
+                    </div>
+                  ))}
+                </div>
+              ),
+            }))}
+          />
+        </div>
+      )}
+
+      {!isBlocked && !addingLearning && (
+        <div style={{ display: 'flex', gap: 8, marginTop: 16, alignItems: 'center' }}>
+          {allContents.length > 0 && (
+            <Button type="dashed" icon={<PlusOutlined />} onClick={() => setAddingLearning(true)}>
+              Aprendizaje Esperado
+            </Button>
+          )}
         </div>
       )}
     </div>

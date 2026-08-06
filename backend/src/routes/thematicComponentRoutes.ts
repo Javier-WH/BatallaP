@@ -25,8 +25,8 @@ router.post('/:id/contents', createThematicContent);
 router.put('/contents/:id', updateThematicContent);
 router.delete('/contents/:id', deleteThematicContent);
 
-// Expected Learnings (nested under content)
-router.post('/contents/:id/learnings', createExpectedLearning);
+// Expected Learnings
+router.post('/learnings', createExpectedLearning);
 router.put('/learnings/:id', updateExpectedLearning);
 router.delete('/learnings/:id', deleteExpectedLearning);
 

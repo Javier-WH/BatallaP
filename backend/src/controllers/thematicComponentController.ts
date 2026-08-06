@@ -4,6 +4,7 @@ import {
   ThematicComponent,
   ThematicContent,
   ExpectedLearning,
+  ExpectedLearningContent,
 } from '@/models/index';
 
 // ── Thematic Components ──────────────────────────────────────────
@@ -93,10 +94,11 @@ export const deleteThematicComponent = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Componente no encontrado' });
     }
 
-    // Cascade delete: contents will be deleted by DB cascade or manually
+    // Cascade delete: contents and their learning associations
     const contents = await ThematicContent.findAll({ where: { thematicComponentId: Number(id) } });
-    for (const content of contents) {
-      await ExpectedLearning.destroy({ where: { thematicContentId: content.id } });
+    const contentIds = contents.map(c => c.id);
+    if (contentIds.length > 0) {
+      await ExpectedLearningContent.destroy({ where: { contentId: contentIds } });
     }
     await ThematicContent.destroy({ where: { thematicComponentId: Number(id) } });
     await component.destroy();
@@ -170,7 +172,7 @@ export const deleteThematicContent = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Contenido no encontrado' });
     }
 
-    await ExpectedLearning.destroy({ where: { thematicContentId: Number(id) } });
+    await ExpectedLearningContent.destroy({ where: { contentId: Number(id) } });
     await content.destroy();
 
     return res.json({ message: 'Contenido eliminado' });
@@ -184,26 +186,22 @@ export const deleteThematicContent = async (req: Request, res: Response) => {
 
 export const createExpectedLearning = async (req: Request, res: Response) => {
   try {
-    const { id } = req.params; // thematicContentId
-    const { description } = req.body;
+    const { contentIds, description } = req.body;
     if (!description) {
       return res.status(400).json({ message: 'description es requerido' });
     }
-
-    const content = await ThematicContent.findByPk(Number(id));
-    if (!content) {
-      return res.status(404).json({ message: 'Contenido no encontrado' });
+    if (!contentIds || !Array.isArray(contentIds) || contentIds.length === 0) {
+      return res.status(400).json({ message: 'contentIds es requerido' });
     }
 
-    const maxOrder = await ExpectedLearning.max('order', {
-      where: { thematicContentId: Number(id) },
-    }) as number || 0;
+    const maxOrder = await ExpectedLearning.max('order') as number || 0;
 
     const learning = await ExpectedLearning.create({
-      thematicContentId: Number(id),
       description,
       order: maxOrder + 1,
     });
+
+    await (learning as any).setContents(contentIds);
 
     return res.status(201).json(learning);
   } catch (error: any) {

@@ -1,10 +1,8 @@
 import { DataTypes, Model, Optional } from 'sequelize';
 import sequelize from '@/config/database';
-import ThematicContent from './ThematicContent';
 
 interface ExpectedLearningAttributes {
   id: number;
-  thematicContentId: number;
   description: string;
   order: number;
 }
@@ -13,7 +11,6 @@ type ExpectedLearningCreationAttributes = Optional<ExpectedLearningAttributes, '
 
 class ExpectedLearning extends Model<ExpectedLearningAttributes, ExpectedLearningCreationAttributes> implements ExpectedLearningAttributes {
   public id!: number;
-  public thematicContentId!: number;
   public description!: string;
   public order!: number;
 
@@ -27,11 +24,6 @@ ExpectedLearning.init(
       type: DataTypes.INTEGER,
       autoIncrement: true,
       primaryKey: true,
-    },
-    thematicContentId: {
-      type: DataTypes.INTEGER,
-      references: { model: ThematicContent, key: 'id' },
-      allowNull: false,
     },
     description: {
       type: DataTypes.TEXT,

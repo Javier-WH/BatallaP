@@ -710,9 +710,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
 
   const handleCreateLearning = async (contentIds: number[], description: string) => {
     try {
-      await Promise.all(contentIds.map(contentId =>
-        api.post(`/thematic-components/contents/${contentId}/learnings`, { description })
-      ));
+      await api.post('/thematic-components/learnings', { contentIds, description });
       fetchThematicComponents();
     } catch {
       message.error('Error al crear aprendizaje esperado');
