@@ -306,13 +306,13 @@ const ContentTab: React.FC<ContentTabProps> = ({
           />
           <div style={{ marginBottom: 8, fontWeight: 600, fontSize: 13 }}>Asociar a contenidos:</div>
           <div style={{ maxHeight: 200, overflowY: 'auto', marginBottom: 12 }}>
-            {thematicComponents.map(comp => (
+            {thematicComponents.map((comp, compIdx) => (
               <div key={comp.id} style={{ marginBottom: 8 }}>
                 <div style={{ fontWeight: 600, fontSize: 11, color: '#666', marginBottom: 4 }}>
-                  {comp.title}
+                  <Tag color="blue" style={{ fontSize: 11 }}>{compIdx + 1}.</Tag> {comp.title}
                 </div>
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', paddingLeft: 16 }}>
-                  {(comp.contents || []).map(content => {
+                  {(comp.contents || []).map((content, contentIdx) => {
                     const selected = selectedContentIds.includes(content.id);
                     return (
                       <Button
@@ -327,7 +327,7 @@ const ContentTab: React.FC<ContentTabProps> = ({
                           }
                         }}
                       >
-                        {selected && <CheckOutlined />} {content.title}
+                        {selected && <CheckOutlined />} {compIdx + 1}.{contentIdx + 1} {content.title}
                       </Button>
                     );
                   })}
