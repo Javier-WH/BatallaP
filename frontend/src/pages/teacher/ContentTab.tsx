@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Card, Button, Input, Collapse, Space, Tag, Popconfirm, message } from 'antd';
+import { Card, Button, Input, Collapse, Space, Tag, Popconfirm, message, Alert } from 'antd';
 import { PlusOutlined, DeleteOutlined, EditOutlined, CheckOutlined, CloseOutlined } from '@ant-design/icons';
 
 interface ThematicContentData {
@@ -133,6 +133,24 @@ const ContentTab: React.FC<ContentTabProps> = ({
       });
     });
     return Array.from(map.values()).sort((a, b) => a.order - b.order || a.id - b.id);
+  })();
+
+  const contentsWithoutLearning = (() => {
+    const learningContentIds = new Set<number>();
+    allLearnings.forEach(l => l.associations.forEach(a => {
+      const comp = thematicComponents.find(c => c.title === a.componentTitle);
+      const content = comp?.contents?.find(ct => ct.title === a.contentTitle);
+      if (content) learningContentIds.add(content.id);
+    }));
+    const missing: string[] = [];
+    thematicComponents.forEach((comp, compIdx) => {
+      (comp.contents || []).forEach((content, contentIdx) => {
+        if (!learningContentIds.has(content.id)) {
+          missing.push(`${compIdx + 1}.${contentIdx + 1}`);
+        }
+      });
+    });
+    return missing;
   })();
 
   const handleSaveLearningEdit = () => {
@@ -310,6 +328,14 @@ const ContentTab: React.FC<ContentTabProps> = ({
       {allLearnings.length > 0 && (
         <div style={{ marginTop: 24 }}>
           <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 12 }}>Aprendizajes Esperados</div>
+          {contentsWithoutLearning.length > 0 && (
+            <Alert
+              type="error"
+              showIcon
+              style={{ marginBottom: 12, fontSize: 12 }}
+              message={`Contenidos sin aprendizaje esperado: ${contentsWithoutLearning.join(', ')}`}
+            />
+          )}
           <Collapse
             accordion={false}
             activeKey={openLearningKeys}
