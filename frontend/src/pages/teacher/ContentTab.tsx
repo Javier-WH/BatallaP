@@ -208,23 +208,6 @@ const ContentTab: React.FC<ContentTabProps> = ({
                       </Space>
                     )}
                   </div>
-                  {content.learnings && content.learnings.length > 0 && (
-                    <ul style={{ margin: '4px 0 8px 24px', paddingLeft: 16 }}>
-                      {content.learnings.map(learning => (
-                        <li key={learning.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 4, marginBottom: 2 }}>
-                          <span style={{ fontSize: 13 }}>{learning.description}</span>
-                          {!isBlocked && (
-                            <Popconfirm
-                              title="¿Eliminar este aprendizaje?"
-                              onConfirm={() => onDeleteLearning(learning.id)}
-                            >
-                              <Button size="small" type="text" danger icon={<DeleteOutlined />} style={{ flexShrink: 0 }} />
-                            </Popconfirm>
-                          )}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
                 </div>
               ))}
               {!isBlocked && (
