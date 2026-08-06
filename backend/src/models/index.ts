@@ -122,6 +122,10 @@ import DashboardContent from './DashboardContent';
 import QualificationAudit from './QualificationAudit';
 import RevisionPeriod from './RevisionPeriod';
 import InscriptionSubjectRevision from './InscriptionSubjectRevision';
+import ThematicComponent from './ThematicComponent';
+import ThematicContent from './ThematicContent';
+import ExpectedLearning from './ExpectedLearning';
+import EvaluationCriteria from './EvaluationCriteria';
 
 
 // ... (Existing User/Person/Role/Contact associations) ...
@@ -204,6 +208,26 @@ EvaluationPlan.belongsTo(Term, { foreignKey: 'termId', as: 'term' });
 
 EvaluationPlan.hasMany(Qualification, { foreignKey: 'evaluationPlanId', as: 'qualifications' });
 Qualification.belongsTo(EvaluationPlan, { foreignKey: 'evaluationPlanId', as: 'evaluationPlan' });
+
+// 5.1 Thematic Component Associations
+PeriodGradeSubject.hasMany(ThematicComponent, { foreignKey: 'periodGradeSubjectId', as: 'thematicComponents' });
+ThematicComponent.belongsTo(PeriodGradeSubject, { foreignKey: 'periodGradeSubjectId', as: 'periodGradeSubject' });
+
+Term.hasMany(ThematicComponent, { foreignKey: 'termId', as: 'thematicComponents' });
+ThematicComponent.belongsTo(Term, { foreignKey: 'termId', as: 'term' });
+
+ThematicComponent.hasMany(ThematicContent, { foreignKey: 'thematicComponentId', as: 'contents' });
+ThematicContent.belongsTo(ThematicComponent, { foreignKey: 'thematicComponentId', as: 'thematicComponent' });
+
+ThematicContent.hasMany(ExpectedLearning, { foreignKey: 'thematicContentId', as: 'learnings' });
+ExpectedLearning.belongsTo(ThematicContent, { foreignKey: 'thematicContentId', as: 'thematicContent' });
+
+EvaluationPlan.belongsTo(ThematicComponent, { foreignKey: 'thematicComponentId', as: 'thematicComponent' });
+ThematicComponent.hasMany(EvaluationPlan, { foreignKey: 'thematicComponentId', as: 'evaluationPlans' });
+
+// 5.2 Evaluation Criteria Associations
+EvaluationPlan.hasMany(EvaluationCriteria, { foreignKey: 'evaluationPlanId', as: 'criteria' });
+EvaluationCriteria.belongsTo(EvaluationPlan, { foreignKey: 'evaluationPlanId', as: 'evaluationPlan' });
 
 InscriptionSubject.hasMany(Qualification, { foreignKey: 'inscriptionSubjectId', as: 'qualifications' });
 Qualification.belongsTo(InscriptionSubject, { foreignKey: 'inscriptionSubjectId', as: 'inscriptionSubject' });
@@ -375,5 +399,9 @@ export {
   DashboardContent,
   QualificationAudit,
   RevisionPeriod,
-  InscriptionSubjectRevision
+  InscriptionSubjectRevision,
+  ThematicComponent,
+  ThematicContent,
+  ExpectedLearning,
+  EvaluationCriteria
 };

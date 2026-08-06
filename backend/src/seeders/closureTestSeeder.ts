@@ -207,7 +207,6 @@ async function seedClosureTest() {
                     sectionId: sectionA.id,
                     termId: termId,
                     description: `Nota única Lapso ${termId}`,
-                    objetivo: 'Objetivo General',
                     percentage: 100,
                     date: new Date()
                 }, { transaction: t });

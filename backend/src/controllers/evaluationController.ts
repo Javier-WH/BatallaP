@@ -26,7 +26,9 @@ import {
   User,
   Plantel,
   QualificationAudit,
-  Setting
+  Setting,
+  EvaluationCriteria,
+  ThematicComponent
 } from '@/models/index';
 import {
   getSubjectOrderMapByGradeAndPeriod,
@@ -86,24 +88,19 @@ export const getEvaluationPlan = async (req: Request, res: Response) => {
     const { term, sectionId } = req.query;
 
     const where: any = { periodGradeSubjectId };
-    if (term) where.termId = term; // Changed from where.term to where.termId
+    if (term) where.termId = term;
     if (sectionId) where.sectionId = sectionId;
 
     const plan = await EvaluationPlan.findAll({
       where,
+      include: [
+        { model: EvaluationCriteria, as: 'criteria' },
+        { model: ThematicComponent, as: 'thematicComponent' },
+      ],
       order: [['date', 'ASC']]
     });
 
-    // Parse multi-value JSON fields back to arrays for the frontend
-    const parsedPlan = plan.map(p => {
-      const json = p.toJSON() as any;
-      try { if (json.referentesTeoricos && typeof json.referentesTeoricos === 'string') json.referentesTeoricos = JSON.parse(json.referentesTeoricos); } catch {}
-      try { if (json.referentesEticos && typeof json.referentesEticos === 'string') json.referentesEticos = JSON.parse(json.referentesEticos); } catch {}
-      try { if (json.indicador && typeof json.indicador === 'string') json.indicador = JSON.parse(json.indicador); } catch {}
-      return json;
-    });
-
-    res.json(parsedPlan);
+    res.json(plan);
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Error al obtener plan de evaluación' });
@@ -112,8 +109,8 @@ export const getEvaluationPlan = async (req: Request, res: Response) => {
 
 export const createEvaluationItem = async (req: Request, res: Response) => {
   try {
-    // Prevent creating plan items on blocked terms
-    const { termId, periodGradeSubjectId, sectionId, identificador } = req.body;
+    const { termId, periodGradeSubjectId, sectionId, description, percentage, date, thematicComponentId, criteria } = req.body;
+
     if (termId) {
       const term = await Term.findByPk(termId);
       if (!term) {
@@ -124,29 +121,43 @@ export const createEvaluationItem = async (req: Request, res: Response) => {
       }
     }
 
-    // Check for duplicate identificador within same subject+section+term
-    if (identificador) {
-      const existing = await EvaluationPlan.findOne({
-        where: { periodGradeSubjectId, sectionId, termId, identificador }
-      });
-      if (existing) {
-        return res.status(400).json({ message: `El identificador "${identificador}" ya existe en este plan de evaluación` });
-      }
+    // Validate percentage sum does not exceed 100
+    const currentSum = await EvaluationPlan.sum('percentage', {
+      where: { periodGradeSubjectId, sectionId, termId },
+    }) as number || 0;
+    if (Number(currentSum) + Number(percentage) > 100) {
+      return res.status(400).json({ message: 'La suma de los porcentajes para este lapso no puede superar el 100%' });
     }
 
-    // Serialize multi-value fields to JSON strings for storage
-    if (Array.isArray(req.body.referentesTeoricos)) {
-      req.body.referentesTeoricos = JSON.stringify(req.body.referentesTeoricos);
-    }
-    if (Array.isArray(req.body.referentesEticos)) {
-      req.body.referentesEticos = JSON.stringify(req.body.referentesEticos);
-    }
-    if (Array.isArray(req.body.indicador)) {
-      req.body.indicador = JSON.stringify(req.body.indicador);
+    const item = await EvaluationPlan.create({
+      periodGradeSubjectId,
+      sectionId,
+      termId,
+      description,
+      percentage,
+      date,
+      thematicComponentId: thematicComponentId || null,
+    });
+
+    // Create criteria if provided
+    if (Array.isArray(criteria) && criteria.length > 0) {
+      await EvaluationCriteria.bulkCreate(
+        criteria.map((c: any) => ({
+          evaluationPlanId: item.id,
+          name: c.name,
+          points: c.points,
+        }))
+      );
     }
 
-    const item = await EvaluationPlan.create(req.body);
-    res.json(item);
+    // Return with criteria included
+    const fullItem = await EvaluationPlan.findByPk(item.id, {
+      include: [
+        { model: EvaluationCriteria, as: 'criteria' },
+        { model: ThematicComponent, as: 'thematicComponent' },
+      ],
+    });
+    res.json(fullItem);
   } catch (error: any) {
     res.status(400).json({ message: error.message });
   }
@@ -167,39 +178,45 @@ export const updateEvaluationItem = async (req: Request, res: Response) => {
       return res.status(403).json({ message: 'Lapso bloqueado; no se pueden modificar el plan de evaluación' });
     }
 
-    // Check for duplicate identificador within same subject+section+term
-    const newIdentificador = req.body.identificador ?? item.identificador;
-    const pgsId = req.body.periodGradeSubjectId ?? item.periodGradeSubjectId;
-    const secId = req.body.sectionId ?? item.sectionId;
-    const tId = req.body.termId ?? item.termId;
-    if (newIdentificador) {
-      const existing = await EvaluationPlan.findOne({
+    // Validate percentage sum if percentage is being updated
+    if (req.body.percentage !== undefined) {
+      const currentSum = await EvaluationPlan.sum('percentage', {
         where: {
-          periodGradeSubjectId: pgsId,
-          sectionId: secId,
-          termId: tId,
-          identificador: newIdentificador,
+          periodGradeSubjectId: item.periodGradeSubjectId,
+          sectionId: item.sectionId,
+          termId: item.termId,
           id: { [Op.ne]: Number(id) }
         }
-      });
-      if (existing) {
-        return res.status(400).json({ message: `El identificador "${newIdentificador}" ya existe en este plan de evaluación` });
+      }) as number || 0;
+      if (Number(currentSum) + Number(req.body.percentage) > 100) {
+        return res.status(400).json({ message: 'La suma de los porcentajes para este lapso no puede superar el 100%' });
       }
     }
 
-    // Serialize multi-value fields to JSON strings for storage
-    if (Array.isArray(req.body.referentesTeoricos)) {
-      req.body.referentesTeoricos = JSON.stringify(req.body.referentesTeoricos);
-    }
-    if (Array.isArray(req.body.referentesEticos)) {
-      req.body.referentesEticos = JSON.stringify(req.body.referentesEticos);
-    }
-    if (Array.isArray(req.body.indicador)) {
-      req.body.indicador = JSON.stringify(req.body.indicador);
+    const { criteria, ...updateFields } = req.body;
+    await item.update(updateFields);
+
+    // Replace criteria if provided
+    if (Array.isArray(criteria)) {
+      await EvaluationCriteria.destroy({ where: { evaluationPlanId: Number(id) } });
+      if (criteria.length > 0) {
+        await EvaluationCriteria.bulkCreate(
+          criteria.map((c: any) => ({
+            evaluationPlanId: Number(id),
+            name: c.name,
+            points: c.points,
+          }))
+        );
+      }
     }
 
-    await item.update(req.body);
-    res.json(item);
+    const fullItem = await EvaluationPlan.findByPk(id, {
+      include: [
+        { model: EvaluationCriteria, as: 'criteria' },
+        { model: ThematicComponent, as: 'thematicComponent' },
+      ],
+    });
+    res.json(fullItem);
   } catch (error: any) {
     res.status(400).json({ message: error.message });
   }
@@ -276,7 +293,7 @@ export const getStudentsForAssignment = async (req: Request, res: Response) => {
               model: Qualification,
               as: 'qualifications',
               include: [
-                { model: EvaluationPlan, as: 'evaluationPlan' },
+                { model: EvaluationPlan, as: 'evaluationPlan', include: [{ model: EvaluationCriteria, as: 'criteria' }] },
                 {
                   model: QualificationAudit,
                   as: 'audits',
@@ -296,18 +313,13 @@ export const getStudentsForAssignment = async (req: Request, res: Response) => {
       ]
     });
 
-    // Parse multi-value JSON fields in nested evaluation plans
+    // Process audit flags in nested qualifications
     const parsed = (inscriptions as any[]).map(ins => {
       const j = ins.toJSON() as any;
       if (j.inscriptionSubjects) {
         j.inscriptionSubjects.forEach((is: any) => {
           if (is.qualifications) {
             is.qualifications.forEach((q: any) => {
-              if (q.evaluationPlan) {
-                try { if (typeof q.evaluationPlan.referentesTeoricos === 'string') q.evaluationPlan.referentesTeoricos = JSON.parse(q.evaluationPlan.referentesTeoricos); } catch {}
-                try { if (typeof q.evaluationPlan.referentesEticos === 'string') q.evaluationPlan.referentesEticos = JSON.parse(q.evaluationPlan.referentesEticos); } catch {}
-                try { if (typeof q.evaluationPlan.indicador === 'string') q.evaluationPlan.indicador = JSON.parse(q.evaluationPlan.indicador); } catch {}
-              }
               const foreignAudits = Array.isArray(q.audits)
                 ? q.audits.filter((a: any) => a.editedBy !== professorUserId)
                 : [];
@@ -1269,7 +1281,7 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
       // Row 6: evaluation name (gray background)
       sheet.mergeCells(`${l1}6:${l3}6`);
       const nameCell = sheet.getCell(`${l1}6`);
-      nameCell.value = plan.identificador || plan.description;
+      nameCell.value = plan.description;
       nameCell.font = { bold: true, size: 9 };
       nameCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: GRAY } };
       nameCell.alignment = { horizontal: 'center', vertical: 'middle' };
@@ -1731,7 +1743,7 @@ export const exportGradesExcel = async (req: Request, res: Response) => {
 
     let col = 4;
     evaluationPlans.forEach((plan: any) => {
-      headerRow1.getCell(col).value = plan.identificador || plan.description;
+      headerRow1.getCell(col).value = plan.description;
       col++;
     });
     headerRow1.getCell(col).value = 'Total';
@@ -1927,7 +1939,7 @@ export const getQualificationAudits = async (req: Request, res: Response) => {
           where: { evaluationPlanId: { [Op.in]: planIds } },
           required: true,
           include: [
-            { model: EvaluationPlan, as: 'evaluationPlan', attributes: ['id', 'identificador', 'description'] },
+            { model: EvaluationPlan, as: 'evaluationPlan', attributes: ['id', 'description', 'percentage'] },
             {
               model: InscriptionSubject,
               as: 'inscriptionSubject',
@@ -1972,7 +1984,7 @@ export const getAllQualificationAudits = async (_req: Request, res: Response) =>
             {
               model: EvaluationPlan,
               as: 'evaluationPlan',
-              attributes: ['id', 'identificador', 'description', 'percentage'],
+              attributes: ['id', 'description', 'percentage'],
             },
             {
               model: InscriptionSubject,

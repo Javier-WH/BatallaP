@@ -153,37 +153,21 @@ const styles = StyleSheet.create({
 });
 
 export interface EvaluationPlanItemData {
-  identificador: string;
   description: string;
-  tecnica: string;
-  objetivo?: string;
-  tipoEvaluacion?: string;
-  formaEvaluacion?: string;
-  indicador?: string | string[];
-  temaGenerador?: string;
-  referentesTeoricos?: string | string[];
-  referentesEticos?: string | string[];
-  estrategiaEvaluacion?: string;
+  thematicComponent?: string;
+  criteria?: string[];
   percentage: number;
   date: string;
 }
 
-const bulletList = (val: string | string[] | undefined): string => {
-  if (!val) return '-';
-  const items = typeof val === 'string' ? (() => { try { return JSON.parse(val); } catch { return [val]; } })() : val;
-  if (Array.isArray(items) && items.length > 0) {
-    return items.map((t: string) => `• ${t}`).join('\n');
-  }
-  return '-';
+const bulletList = (val: string[] | undefined): string => {
+  if (!val || val.length === 0) return '-';
+  return val.map((t: string) => `• ${t}`).join('\n');
 };
 
-const bulletTags = (val: string | string[] | undefined): string => {
-  if (!val) return '-';
-  const items = typeof val === 'string' ? (() => { try { return JSON.parse(val); } catch { return [val]; } })() : val;
-  if (Array.isArray(items) && items.length > 0) {
-    return items.join(', ');
-  }
-  return '-';
+const bulletTags = (val: string[] | undefined): string => {
+  if (!val || val.length === 0) return '-';
+  return val.join(', ');
 };
 
 export interface EvaluationPlanHeaderData {
@@ -204,27 +188,21 @@ interface EvaluationPlanPDFProps {
 
 const SummaryHeader = () => (
   <View style={styles.tableHeader}>
-    <Text style={[styles.cellHeader, { width: '13%' }]}>Tema Generador</Text>
-    <Text style={[styles.cellHeader, { width: '14%' }]}>Ref. Teóricos</Text>
-    <Text style={[styles.cellHeader, { width: '14%' }]}>Ref. Éticos e Indis.</Text>
-    <Text style={[styles.cellHeader, { width: '12%' }]}>Técnicas e Instrumento</Text>
-    <Text style={[styles.cellHeader, { width: '13%' }]}>Estrategia de eval.</Text>
-    <Text style={[styles.cellHeader, { width: '14%' }]}>Indicador</Text>
-    <Text style={[styles.cellHeader, { width: '8%' }]}>Puntaje</Text>
-    <Text style={[styles.cellHeader, { width: '8%' }]}>Fecha</Text>
+    <Text style={[styles.cellHeader, { width: '25%' }]}>Estrategia de Evaluación</Text>
+    <Text style={[styles.cellHeader, { width: '20%' }]}>Componente Temático</Text>
+    <Text style={[styles.cellHeader, { width: '30%' }]}>Criterios</Text>
+    <Text style={[styles.cellHeader, { width: '12%' }]}>Puntaje</Text>
+    <Text style={[styles.cellHeader, { width: '13%' }]}>Fecha</Text>
   </View>
 );
 
 const summaryRow = (item: EvaluationPlanItemData, index: number) => (
   <View key={index} style={[styles.tableRow, index % 2 === 1 ? styles.tableRowAlt : {}]}>
-    <Text style={[styles.cell, { width: '13%' }]}>{item.temaGenerador || '-'}</Text>
-    <Text style={[styles.cell, { width: '14%', fontSize: 6 }]}>{bulletList(item.referentesTeoricos)}</Text>
-    <Text style={[styles.cell, { width: '14%', fontSize: 6 }]}>{bulletTags(item.referentesEticos)}</Text>
-    <Text style={[styles.cell, { width: '12%' }]}>{item.tecnica || '-'}</Text>
-    <Text style={[styles.cell, { width: '13%' }]}>{item.description || '-'}</Text>
-    <Text style={[styles.cell, { width: '14%', fontSize: 6 }]}>{bulletList(item.indicador)}</Text>
-    <Text style={[styles.cellCenter, { width: '8%' }]}>{item.percentage}%</Text>
-    <Text style={[styles.cellCenter, { width: '8%' }]}>{item.date ? new Date(item.date).toLocaleDateString('es-VE') : '-'}</Text>
+    <Text style={[styles.cell, { width: '25%' }]}>{item.description || '-'}</Text>
+    <Text style={[styles.cell, { width: '20%' }]}>{item.thematicComponent || '-'}</Text>
+    <Text style={[styles.cell, { width: '30%', fontSize: 6 }]}>{bulletList(item.criteria)}</Text>
+    <Text style={[styles.cellCenter, { width: '12%' }]}>{item.percentage}%</Text>
+    <Text style={[styles.cellCenter, { width: '13%' }]}>{item.date ? new Date(item.date).toLocaleDateString('es-VE') : '-'}</Text>
   </View>
 );
 

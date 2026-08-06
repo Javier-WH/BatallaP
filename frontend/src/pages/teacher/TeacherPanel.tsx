@@ -12,6 +12,7 @@ import { formatGrade } from '@/utils/gradeFormat';
 import EvaluationPlanPDFModal from '@/components/pdf/EvaluationPlanPDFModal';
 import type { EvaluationPlanHeaderData } from '@/components/pdf/EvaluationPlanPDF';
 import EvaluationPlanItemModal from '@/components/EvaluationPlanItemModal';
+import ContentTab from './ContentTab';
 
 const { Title, Text } = Typography;
 
@@ -104,18 +105,11 @@ interface StudentEnrollment {
 interface EvaluationPlanItem {
   id: number;
   description: string;
-  identificador: string;
   percentage: number;
   date: string;
-  tecnica: string;
-  temaGenerador?: string;
-  referentesTeoricos?: string | string[];
-  referentesEticos?: string | string[];
-  indicador?: string | string[];
-  objetivo?: string;
-  tipoEvaluacion?: string;
-  formaEvaluacion?: string;
-  estrategiaEvaluacion?: string;
+  thematicComponentId?: number | null;
+  thematicComponent?: { id: number; title: string } | null;
+  criteria?: { id: number; name: string; points: number }[];
 }
 
 interface Subject {
@@ -173,7 +167,25 @@ interface Assignment {
   };
 }
 
+interface ThematicComponentData {
+  id: number;
+  title: string;
+  order: number;
+  contents?: ThematicContentData[];
+}
 
+interface ThematicContentData {
+  id: number;
+  title: string;
+  order: number;
+  learnings?: ExpectedLearningData[];
+}
+
+interface ExpectedLearningData {
+  id: number;
+  description: string;
+  order: number;
+}
 
 const TeacherPanel: React.FC = () => {
   const navigate = useNavigate();
@@ -193,6 +205,7 @@ const TeacherPanel: React.FC = () => {
   const [remedialMinGrade, setRemedialMinGrade] = useState<number>(1);
   const [remedialMaxGrade, setRemedialMaxGrade] = useState<number>(9);
   const [showPDFModal, setShowPDFModal] = useState(false);
+  const [thematicComponents, setThematicComponents] = useState<ThematicComponentData[]>([]);
   const { enableRounding } = useGradeRounding();
 
   const isSelectedTermBlocked = useMemo(() => {
@@ -386,6 +399,34 @@ const TeacherPanel: React.FC = () => {
     fetchPlanAndStudents();
   }, [fetchPlanAndStudents]);
 
+  const fetchThematicComponents = useCallback(async () => {
+    if (!selectedAssignmentId || !selectedTerm) {
+      setThematicComponents([]);
+      return;
+    }
+    const assignment = assignments.find(a => a.id === selectedAssignmentId);
+    if (!assignment) {
+      setThematicComponents([]);
+      return;
+    }
+    try {
+      const res = await api.get(`/thematic-components`, {
+        params: {
+          pgsId: assignment.periodGradeSubjectId,
+          sectionId: assignment.sectionId,
+          termId: selectedTerm,
+        },
+      });
+      setThematicComponents(res.data || []);
+    } catch {
+      setThematicComponents([]);
+    }
+  }, [selectedAssignmentId, assignments, selectedTerm]);
+
+  useEffect(() => {
+    fetchThematicComponents();
+  }, [fetchThematicComponents]);
+
   if (!loading && assignments.length === 0) {
     return (
       <div style={{ padding: '24px' }}>
@@ -524,39 +565,24 @@ const handleToggleAbsent = async (enrollment: StudentEnrollment, evalPlanId: num
   };
 
   const planColumns: ColumnsType<EvaluationPlanItem> = [
-    { title: 'ID', dataIndex: 'identificador', key: 'identificador', width: 80 },
-    { title: 'Tema Generador', dataIndex: 'temaGenerador', key: 'temaGenerador', ellipsis: true, width: 150 },
-    { title: 'Referentes Teóricos', key: 'refTeoricos', width: 180,
+    { title: 'Estrategia de Evaluación', dataIndex: 'description', key: 'description', width: 200,
+      render: (val: string) => <span style={{ fontWeight: 600 }}>{val}</span>
+    },
+    { title: 'Componente Temático', key: 'thematicComponent', width: 180,
+      render: (_: unknown, r: EvaluationPlanItem) => r.thematicComponent?.title || <span style={{ color: '#999' }}>—</span>
+    },
+    { title: 'Criterios', key: 'criteria', width: 250,
       render: (_: unknown, r: EvaluationPlanItem) => {
-        const items = typeof r.referentesTeoricos === 'string' ? (() => { try { return JSON.parse(r.referentesTeoricos); } catch { return [r.referentesTeoricos]; } })() : r.referentesTeoricos;
-        if (Array.isArray(items) && items.length > 0) {
-          return <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12 }}>{items.map((t, i) => <li key={i}>{t}</li>)}</ul>;
-        }
-        return <span style={{ fontSize: 12 }}>{Array.isArray(items) ? '-' : (r.referentesTeoricos || '-')}</span>;
+        if (!r.criteria || r.criteria.length === 0) return <span style={{ color: '#999' }}>—</span>;
+        return (
+          <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12 }}>
+            {r.criteria.map(c => <li key={c.id}>{c.name} ({c.points} pts)</li>)}
+          </ul>
+        );
       }
     },
-    { title: 'Referentes Éticos e Indispensables', key: 'refEticos', width: 180,
-      render: (_: unknown, r: EvaluationPlanItem) => {
-        const items = typeof r.referentesEticos === 'string' ? (() => { try { return JSON.parse(r.referentesEticos); } catch { return [r.referentesEticos]; } })() : r.referentesEticos;
-        if (Array.isArray(items) && items.length > 0) {
-          return <Space size={[2, 2]} wrap>{items.map((c: string) => <Tag key={c} style={{ fontSize: 11 }}>{c}</Tag>)}</Space>;
-        }
-        return <span style={{ fontSize: 12 }}>-</span>;
-      }
-    },
-    { title: 'Técnicas e Instrumento', dataIndex: 'tecnica', key: 'tecnica', width: 120 },
-    { title: 'Estrategia de evaluación', dataIndex: 'description', key: 'description', width: 120 },
-    { title: 'Indicador', key: 'indicadorCol', width: 180,
-      render: (_: unknown, r: EvaluationPlanItem) => {
-        const items = typeof r.indicador === 'string' ? (() => { try { return JSON.parse(r.indicador); } catch { return [r.indicador]; } })() : r.indicador;
-        if (Array.isArray(items) && items.length > 0) {
-          return <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12 }}>{items.map((t, i) => <li key={i}>{t}</li>)}</ul>;
-        }
-        return <span style={{ fontSize: 12 }}>{Array.isArray(items) ? '-' : (r.indicador || '-')}</span>;
-      }
-    },
-    { title: 'Puntaje', dataIndex: 'percentage', key: 'percentage', render: (val: number) => `${val}%`, width: 70 },
-    { title: 'Fecha', dataIndex: 'date', key: 'date', render: (val: string) => dayjs(val).format('DD/MM/YYYY'), width: 90 },
+    { title: 'Puntaje', dataIndex: 'percentage', key: 'percentage', render: (val: number) => `${val}%`, width: 80 },
+    { title: 'Fecha', dataIndex: 'date', key: 'date', render: (val: string) => dayjs(val).format('DD/MM/YYYY'), width: 100 },
     {
       title: 'Acciones',
       key: 'actions',
@@ -600,6 +626,89 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
       window.URL.revokeObjectURL(url);
     } catch {
       message.error('Error al descargar Excel');
+    }
+  };
+
+  // ── Thematic Component handlers ──────────────────────────────────
+  const handleCreateComponent = async (title: string) => {
+    if (!selectedAssignmentId || !selectedTerm) return;
+    const assignment = assignments.find(a => a.id === selectedAssignmentId);
+    if (!assignment) return;
+    try {
+      await api.post('/thematic-components', {
+        periodGradeSubjectId: assignment.periodGradeSubjectId,
+        sectionId: assignment.sectionId,
+        termId: selectedTerm,
+        title,
+      });
+      fetchThematicComponents();
+    } catch {
+      message.error('Error al crear componente');
+    }
+  };
+
+  const handleUpdateComponent = async (id: number, title: string) => {
+    try {
+      await api.put(`/thematic-components/${id}`, { title });
+      fetchThematicComponents();
+    } catch {
+      message.error('Error al actualizar componente');
+    }
+  };
+
+  const handleDeleteComponent = async (id: number) => {
+    try {
+      await api.delete(`/thematic-components/${id}`);
+      fetchThematicComponents();
+    } catch {
+      message.error('Error al eliminar componente');
+    }
+  };
+
+  const handleCreateContent = async (componentId: number, title: string) => {
+    try {
+      await api.post(`/thematic-components/${componentId}/contents`, { title });
+      fetchThematicComponents();
+    } catch {
+      message.error('Error al crear contenido');
+    }
+  };
+
+  const handleUpdateContent = async (contentId: number, title: string) => {
+    try {
+      await api.put(`/thematic-components/contents/${contentId}`, { title });
+      fetchThematicComponents();
+    } catch {
+      message.error('Error al actualizar contenido');
+    }
+  };
+
+  const handleDeleteContent = async (contentId: number) => {
+    try {
+      await api.delete(`/thematic-components/contents/${contentId}`);
+      fetchThematicComponents();
+    } catch {
+      message.error('Error al eliminar contenido');
+    }
+  };
+
+  const handleCreateLearning = async (contentIds: number[], description: string) => {
+    try {
+      await Promise.all(contentIds.map(contentId =>
+        api.post(`/thematic-components/contents/${contentId}/learnings`, { description })
+      ));
+      fetchThematicComponents();
+    } catch {
+      message.error('Error al crear aprendizaje esperado');
+    }
+  };
+
+  const handleDeleteLearning = async (learningId: number) => {
+    try {
+      await api.delete(`/thematic-components/learnings/${learningId}`);
+      fetchThematicComponents();
+    } catch {
+      message.error('Error al eliminar aprendizaje');
     }
   };
 
@@ -807,6 +916,26 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
           items={[
             {
               key: '1',
+              label: <span className="font-bold text-[15px] px-4 py-1">Contenido</span>,
+              children: (
+                <div className="pt-4">
+                  <ContentTab
+                    thematicComponents={thematicComponents}
+                    isBlocked={isSelectedTermBlocked}
+                    onCreateComponent={handleCreateComponent}
+                    onUpdateComponent={handleUpdateComponent}
+                    onDeleteComponent={handleDeleteComponent}
+                    onCreateContent={handleCreateContent}
+                    onUpdateContent={handleUpdateContent}
+                    onDeleteContent={handleDeleteContent}
+                    onCreateLearning={handleCreateLearning}
+                    onDeleteLearning={handleDeleteLearning}
+                  />
+                </div>
+              )
+            },
+            {
+              key: '2',
               label: <span className="font-bold text-[15px] px-4 py-1">Evaluaciones Programadas</span>,
               children: (
                 <div className="pt-4">
@@ -853,7 +982,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
               )
             },
           {
-            key: '2',
+            key: '3',
             label: 'Calificaciones',
             children: evaluationPlan.length === 0 ? (
               <Card style={{ textAlign: 'center', padding: '40px 0', backgroundColor: 'var(--color-input-bg)', border: 'none' }}>
@@ -861,7 +990,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                   <Title level={4}>No hay Plan de Evaluación definido</Title>
                   <Text type="secondary">Para poder calificar este lapso, primero debe definir las actividades y sus porcentajes.</Text>
                 </div>
-                <Button type="primary" size="large" onClick={() => setActiveTab('1')}>
+                <Button type="primary" size="large" onClick={() => setActiveTab('2')}>
                   Crear Plan de Evaluación
                 </Button>
               </Card>
@@ -926,8 +1055,8 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                             <div style={{ fontSize: 9, fontWeight: 600, lineHeight: 1.2 }}>
                               {item.date ? new Date(item.date).toLocaleDateString('es-VE') : '—'}
                             </div>
-                            <div style={{ fontSize: 9, fontWeight: 700, lineHeight: 1.2, marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.identificador}>
-                              {item.identificador || '—'}
+                            <div style={{ fontSize: 9, fontWeight: 700, lineHeight: 1.2, marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.description}>
+                              {item.description || '—'}
                             </div>
                             <div style={{ fontSize: 9, color: 'var(--color-text-muted)', lineHeight: 1.2, marginTop: 1 }}>
                               {item.percentage}%
@@ -1244,6 +1373,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
             selectedTermDateRange={selectedTermDateRange}
             schoolPeriod={assignment.periodGradeSubject?.periodGrade?.schoolPeriod}
             existingItems={evaluationPlan}
+            thematicComponents={thematicComponents.map(tc => ({ id: tc.id, title: tc.title }))}
           />
         );
       })()}
@@ -1267,17 +1397,9 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
           };
         })()}
         items={evaluationPlan.map(ep => ({
-          identificador: ep.identificador,
           description: ep.description,
-          tecnica: ep.tecnica,
-          objetivo: ep.objetivo,
-          tipoEvaluacion: ep.tipoEvaluacion,
-          formaEvaluacion: ep.formaEvaluacion,
-          indicador: ep.indicador,
-          temaGenerador: ep.temaGenerador,
-          referentesTeoricos: ep.referentesTeoricos,
-          referentesEticos: ep.referentesEticos,
-          estrategiaEvaluacion: ep.estrategiaEvaluacion,
+          thematicComponent: ep.thematicComponent?.title || '',
+          criteria: ep.criteria?.map(c => `${c.name} (${c.points} pts)`) || [],
           percentage: Number(ep.percentage),
           date: ep.date,
         }))}
