@@ -294,58 +294,6 @@ const ContentTab: React.FC<ContentTabProps> = ({
         </div>
       )}
 
-      {addingLearning && (
-        <div style={{ marginTop: 16, padding: 16, border: '1px solid #d9d9d9', borderRadius: 8, background: 'var(--color-input-bg, #fafafa)' }}>
-          <Input.TextArea
-            autoFocus
-            placeholder="Escribe el aprendizaje esperado..."
-            value={newLearningDesc}
-            onChange={e => setNewLearningDesc(e.target.value)}
-            rows={2}
-            style={{ marginBottom: 12 }}
-          />
-          <div style={{ marginBottom: 8, fontWeight: 600, fontSize: 13 }}>Asociar a contenidos:</div>
-          <div style={{ maxHeight: 200, overflowY: 'auto', marginBottom: 12 }}>
-            {thematicComponents.map((comp, compIdx) => (
-              <div key={comp.id} style={{ marginBottom: 8 }}>
-                <div style={{ fontWeight: 600, fontSize: 11, color: '#666', marginBottom: 4 }}>
-                  <Tag color="blue" style={{ fontSize: 11 }}>{compIdx + 1}.</Tag> {comp.title}
-                </div>
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', paddingLeft: 16 }}>
-                  {(comp.contents || []).map((content, contentIdx) => {
-                    const selected = selectedContentIds.includes(content.id);
-                    return (
-                      <Button
-                        key={content.id}
-                        size="small"
-                        type={selected ? 'primary' : 'default'}
-                        onClick={() => {
-                          if (selected) {
-                            setSelectedContentIds(selectedContentIds.filter(id => id !== content.id));
-                          } else {
-                            setSelectedContentIds([...selectedContentIds, content.id]);
-                          }
-                        }}
-                      >
-                        {selected && <CheckOutlined />} {compIdx + 1}.{contentIdx + 1} {content.title}
-                      </Button>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
-          </div>
-          <Space>
-            <Button type="primary" icon={<CheckOutlined />} onClick={handleAddLearning} disabled={!newLearningDesc.trim() || selectedContentIds.length === 0}>
-              Crear
-            </Button>
-            <Button icon={<CloseOutlined />} onClick={() => { setAddingLearning(false); setNewLearningDesc(''); setSelectedContentIds([]); }}>
-              Cancelar
-            </Button>
-          </Space>
-        </div>
-      )}
-
       {allLearnings.length > 0 && (
         <div style={{ marginTop: 24 }}>
           <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 12 }}>Aprendizajes Esperados</div>
@@ -429,6 +377,58 @@ const ContentTab: React.FC<ContentTabProps> = ({
               Aprendizaje Esperado
             </Button>
           )}
+        </div>
+      )}
+
+      {addingLearning && (
+        <div style={{ marginTop: 16, padding: 16, border: '1px solid #d9d9d9', borderRadius: 8, background: 'var(--color-input-bg, #fafafa)' }}>
+          <Input.TextArea
+            autoFocus
+            placeholder="Escribe el aprendizaje esperado..."
+            value={newLearningDesc}
+            onChange={e => setNewLearningDesc(e.target.value)}
+            rows={2}
+            style={{ marginBottom: 12 }}
+          />
+          <div style={{ marginBottom: 8, fontWeight: 600, fontSize: 13 }}>Asociar a contenidos:</div>
+          <div style={{ maxHeight: 200, overflowY: 'auto', marginBottom: 12 }}>
+            {thematicComponents.map((comp, compIdx) => (
+              <div key={comp.id} style={{ marginBottom: 8 }}>
+                <div style={{ fontWeight: 600, fontSize: 11, color: '#666', marginBottom: 4 }}>
+                  <Tag color="blue" style={{ fontSize: 11 }}>{compIdx + 1}.</Tag> {comp.title}
+                </div>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', paddingLeft: 16 }}>
+                  {(comp.contents || []).map((content, contentIdx) => {
+                    const selected = selectedContentIds.includes(content.id);
+                    return (
+                      <Button
+                        key={content.id}
+                        size="small"
+                        type={selected ? 'primary' : 'default'}
+                        onClick={() => {
+                          if (selected) {
+                            setSelectedContentIds(selectedContentIds.filter(id => id !== content.id));
+                          } else {
+                            setSelectedContentIds([...selectedContentIds, content.id]);
+                          }
+                        }}
+                      >
+                        {selected && <CheckOutlined />} {compIdx + 1}.{contentIdx + 1} {content.title}
+                      </Button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+          <Space>
+            <Button type="primary" icon={<CheckOutlined />} onClick={handleAddLearning} disabled={!newLearningDesc.trim() || selectedContentIds.length === 0}>
+              Crear
+            </Button>
+            <Button icon={<CloseOutlined />} onClick={() => { setAddingLearning(false); setNewLearningDesc(''); setSelectedContentIds([]); }}>
+              Cancelar
+            </Button>
+          </Space>
         </div>
       )}
     </div>
