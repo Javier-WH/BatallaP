@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Card, Button, Input, Collapse, Space, Tag, Popconfirm } from 'antd';
+import { Card, Button, Input, Collapse, Space, Tag, Popconfirm, message } from 'antd';
 import { PlusOutlined, DeleteOutlined, EditOutlined, CheckOutlined, CloseOutlined } from '@ant-design/icons';
 
 interface ThematicContentData {
@@ -97,7 +97,12 @@ const ContentTab: React.FC<ContentTabProps> = ({
 
   const handleAddLearning = () => {
     if (!newLearningDesc.trim() || selectedContentIds.length === 0) return;
-    onCreateLearning(selectedContentIds, newLearningDesc.trim());
+    const descTrimmed = newLearningDesc.trim();
+    if (allLearnings.some(l => l.description.toLowerCase() === descTrimmed.toLowerCase())) {
+      message.warning('Ya existe un aprendizaje esperado con esa descripción.');
+      return;
+    }
+    onCreateLearning(selectedContentIds, descTrimmed);
     setNewLearningDesc('');
     setSelectedContentIds([]);
     setAddingLearning(false);
@@ -132,7 +137,12 @@ const ContentTab: React.FC<ContentTabProps> = ({
 
   const handleSaveLearningEdit = () => {
     if (editingLearningId !== null && editingLearningDesc.trim()) {
-      onUpdateLearning(editingLearningId, editingLearningDesc.trim(), editingLearningContentIds);
+      const descTrimmed = editingLearningDesc.trim();
+      if (allLearnings.some(l => l.id !== editingLearningId && l.description.toLowerCase() === descTrimmed.toLowerCase())) {
+        message.warning('Ya existe un aprendizaje esperado con esa descripción.');
+        return;
+      }
+      onUpdateLearning(editingLearningId, descTrimmed, editingLearningContentIds);
     }
     setEditingLearningId(null);
     setEditingLearningDesc('');
