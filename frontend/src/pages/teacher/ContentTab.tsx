@@ -355,8 +355,9 @@ const ContentTab: React.FC<ContentTabProps> = ({
               children: (() => {
                 if (editingLearningId === learning.id) {
                   return (
-                    <div style={{ maxHeight: 200, overflowY: 'auto' }}>
+                    <div style={{ maxHeight: 350, overflowY: 'auto' }}>
                       <div style={{ marginBottom: 8, fontWeight: 600, fontSize: 13 }}>Asociar a contenidos:</div>
+                      <div style={{ marginBottom: 8, fontSize: 11, color: '#999' }}>Selecciona los contenidos a asociar. Los azules están asociados.</div>
                       {thematicComponents.map((comp, compIdx) => (
                         <div key={comp.id} style={{ marginBottom: 8 }}>
                           <div style={{ fontWeight: 600, fontSize: 11, color: '#666', marginBottom: 4 }}>
