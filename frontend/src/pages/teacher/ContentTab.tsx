@@ -125,7 +125,7 @@ const ContentTab: React.FC<ContentTabProps> = ({
         });
       });
     });
-    return Array.from(map.values());
+    return Array.from(map.values()).sort((a, b) => a.order - b.order || a.id - b.id);
   })();
 
   const handleSaveLearningEdit = () => {
