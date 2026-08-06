@@ -32,6 +32,7 @@ interface ContentTabProps {
   onUpdateContent: (contentId: number, title: string) => void;
   onDeleteContent: (contentId: number) => void;
   onCreateLearning: (contentIds: number[], description: string) => void;
+  onUpdateLearning: (learningId: number, description: string) => void;
   onDeleteLearning: (learningId: number) => void;
 }
 
@@ -45,6 +46,7 @@ const ContentTab: React.FC<ContentTabProps> = ({
   onUpdateContent,
   onDeleteContent,
   onCreateLearning,
+  onUpdateLearning,
   onDeleteLearning,
 }) => {
   const [newComponentTitle, setNewComponentTitle] = useState('');
@@ -57,6 +59,8 @@ const ContentTab: React.FC<ContentTabProps> = ({
   const [showLearningModal, setShowLearningModal] = useState(false);
   const [newLearningDesc, setNewLearningDesc] = useState('');
   const [selectedContentIds, setSelectedContentIds] = useState<number[]>([]);
+  const [editingLearningId, setEditingLearningId] = useState<number | null>(null);
+  const [editingLearningDesc, setEditingLearningDesc] = useState('');
 
   const handleAddComponent = () => {
     if (!newComponentTitle.trim()) return;
@@ -98,6 +102,24 @@ const ContentTab: React.FC<ContentTabProps> = ({
   const allContents = thematicComponents.flatMap(comp =>
     (comp.contents || []).map(c => ({ ...c, componentTitle: comp.title }))
   );
+
+  const allLearnings = thematicComponents.flatMap(comp =>
+    (comp.contents || []).flatMap(content =>
+      (content.learnings || []).map(learning => ({
+        ...learning,
+        contentTitle: content.title,
+        componentTitle: comp.title,
+      }))
+    )
+  );
+
+  const handleSaveLearningEdit = () => {
+    if (editingLearningId !== null && editingLearningDesc.trim()) {
+      onUpdateLearning(editingLearningId, editingLearningDesc.trim());
+    }
+    setEditingLearningId(null);
+    setEditingLearningDesc('');
+  };
 
   if (thematicComponents.length === 0 && !isBlocked) {
     return (
@@ -304,6 +326,58 @@ const ContentTab: React.FC<ContentTabProps> = ({
           ))}
         </div>
       </Modal>
+
+      {allLearnings.length > 0 && (
+        <div style={{ marginTop: 24 }}>
+          <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 12 }}>Aprendizajes Esperados</div>
+          {allLearnings.map(learning => (
+            <div key={learning.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 8, padding: '8px 12px', background: 'var(--color-input-bg, #fafafa)', borderRadius: 8 }}>
+              <div style={{ flex: 1 }}>
+                {editingLearningId === learning.id ? (
+                  <Space>
+                    <Input
+                      size="small"
+                      value={editingLearningDesc}
+                      onChange={e => setEditingLearningDesc(e.target.value)}
+                      onPressEnter={handleSaveLearningEdit}
+                      style={{ width: 350 }}
+                    />
+                    <Button size="small" icon={<CheckOutlined />} onClick={handleSaveLearningEdit} />
+                    <Button size="small" icon={<CloseOutlined />} onClick={() => setEditingLearningId(null)} />
+                  </Space>
+                ) : (
+                  <>
+                    <span style={{ fontSize: 13 }}>{learning.description}</span>
+                    <div style={{ marginTop: 4, display: 'flex', gap: 4 }}>
+                      <Tag color="blue" style={{ fontSize: 11 }}>{learning.componentTitle}</Tag>
+                      <Tag color="cyan" style={{ fontSize: 11 }}>{learning.contentTitle}</Tag>
+                    </div>
+                  </>
+                )}
+              </div>
+              {!isBlocked && editingLearningId !== learning.id && (
+                <Space>
+                  <Button
+                    size="small"
+                    type="text"
+                    icon={<EditOutlined />}
+                    onClick={() => {
+                      setEditingLearningId(learning.id);
+                      setEditingLearningDesc(learning.description);
+                    }}
+                  />
+                  <Popconfirm
+                    title="¿Eliminar este aprendizaje?"
+                    onConfirm={() => onDeleteLearning(learning.id)}
+                  >
+                    <Button size="small" type="text" danger icon={<DeleteOutlined />} />
+                  </Popconfirm>
+                </Space>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 };

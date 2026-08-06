@@ -206,6 +206,7 @@ const TeacherPanel: React.FC = () => {
   const [remedialMaxGrade, setRemedialMaxGrade] = useState<number>(9);
   const [showPDFModal, setShowPDFModal] = useState(false);
   const [thematicComponents, setThematicComponents] = useState<ThematicComponentData[]>([]);
+  const [revisionOpen, setRevisionOpen] = useState(false);
   const { enableRounding } = useGradeRounding();
 
   const isSelectedTermBlocked = useMemo(() => {
@@ -426,6 +427,21 @@ const TeacherPanel: React.FC = () => {
   useEffect(() => {
     fetchThematicComponents();
   }, [fetchThematicComponents]);
+
+  useEffect(() => {
+    const fetchRevisionStatus = async () => {
+      const activeRes = await api.get('/academic/active');
+      if (activeRes.data) {
+        try {
+          const revRes = await api.get(`/revision-periods/${activeRes.data.id}`);
+          setRevisionOpen(revRes.data?.revisionPeriod?.status === 'open');
+        } catch {
+          setRevisionOpen(false);
+        }
+      }
+    };
+    fetchRevisionStatus();
+  }, []);
 
   if (!loading && assignments.length === 0) {
     return (
@@ -712,6 +728,15 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
     }
   };
 
+  const handleUpdateLearning = async (learningId: number, description: string) => {
+    try {
+      await api.put(`/thematic-components/learnings/${learningId}`, { description });
+      fetchThematicComponents();
+    } catch {
+      message.error('Error al actualizar aprendizaje');
+    }
+  };
+
   const playBeep = () => {
     try {
       const ctx = new AudioContext();
@@ -729,11 +754,6 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
 
   return (
     <div className="h-full overflow-y-auto theme-page-bg p-4 md:p-8">
-      <div style={{ marginBottom: 16 }}>
-        <Button type="primary" icon={<ToolOutlined />} onClick={() => navigate('/profesor/reparacion')}>
-          Reparación de Materias
-        </Button>
-      </div>
       <style>{`
         .grading-row:hover { background-color: color-mix(in srgb, var(--color-accent) 4%, transparent) !important; }
         .grading-row td { transition: background-color 0.2s; }
@@ -857,6 +877,17 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
               })}
               {availableTerms.length === 0 && <div className="text-[var(--color-text-muted)] text-sm text-center w-full py-2">Sin lapsos</div>}
             </div>
+            {revisionOpen && (
+              <Button
+                icon={<ToolOutlined />}
+                onClick={() => navigate('/profesor/reparacion')}
+                style={{ marginTop: 12, width: '100%' }}
+                type="primary"
+                danger
+              >
+                Reparación de Materias
+              </Button>
+            )}
           </div>
         </div>
 
@@ -929,6 +960,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                     onUpdateContent={handleUpdateContent}
                     onDeleteContent={handleDeleteContent}
                     onCreateLearning={handleCreateLearning}
+                    onUpdateLearning={handleUpdateLearning}
                     onDeleteLearning={handleDeleteLearning}
                   />
                 </div>
