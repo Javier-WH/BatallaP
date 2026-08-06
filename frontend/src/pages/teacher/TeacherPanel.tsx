@@ -726,9 +726,9 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
     }
   };
 
-  const handleUpdateLearning = async (learningId: number, description: string) => {
+  const handleUpdateLearning = async (learningId: number, description: string, contentIds?: number[]) => {
     try {
-      await api.put(`/thematic-components/learnings/${learningId}`, { description });
+      await api.put(`/thematic-components/learnings/${learningId}`, { description, contentIds });
       fetchThematicComponents();
     } catch {
       message.error('Error al actualizar aprendizaje');

@@ -32,7 +32,7 @@ interface ContentTabProps {
   onUpdateContent: (contentId: number, title: string) => void;
   onDeleteContent: (contentId: number) => void;
   onCreateLearning: (contentIds: number[], description: string) => void;
-  onUpdateLearning: (learningId: number, description: string) => void;
+  onUpdateLearning: (learningId: number, description: string, contentIds?: number[]) => void;
   onDeleteLearning: (learningId: number) => void;
 }
 
@@ -61,6 +61,7 @@ const ContentTab: React.FC<ContentTabProps> = ({
   const [addingLearning, setAddingLearning] = useState(false);
   const [editingLearningId, setEditingLearningId] = useState<number | null>(null);
   const [editingLearningDesc, setEditingLearningDesc] = useState('');
+  const [editingLearningContentIds, setEditingLearningContentIds] = useState<number[]>([]);
   const [addingComponent, setAddingComponent] = useState(false);
 
   const handleAddComponent = () => {
@@ -130,10 +131,11 @@ const ContentTab: React.FC<ContentTabProps> = ({
 
   const handleSaveLearningEdit = () => {
     if (editingLearningId !== null && editingLearningDesc.trim()) {
-      onUpdateLearning(editingLearningId, editingLearningDesc.trim());
+      onUpdateLearning(editingLearningId, editingLearningDesc.trim(), editingLearningContentIds);
     }
     setEditingLearningId(null);
     setEditingLearningDesc('');
+    setEditingLearningContentIds([]);
   };
 
   if (thematicComponents.length === 0 && !isBlocked && !addingComponent) {
@@ -329,6 +331,11 @@ const ContentTab: React.FC<ContentTabProps> = ({
                     onClick={() => {
                       setEditingLearningId(learning.id);
                       setEditingLearningDesc(learning.description);
+                      setEditingLearningContentIds(learning.associations.map(a => {
+                        const comp = thematicComponents.find(c => c.title === a.componentTitle);
+                        const content = comp?.contents?.find(ct => ct.title === a.contentTitle);
+                        return content?.id;
+                      }).filter((id): id is number => id !== undefined));
                     }}
                   />
                   <Popconfirm
@@ -340,6 +347,41 @@ const ContentTab: React.FC<ContentTabProps> = ({
                 </Space>
               ),
               children: (() => {
+                if (editingLearningId === learning.id) {
+                  return (
+                    <div style={{ maxHeight: 200, overflowY: 'auto' }}>
+                      <div style={{ marginBottom: 8, fontWeight: 600, fontSize: 13 }}>Asociar a contenidos:</div>
+                      {thematicComponents.map((comp, compIdx) => (
+                        <div key={comp.id} style={{ marginBottom: 8 }}>
+                          <div style={{ fontWeight: 600, fontSize: 11, color: '#666', marginBottom: 4 }}>
+                            <Tag color="blue" style={{ fontSize: 11 }}>{compIdx + 1}.</Tag> {comp.title}
+                          </div>
+                          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', paddingLeft: 16 }}>
+                            {(comp.contents || []).map((content, contentIdx) => {
+                              const selected = editingLearningContentIds.includes(content.id);
+                              return (
+                                <Button
+                                  key={content.id}
+                                  size="small"
+                                  type={selected ? 'primary' : 'default'}
+                                  onClick={() => {
+                                    if (selected) {
+                                      setEditingLearningContentIds(editingLearningContentIds.filter(id => id !== content.id));
+                                    } else {
+                                      setEditingLearningContentIds([...editingLearningContentIds, content.id]);
+                                    }
+                                  }}
+                                >
+                                  {selected && <CheckOutlined />} {compIdx + 1}.{contentIdx + 1} {content.title}
+                                </Button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                }
                 const grouped: Record<string, typeof learning.associations> = {};
                 learning.associations.forEach(assoc => {
                   if (!grouped[assoc.componentTitle]) grouped[assoc.componentTitle] = [];

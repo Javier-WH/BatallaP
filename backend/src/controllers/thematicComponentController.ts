@@ -213,7 +213,7 @@ export const createExpectedLearning = async (req: Request, res: Response) => {
 export const updateExpectedLearning = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { description, order } = req.body;
+    const { description, order, contentIds } = req.body;
 
     const learning = await ExpectedLearning.findByPk(Number(id));
     if (!learning) {
@@ -224,6 +224,10 @@ export const updateExpectedLearning = async (req: Request, res: Response) => {
       ...(description !== undefined && { description }),
       ...(order !== undefined && { order }),
     });
+
+    if (contentIds !== undefined && Array.isArray(contentIds)) {
+      await (learning as any).setContents(contentIds);
+    }
 
     return res.json(learning);
   } catch (error: any) {
