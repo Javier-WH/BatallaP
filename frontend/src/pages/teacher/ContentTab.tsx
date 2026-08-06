@@ -106,19 +106,20 @@ const ContentTab: React.FC<ContentTabProps> = ({
   );
 
   const allLearnings = (() => {
-    const map = new Map<number, { id: number; description: string; order: number; associations: { contentTitle: string; componentTitle: string }[] }>();
-    thematicComponents.forEach(comp => {
-      (comp.contents || []).forEach(content => {
+    const map = new Map<number, { id: number; description: string; order: number; associations: { contentTitle: string; componentTitle: string; number: string }[] }>();
+    thematicComponents.forEach((comp, compIdx) => {
+      (comp.contents || []).forEach((content, contentIdx) => {
         (content.learnings || []).forEach(learning => {
+          const number = `${compIdx + 1}.${contentIdx + 1}`;
           const existing = map.get(learning.id);
           if (existing) {
-            existing.associations.push({ contentTitle: content.title, componentTitle: comp.title });
+            existing.associations.push({ contentTitle: content.title, componentTitle: comp.title, number });
           } else {
             map.set(learning.id, {
               id: learning.id,
               description: learning.description,
               order: learning.order,
-              associations: [{ contentTitle: content.title, componentTitle: comp.title }],
+              associations: [{ contentTitle: content.title, componentTitle: comp.title, number }],
             });
           }
         });
@@ -350,11 +351,10 @@ const ContentTab: React.FC<ContentTabProps> = ({
           <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 12 }}>Aprendizajes Esperados</div>
           <Collapse
             accordion={false}
-            items={allLearnings.map((learning, lIdx) => ({
+            items={allLearnings.map((learning) => ({
               key: learning.id,
               label: (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1 }}>
-                  <Tag color="purple">{lIdx + 1}.</Tag>
                   {editingLearningId === learning.id ? (
                     <Space>
                       <Input
@@ -395,8 +395,9 @@ const ContentTab: React.FC<ContentTabProps> = ({
                 <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                   {learning.associations.map((assoc, aIdx) => (
                     <div key={aIdx} style={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+                      <Tag color="cyan" style={{ fontSize: 12 }}>{assoc.number}</Tag>
                       <Tag color="blue" style={{ fontSize: 12 }}>{assoc.componentTitle}</Tag>
-                      <Tag color="cyan" style={{ fontSize: 12 }}>{assoc.contentTitle}</Tag>
+                      <Tag style={{ fontSize: 12 }}>{assoc.contentTitle}</Tag>
                     </div>
                   ))}
                 </div>
