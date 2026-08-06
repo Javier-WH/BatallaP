@@ -159,7 +159,7 @@ const ContentTab: React.FC<ContentTabProps> = ({
           key: comp.id,
           label: (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1 }}>
-              <Tag color="blue">{idx + 1}</Tag>
+              <Tag color="blue">{idx + 1}.</Tag>
               {editingComponentId === comp.id ? (
                 <Space>
                   <Input
@@ -200,7 +200,7 @@ const ContentTab: React.FC<ContentTabProps> = ({
               {comp.contents?.map((content, cIdx) => (
                 <div key={content.id} style={{ marginBottom: 16 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                    <Tag color="cyan">{cIdx + 1}</Tag>
+                    <Tag color="cyan">{idx + 1}.{cIdx + 1}</Tag>
                     {editingContentId === content.id ? (
                       <Space>
                         <Input
@@ -354,7 +354,7 @@ const ContentTab: React.FC<ContentTabProps> = ({
               key: learning.id,
               label: (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1 }}>
-                  <Tag color="purple">{lIdx + 1}</Tag>
+                  <Tag color="purple">{lIdx + 1}.</Tag>
                   {editingLearningId === learning.id ? (
                     <Space>
                       <Input
