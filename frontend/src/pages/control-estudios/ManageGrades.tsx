@@ -67,6 +67,10 @@ interface EvaluationPlanItem {
   tipoEvaluacion?: string;
   formaEvaluacion?: string;
   indicador?: string;
+  thematicComponentId?: number | null;
+  thematicComponent?: { id: number; title: string } | null;
+  criteria?: { id: number; name: string; points: number }[];
+  evaluationType?: string | null;
 }
 
 interface Qualification {
@@ -114,6 +118,7 @@ const ManageGrades: React.FC = () => {
   const [selectedGrades, setSelectedGrades] = useState<number[]>([]);
   const [selectedTeacher, setSelectedTeacher] = useState<number | null>(null);
   const [selectedSubjects, setSelectedSubjects] = useState<number[]>([]);
+  const [thematicComponents, setThematicComponents] = useState<{ id: number; title: string }[]>([]);
   const { enableRounding } = useGradeRounding();
 
   const isSelectedTermBlocked = useMemo(() => {
@@ -226,12 +231,14 @@ const ManageGrades: React.FC = () => {
     if (!selectedAssignment || !selectedTerm) return;
     setLoading(true);
     try {
-      const [planRes, studentsRes] = await Promise.all([
+      const [planRes, studentsRes, thematicRes] = await Promise.all([
         api.get(`/evaluation/plan/${selectedAssignment.periodGradeSubjectId}?term=${selectedTerm}&sectionId=${selectedAssignment.sectionId}`),
-        api.get(`/evaluation/students/${selectedAssignment.id}`)
+        api.get(`/evaluation/students/${selectedAssignment.id}`),
+        api.get(`/thematic-components?periodGradeSubjectId=${selectedAssignment.periodGradeSubjectId}`).catch(() => ({ data: [] })),
       ]);
       setEvaluationPlan(planRes.data || []);
       setStudents(studentsRes.data || []);
+      setThematicComponents(thematicRes.data || []);
     } catch {
       message.error('Error al cargar datos del lapso');
       setEvaluationPlan([]);
@@ -463,8 +470,18 @@ const ManageGrades: React.FC = () => {
         return <span style={{ fontSize: 12 }}>{Array.isArray(items) ? '-' : (r.indicador || '-')}</span>;
       }
     },
-    { title: 'Puntaje', dataIndex: 'percentage', key: 'percentage', render: (v: number) => `${v}%`, width: 70 },
-    { title: 'Fecha', dataIndex: 'date', key: 'date', render: (v: string) => dayjs(v).format('DD/MM/YYYY'), width: 90 },
+    { title: 'Porcentaje', dataIndex: 'percentage', key: 'percentage', render: (v: number) => `${v}%`, width: 90 },
+    { title: 'Puntaje', key: 'points', width: 90, render: (_: unknown, r: EvaluationPlanItem) => `${((r.percentage / 100) * maxGrade).toFixed(1)} pts` },
+    {
+      title: 'Tipo de Evaluación',
+      key: 'evaluationType',
+      children: [
+        { title: 'Intra', key: 'intra', width: 60, align: 'center' as const, render: (_: unknown, r: EvaluationPlanItem) => (r.evaluationType || '').split(',').includes('intra') ? <Tag color="blue" style={{ margin: 0 }}>✓</Tag> : <span style={{ color: '#ccc' }}>—</span> },
+        { title: 'Inter', key: 'inter', width: 60, align: 'center' as const, render: (_: unknown, r: EvaluationPlanItem) => (r.evaluationType || '').split(',').includes('inter') ? <Tag color="green" style={{ margin: 0 }}>✓</Tag> : <span style={{ color: '#ccc' }}>—</span> },
+        { title: 'Trans', key: 'trans', width: 60, align: 'center' as const, render: (_: unknown, r: EvaluationPlanItem) => (r.evaluationType || '').split(',').includes('trans') ? <Tag color="purple" style={{ margin: 0 }}>✓</Tag> : <span style={{ color: '#ccc' }}>—</span> },
+      ],
+    },
+    { title: 'Fecha', dataIndex: 'date', key: 'date', render: (v: string) => dayjs(v).format('DD/MM/YYYY'), width: 100 },
     {
       title: 'Acciones',
       key: 'actions',
@@ -943,6 +960,8 @@ const ManageGrades: React.FC = () => {
           selectedTermDateRange={selectedTermDateRange}
           schoolPeriod={selectedAssignment.periodGradeSubject?.periodGrade?.schoolPeriod}
           existingItems={evaluationPlan}
+          thematicComponents={thematicComponents}
+          maxGrade={maxGrade}
         />
       )}
 
