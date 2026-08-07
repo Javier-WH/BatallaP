@@ -45,6 +45,7 @@ export interface EvaluationPlanItemModalProps {
   schoolPeriod?: SchoolPeriodInfo | string;
   existingItems?: EvaluationPlanItem[];
   thematicComponents?: { id: number; title: string }[];
+  maxGrade?: number;
 }
 
 export function getSchoolPeriodDateRange(periodInput?: SchoolPeriodInfo | string) {
@@ -101,11 +102,13 @@ const EvaluationPlanItemModal: React.FC<EvaluationPlanItemModalProps> = ({
   selectedTermDateRange,
   schoolPeriod,
   thematicComponents = [],
+  maxGrade = 20,
 }) => {
   const [form] = Form.useForm<PlanItemFormValues>();
   const [saving, setSaving] = useState(false);
   const [criteria, setCriteria] = useState<CriteriaRow[]>([]);
   const [evaluationType, setEvaluationType] = useState<string[]>([]);
+  const [percentageValue, setPercentageValue] = useState<number | null>(null);
 
   useEffect(() => {
     if (open) {
@@ -117,6 +120,7 @@ const EvaluationPlanItemModal: React.FC<EvaluationPlanItemModalProps> = ({
           thematicComponentId: editingItem.thematicComponentId || undefined,
         });
         setEvaluationType(editingItem.evaluationType ? editingItem.evaluationType.split(',') : []);
+        setPercentageValue(editingItem.percentage);
         setCriteria(
           (editingItem.criteria || []).map(c => ({ id: c.id, name: c.name, points: c.points }))
         );
@@ -124,6 +128,7 @@ const EvaluationPlanItemModal: React.FC<EvaluationPlanItemModalProps> = ({
         form.resetFields();
         setCriteria([]);
         setEvaluationType([]);
+        setPercentageValue(null);
       }
     }
   }, [open, editingItem, form]);
@@ -257,8 +262,22 @@ const EvaluationPlanItemModal: React.FC<EvaluationPlanItemModalProps> = ({
             rules={[{ required: true, message: 'Ingrese el porcentaje' }]}
             style={{ flex: 1 }}
           >
-            <InputNumber min={0} max={100} style={{ width: '100%' }} />
+            <InputNumber min={0} max={100} style={{ width: '100%' }} onChange={(val) => setPercentageValue(val as number | null)} />
           </Form.Item>
+          <div style={{ flex: 1, display: 'flex', alignItems: 'flex-end', paddingBottom: 24 }}>
+            {percentageValue != null && percentageValue > 0 && (
+              <div style={{
+                fontSize: 13,
+                fontWeight: 600,
+                color: 'var(--color-accent)',
+                backgroundColor: 'color-mix(in srgb, var(--color-accent) 8%, transparent)',
+                padding: '4px 12px',
+                borderRadius: 8,
+              }}>
+                Equivale a {((percentageValue / 100) * maxGrade).toFixed(1)} puntos de {maxGrade}
+              </div>
+            )}
+          </div>
 
           <Form.Item
             name="date"
