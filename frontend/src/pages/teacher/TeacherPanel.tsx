@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, Component, useMemo } from 'react';
 import type { ReactNode, ErrorInfo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Tabs, Card, Table, Button, message, Space, Tag, Typography, Alert, Empty, Tooltip } from 'antd';
+import { Tabs, Card, Table, Button, message, Space, Tag, Alert, Empty, Tooltip } from 'antd';
 import { BookOutlined, PlusOutlined, DeleteOutlined, EditOutlined, LockOutlined, FilePdfOutlined, DownloadOutlined, ToolOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { isAxiosError } from 'axios';
@@ -14,7 +14,6 @@ import type { EvaluationPlanHeaderData } from '@/components/pdf/EvaluationPlanPD
 import EvaluationPlanItemModal from '@/components/EvaluationPlanItemModal';
 import ContentTab from './ContentTab';
 
-const { Title, Text } = Typography;
 
 // Error Boundary Component
 interface ErrorBoundaryState {
@@ -445,25 +444,21 @@ const TeacherPanel: React.FC = () => {
 
   if (!loading && assignments.length === 0) {
     return (
-      <div style={{ padding: '24px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-          <BookOutlined style={{ fontSize: 24, color: '#1890ff' }} />
-          <Title level={4} style={{ margin: 0 }}>Panel del Profesor</Title>
+      <div className="h-full overflow-y-auto theme-page-bg p-4 md:p-8">
+        <div className="app-page-header">
+          <h1 className="font-headline">Panel Académico</h1>
+          <p>Gestión de planificación, contenidos y calificaciones</p>
         </div>
-        <Card style={{ textAlign: 'center', padding: '40px 0' }}>
-          <Empty
-            image={Empty.PRESENTED_IMAGE_SIMPLE}
-            description={
-              <div style={{ maxWidth: 400, margin: '0 auto' }}>
-                <Title level={5}>No tienes materias asignadas</Title>
-                <Text type="secondary">
-                  Actualmente no tienes asignaciones de materia y sección para el período académico activo. 
-                  Si consideras que esto es un error, por favor contacta al personal administrativo o de control de estudios.
-                </Text>
-              </div>
-            }
-          />
-        </Card>
+        <div className="app-card p-12 flex flex-col items-center justify-center" style={{ minHeight: 400 }}>
+          <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-6" style={{ backgroundColor: 'color-mix(in srgb, var(--color-accent) 8%, transparent)' }}>
+            <BookOutlined style={{ fontSize: 28, color: 'var(--color-accent)' }} />
+          </div>
+          <h2 className="text-xl font-bold mb-2" style={{ color: 'var(--color-text-main)' }}>No tienes materias asignadas</h2>
+          <p className="text-sm max-w-md text-center" style={{ color: 'var(--color-text-muted)' }}>
+            Actualmente no tienes asignaciones de materia y sección para el período académico activo.
+            Si consideras que esto es un error, por favor contacta al personal administrativo o de control de estudios.
+          </p>
+        </div>
       </div>
     );
   }
@@ -799,10 +794,9 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
       `}</style>
       
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-8">
-        <div>
-          <h1 className="text-3xl font-black tracking-tight" style={{ color: 'var(--color-text-main)' }}>Configuración del Plan de Evaluación</h1>
-        </div>
+      <div className="app-page-header">
+        <h1 className="font-headline">Configuración del Plan de Evaluación</h1>
+        <p>Gestiona contenidos, evaluaciones y calificaciones por lapso académico</p>
       </div>
 
       {/* Top Grid Panels */}
@@ -810,8 +804,8 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
         {/* Subjects & Terms combined in a single card-like block or flex */}
         <div className="xl:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Asignaturas Seleccionables */}
-          <div className="rounded-2xl shadow-sm border border-slate-100 p-5 flex flex-col" style={{ backgroundColor: 'var(--color-brand-secondary)' }}>
-            <span className="text-[10px] font-bold uppercase tracking-widest mb-3" style={{ color: 'var(--color-text-main)', opacity: 0.5 }}>Seleccionar Asignatura</span>
+          <div className="app-card app-card-hover p-5 flex flex-col">
+            <span className="text-[10px] font-bold uppercase tracking-widest mb-3" style={{ color: 'var(--color-text-muted)' }}>Seleccionar Asignatura</span>
             <div className="flex gap-3 overflow-x-auto pb-2 shrink-0">
               {assignments.map(as => {
                 const isSelected = as.id === selectedAssignmentId;
@@ -850,9 +844,9 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
           </div>
 
           {/* Lazos */}
-          <div className="rounded-2xl shadow-sm border border-slate-100 p-5 flex flex-col justify-center" style={{ backgroundColor: 'var(--color-brand-secondary)' }}>
+          <div className="app-card app-card-hover p-5 flex flex-col justify-center">
             <div className="flex items-center justify-between mb-3">
-              <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--color-text-main)', opacity: 0.5 }}>Lapso Académico</span>
+              <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--color-text-muted)' }}>Lapso Académico</span>
               {isSelectedTermBlocked && <Tag color="error">Cerrado</Tag>}
             </div>
             <div className="flex p-1 gap-2 rounded-xl w-full" style={{ backgroundColor: 'var(--color-input-bg)' }}>
@@ -890,7 +884,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
         </div>
 
         {/* Progress Planificado */}
-        <div className="rounded-2xl shadow-sm border border-slate-100 p-6 flex flex-col justify-center relative overflow-hidden" style={{ backgroundColor: 'var(--color-brand-secondary)' }}>
+        <div className="app-card app-card-hover p-6 flex flex-col justify-center relative overflow-hidden">
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-black text-lg m-0" style={{ color: 'var(--color-text-main)' }}>Total Planificado</h3>
             <span className={`text-[10px] uppercase font-bold px-3 py-1 rounded-full ${totalPercentage === 100 ? 'bg-green-100 text-green-700' : totalPercentage > 100 ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-700'}`}>
@@ -899,18 +893,18 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
           </div>
           <p className="text-xs font-semibold text-[var(--color-text-muted)] mb-2">Avance del periodo actual</p>
           
-          <div className="h-3 w-full bg-slate-100 rounded-full mt-2 mb-2 relative overflow-hidden">
+          <div className="h-3 w-full rounded-full mt-2 mb-2 relative overflow-hidden" style={{ backgroundColor: 'var(--color-inactive)' }}>
             <div 
               className={`h-full rounded-full transition-all duration-1000 ${totalPercentage === 100 ? 'bg-green-500' : totalPercentage > 100 ? 'bg-red-500' : ''}`} 
               style={{ 
                 width: `${Math.min(totalPercentage, 100)}%`,
-                backgroundColor: (totalPercentage <= 100 && totalPercentage !== 100) ? 'var(--color-luxury-sidebar)' : undefined 
+                backgroundColor: (totalPercentage <= 100 && totalPercentage !== 100) ? 'var(--color-accent)' : undefined 
               }} 
             />
           </div>
           <div className="flex justify-between text-[11px] font-bold text-[var(--color-text-muted)] mb-4">
             <span>0%</span>
-            <span style={{ color: 'var(--color-luxury-sidebar)' }}>{totalPercentage}% de 100%</span>
+            <span style={{ color: 'var(--color-accent)' }}>{totalPercentage}% de 100%</span>
             <span>100%</span>
           </div>
           
@@ -938,7 +932,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
       )}
 
       {/* Main Tabs content equivalent */}
-      <div className="p-6 rounded-2xl shadow-sm border border-slate-100 mb-8" style={{ backgroundColor: 'var(--color-brand-secondary)' }}>
+      <div className="app-card p-6 mb-8">
         <Tabs
           activeKey={activeTab}
           onChange={setActiveTab}
@@ -977,15 +971,13 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                     pagination={false}
                     bordered
                     className="rounded-xl overflow-hidden"
-                    style={{ backgroundColor: 'color-mix(in srgb, var(--color-input-bg), black 3%)' }}
+                    style={{ backgroundColor: 'var(--color-content-bg)', border: '1px solid rgba(15, 23, 42, 0.06)' }}
                   />
                   
                   <div
                     className={`mt-4 w-full h-14 flex items-center justify-center rounded-xl transition-all cursor-pointer border-none shadow-sm ${isSelectedTermBlocked || !selectedAssignmentId ? 'opacity-50 pointer-events-none' : 'hover:scale-[1.01]'}`}
-                    style={{ 
-                      backgroundColor: isSelectedTermBlocked || !selectedAssignmentId ? 'var(--color-brand-secondary)' : 'var(--color-accent)',
-                      color: isSelectedTermBlocked || !selectedAssignmentId ? 'var(--color-text-main)' : 'var(--color-header-text)' 
-                    }}
+                    style={{ backgroundColor: isSelectedTermBlocked || !selectedAssignmentId ? 'var(--color-inactive)' : 'var(--color-accent)',
+                      color: isSelectedTermBlocked || !selectedAssignmentId ? 'var(--color-text-main)' : 'var(--color-header-text)' }}
                     onClick={() => {
                       if(isSelectedTermBlocked || !selectedAssignmentId) return;
                       setEditingItem(null);
@@ -1013,17 +1005,18 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
             },
           {
             key: '3',
-            label: 'Calificaciones',
+            label: <span className="font-bold text-[15px] px-4 py-1">Calificaciones</span>,
             children: evaluationPlan.length === 0 ? (
-              <Card style={{ textAlign: 'center', padding: '40px 0', backgroundColor: 'var(--color-input-bg)', border: 'none' }}>
-                <div style={{ marginBottom: 24 }}>
-                  <Title level={4}>No hay Plan de Evaluación definido</Title>
-                  <Text type="secondary">Para poder calificar este lapso, primero debe definir las actividades y sus porcentajes.</Text>
+              <div className="flex flex-col items-center justify-center py-16">
+                <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4" style={{ backgroundColor: 'color-mix(in srgb, var(--color-accent) 8%, transparent)' }}>
+                  <BookOutlined style={{ fontSize: 24, color: 'var(--color-accent)' }} />
                 </div>
-                <Button type="primary" size="large" onClick={() => setActiveTab('2')}>
+                <h3 className="text-lg font-bold mb-2" style={{ color: 'var(--color-text-main)' }}>No hay Plan de Evaluación definido</h3>
+                <p className="text-sm mb-6" style={{ color: 'var(--color-text-muted)' }}>Para poder calificar este lapso, primero debe definir las actividades y sus porcentajes.</p>
+                <Button type="primary" size="large" onClick={() => setActiveTab('2')} className="rounded-xl">
                   Crear Plan de Evaluación
                 </Button>
-              </Card>
+              </div>
             ) : (
               <>
                 <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
@@ -1063,18 +1056,18 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                     </Button>
                   </div>
                 </div>
-                <Card bodyStyle={{ padding: 0 }} style={{ overflow: 'hidden', backgroundColor: 'var(--color-input-bg)', border: 'none' }}>
+                <Card bodyStyle={{ padding: 0 }} style={{ overflow: 'hidden', backgroundColor: 'var(--color-content-bg)', border: '1px solid rgba(15, 23, 42, 0.08)' }}>
                 <div style={{ overflowX: 'auto', maxHeight: 'calc(100vh - 350px)' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, border: '1px solid var(--color-text-muted)' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, border: '1px solid rgba(15, 23, 42, 0.08)' }}>
                     <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
                       <tr>
-                        <th style={{ padding: '4px 6px', border: '1px solid var(--color-text-muted)', textAlign: 'center', backgroundColor: '#e5e7eb', fontWeight: 700, fontSize: 11, whiteSpace: 'nowrap' }}>Cédula</th>
-                        <th style={{ padding: '4px 6px', border: '1px solid var(--color-text-muted)', textAlign: 'left', backgroundColor: '#e5e7eb', fontWeight: 700, fontSize: 11, whiteSpace: 'nowrap' }}>Estudiante</th>
+                        <th style={{ padding: '4px 6px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', backgroundColor: 'color-mix(in srgb, var(--color-text-main) 6%, var(--color-content-bg))', fontWeight: 700, fontSize: 11, whiteSpace: 'nowrap', color: 'var(--color-text-main)' }}>Cédula</th>
+                        <th style={{ padding: '4px 6px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'left', backgroundColor: 'color-mix(in srgb, var(--color-text-main) 6%, var(--color-content-bg))', fontWeight: 700, fontSize: 11, whiteSpace: 'nowrap', color: 'var(--color-text-main)' }}>Estudiante</th>
                         {evaluationPlan.map((item) => {
                           const stats = evalStats.get(item.id);
                           const hasRemedial = (stats?.failedPct ?? 0) >= remedialFailurePercentage;
                           return (
-                          <th key={item.id} colSpan={hasRemedial ? 2 : 1} style={{ padding: '3px 4px', border: '1px solid var(--color-text-muted)', textAlign: 'center', backgroundColor: '#e5e7eb', verticalAlign: 'top', whiteSpace: 'nowrap' }}>
+                          <th key={item.id} colSpan={hasRemedial ? 2 : 1} style={{ padding: '3px 4px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', backgroundColor: 'color-mix(in srgb, var(--color-text-main) 6%, var(--color-content-bg))', verticalAlign: 'top', whiteSpace: 'nowrap', color: 'var(--color-text-main)' }}>
                             <div style={{ fontSize: 9, color: '#b45309', lineHeight: 1.2 }}>
                               Apl. {stats?.failed ?? 0} ({stats?.failedPct ?? 0}%)
                             </div>
@@ -1094,7 +1087,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                           </th>
                           );
                         })}
-                        <th style={{ padding: '3px 6px', border: '1px solid var(--color-text-muted)', textAlign: 'center', backgroundColor: '#e5e7eb', fontWeight: 700, fontSize: 11, whiteSpace: 'nowrap' }}>Total</th>
+                        <th style={{ padding: '3px 6px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', backgroundColor: 'color-mix(in srgb, var(--color-text-main) 6%, var(--color-content-bg))', fontWeight: 700, fontSize: 11, whiteSpace: 'nowrap', color: 'var(--color-text-main)' }}>Total</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1123,10 +1116,10 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
 
                           return (
                             <tr key={enrollment.id} className="grading-row">
-                              <td style={{ padding: '2px 4px', border: '1px solid var(--color-text-muted)', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-input-bg)' : '#f9fafb', fontSize: 11, fontWeight: 500 }}>
+                              <td style={{ padding: '2px 4px', border: '1px solid var(--color-text-muted)', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-content-bg)' : 'color-mix(in srgb, var(--color-text-main) 2%, var(--color-content-bg))', fontSize: 11, fontWeight: 500 }}>
                                 {enrollment.student?.document || '-'}
                               </td>
-                              <td style={{ padding: '2px 6px', border: '1px solid var(--color-text-muted)', textAlign: 'left', background: rowIndex % 2 === 0 ? 'var(--color-input-bg)' : '#f9fafb', fontSize: 12 }}>
+                              <td style={{ padding: '2px 6px', border: '1px solid var(--color-text-muted)', textAlign: 'left', background: rowIndex % 2 === 0 ? 'var(--color-content-bg)' : 'color-mix(in srgb, var(--color-text-main) 2%, var(--color-content-bg))', fontSize: 12 }}>
                                 {enrollment.student?.lastName}, {enrollment.student?.firstName}
                               </td>
                               {evaluationPlan.map((item, colIndex) => {
@@ -1139,7 +1132,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
 
                                 return (
                                   <React.Fragment key={item.id}>
-                                  <td key={`${item.id}-a`} className={`grading-cell${isAbsent ? ' grading-absent' : ''}`} style={{ padding: '2px', border: '1px solid var(--color-text-muted)', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-input-bg)' : '#f9fafb', width: '50px', cursor: 'context-menu' }}
+                                  <td key={`${item.id}-a`} className={`grading-cell${isAbsent ? ' grading-absent' : ''}`} style={{ padding: '2px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-content-bg)' : 'color-mix(in srgb, var(--color-text-main) 2%, var(--color-content-bg))', width: '50px', cursor: 'context-menu' }}
                                     title="Click derecho: marcar/desmarcar inasistente"
                                     onContextMenu={(e) => {
                                       e.preventDefault();
@@ -1250,7 +1243,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                                     />
                                   </td>
                                   {hasRemedial && (
-                                    <td key={`${item.id}-b`} className="grading-cell remedial-cell" style={{ padding: '2px', border: '1px solid var(--color-text-muted)', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-input-bg)' : '#f9fafb', width: '50px' }}
+                                    <td key={`${item.id}-b`} className="grading-cell remedial-cell" style={{ padding: '2px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-content-bg)' : 'color-mix(in srgb, var(--color-text-main) 2%, var(--color-content-bg))', width: '50px' }}
                                       onContextMenu={(e) => e.preventDefault()}
                                     >
                                       <Tooltip
@@ -1364,7 +1357,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                                   </React.Fragment>
                                 );
                               })}
-                              <td style={{ padding: '2px 4px', border: '1px solid var(--color-text-muted)', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-input-bg)' : '#f9fafb', fontWeight: 700, fontSize: 12 }}>
+                              <td style={{ padding: '2px 4px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-content-bg)' : 'color-mix(in srgb, var(--color-text-main) 2%, var(--color-content-bg))', fontWeight: 700, fontSize: 12 }}>
                                 <Tag color={rowTotal >= (maxGrade * 0.5) ? 'green' : 'red'} style={{ margin: 0 }}>
                                   {formatGrade(rowTotal, enableRounding)}
                                 </Tag>
@@ -1377,7 +1370,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                 </div>
                 {students.length === 0 && (
                   <div style={{ padding: '40px', textAlign: 'center' }}>
-                    <Alert message="No hay estudiantes inscritos en esta sección" type="info" />
+                    <Empty description="No hay estudiantes inscritos en esta sección" />
                   </div>
                 )}
               </Card>

@@ -185,8 +185,23 @@ const ContentTab: React.FC<ContentTabProps> = ({
 
   return (
     <div>
+      <style>{`
+        .content-collapse .ant-collapse-header {
+          background-color: color-mix(in srgb, var(--color-accent) 6%, var(--color-content-bg));
+          border-radius: 12px !important;
+          margin-bottom: 4px;
+          transition: background-color 0.2s;
+        }
+        .content-collapse .ant-collapse-header:hover {
+          background-color: color-mix(in srgb, var(--color-accent) 10%, var(--color-content-bg));
+        }
+        .content-collapse .ant-collapse-content-box {
+          background-color: var(--color-content-bg) !important;
+        }
+      `}</style>
       <Collapse
         accordion={false}
+        className="content-collapse"
         items={thematicComponents.map((comp, idx) => ({
           key: comp.id,
           label: (
@@ -213,6 +228,7 @@ const ContentTab: React.FC<ContentTabProps> = ({
             <Space onClick={e => e.stopPropagation()}>
               <Button
                 size="small"
+                type="text"
                 icon={<EditOutlined />}
                 onClick={() => {
                   setEditingComponentId(comp.id);
@@ -223,7 +239,7 @@ const ContentTab: React.FC<ContentTabProps> = ({
                 title="¿Eliminar este componente y todo su contenido?"
                 onConfirm={() => onDeleteComponent(comp.id)}
               >
-                <Button size="small" danger icon={<DeleteOutlined />} />
+                <Button size="small" type="text" danger icon={<DeleteOutlined />} />
               </Popconfirm>
             </Space>
           ),
@@ -338,6 +354,7 @@ const ContentTab: React.FC<ContentTabProps> = ({
           )}
           <Collapse
             accordion={false}
+            className="content-collapse"
             activeKey={openLearningKeys}
             onChange={keys => setOpenLearningKeys(keys as unknown as number[])}
             items={allLearnings.map((learning) => ({
