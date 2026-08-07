@@ -343,7 +343,9 @@ export const getStudentsForAssignment = async (req: Request, res: Response) => {
           if (is.qualifications) {
             is.qualifications.forEach((q: any) => {
               const foreignAudits = Array.isArray(q.audits)
-                ? q.audits.filter((a: any) => a.editedBy !== professorUserId)
+                ? q.audits.filter((a: any) =>
+                    a.editedBy !== professorUserId || a.editorContext === 'control_estudios'
+                  )
                 : [];
               q.editedByOther = foreignAudits.length > 0;
               if (q.editedByOther) {
@@ -454,6 +456,8 @@ export const saveQualification = async (req: Request, res: Response) => {
       // Record audit if score changed
       const sessionUser = (req.session as any).user;
       if (sessionUser && score !== undefined && Number(previousScore) !== Number(score)) {
+        const userRoles: string[] = sessionUser.roles || [];
+        const editorContext = userRoles.includes('Control de Estudios') ? 'control_estudios' : 'teacher';
         await QualificationAudit.create({
           qualificationId: qualification.id,
           editedBy: sessionUser.id,
@@ -461,6 +465,7 @@ export const saveQualification = async (req: Request, res: Response) => {
           newScore: score,
           comment: typeof req.body.comment === 'string' && req.body.comment.trim() !== '' ? req.body.comment.trim() : null,
           editedAt: new Date(),
+          editorContext,
         });
       }
     }

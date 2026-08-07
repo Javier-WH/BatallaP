@@ -11,6 +11,7 @@ interface QualificationAuditAttributes {
   newScore: number;
   comment?: string | null;
   editedAt: Date;
+  editorContext?: string | null;
 }
 
 interface QualificationAuditCreationAttributes extends Optional<QualificationAuditAttributes, 'id' | 'comment'> {}
@@ -25,6 +26,7 @@ class QualificationAudit
   public previousScore!: number | null;
   public newScore!: number;
   public editedAt!: Date;
+  public editorContext!: string | null;
 
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
@@ -63,6 +65,11 @@ QualificationAudit.init(
       type: DataTypes.DATE,
       allowNull: false,
       defaultValue: DataTypes.NOW,
+    },
+    editorContext: {
+      type: DataTypes.STRING,
+      allowNull: true,
+      defaultValue: null,
     },
   },
   {
