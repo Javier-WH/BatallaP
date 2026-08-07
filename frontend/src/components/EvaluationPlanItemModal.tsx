@@ -140,6 +140,12 @@ const EvaluationPlanItemModal: React.FC<EvaluationPlanItemModalProps> = ({
         message.warning('Seleccione al menos un tipo de evaluación');
         return;
       }
+      const maxPoints = (Number(values.percentage) / 100) * maxGrade;
+      const exceedingCriteria = criteria.filter(c => c.points > maxPoints);
+      if (exceedingCriteria.length > 0) {
+        message.warning(`Los criterios no pueden superar ${maxPoints.toFixed(1)} puntos (puntaje total de la evaluación)`);
+        return;
+      }
       setSaving(true);
 
       const payload = {
@@ -312,7 +318,10 @@ const EvaluationPlanItemModal: React.FC<EvaluationPlanItemModalProps> = ({
               No hay criterios. Los criterios son descriptivos (puntualidad, pulcritud, etc.) y no se califican individualmente.
             </div>
           )}
-          {criteria.map((c, index) => (
+          {criteria.map((c, index) => {
+            const maxPoints = percentageValue ? (percentageValue / 100) * maxGrade : undefined;
+            const exceedsMax = maxPoints != null && c.points > maxPoints;
+            return (
             <div key={index} style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
               <Input
                 placeholder="Nombre del criterio"
@@ -320,13 +329,19 @@ const EvaluationPlanItemModal: React.FC<EvaluationPlanItemModalProps> = ({
                 onChange={e => updateCriteria(index, 'name', e.target.value)}
                 style={{ flex: 1 }}
               />
-              <InputNumber
-                placeholder="Pts"
-                min={0}
-                value={c.points}
-                onChange={val => updateCriteria(index, 'points', val || 0)}
-                style={{ width: 80 }}
-              />
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                <InputNumber
+                  placeholder="Pts"
+                  min={0}
+                  value={c.points}
+                  onChange={val => updateCriteria(index, 'points', val || 0)}
+                  style={{ width: 80 }}
+                  status={exceedsMax ? 'error' : undefined}
+                />
+                {exceedsMax && (
+                  <span style={{ color: '#ff4d4f', fontSize: 10, marginTop: 2 }}>Máx: {maxPoints?.toFixed(1)} pts</span>
+                )}
+              </div>
               <Button
                 type="text"
                 danger
@@ -334,7 +349,8 @@ const EvaluationPlanItemModal: React.FC<EvaluationPlanItemModalProps> = ({
                 onClick={() => removeCriteria(index)}
               />
             </div>
-          ))}
+            );
+          })}
         </div>
       </Form>
     </Modal>
