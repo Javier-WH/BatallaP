@@ -1558,14 +1558,11 @@ const EnrollStudent: React.FC = () => {
                       <Row gutter={16}>
                         <Col span={12}>
                           <Form.Item name={['mother', 'firstName']} label="Nombres" rules={motherFieldsRequired ? [{ required: true }, { pattern: /^[a-zA-ZáéíóúÁÉÍÓÚüÜñÑ\s]+$/, message: 'No se permiten números' }] : [{ pattern: /^[a-zA-ZáéíóúÁÉÍÓÚüÜñÑ\s]+$/, message: 'No se permiten números' }]}>
+                            <Input />
                           </Form.Item>
                         </Col>
                         <Col span={12}>
                           <Form.Item name={['mother', 'lastName']} label="Apellidos" rules={motherFieldsRequired ? [{ required: true }, { pattern: /^[a-zA-ZáéíóúÁÉÍÓÚüÜñÑ\s]+$/, message: 'No se permiten números' }] : [{ pattern: /^[a-zA-ZáéíóúÁÉÍÓÚüÜñÑ\s]+$/, message: 'No se permiten números' }]}>
-                          </Form.Item>
-                        </Col>
-                        <Col span={12}>
-                          <Form.Item name={['mother', 'lastName']} label="Apellidos" rules={motherFieldsRequired ? [{ required: true }] : []}>
                             <Input />
                           </Form.Item>
                         </Col>
@@ -1632,14 +1629,11 @@ const EnrollStudent: React.FC = () => {
                       <Row gutter={16}>
                         <Col span={12}>
                           <Form.Item name={['father', 'firstName']} label="Nombres" rules={fatherFieldsRequired ? [{ required: true }, { pattern: /^[a-zA-ZáéíóúÁÉÍÓÚüÜñÑ\s]+$/, message: 'No se permiten números' }] : [{ pattern: /^[a-zA-ZáéíóúÁÉÍÓÚüÜñÑ\s]+$/, message: 'No se permiten números' }]}>
+                            <Input />
                           </Form.Item>
                         </Col>
                         <Col span={12}>
                           <Form.Item name={['father', 'lastName']} label="Apellidos" rules={fatherFieldsRequired ? [{ required: true }, { pattern: /^[a-zA-ZáéíóúÁÉÍÓÚüÜñÑ\s]+$/, message: 'No se permiten números' }] : [{ pattern: /^[a-zA-ZáéíóúÁÉÍÓÚüÜñÑ\s]+$/, message: 'No se permiten números' }]}>
-                          </Form.Item>
-                        </Col>
-                        <Col span={12}>
-                          <Form.Item name={['father', 'lastName']} label="Apellidos" rules={fatherFieldsRequired ? [{ required: true }] : []}>
                             <Input />
                           </Form.Item>
                         </Col>
@@ -1716,14 +1710,11 @@ const EnrollStudent: React.FC = () => {
                         <Row gutter={16}>
                           <Col span={12}>
                             <Form.Item name={['representative', 'firstName']} label="Nombres" rules={representativeFieldsRequired ? [{ required: true }, { pattern: /^[a-zA-ZáéíóúÁÉÍÓÚüÜñÑ\s]+$/, message: 'No se permiten números' }] : [{ pattern: /^[a-zA-ZáéíóúÁÉÍÓÚüÜñÑ\s]+$/, message: 'No se permiten números' }]}>
+                              <Input />
                             </Form.Item>
                           </Col>
                           <Col span={12}>
                             <Form.Item name={['representative', 'lastName']} label="Apellidos" rules={representativeFieldsRequired ? [{ required: true }, { pattern: /^[a-zA-ZáéíóúÁÉÍÓÚüÜñÑ\s]+$/, message: 'No se permiten números' }] : [{ pattern: /^[a-zA-ZáéíóúÁÉÍÓÚüÜñÑ\s]+$/, message: 'No se permiten números' }]}>
-                            </Form.Item>
-                          </Col>
-                          <Col span={12}>
-                            <Form.Item name={['representative', 'lastName']} label="Apellidos" rules={representativeFieldsRequired ? [{ required: true }] : []}>
                               <Input />
                             </Form.Item>
                           </Col>

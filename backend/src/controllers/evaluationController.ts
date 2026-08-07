@@ -109,7 +109,16 @@ export const getEvaluationPlan = async (req: Request, res: Response) => {
 
 export const createEvaluationItem = async (req: Request, res: Response) => {
   try {
-    const { termId, periodGradeSubjectId, sectionId, description, percentage, date, thematicComponentId, criteria } = req.body;
+    const { termId, periodGradeSubjectId, sectionId, description, percentage, date, thematicComponentId, evaluationType, criteria } = req.body;
+
+    const validTypes = ['intra', 'inter', 'trans'];
+    const typesArray = Array.isArray(evaluationType)
+      ? evaluationType.filter((t: string) => validTypes.includes(t))
+      : (typeof evaluationType === 'string' && evaluationType ? evaluationType.split(',').filter((t: string) => validTypes.includes(t.trim())) : []);
+    if (typesArray.length === 0) {
+      return res.status(400).json({ message: 'Debe seleccionar al menos un tipo de evaluación' });
+    }
+    const evaluationTypeStr = typesArray.join(',');
 
     if (termId) {
       const term = await Term.findByPk(termId);
@@ -137,6 +146,7 @@ export const createEvaluationItem = async (req: Request, res: Response) => {
       percentage,
       date,
       thematicComponentId: thematicComponentId || null,
+      evaluationType: evaluationTypeStr,
     });
 
     // Create criteria if provided
@@ -193,7 +203,19 @@ export const updateEvaluationItem = async (req: Request, res: Response) => {
       }
     }
 
-    const { criteria, ...updateFields } = req.body;
+    const { criteria, evaluationType, ...updateFields } = req.body;
+
+    if (evaluationType !== undefined) {
+      const validTypes = ['intra', 'inter', 'trans'];
+      const typesArray = Array.isArray(evaluationType)
+        ? evaluationType.filter((t: string) => validTypes.includes(t))
+        : (typeof evaluationType === 'string' && evaluationType ? evaluationType.split(',').filter((t: string) => validTypes.includes(t.trim())) : []);
+      if (typesArray.length === 0) {
+        return res.status(400).json({ message: 'Debe seleccionar al menos un tipo de evaluación' });
+      }
+      updateFields.evaluationType = typesArray.join(',');
+    }
+
     await item.update(updateFields);
 
     // Replace criteria if provided

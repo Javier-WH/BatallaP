@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Modal, Form, Input, DatePicker, Button, Select, InputNumber, message } from 'antd';
+import { Modal, Form, Input, DatePicker, Button, Select, InputNumber, message, Checkbox } from 'antd';
 import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
 import api from '@/services/api';
 import dayjs from 'dayjs';
@@ -14,6 +14,7 @@ export interface EvaluationPlanItem {
   thematicComponentId?: number | null;
   thematicComponent?: { id: number; title: string } | null;
   criteria?: { id: number; name: string; points: number }[];
+  evaluationType?: string | null;
 }
 
 interface PlanItemFormValues {
@@ -21,6 +22,7 @@ interface PlanItemFormValues {
   percentage: number;
   date: dayjs.Dayjs | null;
   thematicComponentId?: number;
+  evaluationType?: string[] | null;
 }
 
 export interface SchoolPeriodInfo {
@@ -103,6 +105,7 @@ const EvaluationPlanItemModal: React.FC<EvaluationPlanItemModalProps> = ({
   const [form] = Form.useForm<PlanItemFormValues>();
   const [saving, setSaving] = useState(false);
   const [criteria, setCriteria] = useState<CriteriaRow[]>([]);
+  const [evaluationType, setEvaluationType] = useState<string[]>([]);
 
   useEffect(() => {
     if (open) {
@@ -113,12 +116,14 @@ const EvaluationPlanItemModal: React.FC<EvaluationPlanItemModalProps> = ({
           date: editingItem.date ? dayjs(editingItem.date) : null,
           thematicComponentId: editingItem.thematicComponentId || undefined,
         });
+        setEvaluationType(editingItem.evaluationType ? editingItem.evaluationType.split(',') : []);
         setCriteria(
           (editingItem.criteria || []).map(c => ({ id: c.id, name: c.name, points: c.points }))
         );
       } else {
         form.resetFields();
         setCriteria([]);
+        setEvaluationType([]);
       }
     }
   }, [open, editingItem, form]);
@@ -126,6 +131,10 @@ const EvaluationPlanItemModal: React.FC<EvaluationPlanItemModalProps> = ({
   const handleSave = async () => {
     try {
       const values = await form.validateFields();
+      if (evaluationType.length === 0) {
+        message.warning('Seleccione al menos un tipo de evaluación');
+        return;
+      }
       setSaving(true);
 
       const payload = {
@@ -136,6 +145,7 @@ const EvaluationPlanItemModal: React.FC<EvaluationPlanItemModalProps> = ({
         percentage: Number(values.percentage),
         date: values.date ? values.date.format('YYYY-MM-DD') : null,
         thematicComponentId: values.thematicComponentId || null,
+        evaluationType: evaluationType.length > 0 ? evaluationType.join(',') : null,
         criteria: criteria.map(c => ({ name: c.name, points: Number(c.points) })),
       };
 
@@ -208,6 +218,36 @@ const EvaluationPlanItemModal: React.FC<EvaluationPlanItemModalProps> = ({
               <Option key={tc.id} value={tc.id}>{tc.title}</Option>
             ))}
           </Select>
+        </Form.Item>
+
+        <Form.Item label="Tipo de evaluación" required>
+          <Checkbox.Group
+            value={evaluationType}
+            onChange={(checkedValues) => {
+              setEvaluationType(checkedValues as string[]);
+            }}
+            style={{ display: 'flex', gap: 8 }}
+          >
+            {(['intra', 'inter', 'trans'] as const).map(type => (
+              <Checkbox
+                key={type}
+                value={type}
+                style={{
+                  border: `1px solid ${evaluationType.includes(type) ? 'var(--color-accent)' : 'var(--color-border)'}`,
+                  borderRadius: 8,
+                  padding: '4px 12px',
+                  backgroundColor: evaluationType.includes(type) ? 'color-mix(in srgb, var(--color-accent) 10%, transparent)' : 'transparent',
+                  fontWeight: evaluationType.includes(type) ? 600 : 400,
+                  transition: 'all 0.2s',
+                }}
+              >
+                {type === 'intra' ? 'Intra' : type === 'inter' ? 'Inter' : 'Trans'}
+              </Checkbox>
+            ))}
+          </Checkbox.Group>
+          {evaluationType.length === 0 && (
+            <div style={{ color: '#ff4d4f', fontSize: 12, marginTop: 4 }}>Seleccione al menos un tipo de evaluación</div>
+          )}
         </Form.Item>
 
         <div style={{ display: 'flex', gap: 16 }}>

@@ -109,6 +109,7 @@ interface EvaluationPlanItem {
   thematicComponentId?: number | null;
   thematicComponent?: { id: number; title: string } | null;
   criteria?: { id: number; name: string; points: number }[];
+  evaluationType?: string | null;
 }
 
 interface Subject {
@@ -592,7 +593,17 @@ const handleToggleAbsent = async (enrollment: StudentEnrollment, evalPlanId: num
         );
       }
     },
-    { title: 'Puntaje', dataIndex: 'percentage', key: 'percentage', render: (val: number) => `${val}%`, width: 80 },
+    { title: 'Porcentaje', dataIndex: 'percentage', key: 'percentage', render: (val: number) => `${val}%`, width: 90 },
+    { title: 'Puntaje', key: 'points', width: 90, render: (_: unknown, r: EvaluationPlanItem) => `${((r.percentage / 100) * maxGrade).toFixed(1)} pts` },
+    {
+      title: 'Tipo de Evaluación',
+      key: 'evaluationType',
+      children: [
+        { title: 'Intra', key: 'intra', width: 60, align: 'center' as const, render: (_: unknown, r: EvaluationPlanItem) => (r.evaluationType || '').split(',').includes('intra') ? <Tag color="blue" style={{ margin: 0 }}>✓</Tag> : <span style={{ color: '#ccc' }}>—</span> },
+        { title: 'Inter', key: 'inter', width: 60, align: 'center' as const, render: (_: unknown, r: EvaluationPlanItem) => (r.evaluationType || '').split(',').includes('inter') ? <Tag color="green" style={{ margin: 0 }}>✓</Tag> : <span style={{ color: '#ccc' }}>—</span> },
+        { title: 'Trans', key: 'trans', width: 60, align: 'center' as const, render: (_: unknown, r: EvaluationPlanItem) => (r.evaluationType || '').split(',').includes('trans') ? <Tag color="purple" style={{ margin: 0 }}>✓</Tag> : <span style={{ color: '#ccc' }}>—</span> },
+      ],
+    },
     { title: 'Fecha', dataIndex: 'date', key: 'date', render: (val: string) => dayjs(val).format('DD/MM/YYYY'), width: 100 },
     {
       title: 'Acciones',
