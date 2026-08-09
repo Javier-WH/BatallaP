@@ -1132,14 +1132,6 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                     <Button
                       icon={<DownloadOutlined />}
                       size="small"
-                      onClick={() => downloadExcel(true)}
-                      disabled={!selectedAssignmentId || students.length === 0}
-                    >
-                      Excel con notas
-                    </Button>
-                    <Button
-                      icon={<DownloadOutlined />}
-                      size="small"
                       onClick={() => downloadExcel(false)}
                       disabled={!selectedAssignmentId}
                     >
