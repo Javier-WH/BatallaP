@@ -585,9 +585,6 @@ const EvaluationPlanItemModal: React.FC<EvaluationPlanItemModalProps> = ({
         <div style={{ marginTop: 8 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
             <span style={{ fontWeight: 600 }}>Criterios de evaluación</span>
-            <Button type="dashed" size="small" icon={<PlusOutlined />} onClick={addCriteria}>
-              Agregar criterio
-            </Button>
           </div>
           {criteria.length === 0 && (
             <div style={{ color: '#999', fontSize: 12, padding: '8px 0' }}>
@@ -671,6 +668,24 @@ const EvaluationPlanItemModal: React.FC<EvaluationPlanItemModalProps> = ({
             </div>
             );
           })}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 4 }}>
+            <Button type="dashed" icon={<PlusOutlined />} onClick={addCriteria}>
+              Agregar criterio
+            </Button>
+            {criteria.length > 0 && (() => {
+              const totalCriteriaPoints = criteria.reduce((acc, c) => acc + Number(c.points || 0), 0);
+              const isComplete = Math.abs(totalCriteriaPoints - maxGrade) < 0.01;
+              return (
+                <span style={{
+                  fontSize: 12,
+                  fontWeight: 600,
+                  color: isComplete ? '#16a34a' : '#ff4d4f',
+                }}>
+                  ({totalCriteriaPoints.toFixed(0)}/{maxGrade})pts
+                </span>
+              );
+            })()}
+          </div>
         </div>
       </Form>
     </Modal>
