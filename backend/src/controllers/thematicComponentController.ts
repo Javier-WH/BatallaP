@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { Op } from 'sequelize';
+import sequelize from '@/config/database';
 import {
   ThematicComponent,
   ThematicContent,
@@ -179,6 +180,57 @@ export const deleteThematicContent = async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('[deleteThematicContent] Error:', error);
     return res.status(500).json({ message: error.message || 'Error al eliminar' });
+  }
+};
+
+export const reorderThematicContents = async (req: Request, res: Response) => {
+  const { contentIds } = req.body as { contentIds?: number[] };
+
+  if (!Array.isArray(contentIds) || contentIds.length === 0 || contentIds.some((id) => typeof id !== 'number')) {
+    return res.status(400).json({ message: 'Debe enviar un arreglo de IDs de contenidos en el orden deseado.' });
+  }
+
+  const transaction = await sequelize.transaction();
+  try {
+    const contents = await ThematicContent.findAll({
+      where: { id: { [Op.in]: contentIds } },
+      transaction,
+      lock: transaction.LOCK.UPDATE,
+    });
+
+    if (contents.length !== contentIds.length) {
+      throw new Error('Alguno de los contenidos no existe.');
+    }
+
+    // All contents must belong to the same thematic component
+    const componentIds = new Set(contents.map((c) => c.thematicComponentId));
+    if (componentIds.size !== 1) {
+      throw new Error('Los contenidos deben pertenecer al mismo componente temático.');
+    }
+
+    const sortPosition = new Map(contentIds.map((contentId, index) => [contentId, index + 1]));
+
+    for (const content of contents) {
+      const nextOrder = sortPosition.get(content.id);
+      if (nextOrder !== undefined) {
+        content.order = nextOrder;
+        await content.save({ transaction });
+      }
+    }
+
+    await transaction.commit();
+
+    const componentId = contents[0].thematicComponentId;
+    const refreshed = await ThematicContent.findAll({
+      where: { thematicComponentId: componentId },
+      order: [['order', 'ASC'], ['id', 'ASC']],
+    });
+
+    return res.json(refreshed);
+  } catch (error: any) {
+    await transaction.rollback();
+    console.error('[reorderThematicContents] Error:', error);
+    return res.status(400).json({ message: error.message || 'No se pudo reordenar' });
   }
 };
 

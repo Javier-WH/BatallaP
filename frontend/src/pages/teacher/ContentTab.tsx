@@ -1,6 +1,21 @@
 import React, { useState } from 'react';
 import { Card, Button, Input, Collapse, Space, Tag, Popconfirm, message, Alert } from 'antd';
-import { PlusOutlined, DeleteOutlined, EditOutlined, CheckOutlined, CloseOutlined } from '@ant-design/icons';
+import { PlusOutlined, DeleteOutlined, EditOutlined, CheckOutlined, CloseOutlined, HolderOutlined } from '@ant-design/icons';
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core';
+import type { DragEndEvent } from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 
 interface ThematicContentData {
   id: number;
@@ -34,7 +49,92 @@ interface ContentTabProps {
   onCreateLearning: (contentIds: number[], description: string) => void;
   onUpdateLearning: (learningId: number, description: string, contentIds?: number[]) => void;
   onDeleteLearning: (learningId: number) => void;
+  onReorderContents: (componentId: number, contentIds: number[]) => void;
 }
+
+interface SortableContentItemProps {
+  content: ThematicContentData;
+  index: number;
+  componentIndex: number;
+  isBlocked: boolean;
+  editingContentId: number | null;
+  editingContentTitle: string;
+  onEditStart: (content: ThematicContentData) => void;
+  onEditSave: () => void;
+  onEditCancel: () => void;
+  onEditTitleChange: (value: string) => void;
+  onDelete: (contentId: number) => void;
+}
+
+const SortableContentItem: React.FC<SortableContentItemProps> = ({
+  content,
+  index,
+  componentIndex,
+  isBlocked,
+  editingContentId,
+  editingContentTitle,
+  onEditStart,
+  onEditSave,
+  onEditCancel,
+  onEditTitleChange,
+  onDelete,
+}) => {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: content.id,
+  });
+
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    marginBottom: 16,
+  };
+
+  return (
+    <div ref={setNodeRef} style={style} {...attributes}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+        {!isBlocked && (
+          <HolderOutlined
+            style={{ cursor: 'grab', color: '#999' }}
+            {...listeners}
+          />
+        )}
+        <Tag color="cyan">{componentIndex + 1}.{index + 1}</Tag>
+        {editingContentId === content.id ? (
+          <Space>
+            <Input
+              size="small"
+              value={editingContentTitle}
+              onChange={e => onEditTitleChange(e.target.value)}
+              onPressEnter={onEditSave}
+              style={{ width: 300 }}
+            />
+            <Button size="small" icon={<CheckOutlined />} onClick={onEditSave} />
+            <Button size="small" icon={<CloseOutlined />} onClick={onEditCancel} />
+          </Space>
+        ) : (
+          <span style={{ fontWeight: 500 }}>{content.title}</span>
+        )}
+        {!isBlocked && editingContentId !== content.id && (
+          <Space>
+            <Button
+              size="small"
+              type="text"
+              icon={<EditOutlined />}
+              onClick={() => onEditStart(content)}
+            />
+            <Popconfirm
+              title="¿Eliminar este contenido?"
+              onConfirm={() => onDelete(content.id)}
+            >
+              <Button size="small" type="text" danger icon={<DeleteOutlined />} />
+            </Popconfirm>
+          </Space>
+        )}
+      </div>
+    </div>
+  );
+};
 
 const ContentTab: React.FC<ContentTabProps> = ({
   thematicComponents,
@@ -48,6 +148,7 @@ const ContentTab: React.FC<ContentTabProps> = ({
   onCreateLearning,
   onUpdateLearning,
   onDeleteLearning,
+  onReorderContents,
 }) => {
   const [newComponentTitle, setNewComponentTitle] = useState('');
   const [editingComponentId, setEditingComponentId] = useState<number | null>(null);
@@ -64,6 +165,46 @@ const ContentTab: React.FC<ContentTabProps> = ({
   const [editingLearningContentIds, setEditingLearningContentIds] = useState<number[]>([]);
   const [openLearningKeys, setOpenLearningKeys] = useState<number[]>([]);
   const [addingComponent, setAddingComponent] = useState(false);
+  const [localContentOrder, setLocalContentOrder] = useState<Record<number, number[]>>({});
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
+  );
+
+  // Build effective contents per component considering local reorder state
+  const getEffectiveContents = (comp: ThematicComponentData): ThematicContentData[] => {
+    const orderMap = localContentOrder[comp.id];
+    if (!orderMap) return comp.contents || [];
+    const byId = new Map((comp.contents || []).map(c => [c.id, c]));
+    const ordered: ThematicContentData[] = [];
+    orderMap.forEach(id => {
+      const c = byId.get(id);
+      if (c) ordered.push(c);
+    });
+    // Append any new contents not in the local order yet
+    (comp.contents || []).forEach(c => {
+      if (!orderMap.includes(c.id)) ordered.push(c);
+    });
+    return ordered;
+  };
+
+  const handleContentDragEnd = (componentId: number, event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    const comp = thematicComponents.find(c => c.id === componentId);
+    if (!comp) return;
+
+    const contents = getEffectiveContents(comp);
+    const oldIndex = contents.findIndex(c => c.id === active.id);
+    const newIndex = contents.findIndex(c => c.id === over.id);
+    if (oldIndex === -1 || newIndex === -1) return;
+
+    const reordered = arrayMove(contents, oldIndex, newIndex);
+    const newOrder = reordered.map(c => c.id);
+    setLocalContentOrder(prev => ({ ...prev, [componentId]: newOrder }));
+    onReorderContents(componentId, newOrder);
+  };
 
   const handleAddComponent = () => {
     if (!newComponentTitle.trim()) return;
@@ -297,47 +438,42 @@ const ContentTab: React.FC<ContentTabProps> = ({
           ),
           children: (
             <div style={{ paddingLeft: 24 }}>
-              {comp.contents?.map((content, cIdx) => (
-                <div key={content.id} style={{ marginBottom: 16 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                    <Tag color="cyan">{idx + 1}.{cIdx + 1}</Tag>
-                    {editingContentId === content.id ? (
-                      <Space>
-                        <Input
-                          size="small"
-                          value={editingContentTitle}
-                          onChange={e => setEditingContentTitle(e.target.value)}
-                          onPressEnter={handleSaveContentEdit}
-                          style={{ width: 300 }}
-                        />
-                        <Button size="small" icon={<CheckOutlined />} onClick={handleSaveContentEdit} />
-                        <Button size="small" icon={<CloseOutlined />} onClick={() => setEditingContentId(null)} />
-                      </Space>
-                    ) : (
-                      <span style={{ fontWeight: 500 }}>{content.title}</span>
-                    )}
-                    {!isBlocked && editingContentId !== content.id && (
-                      <Space>
-                        <Button
-                          size="small"
-                          type="text"
-                          icon={<EditOutlined />}
-                          onClick={() => {
-                            setEditingContentId(content.id);
-                            setEditingContentTitle(content.title);
+              {(() => {
+                const effectiveContents = getEffectiveContents(comp);
+                if (effectiveContents.length === 0) return null;
+                return (
+                  <DndContext
+                    sensors={sensors}
+                    collisionDetection={closestCenter}
+                    onDragEnd={(event) => handleContentDragEnd(comp.id, event)}
+                  >
+                    <SortableContext
+                      items={effectiveContents.map(c => c.id)}
+                      strategy={verticalListSortingStrategy}
+                    >
+                      {effectiveContents.map((content, cIdx) => (
+                        <SortableContentItem
+                          key={content.id}
+                          content={content}
+                          index={cIdx}
+                          componentIndex={idx}
+                          isBlocked={isBlocked}
+                          editingContentId={editingContentId}
+                          editingContentTitle={editingContentTitle}
+                          onEditStart={(c) => {
+                            setEditingContentId(c.id);
+                            setEditingContentTitle(c.title);
                           }}
+                          onEditSave={handleSaveContentEdit}
+                          onEditCancel={() => setEditingContentId(null)}
+                          onEditTitleChange={setEditingContentTitle}
+                          onDelete={onDeleteContent}
                         />
-                        <Popconfirm
-                          title="¿Eliminar este contenido?"
-                          onConfirm={() => onDeleteContent(content.id)}
-                        >
-                          <Button size="small" type="text" danger icon={<DeleteOutlined />} />
-                        </Popconfirm>
-                      </Space>
-                    )}
-                  </div>
-                </div>
-              ))}
+                      ))}
+                    </SortableContext>
+                  </DndContext>
+                );
+              })()}
               {!isBlocked && (
                 <div style={{ marginLeft: 24 }}>
               {newContentForComponent === comp.id ? (
@@ -394,8 +530,7 @@ const ContentTab: React.FC<ContentTabProps> = ({
       )}
       </div>
 
-      {allLearnings.length > 0 && (
-        <div className="content-section learning-section">
+      <div className="content-section learning-section">
           <div className="content-section-header">
             <div>
               <h3 className="content-section-heading">Aprendizajes esperados</h3>
@@ -403,7 +538,12 @@ const ContentTab: React.FC<ContentTabProps> = ({
             </div>
             <Tag color="cyan">{allLearnings.length} {allLearnings.length === 1 ? 'aprendizaje' : 'aprendizajes'}</Tag>
           </div>
-          {contentsWithoutLearning.length > 0 && (
+          {allLearnings.length === 0 && !isBlocked && allContents.length === 0 && (
+            <div style={{ textAlign: 'center', padding: '16px 0', color: '#999', fontSize: 12 }}>
+              Primero crea contenidos temáticos para poder asociar aprendizajes.
+            </div>
+          )}
+          {allLearnings.length > 0 && contentsWithoutLearning.length > 0 && (
             <Alert
               type="error"
               showIcon
@@ -411,6 +551,7 @@ const ContentTab: React.FC<ContentTabProps> = ({
               message={`Contenidos sin aprendizaje esperado: ${contentsWithoutLearning.join(', ')}`}
             />
           )}
+          {allLearnings.length > 0 && (
           <Collapse
             accordion={false}
             className="content-collapse"
@@ -528,8 +669,7 @@ const ContentTab: React.FC<ContentTabProps> = ({
               })(),
             }))}
           />
-        </div>
-      )}
+          )}
 
       {!isBlocked && !addingLearning && (
         <div style={{ display: 'flex', gap: 8, marginTop: 16, alignItems: 'center' }}>
@@ -592,6 +732,7 @@ const ContentTab: React.FC<ContentTabProps> = ({
           </Space>
         </div>
       )}
+        </div>
     </div>
   );
 };

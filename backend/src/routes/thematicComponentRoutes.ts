@@ -7,6 +7,7 @@ import {
   createThematicContent,
   updateThematicContent,
   deleteThematicContent,
+  reorderThematicContents,
   createExpectedLearning,
   updateExpectedLearning,
   deleteExpectedLearning,
@@ -24,6 +25,7 @@ router.delete('/:id', deleteThematicComponent);
 router.post('/:id/contents', createThematicContent);
 router.put('/contents/:id', updateThematicContent);
 router.delete('/contents/:id', deleteThematicContent);
+router.patch('/contents/reorder', reorderThematicContents);
 
 // Expected Learnings
 router.post('/learnings', createExpectedLearning);
