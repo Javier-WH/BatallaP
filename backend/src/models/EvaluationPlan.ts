@@ -17,9 +17,12 @@ interface EvaluationPlanAttributes {
   evaluationType?: string | null;
   tecnica?: string | null;
   instrumento?: string | null;
+  shortDescription?: string | null;
+  tecnicaId?: number | null;
+  instrumentoId?: number | null;
 }
 
-interface EvaluationPlanCreationAttributes extends Optional<EvaluationPlanAttributes, 'id' | 'thematicComponentId' | 'thematicContentIds' | 'evaluationType' | 'tecnica' | 'instrumento'> { }
+interface EvaluationPlanCreationAttributes extends Optional<EvaluationPlanAttributes, 'id' | 'thematicComponentId' | 'thematicContentIds' | 'evaluationType' | 'tecnica' | 'instrumento' | 'shortDescription' | 'tecnicaId' | 'instrumentoId'> { }
 
 class EvaluationPlan extends Model<EvaluationPlanAttributes, EvaluationPlanCreationAttributes> implements EvaluationPlanAttributes {
   public id!: number;
@@ -34,6 +37,9 @@ class EvaluationPlan extends Model<EvaluationPlanAttributes, EvaluationPlanCreat
   public evaluationType!: string | null;
   public tecnica!: string | null;
   public instrumento!: string | null;
+  public shortDescription!: string | null;
+  public tecnicaId!: number | null;
+  public instrumentoId!: number | null;
 
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
@@ -98,6 +104,21 @@ EvaluationPlan.init(
     },
     instrumento: {
       type: DataTypes.STRING,
+      allowNull: true,
+      defaultValue: null
+    },
+    shortDescription: {
+      type: DataTypes.STRING(40),
+      allowNull: true,
+      defaultValue: null
+    },
+    tecnicaId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      defaultValue: null
+    },
+    instrumentoId: {
+      type: DataTypes.INTEGER,
       allowNull: true,
       defaultValue: null
     }

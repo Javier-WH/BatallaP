@@ -30,7 +30,8 @@ import {
   EvaluationCriteria,
   ThematicComponent,
   ThematicContent,
-  EvaluationIndicator
+  EvaluationIndicator,
+  EvaluationCatalog
 } from '@/models/index';
 import {
   getSubjectOrderMapByGradeAndPeriod,
@@ -100,6 +101,8 @@ export const getEvaluationPlan = async (req: Request, res: Response) => {
           { model: EvaluationIndicator, as: 'indicators' }
         ] },
         { model: ThematicComponent, as: 'thematicComponent' },
+        { model: EvaluationCatalog, as: 'tecnicaCatalog' },
+        { model: EvaluationCatalog, as: 'instrumentoCatalog' },
       ],
       order: [['date', 'ASC']]
     });
@@ -134,7 +137,7 @@ export const getEvaluationPlan = async (req: Request, res: Response) => {
 
 export const createEvaluationItem = async (req: Request, res: Response) => {
   try {
-    const { termId, periodGradeSubjectId, sectionId, description, percentage, date, thematicComponentId, thematicContentIds, evaluationType, criteria, tecnica, instrumento } = req.body;
+    const { termId, periodGradeSubjectId, sectionId, description, percentage, date, thematicComponentId, thematicContentIds, evaluationType, criteria, tecnicaId, instrumentoId, shortDescription } = req.body;
     const normalizedThematicContentIds = Array.isArray(thematicContentIds)
       ? [...new Set(thematicContentIds.map(Number).filter(Number.isInteger))]
       : null;
@@ -176,8 +179,9 @@ export const createEvaluationItem = async (req: Request, res: Response) => {
       thematicComponentId: thematicComponentId || null,
       thematicContentIds: normalizedThematicContentIds,
       evaluationType: evaluationTypeStr,
-      tecnica: tecnica || null,
-      instrumento: instrumento || null,
+      tecnicaId: tecnicaId || null,
+      instrumentoId: instrumentoId || null,
+      shortDescription: shortDescription || null,
     });
 
     // Create criteria if provided
@@ -207,6 +211,8 @@ export const createEvaluationItem = async (req: Request, res: Response) => {
           { model: EvaluationIndicator, as: 'indicators' }
         ] },
         { model: ThematicComponent, as: 'thematicComponent' },
+        { model: EvaluationCatalog, as: 'tecnicaCatalog' },
+        { model: EvaluationCatalog, as: 'instrumentoCatalog' },
       ],
     });
     res.json(fullItem);
@@ -289,6 +295,8 @@ export const updateEvaluationItem = async (req: Request, res: Response) => {
           { model: EvaluationIndicator, as: 'indicators' }
         ] },
         { model: ThematicComponent, as: 'thematicComponent' },
+        { model: EvaluationCatalog, as: 'tecnicaCatalog' },
+        { model: EvaluationCatalog, as: 'instrumentoCatalog' },
       ],
     });
     res.json(fullItem);

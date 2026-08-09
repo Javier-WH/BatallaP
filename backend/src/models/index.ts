@@ -128,6 +128,7 @@ import ExpectedLearning from './ExpectedLearning';
 import ExpectedLearningContent from './ExpectedLearningContent';
 import EvaluationCriteria from './EvaluationCriteria';
 import EvaluationIndicator from './EvaluationIndicator';
+import EvaluationCatalog from './EvaluationCatalog';
 
 
 // ... (Existing User/Person/Role/Contact associations) ...
@@ -234,6 +235,12 @@ EvaluationCriteria.belongsTo(EvaluationPlan, { foreignKey: 'evaluationPlanId', a
 // 5.3 Evaluation Indicator Associations
 EvaluationCriteria.hasMany(EvaluationIndicator, { foreignKey: 'evaluationCriteriaId', as: 'indicators' });
 EvaluationIndicator.belongsTo(EvaluationCriteria, { foreignKey: 'evaluationCriteriaId', as: 'criterion' });
+
+// 5.4 Evaluation Catalog Associations
+EvaluationCatalog.hasMany(EvaluationPlan, { foreignKey: 'tecnicaId', as: 'tecnicaPlans' });
+EvaluationCatalog.hasMany(EvaluationPlan, { foreignKey: 'instrumentoId', as: 'instrumentoPlans' });
+EvaluationPlan.belongsTo(EvaluationCatalog, { foreignKey: 'tecnicaId', as: 'tecnicaCatalog' });
+EvaluationPlan.belongsTo(EvaluationCatalog, { foreignKey: 'instrumentoId', as: 'instrumentoCatalog' });
 
 InscriptionSubject.hasMany(Qualification, { foreignKey: 'inscriptionSubjectId', as: 'qualifications' });
 Qualification.belongsTo(InscriptionSubject, { foreignKey: 'inscriptionSubjectId', as: 'inscriptionSubject' });
@@ -411,5 +418,6 @@ export {
   ExpectedLearning,
   ExpectedLearningContent,
   EvaluationCriteria,
-  EvaluationIndicator
+  EvaluationIndicator,
+  EvaluationCatalog
 };

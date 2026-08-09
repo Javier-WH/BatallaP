@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Modal, Form, Input, DatePicker, Button, Select, InputNumber, message, Checkbox, AutoComplete } from 'antd';
+import { Modal, Form, Input, DatePicker, Button, Select, InputNumber, message, Checkbox } from 'antd';
 import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
 import api from '@/services/api';
 import dayjs from 'dayjs';
@@ -27,8 +27,11 @@ export interface EvaluationPlanItem {
   thematicComponent?: { id: number; title: string } | null;
   criteria?: { id: number; name: string; points: number; indicators?: { id: number; name: string; points: number }[] }[];
   evaluationType?: string | null;
-  tecnica?: string | null;
-  instrumento?: string | null;
+  tecnicaId?: number | null;
+  instrumentoId?: number | null;
+  tecnicaCatalog?: { id: number; name: string } | null;
+  instrumentoCatalog?: { id: number; name: string } | null;
+  shortDescription?: string | null;
 }
 
 interface PlanItemFormValues {
@@ -37,8 +40,9 @@ interface PlanItemFormValues {
   date: dayjs.Dayjs | null;
   thematicContentIds?: number[];
   evaluationType?: string[] | null;
-  tecnica?: string;
-  instrumento?: string;
+  tecnicaId?: number;
+  instrumentoId?: number;
+  shortDescription?: string;
 }
 
 export interface SchoolPeriodInfo {
@@ -47,6 +51,12 @@ export interface SchoolPeriodInfo {
   period?: string;
   startYear?: number;
   endYear?: number;
+}
+
+export interface CatalogOption {
+  id: number;
+  type: 'tecnica' | 'instrumento';
+  name: string;
 }
 
 export interface EvaluationPlanItemModalProps {
@@ -61,6 +71,8 @@ export interface EvaluationPlanItemModalProps {
   schoolPeriod?: SchoolPeriodInfo | string;
   existingItems?: EvaluationPlanItem[];
   thematicComponents?: ThematicComponentOption[];
+  tecnicaOptions?: CatalogOption[];
+  instrumentoOptions?: CatalogOption[];
   maxGrade?: number;
 }
 
@@ -125,7 +137,8 @@ const EvaluationPlanItemModal: React.FC<EvaluationPlanItemModalProps> = ({
   selectedTermDateRange,
   schoolPeriod,
   thematicComponents = [],
-  existingItems = [],
+  tecnicaOptions = [],
+  instrumentoOptions = [],
   maxGrade = 20,
 }) => {
   const [form] = Form.useForm<PlanItemFormValues>();
@@ -142,13 +155,8 @@ const EvaluationPlanItemModal: React.FC<EvaluationPlanItemModalProps> = ({
     }))
   );
 
-  const tecnicaOptions = [...new Set(
-    (existingItems || []).map(i => i.tecnica).filter(Boolean) as string[]
-  )].map(v => ({ value: v }));
-
-  const instrumentoOptions = [...new Set(
-    (existingItems || []).map(i => i.instrumento).filter(Boolean) as string[]
-  )].map(v => ({ value: v }));
+  const tecnicaSelectOptions = tecnicaOptions.map(t => ({ value: t.id, label: t.name }));
+  const instrumentoSelectOptions = instrumentoOptions.map(i => ({ value: i.id, label: i.name }));
 
   useEffect(() => {
     if (open) {
@@ -162,8 +170,9 @@ const EvaluationPlanItemModal: React.FC<EvaluationPlanItemModalProps> = ({
             : thematicComponents
               .filter(component => component.id === editingItem.thematicComponentId)
               .flatMap(component => (component.contents || []).map(content => content.id)),
-          tecnica: editingItem.tecnica || '',
-          instrumento: editingItem.instrumento || '',
+          tecnicaId: editingItem.tecnicaId || undefined,
+          instrumentoId: editingItem.instrumentoId || undefined,
+          shortDescription: editingItem.shortDescription || '',
         });
         setEvaluationType(editingItem.evaluationType ? editingItem.evaluationType.split(',') : []);
         setPercentageValue(editingItem.percentage);
@@ -231,8 +240,9 @@ const EvaluationPlanItemModal: React.FC<EvaluationPlanItemModalProps> = ({
         date: values.date ? values.date.format('YYYY-MM-DD') : null,
         thematicContentIds: values.thematicContentIds?.length ? values.thematicContentIds : null,
         evaluationType: evaluationType.length > 0 ? evaluationType.join(',') : null,
-        tecnica: values.tecnica || null,
-        instrumento: values.instrumento || null,
+        tecnicaId: values.tecnicaId || null,
+        instrumentoId: values.instrumentoId || null,
+        shortDescription: values.shortDescription || null,
         criteria: criteria.map(c => ({
           name: c.name,
           points: Number(c.points),
@@ -320,25 +330,34 @@ const EvaluationPlanItemModal: React.FC<EvaluationPlanItemModalProps> = ({
           <Input placeholder="Ej: Examen, Exposición, Trabajo escrito..." />
         </Form.Item>
 
+        <Form.Item
+          name="shortDescription"
+          label="Descripción breve"
+          rules={[
+            { required: true, message: 'Ingrese una descripción breve' },
+            { max: 40, message: 'Máximo 40 caracteres' },
+          ]}
+        >
+          <Input placeholder="Máximo 40 caracteres" maxLength={40} showCount />
+        </Form.Item>
+
         <div style={{ display: 'flex', gap: 16 }}>
-          <Form.Item name="tecnica" label="Técnica" style={{ flex: 1 }} rules={[{ required: true, message: 'Ingrese la técnica' }]}>
-            <AutoComplete
-              options={tecnicaOptions}
-              placeholder="Ej: Observación, Entrevista, Encuesta..."
-              filterOption={(input, option) =>
-                (option?.value ?? '').toLowerCase().includes(input.toLowerCase())
-              }
+          <Form.Item name="tecnicaId" label="Técnica" style={{ flex: 1 }} rules={[{ required: true, message: 'Seleccione la técnica' }]}>
+            <Select
+              showSearch
               allowClear
+              placeholder="Seleccionar técnica..."
+              options={tecnicaSelectOptions}
+              optionFilterProp="label"
             />
           </Form.Item>
-          <Form.Item name="instrumento" label="Instrumento" style={{ flex: 1 }} rules={[{ required: true, message: 'Ingrese el instrumento' }]}>
-            <AutoComplete
-              options={instrumentoOptions}
-              placeholder="Ej: Lista de cotejo, Rúbrica, Cuestionario..."
-              filterOption={(input, option) =>
-                (option?.value ?? '').toLowerCase().includes(input.toLowerCase())
-              }
+          <Form.Item name="instrumentoId" label="Instrumento" style={{ flex: 1 }} rules={[{ required: true, message: 'Seleccione el instrumento' }]}>
+            <Select
+              showSearch
               allowClear
+              placeholder="Seleccionar instrumento..."
+              options={instrumentoSelectOptions}
+              optionFilterProp="label"
             />
           </Form.Item>
         </div>

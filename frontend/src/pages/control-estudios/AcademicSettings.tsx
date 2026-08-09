@@ -54,6 +54,12 @@ interface TermFormValues {
   closeDate?: dayjs.Dayjs;
 }
 
+interface CatalogItem {
+  id: number;
+  type: 'tecnica' | 'instrumento';
+  name: string;
+}
+
 const AcademicSettings: React.FC = () => {
   const [form] = Form.useForm();
   const [termForm] = Form.useForm();
@@ -66,6 +72,9 @@ const AcademicSettings: React.FC = () => {
   const [termSubmitting, setTermSubmitting] = useState(false);
   const [letterGrades, setLetterGrades] = useState<LetterGrade[]>([]);
   const { refreshSetting } = useGradeRounding();
+  const [catalogs, setCatalogs] = useState<CatalogItem[]>([]);
+  const [catalogModal, setCatalogModal] = useState<{ open: boolean; editing?: CatalogItem | null; type: 'tecnica' | 'instrumento'; name: string }>({ open: false, type: 'tecnica', name: '' });
+  const [catalogSubmitting, setCatalogSubmitting] = useState(false);
 
   const fetchSettings = useCallback(async () => {
     setLoading(true);
@@ -127,10 +136,61 @@ const AcademicSettings: React.FC = () => {
     }
   }, []);
 
+  const fetchCatalogs = useCallback(async () => {
+    try {
+      const res = await api.get('/evaluation/catalogs');
+      setCatalogs(res.data);
+    } catch {
+      // silent
+    }
+  }, []);
+
   useEffect(() => {
     fetchSettings();
     fetchTerms();
-  }, [fetchSettings, fetchTerms]);
+    fetchCatalogs();
+  }, [fetchSettings, fetchTerms, fetchCatalogs]);
+
+  const handleAddCatalog = (type: 'tecnica' | 'instrumento') => {
+    setCatalogModal({ open: true, editing: null, type, name: '' });
+  };
+
+  const handleEditCatalog = (item: CatalogItem) => {
+    setCatalogModal({ open: true, editing: item, type: item.type, name: item.name });
+  };
+
+  const handleDeleteCatalog = async (id: number) => {
+    try {
+      await api.delete(`/evaluation/catalogs/${id}`);
+      message.success('Elemento eliminado');
+      fetchCatalogs();
+    } catch {
+      message.error('Error al eliminar');
+    }
+  };
+
+  const handleSaveCatalog = async () => {
+    if (!catalogModal.name.trim()) {
+      message.warning('El nombre es requerido');
+      return;
+    }
+    setCatalogSubmitting(true);
+    try {
+      if (catalogModal.editing) {
+        await api.put(`/evaluation/catalogs/${catalogModal.editing.id}`, { name: catalogModal.name.trim() });
+        message.success('Actualizado correctamente');
+      } else {
+        await api.post('/evaluation/catalogs', { type: catalogModal.type, name: catalogModal.name.trim() });
+        message.success('Creado correctamente');
+      }
+      setCatalogModal(prev => ({ ...prev, open: false }));
+      fetchCatalogs();
+    } catch (error: any) {
+      message.error(error.response?.data?.message || 'Error al guardar');
+    } finally {
+      setCatalogSubmitting(false);
+    }
+  };
 
   const onFinish = async (values: SettingsFormValues) => {
     setSaving(true);
@@ -680,6 +740,101 @@ const AcademicSettings: React.FC = () => {
           )}
         </Col>
       </Row>
+
+      {/* Catalogs Section */}
+      <Row gutter={[32, 32]} style={{ marginTop: 32 }}>
+        <Col xs={24} lg={12}>
+          <Card
+            className="premium-card animate-card"
+            styles={{ body: { padding: 0 } }}
+            title={
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 12px' }}>
+                <Text style={{ fontWeight: 800, fontSize: 16 }}>Técnicas de Evaluación</Text>
+                <Button type="primary" icon={<PlusOutlined />} onClick={() => handleAddCatalog('tecnica')} style={{ borderRadius: 12, fontWeight: 700, height: 40 }}>
+                  Nueva Técnica
+                </Button>
+              </div>
+            }
+          >
+            <Table
+              dataSource={catalogs.filter(c => c.type === 'tecnica')}
+              rowKey="id"
+              pagination={false}
+              className="premium-table"
+              style={{ padding: '4px' }}
+              columns={[
+                { title: 'Nombre', dataIndex: 'name', key: 'name', render: (t: string) => <Text style={{ fontWeight: 600 }}>{t}</Text> },
+                { title: 'Acciones', key: 'actions', align: 'right' as const, width: 120, render: (_: any, r: CatalogItem) => (
+                  <Space>
+                    <Tooltip title="Editar"><Button type="text" icon={<EditOutlined style={{ color: '#1890ff' }} />} onClick={() => handleEditCatalog(r)} /></Tooltip>
+                    <Popconfirm title="¿Eliminar?" onConfirm={() => handleDeleteCatalog(r.id)} okText="Sí" cancelText="No" okButtonProps={{ danger: true }}>
+                      <Button type="text" danger icon={<DeleteOutlined />} />
+                    </Popconfirm>
+                  </Space>
+                )},
+              ]}
+            />
+          </Card>
+        </Col>
+        <Col xs={24} lg={12}>
+          <Card
+            className="premium-card animate-card"
+            styles={{ body: { padding: 0 } }}
+            title={
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 12px' }}>
+                <Text style={{ fontWeight: 800, fontSize: 16 }}>Instrumentos de Evaluación</Text>
+                <Button type="primary" icon={<PlusOutlined />} onClick={() => handleAddCatalog('instrumento')} style={{ borderRadius: 12, fontWeight: 700, height: 40 }}>
+                  Nuevo Instrumento
+                </Button>
+              </div>
+            }
+          >
+            <Table
+              dataSource={catalogs.filter(c => c.type === 'instrumento')}
+              rowKey="id"
+              pagination={false}
+              className="premium-table"
+              style={{ padding: '4px' }}
+              columns={[
+                { title: 'Nombre', dataIndex: 'name', key: 'name', render: (t: string) => <Text style={{ fontWeight: 600 }}>{t}</Text> },
+                { title: 'Acciones', key: 'actions', align: 'right' as const, width: 120, render: (_: any, r: CatalogItem) => (
+                  <Space>
+                    <Tooltip title="Editar"><Button type="text" icon={<EditOutlined style={{ color: '#1890ff' }} />} onClick={() => handleEditCatalog(r)} /></Tooltip>
+                    <Popconfirm title="¿Eliminar?" onConfirm={() => handleDeleteCatalog(r.id)} okText="Sí" cancelText="No" okButtonProps={{ danger: true }}>
+                      <Button type="text" danger icon={<DeleteOutlined />} />
+                    </Popconfirm>
+                  </Space>
+                )},
+              ]}
+            />
+          </Card>
+        </Col>
+      </Row>
+
+      {/* Catalog Modal */}
+      <Modal
+        title={catalogModal.editing ? 'Editar' : 'Agregar'}
+        open={catalogModal.open}
+        onCancel={() => setCatalogModal(prev => ({ ...prev, open: false }))}
+        onOk={handleSaveCatalog}
+        confirmLoading={catalogSubmitting}
+        okText="Guardar"
+        cancelText="Cancelar"
+        centered
+        width={400}
+      >
+        <Form layout="vertical" style={{ marginTop: 16 }}>
+          <Form.Item label={catalogModal.type === 'tecnica' ? 'Técnica' : 'Instrumento'} required>
+            <Input
+              value={catalogModal.name}
+              onChange={e => setCatalogModal(prev => ({ ...prev, name: e.target.value }))}
+              placeholder="Ingrese el nombre..."
+              maxLength={100}
+              autoFocus
+            />
+          </Form.Item>
+        </Form>
+      </Modal>
 
       {/* Modal Rediseño */}
       <Modal

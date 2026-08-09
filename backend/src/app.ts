@@ -77,6 +77,7 @@ import healthRoutes from '@/routes/healthRoutes';
 import revisionPeriodRoutes from '@/routes/revisionPeriodRoutes';
 import revisionGradeRoutes from '@/routes/revisionGradeRoutes';
 import externalGradeRoutes from '@/routes/externalGradeRoutes';
+import evaluationCatalogRoutes from '@/routes/evaluationCatalogRoutes';
 
 app.get('/', (req, res) => {
   res.send('API is running...');
@@ -116,6 +117,7 @@ app.use('/api/health', healthRoutes);
 app.use('/api/revision-periods', revisionPeriodRoutes);
 app.use('/api/revision-grades', revisionGradeRoutes);
 app.use('/api/external-grades', externalGradeRoutes);
+app.use('/api/evaluation/catalogs', evaluationCatalogRoutes);
 
 export { sessionStore };
 export default app;

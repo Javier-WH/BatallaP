@@ -11,7 +11,7 @@ import { useGradeRounding } from '@/context/GradeRoundingContext';
 import { formatGrade } from '@/utils/gradeFormat';
 import EvaluationPlanPDFModal from '@/components/pdf/EvaluationPlanPDFModal';
 import type { EvaluationPlanHeaderData } from '@/components/pdf/EvaluationPlanPDF';
-import EvaluationPlanItemModal from '@/components/EvaluationPlanItemModal';
+import EvaluationPlanItemModal, { type CatalogOption } from '@/components/EvaluationPlanItemModal';
 import ContentTab from './ContentTab';
 
 
@@ -112,8 +112,11 @@ interface EvaluationPlanItem {
   thematicContents?: { id: number; title: string; thematicComponent?: { id: number; title: string } }[];
   criteria?: { id: number; name: string; points: number; indicators?: { id: number; name: string; points: number }[] }[];
   evaluationType?: string | null;
-  tecnica?: string | null;
-  instrumento?: string | null;
+  tecnicaId?: number | null;
+  instrumentoId?: number | null;
+  tecnicaCatalog?: { id: number; name: string } | null;
+  instrumentoCatalog?: { id: number; name: string } | null;
+  shortDescription?: string | null;
 }
 
 interface Subject {
@@ -210,6 +213,8 @@ const TeacherPanel: React.FC = () => {
   const [remedialMaxGrade, setRemedialMaxGrade] = useState<number>(9);
   const [showPDFModal, setShowPDFModal] = useState(false);
   const [thematicComponents, setThematicComponents] = useState<ThematicComponentData[]>([]);
+  const [tecnicaOptions, setTecnicaOptions] = useState<CatalogOption[]>([]);
+  const [instrumentoOptions, setInstrumentoOptions] = useState<CatalogOption[]>([]);
   const [revisionOpen, setRevisionOpen] = useState(false);
   const { enableRounding } = useGradeRounding();
 
@@ -433,6 +438,22 @@ const TeacherPanel: React.FC = () => {
   }, [fetchThematicComponents]);
 
   useEffect(() => {
+    const fetchCatalogs = async () => {
+      try {
+        const [tecRes, instRes] = await Promise.all([
+          api.get('/evaluation/catalogs?type=tecnica'),
+          api.get('/evaluation/catalogs?type=instrumento'),
+        ]);
+        setTecnicaOptions(tecRes.data);
+        setInstrumentoOptions(instRes.data);
+      } catch {
+        // silent
+      }
+    };
+    fetchCatalogs();
+  }, []);
+
+  useEffect(() => {
     const fetchRevisionStatus = async () => {
       const activeRes = await api.get('/academic/active');
       if (activeRes.data) {
@@ -584,11 +605,11 @@ const handleToggleAbsent = async (enrollment: StudentEnrollment, evalPlanId: num
     { title: 'Estrategia de Evaluación', dataIndex: 'description', key: 'description', width: 200,
       render: (val: string) => <span style={{ fontWeight: 600 }}>{val}</span>
     },
-    { title: 'Técnica', dataIndex: 'tecnica', key: 'tecnica', width: 120,
-      render: (val: string) => val || <span style={{ color: '#999' }}>—</span>
+    { title: 'Técnica', key: 'tecnica', width: 120,
+      render: (_: unknown, r: EvaluationPlanItem) => r.tecnicaCatalog?.name || <span style={{ color: '#999' }}>—</span>
     },
-    { title: 'Instrumento', dataIndex: 'instrumento', key: 'instrumento', width: 120,
-      render: (val: string) => val || <span style={{ color: '#999' }}>—</span>
+    { title: 'Instrumento', key: 'instrumento', width: 120,
+      render: (_: unknown, r: EvaluationPlanItem) => r.instrumentoCatalog?.name || <span style={{ color: '#999' }}>—</span>
     },
     { title: 'Contenidos Temáticos', key: 'thematicContents', width: 220,
       render: (_: unknown, r: EvaluationPlanItem) => {
@@ -1439,6 +1460,8 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
             schoolPeriod={assignment.periodGradeSubject?.periodGrade?.schoolPeriod}
             existingItems={evaluationPlan}
             thematicComponents={thematicComponents}
+            tecnicaOptions={tecnicaOptions}
+            instrumentoOptions={instrumentoOptions}
             maxGrade={maxGrade}
           />
         );
