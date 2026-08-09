@@ -25,7 +25,7 @@ export interface EvaluationPlanItem {
   thematicComponentId?: number | null;
   thematicContentIds?: number[] | null;
   thematicComponent?: { id: number; title: string } | null;
-  criteria?: { id: number; name: string; points: number }[];
+  criteria?: { id: number; name: string; points: number; indicators?: { id: number; name: string; points: number }[] }[];
   evaluationType?: string | null;
 }
 
@@ -97,10 +97,17 @@ function getSchoolPeriodDateRange(periodInput?: SchoolPeriodInfo | string) {
 
 // ── Component ──────────────────────────────────────────────────────────────────
 
+interface IndicatorRow {
+  id?: number;
+  name: string;
+  points: number;
+}
+
 interface CriteriaRow {
   id?: number;
   name: string;
   points: number;
+  indicators: IndicatorRow[];
 }
 
 const EvaluationPlanItemModal: React.FC<EvaluationPlanItemModalProps> = ({
@@ -146,7 +153,12 @@ const EvaluationPlanItemModal: React.FC<EvaluationPlanItemModalProps> = ({
         setEvaluationType(editingItem.evaluationType ? editingItem.evaluationType.split(',') : []);
         setPercentageValue(editingItem.percentage);
         setCriteria(
-          (editingItem.criteria || []).map(c => ({ id: c.id, name: c.name, points: c.points }))
+          (editingItem.criteria || []).map(c => ({
+            id: c.id,
+            name: c.name,
+            points: c.points,
+            indicators: (c.indicators || []).map(ind => ({ id: ind.id, name: ind.name, points: ind.points })),
+          }))
         );
       } else {
         form.resetFields();
@@ -170,6 +182,14 @@ const EvaluationPlanItemModal: React.FC<EvaluationPlanItemModalProps> = ({
         message.warning(`Los criterios no pueden superar ${maxPoints.toFixed(1)} puntos (puntaje total de la evaluación)`);
         return;
       }
+      // Validate indicator sums per criterion
+      for (const c of criteria) {
+        const indSum = c.indicators.reduce((acc, ind) => acc + Number(ind.points || 0), 0);
+        if (c.indicators.length > 0 && indSum > Number(c.points)) {
+          message.warning(`Los indicadores de "${c.name}" suman ${indSum} pts, que supera los ${c.points} pts del criterio`);
+          return;
+        }
+      }
       setSaving(true);
 
       const payload = {
@@ -181,7 +201,11 @@ const EvaluationPlanItemModal: React.FC<EvaluationPlanItemModalProps> = ({
         date: values.date ? values.date.format('YYYY-MM-DD') : null,
         thematicContentIds: values.thematicContentIds?.length ? values.thematicContentIds : null,
         evaluationType: evaluationType.length > 0 ? evaluationType.join(',') : null,
-        criteria: criteria.map(c => ({ name: c.name, points: Number(c.points) })),
+        criteria: criteria.map(c => ({
+          name: c.name,
+          points: Number(c.points),
+          indicators: c.indicators.map(ind => ({ name: ind.name, points: Number(ind.points) })),
+        })),
       };
 
       if (editingItem) {
@@ -209,7 +233,7 @@ const EvaluationPlanItemModal: React.FC<EvaluationPlanItemModalProps> = ({
   };
 
   const addCriteria = () => {
-    setCriteria([...criteria, { name: '', points: 0 }]);
+    setCriteria([...criteria, { name: '', points: 0, indicators: [] }]);
   };
 
   const removeCriteria = (index: number) => {
@@ -218,6 +242,26 @@ const EvaluationPlanItemModal: React.FC<EvaluationPlanItemModalProps> = ({
 
   const updateCriteria = (index: number, field: keyof CriteriaRow, value: string | number) => {
     setCriteria(criteria.map((c, i) => (i === index ? { ...c, [field]: value } : c)));
+  };
+
+  const addIndicator = (critIndex: number) => {
+    setCriteria(criteria.map((c, i) =>
+      i === critIndex ? { ...c, indicators: [...c.indicators, { name: '', points: 0 }] } : c
+    ));
+  };
+
+  const removeIndicator = (critIndex: number, indIndex: number) => {
+    setCriteria(criteria.map((c, i) =>
+      i === critIndex ? { ...c, indicators: c.indicators.filter((_, j) => j !== indIndex) } : c
+    ));
+  };
+
+  const updateIndicator = (critIndex: number, indIndex: number, field: keyof IndicatorRow, value: string | number) => {
+    setCriteria(criteria.map((c, i) =>
+      i === critIndex
+        ? { ...c, indicators: c.indicators.map((ind, j) => (j === indIndex ? { ...ind, [field]: value } : ind)) }
+        : c
+    ));
   };
 
   const { minPeriodDate, maxPeriodDate } = getSchoolPeriodDateRange(schoolPeriod);
@@ -376,33 +420,83 @@ const EvaluationPlanItemModal: React.FC<EvaluationPlanItemModalProps> = ({
           {criteria.map((c, index) => {
             const maxPoints = percentageValue ? (percentageValue / 100) * maxGrade : undefined;
             const exceedsMax = maxPoints != null && c.points > maxPoints;
+            const indSum = c.indicators.reduce((acc, ind) => acc + Number(ind.points || 0), 0);
+            const indExceeds = c.indicators.length > 0 && indSum > Number(c.points);
             return (
-            <div key={index} style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
-              <Input
-                placeholder="Nombre del criterio"
-                value={c.name}
-                onChange={e => updateCriteria(index, 'name', e.target.value)}
-                style={{ flex: 1 }}
-              />
-              <div style={{ display: 'flex', flexDirection: 'column' }}>
-                <InputNumber
-                  placeholder="Pts"
-                  min={0}
-                  value={c.points}
-                  onChange={val => updateCriteria(index, 'points', val || 0)}
-                  style={{ width: 80 }}
-                  status={exceedsMax ? 'error' : undefined}
+            <div key={index} style={{ marginBottom: 12, padding: 8, border: '1px solid var(--color-border, #d9d9d9)', borderRadius: 8 }}>
+              <div style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
+                <Input
+                  placeholder="Nombre del criterio"
+                  value={c.name}
+                  onChange={e => updateCriteria(index, 'name', e.target.value)}
+                  style={{ flex: 1 }}
                 />
-                {exceedsMax && (
-                  <span style={{ color: '#ff4d4f', fontSize: 10, marginTop: 2 }}>Máx: {maxPoints?.toFixed(1)} pts</span>
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  <InputNumber
+                    placeholder="Pts"
+                    min={0}
+                    value={c.points}
+                    onChange={val => updateCriteria(index, 'points', val || 0)}
+                    style={{ width: 80 }}
+                    status={exceedsMax ? 'error' : undefined}
+                  />
+                  {exceedsMax && (
+                    <span style={{ color: '#ff4d4f', fontSize: 10, marginTop: 2 }}>Máx: {maxPoints?.toFixed(1)} pts</span>
+                  )}
+                </div>
+                <Button
+                  type="text"
+                  danger
+                  icon={<DeleteOutlined />}
+                  onClick={() => removeCriteria(index)}
+                />
+              </div>
+              {/* Indicators */}
+              <div style={{ paddingLeft: 16, borderLeft: '2px solid var(--color-border, #e8e8e8)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-muted, #999)' }}>Indicadores</span>
+                  <Button type="dashed" size="small" icon={<PlusOutlined />} onClick={() => addIndicator(index)}>
+                    Agregar
+                  </Button>
+                </div>
+                {c.indicators.length === 0 && (
+                  <div style={{ color: '#999', fontSize: 11, padding: '4px 0' }}>Sin indicadores</div>
+                )}
+                {c.indicators.map((ind, indIndex) => (
+                  <div key={indIndex} style={{ display: 'flex', gap: 8, marginBottom: 4, alignItems: 'center' }}>
+                    <Input
+                      placeholder="Nombre del indicador"
+                      value={ind.name}
+                      onChange={e => updateIndicator(index, indIndex, 'name', e.target.value)}
+                      style={{ flex: 1, fontSize: 12 }}
+                      size="small"
+                    />
+                    <div style={{ display: 'flex', flexDirection: 'column' }}>
+                      <InputNumber
+                        placeholder="Pts"
+                        min={0}
+                        value={ind.points}
+                        onChange={val => updateIndicator(index, indIndex, 'points', val || 0)}
+                        style={{ width: 70 }}
+                        size="small"
+                        status={indExceeds ? 'error' : undefined}
+                      />
+                    </div>
+                    <Button
+                      type="text"
+                      danger
+                      size="small"
+                      icon={<DeleteOutlined />}
+                      onClick={() => removeIndicator(index, indIndex)}
+                    />
+                  </div>
+                ))}
+                {indExceeds && (
+                  <div style={{ color: '#ff4d4f', fontSize: 10, marginTop: 2 }}>
+                    Los indicadores suman {indSum} pts, máximo del criterio: {c.points} pts
+                  </div>
                 )}
               </div>
-              <Button
-                type="text"
-                danger
-                icon={<DeleteOutlined />}
-                onClick={() => removeCriteria(index)}
-              />
             </div>
             );
           })}

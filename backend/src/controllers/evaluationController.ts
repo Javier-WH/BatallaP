@@ -28,7 +28,9 @@ import {
   QualificationAudit,
   Setting,
   EvaluationCriteria,
-  ThematicComponent
+  ThematicComponent,
+  ThematicContent,
+  EvaluationIndicator
 } from '@/models/index';
 import {
   getSubjectOrderMapByGradeAndPeriod,
@@ -94,13 +96,36 @@ export const getEvaluationPlan = async (req: Request, res: Response) => {
     const plan = await EvaluationPlan.findAll({
       where,
       include: [
-        { model: EvaluationCriteria, as: 'criteria' },
+        { model: EvaluationCriteria, as: 'criteria', include: [
+          { model: EvaluationIndicator, as: 'indicators' }
+        ] },
         { model: ThematicComponent, as: 'thematicComponent' },
       ],
       order: [['date', 'ASC']]
     });
 
-    res.json(plan);
+    // Resolve thematicContentIds to content objects
+    const allContentIds = plan.flatMap((p: any) =>
+      Array.isArray(p.thematicContentIds) ? p.thematicContentIds : []
+    );
+    let contentMap = new Map<number, any>();
+    if (allContentIds.length > 0) {
+      const contents = await ThematicContent.findAll({
+        where: { id: allContentIds },
+        include: [{ model: ThematicComponent, as: 'thematicComponent', attributes: ['id', 'title'] }]
+      });
+      contents.forEach((c: any) => contentMap.set(c.id, c.toJSON()));
+    }
+
+    const planWithContents = plan.map((p: any) => {
+      const j = p.toJSON();
+      j.thematicContents = (Array.isArray(j.thematicContentIds) ? j.thematicContentIds : [])
+        .map((id: number) => contentMap.get(id))
+        .filter(Boolean);
+      return j;
+    });
+
+    res.json(planWithContents);
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Error al obtener plan de evaluación' });
@@ -155,19 +180,30 @@ export const createEvaluationItem = async (req: Request, res: Response) => {
 
     // Create criteria if provided
     if (Array.isArray(criteria) && criteria.length > 0) {
-      await EvaluationCriteria.bulkCreate(
-        criteria.map((c: any) => ({
+      for (const c of criteria) {
+        const criterion = await EvaluationCriteria.create({
           evaluationPlanId: item.id,
           name: c.name,
           points: c.points,
-        }))
-      );
+        });
+        if (Array.isArray(c.indicators) && c.indicators.length > 0) {
+          await EvaluationIndicator.bulkCreate(
+            c.indicators.map((ind: any) => ({
+              evaluationCriteriaId: criterion.id,
+              name: ind.name,
+              points: ind.points,
+            }))
+          );
+        }
+      }
     }
 
     // Return with criteria included
     const fullItem = await EvaluationPlan.findByPk(item.id, {
       include: [
-        { model: EvaluationCriteria, as: 'criteria' },
+        { model: EvaluationCriteria, as: 'criteria', include: [
+          { model: EvaluationIndicator, as: 'indicators' }
+        ] },
         { model: ThematicComponent, as: 'thematicComponent' },
       ],
     });
@@ -226,19 +262,30 @@ export const updateEvaluationItem = async (req: Request, res: Response) => {
     if (Array.isArray(criteria)) {
       await EvaluationCriteria.destroy({ where: { evaluationPlanId: Number(id) } });
       if (criteria.length > 0) {
-        await EvaluationCriteria.bulkCreate(
-          criteria.map((c: any) => ({
+        for (const c of criteria) {
+          const criterion = await EvaluationCriteria.create({
             evaluationPlanId: Number(id),
             name: c.name,
             points: c.points,
-          }))
-        );
+          });
+          if (Array.isArray(c.indicators) && c.indicators.length > 0) {
+            await EvaluationIndicator.bulkCreate(
+              c.indicators.map((ind: any) => ({
+                evaluationCriteriaId: criterion.id,
+                name: ind.name,
+                points: ind.points,
+              }))
+            );
+          }
+        }
       }
     }
 
     const fullItem = await EvaluationPlan.findByPk(id, {
       include: [
-        { model: EvaluationCriteria, as: 'criteria' },
+        { model: EvaluationCriteria, as: 'criteria', include: [
+          { model: EvaluationIndicator, as: 'indicators' }
+        ] },
         { model: ThematicComponent, as: 'thematicComponent' },
       ],
     });

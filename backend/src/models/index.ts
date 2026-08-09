@@ -127,6 +127,7 @@ import ThematicContent from './ThematicContent';
 import ExpectedLearning from './ExpectedLearning';
 import ExpectedLearningContent from './ExpectedLearningContent';
 import EvaluationCriteria from './EvaluationCriteria';
+import EvaluationIndicator from './EvaluationIndicator';
 
 
 // ... (Existing User/Person/Role/Contact associations) ...
@@ -229,6 +230,10 @@ ThematicComponent.hasMany(EvaluationPlan, { foreignKey: 'thematicComponentId', a
 // 5.2 Evaluation Criteria Associations
 EvaluationPlan.hasMany(EvaluationCriteria, { foreignKey: 'evaluationPlanId', as: 'criteria' });
 EvaluationCriteria.belongsTo(EvaluationPlan, { foreignKey: 'evaluationPlanId', as: 'evaluationPlan' });
+
+// 5.3 Evaluation Indicator Associations
+EvaluationCriteria.hasMany(EvaluationIndicator, { foreignKey: 'evaluationCriteriaId', as: 'indicators' });
+EvaluationIndicator.belongsTo(EvaluationCriteria, { foreignKey: 'evaluationCriteriaId', as: 'criterion' });
 
 InscriptionSubject.hasMany(Qualification, { foreignKey: 'inscriptionSubjectId', as: 'qualifications' });
 Qualification.belongsTo(InscriptionSubject, { foreignKey: 'inscriptionSubjectId', as: 'inscriptionSubject' });
@@ -405,5 +410,6 @@ export {
   ThematicContent,
   ExpectedLearning,
   ExpectedLearningContent,
-  EvaluationCriteria
+  EvaluationCriteria,
+  EvaluationIndicator
 };

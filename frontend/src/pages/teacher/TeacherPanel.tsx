@@ -108,7 +108,9 @@ interface EvaluationPlanItem {
   date: string;
   thematicComponentId?: number | null;
   thematicComponent?: { id: number; title: string } | null;
-  criteria?: { id: number; name: string; points: number }[];
+  thematicContentIds?: number[] | null;
+  thematicContents?: { id: number; title: string; thematicComponent?: { id: number; title: string } }[];
+  criteria?: { id: number; name: string; points: number; indicators?: { id: number; name: string; points: number }[] }[];
   evaluationType?: string | null;
 }
 
@@ -580,15 +582,36 @@ const handleToggleAbsent = async (enrollment: StudentEnrollment, evalPlanId: num
     { title: 'Estrategia de Evaluación', dataIndex: 'description', key: 'description', width: 200,
       render: (val: string) => <span style={{ fontWeight: 600 }}>{val}</span>
     },
-    { title: 'Componente Temático', key: 'thematicComponent', width: 180,
-      render: (_: unknown, r: EvaluationPlanItem) => r.thematicComponent?.title || <span style={{ color: '#999' }}>—</span>
+    { title: 'Contenidos Temáticos', key: 'thematicContents', width: 220,
+      render: (_: unknown, r: EvaluationPlanItem) => {
+        if (!r.thematicContents || r.thematicContents.length === 0)
+          return <span style={{ color: '#999' }}>—</span>;
+        return (
+          <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12 }}>
+            {r.thematicContents.map(c => (
+              <li key={c.id}>{c.title}{c.thematicComponent ? <span style={{ color: '#999', fontSize: 10 }}> ({c.thematicComponent.title})</span> : null}</li>
+            ))}
+          </ul>
+        );
+      }
     },
-    { title: 'Criterios', key: 'criteria', width: 250,
+    { title: 'Criterios', key: 'criteria', width: 280,
       render: (_: unknown, r: EvaluationPlanItem) => {
         if (!r.criteria || r.criteria.length === 0) return <span style={{ color: '#999' }}>—</span>;
         return (
           <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12 }}>
-            {r.criteria.map(c => <li key={c.id}>{c.name} ({c.points} pts)</li>)}
+            {r.criteria.map(c => (
+              <li key={c.id}>
+                <span style={{ fontWeight: 500 }}>{c.name}</span> ({c.points} pts)
+                {c.indicators && c.indicators.length > 0 && (
+                  <ul style={{ margin: '2px 0 0 0', paddingLeft: 16, fontSize: 11, color: 'var(--color-text-muted, #888)' }}>
+                    {c.indicators.map(ind => (
+                      <li key={ind.id}>{ind.name} ({ind.points} pts)</li>
+                    ))}
+                  </ul>
+                )}
+              </li>
+            ))}
           </ul>
         );
       }
@@ -1433,7 +1456,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
         })()}
         items={evaluationPlan.map(ep => ({
           description: ep.description,
-          thematicComponent: ep.thematicComponent?.title || '',
+          thematicComponent: ep.thematicContents?.map(c => c.title).join(', ') || ep.thematicComponent?.title || '',
           criteria: ep.criteria?.map(c => `${c.name} (${c.points} pts)`) || [],
           percentage: Number(ep.percentage),
           date: ep.date,
