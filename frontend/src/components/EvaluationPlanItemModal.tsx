@@ -186,6 +186,13 @@ const EvaluationPlanItemModal: React.FC<EvaluationPlanItemModalProps> = ({
         message.warning(`Los criterios no pueden superar ${maxGrade} puntos (nota máxima)`);
         return;
       }
+      if (criteria.length > 0) {
+        const totalCriteriaPoints = criteria.reduce((acc, c) => acc + Number(c.points || 0), 0);
+        if (Math.abs(totalCriteriaPoints - maxGrade) > 0.01) {
+          message.warning(`La suma de los puntos de los criterios es ${totalCriteriaPoints}, debe ser exactamente ${maxGrade} (nota máxima)`);
+          return;
+        }
+      }
       // Validate indicators per criterion: must have at least one, sum must equal criterion points
       for (const c of criteria) {
         if (c.indicators.length === 0) {
