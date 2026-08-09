@@ -177,6 +177,11 @@ const EvaluationPlanItemModal: React.FC<EvaluationPlanItemModalProps> = ({
         return;
       }
       const maxPoints = (Number(values.percentage) / 100) * maxGrade;
+      const invalidCriteria = criteria.filter(c => !c.name.trim() || c.points <= 0);
+      if (invalidCriteria.length > 0) {
+        message.warning('Cada criterio debe tener un nombre y un puntaje mayor a 0');
+        return;
+      }
       const exceedingCriteria = criteria.filter(c => c.points > maxPoints);
       if (exceedingCriteria.length > 0) {
         message.warning(`Los criterios no pueden superar ${maxPoints.toFixed(1)} puntos (puntaje total de la evaluación)`);
