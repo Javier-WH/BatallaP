@@ -1369,7 +1369,7 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
       // Row 6: evaluation name (gray background)
       sheet.mergeCells(`${l1}6:${l3}6`);
       const nameCell = sheet.getCell(`${l1}6`);
-      nameCell.value = plan.description;
+      nameCell.value = plan.shortDescription || plan.description || 'Evaluación';
       nameCell.font = { bold: true, size: 9 };
       nameCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: GRAY } };
       nameCell.alignment = { horizontal: 'center', vertical: 'middle' };
