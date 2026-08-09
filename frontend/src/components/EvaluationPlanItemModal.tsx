@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Modal, Form, Input, DatePicker, Button, Select, InputNumber, message, Checkbox } from 'antd';
-import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
+import { PlusOutlined, DeleteOutlined, PlusCircleOutlined } from '@ant-design/icons';
 import api from '@/services/api';
 import dayjs from 'dayjs';
 
@@ -137,8 +137,8 @@ const EvaluationPlanItemModal: React.FC<EvaluationPlanItemModalProps> = ({
   selectedTermDateRange,
   schoolPeriod,
   thematicComponents = [],
-  tecnicaOptions = [],
-  instrumentoOptions = [],
+  tecnicaOptions: tecnicaOptionsProp = [],
+  instrumentoOptions: instrumentoOptionsProp = [],
   maxGrade = 20,
 }) => {
   const [form] = Form.useForm<PlanItemFormValues>();
@@ -155,8 +155,61 @@ const EvaluationPlanItemModal: React.FC<EvaluationPlanItemModalProps> = ({
     }))
   );
 
-  const tecnicaSelectOptions = tecnicaOptions.map(t => ({ value: t.id, label: t.name }));
-  const instrumentoSelectOptions = instrumentoOptions.map(i => ({ value: i.id, label: i.name }));
+  const [tecnicaOptionsState, setTecnicaOptionsState] = useState<CatalogOption[]>(tecnicaOptionsProp);
+  const [instrumentoOptionsState, setInstrumentoOptionsState] = useState<CatalogOption[]>(instrumentoOptionsProp);
+
+  useEffect(() => {
+    setTecnicaOptionsState(tecnicaOptionsProp);
+  }, [tecnicaOptionsProp]);
+
+  useEffect(() => {
+    setInstrumentoOptionsState(instrumentoOptionsProp);
+  }, [instrumentoOptionsProp]);
+  const tecnicaSelectOptions = tecnicaOptionsState.map(t => ({ value: t.id, label: t.name }));
+  const instrumentoSelectOptions = instrumentoOptionsState.map(i => ({ value: i.id, label: i.name }));
+  const [tecnicaSearch, setTecnicaSearch] = useState('');
+  const [instrumentoSearch, setInstrumentoSearch] = useState('');
+  const [addingTecnica, setAddingTecnica] = useState(false);
+  const [addingInstrumento, setAddingInstrumento] = useState(false);
+
+  const tecnicaExists = tecnicaOptionsState.some(t => t.name.toLowerCase() === tecnicaSearch.trim().toLowerCase());
+  const instrumentoExists = instrumentoOptionsState.some(i => i.name.toLowerCase() === instrumentoSearch.trim().toLowerCase());
+
+  const handleAddTecnica = async () => {
+    const name = tecnicaSearch.trim();
+    if (!name) return;
+    setAddingTecnica(true);
+    try {
+      const res = await api.post('/evaluation/catalogs', { type: 'tecnica', name });
+      const newOpt = res.data;
+      setTecnicaOptionsState(prev => [...prev, newOpt]);
+      form.setFieldValue('tecnicaId', newOpt.id);
+      setTecnicaSearch('');
+      message.success(`Técnica "${name}" agregada`);
+    } catch (error: any) {
+      message.error(error.response?.data?.message || 'Error al agregar técnica');
+    } finally {
+      setAddingTecnica(false);
+    }
+  };
+
+  const handleAddInstrumento = async () => {
+    const name = instrumentoSearch.trim();
+    if (!name) return;
+    setAddingInstrumento(true);
+    try {
+      const res = await api.post('/evaluation/catalogs', { type: 'instrumento', name });
+      const newOpt = res.data;
+      setInstrumentoOptionsState(prev => [...prev, newOpt]);
+      form.setFieldValue('instrumentoId', newOpt.id);
+      setInstrumentoSearch('');
+      message.success(`Instrumento "${name}" agregado`);
+    } catch (error: any) {
+      message.error(error.response?.data?.message || 'Error al agregar instrumento');
+    } finally {
+      setAddingInstrumento(false);
+    }
+  };
 
   useEffect(() => {
     if (open) {
@@ -349,6 +402,26 @@ const EvaluationPlanItemModal: React.FC<EvaluationPlanItemModalProps> = ({
               placeholder="Seleccionar técnica..."
               options={tecnicaSelectOptions}
               optionFilterProp="label"
+              onSearch={setTecnicaSearch}
+              onBlur={() => setTecnicaSearch('')}
+              dropdownRender={(menu) => (
+                <>
+                  {menu}
+                  {tecnicaSearch.trim() && !tecnicaExists && (
+                    <Button
+                      type="primary"
+                      icon={<PlusCircleOutlined />}
+                      onMouseDown={(e) => { e.preventDefault(); }}
+                      onClick={handleAddTecnica}
+                      loading={addingTecnica}
+                      block
+                      style={{ borderRadius: 0, border: 'none' }}
+                    >
+                      Agregar "{tecnicaSearch.trim()}"
+                    </Button>
+                  )}
+                </>
+              )}
             />
           </Form.Item>
           <Form.Item name="instrumentoId" label="Instrumento" style={{ flex: 1 }} rules={[{ required: true, message: 'Seleccione el instrumento' }]}>
@@ -358,6 +431,26 @@ const EvaluationPlanItemModal: React.FC<EvaluationPlanItemModalProps> = ({
               placeholder="Seleccionar instrumento..."
               options={instrumentoSelectOptions}
               optionFilterProp="label"
+              onSearch={setInstrumentoSearch}
+              onBlur={() => setInstrumentoSearch('')}
+              dropdownRender={(menu) => (
+                <>
+                  {menu}
+                  {instrumentoSearch.trim() && !instrumentoExists && (
+                    <Button
+                      type="primary"
+                      icon={<PlusCircleOutlined />}
+                      onMouseDown={(e) => { e.preventDefault(); }}
+                      onClick={handleAddInstrumento}
+                      loading={addingInstrumento}
+                      block
+                      style={{ borderRadius: 0, border: 'none' }}
+                    >
+                      Agregar "{instrumentoSearch.trim()}"
+                    </Button>
+                  )}
+                </>
+              )}
             />
           </Form.Item>
         </div>
