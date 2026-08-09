@@ -4,7 +4,18 @@ import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
 import api from '@/services/api';
 import dayjs from 'dayjs';
 
-const { Option } = Select;
+interface ThematicContentOption {
+  id: number;
+  title: string;
+  order: number;
+}
+
+interface ThematicComponentOption {
+  id: number;
+  title: string;
+  order?: number;
+  contents?: ThematicContentOption[];
+}
 
 export interface EvaluationPlanItem {
   id: number;
@@ -12,6 +23,7 @@ export interface EvaluationPlanItem {
   percentage: number;
   date: string;
   thematicComponentId?: number | null;
+  thematicContentIds?: number[] | null;
   thematicComponent?: { id: number; title: string } | null;
   criteria?: { id: number; name: string; points: number }[];
   evaluationType?: string | null;
@@ -21,7 +33,7 @@ interface PlanItemFormValues {
   description?: string;
   percentage: number;
   date: dayjs.Dayjs | null;
-  thematicComponentId?: number;
+  thematicContentIds?: number[];
   evaluationType?: string[] | null;
 }
 
@@ -44,11 +56,11 @@ export interface EvaluationPlanItemModalProps {
   selectedTermDateRange: { openDate: dayjs.Dayjs | null; closeDate: dayjs.Dayjs | null };
   schoolPeriod?: SchoolPeriodInfo | string;
   existingItems?: EvaluationPlanItem[];
-  thematicComponents?: { id: number; title: string }[];
+  thematicComponents?: ThematicComponentOption[];
   maxGrade?: number;
 }
 
-export function getSchoolPeriodDateRange(periodInput?: SchoolPeriodInfo | string) {
+function getSchoolPeriodDateRange(periodInput?: SchoolPeriodInfo | string) {
   if (!periodInput) return { minPeriodDate: null, maxPeriodDate: null, periodLabel: '' };
 
   let startYear: number | undefined;
@@ -110,6 +122,14 @@ const EvaluationPlanItemModal: React.FC<EvaluationPlanItemModalProps> = ({
   const [evaluationType, setEvaluationType] = useState<string[]>([]);
   const [percentageValue, setPercentageValue] = useState<number | null>(null);
 
+  const thematicContentOptions = thematicComponents.flatMap((component, componentIndex) =>
+    (component.contents || []).map((content, contentIndex) => ({
+      ...content,
+      componentTitle: component.title,
+      number: `${componentIndex + 1}.${contentIndex + 1}`,
+    }))
+  );
+
   useEffect(() => {
     if (open) {
       if (editingItem) {
@@ -117,7 +137,11 @@ const EvaluationPlanItemModal: React.FC<EvaluationPlanItemModalProps> = ({
           description: editingItem.description,
           percentage: editingItem.percentage,
           date: editingItem.date ? dayjs(editingItem.date) : null,
-          thematicComponentId: editingItem.thematicComponentId || undefined,
+          thematicContentIds: editingItem.thematicContentIds?.length
+            ? editingItem.thematicContentIds
+            : thematicComponents
+              .filter(component => component.id === editingItem.thematicComponentId)
+              .flatMap(component => (component.contents || []).map(content => content.id)),
         });
         setEvaluationType(editingItem.evaluationType ? editingItem.evaluationType.split(',') : []);
         setPercentageValue(editingItem.percentage);
@@ -131,7 +155,7 @@ const EvaluationPlanItemModal: React.FC<EvaluationPlanItemModalProps> = ({
         setPercentageValue(null);
       }
     }
-  }, [open, editingItem, form]);
+  }, [open, editingItem, form, thematicComponents]);
 
   const handleSave = async () => {
     try {
@@ -155,7 +179,7 @@ const EvaluationPlanItemModal: React.FC<EvaluationPlanItemModalProps> = ({
         description: values.description,
         percentage: Number(values.percentage),
         date: values.date ? values.date.format('YYYY-MM-DD') : null,
-        thematicComponentId: values.thematicComponentId || null,
+        thematicContentIds: values.thematicContentIds?.length ? values.thematicContentIds : null,
         evaluationType: evaluationType.length > 0 ? evaluationType.join(',') : null,
         criteria: criteria.map(c => ({ name: c.name, points: Number(c.points) })),
       };
@@ -170,10 +194,11 @@ const EvaluationPlanItemModal: React.FC<EvaluationPlanItemModalProps> = ({
 
       onSaved();
       onClose();
-    } catch (error: any) {
-      if (error?.response?.data?.message) {
-        message.error(error.response.data.message);
-      } else if (error?.errorFields) {
+    } catch (error: unknown) {
+      const errorData = error as { response?: { data?: { message?: string } }; errorFields?: unknown };
+      if (errorData.response?.data?.message) {
+        message.error(errorData.response.data.message);
+      } else if (errorData.errorFields) {
         message.error('Por favor complete todos los campos requeridos');
       } else {
         message.error('Error al guardar');
@@ -219,16 +244,46 @@ const EvaluationPlanItemModal: React.FC<EvaluationPlanItemModalProps> = ({
           <Input placeholder="Ej: Examen, Exposición, Trabajo escrito..." />
         </Form.Item>
 
-        <Form.Item name="thematicComponentId" label="Componente temático (opcional)">
+        <Form.Item name="thematicContentIds" label="Contenidos temáticos (opcional)">
           <Select
+            mode="multiple"
             allowClear
-            placeholder="Seleccionar componente temático"
-            notFoundContent="No hay componentes creados"
-          >
-            {thematicComponents.map(tc => (
-              <Option key={tc.id} value={tc.id}>{tc.title}</Option>
-            ))}
-          </Select>
+            placeholder="Seleccionar uno o más contenidos"
+            notFoundContent="No hay contenidos creados"
+            optionFilterProp="label"
+            options={thematicContentOptions.map(content => ({
+              value: content.id,
+              label: `${content.number} · ${content.title} — ${content.componentTitle}`,
+            }))}
+            tagRender={({ label, closable, onClose }) => (
+              <span
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  padding: '4px 8px',
+                  margin: '2px',
+                  borderRadius: 6,
+                  backgroundColor: 'var(--color-accent, #1677ff)',
+                  color: '#fff',
+                  fontSize: 13,
+                  fontWeight: 500,
+                  lineHeight: '20px',
+                  height: 28,
+                  gap: 6,
+                }}
+              >
+                {label}
+                {closable && (
+                  <span
+                    onClick={(e) => { e.stopPropagation(); onClose(); }}
+                    style={{ cursor: 'pointer', fontWeight: 700, fontSize: 16, lineHeight: 1 }}
+                  >
+                    ×
+                  </span>
+                )}
+              </span>
+            )}
+          />
         </Form.Item>
 
         <Form.Item label="Tipo de evaluación" required>

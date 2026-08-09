@@ -1407,7 +1407,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
             selectedTermDateRange={selectedTermDateRange}
             schoolPeriod={assignment.periodGradeSubject?.periodGrade?.schoolPeriod}
             existingItems={evaluationPlan}
-            thematicComponents={thematicComponents.map(tc => ({ id: tc.id, title: tc.title }))}
+            thematicComponents={thematicComponents}
             maxGrade={maxGrade}
           />
         );

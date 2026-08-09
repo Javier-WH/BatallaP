@@ -109,7 +109,10 @@ export const getEvaluationPlan = async (req: Request, res: Response) => {
 
 export const createEvaluationItem = async (req: Request, res: Response) => {
   try {
-    const { termId, periodGradeSubjectId, sectionId, description, percentage, date, thematicComponentId, evaluationType, criteria } = req.body;
+    const { termId, periodGradeSubjectId, sectionId, description, percentage, date, thematicComponentId, thematicContentIds, evaluationType, criteria } = req.body;
+    const normalizedThematicContentIds = Array.isArray(thematicContentIds)
+      ? [...new Set(thematicContentIds.map(Number).filter(Number.isInteger))]
+      : null;
 
     const validTypes = ['intra', 'inter', 'trans'];
     const typesArray = Array.isArray(evaluationType)
@@ -146,6 +149,7 @@ export const createEvaluationItem = async (req: Request, res: Response) => {
       percentage,
       date,
       thematicComponentId: thematicComponentId || null,
+      thematicContentIds: normalizedThematicContentIds,
       evaluationType: evaluationTypeStr,
     });
 

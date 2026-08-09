@@ -13,10 +13,11 @@ interface EvaluationPlanAttributes {
   percentage: number;
   date: Date;
   thematicComponentId?: number | null;
+  thematicContentIds?: number[] | null;
   evaluationType?: string | null;
 }
 
-interface EvaluationPlanCreationAttributes extends Optional<EvaluationPlanAttributes, 'id' | 'thematicComponentId' | 'evaluationType'> { }
+interface EvaluationPlanCreationAttributes extends Optional<EvaluationPlanAttributes, 'id' | 'thematicComponentId' | 'thematicContentIds' | 'evaluationType'> { }
 
 class EvaluationPlan extends Model<EvaluationPlanAttributes, EvaluationPlanCreationAttributes> implements EvaluationPlanAttributes {
   public id!: number;
@@ -27,6 +28,7 @@ class EvaluationPlan extends Model<EvaluationPlanAttributes, EvaluationPlanCreat
   public percentage!: number;
   public date!: Date;
   public thematicComponentId!: number | null;
+  public thematicContentIds!: number[] | null;
   public evaluationType!: string | null;
 
   public readonly createdAt!: Date;
@@ -74,6 +76,11 @@ EvaluationPlan.init(
       type: DataTypes.INTEGER,
       references: { model: ThematicComponent, key: 'id' },
       allowNull: true
+    },
+    thematicContentIds: {
+      type: DataTypes.JSON,
+      allowNull: true,
+      defaultValue: null,
     },
     evaluationType: {
       type: DataTypes.STRING,
