@@ -809,6 +809,8 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
   const handleReorderContents = async (componentId: number, contentIds: number[]) => {
     try {
       await api.patch('/thematic-components/contents/reorder', { contentIds });
+      fetchThematicComponents();
+      fetchPlanAndStudents();
     } catch {
       message.error('Error al reordenar contenidos');
       fetchThematicComponents();
@@ -818,6 +820,8 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
   const handleReorderComponents = async (componentIds: number[]) => {
     try {
       await api.patch('/thematic-components/reorder', { componentIds });
+      fetchThematicComponents();
+      fetchPlanAndStudents();
     } catch {
       message.error('Error al reordenar componentes');
       fetchThematicComponents();
@@ -1056,7 +1060,12 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
       <div className="app-card p-6 mb-8">
         <Tabs
           activeKey={activeTab}
-          onChange={setActiveTab}
+          onChange={(key) => {
+            setActiveTab(key);
+            if (key === '2' || key === '3') {
+              fetchPlanAndStudents();
+            }
+          }}
           items={[
             {
               key: '1',
