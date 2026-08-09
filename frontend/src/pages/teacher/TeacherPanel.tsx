@@ -703,6 +703,26 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
     }
   };
 
+  const downloadOfficialGradeReport = async () => {
+    if (!selectedAssignmentId) return;
+    try {
+      const res = await api.get(`/evaluation/export-grades-oficial/${selectedAssignmentId}`, {
+        params: { filled: 'true', term: selectedTerm ?? undefined },
+        responseType: 'blob',
+      });
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', 'acta-de-notas.xlsx');
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch {
+      message.error('Error al descargar el acta de notas');
+    }
+  };
+
   // ── Thematic Component handlers ──────────────────────────────────
   const handleCreateComponent = async (title: string) => {
     if (!selectedAssignmentId || !selectedTerm) return;
@@ -1101,6 +1121,14 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                     )}
                   </div>
                   <div className="flex items-center gap-2">
+                    <Button
+                      icon={<FilePdfOutlined />}
+                      size="small"
+                      onClick={downloadOfficialGradeReport}
+                      disabled={!selectedAssignmentId || !selectedTerm || students.length === 0}
+                    >
+                      Acta de notas
+                    </Button>
                     <Button
                       icon={<DownloadOutlined />}
                       size="small"
