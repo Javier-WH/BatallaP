@@ -73,6 +73,7 @@ interface EvaluationPlanItem {
   thematicContents?: { id: number; title: string; thematicComponent?: { id: number; title: string } }[];
   criteria?: { id: number; name: string; points: number; indicators?: { id: number; name: string; points: number }[] }[];
   evaluationType?: string | null;
+  instrumento?: string | null;
 }
 
 interface Qualification {
@@ -461,7 +462,12 @@ const ManageGrades: React.FC = () => {
         return <span style={{ fontSize: 12 }}>-</span>;
       }
     },
-    { title: 'Técnicas e Instrumento', dataIndex: 'tecnica', key: 'tecnica', width: 120 },
+    { title: 'Técnica', dataIndex: 'tecnica', key: 'tecnica', width: 120,
+      render: (val: string) => val || <span style={{ color: '#999' }}>—</span>
+    },
+    { title: 'Instrumento', dataIndex: 'instrumento', key: 'instrumento', width: 120,
+      render: (val: string) => val || <span style={{ color: '#999' }}>—</span>
+    },
     { title: 'Estrategia de evaluación', dataIndex: 'description', key: 'description', width: 120 },
     { title: 'Indicador', key: 'indicadorCol', width: 180,
       render: (_: unknown, r: any) => {

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Modal, Form, Input, DatePicker, Button, Select, InputNumber, message, Checkbox } from 'antd';
+import { Modal, Form, Input, DatePicker, Button, Select, InputNumber, message, Checkbox, AutoComplete } from 'antd';
 import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
 import api from '@/services/api';
 import dayjs from 'dayjs';
@@ -27,6 +27,8 @@ export interface EvaluationPlanItem {
   thematicComponent?: { id: number; title: string } | null;
   criteria?: { id: number; name: string; points: number; indicators?: { id: number; name: string; points: number }[] }[];
   evaluationType?: string | null;
+  tecnica?: string | null;
+  instrumento?: string | null;
 }
 
 interface PlanItemFormValues {
@@ -35,6 +37,8 @@ interface PlanItemFormValues {
   date: dayjs.Dayjs | null;
   thematicContentIds?: number[];
   evaluationType?: string[] | null;
+  tecnica?: string;
+  instrumento?: string;
 }
 
 export interface SchoolPeriodInfo {
@@ -121,6 +125,7 @@ const EvaluationPlanItemModal: React.FC<EvaluationPlanItemModalProps> = ({
   selectedTermDateRange,
   schoolPeriod,
   thematicComponents = [],
+  existingItems = [],
   maxGrade = 20,
 }) => {
   const [form] = Form.useForm<PlanItemFormValues>();
@@ -137,6 +142,14 @@ const EvaluationPlanItemModal: React.FC<EvaluationPlanItemModalProps> = ({
     }))
   );
 
+  const tecnicaOptions = [...new Set(
+    (existingItems || []).map(i => i.tecnica).filter(Boolean) as string[]
+  )].map(v => ({ value: v }));
+
+  const instrumentoOptions = [...new Set(
+    (existingItems || []).map(i => i.instrumento).filter(Boolean) as string[]
+  )].map(v => ({ value: v }));
+
   useEffect(() => {
     if (open) {
       if (editingItem) {
@@ -149,6 +162,8 @@ const EvaluationPlanItemModal: React.FC<EvaluationPlanItemModalProps> = ({
             : thematicComponents
               .filter(component => component.id === editingItem.thematicComponentId)
               .flatMap(component => (component.contents || []).map(content => content.id)),
+          tecnica: editingItem.tecnica || '',
+          instrumento: editingItem.instrumento || '',
         });
         setEvaluationType(editingItem.evaluationType ? editingItem.evaluationType.split(',') : []);
         setPercentageValue(editingItem.percentage);
@@ -216,6 +231,8 @@ const EvaluationPlanItemModal: React.FC<EvaluationPlanItemModalProps> = ({
         date: values.date ? values.date.format('YYYY-MM-DD') : null,
         thematicContentIds: values.thematicContentIds?.length ? values.thematicContentIds : null,
         evaluationType: evaluationType.length > 0 ? evaluationType.join(',') : null,
+        tecnica: values.tecnica || null,
+        instrumento: values.instrumento || null,
         criteria: criteria.map(c => ({
           name: c.name,
           points: Number(c.points),
@@ -302,6 +319,29 @@ const EvaluationPlanItemModal: React.FC<EvaluationPlanItemModalProps> = ({
         >
           <Input placeholder="Ej: Examen, Exposición, Trabajo escrito..." />
         </Form.Item>
+
+        <div style={{ display: 'flex', gap: 16 }}>
+          <Form.Item name="tecnica" label="Técnica" style={{ flex: 1 }} rules={[{ required: true, message: 'Ingrese la técnica' }]}>
+            <AutoComplete
+              options={tecnicaOptions}
+              placeholder="Ej: Observación, Entrevista, Encuesta..."
+              filterOption={(input, option) =>
+                (option?.value ?? '').toLowerCase().includes(input.toLowerCase())
+              }
+              allowClear
+            />
+          </Form.Item>
+          <Form.Item name="instrumento" label="Instrumento" style={{ flex: 1 }} rules={[{ required: true, message: 'Ingrese el instrumento' }]}>
+            <AutoComplete
+              options={instrumentoOptions}
+              placeholder="Ej: Lista de cotejo, Rúbrica, Cuestionario..."
+              filterOption={(input, option) =>
+                (option?.value ?? '').toLowerCase().includes(input.toLowerCase())
+              }
+              allowClear
+            />
+          </Form.Item>
+        </div>
 
         <Form.Item name="thematicContentIds" label="Contenidos temáticos (opcional)">
           <Select

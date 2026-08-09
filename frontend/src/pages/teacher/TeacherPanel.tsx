@@ -112,6 +112,8 @@ interface EvaluationPlanItem {
   thematicContents?: { id: number; title: string; thematicComponent?: { id: number; title: string } }[];
   criteria?: { id: number; name: string; points: number; indicators?: { id: number; name: string; points: number }[] }[];
   evaluationType?: string | null;
+  tecnica?: string | null;
+  instrumento?: string | null;
 }
 
 interface Subject {
@@ -581,6 +583,12 @@ const handleToggleAbsent = async (enrollment: StudentEnrollment, evalPlanId: num
   const planColumns: ColumnsType<EvaluationPlanItem> = [
     { title: 'Estrategia de Evaluación', dataIndex: 'description', key: 'description', width: 200,
       render: (val: string) => <span style={{ fontWeight: 600 }}>{val}</span>
+    },
+    { title: 'Técnica', dataIndex: 'tecnica', key: 'tecnica', width: 120,
+      render: (val: string) => val || <span style={{ color: '#999' }}>—</span>
+    },
+    { title: 'Instrumento', dataIndex: 'instrumento', key: 'instrumento', width: 120,
+      render: (val: string) => val || <span style={{ color: '#999' }}>—</span>
     },
     { title: 'Contenidos Temáticos', key: 'thematicContents', width: 220,
       render: (_: unknown, r: EvaluationPlanItem) => {
