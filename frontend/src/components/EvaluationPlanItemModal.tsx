@@ -453,15 +453,6 @@ const EvaluationPlanItemModal: React.FC<EvaluationPlanItemModalProps> = ({
               </div>
               {/* Indicators */}
               <div style={{ paddingLeft: 16, borderLeft: '2px solid var(--color-border, #e8e8e8)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-muted, #999)' }}>Indicadores</span>
-                  <Button type="dashed" size="small" icon={<PlusOutlined />} onClick={() => addIndicator(index)}>
-                    Agregar
-                  </Button>
-                </div>
-                {c.indicators.length === 0 && (
-                  <div style={{ color: '#999', fontSize: 11, padding: '4px 0' }}>Sin indicadores</div>
-                )}
                 {c.indicators.map((ind, indIndex) => (
                   <div key={indIndex} style={{ display: 'flex', gap: 8, marginBottom: 4, alignItems: 'center' }}>
                     <Input
@@ -492,10 +483,13 @@ const EvaluationPlanItemModal: React.FC<EvaluationPlanItemModalProps> = ({
                   </div>
                 ))}
                 {indExceeds && (
-                  <div style={{ color: '#ff4d4f', fontSize: 10, marginTop: 2 }}>
+                  <div style={{ color: '#ff4d4f', fontSize: 10, marginTop: 2, marginBottom: 4 }}>
                     Los indicadores suman {indSum} pts, máximo del criterio: {c.points} pts
                   </div>
                 )}
+                <Button type="dashed" size="small" icon={<PlusOutlined />} onClick={() => addIndicator(index)} style={{ marginTop: 4 }}>
+                  Agregar indicador
+                </Button>
               </div>
             </div>
             );
