@@ -186,11 +186,15 @@ const EvaluationPlanItemModal: React.FC<EvaluationPlanItemModalProps> = ({
         message.warning(`Los criterios no pueden superar ${maxGrade} puntos (nota máxima)`);
         return;
       }
-      // Validate indicator sums per criterion
+      // Validate indicators per criterion: must have at least one, sum must equal criterion points
       for (const c of criteria) {
+        if (c.indicators.length === 0) {
+          message.warning(`El criterio "${c.name}" debe tener al menos un indicador`);
+          return;
+        }
         const indSum = c.indicators.reduce((acc, ind) => acc + Number(ind.points || 0), 0);
-        if (c.indicators.length > 0 && indSum > Number(c.points)) {
-          message.warning(`Los indicadores de "${c.name}" suman ${indSum} pts, que supera los ${c.points} pts del criterio`);
+        if (Math.abs(indSum - Number(c.points)) > 0.01) {
+          message.warning(`Los indicadores de "${c.name}" suman ${indSum} pts, deben sumar exactamente ${c.points} pts`);
           return;
         }
       }
@@ -424,7 +428,8 @@ const EvaluationPlanItemModal: React.FC<EvaluationPlanItemModalProps> = ({
           {criteria.map((c, index) => {
             const exceedsMax = c.points > maxGrade;
             const indSum = c.indicators.reduce((acc, ind) => acc + Number(ind.points || 0), 0);
-            const indExceeds = c.indicators.length > 0 && indSum > Number(c.points);
+            const indMismatch = c.indicators.length > 0 && Math.abs(indSum - Number(c.points)) > 0.01;
+            const indExceeds = indMismatch;
             return (
             <div key={index} style={{ marginBottom: 12, padding: 8, border: '1px solid var(--color-border, #d9d9d9)', borderRadius: 8 }}>
               <div style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
@@ -485,9 +490,9 @@ const EvaluationPlanItemModal: React.FC<EvaluationPlanItemModalProps> = ({
                     />
                   </div>
                 ))}
-                {indExceeds && (
+                {indMismatch && (
                   <div style={{ color: '#ff4d4f', fontSize: 10, marginTop: 2, marginBottom: 4 }}>
-                    Los indicadores suman {indSum} pts, máximo del criterio: {c.points} pts
+                    Los indicadores suman {indSum} pts, deben sumar exactamente {c.points} pts
                   </div>
                 )}
                 <Button type="dashed" size="small" icon={<PlusOutlined />} onClick={() => addIndicator(index)} style={{ marginTop: 4 }}>
