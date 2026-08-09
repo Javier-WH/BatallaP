@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Modal, Form, Input, DatePicker, Button, Select, InputNumber, message, Checkbox } from 'antd';
+import { Modal, Form, Input, DatePicker, Button, Select, InputNumber, message, Checkbox, Tooltip } from 'antd';
 import { PlusOutlined, DeleteOutlined, PlusCircleOutlined } from '@ant-design/icons';
 import api from '@/services/api';
 import dayjs from 'dayjs';
@@ -506,20 +506,30 @@ const EvaluationPlanItemModal: React.FC<EvaluationPlanItemModalProps> = ({
             style={{ display: 'flex', gap: 8 }}
           >
             {(['intra', 'inter', 'trans'] as const).map(type => (
-              <Checkbox
+              <Tooltip
                 key={type}
-                value={type}
-                style={{
-                  border: `1px solid ${evaluationType.includes(type) ? 'var(--color-accent)' : 'var(--color-border)'}`,
-                  borderRadius: 8,
-                  padding: '4px 12px',
-                  backgroundColor: evaluationType.includes(type) ? 'color-mix(in srgb, var(--color-accent) 10%, transparent)' : 'transparent',
-                  fontWeight: evaluationType.includes(type) ? 600 : 400,
-                  transition: 'all 0.2s',
-                }}
+                title={
+                  type === 'intra' ? 'Los estudiantes se evalúan ellos mismos' :
+                  type === 'inter' ? 'Los estudiantes evalúan a sus compañeros' :
+                  'El profesor evalúa a los estudiantes'
+                }
               >
-                {type === 'intra' ? 'Intra' : type === 'inter' ? 'Inter' : 'Trans'}
-              </Checkbox>
+                <span>
+                  <Checkbox
+                    value={type}
+                    style={{
+                      border: `1px solid ${evaluationType.includes(type) ? 'var(--color-accent)' : 'var(--color-border)'}`,
+                      borderRadius: 8,
+                      padding: '4px 12px',
+                      backgroundColor: evaluationType.includes(type) ? 'color-mix(in srgb, var(--color-accent) 10%, transparent)' : 'transparent',
+                      fontWeight: evaluationType.includes(type) ? 600 : 400,
+                      transition: 'all 0.2s',
+                    }}
+                  >
+                    {type === 'intra' ? 'Intra' : type === 'inter' ? 'Inter' : 'Trans'}
+                  </Checkbox>
+                </span>
+              </Tooltip>
             ))}
           </Checkbox.Group>
           {evaluationType.length === 0 && (
