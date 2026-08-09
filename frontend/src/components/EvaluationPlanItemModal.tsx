@@ -176,15 +176,14 @@ const EvaluationPlanItemModal: React.FC<EvaluationPlanItemModalProps> = ({
         message.warning('Seleccione al menos un tipo de evaluación');
         return;
       }
-      const maxPoints = (Number(values.percentage) / 100) * maxGrade;
       const invalidCriteria = criteria.filter(c => !c.name.trim() || c.points <= 0);
       if (invalidCriteria.length > 0) {
         message.warning('Cada criterio debe tener un nombre y un puntaje mayor a 0');
         return;
       }
-      const exceedingCriteria = criteria.filter(c => c.points > maxPoints);
+      const exceedingCriteria = criteria.filter(c => c.points > maxGrade);
       if (exceedingCriteria.length > 0) {
-        message.warning(`Los criterios no pueden superar ${maxPoints.toFixed(1)} puntos (puntaje total de la evaluación)`);
+        message.warning(`Los criterios no pueden superar ${maxGrade} puntos (nota máxima)`);
         return;
       }
       // Validate indicator sums per criterion
@@ -423,8 +422,7 @@ const EvaluationPlanItemModal: React.FC<EvaluationPlanItemModalProps> = ({
             </div>
           )}
           {criteria.map((c, index) => {
-            const maxPoints = percentageValue ? (percentageValue / 100) * maxGrade : undefined;
-            const exceedsMax = maxPoints != null && c.points > maxPoints;
+            const exceedsMax = c.points > maxGrade;
             const indSum = c.indicators.reduce((acc, ind) => acc + Number(ind.points || 0), 0);
             const indExceeds = c.indicators.length > 0 && indSum > Number(c.points);
             return (
@@ -446,7 +444,7 @@ const EvaluationPlanItemModal: React.FC<EvaluationPlanItemModalProps> = ({
                     status={exceedsMax ? 'error' : undefined}
                   />
                   {exceedsMax && (
-                    <span style={{ color: '#ff4d4f', fontSize: 10, marginTop: 2 }}>Máx: {maxPoints?.toFixed(1)} pts</span>
+                    <span style={{ color: '#ff4d4f', fontSize: 10, marginTop: 2 }}>Máx: {maxGrade} pts</span>
                   )}
                 </div>
                 <Button
