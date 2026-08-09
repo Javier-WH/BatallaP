@@ -124,7 +124,12 @@ const ManageGrades: React.FC = () => {
   const [selectedGrades, setSelectedGrades] = useState<number[]>([]);
   const [selectedTeacher, setSelectedTeacher] = useState<number | null>(null);
   const [selectedSubjects, setSelectedSubjects] = useState<number[]>([]);
-  const [thematicComponents, setThematicComponents] = useState<{ id: number; title: string }[]>([]);
+  const [thematicComponents, setThematicComponents] = useState<{
+    id: number;
+    title: string;
+    order?: number;
+    contents?: { id: number; title: string; order: number }[];
+  }[]>([]);
   const [tecnicaOptions, setTecnicaOptions] = useState<CatalogOption[]>([]);
   const [instrumentoOptions, setInstrumentoOptions] = useState<CatalogOption[]>([]);
   const { enableRounding } = useGradeRounding();
@@ -255,7 +260,13 @@ const ManageGrades: React.FC = () => {
       const [planRes, studentsRes, thematicRes] = await Promise.all([
         api.get(`/evaluation/plan/${selectedAssignment.periodGradeSubjectId}?term=${selectedTerm}&sectionId=${selectedAssignment.sectionId}`),
         api.get(`/evaluation/students/${selectedAssignment.id}`),
-        api.get(`/thematic-components?periodGradeSubjectId=${selectedAssignment.periodGradeSubjectId}`).catch(() => ({ data: [] })),
+        api.get('/thematic-components', {
+          params: {
+            pgsId: selectedAssignment.periodGradeSubjectId,
+            sectionId: selectedAssignment.sectionId,
+            termId: selectedTerm,
+          },
+        }).catch(() => ({ data: [] })),
       ]);
       setEvaluationPlan(planRes.data || []);
       setStudents(studentsRes.data || []);
@@ -460,50 +471,30 @@ const ManageGrades: React.FC = () => {
   };
 
   const planColumns = [
-    { title: 'ID', dataIndex: 'identificador', key: 'identificador', width: 80 },
-    { title: 'Tema Generador', dataIndex: 'temaGenerador', key: 'temaGenerador', ellipsis: true, width: 150 },
-    { title: 'Referentes Teóricos', key: 'refTeoricos', width: 180,
-      render: (_: unknown, r: any) => {
-        const items = typeof r.referentesTeoricos === 'string' ? (() => { try { return JSON.parse(r.referentesTeoricos); } catch { return [r.referentesTeoricos]; } })() : r.referentesTeoricos;
-        if (Array.isArray(items) && items.length > 0) {
-          return <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12 }}>{items.map((t: string, i: number) => <li key={i}>{t}</li>)}</ul>;
-        }
-        return <span style={{ fontSize: 12 }}>{Array.isArray(items) ? '-' : (r.referentesTeoricos || '-')}</span>;
-      }
-    },
-    { title: 'Referentes Éticos e Indispensables', key: 'refEticos', width: 180,
-      render: (_: unknown, r: any) => {
-        const items = typeof r.referentesEticos === 'string' ? (() => { try { return JSON.parse(r.referentesEticos); } catch { return [r.referentesEticos]; } })() : r.referentesEticos;
-        if (Array.isArray(items) && items.length > 0) {
-          return <Space size={[2, 2]} wrap>{items.map((c: string) => <Tag key={c} style={{ fontSize: 11 }}>{c}</Tag>)}</Space>;
-        }
-        return <span style={{ fontSize: 12 }}>-</span>;
-      }
+    { title: 'Estrategia de Evaluación', dataIndex: 'description', key: 'description', width: 200,
+      render: (val: string) => <span style={{ fontWeight: 600 }}>{val}</span>
     },
     { title: 'Técnica', key: 'tecnica', width: 120,
-      render: (_: unknown, r: any) => r.tecnicaCatalog?.name || <span style={{ color: '#999' }}>—</span>
+      render: (_: unknown, r: EvaluationPlanItem) => r.tecnicaCatalog?.name || <span style={{ color: '#999' }}>—</span>
     },
     { title: 'Instrumento', key: 'instrumento', width: 120,
-      render: (_: unknown, r: any) => r.instrumentoCatalog?.name || <span style={{ color: '#999' }}>—</span>
-    },
-    { title: 'Estrategia de evaluación', dataIndex: 'description', key: 'description', width: 120 },
-    { title: 'Indicador', key: 'indicadorCol', width: 180,
-      render: (_: unknown, r: any) => {
-        const items = typeof r.indicador === 'string' ? (() => { try { return JSON.parse(r.indicador); } catch { return [r.indicador]; } })() : r.indicador;
-        if (Array.isArray(items) && items.length > 0) {
-          return <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12 }}>{items.map((t: string, i: number) => <li key={i}>{t}</li>)}</ul>;
-        }
-        return <span style={{ fontSize: 12 }}>{Array.isArray(items) ? '-' : (r.indicador || '-')}</span>;
-      }
+      render: (_: unknown, r: EvaluationPlanItem) => r.instrumentoCatalog?.name || <span style={{ color: '#999' }}>—</span>
     },
     { title: 'Contenidos Temáticos', key: 'thematicContents', width: 220,
       render: (_: unknown, r: EvaluationPlanItem) => {
-        if (!r.thematicContents || r.thematicContents.length === 0)
-          return <span style={{ color: '#999' }}>—</span>;
+        if (!r.thematicContents || r.thematicContents.length === 0) return <span style={{ color: '#999' }}>—</span>;
         return (
           <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12 }}>
-            {r.thematicContents.map(c => (
-              <li key={c.id}>{c.title}{c.thematicComponent ? <span style={{ color: '#999', fontSize: 10 }}> ({c.thematicComponent.title})</span> : null}</li>
+            {r.thematicContents.map((content, index) => (
+              <li key={content.id}>
+                <span style={{ fontWeight: 500 }}>{(() => {
+                  const componentIndex = thematicComponents.findIndex(component => component.id === content.thematicComponent?.id);
+                  const component = thematicComponents.find(component => component.id === content.thematicComponent?.id);
+                  const contentIndex = component?.contents?.findIndex(item => item.id === content.id) ?? -1;
+                  return componentIndex >= 0 && contentIndex >= 0 ? `${componentIndex + 1}.${contentIndex + 1}` : `${index + 1}`;
+                })()} {content.title}</span>
+                {content.thematicComponent && <span style={{ color: '#999', fontSize: 10 }}> ({content.thematicComponent.title})</span>}
+              </li>
             ))}
           </ul>
         );
@@ -519,9 +510,7 @@ const ManageGrades: React.FC = () => {
                 <span style={{ fontWeight: 500 }}>{c.name}</span> ({c.points} pts)
                 {c.indicators && c.indicators.length > 0 && (
                   <ul style={{ margin: '2px 0 0 0', paddingLeft: 16, fontSize: 11, color: 'var(--color-text-muted, #888)' }}>
-                    {c.indicators.map(ind => (
-                      <li key={ind.id}>{ind.name} ({ind.points} pts)</li>
-                    ))}
+                    {c.indicators.map(ind => <li key={ind.id}>{ind.name} ({ind.points} pts)</li>)}
                   </ul>
                 )}
               </li>
@@ -550,14 +539,7 @@ const ManageGrades: React.FC = () => {
         <Space>
           {!isSelectedTermBlocked && (
             <>
-              <Button
-                icon={<EditOutlined />}
-                size="small"
-                onClick={() => {
-                  setEditingItem(record);
-                  setShowPlanModal(true);
-                }}
-              />
+              <Button icon={<EditOutlined />} size="small" onClick={() => { setEditingItem(record); setShowPlanModal(true); }} />
               <Button icon={<DeleteOutlined />} size="small" danger onClick={() => handleDeletePlanItem(record.id)} />
             </>
           )}
