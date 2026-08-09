@@ -4,6 +4,7 @@ import {
   createThematicComponent,
   updateThematicComponent,
   deleteThematicComponent,
+  reorderThematicComponents,
   createThematicContent,
   updateThematicContent,
   deleteThematicContent,
@@ -20,6 +21,7 @@ router.get('/', getThematicComponents);
 router.post('/', createThematicComponent);
 router.put('/:id', updateThematicComponent);
 router.delete('/:id', deleteThematicComponent);
+router.patch('/reorder', reorderThematicComponents);
 
 // Thematic Contents (nested under component)
 router.post('/:id/contents', createThematicContent);

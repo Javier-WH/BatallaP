@@ -815,6 +815,15 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
     }
   };
 
+  const handleReorderComponents = async (componentIds: number[]) => {
+    try {
+      await api.patch('/thematic-components/reorder', { componentIds });
+    } catch {
+      message.error('Error al reordenar componentes');
+      fetchThematicComponents();
+    }
+  };
+
   const handleCreateLearning = async (contentIds: number[], description: string) => {
     try {
       await api.post('/thematic-components/learnings', { contentIds, description });
@@ -1067,6 +1076,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                     onUpdateLearning={handleUpdateLearning}
                     onDeleteLearning={handleDeleteLearning}
                     onReorderContents={handleReorderContents}
+                    onReorderComponents={handleReorderComponents}
                   />
                 </div>
               )

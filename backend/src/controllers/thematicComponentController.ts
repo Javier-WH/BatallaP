@@ -111,6 +111,63 @@ export const deleteThematicComponent = async (req: Request, res: Response) => {
   }
 };
 
+export const reorderThematicComponents = async (req: Request, res: Response) => {
+  const { componentIds } = req.body as { componentIds?: number[] };
+
+  if (!Array.isArray(componentIds) || componentIds.length === 0 || componentIds.some((id) => typeof id !== 'number')) {
+    return res.status(400).json({ message: 'Debe enviar un arreglo de IDs de componentes en el orden deseado.' });
+  }
+
+  const transaction = await sequelize.transaction();
+  try {
+    const components = await ThematicComponent.findAll({
+      where: { id: { [Op.in]: componentIds } },
+      transaction,
+      lock: transaction.LOCK.UPDATE,
+    });
+
+    if (components.length !== componentIds.length) {
+      throw new Error('Alguno de los componentes no existe.');
+    }
+
+    // All components must belong to the same periodGradeSubject+section+term
+    const keys = new Set(components.map((c) => `${c.periodGradeSubjectId}-${c.sectionId}-${c.termId}`));
+    if (keys.size !== 1) {
+      throw new Error('Los componentes deben pertenecer al mismo lapso y asignación.');
+    }
+
+    const sortPosition = new Map(componentIds.map((componentId, index) => [componentId, index + 1]));
+
+    for (const component of components) {
+      const nextOrder = sortPosition.get(component.id);
+      if (nextOrder !== undefined) {
+        component.order = nextOrder;
+        await component.save({ transaction });
+      }
+    }
+
+    await transaction.commit();
+
+    const { periodGradeSubjectId, sectionId, termId } = components[0];
+    const refreshed = await ThematicComponent.findAll({
+      where: { periodGradeSubjectId, sectionId, termId },
+      include: [
+        {
+          association: 'contents',
+          include: [{ association: 'learnings' }],
+        },
+      ],
+      order: [['order', 'ASC'], ['id', 'ASC']],
+    });
+
+    return res.json(refreshed);
+  } catch (error: any) {
+    await transaction.rollback();
+    console.error('[reorderThematicComponents] Error:', error);
+    return res.status(400).json({ message: error.message || 'No se pudo reordenar' });
+  }
+};
+
 // ── Thematic Contents ────────────────────────────────────────────
 
 export const createThematicContent = async (req: Request, res: Response) => {
