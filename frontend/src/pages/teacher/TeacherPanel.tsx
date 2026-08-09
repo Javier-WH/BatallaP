@@ -723,6 +723,26 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
     }
   };
 
+  const downloadPlanningExcel = async () => {
+    if (!selectedAssignmentId || !selectedTerm) return;
+    try {
+      const res = await api.get(`/evaluation/export-planning/${selectedAssignmentId}`, {
+        params: { term: selectedTerm },
+        responseType: 'blob',
+      });
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', 'planificacion.xlsx');
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch {
+      message.error('Error al generar el Excel de planificación');
+    }
+  };
+
   // ── Thematic Component handlers ──────────────────────────────────
   const handleCreateComponent = async (title: string) => {
     if (!selectedAssignmentId || !selectedTerm) return;
@@ -1079,6 +1099,13 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                           disabled={!selectedAssignmentId || evaluationPlan.length === 0}
                         >
                           Generar PDF
+                        </Button>
+                        <Button
+                          icon={<DownloadOutlined />}
+                          onClick={downloadPlanningExcel}
+                          disabled={!selectedAssignmentId || !selectedTerm}
+                        >
+                          Crear Excel de planificación
                         </Button>
                         <span className="font-black" style={{ color: 'var(--color-text-main)' }}>Total Puntaje Acumulado: {totalPercentage}%</span>
                       </div>

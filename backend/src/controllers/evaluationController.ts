@@ -31,7 +31,8 @@ import {
   ThematicComponent,
   ThematicContent,
   EvaluationIndicator,
-  EvaluationCatalog
+  EvaluationCatalog,
+  ExpectedLearning
 } from '@/models/index';
 import {
   getSubjectOrderMapByGradeAndPeriod,
@@ -1136,6 +1137,173 @@ export const getFinalGradesByPeriod = async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Error fetching final grades by period:', error);
     res.status(500).json({ message: 'Error al obtener notas finales', error: error.message });
+  }
+};
+
+export const exportPlanningExcel = async (req: Request, res: Response) => {
+  try {
+    const assignmentId = Number(req.params.assignmentId);
+    const termId = req.query.term ? Number(req.query.term) : null;
+    const assignment = await TeacherAssignment.findByPk(assignmentId, {
+      include: [
+        { model: Person, as: 'teacher' },
+        { model: Section, as: 'section' },
+        {
+          model: PeriodGradeSubject,
+          as: 'periodGradeSubject',
+          include: [
+            { model: Subject, as: 'subject' },
+            { model: PeriodGrade, as: 'periodGrade', include: [{ model: Grade, as: 'grade' }, { model: SchoolPeriod, as: 'schoolPeriod' }] },
+          ],
+        },
+      ],
+    });
+    if (!assignment) return res.status(404).json({ message: 'Asignación no encontrada' });
+
+    const assignmentData = assignment as any;
+    const pgs = assignmentData.periodGradeSubject;
+    const periodGrade = pgs.periodGrade;
+    const [term, components, plans] = await Promise.all([
+      termId ? Term.findByPk(termId) : Promise.resolve(null),
+      ThematicComponent.findAll({
+        where: { periodGradeSubjectId: pgs.id, sectionId: assignmentData.sectionId, ...(termId ? { termId } : {}) },
+        include: [{ model: ThematicContent, as: 'contents', include: [{ model: ExpectedLearning, as: 'learnings' }] }],
+        order: [['order', 'ASC']],
+      }),
+      EvaluationPlan.findAll({
+        where: { periodGradeSubjectId: pgs.id, sectionId: assignmentData.sectionId, ...(termId ? { termId } : {}) },
+        include: [
+          { model: EvaluationCriteria, as: 'criteria', include: [{ model: EvaluationIndicator, as: 'indicators' }] },
+          { model: EvaluationCatalog, as: 'tecnicaCatalog' },
+          { model: EvaluationCatalog, as: 'instrumentoCatalog' },
+        ],
+        order: [['date', 'ASC']],
+      }),
+    ]);
+
+    const componentRows = components.flatMap((component: any) => {
+      const componentData = component.toJSON();
+      return (componentData.contents || []).map((content: any) => {
+        const relatedPlans = plans.filter((plan: any) =>
+          Array.isArray(plan.thematicContentIds) && plan.thematicContentIds.includes(content.id)
+        );
+        return {
+          component: componentData.title,
+          content: content.title,
+          learnings: (content.learnings || []).map((learning: any) => learning.description).join('\n'),
+          plans: relatedPlans,
+        };
+      });
+    });
+    const unlinkedPlans = plans.filter((plan: any) => !Array.isArray(plan.thematicContentIds) || plan.thematicContentIds.length === 0);
+    const rows = [...componentRows, ...(unlinkedPlans.length > 0 ? [{ component: '', content: '', learnings: '', plans: unlinkedPlans }] : [])];
+    if (rows.length === 0) rows.push({ component: '', content: '', learnings: '', plans: [] });
+
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet('Planificación');
+    const border = { style: 'thin' as const, color: { argb: 'FF666666' } };
+    const headerFill = 'FFD9E2F3';
+    const groupFill = 'FFB4C6E7';
+    const columns = [
+      ['COMPONENTE TEMÁTICO', 24], ['CONTENIDO', 28], ['APRENDIZAJES\nESPERADOS', 32], ['ESTRATEGIAS DE\nAPRENDIZAJE', 28],
+      ['TÉCNICA', 18], ['INSTRUMENTO', 18], ['CRITERIOS', 28], ['INDICADORES', 30], ['PUNTOS', 10],
+      ['INTRA', 9], ['INTER', 9], ['TRANS', 9], ['FECHAS', 14], ['PORCENTAJE', 12],
+    ];
+    columns.forEach(([name, width], index) => { sheet.getColumn(index + 1).width = width as number; });
+
+    sheet.mergeCells('A1:B7');
+    sheet.getCell('A1').value = '';
+    sheet.getCell('A1').border = { top: border, bottom: border, left: border, right: border };
+    sheet.mergeCells('C1:N2');
+    sheet.getCell('C1').value = 'MINISTERIO DEL PODER POPULAR PARA LA EDUCACIÓN';
+    sheet.getCell('C1').font = { bold: true, size: 16 };
+    sheet.getCell('C1').alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+    sheet.mergeCells('C3:N3');
+    sheet.getCell('C3').value = 'PLANIFICACIÓN';
+    sheet.getCell('C3').font = { bold: true, size: 13 };
+    sheet.getCell('C3').alignment = { horizontal: 'center', vertical: 'middle' };
+    sheet.mergeCells('A8:N8');
+    sheet.getCell('A8').value = `PEIC: ________________________________    PA: ________________________________`;
+    sheet.getCell('A8').alignment = { vertical: 'middle' };
+    sheet.mergeCells('A9:N9');
+    sheet.getCell('A9').value = `${term?.getDataValue('name') || 'Lapso'}    |    Área de formación: ${pgs.subject?.name || ''}    |    Año: ${periodGrade.grade?.name || ''}    |    Sección: ${assignmentData.section?.name || ''}    |    Escolaridad: ${periodGrade.schoolPeriod?.name || ''}`;
+    sheet.getCell('A9').alignment = { vertical: 'middle', wrapText: true };
+    sheet.mergeCells('A10:N10');
+    sheet.getCell('A10').value = `Profesor: ${assignmentData.teacher ? `${assignmentData.teacher.firstName} ${assignmentData.teacher.lastName}` : '—'}`;
+    sheet.getCell('A10').alignment = { vertical: 'middle' };
+
+    sheet.mergeCells('A12:A13');
+    sheet.mergeCells('B12:B13');
+    sheet.mergeCells('C12:C13');
+    sheet.mergeCells('D12:D13');
+    sheet.mergeCells('E12:M12');
+    sheet.mergeCells('N12:N13');
+    sheet.getCell('E12').value = 'PROCESO EVALUATIVO';
+    ['A12', 'B12', 'C12', 'D12'].forEach((cell, index) => { sheet.getCell(cell).value = columns[index][0]; });
+    sheet.getCell('N12').value = columns[13][0];
+    ['E13', 'F13', 'G13', 'H13', 'I13', 'J13', 'K13', 'L13', 'M13'].forEach((cell, index) => { sheet.getCell(cell).value = columns[index + 4][0]; });
+    for (let row = 12; row <= 13; row++) {
+      for (let col = 1; col <= 14; col++) {
+        const cell = sheet.getCell(row, col);
+        cell.font = { bold: true, size: 9 };
+        cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: row === 12 ? groupFill : headerFill } };
+        cell.border = { top: border, bottom: border, left: border, right: border };
+      }
+    }
+
+    rows.forEach(({ component, content, learnings, plans: rowPlans }, index) => {
+      const row = sheet.getRow(14 + index);
+      const plansData = rowPlans as any[];
+      const criteria = plansData.flatMap((plan: any) => plan.criteria || []);
+      const indicators = criteria.flatMap((criterion: any) => (criterion.indicators || []).map((indicator: any) => indicator.name));
+      const points = criteria.reduce((sum: number, criterion: any) => sum + Number(criterion.points || 0), 0);
+      const types = [...new Set(plansData.flatMap((plan: any) => (plan.evaluationType || '').split(',').filter(Boolean).map((type: string) => type.toUpperCase())))];
+      const strategies = plansData.map((plan: any) => [plan.shortDescription, plan.description].filter(Boolean).join('\n')).filter(Boolean);
+      const techniques = [...new Set(plansData.map((plan: any) => plan.tecnicaCatalog?.name).filter(Boolean))];
+      const instruments = [...new Set(plansData.map((plan: any) => plan.instrumentoCatalog?.name).filter(Boolean))];
+      const dates = plansData.map((plan: any) => plan.date ? new Date(plan.date).toLocaleDateString('es-VE') : '').filter(Boolean);
+      const percentages = plansData.map((plan: any) => `${Number(plan.percentage)}%`);
+      const values = [
+        component, content, learnings, strategies.join('\n\n'), techniques.join('\n'), instruments.join('\n'),
+        criteria.map((criterion: any) => criterion.name).join('\n'), indicators.join('\n'), points || '',
+        types.includes('INTRA') ? 'X' : '', types.includes('INTER') ? 'X' : '', types.includes('TRANS') ? 'X' : '',
+        dates.join('\n'), percentages.join('\n'),
+      ];
+      values.forEach((value, col) => {
+        const cell = row.getCell(col + 1);
+        cell.value = value;
+        cell.alignment = { vertical: 'top', wrapText: true };
+        cell.border = { top: border, bottom: border, left: border, right: border };
+      });
+      row.height = Math.max(42, 18 * Math.max(1, strategies.length, dates.length, criteria.length));
+    });
+
+    let componentStart = 14;
+    for (let index = 1; index <= rows.length; index++) {
+      const current = rows[index]?.component;
+      const previous = rows[index - 1]?.component;
+      if (index === rows.length || current !== previous) {
+        const componentEnd = 13 + index;
+        if (previous && componentEnd > componentStart) {
+          sheet.mergeCells(`A${componentStart}:A${componentEnd}`);
+          sheet.getCell(`A${componentStart}`).alignment = { vertical: 'middle', wrapText: true };
+        }
+        componentStart = 14 + index;
+      }
+    }
+    sheet.views = [{ state: 'frozen', ySplit: 13 }];
+    sheet.pageSetup = { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0, paperSize: 9 };
+    sheet.pageSetup.horizontalCentered = true;
+    sheet.headerFooter.oddFooter = 'Página &P de &N';
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="planificacion-${assignmentId}.xlsx"`);
+    res.send(buffer);
+  } catch (error: any) {
+    console.error('[exportPlanningExcel] Error:', error);
+    res.status(500).json({ message: 'Error al generar Excel de planificación' });
   }
 };
 

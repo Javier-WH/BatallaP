@@ -15,7 +15,8 @@ import {
   exportGradesExcelOficial,
   getAllAssignments,
   getQualificationAudits,
-  getAllQualificationAudits
+  getAllQualificationAudits,
+  exportPlanningExcel
 } from '@/controllers/evaluationController';
 
 const router = Router();
@@ -31,6 +32,7 @@ router.post('/qualifications', saveQualification);
 router.get('/student-record/:personId', getStudentFullAcademicRecord);
 router.put('/final-grade/:id', updateFinalGrade);
 router.get('/final-grades-by-period', getFinalGradesByPeriod);
+router.get('/export-planning/:assignmentId', exportPlanningExcel);
 router.get('/export-grades/:assignmentId', exportGradesExcel);
 router.get('/export-grades-oficial/:assignmentId', exportGradesExcelOficial);
 router.get('/all-assignments', getAllAssignments);

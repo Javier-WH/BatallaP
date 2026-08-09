@@ -141,6 +141,8 @@ Ver [`flows/enrollment.md`](./flows/enrollment.md).
 | GET | `/student-record/:personId` | Expediente académico completo. |
 | PUT | `/final-grade/:id` | Actualizar nota final (requiere permiso si es período cerrado). |
 | GET | `/final-grades-by-period` | Notas finales del período (filtros por query). |
+| GET | `/export-planning/:assignmentId` | Excel de planificación del lapso, con contenidos, aprendizajes y proceso evaluativo. |
+| GET | `/export-grades-oficial/:assignmentId` | Acta oficial de notas en Excel. |
 
 Ver [`flows/grading.md`](./flows/grading.md).
 
