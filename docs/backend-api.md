@@ -278,6 +278,33 @@ Ver [`flows/grade-edit.md`](./flows/grade-edit.md).
 
 ---
 
+## 🔄 Notas externas – `/api/external-grades` (`externalGradeRoutes.ts`)
+
+> Registro de notas de estudiantes provenientes de otras instituciones educativas
+> (transferencia / equivalencia). Roles permitidos: `Master`, `Administrador`,
+> `Control de Estudios`.
+
+| Método | Ruta | Descripción |
+|--------|------|-------------|
+| GET | `/persons/:personId` | Inscripciones externas + notas del estudiante. |
+| GET | `/grades` | Lista todas las notas externas (filtros: `personId`, `plantelId`). |
+| GET | `/subjects` | Catálogo de materias (para selectores). |
+| GET | `/bulk/template` | Descarga plantilla Excel para carga masiva. |
+| POST | `/planteles` | Resuelve o crea un plantel externo (por código DEA o nombre). |
+| POST | `/inscriptions` | Crea inscripción externa (período externo + grado + plantel). |
+| POST | `/grades` | Upsert de una nota externa individual. |
+| PUT | `/grades/:id` | Actualiza una nota externa existente. |
+| DELETE | `/grades/:id` | Elimina una nota externa. |
+| POST | `/bulk` | Carga masiva vía JSON (arreglo de entradas). |
+| POST | `/bulk/process` | Carga masiva vía Excel (multipart, campo `file`). |
+
+**Notas**:
+- Cada nota externa se guarda en `SubjectFinalGrade` con `gradeType='transferencia'|'equivalencia'`, `plantelId` del plantel emisor y `calculatedAt` = fecha del documento original.
+- El `FinalGradeCalculator` y el `periodClosureExecutor` ignoran estas notas/inscripciones.
+- Los períodos externos (`SchoolPeriod.isExternal=true`) no aparecen en los selectores de gestión académica.
+
+---
+
 ## Patrones generales
 
 - **Autenticación**: implícita por sesión. Revisar `req.session` en los controllers que requieren usuario logueado.

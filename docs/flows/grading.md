@@ -3,7 +3,7 @@
 ## Actores
 
 - **Profesor**: crea plan de evaluación, registra notas por estudiante.
-- **Control de Estudios**: consolida notas finales, gestiona consejos de curso, edita notas de períodos cerrados (con permiso).
+- **Control de Estudios**: consolida notas finales, gestiona consejos de curso, edita notas de períodos cerrados (con permiso), registra notas externas (transferencia/equivalencia).
 - **Administrador/Master**: otorga permisos y supervisa.
 
 ## Modelos clave
@@ -52,6 +52,56 @@
 ## Paso 5: Nota final y expediente
 
 - Cálculo: `finalGradeCalculator.ts` combina `Qualification` por plan + `CouncilPoint` si aplica, respetando política definida en `AcademicSettings` o `Setting`.
+- El calculator **ignora** las notas con `gradeType='transferencia'|'equivalencia'` (no las recalcula).
+
+## Notas externas (transferencia / equivalencia)
+
+Cuando un estudiante proviene de otra institución educativa y se necesita registrar
+sus notas previas (para imprimir notas certificadas con la institución de origen
+de cada nota), se usa el flujo de notas externas.
+
+### Actores
+- **Control de Estudios / Administrador / Master**: registran y gestionan las notas externas.
+
+### Modelos involucrados
+- `Plantel` – institución emisora (reutilizado del catálogo existente; se crea si no existe).
+- `SchoolPeriod` con `isExternal=true` – representa el año escolar de la institución origen.
+- `Inscription` con `escolaridad='transferencia'` – inscripción del estudiante en el período externo.
+- `InscriptionSubject` – materia dentro de la inscripción externa.
+- `SubjectFinalGrade` con `gradeType='transferencia'|'equivalencia'` – nota externa, con `plantelId` del emisor y `calculatedAt` = fecha del documento original.
+
+### Página
+- `control-estudios/ExternalGrades.tsx` (ruta `/control-estudios/notas-externas`).
+- Tres pestañas:
+  1. **Registro individual**: buscar estudiante → buscar/crear plantel → definir período y grado externo → agregar notas una a una.
+  2. **Todas las notas externas**: listado con filtros.
+  3. **Carga masiva Excel**: descarga plantilla, sube archivo, validación por fila.
+
+### Endpoints (`/api/external-grades`)
+- `POST /planteles` – resolve or create plantel externo.
+- `POST /inscriptions` – crea inscripción externa (período externo + grado).
+- `POST /grades` – upsert nota externa.
+- `PUT /grades/:id` – edita nota externa.
+- `DELETE /grades/:id` – elimina nota externa.
+- `GET /persons/:personId` – inscripciones + notas externas del estudiante.
+- `GET /grades` – listado con filtros (`personId`, `plantelId`).
+- `GET /bulk/template` – descarga plantilla Excel.
+- `POST /bulk/process` – procesa Excel cargado (multipart).
+- `POST /bulk` – carga masiva vía JSON.
+
+### Service
+- `externalGradeService.ts`:
+  - `resolveOrCreatePlantel` – busca por código DEA o crea.
+  - `resolveOrCreateExternalPeriod` – busca o crea `SchoolPeriod` con `isExternal=true`.
+  - `createExternalInscription` – crea `Inscription` con `escolaridad='transferencia'`.
+  - `upsertExternalGrade` – crea/actualiza `SubjectFinalGrade` externa.
+  - `registerExternalGradesBatch` – orquestación transaccional para bulk.
+
+### Integración con otros flujos
+- **Cierre de período**: `periodClosureExecutor` excluye inscripciones con `escolaridad='transferencia'`.
+- **Cálculo de nota final**: `finalGradeCalculator` salta notas con `gradeType='transferencia'|'equivalencia'`.
+- **Notas certificadas**: `certifiedGradesController` incluye `plantel` emisor en cada nota y marca los períodos externos con `isExternal`.
+- **Gestión académica**: `academicController.getPeriods` excluye períodos externos (`isExternal=false`).
 - Endpoints:
   - `GET /api/evaluation/student-record/:personId` – expediente completo.
   - `GET /api/evaluation/final-grades-by-period?...` – listado filtrable.

@@ -67,7 +67,7 @@ Inscription.init(
       allowNull: false
     },
     escolaridad: {
-      type: DataTypes.ENUM('regular', 'repitiente', 'materia_pendiente'),
+      type: DataTypes.ENUM('regular', 'repitiente', 'materia_pendiente', 'transferencia'),
       allowNull: false,
       defaultValue: 'regular'
     },

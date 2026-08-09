@@ -157,7 +157,7 @@ export const exportCertifiedGrades = async (req: Request, res: Response) => {
           as: 'inscriptionSubjects',
           include: [
             { model: Subject, as: 'subject', include: [{ model: SubjectGroup, as: 'subjectGroup' }] },
-            { model: SubjectFinalGrade, as: 'finalGrade' },
+            { model: SubjectFinalGrade, as: 'finalGrade', include: [{ model: Plantel, as: 'plantel' }] },
             {
               model: Qualification,
               as: 'qualifications',
@@ -257,6 +257,10 @@ export const exportCertifiedGrades = async (req: Request, res: Response) => {
           status,
           approvedMonth: approvedDate ? approvedDate.getMonth() + 1 : null,
           approvedYear: approvedDate ? approvedDate.getFullYear() : null,
+          originInstitution: is.finalGrade?.plantel?.name ?? null,
+          originInstitutionCode: is.finalGrade?.plantel?.code ?? null,
+          originInstitutionState: is.finalGrade?.plantel?.state ?? null,
+          gradeType: is.finalGrade?.gradeType ?? null,
         };
       });
 
@@ -264,6 +268,7 @@ export const exportCertifiedGrades = async (req: Request, res: Response) => {
         periodName: ins.period?.name || ins.period?.period || '',
         gradeName: ins.grade?.name || '',
         sectionName: ins.section?.name || '',
+        isExternal: ins.period?.isExternal === true,
         terms: terms.map((t: any) => ({ id: t.id, name: t.name, order: t.order })),
         groupSubjects,
         subjects,
@@ -421,7 +426,7 @@ export const getCertifiedGradesData = async (req: Request, res: Response) => {
           as: 'inscriptionSubjects',
           include: [
             { model: Subject, as: 'subject', include: [{ model: SubjectGroup, as: 'subjectGroup' }] },
-            { model: SubjectFinalGrade, as: 'finalGrade' },
+            { model: SubjectFinalGrade, as: 'finalGrade', include: [{ model: Plantel, as: 'plantel' }] },
             {
               model: Qualification,
               as: 'qualifications',
@@ -515,6 +520,11 @@ export const getCertifiedGradesData = async (req: Request, res: Response) => {
             score: Math.round((termScores[t.id] || 0) * 100) / 100,
           })),
           finalScore,
+          originInstitution: is.finalGrade?.plantel?.name ?? null,
+          originInstitutionCode: is.finalGrade?.plantel?.code ?? null,
+          originInstitutionState: is.finalGrade?.plantel?.state ?? null,
+          gradeType: is.finalGrade?.gradeType ?? null,
+          issuedAt: is.finalGrade?.calculatedAt ?? null,
         };
       });
 
@@ -522,6 +532,7 @@ export const getCertifiedGradesData = async (req: Request, res: Response) => {
         periodName: ins.period?.name || ins.period?.period || '',
         gradeName: ins.grade?.name || '',
         sectionName: ins.section?.name || '',
+        isExternal: ins.period?.isExternal === true,
         terms: terms.map((t: any) => ({ id: t.id, name: t.name, order: t.order })),
         groupSubjects,
         subjects,

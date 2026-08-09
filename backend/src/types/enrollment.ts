@@ -1,1 +1,1 @@
-export type EscolaridadStatus = 'regular' | 'repitiente' | 'materia_pendiente';
+export type EscolaridadStatus = 'regular' | 'repitiente' | 'materia_pendiente' | 'transferencia';

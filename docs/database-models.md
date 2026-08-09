@@ -29,7 +29,7 @@
 
 | Modelo | Descripción |
 |--------|-------------|
-| `SchoolPeriod` | Período escolar (año académico). Puede estar `active`. |
+| `SchoolPeriod` | Período escolar (año académico). Puede estar `active`. Flag `isExternal` distingue períodos propios (`false`) de períodos que representan años escolares de instituciones externas (`true`), usados para registrar notas de transferencia/equivalencia. |
 | `Grade` | Grado/año escolar (1ro, 2do, ..., 5to año). Ordenable. |
 | `Section` | Sección (A, B, C, ...). |
 | `Subject` | Materia/asignatura. Puede pertenecer a un `SubjectGroup`. |
@@ -51,7 +51,7 @@
 | `EnrollmentQuestion` | Pregunta configurable del formulario de inscripción (ordenable, activable). |
 | `EnrollmentAnswer` | Respuesta de la persona a una pregunta. |
 | `EnrollmentReport` | Reporte PDF generado para una matrícula (tiene `uuid` público). |
-| `Inscription` | Inscripción formal del estudiante a un `SchoolPeriod` + `Grade` + `Section` (+ opcional `originPeriodId` si proviene de un cierre). |
+| `Inscription` | Inscripción formal del estudiante a un `SchoolPeriod` + `Grade` + `Section` (+ opcional `originPeriodId` si proviene de un cierre). `escolaridad` puede ser `regular`, `repitiente`, `materia_pendiente` o `transferencia` (esta última para inscripciones externas creadas por el flujo de notas externas). |
 | `InscriptionSubject` | Materia cursada por el estudiante dentro de una inscripción (M:N Inscription↔Subject). |
 
 ### ✏️ Evaluación y calificaciones
@@ -60,7 +60,7 @@
 |--------|-------------|
 | `EvaluationPlan` | Ítem del plan de evaluación de un `PeriodGradeSubject` en un `Term` (% + descripción + fecha). |
 | `Qualification` | Nota de un `InscriptionSubject` para un ítem de `EvaluationPlan`. |
-| `SubjectFinalGrade` | Nota final de la materia (calculada y/o ajustada), vinculada a `InscriptionSubject` y `Plantel`. |
+| `SubjectFinalGrade` | Nota final de la materia (calculada y/o ajustada), vinculada a `InscriptionSubject` y `Plantel`. `gradeType` puede ser `regular`, `revision`, `materia_pendiente`, `revision_materia_pendiente`, `transferencia` o `equivalencia`. Las externas (`transferencia`/`equivalencia`) guardan `plantelId` de la institución emisora y `calculatedAt` = fecha del documento original. |
 | `CouncilPoint` | Punto discutido en el consejo de curso para un `InscriptionSubject` en un `Term`. |
 | `CouncilChecklist` | Checklist por período/grado/sección/lapso para control de consejo de curso. |
 | `TeacherAssignment` | Asignación de un `Person` (profesor) a un `PeriodGradeSubject` + `Section`. |
@@ -142,6 +142,7 @@ SubjectFinalGrade ──1:N──► GradeEditAudit ──N:1──► GradeEdit
 - **`GuardianProfile`** es la fuente de verdad del representante; `StudentGuardian` sólo apunta a él. Nunca guardar datos del tutor directamente en `StudentGuardian`.
 - **`PendingSubject`** vincula la materia fallida en el período origen con la nueva `Inscription` del período destino.
 - **`SubjectFinalGrade`** se puede modificar sólo si existe `GradeEditPermission` activo y se registra en `GradeEditAudit`.
+- **Notas externas (transferencia/equivalencia)**: cuando un estudiante proviene de otra institución, se crea un `SchoolPeriod` con `isExternal=true` que representa el año escolar de la institución origen, una `Inscription` con `escolaridad='transferencia'`, y por cada materia un `SubjectFinalGrade` con `gradeType='transferencia'|'equivalencia'`, `plantelId` apuntando al `Plantel` de la institución emisora y `calculatedAt` = fecha del documento original. El `FinalGradeCalculator` y el `periodClosureExecutor` ignoran estas inscripciones/notas. Ver [`docs/flows/grading.md`](./flows/grading.md) sección "Notas externas".
 
 ## Diagrama completo
 

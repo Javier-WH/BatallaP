@@ -8,9 +8,10 @@ interface SchoolPeriodAttributes {
   startYear: number;
   endYear: number;
   isActive: boolean;
+  isExternal: boolean; // true for periods representing external institutions' school years
 }
 
-interface SchoolPeriodCreationAttributes extends Optional<SchoolPeriodAttributes, 'id' | 'startYear' | 'endYear' | 'isActive'> { }
+interface SchoolPeriodCreationAttributes extends Optional<SchoolPeriodAttributes, 'id' | 'startYear' | 'endYear' | 'isActive' | 'isExternal'> { }
 
 class SchoolPeriod extends Model<SchoolPeriodAttributes, SchoolPeriodCreationAttributes> implements SchoolPeriodAttributes {
   public id!: number;
@@ -19,6 +20,7 @@ class SchoolPeriod extends Model<SchoolPeriodAttributes, SchoolPeriodCreationAtt
   public startYear!: number;
   public endYear!: number;
   public isActive!: boolean;
+  public isExternal!: boolean;
 
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
@@ -51,6 +53,11 @@ SchoolPeriod.init(
     isActive: {
       type: DataTypes.BOOLEAN,
       defaultValue: false, // User logic will handle "only one active"
+    },
+    isExternal: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
     },
   },
   {

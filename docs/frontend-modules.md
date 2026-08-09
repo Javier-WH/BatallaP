@@ -115,6 +115,7 @@ Todos los servicios consumen la instancia `api` con `withCredentials: true`.
 | `control-estudios/MatriculationEnrollment.tsx` | Flujo de matrícula masiva / avanzada (~134 KB, el archivo más grande). Incluye wizard multi-paso, subida de documentos, carga masiva por Excel, validación de datos. |
 | `control-estudios/CourseCouncil.tsx` | Consejo de curso: revisar/ajustar notas propuestas por lapso. |
 | `control-estudios/FinalGradesEdit.tsx` | Edición de notas finales de períodos anteriores (requiere permiso + audita). |
+| `control-estudios/ExternalGrades.tsx` | Registro de notas externas (transferencia/equivalencia) con plantel emisor. Tabs: individual, listado, carga masiva Excel. |
 | `control-estudios/RegisterRepresentative.tsx` | Re-export o wrapper del módulo admin. |
 
 ### Profesor (`/profesor`)

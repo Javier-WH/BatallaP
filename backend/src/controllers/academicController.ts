@@ -32,7 +32,10 @@ import { PeriodOutcomeService } from '@/services/periodOutcomeService';
 
 export const getPeriods = async (req: Request, res: Response) => {
   try {
-    const periods = await SchoolPeriod.findAll({ order: [['startYear', 'DESC'], ['endYear', 'DESC']] });
+    const periods = await SchoolPeriod.findAll({
+      where: { isExternal: false },
+      order: [['startYear', 'DESC'], ['endYear', 'DESC']]
+    });
     res.json(periods);
   } catch (error) {
     res.status(500).json({ error: 'Error fetching periods' });
@@ -146,9 +149,9 @@ export const createPeriod = async (req: Request, res: Response) => {
       isActive: shouldBeActive,
     }, { transaction });
 
-    // Find the most recent previous period to copy structure from
+    // Find the most recent previous period to copy structure from (exclude external periods)
     const previousPeriod = await SchoolPeriod.findOne({
-      where: { id: { [Op.ne]: created.id } },
+      where: { id: { [Op.ne]: created.id }, isExternal: false },
       order: [['startYear', 'DESC'], ['endYear', 'DESC']],
       transaction
     });

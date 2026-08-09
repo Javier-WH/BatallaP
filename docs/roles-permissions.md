@@ -51,6 +51,7 @@ Los seis roles del sistema, exactamente como aparecen en la tabla `roles` y en `
 | Configuración académica | `/control-estudios/configuracion` | `Control de Estudios`, `Administrador`, `Master` |
 | Consejos de curso | `/control-estudios/consejos-curso` | `Control de Estudios`, `Administrador`, `Master` |
 | Editar notas finales | `/control-estudios/editar-notas` | `Control de Estudios` + permiso activo |
+| Notas externas | `/control-estudios/notas-externas` | `Control de Estudios`, `Administrador`, `Master` |
 | Panel profesor | `/profesor` | `Profesor` |
 | Mis estudiantes (rep.) | `/representante` | `Representante` |
 | Mi expediente | `/estudiante` | `Alumno` |

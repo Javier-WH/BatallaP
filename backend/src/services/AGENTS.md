@@ -21,6 +21,7 @@
 | `periodOutcomeService` | Helpers sobre `StudentPeriodOutcome`. | `periodOutcomeController`, `periodClosureExecutor` |
 | `pendingSubjectService` | CRUD/resolver sobre `PendingSubject`. | `periodOutcomeController`, `periodClosureExecutor` |
 | `studentPromotionEngine` | Decide promoción / repitencia / pendientes según reglas. | `periodClosureExecutor` |
+| `externalGradeService` | Registro de notas externas (transferencia/equivalencia) con plantel emisor y período externo. | `externalGradeController` |
 
 ## Guías
 

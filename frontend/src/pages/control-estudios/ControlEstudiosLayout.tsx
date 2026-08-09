@@ -2,7 +2,7 @@ import React from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { Button, Tooltip, Dropdown } from 'antd';
 import type { MenuProps } from 'antd';
-import { DashboardOutlined, SettingOutlined, UserAddOutlined, CheckCircleFilled, BookOutlined, LockOutlined, ProjectOutlined, EditOutlined, DownOutlined, FileExcelOutlined, ToolOutlined } from '@ant-design/icons';
+import { DashboardOutlined, SettingOutlined, UserAddOutlined, CheckCircleFilled, BookOutlined, LockOutlined, ProjectOutlined, EditOutlined, DownOutlined, FileExcelOutlined, ToolOutlined, SwapOutlined } from '@ant-design/icons';
 
 const NavButton: React.FC<{
   icon: React.ReactNode;
@@ -50,9 +50,12 @@ const ControlEstudiosLayout: React.FC = () => {
   const notasItems: MenuProps['items'] = [
     { key: '/control-estudios/calificaciones', icon: <EditOutlined />, label: 'Notas Actuales' },
     { key: '/control-estudios/editar-notas', icon: <LockOutlined />, label: 'Notas Históricas' },
+    { key: '/control-estudios/notas-externas', icon: <SwapOutlined />, label: 'Notas Externas' },
   ];
 
-  const isNotasActive = location.pathname === '/control-estudios/calificaciones' || location.pathname === '/control-estudios/editar-notas';
+  const isNotasActive = location.pathname === '/control-estudios/calificaciones'
+    || location.pathname === '/control-estudios/editar-notas'
+    || location.pathname.startsWith('/control-estudios/notas-externas');
 
   return (
     <div className="flex flex-col h-full min-h-0">

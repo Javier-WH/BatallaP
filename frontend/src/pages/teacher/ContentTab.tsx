@@ -198,7 +198,59 @@ const ContentTab: React.FC<ContentTabProps> = ({
         .content-collapse .ant-collapse-content-box {
           background-color: var(--color-content-bg) !important;
         }
+        .content-section {
+          border: 1px solid color-mix(in srgb, var(--color-accent) 22%, var(--color-content-bg));
+          border-radius: 14px;
+          padding: 18px;
+          background: var(--color-content-bg);
+        }
+        .content-section + .content-section {
+          margin-top: 22px;
+        }
+        .content-section-header {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 16px;
+          margin-bottom: 16px;
+        }
+        .content-section-heading {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          margin: 0;
+          font-size: 18px;
+          font-weight: 700;
+          color: var(--color-text-main);
+        }
+        .content-section-heading::before {
+          content: '';
+          width: 4px;
+          height: 24px;
+          border-radius: 4px;
+          background: var(--color-accent);
+        }
+        .content-section-description {
+          margin: 4px 0 0 14px;
+          color: var(--color-text-muted);
+          font-size: 12px;
+        }
+        .learning-section {
+          border-color: color-mix(in srgb, var(--color-brand-secondary) 35%, var(--color-content-bg));
+          background: color-mix(in srgb, var(--color-brand-secondary) 3%, var(--color-content-bg));
+        }
+        .learning-section .content-section-heading::before {
+          background: var(--color-brand-secondary);
+        }
       `}</style>
+      <div className="content-section thematic-section">
+        <div className="content-section-header">
+          <div>
+            <h3 className="content-section-heading">Componentes temáticos</h3>
+            <p className="content-section-description">Organiza los contenidos que desarrollarás durante el lapso.</p>
+          </div>
+          <Tag color="blue">{thematicComponents.length} {thematicComponents.length === 1 ? 'componente' : 'componentes'}</Tag>
+        </div>
       <Collapse
         accordion={false}
         className="content-collapse"
@@ -340,10 +392,17 @@ const ContentTab: React.FC<ContentTabProps> = ({
           <Button icon={<CloseOutlined />} onClick={() => { setAddingComponent(false); setNewComponentTitle(''); }} />
         </div>
       )}
+      </div>
 
       {allLearnings.length > 0 && (
-        <div style={{ marginTop: 24 }}>
-          <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 12 }}>Aprendizajes Esperados</div>
+        <div className="content-section learning-section">
+          <div className="content-section-header">
+            <div>
+              <h3 className="content-section-heading">Aprendizajes esperados</h3>
+              <p className="content-section-description">Define los logros que deben alcanzar los estudiantes y relaciónalos con tus contenidos.</p>
+            </div>
+            <Tag color="cyan">{allLearnings.length} {allLearnings.length === 1 ? 'aprendizaje' : 'aprendizajes'}</Tag>
+          </div>
           {contentsWithoutLearning.length > 0 && (
             <Alert
               type="error"

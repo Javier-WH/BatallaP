@@ -269,6 +269,11 @@ export class FinalGradeCalculator {
         transaction: options.transaction
       });
 
+      // External grades (transferencia/equivalencia) are not recalculated by this engine.
+      if (existingGrade?.gradeType === 'transferencia' || existingGrade?.gradeType === 'equivalencia') {
+        continue;
+      }
+
       await SubjectFinalGrade.upsert(
         {
           inscriptionSubjectId: insSub.id,

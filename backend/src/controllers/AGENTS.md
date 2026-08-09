@@ -28,6 +28,7 @@
 | `councilController` | Consejos de curso | `bulkSaveCouncilPoints` para guardado masivo. |
 | `termController` | Lapsos | CRUD + reorder. |
 | `plantelController` | Centros educativos | CRUD + search + by-code. |
+| `externalGradeController` | Notas externas (transferencia/equivalencia) | Registro individual + bulk Excel. Delega en `externalGradeService`. Roles: Master/Admin/Control de Estudios. |
 | `enrollmentQuestionController` | Preguntas inscripción | CRUD + reorder + status. |
 | `enrollmentAnswerController` | Respuestas inscripción | Upsert por personId. |
 | `enrollmentReportController` | PDFs matrícula | Puppeteer, ruta pública por UUID. |

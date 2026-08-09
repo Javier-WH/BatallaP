@@ -40,6 +40,7 @@
 | `/api/dashboard` | `dashboardRoutes.ts` |
 | `/api/dashboard-content` | `dashboardContentRoutes.ts` |
 | `/api/health` | `healthRoutes.ts` |
+| `/api/external-grades` | `externalGradeRoutes.ts` |
 
 ## Orden en `app.ts`
 

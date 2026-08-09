@@ -21,7 +21,7 @@
 |-------|---------|
 | **Personas** | `User`, `Person`, `Role`, `PersonRole`, `Contact`, `PersonResidence`, `StudentPreviousSchool` |
 | **Representantes** | `GuardianProfile`, `StudentGuardian` |
-| **Estructura académica** | `SchoolPeriod`, `Grade`, `Section`, `Subject`, `SubjectGroup`, `Specialization`, `PeriodGrade`, `PeriodGradeSection`, `PeriodGradeSubject`, `Term`, `SchoolPeriodTransitionRule`, `Plantel` |
+| **Estructura académica** | `SchoolPeriod` (con flag `isExternal` para períodos de instituciones externas), `Grade`, `Section`, `Subject`, `SubjectGroup`, `Specialization`, `PeriodGrade`, `PeriodGradeSection`, `PeriodGradeSubject`, `Term`, `SchoolPeriodTransitionRule`, `Plantel` |
 | **Inscripción** | `Matriculation`, `EnrollmentDocument`, `EnrollmentQuestion`, `EnrollmentAnswer`, `EnrollmentReport`, `Inscription`, `InscriptionSubject` |
 | **Evaluación** | `EvaluationPlan`, `Qualification`, `SubjectFinalGrade`, `CouncilPoint`, `CouncilChecklist`, `TeacherAssignment` |
 | **Cierre de período** | `PeriodClosure`, `StudentPeriodOutcome`, `PendingSubject` |

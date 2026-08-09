@@ -101,7 +101,7 @@ export class PeriodClosureExecutor {
     }
 
     const inscriptions = await Inscription.findAll({
-      where: { schoolPeriodId },
+      where: { schoolPeriodId, escolaridad: { [Op.ne]: 'transferencia' } },
       include: [
         {
           model: InscriptionSubject,
@@ -172,7 +172,7 @@ export class PeriodClosureExecutor {
       }
 
       const inscriptions = await Inscription.findAll({
-        where: { schoolPeriodId },
+        where: { schoolPeriodId, escolaridad: { [Op.ne]: 'transferencia' } },
         include: [
           { model: Person, as: 'student' },
           { model: Grade, as: 'grade' },
