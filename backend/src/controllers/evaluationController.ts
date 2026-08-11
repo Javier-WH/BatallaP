@@ -1208,7 +1208,7 @@ export const exportPlanningExcel = async (req: Request, res: Response) => {
         component: `${componentIndex + 1}. ${componentData.title}`,
         content: contents.map((content: any, contentIndex: number) => `${componentIndex + 1}.${contentIndex + 1} ${content.title}`).join('\n'),
         learnings: [...new Set(contents.flatMap((content: any) =>
-          (content.learnings || []).map((learning: any) => learning.description)
+          (content.learnings || []).map((learning: any) => `• ${learning.description}`)
         ))].join('\n'),
       };
     });
@@ -1308,7 +1308,7 @@ export const exportPlanningExcel = async (req: Request, res: Response) => {
     const columns = [
       ['COMPONENTE TEMÁTICO', 24], ['CONTENIDO', 28], ['APRENDIZAJES\nESPERADOS', 32], ['ESTRATEGIA DE\nAPRENDIZAJE', 28],
       ['TÉCNICA', 18], ['INSTRUMENTO', 18], ['CRITERIOS', 28], ['INDICADORES', 30], ['PUNTOS', 7.29],
-      ['INTRA', 9], ['INTER', 9], ['TRANS', 9], ['FECHA', 14], ['PORCENTAJE', 12],
+      ['INTRA', 5.71], ['INTER', 5.71], ['TRANS', 5.71], ['FECHA', 14], ['PORCENTAJE', 12],
     ];
     columns.forEach(([name, width], index) => { sheet.getColumn(index + 1).width = width as number; });
 
@@ -1320,7 +1320,6 @@ export const exportPlanningExcel = async (req: Request, res: Response) => {
     sheet.getRow(6).height = 24.75;
     sheet.getRow(7).height = 15;
     sheet.getRow(8).height = 15;
-    sheet.getRow(9).height = 15;
 
     sheet.mergeCells('A1:D1');
     if (planningLogoId !== null) {
@@ -1353,38 +1352,38 @@ export const exportPlanningExcel = async (req: Request, res: Response) => {
     sheet.getCell('D4').alignment = { horizontal: 'right', vertical: 'middle' };
 
     const sectionName = String(assignmentData.section?.name || '').replace(/^Secci[oó]n\s*/i, '');
-    sheet.getCell('A5').value = 'Área de Formación:';
+    sheet.getCell('A5').value = 'Profesor:';
     sheet.getCell('A5').font = { size: 14 };
-    sheet.mergeCells('B5:C5');
-    sheet.getCell('B5').value = pgs.subject?.name || '';
-    sheet.getCell('B5').font = { bold: true, size: 14 };
-    sheet.getCell('B5').alignment = { horizontal: 'left', vertical: 'middle' };
-    sheet.mergeCells('D5:N5');
-    sheet.getCell('D5').value = `${periodGrade.grade?.name || ''}${sectionName ? `, sección ${sectionName}` : ''}`;
-    sheet.getCell('D5').font = { bold: true, size: 14 };
-    sheet.getCell('D5').alignment = { horizontal: 'left', vertical: 'middle' };
-
-    sheet.getCell('A6').value = 'Profesor:';
-    sheet.getCell('A6').font = { size: 14 };
-    sheet.mergeCells('B6:N6');
-    sheet.getCell('B6').value = assignmentData.teacher
+    sheet.mergeCells('B5:N5');
+    sheet.getCell('B5').value = assignmentData.teacher
       ? `${assignmentData.teacher.firstName} ${assignmentData.teacher.lastName}`
       : '—';
+    sheet.getCell('B5').font = { bold: true, size: 14 };
+    sheet.getCell('B5').alignment = { horizontal: 'left', vertical: 'middle' };
+
+    sheet.getCell('A6').value = 'Área de Formación:';
+    sheet.getCell('A6').font = { size: 14 };
+    sheet.mergeCells('B6:C6');
+    sheet.getCell('B6').value = pgs.subject?.name || '';
     sheet.getCell('B6').font = { bold: true, size: 14 };
     sheet.getCell('B6').alignment = { horizontal: 'left', vertical: 'middle' };
+    sheet.mergeCells('D6:N6');
+    sheet.getCell('D6').value = `${periodGrade.grade?.name || ''}${sectionName ? `, sección ${sectionName}` : ''}`;
+    sheet.getCell('D6').font = { bold: true, size: 14 };
+    sheet.getCell('D6').alignment = { horizontal: 'left', vertical: 'middle' };
 
     ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'M', 'N'].forEach((column) => {
-      sheet.mergeCells(`${column}8:${column}9`);
+      sheet.mergeCells(`${column}7:${column}8`);
     });
-    sheet.mergeCells('J8:L8');
-    ['A8', 'B8', 'C8', 'D8', 'E8', 'F8', 'G8', 'H8', 'I8'].forEach((cell, index) => {
+    sheet.mergeCells('J7:L7');
+    ['A7', 'B7', 'C7', 'D7', 'E7', 'F7', 'G7', 'H7', 'I7'].forEach((cell, index) => {
       sheet.getCell(cell).value = columns[index][0];
     });
-    sheet.getCell('J8').value = 'TIPO DE EVALUACIÓN';
-    ['J9', 'K9', 'L9'].forEach((cell, index) => { sheet.getCell(cell).value = columns[index + 9][0]; });
-    sheet.getCell('M8').value = columns[12][0];
-    sheet.getCell('N8').value = columns[13][0];
-    for (let row = 8; row <= 9; row++) {
+    sheet.getCell('J7').value = 'TIPO DE EVALUACIÓN';
+    ['J8', 'K8', 'L8'].forEach((cell, index) => { sheet.getCell(cell).value = columns[index + 9][0]; });
+    sheet.getCell('M7').value = columns[12][0];
+    sheet.getCell('N7').value = columns[13][0];
+    for (let row = 7; row <= 8; row++) {
       for (let col = 1; col <= 14; col++) {
         const cell = sheet.getCell(row, col);
         cell.font = { bold: true, size: 9 };
@@ -1392,7 +1391,7 @@ export const exportPlanningExcel = async (req: Request, res: Response) => {
         cell.fill = {
           type: 'pattern',
           pattern: 'solid',
-          fgColor: { argb: col >= 4 ? evaluationHeaderFill : row === 8 ? groupFill : headerFill },
+          fgColor: { argb: col >= 4 ? evaluationHeaderFill : row === 7 ? groupFill : headerFill },
         };
         cell.border = {
           top: border,
@@ -1404,7 +1403,7 @@ export const exportPlanningExcel = async (req: Request, res: Response) => {
     }
 
     for (let index = 0; index < rowCount; index++) {
-      const row = sheet.getRow(10 + index);
+      const row = sheet.getRow(9 + index);
       const thematicData = thematicRowsByStart.get(index) as any;
       const evaluationData = evaluationRows[index];
       const planData = evaluationData?.plan;
@@ -1444,7 +1443,9 @@ export const exportPlanningExcel = async (req: Request, res: Response) => {
       values.forEach((value, col) => {
         const cell = row.getCell(col + 1);
         cell.value = value;
-        cell.alignment = { vertical: 'middle', wrapText: true };
+        cell.alignment = (col === 4 || col === 5)
+          ? { horizontal: 'center', vertical: 'middle', wrapText: true }
+          : { vertical: 'middle', wrapText: true };
         cell.border = {
           top: border,
           bottom: border,
@@ -1456,8 +1457,8 @@ export const exportPlanningExcel = async (req: Request, res: Response) => {
     }
 
     thematicSpans.forEach((span: any) => {
-      const startRow = 10 + span.startIndex;
-      const endRow = 10 + span.endIndex;
+      const startRow = 9 + span.startIndex;
+      const endRow = 9 + span.endIndex;
       if (endRow > startRow) {
         ['A', 'B', 'C'].forEach((column) => {
           sheet.mergeCells(`${column}${startRow}:${column}${endRow}`);
@@ -1467,12 +1468,15 @@ export const exportPlanningExcel = async (req: Request, res: Response) => {
     });
 
     evaluationRows.forEach((evaluationData: any, index: number) => {
-      const startRow = 10 + index;
+      const startRow = 9 + index;
       if (evaluationData.planRowIndex === 0 && evaluationData.planRowCount > 1) {
         const endRow = startRow + evaluationData.planRowCount - 1;
         ['D', 'E', 'F', 'J', 'K', 'L', 'M', 'N'].forEach((column) => {
           sheet.mergeCells(`${column}${startRow}:${column}${endRow}`);
-          sheet.getCell(`${column}${startRow}`).alignment = { vertical: 'middle', wrapText: true };
+          const isEF = column === 'E' || column === 'F';
+          sheet.getCell(`${column}${startRow}`).alignment = isEF
+            ? { horizontal: 'center', vertical: 'middle', wrapText: true }
+            : { vertical: 'middle', wrapText: true };
         });
       }
       if (evaluationData.criterionRowIndex === 0 && evaluationData.criterionRowCount > 1) {
@@ -1482,10 +1486,10 @@ export const exportPlanningExcel = async (req: Request, res: Response) => {
       }
     });
 
-    const lastTableRow = 9 + rowCount;
+    const lastTableRow = 8 + rowCount;
     for (let rowIndex = 1; rowIndex <= lastTableRow; rowIndex++) {
       const row = sheet.getRow(rowIndex);
-      if (rowIndex >= 8) row.height = 15;
+      if (rowIndex >= 7) row.height = 15;
       for (let columnIndex = 1; columnIndex <= 14; columnIndex++) {
         const cell = row.getCell(columnIndex);
         const isMergedSlave = cell.isMerged && cell.master.address !== cell.address;
@@ -1493,16 +1497,16 @@ export const exportPlanningExcel = async (req: Request, res: Response) => {
           cell.alignment = {
             ...(cell.alignment || {}),
             vertical: 'middle',
-            ...(columnIndex === 9 || (columnIndex >= 10 && rowIndex >= 10)
+            ...(columnIndex === 9 || (columnIndex >= 10 && rowIndex >= 9)
               ? { horizontal: 'center' as const }
               : {}),
           };
         }
-        if (rowIndex >= 8) {
+        if (rowIndex >= 7) {
           const currentBorder = cell.border || {};
           cell.border = {
-            top: rowIndex === 8 ? outerBorder : currentBorder.top,
-            bottom: rowIndex === 9 || rowIndex === lastTableRow ? outerBorder : currentBorder.bottom,
+            top: rowIndex === 7 ? outerBorder : currentBorder.top,
+            bottom: rowIndex === 8 || rowIndex === lastTableRow ? outerBorder : currentBorder.bottom,
             left: columnIndex === 1 ? outerBorder : currentBorder.left,
             right: columnIndex === 14 ? outerBorder : currentBorder.right,
           };
@@ -1511,7 +1515,7 @@ export const exportPlanningExcel = async (req: Request, res: Response) => {
     }
 
     evaluationRows.forEach((evaluationData: any, index: number) => {
-      const rowIndex = 10 + index;
+      const rowIndex = 9 + index;
       const isPlanEnd = evaluationData.planRowIndex === evaluationData.planRowCount - 1;
       const isCriterionEnd = evaluationData.criterionRowIndex === evaluationData.criterionRowCount - 1;
       if (rowIndex >= lastTableRow) return;
