@@ -1218,7 +1218,7 @@ export const exportPlanningExcel = async (req: Request, res: Response) => {
       const componentData = component.toJSON();
       componentNames.set(componentData.id, `${componentIndex + 1}. ${componentData.title}`);
     });
-    const evaluationRows = plans.map((plan: any) => {
+    const orderedPlans = plans.map((plan: any) => {
       const planData = plan.toJSON();
       const contentIds = Array.isArray(plan.thematicContentIds) ? plan.thematicContentIds : [];
       const linkedContents = contentIds
@@ -1240,7 +1240,50 @@ export const exportPlanningExcel = async (req: Request, res: Response) => {
       };
     }).sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-    const rowCount = Math.max(1, thematicRows.length, evaluationRows.length);
+    const evaluationRows = orderedPlans.flatMap((plan: any) => {
+      const planRows: any[] = [];
+      const criteria = plan.criteria || [];
+      if (criteria.length === 0) {
+        planRows.push({ plan, criterion: null, indicator: null, criterionRowIndex: 0, criterionRowCount: 1 });
+      } else {
+        criteria.forEach((criterion: any) => {
+          const indicators = criterion.indicators?.length ? criterion.indicators : [null];
+          indicators.forEach((indicator: any, criterionRowIndex: number) => {
+            planRows.push({
+              plan,
+              criterion,
+              indicator,
+              criterionRowIndex,
+              criterionRowCount: indicators.length,
+            });
+          });
+        });
+      }
+      return planRows.map((detail, planRowIndex) => ({
+        ...detail,
+        planRowIndex,
+        planRowCount: planRows.length,
+      }));
+    });
+
+    const thematicSpanSizes = thematicRows.map((row: any) => Math.max(
+      1,
+      row.content ? row.content.split('\n').length : 0,
+      row.learnings ? row.learnings.split('\n').length : 0
+    ));
+    const thematicUnits = thematicSpanSizes.reduce((sum: number, size: number) => sum + size, 0);
+    const rowCount = Math.max(1, thematicUnits, evaluationRows.length);
+    for (let index = 0; index < rowCount - thematicUnits && thematicSpanSizes.length > 0; index++) {
+      thematicSpanSizes[index % thematicSpanSizes.length]++;
+    }
+    let thematicStartIndex = 0;
+    const thematicSpans = thematicRows.map((data: any, index: number) => {
+      const size = thematicSpanSizes[index];
+      const span = { data, startIndex: thematicStartIndex, endIndex: thematicStartIndex + size - 1 };
+      thematicStartIndex += size;
+      return span;
+    });
+    const thematicRowsByStart = new Map(thematicSpans.map((span: any) => [span.startIndex, span.data]));
 
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet('Planificación');
@@ -1309,18 +1352,18 @@ export const exportPlanningExcel = async (req: Request, res: Response) => {
 
     for (let index = 0; index < rowCount; index++) {
       const row = sheet.getRow(14 + index);
-      const thematicData = thematicRows[index];
-      const planData = evaluationRows[index];
-      const criteria = planData?.criteria || [];
-      const indicators = criteria.flatMap((criterion: any) =>
-        (criterion.indicators || []).map((indicator: any) => indicator.name)
-      );
-      const points = criteria.reduce((sum: number, criterion: any) => sum + Number(criterion.points || 0), 0);
+      const thematicData = thematicRowsByStart.get(index) as any;
+      const evaluationData = evaluationRows[index];
+      const planData = evaluationData?.plan;
+      const criterion = evaluationData?.criterion;
+      const indicator = evaluationData?.indicator;
+      const isFirstPlanRow = evaluationData?.planRowIndex === 0;
+      const isFirstCriterionRow = evaluationData?.criterionRowIndex === 0;
       const types = planData
         ? (planData.evaluationType || '').split(',').filter(Boolean).map((type: string) => type.toUpperCase())
         : [];
       const strategyValue: any = (() => {
-        if (!planData) return '';
+        if (!planData || !isFirstPlanRow) return '';
         const richText: { font: Partial<ExcelJS.Font>; text: string }[] = [];
         if (planData.description) richText.push({ font: { size: 10 }, text: planData.description });
         if (planData.componentNames) {
@@ -1333,11 +1376,17 @@ export const exportPlanningExcel = async (req: Request, res: Response) => {
       })();
       const values = [
         thematicData?.component || '', thematicData?.content || '', thematicData?.learnings || '',
-        strategyValue, planData?.tecnicaCatalog?.name || '', planData?.instrumentoCatalog?.name || '',
-        [...new Set(criteria.map((criterion: any) => criterion.name))].join('\n'), [...new Set(indicators)].join('\n'), points || '',
-        types.includes('INTRA') ? 'X' : '', types.includes('INTER') ? 'X' : '', types.includes('TRANS') ? 'X' : '',
-        planData?.date ? new Date(planData.date).toLocaleDateString('es-VE') : '',
-        planData ? `${Number(planData.percentage)}%` : '',
+        strategyValue,
+        isFirstPlanRow ? planData?.tecnicaCatalog?.name || '' : '',
+        isFirstPlanRow ? planData?.instrumentoCatalog?.name || '' : '',
+        isFirstCriterionRow ? criterion?.name || '' : '',
+        indicator?.name || '',
+        indicator?.points != null ? Number(indicator.points) : '',
+        isFirstPlanRow && types.includes('INTRA') ? 'X' : '',
+        isFirstPlanRow && types.includes('INTER') ? 'X' : '',
+        isFirstPlanRow && types.includes('TRANS') ? 'X' : '',
+        isFirstPlanRow && planData?.date ? new Date(planData.date).toLocaleDateString('es-VE') : '',
+        isFirstPlanRow && planData ? `${Number(planData.percentage)}%` : '',
       ];
       values.forEach((value, col) => {
         const cell = row.getCell(col + 1);
@@ -1350,18 +1399,36 @@ export const exportPlanningExcel = async (req: Request, res: Response) => {
           right: col === 2 ? tableSeparator : border,
         };
       });
-      const thematicLines = Math.max(
-        thematicData?.content ? thematicData.content.split('\n').length : 0,
-        thematicData?.learnings ? thematicData.learnings.split('\n').length : 0
-      );
-      const strategyLines = planData
-        ? Math.max(1, (planData.description || '').split('\n').length)
-          + (planData.componentNames ? planData.componentNames.split('\n').length : 0)
-          + (planData.indicesStr ? 1 : 0)
-        : 0;
-      const lineCount = Math.max(1, thematicLines, criteria.length, indicators.length, strategyLines);
-      row.height = Math.max(42, 18 * lineCount);
+      row.height = 30;
     }
+
+    thematicSpans.forEach((span: any) => {
+      const startRow = 14 + span.startIndex;
+      const endRow = 14 + span.endIndex;
+      if (endRow > startRow) {
+        ['A', 'B', 'C'].forEach((column) => {
+          sheet.mergeCells(`${column}${startRow}:${column}${endRow}`);
+          sheet.getCell(`${column}${startRow}`).alignment = { vertical: 'top', wrapText: true };
+        });
+      }
+    });
+
+    evaluationRows.forEach((evaluationData: any, index: number) => {
+      const startRow = 14 + index;
+      if (evaluationData.planRowIndex === 0 && evaluationData.planRowCount > 1) {
+        const endRow = startRow + evaluationData.planRowCount - 1;
+        ['D', 'E', 'F', 'J', 'K', 'L', 'M', 'N'].forEach((column) => {
+          sheet.mergeCells(`${column}${startRow}:${column}${endRow}`);
+          sheet.getCell(`${column}${startRow}`).alignment = { vertical: 'top', wrapText: true };
+        });
+      }
+      if (evaluationData.criterionRowIndex === 0 && evaluationData.criterionRowCount > 1) {
+        const endRow = startRow + evaluationData.criterionRowCount - 1;
+        sheet.mergeCells(`G${startRow}:G${endRow}`);
+        sheet.getCell(`G${startRow}`).alignment = { vertical: 'top', wrapText: true };
+      }
+    });
+
     sheet.views = [{ state: 'frozen', ySplit: 13 }];
     sheet.pageSetup = { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0, paperSize: 9 };
     sheet.pageSetup.horizontalCentered = true;
