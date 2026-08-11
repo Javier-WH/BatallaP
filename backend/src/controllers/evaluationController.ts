@@ -1293,6 +1293,10 @@ export const exportPlanningExcel = async (req: Request, res: Response) => {
 
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet('Planificación');
+    const planningLogoPath = path.resolve(process.cwd(), 'public', 'uploads', 'images', 'MinisterioViejo.png');
+    const planningLogoId = fs.existsSync(planningLogoPath)
+      ? workbook.addImage({ filename: planningLogoPath, extension: 'png' })
+      : null;
     const border = { style: 'thin' as const, color: { argb: 'FF666666' } };
     const tableSeparator = { style: 'medium' as const, color: { argb: 'FF333333' } };
     const headerFill = 'FFD9E2F3';
@@ -1308,6 +1312,13 @@ export const exportPlanningExcel = async (req: Request, res: Response) => {
     sheet.mergeCells('A1:B7');
     sheet.getCell('A1').value = '';
     sheet.getCell('A1').border = { top: border, bottom: border, left: border, right: border };
+    if (planningLogoId !== null) {
+      sheet.addImage(planningLogoId, {
+        tl: { col: 0.15, row: 2 },
+        ext: { width: 355, height: 58 },
+        editAs: 'oneCell',
+      });
+    }
     sheet.mergeCells('C1:N2');
     sheet.getCell('C1').value = 'MINISTERIO DEL PODER POPULAR PARA LA EDUCACIÓN';
     sheet.getCell('C1').font = { bold: true, size: 16 };

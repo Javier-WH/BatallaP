@@ -115,6 +115,7 @@ Ver [`flows/enrollment.md`](./flows/enrollment.md).
 |--------|------|-------------|
 | POST | `/logo` | Subir logo institucional (multipart `logo`). |
 | GET | `/logo` | Servir logo actual. |
+| GET | `/planning-logo` | Servir el logo utilizado temporalmente en el Excel de planificación. |
 | POST | `/documents` | Subir documento genérico (multipart `file`). |
 
 ## 👨‍🏫 Profesores – `/api/teachers` (`teacherRoutes.ts`)

@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { uploadLogo } from '../controllers/uploadController';
+import { getPlanningLogo, uploadLogo } from '../controllers/uploadController';
 import upload from '../middlewares/uploadMiddleware';
 import { Request, Response } from 'express';
 import path from 'path';
@@ -9,6 +9,7 @@ const router = Router();
 
 // Ruta para subir el logo de la institución
 router.post('/logo', upload.single('logo'), uploadLogo);
+router.get('/planning-logo', getPlanningLogo);
 
 // Ruta para obtener el logo de la institución
 router.get('/logo', (req: Request, res: Response) => {

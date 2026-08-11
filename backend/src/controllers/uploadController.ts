@@ -2,6 +2,15 @@ import { Request, Response } from 'express';
 import fs from 'fs';
 import path from 'path';
 
+export const getPlanningLogo = async (_req: Request, res: Response) => {
+  const logoPath = path.resolve(process.cwd(), 'public', 'uploads', 'images', 'MinisterioViejo.png');
+  if (!fs.existsSync(logoPath)) {
+    return res.status(404).json({ message: 'Logo de planificación no encontrado' });
+  }
+  res.setHeader('Cache-Control', 'public, max-age=3600');
+  return res.sendFile(logoPath);
+};
+
 export const uploadLogo = async (req: Request, res: Response) => {
   try {
     if (!req.file) {
