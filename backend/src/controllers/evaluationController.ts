@@ -1299,56 +1299,92 @@ export const exportPlanningExcel = async (req: Request, res: Response) => {
       : null;
     const border = { style: 'thin' as const, color: { argb: 'FF666666' } };
     const tableSeparator = { style: 'medium' as const, color: { argb: 'FF333333' } };
+    const outerBorder = { style: 'medium' as const, color: { argb: 'FF000000' } };
+    const criterionSeparatorBorder = { style: 'thin' as const, color: { argb: 'FFA6A6A6' } };
+    const instrumentSeparatorBorder = { style: 'thin' as const, color: { argb: 'FF000000' } };
     const headerFill = 'FFD9E2F3';
     const groupFill = 'FFB4C6E7';
     const evaluationHeaderFill = 'FFF2F2F2';
     const columns = [
       ['COMPONENTE TEMÁTICO', 24], ['CONTENIDO', 28], ['APRENDIZAJES\nESPERADOS', 32], ['ESTRATEGIA DE\nAPRENDIZAJE', 28],
-      ['TÉCNICA', 18], ['INSTRUMENTO', 18], ['CRITERIOS', 28], ['INDICADORES', 30], ['PUNTOS', 10],
+      ['TÉCNICA', 18], ['INSTRUMENTO', 18], ['CRITERIOS', 28], ['INDICADORES', 30], ['PUNTOS', 7.29],
       ['INTRA', 9], ['INTER', 9], ['TRANS', 9], ['FECHA', 14], ['PORCENTAJE', 12],
     ];
     columns.forEach(([name, width], index) => { sheet.getColumn(index + 1).width = width as number; });
 
-    sheet.mergeCells('A1:B7');
-    sheet.getCell('A1').value = '';
-    sheet.getCell('A1').border = { top: border, bottom: border, left: border, right: border };
+    sheet.getRow(1).height = 95.25;
+    sheet.getRow(2).height = 24.75;
+    sheet.getRow(3).height = 16;
+    sheet.getRow(4).height = 24.75;
+    sheet.getRow(5).height = 24.75;
+    sheet.getRow(6).height = 24.75;
+    sheet.getRow(7).height = 15;
+    sheet.getRow(8).height = 15;
+    sheet.getRow(9).height = 15;
+
+    sheet.mergeCells('A1:D1');
     if (planningLogoId !== null) {
       sheet.addImage(planningLogoId, {
-        tl: { col: 0.15, row: 2 },
-        ext: { width: 355, height: 58 },
-        editAs: 'oneCell',
+        tl: { col: 0.238125, row: 0.06 },
+        ext: { width: 120 * (1140 / 185), height: 120 },
+        editAs: 'absolute',
       });
     }
-    sheet.mergeCells('C1:N2');
-    sheet.getCell('C1').value = 'MINISTERIO DEL PODER POPULAR PARA LA EDUCACIÓN';
-    sheet.getCell('C1').font = { bold: true, size: 16 };
-    sheet.getCell('C1').alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
-    sheet.mergeCells('C3:N3');
-    sheet.getCell('C3').value = 'PLANIFICACIÓN';
-    sheet.getCell('C3').font = { bold: true, size: 13 };
-    sheet.getCell('C3').alignment = { horizontal: 'center', vertical: 'middle' };
-    sheet.mergeCells('A8:N8');
-    sheet.getCell('A8').value = `PEIC: ________________________________    PA: ________________________________`;
-    sheet.getCell('A8').alignment = { vertical: 'middle' };
-    sheet.mergeCells('A9:N9');
-    sheet.getCell('A9').value = `${term?.getDataValue('name') || 'Lapso'}    |    Área de formación: ${pgs.subject?.name || ''}    |    Año: ${periodGrade.grade?.name || ''}    |    Sección: ${assignmentData.section?.name || ''}    |    Escolaridad: ${periodGrade.schoolPeriod?.name || ''}`;
-    sheet.getCell('A9').alignment = { vertical: 'middle', wrapText: true };
-    sheet.mergeCells('A10:N10');
-    sheet.getCell('A10').value = `Profesor: ${assignmentData.teacher ? `${assignmentData.teacher.firstName} ${assignmentData.teacher.lastName}` : '—'}`;
-    sheet.getCell('A10').alignment = { vertical: 'middle' };
+
+    sheet.mergeCells('A2:N2');
+    sheet.getCell('A2').value = 'PLANIFICACIÓN';
+    sheet.getCell('A2').font = { bold: true, size: 16 };
+    sheet.getCell('A2').alignment = { horizontal: 'center', vertical: 'middle' };
+
+    sheet.getCell('A3').value = 'PEIC: ________________________';
+    sheet.getCell('B3').value = 'PA: ________________________';
+    sheet.getCell('A3').font = { size: 9 };
+    sheet.getCell('B3').font = { size: 9 };
+
+    sheet.mergeCells('A4:C4');
+    sheet.mergeCells('D4:N4');
+    sheet.getCell('A4').value = term?.getDataValue('name') || 'Lapso';
+    sheet.getCell('A4').font = { bold: true, size: 14 };
+    sheet.getCell('A4').alignment = { horizontal: 'left', vertical: 'middle' };
+    const periodName = String(periodGrade.schoolPeriod?.name || '');
+    const schoolYear = periodName.match(/\d{4}\s*-\s*\d{4}/)?.[0] || periodName;
+    sheet.getCell('D4').value = `Año Escolar: ${schoolYear}`;
+    sheet.getCell('D4').font = { bold: true, size: 14 };
+    sheet.getCell('D4').alignment = { horizontal: 'right', vertical: 'middle' };
+
+    const sectionName = String(assignmentData.section?.name || '').replace(/^Secci[oó]n\s*/i, '');
+    sheet.getCell('A5').value = 'Área de Formación:';
+    sheet.getCell('A5').font = { size: 14 };
+    sheet.mergeCells('B5:C5');
+    sheet.getCell('B5').value = pgs.subject?.name || '';
+    sheet.getCell('B5').font = { bold: true, size: 14 };
+    sheet.getCell('B5').alignment = { horizontal: 'left', vertical: 'middle' };
+    sheet.mergeCells('D5:N5');
+    sheet.getCell('D5').value = `${periodGrade.grade?.name || ''}${sectionName ? `, sección ${sectionName}` : ''}`;
+    sheet.getCell('D5').font = { bold: true, size: 14 };
+    sheet.getCell('D5').alignment = { horizontal: 'left', vertical: 'middle' };
+
+    sheet.getCell('A6').value = 'Profesor:';
+    sheet.getCell('A6').font = { size: 14 };
+    sheet.mergeCells('B6:N6');
+    sheet.getCell('B6').value = assignmentData.teacher
+      ? `${assignmentData.teacher.firstName} ${assignmentData.teacher.lastName}`
+      : '—';
+    sheet.getCell('B6').font = { bold: true, size: 14 };
+    sheet.getCell('B6').alignment = { horizontal: 'left', vertical: 'middle' };
 
     ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'M', 'N'].forEach((column) => {
-      sheet.mergeCells(`${column}12:${column}13`);
+      sheet.mergeCells(`${column}8:${column}9`);
     });
-    sheet.mergeCells('J12:L12');
-    ['A12', 'B12', 'C12', 'D12', 'E12', 'F12', 'G12', 'H12', 'I12'].forEach((cell, index) => {
+    sheet.mergeCells('J8:L8');
+    ['A8', 'B8', 'C8', 'D8', 'E8', 'F8', 'G8', 'H8', 'I8'].forEach((cell, index) => {
       sheet.getCell(cell).value = columns[index][0];
     });
-    sheet.getCell('J12').value = 'TIPO DE EVALUACIÓN';
-    ['J13', 'K13', 'L13'].forEach((cell, index) => { sheet.getCell(cell).value = columns[index + 9][0]; });
-    sheet.getCell('M12').value = columns[12][0];
-    sheet.getCell('N12').value = columns[13][0];
-    for (let row = 12; row <= 13; row++) {
+    sheet.getCell('J8').value = 'TIPO DE EVALUACIÓN';
+    ['J9', 'K9', 'L9'].forEach((cell, index) => { sheet.getCell(cell).value = columns[index + 9][0]; });
+    sheet.getCell('M8').value = columns[12][0];
+    sheet.getCell('N8').value = columns[13][0];
+    for (let row = 8; row <= 9; row++) {
       for (let col = 1; col <= 14; col++) {
         const cell = sheet.getCell(row, col);
         cell.font = { bold: true, size: 9 };
@@ -1356,7 +1392,7 @@ export const exportPlanningExcel = async (req: Request, res: Response) => {
         cell.fill = {
           type: 'pattern',
           pattern: 'solid',
-          fgColor: { argb: col >= 4 ? evaluationHeaderFill : row === 12 ? groupFill : headerFill },
+          fgColor: { argb: col >= 4 ? evaluationHeaderFill : row === 8 ? groupFill : headerFill },
         };
         cell.border = {
           top: border,
@@ -1368,7 +1404,7 @@ export const exportPlanningExcel = async (req: Request, res: Response) => {
     }
 
     for (let index = 0; index < rowCount; index++) {
-      const row = sheet.getRow(14 + index);
+      const row = sheet.getRow(10 + index);
       const thematicData = thematicRowsByStart.get(index) as any;
       const evaluationData = evaluationRows[index];
       const planData = evaluationData?.plan;
@@ -1408,7 +1444,7 @@ export const exportPlanningExcel = async (req: Request, res: Response) => {
       values.forEach((value, col) => {
         const cell = row.getCell(col + 1);
         cell.value = value;
-        cell.alignment = { vertical: 'top', wrapText: true };
+        cell.alignment = { vertical: 'middle', wrapText: true };
         cell.border = {
           top: border,
           bottom: border,
@@ -1416,37 +1452,93 @@ export const exportPlanningExcel = async (req: Request, res: Response) => {
           right: col === 2 ? tableSeparator : border,
         };
       });
-      row.height = 30;
+      row.height = 15;
     }
 
     thematicSpans.forEach((span: any) => {
-      const startRow = 14 + span.startIndex;
-      const endRow = 14 + span.endIndex;
+      const startRow = 10 + span.startIndex;
+      const endRow = 10 + span.endIndex;
       if (endRow > startRow) {
         ['A', 'B', 'C'].forEach((column) => {
           sheet.mergeCells(`${column}${startRow}:${column}${endRow}`);
-          sheet.getCell(`${column}${startRow}`).alignment = { vertical: 'top', wrapText: true };
+          sheet.getCell(`${column}${startRow}`).alignment = { vertical: 'middle', wrapText: true };
         });
       }
     });
 
     evaluationRows.forEach((evaluationData: any, index: number) => {
-      const startRow = 14 + index;
+      const startRow = 10 + index;
       if (evaluationData.planRowIndex === 0 && evaluationData.planRowCount > 1) {
         const endRow = startRow + evaluationData.planRowCount - 1;
         ['D', 'E', 'F', 'J', 'K', 'L', 'M', 'N'].forEach((column) => {
           sheet.mergeCells(`${column}${startRow}:${column}${endRow}`);
-          sheet.getCell(`${column}${startRow}`).alignment = { vertical: 'top', wrapText: true };
+          sheet.getCell(`${column}${startRow}`).alignment = { vertical: 'middle', wrapText: true };
         });
       }
       if (evaluationData.criterionRowIndex === 0 && evaluationData.criterionRowCount > 1) {
         const endRow = startRow + evaluationData.criterionRowCount - 1;
         sheet.mergeCells(`G${startRow}:G${endRow}`);
-        sheet.getCell(`G${startRow}`).alignment = { vertical: 'top', wrapText: true };
+        sheet.getCell(`G${startRow}`).alignment = { vertical: 'middle', wrapText: true };
       }
     });
 
-    sheet.views = [{ state: 'frozen', ySplit: 13 }];
+    const lastTableRow = 9 + rowCount;
+    for (let rowIndex = 1; rowIndex <= lastTableRow; rowIndex++) {
+      const row = sheet.getRow(rowIndex);
+      if (rowIndex >= 8) row.height = 15;
+      for (let columnIndex = 1; columnIndex <= 14; columnIndex++) {
+        const cell = row.getCell(columnIndex);
+        const isMergedSlave = cell.isMerged && cell.master.address !== cell.address;
+        if (!isMergedSlave) {
+          cell.alignment = {
+            ...(cell.alignment || {}),
+            vertical: 'middle',
+            ...(columnIndex === 9 || (columnIndex >= 10 && rowIndex >= 10)
+              ? { horizontal: 'center' as const }
+              : {}),
+          };
+        }
+        if (rowIndex >= 8) {
+          const currentBorder = cell.border || {};
+          cell.border = {
+            top: rowIndex === 8 ? outerBorder : currentBorder.top,
+            bottom: rowIndex === 9 || rowIndex === lastTableRow ? outerBorder : currentBorder.bottom,
+            left: columnIndex === 1 ? outerBorder : currentBorder.left,
+            right: columnIndex === 14 ? outerBorder : currentBorder.right,
+          };
+        }
+      }
+    }
+
+    evaluationRows.forEach((evaluationData: any, index: number) => {
+      const rowIndex = 10 + index;
+      const isPlanEnd = evaluationData.planRowIndex === evaluationData.planRowCount - 1;
+      const isCriterionEnd = evaluationData.criterionRowIndex === evaluationData.criterionRowCount - 1;
+      if (rowIndex >= lastTableRow) return;
+      if (!isCriterionEnd) {
+        for (let columnIndex = 8; columnIndex <= 9; columnIndex++) {
+          const cell = sheet.getCell(rowIndex, columnIndex);
+          const currentBorder = { ...(cell.border || {}) };
+          delete currentBorder.bottom;
+          cell.border = currentBorder;
+          const nextCell = sheet.getCell(rowIndex + 1, columnIndex);
+          const nextBorder = { ...(nextCell.border || {}) };
+          delete nextBorder.top;
+          nextCell.border = nextBorder;
+        }
+        return;
+      }
+      const separatorBorder = isPlanEnd ? instrumentSeparatorBorder : criterionSeparatorBorder;
+      for (let columnIndex = 7; columnIndex <= 9; columnIndex++) {
+        const cell = sheet.getCell(rowIndex, columnIndex);
+        const borderCell = columnIndex === 7 ? cell.master : cell;
+        borderCell.border = { ...(borderCell.border || {}), bottom: separatorBorder };
+        const nextCell = sheet.getCell(rowIndex + 1, columnIndex);
+        const nextBorderCell = columnIndex === 7 ? nextCell.master : nextCell;
+        nextBorderCell.border = { ...(nextBorderCell.border || {}), top: separatorBorder };
+      }
+    });
+
     sheet.pageSetup = { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0, paperSize: 9 };
     sheet.pageSetup.horizontalCentered = true;
     sheet.headerFooter.oddFooter = 'Página &P de &N';
