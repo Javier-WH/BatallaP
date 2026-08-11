@@ -1417,12 +1417,12 @@ export const exportPlanningExcel = async (req: Request, res: Response) => {
       const strategyValue: any = (() => {
         if (!planData || !isFirstPlanRow) return '';
         const richText: { font: Partial<ExcelJS.Font>; text: string }[] = [];
-        if (planData.description) richText.push({ font: { size: 10 }, text: planData.description });
+        if (planData.description) richText.push({ font: { size: 11 }, text: planData.description });
         if (planData.componentNames) {
-          richText.push({ font: { size: 9, italic: true, color: { argb: 'FF888888' } }, text: `\n${planData.componentNames}` });
+          richText.push({ font: { size: 11, italic: true, color: { argb: 'FF888888' } }, text: `\n${planData.componentNames}` });
         }
         if (planData.indicesStr) {
-          richText.push({ font: { size: 9, color: { argb: 'FF555555' } }, text: `\n${planData.indicesStr}` });
+          richText.push({ font: { size: 11, color: { argb: 'FF555555' } }, text: `\n${planData.indicesStr}` });
         }
         return richText.length > 0 ? { richText } : '';
       })();

@@ -278,6 +278,16 @@ const TeacherPanel: React.FC = () => {
     return map;
   }, [evaluationPlan, students, passingGrade]);
 
+  const contentIndexLabel = useMemo(() => {
+    const map = new Map<number, string>();
+    thematicComponents.forEach((comp, compIdx) => {
+      (comp.contents || []).forEach((content, contentIdx) => {
+        map.set(content.id, `${compIdx + 1}.${contentIdx + 1}`);
+      });
+    });
+    return map;
+  }, [thematicComponents]);
+
   useEffect(() => {
     const fetchMaxGrade = async () => {
       try {
@@ -618,7 +628,7 @@ const handleToggleAbsent = async (enrollment: StudentEnrollment, evalPlanId: num
         return (
           <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12 }}>
             {r.thematicContents.map(c => (
-              <li key={c.id}>{c.title}{c.thematicComponent ? <span style={{ color: '#999', fontSize: 10 }}> ({c.thematicComponent.title})</span> : null}</li>
+              <li key={c.id}>{contentIndexLabel.get(c.id) ? `${contentIndexLabel.get(c.id)} ` : ''}{c.title}{c.thematicComponent ? <span style={{ color: '#999', fontSize: 10 }}> ({c.thematicComponent.title})</span> : null}</li>
             ))}
           </ul>
         );
