@@ -1185,12 +1185,10 @@ export const exportPlanningExcel = async (req: Request, res: Response) => {
     const contentMap = new Map<number, { componentIndex: number; contentIndex: number; componentTitle: string; contentTitle: string; learningIndices: string[]; learningDescriptions: string[] }>();
     components.forEach((component: any, compIdx: number) => {
       const componentData = component.toJSON();
-      (componentData.contents || []).forEach((content: any, contentIdx: number) => {
-        const learningIndices: string[] = [];
+      const orderedContents = componentData.contents || [];
+      orderedContents.forEach((content: any, contentIdx: number) => {
+        const learningIndices = [`${compIdx + 1}.${contentIdx + 1}`];
         const learningDescriptions: string[] = [];
-        (content.learnings || []).forEach(() => {
-          learningIndices.push(`${compIdx + 1}.${contentIdx + 1}`);
-        });
         (content.learnings || []).forEach((l: any) => learningDescriptions.push(l.description));
         contentMap.set(content.id, {
           componentIndex: compIdx,
@@ -1203,37 +1201,58 @@ export const exportPlanningExcel = async (req: Request, res: Response) => {
       });
     });
 
-    // Build one row per plan (no grouping)
-    const rows: any[] = [];
-    plans.forEach((plan: any) => {
-      const contentIds = Array.isArray(plan.thematicContentIds) ? plan.thematicContentIds : [];
-      const linkedContents = contentIds.map((id: number) => contentMap.get(id)).filter(Boolean);
-      const component = [...new Set(linkedContents.map((c: any) => c.componentTitle))].join('\n');
-      const content = [...new Set(linkedContents.map((c: any) => c.contentTitle))].join('\n');
-      const learnings = [...new Set(linkedContents.flatMap((c: any) => c.learningDescriptions))].join('\n');
-      // Collect all learning indices for this plan
-      const allIndices = linkedContents.flatMap((c: any) => c.learningIndices);
-      const indicesStr = allIndices.length > 0 ? `(${allIndices.join(', ')})` : '';
-      rows.push({
-        component,
-        content,
-        learnings,
-        plan: plan.toJSON(),
-        indicesStr,
-      });
+    const thematicRows = components.map((component: any, componentIndex: number) => {
+      const componentData = component.toJSON();
+      const contents = componentData.contents || [];
+      return {
+        component: `${componentIndex + 1}. ${componentData.title}`,
+        content: contents.map((content: any, contentIndex: number) => `${componentIndex + 1}.${contentIndex + 1} ${content.title}`).join('\n'),
+        learnings: [...new Set(contents.flatMap((content: any) =>
+          (content.learnings || []).map((learning: any) => learning.description)
+        ))].join('\n'),
+      };
     });
 
-    if (rows.length === 0) rows.push({ component: '', content: '', learnings: '', plan: null, indicesStr: '' });
+    const componentNames = new Map<number, string>();
+    components.forEach((component: any, componentIndex: number) => {
+      const componentData = component.toJSON();
+      componentNames.set(componentData.id, `${componentIndex + 1}. ${componentData.title}`);
+    });
+    const evaluationRows = plans.map((plan: any) => {
+      const planData = plan.toJSON();
+      const contentIds = Array.isArray(plan.thematicContentIds) ? plan.thematicContentIds : [];
+      const linkedContents = contentIds
+        .map((id: number) => contentMap.get(id))
+        .filter(Boolean)
+        .sort((a: any, b: any) => (a.componentIndex - b.componentIndex) || (a.contentIndex - b.contentIndex));
+      const linkedComponents = [...new Set(linkedContents.map((content: any) =>
+        `${content.componentIndex + 1}. ${content.componentTitle}`
+      ))];
+      if (linkedComponents.length === 0 && plan.thematicComponentId) {
+        const componentName = componentNames.get(plan.thematicComponentId);
+        if (componentName) linkedComponents.push(componentName);
+      }
+      const indices = [...new Set(linkedContents.flatMap((content: any) => content.learningIndices))];
+      return {
+        ...planData,
+        componentNames: linkedComponents.join('\n'),
+        indicesStr: indices.length > 0 ? `(${indices.join(', ')})` : '',
+      };
+    }).sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+    const rowCount = Math.max(1, thematicRows.length, evaluationRows.length);
 
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet('Planificación');
     const border = { style: 'thin' as const, color: { argb: 'FF666666' } };
+    const tableSeparator = { style: 'medium' as const, color: { argb: 'FF333333' } };
     const headerFill = 'FFD9E2F3';
     const groupFill = 'FFB4C6E7';
+    const evaluationHeaderFill = 'FFF2F2F2';
     const columns = [
-      ['COMPONENTE TEMÁTICO', 24], ['CONTENIDO', 28], ['APRENDIZAJES\nESPERADOS', 32], ['ESTRATEGIAS DE\nAPRENDIZAJE', 28],
+      ['COMPONENTE TEMÁTICO', 24], ['CONTENIDO', 28], ['APRENDIZAJES\nESPERADOS', 32], ['ESTRATEGIA DE\nAPRENDIZAJE', 28],
       ['TÉCNICA', 18], ['INSTRUMENTO', 18], ['CRITERIOS', 28], ['INDICADORES', 30], ['PUNTOS', 10],
-      ['INTRA', 9], ['INTER', 9], ['TRANS', 9], ['FECHAS', 14], ['PORCENTAJE', 12],
+      ['INTRA', 9], ['INTER', 9], ['TRANS', 9], ['FECHA', 14], ['PORCENTAJE', 12],
     ];
     columns.forEach(([name, width], index) => { sheet.getColumn(index + 1).width = width as number; });
 
@@ -1258,84 +1277,90 @@ export const exportPlanningExcel = async (req: Request, res: Response) => {
     sheet.getCell('A10').value = `Profesor: ${assignmentData.teacher ? `${assignmentData.teacher.firstName} ${assignmentData.teacher.lastName}` : '—'}`;
     sheet.getCell('A10').alignment = { vertical: 'middle' };
 
-    sheet.mergeCells('A12:A13');
-    sheet.mergeCells('B12:B13');
-    sheet.mergeCells('C12:C13');
-    sheet.mergeCells('D12:D13');
-    sheet.mergeCells('E12:M12');
-    sheet.mergeCells('N12:N13');
-    sheet.getCell('E12').value = 'PROCESO EVALUATIVO';
-    ['A12', 'B12', 'C12', 'D12'].forEach((cell, index) => { sheet.getCell(cell).value = columns[index][0]; });
+    ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'M', 'N'].forEach((column) => {
+      sheet.mergeCells(`${column}12:${column}13`);
+    });
+    sheet.mergeCells('J12:L12');
+    ['A12', 'B12', 'C12', 'D12', 'E12', 'F12', 'G12', 'H12', 'I12'].forEach((cell, index) => {
+      sheet.getCell(cell).value = columns[index][0];
+    });
+    sheet.getCell('J12').value = 'TIPO DE EVALUACIÓN';
+    ['J13', 'K13', 'L13'].forEach((cell, index) => { sheet.getCell(cell).value = columns[index + 9][0]; });
+    sheet.getCell('M12').value = columns[12][0];
     sheet.getCell('N12').value = columns[13][0];
-    ['E13', 'F13', 'G13', 'H13', 'I13', 'J13', 'K13', 'L13', 'M13'].forEach((cell, index) => { sheet.getCell(cell).value = columns[index + 4][0]; });
     for (let row = 12; row <= 13; row++) {
       for (let col = 1; col <= 14; col++) {
         const cell = sheet.getCell(row, col);
         cell.font = { bold: true, size: 9 };
         cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
-        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: row === 12 ? groupFill : headerFill } };
-        cell.border = { top: border, bottom: border, left: border, right: border };
+        cell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: col >= 4 ? evaluationHeaderFill : row === 12 ? groupFill : headerFill },
+        };
+        cell.border = {
+          top: border,
+          bottom: border,
+          left: col === 4 ? tableSeparator : border,
+          right: col === 3 ? tableSeparator : border,
+        };
       }
     }
 
-    rows.forEach(({ component, content, learnings, plan: planData, indicesStr }, index) => {
+    for (let index = 0; index < rowCount; index++) {
       const row = sheet.getRow(14 + index);
+      const thematicData = thematicRows[index];
+      const planData = evaluationRows[index];
       const criteria = planData?.criteria || [];
-      const indicators = criteria.flatMap((criterion: any) => (criterion.indicators || []).map((indicator: any) => indicator.name));
+      const indicators = criteria.flatMap((criterion: any) =>
+        (criterion.indicators || []).map((indicator: any) => indicator.name)
+      );
       const points = criteria.reduce((sum: number, criterion: any) => sum + Number(criterion.points || 0), 0);
-      const types = planData ? (planData.evaluationType || '').split(',').filter(Boolean).map((type: string) => type.toUpperCase()) : [];
-      const strategyText = planData ? planData.description || '' : '';
-      // Build richText: strategy text → component name (subtle italic gray) → indices in parentheses
+      const types = planData
+        ? (planData.evaluationType || '').split(',').filter(Boolean).map((type: string) => type.toUpperCase())
+        : [];
       const strategyValue: any = (() => {
+        if (!planData) return '';
         const richText: { font: Partial<ExcelJS.Font>; text: string }[] = [];
-        if (strategyText) {
-          richText.push({ font: { size: 10 }, text: strategyText });
+        if (planData.description) richText.push({ font: { size: 10 }, text: planData.description });
+        if (planData.componentNames) {
+          richText.push({ font: { size: 9, italic: true, color: { argb: 'FF888888' } }, text: `\n${planData.componentNames}` });
         }
-        if (component) {
-          richText.push({ font: { size: 9, italic: true, color: { argb: 'FF888888' } }, text: `\n${component}` });
+        if (planData.indicesStr) {
+          richText.push({ font: { size: 9, color: { argb: 'FF555555' } }, text: `\n${planData.indicesStr}` });
         }
-        if (indicesStr) {
-          richText.push({ font: { size: 9, color: { argb: 'FF555555' } }, text: `\n${indicesStr}` });
-        }
-        if (richText.length === 0) return '';
-        if (richText.length === 1) return strategyText;
-        return { richText };
+        return richText.length > 0 ? { richText } : '';
       })();
-      const technique = planData?.tecnicaCatalog?.name || '';
-      const instrument = planData?.instrumentoCatalog?.name || '';
-      const dateStr = planData?.date ? new Date(planData.date).toLocaleDateString('es-VE') : '';
-      const percentage = planData ? `${Number(planData.percentage)}%` : '';
       const values = [
-        component, content, learnings, strategyValue, technique, instrument,
-        criteria.map((criterion: any) => criterion.name).join('\n'), indicators.join('\n'), points || '',
+        thematicData?.component || '', thematicData?.content || '', thematicData?.learnings || '',
+        strategyValue, planData?.tecnicaCatalog?.name || '', planData?.instrumentoCatalog?.name || '',
+        [...new Set(criteria.map((criterion: any) => criterion.name))].join('\n'), [...new Set(indicators)].join('\n'), points || '',
         types.includes('INTRA') ? 'X' : '', types.includes('INTER') ? 'X' : '', types.includes('TRANS') ? 'X' : '',
-        dateStr, percentage,
+        planData?.date ? new Date(planData.date).toLocaleDateString('es-VE') : '',
+        planData ? `${Number(planData.percentage)}%` : '',
       ];
       values.forEach((value, col) => {
         const cell = row.getCell(col + 1);
         cell.value = value;
         cell.alignment = { vertical: 'top', wrapText: true };
-        cell.border = { top: border, bottom: border, left: border, right: border };
+        cell.border = {
+          top: border,
+          bottom: border,
+          left: col === 3 ? tableSeparator : border,
+          right: col === 2 ? tableSeparator : border,
+        };
       });
-      const strategyLines = strategyText ? strategyText.split('\n').length : 0;
-      const extraLines = (component ? 1 : 0) + (indicesStr ? 1 : 0);
-      const lineCount = Math.max(1, criteria.length, indicators.length, strategyLines + extraLines);
+      const thematicLines = Math.max(
+        thematicData?.content ? thematicData.content.split('\n').length : 0,
+        thematicData?.learnings ? thematicData.learnings.split('\n').length : 0
+      );
+      const strategyLines = planData
+        ? Math.max(1, (planData.description || '').split('\n').length)
+          + (planData.componentNames ? planData.componentNames.split('\n').length : 0)
+          + (planData.indicesStr ? 1 : 0)
+        : 0;
+      const lineCount = Math.max(1, thematicLines, criteria.length, indicators.length, strategyLines);
       row.height = Math.max(42, 18 * lineCount);
-    });
-
-    // Merge component cells vertically when consecutive rows share the same component
-    let componentStart = 14;
-    for (let index = 1; index <= rows.length; index++) {
-      const current = rows[index]?.component;
-      const previous = rows[index - 1]?.component;
-      if (index === rows.length || current !== previous) {
-        const componentEnd = 13 + index;
-        if (previous && componentEnd > componentStart) {
-          sheet.mergeCells(`A${componentStart}:A${componentEnd}`);
-          sheet.getCell(`A${componentStart}`).alignment = { vertical: 'middle', wrapText: true };
-        }
-        componentStart = 14 + index;
-      }
     }
     sheet.views = [{ state: 'frozen', ySplit: 13 }];
     sheet.pageSetup = { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0, paperSize: 9 };
