@@ -1218,6 +1218,12 @@ export const exportPlanningExcel = async (req: Request, res: Response) => {
       const componentData = component.toJSON();
       componentNames.set(componentData.id, `${componentIndex + 1}. ${componentData.title}`);
     });
+    const formatPlanDate = (value: string | Date | null | undefined) => {
+      if (!value) return '';
+      const datePart = value instanceof Date ? value.toISOString().slice(0, 10) : String(value).slice(0, 10);
+      const match = datePart.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      return match ? `${match[3]}/${match[2]}/${match[1]}` : datePart;
+    };
     const orderedPlans = plans.map((plan: any) => {
       const planData = plan.toJSON();
       const contentIds = Array.isArray(plan.thematicContentIds) ? plan.thematicContentIds : [];
@@ -1238,7 +1244,7 @@ export const exportPlanningExcel = async (req: Request, res: Response) => {
         componentNames: linkedComponents.join('\n'),
         indicesStr: indices.length > 0 ? `(${indices.join(', ')})` : '',
       };
-    }).sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    }).sort((a: any, b: any) => String(a.date).localeCompare(String(b.date)));
 
     const evaluationRows = orderedPlans.flatMap((plan: any) => {
       const planRows: any[] = [];
@@ -1385,7 +1391,7 @@ export const exportPlanningExcel = async (req: Request, res: Response) => {
         isFirstPlanRow && types.includes('INTRA') ? 'X' : '',
         isFirstPlanRow && types.includes('INTER') ? 'X' : '',
         isFirstPlanRow && types.includes('TRANS') ? 'X' : '',
-        isFirstPlanRow && planData?.date ? new Date(planData.date).toLocaleDateString('es-VE') : '',
+        isFirstPlanRow ? formatPlanDate(planData?.date) : '',
         isFirstPlanRow && planData ? `${Number(planData.percentage)}%` : '',
       ];
       values.forEach((value, col) => {
