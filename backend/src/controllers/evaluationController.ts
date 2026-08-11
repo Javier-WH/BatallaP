@@ -1181,23 +1181,49 @@ export const exportPlanningExcel = async (req: Request, res: Response) => {
       }),
     ]);
 
-    const componentRows = components.flatMap((component: any) => {
+    // Build a map: contentId → { componentIndex, contentIndex, componentTitle, contentTitle, learningIndices }
+    const contentMap = new Map<number, { componentIndex: number; contentIndex: number; componentTitle: string; contentTitle: string; learningIndices: string[]; learningDescriptions: string[] }>();
+    components.forEach((component: any, compIdx: number) => {
       const componentData = component.toJSON();
-      return (componentData.contents || []).map((content: any) => {
-        const relatedPlans = plans.filter((plan: any) =>
-          Array.isArray(plan.thematicContentIds) && plan.thematicContentIds.includes(content.id)
-        );
-        return {
-          component: componentData.title,
-          content: content.title,
-          learnings: (content.learnings || []).map((learning: any) => learning.description).join('\n'),
-          plans: relatedPlans,
-        };
+      (componentData.contents || []).forEach((content: any, contentIdx: number) => {
+        const learningIndices: string[] = [];
+        const learningDescriptions: string[] = [];
+        (content.learnings || []).forEach(() => {
+          learningIndices.push(`${compIdx + 1}.${contentIdx + 1}`);
+        });
+        (content.learnings || []).forEach((l: any) => learningDescriptions.push(l.description));
+        contentMap.set(content.id, {
+          componentIndex: compIdx,
+          contentIndex: contentIdx,
+          componentTitle: componentData.title,
+          contentTitle: content.title,
+          learningIndices,
+          learningDescriptions,
+        });
       });
     });
-    const unlinkedPlans = plans.filter((plan: any) => !Array.isArray(plan.thematicContentIds) || plan.thematicContentIds.length === 0);
-    const rows = [...componentRows, ...(unlinkedPlans.length > 0 ? [{ component: '', content: '', learnings: '', plans: unlinkedPlans }] : [])];
-    if (rows.length === 0) rows.push({ component: '', content: '', learnings: '', plans: [] });
+
+    // Build one row per plan (no grouping)
+    const rows: any[] = [];
+    plans.forEach((plan: any) => {
+      const contentIds = Array.isArray(plan.thematicContentIds) ? plan.thematicContentIds : [];
+      const linkedContents = contentIds.map((id: number) => contentMap.get(id)).filter(Boolean);
+      const component = [...new Set(linkedContents.map((c: any) => c.componentTitle))].join('\n');
+      const content = [...new Set(linkedContents.map((c: any) => c.contentTitle))].join('\n');
+      const learnings = linkedContents.map((c: any) => c.learningDescriptions.join('\n')).filter(Boolean).join('\n');
+      // Collect all learning indices for this plan
+      const allIndices = linkedContents.flatMap((c: any) => c.learningIndices);
+      const indicesStr = allIndices.length > 0 ? `(${allIndices.join(', ')})` : '';
+      rows.push({
+        component,
+        content,
+        learnings,
+        plan: plan.toJSON(),
+        indicesStr,
+      });
+    });
+
+    if (rows.length === 0) rows.push({ component: '', content: '', learnings: '', plan: null, indicesStr: '' });
 
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet('Planificación');
@@ -1252,23 +1278,38 @@ export const exportPlanningExcel = async (req: Request, res: Response) => {
       }
     }
 
-    rows.forEach(({ component, content, learnings, plans: rowPlans }, index) => {
+    rows.forEach(({ component, content, learnings, plan: planData, indicesStr }, index) => {
       const row = sheet.getRow(14 + index);
-      const plansData = rowPlans as any[];
-      const criteria = plansData.flatMap((plan: any) => plan.criteria || []);
+      const criteria = planData?.criteria || [];
       const indicators = criteria.flatMap((criterion: any) => (criterion.indicators || []).map((indicator: any) => indicator.name));
       const points = criteria.reduce((sum: number, criterion: any) => sum + Number(criterion.points || 0), 0);
-      const types = [...new Set(plansData.flatMap((plan: any) => (plan.evaluationType || '').split(',').filter(Boolean).map((type: string) => type.toUpperCase())))];
-      const strategies = plansData.map((plan: any) => [plan.shortDescription, plan.description].filter(Boolean).join('\n')).filter(Boolean);
-      const techniques = [...new Set(plansData.map((plan: any) => plan.tecnicaCatalog?.name).filter(Boolean))];
-      const instruments = [...new Set(plansData.map((plan: any) => plan.instrumentoCatalog?.name).filter(Boolean))];
-      const dates = plansData.map((plan: any) => plan.date ? new Date(plan.date).toLocaleDateString('es-VE') : '').filter(Boolean);
-      const percentages = plansData.map((plan: any) => `${Number(plan.percentage)}%`);
+      const types = planData ? (planData.evaluationType || '').split(',').filter(Boolean).map((type: string) => type.toUpperCase()) : [];
+      const strategyText = planData ? planData.description || '' : '';
+      // Build richText: strategy text → component name (subtle italic gray) → indices in parentheses
+      const strategyValue: any = (() => {
+        const richText: { font: Partial<ExcelJS.Font>; text: string }[] = [];
+        if (strategyText) {
+          richText.push({ font: { size: 10 }, text: strategyText });
+        }
+        if (component) {
+          richText.push({ font: { size: 9, italic: true, color: { argb: 'FF888888' } }, text: `\n${component}` });
+        }
+        if (indicesStr) {
+          richText.push({ font: { size: 9, color: { argb: 'FF555555' } }, text: `\n${indicesStr}` });
+        }
+        if (richText.length === 0) return '';
+        if (richText.length === 1) return strategyText;
+        return { richText };
+      })();
+      const technique = planData?.tecnicaCatalog?.name || '';
+      const instrument = planData?.instrumentoCatalog?.name || '';
+      const dateStr = planData?.date ? new Date(planData.date).toLocaleDateString('es-VE') : '';
+      const percentage = planData ? `${Number(planData.percentage)}%` : '';
       const values = [
-        component, content, learnings, strategies.join('\n\n'), techniques.join('\n'), instruments.join('\n'),
+        component, content, learnings, strategyValue, technique, instrument,
         criteria.map((criterion: any) => criterion.name).join('\n'), indicators.join('\n'), points || '',
         types.includes('INTRA') ? 'X' : '', types.includes('INTER') ? 'X' : '', types.includes('TRANS') ? 'X' : '',
-        dates.join('\n'), percentages.join('\n'),
+        dateStr, percentage,
       ];
       values.forEach((value, col) => {
         const cell = row.getCell(col + 1);
@@ -1276,9 +1317,13 @@ export const exportPlanningExcel = async (req: Request, res: Response) => {
         cell.alignment = { vertical: 'top', wrapText: true };
         cell.border = { top: border, bottom: border, left: border, right: border };
       });
-      row.height = Math.max(42, 18 * Math.max(1, strategies.length, dates.length, criteria.length));
+      const strategyLines = strategyText ? strategyText.split('\n').length : 0;
+      const extraLines = (component ? 1 : 0) + (indicesStr ? 1 : 0);
+      const lineCount = Math.max(1, criteria.length, indicators.length, strategyLines + extraLines);
+      row.height = Math.max(42, 18 * lineCount);
     });
 
+    // Merge component cells vertically when consecutive rows share the same component
     let componentStart = 14;
     for (let index = 1; index <= rows.length; index++) {
       const current = rows[index]?.component;
