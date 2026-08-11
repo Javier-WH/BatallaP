@@ -1210,7 +1210,7 @@ export const exportPlanningExcel = async (req: Request, res: Response) => {
       const linkedContents = contentIds.map((id: number) => contentMap.get(id)).filter(Boolean);
       const component = [...new Set(linkedContents.map((c: any) => c.componentTitle))].join('\n');
       const content = [...new Set(linkedContents.map((c: any) => c.contentTitle))].join('\n');
-      const learnings = linkedContents.map((c: any) => c.learningDescriptions.join('\n')).filter(Boolean).join('\n');
+      const learnings = [...new Set(linkedContents.flatMap((c: any) => c.learningDescriptions))].join('\n');
       // Collect all learning indices for this plan
       const allIndices = linkedContents.flatMap((c: any) => c.learningIndices);
       const indicesStr = allIndices.length > 0 ? `(${allIndices.join(', ')})` : '';
