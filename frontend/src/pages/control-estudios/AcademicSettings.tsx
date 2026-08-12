@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Card, Form, Input, InputNumber, Button, Typography, Space, message, Spin, DatePicker, Switch, Table, Modal, Popconfirm, Tooltip, Alert, Tag, Row, Col, Empty } from 'antd';
+import { Card, Form, Input, InputNumber, Button, Typography, Space, message, Spin, DatePicker, Switch, Table, Modal, Popconfirm, Tooltip, Alert, Tag, Row, Col, Empty, Tabs } from 'antd';
 import {
   SaveOutlined,
   PlusOutlined,
@@ -480,9 +480,16 @@ const AcademicSettings: React.FC = () => {
         </Row>
       </div>
 
-      <Row gutter={[32, 32]}>
-        {/* Rules Column */}
-        <Col xs={24} lg={9}>
+      <Tabs
+        defaultActiveKey="configuracion"
+        items={[
+          {
+            key: 'configuracion',
+            label: 'Configuración',
+            children: (
+              <Row gutter={[32, 32]}>
+                {/* Rules Column */}
+                <Col xs={24} lg={9}>
           <Card
             className="premium-card animate-card delay-1"
             styles={{ body: { padding: 0 } }}
@@ -740,9 +747,13 @@ const AcademicSettings: React.FC = () => {
           )}
         </Col>
       </Row>
-
-      {/* Catalogs Section */}
-      <Row gutter={[32, 32]} style={{ marginTop: 32 }}>
+            ),
+          },
+          {
+            key: 'evaluacion',
+            label: 'Evaluación',
+            children: (
+              <Row gutter={[32, 32]} style={{ marginTop: 32 }}>
         <Col xs={24} lg={12}>
           <Card
             className="premium-card animate-card"
@@ -843,6 +854,10 @@ const AcademicSettings: React.FC = () => {
           </Card>
         </Col>
       </Row>
+            ),
+          },
+        ]}
+      />
 
       {/* Catalog Modal */}
       <Modal
