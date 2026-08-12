@@ -1311,7 +1311,7 @@ export const exportPlanningExcel = async (req: Request, res: Response) => {
     const evaluationHeaderFill = 'FFF2F2F2';
     const columns = [
       ['COMPONENTE TEMÁTICO', 24], ['CONTENIDO', 28], ['APRENDIZAJES\nESPERADOS', 32], ['ESTRATEGIA DE\nAPRENDIZAJE', 28],
-      ['TÉCNICA', 18], ['INSTRUMENTO', 18], ['CRITERIOS', 28], ['INDICADORES', 30], ['PUNTOS', 7.29],
+      ['TÉCNICA', 18], ['INSTRUMENTO', 18], ['CRITERIOS', 28], ['INDICADORES', 30], ['PUNTOS', 7.29], ['', 9],
       ['INTRA', 5.71], ['INTER', 5.71], ['TRANS', 5.71], ['FECHA', 14], ['PORCENTAJE', 12],
     ];
     columns.forEach(([name, width], index) => { sheet.getColumn(index + 1).width = width as number; });
@@ -1334,7 +1334,7 @@ export const exportPlanningExcel = async (req: Request, res: Response) => {
       });
     }
 
-    sheet.mergeCells('A2:N2');
+    sheet.mergeCells('A2:O2');
     sheet.getCell('A2').value = 'PLANIFICACIÓN';
     sheet.getCell('A2').font = { bold: true, size: 16 };
     sheet.getCell('A2').alignment = { horizontal: 'center', vertical: 'middle' };
@@ -1345,7 +1345,7 @@ export const exportPlanningExcel = async (req: Request, res: Response) => {
     sheet.getCell('B3').font = { size: 9 };
 
     sheet.mergeCells('A4:C4');
-    sheet.mergeCells('D4:N4');
+    sheet.mergeCells('D4:O4');
     sheet.getCell('A4').value = term?.getDataValue('name') || 'Lapso';
     sheet.getCell('A4').font = { bold: true, size: 14 };
     sheet.getCell('A4').alignment = { horizontal: 'left', vertical: 'middle' };
@@ -1358,7 +1358,7 @@ export const exportPlanningExcel = async (req: Request, res: Response) => {
     const sectionName = String(assignmentData.section?.name || '').replace(/^Secci[oó]n\s*/i, '');
     sheet.getCell('A5').value = 'Profesor:';
     sheet.getCell('A5').font = { size: 14 };
-    sheet.mergeCells('B5:N5');
+    sheet.mergeCells('B5:O5');
     sheet.getCell('B5').value = assignmentData.teacher
       ? `${assignmentData.teacher.firstName} ${assignmentData.teacher.lastName}`
       : '—';
@@ -1371,24 +1371,28 @@ export const exportPlanningExcel = async (req: Request, res: Response) => {
     sheet.getCell('B6').value = pgs.subject?.name || '';
     sheet.getCell('B6').font = { bold: true, size: 14 };
     sheet.getCell('B6').alignment = { horizontal: 'left', vertical: 'middle' };
-    sheet.mergeCells('D6:N6');
+    sheet.mergeCells('D6:O6');
     sheet.getCell('D6').value = `${periodGrade.grade?.name || ''}${sectionName ? `, sección ${sectionName}` : ''}`;
     sheet.getCell('D6').font = { bold: true, size: 14 };
     sheet.getCell('D6').alignment = { horizontal: 'left', vertical: 'middle' };
 
-    ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'M', 'N'].forEach((column) => {
+    ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'N', 'O'].forEach((column) => {
       sheet.mergeCells(`${column}7:${column}8`);
     });
-    sheet.mergeCells('J7:L7');
-    ['A7', 'B7', 'C7', 'D7', 'E7', 'F7', 'G7', 'H7', 'I7'].forEach((cell, index) => {
+    sheet.mergeCells('I7:J8');
+    sheet.mergeCells('K7:M7');
+    ['A7', 'B7', 'C7', 'D7', 'E7', 'F7', 'G7', 'H7'].forEach((cell, index) => {
       sheet.getCell(cell).value = columns[index][0];
     });
-    sheet.getCell('J7').value = 'TIPO DE EVALUACIÓN';
-    ['J8', 'K8', 'L8'].forEach((cell, index) => { sheet.getCell(cell).value = columns[index + 9][0]; });
-    sheet.getCell('M7').value = columns[12][0];
+    sheet.getCell('I7').value = 'PUNTOS';
+    sheet.getCell('I7').alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+    sheet.getCell('K7').value = 'TIPO DE EVALUACIÓN';
+    sheet.getCell('K7').alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+    ['K8', 'L8', 'M8'].forEach((cell, index) => { sheet.getCell(cell).value = columns[index + 10][0]; });
     sheet.getCell('N7').value = columns[13][0];
+    sheet.getCell('O7').value = columns[14][0];
     for (let row = 7; row <= 8; row++) {
-      for (let col = 1; col <= 14; col++) {
+      for (let col = 1; col <= 15; col++) {
         const cell = sheet.getCell(row, col);
         cell.font = { bold: true, size: 9 };
         cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
@@ -1430,6 +1434,9 @@ export const exportPlanningExcel = async (req: Request, res: Response) => {
         }
         return richText.length > 0 ? { richText } : '';
       })();
+      const criterionTotalPoints = criterion
+        ? (criterion.indicators || []).reduce((sum: number, ind: any) => sum + Number(ind?.points || 0), 0)
+        : '';
       const values = [
         thematicData?.component || '', thematicData?.content || '', thematicData?.learnings || '',
         strategyValue,
@@ -1438,6 +1445,7 @@ export const exportPlanningExcel = async (req: Request, res: Response) => {
         isFirstCriterionRow ? criterion?.name || '' : '',
         indicator?.name || '',
         indicator?.points != null ? Number(indicator.points) : '',
+        isFirstCriterionRow ? criterionTotalPoints : '',
         isFirstPlanRow && types.includes('INTRA') ? 'X' : '',
         isFirstPlanRow && types.includes('INTER') ? 'X' : '',
         isFirstPlanRow && types.includes('TRANS') ? 'X' : '',
@@ -1475,7 +1483,7 @@ export const exportPlanningExcel = async (req: Request, res: Response) => {
       const startRow = 9 + index;
       if (evaluationData.planRowIndex === 0 && evaluationData.planRowCount > 1) {
         const endRow = startRow + evaluationData.planRowCount - 1;
-        ['D', 'E', 'F', 'J', 'K', 'L', 'M', 'N'].forEach((column) => {
+        ['D', 'E', 'F', 'K', 'L', 'M', 'N', 'O'].forEach((column) => {
           sheet.mergeCells(`${column}${startRow}:${column}${endRow}`);
           const isEF = column === 'E' || column === 'F';
           sheet.getCell(`${column}${startRow}`).alignment = isEF
@@ -1487,6 +1495,8 @@ export const exportPlanningExcel = async (req: Request, res: Response) => {
         const endRow = startRow + evaluationData.criterionRowCount - 1;
         sheet.mergeCells(`G${startRow}:G${endRow}`);
         sheet.getCell(`G${startRow}`).alignment = { vertical: 'middle', wrapText: true };
+        sheet.mergeCells(`J${startRow}:J${endRow}`);
+        sheet.getCell(`J${startRow}`).alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
       }
     });
 
@@ -1494,14 +1504,14 @@ export const exportPlanningExcel = async (req: Request, res: Response) => {
     for (let rowIndex = 1; rowIndex <= lastTableRow; rowIndex++) {
       const row = sheet.getRow(rowIndex);
       if (rowIndex >= 7) row.height = 15;
-      for (let columnIndex = 1; columnIndex <= 14; columnIndex++) {
+      for (let columnIndex = 1; columnIndex <= 15; columnIndex++) {
         const cell = row.getCell(columnIndex);
         const isMergedSlave = cell.isMerged && cell.master.address !== cell.address;
         if (!isMergedSlave) {
           cell.alignment = {
             ...(cell.alignment || {}),
             vertical: 'middle',
-            ...(columnIndex === 9 || (columnIndex >= 10 && rowIndex >= 9)
+            ...(columnIndex === 9 || columnIndex === 10 || (columnIndex >= 11 && rowIndex >= 9)
               ? { horizontal: 'center' as const }
               : {}),
           };
@@ -1512,7 +1522,7 @@ export const exportPlanningExcel = async (req: Request, res: Response) => {
             top: rowIndex === 7 ? outerBorder : currentBorder.top,
             bottom: rowIndex === 8 || rowIndex === lastTableRow ? outerBorder : currentBorder.bottom,
             left: columnIndex === 1 ? outerBorder : currentBorder.left,
-            right: columnIndex === 14 ? outerBorder : currentBorder.right,
+            right: columnIndex === 15 ? outerBorder : currentBorder.right,
           };
         }
       }
@@ -1524,7 +1534,7 @@ export const exportPlanningExcel = async (req: Request, res: Response) => {
       const isCriterionEnd = evaluationData.criterionRowIndex === evaluationData.criterionRowCount - 1;
       if (rowIndex >= lastTableRow) return;
       if (!isCriterionEnd) {
-        for (let columnIndex = 8; columnIndex <= 9; columnIndex++) {
+        for (let columnIndex = 8; columnIndex <= 10; columnIndex++) {
           const cell = sheet.getCell(rowIndex, columnIndex);
           const currentBorder = { ...(cell.border || {}) };
           delete currentBorder.bottom;
@@ -1537,15 +1547,34 @@ export const exportPlanningExcel = async (req: Request, res: Response) => {
         return;
       }
       const separatorBorder = isPlanEnd ? instrumentSeparatorBorder : criterionSeparatorBorder;
-      for (let columnIndex = 7; columnIndex <= 9; columnIndex++) {
+      for (let columnIndex = 7; columnIndex <= 10; columnIndex++) {
         const cell = sheet.getCell(rowIndex, columnIndex);
-        const borderCell = columnIndex === 7 ? cell.master : cell;
+        const borderCell = (columnIndex === 7 || columnIndex === 10) ? cell.master : cell;
         borderCell.border = { ...(borderCell.border || {}), bottom: separatorBorder };
         const nextCell = sheet.getCell(rowIndex + 1, columnIndex);
-        const nextBorderCell = columnIndex === 7 ? nextCell.master : nextCell;
+        const nextBorderCell = (columnIndex === 7 || columnIndex === 10) ? nextCell.master : nextCell;
         nextBorderCell.border = { ...(nextBorderCell.border || {}), top: separatorBorder };
+
+        if (columnIndex === 7 || columnIndex === 10) {
+          cell.border = { ...(cell.border || {}), bottom: separatorBorder };
+          nextCell.border = { ...(nextCell.border || {}), top: separatorBorder };
+        }
       }
     });
+
+    for (let rowIndex = 7; rowIndex <= lastTableRow; rowIndex++) {
+      for (let columnIndex = 1; columnIndex <= 15; columnIndex++) {
+        const cell = sheet.getCell(rowIndex, columnIndex);
+        const currentBorder = { ...(cell.border || {}) };
+        cell.border = {
+          ...currentBorder,
+          top: rowIndex === 7 ? outerBorder : currentBorder.top,
+          bottom: rowIndex === lastTableRow ? outerBorder : currentBorder.bottom,
+          left: columnIndex === 1 ? outerBorder : currentBorder.left,
+          right: columnIndex === 15 ? outerBorder : currentBorder.right,
+        };
+      }
+    }
 
     sheet.pageSetup = { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0, paperSize: 9 };
     sheet.pageSetup.horizontalCentered = true;
