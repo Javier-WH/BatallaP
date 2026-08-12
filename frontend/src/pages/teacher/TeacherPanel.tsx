@@ -1075,6 +1075,24 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
       <div className="app-card p-6 mb-8">
         <Tabs
           activeKey={activeTab}
+          tabBarExtraContent={(
+            <div className="flex items-center gap-4">
+              <Button
+                icon={<FilePdfOutlined />}
+                onClick={() => setShowPDFModal(true)}
+                disabled={!selectedAssignmentId || evaluationPlan.length === 0}
+              >
+                Generar PDF
+              </Button>
+              <Button
+                icon={<DownloadOutlined />}
+                onClick={downloadPlanningExcel}
+                disabled={!selectedAssignmentId || !selectedTerm}
+              >
+                Crear Excel de planificación
+              </Button>
+            </div>
+          )}
           onChange={(key) => {
             setActiveTab(key);
             if (key === '2' || key === '3') {
@@ -1136,23 +1154,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
 
 <div className="mt-6 flex justify-between items-center px-2">
                       <span className="font-medium text-sm" style={{ color: 'var(--color-text-main)' }}>Mostrando {evaluationPlan.length} evaluaciones registradas</span>
-                      <div className="flex items-center gap-4">
-                        <Button
-                          icon={<FilePdfOutlined />}
-                          onClick={() => setShowPDFModal(true)}
-                          disabled={!selectedAssignmentId || evaluationPlan.length === 0}
-                        >
-                          Generar PDF
-                        </Button>
-                        <Button
-                          icon={<DownloadOutlined />}
-                          onClick={downloadPlanningExcel}
-                          disabled={!selectedAssignmentId || !selectedTerm}
-                        >
-                          Crear Excel de planificación
-                        </Button>
-                        <span className="font-black" style={{ color: 'var(--color-text-main)' }}>Total Puntaje Acumulado: {totalPercentage}%</span>
-                      </div>
+                      <span className="font-black" style={{ color: 'var(--color-text-main)' }}>Total Puntaje Acumulado: {totalPercentage}%</span>
                    </div>
                 </div>
               )
