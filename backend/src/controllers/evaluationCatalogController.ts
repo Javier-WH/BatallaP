@@ -5,7 +5,7 @@ export const getCatalogs = async (req: Request, res: Response) => {
   try {
     const { type } = req.query;
     const where: any = {};
-    if (type && ['tecnica', 'instrumento'].includes(type as string)) {
+    if (type && ['tecnica', 'instrumento', 'estrategia'].includes(type as string)) {
       where.type = type;
     }
     const catalogs = await EvaluationCatalog.findAll({ where, order: [['name', 'ASC']] });
@@ -19,8 +19,8 @@ export const getCatalogs = async (req: Request, res: Response) => {
 export const createCatalog = async (req: Request, res: Response) => {
   try {
     const { type, name } = req.body;
-    if (!type || !['tecnica', 'instrumento'].includes(type)) {
-      return res.status(400).json({ message: 'Tipo inválido (debe ser "tecnica" o "instrumento")' });
+    if (!type || !['tecnica', 'instrumento', 'estrategia'].includes(type)) {
+      return res.status(400).json({ message: 'Tipo inválido (debe ser "tecnica", "instrumento" o "estrategia")' });
     }
     if (!name || !name.trim()) {
       return res.status(400).json({ message: 'El nombre es requerido' });

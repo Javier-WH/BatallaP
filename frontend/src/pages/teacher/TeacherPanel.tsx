@@ -114,8 +114,10 @@ interface EvaluationPlanItem {
   evaluationType?: string | null;
   tecnicaId?: number | null;
   instrumentoId?: number | null;
+  estrategiaId?: number | null;
   tecnicaCatalog?: { id: number; name: string } | null;
   instrumentoCatalog?: { id: number; name: string } | null;
+  estrategiaCatalog?: { id: number; name: string } | null;
   shortDescription?: string | null;
 }
 
@@ -215,6 +217,7 @@ const TeacherPanel: React.FC = () => {
   const [thematicComponents, setThematicComponents] = useState<ThematicComponentData[]>([]);
   const [tecnicaOptions, setTecnicaOptions] = useState<CatalogOption[]>([]);
   const [instrumentoOptions, setInstrumentoOptions] = useState<CatalogOption[]>([]);
+  const [estrategiaOptions, setEstrategiaOptions] = useState<CatalogOption[]>([]);
   const [revisionOpen, setRevisionOpen] = useState(false);
   const { enableRounding } = useGradeRounding();
 
@@ -450,12 +453,14 @@ const TeacherPanel: React.FC = () => {
   useEffect(() => {
     const fetchCatalogs = async () => {
       try {
-        const [tecRes, instRes] = await Promise.all([
+        const [tecRes, instRes, estRes] = await Promise.all([
           api.get('/evaluation/catalogs?type=tecnica'),
           api.get('/evaluation/catalogs?type=instrumento'),
+          api.get('/evaluation/catalogs?type=estrategia'),
         ]);
         setTecnicaOptions(tecRes.data);
         setInstrumentoOptions(instRes.data);
+        setEstrategiaOptions(estRes.data);
       } catch {
         // silent
       }
@@ -612,8 +617,8 @@ const handleToggleAbsent = async (enrollment: StudentEnrollment, evalPlanId: num
   };
 
   const planColumns: ColumnsType<EvaluationPlanItem> = [
-    { title: 'Estrategia de Evaluación', dataIndex: 'description', key: 'description', width: 200,
-      render: (val: string) => <span style={{ fontWeight: 600 }}>{val}</span>
+    { title: 'Estrategia de Evaluación', key: 'description', width: 200,
+      render: (_: unknown, r: EvaluationPlanItem) => <span style={{ fontWeight: 600 }}>{r.estrategiaCatalog?.name || r.description}</span>
     },
     { title: 'Técnica', key: 'tecnica', width: 120,
       render: (_: unknown, r: EvaluationPlanItem) => r.tecnicaCatalog?.name || <span style={{ color: '#999' }}>—</span>
@@ -1548,6 +1553,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
             thematicComponents={thematicComponents}
             tecnicaOptions={tecnicaOptions}
             instrumentoOptions={instrumentoOptions}
+            estrategiaOptions={estrategiaOptions}
             maxGrade={maxGrade}
           />
         );

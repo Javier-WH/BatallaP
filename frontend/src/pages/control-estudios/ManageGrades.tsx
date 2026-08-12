@@ -73,9 +73,12 @@ interface EvaluationPlanItem {
   thematicContents?: { id: number; title: string; thematicComponent?: { id: number; title: string } }[];
   criteria?: { id: number; name: string; points: number; indicators?: { id: number; name: string; points: number }[] }[];
   evaluationType?: string | null;
+  tecnicaId?: number | null;
   instrumentoId?: number | null;
+  estrategiaId?: number | null;
   tecnicaCatalog?: { id: number; name: string } | null;
   instrumentoCatalog?: { id: number; name: string } | null;
+  estrategiaCatalog?: { id: number; name: string } | null;
   shortDescription?: string | null;
 }
 
@@ -132,6 +135,7 @@ const ManageGrades: React.FC = () => {
   }[]>([]);
   const [tecnicaOptions, setTecnicaOptions] = useState<CatalogOption[]>([]);
   const [instrumentoOptions, setInstrumentoOptions] = useState<CatalogOption[]>([]);
+  const [estrategiaOptions, setEstrategiaOptions] = useState<CatalogOption[]>([]);
   const { enableRounding } = useGradeRounding();
 
   const isSelectedTermBlocked = useMemo(() => {
@@ -207,12 +211,14 @@ const ManageGrades: React.FC = () => {
     fetchMaxGrade();
     const fetchCatalogs = async () => {
       try {
-        const [tecRes, instRes] = await Promise.all([
+        const [tecRes, instRes, estRes] = await Promise.all([
           api.get('/evaluation/catalogs?type=tecnica'),
           api.get('/evaluation/catalogs?type=instrumento'),
+          api.get('/evaluation/catalogs?type=estrategia'),
         ]);
         setTecnicaOptions(tecRes.data);
         setInstrumentoOptions(instRes.data);
+        setEstrategiaOptions(estRes.data);
       } catch {
         // silent
       }
@@ -471,8 +477,8 @@ const ManageGrades: React.FC = () => {
   };
 
   const planColumns = [
-    { title: 'Estrategia de Evaluación', dataIndex: 'description', key: 'description', width: 200,
-      render: (val: string) => <span style={{ fontWeight: 600 }}>{val}</span>
+    { title: 'Estrategia de Evaluación', key: 'description', width: 200,
+      render: (_: unknown, r: EvaluationPlanItem) => <span style={{ fontWeight: 600 }}>{r.estrategiaCatalog?.name || r.description}</span>
     },
     { title: 'Técnica', key: 'tecnica', width: 120,
       render: (_: unknown, r: EvaluationPlanItem) => r.tecnicaCatalog?.name || <span style={{ color: '#999' }}>—</span>
@@ -1005,6 +1011,7 @@ const ManageGrades: React.FC = () => {
           thematicComponents={thematicComponents}
           tecnicaOptions={tecnicaOptions}
           instrumentoOptions={instrumentoOptions}
+          estrategiaOptions={estrategiaOptions}
           maxGrade={maxGrade}
         />
       )}

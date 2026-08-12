@@ -56,7 +56,7 @@ interface TermFormValues {
 
 interface CatalogItem {
   id: number;
-  type: 'tecnica' | 'instrumento';
+  type: 'tecnica' | 'instrumento' | 'estrategia';
   name: string;
 }
 
@@ -73,7 +73,7 @@ const AcademicSettings: React.FC = () => {
   const [letterGrades, setLetterGrades] = useState<LetterGrade[]>([]);
   const { refreshSetting } = useGradeRounding();
   const [catalogs, setCatalogs] = useState<CatalogItem[]>([]);
-  const [catalogModal, setCatalogModal] = useState<{ open: boolean; editing?: CatalogItem | null; type: 'tecnica' | 'instrumento'; name: string }>({ open: false, type: 'tecnica', name: '' });
+  const [catalogModal, setCatalogModal] = useState<{ open: boolean; editing?: CatalogItem | null; type: 'tecnica' | 'instrumento' | 'estrategia'; name: string }>({ open: false, type: 'tecnica', name: '' });
   const [catalogSubmitting, setCatalogSubmitting] = useState(false);
 
   const fetchSettings = useCallback(async () => {
@@ -151,7 +151,7 @@ const AcademicSettings: React.FC = () => {
     fetchCatalogs();
   }, [fetchSettings, fetchTerms, fetchCatalogs]);
 
-  const handleAddCatalog = (type: 'tecnica' | 'instrumento') => {
+  const handleAddCatalog = (type: 'tecnica' | 'instrumento' | 'estrategia') => {
     setCatalogModal({ open: true, editing: null, type, name: '' });
   };
 
@@ -809,6 +809,39 @@ const AcademicSettings: React.FC = () => {
             />
           </Card>
         </Col>
+        <Col xs={24} lg={12}>
+          <Card
+            className="premium-card animate-card"
+            styles={{ body: { padding: 0 } }}
+            title={
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 12px' }}>
+                <Text style={{ fontWeight: 800, fontSize: 16 }}>Estrategias de Evaluación</Text>
+                <Button type="primary" icon={<PlusOutlined />} onClick={() => handleAddCatalog('estrategia')} style={{ borderRadius: 12, fontWeight: 700, height: 40 }}>
+                  Nueva Estrategia
+                </Button>
+              </div>
+            }
+          >
+            <Table
+              dataSource={catalogs.filter(c => c.type === 'estrategia')}
+              rowKey="id"
+              pagination={false}
+              className="premium-table"
+              style={{ padding: '4px' }}
+              columns={[
+                { title: 'Nombre', dataIndex: 'name', key: 'name', render: (t: string) => <Text style={{ fontWeight: 600 }}>{t}</Text> },
+                { title: 'Acciones', key: 'actions', align: 'right' as const, width: 120, render: (_: any, r: CatalogItem) => (
+                  <Space>
+                    <Tooltip title="Editar"><Button type="text" icon={<EditOutlined style={{ color: '#1890ff' }} />} onClick={() => handleEditCatalog(r)} /></Tooltip>
+                    <Popconfirm title="¿Eliminar?" onConfirm={() => handleDeleteCatalog(r.id)} okText="Sí" cancelText="No" okButtonProps={{ danger: true }}>
+                      <Button type="text" danger icon={<DeleteOutlined />} />
+                    </Popconfirm>
+                  </Space>
+                )},
+              ]}
+            />
+          </Card>
+        </Col>
       </Row>
 
       {/* Catalog Modal */}
@@ -824,7 +857,7 @@ const AcademicSettings: React.FC = () => {
         width={400}
       >
         <Form layout="vertical" style={{ marginTop: 16 }}>
-          <Form.Item label={catalogModal.type === 'tecnica' ? 'Técnica' : 'Instrumento'} required>
+          <Form.Item label={catalogModal.type === 'tecnica' ? 'Técnica' : catalogModal.type === 'instrumento' ? 'Instrumento' : 'Estrategia'} required>
             <Input
               value={catalogModal.name}
               onChange={e => setCatalogModal(prev => ({ ...prev, name: e.target.value }))}

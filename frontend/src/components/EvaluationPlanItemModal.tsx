@@ -29,8 +29,10 @@ export interface EvaluationPlanItem {
   evaluationType?: string | null;
   tecnicaId?: number | null;
   instrumentoId?: number | null;
+  estrategiaId?: number | null;
   tecnicaCatalog?: { id: number; name: string } | null;
   instrumentoCatalog?: { id: number; name: string } | null;
+  estrategiaCatalog?: { id: number; name: string } | null;
   shortDescription?: string | null;
 }
 
@@ -42,6 +44,7 @@ interface PlanItemFormValues {
   evaluationType?: string[] | null;
   tecnicaId?: number;
   instrumentoId?: number;
+  estrategiaId?: number;
   shortDescription?: string;
 }
 
@@ -55,7 +58,7 @@ export interface SchoolPeriodInfo {
 
 export interface CatalogOption {
   id: number;
-  type: 'tecnica' | 'instrumento';
+  type: 'tecnica' | 'instrumento' | 'estrategia';
   name: string;
 }
 
@@ -73,6 +76,7 @@ export interface EvaluationPlanItemModalProps {
   thematicComponents?: ThematicComponentOption[];
   tecnicaOptions?: CatalogOption[];
   instrumentoOptions?: CatalogOption[];
+  estrategiaOptions?: CatalogOption[];
   maxGrade?: number;
 }
 
@@ -139,6 +143,7 @@ const EvaluationPlanItemModal: React.FC<EvaluationPlanItemModalProps> = ({
   thematicComponents = [],
   tecnicaOptions: tecnicaOptionsProp = [],
   instrumentoOptions: instrumentoOptionsProp = [],
+  estrategiaOptions: estrategiaOptionsProp = [],
   maxGrade = 20,
 }) => {
   const [form] = Form.useForm<PlanItemFormValues>();
@@ -157,6 +162,7 @@ const EvaluationPlanItemModal: React.FC<EvaluationPlanItemModalProps> = ({
 
   const [tecnicaOptionsState, setTecnicaOptionsState] = useState<CatalogOption[]>(tecnicaOptionsProp);
   const [instrumentoOptionsState, setInstrumentoOptionsState] = useState<CatalogOption[]>(instrumentoOptionsProp);
+  const [estrategiaOptionsState, setEstrategiaOptionsState] = useState<CatalogOption[]>(estrategiaOptionsProp);
 
   useEffect(() => {
     setTecnicaOptionsState(tecnicaOptionsProp);
@@ -165,15 +171,24 @@ const EvaluationPlanItemModal: React.FC<EvaluationPlanItemModalProps> = ({
   useEffect(() => {
     setInstrumentoOptionsState(instrumentoOptionsProp);
   }, [instrumentoOptionsProp]);
+
+  useEffect(() => {
+    setEstrategiaOptionsState(estrategiaOptionsProp);
+  }, [estrategiaOptionsProp]);
+
   const tecnicaSelectOptions = tecnicaOptionsState.map(t => ({ value: t.id, label: t.name }));
   const instrumentoSelectOptions = instrumentoOptionsState.map(i => ({ value: i.id, label: i.name }));
+  const estrategiaSelectOptions = estrategiaOptionsState.map(e => ({ value: e.id, label: e.name }));
   const [tecnicaSearch, setTecnicaSearch] = useState('');
   const [instrumentoSearch, setInstrumentoSearch] = useState('');
+  const [estrategiaSearch, setEstrategiaSearch] = useState('');
   const [addingTecnica, setAddingTecnica] = useState(false);
   const [addingInstrumento, setAddingInstrumento] = useState(false);
+  const [addingEstrategia, setAddingEstrategia] = useState(false);
 
   const tecnicaExists = tecnicaOptionsState.some(t => t.name.toLowerCase() === tecnicaSearch.trim().toLowerCase());
   const instrumentoExists = instrumentoOptionsState.some(i => i.name.toLowerCase() === instrumentoSearch.trim().toLowerCase());
+  const estrategiaExists = estrategiaOptionsState.some(e => e.name.toLowerCase() === estrategiaSearch.trim().toLowerCase());
 
   const handleAddTecnica = async () => {
     const name = tecnicaSearch.trim();
@@ -211,6 +226,24 @@ const EvaluationPlanItemModal: React.FC<EvaluationPlanItemModalProps> = ({
     }
   };
 
+  const handleAddEstrategia = async () => {
+    const name = estrategiaSearch.trim();
+    if (!name) return;
+    setAddingEstrategia(true);
+    try {
+      const res = await api.post('/evaluation/catalogs', { type: 'estrategia', name });
+      const newOpt = res.data;
+      setEstrategiaOptionsState(prev => [...prev, newOpt]);
+      form.setFieldValue('estrategiaId', newOpt.id);
+      setEstrategiaSearch('');
+      message.success(`Estrategia "${name}" agregada`);
+    } catch (error: any) {
+      message.error(error.response?.data?.message || 'Error al agregar estrategia');
+    } finally {
+      setAddingEstrategia(false);
+    }
+  };
+
   useEffect(() => {
     if (open) {
       if (editingItem) {
@@ -225,6 +258,7 @@ const EvaluationPlanItemModal: React.FC<EvaluationPlanItemModalProps> = ({
               .flatMap(component => (component.contents || []).map(content => content.id)),
           tecnicaId: editingItem.tecnicaId || undefined,
           instrumentoId: editingItem.instrumentoId || undefined,
+          estrategiaId: editingItem.estrategiaId || undefined,
           shortDescription: editingItem.shortDescription || '',
         });
         setEvaluationType(editingItem.evaluationType ? editingItem.evaluationType.split(',') : []);
@@ -284,17 +318,20 @@ const EvaluationPlanItemModal: React.FC<EvaluationPlanItemModalProps> = ({
       }
       setSaving(true);
 
+      const selectedEstrategia = estrategiaOptionsState.find(e => e.id === values.estrategiaId);
+
       const payload = {
         periodGradeSubjectId,
         sectionId,
         termId,
-        description: values.description,
+        description: selectedEstrategia?.name || values.description || '',
         percentage: Number(values.percentage),
         date: values.date ? values.date.format('YYYY-MM-DD') : null,
         thematicContentIds: values.thematicContentIds?.length ? values.thematicContentIds : null,
         evaluationType: evaluationType.length > 0 ? evaluationType.join(',') : null,
         tecnicaId: values.tecnicaId || null,
         instrumentoId: values.instrumentoId || null,
+        estrategiaId: values.estrategiaId || null,
         shortDescription: values.shortDescription || null,
         criteria: criteria.map(c => ({
           name: c.name,
@@ -376,11 +413,37 @@ const EvaluationPlanItemModal: React.FC<EvaluationPlanItemModalProps> = ({
     >
       <Form form={form} layout="vertical">
         <Form.Item
-          name="description"
+          name="estrategiaId"
           label="Nombre de la estrategia"
-          rules={[{ required: true, message: 'Ingrese el nombre de la estrategia' }]}
+          rules={[{ required: true, message: 'Seleccione la estrategia' }]}
         >
-          <Input placeholder="Ej: Examen, Exposición, Trabajo escrito..." />
+          <Select
+            showSearch
+            allowClear
+            placeholder="Seleccionar estrategia..."
+            options={estrategiaSelectOptions}
+            optionFilterProp="label"
+            onSearch={setEstrategiaSearch}
+            onBlur={() => setEstrategiaSearch('')}
+            dropdownRender={(menu) => (
+              <>
+                {menu}
+                {estrategiaSearch.trim() && !estrategiaExists && (
+                  <Button
+                    type="primary"
+                    icon={<PlusCircleOutlined />}
+                    onMouseDown={(e) => { e.preventDefault(); }}
+                    onClick={handleAddEstrategia}
+                    loading={addingEstrategia}
+                    block
+                    style={{ borderRadius: 0, border: 'none' }}
+                  >
+                    Agregar "{estrategiaSearch.trim()}"
+                  </Button>
+                )}
+              </>
+            )}
+          />
         </Form.Item>
 
         <Form.Item

@@ -104,6 +104,7 @@ export const getEvaluationPlan = async (req: Request, res: Response) => {
         { model: ThematicComponent, as: 'thematicComponent' },
         { model: EvaluationCatalog, as: 'tecnicaCatalog' },
         { model: EvaluationCatalog, as: 'instrumentoCatalog' },
+        { model: EvaluationCatalog, as: 'estrategiaCatalog' },
       ],
       order: [['date', 'ASC']]
     });
@@ -138,7 +139,7 @@ export const getEvaluationPlan = async (req: Request, res: Response) => {
 
 export const createEvaluationItem = async (req: Request, res: Response) => {
   try {
-    const { termId, periodGradeSubjectId, sectionId, description, percentage, date, thematicComponentId, thematicContentIds, evaluationType, criteria, tecnicaId, instrumentoId, shortDescription } = req.body;
+    const { termId, periodGradeSubjectId, sectionId, description, percentage, date, thematicComponentId, thematicContentIds, evaluationType, criteria, tecnicaId, instrumentoId, estrategiaId, shortDescription } = req.body;
     const normalizedThematicContentIds = Array.isArray(thematicContentIds)
       ? [...new Set(thematicContentIds.map(Number).filter(Number.isInteger))]
       : null;
@@ -182,6 +183,7 @@ export const createEvaluationItem = async (req: Request, res: Response) => {
       evaluationType: evaluationTypeStr,
       tecnicaId: tecnicaId || null,
       instrumentoId: instrumentoId || null,
+      estrategiaId: estrategiaId || null,
       shortDescription: shortDescription || null,
     });
 
@@ -214,6 +216,7 @@ export const createEvaluationItem = async (req: Request, res: Response) => {
         { model: ThematicComponent, as: 'thematicComponent' },
         { model: EvaluationCatalog, as: 'tecnicaCatalog' },
         { model: EvaluationCatalog, as: 'instrumentoCatalog' },
+        { model: EvaluationCatalog, as: 'estrategiaCatalog' },
       ],
     });
     res.json(fullItem);
@@ -298,6 +301,7 @@ export const updateEvaluationItem = async (req: Request, res: Response) => {
         { model: ThematicComponent, as: 'thematicComponent' },
         { model: EvaluationCatalog, as: 'tecnicaCatalog' },
         { model: EvaluationCatalog, as: 'instrumentoCatalog' },
+        { model: EvaluationCatalog, as: 'estrategiaCatalog' },
       ],
     });
     res.json(fullItem);

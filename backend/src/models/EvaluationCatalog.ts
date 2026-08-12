@@ -3,7 +3,7 @@ import sequelize from '@/config/database';
 
 interface EvaluationCatalogAttributes {
   id: number;
-  type: 'tecnica' | 'instrumento';
+  type: 'tecnica' | 'instrumento' | 'estrategia';
   name: string;
 }
 
@@ -11,7 +11,7 @@ type EvaluationCatalogCreationAttributes = Optional<EvaluationCatalogAttributes,
 
 class EvaluationCatalog extends Model<EvaluationCatalogAttributes, EvaluationCatalogCreationAttributes> implements EvaluationCatalogAttributes {
   public id!: number;
-  public type!: 'tecnica' | 'instrumento';
+  public type!: 'tecnica' | 'instrumento' | 'estrategia';
   public name!: string;
 
   public readonly createdAt!: Date;
@@ -26,7 +26,7 @@ EvaluationCatalog.init(
       primaryKey: true,
     },
     type: {
-      type: DataTypes.ENUM('tecnica', 'instrumento'),
+      type: DataTypes.ENUM('tecnica', 'instrumento', 'estrategia'),
       allowNull: false,
     },
     name: {

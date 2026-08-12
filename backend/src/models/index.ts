@@ -239,8 +239,10 @@ EvaluationIndicator.belongsTo(EvaluationCriteria, { foreignKey: 'evaluationCrite
 // 5.4 Evaluation Catalog Associations
 EvaluationCatalog.hasMany(EvaluationPlan, { foreignKey: 'tecnicaId', as: 'tecnicaPlans' });
 EvaluationCatalog.hasMany(EvaluationPlan, { foreignKey: 'instrumentoId', as: 'instrumentoPlans' });
+EvaluationCatalog.hasMany(EvaluationPlan, { foreignKey: 'estrategiaId', as: 'estrategiaPlans' });
 EvaluationPlan.belongsTo(EvaluationCatalog, { foreignKey: 'tecnicaId', as: 'tecnicaCatalog' });
 EvaluationPlan.belongsTo(EvaluationCatalog, { foreignKey: 'instrumentoId', as: 'instrumentoCatalog' });
+EvaluationPlan.belongsTo(EvaluationCatalog, { foreignKey: 'estrategiaId', as: 'estrategiaCatalog' });
 
 InscriptionSubject.hasMany(Qualification, { foreignKey: 'inscriptionSubjectId', as: 'qualifications' });
 Qualification.belongsTo(InscriptionSubject, { foreignKey: 'inscriptionSubjectId', as: 'inscriptionSubject' });
