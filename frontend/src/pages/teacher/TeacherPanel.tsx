@@ -10,7 +10,7 @@ import dayjs from 'dayjs';
 import { useGradeRounding } from '@/context/GradeRoundingContext';
 import { formatGrade } from '@/utils/gradeFormat';
 import EvaluationPlanPDFModal from '@/components/pdf/EvaluationPlanPDFModal';
-import type { EvaluationPlanHeaderData } from '@/components/pdf/EvaluationPlanPDF';
+import type { EvaluationPlanHeaderData, EvaluationPlanRowData } from '@/components/pdf/EvaluationPlanPDF';
 import EvaluationPlanItemModal, { type CatalogOption } from '@/components/EvaluationPlanItemModal';
 import ContentTab from './ContentTab';
 
@@ -290,6 +290,63 @@ const TeacherPanel: React.FC = () => {
     });
     return map;
   }, [thematicComponents]);
+
+  const planningPDFRows = useMemo<EvaluationPlanRowData[]>(() => {
+    const contentMap = new Map<number, {
+      label: string;
+      componentTitle: string;
+      contentTitle: string;
+      learnings: string[];
+    }>();
+    thematicComponents.forEach((component, componentIndex) => {
+      (component.contents || []).forEach((content, contentIndex) => {
+        contentMap.set(content.id, {
+          label: `${componentIndex + 1}.${contentIndex + 1}`,
+          componentTitle: component.title,
+          contentTitle: content.title,
+          learnings: (content.learnings || []).map(learning => learning.description),
+        });
+      });
+    });
+
+    return evaluationPlan.flatMap(plan => {
+      const linkedContents = (plan.thematicContentIds || [])
+        .map(contentId => contentMap.get(contentId))
+        .filter((content): content is NonNullable<typeof content> => Boolean(content));
+      const component = [...new Set(linkedContents.map(content => content.componentTitle))].join('\\n')
+        || plan.thematicComponent?.title
+        || '';
+      const content = linkedContents.map(item => `${item.label} ${item.contentTitle}`).join('\\n');
+      const learnings = [...new Set(linkedContents.flatMap(item => item.learnings))]
+        .map(learning => `• ${learning}`)
+        .join('\\n');
+      const types = (plan.evaluationType || '').toLowerCase().split(',').filter(Boolean);
+      const criteria = plan.criteria?.length ? plan.criteria : [null];
+
+      return criteria.flatMap(criterion => {
+        const indicators = criterion?.indicators?.length ? criterion.indicators : [null];
+        return indicators.map((indicator, criterionIndex) => ({
+          component: criterionIndex === 0 ? component : '',
+          content: criterionIndex === 0 ? content : '',
+          learnings: criterionIndex === 0 ? learnings : '',
+          strategy: criterionIndex === 0 ? plan.description : '',
+          tecnica: criterionIndex === 0 ? plan.tecnicaCatalog?.name || '' : '',
+          instrumento: criterionIndex === 0 ? plan.instrumentoCatalog?.name || '' : '',
+          criterion: criterionIndex === 0 ? criterion?.name || '' : '',
+          indicator: indicator?.name || '',
+          points: indicator?.points ?? '',
+          criterionTotalPoints: criterionIndex === 0 && criterion
+            ? criterion.indicators?.reduce((sum, item) => sum + Number(item.points || 0), 0) || 0
+            : '',
+          intra: criterionIndex === 0 && types.includes('intra'),
+          inter: criterionIndex === 0 && types.includes('inter'),
+          trans: criterionIndex === 0 && types.includes('trans'),
+          date: criterionIndex === 0 ? dayjs(plan.date).format('DD/MM/YYYY') : '',
+          percentage: criterionIndex === 0 ? Number(plan.percentage) : '',
+        }));
+      });
+    });
+  }, [evaluationPlan, thematicComponents]);
 
   useEffect(() => {
     const fetchMaxGrade = async () => {
@@ -1077,13 +1134,15 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
           activeKey={activeTab}
           tabBarExtraContent={(
             <div className="flex items-center gap-4">
-              <Button
-                icon={<FilePdfOutlined />}
-                onClick={() => setShowPDFModal(true)}
-                disabled={!selectedAssignmentId || evaluationPlan.length === 0}
-              >
-                Generar PDF
-              </Button>
+              {false && (
+                <Button
+                  icon={<FilePdfOutlined />}
+                  onClick={() => setShowPDFModal(true)}
+                  disabled={!selectedAssignmentId || evaluationPlan.length === 0}
+                >
+                  Generar PDF
+                </Button>
+              )}
               <Button
                 icon={<DownloadOutlined />}
                 onClick={downloadPlanningExcel}
@@ -1579,13 +1638,8 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
               : '-',
           };
         })()}
-        items={evaluationPlan.map(ep => ({
-          description: ep.description,
-          thematicComponent: ep.thematicContents?.map(c => c.title).join(', ') || ep.thematicComponent?.title || '',
-          criteria: ep.criteria?.map(c => `${c.name} (${c.points} pts)`) || [],
-          percentage: Number(ep.percentage),
-          date: ep.date,
-        }))}
+        rows={planningPDFRows}
+        totalPercentage={totalPercentage}
       />
     </div>
   );

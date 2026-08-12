@@ -132,7 +132,49 @@ const styles = StyleSheet.create({
     fontFamily: 'Helvetica-Bold',
     textAlign: 'center',
   },
-  // Detail table
+  planningTable: {
+    border: '0.75px solid #666',
+  },
+  planningHeaderRow: {
+    flexDirection: 'row',
+    backgroundColor: '#d9e2f3',
+    minHeight: 18,
+    alignItems: 'stretch',
+  },
+  planningHeaderCell: {
+    borderRight: '0.5px solid #666',
+    borderBottom: '0.5px solid #666',
+    padding: '2 1',
+    fontSize: 4.5,
+    fontFamily: 'Helvetica-Bold',
+    textAlign: 'center',
+    justifyContent: 'center',
+  },
+  planningSubheaderRow: {
+    flexDirection: 'row',
+    backgroundColor: '#f2f2f2',
+    height: 12,
+    alignItems: 'stretch',
+  },
+  planningBodyRow: {
+    flexDirection: 'row',
+    borderBottom: '0.5px solid #aaa',
+    minHeight: 22,
+    alignItems: 'stretch',
+  },
+  planningCell: {
+    borderRight: '0.5px solid #aaa',
+    padding: '2 1',
+    fontSize: 4.5,
+    lineHeight: 1.1,
+  },
+  planningCellCenter: {
+    borderRight: '0.5px solid #aaa',
+    padding: '2 1',
+    fontSize: 4.5,
+    lineHeight: 1.1,
+    textAlign: 'center',
+  },
   // Footer
   footer: {
     position: 'absolute',
@@ -152,23 +194,24 @@ const styles = StyleSheet.create({
   },
 });
 
-export interface EvaluationPlanItemData {
-  description: string;
-  thematicComponent?: string;
-  criteria?: string[];
-  percentage: number;
+export interface EvaluationPlanRowData {
+  component: string;
+  content: string;
+  learnings: string;
+  strategy: string;
+  tecnica: string;
+  instrumento: string;
+  criterion: string;
+  indicator: string;
+  points: number | string;
+  criterionTotalPoints: number | string;
+  intra: boolean;
+  inter: boolean;
+  trans: boolean;
   date: string;
+  percentage: number | string;
 }
 
-const bulletList = (val: string[] | undefined): string => {
-  if (!val || val.length === 0) return '-';
-  return val.map((t: string) => `• ${t}`).join('\n');
-};
-
-const bulletTags = (val: string[] | undefined): string => {
-  if (!val || val.length === 0) return '-';
-  return val.join(', ');
-};
 
 export interface EvaluationPlanHeaderData {
   periodName: string;
@@ -181,33 +224,78 @@ export interface EvaluationPlanHeaderData {
 
 interface EvaluationPlanPDFProps {
   header: EvaluationPlanHeaderData;
-  items: EvaluationPlanItemData[];
+  rows: EvaluationPlanRowData[];
+  totalPercentage: number;
   logoBase64?: string | null;
   institutionName: string;
 }
 
-const SummaryHeader = () => (
-  <View style={styles.tableHeader}>
-    <Text style={[styles.cellHeader, { width: '25%' }]}>Estrategia de Evaluación</Text>
-    <Text style={[styles.cellHeader, { width: '20%' }]}>Componente Temático</Text>
-    <Text style={[styles.cellHeader, { width: '30%' }]}>Criterios</Text>
-    <Text style={[styles.cellHeader, { width: '12%' }]}>Puntaje</Text>
-    <Text style={[styles.cellHeader, { width: '13%' }]}>Fecha</Text>
+const planningColumns = [
+  { label: 'COMPONENTE TEMÁTICO', width: '9.4%' },
+  { label: 'CONTENIDO', width: '10.9%' },
+  { label: 'APRENDIZAJES ESPERADOS', width: '12.5%' },
+  { label: 'ESTRATEGIA DE APRENDIZAJE', width: '10.9%' },
+  { label: 'TÉCNICA', width: '7%' },
+  { label: 'INSTRUMENTO', width: '7%' },
+  { label: 'CRITERIOS', width: '10.9%' },
+  { label: 'INDICADORES', width: '11.7%' },
+  { label: 'PUNTOS', width: '1.45%' },
+  { label: 'PUNTOS', width: '1.45%' },
+  { label: 'INTRA', width: '2.23%' },
+  { label: 'INTER', width: '2.23%' },
+  { label: 'TRANS', width: '2.23%' },
+  { label: 'FECHA', width: '5.46%' },
+  { label: 'PORCENTAJE', width: '4.68%' },
+];
+
+const PlanningHeader = () => (
+  <View>
+    <View style={styles.planningHeaderRow}>
+      {planningColumns.slice(0, 8).map((column) => (
+        <Text key={column.label} style={[styles.planningHeaderCell, { width: column.width, height: 30 }]}>
+          {column.label}
+        </Text>
+      ))}
+      <Text style={[styles.planningHeaderCell, { width: '2.9%', height: 30 }]}>PUNTOS</Text>
+      <Text style={[styles.planningHeaderCell, { width: '6.69%', height: 15 }]}>TIPO DE EVALUACIÓN</Text>
+      <Text style={[styles.planningHeaderCell, { width: '5.46%', height: 30 }]}>FECHA</Text>
+      <Text style={[styles.planningHeaderCell, { width: '4.68%', height: 30 }]}>PORCENTAJE</Text>
+    </View>
+    <View style={styles.planningSubheaderRow}>
+      <View style={{ width: '80.02%' }} />
+      <Text style={[styles.planningHeaderCell, { width: '2.23%' }]}>INTRA</Text>
+      <Text style={[styles.planningHeaderCell, { width: '2.23%' }]}>INTER</Text>
+      <Text style={[styles.planningHeaderCell, { width: '2.23%' }]}>TRANS</Text>
+      <View style={{ width: '13.29%' }} />
+    </View>
   </View>
 );
 
-const summaryRow = (item: EvaluationPlanItemData, index: number) => (
-  <View key={index} style={[styles.tableRow, index % 2 === 1 ? styles.tableRowAlt : {}]}>
-    <Text style={[styles.cell, { width: '25%' }]}>{item.description || '-'}</Text>
-    <Text style={[styles.cell, { width: '20%' }]}>{item.thematicComponent || '-'}</Text>
-    <Text style={[styles.cell, { width: '30%', fontSize: 6 }]}>{bulletList(item.criteria)}</Text>
-    <Text style={[styles.cellCenter, { width: '12%' }]}>{item.percentage}%</Text>
-    <Text style={[styles.cellCenter, { width: '13%' }]}>{item.date ? new Date(item.date).toLocaleDateString('es-VE') : '-'}</Text>
-  </View>
-);
+const planningRow = (row: EvaluationPlanRowData, index: number) => {
+  const values = [
+    row.component || '', row.content || '', row.learnings || '', row.strategy || '',
+    row.tecnica || '', row.instrumento || '', row.criterion || '', row.indicator || '',
+    row.points === '' ? '' : String(row.points),
+    row.criterionTotalPoints === '' ? '' : String(row.criterionTotalPoints),
+    row.intra ? 'X' : '', row.inter ? 'X' : '', row.trans ? 'X' : '',
+    row.date || '', row.percentage === '' ? '' : `${row.percentage}%`,
+  ];
 
-const EvaluationPlanPDF: React.FC<EvaluationPlanPDFProps> = ({ header, items, logoBase64, institutionName }) => {
-  const totalPeso = items.reduce((acc, i) => acc + (i.percentage || 0), 0);
+  return (
+    <View key={index} style={[styles.planningBodyRow, index % 2 === 1 ? styles.tableRowAlt : {}]}>
+      {values.map((value, valueIndex) => (
+        <Text
+          key={`${index}-${valueIndex}`}
+          style={[styles.planningCell, { width: planningColumns[valueIndex].width }, valueIndex >= 8 ? styles.planningCellCenter : {}]}
+        >
+          {value}
+        </Text>
+      ))}
+    </View>
+  );
+};
+
+const EvaluationPlanPDF: React.FC<EvaluationPlanPDFProps> = ({ header, rows, totalPercentage, logoBase64, institutionName }) => {
 
   return (
     <Document>
@@ -260,20 +348,20 @@ const EvaluationPlanPDF: React.FC<EvaluationPlanPDFProps> = ({ header, items, lo
           </View>
         </View>
 
-        {/* Summary Table */}
+        {/* Planning Table */}
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Resumen del Plan</Text>
+          <Text style={styles.sectionTitle}>Planificación</Text>
         </View>
-        <View style={styles.summaryTable}>
-          <SummaryHeader />
-          {items.map((item, i) => summaryRow(item, i))}
+        <View style={styles.planningTable}>
+          <PlanningHeader />
+          {rows.map((row, i) => planningRow(row, i))}
         </View>
 
         {/* Weight summary */}
         <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 8 }}>
           <View style={styles.badge}>
             <Text style={styles.badgeLabel}>Puntaje Total: </Text>
-            <Text style={styles.badgeValue}>{totalPeso}%</Text>
+            <Text style={styles.badgeValue}>{totalPercentage}%</Text>
           </View>
         </View>
 

@@ -1,28 +1,65 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Modal, Spin, message } from 'antd';
 import { pdf } from '@react-pdf/renderer';
 import EvaluationPlanPDF from './EvaluationPlanPDF';
-import type { EvaluationPlanItemData, EvaluationPlanHeaderData } from './EvaluationPlanPDF';
+import type { EvaluationPlanRowData, EvaluationPlanHeaderData } from './EvaluationPlanPDF';
 import api from '@/services/api';
+
+interface LegacyEvaluationPlanItemData {
+  description?: string;
+  percentage?: number;
+  date?: string;
+  tecnica?: string;
+  indicador?: string;
+  temaGenerador?: string;
+  referentesTeoricos?: string;
+  estrategiaEvaluacion?: string;
+}
 
 interface EvaluationPlanPDFModalProps {
   open: boolean;
   onClose: () => void;
   header: EvaluationPlanHeaderData | null;
-  items: EvaluationPlanItemData[];
+  rows?: EvaluationPlanRowData[];
+  totalPercentage?: number;
+  items?: LegacyEvaluationPlanItemData[];
 }
 
 const EvaluationPlanPDFModal: React.FC<EvaluationPlanPDFModalProps> = ({
   open,
   onClose,
   header,
-  items,
+  rows = [],
+  totalPercentage = 0,
+  items = [],
 }) => {
+  const legacyRows = useMemo<EvaluationPlanRowData[]>(() => items.map(item => ({
+    component: '',
+    content: item.temaGenerador || '',
+    learnings: item.referentesTeoricos || '',
+    strategy: item.description || item.estrategiaEvaluacion || '',
+    tecnica: item.tecnica || '',
+    instrumento: '',
+    criterion: '',
+    indicator: item.indicador || '',
+    points: '',
+    criterionTotalPoints: '',
+    intra: false,
+    inter: false,
+    trans: false,
+    date: item.date || '',
+    percentage: item.percentage ?? '',
+  })), [items]);
+  const effectiveRows = useMemo(() => rows.length > 0 ? rows : legacyRows, [rows, legacyRows]);
+  const effectiveTotalPercentage = useMemo(
+    () => totalPercentage || items.reduce((sum, item) => sum + Number(item.percentage || 0), 0),
+    [items, totalPercentage],
+  );
   const [loading, setLoading] = useState(false);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
 
   const generatePDF = useCallback(async () => {
-    if (!header || items.length === 0) return;
+    if (!header || effectiveRows.length === 0) return;
     setLoading(true);
     setPdfUrl(null);
 
@@ -51,7 +88,8 @@ const EvaluationPlanPDFModal: React.FC<EvaluationPlanPDFModalProps> = ({
       const doc = (
         <EvaluationPlanPDF
           header={header}
-          items={items}
+          rows={effectiveRows}
+          totalPercentage={effectiveTotalPercentage}
           logoBase64={logoBase64}
           institutionName={instName}
         />
@@ -66,7 +104,7 @@ const EvaluationPlanPDFModal: React.FC<EvaluationPlanPDFModalProps> = ({
     } finally {
       setLoading(false);
     }
-  }, [header, items]);
+  }, [header, effectiveRows, effectiveTotalPercentage]);
 
   useEffect(() => {
     if (open && header) {
