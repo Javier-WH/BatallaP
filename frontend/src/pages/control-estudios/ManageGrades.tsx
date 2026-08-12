@@ -41,6 +41,7 @@ interface Assignment {
   sectionId: number;
   periodGradeSubject: {
     id: number;
+    order?: number | null;
     subject: { id: number; name: string };
     periodGrade: {
       id: number;
@@ -192,17 +193,29 @@ const ManageGrades: React.FC = () => {
   }, [allAssignments, selectedGrades, selectedTeacher, selectedSubjects]);
 
   const groupedAssignments = useMemo(() => {
-    const groups = new Map<number, { gradeName: string; assignments: Assignment[] }>();
+    const groups = new Map<number, { gradeName: string; gradeOrder: number; assignments: Assignment[] }>();
     filteredAssignments.forEach(a => {
       const pg = a.periodGradeSubject?.periodGrade;
       const grade = pg?.grade;
       if (!grade) return;
       if (!groups.has(grade.id)) {
-        groups.set(grade.id, { gradeName: grade.name, assignments: [] });
+        groups.set(grade.id, { gradeName: grade.name, gradeOrder: grade.order, assignments: [] });
       }
       groups.get(grade.id)!.assignments.push(a);
     });
-    return Array.from(groups.values());
+    return Array.from(groups.values())
+      .sort((x, y) => x.gradeOrder - y.gradeOrder || x.gradeName.localeCompare(y.gradeName))
+      .map(g => ({
+        ...g,
+        assignments: g.assignments.sort((a, b) => {
+          const ao = a.periodGradeSubject?.order;
+          const bo = b.periodGradeSubject?.order;
+          if (ao != null && bo != null) return ao - bo;
+          if (ao != null) return -1;
+          if (bo != null) return 1;
+          return a.periodGradeSubject.subject.name.localeCompare(b.periodGradeSubject.subject.name);
+        }),
+      }));
   }, [filteredAssignments]);
 
   useEffect(() => {
