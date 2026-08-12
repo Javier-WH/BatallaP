@@ -1310,7 +1310,7 @@ export const exportPlanningExcel = async (req: Request, res: Response) => {
     const groupFill = 'FFB4C6E7';
     const evaluationHeaderFill = 'FFF2F2F2';
     const columns = [
-      ['COMPONENTE TEMÁTICO', 24], ['CONTENIDO', 28], ['APRENDIZAJES\nESPERADOS', 32], ['ESTRATEGIA DE\nAPRENDIZAJE', 28],
+      ['COMPONENTE TEMÁTICO', 24], ['CONTENIDO', 28], ['APRENDIZAJES ESPERADOS', 32], ['ESTRATEGIA DE APRENDIZAJE', 28],
       ['TÉCNICA', 18], ['INSTRUMENTO', 18], ['CRITERIOS', 28], ['INDICADORES', 30], ['PUNTOS', 3.71], ['', 3.71],
       ['INTRA', 5.71], ['INTER', 5.71], ['TRANS', 5.71], ['FECHA', 14], ['PORCENTAJE', 12],
     ];
