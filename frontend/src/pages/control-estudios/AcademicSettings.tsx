@@ -11,7 +11,9 @@ import {
   CalendarOutlined,
   SettingOutlined,
   ControlOutlined,
-  MergeOutlined
+  MergeOutlined,
+  SortAscendingOutlined,
+  SortDescendingOutlined
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import api from '@/services/api';
@@ -81,6 +83,9 @@ const AcademicSettings: React.FC = () => {
   const [selectedEstrategiaKeys, setSelectedEstrategiaKeys] = useState<React.Key[]>([]);
   const [mergeModal, setMergeModal] = useState<{ open: boolean; type: 'tecnica' | 'instrumento' | 'estrategia'; ids: number[]; names: string[]; newName: string }>({ open: false, type: 'tecnica', ids: [], names: [], newName: '' });
   const [mergeSubmitting, setMergeSubmitting] = useState(false);
+  const [sortTecnica, setSortTecnica] = useState<'asc' | 'desc'>('asc');
+  const [sortInstrumento, setSortInstrumento] = useState<'asc' | 'desc'>('asc');
+  const [sortEstrategia, setSortEstrategia] = useState<'asc' | 'desc'>('asc');
 
   const fetchSettings = useCallback(async () => {
     setLoading(true);
@@ -802,7 +807,71 @@ const AcademicSettings: React.FC = () => {
             styles={{ body: { padding: 0 } }}
             title={
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 12px' }}>
-                <Text style={{ fontWeight: 800, fontSize: 16 }}>Técnicas de Evaluación</Text>
+                <Space>
+                  <Text style={{ fontWeight: 800, fontSize: 16 }}>Estrategias de Evaluación</Text>
+                  <Tooltip title={sortEstrategia === 'asc' ? 'Orden ascendente' : 'Orden descendente'}>
+                    <Button
+                      type="text"
+                      icon={sortEstrategia === 'asc' ? <SortAscendingOutlined /> : <SortDescendingOutlined />}
+                      onClick={() => setSortEstrategia(prev => prev === 'asc' ? 'desc' : 'asc')}
+                      style={{ padding: '4px 8px' }}
+                    />
+                  </Tooltip>
+                </Space>
+                <Space>
+                  {selectedEstrategiaKeys.length >= 2 && (
+                    <Button icon={<MergeOutlined />} onClick={() => handleOpenMerge('estrategia', selectedEstrategiaKeys)} style={{ borderRadius: 12, fontWeight: 700, height: 40 }}>
+                      Fusionar ({selectedEstrategiaKeys.length})
+                    </Button>
+                  )}
+                  <Button type="primary" icon={<PlusOutlined />} onClick={() => handleAddCatalog('estrategia')} style={{ borderRadius: 12, fontWeight: 700, height: 40 }}>
+                    Nueva Estrategia
+                  </Button>
+                </Space>
+              </div>
+            }
+          >
+            <Table
+              dataSource={[...catalogs.filter(c => c.type === 'estrategia')].sort((a, b) => sortEstrategia === 'asc' ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name))}
+              rowKey="id"
+              pagination={false}
+              className="premium-table"
+              style={{ padding: '4px' }}
+              rowSelection={{
+                selectedRowKeys: selectedEstrategiaKeys,
+                onChange: setSelectedEstrategiaKeys,
+              }}
+              columns={[
+                { title: 'Nombre', dataIndex: 'name', key: 'name', render: (t: string) => <Text style={{ fontWeight: 600 }}>{t}</Text> },
+                { title: 'Acciones', key: 'actions', align: 'right' as const, width: 120, render: (_: any, r: CatalogItem) => (
+                  <Space>
+                    <Tooltip title="Editar"><Button type="text" icon={<EditOutlined style={{ color: '#1890ff' }} />} onClick={() => handleEditCatalog(r)} /></Tooltip>
+                    <Popconfirm title="¿Eliminar?" onConfirm={() => handleDeleteCatalog(r.id)} okText="Sí" cancelText="No" okButtonProps={{ danger: true }}>
+                      <Button type="text" danger icon={<DeleteOutlined />} />
+                    </Popconfirm>
+                  </Space>
+                )},
+              ]}
+            />
+          </Card>
+        </Col>
+        <Col xs={24} lg={12}>
+          <Card
+            className="premium-card animate-card"
+            styles={{ body: { padding: 0 } }}
+            title={
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 12px' }}>
+                <Space>
+                  <Text style={{ fontWeight: 800, fontSize: 16 }}>Técnicas de Evaluación</Text>
+                  <Tooltip title={sortTecnica === 'asc' ? 'Orden ascendente' : 'Orden descendente'}>
+                    <Button
+                      type="text"
+                      icon={sortTecnica === 'asc' ? <SortAscendingOutlined /> : <SortDescendingOutlined />}
+                      onClick={() => setSortTecnica(prev => prev === 'asc' ? 'desc' : 'asc')}
+                      style={{ padding: '4px 8px' }}
+                    />
+                  </Tooltip>
+                </Space>
                 <Space>
                   {selectedTecnicaKeys.length >= 2 && (
                     <Button icon={<MergeOutlined />} onClick={() => handleOpenMerge('tecnica', selectedTecnicaKeys)} style={{ borderRadius: 12, fontWeight: 700, height: 40 }}>
@@ -817,7 +886,7 @@ const AcademicSettings: React.FC = () => {
             }
           >
             <Table
-              dataSource={catalogs.filter(c => c.type === 'tecnica')}
+              dataSource={[...catalogs.filter(c => c.type === 'tecnica')].sort((a, b) => sortTecnica === 'asc' ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name))}
               rowKey="id"
               pagination={false}
               className="premium-table"
@@ -846,7 +915,17 @@ const AcademicSettings: React.FC = () => {
             styles={{ body: { padding: 0 } }}
             title={
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 12px' }}>
-                <Text style={{ fontWeight: 800, fontSize: 16 }}>Instrumentos de Evaluación</Text>
+                <Space>
+                  <Text style={{ fontWeight: 800, fontSize: 16 }}>Instrumentos de Evaluación</Text>
+                  <Tooltip title={sortInstrumento === 'asc' ? 'Orden ascendente' : 'Orden descendente'}>
+                    <Button
+                      type="text"
+                      icon={sortInstrumento === 'asc' ? <SortAscendingOutlined /> : <SortDescendingOutlined />}
+                      onClick={() => setSortInstrumento(prev => prev === 'asc' ? 'desc' : 'asc')}
+                      style={{ padding: '4px 8px' }}
+                    />
+                  </Tooltip>
+                </Space>
                 <Space>
                   {selectedInstrumentoKeys.length >= 2 && (
                     <Button icon={<MergeOutlined />} onClick={() => handleOpenMerge('instrumento', selectedInstrumentoKeys)} style={{ borderRadius: 12, fontWeight: 700, height: 40 }}>
@@ -861,7 +940,7 @@ const AcademicSettings: React.FC = () => {
             }
           >
             <Table
-              dataSource={catalogs.filter(c => c.type === 'instrumento')}
+              dataSource={[...catalogs.filter(c => c.type === 'instrumento')].sort((a, b) => sortInstrumento === 'asc' ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name))}
               rowKey="id"
               pagination={false}
               className="premium-table"
@@ -869,50 +948,6 @@ const AcademicSettings: React.FC = () => {
               rowSelection={{
                 selectedRowKeys: selectedInstrumentoKeys,
                 onChange: setSelectedInstrumentoKeys,
-              }}
-              columns={[
-                { title: 'Nombre', dataIndex: 'name', key: 'name', render: (t: string) => <Text style={{ fontWeight: 600 }}>{t}</Text> },
-                { title: 'Acciones', key: 'actions', align: 'right' as const, width: 120, render: (_: any, r: CatalogItem) => (
-                  <Space>
-                    <Tooltip title="Editar"><Button type="text" icon={<EditOutlined style={{ color: '#1890ff' }} />} onClick={() => handleEditCatalog(r)} /></Tooltip>
-                    <Popconfirm title="¿Eliminar?" onConfirm={() => handleDeleteCatalog(r.id)} okText="Sí" cancelText="No" okButtonProps={{ danger: true }}>
-                      <Button type="text" danger icon={<DeleteOutlined />} />
-                    </Popconfirm>
-                  </Space>
-                )},
-              ]}
-            />
-          </Card>
-        </Col>
-        <Col xs={24} lg={12}>
-          <Card
-            className="premium-card animate-card"
-            styles={{ body: { padding: 0 } }}
-            title={
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 12px' }}>
-                <Text style={{ fontWeight: 800, fontSize: 16 }}>Estrategias de Evaluación</Text>
-                <Space>
-                  {selectedEstrategiaKeys.length >= 2 && (
-                    <Button icon={<MergeOutlined />} onClick={() => handleOpenMerge('estrategia', selectedEstrategiaKeys)} style={{ borderRadius: 12, fontWeight: 700, height: 40 }}>
-                      Fusionar ({selectedEstrategiaKeys.length})
-                    </Button>
-                  )}
-                  <Button type="primary" icon={<PlusOutlined />} onClick={() => handleAddCatalog('estrategia')} style={{ borderRadius: 12, fontWeight: 700, height: 40 }}>
-                    Nueva Estrategia
-                  </Button>
-                </Space>
-              </div>
-            }
-          >
-            <Table
-              dataSource={catalogs.filter(c => c.type === 'estrategia')}
-              rowKey="id"
-              pagination={false}
-              className="premium-table"
-              style={{ padding: '4px' }}
-              rowSelection={{
-                selectedRowKeys: selectedEstrategiaKeys,
-                onChange: setSelectedEstrategiaKeys,
               }}
               columns={[
                 { title: 'Nombre', dataIndex: 'name', key: 'name', render: (t: string) => <Text style={{ fontWeight: 600 }}>{t}</Text> },
