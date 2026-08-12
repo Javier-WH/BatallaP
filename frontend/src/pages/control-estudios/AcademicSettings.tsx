@@ -10,7 +10,8 @@ import {
   DashboardOutlined,
   CalendarOutlined,
   SettingOutlined,
-  ControlOutlined
+  ControlOutlined,
+  MergeOutlined
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import api from '@/services/api';
@@ -75,6 +76,11 @@ const AcademicSettings: React.FC = () => {
   const [catalogs, setCatalogs] = useState<CatalogItem[]>([]);
   const [catalogModal, setCatalogModal] = useState<{ open: boolean; editing?: CatalogItem | null; type: 'tecnica' | 'instrumento' | 'estrategia'; name: string }>({ open: false, type: 'tecnica', name: '' });
   const [catalogSubmitting, setCatalogSubmitting] = useState(false);
+  const [selectedTecnicaKeys, setSelectedTecnicaKeys] = useState<React.Key[]>([]);
+  const [selectedInstrumentoKeys, setSelectedInstrumentoKeys] = useState<React.Key[]>([]);
+  const [selectedEstrategiaKeys, setSelectedEstrategiaKeys] = useState<React.Key[]>([]);
+  const [mergeModal, setMergeModal] = useState<{ open: boolean; type: 'tecnica' | 'instrumento' | 'estrategia'; ids: number[]; names: string[]; newName: string }>({ open: false, type: 'tecnica', ids: [], names: [], newName: '' });
+  const [mergeSubmitting, setMergeSubmitting] = useState(false);
 
   const fetchSettings = useCallback(async () => {
     setLoading(true);
@@ -189,6 +195,42 @@ const AcademicSettings: React.FC = () => {
       message.error(error.response?.data?.message || 'Error al guardar');
     } finally {
       setCatalogSubmitting(false);
+    }
+  };
+
+  const handleOpenMerge = (type: 'tecnica' | 'instrumento' | 'estrategia', keys: React.Key[]) => {
+    const selected = catalogs.filter(c => c.type === type && keys.includes(c.id));
+    setMergeModal({
+      open: true,
+      type,
+      ids: selected.map(s => s.id),
+      names: selected.map(s => s.name),
+      newName: selected[0]?.name || '',
+    });
+  };
+
+  const handleMergeConfirm = async () => {
+    if (!mergeModal.newName.trim()) {
+      message.warning('El nombre es requerido');
+      return;
+    }
+    setMergeSubmitting(true);
+    try {
+      await api.post('/evaluation/catalogs/merge', {
+        type: mergeModal.type,
+        name: mergeModal.newName.trim(),
+        ids: mergeModal.ids,
+      });
+      message.success('Fusión completada correctamente');
+      setMergeModal(prev => ({ ...prev, open: false }));
+      setSelectedTecnicaKeys([]);
+      setSelectedInstrumentoKeys([]);
+      setSelectedEstrategiaKeys([]);
+      fetchCatalogs();
+    } catch (error: any) {
+      message.error(error.response?.data?.message || 'Error al fusionar');
+    } finally {
+      setMergeSubmitting(false);
     }
   };
 
@@ -761,9 +803,16 @@ const AcademicSettings: React.FC = () => {
             title={
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 12px' }}>
                 <Text style={{ fontWeight: 800, fontSize: 16 }}>Técnicas de Evaluación</Text>
-                <Button type="primary" icon={<PlusOutlined />} onClick={() => handleAddCatalog('tecnica')} style={{ borderRadius: 12, fontWeight: 700, height: 40 }}>
-                  Nueva Técnica
-                </Button>
+                <Space>
+                  {selectedTecnicaKeys.length >= 2 && (
+                    <Button icon={<MergeOutlined />} onClick={() => handleOpenMerge('tecnica', selectedTecnicaKeys)} style={{ borderRadius: 12, fontWeight: 700, height: 40 }}>
+                      Fusionar ({selectedTecnicaKeys.length})
+                    </Button>
+                  )}
+                  <Button type="primary" icon={<PlusOutlined />} onClick={() => handleAddCatalog('tecnica')} style={{ borderRadius: 12, fontWeight: 700, height: 40 }}>
+                    Nueva Técnica
+                  </Button>
+                </Space>
               </div>
             }
           >
@@ -773,6 +822,10 @@ const AcademicSettings: React.FC = () => {
               pagination={false}
               className="premium-table"
               style={{ padding: '4px' }}
+              rowSelection={{
+                selectedRowKeys: selectedTecnicaKeys,
+                onChange: setSelectedTecnicaKeys,
+              }}
               columns={[
                 { title: 'Nombre', dataIndex: 'name', key: 'name', render: (t: string) => <Text style={{ fontWeight: 600 }}>{t}</Text> },
                 { title: 'Acciones', key: 'actions', align: 'right' as const, width: 120, render: (_: any, r: CatalogItem) => (
@@ -794,9 +847,16 @@ const AcademicSettings: React.FC = () => {
             title={
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 12px' }}>
                 <Text style={{ fontWeight: 800, fontSize: 16 }}>Instrumentos de Evaluación</Text>
-                <Button type="primary" icon={<PlusOutlined />} onClick={() => handleAddCatalog('instrumento')} style={{ borderRadius: 12, fontWeight: 700, height: 40 }}>
-                  Nuevo Instrumento
-                </Button>
+                <Space>
+                  {selectedInstrumentoKeys.length >= 2 && (
+                    <Button icon={<MergeOutlined />} onClick={() => handleOpenMerge('instrumento', selectedInstrumentoKeys)} style={{ borderRadius: 12, fontWeight: 700, height: 40 }}>
+                      Fusionar ({selectedInstrumentoKeys.length})
+                    </Button>
+                  )}
+                  <Button type="primary" icon={<PlusOutlined />} onClick={() => handleAddCatalog('instrumento')} style={{ borderRadius: 12, fontWeight: 700, height: 40 }}>
+                    Nuevo Instrumento
+                  </Button>
+                </Space>
               </div>
             }
           >
@@ -806,6 +866,10 @@ const AcademicSettings: React.FC = () => {
               pagination={false}
               className="premium-table"
               style={{ padding: '4px' }}
+              rowSelection={{
+                selectedRowKeys: selectedInstrumentoKeys,
+                onChange: setSelectedInstrumentoKeys,
+              }}
               columns={[
                 { title: 'Nombre', dataIndex: 'name', key: 'name', render: (t: string) => <Text style={{ fontWeight: 600 }}>{t}</Text> },
                 { title: 'Acciones', key: 'actions', align: 'right' as const, width: 120, render: (_: any, r: CatalogItem) => (
@@ -827,9 +891,16 @@ const AcademicSettings: React.FC = () => {
             title={
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 12px' }}>
                 <Text style={{ fontWeight: 800, fontSize: 16 }}>Estrategias de Evaluación</Text>
-                <Button type="primary" icon={<PlusOutlined />} onClick={() => handleAddCatalog('estrategia')} style={{ borderRadius: 12, fontWeight: 700, height: 40 }}>
-                  Nueva Estrategia
-                </Button>
+                <Space>
+                  {selectedEstrategiaKeys.length >= 2 && (
+                    <Button icon={<MergeOutlined />} onClick={() => handleOpenMerge('estrategia', selectedEstrategiaKeys)} style={{ borderRadius: 12, fontWeight: 700, height: 40 }}>
+                      Fusionar ({selectedEstrategiaKeys.length})
+                    </Button>
+                  )}
+                  <Button type="primary" icon={<PlusOutlined />} onClick={() => handleAddCatalog('estrategia')} style={{ borderRadius: 12, fontWeight: 700, height: 40 }}>
+                    Nueva Estrategia
+                  </Button>
+                </Space>
               </div>
             }
           >
@@ -839,6 +910,10 @@ const AcademicSettings: React.FC = () => {
               pagination={false}
               className="premium-table"
               style={{ padding: '4px' }}
+              rowSelection={{
+                selectedRowKeys: selectedEstrategiaKeys,
+                onChange: setSelectedEstrategiaKeys,
+              }}
               columns={[
                 { title: 'Nombre', dataIndex: 'name', key: 'name', render: (t: string) => <Text style={{ fontWeight: 600 }}>{t}</Text> },
                 { title: 'Acciones', key: 'actions', align: 'right' as const, width: 120, render: (_: any, r: CatalogItem) => (
@@ -882,6 +957,42 @@ const AcademicSettings: React.FC = () => {
             />
           </Form.Item>
         </Form>
+      </Modal>
+
+      {/* Merge Modal */}
+      <Modal
+        title="Fusionar registros"
+        open={mergeModal.open}
+        onCancel={() => setMergeModal(prev => ({ ...prev, open: false }))}
+        onOk={handleMergeConfirm}
+        confirmLoading={mergeSubmitting}
+        okText="Fusionar"
+        cancelText="Cancelar"
+        centered
+        width={450}
+      >
+        <div style={{ marginTop: 16 }}>
+          <Text type="secondary" style={{ fontSize: 13, display: 'block', marginBottom: 8 }}>
+            Se creará un nuevo registro con el nombre indicado y todos los planes de evaluación que referencian los registros seleccionados apuntarán al nuevo. Los registros antiguos se eliminarán.
+          </Text>
+          <Text style={{ fontWeight: 700, display: 'block', marginBottom: 8 }}>Registros a fusionar:</Text>
+          <div style={{ marginBottom: 16 }}>
+            {mergeModal.names.map((n, i) => (
+              <Tag key={i} style={{ marginBottom: 4 }}>{n}</Tag>
+            ))}
+          </div>
+          <Form layout="vertical">
+            <Form.Item label="Nuevo nombre" required>
+              <Input
+                value={mergeModal.newName}
+                onChange={e => setMergeModal(prev => ({ ...prev, newName: e.target.value }))}
+                placeholder="Ingrese el nombre unificado..."
+                maxLength={100}
+                autoFocus
+              />
+            </Form.Item>
+          </Form>
+        </div>
       </Modal>
 
       {/* Modal Rediseño */}
