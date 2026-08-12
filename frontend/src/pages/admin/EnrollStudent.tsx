@@ -1043,6 +1043,32 @@ const EnrollStudent: React.FC = () => {
                 escolaridad: 'regular'
               }}
             >
+              <div style={{ marginBottom: 24, padding: 20, background: '#eaf3ff', border: '2px solid #91caff', borderRadius: 10, boxShadow: '0 2px 8px rgba(24, 144, 255, 0.12)' }}>
+                <Form.Item label={<span style={{ fontSize: 16, fontWeight: 700, color: '#0958d9' }}>Período Escolar</span>} style={{ marginBottom: 0 }}>
+                  <Select
+                    size="large"
+                    style={{ fontSize: 17, fontWeight: 600 }}
+                    value={selectedPeriodId}
+                    onChange={(val) => handlePeriodChange(val)}
+                    placeholder="Seleccione período"
+                  >
+                    {allPeriods.map(p => {
+                      const isFuture = activePeriod && p.startYear > activePeriod.startYear;
+                      const isClosed = activePeriod && p.startYear < activePeriod.startYear && !p.isActive;
+                      return (
+                        <Option key={p.id} value={p.id}>
+                          <span style={{ fontWeight: 600 }}>{p.name}</span>
+                          <span style={{ color: 'var(--color-text-muted)', fontSize: 11, marginLeft: 8 }}>{p.period}</span>
+                          {p.isActive && <Tag color="green" style={{ marginLeft: 8, fontSize: 10 }}>Activo</Tag>}
+                          {isFuture && <Tag color="blue" style={{ marginLeft: 8, fontSize: 10 }}>Preinscripción</Tag>}
+                          {isClosed && <Tag color="default" style={{ marginLeft: 8, fontSize: 10 }}>Cerrado</Tag>}
+                        </Option>
+                      );
+                    })}
+                  </Select>
+                </Form.Item>
+              </div>
+
               {/* DATOS DEL ESTUDIANTE */}
               <div style={{ marginBottom: 24, padding: 24, background: '#fff', border: '1px solid #d9d9d9', borderRadius: 8 }}>
                 <h3 style={{ borderLeft: '4px solid #faad14', paddingLeft: 12, marginBottom: 24, fontSize: 18 }}>
@@ -1270,32 +1296,6 @@ const EnrollStudent: React.FC = () => {
                 <h4 style={{ color: '#1890ff', margin: '24px 0 16px', borderBottom: '1px solid #f0f0f0', paddingBottom: 8 }}>
                   Académico
                 </h4>
-                <Row gutter={16} style={{ marginBottom: 16 }}>
-                  <Col span={16}>
-                    <Form.Item label="Período Escolar" style={{ marginBottom: 0 }}>
-                      <Select
-                        size="large"
-                        value={selectedPeriodId}
-                        onChange={(val) => handlePeriodChange(val)}
-                        placeholder="Seleccione período"
-                      >
-                      {allPeriods.map(p => {
-                        const isFuture = activePeriod && p.startYear > activePeriod.startYear;
-                        const isClosed = activePeriod && p.startYear < activePeriod.startYear && !p.isActive;
-                        return (
-                        <Option key={p.id} value={p.id}>
-                          <span style={{ fontWeight: 600 }}>{p.name}</span>
-                          <span style={{ color: 'var(--color-text-muted)', fontSize: 11, marginLeft: 8 }}>{p.period}</span>
-                          {p.isActive && <Tag color="green" style={{ marginLeft: 8, fontSize: 10 }}>Activo</Tag>}
-                          {isFuture && <Tag color="blue" style={{ marginLeft: 8, fontSize: 10 }}>Preinscripción</Tag>}
-                          {isClosed && <Tag color="default" style={{ marginLeft: 8, fontSize: 10 }}>Cerrado</Tag>}
-                        </Option>
-                        );
-                      })}
-                      </Select>
-                    </Form.Item>
-                  </Col>
-                </Row>
                 <Row gutter={16}>
                   <Col span={8}>
                     <Form.Item
@@ -1967,6 +1967,32 @@ const EnrollStudent: React.FC = () => {
               style={{ maxWidth: 600, margin: '20px auto' }}
               initialValues={{ escolaridad: 'regular' }}
             >
+              <div style={{ marginBottom: 24, padding: 20, background: '#eaf3ff', border: '2px solid #91caff', borderRadius: 10, boxShadow: '0 2px 8px rgba(24, 144, 255, 0.12)' }}>
+                <Form.Item label={<span style={{ fontSize: 16, fontWeight: 700, color: '#0958d9' }}>Período Escolar</span>} style={{ marginBottom: 0 }}>
+                  <Select
+                    size="large"
+                    style={{ fontSize: 17, fontWeight: 600 }}
+                    value={selectedPeriodId}
+                    onChange={(val) => handlePeriodChange(val)}
+                    placeholder="Seleccione período"
+                  >
+                    {allPeriods.map(p => {
+                      const isFuture = activePeriod && p.startYear > activePeriod.startYear;
+                      const isClosed = activePeriod && p.startYear < activePeriod.startYear && !p.isActive;
+                      return (
+                        <Option key={p.id} value={p.id}>
+                          <span style={{ fontWeight: 600 }}>{p.name}</span>
+                          <span style={{ color: 'var(--color-text-muted)', fontSize: 11, marginLeft: 8 }}>{p.period}</span>
+                          {p.isActive && <Tag color="green" style={{ marginLeft: 8, fontSize: 10 }}>Activo</Tag>}
+                          {isFuture && <Tag color="blue" style={{ marginLeft: 8, fontSize: 10 }}>Preinscripción</Tag>}
+                          {isClosed && <Tag color="default" style={{ marginLeft: 8, fontSize: 10 }}>Cerrado</Tag>}
+                        </Option>
+                      );
+                    })}
+                  </Select>
+                </Form.Item>
+              </div>
+
               <Form.Item
                 name="personId"
                 label="Estudiante (escriba al menos 2 caracteres para buscar)"
@@ -1991,29 +2017,6 @@ const EnrollStudent: React.FC = () => {
                         : null
                   }
                 />
-              </Form.Item>
-
-              <Form.Item label="Período Escolar">
-                <Select
-                  size="large"
-                  value={selectedPeriodId}
-                  onChange={(val) => handlePeriodChange(val)}
-                  placeholder="Seleccione período"
-                >
-                  {allPeriods.map(p => {
-                    const isFuture = activePeriod && p.startYear > activePeriod.startYear;
-                    const isClosed = activePeriod && p.startYear < activePeriod.startYear && !p.isActive;
-                    return (
-                    <Option key={p.id} value={p.id}>
-                      <span style={{ fontWeight: 600 }}>{p.name}</span>
-                      <span style={{ color: 'var(--color-text-muted)', fontSize: 11, marginLeft: 8 }}>{p.period}</span>
-                      {p.isActive && <Tag color="green" style={{ marginLeft: 8, fontSize: 10 }}>Activo</Tag>}
-                      {isFuture && <Tag color="blue" style={{ marginLeft: 8, fontSize: 10 }}>Preinscripción</Tag>}
-                      {isClosed && <Tag color="default" style={{ marginLeft: 8, fontSize: 10 }}>Cerrado</Tag>}
-                    </Option>
-                    );
-                  })}
-                </Select>
               </Form.Item>
 
               <Row gutter={16}>

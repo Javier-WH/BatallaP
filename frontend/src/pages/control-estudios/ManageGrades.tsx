@@ -788,9 +788,7 @@ const ManageGrades: React.FC = () => {
                           : `✓ Todos los alumnos calificados (${pendingGradesCount.total})`}
                       </span>
                       <div className="flex items-center gap-2">
-                        <Button icon={<FilePdfOutlined />} size="small" onClick={() => setShowPDFModal(true)} disabled={evaluationPlan.length === 0}>PDF</Button>
                         <Button icon={<DownloadOutlined />} size="small" type="primary" onClick={downloadExcelOficial} disabled={students.length === 0}>Acta de notas</Button>
-                        <Button icon={<DownloadOutlined />} size="small" onClick={() => downloadExcel(false)}>Excel vacío</Button>
                       </div>
                     </div>
                     <div style={{ overflowX: 'auto', maxHeight: 'calc(100vh - 400px)' }}>
