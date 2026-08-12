@@ -456,6 +456,26 @@ const ManageGrades: React.FC = () => {
     }
   };
 
+  const downloadPlanningExcel = async () => {
+    if (!selectedAssignment?.id || !selectedTerm) return;
+    try {
+      const res = await api.get(`/evaluation/export-planning/${selectedAssignment.id}`, {
+        params: { term: selectedTerm },
+        responseType: 'blob',
+      });
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', 'planificacion.xlsx');
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch {
+      message.error('Error al generar el Excel de planificación');
+    }
+  };
+
   const downloadExcelOficial = async () => {
     if (!selectedAssignment?.id) return;
     try {
@@ -697,6 +717,9 @@ const ManageGrades: React.FC = () => {
           )}
 
           <Tabs activeKey={activeTab} onChange={setActiveTab}
+            tabBarExtraContent={activeTab === '1' ? (
+              <Button icon={<DownloadOutlined />} size="small" onClick={downloadPlanningExcel} disabled={!selectedTerm}>Excel de planificación</Button>
+            ) : null}
             items={[
               {
                 key: '1',
