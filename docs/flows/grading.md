@@ -65,7 +65,7 @@ de cada nota), se usa el flujo de notas externas.
 
 ### Modelos involucrados
 - `Plantel` – institución emisora (reutilizado del catálogo existente; se crea si no existe).
-- `SchoolPeriod` con `isExternal=true` – representa el año escolar de la institución origen.
+- `SchoolPeriod` con `status='externo'` – representa el año escolar de la institución origen.
 - `Inscription` con `escolaridad='transferencia'` – inscripción del estudiante en el período externo.
 - `InscriptionSubject` – materia dentro de la inscripción externa.
 - `SubjectFinalGrade` con `gradeType='transferencia'|'equivalencia'` – nota externa, con `plantelId` del emisor y `calculatedAt` = fecha del documento original.
@@ -92,7 +92,7 @@ de cada nota), se usa el flujo de notas externas.
 ### Service
 - `externalGradeService.ts`:
   - `resolveOrCreatePlantel` – busca por código DEA o crea.
-  - `resolveOrCreateExternalPeriod` – busca o crea `SchoolPeriod` con `isExternal=true`.
+  - `resolveOrCreateExternalPeriod` – busca o crea `SchoolPeriod` con `status='externo'`.
   - `createExternalInscription` – crea `Inscription` con `escolaridad='transferencia'`.
   - `upsertExternalGrade` – crea/actualiza `SubjectFinalGrade` externa.
   - `registerExternalGradesBatch` – orquestación transaccional para bulk.
@@ -100,8 +100,8 @@ de cada nota), se usa el flujo de notas externas.
 ### Integración con otros flujos
 - **Cierre de período**: `periodClosureExecutor` excluye inscripciones con `escolaridad='transferencia'`.
 - **Cálculo de nota final**: `finalGradeCalculator` salta notas con `gradeType='transferencia'|'equivalencia'`.
-- **Notas certificadas**: `certifiedGradesController` incluye `plantel` emisor en cada nota y marca los períodos externos con `isExternal`.
-- **Gestión académica**: `academicController.getPeriods` excluye períodos externos (`isExternal=false`).
+- **Notas certificadas**: `certifiedGradesController` incluye `plantel` emisor en cada nota y marca los períodos externos con `status='externo'`.
+- **Gestión académica**: `academicController.getPeriods` excluye períodos externos (`status != 'externo'`).
 - Endpoints:
   - `GET /api/evaluation/student-record/:personId` – expediente completo.
   - `GET /api/evaluation/final-grades-by-period?...` – listado filtrable.

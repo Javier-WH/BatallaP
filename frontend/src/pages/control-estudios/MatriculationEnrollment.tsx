@@ -122,6 +122,7 @@ type EscolaridadStatus = 'regular' | 'repitiente' | 'materia_pendiente';
 interface SchoolPeriod {
   id: number;
   name: string;
+  status: 'preinscripcion' | 'activo' | 'historico' | 'externo';
   isActive: boolean;
 }
 
@@ -496,7 +497,7 @@ const MatriculationEnrollment: React.FC = () => {
           const hasSavedPeriodFilter = savedFilters ? JSON.parse(savedFilters).filterSchoolPeriod !== undefined : false;
 
           if (!hasSavedPeriodFilter) {
-            const activePeriod = allPeriodsRes.data.find((p: any) => p.isActive);
+            const activePeriod = allPeriodsRes.data.find((p: any) => p.status === 'activo');
             if (activePeriod) {
               setFilterSchoolPeriod(activePeriod.id);
             }
@@ -2783,7 +2784,13 @@ const MatriculationEnrollment: React.FC = () => {
                     value={filterSchoolPeriod}
                     onChange={setFilterSchoolPeriod}
                   >
-                    {allPeriods.map(p => <Option key={p.id} value={p.id}>{p.name} {p.isActive && '(Activo)'}</Option>)}
+                    {allPeriods.map(p => (
+                      <Option key={p.id} value={p.id}>
+                        {p.name}
+                        {p.status === 'activo' && ' (Activo)'}
+                        {p.status === 'preinscripcion' && ' (Preinscripción)'}
+                      </Option>
+                    ))}
                   </Select>
                 </Col>
                 <Col>

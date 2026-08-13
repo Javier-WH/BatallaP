@@ -21,7 +21,7 @@ export const getMyRevisionAssignments = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'Perfil de profesor no encontrado' });
     }
 
-    const activePeriod = await SchoolPeriod.findOne({ where: { isActive: true } });
+    const activePeriod = await SchoolPeriod.findOne({ where: { status: 'activo' } });
     if (!activePeriod) {
       return res.status(404).json({ message: 'No hay un período activo' });
     }
@@ -145,7 +145,7 @@ export const getMyRevisionAssignmentDetail = async (req: Request, res: Response)
       return res.status(400).json({ message: 'periodGradeSubjectId es obligatorio' });
     }
 
-    const activePeriod = await SchoolPeriod.findOne({ where: { isActive: true } });
+    const activePeriod = await SchoolPeriod.findOne({ where: { status: 'activo' } });
     if (!activePeriod) {
       return res.status(404).json({ message: 'No hay un período activo' });
     }

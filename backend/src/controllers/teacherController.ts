@@ -14,7 +14,7 @@ export const getTeachers = async (req: Request, res: Response) => {
     let targetPeriodId = schoolPeriodId ? Number(schoolPeriodId) : null;
 
     if (!targetPeriodId) {
-      const activePeriod = await SchoolPeriod.findOne({ where: { isActive: true } });
+      const activePeriod = await SchoolPeriod.findOne({ where: { status: 'activo' } });
       if (activePeriod) targetPeriodId = activePeriod.id;
     }
 

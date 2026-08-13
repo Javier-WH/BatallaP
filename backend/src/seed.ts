@@ -40,14 +40,14 @@ const seed = async () => {
           name: p.name,
           startYear: start,
           endYear: end,
-          isActive: p.period === '2025-2026'
+          status: p.period === '2025-2026' ? 'activo' : 'historico'
         });
         console.log(`School period ${p.period} created.`);
       }
     }
 
     // 3. Create default Terms for active period
-    const activePeriod = await SchoolPeriod.findOne({ where: { isActive: true } });
+    const activePeriod = await SchoolPeriod.findOne({ where: { status: 'activo' } });
     if (activePeriod) {
       const defaultTerms = [
         { name: 'Primer Lapso', order: 1, isBlocked: false },

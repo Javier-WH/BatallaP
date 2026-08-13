@@ -67,7 +67,7 @@ export const getMyAssignments = async (req: Request, res: Response) => {
                   model: SchoolPeriod,
                   as: 'schoolPeriod',
                   required: true, // Force inner join
-                  where: { isActive: true } // Only active period
+                  where: { status: 'activo' } // Only active period
                 }
               ]
             }
@@ -767,7 +767,7 @@ export const updateFinalGrade = async (req: Request, res: Response) => {
         return res.status(400).json({ message: 'No se pudo determinar el período escolar' });
       }
 
-      if (schoolPeriod.isActive) {
+      if (schoolPeriod.status === 'activo') {
         return res.status(403).json({ message: 'No se pueden modificar notas de períodos activos' });
       }
 
@@ -848,13 +848,13 @@ export const updateFinalGrade = async (req: Request, res: Response) => {
 
     // Verify that the school period is inactive
     const schoolPeriod = (finalGrade as any).inscriptionSubject?.inscription?.period;
-    console.log('[updateFinalGrade] School period:', schoolPeriod?.id, schoolPeriod?.name, 'isActive:', schoolPeriod?.isActive);
+    console.log('[updateFinalGrade] School period:', schoolPeriod?.id, schoolPeriod?.name, 'status:', schoolPeriod?.status);
     if (!schoolPeriod) {
       console.log('[updateFinalGrade] School period not found');
       return res.status(400).json({ message: 'No se pudo determinar el período escolar' });
     }
 
-    if (schoolPeriod.isActive) {
+    if (schoolPeriod.status === 'activo') {
       console.log('[updateFinalGrade] Period is active, cannot modify');
       return res.status(403).json({ message: 'No se pueden modificar notas de períodos activos' });
     }
@@ -2420,7 +2420,7 @@ export const getAllAssignments = async (req: Request, res: Response) => {
                   model: SchoolPeriod,
                   as: 'schoolPeriod',
                   required: true,
-                  where: { isActive: true }
+                  where: { status: 'activo' }
                 }
               ]
             }

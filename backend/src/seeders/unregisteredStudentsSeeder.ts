@@ -91,7 +91,7 @@ const createUnregisteredStudents = async (targetCount: number) => {
   const transaction: Transaction = await sequelize.transaction();
 
   try {
-    const activePeriod = await SchoolPeriod.findOne({ where: { isActive: true }, transaction });
+    const activePeriod = await SchoolPeriod.findOne({ where: { status: 'activo' }, transaction });
     if (!activePeriod) {
       throw new Error('No existe un período escolar activo. Configure uno antes de generar estudiantes.');
     }

@@ -20,6 +20,7 @@ interface EnrollStructureEntry {
 interface SchoolPeriod {
   id: number;
   name: string;
+  status?: 'preinscripcion' | 'activo' | 'historico' | 'externo';
   isActive?: boolean;
 }
 
@@ -35,7 +36,7 @@ const MatricularEstudiante: React.FC = () => {
       setLoading(true);
       try {
         const periodsRes = await api.get('/academic/periods');
-        const active = (periodsRes.data || []).find((p: SchoolPeriod) => p.isActive);
+        const active = (periodsRes.data || []).find((p: SchoolPeriod) => p.status === 'activo');
 
         if (!active) {
           message.warning('No hay periodo escolar activo');

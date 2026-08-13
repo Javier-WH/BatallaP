@@ -20,6 +20,7 @@ import {
 } from '@/models/index';
 import { FinalGradeCalculator } from './finalGradeCalculator';
 import { StudentPromotionEngine } from './studentPromotionEngine';
+import * as SchoolPeriodService from './schoolPeriodService';
 
 interface ClosureValidationResult {
   valid: boolean;
@@ -42,6 +43,28 @@ interface ClosureExecutionResult {
   log: Record<string, unknown>;
 }
 
+/**
+ * Resolve the period that will receive the promoted students. Prefers the
+ * explicit 'preinscripcion' period and falls back to the closest future
+ * non-external period for databases created before the status enum existed.
+ */
+const findNextPeriod = async (
+  period: SchoolPeriod,
+  transaction?: Transaction
+): Promise<SchoolPeriod | null> => {
+  const preinscription = await SchoolPeriodService.getPreinscriptionPeriod(transaction);
+  if (preinscription && preinscription.startYear > period.startYear) return preinscription;
+
+  return SchoolPeriod.findOne({
+    where: {
+      status: { [Op.ne]: 'externo' },
+      startYear: { [Op.gt]: period.startYear }
+    },
+    order: [['startYear', 'ASC'], ['endYear', 'ASC']],
+    transaction
+  });
+};
+
 export class PeriodClosureExecutor {
   static async validateClosure(schoolPeriodId: number): Promise<ClosureValidationResult> {
     const errors: string[] = [];
@@ -53,17 +76,11 @@ export class PeriodClosureExecutor {
       return { valid: false, errors, warnings };
     }
 
-    if (!period.isActive) {
+    if (period.status !== 'activo') {
       errors.push('El periodo no está activo');
     }
 
-    const nextPeriod = await SchoolPeriod.findOne({
-      where: {
-        isActive: false,
-        startYear: { [Op.gt]: period.startYear }
-      },
-      order: [['startYear', 'ASC'], ['endYear', 'ASC']]
-    });
+    const nextPeriod = await findNextPeriod(period);
 
     if (!nextPeriod || nextPeriod.id === schoolPeriodId) {
       errors.push('Debe existir un periodo siguiente creado antes de cerrar el periodo actual');
@@ -159,14 +176,12 @@ export class PeriodClosureExecutor {
       const minApprovalSetting = await Setting.findByPk('min_approval_grade');
       const minApproval = minApprovalSetting ? Number(minApprovalSetting.value) : 10;
 
-      const nextPeriod = await SchoolPeriod.findOne({
-        where: {
-          isActive: false,
-          startYear: { [Op.gt]: (await SchoolPeriod.findByPk(schoolPeriodId, { transaction }))!.startYear }
-        },
-        order: [['startYear', 'ASC'], ['endYear', 'ASC']],
-        transaction
-      });
+      const currentPeriod = await SchoolPeriod.findByPk(schoolPeriodId, { transaction });
+      if (!currentPeriod) {
+        throw new Error('Periodo escolar no encontrado');
+      }
+
+      const nextPeriod = await findNextPeriod(currentPeriod, transaction);
       if (!nextPeriod) {
         throw new Error('No se encontró periodo siguiente');
       }
@@ -373,15 +388,16 @@ export class PeriodClosureExecutor {
         { transaction }
       );
 
+      // Rotate statuses: the closed period becomes historical, the preinscription
+      // period takes over and a new preinscription period is generated.
       await SchoolPeriod.update(
-        { isActive: false },
+        { status: 'historico' },
         { where: { id: schoolPeriodId }, transaction }
       );
 
-      await SchoolPeriod.update(
-        { isActive: true },
-        { where: { id: nextPeriod.id }, transaction }
-      );
+      await nextPeriod.update({ status: 'activo' }, { transaction });
+
+      await SchoolPeriodService.ensureNextPreinscriptionPeriod(nextPeriod, transaction);
 
       await transaction.commit();
 

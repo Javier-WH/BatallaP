@@ -9,6 +9,7 @@ import {
   Subject
 } from '@/models/index';
 import { Transaction } from 'sequelize';
+import { ensureNextPreinscriptionPeriod } from '@/services/schoolPeriodService';
 
 const SECTION_SUFFIXES = ['A', 'B'];
 
@@ -157,7 +158,7 @@ const ensurePensumSubjects = async (transaction: Transaction) => {
 const seedAcademicStructure = async () => {
   const transaction = await sequelize.transaction();
   try {
-    const activePeriod = await SchoolPeriod.findOne({ where: { isActive: true }, transaction });
+    const activePeriod = await SchoolPeriod.findOne({ where: { status: 'activo' }, transaction });
     if (!activePeriod) {
       throw new Error('No existe un período escolar activo. Ejecute el seeder principal primero.');
     }
@@ -193,6 +194,10 @@ const seedAcademicStructure = async () => {
 
       structuresCreated += 1;
     }
+
+    // Mirror the structure into the preinscription period so students can enroll
+    // for the next school year before the current one ends
+    await ensureNextPreinscriptionPeriod(activePeriod, transaction);
 
     await transaction.commit();
     console.log(`✅ Estructura académica configurada para ${structuresCreated} grados.`);

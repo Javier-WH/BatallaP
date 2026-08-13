@@ -46,7 +46,7 @@ interface Assignment {
     periodGrade: {
       id: number;
       grade: { id: number; name: string; order: number };
-      schoolPeriod: { id: number; name: string; isActive: boolean };
+      schoolPeriod: { id: number; name: string; status: 'preinscripcion' | 'activo' | 'historico' | 'externo' };
     };
   };
   section: { id: number; name: string };

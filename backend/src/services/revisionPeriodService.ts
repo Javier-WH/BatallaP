@@ -106,7 +106,7 @@ export class RevisionPeriodService {
     const period = await SchoolPeriod.findByPk(schoolPeriodId, { transaction });
     if (!period) throw new Error('Período escolar no encontrado');
 
-    if (!period.isActive) throw new Error('El período escolar no está activo');
+    if (period.status !== 'activo') throw new Error('El período escolar no está activo');
 
     const terms = await Term.findAll({
       where: { schoolPeriodId },

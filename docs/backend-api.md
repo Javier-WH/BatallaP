@@ -304,7 +304,7 @@ Ver [`flows/grade-edit.md`](./flows/grade-edit.md).
 **Notas**:
 - Cada nota externa se guarda en `SubjectFinalGrade` con `gradeType='transferencia'|'equivalencia'`, `plantelId` del plantel emisor y `calculatedAt` = fecha del documento original.
 - El `FinalGradeCalculator` y el `periodClosureExecutor` ignoran estas notas/inscripciones.
-- Los períodos externos (`SchoolPeriod.isExternal=true`) no aparecen en los selectores de gestión académica.
+- Los períodos externos (`SchoolPeriod.status='externo'`) no aparecen en los selectores de gestión académica.
 
 ---
 

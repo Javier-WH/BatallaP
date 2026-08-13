@@ -82,7 +82,7 @@ const RepairPeriodManagement: React.FC = () => {
     setLoading(true);
     try {
       const periodsRes = await api.get('/academic/periods');
-      const activePeriod = (periodsRes.data as any[]).find((p: any) => p.isActive);
+      const activePeriod = (periodsRes.data as any[]).find((p: any) => p.status === 'activo');
       if (!activePeriod) {
         message.warning('No hay un período activo');
         setLoading(false);

@@ -13,8 +13,8 @@ interface ChecklistStatus {
 }
 
 interface ClosureStatusResponse {
-  period: Pick<SchoolPeriod, 'id' | 'name' | 'period' | 'isActive'>;
-  nextPeriod?: Pick<SchoolPeriod, 'id' | 'name' | 'period'> | null;
+  period: Pick<SchoolPeriod, 'id' | 'name' | 'period' | 'status' | 'isActive'>;
+  nextPeriod?: Pick<SchoolPeriod, 'id' | 'name' | 'period' | 'status'> | null;
   closure?: PeriodClosure | null;
   checklist: ChecklistStatus;
   blockedTerms: number;
@@ -52,10 +52,11 @@ export class PeriodClosureService {
 
     const nextPeriod = await SchoolPeriod.findOne({
       where: {
+        status: { [Op.ne]: 'externo' },
         startYear: { [Op.gt]: period.startYear }
       },
       order: [['startYear', 'ASC'], ['endYear', 'ASC']],
-      attributes: ['id', 'name', 'period']
+      attributes: ['id', 'name', 'period', 'status']
     });
 
     return {
@@ -63,12 +64,14 @@ export class PeriodClosureService {
         id: period.id,
         name: period.name,
         period: period.period,
+        status: period.status,
         isActive: period.isActive
       },
       nextPeriod: nextPeriod ? {
         id: nextPeriod.id,
         name: nextPeriod.name,
-        period: nextPeriod.period
+        period: nextPeriod.period,
+        status: nextPeriod.status
       } : null,
       closure,
       checklist,

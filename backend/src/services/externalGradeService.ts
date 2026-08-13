@@ -96,7 +96,7 @@ export const resolveOrCreatePlantel = async (
 
 /**
  * Find or create an external SchoolPeriod representing the school year
- * of another institution. Marked with isExternal = true so it is excluded
+ * of another institution. Marked with status = 'externo' so it is excluded
  * from normal academic management selectors.
  */
 export const resolveOrCreateExternalPeriod = async (
@@ -115,8 +115,7 @@ export const resolveOrCreateExternalPeriod = async (
       name: periodName,
       startYear,
       endYear,
-      isActive: false,
-      isExternal: true,
+      status: 'externo',
     },
     { transaction }
   );

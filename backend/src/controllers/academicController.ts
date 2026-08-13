@@ -27,13 +27,15 @@ import {
 
 import sequelize from '@/config/database';
 import { PeriodOutcomeService } from '@/services/periodOutcomeService';
+import * as SchoolPeriodService from '@/services/schoolPeriodService';
+import type { SchoolPeriodStatus } from '@/models/SchoolPeriod';
 
 // --- School Periods ---
 
 export const getPeriods = async (req: Request, res: Response) => {
   try {
     const periods = await SchoolPeriod.findAll({
-      where: { isExternal: false },
+      where: { status: { [Op.ne]: 'externo' } },
       order: [['startYear', 'DESC'], ['endYear', 'DESC']]
     });
     res.json(periods);
@@ -95,10 +97,19 @@ export const deleteSpecialization = async (req: Request, res: Response) => {
 
 export const getActivePeriod = async (req: Request, res: Response) => {
   try {
-    const period = await SchoolPeriod.findOne({ where: { isActive: true } });
+    const period = await SchoolPeriodService.getActivePeriod();
     res.json(period);
   } catch (error) {
     res.status(500).json({ error: 'Error fetching active period' });
+  }
+};
+
+export const getPreinscriptionPeriod = async (req: Request, res: Response) => {
+  try {
+    const period = await SchoolPeriodService.getPreinscriptionPeriod();
+    res.json(period);
+  } catch (error) {
+    res.status(500).json({ error: 'Error fetching preinscription period' });
   }
 };
 
@@ -127,18 +138,18 @@ export const createPeriod = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'End year must be greater than start year' });
     }
 
-    // Find the current active period to determine if new one should be active
-    const currentActivePeriod = await SchoolPeriod.findOne({
-      where: { isActive: true },
-      transaction
-    });
+    const currentActivePeriod = await SchoolPeriodService.getActivePeriod(transaction);
 
-    // New period is active if it's more recent than the current active period (or if there's no active period)
-    // New period is active ONLY if there is no current active period.
-    // We do not want to auto-switch to a future period just because it's created.
-    const shouldBeActive = !currentActivePeriod;
-
-
+    // Without an active period the new one takes over. Otherwise, the school year
+    // right after the active one becomes the preinscription period; anything else
+    // is stored as historical. We never auto-switch the active period here.
+    let status: SchoolPeriodStatus = 'historico';
+    if (!currentActivePeriod) {
+      status = 'activo';
+    } else if (startYear === currentActivePeriod.startYear + 1) {
+      const existingPreinscription = await SchoolPeriodService.getPreinscriptionPeriod(transaction);
+      if (!existingPreinscription) status = 'preinscripcion';
+    }
 
     // Create the new period
     const created = await SchoolPeriod.create({
@@ -146,101 +157,23 @@ export const createPeriod = async (req: Request, res: Response) => {
       name,
       startYear,
       endYear,
-      isActive: shouldBeActive,
+      status,
     }, { transaction });
 
     // Find the most recent previous period to copy structure from (exclude external periods)
     const previousPeriod = await SchoolPeriod.findOne({
-      where: { id: { [Op.ne]: created.id }, isExternal: false },
+      where: { id: { [Op.ne]: created.id }, status: { [Op.ne]: 'externo' } },
       order: [['startYear', 'DESC'], ['endYear', 'DESC']],
       transaction
     });
 
     if (previousPeriod) {
-      // Copy Terms (Lapsos) structure
-      const previousTerms = await Term.findAll({
-        where: { schoolPeriodId: previousPeriod.id },
-        order: [['order', 'ASC']],
-        transaction
-      });
+      await SchoolPeriodService.clonePeriodStructure(previousPeriod.id, created.id, transaction);
+    }
 
-      for (const term of previousTerms) {
-        await Term.create({
-          schoolPeriodId: created.id,
-          name: term.name,
-          order: term.order,
-          isBlocked: false
-        }, { transaction });
-      }
-
-      // Get all PeriodGrades from the previous period with their sections and subjects
-      const previousPeriodGrades = await PeriodGrade.findAll({
-        where: { schoolPeriodId: previousPeriod.id },
-        transaction
-      });
-
-      // Map old PeriodGrade IDs to new ones for TeacherAssignment copying
-      const periodGradeIdMap = new Map<number, number>();
-      const periodGradeSubjectIdMap = new Map<number, number>();
-
-      for (const pg of previousPeriodGrades) {
-        // Create new PeriodGrade for the new period
-        const newPg = await PeriodGrade.create({
-          schoolPeriodId: created.id,
-          gradeId: pg.gradeId,
-          specializationId: pg.specializationId
-        }, { transaction });
-
-        periodGradeIdMap.set(pg.id, newPg.id);
-
-        // Copy sections for this PeriodGrade
-        const previousSections = await PeriodGradeSection.findAll({
-          where: { periodGradeId: pg.id },
-          transaction
-        });
-
-        for (const pgs of previousSections) {
-          await PeriodGradeSection.create({
-            periodGradeId: newPg.id,
-            sectionId: pgs.sectionId
-          }, { transaction });
-        }
-
-        // Copy subjects for this PeriodGrade
-        const previousSubjects = await PeriodGradeSubject.findAll({
-          where: { periodGradeId: pg.id },
-          transaction
-        });
-
-        for (const pgsub of previousSubjects) {
-          const newPgSub = await PeriodGradeSubject.create({
-            periodGradeId: newPg.id,
-            subjectId: pgsub.subjectId,
-            order: pgsub.order
-          }, { transaction });
-
-          periodGradeSubjectIdMap.set(pgsub.id, newPgSub.id);
-        }
-      }
-
-      // Copy TeacherAssignments
-      const previousAssignments = await TeacherAssignment.findAll({
-        where: {
-          periodGradeSubjectId: { [Op.in]: Array.from(periodGradeSubjectIdMap.keys()) }
-        },
-        transaction
-      });
-
-      for (const ta of previousAssignments) {
-        const newPgSubId = periodGradeSubjectIdMap.get(ta.periodGradeSubjectId);
-        if (newPgSubId) {
-          await TeacherAssignment.create({
-            teacherId: ta.teacherId,
-            periodGradeSubjectId: newPgSubId,
-            sectionId: ta.sectionId
-          }, { transaction });
-        }
-      }
+    // A brand new active period must always have its preinscription counterpart
+    if (status === 'activo') {
+      await SchoolPeriodService.ensureNextPreinscriptionPeriod(created, transaction);
     }
 
     await transaction.commit();
@@ -257,20 +190,12 @@ export const createPeriod = async (req: Request, res: Response) => {
 };
 
 export const togglePeriodActive = async (req: Request, res: Response) => {
-  const t = await sequelize.transaction();
   try {
     const { id } = req.params;
-
-    // Deactivate all
-    await SchoolPeriod.update({ isActive: false }, { where: {}, transaction: t });
-
-    // Activate target
-    await SchoolPeriod.update({ isActive: true }, { where: { id }, transaction: t });
-
-    await t.commit();
-    res.json({ message: 'Period activated successfully' });
+    const period = await SchoolPeriodService.activatePeriod(Number(id));
+    res.json({ message: 'Period activated successfully', period });
   } catch (error) {
-    await t.rollback();
+    console.error('[togglePeriodActive] Error:', error);
     res.status(500).json({ error: 'Error toggling period' });
   }
 };

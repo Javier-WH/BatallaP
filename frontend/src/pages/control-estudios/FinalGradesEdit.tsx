@@ -24,6 +24,7 @@ interface SchoolPeriod {
   id: number;
   name: string;
   period: string;
+  status: 'preinscripcion' | 'activo' | 'historico' | 'externo';
   isActive: boolean;
 }
 

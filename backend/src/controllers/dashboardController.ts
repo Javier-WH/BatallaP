@@ -60,7 +60,7 @@ interface AssignmentInsight {
 }
 
 const buildAcademicSnapshot = async (): Promise<AcademicSnapshot> => {
-  const activePeriod = await SchoolPeriod.findOne({ where: { isActive: true } });
+  const activePeriod = await SchoolPeriod.findOne({ where: { status: 'activo' } });
 
   if (!activePeriod) {
     return { period: null };

@@ -113,8 +113,8 @@ describe('Period Closure Endpoints', () => {
 
   describe('GET /api/period-closure/:periodId/preview', () => {
     it('should return preview of student outcomes', async () => {
-      const structure = await createAcademicStructure();
-      const { person } = await createTestUser({ username: 'student1' });
+      const structure = await createAcademicStructure({ periodId: periodId });
+      const { person } = await createTestUser({ username: 'student1', document: '11111111' });
       
       await createTestInscription(
         person.id,
@@ -149,7 +149,7 @@ describe('Period Closure Endpoints', () => {
         name: 'Año Escolar 2026-2027',
         startYear: 2026,
         endYear: 2027,
-        isActive: false
+        status: 'preinscripcion'
       });
 
       const term1 = await createTestTerm(periodId, { 
@@ -170,8 +170,8 @@ describe('Period Closure Endpoints', () => {
 
       await createTestSetting('min_approval_grade', '10');
 
-      const structure = await createAcademicStructure();
-      const { person } = await createTestUser({ username: 'student1' });
+      const structure = await createAcademicStructure({ periodId: periodId });
+      const { person } = await createTestUser({ username: 'student1', document: '11111111' });
       
       await createTestInscription(
         person.id,

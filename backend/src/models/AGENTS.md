@@ -21,7 +21,7 @@
 |-------|---------|
 | **Personas** | `User`, `Person`, `Role`, `PersonRole`, `Contact`, `PersonResidence`, `StudentPreviousSchool` |
 | **Representantes** | `GuardianProfile`, `StudentGuardian` |
-| **Estructura académica** | `SchoolPeriod` (con flag `isExternal` para períodos de instituciones externas), `Grade`, `Section`, `Subject`, `SubjectGroup`, `Specialization`, `PeriodGrade`, `PeriodGradeSection`, `PeriodGradeSubject`, `Term`, `SchoolPeriodTransitionRule`, `Plantel` |
+| **Estructura académica** | `SchoolPeriod` (con `status` ENUM: `preinscripcion`/`activo`/`historico`/`externo`), `Grade`, `Section`, `Subject`, `SubjectGroup`, `Specialization`, `PeriodGrade`, `PeriodGradeSection`, `PeriodGradeSubject`, `Term`, `SchoolPeriodTransitionRule`, `Plantel` |
 | **Inscripción** | `Matriculation`, `EnrollmentDocument`, `EnrollmentQuestion`, `EnrollmentAnswer`, `EnrollmentReport`, `Inscription`, `InscriptionSubject` |
 | **Evaluación** | `EvaluationPlan`, `Qualification`, `SubjectFinalGrade`, `CouncilPoint`, `CouncilChecklist`, `TeacherAssignment` |
 | **Cierre de período** | `PeriodClosure`, `StudentPeriodOutcome`, `PendingSubject` |
@@ -33,6 +33,7 @@
 - `StudentGuardian`: UNIQUE(`studentId`, `relationship`). Ver `docs/flows/enrollment.md` sección "Manejo de representantes".
 - `PeriodGradeSection` / `PeriodGradeSubject`: PKs compuestas.
 - `GuardianProfile`: UNIQUE(`documentType`, `document`).
+- `SchoolPeriod.status`: ENUM(`preinscripcion`, `activo`, `historico`, `externo`). Solo un período puede ser `activo` a la vez. Los virtuals `isActive`/`isExternal` son derivados de `status` y **no** pueden usarse en `where` (filter por `status` directamente).
 
 ## Aliases clave (no renombrar sin coordinación)
 

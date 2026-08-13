@@ -43,12 +43,19 @@ export async function createTestRole(name: 'Master' | 'Administrador' | 'Control
 }
 
 export async function createTestPeriod(overrides: Partial<any> = {}) {
+  // Accepts either `status` or the legacy `isActive` flag
+  let status = overrides.status;
+  if (!status) {
+    const active = overrides.isActive !== undefined ? overrides.isActive : true;
+    status = active ? 'activo' : 'historico';
+  }
+
   return await SchoolPeriod.create({
     period: overrides.period || '2025-2026',
     name: overrides.name || 'Año Escolar 2025-2026',
     startYear: overrides.startYear || 2025,
     endYear: overrides.endYear || 2026,
-    isActive: overrides.isActive !== undefined ? overrides.isActive : true
+    status
   });
 }
 
@@ -80,8 +87,16 @@ export async function createTestTerm(periodId: number, overrides: Partial<any> =
   });
 }
 
-export async function createAcademicStructure() {
-  const period = await createTestPeriod();
+export async function createAcademicStructure(overrides: { periodId?: number; period?: Partial<any> } = {}) {
+  let period;
+  if (overrides.periodId) {
+    // Reuse an existing period instead of creating a duplicate
+    const { SchoolPeriod } = await import('@/models/index');
+    period = await SchoolPeriod.findByPk(overrides.periodId);
+    if (!period) throw new Error(`Period ${overrides.periodId} not found`);
+  } else {
+    period = await createTestPeriod(overrides.period || {});
+  }
   const grade = await createTestGrade();
   const section = await createTestSection();
   const subject = await createTestSubject();

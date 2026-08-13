@@ -1,9 +1,13 @@
 import api from '@/services/api';
 
+export type SchoolPeriodStatus = 'preinscripcion' | 'activo' | 'historico' | 'externo';
+
 export interface SchoolPeriod {
   id: number;
   name: string;
   period: string;
+  status: SchoolPeriodStatus;
+  /** Derived from `status`. Kept for backwards compatibility. */
   isActive: boolean;
 }
 
@@ -18,6 +22,7 @@ export interface ClosureStatusResponse {
     id: number;
     name: string;
     period: string;
+    status: SchoolPeriodStatus;
   } | null;
   closure?: {
     id: number;

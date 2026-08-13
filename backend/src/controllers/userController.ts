@@ -18,7 +18,7 @@ export const searchUsers = async (req: Request, res: Response) => {
       ];
     }
 
-    const activePeriod = await SchoolPeriod.findOne({ where: { isActive: true } });
+    const activePeriod = await SchoolPeriod.findOne({ where: { status: 'activo' } });
     console.log('[searchUsers] activePeriod:', activePeriod?.id, 'activeOnly:', activeOnly, 'schoolPeriodId:', schoolPeriodId);
 
     // Determinar qué período usar para el filtro
@@ -134,7 +134,7 @@ export const getUserDetails = async (req: Request, res: Response) => {
     const { id } = req.params; // Person ID
 
     const { TeacherAssignment, PeriodGradeSubject, Subject, PeriodGrade, Grade, Section, SchoolPeriod, PersonResidence, StudentGuardian, GuardianProfile }: any = require('../models');
-    const activePeriod = await SchoolPeriod.findOne({ where: { isActive: true } });
+    const activePeriod = await SchoolPeriod.findOne({ where: { status: 'activo' } });
 
     const person = await Person.findByPk(id, {
       include: [

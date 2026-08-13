@@ -32,7 +32,7 @@ async function seedClosureTest() {
 
         // 2. Get Active Period (2025-2026)
         const activePeriod = await SchoolPeriod.findOne({
-            where: { isActive: true },
+            where: { status: 'activo' },
             transaction: t
         });
 

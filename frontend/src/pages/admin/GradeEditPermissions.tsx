@@ -33,6 +33,7 @@ interface SchoolPeriod {
   id: number;
   name: string;
   period: string;
+  status: 'preinscripcion' | 'activo' | 'historico' | 'externo';
   isActive: boolean;
 }
 
@@ -96,7 +97,8 @@ const GradeEditPermissions: React.FC = () => {
   const fetchSchoolPeriods = async () => {
     try {
       const response = await api.get('/academic/periods');
-      setSchoolPeriods(response.data.filter((p: SchoolPeriod) => !p.isActive));
+      // Only closed periods can have their final grades edited under permission
+      setSchoolPeriods(response.data.filter((p: SchoolPeriod) => p.status === 'historico'));
     } catch (err) {
       console.error('Error fetching periods:', err);
     }

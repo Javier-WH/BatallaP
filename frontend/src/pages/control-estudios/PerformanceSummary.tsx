@@ -19,7 +19,7 @@ const LegendRow: React.FC<{ name: string; desc: string }> = ({ name, desc }) => 
 interface Grade { id: number; name: string; isDiversified: boolean; order: number; }
 interface Section { id: number; name: string; }
 interface PeriodGradeStructure { id: number; grade: Grade; sections: Section[]; }
-interface SchoolPeriod { id: number; period: string; name: string; isActive: boolean; }
+interface SchoolPeriod { id: number; period: string; name: string; status: 'preinscripcion' | 'activo' | 'historico' | 'externo'; isActive: boolean; }
 
 type Scope = 'all' | 'section' | 'single';
 
@@ -351,7 +351,7 @@ const PerformanceSummary: React.FC = () => {
                           <Select placeholder="Seleccione un periodo" style={{ width: '100%' }} size="large"
                             value={selectedPeriodId}
                             onChange={(val) => setSelectedPeriodId(val)}
-                            options={allPeriods.map(p => ({ label: `${p.name}${p.isActive ? ' (activo)' : ''}`, value: p.id }))} />
+                            options={allPeriods.map(p => ({ label: `${p.name}${p.status === 'activo' ? ' (activo)' : ''}`, value: p.id }))} />
                         </Col>
                         <Col xs={24} sm={10} md={7}>
                           <Text style={{ fontWeight: 700, display: 'block', marginBottom: 8 }}>Grado</Text>
@@ -500,7 +500,7 @@ const PerformanceSummary: React.FC = () => {
                           <label style={{ display: 'block', fontWeight: 700, marginBottom: 6, fontSize: 13 }}>Período</label>
                           <Select placeholder="Período" style={{ width: '100%' }} value={boletinPeriodId}
                             onChange={(v: number) => setBoletinPeriodId(v)}
-                            options={allPeriods.map(p => ({ label: `${p.name}${p.isActive ? ' (activo)' : ''}`, value: p.id }))} />
+                            options={allPeriods.map(p => ({ label: `${p.name}${p.status === 'activo' ? ' (activo)' : ''}`, value: p.id }))} />
                         </div>
                         <div style={{ flex: '1 1 150px' }}>
                           <label style={{ display: 'block', fontWeight: 700, marginBottom: 6, fontSize: 13 }}>Grado</label>

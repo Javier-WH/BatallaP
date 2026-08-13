@@ -34,6 +34,7 @@ import {
   SearchOutlined,
   CalendarOutlined,
   HistoryOutlined,
+  ClockCircleOutlined,
   TeamOutlined,
   AimOutlined,
   SafetyOutlined
@@ -66,12 +67,23 @@ interface RowContextProps {
 }
 const RowContext = createContext<RowContextProps>({});
 
+type PeriodStatus = 'preinscripcion' | 'activo' | 'historico' | 'externo';
+
 interface Period {
   id: number;
   period: string;
   name: string;
+  status: PeriodStatus;
+  /** Derived from `status` on the backend. Kept for backwards compatibility. */
   isActive?: boolean;
 }
+
+const PERIOD_STATUS_PRESENTATION: Record<PeriodStatus, { label: string; color: string; icon: React.ReactNode }> = {
+  activo: { label: 'Periodo Activo', color: 'success', icon: <CheckCircleOutlined /> },
+  preinscripcion: { label: 'Preinscripción', color: 'processing', icon: <ClockCircleOutlined /> },
+  historico: { label: 'Histórico', color: 'default', icon: <HistoryOutlined /> },
+  externo: { label: 'Externo', color: 'warning', icon: <HistoryOutlined /> },
+};
 
 interface BaseCatalogItem {
   id: number;
@@ -285,7 +297,7 @@ const AcademicManagement: React.FC = () => {
 
       // Always sync activePeriodId with current active period (or first available)
       if (periodsData.length > 0) {
-        const active = periodsData.find((p) => p.isActive) ?? periodsData[0];
+        const active = periodsData.find((p) => p.status === 'activo') ?? periodsData[0];
         setActivePeriodId(active.id);
       } else {
         setActivePeriodId(null);
@@ -413,7 +425,7 @@ const AcademicManagement: React.FC = () => {
   const handleActivatePeriod = async (id: number) => {
     try {
       await api.put(`/academic/periods/${id}/activate`);
-      message.success('Periodo activado');
+      message.success('Periodo activado. El periodo siguiente queda disponible en preinscripción.');
       fetchAll();
     } catch (error) {
       console.error(error);
@@ -708,23 +720,26 @@ const AcademicManagement: React.FC = () => {
       title: 'Estado del Ciclo',
       key: 'status',
       width: 150,
-      render: (_: unknown, r: Period) => (
-        <Tag
-          icon={r.isActive ? <CheckCircleOutlined /> : <HistoryOutlined />}
-          color={r.isActive ? "success" : "default"}
-          style={{
-            borderRadius: 20,
-            padding: '4px 12px',
-            fontWeight: 700,
-            textTransform: 'uppercase',
-            fontSize: 10,
-            border: 'none',
-            boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
-          }}
-        >
-          {r.isActive ? 'Periodo Activo' : 'Histórico'}
-        </Tag>
-      )
+      render: (_: unknown, r: Period) => {
+        const presentation = PERIOD_STATUS_PRESENTATION[r.status ?? 'historico'];
+        return (
+          <Tag
+            icon={presentation.icon}
+            color={presentation.color}
+            style={{
+              borderRadius: 20,
+              padding: '4px 12px',
+              fontWeight: 700,
+              textTransform: 'uppercase',
+              fontSize: 10,
+              border: 'none',
+              boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
+            }}
+          >
+            {presentation.label}
+          </Tag>
+        );
+      }
     },
     {
       title: 'Acciones',
@@ -733,7 +748,7 @@ const AcademicManagement: React.FC = () => {
       align: 'right' as const,
       render: (_: unknown, r: Period) => (
         <Space size="middle">
-          {!r.isActive && (
+          {r.status !== 'activo' && (
             <Tooltip title="Establecer como periodo de trabajo actual">
               <Button
                 type="text"
@@ -943,7 +958,7 @@ const AcademicManagement: React.FC = () => {
 
   // --- Render ---
 
-  const activePeriod = periods.find((p) => p.isActive);
+  const activePeriod = periods.find((p) => p.status === 'activo');
 
   const orderedStructure = [...structure].sort((a, b) => {
     const aOrder = a.grade?.order ?? Number.MAX_SAFE_INTEGER;
@@ -1093,7 +1108,7 @@ const AcademicManagement: React.FC = () => {
               rowKey="id"
               loading={loading}
               className="premium-table"
-              rowClassName={(record: Period) => (record.isActive ? 'active-period-row' : '')}
+              rowClassName={(record: Period) => (record.status === 'activo' ? 'active-period-row' : '')}
               pagination={{ pageSize: 8 }}
             />
           </TabPane>

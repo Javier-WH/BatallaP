@@ -144,7 +144,7 @@ const buildGradeStructure = async (
 const seedInscriptions = async (targetCount: number) => {
   const transaction = await sequelize.transaction();
   try {
-    const activePeriod = await SchoolPeriod.findOne({ where: { isActive: true }, transaction });
+    const activePeriod = await SchoolPeriod.findOne({ where: { status: 'activo' }, transaction });
     if (!activePeriod) {
       throw new Error('No existe un período escolar activo. Ejecute el seeder principal primero.');
     }

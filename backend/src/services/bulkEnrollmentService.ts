@@ -678,7 +678,7 @@ export const generateTemplate = async (options: BulkTemplateOptions = {}) => {
   );
 
   // Autoseleccionar período activo cuando haya nombre de estudiante
-  const activePeriod = await SchoolPeriod.findOne({ where: { isActive: true } });
+  const activePeriod = await SchoolPeriod.findOne({ where: { status: 'activo' } });
   if (activePeriod) {
     applyConditionalDefaultFormulaToColumn(
       worksheet,

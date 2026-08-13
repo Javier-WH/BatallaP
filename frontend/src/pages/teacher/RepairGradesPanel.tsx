@@ -87,7 +87,7 @@ const RepairGradesPanel: React.FC = () => {
     setSaving(true);
     try {
       const activePeriodRes = await api.get('/academic/periods');
-      const activePeriod = (activePeriodRes.data as any[]).find((p: any) => p.isActive);
+      const activePeriod = (activePeriodRes.data as any[]).find((p: any) => p.status === 'activo');
       if (!activePeriod) { message.error('No hay período activo'); setSaving(false); return; }
 
       const gradesList = Object.entries(grades)
@@ -120,7 +120,7 @@ const RepairGradesPanel: React.FC = () => {
     setEditModalSaving(true);
     try {
       const activePeriodRes = await api.get('/academic/periods');
-      const activePeriod = (activePeriodRes.data as any[]).find((p: any) => p.isActive);
+      const activePeriod = (activePeriodRes.data as any[]).find((p: any) => p.status === 'activo');
       if (!activePeriod) { message.error('No hay período activo'); setEditModalSaving(false); return; }
 
       const res = await api.put(`/revision-periods/${activePeriod.id}/revisions/bulk`, {

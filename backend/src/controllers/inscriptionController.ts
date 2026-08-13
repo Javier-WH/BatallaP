@@ -66,7 +66,7 @@ export const quickRegister = async (req: Request, res: Response) => {
       ? schoolPeriodId
       : (
         await SchoolPeriod.findOne({
-          where: { isActive: true },
+          where: { status: 'activo' },
           attributes: ['id'],
           transaction: t
         })

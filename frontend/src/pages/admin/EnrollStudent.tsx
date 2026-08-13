@@ -38,12 +38,16 @@ type SchoolSearchResult = {
   state: string;
 };
 
+type SchoolPeriodStatus = 'preinscripcion' | 'activo' | 'historico' | 'externo';
+
 type SchoolPeriod = {
   id: number;
   period: string;
   name: string;
   startYear: number;
   endYear: number;
+  status: SchoolPeriodStatus;
+  /** Derived from `status` on the backend. Kept for backwards compatibility. */
   isActive: boolean;
 };
 
@@ -655,7 +659,7 @@ const EnrollStudent: React.FC = () => {
         // 1. Get periods and find active
         const periodsRes = await api.get('/academic/periods');
         setAllPeriods(periodsRes.data);
-        const active = periodsRes.data.find((p: SchoolPeriod) => p.isActive);
+        const active = periodsRes.data.find((p: SchoolPeriod) => p.status === 'activo');
 
         if (!active) {
           message.warning('No hay periodo escolar activo configurado');
@@ -1052,19 +1056,15 @@ const EnrollStudent: React.FC = () => {
                     onChange={(val) => handlePeriodChange(val)}
                     placeholder="Seleccione período"
                   >
-                    {allPeriods.map(p => {
-                      const isFuture = activePeriod && p.startYear > activePeriod.startYear;
-                      const isClosed = activePeriod && p.startYear < activePeriod.startYear && !p.isActive;
-                      return (
-                        <Option key={p.id} value={p.id}>
-                          <span style={{ fontWeight: 600 }}>{p.name}</span>
-                          <span style={{ color: 'var(--color-text-muted)', fontSize: 11, marginLeft: 8 }}>{p.period}</span>
-                          {p.isActive && <Tag color="green" style={{ marginLeft: 8, fontSize: 10 }}>Activo</Tag>}
-                          {isFuture && <Tag color="blue" style={{ marginLeft: 8, fontSize: 10 }}>Preinscripción</Tag>}
-                          {isClosed && <Tag color="default" style={{ marginLeft: 8, fontSize: 10 }}>Cerrado</Tag>}
-                        </Option>
-                      );
-                    })}
+                    {allPeriods.map(p => (
+                      <Option key={p.id} value={p.id}>
+                        <span style={{ fontWeight: 600 }}>{p.name}</span>
+                        <span style={{ color: 'var(--color-text-muted)', fontSize: 11, marginLeft: 8 }}>{p.period}</span>
+                        {p.status === 'activo' && <Tag color="green" style={{ marginLeft: 8, fontSize: 10 }}>Activo</Tag>}
+                        {p.status === 'preinscripcion' && <Tag color="blue" style={{ marginLeft: 8, fontSize: 10 }}>Preinscripción</Tag>}
+                        {p.status === 'historico' && <Tag color="default" style={{ marginLeft: 8, fontSize: 10 }}>Cerrado</Tag>}
+                      </Option>
+                    ))}
                   </Select>
                 </Form.Item>
               </div>
@@ -1976,19 +1976,15 @@ const EnrollStudent: React.FC = () => {
                     onChange={(val) => handlePeriodChange(val)}
                     placeholder="Seleccione período"
                   >
-                    {allPeriods.map(p => {
-                      const isFuture = activePeriod && p.startYear > activePeriod.startYear;
-                      const isClosed = activePeriod && p.startYear < activePeriod.startYear && !p.isActive;
-                      return (
-                        <Option key={p.id} value={p.id}>
-                          <span style={{ fontWeight: 600 }}>{p.name}</span>
-                          <span style={{ color: 'var(--color-text-muted)', fontSize: 11, marginLeft: 8 }}>{p.period}</span>
-                          {p.isActive && <Tag color="green" style={{ marginLeft: 8, fontSize: 10 }}>Activo</Tag>}
-                          {isFuture && <Tag color="blue" style={{ marginLeft: 8, fontSize: 10 }}>Preinscripción</Tag>}
-                          {isClosed && <Tag color="default" style={{ marginLeft: 8, fontSize: 10 }}>Cerrado</Tag>}
-                        </Option>
-                      );
-                    })}
+                    {allPeriods.map(p => (
+                      <Option key={p.id} value={p.id}>
+                        <span style={{ fontWeight: 600 }}>{p.name}</span>
+                        <span style={{ color: 'var(--color-text-muted)', fontSize: 11, marginLeft: 8 }}>{p.period}</span>
+                        {p.status === 'activo' && <Tag color="green" style={{ marginLeft: 8, fontSize: 10 }}>Activo</Tag>}
+                        {p.status === 'preinscripcion' && <Tag color="blue" style={{ marginLeft: 8, fontSize: 10 }}>Preinscripción</Tag>}
+                        {p.status === 'historico' && <Tag color="default" style={{ marginLeft: 8, fontSize: 10 }}>Cerrado</Tag>}
+                      </Option>
+                    ))}
                   </Select>
                 </Form.Item>
               </div>

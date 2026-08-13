@@ -26,6 +26,7 @@ type SchoolPeriod = {
   id: number;
   period: string;
   name: string;
+  status: 'preinscripcion' | 'activo' | 'historico' | 'externo';
   isActive: boolean;
 };
 

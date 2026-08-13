@@ -15,7 +15,7 @@ const LegendRow: React.FC<{ name: string; desc: string }> = ({ name, desc }) => 
 
 interface Section { id: number; name: string; }
 interface PeriodGradeStructure { id: number; grade: { id: number; name: string; order: number }; sections: Section[]; }
-interface SchoolPeriod { id: number; name: string; period: string; isActive: boolean; }
+interface SchoolPeriod { id: number; name: string; period: string; status: 'preinscripcion' | 'activo' | 'historico' | 'externo'; isActive: boolean; }
 
 interface BoletinModalProps {
   open: boolean;
@@ -301,7 +301,7 @@ const BoletinModal: React.FC<BoletinModalProps> = ({
                     style={{ width: '100%' }}
                     value={periodId}
                     onChange={(v: number) => setPeriodId(v)}
-                    options={allPeriods.map((p) => ({ label: `${p.name}${p.isActive ? ' (activo)' : ''}`, value: p.id }))}
+                    options={allPeriods.map((p) => ({ label: `${p.name}${p.status === 'activo' ? ' (activo)' : ''}`, value: p.id }))}
                   />
                 </div>
                 <div style={{ flex: '1 1 150px' }}>
