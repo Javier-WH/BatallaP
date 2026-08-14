@@ -1531,19 +1531,19 @@ const MatriculationEnrollment: React.FC = () => {
       const periodRow = worksheet.addRow(['', '', periodName]);
       worksheet.addRow([]);
       const teacherRow = worksheet.addRow(['', '', `Prof. Guía:`, teacherName]);
-      const sectionRow = worksheet.addRow(['', '', `Sección:`, `${gradeName} ${sectionName}`]);
+      const sectionRow = worksheet.addRow(['', '', `${gradeName} ${sectionName}`]);
 
-      [titleRow, periodRow, teacherRow, sectionRow].forEach((row, i) => {
+      [titleRow, periodRow, teacherRow].forEach((row, i) => {
         const firstCell = row.getCell(3);
         if (i < 2) {
           firstCell.font = { bold: true, size: 16 };
+          firstCell.alignment = { horizontal: 'center' };
         } else {
           firstCell.font = { bold: true, size: 11 };
         }
       });
-
-      worksheet.mergeCells('C1:F1');
-      worksheet.mergeCells('C2:F2');
+      sectionRow.getCell(3).font = { bold: true, size: 12 };
+      sectionRow.getCell(3).alignment = { horizontal: 'center' };
 
       // Table starts at row 7 (after title, period, blank, teacher, section, blank)
       const startRow = 7;
@@ -1574,9 +1574,9 @@ const MatriculationEnrollment: React.FC = () => {
         row.getCell(4).alignment = { horizontal: 'center' };
       });
 
-      // Empty rows
+      // Empty rows (minimum 40 students total)
       const emptyStart = startRow + 1 + students.length;
-      const totalRows = Math.max(emptyStart + 5, startRow + 16);
+      const totalRows = startRow + 35;
       for (let i = emptyStart; i <= totalRows; i++) {
         const row = worksheet.getRow(i);
         row.values = [i - startRow, '', '', ''];
