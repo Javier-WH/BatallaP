@@ -202,6 +202,13 @@ export const getMatriculations = async (req: Request, res: Response) => {
     if (gradeId) where.gradeId = gradeId;
     if (sectionId) where.sectionId = sectionId;
 
+    // Hide hidden students from non-admin roles
+    const userRoles: string[] = (req.session as any).user?.roles || [];
+    const isPrivileged = userRoles.includes('Master') || userRoles.includes('Administrador');
+    if (!isPrivileged) {
+      where.hiddenFromControlEstudios = false;
+    }
+
     const studentWhere: any = {};
     let hasStudentFilter = false;
     if (q) {
@@ -580,6 +587,10 @@ export const getInscriptions = async (req: Request, res: Response) => {
     if (sectionId) where.sectionId = sectionId;
     if (escolaridad) where.escolaridad = escolaridad;
 
+    // Hide hidden students from non-admin roles
+    const userRoles: string[] = (req.session as any).user?.roles || [];
+    const isPrivileged = userRoles.includes('Master') || userRoles.includes('Administrador');
+
     const personWhere: any = {};
     let hasPersonFilter = false;
 
@@ -656,7 +667,12 @@ export const getInscriptions = async (req: Request, res: Response) => {
       })
     );
 
-    res.json(result);
+    // Filter out hidden students for non-privileged roles
+    const filtered = isPrivileged
+      ? result
+      : result.filter((ins: any) => !ins.matriculation?.hiddenFromControlEstudios);
+
+    res.json(filtered);
   } catch (error) {
     console.error('Error en getInscriptions:', error);
     res.status(500).json({ error: 'Error obteniendo inscripciones' });
@@ -1444,5 +1460,68 @@ export const updateMatriculation = async (req: Request, res: Response) => {
     if (t) await t.rollback();
     console.error('Error updating matriculation:', error);
     res.status(500).json({ error: 'Error actualizando datos', details: error.message || error });
+  }
+};
+
+const isPrivilegedUser = (req: Request): boolean => {
+  const roles: string[] = (req.session as any).user?.roles || [];
+  return roles.includes('Master') || roles.includes('Administrador');
+};
+
+export const toggleMatriculationVisibility = async (req: Request, res: Response) => {
+  try {
+    if (!isPrivilegedUser(req)) {
+      return res.status(403).json({ error: 'Solo Administradores y Master pueden cambiar la visibilidad' });
+    }
+
+    const { id } = req.params;
+    const { hidden } = req.body;
+
+    if (typeof hidden !== 'boolean') {
+      return res.status(400).json({ error: 'El campo "hidden" debe ser booleano' });
+    }
+
+    const matriculation = await Matriculation.findByPk(id);
+    if (!matriculation) {
+      return res.status(404).json({ error: 'Matrícula no encontrada' });
+    }
+
+    await matriculation.update({ hiddenFromControlEstudios: hidden });
+    res.json({ message: hidden ? 'Estudiante ocultado de Control de Estudios' : 'Estudiante visible para Control de Estudios', hiddenFromControlEstudios: hidden });
+  } catch (error: any) {
+    console.error('Error toggling visibility:', error);
+    res.status(500).json({ error: 'Error al cambiar visibilidad', details: error.message || error });
+  }
+};
+
+export const bulkToggleMatriculationVisibility = async (req: Request, res: Response) => {
+  try {
+    if (!isPrivilegedUser(req)) {
+      return res.status(403).json({ error: 'Solo Administradores y Master pueden cambiar la visibilidad' });
+    }
+
+    const { ids, hidden } = req.body;
+
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ error: 'Se requiere un array de ids no vacío' });
+    }
+    if (typeof hidden !== 'boolean') {
+      return res.status(400).json({ error: 'El campo "hidden" debe ser booleano' });
+    }
+
+    const [updatedCount] = await Matriculation.update(
+      { hiddenFromControlEstudios: hidden },
+      { where: { id: ids } }
+    );
+
+    res.json({
+      message: hidden
+        ? `${updatedCount} estudiante(s) ocultado(s) de Control de Estudios`
+        : `${updatedCount} estudiante(s) visible(s) para Control de Estudios`,
+      updatedCount
+    });
+  } catch (error: any) {
+    console.error('Error bulk toggling visibility:', error);
+    res.status(500).json({ error: 'Error al cambiar visibilidad masiva', details: error.message || error });
   }
 };

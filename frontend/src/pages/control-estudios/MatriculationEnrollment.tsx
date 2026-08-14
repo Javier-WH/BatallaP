@@ -36,6 +36,7 @@ import {
   FileExcelOutlined,
   UserSwitchOutlined,
   WarningOutlined,
+  EyeInvisibleOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useNavigate } from 'react-router-dom';
@@ -167,6 +168,7 @@ interface MatriculationRow {
   inscriptionId?: number | null;
   student: StudentData;
   tempData: TempData;
+  hiddenFromControlEstudios?: boolean;
 }
 
 interface EnrollmentDocumentInfo {
@@ -191,6 +193,7 @@ interface MatriculationApiResponse {
   matriculation?: MatriculationApiResponse | null;
   subjects?: { id: number; name: string; subjectGroupId?: number | null }[];
   documents?: EnrollmentDocumentInfo | null;
+  hiddenFromControlEstudios?: boolean;
 }
 
 interface EnrollStructureEntry {
@@ -393,6 +396,7 @@ const contextMenuItems: MenuProps['items'] = [
 const MatriculationEnrollment: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const canManageVisibility = !!user?.roles.some(r => r === 'Administrador' || r === 'Master');
   const [activePeriod, setActivePeriod] = useState<SchoolPeriod | null>(null);
   const [viewStatus, setViewStatus] = useState<'pending' | 'completed'>('pending');
   const [matriculations, setMatriculations] = useState<MatriculationRow[]>([]);
@@ -442,6 +446,7 @@ const MatriculationEnrollment: React.FC = () => {
   const [filterSchoolPeriod, setFilterSchoolPeriod] = useState<number | null>(savedFilters.filterSchoolPeriod ?? null);
   const [allPeriods, setAllPeriods] = useState<SchoolPeriod[]>([]);
   const [filterMissing, setFilterMissing] = useState<string | null>(savedFilters.filterMissing ?? null);
+  const [filterInscription, setFilterInscription] = useState<'inscrito' | 'no_inscrito' | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
   const [sortedInfo, setSortedInfo] = useState<{ columnKey: string; order: 'ascend' | 'descend' } | null>(null);
@@ -822,6 +827,32 @@ const MatriculationEnrollment: React.FC = () => {
     }));
   }, []);
 
+  const handleBulkToggleVisibility = async (hidden: boolean) => {
+    const ids = selectedRowKeys.map(k => Number(k));
+    if (ids.length === 0) return;
+
+    message.loading({ content: hidden ? 'Desinscribiendo estudiantes...' : 'Inscribiendo estudiantes...', key: 'vis' });
+    try {
+      await api.post('/matriculations/bulk-visibility', { ids, hidden });
+      message.success({ content: hidden ? 'Estudiantes desinscritos' : 'Estudiantes inscritos', key: 'vis' });
+      setSelectedRowKeys([]);
+      fetchData();
+    } catch (err: any) {
+      const apiErr = err as { response?: { data?: { error?: string } } };
+      message.error({ content: apiErr?.response?.data?.error || 'Error al cambiar inscripción', key: 'vis' });
+    }
+  };
+
+  const handleToggleInscription = async (id: number, hidden: boolean) => {
+    try {
+      await api.patch(`/matriculations/${id}/visibility`, { hidden });
+      setMatriculations(prev => prev.map(r => r.id === id ? { ...r, hiddenFromControlEstudios: hidden } : r));
+    } catch (err: any) {
+      const apiErr = err as { response?: { data?: { error?: string } } };
+      message.error(apiErr?.response?.data?.error || 'Error al cambiar inscripción');
+    }
+  };
+
   const handleBulkEnroll = async () => {
     const selectedRows = matriculations.filter(r => selectedRowKeys.includes(r.id));
     if (selectedRows.length === 0) return;
@@ -1167,6 +1198,11 @@ const MatriculationEnrollment: React.FC = () => {
       if (filterGender && item.student.gender !== filterGender) return false;
       if (filterEscolaridad && item.tempData.escolaridad !== filterEscolaridad) return false;
       if (filterSchoolPeriod && item.schoolPeriodId !== filterSchoolPeriod) return false;
+      if (canManageVisibility && filterInscription) {
+        const isHidden = !!item.hiddenFromControlEstudios;
+        if (filterInscription === 'inscrito' && isHidden) return false;
+        if (filterInscription === 'no_inscrito' && !isHidden) return false;
+      }
       if (filterMissing) {
         if (filterMissing === 'guardians' && item.student.guardians?.some(g => g.isRepresentative)) return false;
         if (filterMissing === 'contact' && item.student.contact?.phone1) return false;
@@ -1180,7 +1216,7 @@ const MatriculationEnrollment: React.FC = () => {
       }
       return true;
     });
-  }, [matriculations, searchValue, filterGrade, filterSection, filterGender, filterEscolaridad, filterSchoolPeriod, filterMissing, questions]);
+  }, [matriculations, searchValue, filterGrade, filterSection, filterGender, filterEscolaridad, filterSchoolPeriod, filterMissing, filterInscription, canManageVisibility, questions]);
 
   const currentData = useMemo(() => {
     const start = (currentPage - 1) * pageSize;
@@ -2716,26 +2752,57 @@ const MatriculationEnrollment: React.FC = () => {
       {
         key: 'data-status',
         title: '',
-        width: 32,
+        width: 40,
         fixed: 'left' as const,
         dataIndex: 'id',
         render: (_: unknown, record: MatriculationRow) => {
           const missing = getMissingDataFields(record);
-          if (missing.length === 0) return null;
+          const isHidden = !!record.hiddenFromControlEstudios;
+          if (missing.length === 0 && !isHidden) return null;
           return (
-            <Tooltip
-              title={
-                <div>
-                  <div style={{ fontWeight: 600, marginBottom: 4 }}>Datos faltantes ({missing.length}):</div>
-                  <ul style={{ margin: 0, paddingLeft: 16 }}>
-                    {missing.map((f) => <li key={f}>{f}</li>)}
-                  </ul>
-                </div>
-              }
-              placement="right"
-            >
-              <WarningOutlined style={{ color: '#ff4d4f', fontSize: 16, cursor: 'help' }} />
-            </Tooltip>
+            <div className="flex flex-col items-center gap-1">
+              {isHidden && canManageVisibility && (
+                <Tooltip title="No inscrito (oculto de Control de Estudios)" placement="right">
+                  <EyeInvisibleOutlined style={{ color: '#ff4d4f', fontSize: 14, cursor: 'help' }} />
+                </Tooltip>
+              )}
+              {missing.length > 0 && (
+                <Tooltip
+                  title={
+                    <div>
+                      <div style={{ fontWeight: 600, marginBottom: 4 }}>Datos faltantes ({missing.length}):</div>
+                      <ul style={{ margin: 0, paddingLeft: 16 }}>
+                        {missing.map((f) => <li key={f}>{f}</li>)}
+                      </ul>
+                    </div>
+                  }
+                  placement="right"
+                >
+                  <WarningOutlined style={{ color: '#ff4d4f', fontSize: 16, cursor: 'help' }} />
+                </Tooltip>
+              )}
+            </div>
+          );
+        }
+      },
+      canManageVisibility && {
+        key: 'inscription-status',
+        title: 'Inscripción',
+        width: 120,
+        fixed: 'left' as const,
+        render: (_: unknown, record: MatriculationRow) => {
+          const isHidden = !!record.hiddenFromControlEstudios;
+          return (
+            <Select
+              size="small"
+              value={isHidden ? 'no_inscrito' : 'inscrito'}
+              style={{ width: 105 }}
+              onChange={(val) => handleToggleInscription(record.id, val === 'no_inscrito')}
+              options={[
+                { value: 'inscrito', label: <span style={{ color: '#52c41a' }}>Inscrito</span> },
+                { value: 'no_inscrito', label: <span style={{ color: '#ff4d4f' }}>No inscrito</span> }
+              ]}
+            />
           );
         }
       },
@@ -2800,7 +2867,9 @@ const MatriculationEnrollment: React.FC = () => {
     addSeparator,
     isColumnVisible,
     canEditRow,
-    getMissingDataFields
+    getMissingDataFields,
+    canManageVisibility,
+    handleToggleInscription
   ]);
 
   return (
@@ -2944,6 +3013,21 @@ const MatriculationEnrollment: React.FC = () => {
                     <Option value="all">Cualquier Dato Faltante</Option>
                   </Select>
                 </Col>
+                {canManageVisibility && (
+                  <Col>
+                    <Select
+                      placeholder="Inscripción"
+                      size="small"
+                      style={{ width: 130 }}
+                      allowClear
+                      value={filterInscription}
+                      onChange={setFilterInscription}
+                    >
+                      <Option value="inscrito">Inscritos</Option>
+                      <Option value="no_inscrito">No Inscritos</Option>
+                    </Select>
+                  </Col>
+                )}
                 <Col>
                   <Input
                     placeholder="Buscar..."
@@ -3111,6 +3195,30 @@ const MatriculationEnrollment: React.FC = () => {
                     </div>
                   )}
                 </div>
+
+                {/* Section 2b: Inscription controls (Admin/Master only) */}
+                {canManageVisibility && (
+                  <div className="pl-4 border-l border-slate-300/50 flex gap-2">
+                    <Tooltip title="Marcar como inscrito (visible para Control de Estudios)">
+                      <Button
+                        size="small"
+                        icon={<EyeOutlined />}
+                        onClick={() => handleBulkToggleVisibility(false)}
+                      >
+                        Inscribir
+                      </Button>
+                    </Tooltip>
+                    <Tooltip title="Desinscribir (ocultar de Control de Estudios)">
+                      <Button
+                        size="small"
+                        icon={<EyeInvisibleOutlined />}
+                        onClick={() => handleBulkToggleVisibility(true)}
+                      >
+                        Desinscribir
+                      </Button>
+                    </Tooltip>
+                  </div>
+                )}
 
                 {/* Section 3: Primary Action */}
                 {viewStatus === 'pending' && (

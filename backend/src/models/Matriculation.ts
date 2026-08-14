@@ -18,11 +18,12 @@ interface MatriculationAttributes {
   escolaridad: EscolaridadStatus;
   status: MatriculationStatus;
   inscriptionId?: number | null;
+  hiddenFromControlEstudios: boolean;
   createdAt?: Date;
   updatedAt?: Date;
 }
 
-interface MatriculationCreationAttributes extends Optional<MatriculationAttributes, 'id' | 'sectionId' | 'status' | 'inscriptionId' | 'escolaridad'> {}
+interface MatriculationCreationAttributes extends Optional<MatriculationAttributes, 'id' | 'sectionId' | 'status' | 'inscriptionId' | 'escolaridad' | 'hiddenFromControlEstudios'> {}
 
 class Matriculation extends Model<MatriculationAttributes, MatriculationCreationAttributes> implements MatriculationAttributes {
   public id!: number;
@@ -33,6 +34,7 @@ class Matriculation extends Model<MatriculationAttributes, MatriculationCreation
   public escolaridad!: EscolaridadStatus;
   public status!: MatriculationStatus;
   public inscriptionId!: number | null;
+  public hiddenFromControlEstudios!: boolean;
 
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
@@ -93,6 +95,11 @@ Matriculation.init(
       type: DataTypes.INTEGER,
       allowNull: true,
       references: { model: Inscription, key: 'id' }
+    },
+    hiddenFromControlEstudios: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false
     }
   },
   {
