@@ -245,6 +245,7 @@ const BASE_COLUMN_OPTIONS: ColumnOption[] = [
 
   // Estudiante - Datos Extendidos
   { key: 'gender', label: 'Género', group: 'Estudiante - Datos Extendidos' },
+  { key: 'status', label: 'Status', group: 'Estudiante - Datos Extendidos' },
   { key: 'birthdate', label: 'Fecha Nacimiento', group: 'Estudiante - Datos Extendidos' },
   { key: 'pathology', label: 'Patología', group: 'Estudiante - Datos Extendidos' },
   { key: 'livingWith', label: 'Vive Con', group: 'Estudiante - Datos Extendidos' },
@@ -446,7 +447,7 @@ const MatriculationEnrollment: React.FC = () => {
   const [filterSchoolPeriod, setFilterSchoolPeriod] = useState<number | null>(savedFilters.filterSchoolPeriod ?? null);
   const [allPeriods, setAllPeriods] = useState<SchoolPeriod[]>([]);
   const [filterMissing, setFilterMissing] = useState<string | null>(savedFilters.filterMissing ?? null);
-  const [filterInscription, setFilterInscription] = useState<'inscrito' | 'no_inscrito' | null>(null);
+  const [filterInscription, setFilterInscription] = useState<'inscrito' | 'no_inscrito' | null>(savedFilters.filterInscription ?? null);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
   const [sortedInfo, setSortedInfo] = useState<{ columnKey: string; order: 'ascend' | 'descend' } | null>(null);
@@ -465,10 +466,11 @@ const MatriculationEnrollment: React.FC = () => {
       filterGender,
       filterEscolaridad,
       filterSchoolPeriod,
-      filterMissing
+      filterMissing,
+      filterInscription
     };
     localStorage.setItem('matriculation-filters', JSON.stringify(filters));
-  }, [searchValue, visibleColumnKeys, filterGrade, filterSection, filterGender, filterEscolaridad, filterSchoolPeriod, filterMissing]);
+  }, [searchValue, visibleColumnKeys, filterGrade, filterSection, filterGender, filterEscolaridad, filterSchoolPeriod, filterMissing, filterInscription]);
 
   useEffect(() => {
     const updateScrollY = () => {
@@ -1755,6 +1757,26 @@ const MatriculationEnrollment: React.FC = () => {
           );
         }
       },
+      canManageVisibility && isColumnVisible('status') && {
+        key: 'status',
+        title: 'Status',
+        width: 120,
+        render: (_: unknown, record: MatriculationRow) => {
+          const isHidden = !!record.hiddenFromControlEstudios;
+          return (
+            <Select
+              size="small"
+              value={isHidden ? 'no_inscrito' : 'inscrito'}
+              style={{ width: 105 }}
+              onChange={(val) => handleToggleInscription(record.id, val === 'no_inscrito')}
+              options={[
+                { value: 'inscrito', label: <span style={{ color: '#52c41a' }}>Inscrito</span> },
+                { value: 'no_inscrito', label: <span style={{ color: '#ff4d4f' }}>No inscrito</span> }
+              ]}
+            />
+          );
+        }
+      },
       isColumnVisible('birthdate') && {
         key: 'birthdate',
         title: 'Fecha Nac.',
@@ -2782,27 +2804,6 @@ const MatriculationEnrollment: React.FC = () => {
                 </Tooltip>
               )}
             </div>
-          );
-        }
-      },
-      canManageVisibility && {
-        key: 'inscription-status',
-        title: 'Inscripción',
-        width: 120,
-        fixed: 'left' as const,
-        render: (_: unknown, record: MatriculationRow) => {
-          const isHidden = !!record.hiddenFromControlEstudios;
-          return (
-            <Select
-              size="small"
-              value={isHidden ? 'no_inscrito' : 'inscrito'}
-              style={{ width: 105 }}
-              onChange={(val) => handleToggleInscription(record.id, val === 'no_inscrito')}
-              options={[
-                { value: 'inscrito', label: <span style={{ color: '#52c41a' }}>Inscrito</span> },
-                { value: 'no_inscrito', label: <span style={{ color: '#ff4d4f' }}>No inscrito</span> }
-              ]}
-            />
           );
         }
       },
