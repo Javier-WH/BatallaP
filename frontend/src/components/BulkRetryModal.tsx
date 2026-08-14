@@ -107,28 +107,14 @@ function parseErrorFields(errors: string[]): Map<string, string> {
       /Faltan campos obligatorios para (la madre|el padre|el representante): (.+)/i
     );
     if (guardianMissingMatch) {
-      const prefix =
-        guardianMissingMatch[1] === 'la madre'
-          ? 'mother'
-          : guardianMissingMatch[1] === 'el padre'
-            ? 'father'
-            : 'representative';
+      // All guardian errors map to the single "representative" tab now
       guardianMissingMatch[2]
         .split(',')
         .map((f) => f.trim())
-        .forEach((f) => map.set(`${prefix}.${f}`, err));
+        .forEach((f) => map.set(`representative.${f}`, err));
     }
 
-    if ((lower.includes('madre') || lower.includes('mother')) && lower.includes('obligatori'))
-      map.set('mother', err);
-    if ((lower.includes('padre') || lower.includes('father')) && lower.includes('obligatori'))
-      map.set('father', err);
-    if (
-      lower.includes('representante') &&
-      !lower.includes('madre') &&
-      !lower.includes('padre') &&
-      lower.includes('obligatori')
-    )
+    if ((lower.includes('madre') || lower.includes('mother') || lower.includes('padre') || lower.includes('father') || lower.includes('representante') || lower.includes('representative')) && lower.includes('obligatori'))
       map.set('representative', err);
 
     const seqMatches = err.matchAll(/\[(\w+)\]/g);
@@ -175,10 +161,6 @@ const BulkRetryModal: React.FC<BulkRetryModalProps> = ({
   const resMunVal = Form.useWatch('residenceMunicipality', form);
   Form.useWatch('representativeType', form);
 
-  const motherStateVal = Form.useWatch(['mother', 'residenceState'], form);
-  const motherMunVal = Form.useWatch(['mother', 'residenceMunicipality'], form);
-  const fatherStateVal = Form.useWatch(['father', 'residenceState'], form);
-  const fatherMunVal = Form.useWatch(['father', 'residenceMunicipality'], form);
   const repStateVal = Form.useWatch(['representative', 'residenceState'], form);
   const repMunVal = Form.useWatch(['representative', 'residenceMunicipality'], form);
 
@@ -193,6 +175,21 @@ const BulkRetryModal: React.FC<BulkRetryModalProps> = ({
       if (!values.schoolPeriodId && activePeriod) {
         values.schoolPeriodId = activePeriod.id;
       }
+      // Consolidate guardian data into a single "representative" group.
+      // The backend payload may have mother/father/representative; we show
+      // whichever has data based on representativeType.
+      const repType = (values.representativeType as string) || 'other';
+      const sourceGuardian =
+        repType === 'mother' ? payload.mother
+        : repType === 'father' ? payload.father
+        : payload.representative;
+      if (sourceGuardian && typeof sourceGuardian === 'object') {
+        values.representative = sourceGuardian;
+      }
+      // Clear separate guardian slots so they don't get sent back twice
+      delete values.mother;
+      delete values.father;
+
       form.setFieldsValue(values);
       setSelectedGradeId((payload.gradeId as number) || null);
       setNameConflict(null);
@@ -215,16 +212,28 @@ const BulkRetryModal: React.FC<BulkRetryModalProps> = ({
     [errorFields]
   );
 
+  const buildFinalPayload = (values: Record<string, unknown>): Record<string, unknown> => {
+    const repType = (values.representativeType as string) || 'other';
+    const repData = values.representative;
+    const finalPayload: Record<string, unknown> = {
+      ...values,
+      birthdate: values.birthdate ? (values.birthdate as dayjs.Dayjs).format('YYYY-MM-DD') : null,
+      schoolPeriodId: values.schoolPeriodId || activePeriod?.id,
+      // Route the single "representative" form group to the correct guardian
+      // slot expected by the backend.
+      mother: repType === 'mother' ? repData : null,
+      father: repType === 'father' ? repData : null,
+      representative: repType === 'other' ? repData : null,
+    };
+    return finalPayload;
+  };
+
   const handleSubmit = async () => {
     try {
       const values = await form.validateFields();
       setSubmitting(true);
 
-      const finalPayload: Record<string, unknown> = {
-        ...values,
-        birthdate: values.birthdate ? (values.birthdate as dayjs.Dayjs).format('YYYY-MM-DD') : null,
-        schoolPeriodId: values.schoolPeriodId || activePeriod?.id
-      };
+      const finalPayload = buildFinalPayload(values);
 
       const result = await retrySingleRow(finalPayload, false);
 
@@ -253,11 +262,7 @@ const BulkRetryModal: React.FC<BulkRetryModalProps> = ({
     try {
       setSubmitting(true);
       const values = await form.validateFields();
-      const finalPayload: Record<string, unknown> = {
-        ...values,
-        birthdate: values.birthdate ? (values.birthdate as dayjs.Dayjs).format('YYYY-MM-DD') : null,
-        schoolPeriodId: values.schoolPeriodId || activePeriod?.id
-      };
+      const finalPayload = buildFinalPayload(values);
       const result = await retrySingleRow(finalPayload, true);
       if (result.success) {
         message.success(result.message);
@@ -275,13 +280,12 @@ const BulkRetryModal: React.FC<BulkRetryModalProps> = ({
     }
   };
 
-  const renderGuardianFields = (prefix: 'mother' | 'father' | 'representative') => {
-    const prefixState =
-      prefix === 'mother' ? motherStateVal : prefix === 'father' ? fatherStateVal : repStateVal;
-    const prefixMun =
-      prefix === 'mother' ? motherMunVal : prefix === 'father' ? fatherMunVal : repMunVal;
+  const renderGuardianFields = (prefix: 'representative') => {
+    const prefixState = repStateVal;
+    const prefixMun = repMunVal;
 
-    const hasGroupError = errorFields.has(prefix);
+    const hasGroupError = errorFields.has(prefix) ||
+      [...errorFields.keys()].some((k) => k.startsWith('mother.') || k.startsWith('father.') || k.startsWith('representative.'));
     return (
       <div style={hasGroupError ? { border: '1px solid #ff4d4f', borderRadius: 8, padding: 12 } : undefined}>
         {hasGroupError && (
@@ -629,35 +633,11 @@ const BulkRetryModal: React.FC<BulkRetryModalProps> = ({
       )
     },
     {
-      key: 'mother',
-      label: (
-        <Space>
-          <span>Datos de la Madre</span>
-          {(errorFields.has('mother') || [...errorFields.keys()].some((k) => k.startsWith('mother.'))) && (
-            <Tag color="error" style={{ marginLeft: 8 }}>Con errores</Tag>
-          )}
-        </Space>
-      ),
-      children: renderGuardianFields('mother')
-    },
-    {
-      key: 'father',
-      label: (
-        <Space>
-          <span>Datos del Padre</span>
-          {(errorFields.has('father') || [...errorFields.keys()].some((k) => k.startsWith('father.'))) && (
-            <Tag color="error" style={{ marginLeft: 8 }}>Con errores</Tag>
-          )}
-        </Space>
-      ),
-      children: renderGuardianFields('father')
-    },
-    {
       key: 'representative',
       label: (
         <Space>
           <span>Datos del Representante</span>
-          {(errorFields.has('representative') || [...errorFields.keys()].some((k) => k.startsWith('representative.'))) && (
+          {(errorFields.has('representative') || [...errorFields.keys()].some((k) => k.startsWith('representative.') || k.startsWith('mother.') || k.startsWith('father.'))) && (
             <Tag color="error" style={{ marginLeft: 8 }}>Con errores</Tag>
           )}
         </Space>
@@ -676,11 +656,7 @@ const BulkRetryModal: React.FC<BulkRetryModalProps> = ({
       keys.push('location');
     if (errorFields.has('schoolPeriodId') || errorFields.has('gradeId') || errorFields.has('sectionId'))
       keys.push('enrollment');
-    if (errorFields.has('mother') || [...errorFields.keys()].some((k) => k.startsWith('mother.')))
-      keys.push('mother');
-    if (errorFields.has('father') || [...errorFields.keys()].some((k) => k.startsWith('father.')))
-      keys.push('father');
-    if (errorFields.has('representative') || [...errorFields.keys()].some((k) => k.startsWith('representative.')))
+    if (errorFields.has('representative') || [...errorFields.keys()].some((k) => k.startsWith('representative.') || k.startsWith('mother.') || k.startsWith('father.')))
       keys.push('representative');
 
     if (keys.length === 0) keys.push('student', 'enrollment');

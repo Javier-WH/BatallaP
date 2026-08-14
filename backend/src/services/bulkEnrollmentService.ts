@@ -378,9 +378,21 @@ export const parseBulkExcel = async (filePath: string): Promise<ParsedBulkRow[]>
       ? representativeTypeRaw as RegisterAndEnrollPayload['representativeType']
       : 'mother';
 
-    const mother = parseGuardian('mother', normalized);
-    const father = parseGuardian('father', normalized);
+    // The Excel template only has "Representante" columns. Route the data to
+    // the correct guardian slot based on representativeType so the downstream
+    // studentEnrollmentService validates the right guardian.
     const representative = parseGuardian('representative', normalized);
+    let mother: GuardianInput | null = null;
+    let father: GuardianInput | null = null;
+    let representativeData: GuardianInput | null = null;
+
+    if (representativeType === 'mother') {
+      mother = representative;
+    } else if (representativeType === 'father') {
+      father = representative;
+    } else {
+      representativeData = representative;
+    }
 
     const previousSchoolsRaw = sanitizeString(normalized.previousSchoolIds);
     const previousSchoolIds = previousSchoolsRaw
@@ -410,7 +422,7 @@ export const parseBulkExcel = async (filePath: string): Promise<ParsedBulkRow[]>
       previousSchoolIds,
       mother,
       father,
-      representative,
+      representative: representativeData,
       representativeType,
       schoolPeriodId: period?.id || 0,
       gradeId: grade?.id || 0,
@@ -539,7 +551,9 @@ export const processBulkEnrollment = async (rows: ProcessBulkRowInput[]): Promis
   const results: ProcessBulkResult[] = [];
   for (const row of rows) {
     try {
-      const { person, matriculation, reportUuid } = await registerAndEnrollStudent(row.payload);
+      const { person, matriculation, reportUuid } = await registerAndEnrollStudent(row.payload, {
+        relaxGuardianContactFields: true
+      });
       results.push({
         rowNumber: row.rowNumber,
         success: true,
@@ -616,17 +630,9 @@ export const generateTemplate = async (options: BulkTemplateOptions = {}) => {
     { key: 'residenceState', catalog: 'EstadosVenezuela', message: 'Seleccione un estado válido de la lista.' },
     { key: 'residenceMunicipality', catalog: 'MunicipiosVenezuela', message: 'Seleccione un municipio válido de la lista.' },
     { key: 'residenceParish', catalog: 'ParroquiasVenezuela', message: 'Seleccione una parroquia válida de la lista.' },
-    { key: 'mother.residenceState', catalog: 'EstadosVenezuela', message: 'Seleccione un estado válido de la lista.' },
-    { key: 'mother.residenceMunicipality', catalog: 'MunicipiosVenezuela', message: 'Seleccione un municipio válido de la lista.' },
-    { key: 'mother.residenceParish', catalog: 'ParroquiasVenezuela', message: 'Seleccione una parroquia válida de la lista.' },
-    { key: 'father.residenceState', catalog: 'EstadosVenezuela', message: 'Seleccione un estado válido de la lista.' },
-    { key: 'father.residenceMunicipality', catalog: 'MunicipiosVenezuela', message: 'Seleccione un municipio válido de la lista.' },
-    { key: 'father.residenceParish', catalog: 'ParroquiasVenezuela', message: 'Seleccione una parroquia válida de la lista.' },
     { key: 'representative.residenceState', catalog: 'EstadosVenezuela', message: 'Seleccione un estado válido de la lista.' },
     { key: 'representative.residenceMunicipality', catalog: 'MunicipiosVenezuela', message: 'Seleccione un municipio válido de la lista.' },
     { key: 'representative.residenceParish', catalog: 'ParroquiasVenezuela', message: 'Seleccione una parroquia válida de la lista.' },
-    { key: 'mother.documentType', catalog: 'Documentos', message: 'Seleccione un tipo de documento válido.' },
-    { key: 'father.documentType', catalog: 'Documentos', message: 'Seleccione un tipo de documento válido.' },
     { key: 'representative.documentType', catalog: 'Documentos', message: 'Seleccione un tipo de documento válido.' }
   ];
 
@@ -687,48 +693,6 @@ export const generateTemplate = async (options: BulkTemplateOptions = {}) => {
       activePeriod.period
     );
   }
-
-  // Valores por defecto condicionados para madre
-  const motherFirstNameColumnNumber = getColumnNumberByKeyInColumns('mother.firstName', visibleColumns);
-  applyConditionalDefaultFormulaToColumn(
-    worksheet,
-    getColumnNumberByKeyInColumns('mother.residenceState', visibleColumns),
-    motherFirstNameColumnNumber,
-    defaultStudentLocation.state
-  );
-  applyConditionalDefaultFormulaToColumn(
-    worksheet,
-    getColumnNumberByKeyInColumns('mother.residenceMunicipality', visibleColumns),
-    motherFirstNameColumnNumber,
-    defaultStudentLocation.municipality
-  );
-  applyConditionalDefaultFormulaToColumn(
-    worksheet,
-    getColumnNumberByKeyInColumns('mother.residenceParish', visibleColumns),
-    motherFirstNameColumnNumber,
-    defaultStudentLocation.parish
-  );
-
-  // Valores por defecto condicionados para padre
-  const fatherFirstNameColumnNumber = getColumnNumberByKeyInColumns('father.firstName', visibleColumns);
-  applyConditionalDefaultFormulaToColumn(
-    worksheet,
-    getColumnNumberByKeyInColumns('father.residenceState', visibleColumns),
-    fatherFirstNameColumnNumber,
-    defaultStudentLocation.state
-  );
-  applyConditionalDefaultFormulaToColumn(
-    worksheet,
-    getColumnNumberByKeyInColumns('father.residenceMunicipality', visibleColumns),
-    fatherFirstNameColumnNumber,
-    defaultStudentLocation.municipality
-  );
-  applyConditionalDefaultFormulaToColumn(
-    worksheet,
-    getColumnNumberByKeyInColumns('father.residenceParish', visibleColumns),
-    fatherFirstNameColumnNumber,
-    defaultStudentLocation.parish
-  );
 
   // Valores por defecto condicionados para representante
   const representativeFirstNameColumnNumber = getColumnNumberByKeyInColumns('representative.firstName', visibleColumns);

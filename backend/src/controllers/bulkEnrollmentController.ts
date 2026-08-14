@@ -136,7 +136,9 @@ export const retrySingleRow = async (req: Request, res: Response) => {
       }
     }
 
-    const { person, matriculation, reportUuid } = await registerAndEnrollStudent(payload);
+    const { person, matriculation, reportUuid } = await registerAndEnrollStudent(payload, {
+      relaxGuardianContactFields: true
+    });
     res.json({
       success: true,
       message: 'Inscripción registrada',

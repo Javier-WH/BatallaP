@@ -5,7 +5,7 @@ export type BulkEnrollmentColumn = {
   description?: string;
 };
 
-const guardianPrefixes = ['mother', 'father', 'representative'] as const;
+const guardianPrefixes = ['representative'] as const;
 
 const guardianFields: Array<{ field: string; label: string; description?: string }> = [
   { field: 'documentType', label: 'Tipo de documento' },
@@ -67,7 +67,7 @@ guardianPrefixes.forEach((prefix) => {
   guardianFields.forEach((field) => {
     BULK_ENROLLMENT_COLUMNS.push({
       key: `${prefix}.${field.field}`,
-      header: `${prefix === 'mother' ? 'Madre' : prefix === 'father' ? 'Padre' : 'Representante'} - ${field.label}`,
+      header: `Representante - ${field.label}`,
       description: field.description
     });
   });

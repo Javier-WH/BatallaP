@@ -59,6 +59,9 @@ const guardianRequiredFields: (keyof GuardianInput)[] = [
   'email'
 ];
 
+// Fields that can be relaxed (made optional) in the bulk enrollment flow
+const guardianContactFields: (keyof GuardianInput)[] = ['address', 'phone', 'email'];
+
 const isEmptyValue = (value: unknown) => {
   if (value === null || value === undefined) return true;
   if (typeof value === 'string') return value.trim() === '';
@@ -70,10 +73,15 @@ export const hasGuardianData = (data?: GuardianInput | null) => {
   return Object.values(data).some((value) => !isEmptyValue(value));
 };
 
+export type ValidateGuardianOptions = {
+  relaxContactFields?: boolean;
+};
+
 export const validateGuardianPayload = (
   label: string,
   data: GuardianInput | null | undefined,
-  required: boolean
+  required: boolean,
+  options?: ValidateGuardianOptions
 ): Required<GuardianInput> | null => {
   const hasData = hasGuardianData(data);
 
@@ -94,9 +102,23 @@ export const validateGuardianPayload = (
     }
   }
 
-  const missingFields = guardianRequiredFields.filter((field) => isEmptyValue(data?.[field]));
+  const requiredFields = options?.relaxContactFields
+    ? guardianRequiredFields.filter((f) => !guardianContactFields.includes(f))
+    : guardianRequiredFields;
+
+  const missingFields = requiredFields.filter((field) => isEmptyValue(data?.[field]));
   if (missingFields.length > 0) {
     throw new Error(`Faltan campos obligatorios para ${label}: ${missingFields.join(', ')}`);
+  }
+
+  // Fill relaxed contact fields with empty string so the model's allowNull: false is satisfied
+  if (options?.relaxContactFields && data) {
+    return {
+      ...data,
+      address: data.address ?? '',
+      phone: data.phone ?? '',
+      email: data.email ?? ''
+    } as Required<GuardianInput>;
   }
 
   return data as Required<GuardianInput>;
@@ -167,9 +189,10 @@ const toOptionalStringArray = (value: unknown): string[] | undefined => {
 
 export const registerAndEnrollStudent = async (
   payload: RegisterAndEnrollPayload,
-  options?: { transaction?: Transaction }
+  options?: { transaction?: Transaction; relaxGuardianContactFields?: boolean }
 ): Promise<RegisterAndEnrollResult> => {
   const t = options?.transaction ?? await sequelize.transaction();
+  const relaxGuardianContactFields = options?.relaxGuardianContactFields ?? false;
 
   try {
     const {
@@ -280,9 +303,9 @@ export const registerAndEnrollStudent = async (
     const motherDataRequired = motherIsRepresentative || documentType === 'Cedula Escolar';
     const fatherDataRequired = fatherIsRepresentative;
 
-    const motherData = validateGuardianPayload('la madre', mother, motherDataRequired);
-    const fatherData = validateGuardianPayload('el padre', father, fatherDataRequired);
-    const representativeData = validateGuardianPayload('el representante', representative, representativeDataRequired);
+    const motherData = validateGuardianPayload('la madre', mother, motherDataRequired, { relaxContactFields: relaxGuardianContactFields });
+    const fatherData = validateGuardianPayload('el padre', father, fatherDataRequired, { relaxContactFields: relaxGuardianContactFields });
+    const representativeData = validateGuardianPayload('el representante', representative, representativeDataRequired, { relaxContactFields: relaxGuardianContactFields });
 
     if (!motherIsRepresentative && !fatherIsRepresentative && !representativeData) {
       throw new Error('Debe registrar un representante si la madre o el padre no lo son.');
