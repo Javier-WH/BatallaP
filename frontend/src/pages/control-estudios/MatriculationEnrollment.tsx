@@ -9,6 +9,7 @@ import {
   Input,
   Menu,
   message,
+  Modal,
   Popover,
   Radio,
   Row,
@@ -37,6 +38,7 @@ import {
   UserSwitchOutlined,
   WarningOutlined,
   EyeInvisibleOutlined,
+  PrinterOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useNavigate } from 'react-router-dom';
@@ -448,6 +450,10 @@ const MatriculationEnrollment: React.FC = () => {
   const [allPeriods, setAllPeriods] = useState<SchoolPeriod[]>([]);
   const [filterMissing, setFilterMissing] = useState<string | null>(savedFilters.filterMissing ?? null);
   const [filterInscription, setFilterInscription] = useState<'inscrito' | 'no_inscrito' | null>(savedFilters.filterInscription ?? null);
+  const [nominaModalOpen, setNominaModalOpen] = useState(false);
+  const [nominaGradeId, setNominaGradeId] = useState<number | null>(null);
+  const [nominaSectionId, setNominaSectionId] = useState<number | null>(null);
+  const [nominaTeacher, setNominaTeacher] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
   const [sortedInfo, setSortedInfo] = useState<{ columnKey: string; order: 'ascend' | 'descend' } | null>(null);
@@ -1470,6 +1476,147 @@ const MatriculationEnrollment: React.FC = () => {
       message.error('Error al exportar a Excel');
     }
   }, [filteredData, visibleColumnKeys, structure, questions, viewStatus, sortedInfo, activePeriod, filterGrade, filterSection]);
+
+  const generateNominaExcel = useCallback(async (gradeId: number, sectionId: number, teacherName: string) => {
+    try {
+      const res = await api.get('/inscriptions', {
+        params: {
+          schoolPeriodId: filterSchoolPeriod || activePeriod?.id,
+          gradeId,
+          sectionId
+        }
+      });
+      const students: any[] = (res.data || [])
+        .filter((s: any) => !s.matriculation?.hiddenFromControlEstudios);
+
+      // Sort by cédula number ascending, with "Cedula Escolar" (CE) at the end
+      const parseDoc = (doc: string, docType: string) => {
+        const isEscolar = docType === 'Cedula Escolar';
+        const num = parseInt((doc || '').replace(/\D/g, ''), 10) || 0;
+        return { isEscolar, num };
+      };
+      students.sort((a: any, b: any) => {
+        const da = parseDoc(a.student?.document || '', a.student?.documentType || '');
+        const db = parseDoc(b.student?.document || '', b.student?.documentType || '');
+        if (da.isEscolar !== db.isEscolar) return da.isEscolar ? 1 : -1;
+        return da.num - db.num;
+      });
+
+      if (students.length === 0) {
+        message.warning('No se encontraron estudiantes inscritos en esta sección');
+        return;
+      }
+
+      const workbook = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet('Nómina');
+
+      // Logo: 1.24" x 1.24" (~119px), 10px top margin, 20px left margin
+      try {
+        const logoRes = await api.get('/upload/logo', { responseType: 'arraybuffer' });
+        const logoId = workbook.addImage({ buffer: logoRes.data, extension: 'png' });
+        worksheet.addImage(logoId, {
+          tl: { col: 0.31, row: 0.5 },
+          ext: { width: 119, height: 119 }
+        });
+      } catch (e) {
+        console.error('No se pudo cargar el logo para la nómina', e);
+      }
+
+      const gradeName = structure.find(s => s.gradeId === gradeId)?.grade?.name || '';
+      const sectionName = structure.find(s => s.gradeId === gradeId)?.sections?.find(s => s.id === sectionId)?.name || '';
+      const periodName = allPeriods.find(p => p.id === (filterSchoolPeriod || activePeriod?.id))?.name || activePeriod?.name || '';
+
+      // Header rows (starting at row 1)
+      const titleRow = worksheet.addRow(['', '', 'U.E.C. BATALLA DE LA VICTORIA']);
+      const periodRow = worksheet.addRow(['', '', periodName]);
+      worksheet.addRow([]);
+      const teacherRow = worksheet.addRow(['', '', `Prof. Guía:`, teacherName]);
+      const sectionRow = worksheet.addRow(['', '', `Sección:`, `${gradeName} ${sectionName}`]);
+
+      [titleRow, periodRow, teacherRow, sectionRow].forEach((row, i) => {
+        const firstCell = row.getCell(3);
+        if (i < 2) {
+          firstCell.font = { bold: true, size: 16 };
+        } else {
+          firstCell.font = { bold: true, size: 11 };
+        }
+      });
+
+      worksheet.mergeCells('C1:F1');
+      worksheet.mergeCells('C2:F2');
+
+      // Table starts at row 7 (after title, period, blank, teacher, section, blank)
+      const startRow = 7;
+      const headerRow = worksheet.getRow(startRow);
+      headerRow.values = ['#', 'CÉDULA', 'APELLIDOS Y NOMBRES', 'Teléfono'];
+      for (let c = 1; c <= 4; c++) {
+        const cell = headerRow.getCell(c);
+        cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F4E79' } };
+        cell.alignment = { horizontal: 'center' };
+      }
+
+      worksheet.getColumn(1).width = 6;
+      worksheet.getColumn(2).width = 18;
+      worksheet.getColumn(3).width = 45;
+      worksheet.getColumn(4).width = 18;
+
+      students.forEach((s, idx) => {
+        const row = worksheet.getRow(startRow + 1 + idx);
+        row.values = [
+          idx + 1,
+          s.student?.document || '',
+          `${s.student?.lastName || ''} ${s.student?.firstName || ''}`.trim(),
+          s.student?.contact?.phone1 || ''
+        ];
+        row.getCell(1).alignment = { horizontal: 'center' };
+        row.getCell(2).alignment = { horizontal: 'center' };
+        row.getCell(4).alignment = { horizontal: 'center' };
+      });
+
+      // Empty rows
+      const emptyStart = startRow + 1 + students.length;
+      const totalRows = Math.max(emptyStart + 5, startRow + 16);
+      for (let i = emptyStart; i <= totalRows; i++) {
+        const row = worksheet.getRow(i);
+        row.values = [i - startRow, '', '', ''];
+        row.getCell(1).alignment = { horizontal: 'center' };
+      }
+
+      // Borders for table
+      const lastRow = totalRows;
+      for (let r = startRow; r <= lastRow; r++) {
+        for (let c = 1; c <= 4; c++) {
+          const cell = worksheet.getRow(r).getCell(c);
+          cell.border = {
+            top: { style: 'thin', color: { argb: 'FF000000' } },
+            left: { style: 'thin', color: { argb: 'FF000000' } },
+            bottom: { style: 'thin', color: { argb: 'FF000000' } },
+            right: { style: 'thin', color: { argb: 'FF000000' } }
+          };
+        }
+      }
+
+      const buffer = await workbook.xlsx.writeBuffer();
+      const fileName = `nomina_${gradeName}_${sectionName}_${dayjs().format('YYYY-MM-DD')}.xlsx`;
+      saveAs(new Blob([buffer]), fileName);
+      message.success(`Nómina de ${students.length} estudiantes generada`);
+    } catch (error) {
+      console.error('Error generando nómina:', error);
+      message.error('Error al generar la nómina');
+    }
+  }, [activePeriod, allPeriods, filterSchoolPeriod, structure]);
+
+  const handleOpenNominaModal = () => {
+    if (!filterGrade || !filterSection) {
+      setNominaModalOpen(true);
+      setNominaGradeId(filterGrade);
+      setNominaSectionId(filterSection);
+      setNominaTeacher('');
+    } else {
+      generateNominaExcel(filterGrade, filterSection, '');
+    }
+  };
 
   const handleToggleGroup = (group: string, checked: boolean) => {
     let groupKeys: string[] = [];
@@ -3066,6 +3213,18 @@ const MatriculationEnrollment: React.FC = () => {
                   </Tooltip>
                 </Col>
                 <Col>
+                  <Tooltip title="Generar nómina de estudiantes por sección">
+                    <Button
+                      icon={<PrinterOutlined />}
+                      onClick={handleOpenNominaModal}
+                      size="small"
+                      className="border-blue-400 text-blue-600 hover:bg-blue-50"
+                    >
+                      Imprimir Nómina
+                    </Button>
+                  </Tooltip>
+                </Col>
+                <Col>
                   <Button icon={<ReloadOutlined />} onClick={fetchData} loading={loading} size="small">Actualizar</Button>
                 </Col>
               </Row>
@@ -3373,6 +3532,59 @@ const MatriculationEnrollment: React.FC = () => {
         onCancel={() => setGuardianModalVisible(false)}
         onSelect={handleGuardianSelected}
       />
+
+      <Modal
+        title="Imprimir Nómina de Sección"
+        open={nominaModalOpen}
+        onCancel={() => setNominaModalOpen(false)}
+        onOk={() => {
+          if (!nominaGradeId || !nominaSectionId) {
+            message.warning('Seleccione grado y sección');
+            return;
+          }
+          generateNominaExcel(nominaGradeId, nominaSectionId, nominaTeacher);
+          setNominaModalOpen(false);
+        }}
+        okText="Generar Excel"
+      >
+        <div className="flex flex-col gap-4 py-2">
+          <div>
+            <label className="text-xs font-bold uppercase text-slate-500">Grado</label>
+            <Select
+              value={nominaGradeId}
+              onChange={(v) => { setNominaGradeId(v); setNominaSectionId(null); }}
+              style={{ width: '100%' }}
+              placeholder="Seleccionar grado"
+            >
+              {structure.map(s => (
+                <Option key={s.gradeId} value={s.gradeId}>{s.grade?.name}</Option>
+              ))}
+            </Select>
+          </div>
+          <div>
+            <label className="text-xs font-bold uppercase text-slate-500">Sección</label>
+            <Select
+              value={nominaSectionId}
+              onChange={setNominaSectionId}
+              style={{ width: '100%' }}
+              placeholder="Seleccionar sección"
+              disabled={!nominaGradeId}
+            >
+              {structure.find(s => s.gradeId === nominaGradeId)?.sections?.map(sec => (
+                <Option key={sec.id} value={sec.id}>{sec.name}</Option>
+              ))}
+            </Select>
+          </div>
+          <div>
+            <label className="text-xs font-bold uppercase text-slate-500">Prof. Guía</label>
+            <Input
+              value={nominaTeacher}
+              onChange={(e) => setNominaTeacher(e.target.value)}
+              placeholder="Nombre del profesor guía"
+            />
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 };
