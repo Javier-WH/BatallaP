@@ -240,7 +240,8 @@ export const getMatriculations = async (req: Request, res: Response) => {
         },
         { model: SchoolPeriod, as: 'period' },
         { model: Grade, as: 'grade' },
-        { model: Section, as: 'section' }
+        { model: Section, as: 'section' },
+        { model: EnrollmentDocument, as: 'documents' }
       ],
       order: [['createdAt', 'DESC']]
     });
@@ -624,7 +625,7 @@ export const getInscriptions = async (req: Request, res: Response) => {
         { model: Grade, as: 'grade' },
         { model: Section, as: 'section' },
         { model: Subject, as: 'subjects', through: { attributes: [] } },
-        { model: Matriculation, as: 'matriculation' }
+        { model: Matriculation, as: 'matriculation', include: [{ model: EnrollmentDocument, as: 'documents' }] }
       ],
       order: [['createdAt', 'DESC']]
     });

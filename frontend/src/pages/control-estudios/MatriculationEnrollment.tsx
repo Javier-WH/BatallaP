@@ -35,6 +35,7 @@ import {
   EditOutlined,
   FileExcelOutlined,
   UserSwitchOutlined,
+  WarningOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useNavigate } from 'react-router-dom';
@@ -168,6 +169,16 @@ interface MatriculationRow {
   tempData: TempData;
 }
 
+interface EnrollmentDocumentInfo {
+  receivedCertificadoAprendizaje?: boolean;
+  receivedCartaBuenaConducta?: boolean;
+  receivedNotasCertificadas?: boolean;
+  receivedPartidaNacimiento?: boolean;
+  receivedCopiaCedulaEstudiante?: boolean;
+  receivedInformesMedicos?: boolean;
+  receivedFotoCarnetEstudiante?: boolean;
+}
+
 interface MatriculationApiResponse {
   id: number;
   gradeId: number;
@@ -179,6 +190,7 @@ interface MatriculationApiResponse {
   escolaridad?: EscolaridadStatus;
   matriculation?: MatriculationApiResponse | null;
   subjects?: { id: number; name: string; subjectGroupId?: number | null }[];
+  documents?: EnrollmentDocumentInfo | null;
 }
 
 interface EnrollStructureEntry {
@@ -1546,6 +1558,49 @@ const MatriculationEnrollment: React.FC = () => {
     });
   }, []);
 
+  const getMissingDataFields = useCallback((record: MatriculationRow): string[] => {
+    const missing: string[] = [];
+    const t = record.tempData;
+
+    // Student basic data
+    if (!t.firstName) missing.push('Nombres del estudiante');
+    if (!t.lastName) missing.push('Apellidos del estudiante');
+    if (!t.document) missing.push('Cédula del estudiante');
+    if (!t.gender) missing.push('Género');
+    if (!t.birthdate) missing.push('Fecha de nacimiento');
+
+    // Representative
+    const repType = t.representativeType;
+    const repGuardian = repType === 'mother' ? t.mother : repType === 'father' ? t.father : t.representative;
+    const repLabel = repType === 'mother' ? 'Madre' : repType === 'father' ? 'Padre' : 'Representante';
+    if (!repGuardian || (!repGuardian.firstName && !repGuardian.lastName && !repGuardian.document)) {
+      missing.push(`Sin ${repLabel.toLowerCase()} asignado`);
+    } else {
+      if (!repGuardian.phone) missing.push(`Teléfono del ${repLabel.toLowerCase()}`);
+    }
+
+    // Documents
+    const docs = (record as any).documents || (record as any).matriculation?.documents;
+    if (!docs) {
+      missing.push('Documentos de inscripción no registrados');
+    } else {
+      const docFields: Array<{ key: keyof EnrollmentDocumentInfo; label: string }> = [
+        { key: 'receivedPartidaNacimiento', label: 'Partida de nacimiento' },
+        { key: 'receivedCopiaCedulaEstudiante', label: 'Copia de cédula del estudiante' },
+        { key: 'receivedFotoCarnetEstudiante', label: 'Foto carné del estudiante' },
+        { key: 'receivedCertificadoAprendizaje', label: 'Certificado de aprendizaje' },
+        { key: 'receivedCartaBuenaConducta', label: 'Carta de buena conducta' },
+        { key: 'receivedNotasCertificadas', label: 'Notas certificadas' },
+        { key: 'receivedInformesMedicos', label: 'Informes médicos' },
+      ];
+      docFields.forEach(({ key, label }) => {
+        if (!docs[key]) missing.push(`Documento: ${label}`);
+      });
+    }
+
+    return missing;
+  }, []);
+
   const columns = useMemo(() => {
     const docPrefix: Record<string, string> = {
       Venezolano: 'V-',
@@ -2658,6 +2713,32 @@ const MatriculationEnrollment: React.FC = () => {
       }));
 
     return [
+      {
+        key: 'data-status',
+        title: '',
+        width: 32,
+        fixed: 'left' as const,
+        dataIndex: 'id',
+        render: (_: unknown, record: MatriculationRow) => {
+          const missing = getMissingDataFields(record);
+          if (missing.length === 0) return null;
+          return (
+            <Tooltip
+              title={
+                <div>
+                  <div style={{ fontWeight: 600, marginBottom: 4 }}>Datos faltantes ({missing.length}):</div>
+                  <ul style={{ margin: 0, paddingLeft: 16 }}>
+                    {missing.map((f) => <li key={f}>{f}</li>)}
+                  </ul>
+                </div>
+              }
+              placement="right"
+            >
+              <WarningOutlined style={{ color: '#ff4d4f', fontSize: 16, cursor: 'help' }} />
+            </Tooltip>
+          );
+        }
+      },
       studentBasicCols.length > 0 && {
         title: renderGroupTitle('Estudiante - Datos Básicos', <Space><UserOutlined /> Estudiante: Básicos</Space>),
         fixed: (pinnedGroups.includes('Estudiante - Datos Básicos') ? 'left' : undefined) as 'left' | undefined,
@@ -2718,7 +2799,8 @@ const MatriculationEnrollment: React.FC = () => {
     renderGroupTitle,
     addSeparator,
     isColumnVisible,
-    canEditRow
+    canEditRow,
+    getMissingDataFields
   ]);
 
   return (
