@@ -78,6 +78,7 @@ import revisionPeriodRoutes from '@/routes/revisionPeriodRoutes';
 import revisionGradeRoutes from '@/routes/revisionGradeRoutes';
 import externalGradeRoutes from '@/routes/externalGradeRoutes';
 import evaluationCatalogRoutes from '@/routes/evaluationCatalogRoutes';
+import sectionGuideRoutes from '@/routes/sectionGuideRoutes';
 
 app.get('/', (req, res) => {
   res.send('API is running...');
@@ -118,6 +119,7 @@ app.use('/api/revision-periods', revisionPeriodRoutes);
 app.use('/api/revision-grades', revisionGradeRoutes);
 app.use('/api/external-grades', externalGradeRoutes);
 app.use('/api/evaluation/catalogs', evaluationCatalogRoutes);
+app.use('/api/section-guides', sectionGuideRoutes);
 
 export { sessionStore };
 export default app;

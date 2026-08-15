@@ -129,6 +129,7 @@ import ExpectedLearningContent from './ExpectedLearningContent';
 import EvaluationCriteria from './EvaluationCriteria';
 import EvaluationIndicator from './EvaluationIndicator';
 import EvaluationCatalog from './EvaluationCatalog';
+import SectionGuide from './SectionGuide';
 
 
 // ... (Existing User/Person/Role/Contact associations) ...
@@ -264,6 +265,12 @@ TeacherAssignment.belongsTo(PeriodGradeSubject, { foreignKey: 'periodGradeSubjec
 
 Section.hasMany(TeacherAssignment, { foreignKey: 'sectionId', as: 'teacherAssignments' });
 TeacherAssignment.belongsTo(Section, { foreignKey: 'sectionId', as: 'section' });
+
+// 6b. Section Guide Associations (profesor guía)
+SectionGuide.belongsTo(Person, { foreignKey: 'teacherId', as: 'guideTeacher' });
+SectionGuide.belongsTo(Grade, { foreignKey: 'gradeId', as: 'grade' });
+SectionGuide.belongsTo(Section, { foreignKey: 'sectionId', as: 'section' });
+SectionGuide.belongsTo(SchoolPeriod, { foreignKey: 'schoolPeriodId', as: 'schoolPeriod' });
 
 // Term associations
 SchoolPeriod.hasMany(Term, { foreignKey: 'schoolPeriodId', as: 'terms' });
@@ -421,5 +428,6 @@ export {
   ExpectedLearningContent,
   EvaluationCriteria,
   EvaluationIndicator,
-  EvaluationCatalog
+  EvaluationCatalog,
+  SectionGuide
 };

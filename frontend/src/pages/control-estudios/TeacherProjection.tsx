@@ -1,9 +1,15 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Table, Card, Button, Space, Tag, Modal, Form, Select, message, Alert } from 'antd';
-import { UserOutlined, BookOutlined, PlusOutlined } from '@ant-design/icons';
+import { Table, Card, Button, Space, Tag, Modal, Form, Select, message, Alert, Tabs, Row, Col, Spin, Empty, Typography } from 'antd';
+import { UserOutlined, BookOutlined, PlusOutlined, TeamOutlined, CheckCircleOutlined } from '@ant-design/icons';
 import api from '@/services/api';
 
 const { Option } = Select;
+const { Text } = Typography;
+
+interface Grade { id: number; name: string; isDiversified: boolean; order: number; }
+interface Section { id: number; name: string; }
+interface PeriodGradeStructure { id: number; grade: Grade; sections: Section[]; }
+interface SchoolPeriod { id: number; period: string; name: string; status: 'preinscripcion' | 'activo' | 'historico' | 'externo'; isActive: boolean; }
 
 const TeacherProjection: React.FC = () => {
   const [loading, setLoading] = useState(false);
@@ -16,6 +22,16 @@ const TeacherProjection: React.FC = () => {
   const [submitting, setSubmitting] = useState(false);
 
   const [selectedGradeId, setSelectedGradeId] = useState<number | null>(null);
+
+  // guide teacher tab state
+  const [allPeriods, setAllPeriods] = useState<SchoolPeriod[]>([]);
+  const [guidePeriodId, setGuidePeriodId] = useState<number | null>(null);
+  const [guideGradeId, setGuideGradeId] = useState<number | null>(null);
+  const [guideSectionId, setGuideSectionId] = useState<number | null>(null);
+  const [guideTeachers, setGuideTeachers] = useState<any[]>([]);
+  const [guideLoading, setGuideLoading] = useState(false);
+  const [guideSaving, setGuideSaving] = useState(false);
+  const [guideStructure, setGuideStructure] = useState<PeriodGradeStructure[]>([]);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -44,6 +60,77 @@ const TeacherProjection: React.FC = () => {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  // Load all periods for the guide tab
+  useEffect(() => {
+    api.get('/academic/periods').then(res => {
+      const periods: SchoolPeriod[] = Array.isArray(res.data) ? res.data : [];
+      setAllPeriods(periods);
+      if (!guidePeriodId && periods.length > 0) {
+        const active = periods.find(p => p.status === 'activo');
+        setGuidePeriodId(active?.id ?? periods[0].id);
+      }
+    }).catch(() => setAllPeriods([]));
+  }, []);
+
+  // Load structure for the guide tab when period changes
+  useEffect(() => {
+    if (!guidePeriodId) { setGuideStructure([]); return; }
+    api.get(`/academic/structure/${guidePeriodId}`).then(res => {
+      const data = Array.isArray(res.data) ? res.data : [];
+      setGuideStructure(data.sort((a: PeriodGradeStructure, b: PeriodGradeStructure) =>
+        (a.grade.order || 0) - (b.grade.order || 0)
+      ));
+    }).catch(() => setGuideStructure([]));
+  }, [guidePeriodId]);
+
+  // --- guide teacher handlers ---
+  const fetchGuideTeachers = useCallback(async () => {
+    if (!guidePeriodId || !guideGradeId || !guideSectionId) {
+      setGuideTeachers([]);
+      return;
+    }
+    setGuideLoading(true);
+    try {
+      const res = await api.get('/section-guides/teachers', {
+        params: { schoolPeriodId: guidePeriodId, gradeId: guideGradeId, sectionId: guideSectionId },
+      });
+      setGuideTeachers(res.data.teachers || []);
+    } catch (error) {
+      console.error('[fetchGuideTeachers] Error:', error);
+      message.error('Error al cargar profesores de la sección');
+      setGuideTeachers([]);
+    } finally {
+      setGuideLoading(false);
+    }
+  }, [guidePeriodId, guideGradeId, guideSectionId]);
+
+  useEffect(() => {
+    fetchGuideTeachers();
+  }, [fetchGuideTeachers]);
+
+  const handleSetGuide = useCallback(async (teacherId: number) => {
+    if (!guidePeriodId || !guideGradeId || !guideSectionId) return;
+    setGuideSaving(true);
+    try {
+      await api.post('/section-guides', {
+        teacherId,
+        gradeId: guideGradeId,
+        sectionId: guideSectionId,
+        schoolPeriodId: guidePeriodId,
+      });
+      setGuideTeachers(prev => prev.map(t => ({ ...t, isGuide: t.id === teacherId })).sort((a, b) => {
+        if (a.isGuide !== b.isGuide) return a.isGuide ? -1 : 1;
+        return `${a.lastName} ${a.firstName}`.localeCompare(`${b.lastName} ${b.firstName}`);
+      }));
+      message.success('Profesor guía asignado correctamente');
+    } catch (error: any) {
+      const apiErr = error as { response?: { data?: { message?: string } } };
+      message.error(apiErr?.response?.data?.message || 'Error al asignar profesor guía');
+    } finally {
+      setGuideSaving(false);
+    }
+  }, [guidePeriodId, guideGradeId, guideSectionId]);
 
   const handleOpenModal = (teacher: any) => {
     setSelectedTeacher(teacher);
@@ -132,9 +219,121 @@ const TeacherProjection: React.FC = () => {
     }
   ];
 
-  if (!activePeriod && !loading) {
-    return <Alert message="Periodo Inactivo" description="No hay un periodo escolar activo para realizar proyecciones." type="warning" showIcon style={{ margin: 24 }} />;
-  }
+  const projectionTab = (
+    <>
+      {(!activePeriod && !loading) ? (
+        <Alert message="Periodo Inactivo" description="No hay un periodo escolar activo para realizar proyecciones." type="warning" showIcon style={{ margin: 24 }} />
+      ) : (
+        <Table
+          loading={loading}
+          dataSource={teachers}
+          columns={columns}
+          rowKey="id"
+          pagination={{ pageSize: 10 }}
+        />
+      )}
+    </>
+  );
+
+  const guideTab = (
+    <div style={{ maxWidth: 700, margin: '0 auto' }}>
+      <Alert
+        message="Asignación de Profesor Guía"
+        description="Seleccione el período, grado y sección para ver los profesores asignados. Marque uno como profesor guía. Solo puede haber un profesor guía por sección."
+        type="info"
+        style={{ marginBottom: 20, borderRadius: 8 }}
+      />
+      <Row gutter={[12, 12]} style={{ marginBottom: 20 }}>
+        <Col xs={24} sm={8}>
+          <label style={{ display: 'block', fontWeight: 700, marginBottom: 6, fontSize: 13 }}>Período</label>
+          <Select
+            placeholder="Período"
+            style={{ width: '100%' }}
+            value={guidePeriodId}
+            onChange={(v: number) => { setGuidePeriodId(v); setGuideGradeId(null); setGuideSectionId(null); }}
+            options={allPeriods.map(p => ({ label: `${p.name}${p.status === 'activo' ? ' (activo)' : ''}`, value: p.id }))}
+          />
+        </Col>
+        <Col xs={24} sm={8}>
+          <label style={{ display: 'block', fontWeight: 700, marginBottom: 6, fontSize: 13 }}>Grado</label>
+          <Select
+            placeholder="Grado"
+            style={{ width: '100%' }}
+            value={guideGradeId}
+            onChange={(v: number) => { setGuideGradeId(v); setGuideSectionId(null); }}
+            options={guideStructure.map(s => ({ label: s.grade.name, value: s.grade.id }))}
+          />
+        </Col>
+        <Col xs={24} sm={8}>
+          <label style={{ display: 'block', fontWeight: 700, marginBottom: 6, fontSize: 13 }}>Sección</label>
+          <Select
+            placeholder="Sección"
+            style={{ width: '100%' }}
+            value={guideSectionId}
+            disabled={!guideGradeId}
+            onChange={(v: number) => setGuideSectionId(v)}
+            options={guideStructure.find(s => s.grade.id === guideGradeId)?.sections.map(sec => ({ label: sec.name, value: sec.id })) || []}
+          />
+        </Col>
+      </Row>
+
+      {guideLoading ? (
+        <div style={{ textAlign: 'center', padding: 40 }}><Spin tip="Cargando profesores..." /></div>
+      ) : !guideGradeId || !guideSectionId ? (
+        <Empty description="Seleccione un grado y sección para ver los profesores asignados" />
+      ) : guideTeachers.length === 0 ? (
+        <Empty description="No hay profesores asignados a esta sección" />
+      ) : (
+        <Table
+          dataSource={guideTeachers}
+          rowKey="id"
+          pagination={false}
+          size="middle"
+          rowClassName={(record) => record.isGuide ? 'guide-row' : ''}
+          columns={[
+            {
+              title: 'Profesor',
+              key: 'name',
+              render: (_, r) => (
+                <Space>
+                  <span style={{ fontWeight: r.isGuide ? 700 : 400 }}>
+                    {r.lastName} {r.firstName}
+                  </span>
+                  {r.isGuide && <Tag icon={<CheckCircleOutlined />} color="success">Guía</Tag>}
+                </Space>
+              ),
+            },
+            {
+              title: 'Cédula',
+              key: 'doc',
+              width: 120,
+              render: (_, r) => `${r.documentType?.charAt(0) || 'V'}-${r.document}`,
+            },
+            {
+              title: 'Materias',
+              key: 'subjects',
+              render: (_, r) => r.subjects.join(', '),
+            },
+            {
+              title: 'Acción',
+              key: 'action',
+              width: 120,
+              render: (_, r) => (
+                <Button
+                  type={r.isGuide ? 'default' : 'primary'}
+                  size="small"
+                  disabled={r.isGuide || guideSaving}
+                  onClick={() => handleSetGuide(r.id)}
+                >
+                  {r.isGuide ? 'Asignado' : 'Marcar como guía'}
+                </Button>
+              ),
+            },
+          ]}
+        />
+      )}
+    </div>
+  );
 
   return (
     <div style={{ maxWidth: 1000, margin: '0 auto' }}>
@@ -142,16 +341,36 @@ const TeacherProjection: React.FC = () => {
         title={
           <Space>
             <BookOutlined />
-            <span>Proyección Académica - {activePeriod?.name}</span>
+            <span>Proyección Académica{activePeriod ? ` - ${activePeriod.name}` : ''}</span>
           </Space>
         }
       >
-        <Table
-          loading={loading}
-          dataSource={teachers}
-          columns={columns}
-          rowKey="id"
-          pagination={{ pageSize: 10 }}
+        <Tabs
+          defaultActiveKey="projection"
+          size="large"
+          style={{ minHeight: '55vh' }}
+          items={[
+            {
+              key: 'projection',
+              label: (
+                <span>
+                  <BookOutlined style={{ marginRight: 6 }} />
+                  Proyección Académica
+                </span>
+              ),
+              children: projectionTab,
+            },
+            {
+              key: 'guide-teacher',
+              label: (
+                <span>
+                  <TeamOutlined style={{ marginRight: 6 }} />
+                  Profesor Guía
+                </span>
+              ),
+              children: guideTab,
+            },
+          ]}
         />
       </Card>
 
@@ -201,6 +420,15 @@ const TeacherProjection: React.FC = () => {
           </Form.Item>
         </Form>
       </Modal>
+
+      <style>{`
+        .guide-row > td {
+          background-color: #f0fdf4 !important;
+        }
+        .guide-row:hover > td {
+          background-color: #dcfce7 !important;
+        }
+      `}</style>
     </div>
   );
 };
