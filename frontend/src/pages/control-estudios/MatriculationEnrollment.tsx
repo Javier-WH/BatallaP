@@ -1530,7 +1530,7 @@ const MatriculationEnrollment: React.FC = () => {
       const titleRow = worksheet.addRow(['', '', 'U.E.C. BATALLA DE LA VICTORIA']);
       const periodRow = worksheet.addRow(['', '', periodName]);
       worksheet.addRow([]);
-      const teacherRow = worksheet.addRow(['', '', `Prof. Guía:`, teacherName]);
+      const teacherRow = worksheet.addRow(['', '', `Prof. Guía: ${teacherName}`.trim()]);
       const sectionRow = worksheet.addRow(['', '', `${gradeName} ${sectionName}`]);
 
       [titleRow, periodRow, teacherRow].forEach((row, i) => {
@@ -1614,9 +1614,44 @@ const MatriculationEnrollment: React.FC = () => {
       setNominaSectionId(filterSection);
       setNominaTeacher('');
     } else {
-      generateNominaExcel(filterGrade, filterSection, '');
+      // Direct generation: fetch guide teacher first, then generate
+      const periodId = filterSchoolPeriod || activePeriod?.id;
+      if (periodId) {
+        api.get('/section-guides', {
+          params: { schoolPeriodId: periodId, gradeId: filterGrade, sectionId: filterSection },
+        }).then(res => {
+          const guide = res.data;
+          const teacherName = guide?.guideTeacher
+            ? `${guide.guideTeacher.lastName || ''} ${guide.guideTeacher.firstName || ''}`.trim()
+            : '';
+          generateNominaExcel(filterGrade, filterSection, teacherName);
+        }).catch(() => generateNominaExcel(filterGrade, filterSection, ''));
+      } else {
+        generateNominaExcel(filterGrade, filterSection, '');
+      }
     }
   };
+
+  // Fetch guide teacher when grade/section changes in the nomina modal
+  useEffect(() => {
+    if (!nominaGradeId || !nominaSectionId) {
+      setNominaTeacher('');
+      return;
+    }
+    const periodId = filterSchoolPeriod || activePeriod?.id;
+    if (!periodId) return;
+    api.get('/section-guides', {
+      params: { schoolPeriodId: periodId, gradeId: nominaGradeId, sectionId: nominaSectionId },
+    }).then(res => {
+      const guide = res.data;
+      if (guide?.guideTeacher) {
+        const t = guide.guideTeacher;
+        setNominaTeacher(`${t.lastName || ''} ${t.firstName || ''}`.trim());
+      } else {
+        setNominaTeacher('');
+      }
+    }).catch(() => setNominaTeacher(''));
+  }, [nominaGradeId, nominaSectionId, filterSchoolPeriod, activePeriod]);
 
   const handleToggleGroup = (group: string, checked: boolean) => {
     let groupKeys: string[] = [];
