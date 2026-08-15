@@ -1951,16 +1951,15 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
         if (isFilled && inscription) {
           const q = studentQuals.find((sq: any) => sq.evaluationPlanId === plan.id);
           if (q) {
+            const hasRem = q.remedialScore != null && Number(q.remedialScore) > 0;
+            const effectiveScore = q.isAbsent ? 0 : (hasRem ? Number(q.remedialScore) : Number(q.score));
             if (q.isAbsent) {
               notCell.value = 'NP';
               evaluationStats[idx].absent += 1;
+              evaluationStats[idx].failed += 1;
             } else {
               notCell.value = Number(q.score);
-            }
-            const hasRem = q.remedialScore != null && Number(q.remedialScore) > 0;
-            if (hasRem) remCell.value = Number(q.remedialScore);
-            const effectiveScore = q.isAbsent ? 0 : (hasRem ? Number(q.remedialScore) : Number(q.score));
-            if (!q.isAbsent) {
+              if (hasRem) remCell.value = Number(q.remedialScore);
               if (effectiveScore >= 10) evaluationStats[idx].approved += 1;
               else evaluationStats[idx].failed += 1;
             }
@@ -1970,6 +1969,7 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
           } else {
             pctCell.value = 0;
             evaluationStats[idx].absent += 1;
+            evaluationStats[idx].failed += 1;
           }
         }
 
@@ -2005,7 +2005,10 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
         defCell.numFmt = '00';
         const hasAnyQualification = studentQuals.some((q: any) => evaluationPlans.some((plan: any) => q.evaluationPlanId === plan.id));
         const hasAbsentQualification = studentQuals.some((q: any) => evaluationPlans.some((plan: any) => q.evaluationPlanId === plan.id) && q.isAbsent);
-        if (!hasAnyQualification || hasAbsentQualification) finalStats.absent += 1;
+        if (!hasAnyQualification || hasAbsentQualification) {
+          finalStats.absent += 1;
+          finalStats.failed += 1;
+        }
         else if (finalGrade >= 10) finalStats.approved += 1;
         else finalStats.failed += 1;
       }
