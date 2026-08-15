@@ -1672,9 +1672,14 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
         }
       ],
       order: [
-        [{ model: Person, as: 'student' }, 'lastName', 'ASC'],
-        [{ model: Person, as: 'student' }, 'firstName', 'ASC']
+        [{ model: Person, as: 'student' }, 'document', 'ASC']
       ]
+    });
+
+    // Sort by numeric part of document (ascending)
+    inscriptions.sort((a: any, b: any) => {
+      const parseDoc = (doc: string) => parseInt((doc || '').replace(/\D/g, ''), 10) || 0;
+      return parseDoc(a.student?.document) - parseDoc(b.student?.document);
     });
 
     const subject = (assignment as any).periodGradeSubject.subject;
