@@ -26,12 +26,9 @@ const TeacherProjection: React.FC = () => {
   // guide teacher tab state
   const [allPeriods, setAllPeriods] = useState<SchoolPeriod[]>([]);
   const [guidePeriodId, setGuidePeriodId] = useState<number | null>(null);
-  const [guideGradeId, setGuideGradeId] = useState<number | null>(null);
-  const [guideSectionId, setGuideSectionId] = useState<number | null>(null);
-  const [guideTeachers, setGuideTeachers] = useState<any[]>([]);
+  const [guideData, setGuideData] = useState<{ gradeId: number; gradeName: string; sections: { sectionId: number; sectionName: string; teachers: any[]; guideTeacherId: number | null }[] }[]>([]);
   const [guideLoading, setGuideLoading] = useState(false);
-  const [guideSaving, setGuideSaving] = useState(false);
-  const [guideStructure, setGuideStructure] = useState<PeriodGradeStructure[]>([]);
+  const [guideSavingId, setGuideSavingId] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -73,64 +70,59 @@ const TeacherProjection: React.FC = () => {
     }).catch(() => setAllPeriods([]));
   }, []);
 
-  // Load structure for the guide tab when period changes
-  useEffect(() => {
-    if (!guidePeriodId) { setGuideStructure([]); return; }
-    api.get(`/academic/structure/${guidePeriodId}`).then(res => {
-      const data = Array.isArray(res.data) ? res.data : [];
-      setGuideStructure(data.sort((a: PeriodGradeStructure, b: PeriodGradeStructure) =>
-        (a.grade.order || 0) - (b.grade.order || 0)
-      ));
-    }).catch(() => setGuideStructure([]));
-  }, [guidePeriodId]);
-
   // --- guide teacher handlers ---
-  const fetchGuideTeachers = useCallback(async () => {
-    if (!guidePeriodId || !guideGradeId || !guideSectionId) {
-      setGuideTeachers([]);
+  const fetchAllGuides = useCallback(async () => {
+    if (!guidePeriodId) {
+      setGuideData([]);
       return;
     }
     setGuideLoading(true);
     try {
-      const res = await api.get('/section-guides/teachers', {
-        params: { schoolPeriodId: guidePeriodId, gradeId: guideGradeId, sectionId: guideSectionId },
+      const res = await api.get('/section-guides/all', {
+        params: { schoolPeriodId: guidePeriodId },
       });
-      setGuideTeachers(res.data.teachers || []);
+      setGuideData(res.data || []);
     } catch (error) {
-      console.error('[fetchGuideTeachers] Error:', error);
-      message.error('Error al cargar profesores de la sección');
-      setGuideTeachers([]);
+      console.error('[fetchAllGuides] Error:', error);
+      message.error('Error al cargar profesores guías');
+      setGuideData([]);
     } finally {
       setGuideLoading(false);
     }
-  }, [guidePeriodId, guideGradeId, guideSectionId]);
+  }, [guidePeriodId]);
 
   useEffect(() => {
-    fetchGuideTeachers();
-  }, [fetchGuideTeachers]);
+    fetchAllGuides();
+  }, [fetchAllGuides]);
 
-  const handleSetGuide = useCallback(async (teacherId: number) => {
-    if (!guidePeriodId || !guideGradeId || !guideSectionId) return;
-    setGuideSaving(true);
+  const handleSetGuide = useCallback(async (gradeId: number, sectionId: number, teacherId: number, gradeName: string, sectionName: string) => {
+    if (!guidePeriodId) return;
+    const key = `${gradeId}-${sectionId}`;
+    setGuideSavingId(key);
     try {
       await api.post('/section-guides', {
         teacherId,
-        gradeId: guideGradeId,
-        sectionId: guideSectionId,
+        gradeId,
+        sectionId,
         schoolPeriodId: guidePeriodId,
       });
-      setGuideTeachers(prev => prev.map(t => ({ ...t, isGuide: t.id === teacherId })).sort((a, b) => {
-        if (a.isGuide !== b.isGuide) return a.isGuide ? -1 : 1;
-        return `${a.lastName} ${a.firstName}`.localeCompare(`${b.lastName} ${b.firstName}`);
-      }));
-      message.success('Profesor guía asignado correctamente');
+      setGuideData(prev => prev.map(g =>
+        g.gradeId === gradeId
+          ? { ...g, sections: g.sections.map(s =>
+              s.sectionId === sectionId
+                ? { ...s, guideTeacherId: teacherId }
+                : s
+            ) }
+          : g
+      ));
+      message.success(`Profesor guía asignado a ${gradeName} - Sección ${sectionName}`);
     } catch (error: any) {
       const apiErr = error as { response?: { data?: { message?: string } } };
       message.error(apiErr?.response?.data?.message || 'Error al asignar profesor guía');
     } finally {
-      setGuideSaving(false);
+      setGuideSavingId(null);
     }
-  }, [guidePeriodId, guideGradeId, guideSectionId]);
+  }, [guidePeriodId]);
 
   const handleOpenModal = (teacher: any) => {
     setSelectedTeacher(teacher);
@@ -239,98 +231,77 @@ const TeacherProjection: React.FC = () => {
     <div style={{ maxWidth: 700, margin: '0 auto' }}>
       <Alert
         message="Asignación de Profesor Guía"
-        description="Seleccione el período, grado y sección para ver los profesores asignados. Marque uno como profesor guía. Solo puede haber un profesor guía por sección."
+        description="Seleccione el período para ver todas las secciones de todos los grados. Use el selector de cada sección para elegir su profesor guía."
         type="info"
         style={{ marginBottom: 20, borderRadius: 8 }}
       />
-      <Row gutter={[12, 12]} style={{ marginBottom: 20 }}>
-        <Col xs={24} sm={8}>
-          <label style={{ display: 'block', fontWeight: 700, marginBottom: 6, fontSize: 13 }}>Período</label>
-          <Select
-            placeholder="Período"
-            style={{ width: '100%' }}
-            value={guidePeriodId}
-            onChange={(v: number) => { setGuidePeriodId(v); setGuideGradeId(null); setGuideSectionId(null); }}
-            options={allPeriods.map(p => ({ label: `${p.name}${p.status === 'activo' ? ' (activo)' : ''}`, value: p.id }))}
-          />
-        </Col>
-        <Col xs={24} sm={8}>
-          <label style={{ display: 'block', fontWeight: 700, marginBottom: 6, fontSize: 13 }}>Grado</label>
-          <Select
-            placeholder="Grado"
-            style={{ width: '100%' }}
-            value={guideGradeId}
-            onChange={(v: number) => { setGuideGradeId(v); setGuideSectionId(null); }}
-            options={guideStructure.map(s => ({ label: s.grade.name, value: s.grade.id }))}
-          />
-        </Col>
-        <Col xs={24} sm={8}>
-          <label style={{ display: 'block', fontWeight: 700, marginBottom: 6, fontSize: 13 }}>Sección</label>
-          <Select
-            placeholder="Sección"
-            style={{ width: '100%' }}
-            value={guideSectionId}
-            disabled={!guideGradeId}
-            onChange={(v: number) => setGuideSectionId(v)}
-            options={guideStructure.find(s => s.grade.id === guideGradeId)?.sections.map(sec => ({ label: sec.name, value: sec.id })) || []}
-          />
-        </Col>
-      </Row>
+      <div style={{ marginBottom: 24 }}>
+        <label style={{ display: 'block', fontWeight: 700, marginBottom: 6, fontSize: 13 }}>Período</label>
+        <Select
+          placeholder="Período"
+          style={{ width: '100%' }}
+          value={guidePeriodId}
+          onChange={(v: number) => setGuidePeriodId(v)}
+          options={allPeriods.map(p => ({ label: `${p.name}${p.status === 'activo' ? ' (activo)' : ''}`, value: p.id }))}
+        />
+      </div>
 
       {guideLoading ? (
-        <div style={{ textAlign: 'center', padding: 40 }}><Spin tip="Cargando profesores..." /></div>
-      ) : !guideGradeId || !guideSectionId ? (
-        <Empty description="Seleccione un grado y sección para ver los profesores asignados" />
-      ) : guideTeachers.length === 0 ? (
-        <Empty description="No hay profesores asignados a esta sección" />
+        <div style={{ textAlign: 'center', padding: 40 }}><Spin tip="Cargando secciones..." /></div>
+      ) : !guidePeriodId ? (
+        <Empty description="Seleccione un período" />
+      ) : guideData.length === 0 ? (
+        <Empty description="No hay secciones configuradas para este período" />
       ) : (
-        <Table
-          dataSource={guideTeachers}
-          rowKey="id"
-          pagination={false}
-          size="middle"
-          rowClassName={(record) => record.isGuide ? 'guide-row' : ''}
-          columns={[
-            {
-              title: 'Profesor',
-              key: 'name',
-              render: (_, r) => (
-                <Space>
-                  <span style={{ fontWeight: r.isGuide ? 700 : 400 }}>
-                    {r.lastName} {r.firstName}
-                  </span>
-                  {r.isGuide && <Tag icon={<CheckCircleOutlined />} color="success">Guía</Tag>}
-                </Space>
-              ),
-            },
-            {
-              title: 'Cédula',
-              key: 'doc',
-              width: 120,
-              render: (_, r) => `${r.documentType?.charAt(0) || 'V'}-${r.document}`,
-            },
-            {
-              title: 'Materias',
-              key: 'subjects',
-              render: (_, r) => r.subjects.join(', '),
-            },
-            {
-              title: 'Acción',
-              key: 'action',
-              width: 120,
-              render: (_, r) => (
-                <Button
-                  type={r.isGuide ? 'default' : 'primary'}
-                  size="small"
-                  disabled={r.isGuide || guideSaving}
-                  onClick={() => handleSetGuide(r.id)}
-                >
-                  {r.isGuide ? 'Asignado' : 'Marcar como guía'}
-                </Button>
-              ),
-            },
-          ]}
-        />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+          {guideData.map(grade => (
+            <div key={grade.gradeId}>
+              <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 10, color: '#1e293b', borderBottom: '2px solid #e2e8f0', paddingBottom: 4 }}>
+                {grade.gradeName}
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {grade.sections.map(sec => {
+                  const key = `${grade.gradeId}-${sec.sectionId}`;
+                  return (
+                    <Card
+                      key={sec.sectionId}
+                      size="small"
+                      style={{ borderRadius: 10, border: sec.guideTeacherId ? '1px solid #86efac' : '1px solid #e2e8f0' }}
+                      styles={{ body: { padding: '10px 14px' } }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 70 }}>
+                          <span style={{ fontWeight: 600, fontSize: 14 }}>Sección {sec.sectionName}</span>
+                          {sec.guideTeacherId && (
+                            <Tag icon={<CheckCircleOutlined />} color="success" style={{ margin: 0 }}>Asignado</Tag>
+                          )}
+                        </div>
+                        <div style={{ flex: 1, minWidth: 250 }}>
+                          {sec.teachers.length === 0 ? (
+                            <Text type="secondary" style={{ fontSize: 13 }}>Sin profesores asignados</Text>
+                          ) : (
+                            <Select
+                              style={{ width: '100%' }}
+                              placeholder="Seleccionar profesor guía"
+                              value={sec.guideTeacherId}
+                              loading={guideSavingId === key}
+                              onChange={(teacherId: number) => handleSetGuide(grade.gradeId, sec.sectionId, teacherId, grade.gradeName, sec.sectionName)}
+                              options={sec.teachers.map(t => ({
+                                label: `${t.lastName} ${t.firstName} — ${t.subjects.join(', ')}`,
+                                value: t.id,
+                              }))}
+                              allowClear
+                            />
+                          )}
+                        </div>
+                      </div>
+                    </Card>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );
@@ -420,15 +391,6 @@ const TeacherProjection: React.FC = () => {
           </Form.Item>
         </Form>
       </Modal>
-
-      <style>{`
-        .guide-row > td {
-          background-color: #f0fdf4 !important;
-        }
-        .guide-row:hover > td {
-          background-color: #dcfce7 !important;
-        }
-      `}</style>
     </div>
   );
 };

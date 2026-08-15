@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { Op } from 'sequelize';
-import { Person, Role, TeacherAssignment, PeriodGradeSubject, PeriodGrade, SectionGuide, Grade, Section, SchoolPeriod, Subject } from '@/models/index';
+import { Person, Role, TeacherAssignment, PeriodGradeSubject, PeriodGrade, PeriodGradeSection, SectionGuide, Grade, Section, SchoolPeriod, Subject } from '@/models/index';
 
 // GET /api/section-guides/teachers?schoolPeriodId=&gradeId=&sectionId=
 // Returns all teachers assigned to that grade+section in the period, plus the current guide (if any)
@@ -179,5 +179,116 @@ export const getSectionGuide = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('[getSectionGuide] Error:', error);
     res.status(500).json({ message: 'Error al obtener profesor guía' });
+  }
+};
+
+// GET /api/section-guides/all?schoolPeriodId=
+// Returns all sections across all grades for the period, each with its teachers and current guide
+export const getAllGuidesForPeriod = async (req: Request, res: Response) => {
+  try {
+    const { schoolPeriodId } = req.query;
+
+    if (!schoolPeriodId) {
+      return res.status(400).json({ message: 'Se requiere schoolPeriodId' });
+    }
+
+    const periodId = Number(schoolPeriodId);
+
+    // 1. Get all PeriodGrade records for this period (gives us grades)
+    const periodGrades = await PeriodGrade.findAll({
+      where: { schoolPeriodId: periodId },
+      include: [{ model: Grade, as: 'grade' }],
+    });
+
+    // Sort by grade.order in JS (Sequelize nested order can be tricky)
+    periodGrades.sort((a, b) => ((a as any).grade?.order || 0) - ((b as any).grade?.order || 0));
+
+    // 2. Get all sections for these PeriodGrades
+    const periodGradeIds = periodGrades.map(pg => pg.id);
+    const pgsRecords = await PeriodGradeSection.findAll({
+      where: { periodGradeId: periodGradeIds },
+      include: [{ model: Section, as: 'section' }],
+    });
+
+    // 3. Get all TeacherAssignments for this period
+    const assignments = await TeacherAssignment.findAll({
+      where: { sectionId: pgsRecords.map(r => r.sectionId) },
+      include: [
+        {
+          model: PeriodGradeSubject,
+          as: 'periodGradeSubject',
+          required: true,
+          include: [
+            {
+              model: PeriodGrade,
+              as: 'periodGrade',
+              required: true,
+              where: { schoolPeriodId: periodId },
+            },
+            { model: Subject, as: 'subject' },
+          ],
+        },
+        {
+          model: Person,
+          as: 'teacher',
+          attributes: ['id', 'firstName', 'lastName', 'documentType', 'document'],
+        },
+      ],
+    });
+
+    // 4. Get all SectionGuides for this period
+    const guides = await SectionGuide.findAll({
+      where: { schoolPeriodId: periodId },
+    });
+    const guideMap = new Map<string, number>();
+    for (const g of guides) {
+      guideMap.set(`${g.gradeId}-${g.sectionId}`, g.teacherId);
+    }
+
+    // 5. Build teacher map per section
+    const sectionTeacherMap = new Map<number, Map<number, { id: number; firstName: string; lastName: string; documentType: string; document: string; subjects: string[] }>>();
+    for (const a of assignments) {
+      const t = (a as any).teacher;
+      const subjName = (a as any).periodGradeSubject?.subject?.name || '';
+      const sectionId = a.sectionId;
+      if (!t) continue;
+      if (!sectionTeacherMap.has(sectionId)) sectionTeacherMap.set(sectionId, new Map());
+      const inner = sectionTeacherMap.get(sectionId)!;
+      const existing = inner.get(t.id);
+      if (existing) {
+        if (subjName && !existing.subjects.includes(subjName)) existing.subjects.push(subjName);
+      } else {
+        inner.set(t.id, {
+          id: t.id,
+          firstName: t.firstName,
+          lastName: t.lastName,
+          documentType: t.documentType,
+          document: t.document,
+          subjects: subjName ? [subjName] : [],
+        });
+      }
+    }
+
+    // 6. Build response grouped by grade
+    const result = periodGrades.map(pg => {
+      const gradeId = pg.gradeId;
+      const gradeName = (pg as any).grade?.name || '';
+      const sectionsForGrade = pgsRecords.filter(r => r.periodGradeId === pg.id);
+      const sections = sectionsForGrade.map(pgs => {
+        const sectionId = pgs.sectionId;
+        const sectionName = (pgs as any).section?.name || '';
+        const teacherMap = sectionTeacherMap.get(sectionId);
+        const teachers = teacherMap ? Array.from(teacherMap.values()) : [];
+        teachers.sort((a, b) => `${a.lastName} ${a.firstName}`.localeCompare(`${b.lastName} ${b.firstName}`));
+        const guideTeacherId = guideMap.get(`${gradeId}-${sectionId}`) || null;
+        return { sectionId, sectionName, teachers, guideTeacherId };
+      }).sort((a, b) => a.sectionName.localeCompare(b.sectionName));
+      return { gradeId, gradeName, sections };
+    });
+
+    res.json(result);
+  } catch (error) {
+    console.error('[getAllGuidesForPeriod] Error:', error);
+    res.status(500).json({ message: 'Error al obtener profesores guías' });
   }
 };
