@@ -32,6 +32,14 @@ SubjectGroup.init(
   {
     sequelize,
     tableName: 'subject_groups',
+    hooks: {
+      beforeCreate: (instance: SubjectGroup) => {
+        if (instance.name) instance.name = instance.name.toUpperCase().trim();
+      },
+      beforeUpdate: (instance: SubjectGroup) => {
+        if (instance.changed('name') && instance.name) instance.name = instance.name.toUpperCase().trim();
+      }
+    }
   }
 );
 

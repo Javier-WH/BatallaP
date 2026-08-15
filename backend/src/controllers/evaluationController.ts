@@ -1976,7 +1976,7 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
               else evaluationStats[idx].failed += 1;
             }
             const weighted = (effectiveScore * Number(plan.percentage)) / 100;
-            pctCell.value = Math.round(weighted);
+            pctCell.value = Math.round(weighted * 100) / 100;
             rowTotal += weighted;
           } else {
             pctCell.value = 0;
@@ -1998,7 +1998,7 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
           };
         });
         pctCell.font = { bold: true, size: 9 };
-        pctCell.numFmt = '00';
+        pctCell.numFmt = '0.00';
         pctCell.alignment = { horizontal: 'center', vertical: 'middle' };
         if (zebraFill) pctCell.fill = zebraFill;
         pctCell.border = {

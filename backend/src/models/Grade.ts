@@ -45,6 +45,14 @@ Grade.init(
   {
     sequelize,
     tableName: 'grades',
+    hooks: {
+      beforeCreate: (instance: Grade) => {
+        if (instance.name) instance.name = instance.name.toUpperCase().trim();
+      },
+      beforeUpdate: (instance: Grade) => {
+        if (instance.changed('name') && instance.name) instance.name = instance.name.toUpperCase().trim();
+      }
+    }
   }
 );
 

@@ -34,6 +34,14 @@ Specialization.init(
   {
     sequelize,
     tableName: 'specializations',
+    hooks: {
+      beforeCreate: (instance: Specialization) => {
+        if (instance.name) instance.name = instance.name.toUpperCase().trim();
+      },
+      beforeUpdate: (instance: Specialization) => {
+        if (instance.changed('name') && instance.name) instance.name = instance.name.toUpperCase().trim();
+      }
+    }
   }
 );
 

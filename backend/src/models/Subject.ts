@@ -51,6 +51,16 @@ Subject.init(
   {
     sequelize,
     tableName: 'subjects',
+    hooks: {
+      beforeCreate: (instance: Subject) => {
+        if (instance.name) instance.name = instance.name.toUpperCase().trim();
+        if (instance.abbreviation) instance.abbreviation = instance.abbreviation.toUpperCase().trim();
+      },
+      beforeUpdate: (instance: Subject) => {
+        if (instance.changed('name') && instance.name) instance.name = instance.name.toUpperCase().trim();
+        if (instance.changed('abbreviation') && instance.abbreviation) instance.abbreviation = instance.abbreviation.toUpperCase().trim();
+      }
+    }
   }
 );
 

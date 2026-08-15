@@ -108,7 +108,27 @@ GuardianProfile.init(
         fields: ['documentType', 'document'],
         name: 'guardian_profiles_document_unique'
       }
-    ]
+    ],
+    hooks: {
+      beforeCreate: (instance: GuardianProfile) => {
+        if (instance.firstName) instance.firstName = instance.firstName.toUpperCase().trim();
+        if (instance.lastName) instance.lastName = instance.lastName.toUpperCase().trim();
+        if (instance.occupation) instance.occupation = instance.occupation.toUpperCase().trim();
+        if (instance.residenceState) instance.residenceState = instance.residenceState.toUpperCase().trim();
+        if (instance.residenceMunicipality) instance.residenceMunicipality = instance.residenceMunicipality.toUpperCase().trim();
+        if (instance.residenceParish) instance.residenceParish = instance.residenceParish.toUpperCase().trim();
+        if (instance.address) instance.address = instance.address.toUpperCase().trim();
+      },
+      beforeUpdate: (instance: GuardianProfile) => {
+        if (instance.changed('firstName') && instance.firstName) instance.firstName = instance.firstName.toUpperCase().trim();
+        if (instance.changed('lastName') && instance.lastName) instance.lastName = instance.lastName.toUpperCase().trim();
+        if (instance.changed('occupation') && instance.occupation) instance.occupation = instance.occupation.toUpperCase().trim();
+        if (instance.changed('residenceState') && instance.residenceState) instance.residenceState = instance.residenceState.toUpperCase().trim();
+        if (instance.changed('residenceMunicipality') && instance.residenceMunicipality) instance.residenceMunicipality = instance.residenceMunicipality.toUpperCase().trim();
+        if (instance.changed('residenceParish') && instance.residenceParish) instance.residenceParish = instance.residenceParish.toUpperCase().trim();
+        if (instance.changed('address') && instance.address) instance.address = instance.address.toUpperCase().trim();
+      }
+    }
   }
 );
 

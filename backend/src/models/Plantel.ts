@@ -75,7 +75,23 @@ Plantel.init(
       {
         fields: ['name', 'state']
       }
-    ]
+    ],
+    hooks: {
+      beforeCreate: (instance: Plantel) => {
+        if (instance.name) instance.name = instance.name.toUpperCase().trim();
+        if (instance.state) instance.state = instance.state.toUpperCase().trim();
+        if (instance.dependency) instance.dependency = instance.dependency.toUpperCase().trim();
+        if (instance.municipality) instance.municipality = instance.municipality.toUpperCase().trim();
+        if (instance.parish) instance.parish = instance.parish.toUpperCase().trim();
+      },
+      beforeUpdate: (instance: Plantel) => {
+        if (instance.changed('name') && instance.name) instance.name = instance.name.toUpperCase().trim();
+        if (instance.changed('state') && instance.state) instance.state = instance.state.toUpperCase().trim();
+        if (instance.changed('dependency') && instance.dependency) instance.dependency = instance.dependency.toUpperCase().trim();
+        if (instance.changed('municipality') && instance.municipality) instance.municipality = instance.municipality.toUpperCase().trim();
+        if (instance.changed('parish') && instance.parish) instance.parish = instance.parish.toUpperCase().trim();
+      }
+    }
   }
 );
 

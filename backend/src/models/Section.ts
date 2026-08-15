@@ -32,6 +32,14 @@ Section.init(
   {
     sequelize,
     tableName: 'sections',
+    hooks: {
+      beforeCreate: (instance: Section) => {
+        if (instance.name) instance.name = instance.name.toUpperCase().trim();
+      },
+      beforeUpdate: (instance: Section) => {
+        if (instance.changed('name') && instance.name) instance.name = instance.name.toUpperCase().trim();
+      }
+    }
   }
 );
 
