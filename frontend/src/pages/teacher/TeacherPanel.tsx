@@ -1308,9 +1308,8 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                     <tbody>
                       {[...students]
                         .sort((a, b) => {
-                          const nameA = `${a.student?.lastName} ${a.student?.firstName}`.toLowerCase();
-                          const nameB = `${b.student?.lastName} ${b.student?.firstName}`.toLowerCase();
-                          return nameA.localeCompare(nameB);
+                          const parseDoc = (doc: string) => parseInt((doc || '').replace(/\D/g, ''), 10) || 0;
+                          return parseDoc(a.student?.document) - parseDoc(b.student?.document);
                         })
                         .map((enrollment, rowIndex) => {
                           const insSub = enrollment.inscriptionSubjects?.[0];
