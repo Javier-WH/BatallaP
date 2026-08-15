@@ -76,10 +76,22 @@ export const getMyAssignments = async (req: Request, res: Response) => {
         { model: Section, as: 'section' },
         { model: Person, as: 'teacher' }
       ],
-      order: [['id', 'DESC']]
     });
 
-    res.json(assignments);
+    // Sort by PeriodGradeSubject.order (canonical subject order), then by grade name, then by section name
+    const sorted = assignments.sort((a: any, b: any) => {
+      const orderA = a.periodGradeSubject?.order ?? Number.MAX_SAFE_INTEGER;
+      const orderB = b.periodGradeSubject?.order ?? Number.MAX_SAFE_INTEGER;
+      if (orderA !== orderB) return orderA - orderB;
+      const gradeA = a.periodGradeSubject?.periodGrade?.grade?.name || '';
+      const gradeB = b.periodGradeSubject?.periodGrade?.grade?.name || '';
+      if (gradeA !== gradeB) return gradeA.localeCompare(gradeB, 'es');
+      const secA = a.section?.name || '';
+      const secB = b.section?.name || '';
+      return secA.localeCompare(secB, 'es');
+    });
+
+    res.json(sorted);
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Error al obtener asignaciones' });
