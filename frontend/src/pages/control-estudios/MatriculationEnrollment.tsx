@@ -993,7 +993,7 @@ const MatriculationEnrollment: React.FC = () => {
 
       const headers = visibleColumns.map(c => c.config.header);
 
-      // --- CONFIGURACIÃ“N DEL ENCABEZADO ---
+      // --- CONFIGURACIÓN DEL ENCABEZADO ---
       // Determinamos el nombre del grado y sección si hay un filtro aplicado
       let gradeName = '';
       let sectionName = '';
@@ -1005,7 +1005,7 @@ const MatriculationEnrollment: React.FC = () => {
       }
 
       const headerTitle = "UNIDAD EDUCATIVA COLEGIO BATALLA DE LA VICTORIA";
-      const reportTitle = viewStatus === 'completed' ? "NÃ“MINA DE ESTUDIANTES INSCRITOS" : "NÃ“MINA DE ESTUDIANTES (PRE-MATRÍCULA)";
+      const reportTitle = viewStatus === 'completed' ? "NÓMINA DE ESTUDIANTES INSCRITOS" : "NÓMINA DE ESTUDIANTES (PRE-MATRÍCULA)";
       const gradeSectionText = (gradeName || sectionName) ? `${gradeName} ${sectionName}`.trim() : "";
       const periodText = activePeriod ? `PERÍODO ESCOLAR ${activePeriod.name}` : "";
 
@@ -1178,7 +1178,7 @@ const MatriculationEnrollment: React.FC = () => {
       // Table starts at row 7 (after title, period, blank, teacher, section, blank)
       const startRow = 7;
       const headerRow = worksheet.getRow(startRow);
-      headerRow.values = ['#', 'CÃ‰DULA', 'APELLIDOS Y NOMBRES', 'Teléfono'];
+      headerRow.values = ['#', 'CÉDULA', 'APELLIDOS Y NOMBRES', 'Teléfono'];
       for (let c = 1; c <= 4; c++) {
         const cell = headerRow.getCell(c);
         cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
