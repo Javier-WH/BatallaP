@@ -267,6 +267,7 @@ const BASE_COLUMN_OPTIONS: ColumnOption[] = [
   { key: 'gradeId', label: 'Grado', group: 'Académico' },
   { key: 'sectionId', label: 'Sección', group: 'Académico' },
   { key: 'subjectIds', label: 'Materias de Grupo', group: 'Académico' },
+  { key: 'participationGroup', label: 'Grupo de Participación', group: 'Académico' },
   { key: 'escolaridad', label: 'Escolaridad', group: 'Académico' },
 
   // Contacto
@@ -1860,27 +1861,6 @@ const MatriculationEnrollment: React.FC = () => {
           />
         )
       },
-      isColumnVisible('firstName') && {
-        key: 'firstName',
-        title: 'Nombres',
-        width: 150,
-        sorter: (a: MatriculationRow, b: MatriculationRow) => {
-          const nameA = a.tempData.firstName || '';
-          const nameB = b.tempData.firstName || '';
-          return nameA.localeCompare(nameB);
-        },
-        render: (_: unknown, record: MatriculationRow, idx: number) => (
-          <CellInput
-            id={`nav-${idx}-firstName`}
-            data-row-index={idx}
-            data-col-name="firstName"
-            value={record.tempData.firstName}
-            disabled={!canEditRow(record.id)}
-            className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
-            onChange={val => handleUpdateRow(record.id, 'firstName', val)}
-          />
-        )
-      },
       isColumnVisible('lastName') && {
         key: 'lastName',
         title: 'Apellidos',
@@ -1899,6 +1879,27 @@ const MatriculationEnrollment: React.FC = () => {
             disabled={!canEditRow(record.id)}
             className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
             onChange={val => handleUpdateRow(record.id, 'lastName', val)}
+          />
+        )
+      },
+      isColumnVisible('firstName') && {
+        key: 'firstName',
+        title: 'Nombres',
+        width: 150,
+        sorter: (a: MatriculationRow, b: MatriculationRow) => {
+          const nameA = a.tempData.firstName || '';
+          const nameB = b.tempData.firstName || '';
+          return nameA.localeCompare(nameB);
+        },
+        render: (_: unknown, record: MatriculationRow, idx: number) => (
+          <CellInput
+            id={`nav-${idx}-firstName`}
+            data-row-index={idx}
+            data-col-name="firstName"
+            value={record.tempData.firstName}
+            disabled={!canEditRow(record.id)}
+            className="w-full bg-transparent px-1 py-0.5 border-transparent focus:border-blue-400 focus:outline-none focus:bg-white rounded text-xs transition-colors"
+            onChange={val => handleUpdateRow(record.id, 'firstName', val)}
           />
         )
       },
@@ -1937,6 +1938,22 @@ const MatriculationEnrollment: React.FC = () => {
               </Select>
             </div>
           );
+        }
+      },
+      isColumnVisible('participationGroup') && {
+        key: 'participationGroup',
+        title: 'Grupo de Participación',
+        width: 140,
+        render: (_: unknown, record: MatriculationRow) => {
+          const gradeStruct = structure.find(s => s.gradeId === record.tempData.gradeId);
+          const groupSubjects = gradeStruct?.subjects?.filter(s => s.subjectGroupId) || [];
+          const currentSubjectId = record.tempData.subjectIds?.[0];
+          const selectedSubject = groupSubjects.find(s => s.id === currentSubjectId);
+          const groupName = selectedSubject?.subjectGroup?.name;
+          if (!groupName) {
+            return <span style={{ color: '#dc2626', fontSize: 12, fontWeight: 600 }}>Sin grupo</span>;
+          }
+          return <span style={{ fontSize: 12 }}>{groupName}</span>;
         }
       },
       canManageVisibility && isColumnVisible('status') && {
@@ -2130,7 +2147,7 @@ const MatriculationEnrollment: React.FC = () => {
     const academicCols = [
       isColumnVisible('gradeId') && {
         key: 'gradeId',
-        title: 'Grado',
+        title: 'Año',
         width: 160,
         sorter: (a: MatriculationRow, b: MatriculationRow) => {
           const gradeA = structure.find(s => s.gradeId === a.tempData.gradeId)?.grade?.name || '';
@@ -2191,6 +2208,7 @@ const MatriculationEnrollment: React.FC = () => {
         }
       },
       isColumnVisible('subjectIds') && {
+        key: 'subjectIds',
         title: 'Materias de Grupo',
         width: 220,
         render: (_: unknown, record: MatriculationRow, idx: number) => {
@@ -2259,6 +2277,17 @@ const MatriculationEnrollment: React.FC = () => {
         }
       },
     ].filter(Boolean);
+
+    const earlyAcademicKeys = ['subjectIds', 'gradeId', 'sectionId'];
+    const orderedStudentExtendedCols = [
+      ...studentExtendedCols.filter((column: any) => column?.key === 'gender'),
+      ...earlyAcademicKeys.map(key => academicCols.find((column: any) => column?.key === key)).filter(Boolean),
+      ...studentExtendedCols.filter((column: any) => column?.key === 'participationGroup'),
+      ...studentExtendedCols.filter((column: any) => column?.key === 'status'),
+      academicCols.find((column: any) => column?.key === 'escolaridad'),
+      ...studentExtendedCols.filter((column: any) => !['gender', 'participationGroup', 'status'].includes(column?.key)),
+    ].filter(Boolean);
+    const remainingAcademicCols = academicCols.filter((column: any) => ![...earlyAcademicKeys, 'escolaridad'].includes(column?.key));
 
     const contactCols = [
       isColumnVisible('phone1') && {
@@ -2999,7 +3028,7 @@ const MatriculationEnrollment: React.FC = () => {
         title: renderGroupTitle('Estudiante - Datos Extendidos', 'Estudiante: Datos Extendidos'),
         fixed: (pinnedGroups.includes('Estudiante - Datos Extendidos') ? 'left' : undefined) as 'left' | undefined,
         className: 'group-separator-border',
-        children: addSeparator(studentExtendedCols)
+        children: addSeparator(orderedStudentExtendedCols)
       },
       studentBirthCols.length > 0 && {
         title: renderGroupTitle('Estudiante - Nacimiento', 'Estudiante: Nacimiento'),
@@ -3013,11 +3042,11 @@ const MatriculationEnrollment: React.FC = () => {
         className: 'group-separator-border',
         children: addSeparator(studentAddressCols)
       },
-      academicCols.length > 0 && {
+      remainingAcademicCols.length > 0 && {
         title: renderGroupTitle('Académico', <Space><BookOutlined /> Académico</Space>),
         fixed: (pinnedGroups.includes('Académico') ? 'left' : undefined) as 'left' | undefined,
         className: 'group-separator-border',
-        children: addSeparator(academicCols)
+        children: addSeparator(remainingAcademicCols)
       },
       contactCols.length > 0 && {
         title: renderGroupTitle('Contacto', 'Contacto'),
