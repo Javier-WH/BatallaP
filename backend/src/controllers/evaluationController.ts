@@ -1741,7 +1741,7 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
         const ext = logoFile.split('.').pop()?.toLowerCase() as 'jpeg' | 'png' | 'gif' | undefined;
         if (ext) {
           const imageId = workbook.addImage({ filename: path.join(uploadDir, logoFile), extension: ext });
-          sheet.addImage(imageId, { tl: { col: 0.22, row: 0.61 }, ext: { width: 99.84, height: 99.84 } });
+          sheet.addImage(imageId, { tl: { col: 0.22, row: 0.53 }, ext: { width: 105.6, height: 105.6 } });
         }
       }
     } catch { /* logo opcional */ }
@@ -1765,7 +1765,7 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
     sheet.mergeCells(`${rightStart}1:${lastEvalColLetter}2`);
     const emgCell = sheet.getCell(`${rightStart}1`);
     emgCell.value = 'Educación Media General';
-    emgCell.font = { size: 9 };
+    emgCell.font = { size: 11 };
     emgCell.alignment = { horizontal: 'center', vertical: 'bottom' };
 
     // Row 3: Código de modalidad de estudios (same row as school period)
@@ -1859,7 +1859,7 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
     sheet.getRow(4).height = 20 * 0.75;  // 20px
     sheet.getRow(5).height = 16 * 0.75;  // 16px
     sheet.getRow(6).height = 16 * 0.75;  // 16px
-    sheet.getRow(7).height = 16 * 0.75;  // 16px
+    sheet.getRow(7).height = 20 * 0.75;  // 20px
 
     // ── Fila 8: encabezado de tabla ───────────────────────────
     sheet.getRow(8).height = 26 * 0.75;  // 26px
@@ -1904,7 +1904,7 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
     // ── Filas de estudiantes (desde fila 9) ───────────────────
     const isFilled = filled !== 'false';
     const firstDataRow = 9;
-    const minRows = Math.max(inscriptions.length, 30);
+    const minRows = Math.max(inscriptions.length, 35);
 
     const evaluationStats = evaluationPlans.map(() => ({ approved: 0, failed: 0, absent: 0 }));
     const finalStats = { approved: 0, failed: 0, absent: 0 };

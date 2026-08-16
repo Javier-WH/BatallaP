@@ -221,6 +221,13 @@ const TeacherPanel: React.FC = () => {
   const [revisionOpen, setRevisionOpen] = useState(false);
   const { enableRounding } = useGradeRounding();
 
+  // Pad grade to fixed number of digits based on maxGrade (20 → 2 digits, 100 → 3 digits)
+  const gradeDigits = Math.max(2, String(maxGrade).length);
+  const padGrade = (val: number | null | undefined): string => {
+    if (val === null || val === undefined) return '';
+    return String(Math.round(val)).padStart(gradeDigits, '0');
+  };
+
   const isSelectedTermBlocked = useMemo(() => {
     if (!selectedTerm) return false;
     const term = availableTerms.find(t => t.id === selectedTerm);
@@ -1365,7 +1372,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                                       step={1}
                                       inputMode="numeric"
                                       pattern="[0-9]*"
-                                      defaultValue={isAbsent ? '' : (currentScore !== null ? Math.round(currentScore) : '')}
+                                      defaultValue={isAbsent ? '' : (currentScore !== null ? padGrade(currentScore) : '')}
                                       key={`${enrollment.id}-${item.id}${isAbsent ? '-a' : ''}`}
                                       style={{
                                         width: '48px',
@@ -1438,7 +1445,6 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                                       }}
                                       onBlur={(e: React.FocusEvent<HTMLInputElement>) => {
                                         const raw = (e.target as HTMLInputElement).value.replace(/[^0-9]/g, '');
-                                        (e.target as HTMLInputElement).value = raw;
                                         if (raw === '') return;
                                         const val = parseInt(raw, 10);
                                         if (val < 0 || val > maxGrade) {
@@ -1451,6 +1457,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                                           }
                                           return;
                                         }
+                                        (e.target as HTMLInputElement).value = padGrade(val);
                                         if (val !== currentScore) {
                                           // Clear remedial if grade is no longer eligible
                                           const needsRemedialClear = val <= 0 || val < remedialMinGrade || val > remedialMaxGrade;
@@ -1483,7 +1490,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                                         step={1}
                                         inputMode="numeric"
                                         pattern="[0-9]*"
-                                        defaultValue={q?.remedialScore != null ? Math.round(q.remedialScore) : ''}
+                                        defaultValue={q?.remedialScore != null ? padGrade(q.remedialScore) : ''}
                                         key={`rem-${enrollment.id}-${item.id}-${q?.remedialScore ?? 'n'}`}
                                         style={{
                                           width: '48px',
@@ -1542,7 +1549,6 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                                         }}
                                         onBlur={(e: React.FocusEvent<HTMLInputElement>) => {
                                           const raw = (e.target as HTMLInputElement).value.replace(/[^0-9]/g, '');
-                                          (e.target as HTMLInputElement).value = raw;
                                           
                                           const currentRemedialScore = q ? q.remedialScore : null;
                                           if (raw === '') {
@@ -1557,12 +1563,13 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                                             playBeep();
                                             const wrapper = e.target.closest('.grading-cell');
                                             if (wrapper) {
-                                              e.target.value = currentRemedialScore !== null ? String(currentRemedialScore) : '';
+                                              e.target.value = currentRemedialScore !== null ? padGrade(currentRemedialScore) : '';
                                               wrapper.classList.add('grade-invalid');
                                               setTimeout(() => wrapper.classList.remove('grade-invalid'), 1500);
                                             }
                                             return;
                                           }
+                                          (e.target as HTMLInputElement).value = padGrade(val);
                                           if (val !== currentRemedialScore) {
                                             handleSaveRemedialScoreInGrid(enrollment, item.id, val);
                                           }
@@ -1576,7 +1583,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                               })}
                               <td style={{ padding: '2px 4px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-content-bg)' : 'color-mix(in srgb, var(--color-text-main) 2%, var(--color-content-bg))', fontWeight: 700, fontSize: 12 }}>
                                 <Tag color={rowTotal >= (maxGrade * 0.5) ? 'green' : 'red'} style={{ margin: 0 }}>
-                                  {formatGrade(rowTotal, enableRounding)}
+                                  {padGrade(rowTotal)}
                                 </Tag>
                               </td>
                             </tr>
