@@ -241,6 +241,10 @@ const contextMenuItems: MenuProps['items'] = [
   }
 ];
 
+// Fixed height reserved for the bulk action bar. The space is always taken up
+// so the grid below never jumps when the bar appears/disappears.
+const BULK_BAR_HEIGHT = 56;
+
 const MatriculationEnrollment: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -1556,12 +1560,15 @@ const MatriculationEnrollment: React.FC = () => {
           </Row>
         </Card>
 
-        {selectedRowKeys.length > 0 && (
-          <div ref={bulkActionRef} className="shrink-0 transition-all duration-300">
+        {/* Space is always reserved so that showing/hiding the bulk action bar
+            never shifts the grid below it. */}
+        <div ref={bulkActionRef} className="shrink-0" style={{ height: BULK_BAR_HEIGHT }}>
+          {selectedRowKeys.length > 0 && (
             <Card
               size="small"
               className="glass-card border-none shadow-md overflow-hidden bg-blue-50/90 ring-1 ring-blue-100"
-              styles={{ body: { padding: '8px 16px' } }}
+              style={{ height: '100%' }}
+              styles={{ body: { padding: '8px 16px', height: '100%' } }}
             >
               <Button
                 type="text"
@@ -1577,7 +1584,7 @@ const MatriculationEnrollment: React.FC = () => {
                 }}
               />
 
-              <div className="flex items-center gap-6">
+              <div className="flex items-center gap-6 h-full">
                 {/* Section 1: Counter / Student Info */}
                 <div className="flex items-center gap-2 pr-4 border-r border-slate-300/50 min-w-max">
                   {selectedRowKeys.length === 1 ? (
@@ -1719,8 +1726,8 @@ const MatriculationEnrollment: React.FC = () => {
                 )}
               </div>
             </Card>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       <div className="flex-1 overflow-hidden min-h-0">
