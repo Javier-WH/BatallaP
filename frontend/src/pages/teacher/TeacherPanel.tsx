@@ -1596,7 +1596,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                                 );
                               })}
                               <td style={{ padding: '2px 4px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-content-bg)' : 'color-mix(in srgb, var(--color-text-main) 2%, var(--color-content-bg))', fontWeight: 700, fontSize: 12 }}>
-                                <Tag color={rowTotal >= (maxGrade * 0.5) ? 'green' : 'red'} style={{ margin: 0 }}>
+                                <Tag color={Math.round(rowTotal) >= passingGrade ? 'green' : 'red'} style={{ margin: 0 }}>
                                   {padGrade(rowTotal)}
                                 </Tag>
                               </td>
