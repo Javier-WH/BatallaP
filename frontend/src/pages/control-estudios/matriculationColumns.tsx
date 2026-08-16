@@ -319,16 +319,19 @@ export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<Matricul
   };
 
   // ---- Status / missing data column (always visible, pinned left) ----
+  // Computes missing-field info via valueGetter so AG-Grid always has a value
+  // for the cell and reliably invokes the cellRenderer.
   const statusCol: ColDef<MatriculationRow> = {
-    field: '' as any,
+    colId: '__status__',
     headerName: '',
     width: 45,
     pinned: 'left',
     sortable: false,
     resizable: false,
     editable: false,
-    cellRenderer: (p: any) => {
-      if (!p.data) return null;
+    suppressSizeToFit: true,
+    valueGetter: (p) => {
+      if (!p.data) return '';
       const row = p.data as MatriculationRow;
       const missing: string[] = [];
       const t = row.tempData;
@@ -341,7 +344,18 @@ export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<Matricul
       if (!rep || (!rep.firstName && !rep.lastName && !rep.document)) missing.push('Sin representante');
       else if (!rep.phone) missing.push('Teléfono del representante');
       const isHidden = !!row.hiddenFromControlEstudios;
-      if (missing.length === 0 && !isHidden) return null;
+      if (missing.length === 0 && !isHidden) return '';
+      return JSON.stringify({ missing, isHidden });
+    },
+    cellRenderer: (p: any) => {
+      if (!p.value) return <></>;
+      let data: { missing: string[]; isHidden: boolean };
+      try {
+        data = JSON.parse(p.value);
+      } catch {
+        return <></>;
+      }
+      const { missing, isHidden } = data;
       const title = missing.length > 0
         ? `Datos faltantes (${missing.length}): ${missing.join(', ')}`
         : '';
@@ -364,7 +378,7 @@ export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<Matricul
 
   if (isCol('nationality')) {
     estudianteCols.push({
-      field: '' as any,
+      colId: 'nationality',
       headerName: 'N',
       width: 50,
       editable: false,
@@ -380,7 +394,7 @@ export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<Matricul
 
   if (isCol('document')) {
     estudianteCols.push({
-      field: '' as any,
+      colId: 'document',
       headerName: 'Cédula',
       width: 120,
       editable: true,
@@ -400,7 +414,7 @@ export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<Matricul
 
   if (isCol('lastName')) {
     estudianteCols.push({
-      field: '' as any,
+      colId: 'lastName',
       headerName: 'Apellidos',
       width: 150,
       editable: true,
@@ -420,7 +434,7 @@ export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<Matricul
 
   if (isCol('firstName')) {
     estudianteCols.push({
-      field: '' as any,
+      colId: 'firstName',
       headerName: 'Nombres',
       width: 150,
       editable: true,
@@ -440,7 +454,7 @@ export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<Matricul
 
   if (isCol('gender')) {
     estudianteCols.push({
-      field: '' as any,
+      colId: 'gender',
       headerName: 'Género',
       width: 90,
       editable: true,
@@ -471,7 +485,7 @@ export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<Matricul
 
   if (canManageVisibility && isCol('status')) {
     estudianteCols.push({
-      field: '' as any,
+      colId: 'status',
       headerName: 'Status',
       width: 120,
       editable: true,
@@ -504,7 +518,7 @@ export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<Matricul
 
   if (isCol('birthdate')) {
     estudianteCols.push({
-      field: '' as any,
+      colId: 'birthdate',
       headerName: 'Fecha Nac.',
       width: 120,
       editable: true,
@@ -538,7 +552,7 @@ export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<Matricul
 
   if (isCol('gradeId')) {
     estudianteCols.push({
-      field: '' as any,
+      colId: 'gradeId',
       headerName: 'Año',
       width: 160,
       editable: true,
@@ -569,7 +583,7 @@ export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<Matricul
 
   if (isCol('sectionId')) {
     estudianteCols.push({
-      field: '' as any,
+      colId: 'sectionId',
       headerName: 'Sección',
       width: 120,
       editable: true,
@@ -605,7 +619,7 @@ export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<Matricul
 
   if (isCol('subjectIds')) {
     estudianteCols.push({
-      field: '' as any,
+      colId: 'subjectIds',
       headerName: 'Materias de Grupo',
       width: 200,
       editable: true,
@@ -642,7 +656,7 @@ export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<Matricul
 
   if (isCol('participationGroup')) {
     estudianteCols.push({
-      field: '' as any,
+      colId: 'participationGroup',
       headerName: 'Grupo de Participación',
       width: 140,
       editable: false,
@@ -665,7 +679,7 @@ export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<Matricul
 
   if (isCol('escolaridad')) {
     estudianteCols.push({
-      field: '' as any,
+      colId: 'escolaridad',
       headerName: 'Escolaridad',
       width: 150,
       editable: true,

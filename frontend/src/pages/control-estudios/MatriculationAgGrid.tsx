@@ -25,7 +25,7 @@ interface MatriculationAgGridProps extends ColumnCallbacks {
   height: number;
 }
 
-const STORAGE_KEY = 'matriculation-grid-state-v1';
+const STORAGE_KEY = 'matriculation-grid-state-v2';
 
 interface GridState {
   columnWidths: Record<string, number>;
