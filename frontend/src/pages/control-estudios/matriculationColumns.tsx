@@ -52,6 +52,16 @@ export interface TempData {
   [key: string]: unknown;
 }
 
+export interface EnrollmentDocumentInfo {
+  receivedCertificadoAprendizaje?: boolean;
+  receivedCartaBuenaConducta?: boolean;
+  receivedNotasCertificadas?: boolean;
+  receivedPartidaNacimiento?: boolean;
+  receivedCopiaCedulaEstudiante?: boolean;
+  receivedInformesMedicos?: boolean;
+  receivedFotoCarnetEstudiante?: boolean;
+}
+
 export interface MatriculationRow {
   id: number;
   gradeId: number;
@@ -83,6 +93,8 @@ export interface MatriculationRow {
   };
   tempData: TempData;
   hiddenFromControlEstudios?: boolean;
+  documents?: EnrollmentDocumentInfo | null;
+  matriculation?: { documents?: EnrollmentDocumentInfo | null } | null;
 }
 
 export interface EnrollStructureEntry {
@@ -335,14 +347,45 @@ export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<Matricul
       const row = p.data as MatriculationRow;
       const missing: string[] = [];
       const t = row.tempData;
-      if (!t.firstName) missing.push('Nombres');
-      if (!t.lastName) missing.push('Apellidos');
-      if (!t.document) missing.push('Cédula');
+
+      // Student basic data
+      if (!t.firstName) missing.push('Nombres del estudiante');
+      if (!t.lastName) missing.push('Apellidos del estudiante');
+      if (!t.document) missing.push('Cédula del estudiante');
       if (!t.gender) missing.push('Género');
       if (!t.birthdate) missing.push('Fecha de nacimiento');
+
+      // Representative
+      const repLabel =
+        t.representativeType === 'mother' ? 'madre'
+        : t.representativeType === 'father' ? 'padre'
+        : 'representante';
       const rep = getRepProfile(row);
-      if (!rep || (!rep.firstName && !rep.lastName && !rep.document)) missing.push('Sin representante');
-      else if (!rep.phone) missing.push('Teléfono del representante');
+      if (!rep || (!rep.firstName && !rep.lastName && !rep.document)) {
+        missing.push(`Sin ${repLabel} asignado`);
+      } else if (!rep.phone) {
+        missing.push(`Teléfono del ${repLabel}`);
+      }
+
+      // Enrollment documents
+      const docs = row.documents ?? row.matriculation?.documents;
+      if (!docs) {
+        missing.push('Documentos de inscripción no registrados');
+      } else {
+        const docFields: { key: keyof EnrollmentDocumentInfo; label: string }[] = [
+          { key: 'receivedPartidaNacimiento', label: 'Partida de nacimiento' },
+          { key: 'receivedCopiaCedulaEstudiante', label: 'Copia de cédula del estudiante' },
+          { key: 'receivedFotoCarnetEstudiante', label: 'Foto carné del estudiante' },
+          { key: 'receivedCertificadoAprendizaje', label: 'Certificado de aprendizaje' },
+          { key: 'receivedCartaBuenaConducta', label: 'Carta de buena conducta' },
+          { key: 'receivedNotasCertificadas', label: 'Notas certificadas' },
+          { key: 'receivedInformesMedicos', label: 'Informes médicos' },
+        ];
+        docFields.forEach(({ key, label }) => {
+          if (!docs[key]) missing.push(`Documento: ${label}`);
+        });
+      }
+
       const isHidden = !!row.hiddenFromControlEstudios;
       if (missing.length === 0 && !isHidden) return '';
       return JSON.stringify({ missing, isHidden });
@@ -357,7 +400,7 @@ export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<Matricul
       }
       const { missing, isHidden } = data;
       const title = missing.length > 0
-        ? `Datos faltantes (${missing.length}): ${missing.join(', ')}`
+        ? `Datos faltantes (${missing.length}):\n• ${missing.join('\n• ')}`
         : '';
       return (
         <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }}>

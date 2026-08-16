@@ -432,6 +432,7 @@ const MatriculationEnrollment: React.FC = () => {
 
           return {
             ...m,
+            documents: item.documents ?? item.matriculation?.documents ?? null,
             tempData: {
               ...student,
               id: student.id,
