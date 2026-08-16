@@ -14,7 +14,7 @@
 
 | Página | Tamaño | Qué hace |
 |--------|--------|---------|
-| `control-estudios/MatriculationEnrollment.tsx` | ~134 KB | Wizard de matrícula multi-paso + bulk excel. |
+| `control-estudios/MatriculationEnrollment.tsx` | ~78 KB | Wizard de matrícula multi-paso + bulk excel. Usa AG-Grid (`MatriculationAgGrid.tsx` + `matriculationColumns.tsx`). |
 | `admin/EnrollStudent.tsx` | ~80 KB | Wizard de inscripción completo. |
 | `master/AcademicManagement.tsx` | ~77 KB | Gestión académica total. |
 | `control-estudios/FinalGradesEdit.tsx` | ~32 KB | Edición de notas con verificación de permisos. |
