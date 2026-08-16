@@ -1303,8 +1303,8 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                             <div style={{ fontSize: 9, fontWeight: 600, lineHeight: 1.2 }}>
                               {item.date ? new Date(item.date).toLocaleDateString('es-VE') : '—'}
                             </div>
-                            <div style={{ fontSize: 9, fontWeight: 700, lineHeight: 1.2, marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.description}>
-                              {item.description || '—'}
+                            <div style={{ fontSize: 9, fontWeight: 700, lineHeight: 1.2, marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.shortDescription || item.description}>
+                              {item.shortDescription || item.description || '—'}
                             </div>
                             <div style={{ fontSize: 9, color: 'var(--color-text-muted)', lineHeight: 1.2, marginTop: 1 }}>
                               {item.percentage}%
@@ -1357,11 +1357,20 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                                 return (
                                   <React.Fragment key={item.id}>
                                   <td key={`${item.id}-a`} className={`grading-cell${isAbsent ? ' grading-absent' : ''}`} style={{ padding: '2px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-content-bg)' : 'color-mix(in srgb, var(--color-text-main) 2%, var(--color-content-bg))', width: '50px', cursor: 'context-menu' }}
-                                    title="Click derecho: marcar/desmarcar inasistente"
+                                    title="Click derecho: marcar/desmarcar inasistente. Click izquierdo: desmarcar NP"
                                     onContextMenu={(e) => {
                                       e.preventDefault();
                                       e.stopPropagation();
                                       handleToggleAbsent(enrollment, item.id, q?.isAbsent);
+                                    }}
+                                    onClick={() => {
+                                      if (isAbsent) {
+                                        handleToggleAbsent(enrollment, item.id, true);
+                                        setTimeout(() => {
+                                          const input = document.getElementById(`grade-${rowIndex}-${colIndex}`);
+                                          if (input) (input as HTMLInputElement).focus();
+                                        }, 0);
+                                      }
                                     }}
                                   >
                                     <input
@@ -1457,10 +1466,15 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                                           }
                                           return;
                                         }
+                                        if (val === 0) {
+                                          // Score 0 is treated as NP (absent)
+                                          handleToggleAbsent(enrollment, item.id, q?.isAbsent);
+                                          return;
+                                        }
                                         (e.target as HTMLInputElement).value = padGrade(val);
                                         if (val !== currentScore) {
                                           // Clear remedial if grade is no longer eligible
-                                          const needsRemedialClear = val <= 0 || val < remedialMinGrade || val > remedialMaxGrade;
+                                          const needsRemedialClear = val < remedialMinGrade || val > remedialMaxGrade;
                                           handleSaveScoreInGrid(enrollment, item.id, val, needsRemedialClear ? null : undefined);
                                         }
                                       }}
