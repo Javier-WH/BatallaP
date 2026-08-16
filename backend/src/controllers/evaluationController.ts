@@ -2126,6 +2126,10 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
     sheet.getColumn(defCol).width = 6;
     sheet.getColumn(obsCol).width = 22;
 
+    sheet.pageSetup = { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0, paperSize: 9 };
+    sheet.pageSetup.horizontalCentered = true;
+    sheet.headerFooter.oddFooter = 'Página &P de &N';
+
     const buffer = await workbook.xlsx.writeBuffer();
 
     const fileName = isFilled
