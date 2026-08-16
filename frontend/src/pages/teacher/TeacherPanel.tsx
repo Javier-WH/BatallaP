@@ -674,6 +674,9 @@ const handleToggleAbsent = async (enrollment: StudentEnrollment, evalPlanId: num
   };
 
   const planColumns: ColumnsType<EvaluationPlanItem> = [
+    { title: 'Descripción Breve', key: 'shortDescription', width: 180,
+      render: (_: unknown, r: EvaluationPlanItem) => r.shortDescription || <span style={{ color: '#999' }}>—</span>
+    },
     { title: 'Estrategia de Evaluación', key: 'description', width: 200,
       render: (_: unknown, r: EvaluationPlanItem) => <span style={{ fontWeight: 600 }}>{r.estrategiaCatalog?.name || r.description}</span>
     },
