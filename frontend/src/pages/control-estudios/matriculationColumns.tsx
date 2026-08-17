@@ -1,7 +1,57 @@
-﻿import type { ColDef, ColGroupDef } from 'ag-grid-community';
+﻿import type { ColDef, ColGroupDef, ICellEditorParams } from 'ag-grid-community';
 import type { EnrollmentQuestionResponse } from '@/services/enrollmentQuestions';
 import dayjs from 'dayjs';
 import { Tooltip, Popover } from 'antd';
+import React, { useRef, useEffect, useState } from 'react';
+
+// Custom select cell editor that auto-opens the dropdown on edit.
+// The built-in agSelectCellEditor requires an extra click to open because
+// the native <select> element has no API to open programmatically.
+// This editor uses showPicker() (supported in modern browsers) to open
+// the dropdown automatically when editing starts.
+const AutoOpenSelectEditor = React.forwardRef<any, ICellEditorParams<any, any>>((props, ref) => {
+  const selectRef = useRef<HTMLSelectElement>(null);
+  const [value, setValue] = useState<string>(props.value ?? '');
+
+  useEffect(() => {
+    // Auto-open the dropdown when the editor mounts
+    const select = selectRef.current;
+    if (select) {
+      select.focus();
+      // showPicker() is the modern API to open a <select> programmatically
+      if (typeof select.showPicker === 'function') {
+        try { select.showPicker(); } catch { /* ignore */ }
+      }
+    }
+  }, []);
+
+  const onChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    setValue(e.target.value);
+    props.onValueChange?.(e.target.value);
+  };
+
+  // Expose getValue to AG-Grid
+  React.useImperativeHandle(ref, () => ({
+    getValue: () => value,
+    isCancelBeforeStart: () => false,
+  }));
+
+  const values: string[] = (props as any).values ?? [];
+
+  return (
+    <select
+      ref={selectRef}
+      value={value}
+      onChange={onChange}
+      style={{ width: '100%', height: '100%', border: 'none', outline: 'none', padding: '0 4px', fontSize: 14 }}
+    >
+      {values.map(v => (
+        <option key={v} value={v}>{v}</option>
+      ))}
+    </select>
+  );
+});
+AutoOpenSelectEditor.displayName = 'AutoOpenSelectEditor';
 
 // Re-export types needed by the parent
 export type EscolaridadStatus = 'regular' | 'repitiente' | 'materia_pendiente';
@@ -832,22 +882,23 @@ export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<Matricul
       editable: true,
       sortable: true,
       resizable: true,
-      cellEditor: 'agSelectCellEditor',
+      cellEditor: AutoOpenSelectEditor,
       cellEditorParams: (p: any) => {
-        if (!p.data) return { values: [] };
+        if (!p.data) return { values: [] as string[] };
         const gradeStruct = structure.find(s => s.gradeId === p.data.tempData.gradeId);
-        return { values: (gradeStruct?.sections ?? []).map(s => s.id) };
+        const values = (gradeStruct?.sections ?? []).map(s => s.name);
+        return { values };
       },
-      valueGetter: (p) => p.data?.tempData.sectionId ?? null,
-      valueFormatter: (p) => {
-        if (!p.value) return 'N/A';
-        if (!p.data) return 'N/A';
-        const gradeStruct = structure.find(s => s.gradeId === p.data!.tempData.gradeId);
-        return gradeStruct?.sections?.find(s => s.id === p.value)?.name ?? 'N/A';
+      valueGetter: (p) => {
+        if (!p.data) return '';
+        const gradeStruct = structure.find(s => s.gradeId === p.data.tempData.gradeId);
+        return gradeStruct?.sections?.find(s => s.id === p.data.tempData.sectionId)?.name ?? '';
       },
       valueSetter: (p) => {
         if (p.newValue !== p.oldValue && p.data) {
-          callbacks.onUpdateField(p.data.id, 'sectionId', p.newValue ? Number(p.newValue) : null);
+          const gradeStruct = structure.find(s => s.gradeId === p.data.tempData.gradeId);
+          const section = (gradeStruct?.sections ?? []).find(s => s.name === p.newValue);
+          callbacks.onUpdateField(p.data.id, 'sectionId', section ? section.id : null);
           return true;
         }
         return false;
@@ -868,13 +919,11 @@ export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<Matricul
       editable: true,
       sortable: false,
       resizable: true,
-      cellEditor: 'agSelectCellEditor',
+      cellEditor: AutoOpenSelectEditor,
       cellEditorParams: (p: any) => {
         if (!p.data) return { values: [] as string[] };
         const gradeStruct = structure.find(s => s.gradeId === p.data.tempData.gradeId);
         const groupSubjects = gradeStruct?.subjects?.filter(s => s.subjectGroupId) ?? [];
-        // Use subject names as the select values so the user sees readable
-        // labels.  The valueSetter converts the name back to an ID.
         const values = groupSubjects.map(s => s.name);
         return { values };
       },
