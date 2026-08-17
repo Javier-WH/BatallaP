@@ -1142,11 +1142,13 @@ export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<Matricul
     {
       headerName: 'Estudiante',
       headerClass: 'ag-group-header-estudiante',
+      marryChildren: true,
       children: tintedEstudianteCols,
     },
     {
       headerName: 'Representante',
       headerClass: 'ag-group-header-representante',
+      marryChildren: true,
       children: tintedRepresentanteCols,
     },
   ];
