@@ -162,6 +162,14 @@ const MatriculationAgGrid: React.FC<MatriculationAgGridProps> = ({
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressTriggeredRef = useRef(false);
   const isDragSelectingRef = useRef(false);
+  // When drag-selecting, this records whether we're selecting ('select')
+  // or deselecting ('deselect') rows as the pointer moves.
+  const dragModeRef = useRef<'select' | 'deselect'>('select');
+  // AG-Grid with suppressRowClickSelection still toggles selection internally
+  // on Ctrl+click before our handleRowClicked fires.  We capture the node's
+  // selection state during mousedown (before AG-Grid modifies it) so we can
+  // apply the correct toggle ourselves.
+  const wasSelectedBeforeClickRef = useRef(false);
 
   // Clear any pending long-press timer on cleanup
   useEffect(() => {
@@ -202,14 +210,21 @@ const MatriculationAgGrid: React.FC<MatriculationAgGridProps> = ({
     }
 
     if (ctrl) {
-      // Toggle without clearing others
-      node.setSelected(!node.isSelected(), false);
+      // AG-Grid already toggled the selection internally on Ctrl+mousedown.
+      // We need to undo that and apply the correct toggle based on the
+      // state captured before AG-Grid's intervention.
+      const wasSelected = wasSelectedBeforeClickRef.current;
+      // Force the node back to its pre-click state, then apply our toggle
+      node.setSelected(wasSelected, false);
+      // Now toggle: if was selected → deselect, if not → select
+      node.setSelected(!wasSelected, false);
       lastSelectedIndexRef.current = rowIndex;
       return;
     }
 
-    // Simple click: select only this row
-    const wasSelected = node.isSelected();
+    // Simple click: select only this row.
+    // Use the pre-click state since AG-Grid may have already modified selection.
+    const wasSelected = wasSelectedBeforeClickRef.current;
     const selectedCount = event.api.getSelectedRows().length;
     if (wasSelected && selectedCount === 1) {
       // Already the only selected row → deselect
@@ -226,39 +241,56 @@ const MatriculationAgGrid: React.FC<MatriculationAgGridProps> = ({
   // Long-press detection for touch devices.  When the user holds their
   // finger on a cell for ~500ms we toggle the row's selection without
   // clearing others — the same behaviour as Ctrl+click on desktop — and
-  // enter "drag-select" mode so that dragging over subsequent rows selects
-  // them too.
+  // enter "drag" mode so that dragging over subsequent rows applies the
+  // same action (select or deselect) to each row the pointer passes over.
   const handleCellMouseDown = useCallback((event: CellMouseDownEvent<MatriculationRow>) => {
     if (!event.node) return;
+    // Capture selection state before AG-Grid's internal Ctrl+click handling
+    wasSelectedBeforeClickRef.current = event.node.isSelected();
     longPressTriggeredRef.current = false;
     isDragSelectingRef.current = false;
     if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
     longPressTimerRef.current = setTimeout(() => {
       longPressTriggeredRef.current = true;
-      isDragSelectingRef.current = true;
       const node = event.node;
       if (node) {
-        node.setSelected(true, false);
+        const wasSelected = node.isSelected();
+        // Toggle: if already selected → deselect, if not → select.
+        node.setSelected(!wasSelected, false);
         lastSelectedIndexRef.current = node.rowIndex ?? null;
+        // Always enter drag mode.  The mode determines whether dragging
+        // selects or deselects subsequent rows.
+        isDragSelectingRef.current = true;
+        dragModeRef.current = wasSelected ? 'deselect' : 'select';
       }
     }, 500);
   }, []);
 
-  // While drag-selecting, highlight each row the pointer enters.
-  // Check that a button is still pressed (buttons > 0) so that simply
-  // moving the mouse without holding the button doesn't keep selecting.
+  // While drag-selecting, apply the drag mode (select or deselect) to each
+  // row the pointer enters.  Check that a button is still pressed
+  // (buttons > 0) so that simply moving the mouse without holding the
+  // button doesn't keep selecting/deselecting.
   const handleCellMouseOver = useCallback((event: CellMouseOverEvent<MatriculationRow>) => {
     if (!isDragSelectingRef.current) return;
     const mouseEvent = event.event as MouseEvent | undefined;
     if (mouseEvent && mouseEvent.buttons === 0) {
-      // No button pressed — abort drag-select
+      // No button pressed — abort drag
       isDragSelectingRef.current = false;
       return;
     }
     const node = event.node;
-    if (node && !node.isSelected()) {
-      node.setSelected(true, false);
-      lastSelectedIndexRef.current = node.rowIndex ?? null;
+    if (!node) return;
+    if (dragModeRef.current === 'select') {
+      if (!node.isSelected()) {
+        node.setSelected(true, false);
+        lastSelectedIndexRef.current = node.rowIndex ?? null;
+      }
+    } else {
+      // deselect mode
+      if (node.isSelected()) {
+        node.setSelected(false, false);
+        lastSelectedIndexRef.current = node.rowIndex ?? null;
+      }
     }
   }, []);
 
