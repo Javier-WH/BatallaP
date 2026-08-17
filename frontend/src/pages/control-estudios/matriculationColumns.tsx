@@ -751,7 +751,7 @@ export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<Matricul
     estudianteCols.push({
       colId: 'gender',
       headerName: 'Género',
-      width: 90,
+      width: 110,
       editable: true,
       sortable: true,
       resizable: true,
@@ -768,12 +768,8 @@ export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<Matricul
       cellRenderer: (p: any) => {
         if (!p.value) return null;
         const color = p.value === 'M' ? '#1677ff' : '#eb2f96';
-        const label = p.value === 'M' ? 'Masc' : 'Fem';
-        return (
-          <span style={{ display: 'inline-block', padding: '1px 6px', borderRadius: 3, fontSize: 10, background: `${color}22`, color, border: `1px solid ${color}55` }}>
-            {label}
-          </span>
-        );
+        const label = p.value === 'M' ? 'Masculino' : 'Femenino';
+        return <span style={{ color, fontWeight: 600 }}>{label}</span>;
       },
     });
   }
@@ -997,11 +993,7 @@ export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<Matricul
           materia_pendiente: { label: 'Materia pendiente', color: '#1677ff' },
         };
         const info = map[p.value] ?? { label: p.value, color: '#888' };
-        return (
-          <span style={{ display: 'inline-block', padding: '1px 6px', borderRadius: 3, fontSize: 10, background: `${info.color}22`, color: info.color, border: `1px solid ${info.color}55` }}>
-            {info.label}
-          </span>
-        );
+        return <span style={{ color: info.color, fontWeight: 600 }}>{info.label}</span>;
       },
     });
   }
