@@ -57,7 +57,7 @@ AutoOpenSelectEditor.displayName = 'AutoOpenSelectEditor';
 // Opens the calendar automatically when editing starts.
 const DatePickerEditor = React.forwardRef<any, ICellEditorParams<any, any>>((props, ref) => {
   const [value, setValue] = useState<Dayjs | null>(
-    props.value ? dayjs(props.value) : null
+    props.value ? dayjs(props.value, ['DD-MM-YYYY', 'YYYY-MM-DD']) : null
   );
   const [open, setOpen] = useState(true);
   // Keep a ref in sync so getValue() always reads the latest value
@@ -65,7 +65,6 @@ const DatePickerEditor = React.forwardRef<any, ICellEditorParams<any, any>>((pro
   valueRef.current = value;
 
   const onChange = (val: Dayjs | null) => {
-    console.log('[DatePickerEditor] onChange', val?.format('YYYY-MM-DD'));
     setValue(val);
     valueRef.current = val;
     const formatted = val ? val.format('YYYY-MM-DD') : '';
@@ -80,9 +79,7 @@ const DatePickerEditor = React.forwardRef<any, ICellEditorParams<any, any>>((pro
   React.useImperativeHandle(ref, () => ({
     getValue: () => {
       const v = valueRef.current;
-      const result = v ? v.format('YYYY-MM-DD') : '';
-      console.log('[DatePickerEditor] getValue', result);
-      return result;
+      return v ? v.format('YYYY-MM-DD') : '';
     },
     isCancelBeforeStart: () => false,
     isCancelAfterEnd: () => false,
@@ -101,7 +98,7 @@ const DatePickerEditor = React.forwardRef<any, ICellEditorParams<any, any>>((pro
           }, 0);
         }
       }}
-      format="YYYY-MM-DD"
+      format="DD-MM-YYYY"
       size="small"
       autoFocus
       style={{ width: '100%', height: '100%' }}
@@ -1057,7 +1054,7 @@ export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<Matricul
       cellEditorPopup: true,
       valueGetter: (p) => {
         if (!p.data?.tempData.birthdate) return '';
-        return p.data.tempData.birthdate.format('YYYY-MM-DD');
+        return p.data.tempData.birthdate.format('DD-MM-YYYY');
       },
       valueSetter: (p) => {
         if (p.newValue !== p.oldValue && p.data) {
