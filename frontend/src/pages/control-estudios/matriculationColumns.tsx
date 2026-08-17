@@ -1038,7 +1038,11 @@ export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<Matricul
   });
 
   // ---- Representante columns ----
+  // Default order: Nombres, Apellidos, Vínculo, Teléfono, then the rest.
   const representanteCols: ColDef<MatriculationRow>[] = [];
+
+  if (isCol('representativeFirstName')) representanteCols.push(repCol('firstName', 'Nombres Rep.', 140, callbacks));
+  if (isCol('representativeLastName')) representanteCols.push(repCol('lastName', 'Apellidos Rep.', 140, callbacks));
 
   if (isCol('representativeType')) {
     representanteCols.push({
@@ -1065,12 +1069,11 @@ export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<Matricul
     });
   }
 
-  // Representative fields (dynamic based on representativeType)
+  if (isCol('representativePhone')) representanteCols.push(repCol('phone', 'Teléfono Rep.', 130, callbacks));
+
+  // Remaining representative fields
   if (isCol('representativeDocumentType')) representanteCols.push(repCol('documentType', 'Tipo Doc. Rep.', 100, callbacks));
   if (isCol('representativeDocument')) representanteCols.push(repCol('document', 'Cédula Rep.', 130, callbacks, { placeholder: 'Doc...' }));
-  if (isCol('representativeFirstName')) representanteCols.push(repCol('firstName', 'Nombres Rep.', 140, callbacks));
-  if (isCol('representativeLastName')) representanteCols.push(repCol('lastName', 'Apellidos Rep.', 140, callbacks));
-  if (isCol('representativePhone')) representanteCols.push(repCol('phone', 'Teléfono Rep.', 130, callbacks));
   if (isCol('representativeEmail')) representanteCols.push(repCol('email', 'Email Rep.', 150, callbacks));
   if (isCol('representativeOccupation')) representanteCols.push(repCol('occupation', 'Ocupación Rep.', 150, callbacks));
   if (isCol('representativeAddress')) representanteCols.push(repCol('address', 'Dirección Rep.', 200, callbacks));
