@@ -23,6 +23,8 @@ interface MatriculationAgGridProps extends ColumnCallbacks {
   selectedRowIds: number[];
   onSelectionChanged: (ids: number[]) => void;
   height: number;
+  onShowFloatingButton: (rowId: number, colId: string, rowIndex: number, x: number, y: number) => void;
+  onHideFloatingButton: () => void;
 }
 
 const STORAGE_KEY = 'matriculation-grid-state-v2';
@@ -31,14 +33,18 @@ interface GridState {
   columnWidths: Record<string, number>;
   columnOrder: string[];
   sortState: { colId: string; sort: 'asc' | 'desc' } | null;
+  pinnedColumns: Record<string, 'left' | 'right'>;
 }
 
 function loadGridState(): GridState {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      return { ...parsed, pinnedColumns: parsed.pinnedColumns ?? {} };
+    }
   } catch { /* ignore */ }
-  return { columnWidths: {}, columnOrder: [], sortState: null };
+  return { columnWidths: {}, columnOrder: [], sortState: null, pinnedColumns: {} };
 }
 
 function saveGridState(state: GridState) {
@@ -47,7 +53,13 @@ function saveGridState(state: GridState) {
   } catch { /* ignore */ }
 }
 
-const MatriculationAgGrid: React.FC<MatriculationAgGridProps> = ({
+export interface MatriculationAgGridHandle {
+  pinColumn: (colId: string, pinned: 'left' | 'right' | null) => void;
+  startEditingCell: (rowIndex: number, colKey: string) => void;
+}
+
+const MatriculationAgGrid = React.forwardRef<MatriculationAgGridHandle, MatriculationAgGridProps>((props, ref) => {
+  const {
   rowData,
   structure,
   questions,
@@ -64,7 +76,9 @@ const MatriculationAgGrid: React.FC<MatriculationAgGridProps> = ({
   onUpdateAnswer,
   onToggleInscription,
   onContextMenu,
-}) => {
+  onShowFloatingButton,
+  onHideFloatingButton,
+} = props;
   const gridRef = useRef<AgGridReact<MatriculationRow>>(null);
   const [gridApi, setGridApi] = useState<GridApi<MatriculationRow> | null>(null);
   const gridStateRef = useRef<GridState>(loadGridState());
@@ -129,13 +143,19 @@ const MatriculationAgGrid: React.FC<MatriculationAgGridProps> = ({
   // Grid ready
   const onGridReady = useCallback((event: GridReadyEvent<MatriculationRow>) => {
     setGridApi(event.api);
-    // Apply saved sort state
     const state = gridStateRef.current;
+    // Apply saved sort state
     if (state.sortState) {
       event.api.applyColumnState({
         state: [{ colId: state.sortState.colId, sort: state.sortState.sort }],
         applyOrder: true,
       });
+    }
+    // Apply saved pinned columns
+    if (state.pinnedColumns) {
+      for (const [colId, pinned] of Object.entries(state.pinnedColumns)) {
+        event.api.setColumnsPinned([colId], pinned);
+      }
     }
   }, []);
 
@@ -162,6 +182,8 @@ const MatriculationAgGrid: React.FC<MatriculationAgGridProps> = ({
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressTriggeredRef = useRef(false);
   const isDragSelectingRef = useRef(false);
+  // Track whether the current interaction originated from a touch event
+  const isTouchRef = useRef(false);
   // When drag-selecting, this records whether we're selecting ('select')
   // or deselecting ('deselect') rows as the pointer moves.
   const dragModeRef = useRef<'select' | 'deselect'>('select');
@@ -175,6 +197,21 @@ const MatriculationAgGrid: React.FC<MatriculationAgGridProps> = ({
   useEffect(() => {
     return () => {
       if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
+    };
+  }, []);
+
+  // Detect touch interactions so we can show the floating button on mobile
+  useEffect(() => {
+    const onTouchStart = () => { isTouchRef.current = true; };
+    const onTouchEnd = () => {
+      // Reset after a short delay so handleRowClicked can still read it
+      setTimeout(() => { isTouchRef.current = false; }, 100);
+    };
+    window.addEventListener('touchstart', onTouchStart, { passive: true });
+    window.addEventListener('touchend', onTouchEnd, { passive: true });
+    return () => {
+      window.removeEventListener('touchstart', onTouchStart);
+      window.removeEventListener('touchend', onTouchEnd);
     };
   }, []);
 
@@ -262,6 +299,19 @@ const MatriculationAgGrid: React.FC<MatriculationAgGridProps> = ({
         // selects or deselects subsequent rows.
         isDragSelectingRef.current = true;
         dragModeRef.current = wasSelected ? 'deselect' : 'select';
+        // On touch devices, show a floating button to access the context menu
+        if (isTouchRef.current && event.data) {
+          const colId = event.column?.getColId() ?? '';
+          const rowIndex = node.rowIndex ?? 0;
+          const mouseEvent = event.event as MouseEvent | undefined;
+          onShowFloatingButton(
+            event.data.id,
+            colId,
+            rowIndex,
+            mouseEvent?.clientX ?? 0,
+            mouseEvent?.clientY ?? 0
+          );
+        }
       }
     }, 500);
   }, []);
@@ -334,7 +384,9 @@ const MatriculationAgGrid: React.FC<MatriculationAgGridProps> = ({
       clearTimeout(longPressTimerRef.current);
       longPressTimerRef.current = null;
     }
-  }, []);
+    // Hide floating button on scroll
+    onHideFloatingButton();
+  }, [onHideFloatingButton]);
 
   // Escape key → deselect all rows
   useEffect(() => {
@@ -348,7 +400,33 @@ const MatriculationAgGrid: React.FC<MatriculationAgGridProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [gridApi]);
 
-  // Context menu
+  // Pin/unpin column via grid API + persist to localStorage
+  const handlePinColumn = useCallback((colId: string, pinned: 'left' | 'right' | null) => {
+    if (!gridApi) return;
+    gridApi.setColumnsPinned([colId], pinned);
+    // Update persisted state
+    const state = gridStateRef.current;
+    if (pinned) {
+      state.pinnedColumns[colId] = pinned;
+    } else {
+      delete state.pinnedColumns[colId];
+    }
+    saveGridState(state);
+  }, [gridApi]);
+
+  // Start editing a specific cell (used by "Edit cell" menu item on mobile)
+  const handleStartEditingCell = useCallback((rowIndex: number, colKey: string) => {
+    if (!gridApi) return;
+    gridApi.startEditingCell({ rowIndex, colKey });
+  }, [gridApi]);
+
+  // Expose imperative methods to parent via ref
+  React.useImperativeHandle(ref, () => ({
+    pinColumn: handlePinColumn,
+    startEditingCell: handleStartEditingCell,
+  }), [handlePinColumn, handleStartEditingCell]);
+
+  // Context menu (right-click on PC)
   const handleCellContextMenu = useCallback(
     (event: CellContextMenuEvent<MatriculationRow>) => {
       // Suppress the browser's native context menu
@@ -360,7 +438,9 @@ const MatriculationAgGrid: React.FC<MatriculationAgGridProps> = ({
         if (node.data?.id === event.data!.id) node.setSelected(true, false);
       });
       const mouseEvent = event.event as MouseEvent | undefined;
-      onContextMenu(event.data.id, mouseEvent?.clientX ?? 0, mouseEvent?.clientY ?? 0);
+      const colId = event.column?.getColId() ?? '';
+      const rowIndex = event.rowIndex ?? 0;
+      onContextMenu(event.data.id, colId, rowIndex, mouseEvent?.clientX ?? 0, mouseEvent?.clientY ?? 0);
     },
     [onContextMenu]
   );
@@ -470,6 +550,8 @@ const MatriculationAgGrid: React.FC<MatriculationAgGridProps> = ({
       </div>
     </AgGridProvider>
   );
-};
+});
+
+MatriculationAgGrid.displayName = 'MatriculationAgGrid';
 
 export default MatriculationAgGrid;

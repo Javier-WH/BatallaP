@@ -34,6 +34,10 @@ import {
   UserSwitchOutlined,
   EyeInvisibleOutlined,
   PrinterOutlined,
+  VerticalRightOutlined,
+  VerticalLeftOutlined,
+  ColumnWidthOutlined,
+  MoreOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useNavigate } from 'react-router-dom';
@@ -44,7 +48,7 @@ import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
 import SearchGuardianModal from '@/components/shared/SearchGuardianModal';
 import type { GuardianProfileResponse } from '@/services/guardians';
-import MatriculationAgGrid from './MatriculationAgGrid';
+import MatriculationAgGrid, { type MatriculationAgGridHandle } from './MatriculationAgGrid';
 import {
   BASE_COLUMN_OPTIONS as AG_BASE_COLUMN_OPTIONS,
   COLUMN_GROUPS,
@@ -221,7 +225,7 @@ const contextMenuItems: MenuProps['items'] = [
       {
         key: 'edit',
         icon: <EditOutlined />,
-        label: 'Editar fila'
+        label: 'Editar celda'
       },
       {
         key: 'cancel',
@@ -232,6 +236,27 @@ const contextMenuItems: MenuProps['items'] = [
         key: 'change-representative',
         icon: <UserSwitchOutlined />,
         label: 'Cambiar Representante'
+      }
+    ]
+  },
+  {
+    type: 'group',
+    label: <span className="text-[11px] text-slate-400 uppercase tracking-wide">Acciones de columna</span>,
+    children: [
+      {
+        key: 'pin-left',
+        icon: <VerticalRightOutlined />,
+        label: 'Fijar a la izquierda'
+      },
+      {
+        key: 'pin-right',
+        icon: <VerticalLeftOutlined />,
+        label: 'Fijar a la derecha'
+      },
+      {
+        key: 'unpin',
+        icon: <ColumnWidthOutlined />,
+        label: 'Quitar fijación'
       }
     ]
   }
@@ -259,14 +284,25 @@ const MatriculationEnrollment: React.FC = () => {
     gradeId: number;
     schoolPeriodId: number;
   } | null>(null);
-  const [contextMenuState, setContextMenuState] = useState<{ visible: boolean; x: number; y: number; rowId: number | null }>({
+  const [contextMenuState, setContextMenuState] = useState<{ visible: boolean; x: number; y: number; rowId: number | null; colId: string | null; rowIndex: number | null }>({
     visible: false,
     x: 0,
     y: 0,
-    rowId: null
+    rowId: null,
+    colId: null,
+    rowIndex: null
+  });
+  const [floatingButton, setFloatingButton] = useState<{ visible: boolean; x: number; y: number; rowId: number | null; colId: string | null; rowIndex: number | null }>({
+    visible: false,
+    x: 0,
+    y: 0,
+    rowId: null,
+    colId: null,
+    rowIndex: null
   });
   const [guardianModalVisible, setGuardianModalVisible] = useState(false);
   const contextMenuRef = useRef<HTMLDivElement | null>(null);
+  const agGridRef = useRef<MatriculationAgGridHandle>(null);
   // Helper function to load filters from localStorage
   const loadSavedFilters = () => {
     try {
@@ -828,14 +864,26 @@ const MatriculationEnrollment: React.FC = () => {
 
   const closeContextMenu = useCallback(() => setContextMenuState(prev => ({ ...prev, visible: false })), []);
 
-  const handleGridContextMenu = useCallback((rowId: number, x: number, y: number) => {
-    setContextMenuState({ visible: true, x, y, rowId });
+  const handleGridContextMenu = useCallback((rowId: number, colId: string, rowIndex: number, x: number, y: number) => {
+    setFloatingButton(prev => ({ ...prev, visible: false }));
+    setContextMenuState({ visible: true, x, y, rowId, colId, rowIndex });
+  }, []);
+
+  const handleShowFloatingButton = useCallback((rowId: number, colId: string, rowIndex: number, x: number, y: number) => {
+    setFloatingButton({ visible: true, x, y, rowId, colId, rowIndex });
+  }, []);
+
+  const handleHideFloatingButton = useCallback(() => {
+    setFloatingButton(prev => ({ ...prev, visible: false }));
   }, []);
 
   const handleContextEdit = useCallback(() => {
-    // With AG-Grid native editing, cells are editable by clicking
+    // Start editing the specific cell that was right-clicked / long-pressed
+    if (contextMenuState.rowIndex !== null && contextMenuState.colId) {
+      agGridRef.current?.startEditingCell(contextMenuState.rowIndex, contextMenuState.colId);
+    }
     closeContextMenu();
-  }, [closeContextMenu]);
+  }, [closeContextMenu, contextMenuState.rowIndex, contextMenuState.colId]);
 
   const handleContextMenuClick = useCallback<NonNullable<MenuProps['onClick']>>(async ({ key }) => {
     if (key === 'edit') {
@@ -850,7 +898,19 @@ const MatriculationEnrollment: React.FC = () => {
       }
       closeContextMenu();
     }
-  }, [handleContextEdit, closeContextMenu, contextMenuState.rowId]);
+    if (key === 'pin-left' && contextMenuState.colId) {
+      agGridRef.current?.pinColumn(contextMenuState.colId, 'left');
+      closeContextMenu();
+    }
+    if (key === 'pin-right' && contextMenuState.colId) {
+      agGridRef.current?.pinColumn(contextMenuState.colId, 'right');
+      closeContextMenu();
+    }
+    if (key === 'unpin' && contextMenuState.colId) {
+      agGridRef.current?.pinColumn(contextMenuState.colId, null);
+      closeContextMenu();
+    }
+  }, [handleContextEdit, closeContextMenu, contextMenuState.rowId, contextMenuState.colId]);
 
   const handleGuardianSelected = useCallback((guardian: GuardianProfileResponse) => {
     if (contextMenuState.rowId === null) return;
@@ -1790,6 +1850,7 @@ const MatriculationEnrollment: React.FC = () => {
 
       <div className="flex-1 overflow-hidden min-h-0">
         <MatriculationAgGrid
+          ref={agGridRef}
           rowData={filteredData}
           structure={structure}
           questions={questions}
@@ -1806,6 +1867,8 @@ const MatriculationEnrollment: React.FC = () => {
           onUpdateAnswer={handleUpdateAnswer}
           onToggleInscription={handleToggleInscription}
           onContextMenu={handleGridContextMenu}
+          onShowFloatingButton={handleShowFloatingButton}
+          onHideFloatingButton={handleHideFloatingButton}
         />
       </div>
 
@@ -1818,6 +1881,46 @@ const MatriculationEnrollment: React.FC = () => {
           gradeId={selectedStudentForSubjects.gradeId}
           schoolPeriodId={selectedStudentForSubjects.schoolPeriodId}
         />
+      )}
+
+      {floatingButton.visible && createPortal(
+        <button
+          onClick={() => {
+            if (floatingButton.rowId !== null && floatingButton.colId !== null && floatingButton.rowIndex !== null) {
+              setContextMenuState({
+                visible: true,
+                x: floatingButton.x,
+                y: floatingButton.y + 30,
+                rowId: floatingButton.rowId,
+                colId: floatingButton.colId,
+                rowIndex: floatingButton.rowIndex,
+              });
+            }
+            setFloatingButton(prev => ({ ...prev, visible: false }));
+          }}
+          style={{
+            position: 'fixed',
+            top: floatingButton.y,
+            left: floatingButton.x,
+            transform: 'translate(-50%, -50%)',
+            width: 36,
+            height: 36,
+            borderRadius: '50%',
+            background: '#1677ff',
+            color: '#fff',
+            border: 'none',
+            boxShadow: '0 4px 12px rgba(22, 119, 255, 0.4)',
+            zIndex: 2001,
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: 18,
+          }}
+        >
+          <MoreOutlined />
+        </button>,
+        document.body
       )}
 
       {contextMenuState.visible && createPortal(

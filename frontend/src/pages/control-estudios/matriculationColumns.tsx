@@ -327,7 +327,7 @@ export interface ColumnCallbacks {
   ) => void;
   onUpdateAnswer: (rowId: number, questionId: number, value: string | string[] | undefined) => void;
   onToggleInscription: (id: number, hidden: boolean) => void;
-  onContextMenu: (rowId: number, x: number, y: number) => void;
+  onContextMenu: (rowId: number, colId: string, rowIndex: number, x: number, y: number) => void;
 }
 
 interface BuildColumnDefsParams {
