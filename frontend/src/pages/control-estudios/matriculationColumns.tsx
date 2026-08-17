@@ -860,6 +860,52 @@ export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<Matricul
     });
   }
 
+  if (isCol('subjectIds')) {
+    estudianteCols.push({
+      colId: 'subjectIds',
+      headerName: 'Materias de Grupo',
+      width: 200,
+      editable: true,
+      sortable: false,
+      resizable: true,
+      cellEditor: 'agSelectCellEditor',
+      cellEditorParams: (p: any) => {
+        if (!p.data) return { values: [] as string[] };
+        const gradeStruct = structure.find(s => s.gradeId === p.data.tempData.gradeId);
+        const groupSubjects = gradeStruct?.subjects?.filter(s => s.subjectGroupId) ?? [];
+        // Use subject names as the select values so the user sees readable
+        // labels.  The valueSetter converts the name back to an ID.
+        const values = groupSubjects.map(s => s.name);
+        return { values };
+      },
+      valueGetter: (p) => {
+        if (!p.data) return '';
+        const gradeStruct = structure.find(s => s.gradeId === p.data.tempData.gradeId);
+        const groupSubjects = gradeStruct?.subjects?.filter(s => s.subjectGroupId) ?? [];
+        const currentId = p.data.tempData.subjectIds?.[0];
+        return groupSubjects.find(s => s.id === currentId)?.name ?? '';
+      },
+      valueSetter: (p) => {
+        if (p.newValue !== p.oldValue && p.data) {
+          const gradeStruct = structure.find(s => s.gradeId === p.data.tempData.gradeId);
+          const groupSubjects = gradeStruct?.subjects?.filter(s => s.subjectGroupId) ?? [];
+          const subject = groupSubjects.find(s => s.name === p.newValue);
+          const newIds = subject ? [subject.id] : [];
+          callbacks.onUpdateField(p.data.id, 'subjectIds', newIds);
+          return true;
+        }
+        return false;
+      },
+      cellRenderer: (p: any) => {
+        if (!p.data) return '';
+        const gradeStruct = structure.find(s => s.gradeId === p.data.tempData.gradeId);
+        const groupSubjects = gradeStruct?.subjects?.filter(s => s.subjectGroupId) ?? [];
+        const currentId = p.data.tempData.subjectIds?.[0];
+        return groupSubjects.find(s => s.id === currentId)?.name ?? '';
+      },
+    });
+  }
+
   if (canManageVisibility && isCol('status')) {
     estudianteCols.push({
       colId: 'status',
@@ -926,43 +972,6 @@ export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<Matricul
   if (isCol('residenceMunicipality')) estudianteCols.push(studentLocationCol('residence', 'municipality', 'Mun. Res.', 120, callbacks, locations));
   if (isCol('residenceParish')) estudianteCols.push(studentLocationCol('residence', 'parish', 'Par. Res.', 120, callbacks, locations));
   if (isCol('address')) estudianteCols.push(textCol('address', 'Dirección', 250, callbacks));
-
-  if (isCol('subjectIds')) {
-    estudianteCols.push({
-      colId: 'subjectIds',
-      headerName: 'Materias de Grupo',
-      width: 200,
-      editable: true,
-      sortable: false,
-      resizable: true,
-      cellEditor: 'agSelectCellEditor',
-      cellEditorParams: (p: any) => {
-        if (!p.data) return { values: [] };
-        const gradeStruct = structure.find(s => s.gradeId === p.data.tempData.gradeId);
-        const groupSubjects = gradeStruct?.subjects?.filter(s => s.subjectGroupId) ?? [];
-        return { values: groupSubjects.map(s => s.id) };
-      },
-      valueGetter: (p) => {
-        if (!p.data) return '';
-        return p.data.tempData.subjectIds?.[0] ?? '';
-      },
-      valueSetter: (p) => {
-        if (p.newValue !== p.oldValue && p.data) {
-          const newIds = p.newValue ? [Number(p.newValue)] : [];
-          callbacks.onUpdateField(p.data.id, 'subjectIds', newIds);
-          return true;
-        }
-        return false;
-      },
-      cellRenderer: (p: any) => {
-        if (!p.data) return '';
-        const gradeStruct = structure.find(s => s.gradeId === p.data.tempData.gradeId);
-        const groupSubjects = gradeStruct?.subjects?.filter(s => s.subjectGroupId) ?? [];
-        const currentId = p.data.tempData.subjectIds?.[0];
-        return groupSubjects.find(s => s.id === currentId)?.name ?? '';
-      },
-    });
-  }
 
   if (isCol('participationGroup')) {
     estudianteCols.push({
