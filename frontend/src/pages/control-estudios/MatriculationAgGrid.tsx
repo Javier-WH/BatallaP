@@ -1,6 +1,6 @@
 import React, { useMemo, useRef, useCallback, useEffect, useState } from 'react';
 import { AllCommunityModule } from 'ag-grid-community';
-import type { ColDef, GridApi, GridReadyEvent, CellContextMenuEvent, SelectionChangedEvent, ColumnResizedEvent, ColumnMovedEvent, SortChangedEvent, RowClickedEvent, CellMouseDownEvent } from 'ag-grid-community';
+import type { ColDef, GridApi, GridReadyEvent, CellContextMenuEvent, SelectionChangedEvent, ColumnResizedEvent, ColumnMovedEvent, SortChangedEvent, RowClickedEvent, CellMouseDownEvent, CellMouseOverEvent } from 'ag-grid-community';
 import { AgGridProvider, AgGridReact } from 'ag-grid-react';
 import 'ag-grid-community/styles/ag-grid.css';
 import 'ag-grid-community/styles/ag-theme-quartz.css';
@@ -153,12 +153,15 @@ const MatriculationAgGrid: React.FC<MatriculationAgGridProps> = ({
   //                        If it was already the only selected row, deselect.
   //   Ctrl/Cmd+click     → toggle this row without clearing others.
   //   Shift+click        → select range from last anchor to this row.
-  //   Long-press (mobile)→ toggle without clearing (same as Ctrl+click).
+  //   Long-press         → toggle without clearing, then enter "drag-select"
+  //                        mode: moving the pointer over other rows selects
+  //                        them too, until the pointer is released.
   //   Escape             → deselect all.
 
   const lastSelectedIndexRef = useRef<number | null>(null);
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressTriggeredRef = useRef(false);
+  const isDragSelectingRef = useRef(false);
 
   // Clear any pending long-press timer on cleanup
   useEffect(() => {
@@ -168,10 +171,11 @@ const MatriculationAgGrid: React.FC<MatriculationAgGridProps> = ({
   }, []);
 
   const handleRowClicked = useCallback((event: RowClickedEvent<MatriculationRow>) => {
-    // If a long-press was triggered, the selection was already handled in
-    // the mouse-down handler — skip the click action.
-    if (longPressTriggeredRef.current) {
+    // If a long-press or drag-select was triggered, the selection was already
+    // handled in the mouse-down / mouse-over handlers — skip the click action.
+    if (longPressTriggeredRef.current || isDragSelectingRef.current) {
       longPressTriggeredRef.current = false;
+      isDragSelectingRef.current = false;
       return;
     }
 
@@ -221,23 +225,79 @@ const MatriculationAgGrid: React.FC<MatriculationAgGridProps> = ({
 
   // Long-press detection for touch devices.  When the user holds their
   // finger on a cell for ~500ms we toggle the row's selection without
-  // clearing others — the same behaviour as Ctrl+click on desktop.
+  // clearing others — the same behaviour as Ctrl+click on desktop — and
+  // enter "drag-select" mode so that dragging over subsequent rows selects
+  // them too.
   const handleCellMouseDown = useCallback((event: CellMouseDownEvent<MatriculationRow>) => {
     if (!event.node) return;
     longPressTriggeredRef.current = false;
+    isDragSelectingRef.current = false;
     if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
     longPressTimerRef.current = setTimeout(() => {
       longPressTriggeredRef.current = true;
+      isDragSelectingRef.current = true;
       const node = event.node;
       if (node) {
-        node.setSelected(!node.isSelected(), false);
+        node.setSelected(true, false);
         lastSelectedIndexRef.current = node.rowIndex ?? null;
       }
     }, 500);
   }, []);
 
-  // Cancel long-press if the pointer moves (scrolling) or releases quickly
-  const cancelLongPress = useCallback(() => {
+  // While drag-selecting, highlight each row the pointer enters.
+  // Check that a button is still pressed (buttons > 0) so that simply
+  // moving the mouse without holding the button doesn't keep selecting.
+  const handleCellMouseOver = useCallback((event: CellMouseOverEvent<MatriculationRow>) => {
+    if (!isDragSelectingRef.current) return;
+    const mouseEvent = event.event as MouseEvent | undefined;
+    if (mouseEvent && mouseEvent.buttons === 0) {
+      // No button pressed — abort drag-select
+      isDragSelectingRef.current = false;
+      return;
+    }
+    const node = event.node;
+    if (node && !node.isSelected()) {
+      node.setSelected(true, false);
+      lastSelectedIndexRef.current = node.rowIndex ?? null;
+    }
+  }, []);
+
+  // Cancel long-press if the pointer releases quickly.  If we're already
+  // drag-selecting, end the drag instead.
+  const handleCellMouseUp = useCallback(() => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+    isDragSelectingRef.current = false;
+  }, []);
+
+  // Global mouseup/touchend listener — acts as a safety net so that
+  // isDragSelectingRef is always cleared even if the pointer is released
+  // outside the grid (where onCellMouseUp wouldn't fire).
+  useEffect(() => {
+    const endDrag = () => {
+      if (longPressTimerRef.current) {
+        clearTimeout(longPressTimerRef.current);
+        longPressTimerRef.current = null;
+      }
+      isDragSelectingRef.current = false;
+    };
+    window.addEventListener('mouseup', endDrag);
+    window.addEventListener('touchend', endDrag);
+    window.addEventListener('touchcancel', endDrag);
+    return () => {
+      window.removeEventListener('mouseup', endDrag);
+      window.removeEventListener('touchend', endDrag);
+      window.removeEventListener('touchcancel', endDrag);
+    };
+  }, []);
+
+  // Cancel a *pending* long-press when the body scrolls (user is scrolling,
+  // not holding).  But if we're already drag-selecting, don't cancel — the
+  // scroll event fires naturally as rows are selected during the drag.
+  const handleBodyScroll = useCallback(() => {
+    if (isDragSelectingRef.current) return;
     if (longPressTimerRef.current) {
       clearTimeout(longPressTimerRef.current);
       longPressTimerRef.current = null;
@@ -356,12 +416,13 @@ const MatriculationAgGrid: React.FC<MatriculationAgGridProps> = ({
           onSelectionChanged={handleSelectionChanged}
           onRowClicked={handleRowClicked}
           onCellMouseDown={handleCellMouseDown}
-          onCellMouseUp={cancelLongPress}
+          onCellMouseUp={handleCellMouseUp}
+          onCellMouseOver={handleCellMouseOver}
           onCellContextMenu={handleCellContextMenu}
           onColumnResized={handleColumnResized}
           onColumnMoved={handleColumnMoved}
           onSortChanged={handleSortChanged}
-          onBodyScroll={cancelLongPress}
+          onBodyScroll={handleBodyScroll}
         />
       </div>
     </AgGridProvider>
