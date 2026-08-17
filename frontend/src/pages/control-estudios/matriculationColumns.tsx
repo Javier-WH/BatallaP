@@ -1,7 +1,7 @@
 ﻿import type { ColDef, ColGroupDef, ICellEditorParams } from 'ag-grid-community';
 import type { EnrollmentQuestionResponse } from '@/services/enrollmentQuestions';
-import dayjs from 'dayjs';
-import { Tooltip, Popover } from 'antd';
+import dayjs, { type Dayjs } from 'dayjs';
+import { Tooltip, Popover, DatePicker } from 'antd';
 import React, { useRef, useEffect, useState } from 'react';
 
 // Custom select cell editor that auto-opens the dropdown on edit.
@@ -52,6 +52,64 @@ const AutoOpenSelectEditor = React.forwardRef<any, ICellEditorParams<any, any>>(
   );
 });
 AutoOpenSelectEditor.displayName = 'AutoOpenSelectEditor';
+
+// Custom date cell editor using Ant Design's DatePicker.
+// Opens the calendar automatically when editing starts.
+const DatePickerEditor = React.forwardRef<any, ICellEditorParams<any, any>>((props, ref) => {
+  const [value, setValue] = useState<Dayjs | null>(
+    props.value ? dayjs(props.value) : null
+  );
+  const [open, setOpen] = useState(true);
+  // Keep a ref in sync so getValue() always reads the latest value
+  const valueRef = useRef<Dayjs | null>(value);
+  valueRef.current = value;
+
+  const onChange = (val: Dayjs | null) => {
+    console.log('[DatePickerEditor] onChange', val?.format('YYYY-MM-DD'));
+    setValue(val);
+    valueRef.current = val;
+    const formatted = val ? val.format('YYYY-MM-DD') : '';
+    // Notify AG-Grid of the new value directly
+    if (props.onValueChange) props.onValueChange(formatted);
+    setOpen(false);
+    setTimeout(() => {
+      if (props.stopEditing) props.stopEditing();
+    }, 50);
+  };
+
+  React.useImperativeHandle(ref, () => ({
+    getValue: () => {
+      const v = valueRef.current;
+      const result = v ? v.format('YYYY-MM-DD') : '';
+      console.log('[DatePickerEditor] getValue', result);
+      return result;
+    },
+    isCancelBeforeStart: () => false,
+    isCancelAfterEnd: () => false,
+  }), []);
+
+  return (
+    <DatePicker
+      value={value}
+      onChange={onChange}
+      open={open}
+      onOpenChange={(o) => {
+        setOpen(o);
+        if (!o) {
+          setTimeout(() => {
+            if (props.stopEditing) props.stopEditing();
+          }, 0);
+        }
+      }}
+      format="YYYY-MM-DD"
+      size="small"
+      autoFocus
+      style={{ width: '100%', height: '100%' }}
+      getPopupContainer={(node) => node.parentElement ?? document.body}
+    />
+  );
+});
+DatePickerEditor.displayName = 'DatePickerEditor';
 
 // Re-export types needed by the parent
 export type EscolaridadStatus = 'regular' | 'repitiente' | 'materia_pendiente';
@@ -995,7 +1053,8 @@ export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<Matricul
       editable: true,
       sortable: true,
       resizable: true,
-      ...textEditorParams('YYYY-MM-DD'),
+      cellEditor: DatePickerEditor,
+      cellEditorPopup: true,
       valueGetter: (p) => {
         if (!p.data?.tempData.birthdate) return '';
         return p.data.tempData.birthdate.format('YYYY-MM-DD');
@@ -1197,13 +1256,13 @@ export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<Matricul
   const colDefs: (ColDef<MatriculationRow> | ColGroupDef<MatriculationRow>)[] = [
     statusCol,
     {
-      headerName: 'Estudiante',
+      headerName: 'Estudiantes',
       headerClass: 'ag-group-header-estudiante',
       marryChildren: true,
       children: tintedEstudianteCols,
     },
     {
-      headerName: 'Representante',
+      headerName: 'Representantes',
       headerClass: 'ag-group-header-representante',
       marryChildren: true,
       children: tintedRepresentanteCols,
