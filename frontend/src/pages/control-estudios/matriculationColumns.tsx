@@ -1,4 +1,4 @@
-﻿import type { ColDef, ColGroupDef, CellClassParams } from 'ag-grid-community';
+﻿import type { ColDef, ColGroupDef } from 'ag-grid-community';
 import type { EnrollmentQuestionResponse } from '@/services/enrollmentQuestions';
 import dayjs from 'dayjs';
 
@@ -19,6 +19,17 @@ export interface GuardianProfile {
   address?: string;
   email?: string;
   occupation?: string;
+}
+
+// Venezuela location catalog (GET /locations/venezuela)
+export interface VenezuelaMunicipality {
+  municipio: string;
+  parroquias: string[];
+}
+
+export interface VenezuelaState {
+  estado: string;
+  municipios: VenezuelaMunicipality[];
 }
 
 export interface TempData {
@@ -194,22 +205,32 @@ function isRepEditable(row: MatriculationRow): boolean {
 // Callbacks interface
 export interface ColumnCallbacks {
   onUpdateField: (id: number, field: keyof TempData, value: TempData[keyof TempData]) => void;
+  /** Batch variant, used by cascading selects that must clear dependent fields atomically. */
+  onUpdateFields: (id: number, changes: Partial<TempData>) => void;
   onUpdateGuardianField: (
     rowId: number,
     parentKey: 'mother' | 'father' | 'representative',
     field: keyof GuardianProfile,
     value: GuardianProfile[keyof GuardianProfile]
   ) => void;
+  /** Batch variant for guardian profiles. */
+  onUpdateGuardianFields: (
+    rowId: number,
+    parentKey: 'mother' | 'father' | 'representative',
+    changes: Partial<GuardianProfile>
+  ) => void;
   onUpdateAnswer: (rowId: number, questionId: number, value: string | string[] | undefined) => void;
   onToggleInscription: (id: number, hidden: boolean) => void;
   onContextMenu: (rowId: number, x: number, y: number) => void;
 }
 
-interface BuildColumnDefsParams extends ColumnCallbacks {
+interface BuildColumnDefsParams {
   structure: EnrollStructureEntry[];
   questions: EnrollmentQuestionResponse[];
   canManageVisibility: boolean;
   visibleColumnKeys: string[];
+  locations: VenezuelaState[];
+  callbacks: ColumnCallbacks;
 }
 
 // Text input cell editor params
@@ -281,6 +302,236 @@ function guardianTextCol(
   };
 }
 
+// ---- Cascading location (estado / municipio / parroquia) columns ----
+
+type LocationLevel = 'state' | 'municipality' | 'parish';
+
+/** Normalize a string for comparison: lowercase, strip accents, trim. */
+function norm(s: string | undefined | null): string {
+  if (!s) return '';
+  return s
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '') // strip diacritics
+    .trim();
+}
+
+/** Given a raw value and a list of canonical names, return the canonical
+ *  name that matches case/accent-insensitively, or the raw value if no
+ *  match is found.  This ensures the cell displays the catalog's spelling
+ *  (e.g. "Guárico") even when the DB stores "GUÁRICO" or "guarico". */
+function canonicalize(raw: string | undefined, canonical: string[]): string {
+  if (!raw) return '';
+  const match = canonical.find(c => norm(c) === norm(raw));
+  return match ?? raw;
+}
+
+/** Options available for a level, given the currently selected parents.
+ *  Comparisons are case- and accent-insensitive so that legacy data stored
+ *  as "guarico" still matches the catalog entry "Guárico". */
+function locationValues(
+  locations: VenezuelaState[],
+  level: LocationLevel,
+  stateName?: string,
+  municipalityName?: string
+): string[] {
+  if (level === 'state') return locations.map(s => s.estado);
+  const state = locations.find(s => norm(s.estado) === norm(stateName));
+  if (!state) return [];
+  if (level === 'municipality') return state.municipios.map(m => m.municipio);
+  return state.municipios.find(m => norm(m.municipio) === norm(municipalityName))?.parroquias ?? [];
+}
+
+/** Return the canonical name for a given level value, resolving against
+ *  the catalog so that the displayed value matches the dropdown options. */
+function canonicalValue(
+  locations: VenezuelaState[],
+  level: LocationLevel,
+  stateName: string,
+  municipalityName: string,
+  value: string
+): string {
+  if (level === 'state') return canonicalize(value, locations.map(s => s.estado));
+  const state = locations.find(s => norm(s.estado) === norm(stateName));
+  if (!state) return value;
+  if (level === 'municipality') return canonicalize(value, state.municipios.map(m => m.municipio));
+  const mun = state.municipios.find(m => norm(m.municipio) === norm(municipalityName));
+  return canonicalize(value, mun?.parroquias ?? []);
+}
+
+interface LocationColOptions {
+  colId: string;
+  headerName: string;
+  width: number;
+  level: LocationLevel;
+  locations: VenezuelaState[];
+  /** Reads the current value of any level for a row. */
+  read: (row: MatriculationRow, level: LocationLevel) => string;
+  /** Mutates the row data in-place so AG-Grid sees the change immediately. */
+  mutate: (row: MatriculationRow, changes: Partial<Record<LocationLevel, string>>) => void;
+  /** Persists the change to the backend / React state. */
+  write: (row: MatriculationRow, changes: Partial<Record<LocationLevel, string>>) => void;
+  isEditable?: (row: MatriculationRow) => boolean;
+}
+
+function locationCol(opts: LocationColOptions): ColDef<MatriculationRow> {
+  const { colId, headerName, width, level, locations, read, mutate, write, isEditable } = opts;
+  return {
+    colId,
+    headerName,
+    width,
+    sortable: true,
+    resizable: true,
+    editable: (p) => (p.data ? (isEditable ? isEditable(p.data) : true) : false),
+    cellEditor: 'agSelectCellEditor',
+    cellEditorParams: (p: any) => {
+      if (!p.data) return { values: [] };
+      const row = p.data as MatriculationRow;
+      const values = locationValues(locations, level, read(row, 'state'), read(row, 'municipality'));
+      // The valueGetter already canonicalizes the displayed value, so the
+      // current value should be in the catalog list.  Only add it as a
+      // fallback if it's still not found (e.g. legacy 'N/A').
+      const current = canonicalValue(locations, level, read(row, 'state'), read(row, 'municipality'), read(row, level));
+      const withCurrent = current && !values.includes(current) ? [current, ...values] : values;
+      return { values: ['', ...withCurrent] };
+    },
+    valueGetter: (p) => {
+      if (!p.data) return '';
+      const row = p.data as MatriculationRow;
+      return canonicalValue(locations, level, read(row, 'state'), read(row, 'municipality'), read(row, level));
+    },
+    valueSetter: (p) => {
+      if (p.newValue === p.oldValue || !p.data) return false;
+      const value = (p.newValue as string) ?? '';
+      // Clear dependent levels so the cascade stays consistent.
+      const changes: Partial<Record<LocationLevel, string>> =
+        level === 'state' ? { state: value, municipality: '', parish: '' }
+        : level === 'municipality' ? { municipality: value, parish: '' }
+        : { parish: value };
+      // Mutate the row data in-place so that when the dependent column's
+      // cellEditorParams runs (e.g. municipality after state changes), it
+      // reads the updated state value.  Without this, AG-Grid's p.data still
+      // holds the old value because the React state update is asynchronous.
+      mutate(p.data as MatriculationRow, changes);
+      // Persist to backend / React state.
+      write(p.data as MatriculationRow, changes);
+      return true;
+    },
+  };
+}
+
+/** Location columns backed by tempData fields (student birth/residence). */
+function studentLocationCol(
+  kind: 'birth' | 'residence',
+  level: LocationLevel,
+  headerName: string,
+  width: number,
+  callbacks: ColumnCallbacks,
+  locations: VenezuelaState[]
+): ColDef<MatriculationRow> {
+  const prefix = kind === 'birth' ? 'birth' : 'residence';
+  const fieldOf = (lvl: LocationLevel): keyof TempData =>
+    (lvl === 'state' ? `${prefix}State`
+      : lvl === 'municipality' ? `${prefix}Municipality`
+      : `${prefix}Parish`) as keyof TempData;
+  return locationCol({
+    colId: String(fieldOf(level)),
+    headerName,
+    width,
+    level,
+    locations,
+    read: (row, lvl) => (row.tempData[fieldOf(lvl)] as string) ?? '',
+    mutate: (row, changes) => {
+      (Object.keys(changes) as LocationLevel[]).forEach(lvl => {
+        (row.tempData as Record<string, unknown>)[String(fieldOf(lvl))] = changes[lvl];
+      });
+    },
+    write: (row, changes) => {
+      const payload: Partial<TempData> = {};
+      (Object.keys(changes) as LocationLevel[]).forEach(lvl => {
+        (payload as Record<string, unknown>)[String(fieldOf(lvl))] = changes[lvl];
+      });
+      callbacks.onUpdateFields(row.id, payload);
+    },
+  });
+}
+
+const GUARDIAN_LOCATION_FIELD: Record<LocationLevel, keyof GuardianProfile> = {
+  state: 'residenceState',
+  municipality: 'residenceMunicipality',
+  parish: 'residenceParish',
+};
+
+/** Location columns backed by a fixed guardian profile (mother/father). */
+function guardianLocationCol(
+  parentKey: 'mother' | 'father',
+  level: LocationLevel,
+  headerName: string,
+  width: number,
+  callbacks: ColumnCallbacks,
+  locations: VenezuelaState[]
+): ColDef<MatriculationRow> {
+  return locationCol({
+    colId: `${parentKey}_${GUARDIAN_LOCATION_FIELD[level]}`,
+    headerName,
+    width,
+    level,
+    locations,
+    read: (row, lvl) => (row.tempData[parentKey]?.[GUARDIAN_LOCATION_FIELD[lvl]] as string) ?? '',
+    mutate: (row, changes) => {
+      const guardian = (row.tempData[parentKey] || {}) as GuardianProfile;
+      (Object.keys(changes) as LocationLevel[]).forEach(lvl => {
+        (guardian as Record<string, unknown>)[GUARDIAN_LOCATION_FIELD[lvl]] = changes[lvl];
+      });
+      row.tempData[parentKey] = guardian;
+    },
+    write: (row, changes) => {
+      const payload: Partial<GuardianProfile> = {};
+      (Object.keys(changes) as LocationLevel[]).forEach(lvl => {
+        (payload as Record<string, unknown>)[GUARDIAN_LOCATION_FIELD[lvl]] = changes[lvl];
+      });
+      callbacks.onUpdateGuardianFields(row.id, parentKey, payload);
+    },
+  });
+}
+
+/** Location columns for the active representative (resolved via representativeType). */
+function repLocationCol(
+  level: LocationLevel,
+  headerName: string,
+  width: number,
+  callbacks: ColumnCallbacks,
+  locations: VenezuelaState[]
+): ColDef<MatriculationRow> {
+  return locationCol({
+    colId: `representative_${GUARDIAN_LOCATION_FIELD[level]}`,
+    headerName,
+    width,
+    level,
+    locations,
+    isEditable: isRepEditable,
+    read: (row, lvl) => (getRepProfile(row)?.[GUARDIAN_LOCATION_FIELD[lvl]] as string) ?? '',
+    mutate: (row, changes) => {
+      if (!isRepEditable(row)) return;
+      const repType = row.tempData.representativeType;
+      const parentKey = repType === 'mother' ? 'mother' : repType === 'father' ? 'father' : 'representative';
+      const guardian = (row.tempData[parentKey] || {}) as GuardianProfile;
+      (Object.keys(changes) as LocationLevel[]).forEach(lvl => {
+        (guardian as Record<string, unknown>)[GUARDIAN_LOCATION_FIELD[lvl]] = changes[lvl];
+      });
+      row.tempData[parentKey] = guardian;
+    },
+    write: (row, changes) => {
+      if (!isRepEditable(row)) return;
+      const payload: Partial<GuardianProfile> = {};
+      (Object.keys(changes) as LocationLevel[]).forEach(lvl => {
+        (payload as Record<string, unknown>)[GUARDIAN_LOCATION_FIELD[lvl]] = changes[lvl];
+      });
+      callbacks.onUpdateGuardianFields(row.id, 'representative', payload);
+    },
+  });
+}
+
 // Representative column that reads from the correct guardian based on representativeType
 function repCol(
   field: keyof GuardianProfile,
@@ -319,7 +570,7 @@ function repCol(
 }
 
 export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<MatriculationRow> | ColGroupDef<MatriculationRow>)[] {
-  const { structure, questions, canManageVisibility, visibleColumnKeys, callbacks } = params;
+  const { structure, questions, canManageVisibility, visibleColumnKeys, callbacks, locations } = params;
   const isCol = (key: string) => visibleColumnKeys.includes(key);
   const isQ = (id: number) => visibleColumnKeys.includes(getQuestionColumnKey(id));
 
@@ -585,12 +836,12 @@ export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<Matricul
 
   if (isCol('pathology')) estudianteCols.push(textCol('pathology', 'Patología', 150, callbacks));
   if (isCol('livingWith')) estudianteCols.push(textCol('livingWith', 'Vive Con', 150, callbacks));
-  if (isCol('birthState')) estudianteCols.push(textCol('birthState', 'Edo. Nac.', 120, callbacks));
-  if (isCol('birthMunicipality')) estudianteCols.push(textCol('birthMunicipality', 'Mun. Nac.', 120, callbacks));
-  if (isCol('birthParish')) estudianteCols.push(textCol('birthParish', 'Par. Nac.', 120, callbacks));
-  if (isCol('residenceState')) estudianteCols.push(textCol('residenceState', 'Edo. Res.', 120, callbacks));
-  if (isCol('residenceMunicipality')) estudianteCols.push(textCol('residenceMunicipality', 'Mun. Res.', 120, callbacks));
-  if (isCol('residenceParish')) estudianteCols.push(textCol('residenceParish', 'Par. Res.', 120, callbacks));
+  if (isCol('birthState')) estudianteCols.push(studentLocationCol('birth', 'state', 'Edo. Nac.', 120, callbacks, locations));
+  if (isCol('birthMunicipality')) estudianteCols.push(studentLocationCol('birth', 'municipality', 'Mun. Nac.', 120, callbacks, locations));
+  if (isCol('birthParish')) estudianteCols.push(studentLocationCol('birth', 'parish', 'Par. Nac.', 120, callbacks, locations));
+  if (isCol('residenceState')) estudianteCols.push(studentLocationCol('residence', 'state', 'Edo. Res.', 120, callbacks, locations));
+  if (isCol('residenceMunicipality')) estudianteCols.push(studentLocationCol('residence', 'municipality', 'Mun. Res.', 120, callbacks, locations));
+  if (isCol('residenceParish')) estudianteCols.push(studentLocationCol('residence', 'parish', 'Par. Res.', 120, callbacks, locations));
   if (isCol('address')) estudianteCols.push(textCol('address', 'Dirección', 250, callbacks));
 
   if (isCol('gradeId')) {
@@ -642,7 +893,7 @@ export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<Matricul
       valueFormatter: (p) => {
         if (!p.value) return 'N/A';
         if (!p.data) return 'N/A';
-        const gradeStruct = structure.find(s => s.gradeId === p.data.tempData.gradeId);
+        const gradeStruct = structure.find(s => s.gradeId === p.data!.tempData.gradeId);
         return gradeStruct?.sections?.find(s => s.id === p.value)?.name ?? 'N/A';
       },
       valueSetter: (p) => {
@@ -822,9 +1073,9 @@ export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<Matricul
   if (isCol('representativeEmail')) representanteCols.push(repCol('email', 'Email Rep.', 150, callbacks));
   if (isCol('representativeOccupation')) representanteCols.push(repCol('occupation', 'Ocupación Rep.', 150, callbacks));
   if (isCol('representativeAddress')) representanteCols.push(repCol('address', 'Dirección Rep.', 200, callbacks));
-  if (isCol('representativeResidenceState')) representanteCols.push(repCol('residenceState', 'Estado Rep.', 120, callbacks));
-  if (isCol('representativeResidenceMunicipality')) representanteCols.push(repCol('residenceMunicipality', 'Municipio Rep.', 120, callbacks));
-  if (isCol('representativeResidenceParish')) representanteCols.push(repCol('residenceParish', 'Parroquia Rep.', 120, callbacks));
+  if (isCol('representativeResidenceState')) representanteCols.push(repLocationCol('state', 'Estado Rep.', 120, callbacks, locations));
+  if (isCol('representativeResidenceMunicipality')) representanteCols.push(repLocationCol('municipality', 'Municipio Rep.', 120, callbacks, locations));
+  if (isCol('representativeResidenceParish')) representanteCols.push(repLocationCol('parish', 'Parroquia Rep.', 120, callbacks, locations));
 
   // Contact columns
   if (isCol('phone1')) representanteCols.push(textCol('phone1', 'Teléfono', 140, callbacks));
@@ -839,9 +1090,9 @@ export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<Matricul
   if (isCol('motherEmail')) representanteCols.push(guardianTextCol('mother', 'email', 'Email Madre', 150, callbacks));
   if (isCol('motherOccupation')) representanteCols.push(guardianTextCol('mother', 'occupation', 'Ocupación Madre', 150, callbacks));
   if (isCol('motherAddress')) representanteCols.push(guardianTextCol('mother', 'address', 'Dirección Madre', 200, callbacks));
-  if (isCol('motherResidenceState')) representanteCols.push(guardianTextCol('mother', 'residenceState', 'Estado Madre', 120, callbacks));
-  if (isCol('motherResidenceMunicipality')) representanteCols.push(guardianTextCol('mother', 'residenceMunicipality', 'Municipio Madre', 120, callbacks));
-  if (isCol('motherResidenceParish')) representanteCols.push(guardianTextCol('mother', 'residenceParish', 'Parroquia Madre', 120, callbacks));
+  if (isCol('motherResidenceState')) representanteCols.push(guardianLocationCol('mother', 'state', 'Estado Madre', 120, callbacks, locations));
+  if (isCol('motherResidenceMunicipality')) representanteCols.push(guardianLocationCol('mother', 'municipality', 'Municipio Madre', 120, callbacks, locations));
+  if (isCol('motherResidenceParish')) representanteCols.push(guardianLocationCol('mother', 'parish', 'Parroquia Madre', 120, callbacks, locations));
 
   // Father columns
   if (isCol('fatherDocumentType')) representanteCols.push(guardianTextCol('father', 'documentType', 'Tipo Doc. Padre', 100, callbacks));
@@ -852,9 +1103,9 @@ export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<Matricul
   if (isCol('fatherEmail')) representanteCols.push(guardianTextCol('father', 'email', 'Email Padre', 150, callbacks));
   if (isCol('fatherOccupation')) representanteCols.push(guardianTextCol('father', 'occupation', 'Ocupación Padre', 150, callbacks));
   if (isCol('fatherAddress')) representanteCols.push(guardianTextCol('father', 'address', 'Dirección Padre', 200, callbacks));
-  if (isCol('fatherResidenceState')) representanteCols.push(guardianTextCol('father', 'residenceState', 'Estado Padre', 120, callbacks));
-  if (isCol('fatherResidenceMunicipality')) representanteCols.push(guardianTextCol('father', 'residenceMunicipality', 'Municipio Padre', 120, callbacks));
-  if (isCol('fatherResidenceParish')) representanteCols.push(guardianTextCol('father', 'residenceParish', 'Parroquia Padre', 120, callbacks));
+  if (isCol('fatherResidenceState')) representanteCols.push(guardianLocationCol('father', 'state', 'Estado Padre', 120, callbacks, locations));
+  if (isCol('fatherResidenceMunicipality')) representanteCols.push(guardianLocationCol('father', 'municipality', 'Municipio Padre', 120, callbacks, locations));
+  if (isCol('fatherResidenceParish')) representanteCols.push(guardianLocationCol('father', 'parish', 'Parroquia Padre', 120, callbacks, locations));
 
   // Build grouped column defs
   const colDefs: (ColDef<MatriculationRow> | ColGroupDef<MatriculationRow>)[] = [

@@ -15,8 +15,6 @@ import {
   Row,
   Select,
   Space,
-  Table,
-  Tag,
   Tooltip,
   Typography,
 } from 'antd';
@@ -29,13 +27,11 @@ import {
   CheckCircleOutlined,
   BookOutlined,
   EyeOutlined,
-  QuestionCircleOutlined,
   CloseOutlined,
   TableOutlined,
   EditOutlined,
   FileExcelOutlined,
   UserSwitchOutlined,
-  WarningOutlined,
   EyeInvisibleOutlined,
   PrinterOutlined,
 } from '@ant-design/icons';
@@ -53,16 +49,11 @@ import {
   BASE_COLUMN_OPTIONS as AG_BASE_COLUMN_OPTIONS,
   COLUMN_GROUPS,
   getQuestionColumnKey as agGetQuestionColumnKey,
+  type VenezuelaState,
 } from './matriculationColumns';
 
 const { Text, Title } = Typography;
 const { Option } = Select;
-
-const ESCOLARIDAD_OPTIONS: { label: string; value: EscolaridadStatus }[] = [
-  { label: 'Regular', value: 'regular' },
-  { label: 'Repitiente', value: 'repitiente' },
-  { label: 'Materia pendiente', value: 'materia_pendiente' }
-];
 
 type RepresentativeType = 'mother' | 'father' | 'other';
 
@@ -211,12 +202,6 @@ interface EnrollStructureEntry {
   subjects?: { id: number; name: string; subjectGroupId?: number | null; subjectGroup?: { name: string } }[];
 }
 
-interface ColumnOption {
-  key: string;
-  label: string;
-  group: string;
-}
-
 const contextMenuItems: MenuProps['items'] = [
   {
     type: 'group',
@@ -254,6 +239,7 @@ const MatriculationEnrollment: React.FC = () => {
   const [matriculations, setMatriculations] = useState<MatriculationRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [structure, setStructure] = useState<EnrollStructureEntry[]>([]);
+  const [locations, setLocations] = useState<VenezuelaState[]>([]);
   const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
   const [subjectModalVisible, setSubjectModalVisible] = useState(false);
   const [selectedStudentForSubjects, setSelectedStudentForSubjects] = useState<{
@@ -390,10 +376,12 @@ const MatriculationEnrollment: React.FC = () => {
         status: viewStatus === 'pending' ? 'pending' : undefined,
         schoolPeriodId: filterSchoolPeriod || undefined // Usar filtro si está seleccionado, sino no filtrar
       };
-      const [dataRes, structRes] = await Promise.all([
+      const [dataRes, structRes, locRes] = await Promise.all([
         api.get(endpoint, { params }),
-        api.get(`/academic/structure/${filterSchoolPeriod || activePeriod?.id}`)
+        api.get(`/academic/structure/${filterSchoolPeriod || activePeriod?.id}`),
+        api.get('/locations/venezuela'),
       ]);
+      if (locRes.data) setLocations(locRes.data);
       if (dataRes.data) {
         const mapped = dataRes.data.map((item: MatriculationApiResponse) => {
           const isInscription = viewStatus === 'completed';
@@ -558,6 +546,22 @@ const MatriculationEnrollment: React.FC = () => {
     saveFieldChange(id, payload);
   }, [saveFieldChange]);
 
+  // Batch update of multiple tempData fields (used by cascading location selects)
+  const handleUpdateFields = useCallback((id: number, changes: Partial<TempData>) => {
+    setMatriculations(prev => prev.map(row => (
+      row.id === id ? { ...row, tempData: { ...row.tempData, ...changes } } : row
+    )));
+    const payload: Record<string, unknown> = {};
+    Object.entries(changes).forEach(([k, v]) => {
+      if (k === 'birthdate' && v) {
+        payload[k] = (v as dayjs.Dayjs).format('YYYY-MM-DD');
+      } else {
+        payload[k] = v;
+      }
+    });
+    saveFieldChange(id, payload);
+  }, [saveFieldChange]);
+
   const handleUpdateGuardianField = useCallback(<
     K extends keyof GuardianProfile
   >(
@@ -571,6 +575,23 @@ const MatriculationEnrollment: React.FC = () => {
       if (row.id !== rowId) return row;
       const guardian = { ...(row.tempData[parentKey] || {}) } as GuardianProfile;
       guardian[field] = value;
+      updatedProfile = guardian;
+      return { ...row, tempData: { ...row.tempData, [parentKey]: guardian } };
+    }));
+    saveFieldChange(rowId, { [parentKey]: updatedProfile });
+  }, [saveFieldChange]);
+
+  // Batch update of multiple guardian fields (used by cascading location selects)
+  const handleUpdateGuardianFields = useCallback((
+    rowId: number,
+    parentKey: 'mother' | 'father' | 'representative',
+    changes: Partial<GuardianProfile>
+  ) => {
+    let updatedProfile: GuardianProfile = {};
+    setMatriculations(prev => prev.map(row => {
+      if (row.id !== rowId) return row;
+      const guardian = { ...(row.tempData[parentKey] || {}) } as GuardianProfile;
+      Object.assign(guardian, changes);
       updatedProfile = guardian;
       return { ...row, tempData: { ...row.tempData, [parentKey]: guardian } };
     }));
@@ -1737,11 +1758,14 @@ const MatriculationEnrollment: React.FC = () => {
           questions={questions}
           canManageVisibility={canManageVisibility}
           visibleColumnKeys={visibleColumnKeys}
+          locations={locations}
           selectedRowIds={selectedRowKeys}
           onSelectionChanged={setSelectedRowKeys}
           height={scrollY}
           onUpdateField={handleUpdateRow}
+          onUpdateFields={handleUpdateFields}
           onUpdateGuardianField={handleUpdateGuardianField}
+          onUpdateGuardianFields={handleUpdateGuardianFields}
           onUpdateAnswer={handleUpdateAnswer}
           onToggleInscription={handleToggleInscription}
           onContextMenu={handleGridContextMenu}

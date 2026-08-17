@@ -9,8 +9,7 @@ import {
   type MatriculationRow,
   type EnrollStructureEntry,
   type ColumnCallbacks,
-  type TempData,
-  type GuardianProfile,
+  type VenezuelaState,
 } from './matriculationColumns';
 import type { EnrollmentQuestionResponse } from '@/services/enrollmentQuestions';
 
@@ -20,6 +19,7 @@ interface MatriculationAgGridProps extends ColumnCallbacks {
   questions: EnrollmentQuestionResponse[];
   canManageVisibility: boolean;
   visibleColumnKeys: string[];
+  locations: VenezuelaState[];
   selectedRowIds: number[];
   onSelectionChanged: (ids: number[]) => void;
   height: number;
@@ -53,11 +53,14 @@ const MatriculationAgGrid: React.FC<MatriculationAgGridProps> = ({
   questions,
   canManageVisibility,
   visibleColumnKeys,
+  locations,
   selectedRowIds,
   onSelectionChanged,
   height,
   onUpdateField,
+  onUpdateFields,
   onUpdateGuardianField,
+  onUpdateGuardianFields,
   onUpdateAnswer,
   onToggleInscription,
   onContextMenu,
@@ -72,14 +75,18 @@ const MatriculationAgGrid: React.FC<MatriculationAgGridProps> = ({
   // "stretch" of the table (e.g. when opening the custom context menu).
   const callbacksRef = useRef<ColumnCallbacks>({
     onUpdateField,
+    onUpdateFields,
     onUpdateGuardianField,
+    onUpdateGuardianFields,
     onUpdateAnswer,
     onToggleInscription,
     onContextMenu,
   });
   callbacksRef.current = {
     onUpdateField,
+    onUpdateFields,
     onUpdateGuardianField,
+    onUpdateGuardianFields,
     onUpdateAnswer,
     onToggleInscription,
     onContextMenu,
@@ -88,7 +95,9 @@ const MatriculationAgGrid: React.FC<MatriculationAgGridProps> = ({
   const callbacks = useMemo<ColumnCallbacks>(
     () => ({
       onUpdateField: (...args) => callbacksRef.current.onUpdateField(...args),
+      onUpdateFields: (...args) => callbacksRef.current.onUpdateFields(...args),
       onUpdateGuardianField: (...args) => callbacksRef.current.onUpdateGuardianField(...args),
+      onUpdateGuardianFields: (...args) => callbacksRef.current.onUpdateGuardianFields(...args),
       onUpdateAnswer: (...args) => callbacksRef.current.onUpdateAnswer(...args),
       onToggleInscription: (...args) => callbacksRef.current.onToggleInscription(...args),
       onContextMenu: (...args) => callbacksRef.current.onContextMenu(...args),
@@ -97,8 +106,8 @@ const MatriculationAgGrid: React.FC<MatriculationAgGridProps> = ({
   );
 
   const columnDefs = useMemo(
-    () => buildColumnDefs({ structure, questions, canManageVisibility, visibleColumnKeys, callbacks }),
-    [structure, questions, canManageVisibility, visibleColumnKeys, callbacks]
+    () => buildColumnDefs({ structure, questions, canManageVisibility, visibleColumnKeys, callbacks, locations }),
+    [structure, questions, canManageVisibility, visibleColumnKeys, callbacks, locations]
   );
 
   const defaultColDef = useMemo<ColDef>(
@@ -146,7 +155,7 @@ const MatriculationAgGrid: React.FC<MatriculationAgGridProps> = ({
     const node = event.node;
     if (!node) return;
     // Toggle this row only, without clearing the rest.
-    node.setSelected(!node.isSelected(), false, false);
+    node.setSelected(!node.isSelected(), false);
   }, []);
 
   // Escape key → deselect all rows
@@ -170,7 +179,7 @@ const MatriculationAgGrid: React.FC<MatriculationAgGridProps> = ({
       if (!event.data) return;
       // Select the row on right-click
       event.api.forEachNode(node => {
-        if (node.data?.id === event.data!.id) node.setSelected(true, false, true);
+        if (node.data?.id === event.data!.id) node.setSelected(true, false);
       });
       const mouseEvent = event.event as MouseEvent | undefined;
       onContextMenu(event.data.id, mouseEvent?.clientX ?? 0, mouseEvent?.clientY ?? 0);
@@ -234,7 +243,7 @@ const MatriculationAgGrid: React.FC<MatriculationAgGridProps> = ({
     if (currentSelected.size === targetSelected.size && [...currentSelected].every(id => targetSelected.has(id))) return;
     gridApi.forEachNode(node => {
       if (node.data) {
-        node.setSelected(targetSelected.has(node.data.id), false, false);
+        node.setSelected(targetSelected.has(node.data.id), false);
       }
     });
   }, [gridApi, selectedRowIds]);
