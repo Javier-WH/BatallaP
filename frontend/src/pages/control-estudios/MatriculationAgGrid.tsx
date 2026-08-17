@@ -80,6 +80,7 @@ const MatriculationAgGrid = React.forwardRef<MatriculationAgGridHandle, Matricul
   onHideFloatingButton,
 } = props;
   const gridRef = useRef<AgGridReact<MatriculationRow>>(null);
+  const gridContainerRef = useRef<HTMLDivElement>(null);
   const [gridApi, setGridApi] = useState<GridApi<MatriculationRow> | null>(null);
   const gridStateRef = useRef<GridState>(loadGridState());
 
@@ -400,6 +401,48 @@ const MatriculationAgGrid = React.forwardRef<MatriculationAgGridHandle, Matricul
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [gridApi]);
 
+  // Deselect all rows and clear cell focus when clicking outside the grid
+  // (including the blank area below the last row, which is still inside the
+  // grid container but not an actual row/cell).
+  useEffect(() => {
+    if (!gridApi) return;
+    // Handler for clicks OUTSIDE the grid container entirely
+    const handleOutsideClick = (e: MouseEvent) => {
+      const container = gridContainerRef.current;
+      if (!container) return;
+      if (!container.contains(e.target as Node)) {
+        gridApi.deselectAll();
+        gridApi.clearFocusedCell();
+      }
+    };
+    // Handler for clicks INSIDE the grid container (bubble phase, runs after
+    // AG-Grid's own handlers).  If the click didn't land on a row/cell/header,
+    // it's the blank area → deselect.  Skip if a long-press or drag-select
+    // was just performed.
+    const handleInsideClick = (e: MouseEvent) => {
+      if (longPressTriggeredRef.current || isDragSelectingRef.current) {
+        return;
+      }
+      const target = e.target as HTMLElement;
+      const isOnRowOrCell = target.closest('.ag-row') || target.closest('.ag-cell') || target.closest('.ag-header') || target.closest('.ag-pinned-left-header') || target.closest('.ag-pinned-right-header');
+      if (!isOnRowOrCell) {
+        gridApi.deselectAll();
+        gridApi.clearFocusedCell();
+      }
+    };
+    document.addEventListener('mousedown', handleOutsideClick, true);
+    const container = gridContainerRef.current;
+    if (container) {
+      container.addEventListener('click', handleInsideClick, false);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick, true);
+      if (container) {
+        container.removeEventListener('click', handleInsideClick, false);
+      }
+    };
+  }, [gridApi]);
+
   // Pin/unpin column via grid API + persist to localStorage
   const handlePinColumn = useCallback((colId: string, pinned: 'left' | 'right' | null) => {
     if (!gridApi) return;
@@ -519,6 +562,7 @@ const MatriculationAgGrid = React.forwardRef<MatriculationAgGridHandle, Matricul
   return (
     <AgGridProvider modules={[AllCommunityModule]}>
       <div
+        ref={gridContainerRef}
         className="ag-theme-quartz matriculation-grid"
         style={{ width: '100%', height }}
         onContextMenu={e => e.preventDefault()}
