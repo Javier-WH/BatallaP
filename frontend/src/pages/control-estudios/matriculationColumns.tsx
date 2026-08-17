@@ -434,14 +434,11 @@ function locationCol(opts: LocationColOptions): ColDef<MatriculationRow> {
     sortable: true,
     resizable: true,
     editable: (p) => (p.data ? (isEditable ? isEditable(p.data) : true) : false),
-    cellEditor: 'agSelectCellEditor',
+    cellEditor: AutoOpenSelectEditor,
     cellEditorParams: (p: any) => {
-      if (!p.data) return { values: [] };
+      if (!p.data) return { values: [] as string[] };
       const row = p.data as MatriculationRow;
       const values = locationValues(locations, level, read(row, 'state'), read(row, 'municipality'));
-      // The valueGetter already canonicalizes the displayed value, so the
-      // current value should be in the catalog list.  Only add it as a
-      // fallback if it's still not found (e.g. legacy 'N/A').
       const current = canonicalValue(locations, level, read(row, 'state'), read(row, 'municipality'), read(row, level));
       const withCurrent = current && !values.includes(current) ? [current, ...values] : values;
       return { values: ['', ...withCurrent] };
@@ -824,7 +821,7 @@ export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<Matricul
       editable: true,
       sortable: true,
       resizable: true,
-      cellEditor: 'agSelectCellEditor',
+      cellEditor: AutoOpenSelectEditor,
       cellEditorParams: { values: ['M', 'F'] },
       valueGetter: (p) => p.data?.tempData.gender ?? '',
       valueSetter: (p) => {
@@ -851,25 +848,27 @@ export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<Matricul
       editable: true,
       sortable: true,
       resizable: true,
-      cellEditor: 'agSelectCellEditor',
+      cellEditor: AutoOpenSelectEditor,
       cellEditorParams: () => ({
-        values: structure.map(s => s.gradeId),
+        values: structure.map(s => s.grade?.name ?? 'N/A'),
       }),
-      valueGetter: (p) => p.data?.tempData.gradeId ?? 0,
-      valueFormatter: (p) => {
-        if (!p.value) return '';
-        return structure.find(s => s.gradeId === p.value)?.grade?.name ?? 'N/A';
+      valueGetter: (p) => {
+        if (!p.data) return '';
+        return structure.find(s => s.gradeId === p.data.tempData.gradeId)?.grade?.name ?? '';
       },
       valueSetter: (p) => {
         if (p.newValue !== p.oldValue && p.data) {
-          callbacks.onUpdateField(p.data.id, 'gradeId', Number(p.newValue));
-          return true;
+          const gradeStruct = structure.find(s => s.grade?.name === p.newValue);
+          if (gradeStruct) {
+            callbacks.onUpdateField(p.data.id, 'gradeId', gradeStruct.gradeId);
+            return true;
+          }
         }
         return false;
       },
       cellRenderer: (p: any) => {
         if (!p.value) return 'N/A';
-        return structure.find(s => s.gradeId === p.value)?.grade?.name ?? 'N/A';
+        return p.value;
       },
     });
   }
@@ -963,7 +962,7 @@ export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<Matricul
       editable: true,
       sortable: true,
       resizable: true,
-      cellEditor: 'agSelectCellEditor',
+      cellEditor: AutoOpenSelectEditor,
       cellEditorParams: { values: ['inscrito', 'no_inscrito'] },
       valueGetter: (p) => {
         if (!p.data) return '';
@@ -1014,12 +1013,12 @@ export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<Matricul
 
   if (isCol('pathology')) estudianteCols.push(textCol('pathology', 'Patología', 150, callbacks));
   if (isCol('livingWith')) estudianteCols.push(textCol('livingWith', 'Vive Con', 150, callbacks));
-  if (isCol('birthState')) estudianteCols.push(studentLocationCol('birth', 'state', 'Edo. Nac.', 120, callbacks, locations));
-  if (isCol('birthMunicipality')) estudianteCols.push(studentLocationCol('birth', 'municipality', 'Mun. Nac.', 120, callbacks, locations));
-  if (isCol('birthParish')) estudianteCols.push(studentLocationCol('birth', 'parish', 'Par. Nac.', 120, callbacks, locations));
-  if (isCol('residenceState')) estudianteCols.push(studentLocationCol('residence', 'state', 'Edo. Res.', 120, callbacks, locations));
-  if (isCol('residenceMunicipality')) estudianteCols.push(studentLocationCol('residence', 'municipality', 'Mun. Res.', 120, callbacks, locations));
-  if (isCol('residenceParish')) estudianteCols.push(studentLocationCol('residence', 'parish', 'Par. Res.', 120, callbacks, locations));
+  if (isCol('birthState')) estudianteCols.push(studentLocationCol('birth', 'state', 'Estado Nac.', 120, callbacks, locations));
+  if (isCol('birthMunicipality')) estudianteCols.push(studentLocationCol('birth', 'municipality', 'Municipio Nac.', 120, callbacks, locations));
+  if (isCol('birthParish')) estudianteCols.push(studentLocationCol('birth', 'parish', 'Parroquia Nac.', 120, callbacks, locations));
+  if (isCol('residenceState')) estudianteCols.push(studentLocationCol('residence', 'state', 'Estado Res.', 120, callbacks, locations));
+  if (isCol('residenceMunicipality')) estudianteCols.push(studentLocationCol('residence', 'municipality', 'Municipio Res.', 120, callbacks, locations));
+  if (isCol('residenceParish')) estudianteCols.push(studentLocationCol('residence', 'parish', 'Parroquia Res.', 120, callbacks, locations));
   if (isCol('address')) estudianteCols.push(textCol('address', 'Dirección', 250, callbacks));
 
   if (isCol('participationGroup')) {
@@ -1053,7 +1052,7 @@ export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<Matricul
       editable: true,
       sortable: true,
       resizable: true,
-      cellEditor: 'agSelectCellEditor',
+      cellEditor: AutoOpenSelectEditor,
       cellEditorParams: { values: ['regular', 'repitiente', 'materia_pendiente'] },
       valueGetter: (p) => p.data?.tempData.escolaridad ?? 'regular',
       valueSetter: (p) => {
@@ -1088,7 +1087,7 @@ export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<Matricul
       ...(q.type === 'text'
         ? textEditorParams('...')
         : {
-            cellEditor: 'agSelectCellEditor',
+            cellEditor: AutoOpenSelectEditor,
             cellEditorParams: { values: q.options ?? [] },
           }),
       valueGetter: (p) => {
@@ -1121,7 +1120,7 @@ export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<Matricul
       editable: true,
       sortable: true,
       resizable: true,
-      cellEditor: 'agSelectCellEditor',
+      cellEditor: AutoOpenSelectEditor,
       cellEditorParams: { values: ['mother', 'father', 'other'] },
       valueGetter: (p) => p.data?.tempData.representativeType ?? 'other',
       valueSetter: (p) => {
