@@ -1860,13 +1860,13 @@ const MatriculationEnrollment: React.FC = () => {
           color: #475569;
         }
         .ag-theme-quartz .ag-row {
-          --ag-row-hover-color: #e2e8f0;
+          --ag-row-hover-color: #e6eefb;
         }
         .ag-theme-quartz .ag-row-even {
           --ag-row-background-color: #f8fafc;
         }
         .ag-theme-quartz .ag-row-selected {
-          --ag-row-background-color: #bae7ff;
+          --ag-row-background-color: #cfe3fb;
         }
         .ag-theme-quartz .ag-cell {
           font-size: 12px;
@@ -1918,6 +1918,27 @@ const MatriculationEnrollment: React.FC = () => {
         }
         .ag-theme-quartz .cell-representante {
           background-color: #f5efff;
+        }
+        /* Hover and selection reuse each group's own hue, just darker. The
+           cell background is opaque, so the row-level hover/selected color
+           would otherwise be hidden behind it. */
+        .ag-theme-quartz .ag-row-hover .cell-estudiante {
+          background-color: #dbeafe;
+        }
+        .ag-theme-quartz .ag-row-hover .cell-representante {
+          background-color: #e9e2ff;
+        }
+        .ag-theme-quartz .ag-row-selected .cell-estudiante {
+          background-color: #bfdbfe;
+        }
+        .ag-theme-quartz .ag-row-selected .cell-representante {
+          background-color: #d7cbff;
+        }
+        .ag-theme-quartz .ag-row-selected.ag-row-hover .cell-estudiante {
+          background-color: #a9cffc;
+        }
+        .ag-theme-quartz .ag-row-selected.ag-row-hover .cell-representante {
+          background-color: #c8b8ff;
         }
         .custom-scrollbar::-webkit-scrollbar {
           width: 6px;
