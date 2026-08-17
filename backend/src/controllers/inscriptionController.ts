@@ -16,6 +16,17 @@ import { registerAndEnrollStudent } from '@/services/studentEnrollmentService';
 import { generateEnrollmentReport } from '@/services/enrollmentReportService';
 
 const ESCOLARIDAD_VALUES: EscolaridadStatus[] = ['regular', 'repitiente', 'materia_pendiente'];
+
+type RepresentativeTypeResponse = 'mother' | 'father' | 'other';
+
+const deriveRepresentativeType = (guardians: Array<{ relationship?: unknown; isRepresentative?: unknown }> = []): RepresentativeTypeResponse => {
+  const assignment = guardians.find(g => g.isRepresentative === true || g.isRepresentative === 1);
+  const relationship = String(assignment?.relationship ?? '').trim().toLowerCase();
+  if (relationship === 'mother' || relationship === 'madre') return 'mother';
+  if (relationship === 'father' || relationship === 'padre') return 'father';
+  return 'other';
+};
+
 const normalizeEscolaridad = (value?: unknown): EscolaridadStatus => {
   if (typeof value !== 'string') return 'regular';
   const normalized = value.trim().toLowerCase() as EscolaridadStatus;
@@ -253,7 +264,14 @@ export const getMatriculations = async (req: Request, res: Response) => {
       order: [['createdAt', 'DESC']]
     });
 
-    res.json(matriculations);
+    const result = matriculations.map(matriculation => {
+      const json = matriculation.toJSON() as any;
+      if (json.student) {
+        json.student.representativeType = deriveRepresentativeType(json.student.guardians);
+      }
+      return json;
+    });
+    res.json(result);
   } catch (error) {
     console.error('Error fetching matriculations:', error);
     res.status(500).json({ error: 'Error obteniendo matriculados' });
@@ -654,6 +672,9 @@ export const getInscriptions = async (req: Request, res: Response) => {
     const result = await Promise.all(
       inscriptions.map(async (ins) => {
         const json = ins.toJSON() as any;
+        if (json.student) {
+          json.student.representativeType = deriveRepresentativeType(json.student.guardians);
+        }
         if (Array.isArray(json.subjects) && json.subjects.length) {
           const orderMap = await resolveOrderMap(json.gradeId, json.schoolPeriodId);
           json.subjects = sortSubjectsByOrder(

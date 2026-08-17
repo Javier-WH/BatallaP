@@ -94,9 +94,20 @@ interface EnrollmentAnswerRecord {
 
 type EnrollmentAnswersMap = Record<number, string | string[] | undefined>;
 
+const normalizeRelationship = (value: unknown): string => String(value ?? '')
+  .toLowerCase()
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .trim();
+
+const isTruthyRepresentative = (value: unknown): boolean => (
+  value === true || value === 1 || value === '1' || normalizeRelationship(value) === 'true' || normalizeRelationship(value) === 'si'
+);
+
 interface StudentGuardian {
   relationship: string;
-  isRepresentative?: boolean;
+  isRepresentative?: boolean | number | string;
+  is_representative?: boolean | number | string;
   profile?: GuardianProfile;
 }
 
@@ -400,16 +411,42 @@ const MatriculationEnrollment: React.FC = () => {
           const student = m.student || {};
           const guardians: StudentGuardian[] = student.guardians || [];
           const findGuardianProfile = (relationship: string): GuardianProfile => {
-            const profile = (guardians.find((g: StudentGuardian) => g.relationship === relationship)?.profile || {}) as GuardianProfile;
+            const profile = (guardians.find((g: StudentGuardian) => (
+              normalizeRelationship(g.relationship) === normalizeRelationship(relationship)
+            ))?.profile || {}) as GuardianProfile;
             return profile;
           };
 
-          const representativeAssignment = guardians.find((g: StudentGuardian) => g.isRepresentative);
-          const representativeRelationship = representativeAssignment?.relationship;
+          // The API may serialize the boolean flag as boolean, 0/1, or a
+          // string depending on the database driver. Support all formats and
+          // normalize relationship names before mapping the Vínculo column.
+          const representativeAssignment = guardians.find((g: StudentGuardian) => {
+            const rawGuardian = g as StudentGuardian & {
+              dataValues?: { isRepresentative?: unknown; is_representative?: unknown; relationship?: unknown };
+            };
+            return isTruthyRepresentative(g.isRepresentative)
+              || isTruthyRepresentative(g.is_representative)
+              || isTruthyRepresentative(rawGuardian.dataValues?.isRepresentative)
+              || isTruthyRepresentative(rawGuardian.dataValues?.is_representative);
+          });
+          const representativeRelationship = representativeAssignment
+            ? (
+              representativeAssignment.relationship
+              || (representativeAssignment as StudentGuardian & { dataValues?: { relationship?: unknown } }).dataValues?.relationship
+            )
+            : undefined;
+          const rawRepresentativeType = (
+            representativeRelationship
+            ?? (m as unknown as { representativeType?: unknown }).representativeType
+            ?? (student as unknown as { representativeType?: unknown }).representativeType
+          );
+          const normalizedRepresentativeType = normalizeRelationship(rawRepresentativeType);
           const representativeType: RepresentativeType =
-            representativeRelationship === 'mother' || representativeRelationship === 'father'
-              ? representativeRelationship
-              : 'other';
+            normalizedRepresentativeType === 'mother' || normalizedRepresentativeType === 'madre'
+              ? 'mother'
+              : normalizedRepresentativeType === 'father' || normalizedRepresentativeType === 'padre'
+                ? 'father'
+                : 'other';
 
           const enrollmentAnswersList = student.enrollmentAnswers ?? [];
           const enrollmentAnswers = enrollmentAnswersList.reduce<EnrollmentAnswersMap>((acc, curr) => {
