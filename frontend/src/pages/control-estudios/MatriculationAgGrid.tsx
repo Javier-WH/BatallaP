@@ -152,8 +152,16 @@ const MatriculationAgGrid = React.forwardRef<MatriculationAgGridHandle, Matricul
         applyOrder: true,
       });
     }
-    // Apply saved pinned columns
+    // Apply saved pinned columns (overrides the default pinned:'left' from ColDef)
     if (state.pinnedColumns) {
+      // First, unpin any default-pinned columns that the user unpinned
+      const defaultPinned = ['nationality', 'document', 'lastName', 'firstName'];
+      for (const colId of defaultPinned) {
+        if (!(colId in state.pinnedColumns)) {
+          event.api.setColumnsPinned([colId], null);
+        }
+      }
+      // Then, apply explicitly pinned/unpinned state
       for (const [colId, pinned] of Object.entries(state.pinnedColumns)) {
         event.api.setColumnsPinned([colId], pinned);
       }

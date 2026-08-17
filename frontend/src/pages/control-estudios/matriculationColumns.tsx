@@ -800,6 +800,7 @@ export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<Matricul
       editable: false,
       sortable: true,
       resizable: true,
+      pinned: 'left',
       valueGetter: (p) => {
         if (!p.data) return '';
         const dt = p.data.tempData.documentType;
@@ -816,6 +817,7 @@ export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<Matricul
       editable: true,
       sortable: true,
       resizable: true,
+      pinned: 'left',
       ...textEditorParams(),
       valueGetter: (p) => p.data?.tempData.document ?? '',
       valueSetter: (p) => {
@@ -836,6 +838,7 @@ export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<Matricul
       editable: true,
       sortable: true,
       resizable: true,
+      pinned: 'left',
       ...textEditorParams(),
       valueGetter: (p) => p.data?.tempData.lastName ?? '',
       valueSetter: (p) => {
@@ -856,6 +859,7 @@ export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<Matricul
       editable: true,
       sortable: true,
       resizable: true,
+      pinned: 'left',
       ...textEditorParams(),
       valueGetter: (p) => p.data?.tempData.firstName ?? '',
       valueSetter: (p) => {
