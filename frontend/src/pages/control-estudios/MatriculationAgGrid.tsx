@@ -1,6 +1,6 @@
 import React, { useMemo, useRef, useCallback, useEffect, useState } from 'react';
 import { AllCommunityModule } from 'ag-grid-community';
-import type { ColDef, GridApi, GridReadyEvent, CellContextMenuEvent, SelectionChangedEvent, ColumnResizedEvent, ColumnMovedEvent, SortChangedEvent, RowClickedEvent } from 'ag-grid-community';
+import type { ColDef, GridApi, GridReadyEvent, CellContextMenuEvent, SelectionChangedEvent, ColumnResizedEvent, ColumnMovedEvent, SortChangedEvent, RowClickedEvent, CellMouseDownEvent } from 'ag-grid-community';
 import { AgGridProvider, AgGridReact } from 'ag-grid-react';
 import 'ag-grid-community/styles/ag-grid.css';
 import 'ag-grid-community/styles/ag-theme-quartz.css';
@@ -148,14 +148,100 @@ const MatriculationAgGrid: React.FC<MatriculationAgGridProps> = ({
     [onSelectionChanged]
   );
 
-  // Toggle selection on left-click: click on unselected row → select it,
-  // click on selected row → deselect it. Multiple selection is allowed
-  // (clicking never clears other selections).
+  // --- Selection logic ---
+  //   Simple click       → select only this row (deselect all others).
+  //                        If it was already the only selected row, deselect.
+  //   Ctrl/Cmd+click     → toggle this row without clearing others.
+  //   Shift+click        → select range from last anchor to this row.
+  //   Long-press (mobile)→ toggle without clearing (same as Ctrl+click).
+  //   Escape             → deselect all.
+
+  const lastSelectedIndexRef = useRef<number | null>(null);
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressTriggeredRef = useRef(false);
+
+  // Clear any pending long-press timer on cleanup
+  useEffect(() => {
+    return () => {
+      if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
+    };
+  }, []);
+
   const handleRowClicked = useCallback((event: RowClickedEvent<MatriculationRow>) => {
+    // If a long-press was triggered, the selection was already handled in
+    // the mouse-down handler — skip the click action.
+    if (longPressTriggeredRef.current) {
+      longPressTriggeredRef.current = false;
+      return;
+    }
+
     const node = event.node;
     if (!node) return;
-    // Toggle this row only, without clearing the rest.
-    node.setSelected(!node.isSelected(), false);
+
+    const mouseEvent = event.event as MouseEvent | undefined;
+    const ctrl = !!mouseEvent?.ctrlKey || !!mouseEvent?.metaKey;
+    const shift = !!mouseEvent?.shiftKey;
+
+    const rowIndex = node.rowIndex ?? null;
+
+    if (shift && lastSelectedIndexRef.current !== null && rowIndex !== null) {
+      // Range selection: select all rows between anchor and current
+      const api = event.api;
+      const start = Math.min(lastSelectedIndexRef.current, rowIndex);
+      const end = Math.max(lastSelectedIndexRef.current, rowIndex);
+      api.forEachNode(n => {
+        if (n.rowIndex !== null && n.rowIndex >= start && n.rowIndex <= end) {
+          n.setSelected(true, false);
+        }
+      });
+      return;
+    }
+
+    if (ctrl) {
+      // Toggle without clearing others
+      node.setSelected(!node.isSelected(), false);
+      lastSelectedIndexRef.current = rowIndex;
+      return;
+    }
+
+    // Simple click: select only this row
+    const wasSelected = node.isSelected();
+    const selectedCount = event.api.getSelectedRows().length;
+    if (wasSelected && selectedCount === 1) {
+      // Already the only selected row → deselect
+      node.setSelected(false, false);
+      lastSelectedIndexRef.current = null;
+    } else {
+      // Clear all and select only this one
+      event.api.deselectAll();
+      node.setSelected(true, false);
+      lastSelectedIndexRef.current = rowIndex;
+    }
+  }, []);
+
+  // Long-press detection for touch devices.  When the user holds their
+  // finger on a cell for ~500ms we toggle the row's selection without
+  // clearing others — the same behaviour as Ctrl+click on desktop.
+  const handleCellMouseDown = useCallback((event: CellMouseDownEvent<MatriculationRow>) => {
+    if (!event.node) return;
+    longPressTriggeredRef.current = false;
+    if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
+    longPressTimerRef.current = setTimeout(() => {
+      longPressTriggeredRef.current = true;
+      const node = event.node;
+      if (node) {
+        node.setSelected(!node.isSelected(), false);
+        lastSelectedIndexRef.current = node.rowIndex ?? null;
+      }
+    }, 500);
+  }, []);
+
+  // Cancel long-press if the pointer moves (scrolling) or releases quickly
+  const cancelLongPress = useCallback(() => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
   }, []);
 
   // Escape key → deselect all rows
@@ -269,10 +355,13 @@ const MatriculationAgGrid: React.FC<MatriculationAgGridProps> = ({
           onGridReady={onGridReady}
           onSelectionChanged={handleSelectionChanged}
           onRowClicked={handleRowClicked}
+          onCellMouseDown={handleCellMouseDown}
+          onCellMouseUp={cancelLongPress}
           onCellContextMenu={handleCellContextMenu}
           onColumnResized={handleColumnResized}
           onColumnMoved={handleColumnMoved}
           onSortChanged={handleSortChanged}
+          onBodyScroll={cancelLongPress}
         />
       </div>
     </AgGridProvider>
