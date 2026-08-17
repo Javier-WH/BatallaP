@@ -148,7 +148,7 @@ export const BASE_COLUMN_OPTIONS: ColumnOption[] = [
   { key: 'participationGroup', label: 'Grupo de Participación', group: 'Estudiante' },
   { key: 'escolaridad', label: 'Escolaridad', group: 'Estudiante' },
   // Representante
-  { key: 'representativeType', label: 'Asignar Representante', group: 'Representante' },
+  { key: 'representativeType', label: 'Vínculo', group: 'Representante' },
   { key: 'representativeDocumentType', label: 'Tipo Doc. Representante', group: 'Representante' },
   { key: 'representativeDocument', label: 'Cédula Representante', group: 'Representante' },
   { key: 'representativeFirstName', label: 'Nombres Representante', group: 'Representante' },
@@ -1043,7 +1043,7 @@ export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<Matricul
   if (isCol('representativeType')) {
     representanteCols.push({
       field: 'representativeType' as any,
-      headerName: 'Asignar',
+      headerName: 'Vínculo',
       width: 140,
       editable: true,
       sortable: true,
