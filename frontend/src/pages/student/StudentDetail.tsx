@@ -12,6 +12,16 @@ import { useAuth } from '@/context/AuthContext';
 
 const { Title, Text } = Typography;
 
+// Abbreviate document type for display: Venezolano→V, Extranjero→E,
+// Pasaporte→P, Escolar stays as "Escolar" (no standard abbreviation).
+const docTypeAbbr = (type: string): string => {
+  const t = (type || '').toLowerCase();
+  if (t === 'venezolano') return 'V';
+  if (t === 'extranjero') return 'E';
+  if (t === 'pasaporte') return 'P';
+  return type || '';
+};
+
 interface GuardianProfile {
   firstName: string;
   lastName: string;
@@ -176,16 +186,15 @@ const StudentDetail: React.FC<StudentDetailProps> = ({ personId: propId }) => {
         >
           <Descriptions column={2} size="small" layout="vertical" className="dossier-descriptions">
             <Descriptions.Item label="Nombre Completo">{profile.firstName} {profile.lastName}</Descriptions.Item>
-            <Descriptions.Item label="Identificación">{profile.documentType}-{profile.document}</Descriptions.Item>
+            <Descriptions.Item label="Identificación">{docTypeAbbr(profile.documentType)} {profile.document}</Descriptions.Item>
             <Descriptions.Item label="Teléfono / Email">
               <Space direction="vertical" size={0}>
                 <Text style={{ fontSize: 13, color: '#0f172a' }}>{profile.phone || 'N/A'}</Text>
-                <Text type="secondary" style={{ fontSize: 11, color: '#64748b' }}>{profile.email || 'Sin correo'}</Text>
+                <Text style={{ fontSize: 13, color: '#0f172a' }}>{profile.email || 'Sin correo'}</Text>
               </Space>
             </Descriptions.Item>
             <Descriptions.Item label="Dirección">
-              <Text style={{ fontSize: 13, color: '#0f172a' }}>{profile.address}</Text>
-              <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>{profile.residenceMunicipality}, {profile.residenceState}</div>
+              <div style={{ fontSize: 13, color: '#0f172a' }}>{profile.address || 'N/A'}, {profile.residenceMunicipality}, {profile.residenceState}</div>
             </Descriptions.Item>
           </Descriptions>
         </Card>
@@ -203,7 +212,7 @@ const StudentDetail: React.FC<StudentDetailProps> = ({ personId: propId }) => {
             <Card className="inner-premium-card" style={{ marginBottom: 24 }} bodyStyle={{ padding: '20px 24px' }}>
               <Descriptions column={2} size="small" layout="vertical" className="dossier-descriptions">
                 <Descriptions.Item label="Nombre">{studentData.firstName} {studentData.lastName}</Descriptions.Item>
-                <Descriptions.Item label="Documento">{studentData.documentType}-{studentData.document || 'N/A'}</Descriptions.Item>
+                <Descriptions.Item label="Cédula">{docTypeAbbr(studentData.documentType)} {studentData.document || 'N/A'}</Descriptions.Item>
                 <Descriptions.Item label="Nacimiento">{studentData.birthdate ? dayjs(studentData.birthdate).format('DD MMMM, YYYY') : 'N/A'}</Descriptions.Item>
                 <Descriptions.Item label="Género">{studentData.gender === 'M' ? 'Masculino' : 'Femenino'}</Descriptions.Item>
                 <Descriptions.Item label="Lugar de Nacimiento" span={2}>
@@ -221,8 +230,7 @@ const StudentDetail: React.FC<StudentDetailProps> = ({ personId: propId }) => {
                 <Descriptions.Item label="Teléfonos">{studentData.contact?.phone1 || 'N/A'} {studentData.contact?.phone2 ? ' / ' + studentData.contact?.phone2 : ''}</Descriptions.Item>
                 <Descriptions.Item label="Email">{studentData.contact?.email || 'N/A'}</Descriptions.Item>
                 <Descriptions.Item label="Residencia" span={2}>
-                  <Text style={{ fontSize: 13, color: '#0f172a' }}>{studentData.contact?.address}</Text>
-                  <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>{studentData.residence?.residenceParish}, {studentData.residence?.residenceMunicipality}, {studentData.residence?.residenceState}</div>
+                  <div style={{ fontSize: 13, color: '#0f172a' }}>{studentData.contact?.address || 'N/A'}, {studentData.residence?.residenceParish}, {studentData.residence?.residenceMunicipality}, {studentData.residence?.residenceState}</div>
                 </Descriptions.Item>
               </Descriptions>
             </Card>
