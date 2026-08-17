@@ -1853,11 +1853,34 @@ const MatriculationEnrollment: React.FC = () => {
         .ag-theme-quartz .ag-pinned-left-header {
           border-right: 2px solid #94a3b8;
         }
+        /* Tint for the two column groups — headers + body cells */
+        .ag-theme-quartz .ag-group-header-estudiante {
+          background: #bfdbfe;
+        }
         .ag-theme-quartz .ag-group-header-estudiante .ag-header-cell-label {
-          color: #1e40af;
+          color: #1e3a8a;
+          font-weight: 700;
+        }
+        .ag-theme-quartz .ag-group-header-representante {
+          background: #ddd6fe;
         }
         .ag-theme-quartz .ag-group-header-representante .ag-header-cell-label {
-          color: #6d28d9;
+          color: #5b21b6;
+          font-weight: 700;
+        }
+        /* Child column headers get a visible tint of their group's color. */
+        .ag-theme-quartz .col-estudiante {
+          background: #dbeafe;
+        }
+        .ag-theme-quartz .col-representante {
+          background: #ede9fe;
+        }
+        /* Apply the distinction to the data cells as well as the headers. */
+        .ag-theme-quartz .cell-estudiante {
+          background-color: #eef6ff;
+        }
+        .ag-theme-quartz .cell-representante {
+          background-color: #f5efff;
         }
         .custom-scrollbar::-webkit-scrollbar {
           width: 6px;

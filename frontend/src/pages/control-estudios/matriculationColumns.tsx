@@ -1108,18 +1108,32 @@ export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<Matricul
   if (isCol('fatherResidenceMunicipality')) representanteCols.push(guardianLocationCol('father', 'municipality', 'Municipio Padre', 120, callbacks, locations));
   if (isCol('fatherResidenceParish')) representanteCols.push(guardianLocationCol('father', 'parish', 'Parroquia Padre', 120, callbacks, locations));
 
+  // Apply headerClass + cellClass to every child column so both the header
+  // and body cells get a soft tint matching their group, and a thick border
+  // can be drawn between the two groups across the full table height.
+  const tintedEstudianteCols = estudianteCols.map(c => ({
+    ...c,
+    headerClass: 'col-estudiante',
+    cellClass: 'cell-estudiante',
+  }));
+  const tintedRepresentanteCols = representanteCols.map(c => ({
+    ...c,
+    headerClass: 'col-representante',
+    cellClass: 'cell-representante',
+  }));
+
   // Build grouped column defs
   const colDefs: (ColDef<MatriculationRow> | ColGroupDef<MatriculationRow>)[] = [
     statusCol,
     {
       headerName: 'Estudiante',
       headerClass: 'ag-group-header-estudiante',
-      children: estudianteCols,
+      children: tintedEstudianteCols,
     },
     {
       headerName: 'Representante',
       headerClass: 'ag-group-header-representante',
-      children: representanteCols,
+      children: tintedRepresentanteCols,
     },
   ];
 
