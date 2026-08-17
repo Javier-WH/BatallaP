@@ -1,6 +1,7 @@
 ﻿import type { ColDef, ColGroupDef } from 'ag-grid-community';
 import type { EnrollmentQuestionResponse } from '@/services/enrollmentQuestions';
 import dayjs from 'dayjs';
+import { Tooltip } from 'antd';
 
 // Re-export types needed by the parent
 export type EscolaridadStatus = 'regular' | 'repitiente' | 'materia_pendiente';
@@ -651,18 +652,28 @@ export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<Matricul
         return <></>;
       }
       const { missing, isHidden } = data;
-      const title = missing.length > 0
-        ? `Datos faltantes (${missing.length}):\n• ${missing.join('\n• ')}`
-        : '';
+      // Build a combined tooltip covering both hidden and missing states.
+      const lines: string[] = [];
+      if (isHidden && canManageVisibility) lines.push('No inscrito');
+      if (missing.length > 0) {
+        lines.push(`Datos faltantes (${missing.length}):`);
+        missing.forEach(m => lines.push(`• ${m}`));
+      }
+      const tooltipTitle = lines.length > 0
+        ? <div style={{ whiteSpace: 'pre-line' }}>{lines.join('\n')}</div>
+        : null;
+      if (!tooltipTitle) return <></>;
       return (
-        <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }}>
-          {isHidden && canManageVisibility && (
-            <span title="No inscrito" style={{ color: '#ff4d4f', fontSize: 14, cursor: 'help' }}>⊘</span>
-          )}
-          {missing.length > 0 && (
-            <span title={title} style={{ color: '#ff4d4f', fontSize: 16, cursor: 'help' }}>⚠</span>
-          )}
-        </span>
+        <Tooltip title={tooltipTitle} mouseEnterDelay={0} mouseLeaveDelay={0}>
+          <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center', width: '100%', height: '100%', justifyContent: 'center', cursor: 'help' }}>
+            {isHidden && canManageVisibility && (
+              <span style={{ color: '#ff4d4f', fontSize: 14 }}>⊘</span>
+            )}
+            {missing.length > 0 && (
+              <span style={{ color: '#ff4d4f', fontSize: 16 }}>⚠</span>
+            )}
+          </span>
+        </Tooltip>
       );
     },
     cellStyle: { display: 'flex', alignItems: 'center', justifyContent: 'center' },
@@ -774,73 +785,6 @@ export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<Matricul
     });
   }
 
-  if (canManageVisibility && isCol('status')) {
-    estudianteCols.push({
-      colId: 'status',
-      headerName: 'Status',
-      width: 120,
-      editable: true,
-      sortable: true,
-      resizable: true,
-      cellEditor: 'agSelectCellEditor',
-      cellEditorParams: { values: ['inscrito', 'no_inscrito'] },
-      valueGetter: (p) => {
-        if (!p.data) return '';
-        return p.data.hiddenFromControlEstudios ? 'no_inscrito' : 'inscrito';
-      },
-      valueSetter: (p) => {
-        if (p.newValue !== p.oldValue && p.data) {
-          callbacks.onToggleInscription(p.data.id, p.newValue === 'no_inscrito');
-          return true;
-        }
-        return false;
-      },
-      cellRenderer: (p: any) => {
-        if (!p.value) return null;
-        const inscrito = p.value === 'inscrito';
-        return (
-          <span style={{ color: inscrito ? '#52c41a' : '#ff4d4f', fontSize: 12 }}>
-            {inscrito ? 'Inscrito' : 'No inscrito'}
-          </span>
-        );
-      },
-    });
-  }
-
-  if (isCol('birthdate')) {
-    estudianteCols.push({
-      colId: 'birthdate',
-      headerName: 'Fecha Nac.',
-      width: 120,
-      editable: true,
-      sortable: true,
-      resizable: true,
-      ...textEditorParams('YYYY-MM-DD'),
-      valueGetter: (p) => {
-        if (!p.data?.tempData.birthdate) return '';
-        return p.data.tempData.birthdate.format('YYYY-MM-DD');
-      },
-      valueSetter: (p) => {
-        if (p.newValue !== p.oldValue && p.data) {
-          const val = p.newValue ? dayjs(p.newValue) : null;
-          callbacks.onUpdateField(p.data.id, 'birthdate', val as TempData['birthdate']);
-          return true;
-        }
-        return false;
-      },
-    });
-  }
-
-  if (isCol('pathology')) estudianteCols.push(textCol('pathology', 'Patología', 150, callbacks));
-  if (isCol('livingWith')) estudianteCols.push(textCol('livingWith', 'Vive Con', 150, callbacks));
-  if (isCol('birthState')) estudianteCols.push(studentLocationCol('birth', 'state', 'Edo. Nac.', 120, callbacks, locations));
-  if (isCol('birthMunicipality')) estudianteCols.push(studentLocationCol('birth', 'municipality', 'Mun. Nac.', 120, callbacks, locations));
-  if (isCol('birthParish')) estudianteCols.push(studentLocationCol('birth', 'parish', 'Par. Nac.', 120, callbacks, locations));
-  if (isCol('residenceState')) estudianteCols.push(studentLocationCol('residence', 'state', 'Edo. Res.', 120, callbacks, locations));
-  if (isCol('residenceMunicipality')) estudianteCols.push(studentLocationCol('residence', 'municipality', 'Mun. Res.', 120, callbacks, locations));
-  if (isCol('residenceParish')) estudianteCols.push(studentLocationCol('residence', 'parish', 'Par. Res.', 120, callbacks, locations));
-  if (isCol('address')) estudianteCols.push(textCol('address', 'Dirección', 250, callbacks));
-
   if (isCol('gradeId')) {
     estudianteCols.push({
       colId: 'gradeId',
@@ -907,6 +851,73 @@ export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<Matricul
       },
     });
   }
+
+  if (canManageVisibility && isCol('status')) {
+    estudianteCols.push({
+      colId: 'status',
+      headerName: 'Status',
+      width: 120,
+      editable: true,
+      sortable: true,
+      resizable: true,
+      cellEditor: 'agSelectCellEditor',
+      cellEditorParams: { values: ['inscrito', 'no_inscrito'] },
+      valueGetter: (p) => {
+        if (!p.data) return '';
+        return p.data.hiddenFromControlEstudios ? 'no_inscrito' : 'inscrito';
+      },
+      valueSetter: (p) => {
+        if (p.newValue !== p.oldValue && p.data) {
+          callbacks.onToggleInscription(p.data.id, p.newValue === 'no_inscrito');
+          return true;
+        }
+        return false;
+      },
+      cellRenderer: (p: any) => {
+        if (!p.value) return null;
+        const inscrito = p.value === 'inscrito';
+        return (
+          <span style={{ color: inscrito ? '#52c41a' : '#ff4d4f', fontSize: 12 }}>
+            {inscrito ? 'Inscrito' : 'No inscrito'}
+          </span>
+        );
+      },
+    });
+  }
+
+  if (isCol('birthdate')) {
+    estudianteCols.push({
+      colId: 'birthdate',
+      headerName: 'Fecha Nac.',
+      width: 120,
+      editable: true,
+      sortable: true,
+      resizable: true,
+      ...textEditorParams('YYYY-MM-DD'),
+      valueGetter: (p) => {
+        if (!p.data?.tempData.birthdate) return '';
+        return p.data.tempData.birthdate.format('YYYY-MM-DD');
+      },
+      valueSetter: (p) => {
+        if (p.newValue !== p.oldValue && p.data) {
+          const val = p.newValue ? dayjs(p.newValue) : null;
+          callbacks.onUpdateField(p.data.id, 'birthdate', val as TempData['birthdate']);
+          return true;
+        }
+        return false;
+      },
+    });
+  }
+
+  if (isCol('pathology')) estudianteCols.push(textCol('pathology', 'Patología', 150, callbacks));
+  if (isCol('livingWith')) estudianteCols.push(textCol('livingWith', 'Vive Con', 150, callbacks));
+  if (isCol('birthState')) estudianteCols.push(studentLocationCol('birth', 'state', 'Edo. Nac.', 120, callbacks, locations));
+  if (isCol('birthMunicipality')) estudianteCols.push(studentLocationCol('birth', 'municipality', 'Mun. Nac.', 120, callbacks, locations));
+  if (isCol('birthParish')) estudianteCols.push(studentLocationCol('birth', 'parish', 'Par. Nac.', 120, callbacks, locations));
+  if (isCol('residenceState')) estudianteCols.push(studentLocationCol('residence', 'state', 'Edo. Res.', 120, callbacks, locations));
+  if (isCol('residenceMunicipality')) estudianteCols.push(studentLocationCol('residence', 'municipality', 'Mun. Res.', 120, callbacks, locations));
+  if (isCol('residenceParish')) estudianteCols.push(studentLocationCol('residence', 'parish', 'Par. Res.', 120, callbacks, locations));
+  if (isCol('address')) estudianteCols.push(textCol('address', 'Dirección', 250, callbacks));
 
   if (isCol('subjectIds')) {
     estudianteCols.push({
