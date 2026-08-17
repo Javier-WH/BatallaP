@@ -1,7 +1,7 @@
 ﻿import type { ColDef, ColGroupDef } from 'ag-grid-community';
 import type { EnrollmentQuestionResponse } from '@/services/enrollmentQuestions';
 import dayjs from 'dayjs';
-import { Tooltip } from 'antd';
+import { Tooltip, Popover } from 'antd';
 
 // Re-export types needed by the parent
 export type EscolaridadStatus = 'regular' | 'repitiente' | 'materia_pendiente';
@@ -652,28 +652,36 @@ export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<Matricul
         return <></>;
       }
       const { missing, isHidden } = data;
-      // Build a combined tooltip covering both hidden and missing states.
+      // Build a combined content covering both hidden and missing states.
       const lines: string[] = [];
       if (isHidden && canManageVisibility) lines.push('No inscrito');
       if (missing.length > 0) {
         lines.push(`Datos faltantes (${missing.length}):`);
         missing.forEach(m => lines.push(`• ${m}`));
       }
-      const tooltipTitle = lines.length > 0
-        ? <div style={{ whiteSpace: 'pre-line' }}>{lines.join('\n')}</div>
+      const content = lines.length > 0
+        ? <div style={{ whiteSpace: 'pre-line', maxWidth: 300 }}>{lines.join('\n')}</div>
         : null;
-      if (!tooltipTitle) return <></>;
+      if (!content) return <></>;
       return (
-        <Tooltip title={tooltipTitle} mouseEnterDelay={0} mouseLeaveDelay={0}>
-          <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center', width: '100%', height: '100%', justifyContent: 'center', cursor: 'help' }}>
-            {isHidden && canManageVisibility && (
-              <span style={{ color: '#ff4d4f', fontSize: 14 }}>⊘</span>
-            )}
-            {missing.length > 0 && (
-              <span style={{ color: '#ff4d4f', fontSize: 16 }}>⚠</span>
-            )}
-          </span>
-        </Tooltip>
+        // Tooltip for hover (PC), Popover for click/tap (mobile + PC).
+        // The Popover is triggered by click so it stays open on mobile
+        // until the user taps elsewhere.  Both share the same content.
+        <Popover content={content} trigger="click" placement="rightTop" overlayStyle={{ maxWidth: 320 }}>
+          <Tooltip title={content} mouseEnterDelay={0} mouseLeaveDelay={0}>
+            <span
+              style={{ display: 'inline-flex', gap: 4, alignItems: 'center', width: '100%', height: '100%', justifyContent: 'center', cursor: 'pointer' }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {isHidden && canManageVisibility && (
+                <span style={{ color: '#ff4d4f', fontSize: 14 }}>⊘</span>
+              )}
+              {missing.length > 0 && (
+                <span style={{ color: '#ff4d4f', fontSize: 16 }}>⚠</span>
+              )}
+            </span>
+          </Tooltip>
+        </Popover>
       );
     },
     cellStyle: { display: 'flex', alignItems: 'center', justifyContent: 'center' },

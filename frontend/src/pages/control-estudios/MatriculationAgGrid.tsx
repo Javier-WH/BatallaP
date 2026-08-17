@@ -1,6 +1,6 @@
 import React, { useMemo, useRef, useCallback, useEffect, useState } from 'react';
 import { AllCommunityModule } from 'ag-grid-community';
-import type { ColDef, GridApi, GridReadyEvent, CellContextMenuEvent, SelectionChangedEvent, ColumnResizedEvent, ColumnMovedEvent, SortChangedEvent, RowClickedEvent, CellMouseDownEvent, CellMouseOverEvent } from 'ag-grid-community';
+import type { ColDef, GridApi, GridReadyEvent, CellContextMenuEvent, SelectionChangedEvent, ColumnResizedEvent, ColumnMovedEvent, SortChangedEvent, RowClickedEvent, CellMouseDownEvent, CellMouseOverEvent, CellClickedEvent } from 'ag-grid-community';
 import { AgGridProvider, AgGridReact } from 'ag-grid-react';
 import 'ag-grid-community/styles/ag-grid.css';
 import 'ag-grid-community/styles/ag-theme-quartz.css';
@@ -412,6 +412,16 @@ const MatriculationAgGrid: React.FC<MatriculationAgGridProps> = ({
     }
   }, [gridApi, columnDefs]);
 
+  // When the user clicks the status/advertisement column (__status__),
+  // stop the event from propagating to onRowClicked so the row is not
+  // selected.  The Popover in the cell renderer handles showing the
+  // details; we just need to prevent the side-effect of selection.
+  const handleCellClicked = useCallback((event: CellClickedEvent<MatriculationRow>) => {
+    if (event.colDef.colId === '__status__') {
+      event.event?.stopPropagation();
+    }
+  }, []);
+
   // Sync selection from parent
   useEffect(() => {
     if (!gridApi) return;
@@ -447,6 +457,7 @@ const MatriculationAgGrid: React.FC<MatriculationAgGridProps> = ({
           onGridReady={onGridReady}
           onSelectionChanged={handleSelectionChanged}
           onRowClicked={handleRowClicked}
+          onCellClicked={handleCellClicked}
           onCellMouseDown={handleCellMouseDown}
           onCellMouseUp={handleCellMouseUp}
           onCellMouseOver={handleCellMouseOver}
