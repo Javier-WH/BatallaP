@@ -509,10 +509,10 @@ function repLocationCol(
     width,
     level,
     locations,
-    isEditable: isRepEditable,
+    // Always editable — the "Rep." columns edit whichever guardian is the
+    // active representative (mother, father or other).
     read: (row, lvl) => (getRepProfile(row)?.[GUARDIAN_LOCATION_FIELD[lvl]] as string) ?? '',
     mutate: (row, changes) => {
-      if (!isRepEditable(row)) return;
       const repType = row.tempData.representativeType;
       const parentKey = repType === 'mother' ? 'mother' : repType === 'father' ? 'father' : 'representative';
       const guardian = (row.tempData[parentKey] || {}) as GuardianProfile;
@@ -522,12 +522,13 @@ function repLocationCol(
       row.tempData[parentKey] = guardian;
     },
     write: (row, changes) => {
-      if (!isRepEditable(row)) return;
+      const repType = row.tempData.representativeType;
+      const parentKey = repType === 'mother' ? 'mother' : repType === 'father' ? 'father' : 'representative';
       const payload: Partial<GuardianProfile> = {};
       (Object.keys(changes) as LocationLevel[]).forEach(lvl => {
         (payload as Record<string, unknown>)[GUARDIAN_LOCATION_FIELD[lvl]] = changes[lvl];
       });
-      callbacks.onUpdateGuardianFields(row.id, 'representative', payload);
+      callbacks.onUpdateGuardianFields(row.id, parentKey, payload);
     },
   });
 }
