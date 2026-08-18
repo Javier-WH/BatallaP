@@ -509,7 +509,20 @@ const ManageGrades: React.FC = () => {
     }
   };
 
+  const contentIndexLabel = useMemo(() => {
+    const map = new Map<number, string>();
+    thematicComponents.forEach((comp, compIdx) => {
+      (comp.contents || []).forEach((content, contentIdx) => {
+        map.set(content.id, `${compIdx + 1}.${contentIdx + 1}`);
+      });
+    });
+    return map;
+  }, [thematicComponents]);
+
   const planColumns = [
+    { title: 'Descripción Breve', key: 'shortDescription', width: 180,
+      render: (_: unknown, r: EvaluationPlanItem) => r.shortDescription || <span style={{ color: '#999' }}>—</span>
+    },
     { title: 'Estrategia de Evaluación', key: 'description', width: 200,
       render: (_: unknown, r: EvaluationPlanItem) => <span style={{ fontWeight: 600 }}>{r.estrategiaCatalog?.name || r.description}</span>
     },
@@ -524,16 +537,8 @@ const ManageGrades: React.FC = () => {
         if (!r.thematicContents || r.thematicContents.length === 0) return <span style={{ color: '#999' }}>—</span>;
         return (
           <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12 }}>
-            {r.thematicContents.map((content, index) => (
-              <li key={content.id}>
-                <span style={{ fontWeight: 500 }}>{(() => {
-                  const componentIndex = thematicComponents.findIndex(component => component.id === content.thematicComponent?.id);
-                  const component = thematicComponents.find(component => component.id === content.thematicComponent?.id);
-                  const contentIndex = component?.contents?.findIndex(item => item.id === content.id) ?? -1;
-                  return componentIndex >= 0 && contentIndex >= 0 ? `${componentIndex + 1}.${contentIndex + 1}` : `${index + 1}`;
-                })()} {content.title}</span>
-                {content.thematicComponent && <span style={{ color: '#999', fontSize: 10 }}> ({content.thematicComponent.title})</span>}
-              </li>
+            {r.thematicContents.map(c => (
+              <li key={c.id}>{contentIndexLabel.get(c.id) ? `${contentIndexLabel.get(c.id)} ` : ''}{c.title}{c.thematicComponent ? <span style={{ color: '#999', fontSize: 10 }}> ({c.thematicComponent.title})</span> : null}</li>
             ))}
           </ul>
         );
@@ -578,8 +583,14 @@ const ManageGrades: React.FC = () => {
         <Space>
           {!isSelectedTermBlocked && (
             <>
-              <Button icon={<EditOutlined />} size="small" onClick={() => { setEditingItem(record); setShowPlanModal(true); }} />
-              <Button icon={<DeleteOutlined />} size="small" danger onClick={() => handleDeletePlanItem(record.id)} />
+              <Button
+                icon={<EditOutlined />}
+                onClick={() => {
+                  setEditingItem(record);
+                  setShowPlanModal(true);
+                }}
+              />
+              <Button icon={<DeleteOutlined />} danger onClick={() => handleDeletePlanItem(record.id)} />
             </>
           )}
         </Space>
@@ -736,39 +747,38 @@ const ManageGrades: React.FC = () => {
             items={[
               {
                 key: '1',
-                label: 'Plan de Evaluación',
+                label: <span className="font-bold text-[15px] px-4 py-1">Evaluaciones Programadas</span>,
                 children: (
-                  <>
+                  <div className="pt-4">
                     <Table
                       loading={loading}
                       columns={planColumns}
                       dataSource={evaluationPlan}
                       rowKey="id"
                       pagination={false}
-                      size="small"
                       bordered
-                      scroll={{ x: 1000 }}
-                      style={{ backgroundColor: 'var(--color-content-bg)' }}
+                      className="rounded-xl overflow-hidden"
+                      style={{ backgroundColor: 'var(--color-content-bg)', border: '1px solid rgba(15, 23, 42, 0.06)' }}
                     />
-                    {!isSelectedTermBlocked && selectedAssignment && (
-                      <div
-                        className="mt-4 w-full h-14 flex items-center justify-center rounded-xl transition-all cursor-pointer border-none shadow-sm hover:scale-[1.01]"
-                        style={{ 
-                          backgroundColor: 'var(--color-accent)',
-                          color: 'var(--color-header-text)' 
-                        }}
-                        onClick={() => {
-                          setEditingItem(null);
-                          setShowPlanModal(true);
-                        }}
-                      >
-                        <PlusOutlined className="text-3xl font-bold" />
-                      </div>
-                    )}
-                    <div className="mt-4 flex justify-end items-center px-2">
+
+                    <div
+                      className={`mt-4 w-full h-14 flex items-center justify-center rounded-xl transition-all cursor-pointer border-none shadow-sm ${isSelectedTermBlocked || !selectedAssignment ? 'opacity-50 pointer-events-none' : 'hover:scale-[1.01]'}`}
+                      style={{ backgroundColor: isSelectedTermBlocked || !selectedAssignment ? 'var(--color-inactive)' : 'var(--color-accent)',
+                        color: isSelectedTermBlocked || !selectedAssignment ? 'var(--color-text-main)' : 'var(--color-header-text)' }}
+                      onClick={() => {
+                        if(isSelectedTermBlocked || !selectedAssignment) return;
+                        setEditingItem(null);
+                        setShowPlanModal(true);
+                      }}
+                    >
+                      <PlusOutlined className="text-3xl font-bold" />
+                    </div>
+
+                    <div className="mt-6 flex justify-between items-center px-2">
+                      <span className="font-medium text-sm" style={{ color: 'var(--color-text-main)' }}>Mostrando {evaluationPlan.length} evaluaciones registradas</span>
                       <span className="font-black" style={{ color: 'var(--color-text-main)' }}>Total Puntaje Acumulado: {totalPercentage}%</span>
                     </div>
-                  </>
+                  </div>
                 )
               },
               {
