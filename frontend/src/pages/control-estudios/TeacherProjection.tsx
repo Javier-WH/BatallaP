@@ -22,6 +22,7 @@ const TeacherProjection: React.FC = () => {
   const [submitting, setSubmitting] = useState(false);
 
   const [selectedGradeId, setSelectedGradeId] = useState<number | null>(null);
+  const [selectedSectionIds, setSelectedSectionIds] = useState<number[]>([]);
 
   // guide teacher tab state
   const [allPeriods, setAllPeriods] = useState<SchoolPeriod[]>([]);
@@ -128,23 +129,41 @@ const TeacherProjection: React.FC = () => {
     setSelectedTeacher(teacher);
     setShowModal(true);
     form.resetFields();
+    setSelectedSectionIds([]);
   };
 
   const handleAssign = async (values: any) => {
+    if (selectedSectionIds.length === 0) {
+      message.warning('Seleccione al menos una sección');
+      return;
+    }
     setSubmitting(true);
     try {
-      // We need to find the correct PeriodGradeSubjectId
       const gradeStruct = availableStructure.find(gs => gs.id === values.gradeStructureId);
       const subjectObj = gradeStruct.subjects.find((s: any) => s.id === values.subjectId);
       const periodGradeSubjectId = subjectObj.PeriodGradeSubject.id;
 
-      await api.post('/teachers/assign', {
-        teacherId: selectedTeacher.id,
-        periodGradeSubjectId,
-        sectionId: values.sectionId
-      });
+      const results = await Promise.allSettled(
+        selectedSectionIds.map(sectionId =>
+          api.post('/teachers/assign', {
+            teacherId: selectedTeacher.id,
+            periodGradeSubjectId,
+            sectionId,
+          })
+        )
+      );
 
-      message.success('Materia asignada correctamente');
+      const fulfilled = results.filter(r => r.status === 'fulfilled').length;
+      const rejected = results.filter(r => r.status === 'rejected').length;
+
+      if (fulfilled > 0 && rejected === 0) {
+        message.success(`Materia asignada a ${fulfilled} sección${fulfilled > 1 ? 'es' : ''} correctamente`);
+      } else if (fulfilled > 0 && rejected > 0) {
+        message.warning(`Asignada en ${fulfilled} sección${fulfilled > 1 ? 'es' : ''}, falló en ${rejected}`);
+      } else {
+        message.error('Error al asignar materia en todas las secciones');
+      }
+
       setShowModal(false);
       fetchData();
     } catch (error: any) {
@@ -358,7 +377,8 @@ const TeacherProjection: React.FC = () => {
               placeholder="Seleccione Grado"
               onChange={(val) => {
                 setSelectedGradeId(val);
-                form.setFieldsValue({ sectionId: undefined, subjectId: undefined });
+                setSelectedSectionIds([]);
+                form.setFieldsValue({ subjectId: undefined });
               }}
             >
               {availableStructure.map(gs => (
@@ -367,12 +387,28 @@ const TeacherProjection: React.FC = () => {
             </Select>
           </Form.Item>
 
-          <Form.Item name="sectionId" label="Sección" rules={[{ required: true }]}>
-            <Select placeholder="Seleccione Sección" disabled={!selectedGradeId}>
-              {availableStructure.find(gs => gs.id === selectedGradeId)?.sections.map((sec: any) => (
-                <Option key={sec.id} value={sec.id}>{sec.name}</Option>
-              ))}
-            </Select>
+          <Form.Item label="Sección" required>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              {[...(availableStructure.find(gs => gs.id === selectedGradeId)?.sections || [])].sort((a: any, b: any) => a.name.localeCompare(b.name, 'es')).map((sec: any) => {
+                const selected = selectedSectionIds.includes(sec.id);
+                return (
+                  <Button
+                    key={sec.id}
+                    type={selected ? 'primary' : 'default'}
+                    disabled={!selectedGradeId}
+                    onClick={() => {
+                      setSelectedSectionIds(prev =>
+                        prev.includes(sec.id)
+                          ? prev.filter(id => id !== sec.id)
+                          : [...prev, sec.id]
+                      );
+                    }}
+                  >
+                    {sec.name}
+                  </Button>
+                );
+              }) || <span style={{ color: '#999' }}>Seleccione un grado primero</span>}
+            </div>
           </Form.Item>
 
           <Form.Item name="subjectId" label="Materia" rules={[{ required: true }]}>
