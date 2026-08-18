@@ -1215,51 +1215,47 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
               )}
             </div>
 
-            {/* Nivel 2: Año */}
-            {selectedSubjectId && (
-              <div className="flex gap-2 mt-3 w-full">
-                {availableGrades.map(g => {
-                  const isSelected = g.id === selectedGradeId;
-                  return (
-                    <button
-                      key={g.id}
-                      onClick={() => {
-                        setSelectedGradeId(g.id);
-                      }}
-                      className="flex-1 py-2.5 text-sm font-bold rounded-lg transition-all border-none cursor-pointer"
-                      style={{
-                        backgroundColor: isSelected ? 'var(--color-accent)' : 'var(--color-inactive)',
-                        color: isSelected ? 'var(--color-header-text)' : 'var(--color-text-main)',
-                      }}
-                    >
-                      {g.name}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
+            {/* Nivel 2: Año — altura fija para evitar layout shift */}
+            <div className="flex gap-2 mt-3 w-full" style={{ minHeight: 40 }}>
+              {selectedSubjectId && availableGrades.map(g => {
+                const isSelected = g.id === selectedGradeId;
+                return (
+                  <button
+                    key={g.id}
+                    onClick={() => {
+                      setSelectedGradeId(g.id);
+                    }}
+                    className="flex-1 py-2.5 text-sm font-bold rounded-lg transition-all border-none cursor-pointer"
+                    style={{
+                      backgroundColor: isSelected ? 'var(--color-accent)' : 'var(--color-inactive)',
+                      color: isSelected ? 'var(--color-header-text)' : 'var(--color-text-main)',
+                    }}
+                  >
+                    {g.name}
+                  </button>
+                );
+              })}
+            </div>
 
-            {/* Nivel 3: Sección */}
-            {selectedGradeId && (
-              <div className="flex gap-2 mt-2 w-full">
-                {availableSections.map(sec => {
-                  const isSelected = sec.assignmentId === selectedAssignmentId;
-                  return (
-                    <button
-                      key={sec.assignmentId}
-                      onClick={() => setSelectedAssignmentId(sec.assignmentId)}
-                      className="flex-1 py-2.5 text-sm font-bold rounded-lg transition-all border-none cursor-pointer"
-                      style={{
-                        backgroundColor: isSelected ? 'var(--color-accent)' : 'var(--color-inactive)',
-                        color: isSelected ? 'var(--color-header-text)' : 'var(--color-text-main)',
-                      }}
-                    >
-                      {sec.sectionName}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
+            {/* Nivel 3: Sección — altura fija para evitar layout shift */}
+            <div className="flex gap-2 mt-2 w-full" style={{ minHeight: 40 }}>
+              {selectedGradeId && availableSections.map(sec => {
+                const isSelected = sec.assignmentId === selectedAssignmentId;
+                return (
+                  <button
+                    key={sec.assignmentId}
+                    onClick={() => setSelectedAssignmentId(sec.assignmentId)}
+                    className="flex-1 py-2.5 text-sm font-bold rounded-lg transition-all border-none cursor-pointer"
+                    style={{
+                      backgroundColor: isSelected ? 'var(--color-accent)' : 'var(--color-inactive)',
+                      color: isSelected ? 'var(--color-header-text)' : 'var(--color-text-main)',
+                    }}
+                  >
+                    {sec.sectionName}
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           {/* Lazos */}
