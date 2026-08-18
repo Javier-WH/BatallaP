@@ -1315,9 +1315,9 @@ export const exportPlanningExcel = async (req: Request, res: Response) => {
 
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet('Planificación');
-    const planningLogoPath = path.resolve(process.cwd(), 'public', 'uploads', 'images', 'LogoMinisterio_H.svg');
+    const planningLogoPath = path.resolve(process.cwd(), 'public', 'uploads', 'images', 'Logo_ME_Batalla_H.png');
     const planningLogoId = fs.existsSync(planningLogoPath)
-      ? workbook.addImage({ filename: planningLogoPath, extension: 'svg' as 'png' })
+      ? workbook.addImage({ filename: planningLogoPath, extension: 'png' })
       : null;
     const border = { style: 'thin' as const, color: { argb: 'FF666666' } };
     const tableSeparator = { style: 'medium' as const, color: { argb: 'FF333333' } };
