@@ -47,7 +47,12 @@ const TeacherProjection: React.FC = () => {
 
       if (active) {
         const structRes = await api.get(`/academic/structure/${active.id}`);
-        setAvailableStructure(structRes.data);
+        setAvailableStructure((structRes.data as any[]).slice().sort((a, b) => {
+          const orderA = a.grade?.order ?? 0;
+          const orderB = b.grade?.order ?? 0;
+          if (orderA !== orderB) return orderA - orderB;
+          return (a.grade?.name || '').localeCompare(b.grade?.name || '', 'es');
+        }));
       }
     } catch (error) {
       console.error(error);
