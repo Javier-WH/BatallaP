@@ -1177,7 +1177,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
               onTouchMove={dragScroll.onTouchMove}
               onTouchEnd={dragScroll.onTouchEnd}
               className="flex gap-2.5 overflow-x-auto pb-2 shrink-0 drag-scroll-container"
-              style={{ minHeight: 64, cursor: 'grab', scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+              style={{ minHeight: 64, cursor: 'grab', scrollbarWidth: 'none', msOverflowStyle: 'none', userSelect: 'none', WebkitUserSelect: 'none' }}
             >
               {availableSubjects.map(s => {
                 const isSelected = s.id === selectedSubjectId;

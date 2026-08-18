@@ -22,6 +22,8 @@ export function useDragScroll<T extends HTMLElement>() {
   const onMouseDown = useCallback((e: React.MouseEvent) => {
     const el = ref.current;
     if (!el) return;
+    // Prevent text selection / image dragging when starting a drag
+    e.preventDefault();
     state.current.isDown = true;
     state.current.dragged = false;
     state.current.startX = e.pageX - el.offsetLeft;
