@@ -1646,16 +1646,34 @@ const AcademicManagement: React.FC = () => {
                     >
                       <div style={{ padding: '0 8px' }}>
                         <Form form={subjectCatalogForm} layout="inline" onFinish={async (v) => {
-                          await api.post('/academic/subjects', v);
+                          await api.post('/academic/subjects', {
+                            ...v,
+                            subjectGroupId: v.subjectGroupId ?? null,
+                            usesLiteralGrades: v.usesLiteralGrades ?? false,
+                          });
                           message.success('Materia registrada');
                           subjectCatalogForm.resetFields();
                           fetchAll();
                         }} style={{ marginBottom: 20 }}>
-                          <Form.Item name="name" rules={[{ required: true }]} style={{ width: 280 }}>
+                          <Form.Item name="name" rules={[{ required: true }]} style={{ width: 220 }}>
                             <Input placeholder="Nombre de la materia" size="middle" style={{ borderRadius: 8 }} />
                           </Form.Item>
-                          <Form.Item name="abbreviation" style={{ width: 120 }}>
+                          <Form.Item name="abbreviation" style={{ width: 100 }}>
                             <Input placeholder="Abrev." size="middle" style={{ borderRadius: 8 }} maxLength={10} />
+                          </Form.Item>
+                          <Form.Item name="subjectGroupId" style={{ width: 180 }}>
+                            <Select
+                              placeholder="Grupo (opcional)"
+                              size="middle"
+                              style={{ borderRadius: 8 }}
+                              allowClear
+                              showSearch
+                              optionFilterProp="label"
+                              options={subjectGroups.map((g) => ({ label: g.name, value: g.id }))}
+                            />
+                          </Form.Item>
+                          <Form.Item name="usesLiteralGrades" valuePropName="checked">
+                            <Checkbox>Literales</Checkbox>
                           </Form.Item>
                           <Button type="primary" htmlType="submit" icon={<PlusOutlined />} style={{ borderRadius: 8, height: 32 }}>Crear Materia</Button>
                           <Button
