@@ -7,8 +7,11 @@ import {
   CalendarOutlined,
   UserOutlined,
   CheckCircleOutlined,
-  WarningOutlined
+  WarningOutlined,
+  FileExcelOutlined
 } from '@ant-design/icons';
+import ExcelJS from 'exceljs';
+import { saveAs } from 'file-saver';
 import api from '@/services/api';
 import { useGradeRounding } from '@/context/GradeRoundingContext';
 import { formatGrade } from '@/utils/gradeFormat';
@@ -70,6 +73,7 @@ const CourseCouncil: React.FC = () => {
   const [step, setStep] = useState(0); // 0: Term, 1: Section, 2: Data
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [exportingExcel, setExportingExcel] = useState(false);
 
   const [terms, setTerms] = useState<Term[]>([]);
   const [structure, setStructure] = useState<PeriodGradeStructure[]>([]);
@@ -679,6 +683,116 @@ const CourseCouncil: React.FC = () => {
       firstSubPrevTerms.forEach(pt => prevTermNames.push({ termId: pt.termId, termName: pt.termName }));
     }
 
+    const handleExportExcel = async () => {
+      if (studentsData.length === 0) return;
+      setExportingExcel(true);
+
+      try {
+        const workbook = new ExcelJS.Workbook();
+        workbook.creator = 'BatallaProject';
+        workbook.created = new Date();
+        const worksheet = workbook.addWorksheet('Consejo de Curso', {
+          views: [{ state: 'frozen', xSplit: 3, ySplit: 2 }]
+        });
+
+        const fixedHeaders = ['Estudiante', 'Documento', 'Promedio'];
+        const leafHeaders: string[] = [...fixedHeaders];
+        const groupRanges: { title: string; start: number; end: number }[] = [
+          { title: 'Información del estudiante', start: 1, end: fixedHeaders.length }
+        ];
+
+        columnDefinitions.forEach(colDef => {
+          const start = leafHeaders.length + 1;
+          if (showPreviousTerms) {
+            prevTermNames.forEach(pt => {
+              leafHeaders.push(`${pt.termName} - Nota`, `${pt.termName} - Puntos`);
+            });
+          }
+          leafHeaders.push('Nota base', 'Puntos consejo', 'Nota final');
+          groupRanges.push({ title: colDef.title, start, end: leafHeaders.length });
+        });
+
+        const topRow = worksheet.addRow([]);
+        const headerRow = worksheet.addRow(leafHeaders);
+        groupRanges.forEach(range => {
+          topRow.getCell(range.start).value = range.title;
+          worksheet.mergeCells(1, range.start, 1, range.end);
+        });
+
+        const getSubject = (student: CouncilStudent, colDef: typeof columnDefinitions[number]) => (
+          colDef.groupId
+            ? student.subjects.find(subject => subject.groupId === colDef.groupId)
+            : student.subjects.find(subject => subject.id === colDef.subjectId)
+        );
+        const averageOf = (student: CouncilStudent) => {
+          const total = student.subjects.reduce((sum, subject) => sum + (subject.grade || 0) + (subject.points || 0), 0);
+          return student.subjects.length > 0 ? total / student.subjects.length : 0;
+        };
+
+        studentsData.forEach(student => {
+          const row: (string | number)[] = [
+            student.studentName,
+            `${student.documentType === 'Venezolano' ? 'V' : student.documentType === 'Extranjero' ? 'E' : student.documentType === 'Pasaporte' ? 'P' : 'CE'}-${student.studentDni}`,
+            formatGrade(averageOf(student), enableRounding),
+          ];
+
+          columnDefinitions.forEach(colDef => {
+            const subject = getSubject(student, colDef);
+            if (showPreviousTerms) {
+              prevTermNames.forEach(pt => {
+                const previous = subject?.previousTermsData?.find(item => item.termId === pt.termId);
+                row.push(
+                  previous ? formatGrade(previous.finalGrade, enableRounding) : '-',
+                  previous?.councilPoints ?? 0,
+                );
+              });
+            }
+
+            const baseGrade = subject?.grade ?? 0;
+            const points = subject?.points ?? 0;
+            row.push(
+              subject ? formatGrade(baseGrade, enableRounding) : '-',
+              points,
+              subject ? formatGrade(Math.round((baseGrade + points) * 100) / 100, enableRounding) : '-',
+            );
+          });
+          worksheet.addRow(row);
+        });
+
+        const headerFill = { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: 'D9EAF7' } };
+        const subHeaderFill = { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: 'F3F6F9' } };
+        topRow.eachCell(cell => {
+          cell.fill = headerFill;
+          cell.font = { bold: true, color: { argb: '17324D' } };
+          cell.alignment = { horizontal: 'center', vertical: 'middle' };
+        });
+        headerRow.eachCell(cell => {
+          cell.fill = subHeaderFill;
+          cell.font = { bold: true, color: { argb: '40566B' } };
+          cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+          cell.border = { bottom: { style: 'thin', color: { argb: 'B8C7D3' } } };
+        });
+        topRow.height = 24;
+        headerRow.height = 32;
+
+        worksheet.columns.forEach((column, index) => {
+          column.width = index < 2 ? 24 : index === 2 ? 12 : 14;
+        });
+        worksheet.autoFilter = { from: { row: 2, column: 1 }, to: { row: 2, column: leafHeaders.length } };
+
+        const buffer = await workbook.xlsx.writeBuffer();
+        const gradeName = selectedSection?.grade.name?.replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ_-]+/g, '_') || 'grado';
+        const sectionName = selectedSection?.section.name?.replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ_-]+/g, '_') || 'seccion';
+        saveAs(new Blob([buffer]), `consejo_curso_${gradeName}_${sectionName}.xlsx`);
+        message.success('Reporte de consejo de curso generado correctamente');
+      } catch (error) {
+        console.error('Error generando reporte de consejo de curso:', error);
+        message.error('No se pudo generar el reporte de consejo de curso');
+      } finally {
+        setExportingExcel(false);
+      }
+    };
+
     const columns = [
       {
         title: 'Estudiante',
@@ -951,6 +1065,24 @@ const CourseCouncil: React.FC = () => {
                 style={{ borderRadius: 14, padding: '4px 16px' }}
               />
             )}
+            <Button
+              type="default"
+              size="large"
+              icon={<FileExcelOutlined />}
+              onClick={handleExportExcel}
+              loading={exportingExcel}
+              disabled={studentsData.length === 0}
+              style={{
+                borderRadius: 14,
+                fontWeight: 800,
+                height: 52,
+                padding: '0 24px',
+                color: '#217346',
+                borderColor: '#b7d7c0'
+              }}
+            >
+              Generar Excel
+            </Button>
             <Button
               type="primary"
               size="large"
