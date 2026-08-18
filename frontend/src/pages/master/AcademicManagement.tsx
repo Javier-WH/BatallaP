@@ -1383,6 +1383,8 @@ const AcademicManagement: React.FC = () => {
                               placeholder="+ Vincular Materia"
                               style={{ width: 180 }}
                               bordered={false}
+                              showSearch
+                              optionFilterProp="label"
                               onChange={(val) => handleAddSubjectToGrade(item.id, val)}
                               options={subjects
                                 .filter((s) => !item.subjects?.some((is: Subject) => is.id === s.id))
