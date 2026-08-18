@@ -1552,20 +1552,6 @@ const MatriculationEnrollment: React.FC = () => {
                 </Col>
                 <Col>
                   <Select
-                    placeholder="Escolaridad"
-                    size="small"
-                    style={{ width: 140 }}
-                    allowClear
-                    value={filterEscolaridad}
-                    onChange={setFilterEscolaridad}
-                  >
-                    <Option value="regular">Regular</Option>
-                    <Option value="repitiente">Repitiente</Option>
-                    <Option value="materia_pendiente">Materia pendiente</Option>
-                  </Select>
-                </Col>
-                <Col>
-                  <Select
                     placeholder="Sección"
                     size="small"
                     style={{ width: 100 }}
@@ -1590,6 +1576,20 @@ const MatriculationEnrollment: React.FC = () => {
                   >
                     <Option value="M">Masc</Option>
                     <Option value="F">Fem</Option>
+                  </Select>
+                </Col>
+                <Col>
+                  <Select
+                    placeholder="Escolaridad"
+                    size="small"
+                    style={{ width: 140 }}
+                    allowClear
+                    value={filterEscolaridad}
+                    onChange={setFilterEscolaridad}
+                  >
+                    <Option value="regular">Regular</Option>
+                    <Option value="repitiente">Repitiente</Option>
+                    <Option value="materia_pendiente">Materia pendiente</Option>
                   </Select>
                 </Col>
                 <Col>

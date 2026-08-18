@@ -871,6 +871,7 @@ const CourseCouncil: React.FC = () => {
           ),
           key: colDef.key,
           align: 'center' as const,
+          width: children.reduce((sum, c) => sum + (c.width || 0), 0),
           onHeaderCell: () => ({ style: { borderLeft: '3px solid #d9d9d9' } }),
           children,
         };
@@ -1030,6 +1031,27 @@ const CourseCouncil: React.FC = () => {
             .premium-input-number:hover, .premium-input-number-focused {
               border-color: #1890ff !important;
               box-shadow: 0 0 0 2px rgba(24,144,255,0.1) !important;
+            }
+            /* Fixed columns: solid background + high z-index so scrollable
+               columns behind stay hidden when row is hovered.
+               Use !important and high-specificity selectors to override
+               Ant Design's built-in fixed cell background. */
+            .council-table-premium .ant-table-tbody .ant-table-cell-fix {
+              z-index: 3 !important;
+              background-color: #ffffff !important;
+            }
+            .council-table-premium .ant-table-tbody tr.row-even .ant-table-cell-fix {
+              background-color: #fafbfc !important;
+            }
+            .council-table-premium .ant-table-tbody tr.row-odd .ant-table-cell-fix {
+              background-color: #ffffff !important;
+            }
+            .council-table-premium .ant-table-tbody tr:hover .ant-table-cell-fix {
+              background-color: #f0f7ff !important;
+            }
+            .council-table-premium .ant-table-thead .ant-table-cell-fix {
+              z-index: 5 !important;
+              background-color: #fafafa !important;
             }
           `}</style>
           <Table
