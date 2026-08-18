@@ -878,6 +878,8 @@ const CourseCouncil: React.FC = () => {
       })
     ];
 
+    const tableWidth = columns.reduce((sum, column) => sum + (column.width || 0), 0);
+
     return (
       <div style={{ padding: '0px 0' }} className="animate-card">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 32 }}>
@@ -1059,9 +1061,10 @@ const CourseCouncil: React.FC = () => {
             columns={columns}
             rowKey="id"
             pagination={false}
-            scroll={{ x: 'max-content', y: 'calc(100vh - 420px)' }}
+            scroll={{ x: tableWidth + 1, y: 'calc(100vh - 420px)' }}
             size="middle"
             bordered
+            tableLayout="fixed"
             className="council-table-premium"
             rowClassName={(_, index) => index % 2 === 0 ? 'row-odd' : 'row-even'}
           />
