@@ -455,16 +455,16 @@ export const getSubjects = async (req: Request, res: Response) => {
 };
 
 export const createSubject = async (req: Request, res: Response) => {
-  const { name, subjectGroupId, usesLiteralGrades, abbreviation } = req.body as { name: string; subjectGroupId?: number | null; usesLiteralGrades?: boolean; abbreviation?: string | null };
-  const subject = await Subject.create({ name, subjectGroupId: subjectGroupId ?? null, usesLiteralGrades: usesLiteralGrades ?? false, abbreviation: abbreviation ?? null });
+  const { name, subjectGroupId, usesLiteralGrades, abbreviation, icon, color } = req.body as { name: string; subjectGroupId?: number | null; usesLiteralGrades?: boolean; abbreviation?: string | null; icon?: string | null; color?: string | null };
+  const subject = await Subject.create({ name, subjectGroupId: subjectGroupId ?? null, usesLiteralGrades: usesLiteralGrades ?? false, abbreviation: abbreviation ?? null, icon: icon ?? null, color: color ?? null });
   res.json(subject);
 };
 
 export const updateSubject = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { name, subjectGroupId, usesLiteralGrades, abbreviation } = req.body as { name?: string; subjectGroupId?: number | null; usesLiteralGrades?: boolean; abbreviation?: string | null };
-    await Subject.update({ name, subjectGroupId: subjectGroupId ?? null, usesLiteralGrades: usesLiteralGrades ?? false, abbreviation: abbreviation ?? null }, { where: { id } });
+    const { name, subjectGroupId, usesLiteralGrades, abbreviation, icon, color } = req.body as { name?: string; subjectGroupId?: number | null; usesLiteralGrades?: boolean; abbreviation?: string | null; icon?: string | null; color?: string | null };
+    await Subject.update({ name, subjectGroupId: subjectGroupId ?? null, usesLiteralGrades: usesLiteralGrades ?? false, abbreviation: abbreviation ?? null, icon: icon ?? null, color: color ?? null }, { where: { id } });
     res.json({ message: 'Subject updated' });
   } catch (error) {
     console.error('[updateSubject] Error:', error);

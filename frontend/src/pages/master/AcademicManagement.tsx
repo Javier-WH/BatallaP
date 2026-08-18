@@ -19,7 +19,8 @@ import {
   Collapse,
   Typography,
   Tooltip,
-  Empty
+  Empty,
+  ColorPicker
 } from 'antd';
 import {
   PlusOutlined,
@@ -60,6 +61,29 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import {
+  SUBJECT_ICONS,
+  SUBJECT_ICON_LABELS,
+  SUBJECT_COLORS,
+  getSubjectVisual,
+  withAlpha,
+} from '@/utils/subjectVisuals';
+
+/**
+ * ColorPicker returns a Color object (or null when cleared); the API expects a
+ * hex string or null.
+ */
+const normalizeColorValue = (value: unknown): string | null => {
+  if (!value) return null;
+  if (typeof value === 'string') return value;
+  const toHex = (value as { toHexString?: () => string }).toHexString;
+  return typeof toHex === 'function' ? toHex.call(value) : null;
+};
+
+const subjectIconOptions = Object.keys(SUBJECT_ICONS).map(name => ({
+  value: name,
+  label: SUBJECT_ICON_LABELS[name] || name,
+}));
 
 // Context for passing drag listeners to the drag handle cell
 interface RowContextProps {
@@ -105,6 +129,8 @@ interface Subject extends BaseCatalogItem {
   subjectGroupId?: number | null;
   subjectGroup?: SubjectGroup | null;
   usesLiteralGrades?: boolean;
+  icon?: string | null;
+  color?: string | null;
 }
 
 type Specialization = BaseCatalogItem;
@@ -907,6 +933,8 @@ const AcademicManagement: React.FC = () => {
         abbreviation: subjectRecord.abbreviation ?? null,
         subjectGroupId: subjectRecord.subjectGroupId ?? null,
         usesLiteralGrades: subjectRecord.usesLiteralGrades ?? false,
+        icon: subjectRecord.icon ?? null,
+        color: subjectRecord.color ?? null,
       });
     } else {
       editCatalogForm.setFieldsValue({ name: record.name });
@@ -914,7 +942,7 @@ const AcademicManagement: React.FC = () => {
     setEditCatalogVisible(true);
   };
 
-  const handleEditCatalog = async (values: { name: string; isDiversified?: boolean; subjectGroupId?: number | null; usesLiteralGrades?: boolean; abbreviation?: string | null }) => {
+  const handleEditCatalog = async (values: { name: string; isDiversified?: boolean; subjectGroupId?: number | null; usesLiteralGrades?: boolean; abbreviation?: string | null; icon?: string | null; color?: unknown }) => {
     if (!editCatalogTarget) return;
     console.log('[handleEditCatalog] Form values:', values);
     try {
@@ -937,6 +965,8 @@ const AcademicManagement: React.FC = () => {
           abbreviation: values.abbreviation ?? null,
           subjectGroupId: values.subjectGroupId ?? null,
           usesLiteralGrades: values.usesLiteralGrades ?? false,
+          icon: values.icon ?? null,
+          color: normalizeColorValue(values.color),
         });
       } else {
         await api.put(`${url}/${editCatalogTarget.id}`, { name: values.name });
@@ -1003,21 +1033,42 @@ const AcademicManagement: React.FC = () => {
         }
         if (type === 'subject') {
           const subjectRecord = record as Subject;
+          const { Icon, color } = getSubjectVisual(subjectRecord);
+          const isCustom = !!(subjectRecord.icon || subjectRecord.color);
           return (
-            <Space size="middle" direction="vertical" style={{ gap: 0 }}>
-              <Space size="small">
-                <Text style={{ fontWeight: 700, color: '#262626', fontSize: 15 }}>{text}</Text>
-                {subjectRecord.abbreviation && (
-                  <Tag color="cyan" style={{ borderRadius: 4, fontWeight: 700, border: 'none', fontSize: 10, margin: 0 }}>
-                    {subjectRecord.abbreviation}
+            <Space size="middle" align="start">
+              <Tooltip title={isCustom ? 'Icono personalizado' : 'Icono automático según el nombre'}>
+                <div
+                  style={{
+                    width: 34,
+                    height: 34,
+                    borderRadius: 9,
+                    backgroundColor: withAlpha(color, 0.12),
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                    border: isCustom ? `1px solid ${withAlpha(color, 0.45)}` : '1px dashed rgba(15,23,42,0.15)',
+                  }}
+                >
+                  <Icon style={{ color, fontSize: 16 }} />
+                </div>
+              </Tooltip>
+              <Space size="middle" direction="vertical" style={{ gap: 0 }}>
+                <Space size="small">
+                  <Text style={{ fontWeight: 700, color: '#262626', fontSize: 15 }}>{text}</Text>
+                  {subjectRecord.abbreviation && (
+                    <Tag color="cyan" style={{ borderRadius: 4, fontWeight: 700, border: 'none', fontSize: 10, margin: 0 }}>
+                      {subjectRecord.abbreviation}
+                    </Tag>
+                  )}
+                </Space>
+                {subjectRecord.subjectGroup && (
+                  <Tag color="processing" style={{ borderRadius: 4, fontWeight: 600, border: 'none', fontSize: 10, margin: 0 }}>
+                    <ProjectOutlined style={{ marginRight: 4 }} /> {subjectRecord.subjectGroup.name.toUpperCase()}
                   </Tag>
                 )}
               </Space>
-              {subjectRecord.subjectGroup && (
-                <Tag color="processing" style={{ borderRadius: 4, fontWeight: 600, border: 'none', fontSize: 10, margin: 0 }}>
-                  <ProjectOutlined style={{ marginRight: 4 }} /> {subjectRecord.subjectGroup.name.toUpperCase()}
-                </Tag>
-              )}
             </Space>
           );
         }
@@ -1650,6 +1701,8 @@ const AcademicManagement: React.FC = () => {
                             ...v,
                             subjectGroupId: v.subjectGroupId ?? null,
                             usesLiteralGrades: v.usesLiteralGrades ?? false,
+                            icon: v.icon ?? null,
+                            color: normalizeColorValue(v.color),
                           });
                           message.success('Materia registrada');
                           subjectCatalogForm.resetFields();
@@ -1670,6 +1723,23 @@ const AcademicManagement: React.FC = () => {
                               showSearch
                               optionFilterProp="label"
                               options={subjectGroups.map((g) => ({ label: g.name, value: g.id }))}
+                            />
+                          </Form.Item>
+                          <Form.Item name="icon" style={{ width: 170 }}>
+                            <Select
+                              placeholder="Icono (auto)"
+                              size="middle"
+                              allowClear
+                              showSearch
+                              optionFilterProp="label"
+                              options={subjectIconOptions}
+                            />
+                          </Form.Item>
+                          <Form.Item name="color" style={{ marginRight: 8 }}>
+                            <ColorPicker
+                              presets={[{ label: 'Sugeridos', colors: SUBJECT_COLORS }]}
+                              allowClear
+                              format="hex"
                             />
                           </Form.Item>
                           <Form.Item name="usesLiteralGrades" valuePropName="checked">
@@ -1881,6 +1951,30 @@ const AcademicManagement: React.FC = () => {
                     options={subjectGroups.map((g) => ({ label: g.name, value: g.id }))}
                   />
                 </Form.Item>
+                <Row gutter={12}>
+                  <Col span={16}>
+                    <Form.Item name="icon" label={<Text style={{ fontWeight: 700 }}>Icono</Text>} extra="Si se deja vacío se asigna automáticamente según el nombre.">
+                      <Select
+                        allowClear
+                        showSearch
+                        optionFilterProp="label"
+                        placeholder="Automático"
+                        size="large"
+                        options={subjectIconOptions}
+                      />
+                    </Form.Item>
+                  </Col>
+                  <Col span={8}>
+                    <Form.Item name="color" label={<Text style={{ fontWeight: 700 }}>Color</Text>}>
+                      <ColorPicker
+                        presets={[{ label: 'Sugeridos', colors: SUBJECT_COLORS }]}
+                        allowClear
+                        format="hex"
+                        size="large"
+                      />
+                    </Form.Item>
+                  </Col>
+                </Row>
                 <Form.Item name="usesLiteralGrades" valuePropName="checked" style={{ marginBottom: 24 }}>
                   <Checkbox>Usar Notas Literales (A, B, C...)</Checkbox>
                 </Form.Item>

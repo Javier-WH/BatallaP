@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Card, Tabs, Table, Button, message, Tag, Typography, Alert, Empty, Spin, Space, Dropdown, Modal, Descriptions, Input, Select, Tooltip } from 'antd';
-import { BookOutlined, UserOutlined, ArrowLeftOutlined, DownloadOutlined, FilePdfOutlined, EditOutlined, DeleteOutlined, PlusOutlined, HistoryOutlined } from '@ant-design/icons';
+import { BookOutlined, ArrowLeftOutlined, DownloadOutlined, FilePdfOutlined, EditOutlined, DeleteOutlined, PlusOutlined, HistoryOutlined } from '@ant-design/icons';
 import api from '@/services/api';
 import dayjs from 'dayjs';
 import { useGradeRounding } from '@/context/GradeRoundingContext';
@@ -8,6 +8,7 @@ import { formatGrade } from '@/utils/gradeFormat';
 import EvaluationPlanPDFModal from '@/components/pdf/EvaluationPlanPDFModal';
 import type { EvaluationPlanHeaderData } from '@/components/pdf/EvaluationPlanPDF';
 import EvaluationPlanItemModal, { type CatalogOption } from '@/components/EvaluationPlanItemModal';
+import { getSubjectVisual, withAlpha } from '@/utils/subjectVisuals';
 
 const { Title, Text } = Typography;
 
@@ -53,7 +54,7 @@ interface Assignment {
   periodGradeSubject: {
     id: number;
     order?: number | null;
-    subject: { id: number; name: string };
+    subject: { id: number; name: string; icon?: string | null; color?: string | null };
     periodGrade: {
       id: number;
       grade: { id: number; name: string; order: number };
@@ -713,33 +714,93 @@ const ManageGrades: React.FC = () => {
                 <div key={group.gradeName} className="mb-6">
                   <div className="flex items-center gap-2 mb-3">
                     <BookOutlined style={{ color: 'var(--color-brand-primary)' }} />
-                    <Title level={5} style={{ margin: 0, color: 'var(--color-text-main)' }}>
+                    <Title level={5} style={{ margin: 0, color: 'var(--color-text-main)', whiteSpace: 'nowrap' }}>
                       {group.gradeName}
                     </Title>
+                    <div style={{ flex: 1, height: 1, backgroundColor: 'rgba(15, 23, 42, 0.08)' }} />
                   </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                    {group.assignments.map((a) => (
-                      <Card
-                        key={a.id}
-                        hoverable
-                        size="small"
-                        onClick={() => handleSelectAssignment(a)}
-                        style={{ cursor: 'pointer', backgroundColor: 'var(--color-content-bg)' }}
-                      >
-                        <div className="flex flex-col gap-1">
-                          <div className="flex items-center justify-between">
-                            <Tag color="blue">{a.section.name}</Tag>
-                            <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-main)' }}>
-                              {formatSubjectName(a.periodGradeSubject.subject.name)}
-                            </span>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                    {group.assignments.map((a) => {
+                      const { Icon, color } = getSubjectVisual(a.periodGradeSubject.subject);
+                      return (
+                        <Card
+                          key={a.id}
+                          hoverable
+                          size="small"
+                          onClick={() => handleSelectAssignment(a)}
+                          style={{
+                            cursor: 'pointer',
+                            backgroundColor: 'var(--color-content-bg)',
+                            borderRadius: 12,
+                            border: '1px solid rgba(15, 23, 42, 0.08)',
+                          }}
+                          styles={{ body: { padding: '12px 14px' } }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+                            <div
+                              style={{
+                                width: 38,
+                                height: 38,
+                                borderRadius: 10,
+                                backgroundColor: withAlpha(color, 0.12),
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                flexShrink: 0,
+                              }}
+                            >
+                              <Icon style={{ color, fontSize: 18 }} />
+                            </div>
+                            <div style={{ minWidth: 0, flex: 1 }}>
+                              <div
+                                style={{
+                                  fontSize: 9,
+                                  fontWeight: 800,
+                                  letterSpacing: '0.06em',
+                                  textTransform: 'uppercase',
+                                  color,
+                                  backgroundColor: withAlpha(color, 0.1),
+                                  display: 'inline-block',
+                                  padding: '1px 6px',
+                                  borderRadius: 4,
+                                  marginBottom: 4,
+                                }}
+                              >
+                                Sección {a.section.name}
+                              </div>
+                              <div
+                                style={{
+                                  fontSize: 13,
+                                  fontWeight: 700,
+                                  lineHeight: 1.25,
+                                  color: 'var(--color-text-main)',
+                                }}
+                              >
+                                {formatSubjectName(a.periodGradeSubject.subject.name)}
+                              </div>
+                              <div
+                                style={{
+                                  fontSize: 10,
+                                  fontWeight: 600,
+                                  letterSpacing: '0.02em',
+                                  textTransform: 'uppercase',
+                                  color: 'var(--color-text-muted)',
+                                  marginTop: 3,
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap',
+                                }}
+                                title={`${a.teacher?.firstName || ''} ${a.teacher?.lastName || ''}`.trim()}
+                              >
+                                {a.teacher
+                                  ? `${a.teacher.firstName} ${a.teacher.lastName}`
+                                  : 'Sin profesor asignado'}
+                              </div>
+                            </div>
                           </div>
-                          <div className="flex items-center gap-1" style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>
-                            <UserOutlined />
-                            <span>{a.teacher?.firstName} {a.teacher?.lastName}</span>
-                          </div>
-                        </div>
-                      </Card>
-                    ))}
+                        </Card>
+                      );
+                    })}
                   </div>
                 </div>
               ))

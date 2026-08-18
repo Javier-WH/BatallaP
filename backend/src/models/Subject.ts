@@ -7,6 +7,8 @@ interface SubjectAttributes {
   abbreviation?: string | null;
   subjectGroupId?: number | null;
   usesLiteralGrades?: boolean;
+  icon?: string | null;
+  color?: string | null;
 }
 
 interface SubjectCreationAttributes extends Optional<SubjectAttributes, 'id'> { }
@@ -17,6 +19,8 @@ class Subject extends Model<SubjectAttributes, SubjectCreationAttributes> implem
   public abbreviation!: string | null;
   public subjectGroupId?: number | null;
   public usesLiteralGrades?: boolean;
+  public icon?: string | null;
+  public color?: string | null;
 
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
@@ -45,6 +49,14 @@ Subject.init(
     },
     abbreviation: {
       type: DataTypes.STRING(10),
+      allowNull: true,
+    },
+    icon: {
+      type: DataTypes.STRING(50),
+      allowNull: true,
+    },
+    color: {
+      type: DataTypes.STRING(7),
       allowNull: true,
     },
   },
