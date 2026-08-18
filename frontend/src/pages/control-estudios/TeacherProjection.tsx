@@ -412,7 +412,12 @@ const TeacherProjection: React.FC = () => {
           </Form.Item>
 
           <Form.Item name="subjectId" label="Materia" rules={[{ required: true }]}>
-            <Select placeholder="Seleccione Materia" disabled={!selectedGradeId}>
+            <Select
+              placeholder="Seleccione Materia"
+              disabled={!selectedGradeId}
+              showSearch
+              optionFilterProp="children"
+            >
               {availableStructure.find(gs => gs.id === selectedGradeId)?.subjects.map((sub: any) => (
                 <Option key={sub.id} value={sub.id}>{sub.name}</Option>
               ))}
