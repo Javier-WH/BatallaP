@@ -13,6 +13,7 @@ import EvaluationPlanPDFModal from '@/components/pdf/EvaluationPlanPDFModal';
 import type { EvaluationPlanHeaderData, EvaluationPlanRowData } from '@/components/pdf/EvaluationPlanPDF';
 import EvaluationPlanItemModal, { type CatalogOption } from '@/components/EvaluationPlanItemModal';
 import { getSubjectVisual, withAlpha } from '@/utils/subjectVisuals';
+import { useDragScroll } from '@/utils/useDragScroll';
 import ContentTab from './ContentTab';
 
 /** Extracts a numeric order from grade names like "Primer Año", "Segundo Año", etc. */
@@ -245,6 +246,7 @@ const TeacherPanel: React.FC = () => {
   const [copyTargetSectionIds, setCopyTargetSectionIds] = useState<number[]>([]);
   const [copySubmitting, setCopySubmitting] = useState(false);
   const { enableRounding } = useGradeRounding();
+  const dragScroll = useDragScroll<HTMLDivElement>();
 
   // Pad grade to fixed number of digits based on maxGrade (20 → 2 digits, 100 → 3 digits)
   const gradeDigits = Math.max(2, String(maxGrade).length);
@@ -1130,6 +1132,9 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
         .grading-table-container::-webkit-scrollbar { height: 8px; width: 8px; }
         .grading-table-container::-webkit-scrollbar-thumb { background: rgba(15, 23, 42, 0.18); border-radius: 4px; }
         .grading-table-container::-webkit-scrollbar-track { background: rgba(15, 23, 42, 0.04); }
+
+        /* Hide scrollbar on drag-scroll containers (Chrome/Safari/Edge) */
+        .drag-scroll-container::-webkit-scrollbar { display: none; }
         
         .luxury-segmented .ant-segmented-item-selected {
           background-color: var(--color-accent) !important;
@@ -1160,8 +1165,20 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
           <div className="app-card app-card-hover p-5 flex flex-col">
             <span className="text-[10px] font-bold uppercase tracking-widest mb-2" style={{ color: 'var(--color-text-muted)' }}>Seleccionar Asignatura</span>
 
-            {/* Nivel 1: Materia (scroll horizontal, sin repetir, con icono+color) */}
-            <div className="flex gap-2.5 overflow-x-auto pb-2 shrink-0" style={{ minHeight: 64 }}>
+            {/* Nivel 1: Materia (scroll horizontal con drag, sin repetir, con icono+color) */}
+            <div
+              ref={dragScroll.ref}
+              onMouseDown={dragScroll.onMouseDown}
+              onMouseMove={dragScroll.onMouseMove}
+              onMouseUp={dragScroll.onMouseUp}
+              onMouseLeave={dragScroll.onMouseLeave}
+              onClickCapture={dragScroll.onClickCapture}
+              onTouchStart={dragScroll.onTouchStart}
+              onTouchMove={dragScroll.onTouchMove}
+              onTouchEnd={dragScroll.onTouchEnd}
+              className="flex gap-2.5 overflow-x-auto pb-2 shrink-0 drag-scroll-container"
+              style={{ minHeight: 64, cursor: 'grab', scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+            >
               {availableSubjects.map(s => {
                 const isSelected = s.id === selectedSubjectId;
                 const { Icon, color } = getSubjectVisual({ name: s.name });
