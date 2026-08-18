@@ -278,6 +278,10 @@ const AcademicManagement: React.FC = () => {
   const [presetModalOpen, setPresetModalOpen] = useState(false);
   const [subjectPresets, setSubjectPresets] = useState<any[]>([]);
   const [presetApplying, setPresetApplying] = useState(false);
+  const [createPresetModalOpen, setCreatePresetModalOpen] = useState(false);
+  const [presetForm] = Form.useForm();
+  const [presetItems, setPresetItems] = useState<{ name: string; abbreviation: string }[]>([{ name: '', abbreviation: '' }]);
+  const [presetSubmitting, setPresetSubmitting] = useState(false);
 
   const fetchSubjectPresets = async () => {
     try {
@@ -306,6 +310,36 @@ const AcademicManagement: React.FC = () => {
       message.error(error.response?.data?.message || 'Error al aplicar preset');
     } finally {
       setPresetApplying(false);
+    }
+  };
+
+  const handleCreatePreset = async () => {
+    try {
+      const values = await presetForm.validateFields();
+      const items = presetItems
+        .filter(item => item.name.trim() !== '')
+        .map(item => ({ name: item.name.trim(), abbreviation: item.abbreviation.trim() || null }));
+      if (items.length === 0) {
+        message.error('Debe agregar al menos una materia');
+        return;
+      }
+      setPresetSubmitting(true);
+      await api.post('/subject-presets', {
+        name: values.name.trim(),
+        description: values.description?.trim() || null,
+        items,
+      });
+      message.success('Preset creado correctamente');
+      presetForm.resetFields();
+      setPresetItems([{ name: '', abbreviation: '' }]);
+      setCreatePresetModalOpen(false);
+      fetchSubjectPresets();
+    } catch (error: any) {
+      if (error.response?.data?.message) {
+        message.error(error.response.data.message);
+      }
+    } finally {
+      setPresetSubmitting(false);
     }
   };
 
@@ -2010,9 +2044,19 @@ const AcademicManagement: React.FC = () => {
         footer={null}
         width={600}
       >
-        <p style={{ color: 'var(--color-text-muted)', fontSize: 13, marginBottom: 16 }}>
-          Selecciona un preset para cargar todas sus materias. Las materias que ya existan se omitirán automáticamente.
-        </p>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+          <p style={{ color: 'var(--color-text-muted)', fontSize: 13, margin: 0 }}>
+            Selecciona un preset para cargar sus materias. Las que ya existan se omitirán.
+          </p>
+          <Button
+            icon={<PlusOutlined />}
+            onClick={() => { presetForm.resetFields(); setPresetItems([{ name: '', abbreviation: '' }]); setCreatePresetModalOpen(true); }}
+            style={{ borderRadius: 8 }}
+            size="small"
+          >
+            Crear nuevo
+          </Button>
+        </div>
         {subjectPresets.map((preset) => (
           <div
             key={preset.id}
@@ -2039,19 +2083,99 @@ const AcademicManagement: React.FC = () => {
                 {preset.items?.length || 0} materias
               </div>
             </div>
-            <Button
-              type="primary"
-              loading={presetApplying}
-              onClick={() => handleApplyPreset(preset.id)}
-              style={{ borderRadius: 8 }}
-            >
-              Aplicar
-            </Button>
+            <Space>
+              {!preset.isSystem && (
+                <Popconfirm
+                  title="¿Eliminar preset?"
+                  onConfirm={async () => {
+                    try {
+                      await api.delete(`/subject-presets/${preset.id}`);
+                      message.success('Preset eliminado');
+                      fetchSubjectPresets();
+                    } catch (error: any) {
+                      message.error(error.response?.data?.message || 'Error al eliminar');
+                    }
+                  }}
+                >
+                  <Button type="text" danger icon={<DeleteOutlined />} />
+                </Popconfirm>
+              )}
+              <Button
+                type="primary"
+                loading={presetApplying}
+                onClick={() => handleApplyPreset(preset.id)}
+                style={{ borderRadius: 8 }}
+              >
+                Aplicar
+              </Button>
+            </Space>
           </div>
         ))}
         {subjectPresets.length === 0 && (
           <Empty description="No hay presets disponibles" />
         )}
+      </Modal>
+
+      <Modal
+        title="Crear nuevo preset"
+        open={createPresetModalOpen}
+        onCancel={() => setCreatePresetModalOpen(false)}
+        onOk={handleCreatePreset}
+        confirmLoading={presetSubmitting}
+        okText="Guardar"
+        cancelText="Cancelar"
+        width={600}
+      >
+        <Form form={presetForm} layout="vertical">
+          <Form.Item name="name" label="Nombre del preset" rules={[{ required: true, message: 'Requerido' }]}>
+            <Input placeholder="Ej. Primaria 288A" style={{ borderRadius: 8 }} />
+          </Form.Item>
+          <Form.Item name="description" label="Descripción (opcional)">
+            <Input placeholder="Ej. Educación Primaria — Plan 288A" style={{ borderRadius: 8 }} />
+          </Form.Item>
+        </Form>
+        <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 8 }}>Materias</div>
+        {presetItems.map((item, index) => (
+          <div key={index} style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+            <Input
+              placeholder="Nombre de la materia"
+              value={item.name}
+              onChange={e => {
+                const newItems = [...presetItems];
+                newItems[index].name = e.target.value;
+                setPresetItems(newItems);
+              }}
+              style={{ borderRadius: 8, flex: 1 }}
+            />
+            <Input
+              placeholder="Abrev."
+              value={item.abbreviation}
+              onChange={e => {
+                const newItems = [...presetItems];
+                newItems[index].abbreviation = e.target.value;
+                setPresetItems(newItems);
+              }}
+              style={{ borderRadius: 8, width: 100 }}
+              maxLength={10}
+            />
+            {presetItems.length > 1 && (
+              <Button
+                type="text"
+                danger
+                icon={<DeleteOutlined />}
+                onClick={() => setPresetItems(presetItems.filter((_, i) => i !== index))}
+              />
+            )}
+          </div>
+        ))}
+        <Button
+          type="dashed"
+          icon={<PlusOutlined />}
+          onClick={() => setPresetItems([...presetItems, { name: '', abbreviation: '' }])}
+          style={{ borderRadius: 8, width: '100%' }}
+        >
+          Agregar materia
+        </Button>
       </Modal>
     </div>
   );
