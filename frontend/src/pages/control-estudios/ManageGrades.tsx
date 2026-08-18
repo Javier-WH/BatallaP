@@ -56,6 +56,14 @@ const formatSubjectName = (name: string) =>
     )
     .join(' ');
 
+/** Renders a section label in uppercase, avoiding the duplicated "SECCIÓN" prefix
+ *  when the section name already includes it. */
+const formatSectionLabel = (name: string) => {
+  const upper = (name || '').toUpperCase().trim();
+  const alreadyHasPrefix = normalizeText(upper).includes('seccion');
+  return alreadyHasPrefix ? upper : `SECCIÓN ${upper}`;
+};
+
 interface Term {
   id: number;
   name: string;
@@ -803,7 +811,7 @@ const ManageGrades: React.FC = () => {
                                   marginBottom: 4,
                                 }}
                               >
-                                Sección {a.section.name}
+                                {formatSectionLabel(a.section.name)}
                               </div>
                               <div
                                 style={{
@@ -854,7 +862,7 @@ const ManageGrades: React.FC = () => {
                 {formatSubjectName(selectedAssignment.periodGradeSubject.subject.name)}
               </Title>
               <Text style={{ color: 'var(--color-text-muted)', fontSize: 13 }}>
-                {selectedAssignment.periodGradeSubject.periodGrade.grade.name} • Sección {selectedAssignment.section.name} • Prof. {selectedAssignment.teacher?.firstName} {selectedAssignment.teacher?.lastName}
+                {selectedAssignment.periodGradeSubject.periodGrade.grade.name} • {formatSectionLabel(selectedAssignment.section.name)} • Prof. {selectedAssignment.teacher?.firstName} {selectedAssignment.teacher?.lastName}
               </Text>
             </div>
           </div>
