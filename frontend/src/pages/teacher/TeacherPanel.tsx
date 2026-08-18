@@ -165,6 +165,7 @@ interface PeriodGrade {
 
 interface PeriodGradeSubject {
   id: number;
+  order?: number | null;
   subject: Subject;
   periodGrade: PeriodGrade;
 }
@@ -574,16 +575,23 @@ const TeacherPanel: React.FC = () => {
     fetchRevisionStatus();
   }, []);
 
-  // Derive unique subjects from all assignments (sorted by name)
+  // Derive unique subjects from all assignments (sorted by PeriodGradeSubject.order)
   const availableSubjects = useMemo(() => {
-    const map = new Map<number, { id: number; pgsId: number; name: string }>();
+    const map = new Map<number, { id: number; pgsId: number; name: string; order: number }>();
     assignments.forEach(a => {
       const s = a.periodGradeSubject?.subject;
+      const order = a.periodGradeSubject?.order ?? Number.MAX_SAFE_INTEGER;
       if (s && !map.has(s.id)) {
-        map.set(s.id, { id: s.id, pgsId: a.periodGradeSubjectId, name: s.name });
+        map.set(s.id, { id: s.id, pgsId: a.periodGradeSubjectId, name: s.name, order });
+      } else if (s && map.has(s.id)) {
+        // Keep the minimum order (most prioritized) across grades
+        const existing = map.get(s.id)!;
+        if (order < existing.order) {
+          map.set(s.id, { id: s.id, pgsId: existing.pgsId, name: s.name, order });
+        }
       }
     });
-    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name, 'es', { numeric: true }));
+    return Array.from(map.values()).sort((a, b) => a.order - b.order);
   }, [assignments]);
 
   // Derive unique grades for the selected subject (sorted by ordinal extracted from name)
