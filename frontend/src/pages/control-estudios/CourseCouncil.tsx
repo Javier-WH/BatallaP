@@ -85,6 +85,7 @@ const CourseCouncil: React.FC = () => {
   const [studentsData, setStudentsData] = useState<CouncilStudent[]>([]);
   const [pointsLimit, setPointsLimit] = useState<number>(2);
   const [pointsPerSubjectLimit, setPointsPerSubjectLimit] = useState<number>(2);
+  const [passingGrade, setPassingGrade] = useState<number>(10);
 
   const [councilDone, setCouncilDone] = useState(false);
   const [missingPointsStudents, setMissingPointsStudents] = useState<CouncilStudent[]>([]);
@@ -155,6 +156,9 @@ const CourseCouncil: React.FC = () => {
       }
       if (settingsRes.data.council_points_per_subject_limit) {
         setPointsPerSubjectLimit(Number(settingsRes.data.council_points_per_subject_limit));
+      }
+      if (settingsRes.data.passing_grade != null) {
+        setPassingGrade(Number(settingsRes.data.passing_grade));
       }
     } catch (error) {
       console.error('Error fetching data', error);
@@ -251,7 +255,7 @@ const CourseCouncil: React.FC = () => {
 
   const validateMissingPoints = (): CouncilStudent[] => {
     return studentsData.filter(student => {
-      const hasFailingGrade = student.subjects.some(s => (s.grade || 0) < 10);
+      const hasFailingGrade = student.subjects.some(s => (s.grade || 0) < passingGrade);
       const totalPoints = student.subjects.reduce((sum, s) => sum + (s.points || 0), 0);
       return hasFailingGrade && totalPoints === 0;
     });
@@ -822,7 +826,7 @@ const CourseCouncil: React.FC = () => {
           });
           const dataRow = worksheet.addRow(row);
           const isZebraRow = studentIndex % 2 === 1;
-          dataRow.eachCell((cell, colNumber) => {
+          dataRow.eachCell(cell => {
             cell.font = { size: 10 };
             if (isZebraRow) {
               cell.fill = zebraFill;
@@ -963,11 +967,11 @@ const CourseCouncil: React.FC = () => {
           const totalGrades = record.subjects.reduce((sum, s) => sum + (s.grade || 0) + (s.points || 0), 0);
           const average = record.subjects.length > 0 ? totalGrades / record.subjects.length : 0;
           return (
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', background: average < 10 ? '#fff1f0' : '#f0f5ff', padding: '4px', borderRadius: 8 }}>
-              <Text style={{ fontSize: 16, fontWeight: 900, color: average < 10 ? '#cf1322' : '#096dd9' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', background: average < passingGrade ? '#fff1f0' : '#f0f5ff', padding: '4px', borderRadius: 8 }}>
+              <Text style={{ fontSize: 16, fontWeight: 900, color: average < passingGrade ? '#cf1322' : '#096dd9' }}>
                 {formatGrade(average, enableRounding)}
               </Text>
-              <Text style={{ fontSize: 9, fontWeight: 800, color: average < 10 ? '#cf1322' : '#096dd9', textTransform: 'uppercase' }}>Final</Text>
+              <Text style={{ fontSize: 9, fontWeight: 800, color: average < passingGrade ? '#cf1322' : '#096dd9', textTransform: 'uppercase' }}>Final</Text>
             </div>
           );
         }
@@ -1020,7 +1024,7 @@ const CourseCouncil: React.FC = () => {
                     <Text style={{ fontSize: 9, fontWeight: 700, color: pt.councilPoints > 0 ? '#fa8c16' : '#bfbfbf', lineHeight: '11px' }}>
                       +{pt.councilPoints}
                     </Text>
-                    <Text style={{ fontSize: 13, fontWeight: 800, color: pt.finalGrade < 10 ? '#cf1322' : '#389e0d' }}>
+                    <Text style={{ fontSize: 13, fontWeight: 800, color: pt.finalGrade < passingGrade ? '#cf1322' : '#389e0d' }}>
                       {formatGrade(pt.finalGrade, enableRounding)}
                     </Text>
                   </div>
@@ -1048,7 +1052,7 @@ const CourseCouncil: React.FC = () => {
               const baseGrade = subjectData.grade || 0;
               return (
                 <Tooltip title="Nota Base del lapso actual">
-                  <Text style={{ fontSize: 14, color: baseGrade < 10 ? '#cf1322' : '#262626', fontWeight: 600 }}>
+                  <Text style={{ fontSize: 14, color: baseGrade < passingGrade ? '#cf1322' : '#262626', fontWeight: 600 }}>
                     {formatGrade(baseGrade, enableRounding)}
                   </Text>
                 </Tooltip>
@@ -1101,11 +1105,11 @@ const CourseCouncil: React.FC = () => {
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    background: totalGrade < 10 ? '#fff1f0' : '#f6ffed',
+                    background: totalGrade < passingGrade ? '#fff1f0' : '#f6ffed',
                     borderRadius: 5,
-                    border: `1px solid ${totalGrade < 10 ? '#ffa39e' : '#b7eb8f'}`
+                    border: `1px solid ${totalGrade < passingGrade ? '#ffa39e' : '#b7eb8f'}`
                   }}>
-                    <Text style={{ fontSize: 13, fontWeight: 800, color: totalGrade < 10 ? '#cf1322' : '#389e0d' }}>
+                    <Text style={{ fontSize: 13, fontWeight: 800, color: totalGrade < passingGrade ? '#cf1322' : '#389e0d' }}>
                       {formatGrade(totalGrade, enableRounding)}
                     </Text>
                   </div>
@@ -1468,7 +1472,7 @@ const CourseCouncil: React.FC = () => {
               title: 'Materias reprobadas',
               key: 'failingSubjects',
               render: (_: unknown, record: CouncilStudent) => {
-                const failing = record.subjects.filter(s => (s.grade || 0) < 10);
+                const failing = record.subjects.filter(s => (s.grade || 0) < passingGrade);
                 return (
                   <Space wrap>
                     {failing.map(s => (
