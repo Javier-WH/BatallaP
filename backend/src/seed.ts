@@ -1,5 +1,5 @@
 import sequelize from '@/config/database';
-import { User, Person, Role, PersonRole, SchoolPeriod, Subject, Grade, Section, Specialization, Plantel, EvaluationCatalog } from '@/models/index';
+import { User, Person, Role, PersonRole, SchoolPeriod, Subject, Grade, Section, Specialization, Plantel, EvaluationCatalog, SubjectPreset } from '@/models/index';
 import Term from '@/models/Term';
 import fs from 'fs';
 import path from 'path';
@@ -329,6 +329,33 @@ const seed = async () => {
       });
     }
     console.log('Evaluation catalogs seeded.');
+
+    // Seed default subject presets
+    const emgItems = [
+      { name: 'Castellano', abbreviation: 'CA' },
+      { name: 'Inglés y Otras Lenguas Extranjeras', abbreviation: 'ILE' },
+      { name: 'Matemáticas', abbreviation: 'MA' },
+      { name: 'Educación Física', abbreviation: 'EF' },
+      { name: 'Arte y Patrimonio', abbreviation: 'AP' },
+      { name: 'Ciencias Naturales', abbreviation: 'CN' },
+      { name: 'Geografía, Historia y Ciudadanía', abbreviation: 'GHC' },
+      { name: 'Orientación y Convivencia', abbreviation: 'OC' },
+      { name: 'Física', abbreviation: 'FI' },
+      { name: 'Química', abbreviation: 'QU' },
+      { name: 'Biología', abbreviation: 'BI' },
+      { name: 'Formación para la Soberanía Nacional', abbreviation: 'FSN' },
+      { name: 'Ciencias de La Tierra', abbreviation: 'CT' },
+    ];
+    await SubjectPreset.findOrCreate({
+      where: { name: 'EMG 31059' },
+      defaults: {
+        name: 'EMG 31059',
+        description: 'Educación Media General — Plan de estudio 31059 (1ro a 5to año)',
+        items: emgItems,
+        isSystem: true,
+      },
+    });
+    console.log('Subject presets seeded.');
 
   } catch (error) {
     console.error('Error seeding database:', error);

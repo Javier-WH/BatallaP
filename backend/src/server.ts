@@ -2,7 +2,7 @@ import app, { sessionStore } from './app';
 import express from 'express';
 import sequelize from '@/config/database';
 import '@/models/index'; // Register models
-import { EvaluationCatalog } from '@/models/index';
+import { EvaluationCatalog, SubjectPreset } from '@/models/index';
 import dotenv from 'dotenv';
 import path from 'path';
 import MigrationRunner from '@/config/migrationRunner';
@@ -63,6 +63,39 @@ const seedDefaultCatalogs = async () => {
     console.log('✅ Catálogos de evaluación verificados.');
   } catch (error) {
     console.error('⚠️ Error al seedear catálogos de evaluación:', error);
+  }
+};
+
+const EMG_31059_ITEMS = [
+  { name: 'Castellano', abbreviation: 'CA' },
+  { name: 'Inglés y Otras Lenguas Extranjeras', abbreviation: 'ILE' },
+  { name: 'Matemáticas', abbreviation: 'MA' },
+  { name: 'Educación Física', abbreviation: 'EF' },
+  { name: 'Arte y Patrimonio', abbreviation: 'AP' },
+  { name: 'Ciencias Naturales', abbreviation: 'CN' },
+  { name: 'Geografía, Historia y Ciudadanía', abbreviation: 'GHC' },
+  { name: 'Orientación y Convivencia', abbreviation: 'OC' },
+  { name: 'Física', abbreviation: 'FI' },
+  { name: 'Química', abbreviation: 'QU' },
+  { name: 'Biología', abbreviation: 'BI' },
+  { name: 'Formación para la Soberanía Nacional', abbreviation: 'FSN' },
+  { name: 'Ciencias de La Tierra', abbreviation: 'CT' },
+];
+
+const seedDefaultSubjectPresets = async () => {
+  try {
+    await SubjectPreset.findOrCreate({
+      where: { name: 'EMG 31059' },
+      defaults: {
+        name: 'EMG 31059',
+        description: 'Educación Media General — Plan de estudio 31059 (1ro a 5to año)',
+        items: EMG_31059_ITEMS,
+        isSystem: true,
+      },
+    });
+    console.log('✅ Presets de materias verificados.');
+  } catch (error) {
+    console.error('⚠️ Error al seedear presets de materias:', error);
   }
 };
 
@@ -141,6 +174,7 @@ const startServer = async () => {
     console.log('✅ Modelos sincronizados correctamente.');
 
     await seedDefaultCatalogs();
+    await seedDefaultSubjectPresets();
 
     app.listen(PORT, () => {
       console.log(`🚀 Backend iniciado en http://localhost:${PORT}`);

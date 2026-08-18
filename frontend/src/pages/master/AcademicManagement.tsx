@@ -37,7 +37,8 @@ import {
   ClockCircleOutlined,
   TeamOutlined,
   AimOutlined,
-  SafetyOutlined
+  SafetyOutlined,
+  ThunderboltOutlined
 } from '@ant-design/icons';
 import api from '@/services/api';
 import PeriodClosurePanel from '@/pages/admin/components/PeriodClosurePanel';
@@ -274,6 +275,39 @@ const AcademicManagement: React.FC = () => {
   const [editSubjectGroupForm] = Form.useForm();
   const [editingSubjectGroup, setEditingSubjectGroup] = useState<SubjectGroup | null>(null);
   const [filterSubjectName, setFilterSubjectName] = useState<string>('');
+  const [presetModalOpen, setPresetModalOpen] = useState(false);
+  const [subjectPresets, setSubjectPresets] = useState<any[]>([]);
+  const [presetApplying, setPresetApplying] = useState(false);
+
+  const fetchSubjectPresets = async () => {
+    try {
+      const res = await api.get('/subject-presets');
+      setSubjectPresets(res.data);
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  const handleApplyPreset = async (presetId: number) => {
+    setPresetApplying(true);
+    try {
+      const res = await api.post(`/subject-presets/${presetId}/apply`);
+      const { created, skipped } = res.data;
+      if (created.length > 0 && skipped.length === 0) {
+        message.success(`${created.length} materias creadas`);
+      } else if (created.length > 0 && skipped.length > 0) {
+        message.warning(`${created.length} creadas, ${skipped.length} ya existían y se omitieron`);
+      } else if (created.length === 0 && skipped.length > 0) {
+        message.info('Todas las materias del preset ya existían');
+      }
+      setPresetModalOpen(false);
+      fetchAll();
+    } catch (error: any) {
+      message.error(error.response?.data?.message || 'Error al aplicar preset');
+    } finally {
+      setPresetApplying(false);
+    }
+  };
 
   const fetchAll = async () => {
     setLoading(true);
@@ -1543,6 +1577,13 @@ const AcademicManagement: React.FC = () => {
                             <Input placeholder="Abrev." size="middle" style={{ borderRadius: 8 }} maxLength={10} />
                           </Form.Item>
                           <Button type="primary" htmlType="submit" icon={<PlusOutlined />} style={{ borderRadius: 8, height: 32 }}>Crear Materia</Button>
+                          <Button
+                            icon={<ThunderboltOutlined />}
+                            onClick={() => { fetchSubjectPresets(); setPresetModalOpen(true); }}
+                            style={{ borderRadius: 8, height: 32 }}
+                          >
+                            Preset
+                          </Button>
                         </Form>
 
                         <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
@@ -1960,6 +2001,57 @@ const AcademicManagement: React.FC = () => {
             </Button>
           </Form>
         </div>
+      </Modal>
+
+      <Modal
+        title="Presets de Materias"
+        open={presetModalOpen}
+        onCancel={() => setPresetModalOpen(false)}
+        footer={null}
+        width={600}
+      >
+        <p style={{ color: 'var(--color-text-muted)', fontSize: 13, marginBottom: 16 }}>
+          Selecciona un preset para cargar todas sus materias. Las materias que ya existan se omitirán automáticamente.
+        </p>
+        {subjectPresets.map((preset) => (
+          <div
+            key={preset.id}
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              padding: '12px 16px',
+              borderRadius: 10,
+              border: '1px solid #f0f0f0',
+              marginBottom: 8,
+              background: '#fafafa',
+            }}
+          >
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 14 }}>
+                {preset.name}
+                {preset.isSystem && <Tag color="blue" style={{ marginLeft: 8, fontSize: 11 }}>Sistema</Tag>}
+              </div>
+              {preset.description && (
+                <div style={{ fontSize: 12, color: '#8c8c8c' }}>{preset.description}</div>
+              )}
+              <div style={{ fontSize: 12, color: '#8c8c8c', marginTop: 2 }}>
+                {preset.items?.length || 0} materias
+              </div>
+            </div>
+            <Button
+              type="primary"
+              loading={presetApplying}
+              onClick={() => handleApplyPreset(preset.id)}
+              style={{ borderRadius: 8 }}
+            >
+              Aplicar
+            </Button>
+          </div>
+        ))}
+        {subjectPresets.length === 0 && (
+          <Empty description="No hay presets disponibles" />
+        )}
       </Modal>
     </div>
   );
