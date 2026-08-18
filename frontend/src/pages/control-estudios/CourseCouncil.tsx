@@ -792,7 +792,8 @@ const CourseCouncil: React.FC = () => {
           return student.subjects.length > 0 ? total / student.subjects.length : 0;
         };
 
-        studentsData.forEach(student => {
+        const zebraFill = { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: 'F7FAFC' } };
+        studentsData.forEach((student, studentIndex) => {
           const row: (string | number)[] = [
             student.studentName,
             `${student.documentType === 'Venezolano' ? 'V' : student.documentType === 'Extranjero' ? 'E' : student.documentType === 'Pasaporte' ? 'P' : 'CE'}-${student.studentDni}`,
@@ -820,8 +821,12 @@ const CourseCouncil: React.FC = () => {
             );
           });
           const dataRow = worksheet.addRow(row);
-          dataRow.eachCell(cell => {
+          const isZebraRow = studentIndex % 2 === 1;
+          dataRow.eachCell((cell, colNumber) => {
             cell.font = { size: 10 };
+            if (isZebraRow) {
+              cell.fill = zebraFill;
+            }
             cell.border = {
               top: { style: 'thin', color: { argb: 'D6DEE5' } },
               left: { style: 'thin', color: { argb: 'D6DEE5' } },
