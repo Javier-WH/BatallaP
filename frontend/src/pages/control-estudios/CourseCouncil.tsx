@@ -181,7 +181,10 @@ const CourseCouncil: React.FC = () => {
           ? api.get(`/period-closure/${activePeriod.id}/checklist?gradeId=${gradeId}&sectionId=${sectionId}&termId=${termId}`)
           : Promise.resolve({ data: null })
       ]);
-      setStudentsData(res.data);
+      setStudentsData((res.data as CouncilStudent[]).slice().sort((a, b) => {
+        const parseDoc = (doc: string) => parseInt((doc || '').replace(/\D/g, ''), 10) || 0;
+        return parseDoc(a.studentDni) - parseDoc(b.studentDni);
+      }));
       setCouncilDone(checklistRes.data?.status === 'done');
       setStep(2);
     } catch (error) {
@@ -914,6 +917,16 @@ const CourseCouncil: React.FC = () => {
     };
 
     const columns = [
+      {
+        title: '#',
+        key: 'rowIndex',
+        width: 50,
+        fixed: 'left' as const,
+        align: 'center' as const,
+        render: (_: any, __: CouncilStudent, index: number) => (
+          <Text style={{ fontWeight: 700, fontSize: 12, color: '#8c8c8c' }}>{index + 1}</Text>
+        )
+      },
       {
         title: 'Estudiante',
         dataIndex: 'studentName',
