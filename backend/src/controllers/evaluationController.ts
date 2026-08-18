@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { Op } from 'sequelize';
+import sequelize from '@/config/database';
 import ExcelJS from 'exceljs';
 import fs from 'fs';
 import path from 'path';
@@ -2580,5 +2581,107 @@ export const getAllQualificationAudits = async (_req: Request, res: Response) =>
   } catch (error: any) {
     console.error('[getAllQualificationAudits] Error:', error);
     res.status(500).json({ message: 'Error al obtener auditoría' });
+  }
+};
+
+export const copyEvaluationPlan = async (req: Request, res: Response) => {
+  try {
+    const { sourcePeriodGradeSubjectId, sourceSectionId, targetPeriodGradeSubjectId, targetSectionIds, termId } = req.body;
+
+    if (!sourcePeriodGradeSubjectId || !sourceSectionId || !targetPeriodGradeSubjectId || !Array.isArray(targetSectionIds) || targetSectionIds.length === 0 || !termId) {
+      return res.status(400).json({ message: 'Faltan parámetros requeridos' });
+    }
+
+    // Check term is not blocked
+    const term = await Term.findByPk(termId);
+    if (!term) {
+      return res.status(404).json({ message: 'Lapso no encontrado' });
+    }
+    if (term.isBlocked) {
+      return res.status(403).json({ message: 'El lapso está bloqueado' });
+    }
+
+    // Get source plan items with criteria and indicators
+    const sourceItems = await EvaluationPlan.findAll({
+      where: { periodGradeSubjectId: sourcePeriodGradeSubjectId, sectionId: sourceSectionId, termId },
+      include: [
+        { model: EvaluationCriteria, as: 'criteria', include: [{ model: EvaluationIndicator, as: 'indicators' }] },
+      ],
+      order: [['id', 'ASC']],
+    });
+
+    if (sourceItems.length === 0) {
+      return res.status(400).json({ message: 'No hay evaluaciones en la sección origen para copiar' });
+    }
+
+    const t = await sequelize.transaction();
+    try {
+      const results: { sectionId: number; created: number; skipped: number }[] = [];
+
+      for (const targetSectionId of targetSectionIds) {
+        // Check if target already has plan items
+        const existingCount = await EvaluationPlan.count({
+          where: { periodGradeSubjectId: targetPeriodGradeSubjectId, sectionId: targetSectionId, termId },
+          transaction: t,
+        });
+
+        if (existingCount > 0) {
+          results.push({ sectionId: targetSectionId, created: 0, skipped: existingCount });
+          continue;
+        }
+
+        let created = 0;
+        for (const item of sourceItems) {
+          const newItem = await EvaluationPlan.create({
+            periodGradeSubjectId: targetPeriodGradeSubjectId,
+            sectionId: targetSectionId,
+            termId,
+            description: item.description,
+            percentage: item.percentage,
+            date: item.date,
+            thematicComponentId: item.thematicComponentId,
+            thematicContentIds: item.thematicContentIds,
+            evaluationType: item.evaluationType,
+            tecnicaId: item.tecnicaId,
+            instrumentoId: item.instrumentoId,
+            estrategiaId: item.estrategiaId,
+            shortDescription: item.shortDescription,
+          }, { transaction: t });
+
+          // Copy criteria and indicators
+          const itemWithCriteria = item as any;
+          if (itemWithCriteria.criteria && itemWithCriteria.criteria.length > 0) {
+            for (const c of itemWithCriteria.criteria) {
+              const criterion = await EvaluationCriteria.create({
+                evaluationPlanId: newItem.id,
+                name: c.name,
+                points: c.points,
+              }, { transaction: t });
+              if (c.indicators && c.indicators.length > 0) {
+                await EvaluationIndicator.bulkCreate(
+                  c.indicators.map((ind: any) => ({
+                    evaluationCriteriaId: criterion.id,
+                    name: ind.name,
+                    points: ind.points,
+                  })),
+                  { transaction: t }
+                );
+              }
+            }
+          }
+          created++;
+        }
+        results.push({ sectionId: targetSectionId, created, skipped: 0 });
+      }
+
+      await t.commit();
+      res.json({ message: 'Plan copiado correctamente', results });
+    } catch (error) {
+      await t.rollback();
+      throw error;
+    }
+  } catch (error: any) {
+    console.error('[copyEvaluationPlan] Error:', error);
+    res.status(500).json({ message: error.message || 'Error al copiar el plan de evaluación' });
   }
 };

@@ -16,7 +16,8 @@ import {
   getAllAssignments,
   getQualificationAudits,
   getAllQualificationAudits,
-  exportPlanningExcel
+  exportPlanningExcel,
+  copyEvaluationPlan
 } from '@/controllers/evaluationController';
 
 const router = Router();
@@ -24,6 +25,7 @@ const router = Router();
 router.get('/my-assignments', getMyAssignments);
 router.get('/plan/:periodGradeSubjectId', getEvaluationPlan);
 router.post('/plan', createEvaluationItem);
+router.post('/copy-plan', copyEvaluationPlan);
 router.put('/plan/:id', updateEvaluationItem);
 router.delete('/plan/:id', deleteEvaluationItem);
 router.get('/students/:assignmentId', getStudentsForAssignment);
