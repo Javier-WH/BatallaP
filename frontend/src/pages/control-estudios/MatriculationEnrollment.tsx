@@ -331,9 +331,9 @@ const MatriculationEnrollment: React.FC = () => {
   const [filterMissing, setFilterMissing] = useState<string | null>(savedFilters.filterMissing ?? null);
   const [filterInscription, setFilterInscription] = useState<'inscrito' | 'no_inscrito' | null>(savedFilters.filterInscription ?? null);
   const [nominaModalOpen, setNominaModalOpen] = useState(false);
-  const [nominaGradeId, setNominaGradeId] = useState<number | null>(null);
-  const [nominaSectionId, setNominaSectionId] = useState<number | null>(null);
-  const [nominaTeacher, setNominaTeacher] = useState('');
+  const [nominaSelectedGradeIds, setNominaSelectedGradeIds] = useState<number[]>([]);
+  const [nominaSelectedSectionIds, setNominaSelectedSectionIds] = useState<number[]>([]);
+  const [nominaGenerating, setNominaGenerating] = useState(false);
   const [scrollY, setScrollY] = useState(500);
   const headerRef = useRef<HTMLDivElement>(null);
   const bulkActionRef = useRef<HTMLDivElement>(null);
@@ -1225,181 +1225,178 @@ const MatriculationEnrollment: React.FC = () => {
     }
   }, [filteredData, visibleColumnKeys, structure, questions, viewStatus, activePeriod, filterGrade, filterSection]);
 
-  const generateNominaExcel = useCallback(async (gradeId: number, sectionId: number, teacherName: string) => {
+  const generateNominaExcel = useCallback(async (combinations: { gradeId: number; sectionId: number }[]) => {
+    if (combinations.length === 0) {
+      message.warning('Seleccione al menos un grado y sección');
+      return;
+    }
+    setNominaGenerating(true);
     try {
-      const res = await api.get('/inscriptions', {
-        params: {
-          schoolPeriodId: filterSchoolPeriod || activePeriod?.id,
-          gradeId,
-          sectionId
-        }
-      });
-      const students: any[] = (res.data || [])
-        .filter((s: any) => !s.matriculation?.hiddenFromControlEstudios);
+      const periodId = filterSchoolPeriod || activePeriod?.id;
+      const periodName = allPeriods.find(p => p.id === periodId)?.name || activePeriod?.name || '';
 
-      // Sort by cédula number ascending, with "Cedula Escolar" (CE) at the end
-      const parseDoc = (doc: string, docType: string) => {
-        const isEscolar = docType === 'Cedula Escolar';
-        const num = parseInt((doc || '').replace(/\D/g, ''), 10) || 0;
-        return { isEscolar, num };
-      };
-      students.sort((a: any, b: any) => {
-        const da = parseDoc(a.student?.document || '', a.student?.documentType || '');
-        const db = parseDoc(b.student?.document || '', b.student?.documentType || '');
-        if (da.isEscolar !== db.isEscolar) return da.isEscolar ? 1 : -1;
-        return da.num - db.num;
-      });
-
-      if (students.length === 0) {
-        message.warning('No se encontraron estudiantes inscritos en esta sección');
-        return;
-      }
-
-      const workbook = new ExcelJS.Workbook();
-      const worksheet = workbook.addWorksheet('Nómina');
-
-      // Logo: 1.24" x 1.24" (~119px), 10px top margin, 20px left margin
+      // Load logo once for all sheets
+      let logoBuffer: ArrayBuffer | null = null;
       try {
         const logoRes = await api.get('/upload/logo', { responseType: 'arraybuffer' });
-        const logoId = workbook.addImage({ buffer: logoRes.data, extension: 'png' });
-        worksheet.addImage(logoId, {
-          tl: { col: 0.31, row: 0.5 },
-          ext: { width: 119, height: 119 }
-        });
+        logoBuffer = logoRes.data;
       } catch (e) {
         console.error('No se pudo cargar el logo para la nómina', e);
       }
 
-      const gradeName = structure.find(s => s.gradeId === gradeId)?.grade?.name || '';
-      const sectionName = structure.find(s => s.gradeId === gradeId)?.sections?.find(s => s.id === sectionId)?.name || '';
-      const periodName = allPeriods.find(p => p.id === (filterSchoolPeriod || activePeriod?.id))?.name || activePeriod?.name || '';
+      const workbook = new ExcelJS.Workbook();
+      let totalStudents = 0;
+      let sheetsCreated = 0;
 
-      // Header rows (starting at row 1)
-      const titleRow = worksheet.addRow(['', '', 'U.E.C. BATALLA DE LA VICTORIA']);
-      const periodRow = worksheet.addRow(['', '', periodName]);
-      worksheet.addRow([]);
-      const teacherRow = worksheet.addRow(['', '', `Prof. Guía: ${teacherName}`.trim()]);
-      const sectionRow = worksheet.addRow(['', '', `${gradeName} ${sectionName}`]);
+      for (const combo of combinations) {
+        const { gradeId, sectionId } = combo;
+        const gradeName = structure.find(s => s.gradeId === gradeId)?.grade?.name || '';
+        const sectionName = structure.find(s => s.gradeId === gradeId)?.sections?.find(s => s.id === sectionId)?.name || '';
 
-      [titleRow, periodRow, teacherRow].forEach((row, i) => {
-        const firstCell = row.getCell(3);
-        if (i < 2) {
-          firstCell.font = { bold: true, size: 16 };
-          firstCell.alignment = { horizontal: 'center' };
-        } else {
-          firstCell.font = { bold: true, size: 11 };
+        // Fetch students for this grade+section
+        const res = await api.get('/inscriptions', {
+          params: { schoolPeriodId: periodId, gradeId, sectionId }
+        });
+        const students: any[] = (res.data || [])
+          .filter((s: any) => !s.matriculation?.hiddenFromControlEstudios);
+
+        // Sort by cédula number ascending, with "Cedula Escolar" (CE) at the end
+        const parseDoc = (doc: string, docType: string) => {
+          const isEscolar = docType === 'Cedula Escolar';
+          const num = parseInt((doc || '').replace(/\D/g, ''), 10) || 0;
+          return { isEscolar, num };
+        };
+        students.sort((a: any, b: any) => {
+          const da = parseDoc(a.student?.document || '', a.student?.documentType || '');
+          const db = parseDoc(b.student?.document || '', b.student?.documentType || '');
+          if (da.isEscolar !== db.isEscolar) return da.isEscolar ? 1 : -1;
+          return da.num - db.num;
+        });
+
+        // Fetch guide teacher for this grade+section
+        let teacherName = '';
+        try {
+          const guideRes = await api.get('/section-guides', {
+            params: { schoolPeriodId: periodId, gradeId, sectionId },
+          });
+          const guide = guideRes.data;
+          if (guide?.guideTeacher) {
+            teacherName = `${guide.guideTeacher.lastName || ''} ${guide.guideTeacher.firstName || ''}`.trim();
+          }
+        } catch (e) {
+          // No guide teacher found, leave empty
         }
-      });
-      sectionRow.getCell(3).font = { bold: true, size: 12 };
-      sectionRow.getCell(3).alignment = { horizontal: 'center' };
 
-      // Table starts at row 7 (after title, period, blank, teacher, section, blank)
-      const startRow = 7;
-      const headerRow = worksheet.getRow(startRow);
-      headerRow.values = ['#', 'CÉDULA', 'APELLIDOS Y NOMBRES', 'Teléfono'];
-      for (let c = 1; c <= 4; c++) {
-        const cell = headerRow.getCell(c);
-        cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F4E79' } };
-        cell.alignment = { horizontal: 'center' };
-      }
+        // Sheet name: "5to A" (max 31 chars for Excel)
+        const sheetName = `${gradeName} ${sectionName}`.slice(0, 31);
+        const worksheet = workbook.addWorksheet(sheetName);
 
-      worksheet.getColumn(1).width = 6;
-      worksheet.getColumn(2).width = 18;
-      worksheet.getColumn(3).width = 45;
-      worksheet.getColumn(4).width = 18;
+        // Logo
+        if (logoBuffer) {
+          const logoId = workbook.addImage({ buffer: logoBuffer, extension: 'png' });
+          worksheet.addImage(logoId, {
+            tl: { col: 0.31, row: 0.5 },
+            ext: { width: 119, height: 119 }
+          });
+        }
 
-      students.forEach((s, idx) => {
-        const row = worksheet.getRow(startRow + 1 + idx);
-        row.values = [
-          idx + 1,
-          s.student?.document || '',
-          `${s.student?.lastName || ''} ${s.student?.firstName || ''}`.trim(),
-          s.student?.contact?.phone1 || ''
-        ];
-        row.getCell(1).alignment = { horizontal: 'center' };
-        row.getCell(2).alignment = { horizontal: 'center' };
-        row.getCell(4).alignment = { horizontal: 'center' };
-      });
+        // Header rows
+        const titleRow = worksheet.addRow(['', '', 'U.E.C. BATALLA DE LA VICTORIA']);
+        const periodRow = worksheet.addRow(['', '', periodName]);
+        worksheet.addRow([]);
+        const teacherRow = worksheet.addRow(['', '', `Prof. Guía: ${teacherName}`.trim()]);
+        const sectionRow = worksheet.addRow(['', '', `${gradeName} ${sectionName}`]);
 
-      // Empty rows (minimum 40 students total)
-      const emptyStart = startRow + 1 + students.length;
-      const totalRows = startRow + 35;
-      for (let i = emptyStart; i <= totalRows; i++) {
-        const row = worksheet.getRow(i);
-        row.values = [i - startRow, '', '', ''];
-        row.getCell(1).alignment = { horizontal: 'center' };
-      }
+        [titleRow, periodRow, teacherRow].forEach((row, i) => {
+          const firstCell = row.getCell(3);
+          if (i < 2) {
+            firstCell.font = { bold: true, size: 16 };
+            firstCell.alignment = { horizontal: 'center' };
+          } else {
+            firstCell.font = { bold: true, size: 11 };
+          }
+        });
+        sectionRow.getCell(3).font = { bold: true, size: 12 };
+        sectionRow.getCell(3).alignment = { horizontal: 'center' };
 
-      // Borders for table
-      const lastRow = totalRows;
-      for (let r = startRow; r <= lastRow; r++) {
+        // Table starts at row 7
+        const startRow = 7;
+        const headerRow = worksheet.getRow(startRow);
+        headerRow.values = ['#', 'CÉDULA', 'APELLIDOS Y NOMBRES', 'Teléfono'];
         for (let c = 1; c <= 4; c++) {
-          const cell = worksheet.getRow(r).getCell(c);
-          cell.border = {
-            top: { style: 'thin', color: { argb: 'FF000000' } },
-            left: { style: 'thin', color: { argb: 'FF000000' } },
-            bottom: { style: 'thin', color: { argb: 'FF000000' } },
-            right: { style: 'thin', color: { argb: 'FF000000' } }
-          };
+          const cell = headerRow.getCell(c);
+          cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F4E79' } };
+          cell.alignment = { horizontal: 'center' };
         }
+
+        worksheet.getColumn(1).width = 6;
+        worksheet.getColumn(2).width = 18;
+        worksheet.getColumn(3).width = 45;
+        worksheet.getColumn(4).width = 18;
+
+        students.forEach((s, idx) => {
+          const row = worksheet.getRow(startRow + 1 + idx);
+          row.values = [
+            idx + 1,
+            s.student?.document || '',
+            `${s.student?.lastName || ''} ${s.student?.firstName || ''}`.trim(),
+            s.student?.contact?.phone1 || ''
+          ];
+          row.getCell(1).alignment = { horizontal: 'center' };
+          row.getCell(2).alignment = { horizontal: 'center' };
+          row.getCell(4).alignment = { horizontal: 'center' };
+        });
+
+        // Empty rows (minimum 35 students total)
+        const emptyStart = startRow + 1 + students.length;
+        const totalRows = startRow + 35;
+        for (let i = emptyStart; i <= totalRows; i++) {
+          const row = worksheet.getRow(i);
+          row.values = [i - startRow, '', '', ''];
+          row.getCell(1).alignment = { horizontal: 'center' };
+        }
+
+        // Borders for table
+        for (let r = startRow; r <= totalRows; r++) {
+          for (let c = 1; c <= 4; c++) {
+            const cell = worksheet.getRow(r).getCell(c);
+            cell.border = {
+              top: { style: 'thin', color: { argb: 'FF000000' } },
+              left: { style: 'thin', color: { argb: 'FF000000' } },
+              bottom: { style: 'thin', color: { argb: 'FF000000' } },
+              right: { style: 'thin', color: { argb: 'FF000000' } }
+            };
+          }
+        }
+
+        totalStudents += students.length;
+        sheetsCreated++;
+      }
+
+      if (sheetsCreated === 0) {
+        message.warning('No se pudieron generar las nóminas');
+        return;
       }
 
       const buffer = await workbook.xlsx.writeBuffer();
-      const fileName = `nomina_${gradeName}_${sectionName}_${dayjs().format('YYYY-MM-DD')}.xlsx`;
+      const fileName = `nominas_${dayjs().format('YYYY-MM-DD')}.xlsx`;
       saveAs(new Blob([buffer]), fileName);
-      message.success(`Nómina de ${students.length} estudiantes generada`);
+      message.success(`${sheetsCreated} nómina(s) generada(s), ${totalStudents} estudiantes en total`);
     } catch (error) {
       console.error('Error generando nómina:', error);
-      message.error('Error al generar la nómina');
+      message.error('Error al generar las nóminas');
+    } finally {
+      setNominaGenerating(false);
     }
   }, [activePeriod, allPeriods, filterSchoolPeriod, structure]);
 
   const handleOpenNominaModal = () => {
-    if (!filterGrade || !filterSection) {
-      setNominaModalOpen(true);
-      setNominaGradeId(filterGrade);
-      setNominaSectionId(filterSection);
-      setNominaTeacher('');
-    } else {
-      // Direct generation: fetch guide teacher first, then generate
-      const periodId = filterSchoolPeriod || activePeriod?.id;
-      if (periodId) {
-        api.get('/section-guides', {
-          params: { schoolPeriodId: periodId, gradeId: filterGrade, sectionId: filterSection },
-        }).then(res => {
-          const guide = res.data;
-          const teacherName = guide?.guideTeacher
-            ? `${guide.guideTeacher.lastName || ''} ${guide.guideTeacher.firstName || ''}`.trim()
-            : '';
-          generateNominaExcel(filterGrade, filterSection, teacherName);
-        }).catch(() => generateNominaExcel(filterGrade, filterSection, ''));
-      } else {
-        generateNominaExcel(filterGrade, filterSection, '');
-      }
-    }
+    // Pre-select grade and section if filters are set
+    setNominaSelectedGradeIds(filterGrade ? [filterGrade] : []);
+    setNominaSelectedSectionIds(filterSection ? [filterSection] : []);
+    setNominaModalOpen(true);
   };
-
-  // Fetch guide teacher when grade/section changes in the nomina modal
-  useEffect(() => {
-    if (!nominaGradeId || !nominaSectionId) {
-      setNominaTeacher('');
-      return;
-    }
-    const periodId = filterSchoolPeriod || activePeriod?.id;
-    if (!periodId) return;
-    api.get('/section-guides', {
-      params: { schoolPeriodId: periodId, gradeId: nominaGradeId, sectionId: nominaSectionId },
-    }).then(res => {
-      const guide = res.data;
-      if (guide?.guideTeacher) {
-        const t = guide.guideTeacher;
-        setNominaTeacher(`${t.lastName || ''} ${t.firstName || ''}`.trim());
-      } else {
-        setNominaTeacher('');
-      }
-    }).catch(() => setNominaTeacher(''));
-  }, [nominaGradeId, nominaSectionId, filterSchoolPeriod, activePeriod]);
 
   const handleToggleGroup = (group: string, checked: boolean) => {
     let groupKeys: string[] = [];
@@ -2058,55 +2055,91 @@ const MatriculationEnrollment: React.FC = () => {
       />
 
       <Modal
-        title="Imprimir Nómina de Sección"
+        title="Imprimir Nóminas"
         open={nominaModalOpen}
         onCancel={() => setNominaModalOpen(false)}
         onOk={() => {
-          if (!nominaGradeId || !nominaSectionId) {
-            message.warning('Seleccione grado y sección');
+          // Build combinations from selected grades and sections
+          const combos: { gradeId: number; sectionId: number }[] = [];
+          for (const gradeId of nominaSelectedGradeIds) {
+            const gradeStructure = structure.find(s => s.gradeId === gradeId);
+            if (!gradeStructure?.sections) continue;
+            for (const sec of gradeStructure.sections) {
+              if (nominaSelectedSectionIds.includes(sec.id)) {
+                combos.push({ gradeId, sectionId: sec.id });
+              }
+            }
+          }
+          if (combos.length === 0) {
+            message.warning('Seleccione al menos un grado y una sección');
             return;
           }
-          generateNominaExcel(nominaGradeId, nominaSectionId, nominaTeacher);
+          generateNominaExcel(combos);
           setNominaModalOpen(false);
         }}
         okText="Generar Excel"
+        confirmLoading={nominaGenerating}
       >
         <div className="flex flex-col gap-4 py-2">
           <div>
-            <label className="text-xs font-bold uppercase text-slate-500">Grado</label>
-            <Select
-              value={nominaGradeId}
-              onChange={(v) => { setNominaGradeId(v); setNominaSectionId(null); }}
-              style={{ width: '100%' }}
-              placeholder="Seleccionar grado"
-            >
+            <label className="text-xs font-bold uppercase text-slate-500 mb-2 block">Grados</label>
+            <div className="flex flex-wrap gap-2">
               {structure.map(s => (
-                <Option key={s.gradeId} value={s.gradeId}>{s.grade?.name}</Option>
+                <Button
+                  key={s.gradeId}
+                  type={nominaSelectedGradeIds.includes(s.gradeId) ? 'primary' : 'default'}
+                  onClick={() => {
+                    setNominaSelectedGradeIds(prev =>
+                      prev.includes(s.gradeId)
+                        ? prev.filter(id => id !== s.gradeId)
+                        : [...prev, s.gradeId]
+                    );
+                  }}
+                  style={{ borderRadius: 8 }}
+                >
+                  {s.grade?.name}
+                </Button>
               ))}
-            </Select>
+            </div>
           </div>
           <div>
-            <label className="text-xs font-bold uppercase text-slate-500">Sección</label>
-            <Select
-              value={nominaSectionId}
-              onChange={setNominaSectionId}
-              style={{ width: '100%' }}
-              placeholder="Seleccionar sección"
-              disabled={!nominaGradeId}
-            >
-              {structure.find(s => s.gradeId === nominaGradeId)?.sections?.map(sec => (
-                <Option key={sec.id} value={sec.id}>{sec.name}</Option>
-              ))}
-            </Select>
+            <label className="text-xs font-bold uppercase text-slate-500 mb-2 block">Secciones</label>
+            <div className="flex flex-wrap gap-2">
+              {Array.from(new Set(
+                structure
+                  .filter(s => nominaSelectedGradeIds.length === 0 || nominaSelectedGradeIds.includes(s.gradeId))
+                  .flatMap(s => s.sections || [])
+                  .map(sec => sec.id)
+              )).map(secId => {
+                const sec = structure.flatMap(s => s.sections || []).find(x => x.id === secId);
+                if (!sec) return null;
+                return (
+                  <Button
+                    key={sec.id}
+                    type={nominaSelectedSectionIds.includes(sec.id) ? 'primary' : 'default'}
+                    onClick={() => {
+                      setNominaSelectedSectionIds(prev =>
+                        prev.includes(sec.id)
+                          ? prev.filter(id => id !== sec.id)
+                          : [...prev, sec.id]
+                      );
+                    }}
+                    style={{ borderRadius: 8 }}
+                  >
+                    {sec.name}
+                  </Button>
+                );
+              })}
+            </div>
+            {nominaSelectedGradeIds.length === 0 && (
+              <p className="text-xs text-slate-400 mt-1">Seleccione grados para ver las secciones disponibles</p>
+            )}
           </div>
-          <div>
-            <label className="text-xs font-bold uppercase text-slate-500">Prof. Guía</label>
-            <Input
-              value={nominaTeacher}
-              onChange={(e) => setNominaTeacher(e.target.value)}
-              placeholder="Nombre del profesor guía"
-            />
-          </div>
+          {nominaSelectedGradeIds.length > 0 && nominaSelectedSectionIds.length > 0 && (
+            <div className="text-xs text-slate-500 bg-slate-50 rounded-lg p-2">
+              Se generarán nóminas para las combinaciones de los grados y secciones seleccionados.
+            </div>
+          )}
         </div>
       </Modal>
     </div>
