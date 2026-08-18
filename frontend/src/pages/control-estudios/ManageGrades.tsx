@@ -26,6 +26,25 @@ const playBeep = () => {
 
 const normalizeText = (s?: string) => (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
+/** Graduation cap. Inlined because @ant-design/icons has no equivalent. */
+const GraduationCapIcon: React.FC = () => (
+  <svg
+    width="26"
+    height="26"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="var(--color-brand-primary)"
+    strokeWidth="1.8"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+  >
+    <path d="M22 9 12 4 2 9l10 5 10-5Z" />
+    <path d="M6 11.5V16c0 1.5 2.7 3 6 3s6-1.5 6-3v-4.5" />
+    <path d="M22 9v5" />
+  </svg>
+);
+
 const TITLE_CONNECTORS = new Set(['y', 'o', 'de', 'del', 'la', 'las', 'el', 'los', 'en', 'a', 'para', 'por', 'con', 'sin', 'e', 'u', 'ni']);
 
 const formatSubjectName = (name: string) =>
@@ -650,11 +669,29 @@ const ManageGrades: React.FC = () => {
       `}</style>
       {!selectedAssignment ? (
         <>
-          <div className="mb-6">
-            <h1 className="text-2xl font-black" style={{ color: 'var(--color-text-main)' }}>Calificaciones por Sección</h1>
-            <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
-              Selecciona una sección para ver y editar sus calificaciones
-            </p>
+          <div className="mb-6" style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+            <div
+              style={{
+                width: 48,
+                height: 48,
+                borderRadius: 12,
+                backgroundColor: 'color-mix(in srgb, var(--color-brand-primary) 10%, transparent)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+              }}
+            >
+              <GraduationCapIcon />
+            </div>
+            <div>
+              <h1 className="text-2xl font-black" style={{ color: 'var(--color-text-main)', margin: 0, lineHeight: 1.2 }}>
+                Calificaciones por Sección
+              </h1>
+              <p className="text-xs" style={{ color: 'var(--color-text-muted)', margin: 0, marginTop: 2 }}>
+                Selecciona una sección para ver y editar sus calificaciones
+              </p>
+            </div>
           </div>
 
           <Card size="small" style={{ marginBottom: 16, backgroundColor: 'var(--color-content-bg)' }}>
