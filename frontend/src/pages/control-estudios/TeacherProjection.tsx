@@ -6,6 +6,8 @@ import api from '@/services/api';
 const { Option } = Select;
 const { Text } = Typography;
 
+const normalizeText = (s?: string) => (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
 interface Grade { id: number; name: string; isDiversified: boolean; order: number; }
 interface Section { id: number; name: string; }
 interface PeriodGradeStructure { id: number; grade: Grade; sections: Section[]; }
@@ -416,7 +418,9 @@ const TeacherProjection: React.FC = () => {
               placeholder="Seleccione Materia"
               disabled={!selectedGradeId}
               showSearch
-              optionFilterProp="children"
+              filterOption={(input, option) =>
+                normalizeText(String(option?.children ?? '')).includes(normalizeText(input))
+              }
             >
               {availableStructure.find(gs => gs.id === selectedGradeId)?.subjects.map((sub: any) => (
                 <Option key={sub.id} value={sub.id}>{sub.name}</Option>
