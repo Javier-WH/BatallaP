@@ -241,6 +241,25 @@ const TeacherProjection: React.FC = () => {
 
   const unassignedCount = unassignedSubjects.length;
 
+  // Build a sort key map from availableStructure so teachingAssignments can be
+  // displayed in canonical order (grade.order, then subject order within grade).
+  const subjectSortKey = useMemo(() => {
+    const map = new Map<string, { gradeOrder: number; subjectOrder: number }>();
+    availableStructure.forEach((gs: any, gradeIndex: number) => {
+      const gradeOrder = gs.grade?.order ?? gradeIndex;
+      (gs.subjects || []).forEach((sub: any, subIndex: number) => {
+        const pgsId = sub.PeriodGradeSubject?.id;
+        if (pgsId != null) {
+          map.set(`${pgsId}`, {
+            gradeOrder,
+            subjectOrder: sub.PeriodGradeSubject?.order ?? subIndex,
+          });
+        }
+      });
+    });
+    return map;
+  }, [availableStructure]);
+
   const columns = [
     {
       title: 'Profesor',
@@ -258,11 +277,27 @@ const TeacherProjection: React.FC = () => {
       render: (_: any, record: any) => (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           {record.teachingAssignments?.length > 0 ? (
-            record.teachingAssignments.map((as: any) => (
-              <Tag key={as.id} color="blue" closable onClose={(e) => { e.preventDefault(); handleRemove(as.id); }}>
-                {as.periodGradeSubject?.subject?.name} - {as.periodGradeSubject?.periodGrade?.grade?.name} ({as.section?.name})
-              </Tag>
-            ))
+            [...record.teachingAssignments]
+              .sort((a: any, b: any) => {
+                const nameA = normalizeText(a.periodGradeSubject?.subject?.name || '');
+                const nameB = normalizeText(b.periodGradeSubject?.subject?.name || '');
+                const isOrientA = nameA === 'orientacion y convivencia';
+                const isOrientB = nameB === 'orientacion y convivencia';
+                if (isOrientA !== isOrientB) return isOrientA ? 1 : -1;
+
+                const keyA = `${a.periodGradeSubject?.id}`;
+                const keyB = `${b.periodGradeSubject?.id}`;
+                const ordA = subjectSortKey.get(keyA) ?? { gradeOrder: 999, subjectOrder: 999 };
+                const ordB = subjectSortKey.get(keyB) ?? { gradeOrder: 999, subjectOrder: 999 };
+                if (ordA.gradeOrder !== ordB.gradeOrder) return ordA.gradeOrder - ordB.gradeOrder;
+                if (ordA.subjectOrder !== ordB.subjectOrder) return ordA.subjectOrder - ordB.subjectOrder;
+                return (a.section?.name || '').localeCompare(b.section?.name || '', 'es');
+              })
+              .map((as: any) => (
+                <Tag key={as.id} color="blue" closable onClose={(e) => { e.preventDefault(); handleRemove(as.id); }}>
+                  {as.periodGradeSubject?.subject?.name} - {as.periodGradeSubject?.periodGrade?.grade?.name} ({as.section?.name})
+                </Tag>
+              ))
           ) : (
             <span style={{ color: '#999', fontSize: '0.85rem' }}>Sin materias asignadas</span>
           )}
