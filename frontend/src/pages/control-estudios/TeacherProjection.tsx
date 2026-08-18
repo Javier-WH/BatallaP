@@ -312,6 +312,10 @@ const TeacherProjection: React.FC = () => {
                                 value: t.id,
                               }))}
                               allowClear
+                              showSearch
+                              filterOption={(input, option) =>
+                                normalizeText(String(option?.label ?? '')).includes(normalizeText(input))
+                              }
                             />
                           )}
                         </div>

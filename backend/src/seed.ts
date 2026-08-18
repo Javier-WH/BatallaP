@@ -1,5 +1,5 @@
 import sequelize from '@/config/database';
-import { User, Person, Role, PersonRole, SchoolPeriod, Subject, Grade, Section, Specialization, Plantel } from '@/models/index';
+import { User, Person, Role, PersonRole, SchoolPeriod, Subject, Grade, Section, Specialization, Plantel, EvaluationCatalog } from '@/models/index';
 import Term from '@/models/Term';
 import fs from 'fs';
 import path from 'path';
@@ -280,6 +280,55 @@ const seed = async () => {
         }
       }
     }
+
+    // Seed default evaluation catalogs
+    const defaultCatalogs: { type: 'tecnica' | 'instrumento' | 'estrategia'; name: string }[] = [
+      // Técnicas
+      { type: 'tecnica', name: 'Observación' },
+      { type: 'tecnica', name: 'Entrevista' },
+      { type: 'tecnica', name: 'Encuesta' },
+      { type: 'tecnica', name: 'Prueba escrita' },
+      { type: 'tecnica', name: 'Prueba oral' },
+      { type: 'tecnica', name: 'Exposición' },
+      { type: 'tecnica', name: 'Defensa oral' },
+      { type: 'tecnica', name: 'Dramatización' },
+      { type: 'tecnica', name: 'Debate' },
+      { type: 'tecnica', name: 'Intercambio oral' },
+      { type: 'tecnica', name: 'Revisión del cuaderno' },
+      // Instrumentos
+      { type: 'instrumento', name: 'Lista de cotejo' },
+      { type: 'instrumento', name: 'Escala de estimación' },
+      { type: 'instrumento', name: 'Rúbrica' },
+      { type: 'instrumento', name: 'Cuestionario' },
+      { type: 'instrumento', name: 'Guía de observación' },
+      { type: 'instrumento', name: 'Registro anecdótico' },
+      { type: 'instrumento', name: 'Portafolio' },
+      { type: 'instrumento', name: 'Ficha de evaluación' },
+      { type: 'instrumento', name: 'Examen' },
+      { type: 'instrumento', name: 'Prueba escrita' },
+      // Estrategias
+      { type: 'estrategia', name: 'Mapa conceptual' },
+      { type: 'estrategia', name: 'Cuadro comparativo' },
+      { type: 'estrategia', name: 'Resumen' },
+      { type: 'estrategia', name: 'Ensayo' },
+      { type: 'estrategia', name: 'Phillips 66' },
+      { type: 'estrategia', name: 'Estudio de casos' },
+      { type: 'estrategia', name: 'Juego de roles' },
+      { type: 'estrategia', name: 'Aprendizaje basado en proyectos' },
+      { type: 'estrategia', name: 'Aprendizaje cooperativo' },
+      { type: 'estrategia', name: 'Lluvia de ideas' },
+      { type: 'estrategia', name: 'Observación y Seguimiento' },
+      { type: 'estrategia', name: 'Análisis del Desempeño' },
+      { type: 'estrategia', name: 'Interrogatorio' },
+      { type: 'estrategia', name: 'Participación de los Estudiantes' },
+    ];
+    for (const item of defaultCatalogs) {
+      await EvaluationCatalog.findOrCreate({
+        where: { type: item.type, name: item.name },
+        defaults: { type: item.type, name: item.name },
+      });
+    }
+    console.log('Evaluation catalogs seeded.');
 
   } catch (error) {
     console.error('Error seeding database:', error);
