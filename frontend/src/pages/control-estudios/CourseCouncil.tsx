@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useLayoutEffect, useCallback, useRef } from 'react';
-import { Card, Button, Table, InputNumber, Space, Typography, Row, Col, Tag, Input, Empty, Spin, message, Tooltip, Alert, Breadcrumb, Checkbox, Modal } from 'antd';
+import { Card, Button, Table, Space, Typography, Row, Col, Tag, Input, Empty, Spin, message, Tooltip, Alert, Breadcrumb, Checkbox, Modal } from 'antd';
 import {
   LeftOutlined,
   SaveOutlined,
@@ -1120,15 +1120,49 @@ const CourseCouncil: React.FC = () => {
                 : record.subjects.find(s => s.id === colDef.subjectId);
               if (!subjectData) return <Text type="secondary">-</Text>;
               return (
-                <InputNumber
-                  min={0}
-                  max={pointsPerSubjectLimit}
-                  size="small"
+                <Input
                   value={subjectData.points}
-                  onChange={(val) => handlePointChange(record.id, subjectData.inscriptionSubjectId, val)}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value, 10);
+                    if (isNaN(val)) {
+                      handlePointChange(record.id, subjectData.inscriptionSubjectId, 0);
+                    } else {
+                      handlePointChange(record.id, subjectData.inscriptionSubjectId, Math.min(Math.max(val, 0), pointsPerSubjectLimit));
+                    }
+                  }}
+                  onKeyDown={(e) => {
+                    if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter'].includes(e.key)) return;
+                    e.preventDefault();
+                    const target = e.target as HTMLInputElement;
+                    const currentTd = target.closest('td');
+                    const currentTr = currentTd?.closest('tr');
+                    if (!currentTd || !currentTr) return;
+                    const tds = Array.from(currentTr.querySelectorAll('td'));
+                    const colIndex = tds.indexOf(currentTd);
+                    const focusInput = (td: Element | null | undefined) => {
+                      const input = td?.querySelector('input');
+                      if (input) { input.focus(); input.select(); }
+                    };
+                    if (e.key === 'ArrowDown' || e.key === 'Enter') {
+                      const nextTr = currentTr.nextElementSibling as HTMLTableRowElement | null;
+                      if (nextTr) focusInput(nextTr.querySelectorAll('td')[colIndex]);
+                    } else if (e.key === 'ArrowUp') {
+                      const prevTr = currentTr.previousElementSibling as HTMLTableRowElement | null;
+                      if (prevTr) focusInput(prevTr.querySelectorAll('td')[colIndex]);
+                    } else if (e.key === 'ArrowRight') {
+                      for (let i = colIndex + 1; i < tds.length; i++) {
+                        if (tds[i].querySelector('input')) { focusInput(tds[i]); break; }
+                      }
+                    } else if (e.key === 'ArrowLeft') {
+                      for (let i = colIndex - 1; i >= 0; i--) {
+                        if (tds[i].querySelector('input')) { focusInput(tds[i]); break; }
+                      }
+                    }
+                  }}
+                  onFocus={(e) => e.target.select()}
                   disabled={!selectedTerm?.isBlocked}
                   className="premium-input-number"
-                  style={{ width: 42, fontWeight: 700, borderRadius: 6 }}
+                  style={{ width: 42, fontWeight: 700, borderRadius: 6, textAlign: 'center', padding: '0 2px' }}
                 />
               );
             }
