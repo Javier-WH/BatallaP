@@ -25,6 +25,17 @@ const playBeep = () => {
 
 const normalizeText = (s?: string) => (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
+const TITLE_CONNECTORS = new Set(['y', 'o', 'de', 'del', 'la', 'las', 'el', 'los', 'en', 'a', 'para', 'por', 'con', 'sin', 'e', 'u', 'ni']);
+
+const formatSubjectName = (name: string) =>
+  (name || '')
+    .toLowerCase()
+    .split(' ')
+    .map((word, i) =>
+      i > 0 && TITLE_CONNECTORS.has(normalizeText(word)) ? word : word.charAt(0).toUpperCase() + word.slice(1)
+    )
+    .join(' ');
+
 interface Term {
   id: number;
   name: string;
@@ -682,7 +693,7 @@ const ManageGrades: React.FC = () => {
                   allowClear
                   placeholder="Filtrar por materia"
                   style={{ minWidth: 260 }}
-                  options={subjectOptions.map(s => ({ label: s.name, value: s.id }))}
+                  options={subjectOptions.map(s => ({ label: formatSubjectName(s.name), value: s.id }))}
                   value={selectedSubjects}
                   onChange={(vals) => setSelectedSubjects(vals as number[])}
                   maxTagCount="responsive"
@@ -719,7 +730,7 @@ const ManageGrades: React.FC = () => {
                           <div className="flex items-center justify-between">
                             <Tag color="blue">{a.section.name}</Tag>
                             <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-main)' }}>
-                              {a.periodGradeSubject.subject.name}
+                              {formatSubjectName(a.periodGradeSubject.subject.name)}
                             </span>
                           </div>
                           <div className="flex items-center gap-1" style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>
@@ -742,7 +753,7 @@ const ManageGrades: React.FC = () => {
             <Button icon={<ArrowLeftOutlined />} onClick={handleBack}>Volver</Button>
             <div>
               <Title level={4} style={{ margin: 0, color: 'var(--color-text-main)' }}>
-                {selectedAssignment.periodGradeSubject.subject.name}
+                {formatSubjectName(selectedAssignment.periodGradeSubject.subject.name)}
               </Title>
               <Text style={{ color: 'var(--color-text-muted)', fontSize: 13 }}>
                 {selectedAssignment.periodGradeSubject.periodGrade.grade.name} • Sección {selectedAssignment.section.name} • Prof. {selectedAssignment.teacher?.firstName} {selectedAssignment.teacher?.lastName}
@@ -1211,7 +1222,7 @@ const ManageGrades: React.FC = () => {
           return {
             periodName: selectedAssignment.periodGradeSubject?.periodGrade?.schoolPeriod?.name || '-',
             gradeName: selectedAssignment.periodGradeSubject?.periodGrade?.grade?.name || '-',
-            subjectName: selectedAssignment.periodGradeSubject?.subject?.name || '-',
+            subjectName: formatSubjectName(selectedAssignment.periodGradeSubject?.subject?.name || '-'),
             sectionName: selectedAssignment.section?.name || '-',
             termName: termObj?.name || '-',
             teacherName: selectedAssignment.teacher
