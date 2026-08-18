@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Card, Tabs, Table, Button, message, Tag, Typography, Alert, Empty, Spin, Space, Dropdown, Modal, Descriptions, Input, Select, Tooltip } from 'antd';
-import { BookOutlined, ArrowLeftOutlined, DownloadOutlined, FilePdfOutlined, EditOutlined, DeleteOutlined, PlusOutlined, HistoryOutlined } from '@ant-design/icons';
+import { Card, Tabs, Table, Button, message, Tag, Typography, Alert, Empty, Spin, Space, Dropdown, Modal, Descriptions, Input, Select, Tooltip, Checkbox } from 'antd';
+import { BookOutlined, ArrowLeftOutlined, DownloadOutlined, FilePdfOutlined, EditOutlined, DeleteOutlined, PlusOutlined, HistoryOutlined, CopyOutlined } from '@ant-design/icons';
 import api from '@/services/api';
 import dayjs from 'dayjs';
 import { useGradeRounding } from '@/context/GradeRoundingContext';
@@ -160,6 +160,9 @@ const ManageGrades: React.FC = () => {
   const [showPDFModal, setShowPDFModal] = useState(false);
   const [showPlanModal, setShowPlanModal] = useState(false);
   const [editingItem, setEditingItem] = useState<EvaluationPlanItem | null>(null);
+  const [copyModalOpen, setCopyModalOpen] = useState(false);
+  const [copyTargetSectionIds, setCopyTargetSectionIds] = useState<number[]>([]);
+  const [copySubmitting, setCopySubmitting] = useState(false);
   const [auditModal, setAuditModal] = useState<{ open: boolean; studentName?: string; itemLabel?: string }>({ open: false });
   const [auditHistory, setAuditHistory] = useState<any[]>([]);
   const [auditLoading, setAuditLoading] = useState(false);
@@ -516,6 +519,47 @@ const ManageGrades: React.FC = () => {
   }, [evaluationPlan, students, passingGrade]);
 
   const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?.percentage || 0), 0) || 0;
+
+  // Target sections for copy: same subject, excluding the current section.
+  // Unlike TeacherPanel, Control de Estudios sees all assignments, so we don't
+  // filter by teacher — any section with the same subject is a valid target.
+  const copyTargetAssignments = useMemo(() => {
+    if (!selectedAssignment) return [];
+    return allAssignments.filter(a =>
+      a.id !== selectedAssignment.id &&
+      a.periodGradeSubjectId === selectedAssignment.periodGradeSubjectId
+    );
+  }, [allAssignments, selectedAssignment]);
+
+  const handleCopyPlan = async () => {
+    if (!selectedAssignment || copyTargetSectionIds.length === 0) return;
+    setCopySubmitting(true);
+    try {
+      const res = await api.post('/evaluation/copy-plan', {
+        sourcePeriodGradeSubjectId: selectedAssignment.periodGradeSubjectId,
+        sourceSectionId: selectedAssignment.sectionId,
+        targetPeriodGradeSubjectId: selectedAssignment.periodGradeSubjectId,
+        targetSectionIds: copyTargetSectionIds,
+        termId: selectedTerm,
+      });
+      const data = res.data;
+      const created = data.results?.filter((r: any) => r.created > 0).length || 0;
+      const skipped = data.results?.filter((r: any) => r.skipped > 0).length || 0;
+      if (created > 0 && skipped === 0) {
+        message.success(`Plan copiado a ${created} sección${created > 1 ? 'es' : ''}`);
+      } else if (created > 0 && skipped > 0) {
+        message.warning(`Copiado a ${created} sección${created > 1 ? 'es' : ''}, ${skipped} ya tenían plan y se omitieron`);
+      } else if (created === 0 && skipped > 0) {
+        message.info('Las secciones seleccionadas ya tenían un plan de evaluación');
+      }
+      setCopyModalOpen(false);
+      setCopyTargetSectionIds([]);
+    } catch (error: any) {
+      message.error(error.response?.data?.message || 'Error al copiar el plan');
+    } finally {
+      setCopySubmitting(false);
+    }
+  };
 
   const downloadExcel = async (filled: boolean) => {
     if (!selectedAssignment?.id) return;
@@ -907,18 +951,31 @@ const ManageGrades: React.FC = () => {
                       style={{ backgroundColor: 'var(--color-content-bg)', border: '1px solid rgba(15, 23, 42, 0.06)' }}
                     />
 
-                    <div
-                      className={`mt-4 w-full h-14 flex items-center justify-center rounded-xl transition-all cursor-pointer border-none shadow-sm ${isSelectedTermBlocked || !selectedAssignment ? 'opacity-50 pointer-events-none' : 'hover:scale-[1.01]'}`}
-                      style={{ backgroundColor: isSelectedTermBlocked || !selectedAssignment ? 'var(--color-inactive)' : 'var(--color-accent)',
-                        color: isSelectedTermBlocked || !selectedAssignment ? 'var(--color-text-main)' : 'var(--color-header-text)' }}
-                      onClick={() => {
-                        if(isSelectedTermBlocked || !selectedAssignment) return;
-                        setEditingItem(null);
-                        setShowPlanModal(true);
-                      }}
-                    >
-                      <PlusOutlined className="text-3xl font-bold" />
-                    </div>
+                    {totalPercentage < 100 && (
+                      <div
+                        className={`mt-4 w-full h-14 flex items-center justify-center rounded-xl transition-all cursor-pointer border-none shadow-sm ${isSelectedTermBlocked || !selectedAssignment ? 'opacity-50 pointer-events-none' : 'hover:scale-[1.01]'}`}
+                        style={{ backgroundColor: isSelectedTermBlocked || !selectedAssignment ? 'var(--color-inactive)' : 'var(--color-accent)',
+                          color: isSelectedTermBlocked || !selectedAssignment ? 'var(--color-text-main)' : 'var(--color-header-text)' }}
+                        onClick={() => {
+                          if(isSelectedTermBlocked || !selectedAssignment) return;
+                          setEditingItem(null);
+                          setShowPlanModal(true);
+                        }}
+                      >
+                        <PlusOutlined className="text-3xl font-bold" />
+                      </div>
+                    )}
+
+                    {totalPercentage === 100 && copyTargetAssignments.length > 0 && !isSelectedTermBlocked && (
+                      <div
+                        className="mt-3 w-full h-14 flex items-center justify-center gap-3 rounded-xl transition-all cursor-pointer border-none shadow-sm hover:scale-[1.01]"
+                        style={{ backgroundColor: '#16a34a', color: '#fff' }}
+                        onClick={() => { setCopyTargetSectionIds([]); setCopyModalOpen(true); }}
+                      >
+                        <CopyOutlined className="text-2xl font-bold" />
+                        <span className="text-lg font-bold">Listo 100% — Copiar a otras secciones</span>
+                      </div>
+                    )}
 
                     <div className="mt-6 flex justify-between items-center px-2">
                       <span className="font-medium text-sm" style={{ color: 'var(--color-text-main)' }}>Mostrando {evaluationPlan.length} evaluaciones registradas</span>
@@ -1372,6 +1429,36 @@ const ManageGrades: React.FC = () => {
           maxGrade={maxGrade}
         />
       )}
+
+      <Modal
+        title="Copiar plan de evaluación a otras secciones"
+        open={copyModalOpen}
+        onCancel={() => { setCopyModalOpen(false); setCopyTargetSectionIds([]); }}
+        onOk={handleCopyPlan}
+        confirmLoading={copySubmitting}
+        okText="Copiar"
+        cancelText="Cancelar"
+        okButtonProps={{ disabled: copyTargetSectionIds.length === 0 }}
+      >
+        <p className="mb-4" style={{ color: 'var(--color-text-muted)', fontSize: 13 }}>
+          Selecciona las secciones donde quieres copiar el plan actual ({totalPercentage}% completado).
+          Las secciones que ya tengan un plan serán omitidas.
+        </p>
+        <Checkbox.Group
+          value={copyTargetSectionIds}
+          onChange={(values) => setCopyTargetSectionIds(values as number[])}
+          className="flex flex-col gap-2"
+        >
+          {copyTargetAssignments.map(a => (
+            <Checkbox key={a.id} value={a.sectionId}>
+              {formatSectionLabel(a.section.name)}
+            </Checkbox>
+          ))}
+        </Checkbox.Group>
+        {copyTargetAssignments.length === 0 && (
+          <Empty description="No hay otras secciones con esta materia" />
+        )}
+      </Modal>
 
       <Modal
         title="Historial de cambios de la nota"
