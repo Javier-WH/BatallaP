@@ -12,7 +12,27 @@ import { formatGrade } from '@/utils/gradeFormat';
 import EvaluationPlanPDFModal from '@/components/pdf/EvaluationPlanPDFModal';
 import type { EvaluationPlanHeaderData, EvaluationPlanRowData } from '@/components/pdf/EvaluationPlanPDF';
 import EvaluationPlanItemModal, { type CatalogOption } from '@/components/EvaluationPlanItemModal';
+import { getSubjectVisual, withAlpha } from '@/utils/subjectVisuals';
 import ContentTab from './ContentTab';
+
+/** Extracts a numeric order from grade names like "Primer Año", "Segundo Año", etc. */
+const GRADE_ORDINALS: Record<string, number> = {
+  primer: 1, primero: 1,
+  segundo: 2,
+  tercer: 3, tercero: 3,
+  cuarto: 4,
+  quinto: 5,
+  sexto: 6,
+  septimo: 7,
+  octavo: 8,
+  noveno: 9,
+  decimo: 10,
+};
+const gradeOrder = (name: string): number => {
+  const lower = name.toLowerCase().trim();
+  const firstWord = lower.split(/\s+/)[0];
+  return GRADE_ORDINALS[firstWord] ?? 99;
+};
 
 
 // Error Boundary Component
@@ -201,6 +221,8 @@ const TeacherPanel: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [selectedAssignmentId, setSelectedAssignmentId] = useState<number | null>(null);
+  const [selectedSubjectId, setSelectedSubjectId] = useState<number | null>(null);
+  const [selectedGradeId, setSelectedGradeId] = useState<number | null>(null);
   const [selectedTerm, setSelectedTerm] = useState<number | null>(null);
   const [availableTerms, setAvailableTerms] = useState<Term[]>([]);
   const [evaluationPlan, setEvaluationPlan] = useState<EvaluationPlanItem[]>([]);
@@ -549,6 +571,83 @@ const TeacherPanel: React.FC = () => {
     };
     fetchRevisionStatus();
   }, []);
+
+  // Derive unique subjects from all assignments (sorted by name)
+  const availableSubjects = useMemo(() => {
+    const map = new Map<number, { id: number; pgsId: number; name: string }>();
+    assignments.forEach(a => {
+      const s = a.periodGradeSubject?.subject;
+      if (s && !map.has(s.id)) {
+        map.set(s.id, { id: s.id, pgsId: a.periodGradeSubjectId, name: s.name });
+      }
+    });
+    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name, 'es', { numeric: true }));
+  }, [assignments]);
+
+  // Derive unique grades for the selected subject (sorted by ordinal extracted from name)
+  const availableGrades = useMemo(() => {
+    if (!selectedSubjectId) return [];
+    const map = new Map<number, { id: number; name: string }>();
+    assignments.forEach(a => {
+      if (a.periodGradeSubject?.subject?.id !== selectedSubjectId) return;
+      const g = a.periodGradeSubject?.periodGrade?.grade;
+      if (g && !map.has(g.id)) map.set(g.id, { id: g.id, name: g.name });
+    });
+    return Array.from(map.values()).sort((a, b) => gradeOrder(a.name) - gradeOrder(b.name));
+  }, [assignments, selectedSubjectId]);
+
+  // Derive available sections for the selected subject + grade
+  const availableSections = useMemo(() => {
+    if (!selectedSubjectId || !selectedGradeId) return [];
+    return assignments
+      .filter(a =>
+        a.periodGradeSubject?.subject?.id === selectedSubjectId &&
+        a.periodGradeSubject?.periodGrade?.grade?.id === selectedGradeId
+      )
+      .map(a => ({ assignmentId: a.id, sectionId: a.sectionId, sectionName: a.section.name }))
+      .sort((a, b) => a.sectionName.localeCompare(b.sectionName, 'es'));
+  }, [assignments, selectedSubjectId, selectedGradeId]);
+
+  // Auto-select: if only one subject, select it; if only one grade, select it; if only one section, select it
+  useEffect(() => {
+    if (selectedSubjectId === null && availableSubjects.length === 1) {
+      setSelectedSubjectId(availableSubjects[0].id);
+    }
+  }, [availableSubjects, selectedSubjectId]);
+
+  useEffect(() => {
+    if (selectedSubjectId && availableGrades.length === 1 && selectedGradeId === null) {
+      setSelectedGradeId(availableGrades[0].id);
+    }
+  }, [availableGrades, selectedSubjectId, selectedGradeId]);
+
+  useEffect(() => {
+    if (availableSections.length === 1 && selectedAssignmentId !== availableSections[0].assignmentId) {
+      setSelectedAssignmentId(availableSections[0].assignmentId);
+    }
+  }, [availableSections, selectedAssignmentId]);
+
+  // If the selected assignment is no longer valid for the current subject+grade
+  // (e.g. the teacher changed the year and doesn't teach that section there),
+  // try to preserve the same section name; otherwise clear the selection.
+  useEffect(() => {
+    if (!selectedAssignmentId) return;
+    if (availableSections.length === 0) return;
+
+    const current = assignments.find(a => a.id === selectedAssignmentId);
+    const currentSectionName = current?.section?.name;
+    const stillValid = availableSections.some(s => s.assignmentId === selectedAssignmentId);
+
+    if (!stillValid && currentSectionName) {
+      // Try to find the same section name in the new year
+      const match = availableSections.find(s => s.sectionName === currentSectionName);
+      if (match) {
+        setSelectedAssignmentId(match.assignmentId);
+      } else {
+        setSelectedAssignmentId(null);
+      }
+    }
+  }, [availableSections, selectedAssignmentId, assignments]);
 
   // Target sections for copy: same subject + same grade + same teacher, excluding current section
   const copyTargetAssignments = useMemo(() => {
@@ -1057,44 +1156,93 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 mb-8">
         {/* Subjects & Terms combined in a single card-like block or flex */}
         <div className="xl:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Asignaturas Seleccionables */}
+          {/* Asignaturas Seleccionables — 3 niveles: materia → año → sección */}
           <div className="app-card app-card-hover p-5 flex flex-col">
-            <span className="text-[10px] font-bold uppercase tracking-widest mb-3" style={{ color: 'var(--color-text-muted)' }}>Seleccionar Asignatura</span>
-            <div className="flex gap-3 overflow-x-auto pb-2 shrink-0">
-              {assignments.map(as => {
-                const isSelected = as.id === selectedAssignmentId;
+            <span className="text-[10px] font-bold uppercase tracking-widest mb-2" style={{ color: 'var(--color-text-muted)' }}>Seleccionar Asignatura</span>
+
+            {/* Nivel 1: Materia (scroll horizontal, sin repetir, con icono+color) */}
+            <div className="flex gap-2.5 overflow-x-auto pb-2 shrink-0" style={{ minHeight: 64 }}>
+              {availableSubjects.map(s => {
+                const isSelected = s.id === selectedSubjectId;
+                const { Icon, color } = getSubjectVisual({ name: s.name });
                 return (
                   <div
-                    key={as.id}
-                    onClick={() => setSelectedAssignmentId(as.id)}
-                    className="cursor-pointer min-w-[160px] rounded-xl p-3 transition-all flex items-center gap-3 border-none"
+                    key={s.id}
+                    onClick={() => {
+                      setSelectedSubjectId(s.id);
+                      setSelectedGradeId(null);
+                      setSelectedAssignmentId(null);
+                    }}
+                    className="cursor-pointer min-w-[180px] rounded-xl p-3 transition-all flex items-center gap-3 border-none"
                     style={{
                       backgroundColor: isSelected ? 'var(--color-accent)' : 'var(--color-inactive)',
-                      color: isSelected ? 'var(--color-header-text)' : 'var(--color-text-main)'
+                      color: isSelected ? 'var(--color-header-text)' : 'var(--color-text-main)',
                     }}
                   >
-                    <div 
+                    <div
                       className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0"
                       style={{
-                        backgroundColor: isSelected ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.05)',
-                        color: 'inherit'
+                        backgroundColor: isSelected ? 'rgba(255,255,255,0.2)' : withAlpha(color, 0.12),
                       }}
                     >
-                      <BookOutlined className="text-lg" />
+                      <Icon style={{ color: isSelected ? '#fff' : color, fontSize: 18 }} />
                     </div>
-                    <div>
-                      <div className="font-bold text-sm" style={{ color: 'inherit' }}>
-                        {as.periodGradeSubject.subject.name}
-                      </div>
-                      <div className="text-[10px] font-medium" style={{ opacity: 0.8, color: 'inherit' }}>
-                        Sec. {as.section.name}
-                      </div>
+                    <div className="font-bold text-sm leading-tight" style={{ color: 'inherit' }}>
+                      {s.name}
                     </div>
                   </div>
                 );
               })}
-              {assignments.length === 0 && <div className="text-[var(--color-text-muted)] text-sm py-4">No hay asignaturas</div>}
+              {availableSubjects.length === 0 && (
+                <span className="text-xs self-center" style={{ color: 'var(--color-text-muted)' }}>Sin materias</span>
+              )}
             </div>
+
+            {/* Nivel 2: Año */}
+            {selectedSubjectId && (
+              <div className="flex gap-2 mt-3 w-full">
+                {availableGrades.map(g => {
+                  const isSelected = g.id === selectedGradeId;
+                  return (
+                    <button
+                      key={g.id}
+                      onClick={() => {
+                        setSelectedGradeId(g.id);
+                      }}
+                      className="flex-1 py-2.5 text-sm font-bold rounded-lg transition-all border-none cursor-pointer"
+                      style={{
+                        backgroundColor: isSelected ? 'var(--color-accent)' : 'var(--color-inactive)',
+                        color: isSelected ? 'var(--color-header-text)' : 'var(--color-text-main)',
+                      }}
+                    >
+                      {g.name}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Nivel 3: Sección */}
+            {selectedGradeId && (
+              <div className="flex gap-2 mt-2 w-full">
+                {availableSections.map(sec => {
+                  const isSelected = sec.assignmentId === selectedAssignmentId;
+                  return (
+                    <button
+                      key={sec.assignmentId}
+                      onClick={() => setSelectedAssignmentId(sec.assignmentId)}
+                      className="flex-1 py-2.5 text-sm font-bold rounded-lg transition-all border-none cursor-pointer"
+                      style={{
+                        backgroundColor: isSelected ? 'var(--color-accent)' : 'var(--color-inactive)',
+                        color: isSelected ? 'var(--color-header-text)' : 'var(--color-text-main)',
+                      }}
+                    >
+                      {sec.sectionName}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           {/* Lazos */}
