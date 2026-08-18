@@ -14,6 +14,7 @@ import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
 import api from '@/services/api';
 import { useGradeRounding } from '@/context/GradeRoundingContext';
+import { useSchool } from '@/context/SchoolContext';
 import { formatGrade } from '@/utils/gradeFormat';
 
 const { Title, Text } = Typography;
@@ -97,6 +98,7 @@ const CourseCouncil: React.FC = () => {
   const [tableScrollHeight, setTableScrollHeight] = useState(300);
   const tableCardRef = useRef<HTMLDivElement>(null);
   const { enableRounding } = useGradeRounding();
+  const { settings } = useSchool();
 
   const updateTableScrollHeight = useCallback(() => {
     const card = tableCardRef.current;
@@ -692,8 +694,26 @@ const CourseCouncil: React.FC = () => {
         workbook.creator = 'BatallaProject';
         workbook.created = new Date();
         const worksheet = workbook.addWorksheet('Consejo de Curso', {
-          views: [{ state: 'frozen', xSplit: 3, ySplit: 2 }]
+          views: [{ state: 'frozen', xSplit: 3, ySplit: 9 }],
+          pageSetup: {
+            orientation: 'landscape',
+            paperSize: 9,
+            fitToPage: true,
+            fitToWidth: 1,
+            fitToHeight: 0,
+            horizontalCentered: true,
+            margins: {
+              left: 0.25,
+              right: 0.25,
+              top: 0.4,
+              bottom: 0.4,
+              header: 0.2,
+              footer: 0.2
+            }
+          }
         });
+        // Repeat the grouped/leaf header rows on every printed page.
+        worksheet.pageSetup.printTitlesRow = '8:9';
 
         const fixedHeaders = ['Estudiante', 'Documento', 'Promedio'];
         const leafHeaders: string[] = [...fixedHeaders];
@@ -712,11 +732,54 @@ const CourseCouncil: React.FC = () => {
           groupRanges.push({ title: colDef.title, start, end: leafHeaders.length });
         });
 
+        // Institutional report header, matching the school Excel templates.
+        worksheet.addRow([]);
+        worksheet.addRow(['', '', settings.name]);
+        worksheet.addRow(['', '', 'CONSEJO DE CURSO']);
+        worksheet.addRow([
+          '',
+          '',
+          `${selectedSection?.grade.name || ''} / Sección ${selectedSection?.section.name?.replace(/sección/gi, '').trim() || ''}`.trim()
+        ]);
+        worksheet.addRow(['', '', `Lapso: ${selectedTerm?.name || ''}`]);
+        worksheet.addRow(['', '', `Período escolar: ${activePeriod?.name || ''}`]);
+        worksheet.addRow([]);
+
         const topRow = worksheet.addRow([]);
         const headerRow = worksheet.addRow(leafHeaders);
+        const reportEndColumn = Math.min(Math.max(leafHeaders.length, 6), 12);
+        [2, 3, 4, 5, 6].forEach(rowNumber => {
+          worksheet.mergeCells(rowNumber, 3, rowNumber, reportEndColumn);
+          const cell = worksheet.getCell(rowNumber, 3);
+          cell.alignment = { horizontal: 'left', vertical: 'middle' };
+          cell.font = {
+            bold: true,
+            size: rowNumber === 2 ? 14 : rowNumber === 3 ? 12 : 10,
+            color: { argb: rowNumber === 3 ? '17324D' : '40566B' }
+          };
+        });
+        worksheet.getRow(1).height = 8;
+        worksheet.getRow(2).height = 26;
+        worksheet.getRow(3).height = 24;
+        worksheet.getRow(4).height = 20;
+        worksheet.getRow(5).height = 18;
+        worksheet.getRow(6).height = 18;
+        worksheet.getRow(7).height = 10;
+
+        try {
+          const logoResponse = await api.get('/upload/logo', { responseType: 'arraybuffer' });
+          const logoId = workbook.addImage({ buffer: logoResponse.data, extension: 'png' });
+          worksheet.addImage(logoId, {
+            tl: { col: 0.2, row: 1.1 },
+            ext: { width: 92, height: 92 }
+          });
+        } catch (error) {
+          console.warn('No se pudo incluir el logo institucional en el Excel:', error);
+        }
+
         groupRanges.forEach(range => {
           topRow.getCell(range.start).value = range.title;
-          worksheet.mergeCells(1, range.start, 1, range.end);
+          worksheet.mergeCells(8, range.start, 8, range.end);
         });
 
         const getSubject = (student: CouncilStudent, colDef: typeof columnDefinitions[number]) => (
@@ -756,29 +819,52 @@ const CourseCouncil: React.FC = () => {
               subject ? formatGrade(Math.round((baseGrade + points) * 100) / 100, enableRounding) : '-',
             );
           });
-          worksheet.addRow(row);
+          const dataRow = worksheet.addRow(row);
+          dataRow.eachCell(cell => {
+            cell.font = { size: 10 };
+            cell.border = {
+              top: { style: 'thin', color: { argb: 'D6DEE5' } },
+              left: { style: 'thin', color: { argb: 'D6DEE5' } },
+              bottom: { style: 'thin', color: { argb: 'D6DEE5' } },
+              right: { style: 'thin', color: { argb: 'D6DEE5' } }
+            };
+          });
+          dataRow.getCell(1).alignment = { horizontal: 'left', vertical: 'middle' };
+          for (let columnIndex = 2; columnIndex <= leafHeaders.length; columnIndex += 1) {
+            dataRow.getCell(columnIndex).alignment = { horizontal: 'center', vertical: 'middle' };
+          }
         });
 
         const headerFill = { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: 'D9EAF7' } };
         const subHeaderFill = { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: 'F3F6F9' } };
-        topRow.eachCell(cell => {
-          cell.fill = headerFill;
-          cell.font = { bold: true, color: { argb: '17324D' } };
-          cell.alignment = { horizontal: 'center', vertical: 'middle' };
-        });
-        headerRow.eachCell(cell => {
-          cell.fill = subHeaderFill;
-          cell.font = { bold: true, color: { argb: '40566B' } };
-          cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
-          cell.border = { bottom: { style: 'thin', color: { argb: 'B8C7D3' } } };
-        });
+        const headerBorder = {
+          top: { style: 'thin' as const, color: { argb: 'B8C7D3' } },
+          left: { style: 'thin' as const, color: { argb: 'B8C7D3' } },
+          bottom: { style: 'thin' as const, color: { argb: 'B8C7D3' } },
+          right: { style: 'thin' as const, color: { argb: 'B8C7D3' } }
+        };
+        for (let columnIndex = 1; columnIndex <= leafHeaders.length; columnIndex += 1) {
+          const groupCell = topRow.getCell(columnIndex);
+          groupCell.fill = headerFill;
+          groupCell.font = { bold: true, size: 10, color: { argb: '17324D' } };
+          groupCell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+          groupCell.border = headerBorder;
+
+          const leafCell = headerRow.getCell(columnIndex);
+          leafCell.fill = subHeaderFill;
+          leafCell.font = { bold: true, size: 9, color: { argb: '40566B' } };
+          leafCell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+          leafCell.border = headerBorder;
+        }
         topRow.height = 24;
         headerRow.height = 32;
 
         worksheet.columns.forEach((column, index) => {
-          column.width = index < 2 ? 24 : index === 2 ? 12 : 14;
+          column.width = index === 0 ? 34 : index === 1 ? 16 : index === 2 ? 11 : 9;
         });
-        worksheet.autoFilter = { from: { row: 2, column: 1 }, to: { row: 2, column: leafHeaders.length } };
+
+        // Constrain the printable area so the table is not cut off.
+        worksheet.pageSetup.printArea = `A1:${worksheet.getColumn(leafHeaders.length).letter}${worksheet.rowCount}`;
 
         const buffer = await workbook.xlsx.writeBuffer();
         const gradeName = selectedSection?.grade.name?.replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ_-]+/g, '_') || 'grado';
