@@ -96,6 +96,7 @@ const CourseCouncil: React.FC = () => {
 
   const [filterYear, setFilterYear] = useState<string>('');
   const [showPreviousTerms, setShowPreviousTerms] = useState<boolean>(true);
+  const [showPrevCouncilPoints, setShowPrevCouncilPoints] = useState<boolean>(false);
   const [tableScrollHeight, setTableScrollHeight] = useState(300);
   const tableCardRef = useRef<HTMLDivElement>(null);
   const { enableRounding } = useGradeRounding();
@@ -701,7 +702,7 @@ const CourseCouncil: React.FC = () => {
         workbook.creator = 'BatallaProject';
         workbook.created = new Date();
         const worksheet = workbook.addWorksheet('Consejo de Curso', {
-          views: [{ state: 'frozen', xSplit: 3, ySplit: 9 }],
+          views: [{ state: 'frozen', ySplit: 9 }],
           pageSetup: {
             orientation: 'landscape',
             paperSize: 9,
@@ -728,14 +729,25 @@ const CourseCouncil: React.FC = () => {
           { title: 'Información del estudiante', start: 1, end: fixedHeaders.length }
         ];
 
+        const currentLapNum = (selectedTerm?.name?.match(/\d+/)?.[0])
+          || String(selectedTerm?.order ?? 1);
+
+        // Map termId → lapso number, using term.order from the terms state
+        const termOrderMap = new Map<number, string>();
+        terms.forEach(t => {
+          const num = t.name.match(/\d+/)?.[0] || String(t.order);
+          termOrderMap.set(t.id, num);
+        });
+
         columnDefinitions.forEach(colDef => {
           const start = leafHeaders.length + 1;
           if (showPreviousTerms) {
             prevTermNames.forEach(pt => {
-              leafHeaders.push(`${pt.termName} - Nota`, `${pt.termName} - Puntos`);
+              const lapNum = termOrderMap.get(pt.termId) || '?';
+              leafHeaders.push(`L${lapNum}`);
             });
           }
-          leafHeaders.push('Nota base', 'Puntos consejo', 'Nota final');
+          leafHeaders.push(`L${currentLapNum}`, 'PC', 'NF');
           groupRanges.push({ title: colDef.title, start, end: leafHeaders.length });
         });
 
@@ -812,10 +824,7 @@ const CourseCouncil: React.FC = () => {
             if (showPreviousTerms) {
               prevTermNames.forEach(pt => {
                 const previous = subject?.previousTermsData?.find(item => item.termId === pt.termId);
-                row.push(
-                  previous ? formatGrade(previous.finalGrade, enableRounding) : '-',
-                  previous?.councilPoints ?? 0,
-                );
+                row.push(previous ? formatGrade(previous.finalGrade, enableRounding) : '-');
               });
             }
 
@@ -829,6 +838,31 @@ const CourseCouncil: React.FC = () => {
           });
           const dataRow = worksheet.addRow(row);
           const isZebraRow = studentIndex % 2 === 1;
+
+          // Apply superscript council points on previous-term L cells
+          if (showPreviousTerms && showPrevCouncilPoints) {
+            let colOffset = 3; // after Estudiante, Documento, Promedio
+            columnDefinitions.forEach(colDef => {
+              const subject = getSubject(student, colDef);
+              if (showPreviousTerms) {
+                prevTermNames.forEach(pt => {
+                  const previous = subject?.previousTermsData?.find(item => item.termId === pt.termId);
+                  if (previous && previous.councilPoints > 0) {
+                    const cell = dataRow.getCell(colOffset + 1);
+                    cell.value = {
+                      richText: [
+                        { text: String(formatGrade(previous.finalGrade, enableRounding)), font: { size: 10 } },
+                        { text: `+${previous.councilPoints}`, font: { size: 7, vertAlign: 'superscript', color: { argb: 'FA8C16' } } },
+                      ],
+                    };
+                  }
+                  colOffset += 1;
+                });
+              }
+              // Skip L (current), PC, NF
+              colOffset += 3;
+            });
+          }
           dataRow.eachCell(cell => {
             cell.font = { size: 10 };
             if (isZebraRow) {
@@ -899,7 +933,7 @@ const CourseCouncil: React.FC = () => {
         }
 
         worksheet.columns.forEach((column, index) => {
-          column.width = index === 0 ? 34 : index === 1 ? 16 : index === 2 ? 11 : 9;
+          column.width = index === 0 ? 34 : index === 1 ? 16 : index === 2 ? 11 : 4;
         });
 
         // Constrain the printable area so the table is not cut off.
@@ -1189,6 +1223,15 @@ const CourseCouncil: React.FC = () => {
                 style={{ fontWeight: 600 }}
               >
                 Mostrar lapsos anteriores
+              </Checkbox>
+            )}
+            {prevTermNames.length > 0 && showPreviousTerms && (
+              <Checkbox
+                checked={showPrevCouncilPoints}
+                onChange={(e) => setShowPrevCouncilPoints(e.target.checked)}
+                style={{ fontWeight: 600 }}
+              >
+                Incluir puntos de consejos anteriores
               </Checkbox>
             )}
             {!selectedTerm?.isBlocked && (
