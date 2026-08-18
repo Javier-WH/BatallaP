@@ -861,8 +861,10 @@ const CourseCouncil: React.FC = () => {
 
         // Thick separator between subjects so each block is easy to spot.
         const thickEdge = { style: 'medium' as const, color: { argb: '5A7085' } };
+        const lastColumn = leafHeaders.length;
+        const lastRow = worksheet.rowCount;
         groupRanges.forEach((range, rangeIndex) => {
-          for (let rowNumber = 8; rowNumber <= worksheet.rowCount; rowNumber += 1) {
+          for (let rowNumber = 8; rowNumber <= lastRow; rowNumber += 1) {
             const startCell = worksheet.getCell(rowNumber, range.start);
             startCell.border = { ...startCell.border, left: thickEdge };
 
@@ -872,6 +874,15 @@ const CourseCouncil: React.FC = () => {
             }
           }
         });
+
+        // Thick outline around the whole table (top + bottom edges; left/right already set above).
+        for (let columnIndex = 1; columnIndex <= lastColumn; columnIndex += 1) {
+          const topCell = worksheet.getCell(8, columnIndex);
+          topCell.border = { ...topCell.border, top: thickEdge };
+
+          const bottomCell = worksheet.getCell(lastRow, columnIndex);
+          bottomCell.border = { ...bottomCell.border, bottom: thickEdge };
+        }
 
         worksheet.columns.forEach((column, index) => {
           column.width = index === 0 ? 34 : index === 1 ? 16 : index === 2 ? 11 : 9;
