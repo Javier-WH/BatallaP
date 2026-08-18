@@ -1487,10 +1487,10 @@ const CourseCouncil: React.FC = () => {
         style={{ marginBottom: 32 }}
         className="animate-card"
         items={[
-          { title: <Text style={{ fontWeight: 600, fontSize: 12, color: '#8c8c8c' }}>CONTROL DE ESTUDIOS</Text> },
-          { title: <Text style={{ fontWeight: 800, fontSize: 12, color: '#262626' }}>CONSEJOS DE CURSO</Text> },
-          ...(step >= 1 ? [{ title: <Tag color="blue" style={{ borderRadius: 6, fontWeight: 700, margin: 0 }}>{selectedTerm?.name}</Tag> }] : []),
-          ...(step >= 2 ? [{ title: <Tag color="gold" style={{ borderRadius: 6, fontWeight: 700, margin: 0 }}>{selectedSection?.grade.name} {selectedSection?.section.name.replace(/sección/gi, '').trim()}</Tag> }] : []),
+          { title: <Text style={{ fontWeight: 600, fontSize: 12, color: '#8c8c8c', cursor: 'pointer' }} onClick={() => window.location.href = '/control-estudios'}>CONTROL DE ESTUDIOS</Text> },
+          { title: <Text style={{ fontWeight: 800, fontSize: 12, color: '#262626', cursor: 'pointer' }} onClick={() => { setStep(0); setSelectedTerm(null); setSelectedSection(null); }}>CONSEJOS DE CURSO</Text> },
+          ...(step >= 1 ? [{ title: <Tag color="blue" style={{ borderRadius: 6, fontWeight: 700, margin: 0, cursor: 'pointer' }} onClick={() => setStep(0)}>{selectedTerm?.name}</Tag> }] : []),
+          ...(step >= 2 ? [{ title: <Tag color="gold" style={{ borderRadius: 6, fontWeight: 700, margin: 0, cursor: 'pointer' }} onClick={() => setStep(1)}>{selectedSection?.grade.name} {selectedSection?.section.name.replace(/sección/gi, '').trim()}</Tag> }] : []),
         ]}
       />
 
