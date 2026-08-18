@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useCallback, useRef } from 'react';
 import { Card, Button, Table, InputNumber, Space, Typography, Row, Col, Tag, Input, Empty, Spin, message, Tooltip, Alert, Breadcrumb, Checkbox, Modal } from 'antd';
 import {
   LeftOutlined,
@@ -90,7 +90,39 @@ const CourseCouncil: React.FC = () => {
 
   const [filterYear, setFilterYear] = useState<string>('');
   const [showPreviousTerms, setShowPreviousTerms] = useState<boolean>(true);
+  const [tableScrollHeight, setTableScrollHeight] = useState(300);
+  const tableCardRef = useRef<HTMLDivElement>(null);
   const { enableRounding } = useGradeRounding();
+
+  const updateTableScrollHeight = useCallback(() => {
+    const card = tableCardRef.current;
+    if (!card) return;
+
+    const cardTop = card.getBoundingClientRect().top;
+    const header = card.querySelector('.ant-table-thead') as HTMLElement | null;
+    const stickyScrollbar = card.querySelector('.ant-table-sticky-scroll-bar') as HTMLElement | null;
+    const headerHeight = header?.getBoundingClientRect().height ?? 72;
+    const scrollbarHeight = stickyScrollbar?.getBoundingClientRect().height ?? 16;
+    const availableHeight = window.innerHeight - cardTop;
+    const nextHeight = Math.floor(availableHeight - headerHeight - scrollbarHeight - 2);
+
+    setTableScrollHeight(Math.max(120, nextHeight));
+  }, []);
+
+  useLayoutEffect(() => {
+    if (step !== 2) return;
+
+    const frame = requestAnimationFrame(updateTableScrollHeight);
+    const observer = new ResizeObserver(updateTableScrollHeight);
+    if (tableCardRef.current) observer.observe(tableCardRef.current);
+    window.addEventListener('resize', updateTableScrollHeight);
+
+    return () => {
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+      window.removeEventListener('resize', updateTableScrollHeight);
+    };
+  }, [step, studentsData.length, showPreviousTerms, councilDone, updateTableScrollHeight]);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -999,9 +1031,10 @@ const CourseCouncil: React.FC = () => {
         )}
 
         <Card
+          ref={tableCardRef}
           className="premium-table-card"
           styles={{ body: { padding: 0 } }}
-          style={{ borderRadius: 20, overflow: 'hidden', border: '1px solid rgba(0,0,0,0.06)' }}
+          style={{ width: '100%', minWidth: 0, borderRadius: 20, overflow: 'hidden', border: '1px solid rgba(0,0,0,0.06)' }}
         >
           <style>{`
             .council-table-premium .ant-table-thead > tr > th {
@@ -1061,7 +1094,7 @@ const CourseCouncil: React.FC = () => {
             columns={columns}
             rowKey="id"
             pagination={false}
-            scroll={{ x: tableWidth + 1, y: 'calc(100vh - 420px)' }}
+            scroll={{ x: tableWidth + 1, y: tableScrollHeight }}
             size="middle"
             bordered
             tableLayout="fixed"
@@ -1083,7 +1116,7 @@ const CourseCouncil: React.FC = () => {
   }
 
   return (
-    <div style={{ width: '100%', padding: '0 24px 40px' }}>
+    <div style={{ width: '100%', minWidth: 0, padding: '0 24px' }}>
       <style>{`
         @keyframes fadeUp {
           from { opacity: 0; transform: translateY(20px) scale(0.98); }

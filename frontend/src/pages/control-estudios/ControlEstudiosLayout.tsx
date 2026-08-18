@@ -58,7 +58,7 @@ const ControlEstudiosLayout: React.FC = () => {
     || location.pathname.startsWith('/control-estudios/notas-externas');
 
   return (
-    <div className="flex flex-col h-full min-h-0">
+    <div className="flex flex-col h-full min-h-0 min-w-0 overflow-x-hidden">
       {/* Control de Estudios Toolbar */}
       <div className="sticky top-0 z-40 backdrop-blur-md pb-4 pt-0 px-6">
         <div className="bg-white/70 backdrop-blur-sm p-2 rounded-2xl border border-white/50 flex items-center gap-2 shadow-sm">
@@ -100,8 +100,8 @@ const ControlEstudiosLayout: React.FC = () => {
       </div>
 
       {/* Module Content */}
-      <div className="flex-1 min-h-0 pt-0">
-        <div className="h-full overflow-y-auto animate-in fade-in slide-in-from-bottom-2 duration-500">
+      <div className="flex-1 min-h-0 min-w-0 pt-0">
+        <div className="h-full min-w-0 overflow-x-hidden overflow-y-auto animate-in fade-in slide-in-from-bottom-2 duration-500">
           <Outlet />
         </div>
       </div>

@@ -194,7 +194,7 @@ const MainLayout: React.FC = () => {
         </div>
       </Sider>
 
-      <Layout className="h-screen flex flex-col">
+      <Layout className="h-screen flex flex-col min-w-0">
         <Header
           className="px-6 h-16 flex items-center justify-between z-50 shrink-0"
           style={{
@@ -247,8 +247,8 @@ const MainLayout: React.FC = () => {
           </div>
         </Header>
 
-        <Content className="flex-1 overflow-hidden theme-page-bg relative">
-          <div className="absolute inset-0 overflow-y-auto">
+        <Content className="flex-1 min-w-0 overflow-hidden theme-page-bg relative">
+          <div className="absolute inset-0 min-w-0 overflow-x-hidden overflow-y-auto">
             <Outlet />
           </div>
         </Content>
