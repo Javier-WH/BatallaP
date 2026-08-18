@@ -830,6 +830,7 @@ const CourseCouncil: React.FC = () => {
             key: `${colDef.key}-pts`,
             width: 50,
             align: 'center' as const,
+            className: 'council-points-column',
             render: (_: any, record: CouncilStudent) => {
               const subjectData = colDef.groupId
                 ? record.subjects.find(s => s.groupId === colDef.groupId)
@@ -1067,6 +1068,10 @@ const CourseCouncil: React.FC = () => {
               border-color: #1890ff !important;
               box-shadow: 0 0 0 2px rgba(24,144,255,0.1) !important;
             }
+            .council-table-premium .council-points-column {
+              padding-left: 2px !important;
+              padding-right: 2px !important;
+            }
             /* Fixed columns: solid background + high z-index so scrollable
                columns behind stay hidden when row is hovered.
                Use !important and high-specificity selectors to override
@@ -1097,7 +1102,6 @@ const CourseCouncil: React.FC = () => {
             scroll={{ x: tableWidth + 1, y: tableScrollHeight }}
             size="middle"
             bordered
-            tableLayout="fixed"
             className="council-table-premium"
             rowClassName={(_, index) => index % 2 === 0 ? 'row-odd' : 'row-even'}
           />
