@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Card, Tabs, Table, Button, message, Tag, Typography, Alert, Empty, Spin, Space, Dropdown, Modal, Descriptions, Input, Select } from 'antd';
+import { Card, Tabs, Table, Button, message, Tag, Typography, Alert, Empty, Spin, Space, Dropdown, Modal, Descriptions, Input, Select, Tooltip } from 'antd';
 import { BookOutlined, UserOutlined, ArrowLeftOutlined, DownloadOutlined, FilePdfOutlined, EditOutlined, DeleteOutlined, PlusOutlined, HistoryOutlined } from '@ant-design/icons';
 import api from '@/services/api';
 import dayjs from 'dayjs';
@@ -114,6 +114,9 @@ const ManageGrades: React.FC = () => {
   const [students, setStudents] = useState<StudentEnrollment[]>([]);
   const [maxGrade, setMaxGrade] = useState<number>(20);
   const [passingGrade, setPassingGrade] = useState<number>(10);
+  const [remedialFailurePercentage, setRemedialFailurePercentage] = useState<number>(30);
+  const [remedialMinGrade, setRemedialMinGrade] = useState<number>(1);
+  const [remedialMaxGrade, setRemedialMaxGrade] = useState<number>(9);
   const [activeTab, setActiveTab] = useState('1');
   const [showPDFModal, setShowPDFModal] = useState(false);
   const [showPlanModal, setShowPlanModal] = useState(false);
@@ -121,7 +124,7 @@ const ManageGrades: React.FC = () => {
   const [auditModal, setAuditModal] = useState<{ open: boolean; studentName?: string; itemLabel?: string }>({ open: false });
   const [auditHistory, setAuditHistory] = useState<any[]>([]);
   const [auditLoading, setAuditLoading] = useState(false);
-  const [commentModal, setCommentModal] = useState<{ open: boolean; enrollment?: StudentEnrollment; evalPlanId?: number; value?: number; inputId?: string; originalValue?: number }>({ open: false });
+  const [commentModal, setCommentModal] = useState<{ open: boolean; enrollment?: StudentEnrollment; evalPlanId?: number; value?: number; inputId?: string; originalValue?: number; remedialClear?: boolean }>({ open: false });
   const isRightClickRef = useRef(false);
   const [commentText, setCommentText] = useState('');
   const [commentSaving, setCommentSaving] = useState(false);
@@ -244,7 +247,16 @@ const ManageGrades: React.FC = () => {
       const res = await api.get('/settings');
       if (res.data?.max_grade) setMaxGrade(Number(res.data.max_grade));
       if (res.data?.passing_grade) setPassingGrade(Number(res.data.passing_grade));
+      if (res.data?.remedial_failure_percentage !== undefined) setRemedialFailurePercentage(Number(res.data.remedial_failure_percentage));
+      if (res.data?.remedial_min_grade !== undefined) setRemedialMinGrade(Number(res.data.remedial_min_grade));
+      if (res.data?.remedial_max_grade !== undefined) setRemedialMaxGrade(Number(res.data.remedial_max_grade));
     } catch { /* ignore */ }
+  };
+
+  const gradeDigits = Math.max(2, String(maxGrade).length);
+  const padGrade = (val: number | null | undefined): string => {
+    if (val === null || val === undefined) return '';
+    return String(Math.round(val)).padStart(gradeDigits, '0');
   };
 
   const fetchAllAssignments = async () => {
@@ -303,13 +315,12 @@ const ManageGrades: React.FC = () => {
     fetchPlanAndStudents();
   }, [fetchPlanAndStudents]);
 
-  const handleSaveScoreInGrid = async (enrollment: StudentEnrollment, evalPlanId: number, score: number | null, comment?: string) => {
+  const handleSaveScoreInGrid = async (enrollment: StudentEnrollment, evalPlanId: number, score: number | null, comment?: string, remedialClear?: boolean) => {
     if (isSelectedTermBlocked) {
       message.warning('Este lapso está bloqueado.');
       return;
     }
     const inscriptionSubjectId = enrollment.inscriptionSubjects?.[0]?.id;
-    console.log('[save] score=', score, 'comment=', comment, 'insSub=', inscriptionSubjectId);
     try {
       const resp = await api.post('/evaluation/qualifications', {
         evaluationPlanId: evalPlanId,
@@ -319,8 +330,8 @@ const ManageGrades: React.FC = () => {
         isAbsent: false,
         observations: '',
         comment: comment?.trim() || undefined,
+        ...(remedialClear ? { remedialScore: null } : {}),
       });
-      console.log('[save] respuesta:', resp.status, 'id=', resp.data?.id, 'score=', resp.data?.score);
       fetchPlanAndStudents();
     } catch (err) {
       console.error('[save] error:', err);
@@ -328,16 +339,34 @@ const ManageGrades: React.FC = () => {
     }
   };
 
+  const handleSaveRemedialScoreInGrid = async (enrollment: StudentEnrollment, evalPlanId: number, remedialScore: number | null) => {
+    if (isSelectedTermBlocked) {
+      message.warning('Este lapso está bloqueado. No puedes modificar calificaciones.');
+      return;
+    }
+    const inscriptionSubjectId = enrollment.inscriptionSubjects?.[0]?.id;
+    try {
+      await api.post('/evaluation/qualifications', {
+        evaluationPlanId: evalPlanId,
+        inscriptionSubjectId,
+        inscriptionId: enrollment.id,
+        remedialScore: remedialScore,
+        observations: '',
+      });
+      fetchPlanAndStudents();
+    } catch {
+      message.error('Error al guardar nota remedial');
+    }
+  };
+
   const confirmCommentSave = async () => {
-    const { enrollment, evalPlanId, value } = commentModal;
-    console.log('[confirm] enrollment=', enrollment?.id, 'evalPlanId=', evalPlanId, 'value=', value, 'comment=', commentText);
+    const { enrollment, evalPlanId, value, remedialClear } = commentModal;
     if (!enrollment || evalPlanId === undefined || value === undefined) {
-      console.log('[confirm] ABORT: datos incompletos');
       return;
     }
     setCommentSaving(true);
     try {
-      await handleSaveScoreInGrid(enrollment, evalPlanId, value, commentText);
+      await handleSaveScoreInGrid(enrollment, evalPlanId, value, commentText, remedialClear);
       setCommentModal({ open: false });
       setCommentText('');
     } finally {
@@ -783,34 +812,69 @@ const ManageGrades: React.FC = () => {
               },
               {
                 key: '2',
-                label: 'Calificaciones',
+                label: <span className="font-bold text-[15px] px-4 py-1">Calificaciones</span>,
                 children: evaluationPlan.length === 0 ? (
-                  <Card style={{ backgroundColor: 'var(--color-input-bg)', textAlign: 'center', padding: 40 }}>
-                    <Title level={4}>No hay Plan de Evaluación</Title>
-                    <Text type="secondary">Primero debe definirse el plan de evaluación para este lapso.</Text>
-                  </Card>
+                  <div className="flex flex-col items-center justify-center py-16">
+                    <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4" style={{ backgroundColor: 'color-mix(in srgb, var(--color-accent) 8%, transparent)' }}>
+                      <BookOutlined style={{ fontSize: 24, color: 'var(--color-accent)' }} />
+                    </div>
+                    <h3 className="text-lg font-bold mb-2" style={{ color: 'var(--color-text-main)' }}>No hay Plan de Evaluación definido</h3>
+                    <p className="text-sm mb-6" style={{ color: 'var(--color-text-muted)' }}>Para poder calificar este lapso, primero debe definir las actividades y sus porcentajes.</p>
+                    <Button type="primary" size="large" onClick={() => setActiveTab('1')} className="rounded-xl">
+                      Crear Plan de Evaluación
+                    </Button>
+                  </div>
                 ) : (
-                  <Card bodyStyle={{ padding: 0 }} style={{ overflow: 'hidden', backgroundColor: 'var(--color-input-bg)' }}>
-                    <div className="flex items-center justify-between p-3 flex-wrap gap-2">
-                      <span style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>
-                        {pendingGradesCount.missing > 0
-                          ? `⚠ ${pendingGradesCount.missing} de ${pendingGradesCount.total} alumnos con notas pendientes`
-                          : `✓ Todos los alumnos calificados (${pendingGradesCount.total})`}
-                      </span>
+                  <>
+                    <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+                      <div className="flex items-center gap-3">
+                        {students.length > 0 && (
+                          <span style={{
+                            fontSize: '13px',
+                            color: pendingGradesCount.missing > 0 ? 'var(--color-brand-primary)' : '#16a34a',
+                            fontWeight: 600,
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 4
+                          }}>
+                            {pendingGradesCount.missing > 0
+                              ? `⚠ ${pendingGradesCount.missing} de ${pendingGradesCount.total} alumnos con notas pendientes`
+                              : `✓ Todos los alumnos calificados (${pendingGradesCount.total})`
+                            }
+                          </span>
+                        )}
+                      </div>
                       <div className="flex items-center gap-2">
-                        <Button icon={<DownloadOutlined />} size="small" type="primary" onClick={downloadExcelOficial} disabled={students.length === 0}>Acta de notas</Button>
+                        <Button
+                          icon={<FilePdfOutlined />}
+                          size="small"
+                          onClick={downloadExcelOficial}
+                          disabled={students.length === 0}
+                        >
+                          Acta de notas
+                        </Button>
+                        <Button
+                          icon={<DownloadOutlined />}
+                          size="small"
+                          onClick={() => downloadExcel(false)}
+                          disabled={!selectedAssignment}
+                        >
+                          Excel vacío
+                        </Button>
                       </div>
                     </div>
-                    <div style={{ overflowX: 'auto', maxHeight: 'calc(100vh - 400px)' }}>
-                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, border: '1px solid var(--color-text-muted)' }}>
+                    <Card bodyStyle={{ padding: 0 }} style={{ overflow: 'hidden', backgroundColor: 'var(--color-content-bg)', border: '1px solid rgba(15, 23, 42, 0.08)' }}>
+                    <div style={{ overflowX: 'auto', maxHeight: 'calc(100vh - 350px)' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, border: '1px solid rgba(15, 23, 42, 0.08)' }}>
                         <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
                           <tr>
-                            <th style={{ padding: '4px 6px', border: '1px solid var(--color-text-muted)', textAlign: 'center', backgroundColor: '#e5e7eb', fontWeight: 700, fontSize: 11, whiteSpace: 'nowrap' }}>Cédula</th>
-                            <th style={{ padding: '4px 6px', border: '1px solid var(--color-text-muted)', textAlign: 'left', backgroundColor: '#e5e7eb', fontWeight: 700, fontSize: 11, whiteSpace: 'nowrap' }}>Estudiante</th>
-                            {evaluationPlan.map(item => {
+                            <th style={{ padding: '4px 6px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', backgroundColor: 'color-mix(in srgb, var(--color-text-main) 6%, var(--color-content-bg))', fontWeight: 700, fontSize: 11, whiteSpace: 'nowrap', color: 'var(--color-text-main)' }}>Cédula</th>
+                            <th style={{ padding: '4px 6px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'left', backgroundColor: 'color-mix(in srgb, var(--color-text-main) 6%, var(--color-content-bg))', fontWeight: 700, fontSize: 11, whiteSpace: 'nowrap', color: 'var(--color-text-main)' }}>Estudiante</th>
+                            {evaluationPlan.map((item, colIndex) => {
                               const stats = evalStats.get(item.id);
+                              const hasRemedial = (stats?.failedPct ?? 0) >= remedialFailurePercentage;
                               return (
-                              <th key={item.id} colSpan={2} style={{ padding: '3px 4px', border: '1px solid var(--color-text-muted)', textAlign: 'center', backgroundColor: '#e5e7eb', verticalAlign: 'top', whiteSpace: 'nowrap' }}>
+                              <th key={item.id} colSpan={hasRemedial ? 2 : 1} style={{ padding: '3px 4px', border: '1px solid rgba(15, 23, 42, 0.08)', borderLeft: colIndex > 0 ? '2px solid color-mix(in srgb, var(--color-text-main) 35%, transparent)' : undefined, textAlign: 'center', backgroundColor: 'color-mix(in srgb, var(--color-text-main) 6%, var(--color-content-bg))', verticalAlign: 'top', whiteSpace: 'nowrap', color: 'var(--color-text-main)' }}>
                                 <div style={{ fontSize: 9, color: '#b45309', lineHeight: 1.2 }}>
                                   Apl. {stats?.failed ?? 0} ({stats?.failedPct ?? 0}%)
                                 </div>
@@ -821,8 +885,8 @@ const ManageGrades: React.FC = () => {
                                 <div style={{ fontSize: 9, fontWeight: 600, lineHeight: 1.2 }}>
                                   {item.date ? new Date(item.date).toLocaleDateString('es-VE') : '—'}
                                 </div>
-                                <div style={{ fontSize: 9, fontWeight: 700, lineHeight: 1.2, marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.identificador}>
-                                  {item.identificador || '—'}
+                                <div style={{ fontSize: 9, fontWeight: 700, lineHeight: 1.2, marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.shortDescription || item.description}>
+                                  {item.shortDescription || item.description || '—'}
                                 </div>
                                 <div style={{ fontSize: 9, color: 'var(--color-text-muted)', lineHeight: 1.2, marginTop: 1 }}>
                                   {item.percentage}%
@@ -830,15 +894,14 @@ const ManageGrades: React.FC = () => {
                               </th>
                               );
                             })}
-                            <th style={{ padding: '3px 6px', border: '1px solid var(--color-text-muted)', textAlign: 'center', backgroundColor: '#e5e7eb', fontWeight: 700, fontSize: 11, whiteSpace: 'nowrap' }}>Total</th>
+                            <th style={{ padding: '3px 6px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', backgroundColor: 'color-mix(in srgb, var(--color-text-main) 6%, var(--color-content-bg))', fontWeight: 700, fontSize: 11, whiteSpace: 'nowrap', color: 'var(--color-text-main)' }}>Total</th>
                           </tr>
                         </thead>
                         <tbody>
                           {[...students]
                             .sort((a, b) => {
-                              const nameA = `${a.student?.lastName} ${a.student?.firstName}`.toLowerCase();
-                              const nameB = `${b.student?.lastName} ${b.student?.firstName}`.toLowerCase();
-                              return nameA.localeCompare(nameB);
+                              const parseDoc = (doc: string) => parseInt((doc || '').replace(/\D/g, ''), 10) || 0;
+                              return parseDoc(a.student?.document) - parseDoc(b.student?.document);
                             })
                             .map((enrollment, rowIndex) => {
                               const insSub = enrollment.inscriptionSubjects?.[0];
@@ -857,19 +920,24 @@ const ManageGrades: React.FC = () => {
                               });
 
                               return (
-                                <tr key={enrollment.id}>
-                                  <td style={{ padding: '2px 4px', border: '1px solid var(--color-text-muted)', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-input-bg)' : '#f9fafb', fontSize: 11, fontWeight: 500 }}>
+                                <tr key={enrollment.id} className="grading-row">
+                                  <td style={{ padding: '2px 4px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-content-bg)' : 'color-mix(in srgb, var(--color-text-main) 2%, var(--color-content-bg))', fontSize: 11, fontWeight: 500 }}>
                                     {enrollment.student?.document || '-'}
                                   </td>
-                                  <td style={{ padding: '2px 6px', border: '1px solid var(--color-text-muted)', textAlign: 'left', background: rowIndex % 2 === 0 ? 'var(--color-input-bg)' : '#f9fafb', fontSize: 12 }}>
+                                  <td style={{ padding: '2px 6px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'left', background: rowIndex % 2 === 0 ? 'var(--color-content-bg)' : 'color-mix(in srgb, var(--color-text-main) 2%, var(--color-content-bg))', fontSize: 12 }}>
                                     {enrollment.student?.lastName}, {enrollment.student?.firstName}
                                   </td>
-                                   {evaluationPlan.map((item, colIndex) => {
+                                  {evaluationPlan.map((item, colIndex) => {
                                     const q = studentQuals.find((sq: Qualification) => sq.evaluationPlanId === item.id);
+                                    const currentScore = q ? q.score : null;
                                     const isAbsent = !!(q?.isAbsent);
+                                    const stats = evalStats.get(item.id);
+                                    const hasRemedial = (stats?.failedPct ?? 0) >= remedialFailurePercentage;
+                                    const isRemedialEligible = !isAbsent && currentScore !== null && currentScore > 0 && currentScore >= remedialMinGrade && currentScore <= remedialMaxGrade;
+
                                     return (
-                                      <>
-                                      <td key={`${item.id}-a`} className="grading-cell" style={{ padding: '2px', border: '1px solid var(--color-text-muted)', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-input-bg)' : '#f9fafb', width: '50px', cursor: 'context-menu' }}
+                                      <React.Fragment key={item.id}>
+                                      <td key={`${item.id}-a`} className="grading-cell" style={{ padding: '2px', border: '1px solid rgba(15, 23, 42, 0.08)', borderLeft: colIndex > 0 ? '2px solid color-mix(in srgb, var(--color-text-main) 35%, transparent)' : undefined, textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-content-bg)' : 'color-mix(in srgb, var(--color-text-main) 2%, var(--color-content-bg))', width: '50px', cursor: 'context-menu' }}
                                         title="Click derecho: opciones de la nota"
                                       >
                                         <Dropdown
@@ -880,7 +948,7 @@ const ManageGrades: React.FC = () => {
                                                 key: 'details',
                                                 icon: <HistoryOutlined />,
                                                 label: 'Ver detalles',
-                                                onClick: () => openAuditHistory(q, `${enrollment.student?.lastName}, ${enrollment.student?.firstName}`, item.identificador || item.description || ''),
+                                                onClick: () => openAuditHistory(q, `${enrollment.student?.lastName}, ${enrollment.student?.firstName}`, item.shortDescription || item.identificador || item.description || ''),
                                               },
                                             ],
                                           }}
@@ -899,7 +967,7 @@ const ManageGrades: React.FC = () => {
                                           step={1}
                                           inputMode="numeric"
                                           pattern="[0-9]*"
-                                          defaultValue={isAbsent ? '' : (q?.score != null ? Math.round(q.score) : '')}
+                                          defaultValue={isAbsent ? '' : (currentScore !== null ? padGrade(currentScore) : '')}
                                           key={`${enrollment.id}-${item.id}${isAbsent ? '-a' : ''}`}
                                           style={{
                                             width: '48px',
@@ -911,30 +979,52 @@ const ManageGrades: React.FC = () => {
                                             background: q?.editedByOther ? '#eff6ff' : 'transparent',
                                             fontSize: 12,
                                             padding: q?.editedByOther ? '1px' : 0,
-                                            color: q?.score != null && q.score > 0 && q.score < passingGrade ? '#dc2626' : undefined,
-                                            fontWeight: q?.score != null && q.score > 0 && q.score < passingGrade ? 700 : undefined,
+                                            color: currentScore !== null && currentScore > 0 && currentScore < passingGrade ? '#dc2626' : undefined,
+                                            fontWeight: currentScore !== null && currentScore > 0 && currentScore < passingGrade ? 700 : undefined,
                                           }}
                                           title={q?.editedByOther
                                             ? `Editada el ${new Date(q.lastEditDate || '').toLocaleString('es-VE')} por ${q.lastEditUser || 'usuario desconocido'}`
                                             : undefined}
-                                          disabled={isSelectedTermBlocked}
+                                          disabled={isSelectedTermBlocked || (q?.remedialScore != null && q.remedialScore > 0 && isRemedialEligible)}
                                           onKeyDown={(e) => {
                                             if (e.key === '.' || e.key === ',' || e.key === 'e' || e.key === 'E' || e.key === '-' || e.key === '+') {
                                               e.preventDefault();
                                               return;
                                             }
-                                            if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
-                                              e.preventDefault();
+                                            if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter'].includes(e.key)) {
+                                              if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+                                                e.preventDefault();
+                                              }
                                               let nextRow = rowIndex;
                                               let nextCol = colIndex;
+                                              let targetType = 'grade';
                                               if (e.key === 'ArrowUp') nextRow--;
-                                              if (e.key === 'ArrowDown') nextRow++;
-                                              if (e.key === 'ArrowLeft') nextCol--;
-                                              if (e.key === 'ArrowRight') nextCol++;
-                                              if (nextRow < 0 || nextRow >= students.length || nextCol < 0 || nextCol >= evaluationPlan.length) return;
+                                              if (e.key === 'ArrowDown' || e.key === 'Enter') {
+                                                if (e.key === 'Enter') e.preventDefault();
+                                                nextRow++;
+                                              }
+                                              if (e.key === 'ArrowLeft') {
+                                                const prevCol = colIndex - 1;
+                                                if (prevCol >= 0) {
+                                                  const prevItem = evaluationPlan[prevCol];
+                                                  const prevStats = evalStats.get(prevItem.id);
+                                                  const prevHasRemedial = (prevStats?.failedPct ?? 0) >= remedialFailurePercentage;
+                                                  nextCol = prevCol;
+                                                  targetType = prevHasRemedial ? 'remedial' : 'grade';
+                                                }
+                                              }
+                                              if (e.key === 'ArrowRight') {
+                                                if (hasRemedial) {
+                                                  targetType = 'remedial';
+                                                } else {
+                                                  nextCol = colIndex + 1;
+                                                  targetType = 'grade';
+                                                }
+                                              }
+                                              const nextInputId = `${targetType}-${nextRow}-${nextCol}`;
                                               setTimeout(() => {
-                                                const el = document.getElementById(`grade-${nextRow}-${nextCol}`) as HTMLInputElement | null;
-                                                if (el) el.focus();
+                                                const nextInput = document.getElementById(nextInputId);
+                                                if (nextInput) nextInput.focus();
                                               }, 0);
                                             }
                                           }}
@@ -948,10 +1038,8 @@ const ManageGrades: React.FC = () => {
                                               return;
                                             }
                                             const raw = e.target.value.replace(/[^0-9]/g, '');
-                                            e.target.value = raw;
                                             if (raw === '') return;
                                             const val = parseInt(raw, 10);
-                                            const currentScore = q ? q.score : null;
                                             if (val < 0 || val > maxGrade) {
                                               playBeep();
                                               const wrapper = e.target.closest('.grading-cell');
@@ -962,7 +1050,9 @@ const ManageGrades: React.FC = () => {
                                               }
                                               return;
                                             }
+                                            (e.target as HTMLInputElement).value = padGrade(val);
                                             if (val !== currentScore) {
+                                              const needsRemedialClear = val < remedialMinGrade || val > remedialMaxGrade;
                                               setCommentModal({
                                                 open: true,
                                                 enrollment,
@@ -970,6 +1060,7 @@ const ManageGrades: React.FC = () => {
                                                 value: val,
                                                 inputId: (e.target as HTMLInputElement).id,
                                                 originalValue: currentScore ?? undefined,
+                                                remedialClear: needsRemedialClear,
                                               });
                                               setCommentText('');
                                             }
@@ -978,13 +1069,117 @@ const ManageGrades: React.FC = () => {
                                           </div>
                                         </Dropdown>
                                       </td>
-                                      <td key={`${item.id}-b`} style={{ padding: '2px', border: '1px solid var(--color-text-muted)', background: rowIndex % 2 === 0 ? 'var(--color-input-bg)' : '#f9fafb', width: '50px' }} onContextMenu={(e) => e.preventDefault()}></td>
-                                      </>
+                                      {hasRemedial && (
+                                        <td key={`${item.id}-b`} className="grading-cell remedial-cell" style={{ padding: '2px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-content-bg)' : 'color-mix(in srgb, var(--color-text-main) 2%, var(--color-content-bg))', width: '50px' }}
+                                          onContextMenu={(e) => e.preventDefault()}
+                                        >
+                                          <Tooltip
+                                            mouseEnterDelay={0}
+                                            title={
+                                              !isRemedialEligible && (currentScore !== null || isAbsent)
+                                                ? (isAbsent || (currentScore !== null && currentScore < remedialMinGrade)
+                                                    ? `Nota por debajo de la mínima para remedial (${remedialMinGrade})`
+                                                    : currentScore !== null && currentScore > remedialMaxGrade
+                                                      ? `Nota por encima de la máxima para remedial (${remedialMaxGrade})`
+                                                      : '')
+                                                : undefined
+                                            }
+                                          >
+                                          <input
+                                            type="number"
+                                            id={`remedial-${rowIndex}-${colIndex}`}
+                                            min={0}
+                                            max={maxGrade}
+                                            step={1}
+                                            inputMode="numeric"
+                                            pattern="[0-9]*"
+                                            defaultValue={q?.remedialScore != null ? padGrade(q.remedialScore) : ''}
+                                            key={`rem-${enrollment.id}-${item.id}-${q?.remedialScore ?? 'n'}`}
+                                            style={{
+                                              width: '48px',
+                                              textAlign: 'center',
+                                              border: 'none',
+                                              outline: 'none',
+                                              background: 'transparent',
+                                              fontSize: 12,
+                                              padding: 0,
+                                              backgroundColor: !isRemedialEligible && currentScore !== null && currentScore > 0
+                                                ? (currentScore < remedialMinGrade ? '#fef2f2' : currentScore > remedialMaxGrade ? '#f0fdf4' : undefined)
+                                                : undefined,
+                                              color: q?.remedialScore != null && q.remedialScore > 0 && q.remedialScore < passingGrade ? '#dc2626' : undefined,
+                                              fontWeight: q?.remedialScore != null && q.remedialScore > 0 && q.remedialScore < passingGrade ? 700 : undefined,
+                                              cursor: !isRemedialEligible && currentScore !== null && currentScore > 0 ? 'not-allowed' : undefined,
+                                            }}
+                                            disabled={isSelectedTermBlocked || !isRemedialEligible}
+                                            onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
+                                              if (e.key === '.' || e.key === ',' || e.key === 'e' || e.key === 'E' || e.key === '-' || e.key === '+') {
+                                                e.preventDefault();
+                                                return;
+                                              }
+                                              if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter'].includes(e.key)) {
+                                                if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+                                                  e.preventDefault();
+                                                }
+                                                let nextRow = rowIndex;
+                                                let nextCol = colIndex;
+                                                let targetType = 'remedial';
+                                                if (e.key === 'ArrowUp') nextRow--;
+                                                if (e.key === 'ArrowDown' || e.key === 'Enter') {
+                                                  if (e.key === 'Enter') e.preventDefault();
+                                                  nextRow++;
+                                                }
+                                                if (e.key === 'ArrowLeft') {
+                                                  targetType = 'grade';
+                                                }
+                                                if (e.key === 'ArrowRight') {
+                                                  nextCol++;
+                                                  targetType = 'grade';
+                                                }
+                                                const nextInputId = `${targetType}-${nextRow}-${nextCol}`;
+                                                setTimeout(() => {
+                                                  const nextInput = document.getElementById(nextInputId);
+                                                  if (nextInput) nextInput.focus();
+                                                }, 0);
+                                              }
+                                            }}
+                                            onInput={(e: React.FormEvent<HTMLInputElement>) => {
+                                              (e.target as HTMLInputElement).value = (e.target as HTMLInputElement).value.replace(/[^0-9]/g, '');
+                                            }}
+                                            onBlur={(e: React.FocusEvent<HTMLInputElement>) => {
+                                              const raw = (e.target as HTMLInputElement).value.replace(/[^0-9]/g, '');
+                                              const currentRemedialScore = q ? q.remedialScore : null;
+                                              if (raw === '') {
+                                                if (currentRemedialScore !== null) {
+                                                  handleSaveRemedialScoreInGrid(enrollment, item.id, null);
+                                                }
+                                                return;
+                                              }
+                                              const val = parseInt(raw, 10);
+                                              if (val < 0 || val > maxGrade) {
+                                                playBeep();
+                                                const wrapper = e.target.closest('.grading-cell');
+                                                if (wrapper) {
+                                                  e.target.value = currentRemedialScore !== null ? padGrade(currentRemedialScore) : '';
+                                                  wrapper.classList.add('grade-invalid');
+                                                  setTimeout(() => wrapper.classList.remove('grade-invalid'), 1500);
+                                                }
+                                                return;
+                                              }
+                                              (e.target as HTMLInputElement).value = padGrade(val);
+                                              if (val !== currentRemedialScore) {
+                                                handleSaveRemedialScoreInGrid(enrollment, item.id, val);
+                                              }
+                                            }}
+                                          />
+                                          </Tooltip>
+                                        </td>
+                                      )}
+                                      </React.Fragment>
                                     );
                                   })}
-                                  <td style={{ padding: '2px 4px', border: '1px solid var(--color-text-muted)', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-input-bg)' : '#f9fafb', fontWeight: 700, fontSize: 12 }}>
-                                    <Tag color={rowTotal >= (maxGrade * 0.5) ? 'green' : 'red'}>
-                                      {formatGrade(rowTotal, enableRounding)}
+                                  <td style={{ padding: '2px 4px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-content-bg)' : 'color-mix(in srgb, var(--color-text-main) 2%, var(--color-content-bg))', fontWeight: 700, fontSize: 12 }}>
+                                    <Tag color={Math.round(rowTotal) >= passingGrade ? 'green' : 'red'} style={{ margin: 0 }}>
+                                      {padGrade(rowTotal)}
                                     </Tag>
                                   </td>
                                 </tr>
@@ -994,11 +1189,12 @@ const ManageGrades: React.FC = () => {
                       </table>
                     </div>
                     {students.length === 0 && (
-                      <div style={{ padding: 40, textAlign: 'center' }}>
-                        <Alert message="No hay estudiantes inscritos en esta sección" type="info" />
+                      <div style={{ padding: '40px', textAlign: 'center' }}>
+                        <Empty description="No hay estudiantes inscritos en esta sección" />
                       </div>
                     )}
                   </Card>
+                  </>
                 )
               }
             ]}
