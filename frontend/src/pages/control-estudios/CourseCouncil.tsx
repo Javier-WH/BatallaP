@@ -859,6 +859,20 @@ const CourseCouncil: React.FC = () => {
         topRow.height = 24;
         headerRow.height = 32;
 
+        // Thick separator between subjects so each block is easy to spot.
+        const thickEdge = { style: 'medium' as const, color: { argb: '5A7085' } };
+        groupRanges.forEach((range, rangeIndex) => {
+          for (let rowNumber = 8; rowNumber <= worksheet.rowCount; rowNumber += 1) {
+            const startCell = worksheet.getCell(rowNumber, range.start);
+            startCell.border = { ...startCell.border, left: thickEdge };
+
+            if (rangeIndex === groupRanges.length - 1) {
+              const endCell = worksheet.getCell(rowNumber, range.end);
+              endCell.border = { ...endCell.border, right: thickEdge };
+            }
+          }
+        });
+
         worksheet.columns.forEach((column, index) => {
           column.width = index === 0 ? 34 : index === 1 ? 16 : index === 2 ? 11 : 9;
         });
