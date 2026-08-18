@@ -1235,6 +1235,9 @@ const MatriculationEnrollment: React.FC = () => {
       const periodId = filterSchoolPeriod || activePeriod?.id;
       const periodName = allPeriods.find(p => p.id === periodId)?.name || activePeriod?.name || '';
 
+      // Capitalize first letter of each word, rest lowercase (supports ñ and accents)
+      const toTitleCase = (s: string) => s.toLowerCase().replace(/(^|[^a-záéíóúñ])([a-záéíóúñ])/gi, (_m, p1, p2) => p1 + p2.toUpperCase());
+
       // Load logo once for all sheets
       let logoBuffer: ArrayBuffer | null = null;
       try {
@@ -1250,8 +1253,8 @@ const MatriculationEnrollment: React.FC = () => {
 
       for (const combo of combinations) {
         const { gradeId, sectionId } = combo;
-        const gradeName = structure.find(s => s.gradeId === gradeId)?.grade?.name || '';
-        const sectionName = structure.find(s => s.gradeId === gradeId)?.sections?.find(s => s.id === sectionId)?.name || '';
+        const gradeName = toTitleCase(structure.find(s => s.gradeId === gradeId)?.grade?.name || '');
+        const sectionName = toTitleCase(structure.find(s => s.gradeId === gradeId)?.sections?.find(s => s.id === sectionId)?.name || '');
 
         // Fetch students for this grade+section
         const res = await api.get('/inscriptions', {
@@ -1281,13 +1284,13 @@ const MatriculationEnrollment: React.FC = () => {
           });
           const guide = guideRes.data;
           if (guide?.guideTeacher) {
-            teacherName = `${guide.guideTeacher.lastName || ''} ${guide.guideTeacher.firstName || ''}`.trim();
+            teacherName = toTitleCase(`${guide.guideTeacher.lastName || ''} ${guide.guideTeacher.firstName || ''}`.trim());
           }
         } catch (e) {
           // No guide teacher found, leave empty
         }
 
-        // Sheet name: "5to A" (max 31 chars for Excel)
+        // Sheet name: "Quinto A" (max 31 chars for Excel)
         const sheetName = `${gradeName} ${sectionName}`.slice(0, 31);
         const worksheet = workbook.addWorksheet(sheetName);
 
