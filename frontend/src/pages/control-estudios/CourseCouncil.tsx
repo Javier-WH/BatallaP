@@ -804,7 +804,7 @@ const CourseCouncil: React.FC = () => {
           const row: (string | number)[] = [
             student.studentName,
             `${student.documentType === 'Venezolano' ? 'V' : student.documentType === 'Extranjero' ? 'E' : student.documentType === 'Pasaporte' ? 'P' : 'CE'}-${student.studentDni}`,
-            formatGrade(averageOf(student), enableRounding),
+            Number(averageOf(student).toFixed(2)),
           ];
 
           columnDefinitions.forEach(colDef => {
@@ -845,6 +845,8 @@ const CourseCouncil: React.FC = () => {
           for (let columnIndex = 2; columnIndex <= leafHeaders.length; columnIndex += 1) {
             dataRow.getCell(columnIndex).alignment = { horizontal: 'center', vertical: 'middle' };
           }
+          // Promedio column (3rd column): show 2 decimals, no rounding
+          dataRow.getCell(3).numFmt = '0.00';
         });
 
         const headerFill = { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: 'D9EAF7' } };
@@ -982,7 +984,7 @@ const CourseCouncil: React.FC = () => {
           return (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', background: !isPassingGrade(average, passingGrade) ? '#fff1f0' : '#f0f5ff', padding: '4px', borderRadius: 8 }}>
               <Text style={{ fontSize: 16, fontWeight: 900, color: !isPassingGrade(average, passingGrade) ? '#cf1322' : '#096dd9' }}>
-                {formatGrade(average, enableRounding)}
+                {average.toFixed(2)}
               </Text>
               <Text style={{ fontSize: 9, fontWeight: 800, color: !isPassingGrade(average, passingGrade) ? '#cf1322' : '#096dd9', textTransform: 'uppercase' }}>Final</Text>
             </div>
@@ -1214,7 +1216,7 @@ const CourseCouncil: React.FC = () => {
                 borderColor: '#b7d7c0'
               }}
             >
-              Generar Excel
+              Acta Final
             </Button>
             <Button
               type="primary"
