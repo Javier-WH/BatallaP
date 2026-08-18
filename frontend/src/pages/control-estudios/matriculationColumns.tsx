@@ -382,6 +382,7 @@ function guardianTextCol(
   opts?: { placeholder?: string; editableFn?: (row: MatriculationRow) => boolean }
 ): ColDef<MatriculationRow> {
   return {
+    colId: `${parentKey}${String(field).charAt(0).toUpperCase()}${String(field).slice(1)}`,
     field: `${parentKey}_${String(field)}` as any,
     headerName,
     width,
@@ -575,7 +576,7 @@ function guardianLocationCol(
   locations: VenezuelaState[]
 ): ColDef<MatriculationRow> {
   return locationCol({
-    colId: `${parentKey}_${GUARDIAN_LOCATION_FIELD[level]}`,
+    colId: `${parentKey}${GUARDIAN_LOCATION_FIELD[level].charAt(0).toUpperCase()}${GUARDIAN_LOCATION_FIELD[level].slice(1)}`,
     headerName,
     width,
     level,
@@ -607,7 +608,7 @@ function repLocationCol(
   locations: VenezuelaState[]
 ): ColDef<MatriculationRow> {
   return locationCol({
-    colId: `representative_${GUARDIAN_LOCATION_FIELD[level]}`,
+    colId: `representative${GUARDIAN_LOCATION_FIELD[level].charAt(0).toUpperCase()}${GUARDIAN_LOCATION_FIELD[level].slice(1)}`,
     headerName,
     width,
     level,
@@ -645,6 +646,7 @@ function repCol(
   opts?: { placeholder?: string }
 ): ColDef<MatriculationRow> {
   return {
+    colId: `representative${String(field).charAt(0).toUpperCase()}${String(field).slice(1)}`,
     field: `representative_${String(field)}` as any,
     headerName,
     width,

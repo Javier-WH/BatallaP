@@ -26,6 +26,7 @@ import {
   getSubjectOrderMap,
   sortSubjectsByOrder,
 } from '@/services/subjectOrderService';
+import { filterActiveGroupSubjects } from '@/services/subjectGroupService';
 import { readTemplateNamedRanges } from '@/services/templateNamedRanges';
 
 function getStateAbbrev(stateName: string): string {
@@ -198,14 +199,16 @@ export const exportCertifiedGrades = async (req: Request, res: Response) => {
       const termCount = terms.length || 1;
       const orderMap = subjectOrderByPeriod[ins.schoolPeriodId] || new Map();
 
+      const activeInscriptionSubjects = filterActiveGroupSubjects(ins.inscriptionSubjects || []);
+
       const insSubs = sortSubjectsByOrder(
-        (ins.inscriptionSubjects || []).filter((is: any) => !is.subject?.subjectGroupId),
+        activeInscriptionSubjects.filter((is: any) => !is.subject?.subjectGroupId),
         (is: any) => is.subjectId,
         (is: any) => is.subject?.name || '',
         orderMap,
       );
 
-      const groupSubjects = (ins.inscriptionSubjects || [])
+      const groupSubjects = activeInscriptionSubjects
         .filter((is: any) => is.subject?.subjectGroupId)
         .map((is: any) => is.subject?.name || '')
         .filter(Boolean);
@@ -467,14 +470,16 @@ export const getCertifiedGradesData = async (req: Request, res: Response) => {
       const termCount = terms.length || 1;
       const orderMap = subjectOrderByPeriod[ins.schoolPeriodId] || new Map();
 
+      const activeInscriptionSubjects = filterActiveGroupSubjects(ins.inscriptionSubjects || []);
+
       const insSubs = sortSubjectsByOrder(
-        (ins.inscriptionSubjects || []).filter((is: any) => !is.subject?.subjectGroupId),
+        activeInscriptionSubjects.filter((is: any) => !is.subject?.subjectGroupId),
         (is: any) => is.subjectId,
         (is: any) => is.subject?.name || '',
         orderMap,
       );
 
-      const groupSubjects = (ins.inscriptionSubjects || [])
+      const groupSubjects = activeInscriptionSubjects
         .filter((is: any) => is.subject?.subjectGroupId)
         .map((is: any) => is.subject?.name || '')
         .filter(Boolean);

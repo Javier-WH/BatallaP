@@ -17,6 +17,7 @@ import {
   getSubjectOrderMapByGradeAndPeriod,
   sortSubjectsByOrder,
 } from './subjectOrderService';
+import { filterActiveGroupSubjects } from './subjectGroupService';
 
 const resolveInstitutionPlantelId = async (transaction?: Transaction): Promise<number | null> => {
   const setting = await Setting.findOne({ where: { key: 'institution_dea_code' }, transaction });
@@ -129,11 +130,13 @@ export class FinalGradeCalculator {
       inscriptionSimple.schoolPeriodId,
       options.transaction
     );
-    inscriptionRecord.inscriptionSubjects = sortSubjectsByOrder(
-      inscriptionRecord.inscriptionSubjects,
-      (is) => is.subjectId,
-      (is) => is.subject?.name,
-      orderMap
+    inscriptionRecord.inscriptionSubjects = filterActiveGroupSubjects(
+      sortSubjectsByOrder(
+        inscriptionRecord.inscriptionSubjects,
+        (is) => is.subjectId,
+        (is) => is.subject?.name,
+        orderMap
+      )
     );
 
     const minApproval = options.minApproval ?? 10;

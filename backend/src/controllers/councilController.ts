@@ -17,6 +17,7 @@ import {
   getSubjectOrderMap,
   sortSubjectsByOrder,
 } from '@/services/subjectOrderService';
+import { filterActiveGroupSubjects } from '@/services/subjectGroupService';
 
 export const getCouncilData = async (req: Request, res: Response) => {
   try {
@@ -103,8 +104,9 @@ export const getCouncilData = async (req: Request, res: Response) => {
     // Map data for frontend
     const result = inscriptions.map(ins => {
       const insAny = ins as any;
+      const activeSubjects = filterActiveGroupSubjects(insAny.inscriptionSubjects || []);
       const sortedSubjects = sortSubjectsByOrder(
-        insAny.inscriptionSubjects || [],
+        activeSubjects,
         (is: any) => is.subjectId,
         (is: any) => is.subject?.name,
         subjectOrderMap

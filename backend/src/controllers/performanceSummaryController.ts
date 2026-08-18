@@ -28,6 +28,7 @@ import {
   getSubjectOrderMap,
   sortSubjectsByOrder,
 } from '@/services/subjectOrderService';
+import { filterActiveGroupSubjects } from '@/services/subjectGroupService';
 import { readTemplateNamedRanges, TemplateNamedRanges } from '@/services/templateNamedRanges';
 
 const gradeOrderToSheetName: Record<number, string> = {
@@ -392,7 +393,7 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
 
     inscriptions.forEach((ins: any) => {
       const sorted = sortSubjectsByOrder(
-        ins.inscriptionSubjects || [],
+        filterActiveGroupSubjects(ins.inscriptionSubjects || []),
         (is: any) => is.subjectId,
         (is: any) => is.subject?.name,
         subjectOrderMap
@@ -1166,8 +1167,9 @@ export const getBoletinData = async (req: Request, res: Response) => {
     });
 
     const students = inscriptions.map((ins: any) => {
+      const activeInscriptionSubjects = filterActiveGroupSubjects(ins.inscriptionSubjects || []);
       const insSubs = sortSubjectsByOrder(
-        (ins.inscriptionSubjects || []).filter((is: any) => !is.subject?.subjectGroupId),
+        activeInscriptionSubjects.filter((is: any) => !is.subject?.subjectGroupId),
         (is: any) => is.subjectId,
         (is: any) => is.subject?.name || '',
         subjectOrderMap,

@@ -1069,26 +1069,79 @@ const MatriculationEnrollment: React.FC = () => {
         },
         phone1: { header: 'Teléfono', getValue: (r) => r.tempData.phone1 || '' },
         whatsapp: { header: 'WhatsApp', getValue: (r) => r.tempData.whatsapp || '' },
+        // Representante
+        representativeType: { header: 'Vínculo', getValue: (r) => {
+          const map: Record<string, string> = { mother: 'Madre', father: 'Padre', other: 'Otro' };
+          return map[r.tempData.representativeType] || r.tempData.representativeType || '';
+        }},
+        representativeDocumentType: { header: 'Tipo Doc. Rep.', getValue: (r) => {
+          const { profile } = getRepresentativeInfo(r);
+          return profile?.documentType || '';
+        }},
+        representativeDocument: { header: 'Cédula Rep.', getValue: (r) => {
+          const { profile } = getRepresentativeInfo(r);
+          return profile?.document || '';
+        }},
+        representativeFirstName: { header: 'Nombres Rep.', getValue: (r) => {
+          const { profile } = getRepresentativeInfo(r);
+          return profile?.firstName || '';
+        }},
+        representativeLastName: { header: 'Apellidos Rep.', getValue: (r) => {
+          const { profile } = getRepresentativeInfo(r);
+          return profile?.lastName || '';
+        }},
+        representativePhone: { header: 'Teléfono Rep.', getValue: (r) => {
+          const { profile } = getRepresentativeInfo(r);
+          return profile?.phone || '';
+        }},
+        representativeEmail: { header: 'Email Rep.', getValue: (r) => {
+          const { profile } = getRepresentativeInfo(r);
+          return profile?.email || '';
+        }},
+        representativeOccupation: { header: 'Ocupación Rep.', getValue: (r) => {
+          const { profile } = getRepresentativeInfo(r);
+          return profile?.occupation || '';
+        }},
+        representativeAddress: { header: 'Dirección Rep.', getValue: (r) => {
+          const { profile } = getRepresentativeInfo(r);
+          return profile?.address || '';
+        }},
+        representativeResidenceState: { header: 'Estado Rep.', getValue: (r) => {
+          const { profile } = getRepresentativeInfo(r);
+          return profile?.residenceState || '';
+        }},
+        representativeResidenceMunicipality: { header: 'Municipio Rep.', getValue: (r) => {
+          const { profile } = getRepresentativeInfo(r);
+          return profile?.residenceMunicipality || '';
+        }},
+        representativeResidenceParish: { header: 'Parroquia Rep.', getValue: (r) => {
+          const { profile } = getRepresentativeInfo(r);
+          return profile?.residenceParish || '';
+        }},
+        // Madre
+        motherDocumentType: { header: 'Tipo Doc. Madre', getValue: (r) => r.tempData.mother?.documentType || '' },
         motherDocument: { header: 'Cédula Madre', getValue: (r) => r.tempData.mother?.document || '' },
         motherFirstName: { header: 'Nombres Madre', getValue: (r) => r.tempData.mother?.firstName || '' },
         motherLastName: { header: 'Apellidos Madre', getValue: (r) => r.tempData.mother?.lastName || '' },
+        motherPhone: { header: 'Teléfono Madre', getValue: (r) => r.tempData.mother?.phone || '' },
+        motherEmail: { header: 'Email Madre', getValue: (r) => r.tempData.mother?.email || '' },
+        motherOccupation: { header: 'Ocupación Madre', getValue: (r) => r.tempData.mother?.occupation || '' },
+        motherAddress: { header: 'Dirección Madre', getValue: (r) => r.tempData.mother?.address || '' },
+        motherResidenceState: { header: 'Estado Madre', getValue: (r) => r.tempData.mother?.residenceState || '' },
+        motherResidenceMunicipality: { header: 'Municipio Madre', getValue: (r) => r.tempData.mother?.residenceMunicipality || '' },
+        motherResidenceParish: { header: 'Parroquia Madre', getValue: (r) => r.tempData.mother?.residenceParish || '' },
+        // Padre
+        fatherDocumentType: { header: 'Tipo Doc. Padre', getValue: (r) => r.tempData.father?.documentType || '' },
         fatherDocument: { header: 'Cédula Padre', getValue: (r) => r.tempData.father?.document || '' },
         fatherFirstName: { header: 'Nombres Padre', getValue: (r) => r.tempData.father?.firstName || '' },
         fatherLastName: { header: 'Apellidos Padre', getValue: (r) => r.tempData.father?.lastName || '' },
-        representativeFirstName: {
-          header: 'Representante',
-          getValue: (r) => {
-            const { profile } = getRepresentativeInfo(r);
-            return `${profile?.firstName || ''} ${profile?.lastName || ''}`.trim();
-          }
-        },
-        representativePhone: {
-          header: 'Telf. Rep.',
-          getValue: (r) => {
-            const { profile } = getRepresentativeInfo(r);
-            return profile?.phone || '';
-          }
-        }
+        fatherPhone: { header: 'Teléfono Padre', getValue: (r) => r.tempData.father?.phone || '' },
+        fatherEmail: { header: 'Email Padre', getValue: (r) => r.tempData.father?.email || '' },
+        fatherOccupation: { header: 'Ocupación Padre', getValue: (r) => r.tempData.father?.occupation || '' },
+        fatherAddress: { header: 'Dirección Padre', getValue: (r) => r.tempData.father?.address || '' },
+        fatherResidenceState: { header: 'Estado Padre', getValue: (r) => r.tempData.father?.residenceState || '' },
+        fatherResidenceMunicipality: { header: 'Municipio Padre', getValue: (r) => r.tempData.father?.residenceMunicipality || '' },
+        fatherResidenceParish: { header: 'Parroquia Padre', getValue: (r) => r.tempData.father?.residenceParish || '' },
       };
 
       // Agregar columnas de preguntas personalizadas
@@ -1104,8 +1157,9 @@ const MatriculationEnrollment: React.FC = () => {
         };
       });
 
-      // Filtrar solo las columnas visibles
-      const visibleColumns = visibleColumnKeys
+      // Filtrar solo las columnas visibles, en el orden que muestra AG-Grid
+      const gridColumnOrder = agGridRef.current?.getVisibleColumnIds() ?? visibleColumnKeys;
+      const visibleColumns = gridColumnOrder
         .map(key => ({ key, config: columnConfig[key] }))
         .filter(col => col.config);
 

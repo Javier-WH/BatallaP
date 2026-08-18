@@ -56,6 +56,7 @@ function saveGridState(state: GridState) {
 export interface MatriculationAgGridHandle {
   pinColumn: (colId: string, pinned: 'left' | 'right' | null) => void;
   startEditingCell: (rowIndex: number, colKey: string) => void;
+  getVisibleColumnIds: () => string[];
 }
 
 const MatriculationAgGrid = React.forwardRef<MatriculationAgGridHandle, MatriculationAgGridProps>((props, ref) => {
@@ -481,7 +482,13 @@ const MatriculationAgGrid = React.forwardRef<MatriculationAgGridHandle, Matricul
   React.useImperativeHandle(ref, () => ({
     pinColumn: handlePinColumn,
     startEditingCell: handleStartEditingCell,
-  }), [handlePinColumn, handleStartEditingCell]);
+    getVisibleColumnIds: () => {
+      if (!gridApi) return [];
+      return gridApi.getAllGridColumns()
+        .filter(col => col.isVisible())
+        .map(col => col.getColId());
+    },
+  }), [handlePinColumn, handleStartEditingCell, gridApi]);
 
   // Context menu (right-click on PC)
   const handleCellContextMenu = useCallback(

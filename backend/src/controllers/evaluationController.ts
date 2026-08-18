@@ -40,6 +40,7 @@ import {
   sortSubjectsWithPendingAtEnd,
   sortSubjectsByOrder,
 } from '@/services/subjectOrderService';
+import { filterActiveGroupSubjects } from '@/services/subjectGroupService';
 
 export const getMyAssignments = async (req: Request, res: Response) => {
   try {
@@ -615,7 +616,7 @@ export const getStudentFullAcademicRecord = async (req: Request, res: Response) 
         const recordJson = record.toJSON() as any;
 
         if (recordJson.inscriptionSubjects) {
-          const withFlags = recordJson.inscriptionSubjects.map((is: any) => ({
+          const withFlags = filterActiveGroupSubjects(recordJson.inscriptionSubjects).map((is: any) => ({
             ...is,
             isPending: pendingSubjectIds.has(is.subjectId),
           }));
@@ -1119,7 +1120,7 @@ export const getFinalGradesByPeriod = async (req: Request, res: Response) => {
       // Apply canonical subject order
       const orderMap = await resolveOrderMap(inscription.gradeId);
       inscriptionSubjects = sortSubjectsByOrder(
-        inscriptionSubjects,
+        filterActiveGroupSubjects(inscriptionSubjects),
         (is: any) => is.subjectId,
         (is: any) => is.subject?.name,
         orderMap
