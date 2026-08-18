@@ -1680,7 +1680,7 @@ const MatriculationEnrollment: React.FC = () => {
 
         {/* Space is always reserved so that showing/hiding the bulk action bar
             never shifts the grid below it. */}
-        <div ref={bulkActionRef} className="shrink-0" style={{ height: BULK_BAR_HEIGHT }}>
+        <div ref={bulkActionRef} className="shrink-0 bulk-action-bar" style={{ height: BULK_BAR_HEIGHT }}>
           {selectedRowKeys.length > 0 && (
             <Card
               size="small"

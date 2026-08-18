@@ -419,6 +419,12 @@ const MatriculationAgGrid = React.forwardRef<MatriculationAgGridHandle, Matricul
       const container = gridContainerRef.current;
       if (!container) return;
       if (!container.contains(e.target as Node)) {
+        // Don't deselect when clicking on the bulk action bar or its descendants
+        // (Selects, buttons, etc.) — those are meant to operate on the selection.
+        const target = e.target as HTMLElement;
+        if (target.closest('.bulk-action-bar') || target.closest('.ant-select-dropdown')) {
+          return;
+        }
         gridApi.deselectAll();
         gridApi.clearFocusedCell();
       }
