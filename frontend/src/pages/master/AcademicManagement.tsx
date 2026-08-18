@@ -282,6 +282,9 @@ const AcademicManagement: React.FC = () => {
   const [presetForm] = Form.useForm();
   const [presetItems, setPresetItems] = useState<{ name: string; abbreviation: string }[]>([{ name: '', abbreviation: '' }]);
   const [presetSubmitting, setPresetSubmitting] = useState(false);
+  const [structurePresetModalOpen, setStructurePresetModalOpen] = useState(false);
+  const [structurePresets, setStructurePresets] = useState<any[]>([]);
+  const [structurePresetApplying, setStructurePresetApplying] = useState(false);
 
   const fetchSubjectPresets = async () => {
     try {
@@ -340,6 +343,38 @@ const AcademicManagement: React.FC = () => {
       }
     } finally {
       setPresetSubmitting(false);
+    }
+  };
+
+  const fetchStructurePresets = async () => {
+    try {
+      const res = await api.get('/structure-presets');
+      setStructurePresets(res.data);
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  const handleApplyStructurePreset = async (presetId: number) => {
+    if (!activePeriodId) {
+      message.warning('Seleccione un período primero');
+      return;
+    }
+    setStructurePresetApplying(true);
+    try {
+      const res = await api.post(`/structure-presets/${presetId}/apply`, { schoolPeriodId: activePeriodId });
+      const { results } = res.data;
+      const totalGrades = results.length;
+      const totalSubjects = results.reduce((acc: number, r: any) => acc + r.subjectsLinked, 0);
+      const totalSections = results.reduce((acc: number, r: any) => acc + r.sectionsLinked, 0);
+      message.success(`${totalGrades} grados vinculados, ${totalSubjects} materias y ${totalSections} secciones`);
+      setStructurePresetModalOpen(false);
+      fetchStructure();
+      fetchAll();
+    } catch (error: any) {
+      message.error(error.response?.data?.message || 'Error al aplicar preset');
+    } finally {
+      setStructurePresetApplying(false);
     }
   };
 
@@ -1202,14 +1237,24 @@ const AcademicManagement: React.FC = () => {
                       <Text type="secondary">Los grados seleccionados aquí podrán tener secciones y materias en este año escolar.</Text>
                     </Col>
                     <Col>
-                      <Select
-                        key={`add-grade-${activePeriodId}-${orderedStructure.map((pg) => pg.id).join('-')}`}
-                        placeholder="Seleccionar Grado del Catálogo"
-                        style={{ width: 280 }}
-                        size="large"
-                        onChange={handleAddGradeToStructure}
-                        options={grades.map((g) => ({ label: g.name, value: g.id }))}
-                      />
+                      <Space>
+                        <Select
+                          key={`add-grade-${activePeriodId}-${orderedStructure.map((pg) => pg.id).join('-')}`}
+                          placeholder="Seleccionar Grado del Catálogo"
+                          style={{ width: 280 }}
+                          size="large"
+                          onChange={handleAddGradeToStructure}
+                          options={grades.map((g) => ({ label: g.name, value: g.id }))}
+                        />
+                        <Button
+                          icon={<ThunderboltOutlined />}
+                          size="large"
+                          onClick={() => { fetchStructurePresets(); setStructurePresetModalOpen(true); }}
+                          style={{ borderRadius: 8, height: 40 }}
+                        >
+                          Preset de Estructura
+                        </Button>
+                      </Space>
                     </Col>
                   </Row>
                 </div>
@@ -2176,6 +2221,76 @@ const AcademicManagement: React.FC = () => {
         >
           Agregar materia
         </Button>
+      </Modal>
+
+      <Modal
+        title="Presets de Estructura"
+        open={structurePresetModalOpen}
+        onCancel={() => setStructurePresetModalOpen(false)}
+        footer={null}
+        width={600}
+      >
+        <p style={{ color: 'var(--color-text-muted)', fontSize: 13, marginBottom: 16 }}>
+          Selecciona un preset para vincular grados, materias y secciones al período activo.
+          Las materias deben existir previamente en el catálogo (usa el preset de materias primero).
+        </p>
+        {structurePresets.map((preset) => (
+          <div
+            key={preset.id}
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              padding: '12px 16px',
+              borderRadius: 10,
+              border: '1px solid #f0f0f0',
+              marginBottom: 8,
+              background: '#fafafa',
+            }}
+          >
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 14 }}>
+                {preset.name}
+                {preset.isSystem && <Tag color="blue" style={{ marginLeft: 8, fontSize: 11 }}>Sistema</Tag>}
+              </div>
+              {preset.description && (
+                <div style={{ fontSize: 12, color: '#8c8c8c' }}>{preset.description}</div>
+              )}
+              <div style={{ fontSize: 12, color: '#8c8c8c', marginTop: 2 }}>
+                {preset.grades?.length || 0} grados
+              </div>
+            </div>
+            <Space>
+              {!preset.isSystem && (
+                <Popconfirm
+                  title="¿Eliminar preset?"
+                  onConfirm={async () => {
+                    try {
+                      await api.delete(`/structure-presets/${preset.id}`);
+                      message.success('Preset eliminado');
+                      fetchStructurePresets();
+                    } catch (error: any) {
+                      message.error(error.response?.data?.message || 'Error al eliminar');
+                    }
+                  }}
+                >
+                  <Button type="text" danger icon={<DeleteOutlined />} />
+                </Popconfirm>
+              )}
+              <Button
+                type="primary"
+                loading={structurePresetApplying}
+                onClick={() => handleApplyStructurePreset(preset.id)}
+                style={{ borderRadius: 8 }}
+              >
+                Aplicar
+              </Button>
+            </Space>
+          </div>
+        ))}
+        {structurePresets.length === 0 && (
+          <Empty description="No hay presets disponibles" />
+        )}
       </Modal>
     </div>
   );

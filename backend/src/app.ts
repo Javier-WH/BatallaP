@@ -80,6 +80,7 @@ import externalGradeRoutes from '@/routes/externalGradeRoutes';
 import evaluationCatalogRoutes from '@/routes/evaluationCatalogRoutes';
 import sectionGuideRoutes from '@/routes/sectionGuideRoutes';
 import subjectPresetRoutes from '@/routes/subjectPresetRoutes';
+import structurePresetRoutes from '@/routes/structurePresetRoutes';
 
 app.get('/', (req, res) => {
   res.send('API is running...');
@@ -122,6 +123,7 @@ app.use('/api/external-grades', externalGradeRoutes);
 app.use('/api/evaluation/catalogs', evaluationCatalogRoutes);
 app.use('/api/section-guides', sectionGuideRoutes);
 app.use('/api/subject-presets', subjectPresetRoutes);
+app.use('/api/structure-presets', structurePresetRoutes);
 
 export { sessionStore };
 export default app;

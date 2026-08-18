@@ -2,7 +2,7 @@ import app, { sessionStore } from './app';
 import express from 'express';
 import sequelize from '@/config/database';
 import '@/models/index'; // Register models
-import { EvaluationCatalog, SubjectPreset } from '@/models/index';
+import { EvaluationCatalog, SubjectPreset, StructurePreset } from '@/models/index';
 import dotenv from 'dotenv';
 import path from 'path';
 import MigrationRunner from '@/config/migrationRunner';
@@ -99,6 +99,97 @@ const seedDefaultSubjectPresets = async () => {
   }
 };
 
+const EMG_31059_STRUCTURE = [
+  {
+    name: 'Primer Año',
+    subjects: [
+      { name: 'Castellano', abbreviation: 'CA' },
+      { name: 'Inglés y Otras Lenguas Extranjeras', abbreviation: 'ILE' },
+      { name: 'Matemáticas', abbreviation: 'MA' },
+      { name: 'Educación Física', abbreviation: 'EF' },
+      { name: 'Arte y Patrimonio', abbreviation: 'AP' },
+      { name: 'Ciencias Naturales', abbreviation: 'CN' },
+      { name: 'Geografía, Historia y Ciudadanía', abbreviation: 'GHC' },
+      { name: 'Orientación y Convivencia', abbreviation: 'OC' },
+    ],
+  },
+  {
+    name: 'Segundo Año',
+    subjects: [
+      { name: 'Castellano', abbreviation: 'CA' },
+      { name: 'Inglés y Otras Lenguas Extranjeras', abbreviation: 'ILE' },
+      { name: 'Matemáticas', abbreviation: 'MA' },
+      { name: 'Educación Física', abbreviation: 'EF' },
+      { name: 'Arte y Patrimonio', abbreviation: 'AP' },
+      { name: 'Ciencias Naturales', abbreviation: 'CN' },
+      { name: 'Geografía, Historia y Ciudadanía', abbreviation: 'GHC' },
+      { name: 'Orientación y Convivencia', abbreviation: 'OC' },
+    ],
+  },
+  {
+    name: 'Tercer Año',
+    subjects: [
+      { name: 'Castellano', abbreviation: 'CA' },
+      { name: 'Inglés y Otras Lenguas Extranjeras', abbreviation: 'ILE' },
+      { name: 'Matemáticas', abbreviation: 'MA' },
+      { name: 'Educación Física', abbreviation: 'EF' },
+      { name: 'Física', abbreviation: 'FI' },
+      { name: 'Química', abbreviation: 'QU' },
+      { name: 'Biología', abbreviation: 'BI' },
+      { name: 'Geografía, Historia y Ciudadanía', abbreviation: 'GHC' },
+      { name: 'Orientación y Convivencia', abbreviation: 'OC' },
+    ],
+  },
+  {
+    name: 'Cuarto Año',
+    subjects: [
+      { name: 'Castellano', abbreviation: 'CA' },
+      { name: 'Inglés y Otras Lenguas Extranjeras', abbreviation: 'ILE' },
+      { name: 'Matemáticas', abbreviation: 'MA' },
+      { name: 'Educación Física', abbreviation: 'EF' },
+      { name: 'Física', abbreviation: 'FI' },
+      { name: 'Química', abbreviation: 'QU' },
+      { name: 'Biología', abbreviation: 'BI' },
+      { name: 'Geografía, Historia y Ciudadanía', abbreviation: 'GHC' },
+      { name: 'Formación para la Soberanía Nacional', abbreviation: 'FSN' },
+      { name: 'Orientación y Convivencia', abbreviation: 'OC' },
+    ],
+  },
+  {
+    name: 'Quinto Año',
+    subjects: [
+      { name: 'Castellano', abbreviation: 'CA' },
+      { name: 'Inglés y Otras Lenguas Extranjeras', abbreviation: 'ILE' },
+      { name: 'Matemáticas', abbreviation: 'MA' },
+      { name: 'Educación Física', abbreviation: 'EF' },
+      { name: 'Física', abbreviation: 'FI' },
+      { name: 'Química', abbreviation: 'QU' },
+      { name: 'Biología', abbreviation: 'BI' },
+      { name: 'Ciencias de La Tierra', abbreviation: 'CT' },
+      { name: 'Geografía, Historia y Ciudadanía', abbreviation: 'GHC' },
+      { name: 'Formación para la Soberanía Nacional', abbreviation: 'FSN' },
+      { name: 'Orientación y Convivencia', abbreviation: 'OC' },
+    ],
+  },
+];
+
+const seedDefaultStructurePresets = async () => {
+  try {
+    await StructurePreset.findOrCreate({
+      where: { name: 'EMG 31059' },
+      defaults: {
+        name: 'EMG 31059',
+        description: 'Educación Media General — Estructura completa 31059 (1ro a 5to año)',
+        grades: EMG_31059_STRUCTURE,
+        isSystem: true,
+      },
+    });
+    console.log('✅ Presets de estructura verificados.');
+  } catch (error) {
+    console.error('⚠️ Error al seedear presets de estructura:', error);
+  }
+};
+
 interface StartupError {
   name?: string;
   message?: string;
@@ -175,6 +266,7 @@ const startServer = async () => {
 
     await seedDefaultCatalogs();
     await seedDefaultSubjectPresets();
+    await seedDefaultStructurePresets();
 
     app.listen(PORT, () => {
       console.log(`🚀 Backend iniciado en http://localhost:${PORT}`);

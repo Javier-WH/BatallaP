@@ -131,6 +131,7 @@ import EvaluationIndicator from './EvaluationIndicator';
 import EvaluationCatalog from './EvaluationCatalog';
 import SectionGuide from './SectionGuide';
 import SubjectPreset from './SubjectPreset';
+import StructurePreset from './StructurePreset';
 
 
 // ... (Existing User/Person/Role/Contact associations) ...
@@ -431,5 +432,6 @@ export {
   EvaluationIndicator,
   EvaluationCatalog,
   SectionGuide,
-  SubjectPreset
+  SubjectPreset,
+  StructurePreset
 };
