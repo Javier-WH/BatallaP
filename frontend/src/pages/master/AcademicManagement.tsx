@@ -1330,8 +1330,116 @@ const AcademicManagement: React.FC = () => {
                   <Collapse
                     className="catalog-collapse"
                     expandIcon={({ isActive }) => <PlusOutlined rotate={isActive ? 45 : 0} style={{ color: '#8c8c8c' }} />}
-                    defaultActiveKey={['subjectGroups', 'grades']}
+                    defaultActiveKey={['grades', 'sections']}
                   >
+                    <Panel
+                      header={
+                        <Space size="middle">
+                          <div style={{ width: 32, height: 32, borderRadius: 6, background: '#f9f0ff', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #d3adf7' }}>
+                            <TeamOutlined style={{ color: '#722ed1' }} />
+                          </div>
+                          <Text style={{ fontWeight: 700, fontSize: 15 }}>Grados</Text>
+                        </Space>
+                      }
+                      key="grades"
+                    >
+                      <div style={{ padding: '0 8px' }}>
+                        <Form form={gradeCatalogForm} layout="inline" onFinish={async (v) => {
+                          await api.post('/academic/grades', v);
+                          message.success('Grado creado');
+                          gradeCatalogForm.resetFields();
+                          fetchAll();
+                        }} style={{ marginBottom: 20 }}>
+                          <Form.Item name="name" rules={[{ required: true }]} style={{ width: 280 }}><Input placeholder="Nombre (ej. Primer Año)" size="middle" style={{ borderRadius: 8 }} /></Form.Item>
+                          <Button type="primary" htmlType="submit" icon={<PlusOutlined />} style={{ borderRadius: 8, height: 32 }}>Agregar Grado</Button>
+                        </Form>
+                        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                          <SortableContext items={grades.map((g) => g.id)} strategy={verticalListSortingStrategy}>
+                            <Table
+                              dataSource={grades}
+                              rowKey="id"
+                              className="premium-table"
+                              size="middle"
+                              columns={catalogColumns('grade')}
+                              pagination={false}
+                              components={{ body: { row: SortableRow } }}
+                            />
+                          </SortableContext>
+                        </DndContext>
+                      </div>
+                    </Panel>
+
+                    <Panel
+                      header={
+                        <Space size="middle">
+                          <div style={{ width: 32, height: 32, borderRadius: 6, background: '#f6ffed', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #b7eb8f' }}>
+                            <AppstoreOutlined style={{ color: '#389e0d' }} />
+                          </div>
+                          <Text style={{ fontWeight: 700, fontSize: 15 }}>Secciones</Text>
+                        </Space>
+                      }
+                      key="sections"
+                    >
+                      <div style={{ padding: '0 8px' }}>
+                        <Form form={sectionCatalogForm} layout="inline" onFinish={async (v) => {
+                          await api.post('/academic/sections', v);
+                          message.success('Sección creada');
+                          sectionCatalogForm.resetFields();
+                          fetchAll();
+                        }} style={{ marginBottom: 20 }}>
+                          <Form.Item name="name" rules={[{ required: true }]} style={{ width: 280 }}><Input placeholder="Identificador (ej. A, B, C)" size="middle" style={{ borderRadius: 8 }} /></Form.Item>
+                          <Button type="primary" htmlType="submit" icon={<PlusOutlined />} style={{ borderRadius: 8, height: 32 }}>Agregar Sección</Button>
+                        </Form>
+                        <Table
+                          dataSource={sections}
+                          rowKey="id"
+                          className="premium-table"
+                          size="middle"
+                          columns={catalogColumns('section')}
+                          pagination={{ pageSize: 10 }}
+                        />
+                      </div>
+                    </Panel>
+
+                    <Panel
+                      header={
+                        <Space size="middle">
+                          <div style={{ width: 32, height: 32, borderRadius: 6, background: '#f0f5ff', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #adc6ff' }}>
+                            <SafetyOutlined style={{ color: '#2f54eb' }} />
+                          </div>
+                          <Text style={{ fontWeight: 700, fontSize: 15 }}>Especializaciones / Menciones</Text>
+                        </Space>
+                      }
+                      key="specializations"
+                    >
+                      <div style={{ padding: '0 8px' }}>
+                        <Form
+                          form={specializationCatalogForm}
+                          layout="inline"
+                          onFinish={async (v) => {
+                            await api.post('/academic/specializations', v);
+                            message.success('Especialización registrada');
+                            specializationCatalogForm.resetFields();
+                            fetchAll();
+                          }}
+                          style={{ marginBottom: 20 }}
+                        >
+                          <Form.Item name="name" rules={[{ required: true }]} style={{ width: 280 }}>
+                            <Input placeholder="Ej. Ciencias, Informática" size="middle" style={{ borderRadius: 8 }} />
+                          </Form.Item>
+                          <Button type="primary" htmlType="submit" icon={<PlusOutlined />} style={{ borderRadius: 8, height: 32 }}>Agregar</Button>
+                        </Form>
+                        <Table
+                          dataSource={specializations}
+                          rowKey="id"
+                          className="premium-table"
+                          size="middle"
+                          columns={catalogColumns('specialization')}
+                          pagination={{ pageSize: 5 }}
+                        />
+                      </div>
+                    </Panel>
+
                     <Panel
                       header={
                         <Space size="middle">
@@ -1413,118 +1521,10 @@ const AcademicManagement: React.FC = () => {
                     <Panel
                       header={
                         <Space size="middle">
-                          <div style={{ width: 32, height: 32, borderRadius: 6, background: '#f0f5ff', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #adc6ff' }}>
-                            <SafetyOutlined style={{ color: '#2f54eb' }} />
-                          </div>
-                          <Text style={{ fontWeight: 700, fontSize: 15 }}>Especializaciones / Menciones</Text>
-                        </Space>
-                      }
-                      key="specializations"
-                    >
-                      <div style={{ padding: '0 8px' }}>
-                        <Form
-                          form={specializationCatalogForm}
-                          layout="inline"
-                          onFinish={async (v) => {
-                            await api.post('/academic/specializations', v);
-                            message.success('Especialización registrada');
-                            specializationCatalogForm.resetFields();
-                            fetchAll();
-                          }}
-                          style={{ marginBottom: 20 }}
-                        >
-                          <Form.Item name="name" rules={[{ required: true }]} style={{ width: 280 }}>
-                            <Input placeholder="Ej. Ciencias, Informática" size="middle" style={{ borderRadius: 8 }} />
-                          </Form.Item>
-                          <Button type="primary" htmlType="submit" icon={<PlusOutlined />} style={{ borderRadius: 8, height: 32 }}>Agregar</Button>
-                        </Form>
-                        <Table
-                          dataSource={specializations}
-                          rowKey="id"
-                          className="premium-table"
-                          size="middle"
-                          columns={catalogColumns('specialization')}
-                          pagination={{ pageSize: 5 }}
-                        />
-                      </div>
-                    </Panel>
-
-                    <Panel
-                      header={
-                        <Space size="middle">
-                          <div style={{ width: 32, height: 32, borderRadius: 6, background: '#f9f0ff', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #d3adf7' }}>
-                            <TeamOutlined style={{ color: '#722ed1' }} />
-                          </div>
-                          <Text style={{ fontWeight: 700, fontSize: 15 }}>Grados</Text>
-                        </Space>
-                      }
-                      key="grades"
-                    >
-                      <div style={{ padding: '0 8px' }}>
-                        <Form form={gradeCatalogForm} layout="inline" onFinish={async (v) => {
-                          await api.post('/academic/grades', v);
-                          message.success('Grado creado');
-                          gradeCatalogForm.resetFields();
-                          fetchAll();
-                        }} style={{ marginBottom: 20 }}>
-                          <Form.Item name="name" rules={[{ required: true }]} style={{ width: 280 }}><Input placeholder="Nombre (ej. Primer Año)" size="middle" style={{ borderRadius: 8 }} /></Form.Item>
-                          <Button type="primary" htmlType="submit" icon={<PlusOutlined />} style={{ borderRadius: 8, height: 32 }}>Agregar Grado</Button>
-                        </Form>
-                        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-                          <SortableContext items={grades.map((g) => g.id)} strategy={verticalListSortingStrategy}>
-                            <Table
-                              dataSource={grades}
-                              rowKey="id"
-                              className="premium-table"
-                              size="middle"
-                              columns={catalogColumns('grade')}
-                              pagination={false}
-                              components={{ body: { row: SortableRow } }}
-                            />
-                          </SortableContext>
-                        </DndContext>
-                      </div>
-                    </Panel>
-
-                    <Panel
-                      header={
-                        <Space size="middle">
-                          <div style={{ width: 32, height: 32, borderRadius: 6, background: '#f6ffed', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #b7eb8f' }}>
-                            <AppstoreOutlined style={{ color: '#389e0d' }} />
-                          </div>
-                          <Text style={{ fontWeight: 700, fontSize: 15 }}>Secciones</Text>
-                        </Space>
-                      }
-                      key="sections"
-                    >
-                      <div style={{ padding: '0 8px' }}>
-                        <Form form={sectionCatalogForm} layout="inline" onFinish={async (v) => {
-                          await api.post('/academic/sections', v);
-                          message.success('Sección creada');
-                          sectionCatalogForm.resetFields();
-                          fetchAll();
-                        }} style={{ marginBottom: 20 }}>
-                          <Form.Item name="name" rules={[{ required: true }]} style={{ width: 280 }}><Input placeholder="Identificador (ej. A, B, C)" size="middle" style={{ borderRadius: 8 }} /></Form.Item>
-                          <Button type="primary" htmlType="submit" icon={<PlusOutlined />} style={{ borderRadius: 8, height: 32 }}>Agregar Sección</Button>
-                        </Form>
-                        <Table
-                          dataSource={sections}
-                          rowKey="id"
-                          className="premium-table"
-                          size="middle"
-                          columns={catalogColumns('section')}
-                          pagination={{ pageSize: 10 }}
-                        />
-                      </div>
-                    </Panel>
-
-                    <Panel
-                      header={
-                        <Space size="middle">
                           <div style={{ width: 32, height: 32, borderRadius: 6, background: '#e6f7ff', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #91d5ff' }}>
                             <BookOutlined style={{ color: '#1890ff' }} />
                           </div>
-                          <Text style={{ fontWeight: 700, fontSize: 15 }}>Catálogo de Materias</Text>
+                          <Text style={{ fontWeight: 700, fontSize: 15 }}>Materias</Text>
                         </Space>
                       }
                       key="subjects"
