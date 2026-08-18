@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Table, Card, Button, Space, Tag, Modal, Form, Select, message, Alert, Tabs, Row, Col, Spin, Empty, Typography } from 'antd';
-import { UserOutlined, BookOutlined, PlusOutlined, TeamOutlined, CheckCircleOutlined } from '@ant-design/icons';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { Table, Card, Button, Space, Tag, Modal, Form, Select, message, Alert, Tabs, Row, Col, Spin, Empty, Typography, Popover } from 'antd';
+import { UserOutlined, BookOutlined, PlusOutlined, TeamOutlined, CheckCircleOutlined, WarningOutlined } from '@ant-design/icons';
 import api from '@/services/api';
 
 const { Option } = Select;
@@ -191,6 +191,56 @@ const TeacherProjection: React.FC = () => {
     }
   };
 
+  // Calculate subjects without assigned teachers across all grades/sections.
+  // Each "slot" is a (periodGradeSubjectId, sectionId) pair that should have a teacher.
+  const unassignedSubjects = useMemo(() => {
+    if (!availableStructure.length) return [];
+
+    // Build a set of all assigned (periodGradeSubjectId, sectionId) pairs
+    const assigned = new Set<string>();
+    teachers.forEach((t: any) => {
+      (t.teachingAssignments || []).forEach((as: any) => {
+        const pgsId = as.periodGradeSubject?.id;
+        const secId = as.section?.id;
+        if (pgsId != null && secId != null) {
+          assigned.add(`${pgsId}-${secId}`);
+        }
+      });
+    });
+
+    const result: { gradeName: string; subjectName: string; sections: string[] }[] = [];
+
+    availableStructure.forEach((gs: any) => {
+      const gradeName = gs.grade?.name || '—';
+      const sections: any[] = gs.sections || [];
+      const subjects: any[] = gs.subjects || [];
+
+      subjects.forEach((sub: any) => {
+        const pgsId = sub.PeriodGradeSubject?.id;
+        if (pgsId == null) return;
+
+        const missingSections: string[] = [];
+        sections.forEach((sec: any) => {
+          if (!assigned.has(`${pgsId}-${sec.id}`)) {
+            missingSections.push(sec.name || '—');
+          }
+        });
+
+        if (missingSections.length > 0) {
+          result.push({
+            gradeName,
+            subjectName: sub.name || '—',
+            sections: missingSections.sort((a, b) => a.localeCompare(b, 'es')),
+          });
+        }
+      });
+    });
+
+    return result;
+  }, [availableStructure, teachers]);
+
+  const unassignedCount = unassignedSubjects.length;
+
   const columns = [
     {
       title: 'Profesor',
@@ -350,6 +400,67 @@ const TeacherProjection: React.FC = () => {
           defaultActiveKey="projection"
           size="large"
           style={{ minHeight: '55vh' }}
+          tabBarExtraContent={
+            <Popover
+              trigger="click"
+              placement="bottomRight"
+              title={unassignedCount > 0 ? 'Materias sin profesor asignado' : 'Cobertura completa'}
+              content={
+                unassignedCount === 0 ? (
+                  <div style={{ maxWidth: 320, padding: '4px 0' }}>
+                    <Space>
+                      <CheckCircleOutlined style={{ color: '#52c41a' }} />
+                      <Text>Todas las materias tienen profesor asignado en todas las secciones.</Text>
+                    </Space>
+                  </div>
+                ) : (
+                  <div style={{ maxWidth: 420, maxHeight: 360, overflowY: 'auto', padding: '4px 0' }}>
+                    {unassignedSubjects.map((item, idx) => (
+                      <div
+                        key={`${item.gradeName}-${item.subjectName}-${idx}`}
+                        style={{
+                          padding: '6px 0',
+                          borderBottom: idx < unassignedSubjects.length - 1 ? '1px solid #f0f0f0' : 'none',
+                        }}
+                      >
+                        <div style={{ fontWeight: 700, fontSize: 13, color: '#1e293b' }}>
+                          {item.gradeName} — {item.subjectName}
+                        </div>
+                        <div style={{ fontSize: 12, color: '#dc2626', marginTop: 2 }}>
+                          Secciones sin profesor: {item.sections.join(', ')}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )
+              }
+            >
+              <Tag
+                color={unassignedCount > 0 ? 'volcano' : 'success'}
+                style={{
+                  cursor: 'pointer',
+                  fontWeight: 700,
+                  borderRadius: 6,
+                  padding: '2px 12px',
+                  fontSize: 12,
+                  border: 'none',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {unassignedCount > 0 ? (
+                  <Space size={4}>
+                    <WarningOutlined />
+                    {unassignedCount} {unassignedCount === 1 ? 'materia sin profesor' : 'materias sin profesores'}
+                  </Space>
+                ) : (
+                  <Space size={4}>
+                    <CheckCircleOutlined style={{ color: '#52c41a' }} />
+                    <span style={{ color: '#389e0d' }}>Cobertura completa</span>
+                  </Space>
+                )}
+              </Tag>
+            </Popover>
+          }
           items={[
             {
               key: 'projection',
