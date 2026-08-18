@@ -29,6 +29,7 @@ import {
   sortSubjectsByOrder,
 } from '@/services/subjectOrderService';
 import { filterActiveGroupSubjects } from '@/services/subjectGroupService';
+import { isPassingGrade, resolveGradeStatus } from '@/services/gradeEvaluationService';
 import { readTemplateNamedRanges, TemplateNamedRanges } from '@/services/templateNamedRanges';
 
 const gradeOrderToSheetName: Record<number, string> = {
@@ -605,7 +606,7 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
       for (const is of (ins as any).inscriptionSubjects || []) {
         if (!is.subjectId || groupedSubjectIds.has(is.subjectId)) continue;
         const score = calculateFinalScore(is);
-        if (score != null && score < passingGrade) {
+        if (score != null && !isPassingGrade(score, passingGrade)) {
           failedCountBySubject.set(is.subjectId, (failedCountBySubject.get(is.subjectId) || 0) + 1);
         }
       }
@@ -617,7 +618,7 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
       for (const is of (ins as any).inscriptionSubjects || []) {
         if (!is.subjectId || groupedSubjectIds.has(is.subjectId)) continue;
         const score = calculateFinalScore(is);
-        if (score != null && score >= passingGrade) {
+        if (score != null && isPassingGrade(score, passingGrade)) {
           passedCountBySubject.set(is.subjectId, (passedCountBySubject.get(is.subjectId) || 0) + 1);
         }
       }
@@ -754,7 +755,7 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
         if (groupedSubjectIds.has(is.subjectId)) continue;
         const score = calculateFinalScore(is);
         if (score == null) continue;
-        if (score < passingGrade) return true;
+        if (!isPassingGrade(score, passingGrade)) return true;
       }
       return false;
     };
@@ -1216,7 +1217,7 @@ export const getBoletinData = async (req: Request, res: Response) => {
             score: Math.round((termScores[t.id] || 0) * 100) / 100,
           })),
           finalScore,
-          status: is.finalGrade?.status || (finalScore !== null && finalScore >= Number(settings.passing_grade || 10) ? 'aprobada' : 'reprobada'),
+          status: is.finalGrade?.status || (finalScore !== null ? resolveGradeStatus(finalScore, Number(settings.passing_grade || 10)) : 'reprobada'),
         };
       });
 

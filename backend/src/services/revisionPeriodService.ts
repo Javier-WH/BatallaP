@@ -13,6 +13,7 @@ import {
   SubjectFinalGrade,
   Term,
 } from '@/models/index';
+import { isPassingGrade } from './gradeEvaluationService';
 
 export interface RevisionPeriodSummary {
   revisionPeriod: RevisionPeriod | null;
@@ -222,7 +223,7 @@ export class RevisionPeriodService {
         Object.values(termScores).forEach(v => { totalAccumulated += v; });
         const finalScore = totalAccumulated / termCount;
 
-        if (finalScore < passingGrade) {
+        if (!isPassingGrade(finalScore, passingGrade)) {
           failedSubjects.push({ inscriptionSubjectId: insSub.id });
         }
       }

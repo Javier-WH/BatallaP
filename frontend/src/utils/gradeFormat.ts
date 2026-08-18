@@ -43,3 +43,25 @@ export function formatGradeValue(grade: number | null | undefined, enableRoundin
 
   return Math.round(numGrade);
 }
+
+/**
+ * Whether a grade counts as passing. Grades are always displayed rounded, so the
+ * pass/fail decision uses the same rounded value the user sees (a raw 9.5 shows
+ * as "10" and therefore passes when the passing grade is 10). Mirrors the
+ * backend helper `services/gradeEvaluationService.ts`.
+ * @param grade - The raw grade value
+ * @param passingGrade - The institution's minimum passing grade
+ */
+export function isPassingGrade(grade: number | null | undefined, passingGrade: number): boolean {
+  if (grade === null || grade === undefined) {
+    return false;
+  }
+
+  const numGrade = Number(grade);
+
+  if (isNaN(numGrade)) {
+    return false;
+  }
+
+  return Math.round(numGrade) >= passingGrade;
+}

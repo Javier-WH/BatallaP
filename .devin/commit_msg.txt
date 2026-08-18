@@ -1,0 +1,19 @@
+fix: use rounded grade for pass/fail decision across system
+
+Grades are always displayed rounded to the nearest integer (e.g. 9.5 -> 10),
+but the pass/fail decision was using the raw score, causing a mismatch where a
+grade shown as "10" appeared in red (failing) when the raw value was 9.5.
+
+Added a single source of truth:
+- backend: services/gradeEvaluationService.ts (isPassingGrade, resolveGradeStatus)
+- frontend: utils/gradeFormat.ts (isPassingGrade)
+
+Applied to finalGradeCalculator, evaluationController, performanceSummaryController,
+certifiedGradesController, revisionPeriodService, and CourseCouncil UI colors.
+
+Now a grade of 10 (raw 9.5-10.4) is consistently treated as passing when
+passing_grade = 10, matching what the user sees.
+
+Generated with [Devin](https://devin.ai)
+
+Co-Authored-By: Devin <158243242+devin-ai-integration[bot]@users.noreply.github.com>

@@ -41,6 +41,7 @@ import {
   sortSubjectsByOrder,
 } from '@/services/subjectOrderService';
 import { filterActiveGroupSubjects } from '@/services/subjectGroupService';
+import { resolveGradeStatus } from '@/services/gradeEvaluationService';
 
 export const getMyAssignments = async (req: Request, res: Response) => {
   try {
@@ -803,10 +804,13 @@ export const updateFinalGrade = async (req: Request, res: Response) => {
       }
 
       // Create new final grade
+      const passingGradeSetting = await Setting.findOne({ where: { key: 'passing_grade' } });
+      const passingGrade = Number(passingGradeSetting?.value) || 10;
+
       const newFinalGrade = await SubjectFinalGrade.create({
         inscriptionSubjectId: Number(inscriptionSubjectId),
         finalScore,
-        status: status || (finalScore >= 10 ? 'aprobada' : 'reprobada'),
+        status: status || resolveGradeStatus(finalScore, passingGrade),
         plantelId: normalizedPlantelId ?? null
       });
 

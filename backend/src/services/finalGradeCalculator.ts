@@ -18,6 +18,7 @@ import {
   sortSubjectsByOrder,
 } from './subjectOrderService';
 import { filterActiveGroupSubjects } from './subjectGroupService';
+import { resolveGradeStatus } from './gradeEvaluationService';
 
 const resolveInstitutionPlantelId = async (transaction?: Transaction): Promise<number | null> => {
   const setting = await Setting.findOne({ where: { key: 'institution_dea_code' }, transaction });
@@ -238,15 +239,13 @@ export class FinalGradeCalculator {
       if (hasRepair) {
         // Repair grade replaces the original completely
         effectiveFinalScore = repairScore!;
-        effectiveStatus = repairPassingGrade != null
-          ? (repairScore! >= repairPassingGrade ? 'aprobada' : 'reprobada')
-          : (repairScore! >= minApproval ? 'aprobada' : 'reprobada');
+        effectiveStatus = resolveGradeStatus(repairScore!, repairPassingGrade ?? minApproval);
         gradeType = 'revision';
         originalScore = Number(finalScore.toFixed(2));
-        originalStatus = finalScore >= minApproval ? 'aprobada' : 'reprobada';
+        originalStatus = resolveGradeStatus(finalScore, minApproval);
       } else {
         effectiveFinalScore = finalScore;
-        effectiveStatus = finalScore >= minApproval ? 'aprobada' : 'reprobada';
+        effectiveStatus = resolveGradeStatus(finalScore, minApproval);
       }
 
       if (effectiveStatus === 'reprobada') {

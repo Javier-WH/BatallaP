@@ -27,6 +27,7 @@ import {
   sortSubjectsByOrder,
 } from '@/services/subjectOrderService';
 import { filterActiveGroupSubjects } from '@/services/subjectGroupService';
+import { resolveGradeStatus } from '@/services/gradeEvaluationService';
 import { readTemplateNamedRanges } from '@/services/templateNamedRanges';
 
 function getStateAbbrev(stateName: string): string {
@@ -244,7 +245,7 @@ export const exportCertifiedGrades = async (req: Request, res: Response) => {
           finalScore = Math.round((total / termCount) * 100) / 100;
         }
 
-        const status = is.finalGrade?.status || (finalScore !== null && finalScore >= Number(settings.passing_grade || 10) ? 'aprobada' : 'reprobada');
+        const status = is.finalGrade?.status || (finalScore !== null ? resolveGradeStatus(finalScore, Number(settings.passing_grade || 10)) : 'reprobada');
         const approvedDate = is.finalGrade?.calculatedAt ? new Date(is.finalGrade.calculatedAt) : null;
 
         return {
