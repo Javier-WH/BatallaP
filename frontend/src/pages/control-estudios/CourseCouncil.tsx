@@ -90,6 +90,7 @@ const CourseCouncil: React.FC = () => {
 
   const [councilDone, setCouncilDone] = useState(false);
   const [councilCompletedAt, setCouncilCompletedAt] = useState<Date | null>(null);
+  const [guideTeacherName, setGuideTeacherName] = useState<string>('');
   const [missingPointsStudents, setMissingPointsStudents] = useState<CouncilStudent[]>([]);
   const [showMissingModal, setShowMissingModal] = useState(false);
   const [markingDone, setMarkingDone] = useState(false);
@@ -181,10 +182,13 @@ const CourseCouncil: React.FC = () => {
   const fetchCouncilData = async (sectionId: number, termId: number, gradeId: number) => {
     setLoading(true);
     try {
-      const [res, checklistRes] = await Promise.all([
+      const [res, checklistRes, guideRes] = await Promise.all([
         api.get(`/council/data?sectionId=${sectionId}&termId=${termId}&gradeId=${gradeId}`),
         activePeriod
           ? api.get(`/period-closure/${activePeriod.id}/checklist?gradeId=${gradeId}&sectionId=${sectionId}&termId=${termId}`)
+          : Promise.resolve({ data: null }),
+        activePeriod
+          ? api.get(`/section-guides?schoolPeriodId=${activePeriod.id}&gradeId=${gradeId}&sectionId=${sectionId}`)
           : Promise.resolve({ data: null })
       ]);
       setStudentsData((res.data as CouncilStudent[]).slice().sort((a, b) => {
@@ -193,6 +197,8 @@ const CourseCouncil: React.FC = () => {
       }));
       setCouncilDone(checklistRes.data?.status === 'done');
       setCouncilCompletedAt(checklistRes.data?.completedAt ? new Date(checklistRes.data.completedAt) : null);
+      const gt = guideRes.data?.guideTeacher;
+      setGuideTeacherName(gt ? `${gt.lastName} ${gt.firstName}` : '');
       setStep(2);
     } catch (error) {
       console.error('Error fetching council data', error);
@@ -817,10 +823,25 @@ const CourseCouncil: React.FC = () => {
         worksheet.mergeCells(3, cut2 + 1, 3, lastCol);
         const periodCell = worksheet.getCell(3, cut2 + 1);
         periodCell.value = activePeriod?.name || '';
-        periodCell.alignment = { horizontal: 'right', vertical: 'middle' };
+        periodCell.alignment = { horizontal: 'right', vertical: 'middle', indent: 1 };
         periodCell.font = { bold: true, size: 14, color: { argb: '17324D' } };
 
-        // Row 4: center third holds the report title, right third holds the closure date.
+        // Row 4: left side has "Profesor:" (A+B merged) and teacher name (C).
+        // Center third holds the report title, right third holds the closure date.
+        worksheet.mergeCells(4, 1, 4, 2);
+        const profesorLabelCell = worksheet.getCell(4, 1);
+        profesorLabelCell.value = 'Profesor:';
+        profesorLabelCell.alignment = { horizontal: 'left', vertical: 'middle', indent: 1 };
+        profesorLabelCell.font = { size: 14, color: { argb: '17324D' } };
+
+        const profesorNameCell = worksheet.getCell(4, 3);
+        const titleCaseName = guideTeacherName
+          ? guideTeacherName.toLowerCase().replace(/\b\w/g, c => c.toUpperCase())
+          : '';
+        profesorNameCell.value = titleCaseName;
+        profesorNameCell.alignment = { horizontal: 'left', vertical: 'middle' };
+        profesorNameCell.font = { bold: true, size: 14, color: { argb: '17324D' } };
+
         worksheet.mergeCells(4, cut1 + 1, 4, cut2);
         const titleCell = worksheet.getCell(4, cut1 + 1);
         titleCell.value = 'Acta Final - Consejos de Curso';
@@ -833,10 +854,24 @@ const CourseCouncil: React.FC = () => {
           ? `Fecha: ${councilCompletedAt.toLocaleDateString('es-VE', { day: '2-digit', month: '2-digit', year: 'numeric' })}`
           : 'Fecha: __/__/____';
         dateCell.value = formattedDate;
-        dateCell.alignment = { horizontal: 'right', vertical: 'middle' };
+        dateCell.alignment = { horizontal: 'right', vertical: 'middle', indent: 1 };
         dateCell.font = { size: 14, color: { argb: '17324D' } };
 
-        // Row 5: center third holds the term (lapso) name.
+        // Row 5: left side has "Curso:" (A+B merged) and grade+section name (C).
+        // Center third holds the term (lapso) name.
+        worksheet.mergeCells(5, 1, 5, 2);
+        const cursoLabelCell = worksheet.getCell(5, 1);
+        cursoLabelCell.value = 'Curso:';
+        cursoLabelCell.alignment = { horizontal: 'left', vertical: 'middle', indent: 1 };
+        cursoLabelCell.font = { size: 14, color: { argb: '17324D' } };
+
+        const cursoNameCell = worksheet.getCell(5, 3);
+        const cursoGradeName = selectedSection?.grade.name || '';
+        const cursoSectionName = selectedSection?.section.name?.replace(/sección/gi, '').trim() || '';
+        cursoNameCell.value = `${cursoGradeName}, Sección ${cursoSectionName}`.trim();
+        cursoNameCell.alignment = { horizontal: 'left', vertical: 'middle' };
+        cursoNameCell.font = { bold: true, size: 14, color: { argb: '17324D' } };
+
         worksheet.mergeCells(5, cut1 + 1, 5, cut2);
         const lapsoCell = worksheet.getCell(5, cut1 + 1);
         lapsoCell.value = selectedTerm?.name || '';
@@ -847,6 +882,43 @@ const CourseCouncil: React.FC = () => {
         worksheet.getRow(3).height = 24.75;
         worksheet.getRow(4).height = 24.75;
         worksheet.getRow(5).height = 24.75;
+
+        // Institutional logo: top-left corner, 1.28" tall, preserving aspect ratio.
+        // Offsets: ~5px from top, ~28px from left.
+        // ExcelJS tl.col is a fractional column index. To convert pixels to column
+        // units we must accumulate each column's pixel width until we reach the target.
+        // Excel width → pixels: pixels = round(width * 7 + 5) for width >= 1.
+        const pxToColUnits = (px: number): number => {
+          let remaining = px;
+          for (let c = 1; c <= leafHeaders.length; c++) {
+            const w = worksheet.getColumn(c).width || 0;
+            const colPx = Math.round(w >= 1 ? w * 7 + 5 : w * 7);
+            if (remaining <= colPx) {
+              return (c - 1) + remaining / colPx;
+            }
+            remaining -= colPx;
+          }
+          return leafHeaders.length;
+        };
+        try {
+          const logoResponse = await api.get('/upload/logo', { responseType: 'arraybuffer' });
+          // Decode the PNG to read its native dimensions for aspect-ratio preservation.
+          const logoBuffer = logoResponse.data as ArrayBuffer;
+          const view = new DataView(logoBuffer);
+          // PNG: width at bytes 16-19, height at bytes 20-23 (big-endian uint32).
+          const pngWidth = view.getUint32(16, false);
+          const pngHeight = view.getUint32(20, false);
+          const targetHeightPx = Math.round(1.28 * 96); // 1.28" at 96 DPI ≈ 123px
+          const targetWidthPx = pngHeight > 0 ? Math.round((pngWidth / pngHeight) * targetHeightPx) : targetHeightPx;
+
+          const logoId = workbook.addImage({ buffer: logoBuffer, extension: 'png' });
+          worksheet.addImage(logoId, {
+            tl: { col: pxToColUnits(28), row: 5 / 48 }, // ~28px left, ~5px top (row 1 = 48px)
+            ext: { width: targetWidthPx, height: targetHeightPx }
+          });
+        } catch (error) {
+          console.warn('No se pudo incluir el logo institucional en el Excel:', error);
+        }
 
         const topRow = worksheet.addRow([]);
         const headerRow = worksheet.addRow(leafHeaders);
