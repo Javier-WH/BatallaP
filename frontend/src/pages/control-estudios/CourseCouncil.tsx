@@ -89,6 +89,7 @@ const CourseCouncil: React.FC = () => {
   const [maxGrade, setMaxGrade] = useState<number>(20);
 
   const [councilDone, setCouncilDone] = useState(false);
+  const [councilCompletedAt, setCouncilCompletedAt] = useState<Date | null>(null);
   const [missingPointsStudents, setMissingPointsStudents] = useState<CouncilStudent[]>([]);
   const [showMissingModal, setShowMissingModal] = useState(false);
   const [markingDone, setMarkingDone] = useState(false);
@@ -191,6 +192,7 @@ const CourseCouncil: React.FC = () => {
         return parseDoc(a.studentDni) - parseDoc(b.studentDni);
       }));
       setCouncilDone(checklistRes.data?.status === 'done');
+      setCouncilCompletedAt(checklistRes.data?.completedAt ? new Date(checklistRes.data.completedAt) : null);
       setStep(2);
     } catch (error) {
       console.error('Error fetching council data', error);
@@ -280,6 +282,7 @@ const CourseCouncil: React.FC = () => {
         status: 'done'
       });
       setCouncilDone(true);
+      setCouncilCompletedAt(new Date());
       message.success('Consejo de curso marcado como completado');
     } catch (error) {
       console.error('Error marking council as done', error);
@@ -302,6 +305,7 @@ const CourseCouncil: React.FC = () => {
           status: 'open'
         });
         setCouncilDone(false);
+        setCouncilCompletedAt(null);
         message.success('Consejo de curso reabierto');
       } catch (error) {
         console.error('Error reopening council', error);
@@ -724,7 +728,7 @@ const CourseCouncil: React.FC = () => {
           }
         });
         // Repeat the grouped/leaf header rows on every printed page.
-        worksheet.pageSetup.printTitlesRow = '8:9';
+        worksheet.pageSetup.printTitlesRow = '6:7';
 
         const fixedHeaders = ['#', 'Documento', 'Estudiante', 'Promedio'];
         const leafHeaders: string[] = [...fixedHeaders];
@@ -754,55 +758,102 @@ const CourseCouncil: React.FC = () => {
           groupRanges.push({ title: colDef.title, start, end: leafHeaders.length });
         });
 
-        // Institutional report header, matching the school Excel templates.
+        // Set column widths early so we can compute the table's total width
+        // and split the header rows into three roughly-equal visual thirds.
+        worksheet.getColumn(1).width = 2.86;
+        worksheet.getColumn(2).width = 12.86;
+        worksheet.getColumn(3).width = 42;
+        worksheet.getColumn(4).width = 11;
+        for (let i = 5; i <= leafHeaders.length; i++) {
+          worksheet.getColumn(i).width = 4;
+        }
+
+        // Compute the accumulated width per column to find the 1/3 and 2/3 cut points.
+        const colWidths: number[] = [];
+        let totalWidth = 0;
+        for (let i = 1; i <= leafHeaders.length; i++) {
+          const w = worksheet.getColumn(i).width || 0;
+          colWidths.push(w);
+          totalWidth += w;
+        }
+        const third = totalWidth / 3;
+        let cut1 = 1;
+        let cut2 = 1;
+        let acc = 0;
+        for (let i = 0; i < colWidths.length; i++) {
+          acc += colWidths[i];
+          if (cut1 === 1 && acc >= third) {
+            cut1 = i + 1; // column index (1-based) where the first third ends
+          }
+          if (cut2 === 1 && acc >= third * 2) {
+            cut2 = i + 1; // column index where the second third ends
+          }
+        }
+        // Ensure the cuts are within bounds and leave room for the right section.
+        cut1 = Math.max(2, Math.min(cut1, leafHeaders.length - 2));
+        cut2 = Math.max(cut1 + 1, Math.min(cut2, leafHeaders.length - 1));
+        const lastCol = leafHeaders.length;
+
+        // Row 1: three merged sections. Center section holds the institution name.
         worksheet.addRow([]);
-        worksheet.addRow(['', '', '', settings.name]);
-        worksheet.addRow(['', '', '', 'CONSEJO DE CURSO']);
-        worksheet.addRow([
-          '',
-          '',
-          '',
-          `${selectedSection?.grade.name || ''} / Sección ${selectedSection?.section.name?.replace(/sección/gi, '').trim() || ''}`.trim()
-        ]);
-        worksheet.addRow(['', '', '', `Lapso: ${selectedTerm?.name || ''}`]);
-        worksheet.addRow(['', '', '', `Período escolar: ${activePeriod?.name || ''}`]);
         worksheet.addRow([]);
+        worksheet.addRow([]);
+        worksheet.addRow([]);
+        worksheet.addRow([]);
+
+        // Merge row 1 into three parts: left (1..cut1), center (cut1+1..cut2), right (cut2+1..lastCol)
+        worksheet.mergeCells(1, 1, 1, cut1);
+        worksheet.mergeCells(1, cut1 + 1, 1, cut2);
+        worksheet.mergeCells(1, cut2 + 1, 1, lastCol);
+
+        const nameCell = worksheet.getCell(1, cut1 + 1);
+        nameCell.value = settings.name;
+        nameCell.alignment = { horizontal: 'center', vertical: 'middle' };
+        nameCell.font = { bold: true, size: 20, color: { argb: '17324D' } };
+
+        worksheet.getRow(1).height = 48;
+
+        // Row 3: merge the right third and show the school period (Año Escolar).
+        worksheet.mergeCells(3, cut2 + 1, 3, lastCol);
+        const periodCell = worksheet.getCell(3, cut2 + 1);
+        periodCell.value = activePeriod?.name || '';
+        periodCell.alignment = { horizontal: 'right', vertical: 'middle' };
+        periodCell.font = { bold: true, size: 14, color: { argb: '17324D' } };
+
+        // Row 4: center third holds the report title, right third holds the closure date.
+        worksheet.mergeCells(4, cut1 + 1, 4, cut2);
+        const titleCell = worksheet.getCell(4, cut1 + 1);
+        titleCell.value = 'Acta Final - Consejos de Curso';
+        titleCell.alignment = { horizontal: 'center', vertical: 'middle' };
+        titleCell.font = { bold: true, size: 14, color: { argb: '17324D' } };
+
+        worksheet.mergeCells(4, cut2 + 1, 4, lastCol);
+        const dateCell = worksheet.getCell(4, cut2 + 1);
+        const formattedDate = councilCompletedAt
+          ? `Fecha: ${councilCompletedAt.toLocaleDateString('es-VE', { day: '2-digit', month: '2-digit', year: 'numeric' })}`
+          : 'Fecha: __/__/____';
+        dateCell.value = formattedDate;
+        dateCell.alignment = { horizontal: 'right', vertical: 'middle' };
+        dateCell.font = { size: 14, color: { argb: '17324D' } };
+
+        // Row 5: center third holds the term (lapso) name.
+        worksheet.mergeCells(5, cut1 + 1, 5, cut2);
+        const lapsoCell = worksheet.getCell(5, cut1 + 1);
+        lapsoCell.value = selectedTerm?.name || '';
+        lapsoCell.alignment = { horizontal: 'center', vertical: 'middle' };
+        lapsoCell.font = { bold: true, size: 14, color: { argb: '17324D' } };
+
+        worksheet.getRow(2).height = 24.75;
+        worksheet.getRow(3).height = 24.75;
+        worksheet.getRow(4).height = 24.75;
+        worksheet.getRow(5).height = 24.75;
 
         const topRow = worksheet.addRow([]);
         const headerRow = worksheet.addRow(leafHeaders);
-        const reportEndColumn = Math.min(Math.max(leafHeaders.length, 6), 12);
-        [2, 3, 4, 5, 6].forEach(rowNumber => {
-          worksheet.mergeCells(rowNumber, 4, rowNumber, reportEndColumn);
-          const cell = worksheet.getCell(rowNumber, 4);
-          cell.alignment = { horizontal: 'left', vertical: 'middle' };
-          cell.font = {
-            bold: true,
-            size: rowNumber === 2 ? 14 : rowNumber === 3 ? 12 : 10,
-            color: { argb: rowNumber === 3 ? '17324D' : '40566B' }
-          };
-        });
-        worksheet.getRow(1).height = 8;
-        worksheet.getRow(2).height = 26;
-        worksheet.getRow(3).height = 24;
-        worksheet.getRow(4).height = 20;
-        worksheet.getRow(5).height = 18;
-        worksheet.getRow(6).height = 18;
-        worksheet.getRow(7).height = 10;
-
-        try {
-          const logoResponse = await api.get('/upload/logo', { responseType: 'arraybuffer' });
-          const logoId = workbook.addImage({ buffer: logoResponse.data, extension: 'png' });
-          worksheet.addImage(logoId, {
-            tl: { col: 1.2, row: 1.1 },
-            ext: { width: 92, height: 92 }
-          });
-        } catch (error) {
-          console.warn('No se pudo incluir el logo institucional en el Excel:', error);
-        }
 
         groupRanges.forEach(range => {
           topRow.getCell(range.start).value = range.title;
-          worksheet.mergeCells(8, range.start, 8, range.end);
+          worksheet.mergeCells(6, range.start, 6, range.end);
         });
 
         const getSubject = (student: CouncilStudent, colDef: typeof columnDefinitions[number]) => (
@@ -940,13 +991,13 @@ const CourseCouncil: React.FC = () => {
         const lastColumn = leafHeaders.length;
         const lastRow = worksheet.rowCount;
         groupRanges.forEach(range => {
-          // Row 8 holds the merged group titles. Merged cells share a single style
+          // Row 6 holds the merged group titles. Merged cells share a single style
           // object in ExcelJS, so both lateral borders must be written at once or
           // the second assignment discards the first one.
-          const mergedCell = worksheet.getCell(8, range.start);
+          const mergedCell = worksheet.getCell(6, range.start);
           mergedCell.border = { ...mergedCell.border, left: thickEdge, right: thickEdge };
 
-          for (let rowNumber = 9; rowNumber <= lastRow; rowNumber += 1) {
+          for (let rowNumber = 7; rowNumber <= lastRow; rowNumber += 1) {
             const startCell = worksheet.getCell(rowNumber, range.start);
             startCell.border = { ...startCell.border, left: thickEdge };
 
@@ -958,7 +1009,7 @@ const CourseCouncil: React.FC = () => {
 
         // Thick outline around the whole table (top + bottom edges; left/right already set above).
         for (let columnIndex = 1; columnIndex <= lastColumn; columnIndex += 1) {
-          const topCell = worksheet.getCell(8, columnIndex);
+          const topCell = worksheet.getCell(6, columnIndex);
           topCell.border = { ...topCell.border, top: thickEdge };
 
           const bottomCell = worksheet.getCell(lastRow, columnIndex);
@@ -974,22 +1025,14 @@ const CourseCouncil: React.FC = () => {
             // Skip the "Información del estudiante" group (only subject groups have previous terms)
             if (range.title === 'Información del estudiante') return;
             // Current-term L column index within this subject group. Start at row 9:
-            // this column sits inside row 8's merged title cell, and writing to a
+            // this column sits inside row 6's merged title cell, and writing to a
             // non-master cell of a merge would overwrite the group's lateral borders.
             const currentLCol = range.start + prevColsPerSubject;
-            for (let rowNumber = 9; rowNumber <= lastRow; rowNumber += 1) {
+            for (let rowNumber = 7; rowNumber <= lastRow; rowNumber += 1) {
               const cell = worksheet.getCell(rowNumber, currentLCol);
               cell.border = { ...cell.border, left: doubleEdge };
             }
           });
-        }
-
-        worksheet.getColumn(1).width = 2.86;
-        worksheet.getColumn(2).width = 12.86;
-        worksheet.getColumn(3).width = 42;
-        worksheet.getColumn(4).width = 11;
-        for (let i = 5; i <= leafHeaders.length; i++) {
-          worksheet.getColumn(i).width = 4;
         }
 
         // Constrain the printable area so the table is not cut off.
