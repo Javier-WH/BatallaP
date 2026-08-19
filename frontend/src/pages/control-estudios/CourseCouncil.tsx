@@ -1077,7 +1077,7 @@ const CourseCouncil: React.FC = () => {
           if (range.title === 'Información del estudiante') return;
           worksheet.mergeCells(signatureRow.number, range.start, signatureRow.number, range.end);
         });
-        signatureRow.height = 60;
+        signatureRow.height = 54;
 
         const headerFill = { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: 'D9EAF7' } };
         const subHeaderFill = { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: 'F3F6F9' } };
