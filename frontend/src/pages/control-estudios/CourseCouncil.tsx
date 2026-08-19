@@ -736,7 +736,7 @@ const CourseCouncil: React.FC = () => {
         // Repeat the grouped/leaf header rows on every printed page.
         worksheet.pageSetup.printTitlesRow = '6:7';
 
-        const fixedHeaders = ['#', 'Documento', 'Estudiante', 'Promedio'];
+        const fixedHeaders = ['#', 'Documento', 'Estudiante', 'Pos', 'Promedio', 'Rep'];
         const leafHeaders: string[] = [...fixedHeaders];
         const groupRanges: { title: string; start: number; end: number }[] = [
           { title: 'Información del estudiante', start: 1, end: fixedHeaders.length }
@@ -766,11 +766,17 @@ const CourseCouncil: React.FC = () => {
 
         // Set column widths early so we can compute the table's total width
         // and split the header rows into three roughly-equal visual thirds.
+        // Excel width → pixels: px = round(width * 7 + 5) for width >= 1.
+        // ExcelJS can truncate decimal widths, so we convert to the exact width
+        // that produces the target pixel value and set it with full precision.
+        const widthFromPx = (px: number): number => (px - 5) / 7;
         worksheet.getColumn(1).width = 2.86;
         worksheet.getColumn(2).width = 12.86;
         worksheet.getColumn(3).width = 42;
-        worksheet.getColumn(4).width = 11;
-        for (let i = 5; i <= leafHeaders.length; i++) {
+        worksheet.getColumn(4).width = widthFromPx(29);  // Pos  (29px)
+        worksheet.getColumn(5).width = widthFromPx(57);  // Promedio (57px)
+        worksheet.getColumn(6).width = widthFromPx(29);  // Rep  (29px)
+        for (let i = 7; i <= leafHeaders.length; i++) {
           worksheet.getColumn(i).width = 4;
         }
 
@@ -938,13 +944,31 @@ const CourseCouncil: React.FC = () => {
           return student.subjects.length > 0 ? total / student.subjects.length : 0;
         };
 
+        // Pre-compute positions: sort students by average descending, assign rank.
+        const sortedByAvg = [...studentsData].sort((a, b) => averageOf(b) - averageOf(a));
+        const positionMap = new Map<number, number>();
+        sortedByAvg.forEach((s, idx) => {
+          positionMap.set(s.id, idx + 1);
+        });
+
+        // Count failing subjects per student (NF < passingGrade).
+        const failedCount = (student: CouncilStudent) => {
+          return student.subjects.filter(subject => {
+            const nf = (subject.grade || 0) + (subject.points || 0);
+            return !isPassingGrade(nf, passingGrade);
+          }).length;
+        };
+
         const zebraFill = { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: 'F7FAFC' } };
         studentsData.forEach((student, studentIndex) => {
+          const studentKey = student.id;
           const row: (string | number)[] = [
             studentIndex + 1,
             `${student.documentType === 'Venezolano' ? 'V' : student.documentType === 'Extranjero' ? 'E' : student.documentType === 'Pasaporte' ? 'P' : 'CE'}-${student.studentDni}`,
             student.studentName,
+            positionMap.get(studentKey) ?? studentIndex + 1,
             Number(averageOf(student).toFixed(2)),
+            failedCount(student),
           ];
 
           columnDefinitions.forEach(colDef => {
@@ -969,7 +993,7 @@ const CourseCouncil: React.FC = () => {
 
           // Apply superscript council points on previous-term L cells
           if (showPreviousTerms && showPrevCouncilPoints) {
-            let colOffset = 4; // after #, Documento, Estudiante, Promedio
+            let colOffset = 6; // after #, Documento, Estudiante, Pos, Promedio, Rep
             columnDefinitions.forEach(colDef => {
               const subject = getSubject(student, colDef);
               if (showPreviousTerms) {
@@ -1010,13 +1034,20 @@ const CourseCouncil: React.FC = () => {
           for (let columnIndex = 4; columnIndex <= leafHeaders.length; columnIndex += 1) {
             dataRow.getCell(columnIndex).alignment = { horizontal: 'center', vertical: 'middle' };
           }
-          // Promedio column (4th column): show 2 decimals, no rounding
-          dataRow.getCell(4).numFmt = '0.00';
+          // Promedio column (5th column): show 2 decimals, no rounding
+          dataRow.getCell(5).numFmt = '0.00';
+
+          // Rep column (6th column): red font if student has failing subjects
+          const repCell = dataRow.getCell(6);
+          const repCount = failedCount(student);
+          if (repCount > 0) {
+            repCell.font = { size: 10, color: { argb: 'FF0000' }, bold: true };
+          }
 
           // Apply zero-padded number format to grade columns based on maxGrade digits
           const maxDigits = String(maxGrade).length;
           const gradeNumFmt = '0'.repeat(maxDigits); // e.g. '00' for max=20, '000' for max=100
-          let colIdx = 5; // first subject column (after #, Documento, Estudiante, Promedio)
+          let colIdx = 7; // first subject column (after #, Documento, Estudiante, Pos, Promedio, Rep)
           columnDefinitions.forEach(() => {
             if (showPreviousTerms) {
               prevTermNames.forEach(() => {
