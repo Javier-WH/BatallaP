@@ -1262,14 +1262,17 @@ const CourseCouncil: React.FC = () => {
           title: (
             <Tooltip title={colDef.title}>
               <div style={{
-                whiteSpace: 'nowrap',
+                display: '-webkit-box',
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: 'vertical',
                 overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                maxWidth: 200,
+                wordBreak: 'break-word',
                 fontSize: 12,
                 fontWeight: 800,
                 textTransform: 'uppercase',
-                color: '#595959'
+                color: '#595959',
+                textAlign: 'center',
+                lineHeight: '1.2',
               }}>
                 {colDef.title}
               </div>
