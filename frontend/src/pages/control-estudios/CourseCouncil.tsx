@@ -440,6 +440,12 @@ const CourseCouncil: React.FC = () => {
     return closedSections.some(c => c.sectionId === sectionId && c.gradeId === gradeId);
   };
 
+  // True when the currently-selected section has its term closed (globally or per-section)
+  const isSelectedSectionClosed = (): boolean => {
+    if (!selectedSection) return false;
+    return isSectionClosed(selectedSection.section.id, selectedSection.grade.id);
+  };
+
   const renderTermSelector = () => (
     <div style={{ padding: '0px 0' }}>
       <div style={{ textAlign: 'center', marginBottom: 60 }} className="animate-card">
@@ -1457,7 +1463,7 @@ const CourseCouncil: React.FC = () => {
                     }
                   }}
                   onFocus={(e) => e.target.select()}
-                  disabled={isReadOnly || !selectedTerm?.isBlocked}
+                  disabled={isReadOnly || !isSelectedSectionClosed()}
                   className="premium-input-number"
                   style={{ width: 42, fontWeight: 700, borderRadius: 6, textAlign: 'center', padding: '0 2px' }}
                 />
@@ -1568,10 +1574,10 @@ const CourseCouncil: React.FC = () => {
                 Incluir puntos de consejos anteriores
               </Checkbox>
             )}
-            {!selectedTerm?.isBlocked && (
+            {!isSelectedSectionClosed() && (
               <Alert
                 message="Lapso activo"
-                description="Debe cerrar el lapso para modificar puntos del consejo."
+                description="Debe cerrar el lapso para esta sección para modificar puntos del consejo."
                 type="warning"
                 showIcon
                 style={{ borderRadius: 14, padding: '4px 16px' }}
@@ -1619,7 +1625,7 @@ const CourseCouncil: React.FC = () => {
               icon={<SaveOutlined />}
               onClick={handleSave}
               loading={saving}
-              disabled={isReadOnly || !selectedTerm?.isBlocked}
+              disabled={isReadOnly || !isSelectedSectionClosed()}
               style={{
                 borderRadius: 14,
                 fontWeight: 800,
@@ -1635,7 +1641,7 @@ const CourseCouncil: React.FC = () => {
             <Checkbox
               checked={councilDone}
               onChange={(e) => handleMarkDone(e.target.checked)}
-              disabled={isReadOnly || markingDone || !selectedTerm?.isBlocked}
+              disabled={isReadOnly || markingDone || !isSelectedSectionClosed()}
               style={{
                 fontWeight: 800,
                 fontSize: 14,
