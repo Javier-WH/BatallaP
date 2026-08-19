@@ -706,7 +706,6 @@ const CourseCouncil: React.FC = () => {
         workbook.creator = 'BatallaProject';
         workbook.created = new Date();
         const worksheet = workbook.addWorksheet('Consejo de Curso', {
-          views: [{ state: 'frozen', ySplit: 9 }],
           pageSetup: {
             orientation: 'landscape',
             paperSize: 9,
@@ -857,7 +856,7 @@ const CourseCouncil: React.FC = () => {
                     cell.value = {
                       richText: [
                         { text: gradeStr, font: { size: 10 } },
-                        { text: `+${previous.councilPoints}`, font: { size: 7, vertAlign: 'superscript', color: { argb: 'FA8C16' } } },
+                        { text: `+${previous.councilPoints}`, font: { size: 10, vertAlign: 'superscript', color: { argb: 'B25C00' } } },
                       ],
                     };
                   }
