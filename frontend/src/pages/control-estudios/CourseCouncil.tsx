@@ -1065,6 +1065,20 @@ const CourseCouncil: React.FC = () => {
           });
         });
 
+        // Signature row: one merged cell for the label (cols 1-6), then one merged
+        // cell per subject group for teachers to sign.
+        const signatureRow = worksheet.addRow([]);
+        worksheet.mergeCells(signatureRow.number, 1, signatureRow.number, 6);
+        const sigLabelCell = signatureRow.getCell(1);
+        sigLabelCell.value = 'Firma de los Docentes:';
+        sigLabelCell.alignment = { horizontal: 'left', vertical: 'middle', indent: 1 };
+        sigLabelCell.font = { bold: true, size: 10, color: { argb: '17324D' } };
+        groupRanges.forEach(range => {
+          if (range.title === 'Información del estudiante') return;
+          worksheet.mergeCells(signatureRow.number, range.start, signatureRow.number, range.end);
+        });
+        signatureRow.height = 60;
+
         const headerFill = { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: 'D9EAF7' } };
         const subHeaderFill = { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: 'F3F6F9' } };
         const headerBorder = {
@@ -1093,6 +1107,7 @@ const CourseCouncil: React.FC = () => {
         const thickEdge = { style: 'medium' as const, color: { argb: '5A7085' } };
         const lastColumn = leafHeaders.length;
         const lastRow = worksheet.rowCount;
+        const sigRowNumber = signatureRow.number;
         groupRanges.forEach(range => {
           // Row 6 holds the merged group titles. Merged cells share a single style
           // object in ExcelJS, so both lateral borders must be written at once or
@@ -1101,6 +1116,8 @@ const CourseCouncil: React.FC = () => {
           mergedCell.border = { ...mergedCell.border, left: thickEdge, right: thickEdge };
 
           for (let rowNumber = 7; rowNumber <= lastRow; rowNumber += 1) {
+            // Skip the signature row — its merged cells need special handling below.
+            if (rowNumber === sigRowNumber) continue;
             const startCell = worksheet.getCell(rowNumber, range.start);
             startCell.border = { ...startCell.border, left: thickEdge };
 
@@ -1119,6 +1136,24 @@ const CourseCouncil: React.FC = () => {
           bottomCell.border = { ...bottomCell.border, bottom: thickEdge };
         }
 
+        // Signature row: thick top border to separate it from the table body,
+        // plus thick lateral borders on each subject's merged cell (written in a
+        // single assignment to avoid overwriting the shared merge style).
+        const sigRow = signatureRow.number;
+        for (let columnIndex = 1; columnIndex <= lastColumn; columnIndex += 1) {
+          const sigTopCell = worksheet.getCell(sigRow, columnIndex);
+          sigTopCell.border = { ...sigTopCell.border, top: thickEdge };
+        }
+        // Label cell (cols 1-6 merged): thick left + right
+        const sigLabelMaster = worksheet.getCell(sigRow, 1);
+        sigLabelMaster.border = { ...sigLabelMaster.border, left: thickEdge, right: thickEdge };
+        // Each subject group in the signature row: thick left + right on the master cell
+        groupRanges.forEach(range => {
+          if (range.title === 'Información del estudiante') return;
+          const sigGroupMaster = worksheet.getCell(sigRow, range.start);
+          sigGroupMaster.border = { ...sigGroupMaster.border, left: thickEdge, right: thickEdge };
+        });
+
         // Double-line border separating previous terms from the current term (L actual).
         // The current-term L column is the one right after all previous-term L columns.
         if (showPreviousTerms && prevTermNames.length > 0) {
@@ -1132,6 +1167,9 @@ const CourseCouncil: React.FC = () => {
             // non-master cell of a merge would overwrite the group's lateral borders.
             const currentLCol = range.start + prevColsPerSubject;
             for (let rowNumber = 7; rowNumber <= lastRow; rowNumber += 1) {
+              // Skip the signature row: this column is a slave of its merged cell,
+              // so writing here would discard the group's thick lateral borders.
+              if (rowNumber === sigRowNumber) continue;
               const cell = worksheet.getCell(rowNumber, currentLCol);
               cell.border = { ...cell.border, left: doubleEdge };
             }
