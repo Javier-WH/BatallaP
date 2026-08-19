@@ -856,7 +856,7 @@ const CourseCouncil: React.FC = () => {
                     cell.value = {
                       richText: [
                         { text: gradeStr, font: { size: 10 } },
-                        { text: `+${previous.councilPoints}`, font: { size: 10, vertAlign: 'superscript', color: { argb: 'B25C00' } } },
+                        { text: `+${previous.councilPoints}`, font: { size: 10, bold: true, vertAlign: 'superscript', color: { argb: 'FF3366FF' } } },
                       ],
                     };
                   }
