@@ -75,6 +75,7 @@ const CourseCouncil: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [exportingExcel, setExportingExcel] = useState(false);
+  const [exportingPreliminary, setExportingPreliminary] = useState(false);
 
   const [terms, setTerms] = useState<Term[]>([]);
   const [structure, setStructure] = useState<PeriodGradeStructure[]>([]);
@@ -709,7 +710,7 @@ const CourseCouncil: React.FC = () => {
 
     const handleExportExcel = async (isPreliminary = false) => {
       if (studentsData.length === 0) return;
-      setExportingExcel(true);
+      if (isPreliminary) setExportingPreliminary(true); else setExportingExcel(true);
 
       try {
         const workbook = new ExcelJS.Workbook();
@@ -1190,6 +1191,7 @@ const CourseCouncil: React.FC = () => {
         message.error('No se pudo generar el reporte de consejo de curso');
       } finally {
         setExportingExcel(false);
+        setExportingPreliminary(false);
       }
     };
 
@@ -1526,7 +1528,7 @@ const CourseCouncil: React.FC = () => {
               size="large"
               icon={<FileExcelOutlined />}
               onClick={() => handleExportExcel(true)}
-              loading={exportingExcel}
+              loading={exportingPreliminary}
               disabled={studentsData.length === 0}
               style={{
                 borderRadius: 14,
