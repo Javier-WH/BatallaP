@@ -707,7 +707,7 @@ const CourseCouncil: React.FC = () => {
       firstSubPrevTerms.forEach(pt => prevTermNames.push({ termId: pt.termId, termName: pt.termName }));
     }
 
-    const handleExportExcel = async () => {
+    const handleExportExcel = async (isPreliminary = false) => {
       if (studentsData.length === 0) return;
       setExportingExcel(true);
 
@@ -850,7 +850,7 @@ const CourseCouncil: React.FC = () => {
 
         worksheet.mergeCells(4, cut1 + 1, 4, cut2);
         const titleCell = worksheet.getCell(4, cut1 + 1);
-        titleCell.value = 'Acta Final - Consejos de Curso';
+        titleCell.value = isPreliminary ? 'Acta Preliminar - Consejos de Curso' : 'Acta Final - Consejos de Curso';
         titleCell.alignment = { horizontal: 'center', vertical: 'middle' };
         titleCell.font = { bold: true, size: 14, color: { argb: '17324D' } };
 
@@ -940,7 +940,7 @@ const CourseCouncil: React.FC = () => {
             : student.subjects.find(subject => subject.id === colDef.subjectId)
         );
         const averageOf = (student: CouncilStudent) => {
-          const total = student.subjects.reduce((sum, subject) => sum + (subject.grade || 0) + (subject.points || 0), 0);
+          const total = student.subjects.reduce((sum, subject) => sum + (subject.grade || 0) + (isPreliminary ? 0 : (subject.points || 0)), 0);
           return student.subjects.length > 0 ? total / student.subjects.length : 0;
         };
 
@@ -954,7 +954,7 @@ const CourseCouncil: React.FC = () => {
         // Count failing subjects per student (NF < passingGrade).
         const failedCount = (student: CouncilStudent) => {
           return student.subjects.filter(subject => {
-            const nf = (subject.grade || 0) + (subject.points || 0);
+            const nf = (subject.grade || 0) + (isPreliminary ? 0 : (subject.points || 0));
             return !isPassingGrade(nf, passingGrade);
           }).length;
         };
@@ -984,8 +984,8 @@ const CourseCouncil: React.FC = () => {
             const points = subject?.points ?? 0;
             row.push(
               subject ? Number(formatGrade(baseGrade, enableRounding)) : '-',
-              points,
-              subject ? Number(formatGrade(Math.round((baseGrade + points) * 100) / 100, enableRounding)) : '-',
+              isPreliminary ? '' : points,
+              isPreliminary ? '' : (subject ? Number(formatGrade(Math.round((baseGrade + points) * 100) / 100, enableRounding)) : '-'),
             );
           });
           const dataRow = worksheet.addRow(row);
@@ -1182,7 +1182,8 @@ const CourseCouncil: React.FC = () => {
         const buffer = await workbook.xlsx.writeBuffer();
         const gradeName = selectedSection?.grade.name?.replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ_-]+/g, '_') || 'grado';
         const sectionName = selectedSection?.section.name?.replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ_-]+/g, '_') || 'seccion';
-        saveAs(new Blob([buffer]), `consejo_curso_${gradeName}_${sectionName}.xlsx`);
+        const fileNamePrefix = isPreliminary ? 'consejo_curso_preliminar' : 'consejo_curso';
+        saveAs(new Blob([buffer]), `${fileNamePrefix}_${gradeName}_${sectionName}.xlsx`);
         message.success('Reporte de consejo de curso generado correctamente');
       } catch (error) {
         console.error('Error generando reporte de consejo de curso:', error);
@@ -1524,7 +1525,25 @@ const CourseCouncil: React.FC = () => {
               type="default"
               size="large"
               icon={<FileExcelOutlined />}
-              onClick={handleExportExcel}
+              onClick={() => handleExportExcel(true)}
+              loading={exportingExcel}
+              disabled={studentsData.length === 0}
+              style={{
+                borderRadius: 14,
+                fontWeight: 800,
+                height: 52,
+                padding: '0 24px',
+                color: '#595959',
+                borderColor: '#d9d9d9'
+              }}
+            >
+              Acta Preliminar
+            </Button>
+            <Button
+              type="default"
+              size="large"
+              icon={<FileExcelOutlined />}
+              onClick={() => handleExportExcel(false)}
               loading={exportingExcel}
               disabled={studentsData.length === 0}
               style={{
