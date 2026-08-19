@@ -86,6 +86,7 @@ const CourseCouncil: React.FC = () => {
   const [pointsLimit, setPointsLimit] = useState<number>(2);
   const [pointsPerSubjectLimit, setPointsPerSubjectLimit] = useState<number>(2);
   const [passingGrade, setPassingGrade] = useState<number>(10);
+  const [maxGrade, setMaxGrade] = useState<number>(20);
 
   const [councilDone, setCouncilDone] = useState(false);
   const [missingPointsStudents, setMissingPointsStudents] = useState<CouncilStudent[]>([]);
@@ -160,6 +161,9 @@ const CourseCouncil: React.FC = () => {
       }
       if (settingsRes.data.passing_grade != null) {
         setPassingGrade(Number(settingsRes.data.passing_grade));
+      }
+      if (settingsRes.data.max_grade != null) {
+        setMaxGrade(Number(settingsRes.data.max_grade));
       }
     } catch (error) {
       console.error('Error fetching data', error);
@@ -824,16 +828,16 @@ const CourseCouncil: React.FC = () => {
             if (showPreviousTerms) {
               prevTermNames.forEach(pt => {
                 const previous = subject?.previousTermsData?.find(item => item.termId === pt.termId);
-                row.push(previous ? formatGrade(previous.finalGrade, enableRounding) : '-');
+                row.push(previous ? Number(formatGrade(previous.finalGrade, enableRounding)) : '-');
               });
             }
 
             const baseGrade = subject?.grade ?? 0;
             const points = subject?.points ?? 0;
             row.push(
-              subject ? formatGrade(baseGrade, enableRounding) : '-',
+              subject ? Number(formatGrade(baseGrade, enableRounding)) : '-',
               points,
-              subject ? formatGrade(Math.round((baseGrade + points) * 100) / 100, enableRounding) : '-',
+              subject ? Number(formatGrade(Math.round((baseGrade + points) * 100) / 100, enableRounding)) : '-',
             );
           });
           const dataRow = worksheet.addRow(row);
@@ -849,9 +853,10 @@ const CourseCouncil: React.FC = () => {
                   const previous = subject?.previousTermsData?.find(item => item.termId === pt.termId);
                   if (previous && previous.councilPoints > 0) {
                     const cell = dataRow.getCell(colOffset + 1);
+                    const gradeStr = String(formatGrade(previous.finalGrade, enableRounding)).padStart(String(maxGrade).length, '0');
                     cell.value = {
                       richText: [
-                        { text: String(formatGrade(previous.finalGrade, enableRounding)), font: { size: 10 } },
+                        { text: gradeStr, font: { size: 10 } },
                         { text: `+${previous.councilPoints}`, font: { size: 7, vertAlign: 'superscript', color: { argb: 'FA8C16' } } },
                       ],
                     };
@@ -881,6 +886,26 @@ const CourseCouncil: React.FC = () => {
           }
           // Promedio column (3rd column): show 2 decimals, no rounding
           dataRow.getCell(3).numFmt = '0.00';
+
+          // Apply zero-padded number format to grade columns based on maxGrade digits
+          const maxDigits = String(maxGrade).length;
+          const gradeNumFmt = '0'.repeat(maxDigits); // e.g. '00' for max=20, '000' for max=100
+          let colIdx = 4; // first subject column (after Estudiante, Documento, Promedio)
+          columnDefinitions.forEach(() => {
+            if (showPreviousTerms) {
+              prevTermNames.forEach(() => {
+                dataRow.getCell(colIdx).numFmt = gradeNumFmt; // L (previous term)
+                colIdx += 1;
+              });
+            }
+            dataRow.getCell(colIdx).numFmt = gradeNumFmt; // L (current term)
+            colIdx += 1;
+            // PC column: single digit, no padding
+            colIdx += 1;
+            // NF column: grade format
+            dataRow.getCell(colIdx).numFmt = gradeNumFmt;
+            colIdx += 1;
+          });
         });
 
         const headerFill = { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: 'D9EAF7' } };
