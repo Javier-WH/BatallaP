@@ -939,15 +939,20 @@ const CourseCouncil: React.FC = () => {
         const thickEdge = { style: 'medium' as const, color: { argb: '5A7085' } };
         const lastColumn = leafHeaders.length;
         const lastRow = worksheet.rowCount;
-        groupRanges.forEach((range, rangeIndex) => {
-          for (let rowNumber = 8; rowNumber <= lastRow; rowNumber += 1) {
+        groupRanges.forEach(range => {
+          // Row 8 holds the merged group titles. Merged cells share a single style
+          // object in ExcelJS, so both lateral borders must be written at once or
+          // the second assignment discards the first one.
+          const mergedCell = worksheet.getCell(8, range.start);
+          mergedCell.border = { ...mergedCell.border, left: thickEdge, right: thickEdge };
+
+          for (let rowNumber = 9; rowNumber <= lastRow; rowNumber += 1) {
             const startCell = worksheet.getCell(rowNumber, range.start);
             startCell.border = { ...startCell.border, left: thickEdge };
 
-            if (rangeIndex === groupRanges.length - 1) {
-              const endCell = worksheet.getCell(rowNumber, range.end);
-              endCell.border = { ...endCell.border, right: thickEdge };
-            }
+            // Apply thick right border to every group's end cell (not just the last)
+            const endCell = worksheet.getCell(rowNumber, range.end);
+            endCell.border = { ...endCell.border, right: thickEdge };
           }
         });
 
@@ -958,6 +963,25 @@ const CourseCouncil: React.FC = () => {
 
           const bottomCell = worksheet.getCell(lastRow, columnIndex);
           bottomCell.border = { ...bottomCell.border, bottom: thickEdge };
+        }
+
+        // Double-line border separating previous terms from the current term (L actual).
+        // The current-term L column is the one right after all previous-term L columns.
+        if (showPreviousTerms && prevTermNames.length > 0) {
+          const doubleEdge = { style: 'double' as const, color: { argb: '5A7085' } };
+          const prevColsPerSubject = prevTermNames.length; // one L per previous term
+          groupRanges.forEach(range => {
+            // Skip the "Información del estudiante" group (only subject groups have previous terms)
+            if (range.title === 'Información del estudiante') return;
+            // Current-term L column index within this subject group. Start at row 9:
+            // this column sits inside row 8's merged title cell, and writing to a
+            // non-master cell of a merge would overwrite the group's lateral borders.
+            const currentLCol = range.start + prevColsPerSubject;
+            for (let rowNumber = 9; rowNumber <= lastRow; rowNumber += 1) {
+              const cell = worksheet.getCell(rowNumber, currentLCol);
+              cell.border = { ...cell.border, left: doubleEdge };
+            }
+          });
         }
 
         worksheet.getColumn(1).width = 2.86;
