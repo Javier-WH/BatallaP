@@ -726,7 +726,7 @@ const CourseCouncil: React.FC = () => {
         // Repeat the grouped/leaf header rows on every printed page.
         worksheet.pageSetup.printTitlesRow = '8:9';
 
-        const fixedHeaders = ['Estudiante', 'Documento', 'Promedio'];
+        const fixedHeaders = ['#', 'Documento', 'Estudiante', 'Promedio'];
         const leafHeaders: string[] = [...fixedHeaders];
         const groupRanges: { title: string; start: number; end: number }[] = [
           { title: 'Información del estudiante', start: 1, end: fixedHeaders.length }
@@ -756,23 +756,24 @@ const CourseCouncil: React.FC = () => {
 
         // Institutional report header, matching the school Excel templates.
         worksheet.addRow([]);
-        worksheet.addRow(['', '', settings.name]);
-        worksheet.addRow(['', '', 'CONSEJO DE CURSO']);
+        worksheet.addRow(['', '', '', settings.name]);
+        worksheet.addRow(['', '', '', 'CONSEJO DE CURSO']);
         worksheet.addRow([
+          '',
           '',
           '',
           `${selectedSection?.grade.name || ''} / Sección ${selectedSection?.section.name?.replace(/sección/gi, '').trim() || ''}`.trim()
         ]);
-        worksheet.addRow(['', '', `Lapso: ${selectedTerm?.name || ''}`]);
-        worksheet.addRow(['', '', `Período escolar: ${activePeriod?.name || ''}`]);
+        worksheet.addRow(['', '', '', `Lapso: ${selectedTerm?.name || ''}`]);
+        worksheet.addRow(['', '', '', `Período escolar: ${activePeriod?.name || ''}`]);
         worksheet.addRow([]);
 
         const topRow = worksheet.addRow([]);
         const headerRow = worksheet.addRow(leafHeaders);
         const reportEndColumn = Math.min(Math.max(leafHeaders.length, 6), 12);
         [2, 3, 4, 5, 6].forEach(rowNumber => {
-          worksheet.mergeCells(rowNumber, 3, rowNumber, reportEndColumn);
-          const cell = worksheet.getCell(rowNumber, 3);
+          worksheet.mergeCells(rowNumber, 4, rowNumber, reportEndColumn);
+          const cell = worksheet.getCell(rowNumber, 4);
           cell.alignment = { horizontal: 'left', vertical: 'middle' };
           cell.font = {
             bold: true,
@@ -792,7 +793,7 @@ const CourseCouncil: React.FC = () => {
           const logoResponse = await api.get('/upload/logo', { responseType: 'arraybuffer' });
           const logoId = workbook.addImage({ buffer: logoResponse.data, extension: 'png' });
           worksheet.addImage(logoId, {
-            tl: { col: 0.2, row: 1.1 },
+            tl: { col: 1.2, row: 1.1 },
             ext: { width: 92, height: 92 }
           });
         } catch (error) {
@@ -817,8 +818,9 @@ const CourseCouncil: React.FC = () => {
         const zebraFill = { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: 'F7FAFC' } };
         studentsData.forEach((student, studentIndex) => {
           const row: (string | number)[] = [
-            student.studentName,
+            studentIndex + 1,
             `${student.documentType === 'Venezolano' ? 'V' : student.documentType === 'Extranjero' ? 'E' : student.documentType === 'Pasaporte' ? 'P' : 'CE'}-${student.studentDni}`,
+            student.studentName,
             Number(averageOf(student).toFixed(2)),
           ];
 
@@ -844,7 +846,7 @@ const CourseCouncil: React.FC = () => {
 
           // Apply superscript council points on previous-term L cells
           if (showPreviousTerms && showPrevCouncilPoints) {
-            let colOffset = 3; // after Estudiante, Documento, Promedio
+            let colOffset = 4; // after #, Documento, Estudiante, Promedio
             columnDefinitions.forEach(colDef => {
               const subject = getSubject(student, colDef);
               if (showPreviousTerms) {
@@ -879,17 +881,19 @@ const CourseCouncil: React.FC = () => {
               right: { style: 'thin', color: { argb: 'D6DEE5' } }
             };
           });
-          dataRow.getCell(1).alignment = { horizontal: 'left', vertical: 'middle' };
-          for (let columnIndex = 2; columnIndex <= leafHeaders.length; columnIndex += 1) {
+          dataRow.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
+          dataRow.getCell(2).alignment = { horizontal: 'center', vertical: 'middle' };
+          dataRow.getCell(3).alignment = { horizontal: 'left', vertical: 'middle' };
+          for (let columnIndex = 4; columnIndex <= leafHeaders.length; columnIndex += 1) {
             dataRow.getCell(columnIndex).alignment = { horizontal: 'center', vertical: 'middle' };
           }
-          // Promedio column (3rd column): show 2 decimals, no rounding
-          dataRow.getCell(3).numFmt = '0.00';
+          // Promedio column (4th column): show 2 decimals, no rounding
+          dataRow.getCell(4).numFmt = '0.00';
 
           // Apply zero-padded number format to grade columns based on maxGrade digits
           const maxDigits = String(maxGrade).length;
           const gradeNumFmt = '0'.repeat(maxDigits); // e.g. '00' for max=20, '000' for max=100
-          let colIdx = 4; // first subject column (after Estudiante, Documento, Promedio)
+          let colIdx = 5; // first subject column (after #, Documento, Estudiante, Promedio)
           columnDefinitions.forEach(() => {
             if (showPreviousTerms) {
               prevTermNames.forEach(() => {
@@ -956,9 +960,13 @@ const CourseCouncil: React.FC = () => {
           bottomCell.border = { ...bottomCell.border, bottom: thickEdge };
         }
 
-        worksheet.columns.forEach((column, index) => {
-          column.width = index === 0 ? 34 : index === 1 ? 16 : index === 2 ? 11 : 4;
-        });
+        worksheet.getColumn(1).width = 2.86;
+        worksheet.getColumn(2).width = 12.86;
+        worksheet.getColumn(3).width = 42;
+        worksheet.getColumn(4).width = 11;
+        for (let i = 5; i <= leafHeaders.length; i++) {
+          worksheet.getColumn(i).width = 4;
+        }
 
         // Constrain the printable area so the table is not cut off.
         worksheet.pageSetup.printArea = `A1:${worksheet.getColumn(leafHeaders.length).letter}${worksheet.rowCount}`;
