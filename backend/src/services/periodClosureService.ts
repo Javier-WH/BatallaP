@@ -6,6 +6,7 @@ import {
 } from '@/models/index';
 import sequelize from '@/config/database';
 import { Op } from 'sequelize';
+import { TermSectionClosureService } from './termSectionClosureService';
 
 interface ChecklistStatus {
   total: number;
@@ -19,6 +20,7 @@ interface ClosureStatusResponse {
   checklist: ChecklistStatus;
   blockedTerms: number;
   totalTerms: number;
+  allTermsFullyClosed: boolean;
 }
 
 export class PeriodClosureService {
@@ -49,6 +51,7 @@ export class PeriodClosureService {
     });
 
     const blockedTerms = terms.filter((termRecord) => termRecord.isBlocked).length;
+    const allFullyClosed = await TermSectionClosureService.areAllTermsFullyClosed(schoolPeriodId);
 
     const nextPeriod = await SchoolPeriod.findOne({
       where: {
@@ -76,7 +79,8 @@ export class PeriodClosureService {
       closure,
       checklist,
       blockedTerms,
-      totalTerms: terms.length
+      totalTerms: terms.length,
+      allTermsFullyClosed: allFullyClosed
     };
   }
 

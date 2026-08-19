@@ -21,6 +21,7 @@ import {
 import { FinalGradeCalculator } from './finalGradeCalculator';
 import { StudentPromotionEngine } from './studentPromotionEngine';
 import * as SchoolPeriodService from './schoolPeriodService';
+import { TermSectionClosureService } from './termSectionClosureService';
 
 interface ClosureValidationResult {
   valid: boolean;
@@ -91,11 +92,15 @@ export class PeriodClosureExecutor {
       attributes: ['id', 'isBlocked', 'name']
     });
 
-    const unblockedTerms = terms.filter((t) => !t.isBlocked);
-    if (unblockedTerms.length > 0) {
-      errors.push(
-        `Todos los lapsos deben estar bloqueados. Lapsos sin bloquear: ${unblockedTerms.map((t) => t.name).join(', ')}`
-      );
+    // Check that all terms are fully closed (either globally blocked or all sections closed)
+    for (const term of terms) {
+      if (term.isBlocked) continue;
+      const allSectionsClosed = await TermSectionClosureService.areAllSectionsClosed(term.id, schoolPeriodId);
+      if (!allSectionsClosed) {
+        errors.push(
+          `El lapso "${term.name}" no tiene todas sus secciones cerradas. Debe cerrar todas las secciones o bloquear el lapso.`
+        );
+      }
     }
 
     const [totalChecklist, completedChecklist] = await Promise.all([

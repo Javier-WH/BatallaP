@@ -18,6 +18,7 @@ import {
   sortSubjectsByOrder,
 } from '@/services/subjectOrderService';
 import { filterActiveGroupSubjects } from '@/services/subjectGroupService';
+import { TermSectionClosureService } from '@/services/termSectionClosureService';
 
 export const getCouncilData = async (req: Request, res: Response) => {
   try {
@@ -190,7 +191,18 @@ export const saveCouncilPoint = async (req: Request, res: Response) => {
 
     const term = await Term.findByPk(termId);
     if (!term) return res.status(404).json({ message: 'Lapso no encontrado' });
-    if (term.isBlocked) return res.status(403).json({ message: 'El lapso está bloqueado' });
+
+    // Derive sectionId + gradeId from InscriptionSubject → Inscription for section-aware check
+    const insSub = await InscriptionSubject.findByPk(inscriptionSubjectId, {
+      include: [{ model: Inscription, as: 'inscription', attributes: ['id', 'sectionId', 'gradeId'] }],
+    });
+    const sectionId = (insSub as any)?.inscription?.sectionId;
+    const gradeId = (insSub as any)?.inscription?.gradeId;
+
+    const sectionClosed = sectionId && gradeId
+      ? await TermSectionClosureService.isSectionClosed(termId, sectionId, gradeId)
+      : term.isBlocked;
+    if (sectionClosed) return res.status(403).json({ message: 'El lapso está cerrado para esta sección' });
 
     const [point, created] = await CouncilPoint.findOrCreate({
       where: { inscriptionSubjectId, termId },

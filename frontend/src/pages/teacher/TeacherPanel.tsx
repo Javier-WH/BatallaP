@@ -250,6 +250,8 @@ const TeacherPanel: React.FC = () => {
   const [copySubmitting, setCopySubmitting] = useState(false);
   const { enableRounding } = useGradeRounding();
   const dragScroll = useDragScroll<HTMLDivElement>();
+  // null = all closed (term globally blocked), array = specific { sectionId, gradeId } closed
+  const [closedSections, setClosedSections] = useState<{ sectionId: number; gradeId: number }[] | null>(null);
 
   // Pad grade to fixed number of digits based on maxGrade (20 → 2 digits, 100 → 3 digits)
   const gradeDigits = Math.max(2, String(maxGrade).length);
@@ -261,8 +263,15 @@ const TeacherPanel: React.FC = () => {
   const isSelectedTermBlocked = useMemo(() => {
     if (!selectedTerm) return false;
     const term = availableTerms.find(t => t.id === selectedTerm);
-    return term?.isBlocked ?? false;
-  }, [availableTerms, selectedTerm]);
+    if (term?.isBlocked) return true;
+    // Check section-aware closure
+    const assignment = assignments.find(a => a.id === selectedAssignmentId);
+    if (!assignment) return false;
+    const gradeId = assignment.periodGradeSubject?.periodGrade?.grade?.id;
+    if (!gradeId) return false;
+    if (closedSections === null) return true; // all closed
+    return closedSections.some(c => c.sectionId === assignment.sectionId && c.gradeId === gradeId);
+  }, [availableTerms, selectedTerm, selectedAssignmentId, assignments, closedSections]);
 
   const selectedTermDateRange = useMemo(() => {
     if (!selectedTerm) return { openDate: null as dayjs.Dayjs | null, closeDate: null as dayjs.Dayjs | null };
@@ -520,6 +529,33 @@ const TeacherPanel: React.FC = () => {
   useEffect(() => {
     fetchTerms();
   }, [fetchTerms]);
+
+  // Fetch section closures when the selected term changes
+  useEffect(() => {
+    if (!selectedTerm) {
+      setClosedSections(null);
+      return;
+    }
+    const term = availableTerms.find(t => t.id === selectedTerm);
+    if (!term) {
+      setClosedSections(null);
+      return;
+    }
+    if (term.isBlocked) {
+      setClosedSections(null); // all closed
+      return;
+    }
+    let cancelled = false;
+    api.get(`/terms/${selectedTerm}/section-closures`)
+      .then(res => {
+        if (cancelled) return;
+        setClosedSections(res.data?.closedSections ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setClosedSections([]);
+      });
+    return () => { cancelled = true; };
+  }, [selectedTerm, availableTerms]);
 
   useEffect(() => {
     fetchPlanAndStudents();

@@ -110,6 +110,7 @@ import EnrollmentAnswer from './EnrollmentAnswer';
 import CouncilPoint from './CouncilPoint';
 import PeriodClosure from './PeriodClosure';
 import CouncilChecklist from './CouncilChecklist';
+import TermSectionClosure from './TermSectionClosure';
 import SubjectFinalGrade from './SubjectFinalGrade';
 import StudentPeriodOutcome from './StudentPeriodOutcome';
 import PendingSubject from './PendingSubject';
@@ -293,6 +294,15 @@ CouncilChecklist.belongsTo(Section, { foreignKey: 'sectionId', as: 'section' });
 CouncilChecklist.belongsTo(Term, { foreignKey: 'termId', as: 'term' });
 CouncilChecklist.belongsTo(User, { foreignKey: 'completedBy', as: 'completedByUser' });
 
+// TermSectionClosure associations (per-section term closure)
+Term.hasMany(TermSectionClosure, { foreignKey: 'termId', as: 'sectionClosures' });
+TermSectionClosure.belongsTo(Term, { foreignKey: 'termId', as: 'term' });
+Section.hasMany(TermSectionClosure, { foreignKey: 'sectionId', as: 'termClosures' });
+TermSectionClosure.belongsTo(Section, { foreignKey: 'sectionId', as: 'section' });
+Grade.hasMany(TermSectionClosure, { foreignKey: 'gradeId', as: 'termClosures' });
+TermSectionClosure.belongsTo(Grade, { foreignKey: 'gradeId', as: 'grade' });
+TermSectionClosure.belongsTo(User, { foreignKey: 'closedBy', as: 'closedByUser' });
+
 // Enrollment questions and answers
 EnrollmentQuestion.hasMany(EnrollmentAnswer, { foreignKey: 'questionId', as: 'answers' });
 EnrollmentAnswer.belongsTo(EnrollmentQuestion, { foreignKey: 'questionId', as: 'question' });
@@ -412,6 +422,7 @@ export {
   CouncilPoint,
   PeriodClosure,
   CouncilChecklist,
+  TermSectionClosure,
   SubjectFinalGrade,
   StudentPeriodOutcome,
   PendingSubject,

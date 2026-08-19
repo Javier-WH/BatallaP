@@ -14,6 +14,7 @@ import {
   Term,
 } from '@/models/index';
 import { isPassingGrade } from './gradeEvaluationService';
+import { TermSectionClosureService } from './termSectionClosureService';
 
 export interface RevisionPeriodSummary {
   revisionPeriod: RevisionPeriod | null;
@@ -66,6 +67,9 @@ export class RevisionPeriodService {
     const totalTerms = allTerms.length;
     const blockedTerms = allTerms.filter(t => t.isBlocked).length;
 
+    // Check if all terms are fully closed (globally blocked or all sections closed)
+    const allFullyClosed = await TermSectionClosureService.areAllTermsFullyClosed(schoolPeriodId, transaction);
+
     let stats;
     if (revisionPeriod) {
       const revisions = await InscriptionSubjectRevision.findAll({
@@ -95,7 +99,7 @@ export class RevisionPeriodService {
     return {
       revisionPeriod,
       councilStatus: { totalChecklists, doneChecklists, allDone: totalChecklists > 0 && totalChecklists === doneChecklists },
-      termsStatus: { totalTerms, blockedTerms, allBlocked: totalTerms > 0 && blockedTerms === totalTerms },
+      termsStatus: { totalTerms, blockedTerms, allBlocked: totalTerms > 0 && allFullyClosed },
       stats,
     };
   }
@@ -113,9 +117,9 @@ export class RevisionPeriodService {
       where: { schoolPeriodId },
       transaction,
     });
-    const blockedTerms = terms.filter(t => t.isBlocked);
-    if (blockedTerms.length < terms.length) {
-      throw new Error('Todos los lapsos deben estar bloqueados antes de abrir el período de reparación');
+    const allFullyClosed = await TermSectionClosureService.areAllTermsFullyClosed(schoolPeriodId, transaction);
+    if (!allFullyClosed) {
+      throw new Error('Todos los lapsos deben tener todas sus secciones cerradas antes de abrir el período de reparación');
     }
 
     const councilChecklists = await CouncilChecklist.findAll({

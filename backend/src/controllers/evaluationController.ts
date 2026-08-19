@@ -42,6 +42,7 @@ import {
 } from '@/services/subjectOrderService';
 import { filterActiveGroupSubjects } from '@/services/subjectGroupService';
 import { resolveGradeStatus } from '@/services/gradeEvaluationService';
+import { TermSectionClosureService } from '@/services/termSectionClosureService';
 
 export const getMyAssignments = async (req: Request, res: Response) => {
   try {
@@ -181,8 +182,19 @@ export const createEvaluationItem = async (req: Request, res: Response) => {
       if (!term) {
         return res.status(404).json({ message: 'Lapso no encontrado' });
       }
-      if (term.isBlocked) {
-        return res.status(403).json({ message: 'Lapso bloqueado; no se pueden modificar el plan de evaluación' });
+      let sectionClosed = term.isBlocked;
+      if (sectionId && !sectionClosed) {
+        // Derive gradeId from PeriodGradeSubject → PeriodGrade
+        const pgs = await PeriodGradeSubject.findByPk(periodGradeSubjectId, { attributes: ['id', 'periodGradeId'] });
+        if (pgs) {
+          const pg = await PeriodGrade.findByPk(pgs.periodGradeId, { attributes: ['id', 'gradeId'] });
+          if (pg) {
+            sectionClosed = await TermSectionClosureService.isSectionClosed(termId, sectionId, pg.gradeId);
+          }
+        }
+      }
+      if (sectionClosed) {
+        return res.status(403).json({ message: 'Lapso bloqueado para esta sección; no se puede modificar el plan de evaluación' });
       }
     }
 
@@ -255,12 +267,24 @@ export const updateEvaluationItem = async (req: Request, res: Response) => {
     if (!item) return res.status(404).json({ message: 'Item no encontrado' });
 
     const targetTermId = req.body.termId ?? item.termId;
+    const targetSectionId = req.body.sectionId ?? item.sectionId;
     const term = await Term.findByPk(targetTermId);
     if (!term) {
       return res.status(404).json({ message: 'Lapso no encontrado' });
     }
-    if (term.isBlocked) {
-      return res.status(403).json({ message: 'Lapso bloqueado; no se pueden modificar el plan de evaluación' });
+    let sectionClosed = term.isBlocked;
+    if (targetSectionId && !sectionClosed) {
+      // Derive gradeId from PeriodGradeSubject → PeriodGrade
+      const pgs = await PeriodGradeSubject.findByPk(item.periodGradeSubjectId, { attributes: ['id', 'periodGradeId'] });
+      if (pgs) {
+        const pg = await PeriodGrade.findByPk(pgs.periodGradeId, { attributes: ['id', 'gradeId'] });
+        if (pg) {
+          sectionClosed = await TermSectionClosureService.isSectionClosed(targetTermId, targetSectionId, pg.gradeId);
+        }
+      }
+    }
+    if (sectionClosed) {
+      return res.status(403).json({ message: 'Lapso bloqueado para esta sección; no se puede modificar el plan de evaluación' });
     }
 
     // Validate percentage sum if percentage is being updated
@@ -345,8 +369,18 @@ export const deleteEvaluationItem = async (req: Request, res: Response) => {
     if (!term) {
       return res.status(404).json({ message: 'Lapso no encontrado' });
     }
-    if (term.isBlocked) {
-      return res.status(403).json({ message: 'Lapso bloqueado; no se pueden modificar el plan de evaluación' });
+    let sectionClosed = term.isBlocked;
+    if (item.sectionId && !sectionClosed) {
+      const pgs = await PeriodGradeSubject.findByPk(item.periodGradeSubjectId, { attributes: ['id', 'periodGradeId'] });
+      if (pgs) {
+        const pg = await PeriodGrade.findByPk(pgs.periodGradeId, { attributes: ['id', 'gradeId'] });
+        if (pg) {
+          sectionClosed = await TermSectionClosureService.isSectionClosed(item.termId, item.sectionId, pg.gradeId);
+        }
+      }
+    }
+    if (sectionClosed) {
+      return res.status(403).json({ message: 'Lapso bloqueado para esta sección; no se puede modificar el plan de evaluación' });
     }
 
     await EvaluationPlan.destroy({ where: { id } });
@@ -489,8 +523,18 @@ export const saveQualification = async (req: Request, res: Response) => {
     if (!term) {
       return res.status(404).json({ message: 'Lapso no encontrado' });
     }
-    if (term.isBlocked) {
-      return res.status(403).json({ message: 'Lapso bloqueado; no se pueden modificar calificaciones' });
+    let sectionClosed = term.isBlocked;
+    if (evalPlan.sectionId && !sectionClosed) {
+      const pgs = await PeriodGradeSubject.findByPk(evalPlan.periodGradeSubjectId, { attributes: ['id', 'periodGradeId'] });
+      if (pgs) {
+        const pg = await PeriodGrade.findByPk(pgs.periodGradeId, { attributes: ['id', 'gradeId'] });
+        if (pg) {
+          sectionClosed = await TermSectionClosureService.isSectionClosed(evalPlan.termId, evalPlan.sectionId, pg.gradeId);
+        }
+      }
+    }
+    if (sectionClosed) {
+      return res.status(403).json({ message: 'Lapso bloqueado para esta sección; no se pueden modificar calificaciones' });
     }
 
     // Robust handling: If inscriptionSubjectId is missing but we have inscriptionId, we can resolve it
@@ -2605,13 +2649,28 @@ export const copyEvaluationPlan = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'Faltan parámetros requeridos' });
     }
 
-    // Check term is not blocked
+    // Check term is not blocked for any of the target sections
     const term = await Term.findByPk(termId);
     if (!term) {
       return res.status(404).json({ message: 'Lapso no encontrado' });
     }
     if (term.isBlocked) {
       return res.status(403).json({ message: 'El lapso está bloqueado' });
+    }
+    // Derive gradeId from target PeriodGradeSubject → PeriodGrade
+    const targetPgs = await PeriodGradeSubject.findByPk(targetPeriodGradeSubjectId, { attributes: ['id', 'periodGradeId'] });
+    if (!targetPgs) {
+      return res.status(404).json({ message: 'PeriodGradeSubject no encontrado' });
+    }
+    const targetPg = await PeriodGrade.findByPk(targetPgs.periodGradeId, { attributes: ['id', 'gradeId'] });
+    if (!targetPg) {
+      return res.status(404).json({ message: 'PeriodGrade no encontrado' });
+    }
+    for (const secId of targetSectionIds) {
+      const isClosed = await TermSectionClosureService.isSectionClosed(termId, secId, targetPg.gradeId);
+      if (isClosed) {
+        return res.status(403).json({ message: `El lapso está cerrado para la sección ${secId}` });
+      }
     }
 
     // Get source plan items with criteria and indicators

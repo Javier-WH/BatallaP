@@ -20,6 +20,7 @@ import api from '@/services/api';
 import { useGradeRounding } from '@/context/GradeRoundingContext';
 import LetterGradeSlider from '@/components/LetterGradeSlider';
 import type { LetterGrade } from '@/components/LetterGradeSlider';
+import TermSectionClosurePanel from '@/components/shared/TermSectionClosurePanel';
 
 const { Text, Title } = Typography;
 
@@ -86,6 +87,8 @@ const AcademicSettings: React.FC = () => {
   const [sortTecnica, setSortTecnica] = useState<'asc' | 'desc'>('asc');
   const [sortInstrumento, setSortInstrumento] = useState<'asc' | 'desc'>('asc');
   const [sortEstrategia, setSortEstrategia] = useState<'asc' | 'desc'>('asc');
+  const [structure, setStructure] = useState<any[]>([]);
+  const [closurePanelTerm, setClosurePanelTerm] = useState<Term | null>(null);
 
   const fetchSettings = useCallback(async () => {
     setLoading(true);
@@ -138,8 +141,12 @@ const AcademicSettings: React.FC = () => {
       setActivePeriod(period);
 
       if (period) {
-        const termsRes = await api.get(`/terms?schoolPeriodId=${period.id}`);
+        const [termsRes, structureRes] = await Promise.all([
+          api.get(`/terms?schoolPeriodId=${period.id}`),
+          api.get(`/academic/structure/${period.id}`),
+        ]);
         setTerms(termsRes.data.sort((a: any, b: any) => a.order - b.order));
+        setStructure(structureRes.data || []);
       }
     } catch (error) {
       console.error('Error fetching terms', error);
@@ -418,6 +425,14 @@ const AcademicSettings: React.FC = () => {
               type="text"
               icon={record.isBlocked ? <UnlockOutlined style={{ color: '#52c41a' }} /> : <LockOutlined style={{ color: '#faad14' }} />}
               onClick={() => toggleTermBlock(record)}
+              className="action-btn-hover"
+            />
+          </Tooltip>
+          <Tooltip title="Cerrar por sección">
+            <Button
+              type="text"
+              icon={<ControlOutlined style={{ color: '#722ed1' }} />}
+              onClick={() => setClosurePanelTerm(record)}
               className="action-btn-hover"
             />
           </Tooltip>
@@ -1131,6 +1146,13 @@ const AcademicSettings: React.FC = () => {
           </Form>
         </div>
       </Modal>
+
+      <TermSectionClosurePanel
+        open={!!closurePanelTerm}
+        onClose={() => setClosurePanelTerm(null)}
+        term={closurePanelTerm}
+        structure={structure}
+      />
     </div>
   );
 };

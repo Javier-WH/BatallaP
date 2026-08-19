@@ -105,6 +105,8 @@ const CourseCouncil: React.FC = () => {
   const tableCardRef = useRef<HTMLDivElement>(null);
   const { enableRounding } = useGradeRounding();
   const { settings } = useSchool();
+  // null = all closed (term globally blocked), array = specific { sectionId, gradeId } closed
+  const [closedSections, setClosedSections] = useState<{ sectionId: number; gradeId: number }[] | null>(null);
 
   const updateTableScrollHeight = useCallback(() => {
     const card = tableCardRef.current;
@@ -186,6 +188,7 @@ const CourseCouncil: React.FC = () => {
     setCouncilDone(false);
     setCouncilCompletedAt(null);
     setGuideTeacherName('');
+    setClosedSections(null);
     fetchData();
   }, [fetchData]);
 
@@ -404,13 +407,37 @@ const CourseCouncil: React.FC = () => {
     });
   };
 
-  const handleTermClick = (term: Term) => {
-    if (!term.isBlocked) {
-      message.warning('El lapso debe estar cerrado para realizar el consejo de curso.');
+  const handleTermClick = async (term: Term) => {
+    if (term.isBlocked) {
+      // Term globally blocked → all sections are closed
+      setClosedSections(null);
+      setSelectedTerm(term);
+      setStep(1);
       return;
     }
-    setSelectedTerm(term);
-    setStep(1);
+
+    // Term not globally blocked → check if any sections are individually closed
+    try {
+      const res = await api.get(`/terms/${term.id}/section-closures`);
+      const { closedSections: closed } = res.data;
+      if (!closed || closed.length === 0) {
+        message.warning('El lapso debe estar cerrado para al menos una sección para realizar el consejo de curso.');
+        return;
+      }
+      setClosedSections(closed);
+      setSelectedTerm(term);
+      setStep(1);
+    } catch (error) {
+      console.error('Error fetching section closures', error);
+      message.error('Error al verificar el estado de cierre del lapso');
+    }
+  };
+
+  const isSectionClosed = (sectionId: number, gradeId: number): boolean => {
+    if (!selectedTerm) return false;
+    if (selectedTerm.isBlocked) return true; // globally blocked
+    if (closedSections === null) return true; // all closed
+    return closedSections.some(c => c.sectionId === sectionId && c.gradeId === gradeId);
   };
 
   const renderTermSelector = () => (
@@ -448,14 +475,14 @@ const CourseCouncil: React.FC = () => {
         {terms.map((term, idx) => (
           <Col key={term.id} xs={24} sm={12} md={8} lg={6}>
             <Card
-              hoverable={term.isBlocked}
+              hoverable
               className={`premium-card animate-card delay-${(idx % 3) + 1}`}
               styles={{ body: { padding: '40px 24px' } }}
               style={{
                 textAlign: 'center',
                 transition: 'all 0.4s cubic-bezier(0.165, 0.84, 0.44, 1)',
-                cursor: term.isBlocked ? 'pointer' : 'not-allowed',
-                opacity: term.isBlocked ? 1 : 0.6
+                cursor: 'pointer',
+                opacity: term.isBlocked ? 1 : 0.85
               }}
               onClick={() => handleTermClick(term)}
             >
@@ -463,12 +490,12 @@ const CourseCouncil: React.FC = () => {
                 width: 80,
                 height: 80,
                 borderRadius: 24,
-                background: term.isBlocked ? 'linear-gradient(135deg, #1890ff 0%, #096dd9 100%)' : '#f5f5f5',
+                background: term.isBlocked ? 'linear-gradient(135deg, #1890ff 0%, #096dd9 100%)' : 'linear-gradient(135deg, #faad14 0%, #d48806 100%)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 margin: '0 auto 24px',
-                boxShadow: term.isBlocked ? '0 12px 24px rgba(24,144,255,0.25)' : 'none',
+                boxShadow: term.isBlocked ? '0 12px 24px rgba(24,144,255,0.25)' : '0 12px 24px rgba(250,173,20,0.25)',
                 transition: 'all 0.3s ease'
               }} className="icon-wrapper">
                 <CalendarOutlined style={{ fontSize: 36, color: term.isBlocked ? '#fff' : '#bfbfbf' }} />
@@ -483,7 +510,7 @@ const CourseCouncil: React.FC = () => {
                   </Tag>
                 ) : (
                   <Tag color="warning" style={{ borderRadius: 20, padding: '2px 16px', fontWeight: 700, border: 'none', textTransform: 'uppercase', fontSize: 10 }}>
-                    Lapso activo · Cierre pendiente
+                    Cierre por sección disponible
                   </Tag>
                 )}
               </div>
@@ -605,18 +632,25 @@ const CourseCouncil: React.FC = () => {
               </div>
 
               <Row gutter={[24, 24]}>
-                {group.sections.map((sec, secIdx) => (
+                {group.sections.map((sec, secIdx) => {
+                  const sectionClosed = isSectionClosed(sec.id, group.grade.id);
+                  return (
                   <Col key={sec.id} xs={24} sm={12} md={8} lg={6}>
+                    <Tooltip title={sectionClosed ? undefined : 'El lapso para esta sección no se ha cerrado'}>
                     <Card
-                      hoverable
+                      hoverable={sectionClosed}
                       className="section-card-premium"
                       styles={{ body: { padding: '24px' } }}
                       style={{
                         borderRadius: 20,
                         border: '1px solid rgba(0,0,0,0.05)',
-                        animationDelay: `${(groupIdx * 0.1) + (secIdx * 0.05)}s`
+                        animationDelay: `${(groupIdx * 0.1) + (secIdx * 0.05)}s`,
+                        cursor: sectionClosed ? 'pointer' : 'not-allowed',
+                        opacity: sectionClosed ? 1 : 0.5,
+                        filter: sectionClosed ? 'none' : 'grayscale(0.6)',
                       }}
                       onClick={() => {
+                        if (!sectionClosed) return;
                         setSelectedSection({ section: sec, grade: group.grade });
                         if (selectedTerm) fetchCouncilData(sec.id, selectedTerm.id, group.grade.id);
                       }}
@@ -649,12 +683,23 @@ const CourseCouncil: React.FC = () => {
                             <Tag color={group.grade.isDiversified ? 'volcano' : 'blue'} style={{ border: 'none', borderRadius: 6, fontSize: 10, fontWeight: 700, margin: 0 }}>
                               {viewPeriod?.name}
                             </Tag>
+                            {sectionClosed ? (
+                              <Tag color="success" style={{ border: 'none', borderRadius: 6, fontSize: 10, fontWeight: 700, margin: 0 }}>
+                                Lapso cerrado
+                              </Tag>
+                            ) : (
+                              <Tag color="warning" style={{ border: 'none', borderRadius: 6, fontSize: 10, fontWeight: 700, margin: 0 }}>
+                                Lapso abierto
+                              </Tag>
+                            )}
                           </Space>
                         </div>
                       </div>
                     </Card>
+                    </Tooltip>
                   </Col>
-                ))}
+                  );
+                })}
               </Row>
             </div>
           ))
