@@ -51,6 +51,12 @@ export const getMyAssignments = async (req: Request, res: Response) => {
     const person = await Person.findOne({ where: { userId: user.id } });
     if (!person) return res.status(404).json({ message: 'Perfil de profesor no encontrado' });
 
+    // Allow filtering by a specific schoolPeriodId (for historical read-only views).
+    // When not provided, default to the active period.
+    const schoolPeriodId = req.query.schoolPeriodId
+      ? Number(req.query.schoolPeriodId)
+      : undefined;
+
     const assignments = await TeacherAssignment.findAll({
       where: { teacherId: person.id },
       include: [
@@ -70,7 +76,9 @@ export const getMyAssignments = async (req: Request, res: Response) => {
                   model: SchoolPeriod,
                   as: 'schoolPeriod',
                   required: true, // Force inner join
-                  where: { status: 'activo' } // Only active period
+                  where: schoolPeriodId
+                    ? { id: schoolPeriodId }
+                    : { status: 'activo' } // Only active period by default
                 }
               ]
             }

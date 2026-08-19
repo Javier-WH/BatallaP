@@ -22,8 +22,13 @@ interface SchoolSettings {
 interface SchoolContextType {
   settings: SchoolSettings;
   activePeriod: any;
+  viewPeriod: any;
+  allPeriods: any[];
+  isReadOnly: boolean;
   loading: boolean;
   refreshSettings: () => Promise<void>;
+  setViewPeriod: (period: any) => void;
+  resetViewPeriod: () => void;
 }
 
 const defaultSettings: SchoolSettings = {
@@ -67,14 +72,17 @@ const SchoolContext = createContext<SchoolContextType | undefined>(undefined);
 export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [settings, setSettings] = useState<SchoolSettings>(defaultSettings);
   const [activePeriod, setActivePeriod] = useState<any>(null);
+  const [viewPeriod, setViewPeriodState] = useState<any>(null);
+  const [allPeriods, setAllPeriods] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [settingsRes, periodRes] = await Promise.all([
+      const [settingsRes, periodRes, allPeriodsRes] = await Promise.all([
         api.get('/settings'),
-        api.get('/academic/active')
+        api.get('/academic/active'),
+        api.get('/academic/periods'),
       ]);
 
       const d = settingsRes.data;
@@ -103,6 +111,8 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       applyThemeToDOM(resolved);
       setSettings(resolved);
       setActivePeriod(periodRes.data);
+      setViewPeriodState(periodRes.data);
+      setAllPeriods(allPeriodsRes.data ?? []);
     } catch (error) {
       console.error('Error fetching school data:', error);
     } finally {
@@ -114,8 +124,13 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     fetchData();
   }, []);
 
+  const isReadOnly = viewPeriod?.id !== activePeriod?.id;
+
+  const setViewPeriod = (period: any) => setViewPeriodState(period);
+  const resetViewPeriod = () => setViewPeriodState(activePeriod);
+
   return (
-    <SchoolContext.Provider value={{ settings, activePeriod, loading, refreshSettings: fetchData }}>
+    <SchoolContext.Provider value={{ settings, activePeriod, viewPeriod, allPeriods, isReadOnly, loading, refreshSettings: fetchData, setViewPeriod, resetViewPeriod }}>
       {children}
     </SchoolContext.Provider>
   );

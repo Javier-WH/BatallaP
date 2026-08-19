@@ -71,6 +71,7 @@ interface CouncilStudent {
 }
 
 const CourseCouncil: React.FC = () => {
+  const { viewPeriod, isReadOnly } = useSchool();
   const [step, setStep] = useState(0); // 0: Term, 1: Section, 2: Data
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -79,7 +80,6 @@ const CourseCouncil: React.FC = () => {
 
   const [terms, setTerms] = useState<Term[]>([]);
   const [structure, setStructure] = useState<PeriodGradeStructure[]>([]);
-  const [activePeriod, setActivePeriod] = useState<any>(null);
 
   const [selectedTerm, setSelectedTerm] = useState<Term | null>(null);
   const [selectedSection, setSelectedSection] = useState<{ section: Section, grade: Grade } | null>(null);
@@ -139,9 +139,7 @@ const CourseCouncil: React.FC = () => {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const activeRes = await api.get('/academic/active');
-      const period = activeRes.data;
-      setActivePeriod(period);
+      const period = viewPeriod;
 
       const [termsRes, structureRes, settingsRes] = await Promise.all([
         period ? api.get(`/terms?schoolPeriodId=${period.id}`) : Promise.resolve({ data: [] }),
@@ -154,6 +152,9 @@ const CourseCouncil: React.FC = () => {
         setStructure(structureRes.data.sort((a: PeriodGradeStructure, b: PeriodGradeStructure) =>
           (a.grade.order || 0) - (b.grade.order || 0)
         ));
+      } else {
+        setTerms([]);
+        setStructure([]);
       }
 
       if (settingsRes.data.council_points_limit) {
@@ -174,9 +175,17 @@ const CourseCouncil: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [viewPeriod]);
 
   useEffect(() => {
+    // Reset selections when the view period changes
+    setStep(0);
+    setSelectedTerm(null);
+    setSelectedSection(null);
+    setStudentsData([]);
+    setCouncilDone(false);
+    setCouncilCompletedAt(null);
+    setGuideTeacherName('');
     fetchData();
   }, [fetchData]);
 
@@ -185,11 +194,11 @@ const CourseCouncil: React.FC = () => {
     try {
       const [res, checklistRes, guideRes] = await Promise.all([
         api.get(`/council/data?sectionId=${sectionId}&termId=${termId}&gradeId=${gradeId}`),
-        activePeriod
-          ? api.get(`/period-closure/${activePeriod.id}/checklist?gradeId=${gradeId}&sectionId=${sectionId}&termId=${termId}`)
+        viewPeriod
+          ? api.get(`/period-closure/${viewPeriod.id}/checklist?gradeId=${gradeId}&sectionId=${sectionId}&termId=${termId}`)
           : Promise.resolve({ data: null }),
-        activePeriod
-          ? api.get(`/section-guides?schoolPeriodId=${activePeriod.id}&gradeId=${gradeId}&sectionId=${sectionId}`)
+        viewPeriod
+          ? api.get(`/section-guides?schoolPeriodId=${viewPeriod.id}&gradeId=${gradeId}&sectionId=${sectionId}`)
           : Promise.resolve({ data: null })
       ]);
       setStudentsData((res.data as CouncilStudent[]).slice().sort((a, b) => {
@@ -279,10 +288,10 @@ const CourseCouncil: React.FC = () => {
   };
 
   const confirmMarkDone = async () => {
-    if (!activePeriod || !selectedTerm || !selectedSection) return;
+    if (!viewPeriod || !selectedTerm || !selectedSection) return;
     setMarkingDone(true);
     try {
-      await api.post(`/period-closure/${activePeriod.id}/checklist`, {
+      await api.post(`/period-closure/${viewPeriod.id}/checklist`, {
         gradeId: selectedSection.grade.id,
         sectionId: selectedSection.section.id,
         termId: selectedTerm.id,
@@ -300,12 +309,12 @@ const CourseCouncil: React.FC = () => {
   };
 
   const handleMarkDone = async (checked: boolean) => {
-    if (!activePeriod || !selectedTerm || !selectedSection) return;
+    if (!viewPeriod || !selectedTerm || !selectedSection) return;
 
     if (!checked) {
       setMarkingDone(true);
       try {
-        await api.post(`/period-closure/${activePeriod.id}/checklist`, {
+        await api.post(`/period-closure/${viewPeriod.id}/checklist`, {
           gradeId: selectedSection.grade.id,
           sectionId: selectedSection.section.id,
           termId: selectedTerm.id,
@@ -340,7 +349,7 @@ const CourseCouncil: React.FC = () => {
   };
 
   const handleBulkMarkAllDone = async () => {
-    if (!activePeriod || terms.length === 0 || structure.length === 0) return;
+    if (!viewPeriod || terms.length === 0 || structure.length === 0) return;
 
     const blockedTerms = terms.filter(t => t.isBlocked);
     if (blockedTerms.length === 0) {
@@ -376,7 +385,7 @@ const CourseCouncil: React.FC = () => {
         for (let i = 0; i < combinations.length; i++) {
           const { gradeId, sectionId, termId } = combinations[i];
           try {
-            await api.post(`/period-closure/${activePeriod.id}/checklist`, {
+            await api.post(`/period-closure/${viewPeriod.id}/checklist`, {
               gradeId, sectionId, termId, status: 'done'
             });
             successCount++;
@@ -418,7 +427,7 @@ const CourseCouncil: React.FC = () => {
           icon={<CheckCircleOutlined />}
           onClick={handleBulkMarkAllDone}
           loading={bulkMarking}
-          disabled={terms.length === 0 || structure.length === 0 || !terms.some(t => t.isBlocked)}
+          disabled={isReadOnly || terms.length === 0 || structure.length === 0 || !terms.some(t => t.isBlocked)}
           style={{
             borderRadius: 14,
             fontWeight: 800,
@@ -638,7 +647,7 @@ const CourseCouncil: React.FC = () => {
                           </div>
                           <Space size={4}>
                             <Tag color={group.grade.isDiversified ? 'volcano' : 'blue'} style={{ border: 'none', borderRadius: 6, fontSize: 10, fontWeight: 700, margin: 0 }}>
-                              {activePeriod?.name}
+                              {viewPeriod?.name}
                             </Tag>
                           </Space>
                         </div>
@@ -829,7 +838,7 @@ const CourseCouncil: React.FC = () => {
         // Row 3: merge the right third and show the school period (Año Escolar).
         worksheet.mergeCells(3, cut2 + 1, 3, lastCol);
         const periodCell = worksheet.getCell(3, cut2 + 1);
-        periodCell.value = activePeriod?.name || '';
+        periodCell.value = viewPeriod?.name || '';
         periodCell.alignment = { horizontal: 'right', vertical: 'middle', indent: 1 };
         periodCell.font = { bold: true, size: 14, color: { argb: '17324D' } };
 
@@ -1403,7 +1412,7 @@ const CourseCouncil: React.FC = () => {
                     }
                   }}
                   onFocus={(e) => e.target.select()}
-                  disabled={!selectedTerm?.isBlocked}
+                  disabled={isReadOnly || !selectedTerm?.isBlocked}
                   className="premium-input-number"
                   style={{ width: 42, fontWeight: 700, borderRadius: 6, textAlign: 'center', padding: '0 2px' }}
                 />
@@ -1491,7 +1500,7 @@ const CourseCouncil: React.FC = () => {
               </Title>
               <Space split={<Text type="secondary" style={{ opacity: 0.5 }}>•</Text>}>
                 <Text type="secondary" style={{ fontWeight: 600 }}>{selectedTerm?.name}</Text>
-                <Tag color="processing" style={{ border: 'none', borderRadius: 4, fontSize: 10, fontWeight: 700 }}>{activePeriod?.name}</Tag>
+                <Tag color="processing" style={{ border: 'none', borderRadius: 4, fontSize: 10, fontWeight: 700 }}>{viewPeriod?.name}</Tag>
               </Space>
             </div>
           </Space>
@@ -1565,7 +1574,7 @@ const CourseCouncil: React.FC = () => {
               icon={<SaveOutlined />}
               onClick={handleSave}
               loading={saving}
-              disabled={!selectedTerm?.isBlocked}
+              disabled={isReadOnly || !selectedTerm?.isBlocked}
               style={{
                 borderRadius: 14,
                 fontWeight: 800,
@@ -1581,7 +1590,7 @@ const CourseCouncil: React.FC = () => {
             <Checkbox
               checked={councilDone}
               onChange={(e) => handleMarkDone(e.target.checked)}
-              disabled={markingDone || !selectedTerm?.isBlocked}
+              disabled={isReadOnly || markingDone || !selectedTerm?.isBlocked}
               style={{
                 fontWeight: 800,
                 fontSize: 14,

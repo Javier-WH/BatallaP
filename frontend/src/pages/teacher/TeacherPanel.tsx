@@ -8,6 +8,7 @@ import { isAxiosError } from 'axios';
 import api from '@/services/api';
 import dayjs from 'dayjs';
 import { useGradeRounding } from '@/context/GradeRoundingContext';
+import { useSchool } from '@/context/SchoolContext';
 import { formatGrade } from '@/utils/gradeFormat';
 import EvaluationPlanPDFModal from '@/components/pdf/EvaluationPlanPDFModal';
 import type { EvaluationPlanHeaderData, EvaluationPlanRowData } from '@/components/pdf/EvaluationPlanPDF';
@@ -220,6 +221,7 @@ interface ExpectedLearningData {
 
 const TeacherPanel: React.FC = () => {
   const navigate = useNavigate();
+  const { viewPeriod, isReadOnly } = useSchool();
   const [loading, setLoading] = useState(false);
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [selectedAssignmentId, setSelectedAssignmentId] = useState<number | null>(null);
@@ -408,25 +410,27 @@ const TeacherPanel: React.FC = () => {
   const fetchAssignments = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await api.get('/evaluation/my-assignments');
+      const params: any = {};
+      if (viewPeriod?.id) params.schoolPeriodId = viewPeriod.id;
+      const res = await api.get('/evaluation/my-assignments', { params });
       setAssignments(res.data);
       if (res.data.length > 0) {
         setSelectedAssignmentId(res.data[0].id);
+      } else {
+        setSelectedAssignmentId(null);
       }
     } catch {
       message.error('Error al cargar asignaciones');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [viewPeriod]);
 
   const fetchTerms = useCallback(async () => {
     try {
       console.log('Fetching terms...');
-      const res = await api.get('/academic/active');
-      console.log('Active period response:', res.data);
-      if (res.data) {
-        const termsRes = await api.get(`/terms?schoolPeriodId=${res.data.id}`);
+      if (viewPeriod) {
+        const termsRes = await api.get(`/terms?schoolPeriodId=${viewPeriod.id}`);
         console.log('Terms response:', termsRes.data);
         setAvailableTerms(termsRes.data);
         // Set first active term as default
@@ -445,7 +449,7 @@ const TeacherPanel: React.FC = () => {
     } catch (error) {
       console.error('Error fetching terms', error);
     }
-  }, []);
+  }, [viewPeriod]);
 
   const fetchPlanAndStudents = useCallback(async () => {
     if (!selectedAssignmentId || !selectedTerm) {
@@ -503,6 +507,13 @@ const TeacherPanel: React.FC = () => {
   }, [selectedAssignmentId, assignments, selectedTerm]);
 
   useEffect(() => {
+    // Reset selections when the view period changes
+    setSelectedAssignmentId(null);
+    setSelectedSubjectId(null);
+    setSelectedGradeId(null);
+    setSelectedTerm(null);
+    setEvaluationPlan([]);
+    setStudents([]);
     fetchAssignments();
   }, [fetchAssignments]);
 
@@ -562,18 +573,16 @@ const TeacherPanel: React.FC = () => {
 
   useEffect(() => {
     const fetchRevisionStatus = async () => {
-      const activeRes = await api.get('/academic/active');
-      if (activeRes.data) {
-        try {
-          const revRes = await api.get(`/revision-periods/${activeRes.data.id}`);
-          setRevisionOpen(revRes.data?.revisionPeriod?.status === 'open');
-        } catch {
-          setRevisionOpen(false);
-        }
+      if (!viewPeriod) return;
+      try {
+        const revRes = await api.get(`/revision-periods/${viewPeriod.id}`);
+        setRevisionOpen(revRes.data?.revisionPeriod?.status === 'open');
+      } catch {
+        setRevisionOpen(false);
       }
     };
     fetchRevisionStatus();
-  }, []);
+  }, [viewPeriod]);
 
   // Derive unique subjects from all assignments (sorted by PeriodGradeSubject.order)
   const availableSubjects = useMemo(() => {
@@ -869,7 +878,7 @@ const handleToggleAbsent = async (enrollment: StudentEnrollment, evalPlanId: num
       width: 90,
       render: (_: unknown, record: EvaluationPlanItem) => (
         <Space>
-          {!isSelectedTermBlocked && (
+          {!isSelectedTermBlocked && !isReadOnly && (
             <>
               <Button
                 icon={<EditOutlined />}
@@ -1392,7 +1401,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                 <div className="pt-4">
                   <ContentTab
                     thematicComponents={thematicComponents}
-                    isBlocked={isSelectedTermBlocked}
+                    isBlocked={isSelectedTermBlocked || isReadOnly}
                     onCreateComponent={handleCreateComponent}
                     onUpdateComponent={handleUpdateComponent}
                     onDeleteComponent={handleDeleteComponent}
@@ -1426,11 +1435,11 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                   
                   {totalPercentage < 100 && (
                     <div
-                      className={`mt-4 w-full h-14 flex items-center justify-center rounded-xl transition-all cursor-pointer border-none shadow-sm ${isSelectedTermBlocked || !selectedAssignmentId ? 'opacity-50 pointer-events-none' : 'hover:scale-[1.01]'}`}
-                      style={{ backgroundColor: isSelectedTermBlocked || !selectedAssignmentId ? 'var(--color-inactive)' : 'var(--color-accent)',
-                        color: isSelectedTermBlocked || !selectedAssignmentId ? 'var(--color-text-main)' : 'var(--color-header-text)' }}
+                      className={`mt-4 w-full h-14 flex items-center justify-center rounded-xl transition-all cursor-pointer border-none shadow-sm ${isSelectedTermBlocked || !selectedAssignmentId || isReadOnly ? 'opacity-50 pointer-events-none' : 'hover:scale-[1.01]'}`}
+                      style={{ backgroundColor: isSelectedTermBlocked || !selectedAssignmentId || isReadOnly ? 'var(--color-inactive)' : 'var(--color-accent)',
+                        color: isSelectedTermBlocked || !selectedAssignmentId || isReadOnly ? 'var(--color-text-main)' : 'var(--color-header-text)' }}
                       onClick={() => {
-                        if(isSelectedTermBlocked || !selectedAssignmentId) return;
+                        if(isSelectedTermBlocked || !selectedAssignmentId || isReadOnly) return;
                         setEditingItem(null);
                         setShowPlanModal(true);
                       }}
@@ -1439,7 +1448,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                     </div>
                   )}
 
-                  {totalPercentage === 100 && copyTargetAssignments.length > 0 && !isSelectedTermBlocked && (
+                  {totalPercentage === 100 && copyTargetAssignments.length > 0 && !isSelectedTermBlocked && !isReadOnly && (
                     <div
                       className="mt-3 w-full h-14 flex items-center justify-center gap-3 rounded-xl transition-all cursor-pointer border-none shadow-sm hover:scale-[1.01]"
                       style={{ backgroundColor: '#16a34a', color: '#fff' }}
@@ -1589,14 +1598,16 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
 
                                 return (
                                   <React.Fragment key={item.id}>
-                                  <td key={`${item.id}-a`} className={`grading-cell${isAbsent ? ' grading-absent' : ''}`} style={{ padding: '2px', border: '1px solid rgba(15, 23, 42, 0.08)', borderLeft: colIndex > 0 ? '2px solid color-mix(in srgb, var(--color-text-main) 35%, transparent)' : undefined, textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-content-bg)' : 'color-mix(in srgb, var(--color-text-main) 2%, var(--color-content-bg))', width: '50px', cursor: 'context-menu' }}
-                                    title="Click derecho: marcar/desmarcar inasistente. Click izquierdo: desmarcar NP"
+                                  <td key={`${item.id}-a`} className={`grading-cell${isAbsent ? ' grading-absent' : ''}`} style={{ padding: '2px', border: '1px solid rgba(15, 23, 42, 0.08)', borderLeft: colIndex > 0 ? '2px solid color-mix(in srgb, var(--color-text-main) 35%, transparent)' : undefined, textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-content-bg)' : 'color-mix(in srgb, var(--color-text-main) 2%, var(--color-content-bg))', width: '50px', cursor: isReadOnly ? 'default' : 'context-menu' }}
+                                    title={isReadOnly ? undefined : "Click derecho: marcar/desmarcar inasistente. Click izquierdo: desmarcar NP"}
                                     onContextMenu={(e) => {
+                                      if (isReadOnly) return;
                                       e.preventDefault();
                                       e.stopPropagation();
                                       handleToggleAbsent(enrollment, item.id, q?.isAbsent);
                                     }}
                                     onClick={() => {
+                                      if (isReadOnly) return;
                                       if (isAbsent) {
                                         handleToggleAbsent(enrollment, item.id, true);
                                         setTimeout(() => {
@@ -1632,7 +1643,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                                       title={q?.editedByOther
                                         ? `Editada el ${new Date(q.lastEditDate || '').toLocaleString('es-VE')} por ${q.lastEditUser || 'usuario desconocido'}`
                                         : undefined}
-                                      disabled={isSelectedTermBlocked || (q?.remedialScore != null && q.remedialScore > 0 && isRemedialEligible)}
+                                      disabled={isReadOnly || isSelectedTermBlocked || (q?.remedialScore != null && q.remedialScore > 0 && isRemedialEligible)}
                                       onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
                                         if (e.key === '.' || e.key === ',' || e.key === 'e' || e.key === 'E' || e.key === '-' || e.key === '+') {
                                           e.preventDefault();
@@ -1754,7 +1765,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                                           fontWeight: q?.remedialScore != null && q.remedialScore > 0 && q.remedialScore < passingGrade ? 700 : undefined,
                                           cursor: !isRemedialEligible && currentScore !== null && currentScore > 0 ? 'not-allowed' : undefined,
                                         }}
-                                        disabled={isSelectedTermBlocked || !isRemedialEligible}
+                                        disabled={isReadOnly || isSelectedTermBlocked || !isRemedialEligible}
                                         onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
                                           if (e.key === '.' || e.key === ',' || e.key === 'e' || e.key === 'E' || e.key === '-' || e.key === '+') {
                                             e.preventDefault();
