@@ -423,7 +423,7 @@ const AcademicSettings: React.FC = () => {
           <Tooltip title={record.isBlocked ? 'Permitir entrada de notas' : 'Restringir entrada de notas'}>
             <Button
               type="text"
-              icon={record.isBlocked ? <UnlockOutlined style={{ color: '#52c41a' }} /> : <LockOutlined style={{ color: '#faad14' }} />}
+              icon={record.isBlocked ? <LockOutlined style={{ color: '#faad14' }} /> : <UnlockOutlined style={{ color: '#52c41a' }} />}
               onClick={() => toggleTermBlock(record)}
               className="action-btn-hover"
             />
@@ -547,7 +547,7 @@ const AcademicSettings: React.FC = () => {
         items={[
           {
             key: 'configuracion',
-            label: 'Configuración',
+            label: 'Evaluación',
             children: (
               <Row gutter={[32, 32]}>
                 {/* Rules Column */}
@@ -813,7 +813,7 @@ const AcademicSettings: React.FC = () => {
           },
           {
             key: 'evaluacion',
-            label: 'Evaluación',
+            label: 'Listas',
             children: (
               <Row gutter={[32, 32]} style={{ marginTop: 32 }}>
         <Col xs={24} lg={12}>
