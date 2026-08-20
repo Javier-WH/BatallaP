@@ -151,18 +151,28 @@ const PerformanceSummary: React.FC = () => {
     }).catch(() => { /* ignore */ });
   }, []);
 
-  // Load institution logo for boletin tabs
+  // Load institution logo for boletin tabs (resized to 100x100 to keep base64 small)
   useEffect(() => {
     let cancelled = false;
     api.get('/upload/logo', { responseType: 'blob' })
       .then((res) => {
         if (cancelled) return;
         const blob = res.data as Blob;
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          if (!cancelled) setBoletinLogoBase64(reader.result as string);
+        const url = URL.createObjectURL(blob);
+        const img = new Image();
+        img.onload = () => {
+          URL.revokeObjectURL(url);
+          if (cancelled) return;
+          const canvas = document.createElement('canvas');
+          canvas.width = 100;
+          canvas.height = 100;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) return;
+          ctx.drawImage(img, 0, 0, 100, 100);
+          if (!cancelled) setBoletinLogoBase64(canvas.toDataURL('image/png'));
         };
-        reader.readAsDataURL(blob);
+        img.onerror = () => { URL.revokeObjectURL(url); };
+        img.src = url;
       })
       .catch(() => { /* no logo available */ });
     return () => { cancelled = true; };

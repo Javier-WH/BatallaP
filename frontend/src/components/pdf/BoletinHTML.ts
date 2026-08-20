@@ -89,7 +89,9 @@ const buildStudentSheet = (
   const guideTeacher = escapeHtml(student.guideTeacher || '—');
 
   // Logo HTML
-  const logoHtml = '';
+  const logoHtml = data.logoBase64
+    ? `<img src="${data.logoBase64}" class="logo" alt="logo" />`
+    : '';
 
   // Build grade rows
   const rows = student.subjects.map((subj, idx) => {
@@ -307,8 +309,8 @@ export const generateBoletinHTML = (data: BoletinHTMLData): string => {
     gap:12px;
   }
   .masthead .logo{
-    width:42px;
-    height:42px;
+    width:63px;
+    height:63px;
     object-fit:contain;
     flex-shrink:0;
   }
@@ -317,12 +319,12 @@ export const generateBoletinHTML = (data: BoletinHTMLData): string => {
     flex-direction:column;
   }
   .masthead .eyebrow{
-    font-size:10px;
-    letter-spacing:.12em;
+    font-size:11px;
+    letter-spacing:.18em;
     text-transform:uppercase;
     color:var(--gold-light);
-    font-weight:600;
-    margin:0 0 1px;
+    font-weight:300;
+    margin:0 0 2px;
   }
   .masthead h1{
     font-family:'Fraunces', serif;
@@ -507,7 +509,7 @@ export const generateBoletinHTML = (data: BoletinHTMLData): string => {
   }
   .signatures .sig .line{
     border-top:1px solid var(--ink);
-    margin:21px 7px 3px;
+    margin:22px 7px 3px;
   }
   .signatures .sig .role{
     font-size:8px;
