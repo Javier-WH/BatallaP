@@ -1,11 +1,13 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Card, Button, Select, Space, Typography, Row, Col, Spin, message, Empty, Tag, Popover, Divider, Radio, Tabs, Input, Alert } from 'antd';
-import { DownloadOutlined, FileExcelOutlined, FileTextOutlined, FolderOpenOutlined, CheckCircleOutlined, InfoCircleOutlined } from '@ant-design/icons';
+import { DownloadOutlined, FileExcelOutlined, FileTextOutlined, FolderOpenOutlined, CheckCircleOutlined, InfoCircleOutlined, PrinterOutlined, Html5Outlined } from '@ant-design/icons';
 import { pdf } from '@react-pdf/renderer';
 import api from '@/services/api';
 import TemplateManagerModal from '@/components/TemplateManagerModal';
 import BoletinPDF from '@/components/pdf/BoletinPDF';
 import type { BoletinData, LetterGrade } from '@/components/pdf/BoletinPDF';
+import { generateBoletinHTML } from '@/components/pdf/BoletinHTML';
+import type { BoletinHTMLData } from '@/components/pdf/BoletinHTML';
 
 const { Title, Text } = Typography;
 
@@ -45,6 +47,13 @@ const PerformanceSummary: React.FC = () => {
   const [boletinPdfUrl, setBoletinPdfUrl] = useState<string | null>(null);
   const [boletinData, setBoletinData] = useState<BoletinData | null>(null);
   const [letterGrades, setLetterGrades] = useState<LetterGrade[]>([]);
+  const [boletinLogoBase64, setBoletinLogoBase64] = useState<string | null>(null);
+
+  // boletin HTML tab state (shares selectors with PDF tab)
+  const [boletinHtmlLoading, setBoletinHtmlLoading] = useState(false);
+  const [boletinHtmlString, setBoletinHtmlString] = useState<string | null>(null);
+  const [boletinHtmlSelectedInscriptionId, setBoletinHtmlSelectedInscriptionId] = useState<number | null>(null);
+  const boletinHtmlIframeRef = useRef<HTMLIFrameElement>(null);
 
   // certified tab state
   const [certPersonId, setCertPersonId] = useState<number | null>(null);
@@ -55,7 +64,9 @@ const PerformanceSummary: React.FC = () => {
   const [certLoading, setCertLoading] = useState(false);
 
   const boletinSelectedGrade = structure.find(s => s.grade.id === boletinGradeId);
-  const boletinAvailableSections = boletinSelectedGrade?.sections || [];
+  const boletinAvailableSections = [...(boletinSelectedGrade?.sections || [])].sort((a, b) =>
+    (a.name || '').localeCompare(b.name || '', 'es')
+  );
 
   const cleanupBoletinPdf = useCallback(() => {
     setBoletinPdfUrl(prev => {
@@ -138,6 +149,23 @@ const PerformanceSummary: React.FC = () => {
         } catch { /* ignore */ }
       }
     }).catch(() => { /* ignore */ });
+  }, []);
+
+  // Load institution logo for boletin tabs
+  useEffect(() => {
+    let cancelled = false;
+    api.get('/upload/logo', { responseType: 'blob' })
+      .then((res) => {
+        if (cancelled) return;
+        const blob = res.data as Blob;
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          if (!cancelled) setBoletinLogoBase64(reader.result as string);
+        };
+        reader.readAsDataURL(blob);
+      })
+      .catch(() => { /* no logo available */ });
+    return () => { cancelled = true; };
   }, []);
 
   // Load students for boletin tab when section is selected
@@ -246,14 +274,14 @@ const PerformanceSummary: React.FC = () => {
   // --- boletin handlers ---
   const generateBoletinPdf = useCallback(async (params: { schoolPeriodId: number; gradeId: number; sectionId?: number; inscriptionId?: number }) => {
     const res = await api.get('/performance-summary/boletin-data', { params });
-    const data = { ...res.data, letterGrades } as BoletinData;
+    const data = { ...res.data, letterGrades, logoBase64: boletinLogoBase64 } as BoletinData;
     if (!data.students || data.students.length === 0) {
       return null;
     }
     const doc = <BoletinPDF data={data} />;
     const blob = await pdf(doc).toBlob();
     return { url: URL.createObjectURL(blob), data };
-  }, [letterGrades]);
+  }, [letterGrades, boletinLogoBase64]);
 
   const handlePreviewStudent = useCallback(async (inscriptionId: number) => {
     if (!boletinPeriodId || !boletinGradeId) return;
@@ -325,6 +353,79 @@ const PerformanceSummary: React.FC = () => {
       a.remove();
     }
   }, [boletinPdfUrl, boletinSelectedInscriptionId, boletinSectionId]);
+
+  // --- boletin HTML handlers ---
+  const generateBoletinHtmlString = useCallback(async (params: { schoolPeriodId: number; gradeId: number; sectionId?: number; inscriptionId?: number }) => {
+    const res = await api.get('/performance-summary/boletin-data', { params });
+    const data = { ...res.data, letterGrades, logoBase64: boletinLogoBase64 } as BoletinHTMLData;
+    if (!data.students || data.students.length === 0) {
+      return null;
+    }
+    return generateBoletinHTML(data);
+  }, [letterGrades, boletinLogoBase64]);
+
+  const handlePreviewStudentHtml = useCallback(async (inscriptionId: number) => {
+    if (!boletinPeriodId || !boletinGradeId) return;
+    setBoletinHtmlSelectedInscriptionId(inscriptionId);
+    setBoletinHtmlLoading(true);
+    setBoletinHtmlString(null);
+    try {
+      const html = await generateBoletinHtmlString({
+        schoolPeriodId: boletinPeriodId,
+        gradeId: boletinGradeId,
+        sectionId: boletinSectionId || undefined,
+        inscriptionId,
+      });
+      if (html) {
+        setBoletinHtmlString(html);
+      } else {
+        message.warning('No se encontraron notas para este estudiante en el período seleccionado');
+      }
+    } catch (error: any) {
+      console.error('[BoletinHTML] Error al previsualizar:', error);
+      const errMsg = error?.response?.data?.message || 'Error al generar la vista previa del boletín HTML.';
+      message.error(errMsg);
+    } finally { setBoletinHtmlLoading(false); }
+  }, [boletinPeriodId, boletinGradeId, boletinSectionId, generateBoletinHtmlString]);
+
+  const handleEmitSectionHtml = useCallback(async () => {
+    if (!boletinPeriodId || !boletinGradeId || !boletinSectionId) {
+      message.warning('Seleccione período, grado y sección');
+      return;
+    }
+    if (boletinStudents.length === 0) {
+      message.warning('No hay estudiantes inscritos en la sección seleccionada');
+      return;
+    }
+    setBoletinHtmlLoading(true);
+    setBoletinHtmlString(null);
+    setBoletinHtmlSelectedInscriptionId(null);
+    try {
+      const html = await generateBoletinHtmlString({
+        schoolPeriodId: boletinPeriodId,
+        gradeId: boletinGradeId,
+        sectionId: boletinSectionId,
+      });
+      if (html) {
+        setBoletinHtmlString(html);
+        message.success('Boletines HTML generados correctamente');
+      } else {
+        message.warning('No se encontraron estudiantes con notas en la sección seleccionada');
+      }
+    } catch (error: any) {
+      console.error('[BoletinHTML] Error al emitir sección:', error);
+      const errMsg = error?.response?.data?.message || 'Error al generar los boletines HTML de la sección.';
+      message.error(errMsg);
+    } finally { setBoletinHtmlLoading(false); }
+  }, [boletinPeriodId, boletinGradeId, boletinSectionId, boletinStudents.length, generateBoletinHtmlString]);
+
+  const handlePrintBoletinHtml = useCallback(() => {
+    const iframe = boletinHtmlIframeRef.current;
+    if (iframe && iframe.contentWindow) {
+      iframe.contentWindow.focus();
+      iframe.contentWindow.print();
+    }
+  }, []);
 
   // --- certified handlers ---
   const certSearch = useCallback(async (query: string) => {
@@ -733,6 +834,184 @@ const PerformanceSummary: React.FC = () => {
                           <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '60vh', color: '#94a3b8' }}>
                             <div style={{ textAlign: 'center' }}>
                               <FileTextOutlined style={{ fontSize: 48, marginBottom: 12, display: 'block' }} />
+                              <Text type="secondary">
+                                Seleccione un estudiante para ver la vista previa del boletín,
+                                o use «Emitir sección» para generar todos los boletines de la sección.
+                              </Text>
+                            </div>
+                          </div>
+                        )}
+                      </Col>
+                    </Row>
+                  )}
+                </>
+              ),
+            },
+            {
+              key: 'boletin-html',
+              label: (
+                <span>
+                  <Html5Outlined style={{ marginRight: 6 }} />
+                  Boletines HTML
+                </span>
+              ),
+              children: (
+                <>
+                  {/* Selectores — shared with PDF tab */}
+                  <div style={{ marginBottom: 16 }}>
+                    <label style={{ display: 'block', fontWeight: 700, marginBottom: 6, fontSize: 13 }}>Período</label>
+                    <Select placeholder="Período" style={{ width: '100%', maxWidth: 400 }} value={boletinPeriodId}
+                      onChange={(v: number) => { setBoletinPeriodId(v); setBoletinGradeId(null); setBoletinSectionId(null); setBoletinHtmlString(null); }}
+                      options={allPeriods.map(p => ({ label: `${p.name}${p.status === 'activo' ? ' (activo)' : ''}`, value: p.id }))} />
+                  </div>
+
+                  <div style={{ marginBottom: 16 }}>
+                    <label style={{ display: 'block', fontWeight: 700, marginBottom: 6, fontSize: 13 }}>Grado</label>
+                    {structure.length === 0 ? (
+                      <Text type="secondary" style={{ fontSize: 13 }}>
+                        {boletinPeriodId ? 'No hay grados configurados para este período' : 'Primero seleccione un período'}
+                      </Text>
+                    ) : (
+                      <Space wrap>
+                        {structure.map(s => (
+                          <Button
+                            key={s.grade.id}
+                            type={boletinGradeId === s.grade.id ? 'primary' : 'default'}
+                            onClick={() => { setBoletinGradeId(s.grade.id); setBoletinSectionId(null); setBoletinHtmlString(null); }}
+                            style={{ borderRadius: 8, fontWeight: 600 }}
+                          >
+                            {s.grade.name}
+                          </Button>
+                        ))}
+                      </Space>
+                    )}
+                  </div>
+
+                  <div style={{ marginBottom: 16 }}>
+                    <label style={{ display: 'block', fontWeight: 700, marginBottom: 6, fontSize: 13 }}>Sección</label>
+                    {!boletinGradeId ? (
+                      <Text type="secondary" style={{ fontSize: 13 }}>Seleccione un grado primero</Text>
+                    ) : boletinAvailableSections.length === 0 ? (
+                      <Text type="secondary" style={{ fontSize: 13 }}>No hay secciones configuradas para este grado</Text>
+                    ) : (
+                      <Space wrap>
+                        {boletinAvailableSections.map(sec => (
+                          <Button
+                            key={sec.id}
+                            type={boletinSectionId === sec.id ? 'primary' : 'default'}
+                            onClick={() => { setBoletinSectionId(sec.id); setBoletinHtmlString(null); }}
+                            style={{ borderRadius: 8, fontWeight: 600 }}
+                          >
+                            {sec.name}
+                          </Button>
+                        ))}
+                      </Space>
+                    )}
+                  </div>
+
+                  {!boletinPeriodId ? (
+                    <Alert message="Seleccione un período escolar" description="Elija el período académico para el cual desea emitir los boletines." type="info" showIcon style={{ borderRadius: 8 }} />
+                  ) : !boletinGradeId ? (
+                    <Alert message="Seleccione un grado" description="Elija el grado correspondiente haciendo clic en uno de los botones de arriba." type="info" showIcon style={{ borderRadius: 8 }} />
+                  ) : !boletinSectionId ? (
+                    <Alert message="Seleccione una sección" description="Elija la sección correspondiente haciendo clic en uno de los botones de arriba." type="info" showIcon style={{ borderRadius: 8 }} />
+                  ) : boletinStudents.length === 0 ? (
+                    <Alert message="No hay estudiantes inscritos" description="No se encontraron estudiantes inscritos en la sección seleccionada para este período." type="warning" showIcon style={{ borderRadius: 8 }} />
+                  ) : (
+                    <Row gutter={[16, 16]}>
+                      {/* Lista de estudiantes */}
+                      <Col xs={24} md={8} lg={7}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                          <Text strong>Estudiantes ({boletinStudents.length})</Text>
+                          <Button
+                            type="primary"
+                            icon={<PrinterOutlined />}
+                            size="small"
+                            loading={boletinHtmlLoading}
+                            onClick={handleEmitSectionHtml}
+                            style={{ borderRadius: 8, fontWeight: 600 }}
+                          >
+                            Emitir sección
+                          </Button>
+                        </div>
+                        <div style={{ maxHeight: '65vh', overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: 8 }}>
+                          {boletinStudents.map((stu, idx) => {
+                            const isSelected = boletinHtmlSelectedInscriptionId === stu.inscriptionId;
+                            return (
+                              <div
+                                key={stu.inscriptionId}
+                                onClick={() => handlePreviewStudentHtml(stu.inscriptionId)}
+                                style={{
+                                  padding: '10px 14px',
+                                  cursor: 'pointer',
+                                  borderBottom: '1px solid #f1f5f9',
+                                  background: isSelected ? '#e0f2fe' : 'transparent',
+                                  transition: 'background 0.15s',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: 10,
+                                }}
+                                onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.background = '#f8fafc'; }}
+                                onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.background = 'transparent'; }}
+                              >
+                                <span style={{
+                                  flexShrink: 0,
+                                  width: 24,
+                                  height: 24,
+                                  borderRadius: 6,
+                                  background: isSelected ? '#0284c7' : '#e2e8f0',
+                                  color: isSelected ? '#fff' : '#64748b',
+                                  fontSize: 11,
+                                  fontWeight: 700,
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                }}>
+                                  {idx + 1}
+                                </span>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ fontWeight: 600, fontSize: 13 }}>
+                                    {stu.lastName} {stu.firstName}
+                                  </div>
+                                  <div style={{ fontSize: 11, color: '#64748b' }}>
+                                    C.I. {stu.document || '—'}
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </Col>
+
+                      {/* Vista previa HTML */}
+                      <Col xs={24} md={16} lg={17}>
+                        {boletinHtmlLoading ? (
+                          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '60vh' }}>
+                            <Spin tip="Generando vista previa..." />
+                          </div>
+                        ) : boletinHtmlString ? (
+                          <div>
+                            <div style={{ textAlign: 'center', marginBottom: 8 }}>
+                              <Button
+                                type="primary"
+                                icon={<PrinterOutlined />}
+                                onClick={handlePrintBoletinHtml}
+                                style={{ borderRadius: 10, fontWeight: 700, height: 40 }}
+                              >
+                                Imprimir / Guardar como PDF
+                              </Button>
+                            </div>
+                            <iframe
+                              ref={boletinHtmlIframeRef}
+                              srcDoc={boletinHtmlString}
+                              style={{ width: '100%', height: '65vh', border: '1px solid #e2e8f0', borderRadius: 8 }}
+                              title="Boletín HTML"
+                            />
+                          </div>
+                        ) : (
+                          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '60vh', color: '#94a3b8' }}>
+                            <div style={{ textAlign: 'center' }}>
+                              <Html5Outlined style={{ fontSize: 48, marginBottom: 12, display: 'block' }} />
                               <Text type="secondary">
                                 Seleccione un estudiante para ver la vista previa del boletín,
                                 o use «Emitir sección» para generar todos los boletines de la sección.

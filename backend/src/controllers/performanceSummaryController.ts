@@ -23,6 +23,7 @@ import {
   Setting,
   Plantel,
   TeacherAssignment,
+  SectionGuide,
 } from '@/models/index';
 import {
   getSubjectOrderMap,
@@ -1126,6 +1127,46 @@ export const getBoletinData = async (req: Request, res: Response) => {
     });
     const subjectOrderMap = periodGrade ? await getSubjectOrderMap(periodGrade.id) : new Map<number, number>();
 
+    // Fetch teacher assignments for this period+grade+section
+    const periodGradeSubjects = periodGrade
+      ? await PeriodGradeSubject.findAll({ where: { periodGradeId: periodGrade.id } })
+      : [];
+    const pgsIds = periodGradeSubjects.map((pgs: any) => pgs.id);
+
+    const taWhere: any = { periodGradeSubjectId: pgsIds };
+    if (sectionId) taWhere.sectionId = sectionId;
+    const teacherAssignments = pgsIds.length > 0
+      ? await TeacherAssignment.findAll({
+          where: taWhere,
+          include: [{ model: Person, as: 'teacher', attributes: ['id', 'firstName', 'lastName'] }],
+        })
+      : [];
+
+    // Map: subjectId -> teacher name
+    const teacherMap = new Map<number, string>();
+    for (const ta of teacherAssignments) {
+      const pgs = periodGradeSubjects.find((p: any) => p.id === ta.periodGradeSubjectId);
+      if (pgs && (ta as any).teacher) {
+        const t = (ta as any).teacher;
+        teacherMap.set(pgs.subjectId, `${t.firstName || ''} ${t.lastName || ''}`.trim());
+      }
+    }
+
+    // Fetch guide teachers for this period+grade
+    const guideWhere: any = { schoolPeriodId, gradeId };
+    if (sectionId) guideWhere.sectionId = sectionId;
+    const sectionGuides = await SectionGuide.findAll({
+      where: guideWhere,
+      include: [{ model: Person, as: 'guideTeacher', attributes: ['id', 'firstName', 'lastName'] }],
+    });
+    const guideMap = new Map<number, string>();
+    for (const sg of sectionGuides) {
+      if ((sg as any).guideTeacher) {
+        const t = (sg as any).guideTeacher;
+        guideMap.set(sg.sectionId, `${t.firstName || ''} ${t.lastName || ''}`.trim());
+      }
+    }
+
     const terms = await Term.findAll({
       where: { schoolPeriodId },
       order: [['order', 'ASC']],
@@ -1210,6 +1251,7 @@ export const getBoletinData = async (req: Request, res: Response) => {
         return {
           id: is.subjectId,
           name: is.subject?.name || '',
+          teacherName: teacherMap.get(is.subjectId) || '',
           usesLiteralGrades: is.subject?.usesLiteralGrades || false,
           lapsos: terms.map((t: any) => ({
             termId: t.id,
@@ -1227,6 +1269,8 @@ export const getBoletinData = async (req: Request, res: Response) => {
         lastName: ins.student?.lastName || '',
         document: ins.student?.document || '',
         sectionName: ins.section?.name || '',
+        sectionId: ins.sectionId,
+        guideTeacher: guideMap.get(ins.sectionId) || '',
         subjects,
       };
     });
@@ -1237,7 +1281,12 @@ export const getBoletinData = async (req: Request, res: Response) => {
         period: period.name || period.period || '',
         code: settings.institution_code || '',
         principal: settings.principal_name || '',
+        address: settings.institution_address || '',
+        phone: settings.institution_phone || '',
+        municipality: settings.institution_municipality || '',
+        state: settings.institution_state || '',
       },
+      passingGrade: Number(settings.passing_grade) || 10,
       grade: { id: grade.id, name: grade.name },
       terms: terms.map((t: any) => ({ id: t.id, name: t.name, order: t.order })),
       students,
