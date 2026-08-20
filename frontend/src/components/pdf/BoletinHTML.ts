@@ -45,7 +45,7 @@ const formatScore = (score: number | null): string => {
   if (score === null || score === undefined) return '—';
   const n = Number(score);
   if (isNaN(n) || n === 0) return '—';
-  return n.toFixed(1);
+  return String(Math.round(n));
 };
 
 const numericToLetter = (numericGrade: number, letterGrades: BoletinHTMLLetterGrade[]): string => {
@@ -130,13 +130,13 @@ const buildStudentSheet = (
     return `<th>${short}</th>`;
   }).join('');
 
-  // Summary stats: average per term
+  // Summary stats: average per term (only subjects with actual grades in that term)
   const termAverages = terms.map((t) => {
     const scores = student.subjects
       .filter((s) => !s.usesLiteralGrades)
       .map((s) => {
         const lapse = s.lapsos.find((l) => l.termId === t.id);
-        return lapse ? lapse.score : 0;
+        return lapse ? Number(lapse.score) : 0;
       })
       .filter((v) => v > 0);
     if (scores.length === 0) return '—';
@@ -144,9 +144,18 @@ const buildStudentSheet = (
     return avg.toFixed(2);
   });
 
+  // Definitiva average: only average over terms that have grades so far
   const finalAvgScores = student.subjects
-    .filter((s) => !s.usesLiteralGrades && s.finalScore !== null)
-    .map((s) => s.finalScore as number);
+    .filter((s) => !s.usesLiteralGrades)
+    .map((s) => {
+      const termScores = terms.map((t) => {
+        const lapse = s.lapsos.find((l) => l.termId === t.id);
+        return lapse ? Number(lapse.score) : 0;
+      }).filter((v) => v > 0);
+      if (termScores.length === 0) return null;
+      return termScores.reduce((a, b) => a + b, 0) / termScores.length;
+    })
+    .filter((v): v is number => v !== null);
   const finalAvg = finalAvgScores.length > 0
     ? (finalAvgScores.reduce((a, b) => a + b, 0) / finalAvgScores.length).toFixed(2)
     : '—';

@@ -18,7 +18,8 @@ import {
   sortSubjectsByOrder,
 } from './subjectOrderService';
 import { filterActiveGroupSubjects } from './subjectGroupService';
-import { resolveGradeStatus } from './gradeEvaluationService';
+import { resolveGradeStatus, roundGrade } from './gradeEvaluationService';
+import { TermGradeSyncService } from './termGradeSyncService';
 
 const resolveInstitutionPlantelId = async (transaction?: Transaction): Promise<number | null> => {
   const setting = await Setting.findOne({ where: { key: 'institution_dea_code' }, transaction });
@@ -171,6 +172,9 @@ export class FinalGradeCalculator {
     let subjectCount = 0;
 
     for (const insSub of inscriptionRecord.inscriptionSubjects) {
+      // Sync term grades to SubjectTermGrade table (single source of truth for per-lapso grades)
+      await TermGradeSyncService.syncForInscriptionSubject(insSub.id, { transaction: options.transaction });
+
       // Group scores by Term ID
       const termScores: Record<number, number> = {};
 
@@ -202,18 +206,10 @@ export class FinalGradeCalculator {
       let totalAccumulated = 0;
       Object.values(termScores).forEach(val => totalAccumulated += val);
 
-      // Average!
-      const finalScore = totalAccumulated / termCount;
+      // Average and round to integer
+      const finalScore = roundGrade(totalAccumulated / termCount);
 
-      console.log(`[DEBUG] Inscription ${inscriptionId} Subject ${insSub.subject?.name}: Terms found: ${terms.length}. TotalAcc: ${totalAccumulated}. Final: ${finalScore}`);
-
-
-      // Raw Score (sum of non-council points) calculation for display/statistics?
-      // For now, let's keep rawScore as the sum of qualification parts, but averaged? 
-      // The summary expects 'rawScore' and 'councilPoints'. 
-      // It's ambiguous when averaging. Let's just track the final calculation correctness first.
-
-      // Let's reconstruct 'rawScore' properly for the summary:
+      // Raw Score (sum of non-council points) calculation for display/statistics
       let totalRaw = 0;
       let totalCouncil = 0;
       (insSub.qualifications || []).forEach((q) => {
@@ -238,10 +234,10 @@ export class FinalGradeCalculator {
 
       if (hasRepair) {
         // Repair grade replaces the original completely
-        effectiveFinalScore = repairScore!;
+        effectiveFinalScore = roundGrade(repairScore!);
         effectiveStatus = resolveGradeStatus(repairScore!, repairPassingGrade ?? minApproval);
         gradeType = 'revision';
-        originalScore = Number(finalScore.toFixed(2));
+        originalScore = finalScore;
         originalStatus = resolveGradeStatus(finalScore, minApproval);
       } else {
         effectiveFinalScore = finalScore;
@@ -259,9 +255,9 @@ export class FinalGradeCalculator {
         inscriptionSubjectId: insSub.id,
         subjectId: insSub.subjectId,
         subjectName: insSub.subject?.name,
-        rawScore: Number((totalRaw / termCount).toFixed(2)),
-        councilPoints: Number((totalCouncil / termCount).toFixed(2)),
-        finalScore: Number(effectiveFinalScore.toFixed(2)),
+        rawScore: roundGrade(totalRaw / termCount),
+        councilPoints: roundGrade(totalCouncil / termCount),
+        finalScore: effectiveFinalScore,
         status: effectiveStatus
       };
       subjectResults.push(summary);
@@ -294,7 +290,7 @@ export class FinalGradeCalculator {
     }
 
     const finalAverage =
-      subjectCount > 0 ? Number((sumFinalScores / subjectCount).toFixed(2)) : null;
+      subjectCount > 0 ? Number((sumFinalScores / subjectCount).toFixed(2)) : null; // averages keep 2 decimals
 
     return {
       finalAverage,

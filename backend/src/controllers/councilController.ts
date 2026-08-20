@@ -13,6 +13,7 @@ import {
   EvaluationPlan,
   Setting
 } from '@/models/index';
+import { TermGradeSyncService } from '@/services/termGradeSyncService';
 import {
   getSubjectOrderMap,
   sortSubjectsByOrder,
@@ -213,6 +214,9 @@ export const saveCouncilPoint = async (req: Request, res: Response) => {
       await point.update({ points });
     }
 
+    // Sync term grades so that boletines and planillas stay consistent
+    await TermGradeSyncService.syncForInscriptionSubject(inscriptionSubjectId);
+
     res.json(point);
   } catch (error) {
     console.error(error);
@@ -285,6 +289,13 @@ export const bulkSaveCouncilPoints = async (req: Request, res: Response) => {
       if (!created) {
         await point.update({ points: update.points });
       }
+    }
+
+    // Sync term grades for all affected inscription subjects
+    const affectedSubjectIds = updates.map((u: any) => Number(u.inscriptionSubjectId)) as number[];
+    const uniqueSubjectIds = Array.from(new Set(affectedSubjectIds));
+    for (const subjectId of uniqueSubjectIds) {
+      await TermGradeSyncService.syncForInscriptionSubject(subjectId);
     }
 
     res.json({ message: 'Puntos actualizados correctamente' });

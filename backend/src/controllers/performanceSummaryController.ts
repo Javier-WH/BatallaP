@@ -10,6 +10,7 @@ import {
   InscriptionSubject,
   Subject,
   SubjectFinalGrade,
+  SubjectTermGrade,
   SubjectGroup,
   PeriodGrade,
   PeriodGradeSubject,
@@ -1192,6 +1193,7 @@ export const getBoletinData = async (req: Request, res: Response) => {
           include: [
             { model: Subject, as: 'subject', include: [{ model: SubjectGroup, as: 'subjectGroup' }] },
             { model: SubjectFinalGrade, as: 'finalGrade' },
+            { model: SubjectTermGrade, as: 'termGrades' },
             {
               model: Qualification,
               as: 'qualifications',
@@ -1218,6 +1220,13 @@ export const getBoletinData = async (req: Request, res: Response) => {
       );
 
       const subjects = insSubs.map((is: any) => {
+        // Build a map of term grades from SubjectTermGrade (single source of truth)
+        const termGradeMap = new Map<number, number>();
+        (is.termGrades || []).forEach((tg: any) => {
+          termGradeMap.set(tg.termId, Number(tg.score));
+        });
+
+        // Fallback: calculate from qualifications + council points if no stored term grades
         const termScores: Record<number, number> = {};
         terms.forEach((t: any) => { termScores[t.id] = 0; });
 
@@ -1245,7 +1254,7 @@ export const getBoletinData = async (req: Request, res: Response) => {
         } else {
           let total = 0;
           Object.values(termScores).forEach((v) => { total += v; });
-          finalScore = Math.round((total / termCount) * 100) / 100;
+          finalScore = Math.round(total / termCount);
         }
 
         const subjectName = is.subject?.subjectGroupId
@@ -1260,7 +1269,9 @@ export const getBoletinData = async (req: Request, res: Response) => {
           lapsos: terms.map((t: any) => ({
             termId: t.id,
             termName: t.name,
-            score: Math.round((termScores[t.id] || 0) * 100) / 100,
+            score: termGradeMap.has(t.id)
+              ? termGradeMap.get(t.id)!
+              : Math.round(termScores[t.id] || 0),
           })),
           finalScore,
           status: is.finalGrade?.status || (finalScore !== null ? resolveGradeStatus(finalScore, Number(settings.passing_grade || 10)) : 'reprobada'),

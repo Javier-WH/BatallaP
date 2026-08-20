@@ -112,6 +112,7 @@ import PeriodClosure from './PeriodClosure';
 import CouncilChecklist from './CouncilChecklist';
 import TermSectionClosure from './TermSectionClosure';
 import SubjectFinalGrade from './SubjectFinalGrade';
+import SubjectTermGrade from './SubjectTermGrade';
 import StudentPeriodOutcome from './StudentPeriodOutcome';
 import PendingSubject from './PendingSubject';
 import SchoolPeriodTransitionRule from './SchoolPeriodTransitionRule';
@@ -317,6 +318,12 @@ SubjectFinalGrade.belongsTo(InscriptionSubject, { foreignKey: 'inscriptionSubjec
 SubjectFinalGrade.belongsTo(Plantel, { foreignKey: 'plantelId', as: 'plantel' });
 Plantel.hasMany(SubjectFinalGrade, { foreignKey: 'plantelId', as: 'finalGrades' });
 
+// Subject term grades (per-lapso scores)
+InscriptionSubject.hasMany(SubjectTermGrade, { foreignKey: 'inscriptionSubjectId', as: 'termGrades' });
+SubjectTermGrade.belongsTo(InscriptionSubject, { foreignKey: 'inscriptionSubjectId', as: 'inscriptionSubject' });
+SubjectTermGrade.belongsTo(Term, { foreignKey: 'termId', as: 'term' });
+Term.hasMany(SubjectTermGrade, { foreignKey: 'termId', as: 'termGrades' });
+
 // Student period outcomes
 Inscription.hasOne(StudentPeriodOutcome, { foreignKey: 'inscriptionId', as: 'periodOutcome' });
 StudentPeriodOutcome.belongsTo(Inscription, { foreignKey: 'inscriptionId', as: 'inscription' });
@@ -424,6 +431,7 @@ export {
   CouncilChecklist,
   TermSectionClosure,
   SubjectFinalGrade,
+  SubjectTermGrade,
   StudentPeriodOutcome,
   PendingSubject,
   SchoolPeriodTransitionRule,

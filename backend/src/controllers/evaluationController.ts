@@ -43,6 +43,7 @@ import {
 import { filterActiveGroupSubjects } from '@/services/subjectGroupService';
 import { resolveGradeStatus } from '@/services/gradeEvaluationService';
 import { TermSectionClosureService } from '@/services/termSectionClosureService';
+import { TermGradeSyncService } from '@/services/termGradeSyncService';
 
 export const getMyAssignments = async (req: Request, res: Response) => {
   try {
@@ -602,6 +603,9 @@ export const saveQualification = async (req: Request, res: Response) => {
         });
       }
     }
+
+    // Sync term grades so that boletines and planillas stay consistent
+    await TermGradeSyncService.syncForInscriptionSubject(finalInscriptionSubjectId);
 
     res.json(qualification);
   } catch (error) {
