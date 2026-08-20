@@ -127,6 +127,7 @@ const TermSectionClosurePanel: React.FC<TermSectionClosurePanelProps> = ({
   const sectionsData = sortedStructure.flatMap(pg =>
     (pg.sections || [])
       .filter(s => !s.name.toLowerCase().includes('materia pendiente'))
+      .sort((a, b) => a.name.localeCompare(b.name, 'es'))
       .map(section => ({
         key: `${pg.gradeId}-${section.id}`,
         gradeId: pg.gradeId,
@@ -201,8 +202,8 @@ const TermSectionClosurePanel: React.FC<TermSectionClosurePanelProps> = ({
               type="link"
               loading={togglingKey === rowKey}
               icon={closed
-                ? <UnlockOutlined style={{ color: '#52c41a' }} />
-                : <LockOutlined style={{ color: '#faad14' }} />}
+                ? <LockOutlined style={{ color: '#faad14' }} />
+                : <UnlockOutlined style={{ color: '#52c41a' }} />}
             />
           </Popconfirm>
         );
