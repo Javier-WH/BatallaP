@@ -1031,6 +1031,135 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
     }
   };
 
+  // ── Paste handler: distribute clipboard values across grade cells ──
+  const handleGradePaste = (e: React.ClipboardEvent<HTMLInputElement>, startRow: number, startCol: number) => {
+    if (isReadOnly || isSelectedTermBlocked) return;
+    e.preventDefault();
+
+    const raw = e.clipboardData.getData('text');
+    if (!raw) return;
+
+    // Parse clipboard into a 2D grid (rows separated by \n, columns by \t)
+    const grid: string[][] = raw
+      .split(/\r?\n/)
+      .filter(line => line.trim() !== '')
+      .map(line => line.split(/\t/).map(c => c.trim()));
+
+    if (grid.length === 0) return;
+
+    const isVertical = grid.length > 1 && (grid[0].length === 1 || grid.every(row => row.length === 1));
+    const isHorizontal = grid.length === 1 && grid[0].length > 1;
+
+    // Flatten values into a simple list
+    const values: string[] = isVertical
+      ? grid.map(row => row[0])
+      : isHorizontal
+        ? grid[0]
+        : grid.flat();
+
+    if (values.length === 0) return;
+
+    // Build the list of target cells starting from (startRow, startCol)
+    // Use the same sort order as the render to ensure row indices match
+    const sortedStudents = [...students].sort((a, b) => {
+      const parseDoc = (doc: string) => parseInt((doc || '').replace(/\D/g, ''), 10) || 0;
+      return parseDoc(a.student?.document) - parseDoc(b.student?.document);
+    });
+
+    const targets: { row: number; col: number; enrollment: StudentEnrollment; evalPlanId: number }[] = [];
+
+    if (isVertical || (!isHorizontal && !isVertical)) {
+      for (let i = 0; i < values.length; i++) {
+        const row = startRow + i;
+        const col = startCol;
+        if (row >= sortedStudents.length) break;
+        const enrollment = sortedStudents[row];
+        if (!enrollment || !evaluationPlan[col]) break;
+        targets.push({ row, col, enrollment, evalPlanId: evaluationPlan[col].id });
+      }
+    } else {
+      for (let i = 0; i < values.length; i++) {
+        const row = startRow;
+        const col = startCol + i;
+        if (col >= evaluationPlan.length) break;
+        const enrollment = sortedStudents[row];
+        if (!enrollment || !evaluationPlan[col]) break;
+        targets.push({ row, col, enrollment, evalPlanId: evaluationPlan[col].id });
+      }
+    }
+
+    if (targets.length === 0) return;
+
+    // Parse and validate all values first
+    const parsed: { target: typeof targets[0]; score: number | null }[] = [];
+    let skippedCount = 0;
+
+    for (let i = 0; i < targets.length; i++) {
+      const valStr = values[i].replace(/[^0-9]/g, '');
+      if (valStr === '') { skippedCount++; continue; }
+      const val = parseInt(valStr, 10);
+      if (isNaN(val) || val < 0 || val > maxGrade) { skippedCount++; continue; }
+      parsed.push({ target: targets[i], score: val === 0 ? null : val });
+    }
+
+    if (parsed.length === 0) {
+      if (skippedCount > 0) message.warning(`${skippedCount} valor(es) inválido(s) o vacío(s)`);
+      return;
+    }
+
+    // Optimistic update: update all qualifications in the students state at once
+    setStudents(prev => prev.map(s => {
+      const updates = parsed.filter(p => p.target.enrollment.id === s.id);
+      if (updates.length === 0) return s;
+      const insSub = s.inscriptionSubjects?.[0];
+      if (!insSub) return s;
+      const quals = [...(insSub.qualifications || [])];
+      for (const u of updates) {
+        const idx = quals.findIndex(q => q.evaluationPlanId === u.target.evalPlanId);
+        if (idx >= 0) {
+          quals[idx] = { ...quals[idx], score: u.score ?? 0, isAbsent: false };
+        } else {
+          quals.push({ id: 0, evaluationPlanId: u.target.evalPlanId, score: u.score ?? 0, isAbsent: false, remedialScore: null });
+        }
+      }
+      return { ...s, inscriptionSubjects: [{ ...insSub, qualifications: quals }] };
+    }));
+
+    // Update input elements visually
+    for (const p of parsed) {
+      const inputEl = document.getElementById(`grade-${p.target.row}-${p.target.col}`) as HTMLInputElement | null;
+      if (inputEl) inputEl.value = p.score === null ? '' : padGrade(p.score);
+    }
+
+    // Save all notes to backend in parallel, then refresh once
+    Promise.all(parsed.map(p => {
+      const inscriptionSubjectId = p.target.enrollment.inscriptionSubjects?.[0]?.id;
+      return api.post('/evaluation/qualifications', {
+        evaluationPlanId: p.target.evalPlanId,
+        inscriptionSubjectId,
+        inscriptionId: p.target.enrollment.id,
+        score: p.score === null ? 0 : p.score,
+        isAbsent: false,
+        observations: '',
+      }).catch(() => { /* individual errors swallowed, will be caught by final fetch */ });
+    })).then(() => {
+      // Small delay to ensure React has painted the optimistic update before refetching
+      setTimeout(() => fetchPlanAndStudents(), 100);
+    }).catch(() => {
+      message.error('Error al guardar algunas notas pegadas');
+      fetchPlanAndStudents();
+    });
+
+    // Move focus to the last processed cell
+    const lastTarget = parsed[parsed.length - 1].target;
+    setTimeout(() => {
+      const lastInput = document.getElementById(`grade-${lastTarget.row}-${lastTarget.col}`) as HTMLInputElement | null;
+      if (lastInput) lastInput.focus();
+    }, 0);
+
+    message.success(`${parsed.length} nota(s) pegada(s)${skippedCount > 0 ? `, ${skippedCount} omitida(s)` : ''}`);
+  };
+
   // ── Thematic Component handlers ──────────────────────────────────
   const handleCreateComponent = async (title: string) => {
     if (!selectedAssignmentId || !selectedTerm) return;
@@ -1668,6 +1797,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                                       step={1}
                                       inputMode="numeric"
                                       pattern="[0-9]*"
+                                      onPaste={(e) => handleGradePaste(e, rowIndex, colIndex)}
                                       defaultValue={isAbsent ? '' : (currentScore !== null ? padGrade(currentScore) : '')}
                                       key={`${enrollment.id}-${item.id}${isAbsent ? '-a' : ''}`}
                                       style={{

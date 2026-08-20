@@ -29,6 +29,9 @@ const MainLayout: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
+  const canSeePreinscripcion = user?.roles?.some(r => r === 'Master' || r === 'Administrador');
+  const visiblePeriods = allPeriods.filter(p => p.status !== 'preinscripcion' || canSeePreinscripcion);
+
   const handleLogout = () => {
     Modal.confirm({
       title: <span className="text-slate-900 font-black">¿Cerrar sesión?</span>,
@@ -211,7 +214,7 @@ const MainLayout: React.FC = () => {
               <Dropdown
                 trigger={['click']}
                 menu={{
-                  items: allPeriods.map(p => ({
+                  items: visiblePeriods.map(p => ({
                     key: String(p.id),
                     label: (
                       <div className="flex items-center justify-between gap-3 py-0.5">
