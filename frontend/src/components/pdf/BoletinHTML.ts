@@ -297,7 +297,7 @@ export const generateBoletinHTML = (data: BoletinHTMLData): string => {
     background:var(--navy);
     background-image:linear-gradient(135deg, var(--navy) 0%, var(--navy-deep) 100%);
     color:#fff;
-    padding:16px 22px;
+    padding:15px 22px;
     display:flex;
     align-items:center;
     justify-content:space-between;
@@ -354,8 +354,8 @@ export const generateBoletinHTML = (data: BoletinHTMLData): string => {
 
   /* Student card */
   .student{
-    margin:15px 22px 7px;
-    padding:15px 16px;
+    margin:14px 22px 7px;
+    padding:14px 16px;
     background:var(--card);
     border:1px solid var(--line);
     border-left:4px solid var(--gold);
@@ -501,7 +501,7 @@ export const generateBoletinHTML = (data: BoletinHTMLData): string => {
 
   /* Signatures */
   .signatures{
-    margin:15px 22px 17px;
+    margin:14px 22px 16px;
     display:grid;
     grid-template-columns:repeat(3,1fr);
     gap:12px;
@@ -509,7 +509,7 @@ export const generateBoletinHTML = (data: BoletinHTMLData): string => {
   }
   .signatures .sig .line{
     border-top:1px solid var(--ink);
-    margin:22px 7px 3px;
+    margin:20px 7px 3px;
   }
   .signatures .sig .role{
     font-size:8px;
