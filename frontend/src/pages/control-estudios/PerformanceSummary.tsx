@@ -539,27 +539,56 @@ const PerformanceSummary: React.FC = () => {
               children: (
                 <>
                   {/* Selectores */}
-                  <Row gutter={[12, 12]} style={{ marginBottom: 16 }}>
-                    <Col xs={24} sm={8}>
-                      <label style={{ display: 'block', fontWeight: 700, marginBottom: 6, fontSize: 13 }}>Período</label>
-                      <Select placeholder="Período" style={{ width: '100%' }} value={boletinPeriodId}
-                        onChange={(v: number) => { setBoletinPeriodId(v); setBoletinGradeId(null); setBoletinSectionId(null); }}
-                        options={allPeriods.map(p => ({ label: `${p.name}${p.status === 'activo' ? ' (activo)' : ''}`, value: p.id }))} />
-                    </Col>
-                    <Col xs={24} sm={8}>
-                      <label style={{ display: 'block', fontWeight: 700, marginBottom: 6, fontSize: 13 }}>Grado</label>
-                      <Select placeholder="Grado" style={{ width: '100%' }} value={boletinGradeId}
-                        disabled={!boletinPeriodId}
-                        onChange={(v: number) => { setBoletinGradeId(v); setBoletinSectionId(null); }}
-                        options={structure.map(s => ({ label: s.grade.name, value: s.grade.id }))} />
-                    </Col>
-                    <Col xs={24} sm={8}>
-                      <label style={{ display: 'block', fontWeight: 700, marginBottom: 6, fontSize: 13 }}>Sección</label>
-                      <Select placeholder="Sección" style={{ width: '100%' }} value={boletinSectionId}
-                        disabled={!boletinGradeId} onChange={(v: number) => setBoletinSectionId(v)}
-                        options={boletinAvailableSections.map(sec => ({ label: sec.name, value: sec.id }))} />
-                    </Col>
-                  </Row>
+                  <div style={{ marginBottom: 16 }}>
+                    <label style={{ display: 'block', fontWeight: 700, marginBottom: 6, fontSize: 13 }}>Período</label>
+                    <Select placeholder="Período" style={{ width: '100%', maxWidth: 400 }} value={boletinPeriodId}
+                      onChange={(v: number) => { setBoletinPeriodId(v); setBoletinGradeId(null); setBoletinSectionId(null); }}
+                      options={allPeriods.map(p => ({ label: `${p.name}${p.status === 'activo' ? ' (activo)' : ''}`, value: p.id }))} />
+                  </div>
+
+                  <div style={{ marginBottom: 16 }}>
+                    <label style={{ display: 'block', fontWeight: 700, marginBottom: 6, fontSize: 13 }}>Grado</label>
+                    {structure.length === 0 ? (
+                      <Text type="secondary" style={{ fontSize: 13 }}>
+                        {boletinPeriodId ? 'No hay grados configurados para este período' : 'Primero seleccione un período'}
+                      </Text>
+                    ) : (
+                      <Space wrap>
+                        {structure.map(s => (
+                          <Button
+                            key={s.grade.id}
+                            type={boletinGradeId === s.grade.id ? 'primary' : 'default'}
+                            onClick={() => { setBoletinGradeId(s.grade.id); setBoletinSectionId(null); }}
+                            style={{ borderRadius: 8, fontWeight: 600 }}
+                          >
+                            {s.grade.name}
+                          </Button>
+                        ))}
+                      </Space>
+                    )}
+                  </div>
+
+                  <div style={{ marginBottom: 16 }}>
+                    <label style={{ display: 'block', fontWeight: 700, marginBottom: 6, fontSize: 13 }}>Sección</label>
+                    {!boletinGradeId ? (
+                      <Text type="secondary" style={{ fontSize: 13 }}>Seleccione un grado primero</Text>
+                    ) : boletinAvailableSections.length === 0 ? (
+                      <Text type="secondary" style={{ fontSize: 13 }}>No hay secciones configuradas para este grado</Text>
+                    ) : (
+                      <Space wrap>
+                        {boletinAvailableSections.map(sec => (
+                          <Button
+                            key={sec.id}
+                            type={boletinSectionId === sec.id ? 'primary' : 'default'}
+                            onClick={() => setBoletinSectionId(sec.id)}
+                            style={{ borderRadius: 8, fontWeight: 600 }}
+                          >
+                            {sec.name}
+                          </Button>
+                        ))}
+                      </Space>
+                    )}
+                  </div>
 
                   {!boletinPeriodId || !boletinGradeId || !boletinSectionId ? (
                     <Empty description="Seleccione período, grado y sección para ver los estudiantes" />
