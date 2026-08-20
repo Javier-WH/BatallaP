@@ -89,9 +89,7 @@ const buildStudentSheet = (
   const guideTeacher = escapeHtml(student.guideTeacher || '—');
 
   // Logo HTML
-  const logoHtml = data.logoBase64
-    ? `<img src="${data.logoBase64}" class="logo" alt="logo" />`
-    : '';
+  const logoHtml = '';
 
   // Build grade rows
   const rows = student.subjects.map((subj, idx) => {
@@ -292,12 +290,12 @@ export const generateBoletinHTML = (data: BoletinHTMLData): string => {
     box-shadow:0 6px 20px rgba(16,28,51,0.12);
   }
 
-  /* Masthead — compact */
+  /* Masthead */
   .masthead{
     background:var(--navy);
     background-image:linear-gradient(135deg, var(--navy) 0%, var(--navy-deep) 100%);
     color:#fff;
-    padding:10px 18px;
+    padding:16px 22px;
     display:flex;
     align-items:center;
     justify-content:space-between;
@@ -306,11 +304,11 @@ export const generateBoletinHTML = (data: BoletinHTMLData): string => {
   .masthead-left{
     display:flex;
     align-items:center;
-    gap:10px;
+    gap:12px;
   }
   .masthead .logo{
-    width:36px;
-    height:36px;
+    width:42px;
+    height:42px;
     object-fit:contain;
     flex-shrink:0;
   }
@@ -319,7 +317,7 @@ export const generateBoletinHTML = (data: BoletinHTMLData): string => {
     flex-direction:column;
   }
   .masthead .eyebrow{
-    font-size:8px;
+    font-size:10px;
     letter-spacing:.12em;
     text-transform:uppercase;
     color:var(--gold-light);
@@ -329,117 +327,117 @@ export const generateBoletinHTML = (data: BoletinHTMLData): string => {
   .masthead h1{
     font-family:'Fraunces', serif;
     font-weight:600;
-    font-size:16px;
+    font-size:19px;
     margin:0;
   }
   .masthead .period{
     text-align:right;
-    font-size:8px;
+    font-size:10px;
     line-height:1.4;
     color:#E9E4D6;
   }
   .masthead .period strong{
     display:block;
     color:#fff;
-    font-size:10px;
+    font-size:12px;
     font-family:'Fraunces', serif;
     font-weight:600;
   }
   .masthead .period .emit-date{
     display:block;
-    font-size:7px;
+    font-size:9px;
     color:var(--gold-light);
     margin-top:1px;
   }
 
-  /* Student card — compact */
+  /* Student card */
   .student{
-    margin:8px 18px 4px;
-    padding:8px 12px;
+    margin:15px 22px 7px;
+    padding:15px 16px;
     background:var(--card);
     border:1px solid var(--line);
-    border-left:3px solid var(--gold);
+    border-left:4px solid var(--gold);
     display:grid;
     grid-template-columns:1fr 1fr;
-    gap:4px 20px;
+    gap:6px 24px;
   }
-  .student .field{ font-size:9px; }
+  .student .field{ font-size:11px; }
   .student .label{
     text-transform:uppercase;
-    letter-spacing:.06em;
-    font-size:7px;
+    letter-spacing:.07em;
+    font-size:8px;
     color:var(--ink-soft);
     font-weight:600;
     margin-bottom:1px;
   }
   .student .value{
-    font-size:10px;
+    font-size:12px;
     font-weight:600;
     color:var(--navy);
   }
   .student .value.big{
     font-family:'Fraunces', serif;
-    font-size:12px;
+    font-size:14px;
   }
 
-  /* Grades table — compact */
+  /* Grades table */
   .grades{
-    margin:6px 18px 0;
+    margin:12px 22px 0;
   }
   .grades table{
     width:100%;
     border-collapse:collapse;
     background:var(--card);
-    font-size:9px;
+    font-size:11px;
   }
   .grades thead tr.group th{
     background:var(--navy);
     color:#fff;
-    font-size:7px;
-    letter-spacing:.06em;
+    font-size:8px;
+    letter-spacing:.07em;
     text-transform:uppercase;
     font-weight:600;
-    padding:3px 5px;
+    padding:5px 6px;
     text-align:center;
     border-right:1px solid rgba(255,255,255,0.14);
   }
   .grades thead tr.group th.subject-group{
     text-align:left;
-    padding-left:8px;
+    padding-left:10px;
   }
   .grades thead tr.cols th{
     background:#EDEAE0;
     color:var(--navy);
-    font-size:8px;
+    font-size:9px;
     font-weight:700;
-    padding:3px 5px;
+    padding:5px 6px;
     text-align:center;
     border-bottom:2px solid var(--gold);
     border-right:1px solid var(--line);
   }
-  .grades thead tr.cols th.subject{ text-align:left; padding-left:8px; }
+  .grades thead tr.cols th.subject{ text-align:left; padding-left:10px; }
   .grades tbody td{
-    padding:3px 5px;
+    padding:5px 6px;
     text-align:center;
     border-bottom:1px solid var(--line);
     border-right:1px solid var(--line);
     font-family:'IBM Plex Mono', monospace;
-    font-size:9px;
+    font-size:11px;
     color:var(--ink);
   }
   .grades tbody td.subject{
     text-align:left;
-    padding-left:8px;
+    padding-left:10px;
     font-family:'Inter', sans-serif;
     font-weight:600;
     color:var(--ink);
-    font-size:9px;
+    font-size:11px;
   }
   .grades tbody td.teacher-cell{
     text-align:left;
-    padding-left:6px;
+    padding-left:7px;
     font-family:'Inter', sans-serif;
-    font-size:7px;
+    font-size:8px;
     color:var(--ink-soft);
     font-weight:400;
   }
@@ -455,86 +453,85 @@ export const generateBoletinHTML = (data: BoletinHTMLData): string => {
     color:var(--gold);
   }
 
-  /* Summary — compact */
+  /* Summary */
   .summary{
-    margin:6px 18px 0;
+    margin:12px 22px 0;
     display:grid;
-    grid-template-columns:repeat(auto-fit, minmax(70px, 1fr));
-    gap:4px;
+    grid-template-columns:repeat(auto-fit, minmax(80px, 1fr));
+    gap:6px;
   }
   .summary .stat{
     background:var(--navy);
     color:#fff;
-    padding:5px 6px;
+    padding:7px 7px;
     text-align:center;
   }
   .summary .stat .n{
     font-family:'Fraunces', serif;
     font-weight:600;
-    font-size:14px;
+    font-size:16px;
     color:var(--gold-light);
   }
   .summary .stat .l{
-    font-size:6px;
+    font-size:7px;
     text-transform:uppercase;
-    letter-spacing:.04em;
+    letter-spacing:.05em;
     color:#C7CEDC;
     margin-top:1px;
   }
 
-  /* Observations — compact */
+  /* Observations */
   .observations{
-    margin:6px 18px 0;
-    padding:5px 10px;
+    margin:12px 22px 0;
+    padding:10px 12px;
     background:var(--card);
     border:1px solid var(--line);
-    min-height:20px;
+    min-height:30px;
   }
   .observations .label{
     text-transform:uppercase;
-    letter-spacing:.06em;
-    font-size:7px;
+    letter-spacing:.07em;
+    font-size:8px;
     color:var(--ink-soft);
     font-weight:600;
     margin-bottom:2px;
   }
 
-  /* Signatures — compact */
+  /* Signatures */
   .signatures{
-    margin:8px 18px 10px;
+    margin:15px 22px 17px;
     display:grid;
     grid-template-columns:repeat(3,1fr);
-    gap:10px;
+    gap:12px;
     text-align:center;
   }
   .signatures .sig .line{
     border-top:1px solid var(--ink);
-    margin:14px 6px 3px;
+    margin:21px 7px 3px;
   }
   .signatures .sig .role{
-    font-size:7px;
+    font-size:8px;
     text-transform:uppercase;
-    letter-spacing:.04em;
+    letter-spacing:.05em;
     color:var(--ink-soft);
     font-weight:600;
   }
   .signatures .sig .who{
-    font-size:9px;
+    font-size:11px;
     font-weight:600;
     color:var(--navy);
     margin-top:1px;
   }
 
   @media print{
-    @page{ size:Letter portrait; margin:0.3in; }
     body{ background:#fff; padding:0; }
     .sheet{
       box-shadow:none;
       max-width:none;
+      width:100%;
       margin:0;
-      page-break-after:always;
+      page-break-inside:avoid;
     }
-    .sheet:last-child{ page-break-after:auto; }
   }
 </style>
 </head>
