@@ -109,12 +109,13 @@ const buildStudentSheet = (
     const finalCls = finalIsHigh ? 'acum high' : finalVal === '—' ? 'dash' : 'acum';
     const finalCell = `<td class="${finalCls}">${finalVal}</td>`;
 
-    const teacherHtml = teacher ? `<span class="teacher">${teacher}</span>` : '';
+    const teacherHtml = teacher ? escapeHtml(subj.teacherName || '') : '—';
 
     return `<tr${isEven ? ' class="alt"' : ''}>
-      <td class="subject">${subjName}${teacherHtml}</td>
+      <td class="subject">${subjName}</td>
       ${lapseCells}
       ${finalCell}
+      <td class="teacher-cell">${teacherHtml}</td>
     </tr>`;
   }).join('');
 
@@ -194,22 +195,19 @@ const buildStudentSheet = (
             <th class="subject-group">Asignatura</th>
             <th colspan="${terms.length}">Calificaciones por lapso</th>
             <th>Definitiva</th>
+            <th>Docente</th>
           </tr>
           <tr class="cols">
-            <th class="subject">Docente</th>
+            <th class="subject">&nbsp;</th>
             ${termShortHeaders}
             <th>Def.</th>
+            <th>Nombre</th>
           </tr>
         </thead>
         <tbody>
           ${rows}
         </tbody>
       </table>
-    </div>
-
-    <div class="legend">
-      <span><b>Def.</b> — definitiva de la asignatura</span>
-      <span><b>—</b> — sin notas registradas</span>
     </div>
 
     <div class="summary">
@@ -418,6 +416,14 @@ export const generateBoletinHTML = (data: BoletinHTMLData): string => {
     font-size:11px;
     color:var(--ink-soft);
     margin-top:1px;
+  }
+  .grades tbody td.teacher-cell{
+    text-align:left;
+    padding-left:10px;
+    font-family:'Inter', sans-serif;
+    font-size:10px;
+    color:var(--ink-soft);
+    font-weight:400;
   }
   .grades tbody tr.alt td{ background:#F7F4EC; }
   .grades tbody td.acum{

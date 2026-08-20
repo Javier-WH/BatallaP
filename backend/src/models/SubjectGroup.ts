@@ -4,6 +4,9 @@ import sequelize from '@/config/database';
 interface SubjectGroupAttributes {
   id: number;
   name: string;
+  bulletinAbbreviation?: string | null;
+  longAbbreviation?: string | null;
+  shortAbbreviation?: string | null;
 }
 
 interface SubjectGroupCreationAttributes extends Optional<SubjectGroupAttributes, 'id'> { }
@@ -11,6 +14,9 @@ interface SubjectGroupCreationAttributes extends Optional<SubjectGroupAttributes
 class SubjectGroup extends Model<SubjectGroupAttributes, SubjectGroupCreationAttributes> implements SubjectGroupAttributes {
   public id!: number;
   public name!: string;
+  public bulletinAbbreviation?: string | null;
+  public longAbbreviation?: string | null;
+  public shortAbbreviation?: string | null;
 
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
@@ -27,6 +33,18 @@ SubjectGroup.init(
       type: DataTypes.STRING,
       allowNull: false,
       unique: true,
+    },
+    bulletinAbbreviation: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    longAbbreviation: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    shortAbbreviation: {
+      type: DataTypes.STRING,
+      allowNull: true,
     },
   },
   {

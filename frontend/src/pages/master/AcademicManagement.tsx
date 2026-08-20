@@ -122,7 +122,11 @@ interface Grade extends BaseCatalogItem {
 
 type Section = BaseCatalogItem;
 
-type SubjectGroup = BaseCatalogItem;
+type SubjectGroup = BaseCatalogItem & {
+  bulletinAbbreviation?: string | null;
+  longAbbreviation?: string | null;
+  shortAbbreviation?: string | null;
+};
 
 interface Subject extends BaseCatalogItem {
   abbreviation?: string | null;
@@ -442,14 +446,24 @@ const AcademicManagement: React.FC = () => {
 
   const openEditSubjectGroup = (group: SubjectGroup) => {
     setEditingSubjectGroup(group);
-    editSubjectGroupForm.setFieldsValue({ name: group.name });
+    editSubjectGroupForm.setFieldsValue({
+      name: group.name,
+      bulletinAbbreviation: group.bulletinAbbreviation || '',
+      longAbbreviation: group.longAbbreviation || '',
+      shortAbbreviation: group.shortAbbreviation || '',
+    });
     setEditSubjectGroupVisible(true);
   };
 
-  const handleEditSubjectGroup = async (values: { name: string }) => {
+  const handleEditSubjectGroup = async (values: { name: string; bulletinAbbreviation?: string; longAbbreviation?: string; shortAbbreviation?: string }) => {
     if (!editingSubjectGroup) return;
     try {
-      const payload = { name: (values.name || '').trim() };
+      const payload = {
+        name: (values.name || '').trim(),
+        bulletinAbbreviation: (values.bulletinAbbreviation || '').trim() || null,
+        longAbbreviation: (values.longAbbreviation || '').trim() || null,
+        shortAbbreviation: (values.shortAbbreviation || '').trim() || null,
+      };
       await api.put(`/academic/subject-groups/${editingSubjectGroup.id}`, payload);
       message.success('Grupo actualizado');
       setEditSubjectGroupVisible(false);
@@ -1623,7 +1637,12 @@ const AcademicManagement: React.FC = () => {
                           layout="inline"
                           onFinish={async (v) => {
                             try {
-                              const payload = { name: (v.name || '').trim() };
+                              const payload = {
+                                name: (v.name || '').trim(),
+                                bulletinAbbreviation: (v.bulletinAbbreviation || '').trim() || null,
+                                longAbbreviation: (v.longAbbreviation || '').trim() || null,
+                                shortAbbreviation: (v.shortAbbreviation || '').trim() || null,
+                              };
                               await api.post('/academic/subject-groups', payload);
                               message.success('Grupo creado satisfactoriamente');
                               subjectGroupForm.resetFields();
@@ -1639,6 +1658,15 @@ const AcademicManagement: React.FC = () => {
                           <Form.Item name="name" rules={[{ required: true, message: 'Requerido' }]} style={{ width: 280 }}>
                             <Input placeholder="Nombre del grupo (ej. Área Técnica)" size="middle" style={{ borderRadius: 8 }} />
                           </Form.Item>
+                          <Form.Item name="bulletinAbbreviation" style={{ width: 220 }}>
+                            <Input placeholder="Abreviatura Boletín" size="middle" style={{ borderRadius: 8 }} />
+                          </Form.Item>
+                          <Form.Item name="longAbbreviation" style={{ width: 220 }}>
+                            <Input placeholder="Abreviatura Larga" size="middle" style={{ borderRadius: 8 }} />
+                          </Form.Item>
+                          <Form.Item name="shortAbbreviation" style={{ width: 200 }}>
+                            <Input placeholder="Abreviatura Corta" size="middle" style={{ borderRadius: 8 }} />
+                          </Form.Item>
                           <Button type="primary" htmlType="submit" icon={<PlusOutlined />} style={{ borderRadius: 8, height: 32 }}>Crear Grupo</Button>
                         </Form>
 
@@ -1649,6 +1677,9 @@ const AcademicManagement: React.FC = () => {
                           size="middle"
                           columns={[
                             { title: 'Identificador del Grupo', dataIndex: 'name', render: (t) => <Text style={{ fontWeight: 600 }}>{t}</Text> },
+                            { title: 'Abrev. Boletín', dataIndex: 'bulletinAbbreviation', render: (t: string | null) => t ? <Tag color="orange">{t}</Tag> : <Text type="secondary">—</Text> },
+                            { title: 'Abrev. Larga', dataIndex: 'longAbbreviation', render: (t: string | null) => t ? <Tag color="blue">{t}</Tag> : <Text type="secondary">—</Text> },
+                            { title: 'Abrev. Corta', dataIndex: 'shortAbbreviation', render: (t: string | null) => t ? <Tag color="purple">{t}</Tag> : <Text type="secondary">—</Text> },
                             {
                               title: 'Gestión',
                               key: 'actions',
@@ -1893,6 +1924,27 @@ const AcademicManagement: React.FC = () => {
               rules={[{ required: true, message: 'Requerido' }]}
             >
               <Input placeholder="Nombre del grupo" size="large" />
+            </Form.Item>
+            <Form.Item
+              name="bulletinAbbreviation"
+              label={<Text style={{ fontWeight: 700 }}>Abreviatura Boletín</Text>}
+              tooltip="Nombre a mostrar en el boletín. Si se deja vacío, se usa el nombre normal."
+            >
+              <Input placeholder="Ej: Grupos de Creación" size="large" />
+            </Form.Item>
+            <Form.Item
+              name="longAbbreviation"
+              label={<Text style={{ fontWeight: 700 }}>Abreviatura Larga</Text>}
+              tooltip="Se usa en resúmenes finales. Si se deja vacío, se usa el nombre normal."
+            >
+              <Input placeholder="Ej: Área de Participación" size="large" />
+            </Form.Item>
+            <Form.Item
+              name="shortAbbreviation"
+              label={<Text style={{ fontWeight: 700 }}>Abreviatura Corta</Text>}
+              tooltip="Se usa en resúmenes finales (versión corta). Si se deja vacío, se usa el nombre normal."
+            >
+              <Input placeholder="Ej: PGCRP" size="large" />
             </Form.Item>
             <Button type="primary" htmlType="submit" block size="large" style={{
               height: 48,

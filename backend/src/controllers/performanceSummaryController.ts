@@ -1211,7 +1211,7 @@ export const getBoletinData = async (req: Request, res: Response) => {
     const students = inscriptions.map((ins: any) => {
       const activeInscriptionSubjects = filterActiveGroupSubjects(ins.inscriptionSubjects || []);
       const insSubs = sortSubjectsByOrder(
-        activeInscriptionSubjects.filter((is: any) => !is.subject?.subjectGroupId),
+        activeInscriptionSubjects,
         (is: any) => is.subjectId,
         (is: any) => is.subject?.name || '',
         subjectOrderMap,
@@ -1248,9 +1248,13 @@ export const getBoletinData = async (req: Request, res: Response) => {
           finalScore = Math.round((total / termCount) * 100) / 100;
         }
 
+        const subjectName = is.subject?.subjectGroupId
+          ? (is.subject?.subjectGroup?.bulletinAbbreviation || is.subject?.subjectGroup?.name || 'Participación en Grupos de Creación, Recreación y Producción')
+          : (is.subject?.name || '');
+
         return {
           id: is.subjectId,
-          name: is.subject?.name || '',
+          name: subjectName,
           teacherName: teacherMap.get(is.subjectId) || '',
           usesLiteralGrades: is.subject?.usesLiteralGrades || false,
           lapsos: terms.map((t: any) => ({

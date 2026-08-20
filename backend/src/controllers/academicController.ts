@@ -508,7 +508,18 @@ export const createSubjectGroup = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Ya existe un grupo de materias con ese nombre' });
     }
 
-    const group = await SubjectGroup.create({ name });
+    const { bulletinAbbreviation, longAbbreviation, shortAbbreviation } = req.body as {
+      bulletinAbbreviation?: string | null;
+      longAbbreviation?: string | null;
+      shortAbbreviation?: string | null;
+    };
+
+    const group = await SubjectGroup.create({
+      name,
+      bulletinAbbreviation: bulletinAbbreviation?.trim() || null,
+      longAbbreviation: longAbbreviation?.trim() || null,
+      shortAbbreviation: shortAbbreviation?.trim() || null,
+    });
     res.json(group);
   } catch (error) {
     res.status(500).json({ error: 'Error creando grupo de materias' });
@@ -535,7 +546,21 @@ export const updateSubjectGroup = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Ya existe un grupo de materias con ese nombre' });
     }
 
-    await SubjectGroup.update({ name }, { where: { id } });
+    const { bulletinAbbreviation, longAbbreviation, shortAbbreviation } = req.body as {
+      bulletinAbbreviation?: string | null;
+      longAbbreviation?: string | null;
+      shortAbbreviation?: string | null;
+    };
+
+    await SubjectGroup.update(
+      {
+        name,
+        bulletinAbbreviation: bulletinAbbreviation?.trim() || null,
+        longAbbreviation: longAbbreviation?.trim() || null,
+        shortAbbreviation: shortAbbreviation?.trim() || null,
+      },
+      { where: { id } }
+    );
     res.json({ message: 'Subject group updated' });
   } catch (error) {
     res.status(500).json({ error: 'Error updating subject group' });
