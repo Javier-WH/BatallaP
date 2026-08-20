@@ -21,8 +21,6 @@ interface Section { id: number; name: string; }
 interface PeriodGradeStructure { id: number; grade: Grade; sections: Section[]; }
 interface SchoolPeriod { id: number; period: string; name: string; status: 'preinscripcion' | 'activo' | 'historico' | 'externo'; isActive: boolean; }
 
-type Scope = 'all' | 'section' | 'single';
-
 const PerformanceSummary: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -37,15 +35,15 @@ const PerformanceSummary: React.FC = () => {
   const [userOverrodeTemplate, setUserOverrodeTemplate] = useState(false);
 
   // boletin tab state
-  const [boletinScope, setBoletinScope] = useState<Scope>('section');
   const [boletinPeriodId, setBoletinPeriodId] = useState<number | null>(null);
   const [boletinGradeId, setBoletinGradeId] = useState<number | null>(null);
   const [boletinSectionId, setBoletinSectionId] = useState<number | null>(null);
-  const [boletinInscriptionId, setBoletinInscriptionId] = useState<number | null>(null);
+  const [boletinStudents, setBoletinStudents] = useState<{ inscriptionId: number; firstName: string; lastName: string; document: string }[]>([]);
+  const [boletinSelectedInscriptionId, setBoletinSelectedInscriptionId] = useState<number | null>(null);
   const [boletinLoading, setBoletinLoading] = useState(false);
+  const [boletinBatchLoading, setBoletinBatchLoading] = useState(false);
   const [boletinPdfUrl, setBoletinPdfUrl] = useState<string | null>(null);
   const [boletinData, setBoletinData] = useState<BoletinData | null>(null);
-  const [boletinStudentOptions, setBoletinStudentOptions] = useState<{ label: string; value: number }[]>([]);
   const [letterGrades, setLetterGrades] = useState<LetterGrade[]>([]);
 
   // certified tab state
@@ -58,6 +56,14 @@ const PerformanceSummary: React.FC = () => {
 
   const boletinSelectedGrade = structure.find(s => s.grade.id === boletinGradeId);
   const boletinAvailableSections = boletinSelectedGrade?.sections || [];
+
+  const cleanupBoletinPdf = useCallback(() => {
+    setBoletinPdfUrl(prev => {
+      if (prev) URL.revokeObjectURL(prev);
+      return null;
+    });
+    setBoletinData(null);
+  }, []);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -134,27 +140,44 @@ const PerformanceSummary: React.FC = () => {
     }).catch(() => { /* ignore */ });
   }, []);
 
-  // Load student options for boletin tab
+  // Load students for boletin tab when section is selected
   useEffect(() => {
-    if (boletinScope !== 'single' || !boletinPeriodId || !boletinGradeId) {
-      setBoletinStudentOptions([]);
-      setBoletinInscriptionId(null);
+    if (!boletinPeriodId || !boletinGradeId || !boletinSectionId) {
+      setBoletinStudents([]);
+      setBoletinSelectedInscriptionId(null);
+      cleanupBoletinPdf();
       return;
     }
     let cancelled = false;
+    cleanupBoletinPdf();
+    setBoletinSelectedInscriptionId(null);
     api.get('/inscriptions', {
-      params: { schoolPeriodId: boletinPeriodId, gradeId: boletinGradeId, sectionId: boletinSectionId || undefined },
+      params: { schoolPeriodId: boletinPeriodId, gradeId: boletinGradeId, sectionId: boletinSectionId },
     }).then((res) => {
       if (cancelled) return;
       const list = (res.data || []).map((ins: any) => ({
-        label: `${ins.student?.lastName || ''} ${ins.student?.firstName || ''} — ${ins.section?.name || ''} (C.I. ${ins.student?.document || '—'})`,
-        value: ins.id,
-      }));
-      setBoletinStudentOptions(list);
-    }).catch(() => { if (!cancelled) setBoletinStudentOptions([]); });
-    setBoletinInscriptionId(null);
+        inscriptionId: ins.id,
+        firstName: ins.student?.firstName || '',
+        lastName: ins.student?.lastName || '',
+        document: ins.student?.document || '',
+      })).sort((a: any, b: any) =>
+        (a.lastName || '').localeCompare(b.lastName || '', 'es') ||
+        (a.firstName || '').localeCompare(b.firstName || '', 'es')
+      );
+      setBoletinStudents(list);
+    }).catch(() => { if (!cancelled) setBoletinStudents([]); });
     return () => { cancelled = true; };
-  }, [boletinScope, boletinPeriodId, boletinGradeId, boletinSectionId]);
+  }, [boletinPeriodId, boletinGradeId, boletinSectionId, cleanupBoletinPdf]);
+
+  // Cleanup PDF URL on unmount
+  useEffect(() => {
+    return () => {
+      setBoletinPdfUrl(prev => {
+        if (prev) URL.revokeObjectURL(prev);
+        return null;
+      });
+    };
+  }, []);
 
   // Load templates for certified tab
   useEffect(() => {
@@ -218,48 +241,78 @@ const PerformanceSummary: React.FC = () => {
   const availableSections = selectedGrade?.sections || [];
 
   // --- boletin handlers ---
-  const generateBoletin = useCallback(async () => {
-    if (!boletinPeriodId || !boletinGradeId) { message.warning('Seleccione período y grado'); return; }
-    if (boletinScope === 'section' && !boletinSectionId) { message.warning('Seleccione una sección'); return; }
-    if (boletinScope === 'single' && !boletinInscriptionId) { message.warning('Seleccione un estudiante'); return; }
+  const generateBoletinPdf = useCallback(async (params: { schoolPeriodId: number; gradeId: number; sectionId?: number; inscriptionId?: number }) => {
+    const res = await api.get('/performance-summary/boletin-data', { params });
+    const data = { ...res.data, letterGrades } as BoletinData;
+    if (!data.students || data.students.length === 0) {
+      message.warning('No se encontraron estudiantes con los criterios seleccionados');
+      return null;
+    }
+    const doc = <BoletinPDF data={data} />;
+    const blob = await pdf(doc).toBlob();
+    return { url: URL.createObjectURL(blob), data };
+  }, [letterGrades]);
 
+  const handlePreviewStudent = useCallback(async (inscriptionId: number) => {
+    if (!boletinPeriodId || !boletinGradeId) return;
+    setBoletinSelectedInscriptionId(inscriptionId);
     setBoletinLoading(true);
-    setBoletinPdfUrl(null);
+    cleanupBoletinPdf();
     try {
-      const params: any = { schoolPeriodId: boletinPeriodId, gradeId: boletinGradeId };
-      if (boletinScope === 'section') params.sectionId = boletinSectionId;
-      if (boletinScope === 'single') params.inscriptionId = boletinInscriptionId;
-
-      const res = await api.get('/performance-summary/boletin-data', { params });
-      const data = { ...res.data, letterGrades } as BoletinData;
-
-      if (!data.students || data.students.length === 0) {
-        message.warning('No se encontraron estudiantes con los criterios seleccionados');
-        setBoletinData(null);
-        return;
+      const result = await generateBoletinPdf({
+        schoolPeriodId: boletinPeriodId,
+        gradeId: boletinGradeId,
+        sectionId: boletinSectionId || undefined,
+        inscriptionId,
+      });
+      if (result) {
+        setBoletinPdfUrl(result.url);
+        setBoletinData(result.data);
       }
-
-      setBoletinData(data);
-      const doc = <BoletinPDF data={data} />;
-      const blob = await pdf(doc).toBlob();
-      const url = URL.createObjectURL(blob);
-      setBoletinPdfUrl(url);
     } catch (error) {
-      console.error('[Boletin] Error:', error);
-      message.error('Error al generar el boletín');
+      console.error('[Boletin] Error al previsualizar:', error);
+      message.error('Error al generar la vista previa del boletín');
     } finally { setBoletinLoading(false); }
-  }, [boletinPeriodId, boletinGradeId, boletinSectionId, boletinInscriptionId, boletinScope, letterGrades]);
+  }, [boletinPeriodId, boletinGradeId, boletinSectionId, generateBoletinPdf, cleanupBoletinPdf]);
 
-  const downloadBoletin = useCallback(() => {
+  const handleEmitSection = useCallback(async () => {
+    if (!boletinPeriodId || !boletinGradeId || !boletinSectionId) {
+      message.warning('Seleccione período, grado y sección');
+      return;
+    }
+    setBoletinBatchLoading(true);
+    cleanupBoletinPdf();
+    setBoletinSelectedInscriptionId(null);
+    try {
+      const result = await generateBoletinPdf({
+        schoolPeriodId: boletinPeriodId,
+        gradeId: boletinGradeId,
+        sectionId: boletinSectionId,
+      });
+      if (result) {
+        setBoletinPdfUrl(result.url);
+        setBoletinData(result.data);
+        message.success(`Se generaron ${result.data.students.length} boletín(es)`);
+      }
+    } catch (error) {
+      console.error('[Boletin] Error al emitir sección:', error);
+      message.error('Error al generar los boletines de la sección');
+    } finally { setBoletinBatchLoading(false); }
+  }, [boletinPeriodId, boletinGradeId, boletinSectionId, generateBoletinPdf, cleanupBoletinPdf]);
+
+  const handleDownloadBoletin = useCallback(() => {
     if (boletinPdfUrl) {
       const a = document.createElement('a');
       a.href = boletinPdfUrl;
-      a.download = `boletin-${boletinGradeId}-${boletinScope}.pdf`;
+      const studentLabel = boletinSelectedInscriptionId
+        ? `estudiante-${boletinSelectedInscriptionId}`
+        : `seccion-${boletinSectionId}`;
+      a.download = `boletin-${studentLabel}.pdf`;
       document.body.appendChild(a);
       a.click();
       a.remove();
     }
-  }, [boletinPdfUrl, boletinGradeId, boletinScope]);
+  }, [boletinPdfUrl, boletinSelectedInscriptionId, boletinSectionId]);
 
   // --- certified handlers ---
   const certSearch = useCallback(async (query: string) => {
@@ -485,84 +538,121 @@ const PerformanceSummary: React.FC = () => {
               ),
               children: (
                 <>
-                  {!boletinPdfUrl ? (
-                    <div style={{ maxWidth: 500, margin: '0 auto' }}>
-                      <div style={{ marginBottom: 16 }}>
-                        <label style={{ display: 'block', fontWeight: 700, marginBottom: 6 }}>Modo de generación</label>
-                        <Radio.Group value={boletinScope} onChange={(e) => setBoletinScope(e.target.value)}>
-                          <Radio.Button value="all">Todos</Radio.Button>
-                          <Radio.Button value="section">Por Sección</Radio.Button>
-                          <Radio.Button value="single">Estudiante</Radio.Button>
-                        </Radio.Group>
-                      </div>
-                      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
-                        <div style={{ flex: '1 1 200px' }}>
-                          <label style={{ display: 'block', fontWeight: 700, marginBottom: 6, fontSize: 13 }}>Período</label>
-                          <Select placeholder="Período" style={{ width: '100%' }} value={boletinPeriodId}
-                            onChange={(v: number) => setBoletinPeriodId(v)}
-                            options={allPeriods.map(p => ({ label: `${p.name}${p.status === 'activo' ? ' (activo)' : ''}`, value: p.id }))} />
-                        </div>
-                        <div style={{ flex: '1 1 150px' }}>
-                          <label style={{ display: 'block', fontWeight: 700, marginBottom: 6, fontSize: 13 }}>Grado</label>
-                          <Select placeholder="Grado" style={{ width: '100%' }} value={boletinGradeId}
-                            onChange={(v: number) => { setBoletinGradeId(v); setBoletinSectionId(null); setBoletinInscriptionId(null); }}
-                            options={structure.map(s => ({ label: s.grade.name, value: s.grade.id }))} />
-                        </div>
-                      </div>
-                      {boletinScope === 'section' && (
-                        <div style={{ marginBottom: 16 }}>
-                          <label style={{ display: 'block', fontWeight: 700, marginBottom: 6, fontSize: 13 }}>Sección</label>
-                          <Select placeholder="Sección" style={{ width: '100%' }} value={boletinSectionId}
-                            disabled={!boletinGradeId} onChange={(v: number) => setBoletinSectionId(v)}
-                            options={boletinAvailableSections.map(sec => ({ label: sec.name, value: sec.id }))} />
-                        </div>
-                      )}
-                      {boletinScope === 'single' && (
-                        <>
-                          <div style={{ marginBottom: 16 }}>
-                            <label style={{ display: 'block', fontWeight: 700, marginBottom: 6, fontSize: 13 }}>Sección (opcional)</label>
-                            <Select placeholder="Todas las secciones" style={{ width: '100%' }} value={boletinSectionId}
-                              disabled={!boletinGradeId} allowClear onChange={(v: number | undefined) => setBoletinSectionId(v ?? null)}
-                              options={boletinAvailableSections.map(sec => ({ label: sec.name, value: sec.id }))} />
-                          </div>
-                          <div style={{ marginBottom: 16 }}>
-                            <label style={{ display: 'block', fontWeight: 700, marginBottom: 6, fontSize: 13 }}>Estudiante</label>
-                            <Select placeholder="Seleccione un estudiante" style={{ width: '100%' }} value={boletinInscriptionId}
-                              showSearch filterOption={(input, option) => (option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
-                              disabled={!boletinGradeId || boletinStudentOptions.length === 0}
-                              onChange={(v: number) => setBoletinInscriptionId(v)}
-                              options={boletinStudentOptions}
-                              notFoundContent={boletinGradeId ? 'Sin estudiantes' : 'Primero seleccione un grado'} />
-                          </div>
-                        </>
-                      )}
-                      <div style={{ textAlign: 'center', marginTop: 24 }}>
-                        {boletinLoading ? (
-                          <Spin tip="Generando..." />
-                        ) : (
-                          <Button type="primary" size="large" icon={<DownloadOutlined />}
-                            onClick={generateBoletin}
-                            disabled={!boletinPeriodId || !boletinGradeId || (boletinScope === 'section' && !boletinSectionId) || (boletinScope === 'single' && !boletinInscriptionId)}
-                            style={{ borderRadius: 10, fontWeight: 700, height: 44 }}>
-                            Generar Boletín{boletinScope === 'all' ? 'es' : ''}
-                          </Button>
-                        )}
-                      </div>
-                    </div>
+                  {/* Selectores */}
+                  <Row gutter={[12, 12]} style={{ marginBottom: 16 }}>
+                    <Col xs={24} sm={8}>
+                      <label style={{ display: 'block', fontWeight: 700, marginBottom: 6, fontSize: 13 }}>Período</label>
+                      <Select placeholder="Período" style={{ width: '100%' }} value={boletinPeriodId}
+                        onChange={(v: number) => { setBoletinPeriodId(v); setBoletinGradeId(null); setBoletinSectionId(null); }}
+                        options={allPeriods.map(p => ({ label: `${p.name}${p.status === 'activo' ? ' (activo)' : ''}`, value: p.id }))} />
+                    </Col>
+                    <Col xs={24} sm={8}>
+                      <label style={{ display: 'block', fontWeight: 700, marginBottom: 6, fontSize: 13 }}>Grado</label>
+                      <Select placeholder="Grado" style={{ width: '100%' }} value={boletinGradeId}
+                        disabled={!boletinPeriodId}
+                        onChange={(v: number) => { setBoletinGradeId(v); setBoletinSectionId(null); }}
+                        options={structure.map(s => ({ label: s.grade.name, value: s.grade.id }))} />
+                    </Col>
+                    <Col xs={24} sm={8}>
+                      <label style={{ display: 'block', fontWeight: 700, marginBottom: 6, fontSize: 13 }}>Sección</label>
+                      <Select placeholder="Sección" style={{ width: '100%' }} value={boletinSectionId}
+                        disabled={!boletinGradeId} onChange={(v: number) => setBoletinSectionId(v)}
+                        options={boletinAvailableSections.map(sec => ({ label: sec.name, value: sec.id }))} />
+                    </Col>
+                  </Row>
+
+                  {!boletinPeriodId || !boletinGradeId || !boletinSectionId ? (
+                    <Empty description="Seleccione período, grado y sección para ver los estudiantes" />
+                  ) : boletinStudents.length === 0 ? (
+                    <Empty description="No hay estudiantes inscritos en esta sección" />
                   ) : (
-                    <div>
-                      {boletinData && (
-                        <div style={{ textAlign: 'center', marginBottom: 8, fontSize: 12, color: '#666' }}>
-                          {boletinData.students.length} estudiante(s) — {boletinData.institution.name} — {boletinData.grade.name}
+                    <Row gutter={[16, 16]}>
+                      {/* Lista de estudiantes */}
+                      <Col xs={24} md={8} lg={7}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                          <Text strong>Estudiantes ({boletinStudents.length})</Text>
+                          <Button
+                            type="primary"
+                            icon={<DownloadOutlined />}
+                            size="small"
+                            loading={boletinBatchLoading}
+                            onClick={handleEmitSection}
+                            style={{ borderRadius: 8, fontWeight: 600 }}
+                          >
+                            Emitir sección
+                          </Button>
                         </div>
-                      )}
-                      <iframe src={boletinPdfUrl} style={{ width: '100%', height: '60vh', border: '1px solid #e2e8f0', borderRadius: 8 }} title="Boletín de Calificaciones" />
-                      <div style={{ textAlign: 'center', marginTop: 16 }}>
-                        <Button type="primary" icon={<DownloadOutlined />} onClick={downloadBoletin} style={{ borderRadius: 10, fontWeight: 700, height: 40 }}>
-                          Descargar PDF
-                        </Button>
-                      </div>
-                    </div>
+                        <div style={{ maxHeight: '65vh', overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: 8 }}>
+                          {boletinStudents.map((stu) => {
+                            const isSelected = boletinSelectedInscriptionId === stu.inscriptionId;
+                            return (
+                              <div
+                                key={stu.inscriptionId}
+                                onClick={() => handlePreviewStudent(stu.inscriptionId)}
+                                style={{
+                                  padding: '10px 14px',
+                                  cursor: 'pointer',
+                                  borderBottom: '1px solid #f1f5f9',
+                                  background: isSelected ? '#e0f2fe' : 'transparent',
+                                  transition: 'background 0.15s',
+                                }}
+                                onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.background = '#f8fafc'; }}
+                                onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.background = 'transparent'; }}
+                              >
+                                <div style={{ fontWeight: 600, fontSize: 13 }}>
+                                  {stu.lastName} {stu.firstName}
+                                </div>
+                                <div style={{ fontSize: 11, color: '#64748b' }}>
+                                  C.I. {stu.document || '—'}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </Col>
+
+                      {/* Vista previa PDF */}
+                      <Col xs={24} md={16} lg={17}>
+                        {boletinLoading ? (
+                          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '60vh' }}>
+                            <Spin tip="Generando vista previa..." />
+                          </div>
+                        ) : boletinPdfUrl ? (
+                          <div>
+                            {boletinData && (
+                              <div style={{ textAlign: 'center', marginBottom: 8, fontSize: 12, color: '#666' }}>
+                                {boletinData.students.length} estudiante(s) — {boletinData.institution.name} — {boletinData.grade.name}
+                              </div>
+                            )}
+                            <iframe
+                              src={boletinPdfUrl}
+                              style={{ width: '100%', height: '65vh', border: '1px solid #e2e8f0', borderRadius: 8 }}
+                              title="Boletín de Calificaciones"
+                            />
+                            <div style={{ textAlign: 'center', marginTop: 12 }}>
+                              <Button
+                                type="primary"
+                                icon={<DownloadOutlined />}
+                                onClick={handleDownloadBoletin}
+                                style={{ borderRadius: 10, fontWeight: 700, height: 40 }}
+                              >
+                                Descargar PDF
+                              </Button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '60vh', color: '#94a3b8' }}>
+                            <div style={{ textAlign: 'center' }}>
+                              <FileTextOutlined style={{ fontSize: 48, marginBottom: 12, display: 'block' }} />
+                              <Text type="secondary">
+                                Seleccione un estudiante para ver la vista previa del boletín,
+                                o use «Emitir sección» para generar todos los boletines de la sección.
+                              </Text>
+                            </div>
+                          </div>
+                        )}
+                      </Col>
+                    </Row>
                   )}
                 </>
               ),

@@ -21,6 +21,7 @@ import { useGradeRounding } from '@/context/GradeRoundingContext';
 import LetterGradeSlider from '@/components/LetterGradeSlider';
 import type { LetterGrade } from '@/components/LetterGradeSlider';
 import TermSectionClosurePanel from '@/components/shared/TermSectionClosurePanel';
+import AcademicManagement from '@/pages/master/AcademicManagement';
 
 const { Text, Title } = Typography;
 
@@ -980,6 +981,11 @@ const AcademicSettings: React.FC = () => {
         </Col>
       </Row>
             ),
+          },
+          {
+            key: 'academico',
+            label: 'Académico',
+            children: <AcademicManagement />,
           },
         ]}
       />

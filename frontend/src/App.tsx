@@ -15,7 +15,6 @@ import EditUser from '@/pages/shared/EditUser';
 import MasterLayout from '@/pages/master/MasterLayout';
 import MasterDashboard from '@/pages/master/Dashboard';
 import RegisterUser from '@/pages/master/RegisterUser';
-import AcademicManagement from '@/pages/master/AcademicManagement';
 
 // Admin Module Imports
 import AdminLayout from '@/pages/admin/AdminLayout';
@@ -232,7 +231,6 @@ function AppRoutes() {
           <Route index element={<ControlEstudiosDashboard />} />
           <Route path="matricular-estudiante" element={<MatriculationEnrollment />} />
           <Route path="configuracion" element={<AcademicSettings />} />
-          <Route path="academic" element={<AcademicManagement />} />
           <Route path="consejos-curso" element={<CourseCouncil />} />
           <Route path="proyeccion" element={<TeacherProjection />} />
           <Route path="editar-notas" element={<FinalGradesEdit />} />
