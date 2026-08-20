@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, Component, useMemo } from 'rea
 import type { ReactNode, ErrorInfo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Tabs, Card, Table, Button, message, Space, Tag, Alert, Empty, Tooltip, Modal, Checkbox } from 'antd';
-import { BookOutlined, PlusOutlined, DeleteOutlined, EditOutlined, LockOutlined, FilePdfOutlined, DownloadOutlined, ToolOutlined, CopyOutlined } from '@ant-design/icons';
+import { BookOutlined, PlusOutlined, DeleteOutlined, EditOutlined, LockOutlined, FilePdfOutlined, DownloadOutlined, ToolOutlined, CopyOutlined, PrinterOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { isAxiosError } from 'axios';
 import api from '@/services/api';
@@ -10,6 +10,7 @@ import dayjs from 'dayjs';
 import { useGradeRounding } from '@/context/GradeRoundingContext';
 import { useSchool } from '@/context/SchoolContext';
 import { formatGrade } from '@/utils/gradeFormat';
+import { generateSingleNomina } from '@/utils/generateNomina';
 import EvaluationPlanPDFModal from '@/components/pdf/EvaluationPlanPDFModal';
 import type { EvaluationPlanHeaderData, EvaluationPlanRowData } from '@/components/pdf/EvaluationPlanPDF';
 import EvaluationPlanItemModal, { type CatalogOption } from '@/components/EvaluationPlanItemModal';
@@ -248,6 +249,7 @@ const TeacherPanel: React.FC = () => {
   const [copyModalOpen, setCopyModalOpen] = useState(false);
   const [copyTargetSectionIds, setCopyTargetSectionIds] = useState<number[]>([]);
   const [copySubmitting, setCopySubmitting] = useState(false);
+  const [nominaGenerating, setNominaGenerating] = useState(false);
   const { enableRounding } = useGradeRounding();
   const dragScroll = useDragScroll<HTMLDivElement>();
   // null = all closed (term globally blocked), array = specific { sectionId, gradeId } closed
@@ -423,11 +425,8 @@ const TeacherPanel: React.FC = () => {
       if (viewPeriod?.id) params.schoolPeriodId = viewPeriod.id;
       const res = await api.get('/evaluation/my-assignments', { params });
       setAssignments(res.data);
-      if (res.data.length > 0) {
-        setSelectedAssignmentId(res.data[0].id);
-      } else {
-        setSelectedAssignmentId(null);
-      }
+      // Don't auto-select assignment on load; let the user pick a subject/grade/section
+      setSelectedAssignmentId(null);
     } catch {
       message.error('Error al cargar asignaciones');
     } finally {
@@ -966,26 +965,6 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
     }
   };
 
-  const downloadExcel = async (filled: boolean) => {
-    if (!selectedAssignmentId) return;
-    try {
-      const res = await api.get(`/evaluation/export-grades/${selectedAssignmentId}`, {
-        params: { filled: filled ? 'true' : 'false' },
-        responseType: 'blob'
-      });
-      const url = window.URL.createObjectURL(new Blob([res.data]));
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', filled ? 'calificaciones.xlsx' : 'plantilla-calificaciones.xlsx');
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
-    } catch {
-      message.error('Error al descargar Excel');
-    }
-  };
-
   const downloadOfficialGradeReport = async () => {
     if (!selectedAssignmentId) return;
     try {
@@ -1023,6 +1002,32 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
       window.URL.revokeObjectURL(url);
     } catch {
       message.error('Error al generar el Excel de planificación');
+    }
+  };
+
+  const handlePrintNomina = async () => {
+    if (!selectedAssignmentId) return;
+    const assignment = assignments.find(a => a.id === selectedAssignmentId);
+    if (!assignment) return;
+    const grade = assignment.periodGradeSubject?.periodGrade?.grade;
+    const schoolPeriod = assignment.periodGradeSubject?.periodGrade?.schoolPeriod;
+    if (!grade || !schoolPeriod) return;
+    setNominaGenerating(true);
+    try {
+      const count = await generateSingleNomina({
+        gradeId: grade.id,
+        sectionId: assignment.sectionId,
+        schoolPeriodId: schoolPeriod.id,
+        gradeName: grade.name,
+        sectionName: assignment.section?.name || '',
+        periodName: schoolPeriod.name || '',
+      });
+      message.success(`Nómina generada (${count} estudiantes)`);
+    } catch (error) {
+      console.error('Error generando nómina:', error);
+      message.error('Error al generar la nómina');
+    } finally {
+      setNominaGenerating(false);
     }
   };
 
@@ -1418,8 +1423,18 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                 icon={<DownloadOutlined />}
                 onClick={downloadPlanningExcel}
                 disabled={!selectedAssignmentId || !selectedTerm}
+                className={(!selectedAssignmentId || !selectedTerm) ? 'opacity-40 cursor-not-allowed' : ''}
               >
                 Crear Excel de planificación
+              </Button>
+              <Button
+                icon={<PrinterOutlined />}
+                onClick={handlePrintNomina}
+                disabled={!selectedAssignmentId}
+                loading={nominaGenerating}
+                className={!selectedAssignmentId ? 'opacity-40 cursor-not-allowed' : ''}
+              >
+                Imprimir Nómina
               </Button>
             </div>
           )}
@@ -1544,14 +1559,6 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                       disabled={!selectedAssignmentId || !selectedTerm || students.length === 0}
                     >
                       Acta de notas
-                    </Button>
-                    <Button
-                      icon={<DownloadOutlined />}
-                      size="small"
-                      onClick={() => downloadExcel(false)}
-                      disabled={!selectedAssignmentId}
-                    >
-                      Excel vacío
                     </Button>
                   </div>
                 </div>
