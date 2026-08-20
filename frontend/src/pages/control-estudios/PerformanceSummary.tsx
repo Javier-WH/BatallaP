@@ -160,10 +160,13 @@ const PerformanceSummary: React.FC = () => {
         firstName: ins.student?.firstName || '',
         lastName: ins.student?.lastName || '',
         document: ins.student?.document || '',
-      })).sort((a: any, b: any) =>
-        (a.lastName || '').localeCompare(b.lastName || '', 'es') ||
-        (a.firstName || '').localeCompare(b.firstName || '', 'es')
-      );
+      })).sort((a: any, b: any) => {
+        const docA = (a.document || '').replace(/\D/g, '');
+        const docB = (b.document || '').replace(/\D/g, '');
+        const numA = docA ? parseInt(docA, 10) : Infinity;
+        const numB = docB ? parseInt(docB, 10) : Infinity;
+        return numA - numB;
+      });
       setBoletinStudents(list);
     }).catch(() => { if (!cancelled) setBoletinStudents([]); });
     return () => { cancelled = true; };
@@ -245,7 +248,6 @@ const PerformanceSummary: React.FC = () => {
     const res = await api.get('/performance-summary/boletin-data', { params });
     const data = { ...res.data, letterGrades } as BoletinData;
     if (!data.students || data.students.length === 0) {
-      message.warning('No se encontraron estudiantes con los criterios seleccionados');
       return null;
     }
     const doc = <BoletinPDF data={data} />;
@@ -268,16 +270,23 @@ const PerformanceSummary: React.FC = () => {
       if (result) {
         setBoletinPdfUrl(result.url);
         setBoletinData(result.data);
+      } else {
+        message.warning('No se encontraron notas para este estudiante en el período seleccionado');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('[Boletin] Error al previsualizar:', error);
-      message.error('Error al generar la vista previa del boletín');
+      const errMsg = error?.response?.data?.message || 'Error al generar la vista previa del boletín. Verifique que el estudiante tenga notas registradas.';
+      message.error(errMsg);
     } finally { setBoletinLoading(false); }
   }, [boletinPeriodId, boletinGradeId, boletinSectionId, generateBoletinPdf, cleanupBoletinPdf]);
 
   const handleEmitSection = useCallback(async () => {
     if (!boletinPeriodId || !boletinGradeId || !boletinSectionId) {
       message.warning('Seleccione período, grado y sección');
+      return;
+    }
+    if (boletinStudents.length === 0) {
+      message.warning('No hay estudiantes inscritos en la sección seleccionada');
       return;
     }
     setBoletinBatchLoading(true);
@@ -292,13 +301,16 @@ const PerformanceSummary: React.FC = () => {
       if (result) {
         setBoletinPdfUrl(result.url);
         setBoletinData(result.data);
-        message.success(`Se generaron ${result.data.students.length} boletín(es)`);
+        message.success(`Se generaron ${result.data.students.length} boletín(es) correctamente`);
+      } else {
+        message.warning('No se encontraron estudiantes con notas en la sección seleccionada');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('[Boletin] Error al emitir sección:', error);
-      message.error('Error al generar los boletines de la sección');
+      const errMsg = error?.response?.data?.message || 'Error al generar los boletines de la sección. Intente nuevamente.';
+      message.error(errMsg);
     } finally { setBoletinBatchLoading(false); }
-  }, [boletinPeriodId, boletinGradeId, boletinSectionId, generateBoletinPdf, cleanupBoletinPdf]);
+  }, [boletinPeriodId, boletinGradeId, boletinSectionId, boletinStudents.length, generateBoletinPdf, cleanupBoletinPdf]);
 
   const handleDownloadBoletin = useCallback(() => {
     if (boletinPdfUrl) {
@@ -590,10 +602,38 @@ const PerformanceSummary: React.FC = () => {
                     )}
                   </div>
 
-                  {!boletinPeriodId || !boletinGradeId || !boletinSectionId ? (
-                    <Empty description="Seleccione período, grado y sección para ver los estudiantes" />
+                  {!boletinPeriodId ? (
+                    <Alert
+                      message="Seleccione un período escolar"
+                      description="Elija el período académico para el cual desea emitir los boletines."
+                      type="info"
+                      showIcon
+                      style={{ borderRadius: 8 }}
+                    />
+                  ) : !boletinGradeId ? (
+                    <Alert
+                      message="Seleccione un grado"
+                      description="Elija el grado correspondiente haciendo clic en uno de los botones de arriba."
+                      type="info"
+                      showIcon
+                      style={{ borderRadius: 8 }}
+                    />
+                  ) : !boletinSectionId ? (
+                    <Alert
+                      message="Seleccione una sección"
+                      description="Elija la sección correspondiente haciendo clic en uno de los botones de arriba."
+                      type="info"
+                      showIcon
+                      style={{ borderRadius: 8 }}
+                    />
                   ) : boletinStudents.length === 0 ? (
-                    <Empty description="No hay estudiantes inscritos en esta sección" />
+                    <Alert
+                      message="No hay estudiantes inscritos"
+                      description="No se encontraron estudiantes inscritos en la sección seleccionada para este período. Verifique que los estudiantes hayan sido matriculados e inscritos correctamente."
+                      type="warning"
+                      showIcon
+                      style={{ borderRadius: 8 }}
+                    />
                   ) : (
                     <Row gutter={[16, 16]}>
                       {/* Lista de estudiantes */}
@@ -612,7 +652,7 @@ const PerformanceSummary: React.FC = () => {
                           </Button>
                         </div>
                         <div style={{ maxHeight: '65vh', overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: 8 }}>
-                          {boletinStudents.map((stu) => {
+                          {boletinStudents.map((stu, idx) => {
                             const isSelected = boletinSelectedInscriptionId === stu.inscriptionId;
                             return (
                               <div
@@ -624,15 +664,35 @@ const PerformanceSummary: React.FC = () => {
                                   borderBottom: '1px solid #f1f5f9',
                                   background: isSelected ? '#e0f2fe' : 'transparent',
                                   transition: 'background 0.15s',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: 10,
                                 }}
                                 onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.background = '#f8fafc'; }}
                                 onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.background = 'transparent'; }}
                               >
-                                <div style={{ fontWeight: 600, fontSize: 13 }}>
-                                  {stu.lastName} {stu.firstName}
-                                </div>
-                                <div style={{ fontSize: 11, color: '#64748b' }}>
-                                  C.I. {stu.document || '—'}
+                                <span style={{
+                                  flexShrink: 0,
+                                  width: 24,
+                                  height: 24,
+                                  borderRadius: 6,
+                                  background: isSelected ? '#0284c7' : '#e2e8f0',
+                                  color: isSelected ? '#fff' : '#64748b',
+                                  fontSize: 11,
+                                  fontWeight: 700,
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                }}>
+                                  {idx + 1}
+                                </span>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ fontWeight: 600, fontSize: 13 }}>
+                                    {stu.lastName} {stu.firstName}
+                                  </div>
+                                  <div style={{ fontSize: 11, color: '#64748b' }}>
+                                    C.I. {stu.document || '—'}
+                                  </div>
                                 </div>
                               </div>
                             );
