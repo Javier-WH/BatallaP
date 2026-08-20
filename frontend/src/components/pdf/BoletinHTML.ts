@@ -88,6 +88,11 @@ const buildStudentSheet = (
   const sectionName = escapeHtml(student.sectionName || '—');
   const guideTeacher = escapeHtml(student.guideTeacher || '—');
 
+  // Logo HTML
+  const logoHtml = data.logoBase64
+    ? `<img src="${data.logoBase64}" class="logo" alt="logo" />`
+    : '';
+
   // Build grade rows
   const rows = student.subjects.map((subj, idx) => {
     const isEven = idx % 2 === 1;
@@ -120,9 +125,8 @@ const buildStudentSheet = (
   }).join('');
 
   // Term headers
-  const termHeaders = terms.map((t) => `<th>${escapeHtml(t.name)}</th>`).join('');
   const termShortHeaders = terms.map((t) => {
-    const short = escapeHtml(t.name).substring(0, 8);
+    const short = escapeHtml(t.name).replace(/\./g, '').substring(0, 10);
     return `<th>${short}</th>`;
   }).join('');
 
@@ -152,15 +156,18 @@ const buildStudentSheet = (
       const label = terms[i]?.name || `Lapso ${i + 1}`;
       return `<div class="stat"><div class="n">${avg}</div><div class="l">${escapeHtml(label)}</div></div>`;
     }),
-    `<div class="stat"><div class="n">${finalAvg}</div><div class="l">Definitiva</div></div>`,
+    `<div class="stat"><div class="n">${finalAvg}</div><div class="l">Def.</div></div>`,
   ].join('');
 
   return `
   <div class="sheet">
     <div class="masthead">
-      <div>
-        <p class="eyebrow">${escapeHtml(institution.name || '')}</p>
-        <h1>Boletín de calificaciones</h1>
+      <div class="masthead-left">
+        ${logoHtml}
+        <div class="masthead-text">
+          <p class="eyebrow">${escapeHtml(institution.name || '')}</p>
+          <h1>Boletín de calificaciones</h1>
+        </div>
       </div>
       <div class="period">
         Período escolar
@@ -175,7 +182,7 @@ const buildStudentSheet = (
         <div class="value big">${fullName}</div>
       </div>
       <div class="field">
-        <div class="label">Cédula de identidad</div>
+        <div class="label">Cédula</div>
         <div class="value">${doc}</div>
       </div>
       <div class="field">
@@ -194,7 +201,7 @@ const buildStudentSheet = (
           <tr class="group">
             <th class="subject-group">Asignatura</th>
             <th colspan="${terms.length}">Calificaciones por lapso</th>
-            <th>Definitiva</th>
+            <th>Def.</th>
             <th>Docente</th>
           </tr>
           <tr class="cols">
@@ -215,19 +222,19 @@ const buildStudentSheet = (
     </div>
 
     <div class="observations">
-      <div class="label">Observaciones generales</div>
+      <div class="label">Observaciones</div>
       <div>&nbsp;</div>
     </div>
 
     <div class="signatures">
       <div class="sig">
         <div class="line"></div>
-        <div class="role">Director(a) del plantel</div>
-        <div class="who">${escapeHtml(institution.principal || 'Director(a)')}</div>
+        <div class="role">Director(a)</div>
+        <div class="who">${escapeHtml(institution.principal || '')}</div>
       </div>
       <div class="sig">
         <div class="line"></div>
-        <div class="role">Coordinador(a) de control de estudios</div>
+        <div class="role">Control de Estudios</div>
         <div class="who">&nbsp;</div>
       </div>
       <div class="sig">
@@ -235,10 +242,6 @@ const buildStudentSheet = (
         <div class="role">Docente guía</div>
         <div class="who">${guideTeacher}</div>
       </div>
-    </div>
-
-    <div class="footer-strip">
-      ${escapeHtml(institution.name || '')} · ${escapeHtml(institution.municipality || '')}, ${escapeHtml(institution.state || '')}
     </div>
   </div>`;
 };
@@ -268,160 +271,175 @@ export const generateBoletinHTML = (data: BoletinHTMLData): string => {
     --sage-bg:#E9F1EA;
   }
 
-  *{ box-sizing:border-box; }
+  *{ box-sizing:border-box; margin:0; padding:0; }
+
+  html, body{
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
 
   body{
-    margin:0;
     background:#DCD6C6;
     font-family:'Inter', sans-serif;
     color:var(--ink);
-    padding:32px 0;
+    padding:16px 0;
   }
 
   .sheet{
-    max-width:920px;
-    margin:0 auto 32px;
+    max-width:8in;
+    margin:0 auto 10px;
     background:var(--paper);
-    box-shadow:0 12px 40px rgba(16,28,51,0.18);
+    box-shadow:0 6px 20px rgba(16,28,51,0.12);
   }
 
+  /* Masthead — compact */
   .masthead{
     background:var(--navy);
     background-image:linear-gradient(135deg, var(--navy) 0%, var(--navy-deep) 100%);
     color:#fff;
-    padding:28px 44px;
+    padding:10px 18px;
     display:flex;
     align-items:center;
     justify-content:space-between;
-    border-bottom:4px solid var(--gold);
+    border-bottom:3px solid var(--gold);
+  }
+  .masthead-left{
+    display:flex;
+    align-items:center;
+    gap:10px;
+  }
+  .masthead .logo{
+    width:36px;
+    height:36px;
+    object-fit:contain;
+    flex-shrink:0;
+  }
+  .masthead-text{
+    display:flex;
+    flex-direction:column;
   }
   .masthead .eyebrow{
-    font-size:11px;
-    letter-spacing:.16em;
+    font-size:8px;
+    letter-spacing:.12em;
     text-transform:uppercase;
     color:var(--gold-light);
-    margin:0 0 6px;
     font-weight:600;
+    margin:0 0 1px;
   }
   .masthead h1{
     font-family:'Fraunces', serif;
     font-weight:600;
-    font-size:30px;
+    font-size:16px;
     margin:0;
-    letter-spacing:.01em;
   }
   .masthead .period{
     text-align:right;
-    font-size:13px;
-    line-height:1.6;
+    font-size:8px;
+    line-height:1.4;
     color:#E9E4D6;
   }
   .masthead .period strong{
     display:block;
     color:#fff;
-    font-size:15px;
+    font-size:10px;
     font-family:'Fraunces', serif;
     font-weight:600;
   }
   .masthead .period .emit-date{
     display:block;
-    font-size:11px;
+    font-size:7px;
     color:var(--gold-light);
-    margin-top:4px;
+    margin-top:1px;
   }
 
+  /* Student card — compact */
   .student{
-    margin:28px 44px 8px;
-    padding:22px 26px;
+    margin:8px 18px 4px;
+    padding:8px 12px;
     background:var(--card);
     border:1px solid var(--line);
-    border-left:4px solid var(--gold);
+    border-left:3px solid var(--gold);
     display:grid;
     grid-template-columns:1fr 1fr;
-    gap:14px 32px;
+    gap:4px 20px;
   }
-  .student .field{ font-size:13px; }
+  .student .field{ font-size:9px; }
   .student .label{
     text-transform:uppercase;
-    letter-spacing:.08em;
-    font-size:10.5px;
+    letter-spacing:.06em;
+    font-size:7px;
     color:var(--ink-soft);
     font-weight:600;
-    margin-bottom:3px;
+    margin-bottom:1px;
   }
   .student .value{
-    font-size:15px;
+    font-size:10px;
     font-weight:600;
     color:var(--navy);
   }
   .student .value.big{
     font-family:'Fraunces', serif;
-    font-size:19px;
+    font-size:12px;
   }
 
+  /* Grades table — compact */
   .grades{
-    margin:26px 44px 0;
+    margin:6px 18px 0;
   }
   .grades table{
     width:100%;
     border-collapse:collapse;
     background:var(--card);
-    font-size:13px;
+    font-size:9px;
   }
   .grades thead tr.group th{
     background:var(--navy);
     color:#fff;
-    font-size:10px;
-    letter-spacing:.1em;
+    font-size:7px;
+    letter-spacing:.06em;
     text-transform:uppercase;
     font-weight:600;
-    padding:8px 10px;
+    padding:3px 5px;
     text-align:center;
     border-right:1px solid rgba(255,255,255,0.14);
   }
   .grades thead tr.group th.subject-group{
     text-align:left;
-    padding-left:14px;
+    padding-left:8px;
   }
   .grades thead tr.cols th{
     background:#EDEAE0;
     color:var(--navy);
-    font-size:11px;
+    font-size:8px;
     font-weight:700;
-    padding:9px 10px;
+    padding:3px 5px;
     text-align:center;
     border-bottom:2px solid var(--gold);
     border-right:1px solid var(--line);
   }
-  .grades thead tr.cols th.subject{ text-align:left; padding-left:14px; }
+  .grades thead tr.cols th.subject{ text-align:left; padding-left:8px; }
   .grades tbody td{
-    padding:9px 10px;
+    padding:3px 5px;
     text-align:center;
     border-bottom:1px solid var(--line);
     border-right:1px solid var(--line);
     font-family:'IBM Plex Mono', monospace;
-    font-size:12.5px;
+    font-size:9px;
     color:var(--ink);
   }
   .grades tbody td.subject{
     text-align:left;
-    padding-left:14px;
+    padding-left:8px;
     font-family:'Inter', sans-serif;
     font-weight:600;
     color:var(--ink);
-  }
-  .grades tbody td.subject .teacher{
-    display:block;
-    font-weight:400;
-    font-size:11px;
-    color:var(--ink-soft);
-    margin-top:1px;
+    font-size:9px;
   }
   .grades tbody td.teacher-cell{
     text-align:left;
-    padding-left:10px;
+    padding-left:6px;
     font-family:'Inter', sans-serif;
-    font-size:10px;
+    font-size:7px;
     color:var(--ink-soft);
     font-weight:400;
   }
@@ -437,94 +455,85 @@ export const generateBoletinHTML = (data: BoletinHTMLData): string => {
     color:var(--gold);
   }
 
-  .legend{
-    margin:10px 44px 0;
-    font-size:10.5px;
-    color:var(--ink-soft);
-    display:flex;
-    flex-wrap:wrap;
-    gap:6px 18px;
-  }
-
+  /* Summary — compact */
   .summary{
-    margin:26px 44px 0;
+    margin:6px 18px 0;
     display:grid;
-    grid-template-columns:repeat(auto-fit, minmax(120px, 1fr));
-    gap:12px;
+    grid-template-columns:repeat(auto-fit, minmax(70px, 1fr));
+    gap:4px;
   }
   .summary .stat{
     background:var(--navy);
     color:#fff;
-    padding:14px 16px;
+    padding:5px 6px;
     text-align:center;
   }
   .summary .stat .n{
     font-family:'Fraunces', serif;
     font-weight:600;
-    font-size:24px;
+    font-size:14px;
     color:var(--gold-light);
   }
   .summary .stat .l{
-    font-size:10px;
+    font-size:6px;
     text-transform:uppercase;
-    letter-spacing:.08em;
+    letter-spacing:.04em;
     color:#C7CEDC;
-    margin-top:2px;
+    margin-top:1px;
   }
 
+  /* Observations — compact */
   .observations{
-    margin:22px 44px 0;
-    padding:16px 20px;
+    margin:6px 18px 0;
+    padding:5px 10px;
     background:var(--card);
     border:1px solid var(--line);
-    min-height:44px;
+    min-height:20px;
   }
   .observations .label{
     text-transform:uppercase;
-    letter-spacing:.08em;
-    font-size:10.5px;
+    letter-spacing:.06em;
+    font-size:7px;
     color:var(--ink-soft);
     font-weight:600;
-    margin-bottom:6px;
+    margin-bottom:2px;
   }
 
+  /* Signatures — compact */
   .signatures{
-    margin:30px 44px 40px;
+    margin:8px 18px 10px;
     display:grid;
     grid-template-columns:repeat(3,1fr);
-    gap:20px;
+    gap:10px;
     text-align:center;
   }
   .signatures .sig .line{
     border-top:1px solid var(--ink);
-    margin:38px 10px 8px;
+    margin:14px 6px 3px;
   }
   .signatures .sig .role{
-    font-size:10.5px;
+    font-size:7px;
     text-transform:uppercase;
-    letter-spacing:.06em;
+    letter-spacing:.04em;
     color:var(--ink-soft);
     font-weight:600;
   }
   .signatures .sig .who{
-    font-size:13px;
+    font-size:9px;
     font-weight:600;
     color:var(--navy);
-    margin-top:2px;
-  }
-
-  .footer-strip{
-    background:var(--navy-deep);
-    color:#9FA8BE;
-    font-size:10.5px;
-    text-align:center;
-    padding:12px;
-    letter-spacing:.03em;
+    margin-top:1px;
   }
 
   @media print{
+    @page{ size:Letter portrait; margin:0.3in; }
     body{ background:#fff; padding:0; }
-    .sheet{ box-shadow:none; max-width:none; margin:0; page-break-after:always; }
+    .sheet{
+      box-shadow:none;
+      max-width:none;
+      margin:0;
+      page-break-after:always;
+    }
     .sheet:last-child{ page-break-after:auto; }
   }
 </style>
