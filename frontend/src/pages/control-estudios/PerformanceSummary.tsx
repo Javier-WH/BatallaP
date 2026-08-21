@@ -47,6 +47,7 @@ const PerformanceSummary: React.FC = () => {
   const [boletinPdfUrl, setBoletinPdfUrl] = useState<string | null>(null);
   const [boletinData, setBoletinData] = useState<BoletinData | null>(null);
   const [letterGrades, setLetterGrades] = useState<LetterGrade[]>([]);
+  const [maxGrade, setMaxGrade] = useState<number>(20);
   const [boletinLogoBase64, setBoletinLogoBase64] = useState<string | null>(null);
 
   // boletin HTML tab state (shares selectors with PDF tab)
@@ -148,6 +149,7 @@ const PerformanceSummary: React.FC = () => {
           else if (Array.isArray(parsed)) setLetterGrades(parsed);
         } catch { /* ignore */ }
       }
+      if (res.data?.max_grade) setMaxGrade(Number(res.data.max_grade));
     }).catch(() => { /* ignore */ });
   }, []);
 
@@ -284,14 +286,14 @@ const PerformanceSummary: React.FC = () => {
   // --- boletin handlers ---
   const generateBoletinPdf = useCallback(async (params: { schoolPeriodId: number; gradeId: number; sectionId?: number; inscriptionId?: number }) => {
     const res = await api.get('/performance-summary/boletin-data', { params });
-    const data = { ...res.data, letterGrades, logoBase64: boletinLogoBase64 } as BoletinData;
+    const data = { ...res.data, letterGrades, logoBase64: boletinLogoBase64, maxGrade } as BoletinData;
     if (!data.students || data.students.length === 0) {
       return null;
     }
     const doc = <BoletinPDF data={data} />;
     const blob = await pdf(doc).toBlob();
     return { url: URL.createObjectURL(blob), data };
-  }, [letterGrades, boletinLogoBase64]);
+  }, [letterGrades, boletinLogoBase64, maxGrade]);
 
   const handlePreviewStudent = useCallback(async (inscriptionId: number) => {
     if (!boletinPeriodId || !boletinGradeId) return;
@@ -367,12 +369,12 @@ const PerformanceSummary: React.FC = () => {
   // --- boletin HTML handlers ---
   const generateBoletinHtmlString = useCallback(async (params: { schoolPeriodId: number; gradeId: number; sectionId?: number; inscriptionId?: number }) => {
     const res = await api.get('/performance-summary/boletin-data', { params });
-    const data = { ...res.data, letterGrades, logoBase64: boletinLogoBase64 } as BoletinHTMLData;
+    const data = { ...res.data, letterGrades, logoBase64: boletinLogoBase64, maxGrade } as BoletinHTMLData;
     if (!data.students || data.students.length === 0) {
       return null;
     }
     return generateBoletinHTML(data);
-  }, [letterGrades, boletinLogoBase64]);
+  }, [letterGrades, boletinLogoBase64, maxGrade]);
 
   const handlePreviewStudentHtml = useCallback(async (inscriptionId: number) => {
     if (!boletinPeriodId || !boletinGradeId) return;

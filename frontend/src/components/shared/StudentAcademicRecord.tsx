@@ -15,7 +15,7 @@ import {
 } from '@ant-design/icons';
 import api from '@/services/api';
 import { useGradeRounding } from '@/context/GradeRoundingContext';
-import { formatGrade } from '@/utils/gradeFormat';
+import { formatGrade, formatGradePadded } from '@/utils/gradeFormat';
 import { fetchLetterGrades, numericToLetter } from '@/utils/letterGradeFormat';
 import type { LetterGrade } from '@/utils/letterGradeFormat';
 
@@ -350,7 +350,7 @@ const StudentAcademicRecord: React.FC<StudentAcademicRecordProps> = ({ personId 
                               {(() => {
                                 const usesLiteral = subject.subject?.usesLiteralGrades;
                                 if (usesLiteral) return numericToLetter(finalTermScore, letterGrades);
-                                return formatGrade(finalTermScore, enableRounding);
+                                return formatGradePadded(finalTermScore, maxGrade);
                               })()}
                             </Text>
                           </div>
@@ -379,7 +379,7 @@ const StudentAcademicRecord: React.FC<StudentAcademicRecordProps> = ({ personId 
                               {(() => {
                                 const usesLiteral = subject.subject?.usesLiteralGrades;
                                 if (usesLiteral) return numericToLetter(finalTermScore, letterGrades);
-                                return formatGrade(finalTermScore, enableRounding);
+                                return formatGradePadded(finalTermScore, maxGrade);
                               })()}
                             </Text>
                           </div>
@@ -408,7 +408,7 @@ const StudentAcademicRecord: React.FC<StudentAcademicRecordProps> = ({ personId 
                               {(() => {
                                 const usesLiteral = subject.subject?.usesLiteralGrades;
                                 if (usesLiteral) return numericToLetter(finalTermScore, letterGrades);
-                                return formatGrade(finalTermScore, enableRounding);
+                                return formatGradePadded(finalTermScore, maxGrade);
                               })()}
                             </Text>
                           </div>
@@ -459,7 +459,7 @@ const StudentAcademicRecord: React.FC<StudentAcademicRecordProps> = ({ personId 
                               {(() => {
                                 const usesLiteral = subject.subject?.usesLiteralGrades;
                                 if (usesLiteral) return numericToLetter(avg, letterGrades);
-                                return formatGrade(avg, enableRounding);
+                                return formatGradePadded(avg, maxGrade);
                               })()}
                             </Text>
                             <span style={{

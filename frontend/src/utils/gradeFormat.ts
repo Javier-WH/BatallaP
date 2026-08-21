@@ -25,6 +25,26 @@ export function formatGrade(grade: number | null | undefined, enableRounding: bo
 }
 
 /**
+ * Format a grade as a zero-padded string so it always has the same number of
+ * digits as the maximum possible grade (e.g. maxGrade=20 → 2 digits, maxGrade=100 → 3 digits).
+ * Minimum padding is 2 digits. A grade of 8 with maxGrade=20 → "08", with maxGrade=100 → "008".
+ */
+export function formatGradePadded(grade: number | null | undefined, maxGrade: number): string {
+  if (grade === null || grade === undefined) {
+    return '-';
+  }
+
+  const numGrade = Number(grade);
+
+  if (isNaN(numGrade)) {
+    return '-';
+  }
+
+  const digits = Math.max(2, String(maxGrade).length);
+  return String(Math.round(numGrade)).padStart(digits, '0');
+}
+
+/**
  * Format a grade as a number with optional rounding.
  * @param grade - The grade value to format
  * @param enableRounding - Whether rounding is enabled

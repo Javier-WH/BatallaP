@@ -36,6 +36,7 @@ export interface BoletinHTMLData {
     state?: string;
   };
   passingGrade?: number;
+  maxGrade?: number;
   grade: { id: number; name: string };
   terms: BoletinHTMLTerm[];
   students: BoletinHTMLStudent[];
@@ -46,11 +47,12 @@ export interface BoletinHTMLData {
 const escapeHtml = (s: string): string =>
   (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
-const formatScore = (score: number | null): string => {
+const formatScore = (score: number | null, maxGrade: number = 20): string => {
   if (score === null || score === undefined) return '—';
   const n = Number(score);
   if (isNaN(n) || n === 0) return '—';
-  return String(Math.round(n));
+  const digits = Math.max(2, String(maxGrade).length);
+  return String(Math.round(n)).padStart(digits, '0');
 };
 
 const numericToLetter = (numericGrade: number, letterGrades: BoletinHTMLLetterGrade[]): string => {
@@ -69,10 +71,11 @@ const formatScoreForSubject = (
   score: number | null,
   usesLiteral: boolean,
   letterGrades: BoletinHTMLLetterGrade[],
+  maxGrade: number = 20,
 ): string => {
   if (score === null || score === undefined) return '—';
   if (usesLiteral) return numericToLetter(score, letterGrades);
-  return formatScore(score);
+  return formatScore(score, maxGrade);
 };
 
 const formatDate = (): string => {
@@ -91,7 +94,7 @@ const buildStudentSheet = (
   student: BoletinHTMLStudent,
   data: BoletinHTMLData,
 ): string => {
-  const { institution, grade, terms, letterGrades = [], passingGrade = 10 } = data;
+  const { institution, grade, terms, letterGrades = [], passingGrade = 10, maxGrade = 20 } = data;
   const fullName = escapeHtml(`${student.lastName} ${student.firstName}`.trim());
   const doc = escapeHtml(student.document || '—');
   const sectionName = escapeHtml(toTitleCase(student.sectionName || '—'));
@@ -124,14 +127,14 @@ const buildStudentSheet = (
 
     const lapseCells = terms.map((t) => {
       const lapse = subj.lapsos.find((l) => l.termId === t.id);
-      const val = formatScoreForSubject(lapse ? lapse.score : null, usesLiteral, letterGrades);
+      const val = formatScoreForSubject(lapse ? lapse.score : null, usesLiteral, letterGrades, maxGrade);
       const isDash = val === '—';
       const isLetter = usesLiteral && val !== '—';
       const cls = isDash ? 'dash' : isLetter ? 'letter' : '';
       return `<td class="${cls}">${val}</td>`;
     }).join('');
 
-    const finalVal = formatScoreForSubject(subj.finalScore, usesLiteral, letterGrades);
+    const finalVal = formatScoreForSubject(subj.finalScore, usesLiteral, letterGrades, maxGrade);
     const finalIsHigh = subj.finalScore !== null && subj.finalScore >= passingGrade && !usesLiteral;
     const finalCls = finalIsHigh ? 'acum high' : finalVal === '—' ? 'dash' : 'acum';
     const finalCell = `<td class="${finalCls}">${finalVal}</td>`;
@@ -147,9 +150,8 @@ const buildStudentSheet = (
   }).join('');
 
   // Term headers
-  const termShortHeaders = terms.map((t) => {
-    const short = escapeHtml(t.name).replace(/\./g, '').substring(0, 10);
-    return `<th>${short}</th>`;
+  const termShortHeaders = terms.map((t, i) => {
+    return `<th>Lapso ${i + 1}</th>`;
   }).join('');
 
   // Summary stats: average per term (only subjects with includeInAverage=true)
@@ -183,7 +185,7 @@ const buildStudentSheet = (
 
   const summaryStats = [
     ...termAverages.map((avg, i) => {
-      const label = terms[i]?.name || `Lapso ${i + 1}`;
+      const label = `Lapso ${i + 1}`;
       return `<div class="stat"><div class="n">${avg}</div><div class="l">${escapeHtml(label)}</div></div>`;
     }),
     `<div class="stat"><div class="n">${finalAvg}</div><div class="l">Def.</div></div>`,

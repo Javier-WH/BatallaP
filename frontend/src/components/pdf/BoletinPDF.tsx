@@ -31,6 +31,7 @@ export interface BoletinData {
   terms: BoletinTerm[];
   students: BoletinStudent[];
   letterGrades?: LetterGrade[];
+  maxGrade?: number;
 }
 
 const styles = StyleSheet.create({
@@ -150,11 +151,12 @@ const styles = StyleSheet.create({
   },
 });
 
-const formatScore = (score: number | null): string => {
+const formatScore = (score: number | null, maxGrade: number = 20): string => {
   if (score === null || score === undefined) return '';
   const n = Number(score);
   if (isNaN(n) || n === 0) return '';
-  return n.toFixed(1);
+  const digits = Math.max(2, String(maxGrade).length);
+  return String(Math.round(n)).padStart(digits, '0');
 };
 
 const numericToLetter = (numericGrade: number, letterGrades: LetterGrade[]): string => {
@@ -169,10 +171,10 @@ const numericToLetter = (numericGrade: number, letterGrades: LetterGrade[]): str
   return String(numericGrade);
 };
 
-const formatScoreForSubject = (score: number | null, usesLiteral: boolean, letterGrades: LetterGrade[]): string => {
+const formatScoreForSubject = (score: number | null, usesLiteral: boolean, letterGrades: LetterGrade[], maxGrade: number = 20): string => {
   if (score === null || score === undefined) return '';
   if (usesLiteral) return numericToLetter(score, letterGrades);
-  return formatScore(score);
+  return formatScore(score, maxGrade);
 };
 
 const BoletinStudentPage: React.FC<{
@@ -181,8 +183,9 @@ const BoletinStudentPage: React.FC<{
   grade: BoletinData['grade'];
   terms: BoletinTerm[];
   letterGrades: LetterGrade[];
+  maxGrade: number;
   studentIndex: number;
-}> = ({ student, institution, grade, terms, letterGrades, studentIndex }) => {
+}> = ({ student, institution, grade, terms, letterGrades, maxGrade, studentIndex }) => {
   return (
     <Page size="LETTER" style={styles.page} key={studentIndex}>
       <View style={styles.header}>
@@ -216,9 +219,9 @@ const BoletinStudentPage: React.FC<{
       <View style={styles.table}>
         <View style={styles.tableHeader} fixed>
           <Text style={styles.colSubjectHeader}>ASIGNATURA</Text>
-          {terms.map((t) => (
+          {terms.map((t, i) => (
             <Text key={t.id} style={{ flex: 1, ...styles.colHeader, fontSize: 7, padding: '5 2' }}>
-              {t.name}
+              Lapso {i + 1}
             </Text>
           ))}
           <Text style={{ flex: 1.2, ...styles.colHeader }}>DEFINITIVA</Text>
@@ -233,11 +236,11 @@ const BoletinStudentPage: React.FC<{
                 const lapseScore = subj.lapsos.find((l) => l.termId === t.id);
                 return (
                   <Text key={t.id} style={styles.colTerm}>
-                    {formatScoreForSubject(lapseScore ? lapseScore.score : 0, subj.usesLiteralGrades || false, letterGrades)}
+                    {formatScoreForSubject(lapseScore ? lapseScore.score : 0, subj.usesLiteralGrades || false, letterGrades, maxGrade)}
                   </Text>
                 );
               })}
-              <Text style={styles.colFinal}>{formatScoreForSubject(subj.finalScore, subj.usesLiteralGrades || false, letterGrades)}</Text>
+              <Text style={styles.colFinal}>{formatScoreForSubject(subj.finalScore, subj.usesLiteralGrades || false, letterGrades, maxGrade)}</Text>
             </View>
           );
         })}
@@ -272,6 +275,7 @@ const BoletinPDF: React.FC<BoletinPDFProps> = ({ data }) => {
           grade={data.grade}
           terms={data.terms}
           letterGrades={data.letterGrades || []}
+          maxGrade={data.maxGrade || 20}
           studentIndex={idx}
         />
       ))}

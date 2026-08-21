@@ -14,7 +14,7 @@ import { gradeEditPermissionService } from '@/services/gradeEditPermissionServic
 import StudentPlantelesModal from '@/components/shared/StudentPlantelesModal';
 import PlantelAsyncSelect from '@/components/shared/PlantelAsyncSelect';
 import { useGradeRounding } from '@/context/GradeRoundingContext';
-import { formatGrade } from '@/utils/gradeFormat';
+import { formatGrade, formatGradePadded } from '@/utils/gradeFormat';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
@@ -60,9 +60,13 @@ const FinalGradesEdit: React.FC = () => {
   const [studentPlantelesModalOpen, setStudentPlantelesModalOpen] = useState(false);
   const [studentPlantelesContext, setStudentPlantelesContext] = useState<{ studentId: number; studentName: string } | null>(null);
   const { enableRounding } = useGradeRounding();
+  const [maxGrade, setMaxGrade] = useState<number>(20);
 
   useEffect(() => {
     fetchSchoolPeriods();
+    api.get('/settings').then((res) => {
+      if (res.data?.max_grade) setMaxGrade(Number(res.data.max_grade));
+    }).catch(() => { /* ignore */ });
   }, []);
 
   const fetchSchoolPeriods = async () => {
@@ -554,7 +558,7 @@ const FinalGradesEdit: React.FC = () => {
           
           return (
             <Tag color={average >= 10 ? 'success' : 'error'} style={{ fontSize: 13, padding: '2px 8px' }}>
-              {formatGrade(average, enableRounding)}
+              {formatGradePadded(average, maxGrade)}
             </Tag>
           );
         }
@@ -594,7 +598,7 @@ const FinalGradesEdit: React.FC = () => {
                   onChange={(value) => handleGradeValueChange(record.studentId, subjectKey, value || 0)}
                   onKeyDown={handleKeyDown}
                   min={0}
-                  max={20}
+                  max={maxGrade}
                   step={0.01}
                   precision={2}
                   size="small"
