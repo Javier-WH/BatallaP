@@ -18,7 +18,7 @@ import {
   sortSubjectsByOrder,
 } from './subjectOrderService';
 import { filterActiveGroupSubjects } from './subjectGroupService';
-import { resolveGradeStatus, roundGrade } from './gradeEvaluationService';
+import { resolveGradeStatus, roundGrade, roundFinalGrade } from './gradeEvaluationService';
 import { TermGradeSyncService } from './termGradeSyncService';
 
 const resolveInstitutionPlantelId = async (transaction?: Transaction): Promise<number | null> => {
@@ -206,8 +206,8 @@ export class FinalGradeCalculator {
       let totalAccumulated = 0;
       Object.values(termScores).forEach(val => totalAccumulated += val);
 
-      // Average and round to integer
-      const finalScore = roundGrade(totalAccumulated / termCount);
+      // Average and round to integer, enforcing minimum final grade of 01
+      const finalScore = roundFinalGrade(totalAccumulated / termCount);
 
       // Raw Score (sum of non-council points) calculation for display/statistics
       let totalRaw = 0;
@@ -234,7 +234,7 @@ export class FinalGradeCalculator {
 
       if (hasRepair) {
         // Repair grade replaces the original completely
-        effectiveFinalScore = roundGrade(repairScore!);
+        effectiveFinalScore = roundFinalGrade(repairScore!);
         effectiveStatus = resolveGradeStatus(repairScore!, repairPassingGrade ?? minApproval);
         gradeType = 'revision';
         originalScore = finalScore;

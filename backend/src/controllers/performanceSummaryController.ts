@@ -31,7 +31,7 @@ import {
   sortSubjectsByOrder,
 } from '@/services/subjectOrderService';
 import { filterActiveGroupSubjects } from '@/services/subjectGroupService';
-import { isPassingGrade, resolveGradeStatus } from '@/services/gradeEvaluationService';
+import { isPassingGrade, resolveGradeStatus, roundFinalGrade, MIN_FINAL_GRADE } from '@/services/gradeEvaluationService';
 import { readTemplateNamedRanges, TemplateNamedRanges } from '@/services/templateNamedRanges';
 
 const gradeOrderToSheetName: Record<number, string> = {
@@ -1256,11 +1256,11 @@ export const getBoletinData = async (req: Request, res: Response) => {
 
         let finalScore: number | null = null;
         if (is.finalGrade && is.finalGrade.finalScore != null) {
-          finalScore = Number(is.finalGrade.finalScore);
+          finalScore = Math.max(MIN_FINAL_GRADE, Number(is.finalGrade.finalScore));
         } else {
           let total = 0;
           Object.values(termScores).forEach((v) => { total += v; });
-          finalScore = Math.round(total / termCount);
+          finalScore = roundFinalGrade(total / termCount);
         }
 
         const subjectName = is.subject?.subjectGroupId
@@ -1277,8 +1277,8 @@ export const getBoletinData = async (req: Request, res: Response) => {
             termId: t.id,
             termName: t.name,
             score: termGradeMap.has(t.id)
-              ? termGradeMap.get(t.id)!
-              : Math.round(termScores[t.id] || 0),
+              ? roundFinalGrade(termGradeMap.get(t.id)!)
+              : roundFinalGrade(termScores[t.id] || 0),
           })),
           finalScore,
           status: is.finalGrade?.status || (finalScore !== null ? resolveGradeStatus(finalScore, Number(settings.passing_grade || 10)) : 'reprobada'),
@@ -1392,11 +1392,9 @@ export const getGeneralAverages = async (req: Request, res: Response) => {
         // Skip subjects not configured for average (if we have the config)
         if (averageEligibleSubjects && !averageEligibleSubjects.has(is.subjectId)) return;
         (is.termGrades || []).forEach((tg: any) => {
-          const score = Number(tg.score);
-          if (score > 0) {
-            if (!termScoreMap.has(tg.termId)) termScoreMap.set(tg.termId, []);
-            termScoreMap.get(tg.termId)!.push(score);
-          }
+          const score = Math.max(MIN_FINAL_GRADE, Number(tg.score));
+          if (!termScoreMap.has(tg.termId)) termScoreMap.set(tg.termId, []);
+          termScoreMap.get(tg.termId)!.push(score);
         });
       });
 

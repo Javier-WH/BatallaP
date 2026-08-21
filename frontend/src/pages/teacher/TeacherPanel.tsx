@@ -1750,17 +1750,22 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                           const studentQuals = insSub?.qualifications || [];
 
                           let rowTotal = 0;
+                          let hasAnyScore = false;
                           evaluationPlan.forEach(item => {
                             const q = studentQuals.find((sq: Qualification) => sq.evaluationPlanId === item.id);
                               if (q) {
                                 if (q.isAbsent) {
                                   // absent counts as 0
+                                  hasAnyScore = true;
                                 } else {
                                   const effectiveScore = q.remedialScore != null && q.remedialScore > 0 ? q.remedialScore : q.score;
                                   rowTotal += (Number(effectiveScore) * Number(item.percentage)) / 100;
+                                  hasAnyScore = true;
                                 }
                               }
                           });
+                          // Minimum final grade is 01 — even if all evaluations are 0/absent
+                          if (hasAnyScore && rowTotal < 1) rowTotal = 1;
 
                           return (
                             <tr key={enrollment.id} className="grading-row">

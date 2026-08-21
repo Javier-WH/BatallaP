@@ -41,7 +41,7 @@ import {
   sortSubjectsByOrder,
 } from '@/services/subjectOrderService';
 import { filterActiveGroupSubjects } from '@/services/subjectGroupService';
-import { resolveGradeStatus } from '@/services/gradeEvaluationService';
+import { resolveGradeStatus, MIN_FINAL_GRADE } from '@/services/gradeEvaluationService';
 import { TermSectionClosureService } from '@/services/termSectionClosureService';
 import { TermGradeSyncService } from '@/services/termGradeSyncService';
 
@@ -1192,7 +1192,7 @@ export const getFinalGradesByPeriod = async (req: Request, res: Response) => {
         result.push({
           id: finalGrade?.id || null,
           inscriptionSubjectId: insSubject.id,
-          finalScore: finalGrade?.finalScore || 0,
+          finalScore: finalGrade?.finalScore || MIN_FINAL_GRADE,
           rawScore: finalGrade?.rawScore || null,
           councilPoints: finalGrade?.councilPoints || null,
           status: finalGrade?.status || 'reprobada',

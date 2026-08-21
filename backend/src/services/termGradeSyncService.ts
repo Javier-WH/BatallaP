@@ -8,6 +8,7 @@ import {
   SubjectTermGrade,
   EvaluationPlan,
 } from '@/models/index';
+import { roundFinalGrade } from './gradeEvaluationService';
 
 /**
  * TermGradeSyncService
@@ -79,7 +80,7 @@ export class TermGradeSyncService {
     const now = new Date();
     for (const term of terms) {
       const rawScore = termScores[term.id] || 0;
-      const roundedScore = Math.round(rawScore);
+      const roundedScore = roundFinalGrade(rawScore);
       await SubjectTermGrade.upsert(
         {
           inscriptionSubjectId: insSub.id,

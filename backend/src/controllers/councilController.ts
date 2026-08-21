@@ -14,6 +14,7 @@ import {
   Setting
 } from '@/models/index';
 import { TermGradeSyncService } from '@/services/termGradeSyncService';
+import { MIN_FINAL_GRADE } from '@/services/gradeEvaluationService';
 import {
   getSubjectOrderMap,
   sortSubjectsByOrder,
@@ -142,11 +143,11 @@ export const getCouncilData = async (req: Request, res: Response) => {
           const ptBaseGrade = calculateTermBaseGrade(pt.id);
           const ptCouncilPoint = allCouncilPoints.find((cp: any) => cp.termId === pt.id);
           const ptPoints = ptCouncilPoint?.points || 0;
-          const ptFinalGrade = Math.round((ptBaseGrade + ptPoints) * 100) / 100;
+          const ptFinalGrade = Math.max(MIN_FINAL_GRADE, Math.round((ptBaseGrade + ptPoints) * 100) / 100);
           return {
             termId: pt.id,
             termName: pt.name,
-            baseGrade: Math.round(ptBaseGrade * 100) / 100,
+            baseGrade: Math.max(MIN_FINAL_GRADE, Math.round(ptBaseGrade * 100) / 100),
             councilPoints: ptPoints,
             finalGrade: ptFinalGrade
           };
@@ -160,7 +161,7 @@ export const getCouncilData = async (req: Request, res: Response) => {
           inscriptionSubjectId: is.id,
           points: currentTermPoints?.points || 0,
           councilPointId: currentTermPoints?.id,
-          grade: Math.round(currentTermGrade * 100) / 100,
+          grade: Math.max(MIN_FINAL_GRADE, Math.round(currentTermGrade * 100) / 100),
           hasOtherTermsPoints: otherTermsPoints.length > 0,
           otherTermsInfo: otherTermsPoints.map((cp: any) => ({
             termName: cp.term?.name,

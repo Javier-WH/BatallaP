@@ -153,33 +153,30 @@ const buildStudentSheet = (
   }).join('');
 
   // Summary stats: average per term (only subjects with includeInAverage=true)
-  // Notes of 0 are counted as 0 (not excluded)
+  // Minimum final grade is 01 — scores of 0 are treated as 1
   const termAverages = terms.map((t) => {
     const eligibleSubjects = student.subjects.filter((s) => s.includeInAverage !== false);
     if (eligibleSubjects.length === 0) return '—';
     const scores = eligibleSubjects.map((s) => {
       const lapse = s.lapsos.find((l) => l.termId === t.id);
-      return lapse ? Number(lapse.score) : 0;
+      return lapse ? Math.max(1, Number(lapse.score)) : 1;
     });
     const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
     return avg.toFixed(2);
   });
 
   // Definitiva average: only subjects with includeInAverage=true
-  // Average each subject's term scores (counting 0s), then average across subjects
+  // Average each subject's term scores (minimum 01), then average across subjects
   const finalAvgSubjects = student.subjects
     .filter((s) => s.includeInAverage !== false);
   const finalAvgScores = finalAvgSubjects
     .map((s) => {
       const termScores = terms.map((t) => {
         const lapse = s.lapsos.find((l) => l.termId === t.id);
-        return lapse ? Number(lapse.score) : 0;
+        return lapse ? Math.max(1, Number(lapse.score)) : 1;
       });
-      // Only include subjects that have at least one non-zero term score
-      if (termScores.every((v) => v === 0)) return null;
       return termScores.reduce((a, b) => a + b, 0) / termScores.length;
-    })
-    .filter((v): v is number => v !== null);
+    });
   const finalAvg = finalAvgScores.length > 0
     ? (finalAvgScores.reduce((a, b) => a + b, 0) / finalAvgScores.length).toFixed(2)
     : '—';
@@ -312,8 +309,7 @@ export const generateBoletinHTML = (data: BoletinHTMLData): string => {
   const avgMap = studentsWithList.map((s) => {
     const eligibleSubjects = s.subjects.filter((sub) => sub.includeInAverage !== false);
     const finalScores = eligibleSubjects
-      .map((sub) => sub.finalScore)
-      .filter((v) => v !== null && v > 0) as number[];
+      .map((sub) => Math.max(1, Number(sub.finalScore) || 1));
     const avg = finalScores.length > 0
       ? finalScores.reduce((a, b) => a + b, 0) / finalScores.length
       : 0;

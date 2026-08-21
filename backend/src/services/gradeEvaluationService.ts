@@ -15,6 +15,14 @@ export function roundGrade(score: number): number {
   return Math.round(score);
 }
 
+/** Minimum allowed final grade. Even if all evaluations are 0, the definitive is at least 1. */
+export const MIN_FINAL_GRADE = 1;
+
+/** Rounds a raw score and enforces the minimum final grade (01). */
+export function roundFinalGrade(score: number): number {
+  return Math.max(MIN_FINAL_GRADE, roundGrade(score));
+}
+
 /** True when the rounded score reaches the passing grade. */
 export function isPassingGrade(score: number, passingGrade: number): boolean {
   return roundGrade(score) >= passingGrade;
