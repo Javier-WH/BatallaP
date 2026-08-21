@@ -312,9 +312,16 @@ export default function GeneralAverages() {
       : data?.sections.filter((s) => selectedSections.includes(s.id)).map((s) => s.name).join(', ');
     const avgLabel = minAverage !== null ? `Promedio ≥ ${minAverage}` : 'Sin límite de promedio';
 
-    const tableRows = rows.map((r: any) => `
+    // Get rows in the current grid order (respects user sorting)
+    const gridRows: any[] = [];
+    gridRef.current?.api.forEachNodeAfterFilterAndSort((node: any) => {
+      if (node.data) gridRows.push(node.data);
+    });
+    const printRows = gridRows.length > 0 ? gridRows : rows;
+
+    const tableRows = printRows.map((r: any, i: number) => `
       <tr>
-        <td class="num">${r.index}</td>
+        <td class="num">${i + 1}</td>
         <td>${r.document || '—'}</td>
         <td>${r.lastName}</td>
         <td>${r.firstName}</td>
@@ -420,7 +427,7 @@ export default function GeneralAverages() {
       ${tableRows}
     </tbody>
   </table>
-  <div class="footer">Total: ${totalCount} estudiantes · ${new Date().toLocaleDateString('es-VE')}</div>
+  <div class="footer">Total: ${printRows.length} estudiantes · ${new Date().toLocaleDateString('es-VE')}</div>
 </body>
 </html>`;
 
