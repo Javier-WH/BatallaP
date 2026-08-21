@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Typography, Button, Spin, message, InputNumber } from 'antd';
-import { PrinterOutlined, TrophyOutlined } from '@ant-design/icons';
+import { PrinterOutlined, TrophyOutlined, FileExcelOutlined } from '@ant-design/icons';
+import ExcelJS from 'exceljs';
+import { saveAs } from 'file-saver';
 import { AllCommunityModule } from 'ag-grid-community';
 import type { ColDef, GridReadyEvent } from 'ag-grid-community';
 import { AgGridProvider, AgGridReact } from 'ag-grid-react';
@@ -514,7 +516,116 @@ export default function GeneralAverages() {
     }
   };
 
-  // Filtered sections (only show sections for selected grades if any grade is selected)
+  const handleExportExcel = async () => {
+    // Get rows in the current grid order (respects user sorting + grouping)
+    const gridRows: any[] = [];
+    gridRef.current?.api.forEachNodeAfterFilterAndSort((node: any) => {
+      if (node.data) gridRows.push(node.data);
+    });
+    const exportRows = gridRows.length > 0 ? gridRows : rows;
+
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Promedios Generales');
+
+    // Title row
+    const periodName = viewPeriod?.name || viewPeriod?.period || '';
+    worksheet.mergeCells('A1:I1');
+    const titleCell = worksheet.getCell('A1');
+    titleCell.value = 'Promedios Generales';
+    titleCell.font = { size: 14, bold: true, color: { argb: 'FF1B2A4A' } };
+    titleCell.alignment = { horizontal: 'center' };
+
+    // Subtitle with filters
+    const termLabel = selectedTerms.length === 0
+      ? 'Todos los lapsos'
+      : data?.terms.filter((t) => selectedTerms.includes(t.id)).map((t) => t.name).join(', ');
+    const gradeLabel = selectedGrades.length === 0
+      ? 'Todos los años'
+      : data?.grades.filter((g) => selectedGrades.includes(g.id)).map((g) => shortGradeName(g.name)).join(', ');
+    const groupLabel = groupBy.length > 0
+      ? groupBy.map(g => g === 'grade' ? 'Año' : g === 'section' ? 'Sección' : 'Género').join(', ')
+      : '';
+
+    worksheet.mergeCells('A2:I2');
+    const subCell = worksheet.getCell('A2');
+    subCell.value = `Período: ${periodName}  |  Lapsos: ${termLabel}  |  Años: ${gradeLabel}${groupLabel ? `  |  Agrupar por: ${groupLabel}` : ''}`;
+    subCell.font = { size: 9, color: { argb: 'FF666666' } };
+    subCell.alignment = { horizontal: 'center' };
+
+    // Header row
+    const headers = ['#', 'Cédula', 'Apellidos', 'Nombres', 'Género', 'Año', 'Sección', 'Promedio', 'Posición'];
+    const headerRow = worksheet.addRow(headers);
+    headerRow.eachCell((cell) => {
+      cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 10 };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1B2A4A' } };
+      cell.alignment = { horizontal: 'center' as const, vertical: 'middle' as const };
+      cell.border = { bottom: { style: 'thin', color: { argb: 'FFB08D2B' } } };
+    });
+
+    // Data rows
+    exportRows.forEach((r: any, i: number) => {
+      const row = worksheet.addRow([
+        i + 1,
+        r.document || '—',
+        r.lastName,
+        r.firstName,
+        r.gender === 'M' ? 'M' : r.gender === 'F' ? 'F' : '—',
+        r.gradeName,
+        r.sectionName,
+        r.average === 0 ? null : r.average,
+        r.rank === 0 ? '—' : `${r.rank}/${r.totalRanked}`,
+      ]);
+
+      // Color the row background based on section color
+      if (r.sectionColor) {
+        const hex = r.sectionColor.replace('#', '');
+        row.eachCell((cell) => {
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${lightenColor(hex, 0.85).replace('#', '')}` } };
+        });
+      }
+
+      // Gender color
+      const genderCell = row.getCell(5);
+      if (r.gender === 'M') {
+        genderCell.font = { bold: true, color: { argb: 'FF1890FF' } };
+      } else if (r.gender === 'F') {
+        genderCell.font = { bold: true, color: { argb: 'FFCF1322' } };
+      }
+
+      // Average color
+      const avgCell = row.getCell(8);
+      if (r.average > 0) {
+        avgCell.font = { bold: true, color: { argb: r.average >= 10 ? 'FF389E0D' : 'FFCF1322' } };
+      }
+      avgCell.alignment = { horizontal: 'center' };
+      avgCell.numFmt = '0.00';
+
+      // Center alignment for #, Género, Año, Sección, Posición
+      row.getCell(1).alignment = { horizontal: 'center' };
+      row.getCell(5).alignment = { horizontal: 'center' };
+      row.getCell(6).alignment = { horizontal: 'center' };
+      row.getCell(7).alignment = { horizontal: 'center' };
+      row.getCell(9).alignment = { horizontal: 'center' };
+    });
+
+    // Column widths
+    worksheet.getColumn(1).width = 6;
+    worksheet.getColumn(2).width = 14;
+    worksheet.getColumn(3).width = 22;
+    worksheet.getColumn(4).width = 22;
+    worksheet.getColumn(5).width = 8;
+    worksheet.getColumn(6).width = 10;
+    worksheet.getColumn(7).width = 10;
+    worksheet.getColumn(8).width = 12;
+    worksheet.getColumn(9).width = 12;
+
+    // Freeze header
+    worksheet.views = [{ state: 'frozen', ySplit: 3 }];
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    saveAs(new Blob([buffer]), `promedios-generales.xlsx`);
+    message.success('Excel generado correctamente');
+  };
   const availableSections = useMemo(() => {
     if (!data) return [];
     if (selectedGrades.length === 0) return data.sections;
@@ -573,14 +684,24 @@ export default function GeneralAverages() {
           <TrophyOutlined style={{ marginRight: 8, color: '#B08D2B' }} />
           Promedios Generales
         </Title>
-        <Button
-          type="primary"
-          icon={<PrinterOutlined />}
-          onClick={handlePrint}
-          style={{ background: '#1B2A4A', borderColor: '#1B2A4A' }}
-        >
-          Imprimir
-        </Button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <Button
+            type="primary"
+            icon={<PrinterOutlined />}
+            onClick={handlePrint}
+            style={{ background: '#1B2A4A', borderColor: '#1B2A4A' }}
+          >
+            Imprimir
+          </Button>
+          <Button
+            type="primary"
+            icon={<FileExcelOutlined />}
+            onClick={handleExportExcel}
+            style={{ background: '#389e0d', borderColor: '#389e0d' }}
+          >
+            Excel
+          </Button>
+        </div>
       </div>
 
       {/* Filters + Group By */}
