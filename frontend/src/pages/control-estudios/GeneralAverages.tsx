@@ -11,6 +11,28 @@ import api from '@/services/api';
 
 const { Title } = Typography;
 
+/** Converts hex color to rgba with given alpha */
+const withAlpha = (hex: string, alpha: number): string => {
+  const clean = (hex || '').replace('#', '');
+  if (clean.length !== 6) return hex;
+  const r = parseInt(clean.slice(0, 2), 16);
+  const g = parseInt(clean.slice(2, 4), 16);
+  const b = parseInt(clean.slice(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+};
+
+/** Lightens a hex color by mixing with white. amount: 0=original, 1=white */
+const lightenColor = (hex: string, amount: number): string => {
+  const clean = (hex || '').replace('#', '');
+  if (clean.length !== 6) return hex;
+  const r = Math.round(parseInt(clean.slice(0, 2), 16) + (255 - parseInt(clean.slice(0, 2), 16)) * amount);
+  const g = Math.round(parseInt(clean.slice(2, 4), 16) + (255 - parseInt(clean.slice(2, 4), 16)) * amount);
+  const b = Math.round(parseInt(clean.slice(4, 6), 16) + (255 - parseInt(clean.slice(4, 6), 16)) * amount);
+  return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+};
+
+const DEFAULT_GRADE_COLOR = '#1890ff';
+
 // Convert "Quinto Año" → "5to Año", "Primero Año" → "1ro Año", etc.
 const ordinalToNumber: Record<string, string> = {
   'primero': '1ro', 'segundo': '2do', 'tercero': '3ro',
@@ -39,6 +61,7 @@ interface GeneralAverageStudent {
   document: string;
   gradeId: number;
   gradeName: string;
+  gradeColor: string | null;
   sectionId: number;
   sectionName: string;
   termGrades: TermGrade[];
@@ -130,18 +153,38 @@ export default function GeneralAverages() {
       return a.firstName.localeCompare(b.firstName);
     });
 
-    const rows = displaySorted.map((s, idx) => ({
-      inscriptionId: s.inscriptionId,
-      index: idx + 1,
-      document: s.document,
-      lastName: s.lastName,
-      firstName: s.firstName,
-      gradeName: shortGradeName(s.gradeName),
-      sectionName: s.sectionName,
-      average: s.average,
-      rank: rankMap.get(s.inscriptionId) || 0,
-      totalRanked: sorted.length,
-    }));
+    // Build section index map: (gradeId-sectionId) -> index within that grade
+    const sectionIndexMap = new Map<string, number>();
+    const gradeSectionSet = new Map<number, string[]>();
+    displaySorted.forEach((s) => {
+      const key = `${s.gradeId}-${s.sectionId}`;
+      if (!sectionIndexMap.has(key)) {
+        const sections = gradeSectionSet.get(s.gradeId) || [];
+        sections.push(key);
+        gradeSectionSet.set(s.gradeId, sections);
+        sectionIndexMap.set(key, sections.length - 1);
+      }
+    });
+
+    const rows = displaySorted.map((s, idx) => {
+      const sectionIdx = sectionIndexMap.get(`${s.gradeId}-${s.sectionId}`) || 0;
+      const gradeColor = s.gradeColor || DEFAULT_GRADE_COLOR;
+      const sectionColor = lightenColor(gradeColor, 0.25 + sectionIdx * 0.25);
+      return {
+        inscriptionId: s.inscriptionId,
+        index: idx + 1,
+        document: s.document,
+        lastName: s.lastName,
+        firstName: s.firstName,
+        gradeName: shortGradeName(s.gradeName),
+        gradeColor,
+        sectionColor,
+        sectionName: s.sectionName.replace(/^SECCION\s+/i, '').replace(/^SECCIÓN\s+/i, ''),
+        average: s.average,
+        rank: rankMap.get(s.inscriptionId) || 0,
+        totalRanked: sorted.length,
+      };
+    });
 
     return { rows, totalCount: rows.length };
   }, [data, selectedTerms, selectedGrades, selectedSections, minAverage]);
@@ -185,6 +228,9 @@ export default function GeneralAverages() {
       width: 100,
       filter: true,
       sortable: true,
+      cellRenderer: (params: any) => {
+        return <span style={{ fontWeight: 700, color: '#1a1a1a' }}>{params.value}</span>;
+      },
     },
     {
       headerName: 'Sección',
@@ -193,6 +239,9 @@ export default function GeneralAverages() {
       filter: true,
       sortable: true,
       cellClass: 'ag-center-aligned-cell',
+      cellRenderer: (params: any) => {
+        return <span style={{ fontWeight: 600, color: '#1a1a1a' }}>{params.value}</span>;
+      },
     },
     {
       headerName: 'Promedio',
@@ -435,6 +484,14 @@ export default function GeneralAverages() {
 
   return (
     <div style={{ padding: 16, height: '100%', display: 'flex', flexDirection: 'column' }}>
+      <style>{`
+        .ag-theme-quartz .ag-row.ag-row-grade-colored {
+          background-color: var(--grade-row-bg) !important;
+        }
+        .ag-theme-quartz .ag-row.ag-row-grade-colored .ag-cell {
+          background-color: transparent !important;
+        }
+      `}</style>
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
         <Title level={4} style={{ margin: 0 }}>
@@ -527,6 +584,14 @@ export default function GeneralAverages() {
             rowSelection="multiple"
             suppressCellFocus={true}
             getRowId={(params) => String(params.data.inscriptionId)}
+            rowClassRules={{
+              'ag-row-grade-colored': (params) => !!params.data?.sectionColor,
+            }}
+            getRowStyle={(params) => {
+              const color = params.data?.sectionColor;
+              if (!color) return undefined;
+              return { ['--grade-row-bg' as any]: withAlpha(color, 0.25) };
+            }}
           />
         </AgGridProvider>
       </div>

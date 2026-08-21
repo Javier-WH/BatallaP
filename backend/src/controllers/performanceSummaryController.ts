@@ -1338,7 +1338,7 @@ export const getGeneralAverages = async (req: Request, res: Response) => {
     // Load PeriodGradeSubject to know which subjects count for average
     const periodGrades = await PeriodGrade.findAll({
       where: { schoolPeriodId },
-      attributes: ['id', 'gradeId'],
+      attributes: ['id', 'gradeId', 'color'],
     });
     const periodGradeIds = periodGrades.map((pg: any) => pg.id);
     const pgsRecords = periodGradeIds.length > 0
@@ -1346,8 +1346,10 @@ export const getGeneralAverages = async (req: Request, res: Response) => {
       : [];
     // Map: gradeId -> Set<subjectId> that count for average
     const gradeIdToPgId = new Map<number, number>();
+    const gradeColorMap = new Map<number, string>();
     for (const pg of periodGrades) {
       gradeIdToPgId.set((pg as any).gradeId, (pg as any).id);
+      if ((pg as any).color) gradeColorMap.set((pg as any).gradeId, (pg as any).color);
     }
     const includeInAverageMap = new Map<number, Set<number>>(); // gradeId -> subjectIds
     for (const pgs of pgsRecords) {
@@ -1413,6 +1415,7 @@ export const getGeneralAverages = async (req: Request, res: Response) => {
         document: ins.student?.document || '',
         gradeId: ins.grade?.id || 0,
         gradeName: ins.grade?.name || '',
+        gradeColor: gradeColorMap.get(ins.grade?.id || 0) || null,
         sectionId: ins.section?.id || 0,
         sectionName: ins.section?.name || '',
         termGrades,
