@@ -59,6 +59,7 @@ interface GeneralAverageStudent {
   firstName: string;
   lastName: string;
   document: string;
+  gender: string | null;
   gradeId: number;
   gradeName: string;
   gradeColor: string | null;
@@ -81,6 +82,7 @@ export default function GeneralAverages() {
   const [selectedGrades, setSelectedGrades] = useState<number[]>([]);
   const [selectedSections, setSelectedSections] = useState<number[]>([]);
   const [minAverage, setMinAverage] = useState<number | null>(null);
+  const [groupBy, setGroupBy] = useState<string[]>([]);
   const gridRef = useRef<AgGridReact<any>>(null);
 
   useEffect(() => {
@@ -145,10 +147,30 @@ export default function GeneralAverages() {
       rankMap.set(s.inscriptionId, currentRank);
     });
 
-    // Build display rows (sorted by grade, section, lastName, firstName)
+    // Build display rows — sorted by group fields first (if any), then by average desc
+    const groupComparator = (a: any, b: any): number => {
+      for (const field of groupBy) {
+        let cmp = 0;
+        if (field === 'grade') {
+          cmp = (a.gradeName || '').localeCompare(b.gradeName || '');
+        } else if (field === 'section') {
+          cmp = (a.sectionName || '').localeCompare(b.sectionName || '');
+        } else if (field === 'gender') {
+          const ga = a.gender || 'Z';
+          const gb = b.gender || 'Z';
+          cmp = ga.localeCompare(gb);
+        }
+        if (cmp !== 0) return cmp;
+      }
+      return 0;
+    };
+
     const displaySorted = [...aboveThreshold].sort((a, b) => {
-      if (a.gradeName !== b.gradeName) return a.gradeName.localeCompare(b.gradeName);
-      if (a.sectionName !== b.sectionName) return a.sectionName.localeCompare(b.sectionName);
+      // Group fields take priority
+      const groupCmp = groupComparator(a, b);
+      if (groupCmp !== 0) return groupCmp;
+      // Within group: by average descending, then by name
+      if (b.average !== a.average) return b.average - a.average;
       if (a.lastName !== b.lastName) return a.lastName.localeCompare(b.lastName);
       return a.firstName.localeCompare(b.firstName);
     });
@@ -176,6 +198,7 @@ export default function GeneralAverages() {
         document: s.document,
         lastName: s.lastName,
         firstName: s.firstName,
+        gender: s.gender,
         gradeName: shortGradeName(s.gradeName),
         gradeColor,
         sectionColor,
@@ -187,7 +210,7 @@ export default function GeneralAverages() {
     });
 
     return { rows, totalCount: rows.length };
-  }, [data, selectedTerms, selectedGrades, selectedSections, minAverage]);
+  }, [data, selectedTerms, selectedGrades, selectedSections, minAverage, groupBy]);
 
   // Column definitions
   const columnDefs = useMemo<ColDef<any>[]>(() => [
@@ -221,6 +244,21 @@ export default function GeneralAverages() {
       width: 180,
       filter: 'agTextColumnFilter',
       sortable: true,
+    },
+    {
+      headerName: 'Género',
+      field: 'gender',
+      width: 80,
+      filter: 'agTextColumnFilter',
+      sortable: true,
+      cellClass: 'ag-center-aligned-cell',
+      cellRenderer: (params: any) => {
+        const g = params.value;
+        if (!g) return <span style={{ color: '#bbb' }}>—</span>;
+        if (g === 'M') return <span style={{ fontWeight: 700, color: '#1890ff' }}>M</span>;
+        if (g === 'F') return <span style={{ fontWeight: 700, color: '#cf1322' }}>F</span>;
+        return <span>{g}</span>;
+      },
     },
     {
       headerName: 'Año',
@@ -276,8 +314,8 @@ export default function GeneralAverages() {
 
   const defaultColDef = useMemo<ColDef<any>>(() => ({
     resizable: true,
-    sortable: true,
-  }), []);
+    sortable: groupBy.length === 0,
+  }), [groupBy]);
 
   const onGridReady = useCallback((event: GridReadyEvent) => {
     event.api.setGridOption('datasource', null);
@@ -325,6 +363,7 @@ export default function GeneralAverages() {
         <td>${r.document || '—'}</td>
         <td>${r.lastName}</td>
         <td>${r.firstName}</td>
+        <td class="center" style="font-weight:700;color:${r.gender === 'M' ? '#1890ff' : r.gender === 'F' ? '#cf1322' : '#bbb'}">${r.gender === 'M' ? 'M' : r.gender === 'F' ? 'F' : '—'}</td>
         <td class="center">${r.gradeName}</td>
         <td class="center">${r.sectionName}</td>
         <td class="center ${r.average >= 10 ? 'pass' : r.average === 0 ? 'na' : 'fail'}">${r.average === 0 ? '—' : r.average.toFixed(2)}</td>
@@ -408,6 +447,7 @@ export default function GeneralAverages() {
       <span><strong>Años:</strong> ${gradeLabel}</span>
       <span><strong>Secciones:</strong> ${sectionLabel}</span>
       <span><strong>Promedio:</strong> ${avgLabel}</span>
+      ${groupBy.length > 0 ? `<span><strong>Agrupar por:</strong> ${groupBy.map(g => g === 'grade' ? 'Año' : g === 'section' ? 'Sección' : 'Género').join(', ')}</span>` : ''}
     </div>
   </div>
   <table>
@@ -417,6 +457,7 @@ export default function GeneralAverages() {
         <th>Cédula</th>
         <th>Apellidos</th>
         <th>Nombres</th>
+        <th>Género</th>
         <th>Año</th>
         <th>Sección</th>
         <th>Promedio</th>
@@ -515,64 +556,89 @@ export default function GeneralAverages() {
         </Button>
       </div>
 
-      {/* Filters */}
-      <div style={{ marginBottom: 12, padding: 12, background: '#fafafa', borderRadius: 12, border: '1px solid #f0f0f0' }}>
-        {/* Minimum average filter */}
-        <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontSize: 11, fontWeight: 700, color: '#8c8c8c', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Promedio mínimo:</span>
-          <InputNumber
-            size="small"
-            min={0}
-            max={20}
-            step={0.5}
-            placeholder="Todos"
-            value={minAverage}
-            onChange={(val) => setMinAverage(val ?? null)}
-            onContextMenu={(e) => {
-              e.preventDefault();
-              setMinAverage(null);
-            }}
-            style={{ width: 100 }}
-          />
-          {minAverage !== null && (
-            <FilterButton active={false} onClick={() => setMinAverage(null)}>Sin límite</FilterButton>
-          )}
-        </div>
-        {/* Term filters */}
-        <div style={{ marginBottom: 6 }}>
-          <span style={{ fontSize: 11, fontWeight: 700, color: '#8c8c8c', textTransform: 'uppercase', letterSpacing: '0.06em', marginRight: 8 }}>Lapsos:</span>
-          {data.terms.map((t) => (
-            <FilterButton key={t.id} active={selectedTerms.includes(t.id)} onClick={() => toggleTerm(t.id)}>
-              {t.name}
-            </FilterButton>
-          ))}
-          {selectedTerms.length > 0 && (
-            <FilterButton active={false} onClick={() => setSelectedTerms([])}>Todos</FilterButton>
-          )}
-        </div>
-        {/* Grade filters */}
-        <div style={{ marginBottom: 6 }}>
-          <span style={{ fontSize: 11, fontWeight: 700, color: '#8c8c8c', textTransform: 'uppercase', letterSpacing: '0.06em', marginRight: 8 }}>Años:</span>
-          {data.grades.map((g) => (
-            <FilterButton key={g.id} active={selectedGrades.includes(g.id)} onClick={() => toggleGrade(g.id)}>
-              {shortGradeName(g.name)}
-            </FilterButton>
-          ))}
-          {selectedGrades.length > 0 && (
-            <FilterButton active={false} onClick={() => setSelectedGrades([])}>Todos</FilterButton>
-          )}
-        </div>
-        {/* Section filters */}
+      {/* Filters + Group By */}
+      <div style={{ marginBottom: 12, padding: 12, background: '#fafafa', borderRadius: 12, border: '1px solid #f0f0f0', display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+        {/* Left: Filters */}
         <div>
-          <span style={{ fontSize: 11, fontWeight: 700, color: '#8c8c8c', textTransform: 'uppercase', letterSpacing: '0.06em', marginRight: 8 }}>Secciones:</span>
-          {availableSections.map((s) => (
-            <FilterButton key={s.id} active={selectedSections.includes(s.id)} onClick={() => toggleSection(s.id)}>
-              {s.name}
+          {/* Minimum average filter */}
+          <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: '#8c8c8c', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Promedio mínimo:</span>
+            <InputNumber
+              size="small"
+              min={0}
+              max={20}
+              step={0.5}
+              placeholder="Todos"
+              value={minAverage}
+              onChange={(val) => setMinAverage(val ?? null)}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                setMinAverage(null);
+              }}
+              style={{ width: 100 }}
+            />
+            {minAverage !== null && (
+              <FilterButton active={false} onClick={() => setMinAverage(null)}>Sin límite</FilterButton>
+            )}
+          </div>
+          {/* Term filters */}
+          <div style={{ marginBottom: 6 }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: '#8c8c8c', textTransform: 'uppercase', letterSpacing: '0.06em', marginRight: 8 }}>Lapsos:</span>
+            {data.terms.map((t) => (
+              <FilterButton key={t.id} active={selectedTerms.includes(t.id)} onClick={() => toggleTerm(t.id)}>
+                {t.name}
+              </FilterButton>
+            ))}
+            {selectedTerms.length > 0 && (
+              <FilterButton active={false} onClick={() => setSelectedTerms([])}>Todos</FilterButton>
+            )}
+          </div>
+          {/* Grade filters */}
+          <div style={{ marginBottom: 6 }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: '#8c8c8c', textTransform: 'uppercase', letterSpacing: '0.06em', marginRight: 8 }}>Años:</span>
+            {data.grades.map((g) => (
+              <FilterButton key={g.id} active={selectedGrades.includes(g.id)} onClick={() => toggleGrade(g.id)}>
+                {shortGradeName(g.name)}
+              </FilterButton>
+            ))}
+            {selectedGrades.length > 0 && (
+              <FilterButton active={false} onClick={() => setSelectedGrades([])}>Todos</FilterButton>
+            )}
+          </div>
+          {/* Section filters */}
+          <div>
+            <span style={{ fontSize: 11, fontWeight: 700, color: '#8c8c8c', textTransform: 'uppercase', letterSpacing: '0.06em', marginRight: 8 }}>Secciones:</span>
+            {availableSections.map((s) => (
+              <FilterButton key={s.id} active={selectedSections.includes(s.id)} onClick={() => toggleSection(s.id)}>
+                {s.name}
+              </FilterButton>
+            ))}
+            {selectedSections.length > 0 && (
+              <FilterButton active={false} onClick={() => setSelectedSections([])}>Todas</FilterButton>
+            )}
+          </div>
+        </div>
+
+        {/* Vertical separator */}
+        <div style={{ width: 1, background: '#e0e0e0', flexShrink: 0 }} />
+
+        {/* Right: Group by */}
+        <div style={{ flexShrink: 0 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#8c8c8c', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>Agrupar por:</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <FilterButton active={groupBy.includes('grade')} onClick={() => setGroupBy(prev => prev.includes('grade') ? prev.filter(g => g !== 'grade') : [...prev, 'grade'])}>
+              Año
             </FilterButton>
-          ))}
-          {selectedSections.length > 0 && (
-            <FilterButton active={false} onClick={() => setSelectedSections([])}>Todas</FilterButton>
-          )}
+            <FilterButton active={groupBy.includes('section')} onClick={() => setGroupBy(prev => prev.includes('section') ? prev.filter(g => g !== 'section') : [...prev, 'section'])}>
+              Sección
+            </FilterButton>
+            <FilterButton active={groupBy.includes('gender')} onClick={() => setGroupBy(prev => prev.includes('gender') ? prev.filter(g => g !== 'gender') : [...prev, 'gender'])}>
+              Género
+            </FilterButton>
+            {groupBy.length > 0 && (
+              <FilterButton active={false} onClick={() => setGroupBy([])}>Sin agrupar</FilterButton>
+            )}
+          </div>
         </div>
       </div>
 
@@ -609,6 +675,7 @@ export default function GeneralAverages() {
         {selectedGrades.length > 0 ? ` · ${selectedGrades.length} año(s)` : ''}
         {selectedSections.length > 0 ? ` · ${selectedSections.length} sección(es)` : ''}
         {minAverage !== null ? ` · Promedio ≥ ${minAverage}` : ''}
+        {groupBy.length > 0 ? ` · Agrupado por: ${groupBy.map(g => g === 'grade' ? 'Año' : g === 'section' ? 'Sección' : 'Género').join(', ')}` : ''}
       </div>
     </div>
   );

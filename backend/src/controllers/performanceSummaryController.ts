@@ -1364,7 +1364,7 @@ export const getGeneralAverages = async (req: Request, res: Response) => {
     const inscriptions = await Inscription.findAll({
       where: { schoolPeriodId },
       include: [
-        { model: Person, as: 'student', attributes: ['id', 'firstName', 'lastName', 'document'] },
+        { model: Person, as: 'student', attributes: ['id', 'firstName', 'lastName', 'document', 'gender'] },
         { model: Grade, as: 'grade', attributes: ['id', 'name'] },
         { model: Section, as: 'section', attributes: ['id', 'name'] },
         {
@@ -1413,6 +1413,7 @@ export const getGeneralAverages = async (req: Request, res: Response) => {
         firstName: ins.student?.firstName || '',
         lastName: ins.student?.lastName || '',
         document: ins.student?.document || '',
+        gender: ins.student?.gender || null,
         gradeId: ins.grade?.id || 0,
         gradeName: ins.grade?.name || '',
         gradeColor: gradeColorMap.get(ins.grade?.id || 0) || null,
