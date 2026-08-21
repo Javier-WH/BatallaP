@@ -325,6 +325,27 @@ export default function GeneralAverages() {
     gridRef.current?.api.refreshCells({ force: true });
   }, []);
 
+  // Deselect rows when clicking outside grid rows or pressing Escape
+  useEffect(() => {
+    const handleClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest('.ag-row')) {
+        gridRef.current?.api.deselectAll();
+      }
+    };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        gridRef.current?.api.deselectAll();
+      }
+    };
+    document.addEventListener('click', handleClick);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('click', handleClick);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, []);
+
   // Toggle helpers
   const toggleTerm = (id: number) => {
     setSelectedTerms((prev) => prev.includes(id) ? prev.filter((t) => t !== id) : [...prev, id]);
@@ -537,6 +558,12 @@ export default function GeneralAverages() {
           background-color: var(--grade-row-bg) !important;
         }
         .ag-theme-quartz .ag-row.ag-row-grade-colored .ag-cell {
+          background-color: transparent !important;
+        }
+        .ag-theme-quartz .ag-row.ag-row-hover {
+          background-color: rgba(0, 0, 0, 0.04) !important;
+        }
+        .ag-theme-quartz .ag-row.ag-row-hover .ag-cell {
           background-color: transparent !important;
         }
       `}</style>
