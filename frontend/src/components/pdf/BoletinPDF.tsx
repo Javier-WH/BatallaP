@@ -13,7 +13,7 @@ export interface BoletinSubject {
   id: number;
   name: string;
   usesLiteralGrades?: boolean;
-  lapsos: { termId: number; termName: string; score: number }[];
+  lapsos: { termId: number; termName: string; score: number | null }[];
   finalScore: number | null;
   status: string;
 }
@@ -152,9 +152,9 @@ const styles = StyleSheet.create({
 });
 
 const formatScore = (score: number | null, maxGrade: number = 20): string => {
-  if (score === null || score === undefined) return '';
+  if (score === null || score === undefined) return '—';
   const n = Number(score);
-  if (isNaN(n) || n === 0) return '';
+  if (isNaN(n) || n === 0) return '—';
   const digits = Math.max(2, String(maxGrade).length);
   return String(Math.round(n)).padStart(digits, '0');
 };
@@ -172,7 +172,7 @@ const numericToLetter = (numericGrade: number, letterGrades: LetterGrade[]): str
 };
 
 const formatScoreForSubject = (score: number | null, usesLiteral: boolean, letterGrades: LetterGrade[], maxGrade: number = 20): string => {
-  if (score === null || score === undefined) return '';
+  if (score === null || score === undefined) return '—';
   if (usesLiteral) return numericToLetter(score, letterGrades);
   return formatScore(score, maxGrade);
 };

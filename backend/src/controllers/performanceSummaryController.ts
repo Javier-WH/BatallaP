@@ -25,6 +25,7 @@ import {
   Plantel,
   TeacherAssignment,
   SectionGuide,
+  CouncilChecklist,
 } from '@/models/index';
 import {
   getSubjectOrderMap,
@@ -1180,6 +1181,27 @@ export const getBoletinData = async (req: Request, res: Response) => {
     });
     const termCount = terms.length || 1;
 
+    // Determine which (termId, sectionId) pairs have their council completed (status: 'done')
+    const councilChecklists = await CouncilChecklist.findAll({
+      where: {
+        schoolPeriodId,
+        gradeId,
+        status: 'done',
+        termId: terms.map((t: any) => t.id),
+        ...(sectionId ? { sectionId } : {}),
+      },
+      attributes: ['termId', 'sectionId'],
+    });
+    // Map: sectionId -> Set<termId> with council completed
+    const councilDoneBySection = new Map<number, Set<number>>();
+    for (const c of councilChecklists) {
+      if (!councilDoneBySection.has(c.sectionId)) councilDoneBySection.set(c.sectionId, new Set());
+      councilDoneBySection.get(c.sectionId)!.add(c.termId);
+    }
+    const isCouncilDone = (termId: number, secId: number): boolean => {
+      return councilDoneBySection.get(secId)?.has(termId) || false;
+    };
+
     const inscWhere: any = { schoolPeriodId, gradeId };
     if (sectionId) inscWhere.sectionId = sectionId;
     // Note: we don't filter by inscriptionId here so we can compute rank within section
@@ -1226,6 +1248,8 @@ export const getBoletinData = async (req: Request, res: Response) => {
       );
 
       const subjects = insSubs.map((is: any) => {
+        const studentSectionId = ins.sectionId || 0;
+
         // Build a map of term grades from SubjectTermGrade (single source of truth)
         const termGradeMap = new Map<number, number>();
         (is.termGrades || []).forEach((tg: any) => {
@@ -1254,13 +1278,28 @@ export const getBoletinData = async (req: Request, res: Response) => {
           }
         });
 
+        // Build lapsos: only show score if the council for that term+section is completed
+        const lapsos = terms.map((t: any) => {
+          const councilDone = isCouncilDone(t.id, studentSectionId);
+          if (!councilDone) {
+            return { termId: t.id, termName: t.name, score: null as number | null };
+          }
+          const score = termGradeMap.has(t.id)
+            ? roundFinalGrade(termGradeMap.get(t.id)!)
+            : roundFinalGrade(termScores[t.id] || 0);
+          return { termId: t.id, termName: t.name, score };
+        });
+
+        // Calculate finalScore: average of terms with council completed only
+        const completedLapsos = lapsos.filter((l) => l.score !== null);
         let finalScore: number | null = null;
-        if (is.finalGrade && is.finalGrade.finalScore != null) {
+        if (is.finalGrade && is.finalGrade.finalScore != null && completedLapsos.length === lapsos.length) {
+          // Use stored final grade only if ALL terms have council completed (period is complete)
           finalScore = Math.max(MIN_FINAL_GRADE, Number(is.finalGrade.finalScore));
-        } else {
-          let total = 0;
-          Object.values(termScores).forEach((v) => { total += v; });
-          finalScore = roundFinalGrade(total / termCount);
+        } else if (completedLapsos.length > 0) {
+          // Average only the terms with council completed
+          const total = completedLapsos.reduce((sum, l) => sum + (l.score || 0), 0);
+          finalScore = roundFinalGrade(total / completedLapsos.length);
         }
 
         const subjectName = is.subject?.subjectGroupId
@@ -1273,13 +1312,7 @@ export const getBoletinData = async (req: Request, res: Response) => {
           teacherName: teacherMap.get(is.subjectId) || '',
           usesLiteralGrades: is.subject?.usesLiteralGrades || false,
           includeInAverage: includeInAverageMap.get(is.subjectId) !== false,
-          lapsos: terms.map((t: any) => ({
-            termId: t.id,
-            termName: t.name,
-            score: termGradeMap.has(t.id)
-              ? roundFinalGrade(termGradeMap.get(t.id)!)
-              : roundFinalGrade(termScores[t.id] || 0),
-          })),
+          lapsos,
           finalScore,
           status: is.finalGrade?.status || (finalScore !== null ? resolveGradeStatus(finalScore, Number(settings.passing_grade || 10)) : 'reprobada'),
         };

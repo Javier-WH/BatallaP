@@ -156,30 +156,35 @@ const buildStudentSheet = (
   }).join('');
 
   // Summary stats: average per term (only subjects with includeInAverage=true)
+  // Only consider lapsos with a non-null score (council closed for that term)
   // Minimum final grade is 01 — scores of 0 are treated as 1
   const termAverages = terms.map((t) => {
     const eligibleSubjects = student.subjects.filter((s) => s.includeInAverage !== false);
-    if (eligibleSubjects.length === 0) return '—';
-    const scores = eligibleSubjects.map((s) => {
-      const lapse = s.lapsos.find((l) => l.termId === t.id);
-      return lapse ? Math.max(1, Number(lapse.score)) : 1;
-    });
-    const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
+    const scoredSubjects = eligibleSubjects
+      .map((s) => {
+        const lapse = s.lapsos.find((l) => l.termId === t.id);
+        return lapse && lapse.score !== null ? Math.max(1, Number(lapse.score)) : null;
+      })
+      .filter((v): v is number => v !== null);
+    if (scoredSubjects.length === 0) return '—';
+    const avg = scoredSubjects.reduce((a, b) => a + b, 0) / scoredSubjects.length;
     return avg.toFixed(2);
   });
 
   // Definitiva average: only subjects with includeInAverage=true
-  // Average each subject's term scores (minimum 01), then average across subjects
+  // Average each subject's visible term scores (minimum 01), then average across subjects
   const finalAvgSubjects = student.subjects
     .filter((s) => s.includeInAverage !== false);
   const finalAvgScores = finalAvgSubjects
     .map((s) => {
       const termScores = terms.map((t) => {
         const lapse = s.lapsos.find((l) => l.termId === t.id);
-        return lapse ? Math.max(1, Number(lapse.score)) : 1;
-      });
+        return lapse && lapse.score !== null ? Math.max(1, Number(lapse.score)) : null;
+      }).filter((v): v is number => v !== null);
+      if (termScores.length === 0) return null;
       return termScores.reduce((a, b) => a + b, 0) / termScores.length;
-    });
+    })
+    .filter((v): v is number => v !== null);
   const finalAvg = finalAvgScores.length > 0
     ? (finalAvgScores.reduce((a, b) => a + b, 0) / finalAvgScores.length).toFixed(2)
     : '—';
