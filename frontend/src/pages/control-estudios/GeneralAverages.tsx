@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { Typography, Button, Spin, message, InputNumber } from 'antd';
+import { Typography, Button, Spin, message, InputNumber, Select } from 'antd';
 import { PrinterOutlined, TrophyOutlined, FileExcelOutlined } from '@ant-design/icons';
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
@@ -85,6 +85,8 @@ export default function GeneralAverages() {
   const [selectedGrades, setSelectedGrades] = useState<number[]>([]);
   const [selectedSections, setSelectedSections] = useState<number[]>([]);
   const [minAverage, setMinAverage] = useState<number | null>(null);
+  const [topN, setTopN] = useState<number | null>(null);
+  const [selectedGender, setSelectedGender] = useState<string | null>(null);
   const [groupBy, setGroupBy] = useState<string[]>([]);
   const gridRef = useRef<AgGridReact<any>>(null);
 
@@ -113,6 +115,10 @@ export default function GeneralAverages() {
     // Filter by sections
     if (selectedSections.length > 0) {
       filtered = filtered.filter((s) => selectedSections.includes(s.sectionId));
+    }
+    // Filter by gender
+    if (selectedGender !== null) {
+      filtered = filtered.filter((s) => s.gender === selectedGender);
     }
 
     // Determine which terms to average
@@ -146,8 +152,15 @@ export default function GeneralAverages() {
       ? withAvg.filter((s) => s.average >= minAverage!)
       : withAvg;
 
+    // Apply "Mejores N" filter: take the top N students by average descending
+    // This is applied AFTER all other filters (grade, section, gender, min average)
+    // and BEFORE ranking, so the position is recalculated on the subset
+    const afterTopN = topN !== null && topN > 0
+      ? [...aboveThreshold].sort((a, b) => b.average - a.average).slice(0, topN)
+      : aboveThreshold;
+
     // Compute ranking within the filtered set (by average descending)
-    const sorted = [...aboveThreshold].sort((a, b) => b.average - a.average);
+    const sorted = [...afterTopN].sort((a, b) => b.average - a.average);
     const rankMap = new Map<number, number>();
     let currentRank = 0;
     let prevAvg: number | null = null;
@@ -177,7 +190,7 @@ export default function GeneralAverages() {
       return 0;
     };
 
-    const displaySorted = [...aboveThreshold].sort((a, b) => {
+    const displaySorted = [...afterTopN].sort((a, b) => {
       // Group fields take priority
       const groupCmp = groupComparator(a, b);
       if (groupCmp !== 0) return groupCmp;
@@ -222,7 +235,7 @@ export default function GeneralAverages() {
     });
 
     return { rows, totalCount: rows.length };
-  }, [data, selectedTerms, selectedGrades, selectedSections, minAverage, groupBy]);
+  }, [data, selectedTerms, selectedGrades, selectedSections, selectedGender, minAverage, topN, groupBy]);
 
   // Column definitions
   const columnDefs = useMemo<ColDef<any>[]>(() => [
@@ -382,6 +395,8 @@ export default function GeneralAverages() {
       ? 'Todas las secciones'
       : data?.sections.filter((s) => selectedSections.includes(s.id)).map((s) => s.name).join(', ');
     const avgLabel = minAverage !== null ? `Promedio ≥ ${minAverage}` : 'Sin límite de promedio';
+    const topNLabel = topN !== null ? `Mejores ${topN}` : 'Todos los estudiantes';
+    const genderLabel = selectedGender !== null ? (selectedGender === 'M' ? 'Masculino' : 'Femenino') : 'Todos';
 
     // Get rows in the current grid order (respects user sorting)
     const gridRows: any[] = [];
@@ -480,6 +495,8 @@ export default function GeneralAverages() {
       <span><strong>Años:</strong> ${gradeLabel}</span>
       <span><strong>Secciones:</strong> ${sectionLabel}</span>
       <span><strong>Promedio:</strong> ${avgLabel}</span>
+      <span><strong>Mejores:</strong> ${topNLabel}</span>
+      <span><strong>Género:</strong> ${genderLabel}</span>
       ${groupBy.length > 0 ? `<span><strong>Agrupar por:</strong> ${groupBy.map(g => g === 'grade' ? 'Año' : g === 'section' ? 'Sección' : 'Género').join(', ')}</span>` : ''}
     </div>
   </div>
@@ -555,10 +572,12 @@ export default function GeneralAverages() {
     const groupLabel = groupBy.length > 0
       ? groupBy.map(g => g === 'grade' ? 'Año' : g === 'section' ? 'Sección' : 'Género').join(', ')
       : '';
+    const topNLabel = topN !== null ? `Mejores ${topN}` : '';
+    const genderLabel = selectedGender !== null ? (selectedGender === 'M' ? 'Masculino' : 'Femenino') : '';
 
     worksheet.mergeCells('A2:I2');
     const subCell = worksheet.getCell('A2');
-    subCell.value = `Período: ${periodName}  |  Lapsos: ${termLabel}  |  Años: ${gradeLabel}${groupLabel ? `  |  Agrupar por: ${groupLabel}` : ''}`;
+    subCell.value = `Período: ${periodName}  |  Lapsos: ${termLabel}  |  Años: ${gradeLabel}${topNLabel ? `  |  ${topNLabel}` : ''}${genderLabel ? `  |  Género: ${genderLabel}` : ''}${groupLabel ? `  |  Agrupar por: ${groupLabel}` : ''}`;
     subCell.font = { size: 9, color: { argb: 'FF666666' } };
     subCell.alignment = { horizontal: 'center' };
 
@@ -718,26 +737,63 @@ export default function GeneralAverages() {
       <div style={{ marginBottom: 12, padding: 12, background: '#fafafa', borderRadius: 12, border: '1px solid #f0f0f0', display: 'flex', gap: 16, alignItems: 'flex-start' }}>
         {/* Left: Filters */}
         <div>
-          {/* Minimum average filter */}
-          <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: 11, fontWeight: 700, color: '#8c8c8c', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Promedio mínimo:</span>
-            <InputNumber
-              size="small"
-              min={0}
-              max={20}
-              step={0.5}
-              placeholder="Todos"
-              value={minAverage}
-              onChange={(val) => setMinAverage(val ?? null)}
-              onContextMenu={(e) => {
-                e.preventDefault();
-                setMinAverage(null);
-              }}
-              style={{ width: 100 }}
-            />
-            {minAverage !== null && (
-              <FilterButton active={false} onClick={() => setMinAverage(null)}>Sin límite</FilterButton>
-            )}
+          {/* Minimum average + Top N filters (side by side) */}
+          <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: '#8c8c8c', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Promedio mínimo:</span>
+              <InputNumber
+                size="small"
+                min={0}
+                max={20}
+                step={0.5}
+                placeholder="Todos"
+                value={minAverage}
+                onChange={(val) => setMinAverage(val ?? null)}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  setMinAverage(null);
+                }}
+                style={{ width: 100 }}
+              />
+              {minAverage !== null && (
+                <FilterButton active={false} onClick={() => setMinAverage(null)}>Sin límite</FilterButton>
+              )}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: '#8c8c8c', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Mejores:</span>
+              <InputNumber
+                size="small"
+                min={1}
+                max={9999}
+                step={1}
+                placeholder="Todos"
+                value={topN}
+                onChange={(val) => setTopN(val ?? null)}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  setTopN(null);
+                }}
+                style={{ width: 100 }}
+              />
+              {topN !== null && (
+                <FilterButton active={false} onClick={() => setTopN(null)}>Todos</FilterButton>
+              )}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: '#8c8c8c', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Género:</span>
+              <Select
+                size="small"
+                value={selectedGender ?? undefined}
+                onChange={(val) => setSelectedGender(val ?? null)}
+                placeholder="Todos"
+                allowClear
+                style={{ width: 110 }}
+                options={[
+                  { value: 'M', label: 'Masculino' },
+                  { value: 'F', label: 'Femenino' },
+                ]}
+              />
+            </div>
           </div>
           {/* Term filters */}
           <div style={{ marginBottom: 6 }}>
@@ -781,7 +837,7 @@ export default function GeneralAverages() {
         <div style={{ width: 1, background: '#e0e0e0', flexShrink: 0 }} />
 
         {/* Right: Group by */}
-        <div style={{ flexShrink: 0 }}>
+        <div style={{ flexShrink: 0, marginLeft: 16 }}>
           <div style={{ fontSize: 11, fontWeight: 700, color: '#8c8c8c', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>Agrupar por:</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             <FilterButton active={groupBy.includes('grade')} onClick={() => setGroupBy(prev => prev.includes('grade') ? prev.filter(g => g !== 'grade') : [...prev, 'grade'])}>
@@ -833,6 +889,8 @@ export default function GeneralAverages() {
         {selectedGrades.length > 0 ? ` · ${selectedGrades.length} año(s)` : ''}
         {selectedSections.length > 0 ? ` · ${selectedSections.length} sección(es)` : ''}
         {minAverage !== null ? ` · Promedio ≥ ${minAverage}` : ''}
+        {topN !== null ? ` · Mejores ${topN}` : ''}
+        {selectedGender !== null ? ` · ${selectedGender === 'M' ? 'Masculino' : 'Femenino'}` : ''}
         {groupBy.length > 0 ? ` · Agrupado por: ${groupBy.map(g => g === 'grade' ? 'Año' : g === 'section' ? 'Sección' : 'Género').join(', ')}` : ''}
       </div>
     </div>
