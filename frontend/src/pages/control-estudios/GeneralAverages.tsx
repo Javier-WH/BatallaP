@@ -131,6 +131,7 @@ export default function GeneralAverages() {
     });
 
     const rows = displaySorted.map((s, idx) => ({
+      inscriptionId: s.inscriptionId,
       index: idx + 1,
       document: s.document,
       lastName: s.lastName,
@@ -149,12 +150,13 @@ export default function GeneralAverages() {
   const columnDefs = useMemo<ColDef<any>[]>(() => [
     {
       headerName: '#',
-      field: 'index',
       width: 60,
       pinned: 'left',
       sortable: false,
       filter: false,
+      suppressMenu: true,
       cellClass: 'ag-center-aligned-cell',
+      cellRenderer: (params: any) => (params.node?.rowIndex ?? 0) + 1,
     },
     {
       headerName: 'Cédula',
@@ -230,6 +232,10 @@ export default function GeneralAverages() {
 
   const onGridReady = useCallback((event: GridReadyEvent) => {
     event.api.setGridOption('datasource', null);
+  }, []);
+
+  const onSortChanged = useCallback(() => {
+    gridRef.current?.api.refreshCells({ force: true });
   }, []);
 
   // Toggle helpers
@@ -458,6 +464,10 @@ export default function GeneralAverages() {
             placeholder="Todos"
             value={minAverage}
             onChange={(val) => setMinAverage(val ?? null)}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              setMinAverage(null);
+            }}
             style={{ width: 100 }}
           />
           {minAverage !== null && (
@@ -511,10 +521,12 @@ export default function GeneralAverages() {
             columnDefs={columnDefs}
             defaultColDef={defaultColDef}
             onGridReady={onGridReady}
+            onSortChanged={onSortChanged}
+            onFilterChanged={onSortChanged}
             animateRows={true}
             rowSelection="multiple"
             suppressCellFocus={true}
-            getRowId={(params) => String(params.data.index)}
+            getRowId={(params) => String(params.data.inscriptionId)}
           />
         </AgGridProvider>
       </div>
