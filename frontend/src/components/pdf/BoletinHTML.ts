@@ -23,6 +23,7 @@ export interface BoletinHTMLStudent {
   listNumber?: number;
   rankPosition?: number;
   rankTotal?: number;
+  hasBackendRank?: boolean;
 }
 export interface BoletinHTMLData {
   institution: {
@@ -308,30 +309,44 @@ export const generateBoletinHTML = (data: BoletinHTMLData): string => {
   });
 
   // Compute rank position by general average (definitiva) within the whole set
-  const avgMap = studentsWithList.map((s) => {
-    const eligibleSubjects = s.subjects.filter((sub) => sub.includeInAverage !== false);
-    const finalScores = eligibleSubjects
-      .map((sub) => Math.max(1, Number(sub.finalScore) || 1));
-    const avg = finalScores.length > 0
-      ? finalScores.reduce((a, b) => a + b, 0) / finalScores.length
-      : 0;
-    return { inscriptionId: s.inscriptionId, avg };
-  });
-  const sortedByAvg = [...avgMap].sort((a, b) => b.avg - a.avg);
-  const rankMap = new Map<number, { position: number; total: number }>();
-  let currentRank = 0;
-  let prevAvg: number | null = null;
-  sortedByAvg.forEach((entry, idx) => {
-    if (prevAvg === null || entry.avg !== prevAvg) {
-      currentRank = idx + 1;
-      prevAvg = entry.avg;
-    }
-    rankMap.set(entry.inscriptionId, { position: currentRank, total: sortedByAvg.length });
-  });
-  const studentsWithRank = studentsWithList.map((s) => {
-    const rank = rankMap.get(s.inscriptionId);
-    return { ...s, rankPosition: rank?.position, rankTotal: rank?.total };
-  });
+  // If the backend already provided rankPosition/rankTotal (e.g. single-student query), use those
+  const hasBackendRank = studentsWithList.some((s) => s.rankPosition != null && s.rankPosition > 0);
+
+  let studentsWithRank;
+  if (hasBackendRank) {
+    // Use backend-provided ranks (computed within each section)
+    studentsWithRank = studentsWithList.map((s) => ({
+      ...s,
+      rankPosition: s.rankPosition,
+      rankTotal: s.rankTotal,
+    }));
+  } else {
+    // Compute rank locally from the students we have
+    const avgMap = studentsWithList.map((s) => {
+      const eligibleSubjects = s.subjects.filter((sub) => sub.includeInAverage !== false);
+      const finalScores = eligibleSubjects
+        .map((sub) => Math.max(1, Number(sub.finalScore) || 1));
+      const avg = finalScores.length > 0
+        ? finalScores.reduce((a, b) => a + b, 0) / finalScores.length
+        : 0;
+      return { inscriptionId: s.inscriptionId, avg };
+    });
+    const sortedByAvg = [...avgMap].sort((a, b) => b.avg - a.avg);
+    const rankMap = new Map<number, { position: number; total: number }>();
+    let currentRank = 0;
+    let prevAvg: number | null = null;
+    sortedByAvg.forEach((entry, idx) => {
+      if (prevAvg === null || entry.avg !== prevAvg) {
+        currentRank = idx + 1;
+        prevAvg = entry.avg;
+      }
+      rankMap.set(entry.inscriptionId, { position: currentRank, total: sortedByAvg.length });
+    });
+    studentsWithRank = studentsWithList.map((s) => {
+      const rank = rankMap.get(s.inscriptionId);
+      return { ...s, rankPosition: rank?.position, rankTotal: rank?.total };
+    });
+  }
 
   const enrichedData = { ...data, students: studentsWithRank };
   const sheets = studentsWithRank.map((student) => buildStudentSheet(student, enrichedData)).join('\n');

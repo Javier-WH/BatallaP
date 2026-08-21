@@ -1182,7 +1182,7 @@ export const getBoletinData = async (req: Request, res: Response) => {
 
     const inscWhere: any = { schoolPeriodId, gradeId };
     if (sectionId) inscWhere.sectionId = sectionId;
-    if (inscriptionId) inscWhere.id = inscriptionId;
+    // Note: we don't filter by inscriptionId here so we can compute rank within section
 
     const inscriptions = await Inscription.findAll({
       where: inscWhere,
@@ -1298,6 +1298,50 @@ export const getBoletinData = async (req: Request, res: Response) => {
       };
     });
 
+    // Compute rank within each section based on average of includeInAverage subjects
+    const passingGrade = Number(settings.passing_grade) || 10;
+    const sectionGroups = new Map<number, typeof students>();
+    for (const s of students) {
+      const sid = (s as any).sectionId || 0;
+      if (!sectionGroups.has(sid)) sectionGroups.set(sid, []);
+      sectionGroups.get(sid)!.push(s);
+    }
+
+    const rankMap = new Map<number, { position: number; total: number }>();
+    for (const [, sectionStudents] of sectionGroups) {
+      // Compute average for each student in this section
+      const withAvg = sectionStudents.map((s: any) => {
+        const eligible = s.subjects.filter((sub: any) => sub.includeInAverage !== false);
+        const scores = eligible.map((sub: any) => Math.max(MIN_FINAL_GRADE, Number(sub.finalScore) || MIN_FINAL_GRADE));
+        const avg = scores.length > 0
+          ? scores.reduce((a: number, b: number) => a + b, 0) / scores.length
+          : 0;
+        return { inscriptionId: s.inscriptionId, avg };
+      });
+      // Sort by average descending
+      const sorted = [...withAvg].sort((a, b) => b.avg - a.avg);
+      let currentRank = 0;
+      let prevAvg: number | null = null;
+      sorted.forEach((entry, idx) => {
+        if (prevAvg === null || entry.avg !== prevAvg) {
+          currentRank = idx + 1;
+          prevAvg = entry.avg;
+        }
+        rankMap.set(entry.inscriptionId, { position: currentRank, total: sorted.length });
+      });
+    }
+
+    // Add rank info to each student
+    const studentsWithRank = students.map((s: any) => {
+      const rank = rankMap.get(s.inscriptionId);
+      return { ...s, rankPosition: rank?.position || 0, rankTotal: rank?.total || 0 };
+    });
+
+    // Filter to only the requested student(s) if inscriptionId was specified
+    const finalStudents = inscriptionId
+      ? studentsWithRank.filter((s: any) => s.inscriptionId === inscriptionId)
+      : studentsWithRank;
+
     res.json({
       institution: {
         name: settings.institution_name || '',
@@ -1312,7 +1356,7 @@ export const getBoletinData = async (req: Request, res: Response) => {
       passingGrade: Number(settings.passing_grade) || 10,
       grade: { id: grade.id, name: grade.name },
       terms: terms.map((t: any) => ({ id: t.id, name: t.name, order: t.order })),
-      students,
+      students: finalStudents,
     });
   } catch (error: any) {
     console.error('[getBoletinData] Error:', error);
