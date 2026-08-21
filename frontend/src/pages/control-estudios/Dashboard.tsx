@@ -8,13 +8,10 @@ import {
   ClockCircleOutlined,
   ExclamationCircleOutlined,
   CalendarOutlined,
-  ArrowRightOutlined,
-  FileExcelOutlined,
-  EditOutlined,
-  UserAddOutlined,
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import api from '@/services/api';
+import { getSubjectVisual } from '@/utils/subjectVisuals';
 
 interface ControlPanelData {
   period: { id: number; name: string; period: string };
@@ -35,6 +32,7 @@ interface ControlPanelData {
     withoutGrades: number;
     sampleWithoutPlans: AssignmentInsight[];
     sampleWithoutGrades: AssignmentInsight[];
+    byGrade: GradeProgress[];
   };
 }
 
@@ -43,6 +41,38 @@ interface AssignmentInsight {
   subject: string;
   grade: string;
   section: string;
+}
+
+interface SectionDetail {
+  sectionId: number;
+  sectionName: string;
+  sectionColor: string;
+  teacherName: string;
+  hasPlan: boolean;
+  hasGrades: boolean;
+}
+
+interface SubjectProgress {
+  subjectId: number;
+  subjectName: string;
+  subjectIcon: string | null;
+  subjectColor: string | null;
+  subjectAbbreviation: string | null;
+  order: number;
+  totalSections: number;
+  withPlan: number;
+  withoutPlan: number;
+  withGrades: number;
+  withoutGrades: number;
+  sections: SectionDetail[];
+}
+
+interface GradeProgress {
+  gradeId: number;
+  gradeName: string;
+  gradeColor: string | null;
+  gradeOrder: number;
+  subjects: SubjectProgress[];
 }
 
 /* ---------- Animated counter hook ---------- */
@@ -174,32 +204,251 @@ const FadeIn: React.FC<{ children: React.ReactNode; delay?: number; className?: 
 };
 
 /* ---------- Quick action button ---------- */
-const QuickAction: React.FC<{
-  icon: React.ReactNode;
-  title: string;
-  subtitle: string;
-  color: string;
-  onClick: () => void;
-}> = ({ icon, title, subtitle, color, onClick }) => (
-  <button
-    onClick={onClick}
-    className="w-full p-4 rounded-xl text-left app-card-hover group"
-    style={{ border: '1px solid rgba(15,23,42,0.08)', backgroundColor: 'var(--color-content-bg)', cursor: 'pointer' }}
-  >
-    <div className="flex items-center justify-between">
-      <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: `color-mix(in srgb, ${color} 10%, transparent)`, color }}>
-          {icon}
+/* ---------- Subject progress row ---------- */
+// Convert "QUINTO AÑO" → "5to Año", "PRIMERO AÑO" → "1ro Año", etc.
+const ordinalToNumber: Record<string, string> = {
+  'primero': '1ro', 'segundo': '2do', 'tercero': '3ro',
+  'cuarto': '4to', 'quinto': '5to', 'sexto': '6to',
+  'séptimo': '7mo', 'octavo': '8vo', 'noveno': '9no',
+  'décimo': '10mo', 'undécimo': '11mo', 'duodécimo': '12mo',
+};
+const shortGradeName = (name: string): string => {
+  const lower = name.toLowerCase().trim();
+  for (const [word, num] of Object.entries(ordinalToNumber)) {
+    if (lower.startsWith(word)) {
+      const rest = name.slice(word.length);
+      // Capitalize "Año" if present
+      const fixedRest = rest.replace(/a[ñn]o/i, 'Año');
+      return num + fixedRest;
+    }
+  }
+  return name;
+};
+
+/* ---------- Band helpers ---------- */
+type BandKey = 'red' | 'amber' | 'blue' | 'green';
+const bandOf = (v: number): BandKey => {
+  if (v >= 100) return 'green';
+  if (v >= 75) return 'blue';
+  if (v >= 40) return 'amber';
+  return 'red';
+};
+const BAND_STYLES: Record<BandKey, { wrap: string; bar: string; text: string; dot: string }> = {
+  red:   { wrap: 'bg-red-50',     bar: 'bg-red-500',     text: 'text-red-600',     dot: 'bg-red-500' },
+  amber: { wrap: 'bg-amber-50',   bar: 'bg-amber-500',   text: 'text-amber-600',   dot: 'bg-amber-500' },
+  blue:  { wrap: 'bg-blue-50',    bar: 'bg-blue-500',    text: 'text-blue-600',    dot: 'bg-blue-500' },
+  green: { wrap: 'bg-emerald-50', bar: 'bg-emerald-500', text: 'text-emerald-600', dot: 'bg-emerald-500' },
+};
+const avgOf = (nums: number[]) => (nums.length === 0 ? 0 : Math.round(nums.reduce((a, b) => a + b, 0) / nums.length));
+
+/* ---------- Grade tabs card with subject progress (table layout) ---------- */
+const GradeProgressCard: React.FC<{
+  title: React.ReactNode;
+  extra: React.ReactNode;
+  byGrade: GradeProgress[];
+  mode: 'plan' | 'grades';
+  accentColor: string;
+}> = ({ title, extra, byGrade, mode }) => {
+  const [activeGrade, setActiveGrade] = useState<string>(byGrade[0]?.gradeId?.toString() || '');
+
+  useEffect(() => {
+    if (byGrade.length > 0 && !byGrade.find(g => g.gradeId.toString() === activeGrade)) {
+      setActiveGrade(byGrade[0].gradeId.toString());
+    }
+  }, [byGrade]);
+
+  if (byGrade.length === 0) {
+    return (
+      <Card className="h-full" bodyStyle={{ padding: 24 }} title={title} extra={extra}>
+        <div className="flex flex-col items-center justify-center py-8">
+          <CheckCircleOutlined style={{ fontSize: 36, color: '#16a34a', marginBottom: 8 }} />
+          <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>Sin asignaciones</p>
         </div>
-        <div>
-          <p className="font-bold text-sm m-0" style={{ color: 'var(--color-text-main)' }}>{title}</p>
-          <p className="text-xs m-0" style={{ color: 'var(--color-text-muted)' }}>{subtitle}</p>
+      </Card>
+    );
+  }
+
+  // Per-grade overall percentage for the tab badge
+  const gradePct = (grade: GradeProgress): number => {
+    const totalDone = grade.subjects.reduce((sum, s) => sum + (mode === 'plan' ? s.withPlan : s.withGrades), 0);
+    const totalSections = grade.subjects.reduce((sum, s) => sum + s.totalSections, 0);
+    return totalSections > 0 ? Math.round((totalDone / totalSections) * 100) : 0;
+  };
+
+  const activeGradeData = byGrade.find(g => g.gradeId.toString() === activeGrade) || byGrade[0];
+
+  // Collect unique sections across all subjects of the active grade (sorted)
+  const sectionColsMap = new Map<number, { sectionName: string; sectionColor: string }>();
+  activeGradeData.subjects.forEach(s => {
+    s.sections.forEach(sec => {
+      if (!sectionColsMap.has(sec.sectionId)) {
+        sectionColsMap.set(sec.sectionId, { sectionName: sec.sectionName, sectionColor: sec.sectionColor });
+      }
+    });
+  });
+  const sectionColumns = Array.from(sectionColsMap.entries())
+    .map(([id, val]) => ({ sectionId: id, ...val }))
+    .sort((a, b) => a.sectionName.localeCompare(b.sectionName, 'es'));
+
+  const overall = gradePct(activeGradeData);
+
+  return (
+    <Card
+      className="h-full"
+      bodyStyle={{ padding: 16 }}
+      title={
+        <div className="flex items-center justify-between w-full">
+          {title}
+          <div
+            className="flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold tabular-nums"
+            style={{ backgroundColor: '#0f172a', color: '#fff' }}
+          >
+            <span style={{ color: 'rgba(255,255,255,0.6)', fontWeight: 500 }}>Total</span>
+            <span>{overall}%</span>
+          </div>
+        </div>
+      }
+      extra={extra}
+    >
+      {/* Compact tab buttons */}
+      <div className="flex flex-wrap gap-1.5 mb-3">
+        {byGrade.map(grade => {
+          const pct = gradePct(grade);
+          const active = grade.gradeId.toString() === activeGrade;
+          const gColor = grade.gradeColor || '#1e40af';
+          const badgeBg =
+            pct === 100 ? 'rgba(16,163,74,0.12)' :
+            pct === 0   ? 'rgba(239,68,68,0.12)' :
+                          'rgba(245,158,11,0.12)';
+          const badgeColor =
+            pct === 100 ? '#16a34a' :
+            pct === 0   ? '#ef4444' :
+                          '#f59e0b';
+          return (
+            <button
+              key={grade.gradeId}
+              onClick={() => setActiveGrade(grade.gradeId.toString())}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors"
+              style={
+                active
+                  ? { backgroundColor: gColor, color: '#fff', borderColor: gColor }
+                  : { backgroundColor: '#fff', color: 'rgba(15,23,42,0.6)', borderColor: 'rgba(15,23,42,0.12)' }
+              }
+            >
+              {shortGradeName(grade.gradeName)}
+              <span
+                className="text-[10px] font-bold px-1.5 py-0.5 rounded-full tabular-nums"
+                style={active
+                  ? { backgroundColor: 'rgba(255,255,255,0.15)', color: '#fff' }
+                  : { backgroundColor: badgeBg, color: badgeColor }}
+              >
+                {pct}%
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Table */}
+      <div className="border border-slate-200 rounded-xl overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse" style={{ minWidth: 480 }}>
+            <thead>
+              <tr style={{ backgroundColor: 'rgba(15,23,42,0.03)' }}>
+                <th
+                  className="text-left text-[10px] font-semibold uppercase tracking-wide px-3 py-2 border-b border-slate-200"
+                  style={{ color: 'rgba(15,23,42,0.5)', minWidth: 150 }}
+                >
+                  Materia
+                </th>
+                {sectionColumns.map((c, i) => {
+                  const colAvg = avgOf(activeGradeData.subjects.map(s => {
+                    const sec = s.sections.find(x => x.sectionId === c.sectionId);
+                    if (!sec) return 0;
+                    return (mode === 'plan' ? sec.hasPlan : sec.hasGrades) ? 100 : 0;
+                  }));
+                  return (
+                    <th
+                      key={c.sectionId}
+                      className="text-center text-[10px] font-semibold uppercase tracking-wide px-3 py-2 border-b border-slate-200"
+                      style={{ color: 'rgba(15,23,42,0.5)', minWidth: 96 }}
+                    >
+                      {c.sectionName.replace(/^SECCION\s+/i, '').replace(/^SECCIÓN\s+/i, '')}
+                      <span
+                        className="block text-xs font-bold normal-case tracking-normal tabular-nums mt-0.5"
+                        style={{ color: colAvg === 100 ? '#16a34a' : colAvg === 0 ? '#ef4444' : 'rgba(15,23,42,0.85)' }}
+                      >
+                        {colAvg}%
+                      </span>
+                    </th>
+                  );
+                })}
+              </tr>
+            </thead>
+            <tbody>
+              {activeGradeData.subjects.map(subject => {
+                const { Icon, color: subjColor } = getSubjectVisual({
+                  name: subject.subjectName,
+                  icon: subject.subjectIcon,
+                  color: subject.subjectColor,
+                });
+                const sectionMap = new Map(subject.sections.map(s => [s.sectionId, s]));
+                return (
+                  <tr key={subject.subjectId} className="hover:bg-slate-50/70">
+                    <td className="px-3 py-1.5 border-b border-slate-100 last:border-0">
+                      <div className="flex items-center gap-2 text-[12.5px] font-medium" style={{ color: 'rgba(15,23,42,0.9)' }}>
+                        <Icon style={{ width: 15, height: 15, color: subjColor, flexShrink: 0 }} />
+                        <span
+                          style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                          title={subject.subjectName}
+                        >
+                          {subject.subjectName}
+                        </span>
+                      </div>
+                    </td>
+                    {sectionColumns.map(col => {
+                      const sec = sectionMap.get(col.sectionId);
+                      const v = sec ? ((mode === 'plan' ? sec.hasPlan : sec.hasGrades) ? 100 : 0) : -1;
+                      if (v < 0) {
+                        return (
+                          <td key={col.sectionId} className="px-3 py-1.5 border-b border-slate-100 last:border-0 text-center">
+                            <span className="text-[10px]" style={{ color: 'rgba(15,23,42,0.15)' }}>—</span>
+                          </td>
+                        );
+                      }
+                      const b = BAND_STYLES[bandOf(v)];
+                      return (
+                        <td key={col.sectionId} className="px-3 py-1.5 border-b border-slate-100 last:border-0" title={sec?.teacherName}>
+                          <div className={`flex items-center gap-2 rounded-md px-2 py-1 ${b.wrap}`}>
+                            <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: 'rgba(0,0,0,0.07)' }}>
+                              <div className={`h-full rounded-full ${b.bar}`} style={{ width: `${v}%` }} />
+                            </div>
+                            <span className={`flex items-center gap-0.5 text-[11px] font-semibold tabular-nums min-w-[32px] justify-end ${b.text}`}>
+                              {v}%
+                              {v === 100 && <CheckCircleOutlined style={{ fontSize: 10 }} />}
+                            </span>
+                          </div>
+                        </td>
+                      );
+                    })}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Legend */}
+        <div className="flex items-center gap-3 px-3 py-2 border-t border-slate-200 text-[10px]" style={{ color: 'rgba(15,23,42,0.5)' }}>
+          <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-red-500" />0–39%</span>
+          <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-amber-500" />40–74%</span>
+          <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-blue-500" />75–99%</span>
+          <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-emerald-500" />100%</span>
         </div>
       </div>
-      <ArrowRightOutlined className="group-hover:translate-x-1 transition-transform" style={{ color: 'var(--color-text-muted)' }} />
-    </div>
-  </button>
-);
+    </Card>
+  );
+};
 
 const ControlEstudiosDashboard: React.FC = () => {
   const [data, setData] = useState<ControlPanelData | null>(null);
@@ -395,12 +644,12 @@ const ControlEstudiosDashboard: React.FC = () => {
           </Col>
         </Row>
 
-        {/* ===== Lapsos Timeline + Pending Lists ===== */}
+        {/* ===== Lapsos Timeline + Progress Cards ===== */}
         <Row gutter={[20, 20]}>
           {/* Lapsos */}
-          <Col xs={24} lg={10}>
+          <Col xs={24} lg={6}>
             <FadeIn delay={400}>
-              <Card className="h-full" bodyStyle={{ padding: 24 }}>
+              <Card className="h-full" bodyStyle={{ padding: 20 }}>
                 <div className="flex items-center gap-2 mb-4">
                   <CalendarOutlined style={{ color: 'var(--color-accent)' }} />
                   <h3 className="text-sm font-bold uppercase tracking-wider m-0" style={{ color: 'var(--color-text-muted)' }}>Lapsos Académicos</h3>
@@ -412,11 +661,11 @@ const ControlEstudiosDashboard: React.FC = () => {
                     {data.lapses.terms.map((term, idx) => (
                       <div
                         key={term.id}
-                        className="flex items-center justify-between p-3 rounded-xl app-card-hover"
+                        className="flex items-center justify-between p-2.5 rounded-xl app-card-hover"
                         style={{ backgroundColor: idx % 2 === 0 ? 'transparent' : 'rgba(15,23,42,0.02)', border: '1px solid rgba(15,23,42,0.06)', transition: 'all 0.2s ease' }}
                       >
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-black" style={{ backgroundColor: term.isBlocked ? 'rgba(22,163,74,0.1)' : 'rgba(245,158,11,0.1)', color: term.isBlocked ? '#16a34a' : '#f59e0b' }}>
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-7 h-7 rounded-lg flex items-center justify-center text-xs font-black" style={{ backgroundColor: term.isBlocked ? 'rgba(22,163,74,0.1)' : 'rgba(245,158,11,0.1)', color: term.isBlocked ? '#16a34a' : '#f59e0b' }}>
                             {term.order}
                           </div>
                           <div>
@@ -428,7 +677,7 @@ const ControlEstudiosDashboard: React.FC = () => {
                             )}
                           </div>
                         </div>
-                        <Tag color={term.isBlocked ? 'success' : 'warning'} className="font-semibold border-none rounded-full px-3" style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                        <Tag color={term.isBlocked ? 'success' : 'warning'} className="font-semibold border-none rounded-full px-2.5" style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                           {term.isBlocked ? <CheckCircleOutlined /> : <ClockCircleOutlined />}
                           {term.isBlocked ? 'Cerrado' : 'Abierto'}
                         </Tag>
@@ -440,89 +689,32 @@ const ControlEstudiosDashboard: React.FC = () => {
             </FadeIn>
           </Col>
 
-          {/* Without Plans */}
-          <Col xs={24} lg={7}>
+          {/* Plans Progress by Grade */}
+          <Col xs={24} lg={9}>
             <FadeIn delay={450}>
-              <Card
-                className="h-full"
-                bodyStyle={{ padding: 24 }}
-                title={<span className="flex items-center gap-2 text-sm font-bold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}><BookOutlined style={{ color: '#f59e0b' }} /> Sin Plan de Evaluación</span>}
+              <GradeProgressCard
+                title={<span className="flex items-center gap-2 text-sm font-bold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}><BookOutlined style={{ color: '#f59e0b' }} /> Planes de Evaluación</span>}
                 extra={<Tag color="warning" className="font-bold rounded-full">{data.teachers.withoutPlans}</Tag>}
-              >
-                {data.teachers.sampleWithoutPlans.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-8">
-                    <CheckCircleOutlined style={{ fontSize: 36, color: '#16a34a', marginBottom: 8 }} />
-                    <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>Todo al día</p>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {data.teachers.sampleWithoutPlans.map((item, idx) => (
-                      <div key={idx} className="p-2 rounded-lg app-card-hover" style={{ border: '1px solid rgba(15,23,42,0.06)' }}>
-                        <p className="font-semibold text-sm m-0" style={{ color: 'var(--color-text-main)' }}>{item.teacher}</p>
-                        <p className="text-xs m-0" style={{ color: 'var(--color-text-muted)' }}>{item.subject} · {item.grade} / {item.section}</p>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </Card>
+                byGrade={data.teachers.byGrade}
+                mode="plan"
+                accentColor="#f59e0b"
+              />
             </FadeIn>
           </Col>
 
-          {/* Without Grades */}
-          <Col xs={24} lg={7}>
+          {/* Grades Progress by Grade */}
+          <Col xs={24} lg={9}>
             <FadeIn delay={500}>
-              <Card
-                className="h-full"
-                bodyStyle={{ padding: 24 }}
-                title={<span className="flex items-center gap-2 text-sm font-bold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}><ExclamationCircleOutlined style={{ color: '#ef4444' }} /> Sin Carga de Notas</span>}
+              <GradeProgressCard
+                title={<span className="flex items-center gap-2 text-sm font-bold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}><ExclamationCircleOutlined style={{ color: '#ef4444' }} /> Carga de Notas</span>}
                 extra={<Tag color="error" className="font-bold rounded-full">{data.teachers.withoutGrades}</Tag>}
-              >
-                {data.teachers.sampleWithoutGrades.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-8">
-                    <CheckCircleOutlined style={{ fontSize: 36, color: '#16a34a', marginBottom: 8 }} />
-                    <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>Todos han cargado</p>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {data.teachers.sampleWithoutGrades.map((item, idx) => (
-                      <div key={idx} className="p-2 rounded-lg app-card-hover" style={{ border: '1px solid rgba(15,23,42,0.06)' }}>
-                        <p className="font-semibold text-sm m-0" style={{ color: 'var(--color-text-main)' }}>{item.teacher}</p>
-                        <p className="text-xs m-0" style={{ color: 'var(--color-text-muted)' }}>{item.subject} · {item.grade} / {item.section}</p>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </Card>
+                byGrade={data.teachers.byGrade}
+                mode="grades"
+                accentColor="#ef4444"
+              />
             </FadeIn>
           </Col>
         </Row>
-
-        {/* ===== Quick Actions ===== */}
-        <FadeIn delay={550}>
-          <Card bodyStyle={{ padding: 24 }}>
-            <h3 className="text-sm font-bold uppercase tracking-wider mb-4" style={{ color: 'var(--color-text-muted)' }}>Acciones Rápidas</h3>
-            <Row gutter={[16, 16]}>
-              <Col xs={24} sm={8}>
-                <QuickAction icon={<UserAddOutlined style={{ fontSize: 18 }} />} title="Matricular Estudiante" subtitle="Inscripción individual o masiva" color="#1e40af" onClick={() => navigate('/control-estudios/matricular-estudiante')} />
-              </Col>
-              <Col xs={24} sm={8}>
-                <QuickAction icon={<CheckCircleOutlined style={{ fontSize: 18 }} />} title="Consejos de Curso" subtitle="Checklist y cierre de lapsos" color="#0ea5e9" onClick={() => navigate('/control-estudios/consejos-curso')} />
-              </Col>
-              <Col xs={24} sm={8}>
-                <QuickAction icon={<EditOutlined style={{ fontSize: 18 }} />} title="Calificaciones" subtitle="Notas actuales e históricas" color="#8b5cf6" onClick={() => navigate('/control-estudios/calificaciones')} />
-              </Col>
-              <Col xs={24} sm={8}>
-                <QuickAction icon={<FileExcelOutlined style={{ fontSize: 18 }} />} title="Resumen de Rendimiento" subtitle="Reportes académicos" color="#16a34a" onClick={() => navigate('/control-estudios/resumen-rendimiento')} />
-              </Col>
-              <Col xs={24} sm={8}>
-                <QuickAction icon={<BookOutlined style={{ fontSize: 18 }} />} title="Gestión Académica" subtitle="Períodos, grados, secciones" color="#f59e0b" onClick={() => navigate('/control-estudios/academic')} />
-              </Col>
-              <Col xs={24} sm={8}>
-                <QuickAction icon={<TeamOutlined style={{ fontSize: 18 }} />} title="Proyección" subtitle="Asignación académica" color="#ec4899" onClick={() => navigate('/control-estudios/proyeccion')} />
-              </Col>
-            </Row>
-          </Card>
-        </FadeIn>
       </div>
     </div>
   );

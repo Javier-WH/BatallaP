@@ -7,6 +7,7 @@ import Term from '@/models/Term';
 import TeacherAssignment from '@/models/TeacherAssignment';
 import PeriodGradeSubject from '@/models/PeriodGradeSubject';
 import PeriodGrade from '@/models/PeriodGrade';
+import PeriodGradeSection from '@/models/PeriodGradeSection';
 import Grade from '@/models/Grade';
 import Section from '@/models/Section';
 import Person from '@/models/Person';
@@ -49,6 +50,7 @@ type AcademicSnapshot =
         withoutGrades: number;
         sampleWithoutPlans: AssignmentInsight[];
         sampleWithoutGrades: AssignmentInsight[];
+        byGrade: GradeProgress[];
       };
     };
 
@@ -57,6 +59,38 @@ interface AssignmentInsight {
   subject: string;
   grade: string;
   section: string;
+}
+
+interface SectionDetail {
+  sectionId: number;
+  sectionName: string;
+  sectionColor: string;
+  teacherName: string;
+  hasPlan: boolean;
+  hasGrades: boolean;
+}
+
+interface SubjectProgress {
+  subjectId: number;
+  subjectName: string;
+  subjectIcon: string | null;
+  subjectColor: string | null;
+  subjectAbbreviation: string | null;
+  order: number;
+  totalSections: number;
+  withPlan: number;
+  withoutPlan: number;
+  withGrades: number;
+  withoutGrades: number;
+  sections: SectionDetail[];
+}
+
+interface GradeProgress {
+  gradeId: number;
+  gradeName: string;
+  gradeColor: string | null;
+  gradeOrder: number;
+  subjects: SubjectProgress[];
 }
 
 const buildAcademicSnapshot = async (): Promise<AcademicSnapshot> => {
@@ -90,9 +124,10 @@ const buildAcademicSnapshot = async (): Promise<AcademicSnapshot> => {
             as: 'periodGrade',
             required: true,
             where: { schoolPeriodId: activePeriod.id },
-            include: [{ model: Grade, as: 'grade', attributes: ['id', 'name'] }]
+            attributes: ['id', 'schoolPeriodId', 'gradeId', 'color'],
+            include: [{ model: Grade, as: 'grade', attributes: ['id', 'name', 'order'] }]
           },
-          { model: Subject, as: 'subject', attributes: ['id', 'name'] }
+          { model: Subject, as: 'subject', attributes: ['id', 'name', 'icon', 'color', 'abbreviation'] }
         ]
       },
       { model: Section, as: 'section', attributes: ['id', 'name'] },
@@ -128,7 +163,8 @@ const buildAcademicSnapshot = async (): Promise<AcademicSnapshot> => {
         withoutPlans: 0,
         withoutGrades: 0,
         sampleWithoutPlans: [],
-        sampleWithoutGrades: []
+        sampleWithoutGrades: [],
+        byGrade: []
       }
     };
   }
@@ -209,6 +245,89 @@ const buildAcademicSnapshot = async (): Promise<AcademicSnapshot> => {
     }
   });
 
+  // Fetch section colors from PeriodGradeSection for all periodGradeId + sectionId pairs
+  const periodGradeIds = [...new Set(assignments.map(a => a.periodGradeSubject?.periodGradeId).filter(Boolean) as number[])];
+  const sectionColorMap = new Map<string, string>();
+  if (periodGradeIds.length > 0) {
+    const pgsRecords = await PeriodGradeSection.findAll({
+      where: { periodGradeId: { [Op.in]: periodGradeIds } },
+      attributes: ['periodGradeId', 'sectionId', 'color'],
+    });
+    pgsRecords.forEach(r => {
+      sectionColorMap.set(`${r.periodGradeId}:${r.sectionId}`, r.color);
+    });
+  }
+
+  // Build byGrade structure: group assignments by grade → subject → sections
+  const gradeMap = new Map<number, { gradeName: string; gradeColor: string | null; gradeOrder: number; subjects: Map<number, SubjectProgress> }>();
+
+  assignments.forEach(assignment => {
+    const periodGrade = assignment.periodGradeSubject?.periodGrade;
+    const grade = periodGrade?.grade;
+    const subject = assignment.periodGradeSubject?.subject;
+    const pgsOrder = assignment.periodGradeSubject?.order ?? Number.MAX_SAFE_INTEGER;
+    if (!grade || !subject) return;
+
+    if (!gradeMap.has(grade.id)) {
+      gradeMap.set(grade.id, {
+        gradeName: grade.name,
+        gradeColor: periodGrade?.color ?? null,
+        gradeOrder: grade.order ?? Number.MAX_SAFE_INTEGER,
+        subjects: new Map(),
+      });
+    }
+    const gradeEntry = gradeMap.get(grade.id)!;
+
+    if (!gradeEntry.subjects.has(subject.id)) {
+      gradeEntry.subjects.set(subject.id, {
+        subjectId: subject.id,
+        subjectName: subject.name,
+        subjectIcon: subject.icon ?? null,
+        subjectColor: subject.color ?? null,
+        subjectAbbreviation: subject.abbreviation ?? null,
+        order: pgsOrder,
+        totalSections: 0,
+        withPlan: 0,
+        withoutPlan: 0,
+        withGrades: 0,
+        withoutGrades: 0,
+        sections: [],
+      });
+    }
+    const subjProgress = gradeEntry.subjects.get(subject.id)!;
+
+    const key = assignmentKey(assignment.periodGradeSubjectId, assignment.sectionId);
+    const hasPlan = !!planMap.get(key);
+    const hasGrades = !!qualificationMap.get(key);
+    const teacherName = assignment.teacher
+      ? `${assignment.teacher.firstName} ${assignment.teacher.lastName}`
+      : 'Sin asignar';
+    const sectionName = assignment.section?.name || '—';
+    const sectionId = assignment.sectionId;
+    const sectionColor = sectionColorMap.get(`${periodGrade?.id}:${sectionId}`) || '#cccccc';
+
+    subjProgress.totalSections += 1;
+    if (hasPlan) subjProgress.withPlan += 1; else subjProgress.withoutPlan += 1;
+    if (hasGrades) subjProgress.withGrades += 1; else subjProgress.withoutGrades += 1;
+    subjProgress.sections.push({ sectionId, sectionName, sectionColor, teacherName, hasPlan, hasGrades });
+  });
+
+  // Convert maps to sorted arrays: grades by Grade.order, sections alphabetically
+  const byGrade: GradeProgress[] = Array.from(gradeMap.entries())
+    .map(([gradeId, entry]) => ({
+      gradeId,
+      gradeName: entry.gradeName,
+      gradeColor: entry.gradeColor,
+      gradeOrder: entry.gradeOrder,
+      subjects: Array.from(entry.subjects.values())
+        .map(s => ({
+          ...s,
+          sections: s.sections.sort((a, b) => a.sectionName.localeCompare(b.sectionName, 'es')),
+        }))
+        .sort((a, b) => a.order - b.order),
+    }))
+    .sort((a, b) => a.gradeOrder - b.gradeOrder);
+
   return {
     period: { id: activePeriod.id, name: activePeriod.name, period: activePeriod.period },
     students: {
@@ -231,7 +350,8 @@ const buildAcademicSnapshot = async (): Promise<AcademicSnapshot> => {
       withoutPlans: assignmentsWithoutPlan.length,
       withoutGrades: assignmentsWithoutGrades.length,
       sampleWithoutPlans: assignmentsWithoutPlan.slice(0, 6),
-      sampleWithoutGrades: assignmentsWithoutGrades.slice(0, 6)
+      sampleWithoutGrades: assignmentsWithoutGrades.slice(0, 6),
+      byGrade
     }
   };
 };
