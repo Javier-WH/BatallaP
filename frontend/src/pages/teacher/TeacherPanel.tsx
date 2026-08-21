@@ -1040,10 +1040,18 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
     if (!raw) return;
 
     // Parse clipboard into a 2D grid (rows separated by \n, columns by \t)
-    const grid: string[][] = raw
-      .split(/\r?\n/)
-      .filter(line => line.trim() !== '')
-      .map(line => line.split(/\t/).map(c => c.trim()));
+    // Only trim trailing empty lines (e.g. final newline); keep blank rows in the middle
+    // so that empty cells from Excel/Word are respected as null grades.
+    const allLines = raw.split(/\r?\n/);
+    let grid: string[][] = allLines.map(line => line.split(/\t/).map(c => c.trim()));
+    // Remove trailing empty lines
+    while (grid.length > 0 && grid[grid.length - 1].every(c => c === '')) {
+      grid.pop();
+    }
+    // Remove leading empty lines
+    while (grid.length > 0 && grid[0].every(c => c === '')) {
+      grid.shift();
+    }
 
     if (grid.length === 0) return;
 
@@ -1091,12 +1099,17 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
     if (targets.length === 0) return;
 
     // Parse and validate all values first
+    // Empty values are respected as null (blank cell), not skipped.
     const parsed: { target: typeof targets[0]; score: number | null }[] = [];
     let skippedCount = 0;
 
     for (let i = 0; i < targets.length; i++) {
       const valStr = values[i].replace(/[^0-9]/g, '');
-      if (valStr === '') { skippedCount++; continue; }
+      if (valStr === '') {
+        // Empty cell from clipboard → blank grade (null)
+        parsed.push({ target: targets[i], score: null });
+        continue;
+      }
       const val = parseInt(valStr, 10);
       if (isNaN(val) || val < 0 || val > maxGrade) { skippedCount++; continue; }
       parsed.push({ target: targets[i], score: val === 0 ? null : val });
