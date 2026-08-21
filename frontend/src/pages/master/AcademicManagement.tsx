@@ -86,6 +86,28 @@ const subjectIconOptions = Object.keys(SUBJECT_ICONS).map(name => ({
   label: SUBJECT_ICON_LABELS[name] || name,
 }));
 
+/** Suggested colors for grades (años) */
+const GRADE_COLORS = [
+  '#1890ff', '#52c41a', '#fa8c16', '#722ed1', '#eb2f96',
+  '#13c2c2', '#f5222d', '#faad14', '#2f54eb', '#a0d911',
+];
+
+/**
+ * Generates a lighter variation of a hex color by mixing it with white.
+ * `amount` 0 = original, 1 = white.
+ */
+const lightenColor = (hex: string, amount: number): string => {
+  const clean = (hex || '').replace('#', '');
+  if (clean.length !== 6) return hex;
+  const r = Math.round(parseInt(clean.slice(0, 2), 16) + (255 - parseInt(clean.slice(0, 2), 16)) * amount);
+  const g = Math.round(parseInt(clean.slice(2, 4), 16) + (255 - parseInt(clean.slice(2, 4), 16)) * amount);
+  const b = Math.round(parseInt(clean.slice(4, 6), 16) + (255 - parseInt(clean.slice(4, 6), 16)) * amount);
+  return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+};
+
+/** Default fallback color for grades without an explicit color */
+const DEFAULT_GRADE_COLOR = '#1890ff';
+
 // Context for passing drag listeners to the drag handle cell
 interface RowContextProps {
   setActivatorNodeRef?: (element: HTMLElement | null) => void;
@@ -686,6 +708,16 @@ const AcademicManagement: React.FC = () => {
     } catch (error) {
       console.error(error);
       message.error('Error al cambiar color');
+    }
+  };
+
+  const handleGradeColorChange = async (periodGradeId: number, color: string) => {
+    try {
+      await api.put(`/academic/structure/grade/${periodGradeId}/color`, { color });
+      fetchStructure();
+    } catch (error) {
+      console.error(error);
+      message.error('Error al cambiar color del año');
     }
   };
 
@@ -1373,13 +1405,13 @@ const AcademicManagement: React.FC = () => {
                             width: 32,
                             height: 32,
                             borderRadius: 6,
-                            background: item.grade?.isDiversified ? '#f9f0ff' : '#e6f7ff',
+                            background: withAlpha(item.color || DEFAULT_GRADE_COLOR, 0.1),
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
-                            border: `1px solid ${item.grade?.isDiversified ? '#d3adf7' : '#91d5ff'}`
+                            border: `1px solid ${withAlpha(item.color || DEFAULT_GRADE_COLOR, 0.3)}`
                           }}>
-                            <Text style={{ fontWeight: 800, color: item.grade?.isDiversified ? '#722ed1' : '#1890ff', fontSize: 13 }}>
+                            <Text style={{ fontWeight: 800, color: item.color || DEFAULT_GRADE_COLOR, fontSize: 13 }}>
                               {item.grade?.order}
                             </Text>
                           </div>
@@ -1391,6 +1423,18 @@ const AcademicManagement: React.FC = () => {
                               </Text>
                             )}
                           </Text>
+                          <div onClick={(e) => e.stopPropagation()}>
+                            <ColorPicker
+                              size="small"
+                              value={item.color || DEFAULT_GRADE_COLOR}
+                              presets={[{ label: 'Sugeridos', colors: GRADE_COLORS }]}
+                              format="hex"
+                              onChange={(color) => {
+                                const hex = normalizeColorValue(color);
+                                if (hex) handleGradeColorChange(item.id, hex);
+                              }}
+                            />
+                          </div>
                         </Space>
                       }
                       extra={
@@ -1432,38 +1476,36 @@ const AcademicManagement: React.FC = () => {
 
                             <div style={{ background: '#fafafa', borderRadius: 12, padding: 12, minHeight: 60 }}>
                               <Space wrap>
-                                {item.sections?.map((sec: any) => (
-                                  <Tag
-                                    key={sec.id}
-                                    closable
-                                    onClose={() => handleRemoveSectionFromGrade(item.id, sec.id)}
-                                    style={{
-                                      padding: '4px 12px',
-                                      borderRadius: 8,
-                                      background: '#fff',
-                                      border: '1px solid #f0f0f0',
-                                      fontWeight: 600,
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      gap: 6
-                                    }}
-                                  >
-                                    <input
-                                      type="color"
-                                      value={sec.PeriodGradeSection?.color || '#ffffff'}
-                                      onChange={(e) => handleSectionColorChange(item.id, sec.id, e.target.value)}
+                                {item.sections?.map((sec: any, idx: number) => {
+                                  const gradeColor = item.color || DEFAULT_GRADE_COLOR;
+                                  const sectionColor = lightenColor(gradeColor, 0.3 + idx * 0.15);
+                                  return (
+                                    <Tag
+                                      key={sec.id}
+                                      closable
+                                      onClose={() => handleRemoveSectionFromGrade(item.id, sec.id)}
                                       style={{
-                                        width: 18,
-                                        height: 18,
-                                        border: 'none',
-                                        borderRadius: 4,
-                                        cursor: 'pointer',
-                                        padding: 0,
+                                        padding: '4px 12px',
+                                        borderRadius: 8,
+                                        background: withAlpha(sectionColor, 0.15),
+                                        border: `1px solid ${withAlpha(sectionColor, 0.4)}`,
+                                        fontWeight: 600,
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: 6
                                       }}
-                                    />
-                                    <Text style={{ fontWeight: 800 }}>{sec.name}</Text>
-                                  </Tag>
-                                ))}
+                                    >
+                                      <div style={{
+                                        width: 14,
+                                        height: 14,
+                                        borderRadius: 3,
+                                        background: sectionColor,
+                                        border: '1px solid rgba(0,0,0,0.1)',
+                                      }} />
+                                      <Text style={{ fontWeight: 800, color: sectionColor }}>{sec.name}</Text>
+                                    </Tag>
+                                  );
+                                })}
                                 {(!item.sections || item.sections.length === 0) && (
                                   <Text type="secondary" style={{ fontSize: 12, fontStyle: 'italic', padding: '4px 8px' }}>Sin secciones asignadas</Text>
                                 )}

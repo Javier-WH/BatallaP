@@ -9,6 +9,7 @@ interface PeriodGradeAttributes {
   schoolPeriodId: number;
   gradeId: number;
   specializationId?: number | null;
+  color?: string | null;
 }
 
 interface PeriodGradeCreationAttributes extends Optional<PeriodGradeAttributes, 'id'> { }
@@ -18,6 +19,7 @@ class PeriodGrade extends Model<PeriodGradeAttributes, PeriodGradeCreationAttrib
   public schoolPeriodId!: number;
   public gradeId!: number;
   public specializationId?: number | null;
+  public color?: string | null;
 
   public readonly subjects?: import('./Subject').default[];
 
@@ -45,6 +47,10 @@ PeriodGrade.init(
     specializationId: {
       type: DataTypes.INTEGER,
       references: { model: Specialization, key: 'id' },
+      allowNull: true,
+    },
+    color: {
+      type: DataTypes.STRING,
       allowNull: true,
     }
   },

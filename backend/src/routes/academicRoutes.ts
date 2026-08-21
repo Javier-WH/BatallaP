@@ -51,6 +51,7 @@ router.post('/structure/section', academic.addSectionToGrade);
 router.post('/structure/section/remove', academic.removeSectionFromGrade);
 router.delete('/structure/section/:periodGradeId/:sectionId', academic.removeSectionFromGrade);
 router.put('/structure/section/:periodGradeId/:sectionId/color', academic.updateSectionColor);
+router.put('/structure/grade/:periodGradeId/color', academic.updateGradeColor);
 router.post('/structure/subject', academic.addSubjectToGrade);
 router.post('/structure/subject/remove', academic.removeSubjectFromGrade);
 router.post('/structure/subject/reorder', academic.updateSubjectOrderForGrade);

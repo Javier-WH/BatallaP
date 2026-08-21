@@ -812,3 +812,17 @@ export const updateSectionColor = async (req: Request, res: Response) => {
     res.status(500).json({ error: 'Error updating section color' });
   }
 };
+
+export const updateGradeColor = async (req: Request, res: Response) => {
+  try {
+    const { periodGradeId } = req.params;
+    const { color } = req.body;
+    const pg = await PeriodGrade.findByPk(Number(periodGradeId));
+    if (!pg) return res.status(404).json({ error: 'PeriodGrade no encontrado' });
+    pg.color = color;
+    await pg.save();
+    res.json(pg);
+  } catch (error) {
+    res.status(500).json({ error: 'Error updating grade color' });
+  }
+};
