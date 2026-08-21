@@ -21,6 +21,8 @@ import {
   Section,
   Setting,
   Plantel,
+  SubjectTermGrade,
+  CouncilChecklist,
 } from '@/models/index';
 import {
   getSubjectOrderMap,
@@ -28,6 +30,7 @@ import {
 } from '@/services/subjectOrderService';
 import { filterActiveGroupSubjects } from '@/services/subjectGroupService';
 import { resolveGradeStatus } from '@/services/gradeEvaluationService';
+import { GradeCalculationService } from '@/services/gradeCalculationService';
 import { readTemplateNamedRanges } from '@/services/templateNamedRanges';
 
 function getStateAbbrev(stateName: string): string {
@@ -160,6 +163,7 @@ export const exportCertifiedGrades = async (req: Request, res: Response) => {
           include: [
             { model: Subject, as: 'subject', include: [{ model: SubjectGroup, as: 'subjectGroup' }] },
             { model: SubjectFinalGrade, as: 'finalGrade', include: [{ model: Plantel, as: 'plantel' }] },
+            { model: SubjectTermGrade, as: 'termGrades' },
             {
               model: Qualification,
               as: 'qualifications',
@@ -178,6 +182,7 @@ export const exportCertifiedGrades = async (req: Request, res: Response) => {
     const allPeriodIds = [...new Set(inscriptions.map((ins: any) => ins.schoolPeriodId))];
     const termsByPeriod: Record<number, any[]> = {};
     const subjectOrderByPeriod: Record<number, Map<number, number>> = {};
+    const councilDoneByPeriod: Record<number, (termId: number, sectionId: number) => boolean> = {};
 
     for (const periodId of allPeriodIds) {
       const terms = await Term.findAll({
@@ -193,6 +198,19 @@ export const exportCertifiedGrades = async (req: Request, res: Response) => {
         });
         subjectOrderByPeriod[periodId] = pg ? await getSubjectOrderMap(pg.id) : new Map();
       }
+
+      // Query CouncilChecklist for this period
+      const councilChecklists = await CouncilChecklist.findAll({
+        where: {
+          schoolPeriodId: periodId,
+          status: 'done',
+          termId: terms.map((t: any) => t.id),
+        },
+        attributes: ['termId', 'sectionId', 'status'],
+      });
+      councilDoneByPeriod[periodId] = GradeCalculationService.buildCouncilDoneChecker(
+        councilChecklists.map((c: any) => ({ termId: c.termId, sectionId: c.sectionId, status: c.status })),
+      );
     }
 
     const years = inscriptions.map((ins: any) => {
@@ -215,48 +233,38 @@ export const exportCertifiedGrades = async (req: Request, res: Response) => {
         .filter(Boolean);
 
       const subjects = insSubs.map((is: any) => {
-        const termScores: Record<number, number> = {};
-        terms.forEach((t: any) => { termScores[t.id] = 0; });
+        const studentSectionId = ins.section?.id || 0;
+        const isCouncilDone = councilDoneByPeriod[ins.schoolPeriodId] || (() => false);
 
-        (is.qualifications || []).forEach((q: any) => {
-          if (q.isAbsent) return;
-          const score = q.remedialScore != null && Number(q.remedialScore) > 0
-            ? Number(q.remedialScore) : Number(q.score) || 0;
-          const percentage = Number(q.evaluationPlan?.percentage) || 0;
-          const termId = q.evaluationPlan?.termId;
-          if (termId && termScores[termId] !== undefined) {
-            termScores[termId] += score * (percentage / 100);
-          }
+        // Build term grades with fallback to qualifications + councilPoints
+        const termGradesArr = GradeCalculationService.buildTermGradesWithFallback(
+          (is.termGrades || []).map((tg: any) => ({ termId: tg.termId, score: Number(tg.score) })),
+          is.qualifications || [],
+          is.councilPoints || [],
+          terms.map((t: any) => t.id),
+        );
+
+        // Build lapsos using the service
+        const lapsos = terms.map((t: any) => {
+          const councilDone = isCouncilDone(t.id, studentSectionId);
+          const finalScore = GradeCalculationService.calculateFinalTermScore(t.id, termGradesArr, councilDone);
+          return { termId: t.id, termName: t.name, score: finalScore };
         });
 
-        (is.councilPoints || []).forEach((cp: any) => {
-          const pVal = Number(cp.points) || 0;
-          if (cp.termId && termScores[cp.termId] !== undefined) {
-            termScores[cp.termId] += pVal;
-          }
-        });
+        // Calculate finalScore using the service
+        const finalScore = GradeCalculationService.calculateFinalScore(
+          lapsos.map((l: any) => ({ termId: l.termId, finalScore: l.score })),
+          is.finalGrade ? { finalScore: is.finalGrade.finalScore, gradeType: is.finalGrade.gradeType } : null,
+        );
 
-        let finalScore: number | null = null;
-        if (is.finalGrade && is.finalGrade.finalScore != null) {
-          finalScore = Number(is.finalGrade.finalScore);
-        } else {
-          let total = 0;
-          Object.values(termScores).forEach((v) => { total += v; });
-          finalScore = Math.round((total / termCount) * 100) / 100;
-        }
-
-        const status = is.finalGrade?.status || (finalScore !== null ? resolveGradeStatus(finalScore, Number(settings.passing_grade || 10)) : 'reprobada');
+        const status = is.finalGrade?.status || GradeCalculationService.resolveStatus(finalScore, Number(settings.passing_grade || 10));
         const approvedDate = is.finalGrade?.calculatedAt ? new Date(is.finalGrade.calculatedAt) : null;
 
         return {
           id: is.subjectId,
           name: is.subject?.name || '',
           usesLiteralGrades: is.subject?.usesLiteralGrades || false,
-          lapsos: terms.map((t: any) => ({
-            termId: t.id,
-            termName: t.name,
-            score: Math.round((termScores[t.id] || 0) * 100) / 100,
-          })),
+          lapsos,
           finalScore,
           status,
           approvedMonth: approvedDate ? approvedDate.getMonth() + 1 : null,
@@ -431,6 +439,7 @@ export const getCertifiedGradesData = async (req: Request, res: Response) => {
           include: [
             { model: Subject, as: 'subject', include: [{ model: SubjectGroup, as: 'subjectGroup' }] },
             { model: SubjectFinalGrade, as: 'finalGrade', include: [{ model: Plantel, as: 'plantel' }] },
+            { model: SubjectTermGrade, as: 'termGrades' },
             {
               model: Qualification,
               as: 'qualifications',
@@ -449,6 +458,7 @@ export const getCertifiedGradesData = async (req: Request, res: Response) => {
     const allPeriodIds = [...new Set(inscriptions.map((ins: any) => ins.schoolPeriodId))];
     const termsByPeriod: Record<number, any[]> = {};
     const subjectOrderByPeriod: Record<number, Map<number, number>> = {};
+    const councilDoneByPeriod: Record<number, (termId: number, sectionId: number) => boolean> = {};
 
     for (const periodId of allPeriodIds) {
       const terms = await Term.findAll({
@@ -464,6 +474,19 @@ export const getCertifiedGradesData = async (req: Request, res: Response) => {
         });
         subjectOrderByPeriod[periodId] = pg ? await getSubjectOrderMap(pg.id) : new Map();
       }
+
+      // Query CouncilChecklist for this period
+      const councilChecklists = await CouncilChecklist.findAll({
+        where: {
+          schoolPeriodId: periodId,
+          status: 'done',
+          termId: terms.map((t: any) => t.id),
+        },
+        attributes: ['termId', 'sectionId', 'status'],
+      });
+      councilDoneByPeriod[periodId] = GradeCalculationService.buildCouncilDoneChecker(
+        councilChecklists.map((c: any) => ({ termId: c.termId, sectionId: c.sectionId, status: c.status })),
+      );
     }
 
     const years = inscriptions.map((ins: any) => {
@@ -486,45 +509,35 @@ export const getCertifiedGradesData = async (req: Request, res: Response) => {
         .filter(Boolean);
 
       const subjects = insSubs.map((is: any) => {
-        const termScores: Record<number, number> = {};
-        terms.forEach((t: any) => { termScores[t.id] = 0; });
+        const studentSectionId = ins.section?.id || 0;
+        const isCouncilDone = councilDoneByPeriod[ins.schoolPeriodId] || (() => false);
 
-        (is.qualifications || []).forEach((q: any) => {
-          if (q.isAbsent) return;
-          const score = q.remedialScore != null && Number(q.remedialScore) > 0
-            ? Number(q.remedialScore) : Number(q.score) || 0;
-          const percentage = Number(q.evaluationPlan?.percentage) || 0;
-          const termId = q.evaluationPlan?.termId;
-          if (termId && termScores[termId] !== undefined) {
-            termScores[termId] += score * (percentage / 100);
-          }
+        // Build term grades with fallback to qualifications + councilPoints
+        const termGradesArr = GradeCalculationService.buildTermGradesWithFallback(
+          (is.termGrades || []).map((tg: any) => ({ termId: tg.termId, score: Number(tg.score) })),
+          is.qualifications || [],
+          is.councilPoints || [],
+          terms.map((t: any) => t.id),
+        );
+
+        // Build lapsos using the service
+        const lapsos = terms.map((t: any) => {
+          const councilDone = isCouncilDone(t.id, studentSectionId);
+          const finalScore = GradeCalculationService.calculateFinalTermScore(t.id, termGradesArr, councilDone);
+          return { termId: t.id, termName: t.name, score: finalScore };
         });
 
-        (is.councilPoints || []).forEach((cp: any) => {
-          const pVal = Number(cp.points) || 0;
-          if (cp.termId && termScores[cp.termId] !== undefined) {
-            termScores[cp.termId] += pVal;
-          }
-        });
-
-        let finalScore: number | null = null;
-        if (is.finalGrade && is.finalGrade.finalScore != null) {
-          finalScore = Number(is.finalGrade.finalScore);
-        } else {
-          let total = 0;
-          Object.values(termScores).forEach((v) => { total += v; });
-          finalScore = Math.round((total / termCount) * 100) / 100;
-        }
+        // Calculate finalScore using the service
+        const finalScore = GradeCalculationService.calculateFinalScore(
+          lapsos.map((l: any) => ({ termId: l.termId, finalScore: l.score })),
+          is.finalGrade ? { finalScore: is.finalGrade.finalScore, gradeType: is.finalGrade.gradeType } : null,
+        );
 
         return {
           id: is.subjectId,
           name: is.subject?.name || '',
           usesLiteralGrades: is.subject?.usesLiteralGrades || false,
-          lapsos: terms.map((t: any) => ({
-            termId: t.id,
-            termName: t.name,
-            score: Math.round((termScores[t.id] || 0) * 100) / 100,
-          })),
+          lapsos,
           finalScore,
           originInstitution: is.finalGrade?.plantel?.name ?? null,
           originInstitutionCode: is.finalGrade?.plantel?.code ?? null,

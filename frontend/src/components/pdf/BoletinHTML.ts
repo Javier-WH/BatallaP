@@ -171,19 +171,12 @@ const buildStudentSheet = (
     return avg.toFixed(2);
   });
 
-  // Definitiva average: only subjects with includeInAverage=true
-  // Average each subject's visible term scores (minimum 01), then average across subjects
+  // Definitiva average: use finalScore from backend (already respects council completion)
+  // Only subjects with includeInAverage=true and non-null finalScore are counted
   const finalAvgSubjects = student.subjects
     .filter((s) => s.includeInAverage !== false);
   const finalAvgScores = finalAvgSubjects
-    .map((s) => {
-      const termScores = terms.map((t) => {
-        const lapse = s.lapsos.find((l) => l.termId === t.id);
-        return lapse && lapse.score !== null ? Math.max(1, Number(lapse.score)) : null;
-      }).filter((v): v is number => v !== null);
-      if (termScores.length === 0) return null;
-      return termScores.reduce((a, b) => a + b, 0) / termScores.length;
-    })
+    .map((s) => s.finalScore !== null ? Math.max(1, Number(s.finalScore)) : null)
     .filter((v): v is number => v !== null);
   const finalAvg = finalAvgScores.length > 0
     ? (finalAvgScores.reduce((a, b) => a + b, 0) / finalAvgScores.length).toFixed(2)

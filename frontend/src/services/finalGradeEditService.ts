@@ -18,6 +18,7 @@ export interface FinalGrade {
     state: string;
   };
   gradeType?: GradeType | null;
+  includeInAverage?: boolean;
   inscriptionSubject: {
     id: number;
     subject: {

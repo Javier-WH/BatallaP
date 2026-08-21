@@ -33,6 +33,7 @@ import {
 } from '@/services/subjectOrderService';
 import { filterActiveGroupSubjects } from '@/services/subjectGroupService';
 import { isPassingGrade, resolveGradeStatus, roundFinalGrade, MIN_FINAL_GRADE } from '@/services/gradeEvaluationService';
+import { GradeCalculationService } from '@/services/gradeCalculationService';
 import { readTemplateNamedRanges, TemplateNamedRanges } from '@/services/templateNamedRanges';
 
 const gradeOrderToSheetName: Record<number, string> = {
@@ -340,6 +341,21 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
     });
     const termCount = terms.length || 1;
 
+    // Query CouncilChecklist to know which (termId, sectionId) pairs have council done
+    const councilChecklists = await CouncilChecklist.findAll({
+      where: {
+        schoolPeriodId: Number(schoolPeriodId),
+        gradeId: Number(gradeId),
+        status: 'done',
+        termId: terms.map((t: any) => t.id),
+        sectionId: Number(sectionId),
+      },
+      attributes: ['termId', 'sectionId', 'status'],
+    });
+    const isCouncilDone = GradeCalculationService.buildCouncilDoneChecker(
+      councilChecklists.map((c: any) => ({ termId: c.termId, sectionId: c.sectionId, status: c.status })),
+    );
+
     const settings = await getInstitutionSettings();
 
     const letterGradesConfig: { letter: string; max: number }[] = (() => {
@@ -376,6 +392,7 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
           include: [
             { model: Subject, as: 'subject', include: [{ model: SubjectGroup, as: 'subjectGroup' }] },
             { model: SubjectFinalGrade, as: 'finalGrade', required: false },
+            { model: SubjectTermGrade, as: 'termGrades', required: false },
             { model: Qualification, as: 'qualifications', include: [{ model: EvaluationPlan, as: 'evaluationPlan' }], required: false },
             { model: CouncilPoint, as: 'councilPoints', required: false },
           ],
@@ -488,37 +505,25 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
     }
 
     const calculateFinalScore = (insSub: any): number | null => {
-      if (insSub.finalGrade && insSub.finalGrade.finalScore != null) {
-        return Number(insSub.finalGrade.finalScore);
-      }
+      // Build term grades with fallback to qualifications + councilPoints
+      const termGradesArr = GradeCalculationService.buildTermGradesWithFallback(
+        (insSub.termGrades || []).map((tg: any) => ({ termId: tg.termId, score: Number(tg.score) })),
+        insSub.qualifications || [],
+        insSub.councilPoints || [],
+        terms.map((t: any) => t.id),
+      );
 
-      const termScores: Record<number, number> = {};
-      terms.forEach((t: any) => { termScores[t.id] = 0; });
-
-      (insSub.qualifications || []).forEach((q: any) => {
-        if (q.isAbsent) return;
-        const score = q.remedialScore != null && Number(q.remedialScore) > 0
-          ? Number(q.remedialScore)
-          : Number(q.score) || 0;
-        const percentage = Number(q.evaluationPlan?.percentage) || 0;
-        const termId = q.evaluationPlan?.termId;
-        if (termId && termScores[termId] !== undefined) {
-          termScores[termId] += score * (percentage / 100);
-        }
+      // Build lapsos with council-done filter
+      const lapsos = terms.map((t: any) => {
+        const councilDone = isCouncilDone(t.id, Number(sectionId));
+        const finalScore = GradeCalculationService.calculateFinalTermScore(t.id, termGradesArr, councilDone);
+        return { termId: t.id, finalScore };
       });
 
-      (insSub.councilPoints || []).forEach((cp: any) => {
-        const pVal = Number(cp.points) || 0;
-        if (cp.termId && termScores[cp.termId] !== undefined) {
-          termScores[cp.termId] += pVal;
-        }
-      });
-
-      let totalAccumulated = 0;
-      Object.values(termScores).forEach(val => totalAccumulated += val);
-
-      const finalScore = totalAccumulated / termCount;
-      return Math.round(finalScore * 100) / 100;
+      return GradeCalculationService.calculateFinalScore(
+        lapsos,
+        insSub.finalGrade ? { finalScore: insSub.finalGrade.finalScore, gradeType: insSub.finalGrade.gradeType } : null,
+      );
     };
 
     // Resolve template path. Precedence:
@@ -1190,17 +1195,11 @@ export const getBoletinData = async (req: Request, res: Response) => {
         termId: terms.map((t: any) => t.id),
         ...(sectionId ? { sectionId } : {}),
       },
-      attributes: ['termId', 'sectionId'],
+      attributes: ['termId', 'sectionId', 'status'],
     });
-    // Map: sectionId -> Set<termId> with council completed
-    const councilDoneBySection = new Map<number, Set<number>>();
-    for (const c of councilChecklists) {
-      if (!councilDoneBySection.has(c.sectionId)) councilDoneBySection.set(c.sectionId, new Set());
-      councilDoneBySection.get(c.sectionId)!.add(c.termId);
-    }
-    const isCouncilDone = (termId: number, secId: number): boolean => {
-      return councilDoneBySection.get(secId)?.has(termId) || false;
-    };
+    const isCouncilDone = GradeCalculationService.buildCouncilDoneChecker(
+      councilChecklists.map((c: any) => ({ termId: c.termId, sectionId: c.sectionId, status: c.status })),
+    );
 
     const inscWhere: any = { schoolPeriodId, gradeId };
     if (sectionId) inscWhere.sectionId = sectionId;
@@ -1250,57 +1249,26 @@ export const getBoletinData = async (req: Request, res: Response) => {
       const subjects = insSubs.map((is: any) => {
         const studentSectionId = ins.sectionId || 0;
 
-        // Build a map of term grades from SubjectTermGrade (single source of truth)
-        const termGradeMap = new Map<number, number>();
-        (is.termGrades || []).forEach((tg: any) => {
-          termGradeMap.set(tg.termId, Number(tg.score));
-        });
+        // Build term grades array with fallback to qualifications + councilPoints
+        const termGradesArr = GradeCalculationService.buildTermGradesWithFallback(
+          (is.termGrades || []).map((tg: any) => ({ termId: tg.termId, score: Number(tg.score) })),
+          is.qualifications || [],
+          is.councilPoints || [],
+          terms.map((t: any) => t.id),
+        );
 
-        // Fallback: calculate from qualifications + council points if no stored term grades
-        const termScores: Record<number, number> = {};
-        terms.forEach((t: any) => { termScores[t.id] = 0; });
-
-        (is.qualifications || []).forEach((q: any) => {
-          if (q.isAbsent) return;
-          const score = q.remedialScore != null && Number(q.remedialScore) > 0
-            ? Number(q.remedialScore) : Number(q.score) || 0;
-          const percentage = Number(q.evaluationPlan?.percentage) || 0;
-          const termId = q.evaluationPlan?.termId;
-          if (termId && termScores[termId] !== undefined) {
-            termScores[termId] += score * (percentage / 100);
-          }
-        });
-
-        (is.councilPoints || []).forEach((cp: any) => {
-          const pVal = Number(cp.points) || 0;
-          if (cp.termId && termScores[cp.termId] !== undefined) {
-            termScores[cp.termId] += pVal;
-          }
-        });
-
-        // Build lapsos: only show score if the council for that term+section is completed
+        // Build lapsos using the service
         const lapsos = terms.map((t: any) => {
           const councilDone = isCouncilDone(t.id, studentSectionId);
-          if (!councilDone) {
-            return { termId: t.id, termName: t.name, score: null as number | null };
-          }
-          const score = termGradeMap.has(t.id)
-            ? roundFinalGrade(termGradeMap.get(t.id)!)
-            : roundFinalGrade(termScores[t.id] || 0);
-          return { termId: t.id, termName: t.name, score };
+          const finalScore = GradeCalculationService.calculateFinalTermScore(t.id, termGradesArr, councilDone);
+          return { termId: t.id, termName: t.name, score: finalScore };
         });
 
-        // Calculate finalScore: average of terms with council completed only
-        const completedLapsos = lapsos.filter((l) => l.score !== null);
-        let finalScore: number | null = null;
-        if (is.finalGrade && is.finalGrade.finalScore != null && completedLapsos.length === lapsos.length) {
-          // Use stored final grade only if ALL terms have council completed (period is complete)
-          finalScore = Math.max(MIN_FINAL_GRADE, Number(is.finalGrade.finalScore));
-        } else if (completedLapsos.length > 0) {
-          // Average only the terms with council completed
-          const total = completedLapsos.reduce((sum, l) => sum + (l.score || 0), 0);
-          finalScore = roundFinalGrade(total / completedLapsos.length);
-        }
+        // Calculate finalScore using the service
+        const finalScore = GradeCalculationService.calculateFinalScore(
+          lapsos.map((l: any) => ({ termId: l.termId, finalScore: l.score })),
+          is.finalGrade ? { finalScore: is.finalGrade.finalScore, gradeType: is.finalGrade.gradeType } : null,
+        );
 
         const subjectName = is.subject?.subjectGroupId
           ? (is.subject?.subjectGroup?.bulletinAbbreviation || is.subject?.subjectGroup?.name || 'Participación en Grupos de Creación, Recreación y Producción')
@@ -1314,7 +1282,7 @@ export const getBoletinData = async (req: Request, res: Response) => {
           includeInAverage: includeInAverageMap.get(is.subjectId) !== false,
           lapsos,
           finalScore,
-          status: is.finalGrade?.status || (finalScore !== null ? resolveGradeStatus(finalScore, Number(settings.passing_grade || 10)) : 'reprobada'),
+          status: is.finalGrade?.status || GradeCalculationService.resolveStatus(finalScore, Number(settings.passing_grade || 10)),
         };
       });
 
@@ -1331,8 +1299,7 @@ export const getBoletinData = async (req: Request, res: Response) => {
       };
     });
 
-    // Compute rank within each section based on average of includeInAverage subjects
-    const passingGrade = Number(settings.passing_grade) || 10;
+    // Compute rank within each section using the service
     const sectionGroups = new Map<number, typeof students>();
     for (const s of students) {
       const sid = (s as any).sectionId || 0;
@@ -1342,16 +1309,10 @@ export const getBoletinData = async (req: Request, res: Response) => {
 
     const rankMap = new Map<number, { position: number; total: number }>();
     for (const [, sectionStudents] of sectionGroups) {
-      // Compute average for each student in this section
       const withAvg = sectionStudents.map((s: any) => {
-        const eligible = s.subjects.filter((sub: any) => sub.includeInAverage !== false);
-        const scores = eligible.map((sub: any) => Math.max(MIN_FINAL_GRADE, Number(sub.finalScore) || MIN_FINAL_GRADE));
-        const avg = scores.length > 0
-          ? scores.reduce((a: number, b: number) => a + b, 0) / scores.length
-          : 0;
-        return { inscriptionId: s.inscriptionId, avg };
+        const avg = GradeCalculationService.calculateGeneralAverage(s.subjects, 'final');
+        return { inscriptionId: s.inscriptionId, avg: avg ?? 0 };
       });
-      // Sort by average descending
       const sorted = [...withAvg].sort((a, b) => b.avg - a.avg);
       let currentRank = 0;
       let prevAvg: number | null = null;
@@ -1438,6 +1399,19 @@ export const getGeneralAverages = async (req: Request, res: Response) => {
       includeInAverageMap.get(gradeId)!.add((pgs as any).subjectId);
     }
 
+    // Query CouncilChecklist to know which (termId, sectionId) pairs have council done
+    const councilChecklists = await CouncilChecklist.findAll({
+      where: {
+        schoolPeriodId,
+        status: 'done',
+        termId: terms.map((t: any) => t.id),
+      },
+      attributes: ['termId', 'sectionId', 'status'],
+    });
+    const isCouncilDone = GradeCalculationService.buildCouncilDoneChecker(
+      councilChecklists.map((c: any) => ({ termId: c.termId, sectionId: c.sectionId, status: c.status })),
+    );
+
     const inscriptions = await Inscription.findAll({
       where: { schoolPeriodId },
       include: [
@@ -1451,6 +1425,14 @@ export const getGeneralAverages = async (req: Request, res: Response) => {
           include: [
             { model: SubjectTermGrade, as: 'termGrades', attributes: ['termId', 'score'] },
             { model: Subject, as: 'subject', attributes: ['id', 'usesLiteralGrades'] },
+            { model: SubjectFinalGrade, as: 'finalGrade', required: false, attributes: ['finalScore', 'gradeType'] },
+            {
+              model: Qualification,
+              as: 'qualifications',
+              attributes: ['score', 'remedialScore', 'isAbsent'],
+              include: [{ model: EvaluationPlan, as: 'evaluationPlan', attributes: ['percentage', 'termId'] }],
+            },
+            { model: CouncilPoint, as: 'councilPoints', attributes: ['termId', 'points'] },
           ],
         },
       ],
@@ -1464,26 +1446,70 @@ export const getGeneralAverages = async (req: Request, res: Response) => {
 
     const students = inscriptions.map((ins: any) => {
       const gradeId = ins.grade?.id || 0;
+      const studentSectionId = ins.section?.id || 0;
       const averageEligibleSubjects = includeInAverageMap.get(gradeId);
+      const termIds = terms.map((t: any) => t.id);
       // Build term score map: average of subjects that include in average
+      // Only include scores from terms where council is done (final scores)
       const termScoreMap = new Map<number, number[]>();
+      // Also build per-subject finalScore for generalAverage (same method as boletin)
+      const subjectFinalScores: { finalScore: number | null; includeInAverage: boolean; gradeType?: string | null }[] = [];
+
       (ins.inscriptionSubjects || []).forEach((is: any) => {
+        const includeInAverage = averageEligibleSubjects ? averageEligibleSubjects.has(is.subjectId) : true;
+        // Build term grades with fallback to qualifications + councilPoints
+        const termGradesArr = GradeCalculationService.buildTermGradesWithFallback(
+          (is.termGrades || []).map((tg: any) => ({ termId: tg.termId, score: Number(tg.score) })),
+          is.qualifications || [],
+          is.councilPoints || [],
+          termIds,
+        );
+
+        // Build lapsos for finalScore calculation (same as boletin)
+        const lapsos = terms.map((t: any) => {
+          const councilDone = isCouncilDone(t.id, studentSectionId);
+          const finalScore = GradeCalculationService.calculateFinalTermScore(t.id, termGradesArr, councilDone);
+          return { termId: t.id, finalScore };
+        });
+
+        // Calculate subject finalScore using the service (same as boletin)
+        const subjectFinalScore = GradeCalculationService.calculateFinalScore(
+          lapsos,
+          is.finalGrade ? { finalScore: is.finalGrade.finalScore, gradeType: is.finalGrade.gradeType } : null,
+        );
+
+        subjectFinalScores.push({
+          finalScore: subjectFinalScore,
+          includeInAverage,
+          gradeType: is.finalGrade?.gradeType || null,
+        });
+
         // Skip subjects not configured for average (if we have the config)
         if (averageEligibleSubjects && !averageEligibleSubjects.has(is.subjectId)) return;
-        (is.termGrades || []).forEach((tg: any) => {
-          const score = Math.max(MIN_FINAL_GRADE, Number(tg.score));
+        termGradesArr.forEach((tg) => {
+          // Only include if council is done for this term+section
+          if (!isCouncilDone(tg.termId, studentSectionId)) return;
+          if (tg.score <= 0) return; // skip zero scores (no data)
+          const score = Math.max(MIN_FINAL_GRADE, tg.score);
           if (!termScoreMap.has(tg.termId)) termScoreMap.set(tg.termId, []);
           termScoreMap.get(tg.termId)!.push(score);
         });
       });
 
       const termGrades = terms.map((t: any) => {
+        const councilDone = isCouncilDone(t.id, studentSectionId);
+        if (!councilDone) {
+          return { termId: t.id, termName: t.name, score: null as number | null };
+        }
         const scores = termScoreMap.get(t.id) || [];
         const avg = scores.length > 0
           ? Number((scores.reduce((a: number, b: number) => a + b, 0) / scores.length).toFixed(2))
-          : 0;
+          : null;
         return { termId: t.id, termName: t.name, score: avg };
       });
+
+      // Calculate generalAverage using the same method as boletin (via service)
+      const generalAverage = GradeCalculationService.calculateGeneralAverage(subjectFinalScores, 'final');
 
       return {
         inscriptionId: ins.id,
@@ -1497,6 +1523,7 @@ export const getGeneralAverages = async (req: Request, res: Response) => {
         sectionId: ins.section?.id || 0,
         sectionName: ins.section?.name || '',
         termGrades,
+        generalAverage,
       };
     });
 

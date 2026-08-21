@@ -51,8 +51,33 @@
 
 ## Paso 5: Nota final y expediente
 
-- Cálculo: `finalGradeCalculator.ts` combina `Qualification` por plan + `CouncilPoint` si aplica, respetando política definida en `AcademicSettings` o `Setting`.
+- Cálculo centralizado: `gradeCalculationService.ts` es el single source of truth para
+  calcular notas por lapso, nota final por materia y promedio general.
+  Todos los endpoints y vistas deben usar este service (ver R15 y R16 en `rules/RULES.md`).
+- `finalGradeCalculator.ts` usa `gradeCalculationService` durante el cierre de período.
+  Mantiene la lógica de revisión de reparación y el upsert de `SubjectFinalGrade`.
 - El calculator **ignora** las notas con `gradeType='transferencia'|'equivalencia'` (no las recalcula).
+
+### Nota acumulada vs Nota final (R16)
+
+El sistema distingue dos conceptos:
+
+- **Nota acumulada**: nota calculada antes de que el consejo de curso del lapso
+  esté completado. Se lee de `SubjectTermGrade`. Representa el progreso en tiempo real.
+- **Nota final**: nota después de que el consejo de curso se marca como
+  completado (`CouncilChecklist.status === 'done'`). Mismo cálculo, pero oficial.
+
+Y dos tipos de promedio:
+- **Promedio acumulado**: promedio de notas acumuladas (materias con `includeInAverage=true`).
+- **Promedio final**: promedio de notas finales (materias con `includeInAverage=true`).
+  Solo se calcula cuando los consejos relevantes están completados.
+
+Reglas de visualización:
+- **Documentos oficiales** (boletines, notas certificadas, promedios generales,
+  Excel de rendimiento): solo muestran **notas finales**. Si el consejo no está
+  done → mostrar "—".
+- **Vistas operativas** (expediente, edición de notas, panel del profesor,
+  consejo de curso): muestran **nota acumulada** para ver progreso en tiempo real.
 
 ## Notas externas (transferencia / equivalencia)
 
@@ -116,6 +141,6 @@ Ver [`grade-edit.md`](./grade-edit.md).
 | Capa | Archivos |
 |------|----------|
 | Controllers | `teacherController.ts`, `evaluationController.ts`, `councilController.ts` |
-| Services | `finalGradeCalculator.ts` |
+| Services | `finalGradeCalculator.ts`, `gradeCalculationService.ts`, `termGradeSyncService.ts` |
 | Modelos | `TeacherAssignment`, `EvaluationPlan`, `Qualification`, `SubjectFinalGrade`, `CouncilPoint`, `CouncilChecklist` |
 | Frontend | `teacher/TeacherPanel.tsx`, `control-estudios/CourseCouncil.tsx`, `control-estudios/FinalGradesEdit.tsx`, `admin/TeacherProjection.tsx` |

@@ -55,7 +55,7 @@ const shortGradeName = (name: string): string => {
   return name;
 };
 
-interface TermGrade { termId: number; termName: string; score: number; }
+interface TermGrade { termId: number; termName: string; score: number | null; }
 interface GeneralAverageStudent {
   inscriptionId: number;
   firstName: string;
@@ -68,6 +68,7 @@ interface GeneralAverageStudent {
   sectionId: number;
   sectionName: string;
   termGrades: TermGrade[];
+  generalAverage?: number | null;
 }
 interface GeneralAveragesResponse {
   terms: { id: number; name: string; order: number }[];
@@ -120,14 +121,23 @@ export default function GeneralAverages() {
       : data.terms.map((t) => t.id);
 
     // Compute average per student
+    // Use generalAverage from backend (same method as boletin) when available
+    // Fall back to averaging visible term scores if not available
     const withAvg = filtered.map((s) => {
-      const scores = s.termGrades
-        .filter((tg) => termIds.includes(tg.termId))
-        .map((tg) => tg.score)
-        .filter((v) => v > 0);
-      const avg = scores.length > 0
-        ? Number((scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(2))
-        : 0;
+      let avg: number;
+      if (s.generalAverage !== undefined && s.generalAverage !== null) {
+        // Use the backend's generalAverage (consistent with boletin/resumen-rendimiento)
+        avg = s.generalAverage;
+      } else {
+        // Fallback: average of visible term scores
+        const scores = s.termGrades
+          .filter((tg) => termIds.includes(tg.termId))
+          .map((tg) => tg.score)
+          .filter((v): v is number => v !== null && v !== undefined);
+        avg = scores.length > 0
+          ? Number((scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(2))
+          : 0;
+      }
       return { ...s, average: avg };
     });
 

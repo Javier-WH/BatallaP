@@ -22,6 +22,7 @@ import {
   CouncilPoint,
   PendingSubject,
   SubjectFinalGrade,
+  SubjectTermGrade,
   GradeEditPermission,
   GradeEditAudit,
   User,
@@ -641,6 +642,15 @@ export const getStudentFullAcademicRecord = async (req: Request, res: Response) 
             {
               model: CouncilPoint,
               as: 'councilPoints'
+            },
+            {
+              model: SubjectTermGrade,
+              as: 'termGrades'
+            },
+            {
+              model: SubjectFinalGrade,
+              as: 'finalGrade',
+              required: false
             }
           ]
         },
@@ -1098,6 +1108,18 @@ export const getFinalGradesByPeriod = async (req: Request, res: Response) => {
     const allSubjects = periodGrades.flatMap(pg => (pg as any).subjects || []);
     console.log(`[getFinalGradesByPeriod] Total subjects found: ${allSubjects.length}`);
 
+    // Build includeInAverage map from PeriodGradeSubject
+    const pgsRecords = periodGrades.length > 0
+      ? await PeriodGradeSubject.findAll({
+          where: { periodGradeId: periodGrades.map((pg: any) => pg.id) },
+          attributes: ['subjectId', 'includeInAverage'],
+        })
+      : [];
+    const includeInAverageMap = new Map<number, boolean>();
+    for (const pgs of pgsRecords) {
+      includeInAverageMap.set((pgs as any).subjectId, (pgs as any).includeInAverage !== false);
+    }
+
     // Build result array
     const result: any[] = [];
 
@@ -1200,6 +1222,7 @@ export const getFinalGradesByPeriod = async (req: Request, res: Response) => {
           plantelId: finalGrade?.plantelId || null,
           plantel: finalGrade?.plantel || null,
           gradeType: finalGrade?.gradeType || 'regular',
+          includeInAverage: includeInAverageMap.get(insSubject.subjectId) !== false,
           inscriptionSubject: {
             id: insSubject.id,
             subject: insSubject.subject,

@@ -39,7 +39,7 @@ interface StudentRow {
   firstName: string;
   lastName: string;
   document: string;
-  grades: { [subjectId: string]: { score: number | null; status: string; id?: number; inscriptionSubjectId: number; plantelId?: number | null; plantelCode?: string; gradeType?: GradeType | null } };
+  grades: { [subjectId: string]: { score: number | null; status: string; id?: number; inscriptionSubjectId: number; plantelId?: number | null; plantelCode?: string; gradeType?: GradeType | null; includeInAverage?: boolean } };
 }
 
 const FinalGradesEdit: React.FC = () => {
@@ -211,7 +211,8 @@ const FinalGradesEdit: React.FC = () => {
         inscriptionSubjectId: grade.inscriptionSubjectId,
         plantelId: grade.plantelId,
         plantelCode: grade.plantel?.code,
-        gradeType: grade.gradeType || 'regular'
+        gradeType: grade.gradeType || 'regular',
+        includeInAverage: grade.includeInAverage !== false
       };
     });
 
@@ -536,26 +537,26 @@ const FinalGradesEdit: React.FC = () => {
         }
       },
       {
-        title: 'Promedio Final',
+        title: 'Promedio Acumulado',
         key: 'finalAverage',
         width: 120,
         fixed: 'left' as const,
         render: (_: unknown, record: StudentRow) => {
-          // Calculate average in real-time from subject grades
+          // Calculate accumulated average from subject grades (filtered by includeInAverage)
           const grades = Object.values(record.grades);
-          const validGrades = grades.filter(g => g.score !== null && g.score !== undefined);
-          
-          if (validGrades.length === 0) {
+          const eligibleGrades = grades.filter(g => g.includeInAverage !== false && g.score !== null && g.score !== undefined);
+
+          if (eligibleGrades.length === 0) {
             return (
               <Text type="secondary" style={{ fontSize: 12 }}>
                 N/A
               </Text>
             );
           }
-          
-          const total = validGrades.reduce((sum, g) => sum + (g.score || 0), 0);
-          const average = total / validGrades.length;
-          
+
+          const total = eligibleGrades.reduce((sum, g) => sum + Math.max(1, g.score || 0), 0);
+          const average = total / eligibleGrades.length;
+
           return (
             <Tag color={average >= 10 ? 'success' : 'error'} style={{ fontSize: 13, padding: '2px 8px' }}>
               {formatGradePadded(average, maxGrade)}

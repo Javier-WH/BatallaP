@@ -102,6 +102,53 @@ Todo nuevo componente o modificación en la interfaz gráfica **debe abstenerse*
 - **`text-header-text` / `text-[var(--color-header-text)]`**: Para texto que deba leerse sobre sidebars o encabezados.
 - El objeto central está en `SchoolContext.tsx` y las variables de Tailwind auto-generadas viven integradas localmente en `index.css`.
 
+### R15: Cálculo centralizado de notas y promedios
+Toda nota por lapso, nota final por materia o promedio general mostrado en
+cualquier vista, reporte, Excel o PDF **debe** calcularse usando
+`backend/src/services/gradeCalculationService.ts`.
+
+- **Nota por lapso**: se lee de `SubjectTermGrade` (single source of truth).
+- **Nota final por materia**: si existe `SubjectFinalGrade` Y todos los lapsos
+  tienen consejo completado → usar `SubjectFinalGrade`. Si no → promedio de
+  lapsos con consejo completado, con `roundFinalGrade` (entero, min=1).
+- **Promedio general**: promedio de `finalScore` de materias con
+  `includeInAverage=true`, con `Math.max(MIN_FINAL_GRADE, finalScore)`.
+- **NUNCA** recalcular notas desde `Qualification` + `CouncilPoint` en el frontend.
+- **NUNCA** usar un divisor distinto a "lapsos con consejo completado" para
+  documentos oficiales.
+- **Excepción 1**: `finalGradeCalculator.ts` (cierre de período) usa el service
+  pero opera cuando todos los consejos ya están completados.
+- **Excepción 2**: Períodos históricos cerrados usan `SubjectFinalGrade`
+  directamente sin verificar `CouncilChecklist`.
+- **Excepción 3**: Notas externas (`gradeType='transferencia'|'equivalencia'`)
+  usan `SubjectFinalGrade.finalScore` directamente.
+
+### R16: Nota acumulada vs Nota final
+El sistema distingue dos tipos de notas por materia:
+
+- **Nota acumulada**: nota calculada antes de que el consejo de curso del lapso
+  esté completado. Se calcula desde `SubjectTermGrade` (qualifications + council
+  points ingresados). Representa el progreso en tiempo real.
+- **Nota final**: nota después de que el consejo de curso se marca como
+  completado (`CouncilChecklist.status === 'done'`). Técnicamente es el mismo
+  cálculo, pero se considera oficial porque el consejo la ha consolidado.
+
+Y dos tipos de promedio:
+- **Promedio acumulado**: promedio de notas acumuladas (materias con
+  `includeInAverage=true`). Se muestra mientras no todos los consejos estén done.
+- **Promedio final**: promedio de notas finales (materias con
+  `includeInAverage=true`). Solo se calcula cuando los consejos relevantes
+  están completados.
+
+Reglas de visualización:
+- **Documentos oficiales** (boletines, notas certificadas, promedios generales,
+  Excel de rendimiento): solo muestran **notas finales**. Si el consejo no está
+  done → mostrar "—".
+- **Vistas operativas** (expediente, edición de notas, panel del profesor,
+  consejo de curso): muestran **nota acumulada** para ver progreso en tiempo real.
+- **NUNCA** mostrar una nota final en un documento oficial si el consejo de ese
+  lapso no está completado.
+
 ---
 
 ## 🟡 Archivos críticos (requieren Safety Commit antes de modificar)

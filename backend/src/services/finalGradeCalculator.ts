@@ -8,6 +8,7 @@ import {
   Term,
   Subject,
   SubjectFinalGrade,
+  SubjectTermGrade,
   Plantel,
   Setting,
   InscriptionSubjectRevision,
@@ -20,6 +21,7 @@ import {
 import { filterActiveGroupSubjects } from './subjectGroupService';
 import { resolveGradeStatus, roundGrade, roundFinalGrade } from './gradeEvaluationService';
 import { TermGradeSyncService } from './termGradeSyncService';
+import { GradeCalculationService } from './gradeCalculationService';
 
 const resolveInstitutionPlantelId = async (transaction?: Transaction): Promise<number | null> => {
   const setting = await Setting.findOne({ where: { key: 'institution_dea_code' }, transaction });
@@ -115,7 +117,8 @@ export class FinalGradeCalculator {
               include: [{ model: EvaluationPlan, as: 'evaluationPlan' }]
             },
             { model: CouncilPoint, as: 'councilPoints' },
-            { model: Subject, as: 'subject' }
+            { model: Subject, as: 'subject' },
+            { model: SubjectTermGrade, as: 'termGrades' }
           ]
         }
       ],
@@ -175,12 +178,44 @@ export class FinalGradeCalculator {
       // Sync term grades to SubjectTermGrade table (single source of truth for per-lapso grades)
       await TermGradeSyncService.syncForInscriptionSubject(insSub.id, { transaction: options.transaction });
 
-      // Group scores by Term ID
-      const termScores: Record<number, number> = {};
+      // Re-fetch term grades after sync to get the updated values
+      const syncedTermGrades = await SubjectTermGrade.findAll({
+        where: { inscriptionSubjectId: insSub.id },
+        transaction: options.transaction,
+      });
 
+      // Build term grades array from SubjectTermGrade (single source of truth)
+      const termGradesArr = syncedTermGrades.map((tg: any) => ({
+        termId: tg.termId,
+        score: Number(tg.score),
+      }));
+
+      // Build lapsos — during period closure, all councils are done,
+      // so all lapsos have finalScore (not null)
+      const lapsos = terms.map((t: Term) => {
+        const accumulatedScore = GradeCalculationService.calculateAccumulatedTermScore(t.id, termGradesArr);
+        return { termId: t.id, finalScore: accumulatedScore };
+      });
+
+      // Calculate finalScore using the service
+      // During closure, isClosedPeriod=true so it uses SubjectFinalGrade if available
+      // or averages all lapsos (which are all done)
+      const existingFinalGrade = await SubjectFinalGrade.findOne({
+        where: { inscriptionSubjectId: insSub.id },
+        transaction: options.transaction,
+      });
+
+      const finalScore = GradeCalculationService.calculateFinalScore(
+        lapsos,
+        existingFinalGrade ? { finalScore: existingFinalGrade.finalScore, gradeType: existingFinalGrade.gradeType } : null,
+        { isClosedPeriod: true },
+      ) || roundFinalGrade(lapsos.reduce((sum, l) => sum + l.finalScore, 0) / (lapsos.length || 1));
+
+      // Raw Score (sum of non-council points) calculation for display/statistics
+      // Still calculated from qualifications for detailed breakdown
+      const termScores: Record<number, number> = {};
       terms.forEach((t: Term) => { termScores[t.id] = 0; });
 
-      // Calculate Qualifications per Term
       (insSub.qualifications || []).forEach((qualification: Qualification & { evaluationPlan?: EvaluationPlan | null }) => {
         if ((qualification as any).isAbsent) return;
         const score = (qualification as any).remedialScore != null && Number((qualification as any).remedialScore) > 0
@@ -194,22 +229,6 @@ export class FinalGradeCalculator {
         }
       });
 
-      // Add Council Points per Term
-      (insSub.councilPoints || []).forEach((point: CouncilPoint) => {
-        const pVal = Number(point.points) || 0;
-        if (point.termId && termScores[point.termId] !== undefined) {
-          termScores[point.termId] += pVal;
-        }
-      });
-
-      // Sum all term scores
-      let totalAccumulated = 0;
-      Object.values(termScores).forEach(val => totalAccumulated += val);
-
-      // Average and round to integer, enforcing minimum final grade of 01
-      const finalScore = roundFinalGrade(totalAccumulated / termCount);
-
-      // Raw Score (sum of non-council points) calculation for display/statistics
       let totalRaw = 0;
       let totalCouncil = 0;
       (insSub.qualifications || []).forEach((q) => {

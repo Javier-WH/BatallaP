@@ -58,6 +58,8 @@ interface InscriptionSubject {
   subject?: SubjectInfo | null;
   qualifications?: Qualification[];
   councilPoints?: CouncilPoint[];
+  termGrades?: { termId: number; score: number }[];
+  finalGrade?: { finalScore: number | null; status: string; gradeType?: string | null } | null;
 }
 
 interface AcademicRecord {
@@ -335,12 +337,13 @@ const StudentAcademicRecord: React.FC<StudentAcademicRecordProps> = ({ personId 
                       width: 110,
                       render: (_: unknown, subject: InscriptionSubject) => {
                         const t = 1;
-                        const quals = subject.qualifications?.filter(q => q.evaluationPlan?.termId === t) || [];
-                        const totalScore = quals.reduce((acc: number, q) => acc + (Number(q.score) * (Number(q.evaluationPlan?.percentage) / 100)), 0);
+                        // Use SubjectTermGrade from backend (accumulated score) if available
+                        const tg = subject.termGrades?.find(tg => tg.termId === t);
                         const councilPoint = subject.councilPoints?.find(cp => cp.termId === t);
                         const points = councilPoint ? Number(councilPoint.points) : 0;
-                        const finalTermScore = totalScore + points;
-                        const hasNotes = quals.length > 0 || points > 0;
+                        const finalTermScore = tg ? Math.max(1, Number(tg.score)) : 0;
+                        const hasNotes = (tg && Number(tg.score) > 0) || points > 0 ||
+                          (subject.qualifications?.filter(q => q.evaluationPlan?.termId === t).length || 0) > 0;
                         const approved = finalTermScore >= (maxGrade / 2);
                         if (!hasNotes) return <Text style={{ color: '#cbd5e1', fontWeight: 600, fontSize: 13 }}>—</Text>;
                         return (
@@ -364,12 +367,12 @@ const StudentAcademicRecord: React.FC<StudentAcademicRecordProps> = ({ personId 
                       width: 110,
                       render: (_: unknown, subject: InscriptionSubject) => {
                         const t = 2;
-                        const quals = subject.qualifications?.filter(q => q.evaluationPlan?.termId === t) || [];
-                        const totalScore = quals.reduce((acc: number, q) => acc + (Number(q.score) * (Number(q.evaluationPlan?.percentage) / 100)), 0);
+                        const tg = subject.termGrades?.find(tg => tg.termId === t);
                         const councilPoint = subject.councilPoints?.find(cp => cp.termId === t);
                         const points = councilPoint ? Number(councilPoint.points) : 0;
-                        const finalTermScore = totalScore + points;
-                        const hasNotes = quals.length > 0 || points > 0;
+                        const finalTermScore = tg ? Math.max(1, Number(tg.score)) : 0;
+                        const hasNotes = (tg && Number(tg.score) > 0) || points > 0 ||
+                          (subject.qualifications?.filter(q => q.evaluationPlan?.termId === t).length || 0) > 0;
                         const approved = finalTermScore >= (maxGrade / 2);
                         if (!hasNotes) return <Text style={{ color: '#cbd5e1', fontWeight: 600, fontSize: 13 }}>—</Text>;
                         return (
@@ -393,12 +396,12 @@ const StudentAcademicRecord: React.FC<StudentAcademicRecordProps> = ({ personId 
                       width: 110,
                       render: (_: unknown, subject: InscriptionSubject) => {
                         const t = 3;
-                        const quals = subject.qualifications?.filter(q => q.evaluationPlan?.termId === t) || [];
-                        const totalScore = quals.reduce((acc: number, q) => acc + (Number(q.score) * (Number(q.evaluationPlan?.percentage) / 100)), 0);
+                        const tg = subject.termGrades?.find(tg => tg.termId === t);
                         const councilPoint = subject.councilPoints?.find(cp => cp.termId === t);
                         const points = councilPoint ? Number(councilPoint.points) : 0;
-                        const finalTermScore = totalScore + points;
-                        const hasNotes = quals.length > 0 || points > 0;
+                        const finalTermScore = tg ? Math.max(1, Number(tg.score)) : 0;
+                        const hasNotes = (tg && Number(tg.score) > 0) || points > 0 ||
+                          (subject.qualifications?.filter(q => q.evaluationPlan?.termId === t).length || 0) > 0;
                         const approved = finalTermScore >= (maxGrade / 2);
                         if (!hasNotes) return <Text style={{ color: '#cbd5e1', fontWeight: 600, fontSize: 13 }}>—</Text>;
                         return (
@@ -421,18 +424,22 @@ const StudentAcademicRecord: React.FC<StudentAcademicRecordProps> = ({ personId 
                       align: 'center',
                       width: 120,
                       render: (_: unknown, subject: InscriptionSubject) => {
-                        const quals = subject.qualifications || [];
-                        const termScores = [1, 2, 3].map(t => {
-                          const qL = quals.filter(q => q.evaluationPlan?.termId === t);
-                          const councilPoint = subject.councilPoints?.find(cp => cp.termId === t);
-                          const points = councilPoint ? Number(councilPoint.points) : 0;
-                          if (qL.length === 0 && points === 0) return null;
-                          const score = qL.reduce((acc: number, q: Qualification) => acc + (Number(q.score) * (Number(q.evaluationPlan?.percentage) / 100)), 0);
-                          return score + points;
-                        }).filter(s => s !== null) as number[];
+                        // Use SubjectFinalGrade from backend if available (accumulated score)
+                        // Otherwise calculate from SubjectTermGrade (accumulated, not final)
+                        let avg: number | null = null;
 
-                        if (termScores.length === 0) return <Text style={{ color: '#cbd5e1', fontWeight: 600, fontSize: 13 }}>—</Text>;
-                        const avg = termScores.reduce((a, b) => a + b, 0) / termScores.length;
+                        if (subject.finalGrade?.finalScore != null) {
+                          avg = Math.max(1, Number(subject.finalGrade.finalScore));
+                        } else if (subject.termGrades && subject.termGrades.length > 0) {
+                          const scores = subject.termGrades
+                            .map(tg => Math.max(1, Number(tg.score)))
+                            .filter(s => s > 0);
+                          if (scores.length > 0) {
+                            avg = scores.reduce((a, b) => a + b, 0) / scores.length;
+                          }
+                        }
+
+                        if (avg === null) return <Text style={{ color: '#cbd5e1', fontWeight: 600, fontSize: 13 }}>—</Text>;
                         const approved = avg >= (maxGrade / 2);
 
                         return (
