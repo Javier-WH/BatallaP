@@ -44,6 +44,7 @@ import CourseCouncil from '@/pages/control-estudios/CourseCouncil';
 import FinalGradesEdit from '@/pages/control-estudios/FinalGradesEdit';
 import ManageGrades from '@/pages/control-estudios/ManageGrades';
 import PerformanceSummary from '@/pages/control-estudios/PerformanceSummary';
+import GeneralAverages from '@/pages/control-estudios/GeneralAverages';
 import RepairPeriodManagement from '@/pages/control-estudios/RepairPeriodManagement';
 import ExternalGrades from '@/pages/control-estudios/ExternalGrades';
 import RegisterRepresentative from '@/pages/admin/RegisterRepresentative';
@@ -237,6 +238,7 @@ function AppRoutes() {
           <Route path="calificaciones" element={<ManageGrades />} />
           <Route path="notas-externas" element={<ExternalGrades />} />
           <Route path="resumen-rendimiento" element={<PerformanceSummary />} />
+          <Route path="promedios-generales" element={<GeneralAverages />} />
           <Route path="reparacion" element={<RepairPeriodManagement />} />
           <Route path="edit/:id" element={<EditUser />} />
           <Route path="search" element={<SearchUsers />} />

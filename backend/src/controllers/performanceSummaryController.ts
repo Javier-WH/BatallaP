@@ -1311,3 +1311,95 @@ export const getBoletinData = async (req: Request, res: Response) => {
     res.status(500).json({ message: error.message || 'Error al obtener datos de boletín' });
   }
 };
+
+// ── General Averages ──────────────────────────────────────────────
+// Returns all students in a school period with their per-term grades
+// so the frontend can compute averages and rankings dynamically.
+export const getGeneralAverages = async (req: Request, res: Response) => {
+  try {
+    const schoolPeriodId = Number(req.query.schoolPeriodId);
+    if (!schoolPeriodId) {
+      return res.status(400).json({ message: 'schoolPeriodId es requerido' });
+    }
+
+    const terms = await Term.findAll({
+      where: { schoolPeriodId },
+      order: [['order', 'ASC']],
+    });
+
+    const inscriptions = await Inscription.findAll({
+      where: { schoolPeriodId },
+      include: [
+        { model: Person, as: 'student', attributes: ['id', 'firstName', 'lastName', 'document'] },
+        { model: Grade, as: 'grade', attributes: ['id', 'name'] },
+        { model: Section, as: 'section', attributes: ['id', 'name'] },
+        {
+          model: InscriptionSubject,
+          as: 'inscriptionSubjects',
+          attributes: ['id', 'subjectId'],
+          include: [
+            { model: SubjectTermGrade, as: 'termGrades', attributes: ['termId', 'score'] },
+            { model: Subject, as: 'subject', attributes: ['id', 'usesLiteralGrades'] },
+          ],
+        },
+      ],
+      order: [
+        [{ model: Grade, as: 'grade' }, 'name', 'ASC'],
+        [{ model: Section, as: 'section' }, 'name', 'ASC'],
+        [{ model: Person, as: 'student' }, 'lastName', 'ASC'],
+        [{ model: Person, as: 'student' }, 'firstName', 'ASC'],
+      ],
+    });
+
+    const students = inscriptions.map((ins: any) => {
+      // Build term score map: average of all non-literal subjects per term
+      const termScoreMap = new Map<number, number[]>();
+      (ins.inscriptionSubjects || []).forEach((is: any) => {
+        if (is.subject?.usesLiteralGrades) return; // skip literal subjects
+        (is.termGrades || []).forEach((tg: any) => {
+          const score = Number(tg.score);
+          if (score > 0) {
+            if (!termScoreMap.has(tg.termId)) termScoreMap.set(tg.termId, []);
+            termScoreMap.get(tg.termId)!.push(score);
+          }
+        });
+      });
+
+      const termGrades = terms.map((t: any) => {
+        const scores = termScoreMap.get(t.id) || [];
+        const avg = scores.length > 0
+          ? Number((scores.reduce((a: number, b: number) => a + b, 0) / scores.length).toFixed(2))
+          : 0;
+        return { termId: t.id, termName: t.name, score: avg };
+      });
+
+      return {
+        inscriptionId: ins.id,
+        firstName: ins.student?.firstName || '',
+        lastName: ins.student?.lastName || '',
+        document: ins.student?.document || '',
+        gradeId: ins.grade?.id || 0,
+        gradeName: ins.grade?.name || '',
+        sectionId: ins.section?.id || 0,
+        sectionName: ins.section?.name || '',
+        termGrades,
+      };
+    });
+
+    res.json({
+      terms: terms.map((t: any) => ({ id: t.id, name: t.name, order: t.order })),
+      grades: [...new Set(students.map((s: any) => s.gradeId))].map((gid: any) => {
+        const s = students.find((st: any) => st.gradeId === gid);
+        return { id: gid, name: s?.gradeName || '' };
+      }).sort((a: any, b: any) => a.name.localeCompare(b.name)),
+      sections: [...new Set(students.map((s: any) => s.sectionId))].map((sid: any) => {
+        const s = students.find((st: any) => st.sectionId === sid);
+        return { id: sid, name: s?.sectionName || '', gradeId: s?.gradeId || 0 };
+      }).sort((a: any, b: any) => a.name.localeCompare(b.name)),
+      students,
+    });
+  } catch (error: any) {
+    console.error('[getGeneralAverages] Error:', error);
+    res.status(500).json({ message: error.message || 'Error al obtener promedios generales' });
+  }
+};
