@@ -6,7 +6,6 @@ import Term from './Term';
 interface ThematicComponentAttributes {
   id: number;
   periodGradeSubjectId: number;
-  sectionId: number;
   termId: number;
   title: string;
   order: number;
@@ -17,7 +16,6 @@ type ThematicComponentCreationAttributes = Optional<ThematicComponentAttributes,
 class ThematicComponent extends Model<ThematicComponentAttributes, ThematicComponentCreationAttributes> implements ThematicComponentAttributes {
   public id!: number;
   public periodGradeSubjectId!: number;
-  public sectionId!: number;
   public termId!: number;
   public title!: string;
   public order!: number;
@@ -36,10 +34,6 @@ ThematicComponent.init(
     periodGradeSubjectId: {
       type: DataTypes.INTEGER,
       references: { model: PeriodGradeSubject, key: 'id' },
-      allowNull: false,
-    },
-    sectionId: {
-      type: DataTypes.INTEGER,
       allowNull: false,
     },
     termId: {

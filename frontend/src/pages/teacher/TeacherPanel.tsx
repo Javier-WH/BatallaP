@@ -574,7 +574,6 @@ const TeacherPanel: React.FC = () => {
       const res = await api.get(`/thematic-components`, {
         params: {
           pgsId: assignment.periodGradeSubjectId,
-          sectionId: assignment.sectionId,
           termId: selectedTerm,
         },
       });
@@ -1181,7 +1180,6 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
     try {
       await api.post('/thematic-components', {
         periodGradeSubjectId: assignment.periodGradeSubjectId,
-        sectionId: assignment.sectionId,
         termId: selectedTerm,
         title,
       });

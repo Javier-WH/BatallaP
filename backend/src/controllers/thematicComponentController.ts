@@ -12,15 +12,14 @@ import {
 
 export const getThematicComponents = async (req: Request, res: Response) => {
   try {
-    const { pgsId, sectionId, termId } = req.query;
-    if (!pgsId || !sectionId || !termId) {
-      return res.status(400).json({ message: 'pgsId, sectionId, termId son requeridos' });
+    const { pgsId, termId } = req.query;
+    if (!pgsId || !termId) {
+      return res.status(400).json({ message: 'pgsId, termId son requeridos' });
     }
 
     const components = await ThematicComponent.findAll({
       where: {
         periodGradeSubjectId: Number(pgsId),
-        sectionId: Number(sectionId),
         termId: Number(termId),
       },
       include: [
@@ -41,18 +40,17 @@ export const getThematicComponents = async (req: Request, res: Response) => {
 
 export const createThematicComponent = async (req: Request, res: Response) => {
   try {
-    const { periodGradeSubjectId, sectionId, termId, title } = req.body;
-    if (!periodGradeSubjectId || !sectionId || !termId || !title) {
+    const { periodGradeSubjectId, termId, title } = req.body;
+    if (!periodGradeSubjectId || !termId || !title) {
       return res.status(400).json({ message: 'Faltan campos requeridos' });
     }
 
     const maxOrder = await ThematicComponent.max('order', {
-      where: { periodGradeSubjectId, sectionId, termId },
+      where: { periodGradeSubjectId, termId },
     }) as number || 0;
 
     const component = await ThematicComponent.create({
       periodGradeSubjectId,
-      sectionId,
       termId,
       title,
       order: maxOrder + 1,
@@ -130,8 +128,8 @@ export const reorderThematicComponents = async (req: Request, res: Response) => 
       throw new Error('Alguno de los componentes no existe.');
     }
 
-    // All components must belong to the same periodGradeSubject+section+term
-    const keys = new Set(components.map((c) => `${c.periodGradeSubjectId}-${c.sectionId}-${c.termId}`));
+    // All components must belong to the same periodGradeSubject+term
+    const keys = new Set(components.map((c) => `${c.periodGradeSubjectId}-${c.termId}`));
     if (keys.size !== 1) {
       throw new Error('Los componentes deben pertenecer al mismo lapso y asignación.');
     }
@@ -148,9 +146,9 @@ export const reorderThematicComponents = async (req: Request, res: Response) => 
 
     await transaction.commit();
 
-    const { periodGradeSubjectId, sectionId, termId } = components[0];
+    const { periodGradeSubjectId, termId } = components[0];
     const refreshed = await ThematicComponent.findAll({
-      where: { periodGradeSubjectId, sectionId, termId },
+      where: { periodGradeSubjectId, termId },
       include: [
         {
           association: 'contents',

@@ -1267,7 +1267,7 @@ export const exportPlanningExcel = async (req: Request, res: Response) => {
     const [term, components, plans] = await Promise.all([
       termId ? Term.findByPk(termId) : Promise.resolve(null),
       ThematicComponent.findAll({
-        where: { periodGradeSubjectId: pgs.id, sectionId: assignmentData.sectionId, ...(termId ? { termId } : {}) },
+        where: { periodGradeSubjectId: pgs.id, ...(termId ? { termId } : {}) },
         include: [{ model: ThematicContent, as: 'contents', include: [{ model: ExpectedLearning, as: 'learnings' }] }],
         order: [['order', 'ASC']],
       }),
