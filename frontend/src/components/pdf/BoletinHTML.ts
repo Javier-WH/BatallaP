@@ -5,6 +5,7 @@ export interface BoletinHTMLSubject {
   name: string;
   teacherName?: string;
   usesLiteralGrades?: boolean;
+  includeInAverage?: boolean;
   lapsos: { termId: number; termName: string; score: number }[];
   finalScore: number | null;
   status: string;
@@ -151,29 +152,31 @@ const buildStudentSheet = (
     return `<th>${short}</th>`;
   }).join('');
 
-  // Summary stats: average per term (only subjects with actual grades in that term)
+  // Summary stats: average per term (only subjects with includeInAverage=true)
+  // Notes of 0 are counted as 0 (not excluded)
   const termAverages = terms.map((t) => {
-    const scores = student.subjects
-      .filter((s) => !s.usesLiteralGrades)
-      .map((s) => {
-        const lapse = s.lapsos.find((l) => l.termId === t.id);
-        return lapse ? Number(lapse.score) : 0;
-      })
-      .filter((v) => v > 0);
-    if (scores.length === 0) return '—';
+    const eligibleSubjects = student.subjects.filter((s) => s.includeInAverage !== false);
+    if (eligibleSubjects.length === 0) return '—';
+    const scores = eligibleSubjects.map((s) => {
+      const lapse = s.lapsos.find((l) => l.termId === t.id);
+      return lapse ? Number(lapse.score) : 0;
+    });
     const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
     return avg.toFixed(2);
   });
 
-  // Definitiva average: only average over terms that have grades so far
-  const finalAvgScores = student.subjects
-    .filter((s) => !s.usesLiteralGrades)
+  // Definitiva average: only subjects with includeInAverage=true
+  // Average each subject's term scores (counting 0s), then average across subjects
+  const finalAvgSubjects = student.subjects
+    .filter((s) => s.includeInAverage !== false);
+  const finalAvgScores = finalAvgSubjects
     .map((s) => {
       const termScores = terms.map((t) => {
         const lapse = s.lapsos.find((l) => l.termId === t.id);
         return lapse ? Number(lapse.score) : 0;
-      }).filter((v) => v > 0);
-      if (termScores.length === 0) return null;
+      });
+      // Only include subjects that have at least one non-zero term score
+      if (termScores.every((v) => v === 0)) return null;
       return termScores.reduce((a, b) => a + b, 0) / termScores.length;
     })
     .filter((v): v is number => v !== null);
@@ -307,8 +310,8 @@ export const generateBoletinHTML = (data: BoletinHTMLData): string => {
 
   // Compute rank position by general average (definitiva) within the whole set
   const avgMap = studentsWithList.map((s) => {
-    const finalScores = s.subjects
-      .filter((sub) => !sub.usesLiteralGrades)
+    const eligibleSubjects = s.subjects.filter((sub) => sub.includeInAverage !== false);
+    const finalScores = eligibleSubjects
       .map((sub) => sub.finalScore)
       .filter((v) => v !== null && v > 0) as number[];
     const avg = finalScores.length > 0

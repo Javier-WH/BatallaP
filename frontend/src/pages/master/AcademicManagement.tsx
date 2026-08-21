@@ -20,7 +20,8 @@ import {
   Typography,
   Tooltip,
   Empty,
-  ColorPicker
+  ColorPicker,
+  Switch
 } from 'antd';
 import {
   PlusOutlined,
@@ -135,6 +136,7 @@ interface Subject extends BaseCatalogItem {
   usesLiteralGrades?: boolean;
   icon?: string | null;
   color?: string | null;
+  includeInAverage?: boolean;
 }
 
 type Specialization = BaseCatalogItem;
@@ -198,9 +200,10 @@ interface SortableSubjectItemProps {
   periodGradeId: number;
   onRemove: (periodGradeId: number, subjectId: number) => void;
   onAssignTeacher?: (periodGradeId: number, subjectId: number) => void;
+  onToggleAverage?: (periodGradeId: number, subjectId: number, includeInAverage: boolean) => void;
 }
 
-const SortableSubjectItem: React.FC<SortableSubjectItemProps> = ({ subject, periodGradeId, onRemove, onAssignTeacher }) => {
+const SortableSubjectItem: React.FC<SortableSubjectItemProps> = ({ subject, periodGradeId, onRemove, onAssignTeacher, onToggleAverage }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: `${periodGradeId}-${subject.id}`,
   });
@@ -233,6 +236,18 @@ const SortableSubjectItem: React.FC<SortableSubjectItemProps> = ({ subject, peri
         )}
       </Space>
       <Space>
+        {onToggleAverage && (
+          <Tooltip title={subject.includeInAverage !== false ? 'Cuenta para promedio' : 'No cuenta para promedio'}>
+            <Switch
+              size="small"
+              checked={subject.includeInAverage !== false}
+              onClick={(checked, e) => {
+                e?.stopPropagation();
+                onToggleAverage(periodGradeId, subject.id, checked);
+              }}
+            />
+          </Tooltip>
+        )}
         {onAssignTeacher && (
           <UserAddOutlined
             style={{ color: '#1890ff', cursor: 'pointer' }}
@@ -530,7 +545,15 @@ const AcademicManagement: React.FC = () => {
     if (!activePeriodId) return;
     try {
       const res = await api.get<PeriodGradeStructureItem[]>(`/academic/structure/${activePeriodId}`);
-      setStructure(res.data);
+      // Map includeInAverage from through table to subject level
+      const mapped = res.data.map((item: any) => ({
+        ...item,
+        subjects: (item.subjects || []).map((sub: any) => ({
+          ...sub,
+          includeInAverage: sub.PeriodGradeSubject?.includeInAverage !== false,
+        })),
+      }));
+      setStructure(mapped);
     } catch (error) {
       console.error(error);
       message.error('Error cargando estructura');
@@ -777,6 +800,16 @@ const AcademicManagement: React.FC = () => {
     }
   };
 
+  const handleToggleAverage = async (periodGradeId: number, subjectId: number, includeInAverage: boolean) => {
+    try {
+      await api.post('/academic/structure/subject/toggle-average', { periodGradeId, subjectId, includeInAverage });
+      fetchStructure();
+    } catch (error) {
+      console.error(error);
+      message.error('Error al actualizar configuración de promedio');
+    }
+  };
+
   const handleSubjectDragEnd = async (event: DragEndEvent, periodGradeId: number) => {
     const { active, over } = event;
 
@@ -823,7 +856,9 @@ const AcademicManagement: React.FC = () => {
   };
 
   const sensors = useSensors(
-    useSensor(PointerSensor),
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 5 },
+    }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
     })
@@ -1482,6 +1517,7 @@ const AcademicManagement: React.FC = () => {
                                         periodGradeId={item.id}
                                         onRemove={handleRemoveSubjectFromGrade}
                                         onAssignTeacher={handleOpenAssignTeacher}
+                                        onToggleAverage={handleToggleAverage}
                                       />
                                     ))}
                                   </div>

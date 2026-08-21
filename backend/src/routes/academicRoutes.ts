@@ -54,6 +54,7 @@ router.put('/structure/section/:periodGradeId/:sectionId/color', academic.update
 router.post('/structure/subject', academic.addSubjectToGrade);
 router.post('/structure/subject/remove', academic.removeSubjectFromGrade);
 router.post('/structure/subject/reorder', academic.updateSubjectOrderForGrade);
+router.post('/structure/subject/toggle-average', academic.toggleSubjectIncludeInAverage);
 router.get('/structure/subject/:periodGradeId/:subjectId', academic.getPeriodGradeSubject);
 // Using POST because of composite key body
 

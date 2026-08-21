@@ -1134,6 +1134,12 @@ export const getBoletinData = async (req: Request, res: Response) => {
       : [];
     const pgsIds = periodGradeSubjects.map((pgs: any) => pgs.id);
 
+    // Map: subjectId -> includeInAverage (default true)
+    const includeInAverageMap = new Map<number, boolean>();
+    for (const pgs of periodGradeSubjects) {
+      includeInAverageMap.set((pgs as any).subjectId, (pgs as any).includeInAverage !== false);
+    }
+
     const taWhere: any = { periodGradeSubjectId: pgsIds };
     if (sectionId) taWhere.sectionId = sectionId;
     const teacherAssignments = pgsIds.length > 0
@@ -1266,6 +1272,7 @@ export const getBoletinData = async (req: Request, res: Response) => {
           name: subjectName,
           teacherName: teacherMap.get(is.subjectId) || '',
           usesLiteralGrades: is.subject?.usesLiteralGrades || false,
+          includeInAverage: includeInAverageMap.get(is.subjectId) !== false,
           lapsos: terms.map((t: any) => ({
             termId: t.id,
             termName: t.name,
@@ -1328,6 +1335,30 @@ export const getGeneralAverages = async (req: Request, res: Response) => {
       order: [['order', 'ASC']],
     });
 
+    // Load PeriodGradeSubject to know which subjects count for average
+    const periodGrades = await PeriodGrade.findAll({
+      where: { schoolPeriodId },
+      attributes: ['id', 'gradeId'],
+    });
+    const periodGradeIds = periodGrades.map((pg: any) => pg.id);
+    const pgsRecords = periodGradeIds.length > 0
+      ? await PeriodGradeSubject.findAll({ where: { periodGradeId: periodGradeIds } })
+      : [];
+    // Map: gradeId -> Set<subjectId> that count for average
+    const gradeIdToPgId = new Map<number, number>();
+    for (const pg of periodGrades) {
+      gradeIdToPgId.set((pg as any).gradeId, (pg as any).id);
+    }
+    const includeInAverageMap = new Map<number, Set<number>>(); // gradeId -> subjectIds
+    for (const pgs of pgsRecords) {
+      if ((pgs as any).includeInAverage === false) continue;
+      const pgId = (pgs as any).periodGradeId;
+      const gradeId = periodGrades.find((pg: any) => pg.id === pgId)?.gradeId;
+      if (gradeId === undefined) continue;
+      if (!includeInAverageMap.has(gradeId)) includeInAverageMap.set(gradeId, new Set());
+      includeInAverageMap.get(gradeId)!.add((pgs as any).subjectId);
+    }
+
     const inscriptions = await Inscription.findAll({
       where: { schoolPeriodId },
       include: [
@@ -1353,10 +1384,13 @@ export const getGeneralAverages = async (req: Request, res: Response) => {
     });
 
     const students = inscriptions.map((ins: any) => {
-      // Build term score map: average of all non-literal subjects per term
+      const gradeId = ins.grade?.id || 0;
+      const averageEligibleSubjects = includeInAverageMap.get(gradeId);
+      // Build term score map: average of subjects that include in average
       const termScoreMap = new Map<number, number[]>();
       (ins.inscriptionSubjects || []).forEach((is: any) => {
-        if (is.subject?.usesLiteralGrades) return; // skip literal subjects
+        // Skip subjects not configured for average (if we have the config)
+        if (averageEligibleSubjects && !averageEligibleSubjects.has(is.subjectId)) return;
         (is.termGrades || []).forEach((tg: any) => {
           const score = Number(tg.score);
           if (score > 0) {

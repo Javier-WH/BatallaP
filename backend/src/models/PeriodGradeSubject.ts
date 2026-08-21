@@ -9,9 +9,10 @@ interface PeriodGradeSubjectAttributes {
   subjectId: number;
   order?: number | null;
   active: boolean;
+  includeInAverage: boolean;
 }
 
-interface PeriodGradeSubjectCreationAttributes extends Optional<PeriodGradeSubjectAttributes, 'id' | 'active'> { }
+interface PeriodGradeSubjectCreationAttributes extends Optional<PeriodGradeSubjectAttributes, 'id' | 'active' | 'includeInAverage'> { }
 
 class PeriodGradeSubject extends Model<PeriodGradeSubjectAttributes, PeriodGradeSubjectCreationAttributes> implements PeriodGradeSubjectAttributes {
   public id!: number;
@@ -19,6 +20,7 @@ class PeriodGradeSubject extends Model<PeriodGradeSubjectAttributes, PeriodGrade
   public subjectId!: number;
   public order?: number | null;
   public active!: boolean;
+  public includeInAverage!: boolean;
 
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
@@ -46,6 +48,11 @@ PeriodGradeSubject.init(
       allowNull: true,
     },
     active: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: true,
+    },
+    includeInAverage: {
       type: DataTypes.BOOLEAN,
       allowNull: false,
       defaultValue: true,

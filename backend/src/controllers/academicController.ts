@@ -596,7 +596,7 @@ export const getPeriodStructure = async (req: Request, res: Response) => {
         {
           model: Subject,
           as: 'subjects',
-          through: { attributes: ['id', 'order'], where: { active: true } },
+          through: { attributes: ['id', 'order', 'includeInAverage'], where: { active: true } },
           include: [{ model: SubjectGroup, as: 'subjectGroup' }]
         }
       ],
@@ -685,6 +685,30 @@ export const updateSubjectOrderForGrade = async (req: Request, res: Response) =>
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Error updating subject order' });
+  }
+};
+
+export const toggleSubjectIncludeInAverage = async (req: Request, res: Response) => {
+  try {
+    const { periodGradeId, subjectId, includeInAverage } = req.body as {
+      periodGradeId: number;
+      subjectId: number;
+      includeInAverage: boolean;
+    };
+
+    const pgs = await PeriodGradeSubject.unscoped().findOne({
+      where: { periodGradeId, subjectId },
+    });
+
+    if (!pgs) {
+      return res.status(404).json({ error: 'Materia no vinculada a este grado' });
+    }
+
+    await pgs.update({ includeInAverage });
+    res.json({ message: 'Updated', includeInAverage });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Error updating includeInAverage' });
   }
 };
 
