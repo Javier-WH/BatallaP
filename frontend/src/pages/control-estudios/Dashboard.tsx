@@ -644,8 +644,34 @@ const ControlEstudiosDashboard: React.FC = () => {
           </Col>
         </Row>
 
-        {/* ===== Lapsos Timeline + Progress Cards ===== */}
+        {/* ===== Progress Cards (left, side by side) + Lapsos (right) ===== */}
         <Row gutter={[20, 20]}>
+          {/* Plans Progress by Grade */}
+          <Col xs={24} lg={9}>
+            <FadeIn delay={450}>
+              <GradeProgressCard
+                title={<span className="flex items-center gap-2 text-sm font-bold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}><BookOutlined style={{ color: '#f59e0b' }} /> Planes de Evaluación</span>}
+                extra={<Tag color="warning" className="font-bold rounded-full">{data.teachers.withoutPlans}</Tag>}
+                byGrade={data.teachers.byGrade}
+                mode="plan"
+                accentColor="#f59e0b"
+              />
+            </FadeIn>
+          </Col>
+
+          {/* Grades Progress by Grade */}
+          <Col xs={24} lg={9}>
+            <FadeIn delay={500}>
+              <GradeProgressCard
+                title={<span className="flex items-center gap-2 text-sm font-bold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}><ExclamationCircleOutlined style={{ color: '#ef4444' }} /> Carga de Notas</span>}
+                extra={<Tag color="error" className="font-bold rounded-full">{data.teachers.withoutGrades}</Tag>}
+                byGrade={data.teachers.byGrade}
+                mode="grades"
+                accentColor="#ef4444"
+              />
+            </FadeIn>
+          </Col>
+
           {/* Lapsos */}
           <Col xs={24} lg={6}>
             <FadeIn delay={400}>
@@ -686,32 +712,6 @@ const ControlEstudiosDashboard: React.FC = () => {
                   </div>
                 )}
               </Card>
-            </FadeIn>
-          </Col>
-
-          {/* Plans Progress by Grade */}
-          <Col xs={24} lg={9}>
-            <FadeIn delay={450}>
-              <GradeProgressCard
-                title={<span className="flex items-center gap-2 text-sm font-bold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}><BookOutlined style={{ color: '#f59e0b' }} /> Planes de Evaluación</span>}
-                extra={<Tag color="warning" className="font-bold rounded-full">{data.teachers.withoutPlans}</Tag>}
-                byGrade={data.teachers.byGrade}
-                mode="plan"
-                accentColor="#f59e0b"
-              />
-            </FadeIn>
-          </Col>
-
-          {/* Grades Progress by Grade */}
-          <Col xs={24} lg={9}>
-            <FadeIn delay={500}>
-              <GradeProgressCard
-                title={<span className="flex items-center gap-2 text-sm font-bold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}><ExclamationCircleOutlined style={{ color: '#ef4444' }} /> Carga de Notas</span>}
-                extra={<Tag color="error" className="font-bold rounded-full">{data.teachers.withoutGrades}</Tag>}
-                byGrade={data.teachers.byGrade}
-                mode="grades"
-                accentColor="#ef4444"
-              />
             </FadeIn>
           </Col>
         </Row>
