@@ -14,10 +14,14 @@ export interface BoletinHTMLStudent {
   firstName: string;
   lastName: string;
   document: string;
+  documentType?: string;
   sectionName: string;
   sectionId?: number;
   guideTeacher?: string;
   subjects: BoletinHTMLSubject[];
+  listNumber?: number;
+  rankPosition?: number;
+  rankTotal?: number;
 }
 export interface BoletinHTMLData {
   institution: {
@@ -78,6 +82,10 @@ const formatDate = (): string => {
   return `${dd}/${mm}/${yyyy}`;
 };
 
+// Capitalize first letter of each word, rest lowercase (supports ñ and accents)
+const toTitleCase = (s: string): string =>
+  (s || '').toLowerCase().replace(/(^|[^a-záéíóúñ])([a-záéíóúñ])/gi, (_m, p1, p2) => p1 + p2.toUpperCase());
+
 const buildStudentSheet = (
   student: BoletinHTMLStudent,
   data: BoletinHTMLData,
@@ -85,8 +93,21 @@ const buildStudentSheet = (
   const { institution, grade, terms, letterGrades = [], passingGrade = 10 } = data;
   const fullName = escapeHtml(`${student.lastName} ${student.firstName}`.trim());
   const doc = escapeHtml(student.document || '—');
-  const sectionName = escapeHtml(student.sectionName || '—');
+  const sectionName = escapeHtml(toTitleCase(student.sectionName || '—'));
   const guideTeacher = escapeHtml(student.guideTeacher || '—');
+
+  // List number badge (inline before name)
+  const listNum = student.listNumber;
+  const listBadge = listNum
+    ? `<span class="list-num">N° ${String(listNum).padStart(2, '0')}</span> `
+    : '';
+
+  // Rank position badge (inline after section)
+  const rankPos = student.rankPosition;
+  const rankTotal = student.rankTotal;
+  const rankBadge = (rankPos && rankTotal)
+    ? ` <span class="rank-badge">Pos. ${rankPos}/${rankTotal}</span>`
+    : '';
 
   // Logo HTML
   const logoHtml = data.logoBase64
@@ -188,7 +209,7 @@ const buildStudentSheet = (
     <div class="student">
       <div class="field">
         <div class="label">Alumno</div>
-        <div class="value big">${fullName}</div>
+        <div class="value big">${listBadge}${fullName}</div>
       </div>
       <div class="field">
         <div class="label">Cédula</div>
@@ -196,7 +217,7 @@ const buildStudentSheet = (
       </div>
       <div class="field">
         <div class="label">Sección</div>
-        <div class="value">${escapeHtml(grade.name)} ${sectionName}</div>
+        <div class="value">${escapeHtml(toTitleCase(grade.name))} ${sectionName}${rankBadge}</div>
       </div>
       <div class="field">
         <div class="label">Docente guía</div>
@@ -256,7 +277,63 @@ const buildStudentSheet = (
 };
 
 export const generateBoletinHTML = (data: BoletinHTMLData): string => {
-  const sheets = data.students.map((student) => buildStudentSheet(student, data)).join('\n');
+  // Sort students by section, then by cédula number (same criteria as nómina)
+  // "Cedula Escolar" (CE) documents go to the end of each section
+  const parseDoc = (doc: string, docType: string) => {
+    const isEscolar = docType === 'Cedula Escolar';
+    const num = parseInt((doc || '').replace(/\D/g, ''), 10) || 0;
+    return { isEscolar, num };
+  };
+  const sortedStudents = [...data.students].sort((a, b) => {
+    const sa = (a.sectionName || '').localeCompare(b.sectionName || '');
+    if (sa !== 0) return sa;
+    const da = parseDoc(a.document || '', a.documentType || '');
+    const db = parseDoc(b.document || '', b.documentType || '');
+    if (da.isEscolar !== db.isEscolar) return da.isEscolar ? 1 : -1;
+    return da.num - db.num;
+  });
+
+  // Compute list number (index within section, sorted by cédula as in nómina)
+  let currentSection = '';
+  let sectionCounter = 0;
+  const studentsWithList = sortedStudents.map((s) => {
+    if ((s.sectionName || '') !== currentSection) {
+      currentSection = s.sectionName || '';
+      sectionCounter = 0;
+    }
+    sectionCounter++;
+    return { ...s, listNumber: sectionCounter };
+  });
+
+  // Compute rank position by general average (definitiva) within the whole set
+  const avgMap = studentsWithList.map((s) => {
+    const finalScores = s.subjects
+      .filter((sub) => !sub.usesLiteralGrades)
+      .map((sub) => sub.finalScore)
+      .filter((v) => v !== null && v > 0) as number[];
+    const avg = finalScores.length > 0
+      ? finalScores.reduce((a, b) => a + b, 0) / finalScores.length
+      : 0;
+    return { inscriptionId: s.inscriptionId, avg };
+  });
+  const sortedByAvg = [...avgMap].sort((a, b) => b.avg - a.avg);
+  const rankMap = new Map<number, { position: number; total: number }>();
+  let currentRank = 0;
+  let prevAvg: number | null = null;
+  sortedByAvg.forEach((entry, idx) => {
+    if (prevAvg === null || entry.avg !== prevAvg) {
+      currentRank = idx + 1;
+      prevAvg = entry.avg;
+    }
+    rankMap.set(entry.inscriptionId, { position: currentRank, total: sortedByAvg.length });
+  });
+  const studentsWithRank = studentsWithList.map((s) => {
+    const rank = rankMap.get(s.inscriptionId);
+    return { ...s, rankPosition: rank?.position, rankTotal: rank?.total };
+  });
+
+  const enrichedData = { ...data, students: studentsWithRank };
+  const sheets = studentsWithRank.map((student) => buildStudentSheet(student, enrichedData)).join('\n');
 
   return `<!DOCTYPE html>
 <html lang="es">
@@ -389,6 +466,32 @@ export const generateBoletinHTML = (data: BoletinHTMLData): string => {
   .student .value.big{
     font-family:'Fraunces', serif;
     font-size:14px;
+  }
+  .student .list-num{
+    display:inline-block;
+    background:var(--navy);
+    color:#fff;
+    font-family:'IBM Plex Mono', monospace;
+    font-size:9px;
+    font-weight:600;
+    padding:1px 6px;
+    border-radius:4px;
+    margin-right:4px;
+    vertical-align:middle;
+    letter-spacing:0.04em;
+  }
+  .student .rank-badge{
+    display:inline-block;
+    background:var(--gold);
+    color:#fff;
+    font-family:'IBM Plex Mono', monospace;
+    font-size:9px;
+    font-weight:600;
+    padding:1px 6px;
+    border-radius:4px;
+    margin-left:4px;
+    vertical-align:middle;
+    letter-spacing:0.04em;
   }
 
   /* Grades table */
@@ -542,6 +645,7 @@ export const generateBoletinHTML = (data: BoletinHTMLData): string => {
       width:100%;
       margin:0;
       page-break-inside:avoid;
+      zoom:0.99;
     }
   }
 </style>

@@ -1283,6 +1283,7 @@ export const getBoletinData = async (req: Request, res: Response) => {
         firstName: ins.student?.firstName || '',
         lastName: ins.student?.lastName || '',
         document: ins.student?.document || '',
+        documentType: ins.student?.documentType || '',
         sectionName: ins.section?.name || '',
         sectionId: ins.sectionId,
         guideTeacher: guideMap.get(ins.sectionId) || '',
