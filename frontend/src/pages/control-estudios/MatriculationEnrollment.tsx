@@ -571,7 +571,10 @@ const MatriculationEnrollment: React.FC = () => {
           const nameA = a.grade?.name || '';
           const nameB = b.grade?.name || '';
           return nameA.localeCompare(nameB, 'es');
-        });
+        }).map(entry => ({
+          ...entry,
+          sections: [...(entry.sections || [])].sort((a, b) => a.name.localeCompare(b.name, 'es')),
+        }));
         setStructure(sortedStructure);
       }
     } catch (error) {
@@ -2028,6 +2031,9 @@ const MatriculationEnrollment: React.FC = () => {
                   .map(sec => sec.id)
               )).map(secId => {
                 const sec = structure.flatMap(s => s.sections || []).find(x => x.id === secId);
+                if (!sec) return null;
+                return sec;
+              }).sort((a, b) => (a!.name.localeCompare(b!.name, 'es'))).map(sec => {
                 if (!sec) return null;
                 return (
                   <Button

@@ -221,7 +221,9 @@ const MainLayout: React.FC = () => {
                         <span className="font-medium text-sm">{p.name}</span>
                         {p.status === 'activo'
                           ? <Tag color="green" className="ml-2 border-none rounded-full text-[10px] font-bold">Activo</Tag>
-                          : <Tag color="default" className="ml-2 border-none rounded-full text-[10px] font-bold">Histórico</Tag>}
+                          : p.status === 'preinscripcion'
+                            ? <Tag color="blue" className="ml-2 border-none rounded-full text-[10px] font-bold">Preinscripción</Tag>
+                            : <Tag color="default" className="ml-2 border-none rounded-full text-[10px] font-bold">Histórico</Tag>}
                       </div>
                     ),
                     onClick: () => setViewPeriod(p),

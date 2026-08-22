@@ -402,6 +402,142 @@ const ManageGrades: React.FC = () => {
     }
   };
 
+  // ── Paste handler: distribute clipboard values across grade cells ──
+  const handleGradePaste = (e: React.ClipboardEvent<HTMLInputElement>, startRow: number, startCol: number) => {
+    if (isSelectedTermBlocked) return;
+    e.preventDefault();
+
+    const raw = e.clipboardData.getData('text');
+    if (!raw) return;
+
+    // Parse clipboard into a 2D grid (rows separated by \n, columns by \t)
+    const allLines = raw.split(/\r?\n/);
+    let grid: string[][] = allLines.map(line => line.split(/\t/).map(c => c.trim()));
+    // Remove trailing empty lines
+    while (grid.length > 0 && grid[grid.length - 1].every(c => c === '')) {
+      grid.pop();
+    }
+    // Remove leading empty lines
+    while (grid.length > 0 && grid[0].every(c => c === '')) {
+      grid.shift();
+    }
+
+    if (grid.length === 0) return;
+
+    const isVertical = grid.length > 1 && (grid[0].length === 1 || grid.every(row => row.length === 1));
+    const isHorizontal = grid.length === 1 && grid[0].length > 1;
+
+    // Flatten values into a simple list
+    const values: string[] = isVertical
+      ? grid.map(row => row[0])
+      : isHorizontal
+        ? grid[0]
+        : grid.flat();
+
+    if (values.length === 0) return;
+
+    // Build the list of target cells starting from (startRow, startCol)
+    const sortedStudents = [...students].sort((a, b) => {
+      const parseDoc = (doc: string) => parseInt((doc || '').replace(/\D/g, ''), 10) || 0;
+      return parseDoc(a.student?.document) - parseDoc(b.student?.document);
+    });
+
+    const targets: { row: number; col: number; enrollment: StudentEnrollment; evalPlanId: number }[] = [];
+
+    if (isVertical || (!isHorizontal && !isVertical)) {
+      for (let i = 0; i < values.length; i++) {
+        const row = startRow + i;
+        const col = startCol;
+        if (row >= sortedStudents.length) break;
+        const enrollment = sortedStudents[row];
+        if (!enrollment || !evaluationPlan[col]) break;
+        targets.push({ row, col, enrollment, evalPlanId: evaluationPlan[col].id });
+      }
+    } else {
+      for (let i = 0; i < values.length; i++) {
+        const row = startRow;
+        const col = startCol + i;
+        if (col >= evaluationPlan.length) break;
+        const enrollment = sortedStudents[row];
+        if (!enrollment || !evaluationPlan[col]) break;
+        targets.push({ row, col, enrollment, evalPlanId: evaluationPlan[col].id });
+      }
+    }
+
+    if (targets.length === 0) return;
+
+    // Parse and validate all values first
+    const parsed: { target: typeof targets[0]; score: number | null }[] = [];
+    let skippedCount = 0;
+
+    for (let i = 0; i < targets.length; i++) {
+      const valStr = values[i].replace(/[^0-9]/g, '');
+      if (valStr === '') {
+        parsed.push({ target: targets[i], score: null });
+        continue;
+      }
+      const val = parseInt(valStr, 10);
+      if (isNaN(val) || val < 0 || val > maxGrade) { skippedCount++; continue; }
+      parsed.push({ target: targets[i], score: val === 0 ? null : val });
+    }
+
+    if (parsed.length === 0) {
+      if (skippedCount > 0) message.warning(`${skippedCount} valor(es) inválido(s) o vacío(s)`);
+      return;
+    }
+
+    // Optimistic update: update all qualifications in the students state at once
+    setStudents(prev => prev.map(s => {
+      const updates = parsed.filter(p => p.target.enrollment.id === s.id);
+      if (updates.length === 0) return s;
+      const insSub = s.inscriptionSubjects?.[0];
+      if (!insSub) return s;
+      const quals = [...(insSub.qualifications || [])];
+      for (const u of updates) {
+        const idx = quals.findIndex(q => q.evaluationPlanId === u.target.evalPlanId);
+        if (idx >= 0) {
+          quals[idx] = { ...quals[idx], score: u.score ?? 0, isAbsent: false };
+        } else {
+          quals.push({ id: 0, evaluationPlanId: u.target.evalPlanId, score: u.score ?? 0, isAbsent: false, remedialScore: null });
+        }
+      }
+      return { ...s, inscriptionSubjects: [{ ...insSub, qualifications: quals }] };
+    }));
+
+    // Update input elements visually
+    for (const p of parsed) {
+      const inputEl = document.getElementById(`grade-${p.target.row}-${p.target.col}`) as HTMLInputElement | null;
+      if (inputEl) inputEl.value = p.score === null ? '' : padGrade(p.score);
+    }
+
+    // Save all notes to backend in parallel, then refresh once
+    Promise.all(parsed.map(p => {
+      const inscriptionSubjectId = p.target.enrollment.inscriptionSubjects?.[0]?.id;
+      return api.post('/evaluation/qualifications', {
+        evaluationPlanId: p.target.evalPlanId,
+        inscriptionSubjectId,
+        inscriptionId: p.target.enrollment.id,
+        score: p.score === null ? 0 : p.score,
+        isAbsent: false,
+        observations: '',
+      }).catch(() => { /* individual errors swallowed, will be caught by final fetch */ });
+    })).then(() => {
+      setTimeout(() => fetchPlanAndStudents(), 100);
+    }).catch(() => {
+      message.error('Error al guardar algunas notas pegadas');
+      fetchPlanAndStudents();
+    });
+
+    // Move focus to the last processed cell
+    const lastTarget = parsed[parsed.length - 1].target;
+    setTimeout(() => {
+      const lastInput = document.getElementById(`grade-${lastTarget.row}-${lastTarget.col}`) as HTMLInputElement | null;
+      if (lastInput) lastInput.focus();
+    }, 0);
+
+    message.success(`${parsed.length} nota(s) pegada(s)${skippedCount > 0 ? `, ${skippedCount} omitida(s)` : ''}`);
+  };
+
   const confirmCommentSave = async () => {
     const { enrollment, evalPlanId, value, remedialClear } = commentModal;
     if (!enrollment || evalPlanId === undefined || value === undefined) {
@@ -719,6 +855,27 @@ const ManageGrades: React.FC = () => {
           50% { outline: 3px solid transparent; }
         }
         .grade-invalid { animation: flash-red 0.5s ease-in-out 3; }
+        .grading-row:hover td { background-color: color-mix(in srgb, var(--color-accent) 8%, transparent) !important; }
+        .grading-row td { transition: background-color 0.2s; }
+        .grading-cell .ant-input-number-input { text-align: center !important; padding: 0 !important; }
+        .grading-absent { position: relative; }
+        .grading-absent::before {
+          content: 'NP';
+          position: absolute;
+          inset: 0;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: #fef2f2;
+          color: #dc2626;
+          font-weight: 700;
+          font-size: 14px;
+          pointer-events: none;
+          z-index: 1;
+        }
+        .grading-absent input { opacity: 0; }
+        .grading-table-container::-webkit-scrollbar { height: 8px; width: 8px; }
+        .grading-table-container::-webkit-scrollbar-thumb { background: rgba(15, 23, 42, 0.18); border-radius: 4px; }
       `}</style>
       {!selectedAssignment ? (
         <>
@@ -1144,6 +1301,7 @@ const ManageGrades: React.FC = () => {
                                           pattern="[0-9]*"
                                           defaultValue={isAbsent ? '' : (currentScore !== null ? padGrade(currentScore) : '')}
                                           key={`${enrollment.id}-${item.id}${isAbsent ? '-a' : ''}`}
+                                          onPaste={(e) => handleGradePaste(e, rowIndex, colIndex)}
                                           style={{
                                             width: '48px',
                                             textAlign: 'center',
