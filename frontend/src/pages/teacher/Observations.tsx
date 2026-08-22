@@ -152,12 +152,12 @@ export default function Observations() {
   const columns: ColumnsType<ObservationStudent> = [
     {
       title: '#',
-      key: 'rank',
-      width: 50,
+      key: 'index',
+      width: 60,
       align: 'center',
-      render: (_, r) => (
+      render: (_, r, index) => (
         <Space>
-          <Text strong>{r.rankPosition != null ? `${r.rankPosition}/${r.rankTotal}` : '—'}</Text>
+          <Text strong>{index + 1}</Text>
           {trendIcon(r.rankTrend)}
         </Space>
       ),

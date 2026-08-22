@@ -195,13 +195,8 @@ export const getSectionObservations = async (req: Request, res: Response) => {
       };
     });
 
-    // Sort by rank position (nulls at the end)
-    result.sort((a, b) => {
-      if (a.rankPosition == null && b.rankPosition == null) return 0;
-      if (a.rankPosition == null) return 1;
-      if (b.rankPosition == null) return -1;
-      return a.rankPosition - b.rankPosition;
-    });
+    // Sort by document number (orden de lista)
+    result.sort((a, b) => (a.document || '').localeCompare(b.document || '', undefined, { numeric: true }));
 
     res.json({ students: result, isLocked });
   } catch (error: any) {
