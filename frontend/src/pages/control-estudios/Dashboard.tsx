@@ -225,10 +225,10 @@ const FadeIn: React.FC<{ children: React.ReactNode; delay?: number; className?: 
 
 /* ---------- Quick action button ---------- */
 /* ---------- Subject progress row ---------- */
-// Convert "Primer año" → "1er", "Quinto año" → "5to", etc.
+// Convert "Primer año" → "1ro", "Quinto año" → "5to", etc.
 // Includes apocoped forms (primer, tercer) used in some DB entries.
 const ordinalToNumber: Record<string, string> = {
-  'primero': '1er', 'primer': '1er',
+  'primero': '1ro', 'primer': '1ro',
   'segundo': '2do',
   'tercero': '3ro', 'tercer': '3ro',
   'cuarto': '4to',
