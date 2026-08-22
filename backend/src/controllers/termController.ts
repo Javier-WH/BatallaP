@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import { Op } from 'sequelize';
 import { Term, SchoolPeriod } from '@/models/index';
 
 export const getTerms = async (req: Request, res: Response) => {
@@ -55,7 +56,7 @@ export const getTerm = async (req: Request, res: Response) => {
 
 export const createTerm = async (req: Request, res: Response) => {
   try {
-    const { name, isBlocked, openDate, closeDate, schoolPeriodId } = req.body;
+    const { name, isBlocked, isActive, openDate, closeDate, schoolPeriodId } = req.body;
 
     if (!name || !schoolPeriodId) {
       return res.status(400).json({ message: 'Nombre y periodo escolar son requeridos' });
@@ -68,16 +69,32 @@ export const createTerm = async (req: Request, res: Response) => {
     const maxOrder = typeof maxOrderResult === 'number' ? maxOrderResult : 0;
     const newOrder = maxOrder + 1;
 
-    const term = await Term.create({
-      name,
-      isBlocked: isBlocked || false,
-      openDate: openDate ? new Date(openDate) : undefined,
-      closeDate: closeDate ? new Date(closeDate) : undefined,
-      schoolPeriodId,
-      order: newOrder
-    });
+    const transaction = await Term.sequelize?.transaction();
+    try {
+      // If creating an active term, deactivate the others in the same school period
+      if (isActive) {
+        await Term.update(
+          { isActive: false },
+          { where: { schoolPeriodId, isActive: true }, transaction }
+        );
+      }
 
-    res.status(201).json(term);
+      const term = await Term.create({
+        name,
+        isBlocked: isBlocked || false,
+        isActive: isActive || false,
+        openDate: openDate ? new Date(openDate) : undefined,
+        closeDate: closeDate ? new Date(closeDate) : undefined,
+        schoolPeriodId,
+        order: newOrder
+      }, { transaction });
+
+      await transaction?.commit();
+      res.status(201).json(term);
+    } catch (error) {
+      await transaction?.rollback();
+      throw error;
+    }
   } catch (error) {
     console.error('Error creating term:', error);
     res.status(500).json({ message: 'Error al crear el lapso' });
@@ -87,22 +104,38 @@ export const createTerm = async (req: Request, res: Response) => {
 export const updateTerm = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { name, isBlocked, openDate, closeDate, order } = req.body;
+    const { name, isBlocked, isActive, openDate, closeDate, order } = req.body;
 
     const term = await Term.findByPk(id);
     if (!term) {
       return res.status(404).json({ message: 'Lapso no encontrado' });
     }
 
-    await term.update({
-      name: name || term.name,
-      isBlocked: isBlocked !== undefined ? isBlocked : term.isBlocked,
-      openDate: openDate ? new Date(openDate) : term.openDate,
-      closeDate: closeDate ? new Date(closeDate) : term.closeDate,
-      order: order || term.order
-    });
+    const transaction = await Term.sequelize?.transaction();
+    try {
+      // If activating this term, deactivate the others in the same school period
+      if (isActive === true && !term.isActive) {
+        await Term.update(
+          { isActive: false },
+          { where: { schoolPeriodId: term.schoolPeriodId, isActive: true, id: { [Op.ne]: term.id } }, transaction }
+        );
+      }
 
-    res.json(term);
+      await term.update({
+        name: name || term.name,
+        isBlocked: isBlocked !== undefined ? isBlocked : term.isBlocked,
+        isActive: isActive !== undefined ? isActive : term.isActive,
+        openDate: openDate ? new Date(openDate) : term.openDate,
+        closeDate: closeDate ? new Date(closeDate) : term.closeDate,
+        order: order || term.order
+      }, { transaction });
+
+      await transaction?.commit();
+      res.json(term);
+    } catch (error) {
+      await transaction?.rollback();
+      throw error;
+    }
   } catch (error) {
     console.error('Error updating term:', error);
     res.status(500).json({ message: 'Error al actualizar el lapso' });

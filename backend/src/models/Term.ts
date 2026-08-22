@@ -5,6 +5,7 @@ interface TermAttributes {
   id: number;
   name: string;
   isBlocked: boolean;
+  isActive: boolean;
   openDate?: Date;
   closeDate?: Date;
   schoolPeriodId: number;
@@ -17,6 +18,7 @@ class Term extends Model<TermAttributes, TermCreationAttributes> implements Term
   public id!: number;
   public name!: string;
   public isBlocked!: boolean;
+  public isActive!: boolean;
   public openDate?: Date;
   public closeDate?: Date;
   public schoolPeriodId!: number;
@@ -38,6 +40,11 @@ Term.init(
       allowNull: false,
     },
     isBlocked: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+      allowNull: false,
+    },
+    isActive: {
       type: DataTypes.BOOLEAN,
       defaultValue: false,
       allowNull: false,

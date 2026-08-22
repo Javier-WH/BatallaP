@@ -44,7 +44,6 @@ import {
 } from '@ant-design/icons';
 import api from '@/services/api';
 import PeriodClosurePanel from '@/pages/admin/components/PeriodClosurePanel';
-import TermManager from '@/components/shared/TermManager';
 import {
   DndContext,
   closestCenter,
@@ -1887,13 +1886,6 @@ const AcademicManagement: React.FC = () => {
                   </Collapse>
                 </Col>
               </Row>
-            </div>
-          </TabPane>
-
-          {/* LAPSOS TAB */}
-          <TabPane tab={<span><CalendarOutlined /> LAPSOS</span>} key="4">
-            <div className="animate-card" style={{ padding: '24px' }}>
-              <TermManager />
             </div>
           </TabPane>
 

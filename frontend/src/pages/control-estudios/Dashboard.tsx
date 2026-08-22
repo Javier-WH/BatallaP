@@ -20,7 +20,7 @@ interface ControlPanelData {
   lapses: {
     total: number;
     blocked: number;
-    terms: { id: number; name: string; order: number; isBlocked: boolean; openDate?: string; closeDate?: string }[];
+    terms: { id: number; name: string; order: number; isBlocked: boolean; isActive: boolean; openDate?: string; closeDate?: string }[];
   };
   council: {
     checklist: { total: number; done: number };

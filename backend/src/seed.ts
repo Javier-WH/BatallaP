@@ -50,9 +50,9 @@ const seed = async () => {
     const activePeriod = await SchoolPeriod.findOne({ where: { status: 'activo' } });
     if (activePeriod) {
       const defaultTerms = [
-        { name: 'Primer Lapso', order: 1, isBlocked: false },
-        { name: 'Segundo Lapso', order: 2, isBlocked: false },
-        { name: 'Tercer Lapso', order: 3, isBlocked: false }
+        { name: 'Primer Lapso', order: 1, isBlocked: false, isActive: true },
+        { name: 'Segundo Lapso', order: 2, isBlocked: false, isActive: false },
+        { name: 'Tercer Lapso', order: 3, isBlocked: false, isActive: false }
       ];
 
       for (const termData of defaultTerms) {

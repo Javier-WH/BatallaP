@@ -69,6 +69,7 @@ export const clonePeriodStructure = async (
         name: term.name,
         order: term.order,
         isBlocked: false,
+        isActive: false,
       },
       { transaction }
     );

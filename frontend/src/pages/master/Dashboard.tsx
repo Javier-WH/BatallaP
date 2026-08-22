@@ -24,7 +24,7 @@ interface MasterDashboardData {
         lapses: {
           total: number;
           blocked: number;
-          terms: { id: number; name: string; order: number; isBlocked: boolean; openDate?: Date | null; closeDate?: Date | null }[];
+          terms: { id: number; name: string; order: number; isBlocked: boolean; isActive: boolean; openDate?: Date | null; closeDate?: Date | null }[];
         };
         council: {
           checklist: { total: number; done: number };

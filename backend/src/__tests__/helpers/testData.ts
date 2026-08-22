@@ -83,7 +83,8 @@ export async function createTestTerm(periodId: number, overrides: Partial<any> =
     schoolPeriodId: periodId,
     name: overrides.name || 'Primer Lapso',
     order: overrides.order || 1,
-    isBlocked: overrides.isBlocked || false
+    isBlocked: overrides.isBlocked || false,
+    isActive: overrides.isActive ?? false
   });
 }
 

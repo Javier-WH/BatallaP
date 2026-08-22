@@ -181,6 +181,7 @@ interface Term {
   id: number;
   name: string;
   isBlocked: boolean;
+  isActive: boolean;
   openDate?: string;
   closeDate?: string;
   schoolPeriodId: number;
@@ -441,17 +442,19 @@ const TeacherPanel: React.FC = () => {
         const termsRes = await api.get(`/terms?schoolPeriodId=${viewPeriod.id}`);
         console.log('Terms response:', termsRes.data);
         setAvailableTerms(termsRes.data);
-        // Set first active term as default
-        const activeTerm = termsRes.data.find((t: Term) => !t.isBlocked);
+        // Set the active term as default, fall back to the first non-blocked, then the first
+        const activeTerm = termsRes.data.find((t: Term) => t.isActive);
         if (activeTerm) {
-          console.log('Setting active term:', activeTerm.id);
           setSelectedTerm(activeTerm.id);
-        } else if (termsRes.data.length > 0) {
-          console.log('No active terms, setting first term:', termsRes.data[0].id);
-          setSelectedTerm(termsRes.data[0].id);
         } else {
-          console.log('No terms available');
-          setSelectedTerm(null);
+          const firstOpen = termsRes.data.find((t: Term) => !t.isBlocked);
+          if (firstOpen) {
+            setSelectedTerm(firstOpen.id);
+          } else if (termsRes.data.length > 0) {
+            setSelectedTerm(termsRes.data[0].id);
+          } else {
+            setSelectedTerm(null);
+          }
         }
       }
     } catch (error) {
@@ -1465,14 +1468,23 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
             <div className="flex p-1 gap-2 rounded-xl w-full" style={{ backgroundColor: 'var(--color-input-bg)' }}>
               {availableTerms.map(term => {
                 const isSelected = selectedTerm === term.id;
+                const activeTerm = availableTerms.find(t => t.isActive);
+                const activeOrder = activeTerm?.order ?? null;
+                // Future terms (order > active) are disabled/greyed out
+                const isFuture = activeOrder !== null && term.order > activeOrder;
+                // Past terms (order < active) are clickable but attenuated
+                const isPast = activeOrder !== null && term.order < activeOrder;
                 return (
                   <button
                     key={term.id}
-                    onClick={() => setSelectedTerm(term.id)}
+                    onClick={() => !isFuture && setSelectedTerm(term.id)}
+                    disabled={isFuture}
                     className="flex-1 py-2 text-sm font-bold rounded-lg transition-all flex justify-center items-center gap-2 border-none"
                     style={{
                       backgroundColor: isSelected ? 'var(--color-accent)' : 'var(--color-inactive)',
-                      color: isSelected ? 'var(--color-header-text)' : 'var(--color-text-main)'
+                      color: isSelected ? 'var(--color-header-text)' : 'var(--color-text-main)',
+                      opacity: isFuture ? 0.4 : (isPast && !isSelected ? 0.65 : 1),
+                      cursor: isFuture ? 'not-allowed' : 'pointer'
                     }}
                   >
                     {term.name}

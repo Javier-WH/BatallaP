@@ -39,7 +39,7 @@ type AcademicSnapshot =
       lapses: {
         total: number;
         blocked: number;
-        terms: { id: number; name: string; order: number; isBlocked: boolean; openDate?: Date | null; closeDate?: Date | null }[];
+        terms: { id: number; name: string; order: number; isBlocked: boolean; isActive: boolean; openDate?: Date | null; closeDate?: Date | null }[];
       };
       council: {
         checklist: { total: number; done: number };
@@ -127,7 +127,7 @@ const buildAcademicSnapshot = async (): Promise<AcademicSnapshot> => {
     Term.findAll({
       where: { schoolPeriodId: activePeriod.id },
       order: [['order', 'ASC']],
-      attributes: ['id', 'name', 'order', 'isBlocked', 'openDate', 'closeDate']
+      attributes: ['id', 'name', 'order', 'isBlocked', 'isActive', 'openDate', 'closeDate']
     })
   ]);
 
@@ -157,6 +157,10 @@ const buildAcademicSnapshot = async (): Promise<AcademicSnapshot> => {
   })) as TeacherAssignmentWithRelations[];
 
   const termIds = terms.map(term => term.id);
+
+  // For the dashboard summary cards (plans, grades, content), only consider the active term
+  const activeTerm = terms.find(t => t.isActive);
+  const activeTermId = activeTerm?.id ?? null;
 
   const periodGradeSubjectIds = assignments.map(a => a.periodGradeSubjectId);
   const sectionIds = assignments.map(a => a.sectionId);
@@ -199,7 +203,8 @@ const buildAcademicSnapshot = async (): Promise<AcademicSnapshot> => {
     ],
     where: {
       periodGradeSubjectId: { [Op.in]: periodGradeSubjectIds },
-      sectionId: { [Op.in]: sectionIds }
+      sectionId: { [Op.in]: sectionIds },
+      ...(activeTermId ? { termId: activeTermId } : {})
     },
     group: ['periodGradeSubjectId', 'sectionId'],
     raw: true
@@ -222,7 +227,7 @@ const buildAcademicSnapshot = async (): Promise<AcademicSnapshot> => {
         as: 'evaluationPlan',
         attributes: [],
         required: true,
-        where: termIds.length > 0 ? { termId: { [Op.in]: termIds } } : {}
+        where: activeTermId ? { termId: activeTermId } : {}
       }
     ],
     group: ['evaluationPlan.periodGradeSubjectId', 'evaluationPlan.sectionId'],
@@ -357,7 +362,10 @@ const buildAcademicSnapshot = async (): Promise<AcademicSnapshot> => {
   if (pgsIdsInPeriod.length > 0) {
     const contentChain = await ThematicComponent.findAll({
       attributes: ['id', 'periodGradeSubjectId'],
-      where: { periodGradeSubjectId: { [Op.in]: pgsIdsInPeriod } },
+      where: {
+        periodGradeSubjectId: { [Op.in]: pgsIdsInPeriod },
+        ...(activeTermId ? { termId: activeTermId } : {})
+      },
       include: [{
         association: 'contents',
         attributes: ['id'],

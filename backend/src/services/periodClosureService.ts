@@ -2,7 +2,10 @@ import {
   CouncilChecklist,
   PeriodClosure,
   SchoolPeriod,
-  Term
+  Term,
+  Setting,
+  PeriodGrade,
+  PeriodGradeSection
 } from '@/models/index';
 import sequelize from '@/config/database';
 import { Op } from 'sequelize';
@@ -125,6 +128,73 @@ export class PeriodClosureService {
       completedAt: params.status === 'done' ? new Date() : null
     });
 
+    // Auto-transition: if marking done, check whether all sections of the active term are done
+    if (params.status === 'done') {
+      await this.maybeAutoTransitionActiveTerm(params.schoolPeriodId, params.termId);
+    }
+
     return entry;
+  }
+
+  /**
+   * If the auto_term_transition setting is enabled and the given termId is the
+   * currently active term, check whether every grade+section combination in the
+   * school period has a 'done' council checklist for that term. If so, activate
+   * the next term (by order) and deactivate the current one.
+   */
+  static async maybeAutoTransitionActiveTerm(schoolPeriodId: number, termId: number): Promise<void> {
+    const setting = await Setting.findByPk('auto_term_transition');
+    if (!setting || setting.value !== 'true') return;
+
+    const activeTerm = await Term.findOne({
+      where: { schoolPeriodId, isActive: true }
+    });
+    if (!activeTerm || activeTerm.id !== termId) return;
+
+    // Count total grade+section combinations for this school period
+    const totalSections = await PeriodGradeSection.count({
+      include: [
+        {
+          model: PeriodGrade,
+          as: 'periodGrade',
+          attributes: [],
+          where: { schoolPeriodId },
+          required: true
+        }
+      ]
+    });
+
+    if (totalSections === 0) return;
+
+    // Count done checklists for this term
+    const doneChecklists = await CouncilChecklist.count({
+      where: { schoolPeriodId, termId, status: 'done' }
+    });
+
+    if (doneChecklists < totalSections) return;
+
+    // All sections done → activate the next term (by order)
+    const nextTerm = await Term.findOne({
+      where: { schoolPeriodId, order: { [Op.gt]: activeTerm.order } },
+      order: [['order', 'ASC']]
+    });
+
+    if (nextTerm) {
+      const t = await sequelize.transaction();
+      try {
+        await Term.update(
+          { isActive: false },
+          { where: { id: activeTerm.id }, transaction: t }
+        );
+        await Term.update(
+          { isActive: true },
+          { where: { id: nextTerm.id }, transaction: t }
+        );
+        await t.commit();
+      } catch (error) {
+        await t.rollback();
+        console.error('[periodClosureService] Auto-transition failed:', error);
+      }
+    }
   }
 }

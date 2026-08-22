@@ -29,6 +29,7 @@ interface Term {
   id: number;
   name: string;
   isBlocked: boolean;
+  isActive: boolean;
   openDate?: string;
   closeDate?: string;
   schoolPeriodId: number;
@@ -90,6 +91,7 @@ const AcademicSettings: React.FC = () => {
   const [sortEstrategia, setSortEstrategia] = useState<'asc' | 'desc'>('asc');
   const [structure, setStructure] = useState<any[]>([]);
   const [closurePanelTerm, setClosurePanelTerm] = useState<Term | null>(null);
+  const [autoTransition, setAutoTransition] = useState(false);
 
   const fetchSettings = useCallback(async () => {
     setLoading(true);
@@ -149,6 +151,8 @@ const AcademicSettings: React.FC = () => {
         setTerms(termsRes.data.sort((a: any, b: any) => a.order - b.order));
         setStructure(structureRes.data || []);
       }
+      const settingsRes = await api.get('/settings');
+      setAutoTransition(settingsRes.data.auto_term_transition === 'true');
     } catch (error) {
       console.error('Error fetching terms', error);
       message.error('Error al cargar los lapsos');
@@ -344,6 +348,28 @@ const AcademicSettings: React.FC = () => {
     }
   };
 
+  const toggleTermActive = async (term: Term) => {
+    try {
+      await api.put(`/terms/${term.id}`, { isActive: !term.isActive });
+      message.success(`Lapso ${!term.isActive ? 'activado' : 'desactivado'} correctamente`);
+      fetchTerms();
+    } catch (error) {
+      console.error('Error toggling term active', error);
+      message.error('Error al cambiar el lapso activo');
+    }
+  };
+
+  const handleToggleAutoTransition = async (checked: boolean) => {
+    try {
+      await api.put('/settings', { settings: { auto_term_transition: String(checked) } });
+      setAutoTransition(checked);
+      message.success(`Transición automática ${checked ? 'activada' : 'desactivada'}`);
+    } catch (error) {
+      console.error('Error updating auto transition setting', error);
+      message.error('Error al actualizar la configuración');
+    }
+  };
+
   const termColumns = [
     {
       title: 'Orden',
@@ -373,6 +399,18 @@ const AcademicSettings: React.FC = () => {
       dataIndex: 'name',
       key: 'name',
       render: (text: string) => <Text style={{ fontWeight: 700, color: '#262626', fontSize: 15 }}>{text}</Text>
+    },
+    {
+      title: 'Lapso Activo',
+      dataIndex: 'isActive',
+      key: 'isActive',
+      align: 'center' as const,
+      width: 110,
+      render: (val: boolean, record: Term) => (
+        <Tooltip title={val ? 'Lapso activo actual' : 'Marcar como lapso activo'}>
+          <Switch checked={val} onChange={() => toggleTermActive(record)} size="small" />
+        </Tooltip>
+      )
     },
     {
       title: 'Estado de Acceso',
@@ -787,14 +825,22 @@ const AcademicSettings: React.FC = () => {
                 />
               </div>
             ) : (
-              <Table
-                columns={termColumns}
-                dataSource={terms}
-                rowKey="id"
-                pagination={false}
-                className="premium-table"
-                style={{ padding: '4px' }}
-              />
+              <>
+                <Table
+                  columns={termColumns}
+                  dataSource={terms}
+                  rowKey="id"
+                  pagination={false}
+                  className="premium-table"
+                  style={{ padding: '4px' }}
+                />
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 12, padding: '12px 16px', borderTop: '1px solid #f0f0f0' }}>
+                  <Tooltip title="Al marcar todos los consejos de curso del lapso activo como completados, el lapso activo pasará automáticamente al siguiente.">
+                    <Text style={{ fontSize: 13, color: '#595959' }}>Transición automática al completar consejos</Text>
+                  </Tooltip>
+                  <Switch checked={autoTransition} onChange={handleToggleAutoTransition} size="small" />
+                </div>
+              </>
             )}
           </Card>
 

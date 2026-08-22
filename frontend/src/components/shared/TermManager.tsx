@@ -10,6 +10,7 @@ interface Term {
   id: number;
   name: string;
   isBlocked: boolean;
+  isActive: boolean;
   openDate?: string;
   closeDate?: string;
   schoolPeriodId: number;
