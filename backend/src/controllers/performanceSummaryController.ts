@@ -222,6 +222,8 @@ function fillSheetByNamedRanges(
   setByRange('inst_cdcee', settings.institution_cdcee);
   setByRange('inst_director', settings.director_name);
   setByRange('inst_director_doc', settings.director_document);
+  setByRange('inst_director_2', settings.director_name);
+  setByRange('inst_director_doc_2', settings.director_document);
   setByRange('inst_grade', gradeName);
   setByRange('inst_section', sectionName);
 
