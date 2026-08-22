@@ -774,30 +774,14 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
     // cloned sheets via cloneSheetInPlace).
     setTeacherData(sheet!);
 
-// Classify students into approved and failed based on the calculated
-    // final score per academic subject. A student fails the period if any
-    // academic subject ends up below passingGrade.
-    const isFailed = (ins: any): boolean => {
-      const sortedSubs = sortSubjectsByOrder(
-        ins.inscriptionSubjects || [],
-        (is: any) => is.subjectId,
-        (is: any) => is.subject?.name,
-        subjectOrderMap
-      );
-      for (const is of sortedSubs) {
-        // Only consider academic subjects; skip grouped/elective subjects.
-        if (groupedSubjectIds.has(is.subjectId)) continue;
-        const score = calculateFinalScore(is);
-        if (score == null) continue;
-        if (!isPassingGrade(score, passingGrade)) return true;
-      }
-      return false;
-    };
-
-    const group = (req.query.group as string) || 'regulares';
-
-    const failedInscriptions = inscriptions.filter(isFailed);
-    const approvedInscriptions = inscriptions.filter(ins => !isFailed(ins));
+    // Group students by document type. Each group goes on its own set of
+    // sheets, paginated every MAX_STUDENTS_PER_SHEET students.
+    const docTypeGroups: { label: string; students: any[] }[] = [
+      { label: 'Venezolano', students: inscriptions.filter(ins => ins.student?.documentType === 'Venezolano') },
+      { label: 'Extranjero', students: inscriptions.filter(ins => ins.student?.documentType === 'Extranjero') },
+      { label: 'Pasaporte', students: inscriptions.filter(ins => ins.student?.documentType === 'Pasaporte') },
+      { label: 'Cedula Escolar', students: inscriptions.filter(ins => ins.student?.documentType === 'Cedula Escolar') },
+    ];
 
     // Helper that clones a worksheet inside the same workbook (preserves
     // styles, borders, images, merges, decorative text like ***). Cloning
@@ -988,6 +972,11 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
       });
     };
 
+    // Keep an untouched worksheet as the clone source. The original sheet is
+    // filled with the first document-type group, so it cannot be used as the
+    // source for later groups without copying those students into them.
+    const cleanTemplateSheet = cloneSheetInPlace(sheet!, `${actualSheetName} (Template Source)`);
+
     // Render one or more pages for a given student group with the given
     // evaluation type. Returns the array of generated worksheet names.
     // The FIRST group rendered uses the original `sheet!` in-place (keeping
@@ -1012,18 +1001,18 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
       const pageNames: string[] = [];
 
       // Phase 1: create all worksheets (clone from clean template).
-      // Naming: 1er Año (1), 1er Año (2), ... (no group labels).
+      // Naming: 5to Año (Venezolano) (1), 5to Año (Venezolano) (2), ...
       for (let pageIdx = 0; pageIdx < pages; pageIdx++) {
+        const name = `${actualSheetName} (${groupLabel}) (${pageIdx + 1})`;
         if (isFirst && pageIdx === 0) {
           pageSheets[0] = sheet!;
-          pageNames[0] = `${actualSheetName} (${pageIdx + 1})`;
+          pageNames[0] = name;
         } else {
-          const name = `${actualSheetName} (${pageIdx + 1})`;
-          pageSheets.push(cloneSheetInPlace(sheet!, name));
+          pageSheets.push(cloneSheetInPlace(cleanTemplateSheet, name));
           pageNames.push(name);
         }
       }
-      // Rename original sheet in-place so it matches the (1) convention.
+      // Rename original sheet in-place so it matches the naming convention.
       if (isFirst && pages > 0 && pageSheets[0] === sheet!) {
         sheet!.name = pageNames[0];
       }
@@ -1038,30 +1027,24 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
       return pageNames;
     };
 
-    let approvedSheetNames: string[] = [];
-    let failedSheetNames: string[] = [];
+    // Render each document-type group on its own set of sheets.
+    let isFirst = true;
+    const allSheetNames: string[] = [];
+    for (const dtg of docTypeGroups) {
+      if (dtg.students.length === 0) continue;
+      const names = renderGroup(dtg.students, 'Final', dtg.label, isFirst);
+      allSheetNames.push(...names);
+      isFirst = false;
+    }
 
-    if (group === 'revision') {
-      if (failedInscriptions.length === 0) {
-        return res.status(404).json({ message: 'No hay estudiantes reprobados en esta sección' });
-      }
-      failedSheetNames = renderGroup(
-        failedInscriptions, 'Revisión', 'REVISION', true,
-      );
-    } else {
-      if (inscriptions.length === 0) {
-        return res.status(404).json({ message: 'No hay estudiantes en esta sección' });
-      }
-      // Final: include all students (approved + failed)
-      approvedSheetNames = renderGroup(
-        inscriptions, 'Final', 'Regulares', true,
-      );
+    if (allSheetNames.length === 0) {
+      return res.status(404).json({ message: 'No hay estudiantes en esta sección' });
     }
 
     // Drop the un-filled template sheets (3er Año, 4to Año, 5to Año) and
     // the original `sheet!` if it was NOT used (no students at all). Keep
     // only the rendered group pages.
-    const keepNames = new Set<string>([...approvedSheetNames, ...failedSheetNames]);
+    const keepNames = new Set<string>(allSheetNames);
     workbook.worksheets
       .filter(ws => !keepNames.has(ws.name))
       .forEach(ws => workbook.removeWorksheet(ws.id!));
