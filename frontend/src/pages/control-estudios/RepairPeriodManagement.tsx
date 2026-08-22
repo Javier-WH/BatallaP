@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { Card, Button, Table, Tag, Space, Typography, Spin, message, Alert, Descriptions, Statistic, Row, Col } from 'antd';
-import { PlayCircleOutlined, StopOutlined, ReloadOutlined, CheckCircleOutlined, ClockCircleOutlined, CloseCircleOutlined } from '@ant-design/icons';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Card, Button, Tag, Space, Typography, Spin, message, Alert, Statistic, Row, Col } from 'antd';
+import { PlayCircleOutlined, StopOutlined, ReloadOutlined, CheckCircleOutlined, ClockCircleOutlined, CloseCircleOutlined, PrinterOutlined } from '@ant-design/icons';
 import api from '@/services/api';
 
 const { Title, Text } = Typography;
@@ -146,58 +146,29 @@ const RepairPeriodManagement: React.FC = () => {
     closed: 'Cerrado',
   };
 
-  // Build dynamic columns: one per unique subject abbreviation
-  const allSubjects = Array.from(
-    new Map(
-      students.flatMap(s => s.subjects).map(s => [s.abbreviation, s])
-    ).values()
-  );
-
-  const columns: any[] = [
-    { title: 'N°', key: 'idx', width: 50, fixed: 'left' as const, render: (_: any, __: any, idx: number) => idx + 1 },
-    { title: 'Apellidos y Nombres', key: 'studentName', width: 220, fixed: 'left' as const,
-      render: (_: any, record: StudentRevision) => (
-        <Space direction="vertical" size={0}>
-          <Text strong style={{ fontSize: 13 }}>{record.studentName}</Text>
-          <Text type="secondary" style={{ fontSize: 11 }}>{record.document} — {record.grade} {record.section}</Text>
-        </Space>
-      ),
-    },
-    ...allSubjects.map(s => ({
-      title: (
-        <div style={{ textAlign: 'center', fontSize: 11, lineHeight: 1.3 }}>
-          <div style={{ fontWeight: 700 }}>{s.abbreviation}</div>
-          {!isPreview && s.revisions.length > 0 && (
-            <div style={{ color: '#888', fontSize: 10 }}>
-              {s.revisions.map(r => (
-                <Tag key={r.id} color={r.status === 'approved' ? 'success' : r.status === 'failed' ? 'error' : 'default'}
-                  style={{ fontSize: 9, padding: '0 4px', margin: '1px' }}>
-                  {r.score?.toFixed(1) ?? '—'}
-                </Tag>
-              ))}
-            </div>
-          )}
-        </div>
-      ),
-      key: `subj_${s.abbreviation}`,
-      width: 70,
-      align: 'center' as const,
-      render: (_: any, record: StudentRevision) => {
-        const subj = record.subjects.find(sub => sub.abbreviation === s.abbreviation);
-        if (!subj) return null;
-        if (isPreview) {
-          return <Text type="danger" style={{ fontSize: 18, fontWeight: 900 }}>✕</Text>;
+  // Group students by grade and build subject list per grade (in configured order)
+  const gradeGroups = useMemo(() => {
+    const groups = new Map<string, { grade: string; students: StudentRevision[]; subjects: StudentSubject[] }>();
+    for (const s of students) {
+      const gradeKey = s.grade;
+      if (!groups.has(gradeKey)) {
+        groups.set(gradeKey, { grade: gradeKey, students: [], subjects: [] });
+      }
+      const g = groups.get(gradeKey)!;
+      g.students.push(s);
+      // Collect unique subjects by abbreviation (preserve first-seen order)
+      for (const subj of s.subjects) {
+        if (!g.subjects.find(x => x.abbreviation === subj.abbreviation)) {
+          g.subjects.push(subj);
         }
-        const approved = subj.revisions.some(r => r.status === 'approved');
-        const hasFailed = subj.revisions.some(r => r.status === 'failed');
-        const pending = subj.revisions.some(r => r.status === 'pending');
-        if (approved) return <Tag color="success" style={{ fontSize: 11 }}>✓</Tag>;
-        if (pending) return <Tag color="default" style={{ fontSize: 11 }}>—</Tag>;
-        if (hasFailed) return <Text type="danger" style={{ fontSize: 18, fontWeight: 900 }}>✕</Text>;
-        return null;
-      },
-    })),
-  ];
+      }
+    }
+    // Sort students within each grade by document
+    for (const g of groups.values()) {
+      g.students.sort((a, b) => (a.document || '').localeCompare(b.document || '', undefined, { numeric: true }));
+    }
+    return Array.from(groups.values()).sort((a, b) => a.grade.localeCompare(b.grade));
+  }, [students]);
 
   return (
     <div style={{ padding: 24, maxWidth: 1200, margin: '0 auto' }}>
@@ -282,25 +253,174 @@ const RepairPeriodManagement: React.FC = () => {
             )}
 
             <Card title={
-              <Space>
-                <span>Estudiantes en reparación</span>
-                {isPreview && <Tag color="orange">Vista previa</Tag>}
+              <Space style={{ justifyContent: 'space-between', width: '100%' }}>
+                <Space>
+                  <span>Estudiantes en reparación</span>
+                  {isPreview && <Tag color="orange">Vista previa</Tag>}
+                </Space>
+                <Button icon={<PrinterOutlined />} onClick={() => window.print()}>
+                  Imprimir
+                </Button>
               </Space>
-            } style={{ marginTop: 16 }}>
-              <Table
-                dataSource={students}
-                columns={columns}
-                rowKey="studentId"
-                size="small"
-                scroll={{ x: Math.max(400, allSubjects.length * 75 + 280) }}
-                sticky={{ offsetHeader: 0 }}
-                pagination={{ pageSize: 20 }}
-                locale={{ emptyText: 'No hay estudiantes en reparación' }}
-              />
+            } style={{ marginTop: 16 }} styles={{ body: { padding: 0 } }}>
+              <div className="repair-sheet-container">
+                {gradeGroups.length === 0 ? (
+                  <div style={{ padding: 24, textAlign: 'center', color: '#999' }}>
+                    No hay estudiantes en reparación
+                  </div>
+                ) : (
+                  gradeGroups.map((group) => (
+                    <div key={group.grade} className="repair-grade-section">
+                      <div className="repair-grade-title">{group.grade}</div>
+                      <table className="repair-sheet">
+                        <thead>
+                          <tr>
+                            <th className="repair-col-idx">#</th>
+                            <th className="repair-col-doc">Cédula</th>
+                            <th className="repair-col-name">Apellidos y Nombres</th>
+                            {group.subjects.map((subj) => (
+                              <th key={subj.abbreviation} className="repair-col-subj" title={subj.subjectName}>
+                                {subj.abbreviation}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {group.students.map((student, idx) => (
+                            <tr key={student.studentId}>
+                              <td className="repair-cell-idx">{idx + 1}</td>
+                              <td className="repair-cell-doc">{student.document}</td>
+                              <td className="repair-cell-name">{student.studentName}</td>
+                              {group.subjects.map((subj) => {
+                                const studentSubj = student.subjects.find(
+                                  (sub) => sub.abbreviation === subj.abbreviation
+                                );
+                                // No revision in this subject → filled cell
+                                if (!studentSubj) {
+                                  return <td key={subj.abbreviation} className="repair-cell-filled" />;
+                                }
+                                // Has revision → blank cell (for writing or showing score)
+                                if (isPreview) {
+                                  return <td key={subj.abbreviation} className="repair-cell-blank" />;
+                                }
+                                const approved = studentSubj.revisions.some((r) => r.status === 'approved');
+                                const pending = studentSubj.revisions.some((r) => r.status === 'pending');
+                                const hasFailed = studentSubj.revisions.some((r) => r.status === 'failed');
+                                return (
+                                  <td key={subj.abbreviation} className="repair-cell-blank">
+                                    {approved && <span className="repair-pass">✓</span>}
+                                    {pending && (
+                                      <span className="repair-score-list">
+                                        {studentSubj.revisions.map((r) => (
+                                          <span key={r.id} className={`repair-score-tag ${r.status}`}>
+                                            {r.score != null ? r.score.toFixed(1) : '—'}
+                                          </span>
+                                        ))}
+                                      </span>
+                                    )}
+                                    {hasFailed && !pending && <span className="repair-fail">✕</span>}
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ))
+                )}
+              </div>
             </Card>
           </>
         )}
       </Spin>
+
+      <style>{`
+        .repair-sheet-container {
+          overflow-x: auto;
+        }
+        .repair-grade-section {
+          margin-bottom: 24px;
+        }
+        .repair-grade-title {
+          font-size: 14px;
+          font-weight: 700;
+          padding: 8px 12px;
+          background: #f0f5ff;
+          border: 1px solid #d6e4ff;
+          border-bottom: none;
+        }
+        .repair-sheet {
+          border-collapse: collapse;
+          width: 100%;
+          font-size: 11px;
+        }
+        .repair-sheet th,
+        .repair-sheet td {
+          border: 1px solid #d9d9d9;
+          padding: 0;
+          text-align: center;
+          vertical-align: middle;
+        }
+        .repair-sheet thead th {
+          background: #fafafa;
+          font-weight: 700;
+          padding: 4px 2px;
+          font-size: 10px;
+          line-height: 1.2;
+        }
+        .repair-col-idx { width: 32px; min-width: 32px; }
+        .repair-col-name { width: 200px; min-width: 160px; text-align: left !important; padding: 4px 8px 4px 25px !important; }
+        .repair-col-doc { width: 80px; min-width: 70px; }
+        .repair-col-subj { width: 42px; min-width: 38px; max-width: 50px; }
+        .repair-cell-idx { font-weight: 600; color: #666; height: 28px; }
+        .repair-cell-name { text-align: left !important; padding: 4px 8px 4px 25px !important; font-weight: 500; }
+        .repair-cell-doc { font-size: 10px; color: #666; }
+        .repair-cell-filled {
+          background: #e8e8e8;
+          height: 28px;
+        }
+        .repair-cell-blank {
+          background: #fff;
+          height: 28px;
+        }
+        .repair-pass {
+          color: #52c41a;
+          font-weight: 900;
+          font-size: 14px;
+        }
+        .repair-fail {
+          color: #ff4d4f;
+          font-weight: 900;
+          font-size: 14px;
+        }
+        .repair-score-list {
+          display: flex;
+          flex-direction: column;
+          gap: 1px;
+          align-items: center;
+        }
+        .repair-score-tag {
+          font-size: 9px;
+          font-weight: 600;
+          padding: 0 3px;
+          border-radius: 2px;
+          line-height: 1.4;
+        }
+        .repair-score-tag.approved { color: #389e0d; background: #f6ffed; }
+        .repair-score-tag.failed { color: #cf1322; background: #fff1f0; }
+        .repair-score-tag.pending { color: #666; background: #f5f5f5; }
+
+        @media print {
+          .repair-sheet-container { overflow: visible; }
+          .repair-grade-section { page-break-after: always; }
+          .repair-grade-section:last-child { page-break-after: auto; }
+          .repair-sheet { font-size: 10px; }
+          .repair-sheet th, .repair-sheet td { border: 1px solid #999; }
+          .repair-cell-filled { background: #e0e0e0 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          .repair-grade-title { background: #f0f5ff !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        }
+      `}</style>
     </div>
   );
 };
