@@ -28,6 +28,7 @@ import SchoolManagement from '@/pages/admin/SchoolManagement';
 import EnrollmentQuestions from '@/pages/admin/EnrollmentQuestions';
 import TeacherPanel from '@/pages/teacher/TeacherPanel';
 import RepairGradesPanel from '@/pages/teacher/RepairGradesPanel';
+import Observations from '@/pages/teacher/Observations';
 import AdminDashboard from '@/pages/admin/Dashboard';
 import StudentDetail from '@/pages/student/StudentDetail';
 import SettingsManagement from '@/pages/master/SettingsManagement';
@@ -260,6 +261,7 @@ function AppRoutes() {
           <Route index element={<h1>Panel del Profesor</h1>} />
         </Route>
         <Route path="profesor/reparacion" element={<RequireAuth allowedRoles={['Profesor']}><RepairGradesPanel /></RequireAuth>} />
+        <Route path="profesor/observaciones" element={<RequireAuth allowedRoles={['Profesor']}><Observations /></RequireAuth>} />
 
         {/* Representative Module */}
         <Route path="representante" element={<RequireAuth allowedRoles={['Representante']}><RepresentativeLayout /></RequireAuth>}>

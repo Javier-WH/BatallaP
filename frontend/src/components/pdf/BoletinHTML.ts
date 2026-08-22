@@ -21,6 +21,7 @@ export interface BoletinHTMLStudent {
   guideTeacher?: string;
   subjects: BoletinHTMLSubject[];
   rankTrend?: 'up' | 'down' | 'same' | null;
+  observation?: string;
   listNumber?: number;
   rankPosition?: number;
   rankTotal?: number;
@@ -258,7 +259,7 @@ const buildStudentSheet = (
 
     <div class="observations">
       <div class="label">Observaciones</div>
-      <div>&nbsp;</div>
+      <div>${escapeHtml(student.observation || '')}</div>
     </div>
 
     <div class="signatures">
@@ -696,6 +697,10 @@ export const generateBoletinHTML = (data: BoletinHTMLData): string => {
     background:var(--card);
     border:1px solid var(--line);
     min-height:30px;
+    max-height:48px;
+    overflow:hidden;
+    font-size:9px;
+    line-height:1.3;
   }
   .observations .label{
     text-transform:uppercase;

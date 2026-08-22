@@ -132,6 +132,7 @@ import EvaluationCriteria from './EvaluationCriteria';
 import EvaluationIndicator from './EvaluationIndicator';
 import EvaluationCatalog from './EvaluationCatalog';
 import SectionGuide from './SectionGuide';
+import StudentObservation from './StudentObservation';
 import SubjectPreset from './SubjectPreset';
 import StructurePreset from './StructurePreset';
 
@@ -275,6 +276,13 @@ SectionGuide.belongsTo(Person, { foreignKey: 'teacherId', as: 'guideTeacher' });
 SectionGuide.belongsTo(Grade, { foreignKey: 'gradeId', as: 'grade' });
 SectionGuide.belongsTo(Section, { foreignKey: 'sectionId', as: 'section' });
 SectionGuide.belongsTo(SchoolPeriod, { foreignKey: 'schoolPeriodId', as: 'schoolPeriod' });
+
+// 6c. Student Observation Associations (observaciones del profesor guía)
+StudentObservation.belongsTo(Inscription, { foreignKey: 'inscriptionId', as: 'inscription' });
+StudentObservation.belongsTo(Term, { foreignKey: 'termId', as: 'term' });
+StudentObservation.belongsTo(SchoolPeriod, { foreignKey: 'schoolPeriodId', as: 'schoolPeriod' });
+StudentObservation.belongsTo(Person, { foreignKey: 'teacherId', as: 'teacher' });
+Inscription.hasMany(StudentObservation, { foreignKey: 'inscriptionId', as: 'observations' });
 
 // Term associations
 SchoolPeriod.hasMany(Term, { foreignKey: 'schoolPeriodId', as: 'terms' });
@@ -451,6 +459,7 @@ export {
   EvaluationIndicator,
   EvaluationCatalog,
   SectionGuide,
+  StudentObservation,
   SubjectPreset,
   StructurePreset
 };

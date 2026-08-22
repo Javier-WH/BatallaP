@@ -26,6 +26,7 @@ import {
   TeacherAssignment,
   SectionGuide,
   CouncilChecklist,
+  StudentObservation,
 } from '@/models/index';
 import {
   getSubjectOrderMap,
@@ -1297,6 +1298,61 @@ export const getBoletinData = async (req: Request, res: Response) => {
         guideTeacher: guideMap.get(ins.sectionId) || '',
         subjects,
       };
+    });
+
+    // Load observations for all students in this boletin.
+    // The boletin shows the observation from the last completed term for
+    // each student's section (not from an arbitrary term).
+    const inscriptionIds = students.map((s: any) => s.inscriptionId);
+
+    // Determine the last completed term per section
+    const sectionToLastDoneTerm = new Map<number, number>();
+    for (const s of students) {
+      const sid = (s as any).sectionId || 0;
+      if (sectionToLastDoneTerm.has(sid)) continue;
+      let lastDoneTermId: number | null = null;
+      for (const t of terms) {
+        if (isCouncilDone(t.id, sid)) {
+          lastDoneTermId = t.id;
+        }
+      }
+      if (lastDoneTermId != null) {
+        sectionToLastDoneTerm.set(sid, lastDoneTermId);
+      }
+    }
+
+    // Load observations only for the relevant (inscriptionId, termId) pairs
+    const observationQueryPairs: { inscriptionId: number; termId: number }[] = [];
+    for (const s of students) {
+      const sid = (s as any).sectionId || 0;
+      const lastDoneTermId = sectionToLastDoneTerm.get(sid);
+      if (lastDoneTermId != null) {
+        observationQueryPairs.push({ inscriptionId: s.inscriptionId, termId: lastDoneTermId });
+      }
+    }
+
+    const observationMap = new Map<number, string>();
+    if (observationQueryPairs.length > 0) {
+      // Load all observations for these inscriptions and pick the right termId per student
+      const allObs = await StudentObservation.findAll({
+        where: { inscriptionId: inscriptionIds, schoolPeriodId },
+      });
+      const obsByInscription = new Map<number, Map<number, string>>();
+      for (const obs of allObs) {
+        if (!obsByInscription.has(obs.inscriptionId)) {
+          obsByInscription.set(obs.inscriptionId, new Map());
+        }
+        obsByInscription.get(obs.inscriptionId)!.set(obs.termId, obs.text);
+      }
+      for (const pair of observationQueryPairs) {
+        const termMap = obsByInscription.get(pair.inscriptionId);
+        if (termMap && termMap.has(pair.termId)) {
+          observationMap.set(pair.inscriptionId, termMap.get(pair.termId)!);
+        }
+      }
+    }
+    students.forEach((s: any) => {
+      s.observation = observationMap.get(s.inscriptionId) || '';
     });
 
     // Compute rank within each section using the service

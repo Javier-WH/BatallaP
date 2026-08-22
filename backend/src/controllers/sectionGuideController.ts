@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { Op } from 'sequelize';
-import { Person, Role, TeacherAssignment, PeriodGradeSubject, PeriodGrade, PeriodGradeSection, SectionGuide, Grade, Section, SchoolPeriod, Subject } from '@/models/index';
+import { Person, Role, TeacherAssignment, PeriodGradeSubject, PeriodGrade, PeriodGradeSection, SectionGuide, Grade, Section, SchoolPeriod, Subject, Term, CouncilChecklist } from '@/models/index';
 
 // GET /api/section-guides/teachers?schoolPeriodId=&gradeId=&sectionId=
 // Returns all teachers assigned to that grade+section in the period, plus the current guide (if any)
@@ -290,5 +290,74 @@ export const getAllGuidesForPeriod = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('[getAllGuidesForPeriod] Error:', error);
     res.status(500).json({ message: 'Error al obtener profesores guías' });
+  }
+};
+
+// GET /api/section-guides/my-sections
+// Returns the sections where the logged-in teacher is guide, for the active period,
+// along with the terms and their council completion status.
+export const getMyGuideSections = async (req: Request, res: Response) => {
+  try {
+    const personId = (req.session as any).user?.personId;
+    if (!personId) {
+      return res.status(403).json({ message: 'No autorizado' });
+    }
+
+    // Find the active period
+    const activePeriod = await SchoolPeriod.findOne({
+      where: { status: 'activo' },
+    });
+    if (!activePeriod) {
+      return res.json({ sections: [], terms: [] });
+    }
+
+    // Find sections where this teacher is guide
+    const guides = await SectionGuide.findAll({
+      where: {
+        teacherId: personId,
+        schoolPeriodId: activePeriod.id,
+      },
+      include: [
+        { model: Grade, as: 'grade' },
+        { model: Section, as: 'section' },
+      ],
+    });
+
+    if (guides.length === 0) {
+      return res.json({ sections: [], terms: [] });
+    }
+
+    // Get terms for this period
+    const terms = await Term.findAll({
+      where: { schoolPeriodId: activePeriod.id },
+      order: [['order', 'ASC']],
+    });
+
+    // Check council completion for each section+term
+    const sections = await Promise.all(guides.map(async (g: any) => {
+      const gradeId = g.gradeId;
+      const sectionId = g.sectionId;
+      const termStatuses = await Promise.all(terms.map(async (t: any) => {
+        const checklist = await CouncilChecklist.findOne({
+          where: { termId: t.id, sectionId, status: 'done' },
+        });
+        return { termId: t.id, termName: t.name, councilDone: !!checklist };
+      }));
+      return {
+        gradeId,
+        gradeName: g.grade?.name || '',
+        sectionId,
+        sectionName: g.section?.name || '',
+        termStatuses,
+      };
+    }));
+
+    res.json({
+      sections,
+      terms: terms.map((t: any) => ({ id: t.id, name: t.name, order: t.order })),
+    });
+  } catch (error: any) {
+    console.error('[getMyGuideSections] Error:', error);
+    res.status(500).json({ message: error.message || 'Error al obtener secciones guía' });
   }
 };

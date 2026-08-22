@@ -15,6 +15,7 @@ import {
   EyeOutlined,
   LockOutlined,
   HistoryOutlined,
+  CommentOutlined,
 } from '@ant-design/icons';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
@@ -91,6 +92,13 @@ const MainLayout: React.FC = () => {
       label: 'Académico',
       roles: ['Profesor'],
       path: '/profesor'
+    },
+    {
+      key: 'profesor-observaciones',
+      icon: <CommentOutlined />,
+      label: 'Observaciones',
+      roles: ['Profesor'],
+      path: '/profesor/observaciones'
     },
     {
       key: 'representative-module',
