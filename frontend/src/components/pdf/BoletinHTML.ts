@@ -20,6 +20,7 @@ export interface BoletinHTMLStudent {
   sectionId?: number;
   guideTeacher?: string;
   subjects: BoletinHTMLSubject[];
+  rankTrend?: 'up' | 'down' | 'same' | null;
   listNumber?: number;
   rankPosition?: number;
   rankTotal?: number;
@@ -107,11 +108,15 @@ const buildStudentSheet = (
     ? `<span class="list-num">N° ${String(listNum).padStart(2, '0')}</span> `
     : '';
 
-  // Rank position badge (inline after section)
+  // Rank position badge (inline after section) with trend arrow
   const rankPos = student.rankPosition;
   const rankTotal = student.rankTotal;
+  const trend = student.rankTrend;
+  const trendIcon = trend === 'up' ? ' ▲' : trend === 'down' ? ' ▼' : trend === 'same' ? ' = ' : '';
+  const trendColor = trend === 'up' ? 'color:#389e0d;' : trend === 'down' ? 'color:#cf1322;' : 'color:#8c8c8c;';
+  const trendHtml = trend ? `<span class="rank-trend" style="${trendColor}">${trendIcon}</span>` : '';
   const rankBadge = (rankPos && rankTotal)
-    ? ` <span class="rank-badge">Pos. ${rankPos}/${rankTotal}</span>`
+    ? ` <span class="rank-badge">Pos. ${rankPos}/${rankTotal}</span>${trendHtml}`
     : '';
 
   // Logo HTML
@@ -354,8 +359,70 @@ export const generateBoletinHTML = (data: BoletinHTMLData): string => {
     });
   }
 
-  const enrichedData = { ...data, students: studentsWithRank };
-  const sheets = studentsWithRank.map((student) => buildStudentSheet(student, enrichedData)).join('\n');
+  // Compute per-term ranking to determine the trend (up/down/same) for each
+  // student, comparing their rank in the last completed term vs the previous one.
+  const completedTermIds = data.terms
+    .map((t) => t.id)
+    .filter((tid) => studentsWithRank.some((s) => {
+      const eligible = s.subjects.filter((sub) => sub.includeInAverage !== false);
+      return eligible.some((sub) => {
+        const lapse = sub.lapsos.find((l) => l.termId === tid);
+        return lapse && lapse.score !== null;
+      });
+    }));
+
+  let rankTrendMap = new Map<number, 'up' | 'down' | 'same' | null>();
+  if (completedTermIds.length >= 2) {
+    const lastTermId = completedTermIds[completedTermIds.length - 1];
+    const prevTermId = completedTermIds[completedTermIds.length - 2];
+
+    const computeRankForTerm = (termId: number): Map<number, number> => {
+      const scores = studentsWithRank.map((s) => {
+        const eligible = s.subjects.filter((sub) => sub.includeInAverage !== false);
+        const scored = eligible
+          .map((sub) => {
+            const lapse = sub.lapsos.find((l) => l.termId === termId);
+            return lapse && lapse.score !== null ? Math.max(1, Number(lapse.score)) : null;
+          })
+          .filter((v): v is number => v !== null);
+        const avg = scored.length > 0 ? scored.reduce((a, b) => a + b, 0) / scored.length : null;
+        return { inscriptionId: s.inscriptionId, avg };
+      }).filter((e) => e.avg !== null) as { inscriptionId: number; avg: number }[];
+      const sorted = [...scores].sort((a, b) => b.avg - a.avg);
+      const rankMap = new Map<number, number>();
+      let currentRank = 0;
+      let prevAvg: number | null = null;
+      sorted.forEach((entry, idx) => {
+        if (prevAvg === null || entry.avg !== prevAvg) {
+          currentRank = idx + 1;
+          prevAvg = entry.avg;
+        }
+        rankMap.set(entry.inscriptionId, currentRank);
+      });
+      return rankMap;
+    };
+
+    const lastRankMap = computeRankForTerm(lastTermId);
+    const prevRankMap = computeRankForTerm(prevTermId);
+    studentsWithRank.forEach((s) => {
+      const lastPos = lastRankMap.get(s.inscriptionId);
+      const prevPos = prevRankMap.get(s.inscriptionId);
+      if (lastPos != null && prevPos != null) {
+        rankTrendMap.set(s.inscriptionId,
+          lastPos < prevPos ? 'up' : lastPos > prevPos ? 'down' : 'same');
+      } else {
+        rankTrendMap.set(s.inscriptionId, null);
+      }
+    });
+  }
+
+  const studentsWithTrend = studentsWithRank.map((s) => ({
+    ...s,
+    rankTrend: rankTrendMap.get(s.inscriptionId) ?? null,
+  }));
+
+  const enrichedData = { ...data, students: studentsWithTrend };
+  const sheets = studentsWithTrend.map((student) => buildStudentSheet(student, enrichedData)).join('\n');
 
   return `<!DOCTYPE html>
 <html lang="es">
@@ -514,6 +581,12 @@ export const generateBoletinHTML = (data: BoletinHTMLData): string => {
     margin-left:4px;
     vertical-align:middle;
     letter-spacing:0.04em;
+  }
+  .student .rank-trend{
+    font-size:10px;
+    font-weight:700;
+    margin-left:2px;
+    vertical-align:middle;
   }
 
   /* Grades table */
