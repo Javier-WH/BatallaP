@@ -706,45 +706,30 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
         const countRef = findRef('subj_count_' + subjIdx);
         if (countRef) {
           sheet!.getCell(countRef.cell).value = countVal;
-        } else if (ref) {
-          const colPart = ref.cell.replace(/\d+$/, '');
-          sheet!.getCell(colPart + '67').value = countVal;
         }
         // Write failed-student count per subject
         const failedVal = failedCountBySubject.get(subj.id) || 0;
         const failedRef = findRef('subj_failed_' + subjIdx);
         if (failedRef) {
           sheet!.getCell(failedRef.cell).value = failedVal;
-        } else if (ref) {
-          const colPart2 = ref.cell.replace(/\d+$/, '');
-          sheet!.getCell(colPart2 + '68').value = failedVal;
         }
         // Write approved-student count per subject
         const passedVal = passedCountBySubject.get(subj.id) || 0;
         const passedRef = findRef('subj_passed_' + subjIdx);
         if (passedRef) {
           sheet!.getCell(passedRef.cell).value = passedVal;
-        } else if (ref) {
-          const colPart3 = ref.cell.replace(/\d+$/, '');
-          sheet!.getCell(colPart3 + '69').value = passedVal;
         }
         // Write zero-score (inasistentes) count per subject
         const zeroVal = zeroCountBySubject.get(subj.id) || 0;
         const zeroRef = findRef('subj_zero_' + subjIdx);
         if (zeroRef) {
           sheet!.getCell(zeroRef.cell).value = zeroVal;
-        } else if (ref) {
-          const colPart4 = ref.cell.replace(/\d+$/, '');
-          sheet!.getCell(colPart4 + '70').value = zeroVal;
         }
         // Write unenrolled count per subject (total - enrolled)
         const unenrolledVal = totalStudents - (studentCountBySubject.get(subj.id) || 0);
         const unenrolledRef = findRef('subj_unenrolled_' + subjIdx);
         if (unenrolledRef) {
           sheet!.getCell(unenrolledRef.cell).value = unenrolledVal;
-        } else if (ref) {
-          const colPart5 = ref.cell.replace(/\d+$/, '');
-          sheet!.getCell(colPart5 + '71').value = unenrolledVal;
         }
       }
       subjIdx++;
@@ -943,32 +928,12 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
       if (evalRef) ws.getCell(evalRef.cell).value = String(evalType).toUpperCase();
 
       // Total students in the section and students on this page.
-      // Before writing, unmerge any range that contains the target cell so
-      // the value isn't swallowed by a merged range (e.g. std_total at P66
-      // and std_page_count at X66 sit inside the F66:Z66 merge).
+      // Named ranges for merged cells point to their top-left cell, so write
+      // directly to that cell and preserve the template's merged layout.
       const setLocal = (name: string, value: any) => {
         if (value === undefined || value === null || value === '') return;
         const r = findRef(name);
-        if (r) {
-          const mergeList: string[] = (ws as any).model?.merges || [];
-          for (let mi = mergeList.length - 1; mi >= 0; mi--) {
-            const parts3 = mergeList[mi].split(':');
-            if (parts3.length === 2) {
-              const colToIdx2 = (c: string) => { let idx = 0; for (let ci = 0; ci < c.length; ci++) { idx = idx * 26 + (c.charCodeAt(ci) - 64); } return idx - 1; };
-              const pa = parts3[0].match(/^([A-Z]+)(\d+)$/);
-              const pb = parts3[1].match(/^([A-Z]+)(\d+)$/);
-              if (pa && pb) {
-                const ra = parseInt(pa[2], 10), rb = parseInt(pb[2], 10);
-                const ca = colToIdx2(pa[1]), cb = colToIdx2(pb[1]);
-                if (r.row >= ra && r.row <= rb && (r.col - 1) >= ca && (r.col - 1) <= cb) {
-                  ws.unMergeCells(mergeList[mi]);
-                  break;
-                }
-              }
-            }
-          }
-          ws.getCell(r.cell).value = value;
-        }
+        if (r) ws.getCell(r.cell).value = value;
       };
       setLocal('std_total', sectionTotal);
       setLocal('std_page_count', pageCount);
@@ -1113,17 +1078,8 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
           }
         }
       }
-      // Dynamic named ranges (subject counts, teacher info)
+      // Re-register teacher named ranges only when they already exist in the template.
       for (let i = 1; i <= sortedAcademicSubjects.length; i++) {
-        const ref = findRef('subj_' + i);
-        if (ref) {
-          const colPart = ref.cell.replace(/\d+$/, '');
-          addWithSheet('subj_count_' + i, wsName, `${colPart}67`);
-          addWithSheet('subj_failed_' + i, wsName, `${colPart}68`);
-          addWithSheet('subj_passed_' + i, wsName, `${colPart}69`);
-          addWithSheet('subj_zero_' + i, wsName, `${colPart}70`);
-          addWithSheet('subj_unenrolled_' + i, wsName, `${colPart}71`);
-        }
         const teacherNameRef = findRef(`teacher_name_${i}`);
         const teacherDocRef = findRef(`teacher_doc_${i}`);
         if (teacherNameRef) {
