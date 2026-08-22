@@ -409,6 +409,17 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'No hay estudiantes inscritos en esta seccion' });
     }
 
+    // Sort students by document number ascending (numeric), with
+    // 'Cedula Escolar' documents placed at the end.
+    inscriptions.sort((a: any, b: any) => {
+      const aIsSchool = a.student?.documentType === 'Cedula Escolar';
+      const bIsSchool = b.student?.documentType === 'Cedula Escolar';
+      if (aIsSchool !== bIsSchool) return aIsSchool ? 1 : -1;
+      const aDoc = Number(a.student?.document) || 0;
+      const bDoc = Number(b.student?.document) || 0;
+      return aDoc - bDoc;
+    });
+
     const subjectOrderMap = await getSubjectOrderMap(pg.id);
 
     const subjectMap = new Map<number, { id: number; name: string; abbreviation: string | null; subjectGroupId: number | null; subjectGroupName: string | null; usesLiteralGrades: boolean }>();
@@ -726,22 +737,19 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
     // preserve the Excel layout (no auto-appending columns).
 
     // Write teacher name and document for each subject in the "V. Profesores
-    // por Áreas" section (rows 58-65). Layout per row:
-    //   col F-G → teacher name (merged F:G)
-    //   col H   → teacher doc (Cédula de Identidad)
-    //   col I-O → Firma (merged I:O)
-    // Row 66 (subject 9) is skipped because F66:Z66 is merged.
+    // por Áreas" section. Use the template's named ranges instead of a hardcoded
+    // row limit, since some templates define teacher rows beyond row 65.
     const setTeacherData = (ws: ExcelJS.Worksheet) => {
       for (let i = 1; i <= sortedAcademicSubjects.length; i++) {
-        const row = 57 + i;
-        if (row > 65) break;
         const subj = sortedAcademicSubjects[i - 1];
         if (!subj) continue;
         const teacher = teacherMap.get(subj.id);
         if (!teacher) continue;
 
-        ws.getRow(row).getCell(6).value = teacher.fullName;   // col F — teacher name
-        ws.getRow(row).getCell(8).value = teacher.docWithType; // col H — teacher doc
+        const teacherNameRef = findRef(`teacher_name_${i}`);
+        const teacherDocRef = findRef(`teacher_doc_${i}`);
+        if (teacherNameRef) ws.getCell(teacherNameRef.cell).value = teacher.fullName;
+        if (teacherDocRef) ws.getCell(teacherDocRef.cell).value = teacher.docWithType;
       }
     };
 
@@ -1088,10 +1096,13 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
           addWithSheet('subj_zero_' + i, wsName, `${colPart}70`);
           addWithSheet('subj_unenrolled_' + i, wsName, `${colPart}71`);
         }
-        const teacherRow = 57 + i;
-        if (teacherRow <= 65) {
-          addWithSheet('teacher_name_' + i, wsName, `F${teacherRow}`);
-          addWithSheet('teacher_doc_' + i, wsName, `H${teacherRow}`);
+        const teacherNameRef = findRef(`teacher_name_${i}`);
+        const teacherDocRef = findRef(`teacher_doc_${i}`);
+        if (teacherNameRef) {
+          addWithSheet('teacher_name_' + i, wsName, teacherNameRef.cell);
+        }
+        if (teacherDocRef) {
+          addWithSheet('teacher_doc_' + i, wsName, teacherDocRef.cell);
         }
       }
     }
