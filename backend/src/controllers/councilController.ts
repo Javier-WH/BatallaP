@@ -18,6 +18,7 @@ import { TermGradeSyncService } from '@/services/termGradeSyncService';
 import { MIN_FINAL_GRADE } from '@/services/gradeEvaluationService';
 import {
   getSubjectOrderMap,
+  getSubjectIncludeInAverageMap,
   sortSubjectsByOrder,
 } from '@/services/subjectOrderService';
 import { filterActiveGroupSubjects } from '@/services/subjectGroupService';
@@ -94,6 +95,7 @@ export const getCouncilData = async (req: Request, res: Response) => {
     if (!pg) return res.json(inscriptions);
 
     const subjectOrderMap = await getSubjectOrderMap(pg.id);
+    const includeInAverageMap = await getSubjectIncludeInAverageMap(pg.id);
 
     // Fetch all terms for this school period, sorted by order
     const allTerms = await Term.findAll({
@@ -163,6 +165,7 @@ export const getCouncilData = async (req: Request, res: Response) => {
           points: currentTermPoints?.points || 0,
           councilPointId: currentTermPoints?.id,
           grade: Math.max(MIN_FINAL_GRADE, Math.round(currentTermGrade * 100) / 100),
+          includeInAverage: includeInAverageMap.get(is.subjectId) ?? true,
           hasOtherTermsPoints: otherTermsPoints.length > 0,
           otherTermsInfo: otherTermsPoints.map((cp: any) => ({
             termName: cp.term?.name,

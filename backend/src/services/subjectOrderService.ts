@@ -18,6 +18,7 @@ import PeriodGradeSubject from '@/models/PeriodGradeSubject';
  */
 
 export type SubjectOrderMap = Map<number, number>;
+export type SubjectIncludeInAverageMap = Map<number, boolean>;
 
 /**
  * Devuelve un Map<subjectId, order> para un PeriodGrade.
@@ -46,6 +47,30 @@ export async function getSubjectOrderMap(
 }
 
 /**
+ * Devuelve un Map<subjectId, includeInAverage> para un PeriodGrade.
+ * Materias no presentes en el mapa se asumen como includeInAverage = true.
+ */
+export async function getSubjectIncludeInAverageMap(
+  periodGradeId: number | null | undefined,
+  transaction?: Transaction
+): Promise<SubjectIncludeInAverageMap> {
+  const map: SubjectIncludeInAverageMap = new Map();
+  if (!periodGradeId) return map;
+
+  const rows = await PeriodGradeSubject.findAll({
+    where: { periodGradeId },
+    attributes: ['subjectId', 'includeInAverage'],
+    transaction,
+  });
+
+  rows.forEach((pgs) => {
+    map.set(pgs.subjectId, pgs.includeInAverage);
+  });
+
+  return map;
+}
+
+/**
  * Resuelve el PeriodGrade a partir de gradeId + schoolPeriodId y devuelve
  * el mapa de orden de sus materias.
  */
@@ -64,6 +89,27 @@ export async function getSubjectOrderMapByGradeAndPeriod(
 
   if (!pg) return new Map();
   return getSubjectOrderMap(pg.id, transaction);
+}
+
+/**
+ * Resuelve el PeriodGrade a partir de gradeId + schoolPeriodId y devuelve
+ * el mapa de includeInAverage de sus materias.
+ */
+export async function getSubjectIncludeInAverageMapByGradeAndPeriod(
+  gradeId: number | null | undefined,
+  schoolPeriodId: number | null | undefined,
+  transaction?: Transaction
+): Promise<SubjectIncludeInAverageMap> {
+  if (!gradeId || !schoolPeriodId) return new Map();
+
+  const pg = await PeriodGrade.findOne({
+    where: { gradeId, schoolPeriodId },
+    attributes: ['id'],
+    transaction,
+  });
+
+  if (!pg) return new Map();
+  return getSubjectIncludeInAverageMap(pg.id, transaction);
 }
 
 /**

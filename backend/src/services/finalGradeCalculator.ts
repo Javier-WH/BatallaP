@@ -16,6 +16,7 @@ import {
 } from '@/models/index';
 import {
   getSubjectOrderMapByGradeAndPeriod,
+  getSubjectIncludeInAverageMapByGradeAndPeriod,
   sortSubjectsByOrder,
 } from './subjectOrderService';
 import { filterActiveGroupSubjects } from './subjectGroupService';
@@ -131,6 +132,12 @@ export class FinalGradeCalculator {
 
     // Apply canonical subject order before iterating
     const orderMap = await getSubjectOrderMapByGradeAndPeriod(
+      inscriptionSimple.gradeId,
+      inscriptionSimple.schoolPeriodId,
+      options.transaction
+    );
+    // Load includeInAverage map so the final average only counts eligible subjects
+    const includeInAverageMap = await getSubjectIncludeInAverageMapByGradeAndPeriod(
       inscriptionSimple.gradeId,
       inscriptionSimple.schoolPeriodId,
       options.transaction
@@ -267,8 +274,12 @@ export class FinalGradeCalculator {
         failedSubjects += 1;
       }
 
-      subjectCount += 1;
-      sumFinalScores += effectiveFinalScore;
+      // Only count subjects flagged includeInAverage (default true) toward the average
+      const countsForAverage = includeInAverageMap.get(insSub.subjectId) !== false;
+      if (countsForAverage) {
+        subjectCount += 1;
+        sumFinalScores += effectiveFinalScore;
+      }
 
       const summary: SubjectResultSummary = {
         inscriptionSubjectId: insSub.id,

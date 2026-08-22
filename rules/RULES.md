@@ -140,6 +140,18 @@ Y dos tipos de promedio:
   `includeInAverage=true`). Solo se calcula cuando los consejos relevantes
   están completados.
 
+Reglas de formato (OBLIGATORIO):
+- **Notas Acumuladas** y **Notas Finales** por materia: **siempre enteros**.
+  Usar `roundFinalGrade()` (= `Math.max(MIN_FINAL_GRADE, Math.round(score))`).
+  Nunca mostrar ni almacenar decimales en una nota por materia.
+- **Promedio Acumulado** y **Promedio Final**: **siempre 2 decimales**
+  (`Number(avg.toFixed(2))`).
+- El promedio se calcula promediando las notas **ya redondeadas a entero** de
+  cada materia, nunca los valores raw con decimales.
+- Solo se promedian las materias con `includeInAverage !== false` (default true).
+- Toda vista, reporte, Excel o PDF que muestre un promedio **debe** usar este
+  mismo método para garantizar consistencia.
+
 Reglas de visualización:
 - **Documentos oficiales** (boletines, notas certificadas, promedios generales,
   Excel de rendimiento): solo muestran **notas finales**. Si el consejo no está

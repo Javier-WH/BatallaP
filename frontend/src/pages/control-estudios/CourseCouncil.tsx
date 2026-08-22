@@ -58,6 +58,7 @@ interface CouncilStudent {
     points: number;
     councilPointId?: number;
     grade: number;
+    includeInAverage?: boolean;
     hasOtherTermsPoints: boolean;
     otherTermsInfo?: { termName: string, points: number }[];
     previousTermsData?: {
@@ -448,12 +449,12 @@ const CourseCouncil: React.FC = () => {
 
   const renderTermSelector = () => (
     <div style={{ padding: '0px 0' }}>
-      <div style={{ textAlign: 'center', marginBottom: 60 }} className="animate-card">
-        <Title level={1} style={{ margin: 0, fontWeight: 900, letterSpacing: '-0.04em' }}>Seleccione el Lapso</Title>
-        <Text type="secondary" style={{ fontSize: 16, fontWeight: 500 }}>Identifique el periodo académico para el procesamiento de puntos</Text>
+      <div style={{ textAlign: 'center', marginBottom: 24 }} className="animate-card">
+        <Title level={2} style={{ margin: 0, fontWeight: 900, letterSpacing: '-0.04em' }}>Seleccione el Lapso</Title>
+        <Text type="secondary" style={{ fontSize: 14, fontWeight: 500 }}>Identifique el periodo académico para el procesamiento de puntos</Text>
       </div>
 
-      <div style={{ textAlign: 'center', marginBottom: 32 }}>
+      <div style={{ textAlign: 'center', marginBottom: 20 }}>
         <Button
           type="primary"
           size="large"
@@ -464,8 +465,8 @@ const CourseCouncil: React.FC = () => {
           style={{
             borderRadius: 14,
             fontWeight: 800,
-            height: 48,
-            padding: '0 32px',
+            height: 38,
+            padding: '0 24px',
             background: '#52c41a',
             border: 'none',
             boxShadow: '0 8px 20px rgba(82,196,77,0.25)'
@@ -483,7 +484,7 @@ const CourseCouncil: React.FC = () => {
             <Card
               hoverable
               className={`premium-card animate-card delay-${(idx % 3) + 1}`}
-              styles={{ body: { padding: '40px 24px' } }}
+              styles={{ body: { padding: '20px 16px' } }}
               style={{
                 textAlign: 'center',
                 transition: 'all 0.4s cubic-bezier(0.165, 0.84, 0.44, 1)',
@@ -493,23 +494,23 @@ const CourseCouncil: React.FC = () => {
               onClick={() => handleTermClick(term)}
             >
               <div style={{
-                width: 80,
-                height: 80,
-                borderRadius: 24,
+                width: 52,
+                height: 52,
+                borderRadius: 16,
                 background: term.isBlocked ? 'linear-gradient(135deg, #1890ff 0%, #096dd9 100%)' : 'linear-gradient(135deg, #faad14 0%, #d48806 100%)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                margin: '0 auto 24px',
-                boxShadow: term.isBlocked ? '0 12px 24px rgba(24,144,255,0.25)' : '0 12px 24px rgba(250,173,20,0.25)',
+                margin: '0 auto 12px',
+                boxShadow: term.isBlocked ? '0 8px 16px rgba(24,144,255,0.2)' : '0 8px 16px rgba(250,173,20,0.2)',
                 transition: 'all 0.3s ease'
               }} className="icon-wrapper">
-                <CalendarOutlined style={{ fontSize: 36, color: term.isBlocked ? '#fff' : '#bfbfbf' }} />
+                <CalendarOutlined style={{ fontSize: 24, color: term.isBlocked ? '#fff' : '#bfbfbf' }} />
               </div>
 
-              <Title level={3} style={{ margin: '0 0 8px 0', fontWeight: 800 }}>{term.name}</Title>
+              <Title level={4} style={{ margin: '0 0 4px 0', fontWeight: 800 }}>{term.name}</Title>
 
-              <div style={{ marginTop: 16 }}>
+              <div style={{ marginTop: 8 }}>
                 {term.isBlocked ? (
                   <Tag color="blue" style={{ borderRadius: 20, padding: '2px 16px', fontWeight: 700, border: 'none', textTransform: 'uppercase', fontSize: 10 }}>
                     Lapso cerrado · Consejo habilitado
@@ -563,15 +564,15 @@ const CourseCouncil: React.FC = () => {
 
     return (
       <div style={{ padding: '0px 0' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 40 }}>
-          <Space size="large" className="animate-card">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+          <Space size="middle" className="animate-card">
             <Button
               icon={<LeftOutlined />}
               onClick={() => setStep(0)}
               style={{
                 borderRadius: '50%',
-                width: 44,
-                height: 44,
+                width: 36,
+                height: 36,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -590,7 +591,7 @@ const CourseCouncil: React.FC = () => {
             placeholder="Buscar por año o grado..."
             size="large"
             className="premium-search animate-card"
-            style={{ width: 320, borderRadius: 14, height: 48, animationDelay: '0.1s' }}
+            style={{ width: 300, borderRadius: 12, height: 36, animationDelay: '0.1s' }}
             value={filterYear}
             onChange={e => setFilterYear(e.target.value)}
           />
@@ -607,27 +608,27 @@ const CourseCouncil: React.FC = () => {
               key={group.grade.id}
               className="section-group animate-card"
               style={{
-                marginBottom: 56,
+                marginBottom: 24,
                 animationDelay: `${groupIdx * 0.1}s`
               }}
             >
               <div className="grade-header-premium">
-                <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                   <div style={{
-                    width: 48,
-                    height: 48,
-                    borderRadius: 14,
+                    width: 36,
+                    height: 36,
+                    borderRadius: 10,
                     background: group.grade.isDiversified ? '#fa541c' : '#1890ff',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                     color: '#fff',
-                    boxShadow: group.grade.isDiversified ? '0 8px 16px rgba(250,84,28,0.2)' : '0 8px 16px rgba(24,144,255,0.2)'
+                    boxShadow: group.grade.isDiversified ? '0 4px 8px rgba(250,84,28,0.15)' : '0 4px 8px rgba(24,144,255,0.15)'
                   }}>
-                    <Title level={4} style={{ color: '#fff', margin: 0, fontWeight: 900 }}>{group.grade.order || '?'}</Title>
+                    <Title level={5} style={{ color: '#fff', margin: 0, fontWeight: 900 }}>{group.grade.order || '?'}</Title>
                   </div>
                   <div>
-                    <Title level={3} style={{ margin: 0, fontWeight: 800, letterSpacing: '-0.02em', color: '#1f1f1f' }}>
+                    <Title level={4} style={{ margin: 0, fontWeight: 800, letterSpacing: '-0.02em', color: '#1f1f1f' }}>
                       {group.grade.name}
                     </Title>
                     <Text style={{ fontSize: 11, color: '#8c8c8c', textTransform: 'uppercase', fontWeight: 800, letterSpacing: 0.5 }}>
@@ -646,9 +647,9 @@ const CourseCouncil: React.FC = () => {
                     <Card
                       hoverable={sectionClosed}
                       className="section-card-premium"
-                      styles={{ body: { padding: '24px' } }}
+                      styles={{ body: { padding: '14px' } }}
                       style={{
-                        borderRadius: 20,
+                        borderRadius: 14,
                         border: '1px solid rgba(0,0,0,0.05)',
                         animationDelay: `${(groupIdx * 0.1) + (secIdx * 0.05)}s`,
                         cursor: sectionClosed ? 'pointer' : 'not-allowed',
@@ -661,18 +662,18 @@ const CourseCouncil: React.FC = () => {
                         if (selectedTerm) fetchCouncilData(sec.id, selectedTerm.id, group.grade.id);
                       }}
                     >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                         <div
                           className="section-letter-wrapper"
                           style={{
-                            width: 64,
-                            height: 64,
-                            borderRadius: 18,
+                            width: 44,
+                            height: 44,
+                            borderRadius: 12,
                             background: group.grade.isDiversified ? '#fff2e8' : '#f0f5ff',
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
-                            fontSize: 28,
+                            fontSize: 22,
                             fontWeight: 900,
                             color: group.grade.isDiversified ? '#fa541c' : '#1890ff',
                             flexShrink: 0,
@@ -682,7 +683,7 @@ const CourseCouncil: React.FC = () => {
                           {sec.name.replace(/sección/gi, '').trim().charAt(0)}
                         </div>
                         <div style={{ flex: 1 }}>
-                          <div style={{ fontWeight: 800, fontSize: 20, color: '#1f1f1f', lineHeight: 1.2, marginBottom: 4 }}>
+                          <div style={{ fontWeight: 800, fontSize: 16, color: '#1f1f1f', lineHeight: 1.2, marginBottom: 2 }}>
                             Sección {sec.name.replace(/sección/gi, '').trim()}
                           </div>
                           <Space size={4}>
@@ -1001,8 +1002,12 @@ const CourseCouncil: React.FC = () => {
             : student.subjects.find(subject => subject.id === colDef.subjectId)
         );
         const averageOf = (student: CouncilStudent) => {
-          const total = student.subjects.reduce((sum, subject) => sum + (subject.grade || 0) + (isPreliminary ? 0 : (subject.points || 0)), 0);
-          return student.subjects.length > 0 ? total / student.subjects.length : 0;
+          const avgSubjects = student.subjects.filter(s => s.includeInAverage !== false);
+          const total = avgSubjects.reduce((sum, subject) => {
+            const finalGrade = Math.max(1, Math.round((subject.grade || 0) + (isPreliminary ? 0 : (subject.points || 0))));
+            return sum + finalGrade;
+          }, 0);
+          return avgSubjects.length > 0 ? Number((total / avgSubjects.length).toFixed(2)) : 0;
         };
 
         // Pre-compute positions: sort students by average descending, assign rank.
@@ -1316,8 +1321,12 @@ const CourseCouncil: React.FC = () => {
         fixed: 'left' as const,
         align: 'center' as const,
         render: (_: any, record: CouncilStudent) => {
-          const totalGrades = record.subjects.reduce((sum, s) => sum + (s.grade || 0) + (s.points || 0), 0);
-          const average = record.subjects.length > 0 ? totalGrades / record.subjects.length : 0;
+          const avgSubjects = record.subjects.filter(s => s.includeInAverage !== false);
+          const totalGrades = avgSubjects.reduce((sum, s) => {
+            const finalGrade = Math.max(1, Math.round((s.grade || 0) + (s.points || 0)));
+            return sum + finalGrade;
+          }, 0);
+          const average = avgSubjects.length > 0 ? Number((totalGrades / avgSubjects.length).toFixed(2)) : 0;
           return (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', background: !isPassingGrade(average, passingGrade) ? '#fff1f0' : '#f0f5ff', padding: '4px', borderRadius: 8 }}>
               <Text style={{ fontSize: 16, fontWeight: 900, color: !isPassingGrade(average, passingGrade) ? '#cf1322' : '#096dd9' }}>
@@ -1538,12 +1547,12 @@ const CourseCouncil: React.FC = () => {
 
     return (
       <div style={{ padding: '0px 0' }} className="animate-card">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 32 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
           <Space size="middle">
             <Button
               icon={<LeftOutlined />}
               onClick={() => setStep(1)}
-              style={{ borderRadius: 12, height: 40, border: 'none', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}
+              style={{ borderRadius: 10, height: 34, border: 'none', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}
             />
             <div>
               <Title level={3} style={{ margin: 0, fontWeight: 900, letterSpacing: '-0.03em' }}>
@@ -1591,10 +1600,10 @@ const CourseCouncil: React.FC = () => {
               loading={exportingPreliminary}
               disabled={studentsData.length === 0}
               style={{
-                borderRadius: 14,
+                borderRadius: 10,
                 fontWeight: 800,
-                height: 52,
-                padding: '0 24px',
+                height: 36,
+                padding: '0 16px',
                 color: '#595959',
                 borderColor: '#d9d9d9'
               }}
@@ -1609,10 +1618,10 @@ const CourseCouncil: React.FC = () => {
               loading={exportingExcel}
               disabled={studentsData.length === 0}
               style={{
-                borderRadius: 14,
+                borderRadius: 10,
                 fontWeight: 800,
-                height: 52,
-                padding: '0 24px',
+                height: 36,
+                padding: '0 16px',
                 color: '#217346',
                 borderColor: '#b7d7c0'
               }}
@@ -1627,10 +1636,10 @@ const CourseCouncil: React.FC = () => {
               loading={saving}
               disabled={isReadOnly || !isSelectedSectionClosed() || councilDone}
               style={{
-                borderRadius: 14,
+                borderRadius: 10,
                 fontWeight: 800,
-                height: 52,
-                padding: '0 32px',
+                height: 36,
+                padding: '0 20px',
                 background: '#001529',
                 border: 'none',
                 boxShadow: '0 8px 20px rgba(0,21,41,0.2)'
@@ -1644,10 +1653,10 @@ const CourseCouncil: React.FC = () => {
               disabled={isReadOnly || markingDone || !isSelectedSectionClosed()}
               style={{
                 fontWeight: 800,
-                fontSize: 14,
-                padding: '10px 20px',
-                borderRadius: 14,
-                height: 52,
+                fontSize: 13,
+                padding: '6px 14px',
+                borderRadius: 10,
+                height: 36,
                 display: 'flex',
                 alignItems: 'center',
                 background: councilDone ? '#f6ffed' : '#fff',
@@ -1713,7 +1722,7 @@ const CourseCouncil: React.FC = () => {
               text-transform: uppercase;
               font-size: 11px;
               letter-spacing: 0.5px;
-              padding: 16px 8px !important;
+              padding: 8px 6px !important;
               border-bottom: 2px solid #f0f0f0 !important;
             }
             .council-table-premium .ant-table-row {
@@ -1729,7 +1738,7 @@ const CourseCouncil: React.FC = () => {
               background-color: #f0f7ff !important;
             }
             .council-table-premium .ant-table-cell {
-              padding: 14px 12px !important;
+              padding: 6px 8px !important;
               border-bottom: 1px solid #f0f0f0 !important;
             }
             .premium-input-number:hover, .premium-input-number-focused {
