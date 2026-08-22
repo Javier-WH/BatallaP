@@ -625,54 +625,52 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
       return orderA - orderB;
     });
 
-    // Count enrolled students per subject across all inscriptions
-    const studentCountBySubject = new Map<number, number>();
-    for (const ins of inscriptions) {
-      for (const is of (ins as any).inscriptionSubjects || []) {
-        if (is.subjectId) {
-          studentCountBySubject.set(is.subjectId, (studentCountBySubject.get(is.subjectId) || 0) + 1);
-        }
-      }
-    }
-
     const passingGrade = Number(settings.passing_grade) || 10;
 
-    // Count failed students per subject (score < passingGrade)
-    const failedCountBySubject = new Map<number, number>();
-    for (const ins of inscriptions) {
-      for (const is of (ins as any).inscriptionSubjects || []) {
-        if (!is.subjectId || groupedSubjectIds.has(is.subjectId)) continue;
-        const score = calculateFinalScore(is);
-        if (score != null && !isPassingGrade(score, passingGrade)) {
-          failedCountBySubject.set(is.subjectId, (failedCountBySubject.get(is.subjectId) || 0) + 1);
-        }
-      }
-    }
+    // Build statistics for exactly the students supplied. Grouped subjects
+    // share one column and each student is counted once using the group subject
+    // actually enrolled for that student.
+    const buildSubjectStats = (students: any[]) => {
+      const studentCountBySubject = new Map<number, number>();
+      const failedCountBySubject = new Map<number, number>();
+      const passedCountBySubject = new Map<number, number>();
+      const zeroCountBySubject = new Map<number, number>();
 
-    // Count approved students per subject (score >= passingGrade)
-    const passedCountBySubject = new Map<number, number>();
-    for (const ins of inscriptions) {
-      for (const is of (ins as any).inscriptionSubjects || []) {
-        if (!is.subjectId || groupedSubjectIds.has(is.subjectId)) continue;
-        const score = calculateFinalScore(is);
-        if (score != null && isPassingGrade(score, passingGrade)) {
-          passedCountBySubject.set(is.subjectId, (passedCountBySubject.get(is.subjectId) || 0) + 1);
-        }
-      }
-    }
+      for (const columnSubject of sortedAcademicSubjects) {
+        let enrolled = 0;
+        let failed = 0;
+        let passed = 0;
+        let zero = 0;
 
-    // Count zero-score students per subject (exactly 0 = inasistentes)
-    const zeroCountBySubject = new Map<number, number>();
-    for (const ins of inscriptions) {
-      for (const is of (ins as any).inscriptionSubjects || []) {
-        if (!is.subjectId || groupedSubjectIds.has(is.subjectId)) continue;
-        const score = calculateFinalScore(is);
-        if (score != null && score === 0) {
-          zeroCountBySubject.set(is.subjectId, (zeroCountBySubject.get(is.subjectId) || 0) + 1);
-        }
-      }
-    }
+        for (const ins of students) {
+          const insSub = (ins as any).inscriptionSubjects?.find((is: any) =>
+            is.subjectId === columnSubject.id || (
+              columnSubject.subjectGroupId !== null &&
+              columnSubject.subjectGroupId !== undefined &&
+              is.subject?.subjectGroupId === columnSubject.subjectGroupId
+            )
+          );
+          if (!insSub) continue;
 
+          enrolled++;
+          const score = calculateFinalScore(insSub);
+          if (score == null) continue;
+          if (score === 0) zero++;
+          if (isPassingGrade(score, passingGrade)) passed++;
+          else failed++;
+        }
+
+        studentCountBySubject.set(columnSubject.id, enrolled);
+        failedCountBySubject.set(columnSubject.id, failed);
+        passedCountBySubject.set(columnSubject.id, passed);
+        zeroCountBySubject.set(columnSubject.id, zero);
+      }
+
+      return { studentCountBySubject, failedCountBySubject, passedCountBySubject, zeroCountBySubject };
+    };
+
+    const { studentCountBySubject, failedCountBySubject, passedCountBySubject, zeroCountBySubject } =
+      buildSubjectStats(inscriptions);
     const totalStudents = inscriptions.length;
 
     // Discover subj_i named ranges and WRITE the abbreviation of the i-th
@@ -864,6 +862,16 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
         });
       }
 
+      const pageStats = buildSubjectStats(
+        studentList.slice(studentOffset, studentOffset + pageCount)
+      );
+      const {
+        studentCountBySubject,
+        failedCountBySubject,
+        passedCountBySubject,
+        zeroCountBySubject,
+      } = pageStats;
+
       // Write subject headers
       for (let i = 1; i <= sortedAcademicSubjects.length; i++) {
         const ref = findRef('subj_' + i);
@@ -906,7 +914,7 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
             ws.getCell(zeroRef.cell).value = zeroCountBySubject.get(subj.id) || 0;
           }
           if (unenrolledRef) {
-            ws.getCell(unenrolledRef.cell).value = totalStudents - (studentCountBySubject.get(subj.id) || 0);
+            ws.getCell(unenrolledRef.cell).value = pageCount - (studentCountBySubject.get(subj.id) || 0);
           }
         }
       }
