@@ -605,8 +605,10 @@ const PerformanceSummary: React.FC = () => {
                           <LegendRow name="std_part_n" desc="Nombre de la materia pendiente (si tiene)." />
                           <Divider style={{ margin: '10px 0' }} />
                           <div style={{ fontWeight: 700, color: '#0f172a', marginBottom: 6 }}>Encabezados de materias</div>
-                          <LegendRow name="subj_i" desc="Abreviatura de la materia i. El sistema la escribe automáticamente." />
-                          <LegendRow name="subjname_i" desc="Nombre completo de la materia i." />
+                          <LegendRow name="subj_i" desc="Abreviatura de la materia i en los encabezados de notas de la fila 15. El sistema la escribe automáticamente." />
+                          <LegendRow name="subjname_i" desc="Nombre completo de la materia i en la tabla de materias." />
+                          <LegendRow name="area_subj_i" desc="Abreviatura de la materia i en la sección 'Profesores por Áreas'." />
+                          <LegendRow name="area_subjname_i" desc="Nombre completo de la materia i en la sección 'Profesores por Áreas'." />
                           <Divider style={{ margin: '10px 0' }} />
                           <div style={{ fontWeight: 700, color: '#0f172a', marginBottom: 6 }}>Notas por estudiante y materia</div>
                           <LegendRow name="grade_i_n" desc="Nota final del estudiante n en la materia de la columna i." />

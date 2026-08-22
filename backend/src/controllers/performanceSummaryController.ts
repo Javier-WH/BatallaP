@@ -422,7 +422,7 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
 
     const subjectOrderMap = await getSubjectOrderMap(pg.id);
 
-    const subjectMap = new Map<number, { id: number; name: string; abbreviation: string | null; subjectGroupId: number | null; subjectGroupName: string | null; usesLiteralGrades: boolean }>();
+    const subjectMap = new Map<number, { id: number; name: string; abbreviation: string | null; subjectGroupId: number | null; subjectGroupName: string | null; subjectGroupShortAbbr: string | null; subjectGroupLongAbbr: string | null; usesLiteralGrades: boolean }>();
 
     inscriptions.forEach((ins: any) => {
       const sorted = sortSubjectsByOrder(
@@ -439,6 +439,8 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
             abbreviation: is.subject.abbreviation || null,
             subjectGroupId: is.subject.subjectGroupId || null,
             subjectGroupName: is.subject.subjectGroup?.name || null,
+            subjectGroupShortAbbr: is.subject.subjectGroup?.shortAbbreviation || null,
+            subjectGroupLongAbbr: is.subject.subjectGroup?.longAbbreviation || null,
             usesLiteralGrades: is.subject.usesLiteralGrades || false,
           });
         }
@@ -463,6 +465,8 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
           abbreviation: subj.abbreviation || null,
           subjectGroupId: subj.subjectGroupId || null,
           subjectGroupName: subj.subjectGroup?.name || null,
+          subjectGroupShortAbbr: subj.subjectGroup?.shortAbbreviation || null,
+          subjectGroupLongAbbr: subj.subjectGroup?.longAbbreviation || null,
           usesLiteralGrades: subj.usesLiteralGrades || false,
         });
       }
@@ -669,18 +673,30 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
       if (!ref) break;
       const subj = sortedAcademicSubjects[subjIdx - 1];
       if (subj) {
-        const abbrText = subj.abbreviation || subj.name;
-        const headerText = subj.subjectGroupId ? 'PGCRP' : abbrText;
+        const abbrText = subj.subjectGroupId
+          ? (subj.subjectGroupShortAbbr || subj.subjectGroupLongAbbr || subj.name)
+          : (subj.abbreviation || subj.name);
+        const headerText = abbrText;
         sheet!.getCell(ref.cell).value = headerText;
         subjectColList.push({ col: ref.col, abbr: abbrText.toUpperCase() });
         subjectToSubjIndex.set(subjIdx, subj.id);
         // Also write the full subject name into subjname_i if defined
         const nameRef = findRef('subjname_' + subjIdx);
+        const nameText = subj.subjectGroupId
+          ? 'Participación en Grupos de \r\nCreación, Recreación y Producción'
+          : subj.name;
         if (nameRef) {
-          const nameText = subj.subjectGroupId
-            ? 'Participación en Grupos de \r\nCreación, Recreación y Producción'
-            : subj.name;
           sheet!.getCell(nameRef.cell).value = nameText;
+        }
+        // The area table needs its own named ranges because Excel does not
+        // allow the global subj_N name to point to two different cells.
+        const areaRef = findRef('area_subj_' + subjIdx);
+        const areaNameRef = findRef('area_subjname_' + subjIdx);
+        if (areaRef) {
+          sheet!.getCell(areaRef.cell).value = headerText;
+        }
+        if (areaNameRef) {
+          sheet!.getCell(areaNameRef.cell).value = nameText;
         }
         // Write enrolled-student count per subject in the same column
         const countVal = studentCountBySubject.get(subj.id) || 0;
@@ -870,15 +886,21 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
         const unenrolledRef = findRef('subj_unenrolled_' + i);
         const subj = sortedAcademicSubjects[i - 1];
         if (subj) {
-          const abbrText = subj.abbreviation || subj.name;
-          const headerText = subj.subjectGroupId ? 'PGCRP' : abbrText;
+          const abbrText = subj.subjectGroupId
+            ? (subj.subjectGroupShortAbbr || subj.subjectGroupLongAbbr || subj.name)
+            : (subj.abbreviation || subj.name);
+          const headerText = abbrText;
           if (ref) ws.getCell(ref.cell).value = headerText;
+          const nameText = subj.subjectGroupId
+            ? 'Participación en Grupos de \r\nCreación, Recreación y Producción'
+            : subj.name;
           if (nameRef) {
-            const nameText = subj.subjectGroupId
-              ? 'Participación en Grupos de \r\nCreación, Recreación y Producción'
-              : subj.name;
             ws.getCell(nameRef.cell).value = nameText;
           }
+          const areaRef = findRef('area_subj_' + i);
+          const areaNameRef = findRef('area_subjname_' + i);
+          if (areaRef) ws.getCell(areaRef.cell).value = headerText;
+          if (areaNameRef) ws.getCell(areaNameRef.cell).value = nameText;
           if (countRef) {
             ws.getCell(countRef.cell).value = studentCountBySubject.get(subj.id) || 0;
           }
