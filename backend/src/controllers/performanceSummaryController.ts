@@ -210,12 +210,6 @@ function fillSheetByNamedRanges(
     }
   };
 
-  const lowestLetter = (() => {
-    if (!letterGradesConfig || letterGradesConfig.length === 0) return '';
-    const sorted = [...letterGradesConfig].sort((a, b) => a.max - b.max);
-    return sorted[0].letter;
-  })();
-
   setByRange('inst_period', period?.name);
   setByRange('inst_code', settings.institution_dea_code || plantel?.code);
   setByRange('inst_education_code', settings.institution_code);
@@ -271,16 +265,21 @@ function fillSheetByNamedRanges(
     for (let i = 0; i < subjectColList.length; i++) {
       const subjId = subjectToSubjIndex.get(i + 1);
       if (!subjId) continue;
-      const insSub = insSubjects.find((is: any) => is.subjectId === subjId);
+      const columnSubject = academicSubjects.find((s: any) => s.id === subjId);
+      const insSub = insSubjects.find((is: any) =>
+        is.subjectId === subjId || (
+          columnSubject?.subjectGroupId !== null &&
+          columnSubject?.subjectGroupId !== undefined &&
+          is.subject?.subjectGroupId === columnSubject.subjectGroupId
+        )
+      );
       const score = insSub ? calculateFinalScore(insSub) : null;
       const col = subjectColList[i].col;
       const row = 15 + n;
-      const isLiteral = insSub?.subject?.usesLiteralGrades ?? academicSubjects.find((s: any) => s.id === subjId)?.usesLiteralGrades;
+      const isLiteral = insSub?.subject?.usesLiteralGrades ?? columnSubject?.usesLiteralGrades;
       if (isLiteral) {
         if (score != null) {
           sheet.getRow(row).getCell(col).value = numericToLetter(score, letterGradesConfig || []);
-        } else if (lowestLetter) {
-          sheet.getRow(row).getCell(col).value = lowestLetter;
         }
       } else if (score != null) {
         sheet.getRow(row).getCell(col).value = padNumber(score);
@@ -328,6 +327,8 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
     if (!section) return res.status(404).json({ message: 'Seccion no encontrada' });
 
     const gradeOrder = grade.order || 1;
+    const gradeSuffix = gradeOrder === 1 || gradeOrder === 3 ? 'ER' : gradeOrder === 2 ? 'DO' : 'TO';
+    const templateGradeName = `${gradeOrder}${gradeSuffix} AÑO`;
     const sheetName = gradeOrderToSheetName[gradeOrder] || '1er Año';
 
     const pg = await PeriodGrade.findOne({
@@ -426,7 +427,7 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
 
     inscriptions.forEach((ins: any) => {
       const sorted = sortSubjectsByOrder(
-        filterActiveGroupSubjects(ins.inscriptionSubjects || []),
+        ins.inscriptionSubjects || [],
         (is: any) => is.subjectId,
         (is: any) => is.subject?.name,
         subjectOrderMap
@@ -484,9 +485,19 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
       allSubjects.filter(s => s.subjectGroupId !== null).map(s => s.id)
     );
 
-    const academicSubjects = allSubjects.filter(s =>
-      pgSubjectIds.has(s.id)
-    );
+    // The Excel has one column per academic subject, but group subjects are
+    // alternatives: a student has one subject from a group, not all of them.
+    // Collapse all official subjects with the same subjectGroupId into one
+    // representative column while preserving every student's actual subject
+    // for the grade lookup below.
+    const officialSubjects = allSubjects.filter(s => pgSubjectIds.has(s.id));
+    const seenGroupIds = new Set<number>();
+    const academicSubjects = officialSubjects.filter((subject) => {
+      if (subject.subjectGroupId === null) return true;
+      if (seenGroupIds.has(subject.subjectGroupId)) return false;
+      seenGroupIds.add(subject.subjectGroupId);
+      return true;
+    });
 
     // Query teacher assignments for this section + periodGrade. Build map:
     // subjectId → { fullName, docWithType }
@@ -917,7 +928,7 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
         subjectColList, subjectToSubjIndex,
         calculateFinalScore, subjectOrderMap, studentOffset,
         actualSheetName,  // named ranges registered under the original sheet
-        grade?.name,
+        templateGradeName,
         section?.name,
         letterGradesConfig,
       );
