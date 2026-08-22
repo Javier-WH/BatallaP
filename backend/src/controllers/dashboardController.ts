@@ -14,6 +14,8 @@ import Person from '@/models/Person';
 import Subject from '@/models/Subject';
 import EvaluationPlan from '@/models/EvaluationPlan';
 import Qualification from '@/models/Qualification';
+import ThematicComponent from '@/models/ThematicComponent';
+import ExpectedLearningContent from '@/models/ExpectedLearningContent';
 import Setting from '@/models/Setting';
 import User from '@/models/User';
 import { PeriodClosureService } from '@/services/periodClosureService';
@@ -51,6 +53,7 @@ type AcademicSnapshot =
         sampleWithoutPlans: AssignmentInsight[];
         sampleWithoutGrades: AssignmentInsight[];
         byGrade: GradeProgress[];
+        byGradeContent: ContentGradeProgress[];
       };
     };
 
@@ -91,6 +94,24 @@ interface GradeProgress {
   gradeColor: string | null;
   gradeOrder: number;
   subjects: SubjectProgress[];
+}
+
+interface ContentSubjectProgress {
+  subjectId: number;
+  subjectName: string;
+  subjectIcon: string | null;
+  subjectColor: string | null;
+  subjectAbbreviation: string | null;
+  order: number;
+  hasContent: boolean;
+}
+
+interface ContentGradeProgress {
+  gradeId: number;
+  gradeName: string;
+  gradeColor: string | null;
+  gradeOrder: number;
+  subjects: ContentSubjectProgress[];
 }
 
 const buildAcademicSnapshot = async (): Promise<AcademicSnapshot> => {
@@ -164,7 +185,8 @@ const buildAcademicSnapshot = async (): Promise<AcademicSnapshot> => {
         withoutGrades: 0,
         sampleWithoutPlans: [],
         sampleWithoutGrades: [],
-        byGrade: []
+        byGrade: [],
+        byGradeContent: []
       }
     };
   }
@@ -328,6 +350,86 @@ const buildAcademicSnapshot = async (): Promise<AcademicSnapshot> => {
     }))
     .sort((a, b) => a.gradeOrder - b.gradeOrder);
 
+  // ===== Content progress: check which pgsIds have the full chain Component → Content → Learning =====
+  const pgsIdsInPeriod = [...new Set(assignments.map(a => a.periodGradeSubject?.id).filter(Boolean) as number[])];
+
+  const pgsWithContent = new Set<number>();
+  if (pgsIdsInPeriod.length > 0) {
+    const contentChain = await ThematicComponent.findAll({
+      attributes: ['id', 'periodGradeSubjectId'],
+      where: { periodGradeSubjectId: { [Op.in]: pgsIdsInPeriod } },
+      include: [{
+        association: 'contents',
+        attributes: ['id'],
+        required: true,
+        include: [{
+          association: 'learnings',
+          attributes: ['id'],
+          required: true,
+          through: { attributes: [] },
+        }],
+      }],
+    });
+    contentChain.forEach(comp => {
+      if (comp.periodGradeSubjectId) pgsWithContent.add(comp.periodGradeSubjectId);
+    });
+  }
+
+  // Build pgsId → grade/subject info map from assignments
+  const pgsInfoMap = new Map<number, {
+    gradeId: number; gradeName: string; gradeColor: string | null; gradeOrder: number;
+    subjectId: number; subjectName: string; subjectIcon: string | null;
+    subjectColor: string | null; subjectAbbreviation: string | null; order: number;
+  }>();
+  assignments.forEach(a => {
+    const pgs = a.periodGradeSubject;
+    const grade = pgs?.periodGrade?.grade;
+    const subject = pgs?.subject;
+    if (!grade || !subject || !pgs?.id || pgsInfoMap.has(pgs.id)) return;
+    pgsInfoMap.set(pgs.id, {
+      gradeId: grade.id,
+      gradeName: grade.name,
+      gradeColor: pgs.periodGrade?.color ?? null,
+      gradeOrder: grade.order ?? Number.MAX_SAFE_INTEGER,
+      subjectId: subject.id,
+      subjectName: subject.name,
+      subjectIcon: subject.icon ?? null,
+      subjectColor: subject.color ?? null,
+      subjectAbbreviation: subject.abbreviation ?? null,
+      order: a.periodGradeSubject?.order ?? Number.MAX_SAFE_INTEGER,
+    });
+  });
+
+  // Group by grade
+  const contentGradeMap = new Map<number, ContentGradeProgress>();
+  pgsInfoMap.forEach((info, pgsId) => {
+    if (!contentGradeMap.has(info.gradeId)) {
+      contentGradeMap.set(info.gradeId, {
+        gradeId: info.gradeId,
+        gradeName: info.gradeName,
+        gradeColor: info.gradeColor,
+        gradeOrder: info.gradeOrder,
+        subjects: [],
+      });
+    }
+    contentGradeMap.get(info.gradeId)!.subjects.push({
+      subjectId: info.subjectId,
+      subjectName: info.subjectName,
+      subjectIcon: info.subjectIcon,
+      subjectColor: info.subjectColor,
+      subjectAbbreviation: info.subjectAbbreviation,
+      order: info.order,
+      hasContent: pgsWithContent.has(pgsId),
+    });
+  });
+
+  const byGradeContent: ContentGradeProgress[] = Array.from(contentGradeMap.values())
+    .map(g => ({
+      ...g,
+      subjects: g.subjects.sort((a, b) => a.order - b.order),
+    }))
+    .sort((a, b) => a.gradeOrder - b.gradeOrder);
+
   return {
     period: { id: activePeriod.id, name: activePeriod.name, period: activePeriod.period },
     students: {
@@ -351,7 +453,8 @@ const buildAcademicSnapshot = async (): Promise<AcademicSnapshot> => {
       withoutGrades: assignmentsWithoutGrades.length,
       sampleWithoutPlans: assignmentsWithoutPlan.slice(0, 6),
       sampleWithoutGrades: assignmentsWithoutGrades.slice(0, 6),
-      byGrade
+      byGrade,
+      byGradeContent
     }
   };
 };

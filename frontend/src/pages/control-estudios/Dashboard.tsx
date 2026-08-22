@@ -4,6 +4,7 @@ import {
   TeamOutlined,
   UserOutlined,
   BookOutlined,
+  ReadOutlined,
   CheckCircleOutlined,
   ClockCircleOutlined,
   ExclamationCircleOutlined,
@@ -33,6 +34,7 @@ interface ControlPanelData {
     sampleWithoutPlans: AssignmentInsight[];
     sampleWithoutGrades: AssignmentInsight[];
     byGrade: GradeProgress[];
+    byGradeContent: ContentGradeProgress[];
   };
 }
 
@@ -73,6 +75,24 @@ interface GradeProgress {
   gradeColor: string | null;
   gradeOrder: number;
   subjects: SubjectProgress[];
+}
+
+interface ContentSubjectProgress {
+  subjectId: number;
+  subjectName: string;
+  subjectIcon: string | null;
+  subjectColor: string | null;
+  subjectAbbreviation: string | null;
+  order: number;
+  hasContent: boolean;
+}
+
+interface ContentGradeProgress {
+  gradeId: number;
+  gradeName: string;
+  gradeColor: string | null;
+  gradeOrder: number;
+  subjects: ContentSubjectProgress[];
 }
 
 /* ---------- Animated counter hook ---------- */
@@ -205,21 +225,27 @@ const FadeIn: React.FC<{ children: React.ReactNode; delay?: number; className?: 
 
 /* ---------- Quick action button ---------- */
 /* ---------- Subject progress row ---------- */
-// Convert "QUINTO AÑO" → "5to Año", "PRIMERO AÑO" → "1ro Año", etc.
+// Convert "Primer año" → "1er", "Quinto año" → "5to", etc.
+// Includes apocoped forms (primer, tercer) used in some DB entries.
 const ordinalToNumber: Record<string, string> = {
-  'primero': '1ro', 'segundo': '2do', 'tercero': '3ro',
-  'cuarto': '4to', 'quinto': '5to', 'sexto': '6to',
-  'séptimo': '7mo', 'octavo': '8vo', 'noveno': '9no',
-  'décimo': '10mo', 'undécimo': '11mo', 'duodécimo': '12mo',
+  'primero': '1er', 'primer': '1er',
+  'segundo': '2do',
+  'tercero': '3ro', 'tercer': '3ro',
+  'cuarto': '4to',
+  'quinto': '5to',
+  'sexto': '6to',
+  'séptimo': '7mo',
+  'octavo': '8vo',
+  'noveno': '9no',
+  'décimo': '10mo',
+  'undécimo': '11mo',
+  'duodécimo': '12mo',
 };
 const shortGradeName = (name: string): string => {
   const lower = name.toLowerCase().trim();
   for (const [word, num] of Object.entries(ordinalToNumber)) {
     if (lower.startsWith(word)) {
-      const rest = name.slice(word.length);
-      // Capitalize "Año" if present
-      const fixedRest = rest.replace(/a[ñn]o/i, 'Año');
-      return num + fixedRest;
+      return num;
     }
   }
   return name;
@@ -450,6 +476,167 @@ const GradeProgressCard: React.FC<{
   );
 };
 
+/* ---------- Content progress card (simplified, no sections) ---------- */
+const ContentProgressCard: React.FC<{
+  title: React.ReactNode;
+  extra: React.ReactNode;
+  byGrade: ContentGradeProgress[];
+}> = ({ title, extra, byGrade }) => {
+  const [activeGrade, setActiveGrade] = useState<string>(byGrade[0]?.gradeId?.toString() || '');
+
+  useEffect(() => {
+    if (byGrade.length > 0 && !byGrade.find(g => g.gradeId.toString() === activeGrade)) {
+      setActiveGrade(byGrade[0].gradeId.toString());
+    }
+  }, [byGrade]);
+
+  if (byGrade.length === 0) {
+    return (
+      <Card className="h-full" bodyStyle={{ padding: 24 }} title={title} extra={extra}>
+        <div className="flex flex-col items-center justify-center py-8">
+          <CheckCircleOutlined style={{ fontSize: 36, color: '#16a34a', marginBottom: 8 }} />
+          <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>Sin asignaciones</p>
+        </div>
+      </Card>
+    );
+  }
+
+  const gradePct = (grade: ContentGradeProgress): number => {
+    if (grade.subjects.length === 0) return 0;
+    const done = grade.subjects.filter(s => s.hasContent).length;
+    return Math.round((done / grade.subjects.length) * 100);
+  };
+
+  const activeGradeData = byGrade.find(g => g.gradeId.toString() === activeGrade) || byGrade[0];
+  const overall = gradePct(activeGradeData);
+
+  return (
+    <Card
+      className="h-full"
+      bodyStyle={{ padding: 16 }}
+      title={
+        <div className="flex items-center justify-between w-full">
+          {title}
+          <div
+            className="flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold tabular-nums"
+            style={{ backgroundColor: '#0f172a', color: '#fff' }}
+          >
+            <span style={{ color: 'rgba(255,255,255,0.6)', fontWeight: 500 }}>Total</span>
+            <span>{overall}%</span>
+          </div>
+        </div>
+      }
+      extra={extra}
+    >
+      {/* Compact tab buttons */}
+      <div className="flex flex-wrap gap-1.5 mb-3">
+        {byGrade.map(grade => {
+          const pct = gradePct(grade);
+          const active = grade.gradeId.toString() === activeGrade;
+          const gColor = grade.gradeColor || '#1e40af';
+          const badgeBg =
+            pct === 100 ? 'rgba(16,163,74,0.12)' :
+            pct === 0   ? 'rgba(239,68,68,0.12)' :
+                          'rgba(245,158,11,0.12)';
+          const badgeColor =
+            pct === 100 ? '#16a34a' :
+            pct === 0   ? '#ef4444' :
+                          '#f59e0b';
+          return (
+            <button
+              key={grade.gradeId}
+              onClick={() => setActiveGrade(grade.gradeId.toString())}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors"
+              style={
+                active
+                  ? { backgroundColor: gColor, color: '#fff', borderColor: gColor }
+                  : { backgroundColor: '#fff', color: 'rgba(15,23,42,0.6)', borderColor: 'rgba(15,23,42,0.12)' }
+              }
+            >
+              {shortGradeName(grade.gradeName)}
+              <span
+                className="text-[10px] font-bold px-1.5 py-0.5 rounded-full tabular-nums"
+                style={active
+                  ? { backgroundColor: 'rgba(255,255,255,0.15)', color: '#fff' }
+                  : { backgroundColor: badgeBg, color: badgeColor }}
+              >
+                {pct}%
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Subject list — one row per subject, single bar */}
+      <div className="border border-slate-200 rounded-xl overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse">
+            <thead>
+              <tr style={{ backgroundColor: 'rgba(15,23,42,0.03)' }}>
+                <th
+                  className="text-left text-[10px] font-semibold uppercase tracking-wide px-3 py-2 border-b border-slate-200"
+                  style={{ color: 'rgba(15,23,42,0.5)' }}
+                >
+                  Materia
+                </th>
+                <th
+                  className="text-center text-[10px] font-semibold uppercase tracking-wide px-3 py-2 border-b border-slate-200"
+                  style={{ color: 'rgba(15,23,42,0.5)', width: 120 }}
+                >
+                  Contenido
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {activeGradeData.subjects.map(subject => {
+                const { Icon, color: subjColor } = getSubjectVisual({
+                  name: subject.subjectName,
+                  icon: subject.subjectIcon,
+                  color: subject.subjectColor,
+                });
+                const v = subject.hasContent ? 100 : 0;
+                const b = BAND_STYLES[bandOf(v)];
+                return (
+                  <tr key={subject.subjectId} className="hover:bg-slate-50/70">
+                    <td className="px-3 py-1.5 border-b border-slate-100 last:border-0">
+                      <div className="flex items-center gap-2 text-[12.5px] font-medium" style={{ color: 'rgba(15,23,42,0.9)' }}>
+                        <Icon style={{ width: 15, height: 15, color: subjColor, flexShrink: 0 }} />
+                        <span
+                          style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                          title={subject.subjectName}
+                        >
+                          {subject.subjectName}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-3 py-1.5 border-b border-slate-100 last:border-0">
+                      <div className={`flex items-center gap-2 rounded-md px-2 py-1 ${b.wrap}`}>
+                        <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: 'rgba(0,0,0,0.07)' }}>
+                          <div className={`h-full rounded-full ${b.bar}`} style={{ width: `${v}%` }} />
+                        </div>
+                        <span className={`flex items-center gap-0.5 text-[11px] font-semibold tabular-nums min-w-[32px] justify-end ${b.text}`}>
+                          {v}%
+                          {v === 100 && <CheckCircleOutlined style={{ fontSize: 10 }} />}
+                        </span>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Legend */}
+        <div className="flex items-center gap-3 px-3 py-2 border-t border-slate-200 text-[10px]" style={{ color: 'rgba(15,23,42,0.5)' }}>
+          <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-red-500" />Sin contenido</span>
+          <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-emerald-500" />Completo</span>
+        </div>
+      </div>
+    </Card>
+  );
+};
+
 const ControlEstudiosDashboard: React.FC = () => {
   const [data, setData] = useState<ControlPanelData | null>(null);
   const [loading, setLoading] = useState(false);
@@ -558,7 +745,7 @@ const ControlEstudiosDashboard: React.FC = () => {
         {/* ===== Charts Row ===== */}
         <Row gutter={[20, 20]}>
           {/* Matriculation Donut */}
-          <Col xs={24} md={8}>
+          <Col xs={24} md={6}>
             <FadeIn delay={250}>
               <Card className="h-full" bodyStyle={{ padding: 24 }}>
                 <div className="flex flex-col items-center">
@@ -589,7 +776,7 @@ const ControlEstudiosDashboard: React.FC = () => {
           </Col>
 
           {/* Teacher Compliance Bars */}
-          <Col xs={24} md={8}>
+          <Col xs={24} md={6}>
             <FadeIn delay={300}>
               <Card className="h-full" bodyStyle={{ padding: 24 }}>
                 <h3 className="text-sm font-bold uppercase tracking-wider mb-6" style={{ color: 'var(--color-text-muted)' }}>Cumplimiento Docente</h3>
@@ -616,7 +803,7 @@ const ControlEstudiosDashboard: React.FC = () => {
           </Col>
 
           {/* Lapses Progress */}
-          <Col xs={24} md={8}>
+          <Col xs={24} md={6}>
             <FadeIn delay={350}>
               <Card className="h-full" bodyStyle={{ padding: 24 }}>
                 <h3 className="text-sm font-bold uppercase tracking-wider mb-6" style={{ color: 'var(--color-text-muted)' }}>Estado de Lapsos</h3>
@@ -624,7 +811,7 @@ const ControlEstudiosDashboard: React.FC = () => {
                   <Progress
                     type="circle"
                     percent={lapsesRate}
-                    size={140}
+                    size={120}
                     strokeColor={{ '0%': '#1e40af', '100%': '#0ea5e9' }}
                     format={(pct) => <span style={{ color: 'var(--color-text-main)', fontWeight: 800 }}>{pct}%</span>}
                   />
@@ -642,38 +829,9 @@ const ControlEstudiosDashboard: React.FC = () => {
               </Card>
             </FadeIn>
           </Col>
-        </Row>
 
-        {/* ===== Progress Cards (left, side by side) + Lapsos (right) ===== */}
-        <Row gutter={[20, 20]}>
-          {/* Plans Progress by Grade */}
-          <Col xs={24} lg={9}>
-            <FadeIn delay={450}>
-              <GradeProgressCard
-                title={<span className="flex items-center gap-2 text-sm font-bold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}><BookOutlined style={{ color: '#f59e0b' }} /> Planes de Evaluación</span>}
-                extra={<Tag color="warning" className="font-bold rounded-full">{data.teachers.withoutPlans}</Tag>}
-                byGrade={data.teachers.byGrade}
-                mode="plan"
-                accentColor="#f59e0b"
-              />
-            </FadeIn>
-          </Col>
-
-          {/* Grades Progress by Grade */}
-          <Col xs={24} lg={9}>
-            <FadeIn delay={500}>
-              <GradeProgressCard
-                title={<span className="flex items-center gap-2 text-sm font-bold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}><ExclamationCircleOutlined style={{ color: '#ef4444' }} /> Carga de Notas</span>}
-                extra={<Tag color="error" className="font-bold rounded-full">{data.teachers.withoutGrades}</Tag>}
-                byGrade={data.teachers.byGrade}
-                mode="grades"
-                accentColor="#ef4444"
-              />
-            </FadeIn>
-          </Col>
-
-          {/* Lapsos */}
-          <Col xs={24} lg={6}>
+          {/* Lapsos Académicos */}
+          <Col xs={24} md={6}>
             <FadeIn delay={400}>
               <Card className="h-full" bodyStyle={{ padding: 20 }}>
                 <div className="flex items-center gap-2 mb-4">
@@ -712,6 +870,46 @@ const ControlEstudiosDashboard: React.FC = () => {
                   </div>
                 )}
               </Card>
+            </FadeIn>
+          </Col>
+        </Row>
+
+        {/* ===== Progress Cards: Planes + Notas (left) + Contenidos (right) ===== */}
+        <Row gutter={[20, 20]}>
+          {/* Plans Progress by Grade */}
+          <Col xs={24} lg={9}>
+            <FadeIn delay={450}>
+              <GradeProgressCard
+                title={<span className="flex items-center gap-2 text-sm font-bold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}><BookOutlined style={{ color: '#f59e0b' }} /> Planes de Evaluación</span>}
+                extra={<Tag color="warning" className="font-bold rounded-full">{data.teachers.withoutPlans}</Tag>}
+                byGrade={data.teachers.byGrade}
+                mode="plan"
+                accentColor="#f59e0b"
+              />
+            </FadeIn>
+          </Col>
+
+          {/* Grades Progress by Grade */}
+          <Col xs={24} lg={9}>
+            <FadeIn delay={500}>
+              <GradeProgressCard
+                title={<span className="flex items-center gap-2 text-sm font-bold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}><ExclamationCircleOutlined style={{ color: '#ef4444' }} /> Carga de Notas</span>}
+                extra={<Tag color="error" className="font-bold rounded-full">{data.teachers.withoutGrades}</Tag>}
+                byGrade={data.teachers.byGrade}
+                mode="grades"
+                accentColor="#ef4444"
+              />
+            </FadeIn>
+          </Col>
+
+          {/* Content Progress by Grade */}
+          <Col xs={24} lg={6}>
+            <FadeIn delay={550}>
+              <ContentProgressCard
+                title={<span className="flex items-center gap-2 text-sm font-bold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}><ReadOutlined style={{ color: '#0ea5e9' }} /> Carga de Contenidos</span>}
+                extra={<Tag color="processing" className="font-bold rounded-full">{data.teachers.byGradeContent.filter(g => g.subjects.some(s => !s.hasContent)).length}</Tag>}
+                byGrade={data.teachers.byGradeContent}
+              />
             </FadeIn>
           </Col>
         </Row>
