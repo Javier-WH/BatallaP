@@ -259,14 +259,17 @@ const SortableSubjectItem: React.FC<SortableSubjectItemProps> = ({ subject, peri
       <Space>
         {onToggleAverage && (
           <Tooltip title={subject.includeInAverage !== false ? 'Cuenta para promedio' : 'No cuenta para promedio'}>
-            <Switch
-              size="small"
-              checked={subject.includeInAverage !== false}
-              onClick={(checked, e) => {
-                e?.stopPropagation();
-                onToggleAverage(periodGradeId, subject.id, checked);
-              }}
-            />
+            <Space size={4}>
+              <span style={{ fontSize: 11, fontWeight: 600, color: subject.includeInAverage !== false ? '#52c41a' : '#bfbfbf' }}>Promedio</span>
+              <Switch
+                size="small"
+                checked={subject.includeInAverage !== false}
+                onClick={(checked, e) => {
+                  e?.stopPropagation();
+                  onToggleAverage(periodGradeId, subject.id, checked);
+                }}
+              />
+            </Space>
           </Tooltip>
         )}
         {onAssignTeacher && (
