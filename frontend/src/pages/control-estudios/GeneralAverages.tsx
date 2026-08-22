@@ -126,24 +126,18 @@ export default function GeneralAverages() {
       ? selectedTerms
       : data.terms.map((t) => t.id);
 
-    // Compute average per student
-    // Use generalAverage from backend (same method as boletin) when available
-    // Fall back to averaging visible term scores if not available
+    // Compute average per student using the selected terms' scores.
+    // Each termGrades[i].score is already the average of integer final grades
+    // for that term (computed by the backend), so we just average the selected
+    // terms' scores with 2 decimals.
     const withAvg = filtered.map((s) => {
-      let avg: number;
-      if (s.generalAverage !== undefined && s.generalAverage !== null) {
-        // Use the backend's generalAverage (consistent with boletin/resumen-rendimiento)
-        avg = s.generalAverage;
-      } else {
-        // Fallback: average of visible term scores
-        const scores = s.termGrades
-          .filter((tg) => termIds.includes(tg.termId))
-          .map((tg) => tg.score)
-          .filter((v): v is number => v !== null && v !== undefined);
-        avg = scores.length > 0
-          ? Number((scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(2))
-          : 0;
-      }
+      const scores = s.termGrades
+        .filter((tg) => termIds.includes(tg.termId))
+        .map((tg) => tg.score)
+        .filter((v): v is number => v !== null && v !== undefined);
+      const avg = scores.length > 0
+        ? Number((scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(2))
+        : 0;
       return { ...s, average: avg };
     });
 
