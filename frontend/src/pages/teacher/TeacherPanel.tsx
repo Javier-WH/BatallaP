@@ -1304,7 +1304,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
   return (
     <div className="h-full overflow-y-auto theme-page-bg p-4 md:p-8">
       <style>{`
-        .grading-row:hover { background-color: color-mix(in srgb, var(--color-accent) 4%, transparent) !important; }
+        .grading-row:hover td { background-color: color-mix(in srgb, var(--color-accent) 8%, transparent) !important; }
         .grading-row td { transition: background-color 0.2s; }
         .grading-cell .ant-input-number-input { text-align: center !important; padding: 0 !important; }
         @keyframes flash-red {
