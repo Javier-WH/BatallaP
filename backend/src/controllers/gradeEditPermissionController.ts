@@ -17,7 +17,6 @@ import {
 const hasRole = (user: any, roles: string[]): boolean => {
   if (!user || !user.roles) return false;
   const userRoles = user.roles.map((r: any) => typeof r === 'string' ? r : r.name);
-  console.log('[hasRole] User roles:', userRoles, 'Required roles:', roles, 'Has role:', roles.some(role => userRoles.includes(role)));
   return roles.some(role => userRoles.includes(role));
 };
 
