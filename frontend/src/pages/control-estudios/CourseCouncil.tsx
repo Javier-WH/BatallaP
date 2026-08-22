@@ -1463,7 +1463,7 @@ const CourseCouncil: React.FC = () => {
                     }
                   }}
                   onFocus={(e) => e.target.select()}
-                  disabled={isReadOnly || !isSelectedSectionClosed()}
+                  disabled={isReadOnly || !isSelectedSectionClosed() || councilDone}
                   className="premium-input-number"
                   style={{ width: 42, fontWeight: 700, borderRadius: 6, textAlign: 'center', padding: '0 2px' }}
                 />
@@ -1625,7 +1625,7 @@ const CourseCouncil: React.FC = () => {
               icon={<SaveOutlined />}
               onClick={handleSave}
               loading={saving}
-              disabled={isReadOnly || !isSelectedSectionClosed()}
+              disabled={isReadOnly || !isSelectedSectionClosed() || councilDone}
               style={{
                 borderRadius: 14,
                 fontWeight: 800,

@@ -6,6 +6,7 @@ import {
   Subject,
   SubjectGroup,
   CouncilPoint,
+  CouncilChecklist,
   PeriodGrade,
   PeriodGradeSubject,
   Term,
@@ -206,6 +207,22 @@ export const saveCouncilPoint = async (req: Request, res: Response) => {
       : term.isBlocked;
     if (sectionClosed) return res.status(403).json({ message: 'El lapso está cerrado para esta sección' });
 
+    // Check if the council is marked as done for this section+term
+    if (sectionId && gradeId) {
+      const checklist = await CouncilChecklist.findOne({
+        where: {
+          schoolPeriodId: term.schoolPeriodId,
+          gradeId,
+          sectionId,
+          termId,
+          status: 'done',
+        },
+      });
+      if (checklist) {
+        return res.status(403).json({ message: 'El consejo de curso está marcado como completado. Desmárcalo primero para editar.' });
+      }
+    }
+
     const [point, created] = await CouncilPoint.findOrCreate({
       where: { inscriptionSubjectId, termId },
       defaults: { inscriptionSubjectId, termId, points }
@@ -260,6 +277,48 @@ export const bulkSaveCouncilPoints = async (req: Request, res: Response) => {
       arr.push(is.id);
       inscriptionMap.set(is.inscriptionId, arr);
     });
+
+    // Check if any section+term has the council marked as done — if so, reject the save
+    const inscriptions = await Inscription.findAll({
+      where: { id: [...inscriptionMap.keys()] },
+      attributes: ['id', 'sectionId', 'gradeId', 'schoolPeriodId'],
+    });
+    // Build unique (schoolPeriodId, gradeId, sectionId, termId) keys to check
+    const checkKeys = new Set<string>();
+    const termIds = [...new Set(updates.map((u: any) => u.termId))];
+    for (const ins of inscriptions) {
+      for (const termId of termIds) {
+        checkKeys.add(`${ins.schoolPeriodId}:${ins.gradeId}:${ins.sectionId}:${termId}`);
+      }
+    }
+    const checkLookups: Promise<void>[] = [];
+    for (const key of checkKeys) {
+      const [spId, gId, sId, tId] = key.split(':').map(Number);
+      checkLookups.push(
+        (async () => {
+          const checklist = await CouncilChecklist.findOne({
+            where: {
+              schoolPeriodId: spId,
+              gradeId: gId,
+              sectionId: sId,
+              termId: tId,
+              status: 'done',
+            },
+          });
+          if (checklist) {
+            throw new Error('COUNCIL_DONE');
+          }
+        })()
+      );
+    }
+    try {
+      await Promise.all(checkLookups);
+    } catch (err: any) {
+      if (err.message === 'COUNCIL_DONE') {
+        return res.status(403).json({ message: 'El consejo de curso está marcado como completado. Desmárcalo primero para editar.' });
+      }
+      throw err;
+    }
 
     for (const [inscriptionId, subIds] of inscriptionMap) {
       // Sum points from updates for this inscription
