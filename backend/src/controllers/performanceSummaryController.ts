@@ -692,8 +692,11 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
         // allow the global subj_N name to point to two different cells.
         const areaRef = findRef('area_subj_' + subjIdx);
         const areaNameRef = findRef('area_subjname_' + subjIdx);
+        const areaHeaderText = subj.subjectGroupId
+          ? (subj.subjectGroupLongAbbr || '-')
+          : (subj.abbreviation || '-');
         if (areaRef) {
-          sheet!.getCell(areaRef.cell).value = headerText;
+          sheet!.getCell(areaRef.cell).value = areaHeaderText;
         }
         if (areaNameRef) {
           sheet!.getCell(areaNameRef.cell).value = nameText;
@@ -899,7 +902,10 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
           }
           const areaRef = findRef('area_subj_' + i);
           const areaNameRef = findRef('area_subjname_' + i);
-          if (areaRef) ws.getCell(areaRef.cell).value = headerText;
+          const areaHeaderText = subj.subjectGroupId
+            ? (subj.subjectGroupLongAbbr || '-')
+            : (subj.abbreviation || '-');
+          if (areaRef) ws.getCell(areaRef.cell).value = areaHeaderText;
           if (areaNameRef) ws.getCell(areaNameRef.cell).value = nameText;
           if (countRef) {
             ws.getCell(countRef.cell).value = studentCountBySubject.get(subj.id) || 0;
