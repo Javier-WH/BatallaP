@@ -765,8 +765,12 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
 
         const teacherNameRef = findRef(`teacher_name_${i}`);
         const teacherDocRef = findRef(`teacher_doc_${i}`);
+        const teacherSignRef = findRef(`teacher_sign_${i}`);
         if (teacherNameRef) ws.getCell(teacherNameRef.cell).value = teacher.fullName;
         if (teacherDocRef) ws.getCell(teacherDocRef.cell).value = teacher.docWithType;
+        // Remove the template placeholder only when a teacher exists. If no
+        // teacher is assigned, leave the template cell untouched.
+        if (teacherSignRef) ws.getCell(teacherSignRef.cell).value = '';
       }
     };
 
