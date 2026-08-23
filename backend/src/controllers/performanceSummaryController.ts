@@ -36,6 +36,7 @@ import { filterActiveGroupSubjects } from '@/services/subjectGroupService';
 import { isPassingGrade, resolveGradeStatus, roundFinalGrade, MIN_FINAL_GRADE } from '@/services/gradeEvaluationService';
 import { GradeCalculationService } from '@/services/gradeCalculationService';
 import { readTemplateNamedRanges, TemplateNamedRanges } from '@/services/templateNamedRanges';
+import { sortInscriptions } from '@/services/studentSortService';
 
 const gradeOrderToSheetName: Record<number, string> = {
   1: '1er Año',
@@ -412,16 +413,8 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'No hay estudiantes inscritos en esta seccion' });
     }
 
-    // Sort students by document number ascending (numeric), with
-    // 'Cedula Escolar' documents placed at the end.
-    inscriptions.sort((a: any, b: any) => {
-      const aIsSchool = a.student?.documentType === 'Cedula Escolar';
-      const bIsSchool = b.student?.documentType === 'Cedula Escolar';
-      if (aIsSchool !== bIsSchool) return aIsSchool ? 1 : -1;
-      const aDoc = Number(a.student?.document) || 0;
-      const bDoc = Number(b.student?.document) || 0;
-      return aDoc - bDoc;
-    });
+    // Sort students canonically: document type priority → document number → lastName → firstName
+    sortInscriptions(inscriptions as any[]);
 
     const subjectOrderMap = await getSubjectOrderMap(pg.id);
 
@@ -1241,6 +1234,9 @@ export const getBoletinData = async (req: Request, res: Response) => {
       ],
     });
 
+    // Sort students canonically: document type → document number → lastName → firstName → grade → section
+    sortInscriptions(inscriptions as any[]);
+
     const students = inscriptions.map((ins: any) => {
       const activeInscriptionSubjects = filterActiveGroupSubjects(ins.inscriptionSubjects || []);
       const insSubs = sortSubjectsByOrder(
@@ -1502,6 +1498,9 @@ export const getGeneralAverages = async (req: Request, res: Response) => {
         [{ model: Person, as: 'student' }, 'firstName', 'ASC'],
       ],
     });
+
+    // Sort students canonically: document type → document number → lastName → firstName → grade → section
+    sortInscriptions(inscriptions as any[]);
 
     const students = inscriptions.map((ins: any) => {
       const gradeId = ins.grade?.id || 0;

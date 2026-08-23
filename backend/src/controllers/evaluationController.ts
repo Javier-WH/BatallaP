@@ -45,6 +45,7 @@ import { filterActiveGroupSubjects } from '@/services/subjectGroupService';
 import { resolveGradeStatus, MIN_FINAL_GRADE } from '@/services/gradeEvaluationService';
 import { TermSectionClosureService } from '@/services/termSectionClosureService';
 import { TermGradeSyncService } from '@/services/termGradeSyncService';
+import { sortInscriptions } from '@/services/studentSortService';
 
 export const getMyAssignments = async (req: Request, res: Response) => {
   try {
@@ -1091,6 +1092,9 @@ export const getFinalGradesByPeriod = async (req: Request, res: Response) => {
       ]
     });
 
+    // Sort students canonically: document type → document number → lastName → firstName → grade → section
+    sortInscriptions(inscriptions as any[]);
+
     console.log(`[getFinalGradesByPeriod] Period ID: ${schoolPeriodId}, Total inscriptions found: ${inscriptions.length}`);
 
     // Get all subjects for this period's grades
@@ -1773,11 +1777,8 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
       ]
     });
 
-    // Sort by numeric part of document (ascending)
-    inscriptions.sort((a: any, b: any) => {
-      const parseDoc = (doc: string) => parseInt((doc || '').replace(/\D/g, ''), 10) || 0;
-      return parseDoc(a.student?.document) - parseDoc(b.student?.document);
-    });
+    // Sort students canonically: document type → document number → lastName → firstName
+    sortInscriptions(inscriptions as any[]);
 
     const subject = (assignment as any).periodGradeSubject.subject;
     const section = (assignment as any).section;
@@ -2316,6 +2317,9 @@ export const exportGradesExcel = async (req: Request, res: Response) => {
         [{ model: Person, as: 'student' }, 'firstName', 'ASC']
       ]
     });
+
+    // Sort students canonically: document type → document number → lastName → firstName
+    sortInscriptions(inscriptions as any[]);
 
     const subject = (assignment as any).periodGradeSubject.subject;
     const section = (assignment as any).section;

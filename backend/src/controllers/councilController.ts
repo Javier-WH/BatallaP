@@ -23,6 +23,7 @@ import {
 } from '@/services/subjectOrderService';
 import { filterActiveGroupSubjects } from '@/services/subjectGroupService';
 import { TermSectionClosureService } from '@/services/termSectionClosureService';
+import { sortInscriptions } from '@/services/studentSortService';
 
 export const getCouncilData = async (req: Request, res: Response) => {
   try {
@@ -77,6 +78,9 @@ export const getCouncilData = async (req: Request, res: Response) => {
         }
       ]
     });
+
+    // Sort students canonically: document type → document number → lastName → firstName
+    sortInscriptions(inscriptions as any[]);
 
     // To order subjects correctly, we need the order from PeriodGradeSubject
     // Since all students in this query belong to the same Grade/Period, we can just fetch the order once

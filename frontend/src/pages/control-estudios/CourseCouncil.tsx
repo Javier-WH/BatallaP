@@ -16,6 +16,7 @@ import api from '@/services/api';
 import { useGradeRounding } from '@/context/GradeRoundingContext';
 import { useSchool } from '@/context/SchoolContext';
 import { formatGrade, isPassingGrade } from '@/utils/gradeFormat';
+import { compareStudents } from '@/utils/studentSort';
 
 const { Title, Text } = Typography;
 
@@ -205,10 +206,10 @@ const CourseCouncil: React.FC = () => {
           ? api.get(`/section-guides?schoolPeriodId=${viewPeriod.id}&gradeId=${gradeId}&sectionId=${sectionId}`)
           : Promise.resolve({ data: null })
       ]);
-      setStudentsData((res.data as CouncilStudent[]).slice().sort((a, b) => {
-        const parseDoc = (doc: string) => parseInt((doc || '').replace(/\D/g, ''), 10) || 0;
-        return parseDoc(a.studentDni) - parseDoc(b.studentDni);
-      }));
+      setStudentsData((res.data as CouncilStudent[]).slice().sort((a, b) => compareStudents(
+        { document: a.studentDni, documentType: a.documentType, lastName: a.studentName, firstName: '' },
+        { document: b.studentDni, documentType: b.documentType, lastName: b.studentName, firstName: '' }
+      )));
       setCouncilDone(checklistRes.data?.status === 'done');
       setCouncilCompletedAt(checklistRes.data?.completedAt ? new Date(checklistRes.data.completedAt) : null);
       const gt = guideRes.data?.guideTeacher;

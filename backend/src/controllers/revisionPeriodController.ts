@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import sequelize from '@/config/database';
 import { RevisionPeriodService } from '@/services/revisionPeriodService';
+import { sortInscriptions } from '@/services/studentSortService';
 import {
   CouncilPoint,
   EvaluationPlan,
@@ -192,6 +193,9 @@ export const getRevisionStudents = async (req: Request, res: Response) => {
       ],
     });
 
+    // Sort students canonically: document type → document number → lastName → firstName → grade → section
+    sortInscriptions(allInscriptions as any[]);
+
     const studentMap = new Map<number, any>();
     const processedSubjects = new Set<number>();
 
@@ -249,6 +253,7 @@ export const getRevisionStudents = async (req: Request, res: Response) => {
           inscriptionId: insAny.id,
           studentName: `${insAny.student?.lastName || ''} ${insAny.student?.firstName || ''}`.trim(),
           document: insAny.student?.document || '',
+          documentType: insAny.student?.documentType || '',
           grade: insAny.grade?.name || '',
           section: insAny.section?.name || '',
           subjects,

@@ -3,6 +3,7 @@ import { Card, Button, Select, Space, Typography, Row, Col, Spin, message, Empty
 import { DownloadOutlined, FileExcelOutlined, FileTextOutlined, FolderOpenOutlined, CheckCircleOutlined, InfoCircleOutlined, PrinterOutlined, Html5Outlined } from '@ant-design/icons';
 import { pdf } from '@react-pdf/renderer';
 import api from '@/services/api';
+import { compareStudents } from '@/utils/studentSort';
 import TemplateManagerModal from '@/components/TemplateManagerModal';
 import BoletinPDF from '@/components/pdf/BoletinPDF';
 import type { BoletinData, LetterGrade } from '@/components/pdf/BoletinPDF';
@@ -40,7 +41,7 @@ const PerformanceSummary: React.FC = () => {
   const [boletinPeriodId, setBoletinPeriodId] = useState<number | null>(null);
   const [boletinGradeId, setBoletinGradeId] = useState<number | null>(null);
   const [boletinSectionId, setBoletinSectionId] = useState<number | null>(null);
-  const [boletinStudents, setBoletinStudents] = useState<{ inscriptionId: number; firstName: string; lastName: string; document: string }[]>([]);
+  const [boletinStudents, setBoletinStudents] = useState<{ inscriptionId: number; firstName: string; lastName: string; document: string; documentType?: string }[]>([]);
   const [boletinSelectedInscriptionId, setBoletinSelectedInscriptionId] = useState<number | null>(null);
   const [boletinLoading, setBoletinLoading] = useState(false);
   const [boletinBatchLoading, setBoletinBatchLoading] = useState(false);
@@ -200,13 +201,8 @@ const PerformanceSummary: React.FC = () => {
         firstName: ins.student?.firstName || '',
         lastName: ins.student?.lastName || '',
         document: ins.student?.document || '',
-      })).sort((a: any, b: any) => {
-        const docA = (a.document || '').replace(/\D/g, '');
-        const docB = (b.document || '').replace(/\D/g, '');
-        const numA = docA ? parseInt(docA, 10) : Infinity;
-        const numB = docB ? parseInt(docB, 10) : Infinity;
-        return numA - numB;
-      });
+        documentType: ins.student?.documentType || '',
+      })).sort((a: any, b: any) => compareStudents(a, b));
       setBoletinStudents(list);
     }).catch(() => { if (!cancelled) setBoletinStudents([]); });
     return () => { cancelled = true; };

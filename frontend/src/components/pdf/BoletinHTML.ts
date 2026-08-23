@@ -1,3 +1,5 @@
+import { sortBoletinStudents } from '@/utils/studentSort';
+
 export interface BoletinHTMLTerm { id: number; name: string; order: number | null; }
 export interface BoletinHTMLLetterGrade { letter: string; max: number; }
 export interface BoletinHTMLSubject {
@@ -283,21 +285,9 @@ const buildStudentSheet = (
 };
 
 export const generateBoletinHTML = (data: BoletinHTMLData): string => {
-  // Sort students by section, then by cédula number (same criteria as nómina)
-  // "Cedula Escolar" (CE) documents go to the end of each section
-  const parseDoc = (doc: string, docType: string) => {
-    const isEscolar = docType === 'Cedula Escolar';
-    const num = parseInt((doc || '').replace(/\D/g, ''), 10) || 0;
-    return { isEscolar, num };
-  };
-  const sortedStudents = [...data.students].sort((a, b) => {
-    const sa = (a.sectionName || '').localeCompare(b.sectionName || '');
-    if (sa !== 0) return sa;
-    const da = parseDoc(a.document || '', a.documentType || '');
-    const db = parseDoc(b.document || '', b.documentType || '');
-    if (da.isEscolar !== db.isEscolar) return da.isEscolar ? 1 : -1;
-    return da.num - db.num;
-  });
+  // Sort students canonically: section → document type → document number → lastName → firstName
+  const sortedStudents = [...data.students];
+  sortBoletinStudents(sortedStudents);
 
   // Compute list number (index within section, sorted by cédula as in nómina)
   let currentSection = '';

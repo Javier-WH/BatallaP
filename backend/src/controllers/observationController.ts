@@ -7,6 +7,7 @@ import {
 } from '@/models/index';
 import { GradeCalculationService } from '@/services/gradeCalculationService';
 import { roundFinalGrade, MIN_FINAL_GRADE } from '@/services/gradeEvaluationService';
+import { sortInscriptions } from '@/services/studentSortService';
 
 // GET /api/observations?termId=&gradeId=&sectionId=
 // Returns the students of the section with their final average, rank position,
@@ -100,6 +101,9 @@ export const getSectionObservations = async (req: Request, res: Response) => {
         [{ model: Person, as: 'student' }, 'firstName', 'ASC'],
       ],
     });
+
+    // Sort students canonically: document type → document number → lastName → firstName
+    sortInscriptions(inscriptions as any[]);
 
     // Compute per-term average for each student (only eligible subjects)
     const computeTermAvg = (ins: any, tid: number): number | null => {

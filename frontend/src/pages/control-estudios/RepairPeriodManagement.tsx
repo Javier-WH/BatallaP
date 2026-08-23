@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Card, Button, Tag, Space, Typography, Spin, message, Alert, Statistic, Row, Col } from 'antd';
 import { PlayCircleOutlined, StopOutlined, ReloadOutlined, CheckCircleOutlined, ClockCircleOutlined, CloseCircleOutlined, PrinterOutlined } from '@ant-design/icons';
 import api from '@/services/api';
+import { compareStudents } from '@/utils/studentSort';
 
 const { Title, Text } = Typography;
 
@@ -65,6 +66,7 @@ interface StudentRevision {
   inscriptionId: number;
   studentName: string;
   document: string;
+  documentType?: string;
   grade: string;
   section: string;
   subjects: StudentSubject[];
@@ -163,9 +165,12 @@ const RepairPeriodManagement: React.FC = () => {
         }
       }
     }
-    // Sort students within each grade by document
+    // Sort students within each grade canonically (document type → document number → lastName → firstName)
     for (const g of groups.values()) {
-      g.students.sort((a, b) => (a.document || '').localeCompare(b.document || '', undefined, { numeric: true }));
+      g.students.sort((a, b) => compareStudents(
+        { document: a.document, documentType: a.documentType, lastName: a.studentName, firstName: '' },
+        { document: b.document, documentType: b.documentType, lastName: b.studentName, firstName: '' }
+      ));
     }
     return Array.from(groups.values()).sort((a, b) => a.grade.localeCompare(b.grade));
   }, [students]);

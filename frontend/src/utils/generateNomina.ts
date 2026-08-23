@@ -2,6 +2,7 @@ import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
 import dayjs from 'dayjs';
 import api from '@/services/api';
+import { sortNominaStudents } from '@/utils/studentSort';
 
 // Capitalize first letter of each word, rest lowercase (supports ñ and accents)
 const toTitleCase = (s: string) =>
@@ -62,18 +63,8 @@ export async function addNominaSheet(
     (s: InscriptionStudent) => !s.matriculation?.hiddenFromControlEstudios
   );
 
-  // Sort by cédula number ascending, with "Cedula Escolar" (CE) at the end
-  const parseDoc = (doc: string, docType: string) => {
-    const isEscolar = docType === 'Cedula Escolar';
-    const num = parseInt((doc || '').replace(/\D/g, ''), 10) || 0;
-    return { isEscolar, num };
-  };
-  students.sort((a, b) => {
-    const da = parseDoc(a.student?.document || '', a.student?.documentType || '');
-    const db = parseDoc(b.student?.document || '', b.student?.documentType || '');
-    if (da.isEscolar !== db.isEscolar) return da.isEscolar ? 1 : -1;
-    return da.num - db.num;
-  });
+  // Sort students canonically: document type → document number → lastName → firstName
+  sortNominaStudents(students);
 
   // Fetch guide teacher for this grade+section
   let teacherName = '';
