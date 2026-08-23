@@ -1,14 +1,12 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Select, Button, Spin, message, Alert, Input, Popover } from 'antd';
-import { DownloadOutlined, PrinterOutlined } from '@ant-design/icons';
-import { pdf } from '@react-pdf/renderer';
+import { PrinterOutlined } from '@ant-design/icons';
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
 import api from '@/services/api';
 import { compareStudents } from '@/utils/studentSort';
 import TemplateManagerModal from '@/components/TemplateManagerModal';
-import BoletinPDF from '@/components/pdf/BoletinPDF';
-import type { BoletinData, LetterGrade } from '@/components/pdf/BoletinPDF';
+import type { LetterGrade } from '@/components/pdf/BoletinPDF';
 import { generateBoletinHTML } from '@/components/pdf/BoletinHTML';
 import type { BoletinHTMLData } from '@/components/pdf/BoletinHTML';
 
@@ -32,7 +30,6 @@ const Icon = ({ children, size = 16, ...props }: any) => (
 );
 
 const IconBarChart = (p: any) => <Icon {...p}><path d="M3 3v18h18" /><rect x="7" y="12" width="3" height="6" /><rect x="12" y="8" width="3" height="10" /><rect x="17" y="5" width="3" height="13" /></Icon>;
-const IconFileText = (p: any) => <Icon {...p}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6" /><path d="M9 13h6M9 17h6" /></Icon>;
 const IconFileCode = (p: any) => <Icon {...p}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6" /><path d="M9.5 13.5 8 15l1.5 1.5M14.5 13.5 16 15l-1.5 1.5" /></Icon>;
 const IconFileSpreadsheet = (p: any) => <Icon {...p}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6" /><path d="M8 13h8M8 17h8M11 13v6" /></Icon>;
 const IconSettings = (p: any) => <Icon {...p}><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.04 1.56V21a2 2 0 0 1-4 0v-.09A1.7 1.7 0 0 0 9 19.4a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.56-1.04H3a2 2 0 0 1 0-4h.09A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1.04-1.56V3a2 2 0 0 1 4 0v.09A1.7 1.7 0 0 0 15 4.6a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9c.36.62 1 1.02 1.72 1.04H21a2 2 0 0 1 0 4h-.09A1.7 1.7 0 0 0 19.4 15Z" /></Icon>;
@@ -42,7 +39,6 @@ const IconAlert = (p: any) => <Icon {...p}><path d="M10.3 3.9 2.4 18a1.5 1.5 0 0
 const IconUsers = (p: any) => <Icon {...p}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" /></Icon>;
 const IconGrad = (p: any) => <Icon {...p}><path d="M22 10 12 5 2 10l10 5 10-5Z" /><path d="M6 12v5c0 1.5 3 3 6 3s6-1.5 6-3v-5" /></Icon>;
 const IconCalendar = (p: any) => <Icon {...p}><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" /></Icon>;
-const IconLock = (p: any) => <Icon {...p}><rect x="5" y="11" width="14" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" /></Icon>;
 const IconCheck = (p: any) => <Icon {...p}><path d="M20 6 9 17l-5-5" /></Icon>;
 const IconSearch = (p: any) => <Icon {...p}><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></Icon>;
 
@@ -51,7 +47,6 @@ const IconSearch = (p: any) => <Icon {...p}><circle cx="11" cy="11" r="8" /><pat
 /* ------------------------------------------------------------------ */
 const REPORT_TYPES = [
   { id: 'resumen', label: 'Resumen de Rendimiento', icon: IconBarChart, desc: 'Genera un Excel con el promedio final de notas por estudiante.' },
-  { id: 'pdf', label: 'Boletines (PDF)', icon: IconFileText, desc: 'Genera boletines individuales en PDF, listos para imprimir o enviar.' },
   { id: 'html', label: 'Boletines HTML', icon: IconFileCode, desc: 'Genera boletines en formato HTML para publicar o compartir por enlace.' },
   { id: 'certified', label: 'Notas Certificadas', icon: IconFileSpreadsheet, desc: 'Genera un Excel oficial con las notas certificadas del período.' },
 ] as const;
@@ -141,13 +136,7 @@ const STYLES = `
   }
   .rb-scope-summary svg { flex-shrink: 0; margin-top: 2px; }
 
-  .rb-field-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 14px; }
-  .rb-field { border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; }
-  .rb-field-locked { opacity: 0.55; }
-  .rb-field-label { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #98A2B3; margin-bottom: 4px; }
-  .rb-field-lock { margin-left: auto; }
   .rb-field-empty { font-size: 13px; color: #C2C7D0; }
-  .rb-field .ant-select { width: 100%; }
 
   .rb-segmented { display: inline-flex; border: 1px solid var(--border); border-radius: 12px; padding: 4px; background: #F8F9FB; }
   .rb-segmented-btn { border: none; background: transparent; padding: 8px 16px; border-radius: 8px; font-size: 13px; font-weight: 500; color: #667085; cursor: pointer; }
@@ -234,19 +223,6 @@ const LegendRow: React.FC<{ name: string; desc: string }> = ({ name, desc }) => 
   </div>
 );
 
-function Field({ label, icon: FieldIcon, children, locked }: { label: string; icon: any; children: React.ReactNode; locked?: boolean }) {
-  return (
-    <div className={`rb-field${locked ? ' rb-field-locked' : ''}`}>
-      <div className="rb-field-label">
-        <FieldIcon size={12} />
-        <span>{label}</span>
-        {locked && <IconLock size={10} className="rb-field-lock" />}
-      </div>
-      {children}
-    </div>
-  );
-}
-
 function PreviewRow({ label, value, muted }: { label: string; value: React.ReactNode; muted?: boolean }) {
   return (
     <div className="rb-preview-row">
@@ -287,11 +263,6 @@ const PerformanceSummary: React.FC = () => {
   const [boletinGradeId, setBoletinGradeId] = useState<number | null>(null);
   const [boletinSectionId, setBoletinSectionId] = useState<number | null>(null);
   const [boletinStudents, setBoletinStudents] = useState<{ inscriptionId: number; firstName: string; lastName: string; document: string; documentType?: string }[]>([]);
-  const [boletinSelectedInscriptionId, setBoletinSelectedInscriptionId] = useState<number | null>(null);
-  const [boletinLoading, setBoletinLoading] = useState(false);
-  const [boletinBatchLoading, setBoletinBatchLoading] = useState(false);
-  const [boletinPdfUrl, setBoletinPdfUrl] = useState<string | null>(null);
-  const [boletinData, setBoletinData] = useState<BoletinData | null>(null);
   const [letterGrades, setLetterGrades] = useState<LetterGrade[]>([]);
   const [maxGrade, setMaxGrade] = useState<number>(20);
   const [boletinLogoBase64, setBoletinLogoBase64] = useState<string | null>(null);
@@ -343,14 +314,6 @@ const PerformanceSummary: React.FC = () => {
     });
     return combos;
   }, [structure, selectedGradeIds, selectedSectionIds]);
-
-  const cleanupBoletinPdf = useCallback(() => {
-    setBoletinPdfUrl(prev => {
-      if (prev) URL.revokeObjectURL(prev);
-      return null;
-    });
-    setBoletinData(null);
-  }, []);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -472,13 +435,9 @@ const PerformanceSummary: React.FC = () => {
   useEffect(() => {
     if (!boletinPeriodId || !boletinGradeId || !boletinSectionId) {
       setBoletinStudents([]);
-      setBoletinSelectedInscriptionId(null);
-      cleanupBoletinPdf();
       return;
     }
     let cancelled = false;
-    cleanupBoletinPdf();
-    setBoletinSelectedInscriptionId(null);
     api.get('/inscriptions', {
       params: { schoolPeriodId: boletinPeriodId, gradeId: boletinGradeId, sectionId: boletinSectionId },
     }).then((res) => {
@@ -493,17 +452,7 @@ const PerformanceSummary: React.FC = () => {
       setBoletinStudents(list);
     }).catch(() => { if (!cancelled) setBoletinStudents([]); });
     return () => { cancelled = true; };
-  }, [boletinPeriodId, boletinGradeId, boletinSectionId, cleanupBoletinPdf]);
-
-  // Cleanup PDF URL on unmount
-  useEffect(() => {
-    return () => {
-      setBoletinPdfUrl(prev => {
-        if (prev) URL.revokeObjectURL(prev);
-        return null;
-      });
-    };
-  }, []);
+  }, [boletinPeriodId, boletinGradeId, boletinSectionId]);
 
   // Load templates for certified tab
   useEffect(() => {
@@ -1115,89 +1064,6 @@ const PerformanceSummary: React.FC = () => {
     }
   }, [selectedPeriodId, validCombinations, buildAnnualSheet]);
 
-  // --- boletin handlers ---
-  const generateBoletinPdf = useCallback(async (params: { schoolPeriodId: number; gradeId: number; sectionId?: number; inscriptionId?: number }) => {
-    const res = await api.get('/performance-summary/boletin-data', { params });
-    const data = { ...res.data, letterGrades, logoBase64: boletinLogoBase64, maxGrade } as BoletinData;
-    if (!data.students || data.students.length === 0) {
-      return null;
-    }
-    const doc = <BoletinPDF data={data} />;
-    const blob = await pdf(doc).toBlob();
-    return { url: URL.createObjectURL(blob), data };
-  }, [letterGrades, boletinLogoBase64, maxGrade]);
-
-  const handlePreviewStudent = useCallback(async (inscriptionId: number) => {
-    if (!boletinPeriodId || !boletinGradeId) return;
-    setBoletinSelectedInscriptionId(inscriptionId);
-    setBoletinLoading(true);
-    cleanupBoletinPdf();
-    try {
-      const result = await generateBoletinPdf({
-        schoolPeriodId: boletinPeriodId,
-        gradeId: boletinGradeId,
-        sectionId: boletinSectionId || undefined,
-        inscriptionId,
-      });
-      if (result) {
-        setBoletinPdfUrl(result.url);
-        setBoletinData(result.data);
-      } else {
-        message.warning('No se encontraron notas para este estudiante en el período seleccionado');
-      }
-    } catch (error: any) {
-      console.error('[Boletin] Error al previsualizar:', error);
-      const errMsg = error?.response?.data?.message || 'Error al generar la vista previa del boletín. Verifique que el estudiante tenga notas registradas.';
-      message.error(errMsg);
-    } finally { setBoletinLoading(false); }
-  }, [boletinPeriodId, boletinGradeId, boletinSectionId, generateBoletinPdf, cleanupBoletinPdf]);
-
-  const handleEmitSection = useCallback(async () => {
-    if (!boletinPeriodId || !boletinGradeId || !boletinSectionId) {
-      message.warning('Seleccione período, grado y sección');
-      return;
-    }
-    if (boletinStudents.length === 0) {
-      message.warning('No hay estudiantes inscritos en la sección seleccionada');
-      return;
-    }
-    setBoletinBatchLoading(true);
-    cleanupBoletinPdf();
-    setBoletinSelectedInscriptionId(null);
-    try {
-      const result = await generateBoletinPdf({
-        schoolPeriodId: boletinPeriodId,
-        gradeId: boletinGradeId,
-        sectionId: boletinSectionId,
-      });
-      if (result) {
-        setBoletinPdfUrl(result.url);
-        setBoletinData(result.data);
-        message.success(`Se generaron ${result.data.students.length} boletín(es) correctamente`);
-      } else {
-        message.warning('No se encontraron estudiantes con notas en la sección seleccionada');
-      }
-    } catch (error: any) {
-      console.error('[Boletin] Error al emitir sección:', error);
-      const errMsg = error?.response?.data?.message || 'Error al generar los boletines de la sección. Intente nuevamente.';
-      message.error(errMsg);
-    } finally { setBoletinBatchLoading(false); }
-  }, [boletinPeriodId, boletinGradeId, boletinSectionId, boletinStudents.length, generateBoletinPdf, cleanupBoletinPdf]);
-
-  const handleDownloadBoletin = useCallback(() => {
-    if (boletinPdfUrl) {
-      const a = document.createElement('a');
-      a.href = boletinPdfUrl;
-      const studentLabel = boletinSelectedInscriptionId
-        ? `estudiante-${boletinSelectedInscriptionId}`
-        : `seccion-${boletinSectionId}`;
-      a.download = `boletin-${studentLabel}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-    }
-  }, [boletinPdfUrl, boletinSelectedInscriptionId, boletinSectionId]);
-
   // --- boletin HTML handlers ---
   const generateBoletinHtmlString = useCallback(async (params: { schoolPeriodId: number; gradeId: number; sectionId?: number; inscriptionId?: number }) => {
     const res = await api.get('/performance-summary/boletin-data', { params });
@@ -1617,185 +1483,71 @@ const PerformanceSummary: React.FC = () => {
           </div>
         )}
 
-        {/* ── Boletines PDF ── */}
-        {reportType === 'pdf' && (
-          <div className="rb-boletin-layout">
-            {/* Selectors card */}
-            <section className="rb-card">
-              <h2 className="rb-card-label">Configuración del boletín</h2>
-              <div className="rb-field-grid">
-                <Field label="Periodo académico" icon={IconCalendar}>
-                  <Select
-                    variant="borderless"
-                    value={boletinPeriodId}
-                    onChange={(v: number) => { setBoletinPeriodId(v); setBoletinGradeId(null); setBoletinSectionId(null); }}
-                    options={allPeriods.map(p => ({ label: `${p.name}${p.status === 'activo' ? ' (activo)' : ''}`, value: p.id }))}
-                    placeholder="Seleccione…"
-                  />
-                </Field>
-                <Field label="Grado" icon={IconGrad} locked={!boletinPeriodId}>
-                  {boletinPeriodId ? (
-                    <Select
-                      variant="borderless"
-                      value={boletinGradeId}
-                      onChange={(v: number) => { setBoletinGradeId(v); setBoletinSectionId(null); }}
-                      options={structure.map(s => ({ label: s.grade.name, value: s.grade.id }))}
-                      placeholder="Seleccione…"
-                    />
-                  ) : (
-                    <span className="rb-field-empty">Elija un período primero</span>
-                  )}
-                </Field>
-                <Field label="Sección" icon={IconUsers} locked={!boletinGradeId}>
-                  {boletinGradeId ? (
-                    <Select
-                      variant="borderless"
-                      value={boletinSectionId}
-                      onChange={(v: number) => setBoletinSectionId(v)}
-                      options={boletinAvailableSections.map(s => ({ label: s.name, value: s.id }))}
-                      placeholder="Seleccione…"
-                    />
-                  ) : (
-                    <span className="rb-field-empty">Elija un grado primero</span>
-                  )}
-                </Field>
-              </div>
-            </section>
-
-            {/* Student list + preview */}
-            {!boletinPeriodId ? (
-              <Alert message="Seleccione un período escolar" description="Elija el período académico para el cual desea emitir los boletines." type="info" showIcon style={{ borderRadius: 12 }} />
-            ) : !boletinGradeId ? (
-              <Alert message="Seleccione un grado" description="Elija el grado correspondiente." type="info" showIcon style={{ borderRadius: 12 }} />
-            ) : !boletinSectionId ? (
-              <Alert message="Seleccione una sección" description="Elija la sección correspondiente." type="info" showIcon style={{ borderRadius: 12 }} />
-            ) : boletinStudents.length === 0 ? (
-              <Alert message="No hay estudiantes inscritos" description="No se encontraron estudiantes inscritos en la sección seleccionada para este período." type="warning" showIcon style={{ borderRadius: 12 }} />
-            ) : (
-              <div className="rb-boletin-content">
-                {/* Student list */}
-                <div className="rb-student-list">
-                  <div className="rb-student-list-header">
-                    <span style={{ fontWeight: 700, fontSize: 13 }}>Estudiantes ({boletinStudents.length})</span>
-                    <Button
-                      type="primary"
-                      icon={<DownloadOutlined />}
-                      size="small"
-                      loading={boletinBatchLoading}
-                      onClick={handleEmitSection}
-                      style={{ borderRadius: 8, fontWeight: 600 }}
-                    >
-                      Emitir sección
-                    </Button>
-                  </div>
-                  <div className="rb-student-list-body">
-                    {boletinStudents.map((stu, idx) => {
-                      const isSelected = boletinSelectedInscriptionId === stu.inscriptionId;
-                      return (
-                        <div
-                          key={stu.inscriptionId}
-                          className={`rb-student-item${isSelected ? ' selected' : ''}`}
-                          onClick={() => handlePreviewStudent(stu.inscriptionId)}
-                        >
-                          <span className="rb-student-num">{idx + 1}</span>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div className="rb-student-name">{stu.lastName} {stu.firstName}</div>
-                            <div className="rb-student-doc">C.I. {stu.document || '—'}</div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* PDF preview */}
-                <div className="rb-preview-area">
-                  {boletinLoading ? (
-                    <div className="rb-empty-preview">
-                      <Spin tip="Generando vista previa..." />
-                    </div>
-                  ) : boletinPdfUrl ? (
-                    <div>
-                      {boletinData && (
-                        <div style={{ textAlign: 'center', marginBottom: 8, fontSize: 12, color: '#666' }}>
-                          {boletinData.students.length} estudiante(s) — {boletinData.institution.name} — {boletinData.grade.name}
-                        </div>
-                      )}
-                      <iframe
-                        src={boletinPdfUrl}
-                        style={{ width: '100%', height: '65vh', border: '1px solid #e2e8f0', borderRadius: 12 }}
-                        title="Boletín de Calificaciones"
-                      />
-                      <div style={{ textAlign: 'center', marginTop: 12 }}>
-                        <Button
-                          type="primary"
-                          icon={<DownloadOutlined />}
-                          onClick={handleDownloadBoletin}
-                          style={{ borderRadius: 10, fontWeight: 700, height: 40 }}
-                        >
-                          Descargar PDF
-                        </Button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="rb-empty-preview">
-                      <div className="rb-empty-preview-inner">
-                        <IconFileText size={48} />
-                        <span style={{ color: '#94a3b8', fontSize: 14 }}>
-                          Seleccione un estudiante para ver la vista previa del boletín,
-                          o use «Emitir sección» para generar todos los boletines de la sección.
-                        </span>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
         {/* ── Boletines HTML ── */}
         {reportType === 'html' && (
           <div className="rb-boletin-layout">
             {/* Selectors card */}
             <section className="rb-card">
               <h2 className="rb-card-label">Configuración del boletín</h2>
-              <div className="rb-field-grid">
-                <Field label="Periodo académico" icon={IconCalendar}>
+              <div className="rb-scope">
+                <div className="rb-scope-row">
+                  <span className="rb-scope-label"><IconCalendar size={13} /> Año escolar</span>
                   <Select
-                    variant="borderless"
-                    value={boletinPeriodId}
+                    className="rb-period-select"
+                    value={boletinPeriodId ?? undefined}
                     onChange={(v: number) => { setBoletinPeriodId(v); setBoletinGradeId(null); setBoletinSectionId(null); setBoletinHtmlString(null); }}
                     options={allPeriods.map(p => ({ label: `${p.name}${p.status === 'activo' ? ' (activo)' : ''}`, value: p.id }))}
                     placeholder="Seleccione…"
                   />
-                </Field>
-                <Field label="Grado" icon={IconGrad} locked={!boletinPeriodId}>
-                  {boletinPeriodId ? (
-                    <Select
-                      variant="borderless"
-                      value={boletinGradeId}
-                      onChange={(v: number) => { setBoletinGradeId(v); setBoletinSectionId(null); setBoletinHtmlString(null); }}
-                      options={structure.map(s => ({ label: s.grade.name, value: s.grade.id }))}
-                      placeholder="Seleccione…"
-                    />
+                </div>
+
+                <div className="rb-scope-row">
+                  <span className="rb-scope-label"><IconGrad size={13} /> Grado</span>
+                  {!boletinPeriodId ? (
+                    <span className="rb-field-empty">Elija un año escolar primero</span>
                   ) : (
-                    <span className="rb-field-empty">Elija un período primero</span>
+                    <div className="rb-chips">
+                      {structure.map(s => {
+                        const on = boletinGradeId === s.grade.id;
+                        return (
+                          <button
+                            key={s.grade.id}
+                            type="button"
+                            aria-pressed={on}
+                            className={`rb-chip${on ? ' active' : ''}`}
+                            onClick={() => { setBoletinGradeId(s.grade.id); setBoletinSectionId(null); setBoletinHtmlString(null); }}
+                          >
+                            {s.grade.name}
+                          </button>
+                        );
+                      })}
+                    </div>
                   )}
-                </Field>
-                <Field label="Sección" icon={IconUsers} locked={!boletinGradeId}>
-                  {boletinGradeId ? (
-                    <Select
-                      variant="borderless"
-                      value={boletinSectionId}
-                      onChange={(v: number) => { setBoletinSectionId(v); setBoletinHtmlString(null); }}
-                      options={boletinAvailableSections.map(s => ({ label: s.name, value: s.id }))}
-                      placeholder="Seleccione…"
-                    />
-                  ) : (
+                </div>
+
+                <div className="rb-scope-row">
+                  <span className="rb-scope-label"><IconUsers size={13} /> Sección</span>
+                  {!boletinGradeId ? (
                     <span className="rb-field-empty">Elija un grado primero</span>
+                  ) : (
+                    <div className="rb-chips">
+                      {boletinAvailableSections.map(sec => {
+                        const on = boletinSectionId === sec.id;
+                        return (
+                          <button
+                            key={sec.id}
+                            type="button"
+                            aria-pressed={on}
+                            className={`rb-chip${on ? ' active' : ''}`}
+                            onClick={() => { setBoletinSectionId(sec.id); setBoletinHtmlString(null); }}
+                          >
+                            {sec.name}
+                          </button>
+                        );
+                      })}
+                    </div>
                   )}
-                </Field>
+                </div>
               </div>
             </section>
 
