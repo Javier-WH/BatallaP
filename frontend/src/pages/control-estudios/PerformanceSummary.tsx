@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Select, Button, Spin, message, Alert, Input, Popover } from 'antd';
 import { DownloadOutlined, PrinterOutlined } from '@ant-design/icons';
 import { pdf } from '@react-pdf/renderer';
@@ -113,6 +113,33 @@ const STYLES = `
 
   .rb-card { background: #fff; border: 1px solid var(--border); border-radius: 16px; padding: 20px; }
   .rb-card-label { font-size: 11px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: #98A2B3; margin: 0 0 16px; }
+
+  /* Compact scope picker: one labelled row per dimension */
+  .rb-scope { display: flex; flex-direction: column; gap: 14px; }
+  .rb-scope-row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  .rb-scope-label {
+    display: inline-flex; align-items: center; gap: 6px;
+    flex: 0 0 118px; font-size: 11px; font-weight: 600;
+    letter-spacing: 0.03em; text-transform: uppercase; color: #98A2B3;
+  }
+  .rb-period-select { min-width: 280px; }
+  .rb-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .rb-chip {
+    padding: 7px 16px; border-radius: 8px; font-size: 13px; font-weight: 500;
+    border: 1px solid var(--border); background: #fff; color: #475569;
+    cursor: pointer; white-space: nowrap; user-select: none;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+  }
+  .rb-chip:hover { border-color: #94A3B8; background: #F8FAFC; }
+  .rb-chip.active { background: var(--navy-700); border-color: var(--navy-700); color: #fff; font-weight: 600; }
+  .rb-chip.active:hover { background: #1d3f60; }
+  .rb-scope-summary {
+    display: flex; align-items: flex-start; gap: 8px;
+    padding: 10px 14px; border-radius: 10px;
+    background: #F0FBF4; border: 1px solid #D3F0DE;
+    font-size: 12.5px; color: #2C6E4A; line-height: 1.5;
+  }
+  .rb-scope-summary svg { flex-shrink: 0; margin-top: 2px; }
 
   .rb-field-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 14px; }
   .rb-field { border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; }
@@ -247,8 +274,8 @@ const PerformanceSummary: React.FC = () => {
   const [structure, setStructure] = useState<PeriodGradeStructure[]>([]);
   const [allPeriods, setAllPeriods] = useState<SchoolPeriod[]>([]);
   const [selectedPeriodId, setSelectedPeriodId] = useState<number | null>(null);
-  const [selectedGradeId, setSelectedGradeId] = useState<number | null>(null);
-  const [selectedSectionId, setSelectedSectionId] = useState<number | null>(null);
+  const [selectedGradeIds, setSelectedGradeIds] = useState<number[]>([]);
+  const [selectedSectionIds, setSelectedSectionIds] = useState<number[]>([]);
   const [studentGroup, setStudentGroup] = useState<'regulares' | 'revision'>('regulares');
   const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
@@ -287,6 +314,35 @@ const PerformanceSummary: React.FC = () => {
   const boletinAvailableSections = [...(boletinSelectedGrade?.sections || [])].sort((a, b) =>
     (a.name || '').localeCompare(b.name || '', 'es')
   );
+
+  // --- Derived selection state (declared before any handler that depends on it) ---
+  // Sections are global records shared across grades (Section.name is UNIQUE and the
+  // grade<->section link lives in PeriodGradeSection), so the same sectionId can belong
+  // to several grades. A course is therefore identified by the (gradeId, sectionId) pair.
+
+  // Union of the sections belonging to the selected grades, deduped by id.
+  const availableSections = useMemo(() => {
+    const byId = new Map<number, Section>();
+    structure.forEach(s => {
+      if (!selectedGradeIds.includes(s.grade.id)) return;
+      s.sections.forEach(sec => byId.set(sec.id, sec));
+    });
+    return [...byId.values()].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'es'));
+  }, [structure, selectedGradeIds]);
+
+  // Only the (grade, section) pairs that actually exist in the academic structure.
+  // Selecting 2 grades x 2 sections does not necessarily yield 4 courses.
+  const validCombinations = useMemo(() => {
+    const combos: { gradeId: number; gradeName: string; sectionId: number; sectionName: string }[] = [];
+    structure.forEach(s => {
+      if (!selectedGradeIds.includes(s.grade.id)) return;
+      s.sections.forEach(sec => {
+        if (!selectedSectionIds.includes(sec.id)) return;
+        combos.push({ gradeId: s.grade.id, gradeName: s.grade.name, sectionId: sec.id, sectionName: sec.name });
+      });
+    });
+    return combos;
+  }, [structure, selectedGradeIds, selectedSectionIds]);
 
   const cleanupBoletinPdf = useCallback(() => {
     setBoletinPdfUrl(prev => {
@@ -340,21 +396,34 @@ const PerformanceSummary: React.FC = () => {
     fetchStructure(selectedPeriodId);
   }, [selectedPeriodId, fetchStructure]);
 
+  // Template assignment is resolved from the first selected course.
   useEffect(() => {
-    if (!selectedGradeId) { setSelectedTemplate(null); return; }
-    const params = selectedSectionId ? `?sectionId=${selectedSectionId}` : '';
-    api.get(`/templates/assignment/${selectedGradeId}${params}`)
+    const gradeId = selectedGradeIds[0];
+    if (!gradeId) { setSelectedTemplate(null); return; }
+    const sectionId = selectedSectionIds[0];
+    const params = sectionId ? `?sectionId=${sectionId}` : '';
+    api.get(`/templates/assignment/${gradeId}${params}`)
       .then((res) => { setSelectedTemplate(res.data?.templateName || null); })
       .catch(() => setSelectedTemplate(null));
-  }, [selectedGradeId, selectedSectionId]);
+  }, [selectedGradeIds, selectedSectionIds]);
 
   useEffect(() => {
     setUserOverrodeTemplate(false);
-    setSelectedGradeId(null);
-    setSelectedSectionId(null);
+    setSelectedGradeIds([]);
+    setSelectedSectionIds([]);
   }, [selectedPeriodId]);
 
-  useEffect(() => { setUserOverrodeTemplate(false); }, [selectedGradeId, selectedSectionId]);
+  useEffect(() => { setUserOverrodeTemplate(false); }, [selectedGradeIds, selectedSectionIds]);
+
+  // Drop sections that no longer belong to any selected grade.
+  useEffect(() => {
+    setSelectedSectionIds(prev => {
+      if (prev.length === 0) return prev;
+      const valid = new Set(availableSections.map(s => s.id));
+      const next = prev.filter(id => valid.has(id));
+      return next.length === prev.length ? prev : next;
+    });
+  }, [availableSections]);
 
   // Load letter grades for boletin tab
   useEffect(() => {
@@ -448,7 +517,7 @@ const PerformanceSummary: React.FC = () => {
   }, []);
 
   const handleExport = async () => {
-    if (!selectedPeriodId || !selectedGradeId || !selectedSectionId) {
+    if (!selectedPeriodId || validCombinations.length === 0) {
       message.warning('Seleccione periodo, grado y sección');
       return;
     }
@@ -458,27 +527,31 @@ const PerformanceSummary: React.FC = () => {
     }
     setExporting(true);
     try {
-      const response = await api.get('/performance-summary/export', {
-        params: {
-          schoolPeriodId: selectedPeriodId,
-          gradeId: selectedGradeId,
-          sectionId: selectedSectionId,
-          template: selectedTemplate || undefined,
-          group: studentGroup,
-        },
-        responseType: 'blob',
-      });
-      const url = window.URL.createObjectURL(new Blob([response.data]));
-      const link = document.createElement('a');
-      link.href = url;
-      const fileName = response.headers['content-disposition']
-        ?.split('filename="')[1]?.split('"')[0] || 'resumen-rendimiento.xlsx';
-      link.setAttribute('download', fileName);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(url);
-      message.success('Resumen exportado correctamente');
+      // One file per (grade, section) course.
+      for (const combo of validCombinations) {
+        const response = await api.get('/performance-summary/export', {
+          params: {
+            schoolPeriodId: selectedPeriodId,
+            gradeId: combo.gradeId,
+            sectionId: combo.sectionId,
+            template: selectedTemplate || undefined,
+            group: studentGroup,
+          },
+          responseType: 'blob',
+        });
+        const url = window.URL.createObjectURL(new Blob([response.data]));
+        const link = document.createElement('a');
+        link.href = url;
+        const fileName = response.headers['content-disposition']
+          ?.split('filename="')[1]?.split('"')[0] || 'resumen-rendimiento.xlsx';
+        link.setAttribute('download', fileName);
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.URL.revokeObjectURL(url);
+      }
+      const n = validCombinations.length;
+      message.success(`${n} ${n === 1 ? 'planilla exportada' : 'planillas exportadas'} correctamente`);
     } catch (error: any) {
       console.error('Error exporting', error);
       if (error.response?.data) {
@@ -497,22 +570,26 @@ const PerformanceSummary: React.FC = () => {
   // --- Resumen del Rendimiento Anual ---
   // Generates an Excel from boletin-data, cloning the CourseCouncil format
   // but with L1, L2, L3, NF columns (no PC, no double border separator).
-  const handleExportAnnual = useCallback(async () => {
-    if (!selectedPeriodId || !selectedGradeId || !selectedSectionId) {
-      message.warning('Seleccione periodo, grado y sección');
-      return;
-    }
-    setAnnualLoading(true);
-    try {
+  // Appends one sheet for a single (grade, section) course. Returns false when the
+  // course has no students so the caller can skip it without aborting the batch.
+  const buildAnnualSheet = useCallback(async (
+    workbook: ExcelJS.Workbook,
+    schoolPeriodId: number,
+    gradeId: number,
+    sectionId: number,
+  ): Promise<boolean> => {
+    {
       // Fetch boletin data (same endpoint used for PDF/HTML boletines)
       const res = await api.get('/performance-summary/boletin-data', {
-        params: { schoolPeriodId: selectedPeriodId, gradeId: selectedGradeId, sectionId: selectedSectionId },
+        params: { schoolPeriodId, gradeId, sectionId },
       });
       const data = res.data as any;
       if (!data.students || data.students.length === 0) {
-        message.warning('No hay estudiantes con notas en la sección seleccionada');
-        return;
+        return false;
       }
+
+      const gradeName = data.grade?.name || '';
+      const sectionName = (data.students[0]?.sectionName || '').replace(/sección/gi, '').trim();
 
       const terms = data.terms || [];
       const termCount = terms.length;
@@ -578,11 +655,15 @@ const PerformanceSummary: React.FC = () => {
         groupRanges.push({ title: colDef.title, start, end: leafHeaders.length });
       });
 
-      // Create workbook
-      const workbook = new ExcelJS.Workbook();
-      workbook.creator = 'BatallaProject';
-      workbook.created = new Date();
-      const worksheet = workbook.addWorksheet('Resumen Anual', {
+      // One sheet per course. Excel sheet names are capped at 31 chars and cannot
+      // contain : \ / ? * [ ]. Truncation could collide, so append a counter if needed.
+      const baseSheetName = `${gradeName} - ${sectionName}`.replace(/[:\\/?*[\]]/g, '').trim() || 'Resumen Anual';
+      let sheetName = baseSheetName.substring(0, 31);
+      for (let dedupe = 2; workbook.getWorksheet(sheetName); dedupe++) {
+        const suffix = ` (${dedupe})`;
+        sheetName = `${baseSheetName.substring(0, 31 - suffix.length)}${suffix}`;
+      }
+      const worksheet = workbook.addWorksheet(sheetName, {
         pageSetup: {
           orientation: 'landscape',
           paperSize: 9,
@@ -693,8 +774,6 @@ const PerformanceSummary: React.FC = () => {
       cursoLabelCell.font = { size: 14, color: { argb: '17324D' } };
 
       const cursoNameCell = worksheet.getCell(5, 3);
-      const gradeName = data.grade?.name || '';
-      const sectionName = (data.students[0]?.sectionName || '').replace(/sección/gi, '').trim();
       cursoNameCell.value = `${gradeName}, Sección ${sectionName}`.trim();
       cursoNameCell.alignment = { horizontal: 'left', vertical: 'middle' };
       cursoNameCell.font = { bold: true, size: 14, color: { argb: '17324D' } };
@@ -987,11 +1066,46 @@ const PerformanceSummary: React.FC = () => {
 
       worksheet.pageSetup.printArea = `A1:${worksheet.getColumn(leafHeaders.length).letter}${worksheet.rowCount}`;
 
+      return true;
+    }
+  }, []);
+
+  // Builds a single workbook holding one sheet per selected course.
+  const handleExportAnnual = useCallback(async () => {
+    if (!selectedPeriodId || validCombinations.length === 0) {
+      message.warning('Seleccione periodo, grado y sección');
+      return;
+    }
+    setAnnualLoading(true);
+    try {
+      const workbook = new ExcelJS.Workbook();
+      workbook.creator = 'BatallaProject';
+      workbook.created = new Date();
+
+      const skipped: string[] = [];
+      let built = 0;
+      for (const combo of validCombinations) {
+        const ok = await buildAnnualSheet(workbook, selectedPeriodId, combo.gradeId, combo.sectionId);
+        if (ok) built++;
+        else skipped.push(`${combo.gradeName} ${combo.sectionName}`);
+      }
+
+      if (built === 0) {
+        message.warning('No hay estudiantes con notas en los cursos seleccionados');
+        return;
+      }
+
       const buffer = await workbook.xlsx.writeBuffer();
-      const gradeSafe = (data.grade?.name || 'grado').replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ_-]+/g, '_');
-      const sectionSafe = sectionName.replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ_-]+/g, '_') || 'seccion';
-      saveAs(new Blob([buffer]), `resumen_rendimiento_anual_${gradeSafe}_${sectionSafe}.xlsx`);
-      message.success('Resumen del Rendimiento Anual generado correctamente');
+      const safe = (v: string) => v.replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ_-]+/g, '_');
+      const fileName = validCombinations.length === 1
+        ? `resumen_rendimiento_anual_${safe(validCombinations[0].gradeName)}_${safe(validCombinations[0].sectionName)}.xlsx`
+        : 'resumen_rendimiento_anual.xlsx';
+      saveAs(new Blob([buffer]), fileName);
+
+      message.success(`Resumen del Rendimiento Anual generado (${built} ${built === 1 ? 'hoja' : 'hojas'})`);
+      if (skipped.length > 0) {
+        message.warning(`Sin estudiantes con notas: ${skipped.join(', ')}`);
+      }
     } catch (error: any) {
       console.error('[AnnualReport] Error:', error);
       const errMsg = error?.response?.data?.message || 'Error al generar el resumen del rendimiento anual.';
@@ -999,10 +1113,7 @@ const PerformanceSummary: React.FC = () => {
     } finally {
       setAnnualLoading(false);
     }
-  }, [selectedPeriodId, selectedGradeId, selectedSectionId]);
-
-  const selectedGrade = structure.find(s => s.grade.id === selectedGradeId);
-  const availableSections = selectedGrade?.sections || [];
+  }, [selectedPeriodId, validCombinations, buildAnnualSheet]);
 
   // --- boletin handlers ---
   const generateBoletinPdf = useCallback(async (params: { schoolPeriodId: number; gradeId: number; sectionId?: number; inscriptionId?: number }) => {
@@ -1318,7 +1429,7 @@ const PerformanceSummary: React.FC = () => {
   const current = REPORT_TYPES.find(rt => rt.id === reportType) || REPORT_TYPES[0];
   const showTemplateBtn = reportType === 'resumen';
   const showLegendBtn = reportType === 'resumen' || reportType === 'certified';
-  const readyToExport = Boolean(selectedGradeId && selectedSectionId);
+  const readyToExport = validCombinations.length > 0;
   const certStudentLabel = certSearchResults.find(r => r.value === certPersonId)?.label || '';
 
   return (
@@ -1378,38 +1489,76 @@ const PerformanceSummary: React.FC = () => {
               <>
                 <section className="rb-card">
                   <h2 className="rb-card-label">1. Alcance del reporte</h2>
-                  <div className="rb-field-grid">
-                    <Field label="Periodo académico" icon={IconCalendar}>
+                  <div className="rb-scope">
+                    <div className="rb-scope-row">
+                      <span className="rb-scope-label"><IconCalendar size={13} /> Año escolar</span>
                       <Select
-                        variant="borderless"
-                        value={selectedPeriodId}
+                        className="rb-period-select"
+                        value={selectedPeriodId ?? undefined}
                         onChange={(val) => setSelectedPeriodId(val)}
                         options={allPeriods.map(p => ({ label: `${p.name}${p.status === 'activo' ? ' (activo)' : ''}`, value: p.id }))}
                         placeholder="Seleccione…"
                       />
-                    </Field>
-                    <Field label="Grado" icon={IconGrad}>
-                      <Select
-                        variant="borderless"
-                        value={selectedGradeId}
-                        onChange={(val) => { setSelectedGradeId(val); setSelectedSectionId(null); }}
-                        options={structure.map(s => ({ label: s.grade.name, value: s.grade.id }))}
-                        placeholder="Seleccione…"
-                      />
-                    </Field>
-                    <Field label="Sección" icon={IconUsers} locked={!selectedGradeId}>
-                      {selectedGradeId ? (
-                        <Select
-                          variant="borderless"
-                          value={selectedSectionId}
-                          onChange={(val) => setSelectedSectionId(val)}
-                          options={availableSections.map(s => ({ label: s.name, value: s.id }))}
-                          placeholder="Seleccione…"
-                        />
+                    </div>
+
+                    <div className="rb-scope-row">
+                      <span className="rb-scope-label"><IconGrad size={13} /> Grados</span>
+                      <div className="rb-chips">
+                        {structure.map(s => {
+                          const on = selectedGradeIds.includes(s.grade.id);
+                          return (
+                            <button
+                              key={s.grade.id}
+                              type="button"
+                              aria-pressed={on}
+                              className={`rb-chip${on ? ' active' : ''}`}
+                              onClick={() => setSelectedGradeIds(prev =>
+                                prev.includes(s.grade.id) ? prev.filter(id => id !== s.grade.id) : [...prev, s.grade.id]
+                              )}
+                            >
+                              {s.grade.name}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div className="rb-scope-row">
+                      <span className="rb-scope-label"><IconUsers size={13} /> Secciones</span>
+                      {selectedGradeIds.length === 0 ? (
+                        <span className="rb-field-empty">Elija uno o más grados primero</span>
                       ) : (
-                        <span className="rb-field-empty">Elija un grado primero</span>
+                        <div className="rb-chips">
+                          {availableSections.map(sec => {
+                            const on = selectedSectionIds.includes(sec.id);
+                            return (
+                              <button
+                                key={sec.id}
+                                type="button"
+                                aria-pressed={on}
+                                className={`rb-chip${on ? ' active' : ''}`}
+                                onClick={() => setSelectedSectionIds(prev =>
+                                  prev.includes(sec.id) ? prev.filter(id => id !== sec.id) : [...prev, sec.id]
+                                )}
+                              >
+                                {sec.name}
+                              </button>
+                            );
+                          })}
+                        </div>
                       )}
-                    </Field>
+                    </div>
+
+                    {validCombinations.length > 0 && (
+                      <div className="rb-scope-summary">
+                        <IconCheck size={14} />
+                        <span>
+                          <strong>{validCombinations.length}</strong>{' '}
+                          {validCombinations.length === 1 ? 'planilla' : 'planillas'}:{' '}
+                          {validCombinations.map(c => `${c.gradeName} ${c.sectionName}`).join(' · ')}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </section>
 
@@ -1444,7 +1593,7 @@ const PerformanceSummary: React.FC = () => {
                       {annualLoading ? 'Generando…' : 'Resumen del Rendimiento Anual'}
                     </button>
                   </div>
-                  {!readyToExport && <p className="rb-export-hint">Seleccione grado y sección para continuar</p>}
+                  {!readyToExport && <p className="rb-export-hint">Seleccione al menos un grado y una sección para continuar</p>}
                   {!selectedTemplate && readyToExport && (
                     <div className="rb-warning" style={{ marginTop: 12 }}>
                       <IconAlert size={15} />
@@ -1828,8 +1977,8 @@ const PerformanceSummary: React.FC = () => {
         open={templateModalOpen}
         onClose={() => setTemplateModalOpen(false)}
         selectedTemplate={selectedTemplate}
-        defaultGradeId={selectedGradeId}
-        defaultSectionId={selectedSectionId}
+        defaultGradeId={selectedGradeIds[0] ?? null}
+        defaultSectionId={selectedSectionIds[0] ?? null}
         onSelect={(name) => { setSelectedTemplate(name || null); setUserOverrodeTemplate(true); }}
       />
     </div>
