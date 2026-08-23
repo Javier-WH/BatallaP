@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { Typography, Button, Spin, message, InputNumber, Select } from 'antd';
-import { PrinterOutlined, TrophyOutlined, FileExcelOutlined } from '@ant-design/icons';
+import { Typography, Button, Spin, message, InputNumber, Select, AutoComplete } from 'antd';
+import { PrinterOutlined, TrophyOutlined, FileExcelOutlined, SearchOutlined } from '@ant-design/icons';
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
 import { AllCommunityModule } from 'ag-grid-community';
@@ -95,6 +95,8 @@ export default function GeneralAverages() {
   const [topN, setTopN] = useState<number | null>(null);
   const [selectedGender, setSelectedGender] = useState<string | null>(null);
   const [groupBy, setGroupBy] = useState<string[]>([]);
+  const [selectedInscriptionId, setSelectedInscriptionId] = useState<number | null>(null);
+  const [searchText, setSearchText] = useState('');
   const gridRef = useRef<AgGridReact<any>>(null);
 
   useEffect(() => {
@@ -245,6 +247,22 @@ export default function GeneralAverages() {
     return { rows, totalCount: rows.length };
   }, [data, selectedTerms, selectedGrades, selectedSections, selectedGender, minAverage, topN, groupBy]);
 
+  // Build search options from all students in the current data (not filtered)
+  const searchOptions = useMemo(() => {
+    if (!data) return [];
+    return data.students.map((s) => ({
+      value: String(s.inscriptionId),
+      label: (
+        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+          <span>{s.lastName}, {s.firstName}</span>
+          <span style={{ color: '#999', fontSize: 12 }}>{s.document}</span>
+        </div>
+      ),
+      inscriptionId: s.inscriptionId,
+      searchText: `${s.lastName} ${s.firstName} ${s.document}`.toLowerCase(),
+    }));
+  }, [data]);
+
   // Column definitions
   const columnDefs = useMemo<ColDef<any>[]>(() => [
     {
@@ -358,26 +376,46 @@ export default function GeneralAverages() {
     gridRef.current?.api.refreshCells({ force: true });
   }, []);
 
-  // Deselect rows when clicking outside grid rows or pressing Escape
+  // Deselect rows only when pressing Escape (click-outside is too aggressive
+  // because Ant Design portals like AutoComplete dropdowns render outside the
+  // container ref, which would clear the selection before onSelect fires).
   useEffect(() => {
-    const handleClick = (e: MouseEvent) => {
-      const target = e.target as HTMLElement;
-      if (!target.closest('.ag-row')) {
-        gridRef.current?.api.deselectAll();
-      }
-    };
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         gridRef.current?.api.deselectAll();
+        setSelectedInscriptionId(null);
+        setSearchText('');
       }
     };
-    document.addEventListener('click', handleClick);
     document.addEventListener('keydown', handleKeyDown);
     return () => {
-      document.removeEventListener('click', handleClick);
       document.removeEventListener('keydown', handleKeyDown);
     };
   }, []);
+
+  // Re-select and scroll to the selected student when rows change (filters/sort)
+  useEffect(() => {
+    if (selectedInscriptionId == null) return;
+    const api = gridRef.current?.api;
+    if (!api) return;
+    // Use a microtask delay to ensure AG-Grid has finished processing the new rowData
+    const timer = setTimeout(() => {
+      let found = false;
+      api.forEachNode((node) => {
+        if (node.data?.inscriptionId === selectedInscriptionId) {
+          node.setSelected(true, true);
+          api.ensureNodeVisible(node);
+          found = true;
+        }
+      });
+      if (!found) {
+        // Student filtered out — clear grid selection but keep state
+        // so it re-selects when the student becomes visible again
+        api.deselectAll();
+      }
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [rows, selectedInscriptionId]);
 
   // Toggle helpers
   const toggleTerm = (id: number) => {
@@ -741,6 +779,50 @@ export default function GeneralAverages() {
         </div>
       </div>
 
+      {/* Student search bar — selects and scrolls to a student without filtering */}
+      <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+        <SearchOutlined style={{ color: '#8c8c8c', fontSize: 16 }} />
+        <AutoComplete
+          style={{ width: 350 }}
+          options={searchOptions}
+          value={searchText}
+          placeholder="Buscar estudiante por nombre o cédula..."
+          filterOption={(input, option) =>
+            (option?.searchText as string)?.includes(input.toLowerCase())
+          }
+          onSelect={(value) => {
+            const inscriptionId = Number(value);
+            const student = data?.students.find((s) => s.inscriptionId === inscriptionId);
+            if (student) {
+              setSearchText(`${student.lastName}, ${student.firstName}`);
+            }
+            setSelectedInscriptionId(inscriptionId);
+            const api = gridRef.current?.api;
+            if (api) {
+              let found = false;
+              api.forEachNode((node) => {
+                if (node.data?.inscriptionId === inscriptionId) {
+                  node.setSelected(true, true);
+                  api.ensureNodeVisible(node);
+                  found = true;
+                }
+              });
+              if (!found) {
+                message.info('Estudiante seleccionado. Ajusta los filtros para verlo en la lista.');
+              }
+            }
+          }}
+          allowClear
+          onChange={(value) => {
+            setSearchText(value || '');
+            if (!value) {
+              setSelectedInscriptionId(null);
+              gridRef.current?.api.deselectAll();
+            }
+          }}
+        />
+      </div>
+
       {/* Filters + Group By */}
       <div style={{ marginBottom: 12, padding: 12, background: '#fafafa', borderRadius: 12, border: '1px solid #f0f0f0', display: 'flex', gap: 16, alignItems: 'flex-start' }}>
         {/* Left: Filters */}
@@ -876,8 +958,19 @@ export default function GeneralAverages() {
             onSortChanged={onSortChanged}
             onFilterChanged={onSortChanged}
             animateRows={true}
-            rowSelection="multiple"
+            rowSelection="single"
             suppressCellFocus={true}
+            onSelectionChanged={(e) => {
+              // Only update state when there IS a selection.
+              // When rows change, AG-Grid clears selection and fires this event
+              // with empty selection — we must NOT clear selectedInscriptionId
+              // here, otherwise the useEffect can't re-select after data changes.
+              // Deselection is handled by the click-outside / Escape handlers.
+              const selected = e.api.getSelectedNodes();
+              if (selected.length > 0) {
+                setSelectedInscriptionId(selected[0].data?.inscriptionId ?? null);
+              }
+            }}
             getRowId={(params) => String(params.data.inscriptionId)}
             rowClassRules={{
               'ag-row-grade-colored': (params) => !!params.data?.sectionColor,
