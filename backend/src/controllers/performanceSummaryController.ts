@@ -1192,11 +1192,24 @@ export const getBoletinData = async (req: Request, res: Response) => {
         termId: terms.map((t: any) => t.id),
         ...(sectionId ? { sectionId } : {}),
       },
-      attributes: ['termId', 'sectionId', 'status'],
+      attributes: ['termId', 'sectionId', 'status', 'completedAt'],
     });
     const isCouncilDone = GradeCalculationService.buildCouncilDoneChecker(
       councilChecklists.map((c: any) => ({ termId: c.termId, sectionId: c.sectionId, status: c.status })),
     );
+
+    // Find the completion date of the last term's council for this section.
+    // Terms are sorted by order ASC, so the last done council for the section
+    // gives us the date to show on the annual report.
+    let lastCouncilCompletedAt: Date | null | undefined = null;
+    if (sectionId) {
+      const doneForSection = councilChecklists
+        .filter((c: any) => c.sectionId === sectionId && c.completedAt)
+        .sort((a: any, b: any) => new Date(b.completedAt).getTime() - new Date(a.completedAt).getTime());
+      if (doneForSection.length > 0) {
+        lastCouncilCompletedAt = doneForSection[0].completedAt;
+      }
+    }
 
     const inscWhere: any = { schoolPeriodId, gradeId };
     if (sectionId) inscWhere.sectionId = sectionId;
@@ -1277,6 +1290,10 @@ export const getBoletinData = async (req: Request, res: Response) => {
         return {
           id: is.subjectId,
           name: subjectName,
+          subjectName: is.subject?.name || '',
+          subjectAbbreviation: is.subject?.abbreviation || null,
+          subjectGroupId: is.subject?.subjectGroupId || null,
+          subjectGroupName: is.subject?.subjectGroup?.name || null,
           teacherName: teacherMap.get(is.subjectId) || '',
           usesLiteralGrades: is.subject?.usesLiteralGrades || false,
           includeInAverage: includeInAverageMap.get(is.subjectId) !== false,
@@ -1405,6 +1422,7 @@ export const getBoletinData = async (req: Request, res: Response) => {
       passingGrade: Number(settings.passing_grade) || 10,
       grade: { id: grade.id, name: grade.name },
       terms: terms.map((t: any) => ({ id: t.id, name: t.name, order: t.order })),
+      lastCouncilCompletedAt,
       students: finalStudents,
     });
   } catch (error: any) {
