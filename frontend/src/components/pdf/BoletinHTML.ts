@@ -179,14 +179,15 @@ const buildStudentSheet = (
     return avg.toFixed(2);
   });
 
-  // Definitiva average: average of the per-term averages (same method as
-  // Promedios Generales). Each termAverage is already the average of integer
-  // final grades for that term, so we just average the non-null ones.
-  const termAvgNumbers = termAverages
-    .filter((avg): avg is string => avg !== '—')
-    .map(Number);
-  const finalAvg = termAvgNumbers.length > 0
-    ? (termAvgNumbers.reduce((a, b) => a + b, 0) / termAvgNumbers.length).toFixed(2)
+  // Definitiva average: average of the rounded finalScore per eligible subject.
+  // This matches the official actas/planillas, where each subject's Def. is
+  // already rounded to an integer. We average those integers with 2 decimals.
+  const eligibleForDef = student.subjects.filter((s) => s.includeInAverage !== false);
+  const subjectFinals = eligibleForDef
+    .map((s) => (s.finalScore !== null && s.finalScore !== undefined ? Math.max(1, Number(s.finalScore)) : null))
+    .filter((v): v is number => v !== null);
+  const finalAvg = subjectFinals.length > 0
+    ? (subjectFinals.reduce((a, b) => a + b, 0) / subjectFinals.length).toFixed(2)
     : '—';
 
   const summaryStats = [
@@ -315,21 +316,15 @@ export const generateBoletinHTML = (data: BoletinHTMLData): string => {
     }));
   } else {
     // Compute rank locally from the students we have.
-    // Use the same method as the Def. stat: average of per-term averages
-    // (only terms with council done, only subjects with includeInAverage).
+    // Use the same method as the Def. stat: average of rounded finalScore
+    // per eligible subject (only subjects with includeInAverage).
     const avgMap = studentsWithList.map((s) => {
-      const termAvgs = data.terms.map((t) => {
-        const eligible = s.subjects.filter((sub) => sub.includeInAverage !== false);
-        const scored = eligible
-          .map((sub) => {
-            const lapse = sub.lapsos.find((l) => l.termId === t.id);
-            return lapse && lapse.score !== null ? Math.max(1, Number(lapse.score)) : null;
-          })
-          .filter((v): v is number => v !== null);
-        return scored.length > 0 ? scored.reduce((a, b) => a + b, 0) / scored.length : null;
-      }).filter((v): v is number => v !== null);
-      const avg = termAvgs.length > 0
-        ? termAvgs.reduce((a, b) => a + b, 0) / termAvgs.length
+      const eligible = s.subjects.filter((sub) => sub.includeInAverage !== false);
+      const finals = eligible
+        .map((sub) => (sub.finalScore !== null && sub.finalScore !== undefined ? Math.max(1, Number(sub.finalScore)) : null))
+        .filter((v): v is number => v !== null);
+      const avg = finals.length > 0
+        ? finals.reduce((a, b) => a + b, 0) / finals.length
         : 0;
       return { inscriptionId: s.inscriptionId, avg };
     });

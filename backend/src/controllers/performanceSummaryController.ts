@@ -1512,6 +1512,8 @@ export const getGeneralAverages = async (req: Request, res: Response) => {
       const termScoreMap = new Map<number, number[]>();
       // Also build per-subject finalScore for generalAverage (same method as boletin)
       const subjectFinalScores: { finalScore: number | null; includeInAverage: boolean; gradeType?: string | null }[] = [];
+      // Per-subject data for the frontend to recompute averages with selected terms
+      const subjectsData: { includeInAverage: boolean; termScores: { termId: number; score: number | null }[]; finalScore: number | null }[] = [];
 
       (ins.inscriptionSubjects || []).forEach((is: any) => {
         const includeInAverage = averageEligibleSubjects ? averageEligibleSubjects.has(is.subjectId) : true;
@@ -1540,6 +1542,22 @@ export const getGeneralAverages = async (req: Request, res: Response) => {
           finalScore: subjectFinalScore,
           includeInAverage,
           gradeType: is.finalGrade?.gradeType || null,
+        });
+
+        // Build per-subject term scores (null if council not done for that term)
+        const subjectTermScores = terms.map((t: any) => {
+          const councilDone = isCouncilDone(t.id, studentSectionId);
+          if (!councilDone) return { termId: t.id, score: null as number | null };
+          const tg = termGradesArr.find((tr) => tr.termId === t.id);
+          const raw = tg ? Number(tg.score) : 0;
+          if (raw <= 0) return { termId: t.id, score: null as number | null };
+          return { termId: t.id, score: Math.max(MIN_FINAL_GRADE, roundFinalGrade(raw)) };
+        });
+
+        subjectsData.push({
+          includeInAverage,
+          termScores: subjectTermScores,
+          finalScore: subjectFinalScore,
         });
 
         // Skip subjects not configured for average (if we have the config)
@@ -1582,6 +1600,7 @@ export const getGeneralAverages = async (req: Request, res: Response) => {
         sectionName: ins.section?.name || '',
         termGrades,
         generalAverage,
+        subjects: subjectsData,
       };
     });
 

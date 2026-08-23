@@ -56,6 +56,12 @@ const shortGradeName = (name: string): string => {
 };
 
 interface TermGrade { termId: number; termName: string; score: number | null; }
+interface SubjectTermScore { termId: number; score: number | null; }
+interface GeneralAverageSubject {
+  includeInAverage: boolean;
+  termScores: SubjectTermScore[];
+  finalScore: number | null;
+}
 interface GeneralAverageStudent {
   inscriptionId: number;
   firstName: string;
@@ -69,6 +75,7 @@ interface GeneralAverageStudent {
   sectionName: string;
   termGrades: TermGrade[];
   generalAverage?: number | null;
+  subjects: GeneralAverageSubject[];
 }
 interface GeneralAveragesResponse {
   terms: { id: number; name: string; order: number }[];
@@ -126,17 +133,24 @@ export default function GeneralAverages() {
       ? selectedTerms
       : data.terms.map((t) => t.id);
 
-    // Compute average per student using the selected terms' scores.
-    // Each termGrades[i].score is already the average of integer final grades
-    // for that term (computed by the backend), so we just average the selected
-    // terms' scores with 2 decimals.
+    // Compute average per student using the selected terms.
+    // Method: for each eligible subject, compute the average of its term scores
+    // for the selected terms, round it to an integer (roundFinalGrade, min=1),
+    // then average those rounded subject finals with 2 decimals.
+    // This matches the Def. shown in boletines and official actas/planillas.
     const withAvg = filtered.map((s) => {
-      const scores = s.termGrades
-        .filter((tg) => termIds.includes(tg.termId))
-        .map((tg) => tg.score)
-        .filter((v): v is number => v !== null && v !== undefined);
-      const avg = scores.length > 0
-        ? Number((scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(2))
+      const eligible = s.subjects.filter((sub) => sub.includeInAverage !== false);
+      const subjectFinals = eligible
+        .map((sub) => {
+          const selected = sub.termScores
+            .filter((ts) => termIds.includes(ts.termId) && ts.score !== null);
+          if (selected.length === 0) return null;
+          const avg = selected.reduce((a, b) => a + (b.score as number), 0) / selected.length;
+          return Math.max(1, Math.round(avg));
+        })
+        .filter((v): v is number => v !== null);
+      const avg = subjectFinals.length > 0
+        ? Number((subjectFinals.reduce((a, b) => a + b, 0) / subjectFinals.length).toFixed(2))
         : 0;
       return { ...s, average: avg };
     });
