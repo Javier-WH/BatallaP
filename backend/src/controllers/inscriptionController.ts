@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { Op, Transaction } from 'sequelize';
-import { Inscription, Person, Role, Subject, PeriodGrade, InscriptionSubject, SchoolPeriod, Grade, Section, Contact, PersonRole, PersonResidence, StudentGuardian, Matriculation, GuardianProfile, StudentPreviousSchool, Plantel, EnrollmentAnswer, EnrollmentQuestion, EnrollmentDocument } from '../models';
+import { Inscription, Person, Role, Subject, PeriodGrade, InscriptionSubject, SchoolPeriod, Grade, Section, Contact, PersonRole, PersonResidence, StudentGuardian, Matriculation, GuardianProfile, StudentPreviousSchool, Plantel, EnrollmentAnswer, EnrollmentQuestion, EnrollmentDocument, Term, SubjectTermGrade, InscriptionGroupTermChoice, SubjectGroup } from '../models';
+import { changeGroupSubjectFromTerm, setGroupSubjectForTerm as setGroupSubjectForTermSvc } from '@/services/groupSubjectChoiceService';
 import {
   getSubjectOrderMapByGradeAndPeriod,
   sortSubjectsByOrder,
@@ -1041,11 +1042,17 @@ export const updateInscription = async (req: Request, res: Response) => {
       }
     }
 
-    // Handle group subject updates (when subjectIds is provided)
+    // Handle group subject updates (when subjectIds is provided).
+    //
+    // Per-term choice semantics:
+    //  - The change applies from the active term onwards.
+    //  - Notes for the old subject are NEVER destroyed. They remain in the
+    //    database and reappear if the student switches back. The professor
+    //    manually enters notes for the new subject.
+    //  - Terms before the active term are never touched.
     if (Array.isArray(subjectIds)) {
       console.log(`[UpdateInscription] Updating group subjects:`, subjectIds);
 
-      // Get all subjects for this grade to identify which are group subjects
       const periodGrade = await PeriodGrade.findOne({
         where: {
           schoolPeriodId: inscription.schoolPeriodId,
@@ -1056,43 +1063,35 @@ export const updateInscription = async (req: Request, res: Response) => {
       });
 
       if (periodGrade && periodGrade.subjects) {
-        const allGroupSubjectIds = periodGrade.subjects
-          .filter((s: any) => s.subjectGroupId !== null && s.subjectGroupId !== undefined)
-          .map((s: any) => s.id);
+        const groupSubjects = periodGrade.subjects.filter(
+          (s: any) => s.subjectGroupId != null
+        );
 
-        // Remove all existing group subjects for this inscription
-        if (allGroupSubjectIds.length > 0) {
-          await InscriptionSubject.destroy({
-            where: {
-              inscriptionId: id,
-              subjectId: { [Op.in]: allGroupSubjectIds }
-            },
-            transaction: t
-          });
-          console.log(`[UpdateInscription] Removed old group subjects`);
-        }
+        const activeTerm = await Term.findOne({
+          where: { schoolPeriodId: inscription.schoolPeriodId, isActive: true },
+          transaction: t,
+        });
 
-        // Also ensure any previous group InscriptionSubject records are cleaned up
-        // (defensive: handle case where periodGrade.subjects had no grouped subjects)
-        if (allGroupSubjectIds.length === 0 && subjectIds.length > 0) {
-          console.log(`[UpdateInscription] No grouped subjects found in grade, destroying by subjectIds directly`);
-          await InscriptionSubject.destroy({
-            where: {
-              inscriptionId: id,
-              subjectId: { [Op.in]: subjectIds.map((sid: any) => Number(sid)).filter((sid: number) => Number.isFinite(sid)) }
-            },
-            transaction: t
-          });
-        }
-
-        // Add new group subjects
-        if (subjectIds.length > 0) {
-          const newGroupSubjects = subjectIds.map((subjectId: number) => ({
-            inscriptionId: inscription.id,
-            subjectId: subjectId
-          }));
-          await InscriptionSubject.bulkCreate(newGroupSubjects, { transaction: t, ignoreDuplicates: true });
-          console.log(`[UpdateInscription] Added ${subjectIds.length} new group subjects`);
+        if (activeTerm) {
+          for (const subjectId of subjectIds) {
+            const subj = groupSubjects.find((s: any) => s.id === Number(subjectId));
+            if (!subj || subj.subjectGroupId == null) continue;
+            await changeGroupSubjectFromTerm(
+              inscription.id,
+              subj.subjectGroupId,
+              subj.id,
+              activeTerm.id,
+              { transaction: t }
+            );
+          }
+        } else if (subjectIds.length > 0) {
+          // No active term — just ensure InscriptionSubject rows exist.
+          for (const subjectId of subjectIds) {
+            await InscriptionSubject.findOrCreate({
+              where: { inscriptionId: inscription.id, subjectId: Number(subjectId) },
+              transaction: t,
+            });
+          }
         }
       }
     }
@@ -1411,7 +1410,9 @@ export const updateMatriculation = async (req: Request, res: Response) => {
         }
       }
 
-      // Handle group subject updates (when subjectIds is provided)
+      // Handle group subject updates (when subjectIds is provided).
+      // Same per-term logic as updateInscription: change applies from the
+      // active term onwards. Notes are never destroyed.
       if (Array.isArray(subjectIds)) {
         const periodGrade = await PeriodGrade.findOne({
           where: {
@@ -1423,41 +1424,33 @@ export const updateMatriculation = async (req: Request, res: Response) => {
         });
 
         if (periodGrade && periodGrade.subjects) {
-          const allGroupSubjectIds = periodGrade.subjects
-            .filter((s: any) => s.subjectGroupId !== null && s.subjectGroupId !== undefined)
-            .map((s: any) => s.id);
+          const groupSubjects = periodGrade.subjects.filter(
+            (s: any) => s.subjectGroupId != null
+          );
 
-          // Remove all existing group subjects for this inscription
-          if (allGroupSubjectIds.length > 0) {
-            await InscriptionSubject.destroy({
-              where: {
-                inscriptionId: inscription.id,
-                subjectId: { [Op.in]: allGroupSubjectIds }
-              },
-              transaction: t
-            });
+          const activeTerm = await Term.findOne({
+            where: { schoolPeriodId: inscription.schoolPeriodId, isActive: true },
+            transaction: t,
+          });
+
+          if (activeTerm) {
+            for (const subjectId of subjectIds) {
+              const subj = groupSubjects.find((s: any) => s.id === Number(subjectId));
+              if (!subj || subj.subjectGroupId == null) continue;
+              await changeGroupSubjectFromTerm(
+                inscription.id,
+                subj.subjectGroupId,
+                subj.id,
+                activeTerm.id,
+                { transaction: t }
+              );
+            }
           } else if (subjectIds.length > 0) {
-            // Defensive: no grouped subjects found in grade, destroy by subjectIds directly
-            await InscriptionSubject.destroy({
-              where: {
-                inscriptionId: inscription.id,
-                subjectId: { [Op.in]: subjectIds.map((sid: any) => Number(sid)).filter((sid: number) => Number.isFinite(sid)) }
-              },
-              transaction: t
-            });
-          }
-
-          // Add new group subjects (use subjectIds directly, don't validate against allGroupSubjectIds)
-          if (subjectIds.length > 0) {
-            const newGroupSubjects = subjectIds
-              .map((sid: any) => Number(sid))
-              .filter((sid: number) => Number.isFinite(sid))
-              .map((subjectId: number) => ({
-                inscriptionId: inscription.id,
-                subjectId
-              }));
-            if (newGroupSubjects.length > 0) {
-              await InscriptionSubject.bulkCreate(newGroupSubjects, { transaction: t, ignoreDuplicates: true });
+            for (const subjectId of subjectIds) {
+              await InscriptionSubject.findOrCreate({
+                where: { inscriptionId: inscription.id, subjectId: Number(subjectId) },
+                transaction: t,
+              });
             }
           }
         }
@@ -1544,5 +1537,142 @@ export const bulkToggleMatriculationVisibility = async (req: Request, res: Respo
   } catch (error: any) {
     console.error('Error bulk toggling visibility:', error);
     res.status(500).json({ error: 'Error al cambiar visibilidad masiva', details: error.message || error });
+  }
+};
+
+// ─── Per-term group subject choices ──────────────────────────────────────
+
+/**
+ * GET /api/inscriptions/:id/group-choices
+ * Returns the per-term subject choices for every group the student is
+ * enrolled in, plus the list of terms and available subjects per group.
+ */
+export const getGroupSubjectChoices = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const inscription = await Inscription.findByPk(id);
+    if (!inscription) return res.status(404).json({ error: 'Inscripción no encontrada' });
+
+    const [terms, choices, periodGrade] = await Promise.all([
+      Term.findAll({
+        where: { schoolPeriodId: inscription.schoolPeriodId },
+        order: [['order', 'ASC']],
+      }),
+      InscriptionGroupTermChoice.findAll({ where: { inscriptionId: Number(id) } }),
+      PeriodGrade.findOne({
+        where: { schoolPeriodId: inscription.schoolPeriodId, gradeId: inscription.gradeId },
+        include: [{
+          model: Subject,
+          as: 'subjects',
+          through: { where: { active: true } },
+          include: [{ model: SubjectGroup, as: 'subjectGroup' }],
+        }],
+      }),
+    ]);
+
+    const groupSubjects = (periodGrade?.subjects || []).filter((s: any) => s.subjectGroupId != null) as any[];
+    const groups: { id: number; name: string; subjects: { id: number; name: string }[] }[] = [];
+    const seen = new Map<number, { id: number; name: string; subjects: { id: number; name: string }[] }>();
+    for (const s of groupSubjects) {
+      const gid: number = s.subjectGroupId;
+      let g = seen.get(gid);
+      if (!g) {
+        g = { id: gid, name: s.subjectGroup?.name || `Grupo ${gid}`, subjects: [] };
+        seen.set(gid, g);
+        groups.push(g);
+      }
+      g.subjects.push({ id: s.id, name: s.name });
+    }
+
+    res.json({
+      terms: terms.map(t => ({ id: t.id, name: t.name, order: t.order, isActive: t.isActive })),
+      groups,
+      choices: choices.map(c => ({
+        termId: c.termId,
+        subjectGroupId: c.subjectGroupId,
+        subjectId: c.subjectId,
+      })),
+    });
+  } catch (error: any) {
+    console.error('[getGroupSubjectChoices] Error:', error);
+    res.status(500).json({ error: 'Error al obtener elecciones de grupo', details: error.message });
+  }
+};
+
+/**
+ * PUT /api/inscriptions/:id/group-choices
+ * Body: { subjectGroupId, termId, subjectId }
+ * Explicitly sets the subject for a single term (backfill UI).
+ */
+export const setGroupSubjectForTerm = async (req: Request, res: Response) => {
+  const t = await sequelize.transaction();
+  try {
+    const { id } = req.params;
+    const { subjectGroupId, termId, subjectId } = req.body;
+    if (!subjectGroupId || !termId || !subjectId) {
+      await t.rollback();
+      return res.status(400).json({ error: 'subjectGroupId, termId y subjectId son obligatorios' });
+    }
+    await setGroupSubjectForTermSvc(Number(id), Number(subjectGroupId), Number(termId), Number(subjectId), { transaction: t });
+    await t.commit();
+    res.json({ message: 'Elección de materia guardada correctamente' });
+  } catch (error: any) {
+    if (t) await t.rollback();
+    console.error('[setGroupSubjectForTerm] Error:', error);
+    res.status(500).json({ error: 'Error al guardar la elección', details: error.message });
+  }
+};
+
+/**
+ * POST /api/inscriptions/:id/group-choices/check
+ * Body: { subjectId }
+ * Pre-flight check: tells the frontend whether the student already has notes
+ * for their current group subject in the active term. Notes are NEVER
+ * destroyed by a switch — this endpoint exists only so the UI can inform the
+ * user that the old notes exist and will be hidden (but preserved) until the
+ * student switches back.
+ */
+export const checkGroupSubjectChangeImpact = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { subjectId } = req.body;
+    if (!subjectId) return res.status(400).json({ error: 'subjectId es obligatorio' });
+
+    const inscription = await Inscription.findByPk(id);
+    if (!inscription) return res.status(404).json({ error: 'Inscripción no encontrada' });
+
+    const activeTerm = await Term.findOne({
+      where: { schoolPeriodId: inscription.schoolPeriodId, isActive: true },
+    });
+    if (!activeTerm) {
+      return res.json({ hasNotesInActiveTerm: false, activeTermId: null, currentSubjectId: null });
+    }
+
+    const currentChoice = await InscriptionGroupTermChoice.findOne({
+      where: { inscriptionId: Number(id), termId: activeTerm.id },
+    });
+    if (!currentChoice || currentChoice.subjectId === Number(subjectId)) {
+      return res.json({ hasNotesInActiveTerm: false, activeTermId: activeTerm.id, currentSubjectId: currentChoice?.subjectId ?? null });
+    }
+
+    const oldInsSubj = await InscriptionSubject.findOne({
+      where: { inscriptionId: Number(id), subjectId: currentChoice.subjectId },
+    });
+    let hasNotes = false;
+    if (oldInsSubj) {
+      const tg = await SubjectTermGrade.findOne({
+        where: { inscriptionSubjectId: oldInsSubj.id, termId: activeTerm.id },
+      });
+      hasNotes = !!tg;
+    }
+
+    res.json({
+      hasNotesInActiveTerm: hasNotes,
+      activeTermId: activeTerm.id,
+      currentSubjectId: currentChoice.subjectId,
+    });
+  } catch (error: any) {
+    console.error('[checkGroupSubjectChangeImpact] Error:', error);
+    res.status(500).json({ error: 'Error al verificar impacto', details: error.message });
   }
 };

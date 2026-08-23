@@ -32,7 +32,7 @@ import {
   getSubjectOrderMap,
   sortSubjectsByOrder,
 } from '@/services/subjectOrderService';
-import { filterActiveGroupSubjects } from '@/services/subjectGroupService';
+import { filterActiveGroupSubjects, filterActiveGroupSubjectsForTerm } from '@/services/subjectGroupService';
 import { isPassingGrade, resolveGradeStatus, roundFinalGrade, MIN_FINAL_GRADE } from '@/services/gradeEvaluationService';
 import { GradeCalculationService } from '@/services/gradeCalculationService';
 import { readTemplateNamedRanges, TemplateNamedRanges } from '@/services/templateNamedRanges';
@@ -1250,8 +1250,13 @@ export const getBoletinData = async (req: Request, res: Response) => {
     // Sort students canonically: document type → document number → lastName → firstName → grade → section
     sortInscriptions(inscriptions as any[]);
 
-    const students = inscriptions.map((ins: any) => {
-      const activeInscriptionSubjects = filterActiveGroupSubjects(ins.inscriptionSubjects || []);
+    // Resolve the active term so group subjects are filtered per-term.
+    const activeTerm = await Term.findOne({ where: { schoolPeriodId, isActive: true } });
+
+    const students = await Promise.all(inscriptions.map(async (ins: any) => {
+      const activeInscriptionSubjects = activeTerm
+        ? await filterActiveGroupSubjectsForTerm(ins.inscriptionSubjects || [], activeTerm.id)
+        : filterActiveGroupSubjects(ins.inscriptionSubjects || []);
       const insSubs = sortSubjectsByOrder(
         activeInscriptionSubjects,
         (is: any) => is.subjectId,
@@ -1314,7 +1319,7 @@ export const getBoletinData = async (req: Request, res: Response) => {
         guideTeacher: guideMap.get(ins.sectionId) || '',
         subjects,
       };
-    });
+    }));
 
     // Load observations for all students in this boletin.
     // The boletin shows the observation from the last completed term for

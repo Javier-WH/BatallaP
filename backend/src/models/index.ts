@@ -124,6 +124,7 @@ import DashboardContent from './DashboardContent';
 import QualificationAudit from './QualificationAudit';
 import RevisionPeriod from './RevisionPeriod';
 import InscriptionSubjectRevision from './InscriptionSubjectRevision';
+import InscriptionGroupTermChoice from './InscriptionGroupTermChoice';
 import ThematicComponent from './ThematicComponent';
 import ThematicContent from './ThematicContent';
 import ExpectedLearning from './ExpectedLearning';
@@ -361,6 +362,13 @@ InscriptionSubjectRevision.belongsTo(InscriptionSubject, { foreignKey: 'inscript
 
 Person.hasMany(InscriptionSubjectRevision, { foreignKey: 'gradedBy', as: 'gradedRevisions' });
 InscriptionSubjectRevision.belongsTo(Person, { foreignKey: 'gradedBy', as: 'grader' });
+
+// InscriptionGroupTermChoice — per-term subject choice within a SubjectGroup.
+Inscription.hasMany(InscriptionGroupTermChoice, { foreignKey: 'inscriptionId', as: 'groupTermChoices' });
+InscriptionGroupTermChoice.belongsTo(Inscription, { foreignKey: 'inscriptionId', as: 'inscription' });
+InscriptionGroupTermChoice.belongsTo(SubjectGroup, { foreignKey: 'subjectGroupId', as: 'subjectGroup' });
+InscriptionGroupTermChoice.belongsTo(Subject, { foreignKey: 'subjectId', as: 'subject' });
+InscriptionGroupTermChoice.belongsTo(Term, { foreignKey: 'termId', as: 'term' });
 SchoolPeriodTransitionRule.belongsTo(Grade, { foreignKey: 'gradeFromId', as: 'gradeFrom' });
 Grade.hasMany(SchoolPeriodTransitionRule, { foreignKey: 'gradeToId', as: 'incomingTransitions' });
 SchoolPeriodTransitionRule.belongsTo(Grade, { foreignKey: 'gradeToId', as: 'gradeTo' });
@@ -451,6 +459,7 @@ export {
   QualificationAudit,
   RevisionPeriod,
   InscriptionSubjectRevision,
+  InscriptionGroupTermChoice,
   ThematicComponent,
   ThematicContent,
   ExpectedLearning,

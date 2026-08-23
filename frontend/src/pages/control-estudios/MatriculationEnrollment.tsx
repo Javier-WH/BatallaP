@@ -782,11 +782,11 @@ const MatriculationEnrollment: React.FC = () => {
     let errors = 0;
     for (const row of rows) {
       const inscriptionId = row.inscriptionId;
-      if (!inscriptionId) {
-        errors++;
-        continue;
-      }
+      if (!inscriptionId) { errors++; continue; }
       try {
+        // The backend applies the change from the active term onwards.
+        // Notes for the old subject are preserved — if the student switches
+        // back, the old notes reappear automatically.
         await api.patch(`/inscriptions/${inscriptionId}`, { subjectIds });
       } catch (error) {
         console.error(`[handleBulkSubjectSave] Error para inscripción ${inscriptionId}:`, error);

@@ -8,7 +8,10 @@ import {
   addSubjectToInscription,
   removeSubjectFromInscription,
   registerAndEnroll,
-  quickRegister
+  quickRegister,
+  getGroupSubjectChoices,
+  setGroupSubjectForTerm,
+  checkGroupSubjectChangeImpact,
 } from '../controllers/inscriptionController';
 
 const router = Router();
@@ -25,5 +28,10 @@ router.delete('/:id', deleteInscription);
 // Sub-resource for subjects (manual management)
 router.post('/:id/subjects', addSubjectToInscription);
 router.delete('/:id/subjects/:subjectId', removeSubjectFromInscription);
+
+// Per-term group subject choices (backfill + validation)
+router.get('/:id/group-choices', getGroupSubjectChoices);
+router.put('/:id/group-choices', setGroupSubjectForTerm);
+router.post('/:id/group-choices/check', checkGroupSubjectChangeImpact);
 
 export default router;

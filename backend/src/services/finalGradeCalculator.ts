@@ -142,6 +142,11 @@ export class FinalGradeCalculator {
       inscriptionSimple.schoolPeriodId,
       options.transaction
     );
+    // Apply canonical subject order before iterating.
+    // NOTE: finalGradeCalculator operates across all terms (it computes the
+    // period final grade), so we use the legacy filter that picks the subject
+    // with qualifications. The per-term choice is respected by the per-term
+    // callers (council, evaluation) which use filterActiveGroupSubjectsForTerm.
     inscriptionRecord.inscriptionSubjects = filterActiveGroupSubjects(
       sortSubjectsByOrder(
         inscriptionRecord.inscriptionSubjects,

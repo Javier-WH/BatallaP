@@ -21,7 +21,7 @@ import {
   getSubjectIncludeInAverageMap,
   sortSubjectsByOrder,
 } from '@/services/subjectOrderService';
-import { filterActiveGroupSubjects } from '@/services/subjectGroupService';
+import { filterActiveGroupSubjectsForTerm } from '@/services/subjectGroupService';
 import { TermSectionClosureService } from '@/services/termSectionClosureService';
 import { sortInscriptions } from '@/services/studentSortService';
 
@@ -111,10 +111,11 @@ export const getCouncilData = async (req: Request, res: Response) => {
     // Terms before the selected one (previous terms)
     const previousTerms = allTerms.filter((t: any) => t.order < term.order);
 
-    // Map data for frontend
-    const result = inscriptions.map(ins => {
+    // Map data for frontend.
+    // Council is per-term, so we resolve the active group subject for THIS term.
+    const result = await Promise.all(inscriptions.map(async ins => {
       const insAny = ins as any;
-      const activeSubjects = filterActiveGroupSubjects(insAny.inscriptionSubjects || []);
+      const activeSubjects = await filterActiveGroupSubjectsForTerm(insAny.inscriptionSubjects || [], term.id);
       const sortedSubjects = sortSubjectsByOrder(
         activeSubjects,
         (is: any) => is.subjectId,
@@ -186,7 +187,7 @@ export const getCouncilData = async (req: Request, res: Response) => {
         documentType: insAny.student?.documentType,
         subjects: sortedSubjects
       };
-    });
+    }));
 
     res.json(result);
   } catch (error) {

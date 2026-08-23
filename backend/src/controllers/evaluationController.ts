@@ -41,7 +41,7 @@ import {
   sortSubjectsWithPendingAtEnd,
   sortSubjectsByOrder,
 } from '@/services/subjectOrderService';
-import { filterActiveGroupSubjects } from '@/services/subjectGroupService';
+import { filterActiveGroupSubjects, filterActiveGroupSubjectsForTerm } from '@/services/subjectGroupService';
 import { resolveGradeStatus, MIN_FINAL_GRADE } from '@/services/gradeEvaluationService';
 import { TermSectionClosureService } from '@/services/termSectionClosureService';
 import { TermGradeSyncService } from '@/services/termGradeSyncService';
@@ -1203,10 +1203,18 @@ export const getFinalGradesByPeriod = async (req: Request, res: Response) => {
         }
       }
 
-      // Apply canonical subject order
+      // Apply canonical subject order.
+      // Use the term-aware filter so students who switched group subjects
+      // mid-year show the subject they're currently taking (active term).
+      const activeTerm = await Term.findOne({
+        where: { schoolPeriodId: Number(schoolPeriodId), isActive: true },
+      });
+      const filteredSubjects = activeTerm
+        ? await filterActiveGroupSubjectsForTerm(inscriptionSubjects as any, activeTerm.id)
+        : filterActiveGroupSubjects(inscriptionSubjects as any);
       const orderMap = await resolveOrderMap(inscription.gradeId);
       inscriptionSubjects = sortSubjectsByOrder(
-        filterActiveGroupSubjects(inscriptionSubjects),
+        filteredSubjects as typeof inscriptionSubjects,
         (is: any) => is.subjectId,
         (is: any) => is.subject?.name,
         orderMap

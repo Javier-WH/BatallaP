@@ -298,19 +298,23 @@ const PerformanceSummary: React.FC = () => {
       if (!selectedGradeIds.includes(s.grade.id)) return;
       s.sections.forEach(sec => byId.set(sec.id, sec));
     });
-    return [...byId.values()].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'es'));
+    return [...byId.values()].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'es', { numeric: true }));
   }, [structure, selectedGradeIds]);
 
   // Only the (grade, section) pairs that actually exist in the academic structure.
   // Selecting 2 grades x 2 sections does not necessarily yield 4 courses.
+  // Order matters: it drives file order and the sheet order of the annual report.
+  // `structure` is already sorted by grade.order; sections come unsorted from the API.
   const validCombinations = useMemo(() => {
     const combos: { gradeId: number; gradeName: string; sectionId: number; sectionName: string }[] = [];
     structure.forEach(s => {
       if (!selectedGradeIds.includes(s.grade.id)) return;
-      s.sections.forEach(sec => {
-        if (!selectedSectionIds.includes(sec.id)) return;
-        combos.push({ gradeId: s.grade.id, gradeName: s.grade.name, sectionId: sec.id, sectionName: sec.name });
-      });
+      [...s.sections]
+        .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'es', { numeric: true }))
+        .forEach(sec => {
+          if (!selectedSectionIds.includes(sec.id)) return;
+          combos.push({ gradeId: s.grade.id, gradeName: s.grade.name, sectionId: sec.id, sectionName: sec.name });
+        });
     });
     return combos;
   }, [structure, selectedGradeIds, selectedSectionIds]);

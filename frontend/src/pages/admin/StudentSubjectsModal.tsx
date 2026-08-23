@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Modal, List, Button, Tag, Typography, message, Space, Divider, Spin, Empty } from 'antd';
+import { Modal, List, Button, Tag, Typography, message, Space, Divider, Spin, Empty, Select, Alert } from 'antd';
 import { PlusOutlined, DeleteOutlined, BookOutlined } from '@ant-design/icons';
 import api from '@/services/api';
 
@@ -39,6 +39,14 @@ const StudentSubjectsModal: React.FC<Props> = ({
   const [loading, setLoading] = useState(false);
   const [enrolledSubjects, setEnrolledSubjects] = useState<Subject[]>([]);
   const [availableSubjects, setAvailableSubjects] = useState<Subject[]>([]);
+
+  // Per-term group subject choices (backfill UI)
+  const [groupChoices, setGroupChoices] = useState<{
+    terms: { id: number; name: string; order: number; isActive: boolean }[];
+    groups: { id: number; name: string; subjects: { id: number; name: string }[] }[];
+    choices: { termId: number; subjectGroupId: number; subjectId: number }[];
+  } | null>(null);
+  const [choiceSaving, setChoiceSaving] = useState(false);
 
   const fetchData = async () => {
     if (!inscriptionId) return;
@@ -137,9 +145,36 @@ const StudentSubjectsModal: React.FC<Props> = ({
     }
   };
 
+  const fetchGroupChoices = async () => {
+    if (!inscriptionId) return;
+    try {
+      const res = await api.get(`/inscriptions/${inscriptionId}/group-choices`);
+      setGroupChoices(res.data);
+    } catch (e) {
+      console.error('Error fetching group choices:', e);
+      setGroupChoices(null);
+    }
+  };
+
+  const handleSetGroupChoice = async (subjectGroupId: number, termId: number, subjectId: number) => {
+    if (!inscriptionId) return;
+    setChoiceSaving(true);
+    try {
+      await api.put(`/inscriptions/${inscriptionId}/group-choices`, { subjectGroupId, termId, subjectId });
+      message.success('Materia de grupo actualizada para el lapso');
+      await fetchGroupChoices();
+    } catch (error: any) {
+      const errMsg = error?.response?.data?.error || 'Error al guardar la elección';
+      message.error(errMsg);
+    } finally {
+      setChoiceSaving(false);
+    }
+  };
+
   useEffect(() => {
     if (visible && inscriptionId) {
       fetchData();
+      fetchGroupChoices();
     }
   }, [visible, inscriptionId]);
 
@@ -245,6 +280,52 @@ const StudentSubjectsModal: React.FC<Props> = ({
             />
           ) : (
             <Empty description="No hay materias adicionales disponibles" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+          )}
+
+          {groupChoices && groupChoices.groups.length > 0 && (
+            <>
+              <Divider />
+              <Title level={5}>Materias de Grupo por Lapso</Title>
+              <Alert
+                type="info"
+                showIcon
+                style={{ marginBottom: 12 }}
+                message="Asigne la materia de grupo que el estudiante cursó en cada lapso. Útil para registrar cambios o completar datos históricos."
+              />
+              <Spin spinning={choiceSaving}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                  {groupChoices.groups.map(group => (
+                    <div key={group.id}>
+                      <Text strong style={{ display: 'block', marginBottom: 6 }}>
+                        <Tag color="orange">{group.name}</Tag>
+                      </Text>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        {groupChoices.terms.map(term => {
+                          const current = groupChoices.choices.find(
+                            c => c.subjectGroupId === group.id && c.termId === term.id
+                          );
+                          return (
+                            <div key={term.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <span style={{ flex: '0 0 90px', fontSize: 12, color: '#667085' }}>
+                                {term.name}{term.isActive ? ' (activo)' : ''}
+                              </span>
+                              <Select
+                                size="small"
+                                style={{ flex: 1, minWidth: 180 }}
+                                value={current?.subjectId}
+                                placeholder="Seleccione…"
+                                options={group.subjects.map(s => ({ label: s.name, value: s.id }))}
+                                onChange={(subjectId) => handleSetGroupChoice(group.id, term.id, subjectId)}
+                              />
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </Spin>
+            </>
           )}
         </div>
       </Spin>
