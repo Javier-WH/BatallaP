@@ -673,12 +673,14 @@ export const saveMpFinalGrade = async (req: Request, res: Response) => {
 
     const activePeriod = await SchoolPeriod.findOne({ where: { status: 'activo' } });
     const roundedScore = roundFinalGrade(finalScore);
-    const status = resolveGradeStatus(roundedScore, 10); // Default passing grade 10; TODO: read from settings
+    // Score 0 is treated as NP (inasistente), same logic as regular grades
+    const isAbsent = roundedScore === 0;
+    const status = isAbsent ? 'reprobada' : resolveGradeStatus(roundedScore, 10);
 
     // Upsert SubjectFinalGrade with gradeType='materia_pendiente'
     await SubjectFinalGrade.upsert({
       inscriptionSubjectId,
-      finalScore: roundedScore,
+      finalScore: isAbsent ? 0 : roundedScore,
       rawScore: finalScore,
       status,
       calculatedAt: new Date(),
@@ -700,8 +702,9 @@ export const saveMpFinalGrade = async (req: Request, res: Response) => {
     await t.commit();
     return res.json({
       message: 'Nota guardada correctamente',
-      finalScore: roundedScore,
+      finalScore: isAbsent ? 0 : roundedScore,
       status,
+      isAbsent,
       period: activePeriod?.name,
     });
   } catch (error) {
@@ -729,7 +732,7 @@ export const createMpEvaluationItem = async (req: Request, res: Response) => {
       termId,
       description: description || 'Evaluación',
       percentage: percentage || 100,
-      date: date ? new Date(date) : new Date(),
+      date: date ? new Date(date + 'T00:00:00') : new Date(),
     });
 
     return res.status(201).json(item);
@@ -740,8 +743,67 @@ export const createMpEvaluationItem = async (req: Request, res: Response) => {
 };
 
 /* ------------------------------------------------------------------ */
+/* PUT /pending-subjects/evaluation-plan/:id                           */
+/* Update an evaluation plan item                                      */
+/* ------------------------------------------------------------------ */
+export const updateMpEvaluationItem = async (req: Request, res: Response) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) {
+      return res.status(400).json({ message: 'id inválido' });
+    }
+    const { description, percentage, termId, date } = req.body;
+    const item = await EvaluationPlan.findByPk(id);
+    if (!item) {
+      return res.status(404).json({ message: 'Item no encontrado' });
+    }
+    await item.update({
+      ...(description !== undefined && { description }),
+      ...(percentage !== undefined && { percentage }),
+      ...(termId !== undefined && { termId }),
+      ...(date !== undefined && { date: new Date(date + 'T00:00:00') }),
+    });
+    return res.json(item);
+  } catch (error) {
+    console.error('[updateMpEvaluationItem] Error:', error);
+    return res.status(500).json({ message: 'Error al actualizar item' });
+  }
+};
+
+/* ------------------------------------------------------------------ */
+/* DELETE /pending-subjects/evaluation-plan/:id                        */
+/* Delete an evaluation plan item and its qualifications               */
+/* ------------------------------------------------------------------ */
+export const deleteMpEvaluationItem = async (req: Request, res: Response) => {
+  const t = await sequelize.transaction();
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) {
+      return res.status(400).json({ message: 'id inválido' });
+    }
+    const item = await EvaluationPlan.findByPk(id, { transaction: t });
+    if (!item) {
+      return res.status(404).json({ message: 'Item no encontrado' });
+    }
+    // Delete associated qualifications first
+    await Qualification.destroy({ where: { evaluationPlanId: id }, transaction: t });
+    await item.destroy({ transaction: t });
+    await t.commit();
+    return res.json({ message: 'Item eliminado' });
+  } catch (error) {
+    await t.rollback();
+    console.error('[deleteMpEvaluationItem] Error:', error);
+    return res.status(500).json({ message: 'Error al eliminar item' });
+  }
+};
+
+/* ------------------------------------------------------------------ */
 /* POST /pending-subjects/qualification                                */
 /* Save a qualification for an MP student                              */
+/* The score is the final grade for this evaluation item.              */
+/* For MP: if the student passes (score >= passing grade),             */
+/* mark as approved immediately using the plan item's date.            */
+/* No averaging — first pass wins.                                     */
 /* ------------------------------------------------------------------ */
 export const saveMpQualification = async (req: Request, res: Response) => {
   const t = await sequelize.transaction();
@@ -752,6 +814,16 @@ export const saveMpQualification = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'evaluationPlanId e inscriptionSubjectId son requeridos' });
     }
 
+    // Get the evaluation plan item to use its date
+    const planItem = await EvaluationPlan.findByPk(evaluationPlanId, { transaction: t });
+    if (!planItem) {
+      return res.status(404).json({ message: 'Item de evaluación no encontrado' });
+    }
+
+    // Score 0 is treated as NP (inasistente), same logic as regular grades
+    const rawScore = score ?? 0;
+    const finalIsAbsent = isAbsent ?? (rawScore === 0);
+
     // Upsert qualification
     const existing = await Qualification.findOne({
       where: { evaluationPlanId, inscriptionSubjectId },
@@ -760,45 +832,80 @@ export const saveMpQualification = async (req: Request, res: Response) => {
 
     if (existing) {
       await existing.update({
-        score: score ?? 0,
-        isAbsent: isAbsent ?? false,
+        score: rawScore,
+        isAbsent: finalIsAbsent,
       }, { transaction: t });
     } else {
       await Qualification.create({
         evaluationPlanId,
         inscriptionSubjectId,
-        score: score ?? 0,
-        isAbsent: isAbsent ?? false,
+        score: rawScore,
+        isAbsent: finalIsAbsent,
       }, { transaction: t });
     }
 
     // For MP: if the student passes (score >= passing grade), mark as approved immediately
+    // Use the plan item's date as the calculatedAt date
     // No averaging — first pass wins
-    const roundedScore = roundFinalGrade(score ?? 0);
-    const status = resolveGradeStatus(roundedScore, 10);
+    // NP (absent) is always failing
+    const roundedScore = roundFinalGrade(rawScore);
+    const status = finalIsAbsent ? 'reprobada' : resolveGradeStatus(roundedScore, 10);
+    // DATEONLY returns a string 'YYYY-MM-DD'; parse as local noon to avoid TZ offset
+    const rawPlanDate = planItem.date;
+    const evaluationDate = rawPlanDate
+      ? new Date(`${rawPlanDate}T12:00:00`)
+      : new Date();
 
-    if (status === 'aprobada') {
-      await SubjectFinalGrade.upsert({
-        inscriptionSubjectId,
-        finalScore: roundedScore,
-        rawScore: score,
-        status: 'aprobada',
-        calculatedAt: new Date(),
-        gradeType: 'materia_pendiente',
-      }, { transaction: t });
+    // Get the inscription subject to find the inscription
+    const insSubj = await InscriptionSubject.findByPk(inscriptionSubjectId, { transaction: t });
 
-      // Update PendingSubject
-      const pending = await PendingSubject.findOne({
-        where: { newInscriptionId: (await InscriptionSubject.findByPk(inscriptionSubjectId, { transaction: t }))?.inscriptionId, subjectId: (await InscriptionSubject.findByPk(inscriptionSubjectId, { transaction: t }))?.subjectId },
+    if (status === 'aprobada' && insSubj) {
+      // Check if there's already an approved final grade — don't overwrite if already approved
+      const existingFinal = await SubjectFinalGrade.findOne({
+        where: { inscriptionSubjectId },
         transaction: t,
       });
-      if (pending) {
-        await pending.update({ status: 'aprobada', resolvedAt: new Date() }, { transaction: t });
+
+      if (!existingFinal || existingFinal.status !== 'aprobada') {
+        await SubjectFinalGrade.upsert({
+          inscriptionSubjectId,
+          finalScore: roundedScore,
+          rawScore,
+          status: 'aprobada',
+          calculatedAt: evaluationDate,
+          gradeType: 'materia_pendiente',
+        }, { transaction: t });
+
+        // Update PendingSubject
+        const pending = await PendingSubject.findOne({
+          where: { newInscriptionId: insSubj.inscriptionId, subjectId: insSubj.subjectId },
+          transaction: t,
+        });
+        if (pending) {
+          await pending.update({ status: 'aprobada', resolvedAt: evaluationDate }, { transaction: t });
+        }
+      }
+    } else if (insSubj) {
+      // Score is failing or NP — save the qualification but don't mark as approved
+      // Only create/update SubjectFinalGrade if there isn't already an approved one
+      const existingFinal = await SubjectFinalGrade.findOne({
+        where: { inscriptionSubjectId },
+        transaction: t,
+      });
+      if (!existingFinal || existingFinal.status !== 'aprobada') {
+        await SubjectFinalGrade.upsert({
+          inscriptionSubjectId,
+          finalScore: finalIsAbsent ? 0 : roundedScore,
+          rawScore,
+          status: 'reprobada',
+          calculatedAt: evaluationDate,
+          gradeType: 'materia_pendiente',
+        }, { transaction: t });
       }
     }
 
     await t.commit();
-    return res.json({ message: 'Calificación guardada', status });
+    return res.json({ message: 'Calificación guardada', status, score: roundedScore, date: evaluationDate, isAbsent: finalIsAbsent });
   } catch (error) {
     await t.rollback();
     console.error('[saveMpQualification] Error:', error);

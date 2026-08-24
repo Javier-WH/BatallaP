@@ -17,6 +17,8 @@ router.get('/assignment/:periodGradeSubjectId', pendingSubjectController.getMpAs
 // Grades
 router.post('/final-grade', pendingSubjectController.saveMpFinalGrade);
 router.post('/evaluation-plan', pendingSubjectController.createMpEvaluationItem);
+router.put('/evaluation-plan/:id', pendingSubjectController.updateMpEvaluationItem);
+router.delete('/evaluation-plan/:id', pendingSubjectController.deleteMpEvaluationItem);
 router.post('/qualification', pendingSubjectController.saveMpQualification);
 
 export default router;
