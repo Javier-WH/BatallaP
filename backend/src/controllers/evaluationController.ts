@@ -1764,7 +1764,7 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
         {
           model: Person,
           as: 'student',
-          attributes: ['id', 'firstName', 'lastName', 'document']
+          attributes: ['id', 'firstName', 'lastName', 'document', 'documentType']
         },
         {
           model: InscriptionSubject,
@@ -2304,7 +2304,7 @@ export const exportGradesExcel = async (req: Request, res: Response) => {
         {
           model: Person,
           as: 'student',
-          attributes: ['id', 'firstName', 'lastName', 'document']
+          attributes: ['id', 'firstName', 'lastName', 'document', 'documentType']
         },
         {
           model: InscriptionSubject,

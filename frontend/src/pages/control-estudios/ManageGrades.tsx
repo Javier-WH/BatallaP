@@ -3,6 +3,7 @@ import { Card, Tabs, Table, Button, message, Tag, Typography, Alert, Empty, Spin
 import { BookOutlined, ArrowLeftOutlined, DownloadOutlined, FilePdfOutlined, EditOutlined, DeleteOutlined, PlusOutlined, HistoryOutlined, CopyOutlined } from '@ant-design/icons';
 import api from '@/services/api';
 import dayjs from 'dayjs';
+import { compareNominaStudents } from '@/utils/studentSort';
 import { useGradeRounding } from '@/context/GradeRoundingContext';
 import { formatGrade } from '@/utils/gradeFormat';
 import EvaluationPlanPDFModal from '@/components/pdf/EvaluationPlanPDFModal';
@@ -436,11 +437,8 @@ const ManageGrades: React.FC = () => {
 
     if (values.length === 0) return;
 
-    // Build the list of target cells starting from (startRow, startCol)
-    const sortedStudents = [...students].sort((a, b) => {
-      const parseDoc = (doc: string) => parseInt((doc || '').replace(/\D/g, ''), 10) || 0;
-      return parseDoc(a.student?.document) - parseDoc(b.student?.document);
-    });
+    // Use the same canonical sort as the nómina: document type → document number → lastName → firstName
+    const sortedStudents = [...students].sort(compareNominaStudents);
 
     const targets: { row: number; col: number; enrollment: StudentEnrollment; evalPlanId: number }[] = [];
 
@@ -1231,10 +1229,7 @@ const ManageGrades: React.FC = () => {
                         </thead>
                         <tbody>
                           {[...students]
-                            .sort((a, b) => {
-                              const parseDoc = (doc: string) => parseInt((doc || '').replace(/\D/g, ''), 10) || 0;
-                              return parseDoc(a.student?.document) - parseDoc(b.student?.document);
-                            })
+                            .sort(compareNominaStudents)
                             .map((enrollment, rowIndex) => {
                               const insSub = enrollment.inscriptionSubjects?.[0];
                               const studentQuals = insSub?.qualifications || [];
