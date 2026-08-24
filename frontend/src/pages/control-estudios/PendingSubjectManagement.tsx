@@ -1,14 +1,15 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Card, Button, Tag, Space, Typography, Row, Col, Spin, message, Modal,
-  Empty, Tooltip, Input, Checkbox, Table, InputNumber, Divider, Alert,
+  Empty, Tooltip, Input, Checkbox, Table, InputNumber, Divider, Alert, DatePicker,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import {
   ReloadOutlined, UserAddOutlined, UserOutlined, DeleteOutlined,
   CheckCircleOutlined, ExclamationCircleOutlined, BookOutlined,
-  LockOutlined, EditOutlined, SaveOutlined,
+  LockOutlined, EditOutlined, SaveOutlined, CalendarOutlined,
 } from '@ant-design/icons';
+import dayjs from 'dayjs';
 import api from '@/services/api';
 import { compareStudents } from '@/utils/studentSort';
 
@@ -79,6 +80,39 @@ interface NominaStudent {
   }[];
 }
 
+interface MpPlanItem {
+  id: number;
+  description: string;
+  percentage: number;
+  date: string;
+  termId: number;
+  term?: { name: string };
+}
+
+interface MpAssignmentStudent {
+  inscriptionId: number;
+  inscriptionSubjectId: number;
+  personId: number;
+  studentName: string;
+  studentDni: string;
+  documentType: string;
+  finalGrade: {
+    finalScore: number | null;
+    status: string;
+    gradeType: string;
+    calculatedAt: string;
+  } | null;
+  qualifications: {
+    id: number;
+    score: number;
+    isAbsent: boolean;
+    evaluationPlanId: number;
+    percentage: number;
+    termId: number;
+    description: string;
+  }[];
+}
+
 /* ------------------------------------------------------------------ */
 /* Component                                                           */
 /* ------------------------------------------------------------------ */
@@ -104,7 +138,16 @@ const PendingSubjectManagement: React.FC = () => {
   const [gradeModalStudent, setGradeModalStudent] = useState<NominaStudent | null>(null);
   const [gradeModalSubject, setGradeModalSubject] = useState<NominaSubject | null>(null);
   const [gradeValue, setGradeValue] = useState<number | null>(null);
+  const [gradeDate, setGradeDate] = useState<dayjs.Dayjs>(dayjs());
   const [gradeSaving, setGradeSaving] = useState(false);
+
+  // Assignment detail (evaluation plan + students with qualifications)
+  const [assignmentDetail, setAssignmentDetail] = useState<{
+    students: MpAssignmentStudent[];
+    evaluationPlans: MpPlanItem[];
+  } | null>(null);
+  const [assignmentLoading, setAssignmentLoading] = useState(false);
+  const [qualEdits, setQualEdits] = useState<Record<string, number | null>>({});
 
   /* ------------------- Fetch structure ------------------- */
   const fetchStructure = useCallback(async () => {
@@ -208,7 +251,60 @@ const PendingSubjectManagement: React.FC = () => {
     });
   };
 
-  /* ------------------- Save direct final grade ------------------- */
+  /* ------------------- Open grade modal — fetch assignment detail ------------------- */
+  const openGradeModal = async (student: NominaStudent, subject: NominaSubject) => {
+    setGradeModalStudent(student);
+    setGradeModalSubject(subject);
+    const fg = student.subjects.find(s => s.subjectId === subject.id)?.finalGrade;
+    setGradeValue(fg?.finalScore ?? null);
+    setGradeDate(fg?.calculatedAt ? dayjs(fg.calculatedAt) : dayjs());
+    setGradeModalOpen(true);
+    setAssignmentDetail(null);
+    setQualEdits({});
+    setAssignmentLoading(true);
+    try {
+      const res = await api.get(`/pending-subjects/assignment/${subject.periodGradeSubjectId}`);
+      setAssignmentDetail({
+        students: res.data.students || [],
+        evaluationPlans: res.data.evaluationPlans || [],
+      });
+    } catch (error: any) {
+      console.error('[PendingSubject] Error assignment:', error);
+    } finally {
+      setAssignmentLoading(false);
+    }
+  };
+
+  /* ------------------- Save qualification for a plan item (from CE) ------------------- */
+  const handleSaveQualification = async (student: MpAssignmentStudent, planItem: MpPlanItem, score: number | null) => {
+    if (score == null) return;
+    setGradeSaving(true);
+    try {
+      await api.post('/pending-subjects/qualification', {
+        evaluationPlanId: planItem.id,
+        inscriptionSubjectId: student.inscriptionSubjectId,
+        score,
+      });
+      const isNp = score === 0;
+      message.success(`Calificación guardada: ${student.studentName} — ${isNp ? 'NP' : score}`);
+      setQualEdits(prev => { const n = { ...prev }; delete n[`${student.inscriptionSubjectId}-${planItem.id}`]; return n; });
+      // Refresh assignment detail
+      if (gradeModalSubject) {
+        const res = await api.get(`/pending-subjects/assignment/${gradeModalSubject.periodGradeSubjectId}`);
+        setAssignmentDetail({
+          students: res.data.students || [],
+          evaluationPlans: res.data.evaluationPlans || [],
+        });
+      }
+      if (expandedGradeId) await fetchNomina(expandedGradeId);
+    } catch (error: any) {
+      message.error(error?.response?.data?.message || 'Error al guardar calificación');
+    } finally {
+      setGradeSaving(false);
+    }
+  };
+
+  /* ------------------- Save direct final grade (with date) ------------------- */
   const handleSaveGrade = async () => {
     if (!gradeModalStudent || !gradeModalSubject || gradeValue == null) return;
     const insSubj = gradeModalStudent.subjects.find(s => s.subjectId === gradeModalSubject.id);
@@ -221,6 +317,7 @@ const PendingSubjectManagement: React.FC = () => {
       await api.post('/pending-subjects/final-grade', {
         inscriptionSubjectId: insSubj.inscriptionSubjectId,
         finalScore: gradeValue,
+        date: gradeDate.format('YYYY-MM-DD'),
       });
       message.success('Nota guardada');
       setGradeModalOpen(false);
@@ -460,12 +557,7 @@ const PendingSubjectManagement: React.FC = () => {
                             <td
                               key={subj.id}
                               className="mp-cell-blank"
-                              onClick={() => {
-                                setGradeModalStudent(student);
-                                setGradeModalSubject(subj);
-                                setGradeValue(fg?.finalScore ?? null);
-                                setGradeModalOpen(true);
-                              }}
+                              onClick={() => openGradeModal(student, subj)}
                               style={{ cursor: 'pointer' }}
                             >
                               {fg && fg.finalScore != null ? (
@@ -548,42 +640,176 @@ const PendingSubjectManagement: React.FC = () => {
       <Modal
         open={gradeModalOpen}
         title="Registrar Nota de Materia Pendiente"
+        width={900}
         onCancel={() => setGradeModalOpen(false)}
-        footer={[
-          <Button key="cancel" onClick={() => setGradeModalOpen(false)}>Cancelar</Button>,
-          <Button
-            key="save"
-            type="primary"
-            icon={<SaveOutlined />}
-            loading={gradeSaving}
-            disabled={gradeValue == null}
-            onClick={handleSaveGrade}
-          >
-            Guardar
-          </Button>,
-        ]}
+        footer={null}
       >
         <div style={{ marginBottom: 16 }}>
-          <Text strong>{gradeModalStudent?.studentName}</Text>
+          <Text strong style={{ fontSize: 15 }}>{gradeModalStudent?.studentName}</Text>
           <br />
           <Text type="secondary">{gradeModalSubject?.name}</Text>
         </div>
-        <Divider />
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <Text>Nota final:</Text>
-          <InputNumber
-            min={1}
-            max={20}
-            step={1}
-            value={gradeValue}
-            onChange={v => setGradeValue(v)}
-            style={{ width: 120 }}
-            autoFocus
-          />
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            (1-20, mínimo aprobatorio: 10)
-          </Text>
-        </div>
+        <Divider style={{ margin: '12px 0' }} />
+
+        <Spin spinning={assignmentLoading}>
+          {assignmentDetail && assignmentDetail.evaluationPlans.length > 0 ? (
+            /* ---- Plan de evaluación grid ---- */
+            <div>
+              <Alert
+                type="info"
+                message="Plan de Evaluación del Profesor"
+                description="Si el estudiante aprueba en cualquier item (nota ≥ 10), la materia queda aprobada con la fecha del plan. Los lapsos NO se promedian. Nota 0 = NP (Inasistente)."
+                showIcon
+                style={{ marginBottom: 16 }}
+              />
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, border: '1px solid rgba(15, 23, 42, 0.08)' }}>
+                  <thead style={{ position: 'sticky', top: 0 }}>
+                    <tr>
+                      <th style={{ padding: '4px 6px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'left', backgroundColor: '#f5f7fa', fontWeight: 700, fontSize: 11, color: '#475066' }}>Item</th>
+                      <th style={{ padding: '4px 6px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', backgroundColor: '#f5f7fa', fontWeight: 700, fontSize: 11, color: '#475066' }}>Lapso</th>
+                      <th style={{ padding: '4px 6px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', backgroundColor: '#f5f7fa', fontWeight: 700, fontSize: 11, color: '#475066' }}>Fecha</th>
+                      <th style={{ padding: '4px 6px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', backgroundColor: '#f5f7fa', fontWeight: 700, fontSize: 11, color: '#475066' }}>Nota</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(() => {
+                      const student = assignmentDetail.students.find(
+                        s => s.inscriptionSubjectId === gradeModalStudent?.subjects.find(sb => sb.subjectId === gradeModalSubject?.id)?.inscriptionSubjectId
+                      );
+                      if (!student) return <tr><td colSpan={4} style={{ padding: 16, textAlign: 'center', color: '#999' }}>Estudiante no encontrado en la asignación</td></tr>;
+                      const isApproved = student.finalGrade?.status === 'aprobada';
+                      return assignmentDetail.evaluationPlans.map(planItem => {
+                        const qual = student.qualifications.find(q => q.evaluationPlanId === planItem.id);
+                        const editKey = `${student.inscriptionSubjectId}-${planItem.id}`;
+                        const editValue = qualEdits[editKey];
+                        const isAbsent = !!qual?.isAbsent;
+                        const displayValue = editValue !== undefined ? editValue : (qual ? Number(qual.score) : null);
+                        const showNp = isAbsent && editValue === undefined;
+                        return (
+                          <tr key={planItem.id}>
+                            <td style={{ padding: '4px 8px', border: '1px solid rgba(15, 23, 42, 0.08)', fontSize: 12 }}>{planItem.description} <Text type="secondary" style={{ fontSize: 10 }}>({planItem.percentage}%)</Text></td>
+                            <td style={{ padding: '4px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', fontSize: 11 }}>{planItem.term?.name || '—'}</td>
+                            <td style={{ padding: '4px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', fontSize: 11 }}>{dayjs(planItem.date).format('DD/MM/YYYY')}</td>
+                            <td style={{ padding: '2px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', position: 'relative' }}>
+                              <input
+                                type="number"
+                                min={0}
+                                max={20}
+                                step={1}
+                                inputMode="numeric"
+                                value={displayValue ?? ''}
+                                disabled={isApproved}
+                                onChange={e => {
+                                  const v = e.target.value === '' ? null : Number(e.target.value);
+                                  setQualEdits(prev => ({ ...prev, [editKey]: v }));
+                                }}
+                                onBlur={() => {
+                                  if (editValue !== undefined && editValue !== null) {
+                                    handleSaveQualification(student, planItem, editValue);
+                                  }
+                                }}
+                                onKeyDown={e => {
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    if (editValue !== undefined && editValue !== null) {
+                                      handleSaveQualification(student, planItem, editValue);
+                                    }
+                                  }
+                                }}
+                                style={{
+                                  width: 48,
+                                  textAlign: 'center',
+                                  border: 'none',
+                                  outline: 'none',
+                                  background: 'transparent',
+                                  fontSize: 13,
+                                  fontWeight: displayValue != null && displayValue > 0 && displayValue < 10 ? 700 : undefined,
+                                  color: displayValue != null && displayValue > 0 && displayValue < 10 ? '#dc2626' : undefined,
+                                }}
+                              />
+                              {showNp && <span style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fef2f2', color: '#dc2626', fontWeight: 700, fontSize: 14, pointerEvents: 'none' }}>NP</span>}
+                            </td>
+                          </tr>
+                        );
+                      });
+                    })()}
+                  </tbody>
+                </table>
+              </div>
+              {(() => {
+                const student = assignmentDetail.students.find(
+                  s => s.inscriptionSubjectId === gradeModalStudent?.subjects.find(sb => sb.subjectId === gradeModalSubject?.id)?.inscriptionSubjectId
+                );
+                if (!student) return null;
+                const isApproved = student.finalGrade?.status === 'aprobada';
+                const isAbsent = student.finalGrade?.finalScore === 0;
+                return (
+                  <div style={{ marginTop: 16, display: 'flex', gap: 24, alignItems: 'center' }}>
+                    <Space>
+                      <Text strong>Nota Final:</Text>
+                      <Tag color={isApproved ? 'success' : student.finalGrade ? 'error' : 'default'} style={{ fontSize: 14, padding: '4px 12px' }}>
+                        {student.finalGrade?.finalScore == null ? 'Sin nota' : isAbsent ? 'NP' : Number(student.finalGrade.finalScore).toFixed(0)}
+                      </Tag>
+                      {student.finalGrade && (
+                        <Text type="secondary" style={{ fontSize: 11 }}>
+                          Fecha: {dayjs(student.finalGrade.calculatedAt).format('DD/MM/YYYY')}
+                        </Text>
+                      )}
+                    </Space>
+                  </div>
+                );
+              })()}
+            </div>
+          ) : assignmentDetail && assignmentDetail.evaluationPlans.length === 0 ? (
+            /* ---- No plan → direct grade with date ---- */
+            <div>
+              <Alert
+                type="info"
+                message="No hay plan de evaluación. Registre una nota final directa."
+                showIcon
+                style={{ marginBottom: 16 }}
+              />
+              <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+                <Space>
+                  <Text>Nota final:</Text>
+                  <InputNumber
+                    min={0}
+                    max={20}
+                    step={1}
+                    value={gradeValue}
+                    onChange={v => setGradeValue(v)}
+                    style={{ width: 120 }}
+                    autoFocus
+                  />
+                  <Text type="secondary" style={{ fontSize: 12 }}>(0=NP, 1-20, mínimo 10)</Text>
+                  {gradeValue === 0 && <Tag color="red">NP (Inasistente)</Tag>}
+                </Space>
+                <Space>
+                  <CalendarOutlined />
+                  <Text>Fecha:</Text>
+                  <DatePicker
+                    value={gradeDate}
+                    onChange={d => setGradeDate(d || dayjs())}
+                    format="DD/MM/YYYY"
+                    allowClear={false}
+                  />
+                </Space>
+              </div>
+              <div style={{ marginTop: 24, textAlign: 'right' }}>
+                <Button
+                  type="primary"
+                  icon={<SaveOutlined />}
+                  loading={gradeSaving}
+                  disabled={gradeValue == null}
+                  onClick={handleSaveGrade}
+                >
+                  Guardar Nota
+                </Button>
+              </div>
+            </div>
+          ) : null}
+        </Spin>
       </Modal>
 
       <style>{`

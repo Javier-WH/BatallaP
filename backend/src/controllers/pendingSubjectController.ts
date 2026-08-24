@@ -657,9 +657,10 @@ export const getMpAssignmentDetail = async (req: Request, res: Response) => {
 export const saveMpFinalGrade = async (req: Request, res: Response) => {
   const t = await sequelize.transaction();
   try {
-    const { inscriptionSubjectId, finalScore } = req.body as {
+    const { inscriptionSubjectId, finalScore, date } = req.body as {
       inscriptionSubjectId: number;
       finalScore: number;
+      date?: string;
     };
 
     if (!Number.isFinite(inscriptionSubjectId) || !Number.isFinite(finalScore)) {
@@ -676,6 +677,8 @@ export const saveMpFinalGrade = async (req: Request, res: Response) => {
     // Score 0 is treated as NP (inasistente), same logic as regular grades
     const isAbsent = roundedScore === 0;
     const status = isAbsent ? 'reprobada' : resolveGradeStatus(roundedScore, 10);
+    // Use provided date (local noon to avoid TZ offset) or now
+    const calculatedDate = date ? new Date(`${date}T12:00:00`) : new Date();
 
     // Upsert SubjectFinalGrade with gradeType='materia_pendiente'
     await SubjectFinalGrade.upsert({
@@ -683,7 +686,7 @@ export const saveMpFinalGrade = async (req: Request, res: Response) => {
       finalScore: isAbsent ? 0 : roundedScore,
       rawScore: finalScore,
       status,
-      calculatedAt: new Date(),
+      calculatedAt: calculatedDate,
       gradeType: 'materia_pendiente',
     }, { transaction: t });
 
@@ -695,7 +698,7 @@ export const saveMpFinalGrade = async (req: Request, res: Response) => {
     if (pending) {
       await pending.update({
         status: status === 'aprobada' ? 'aprobada' : 'pendiente',
-        resolvedAt: status === 'aprobada' ? new Date() : null,
+        resolvedAt: status === 'aprobada' ? calculatedDate : null,
       }, { transaction: t });
     }
 
@@ -859,47 +862,27 @@ export const saveMpQualification = async (req: Request, res: Response) => {
     // Get the inscription subject to find the inscription
     const insSubj = await InscriptionSubject.findByPk(inscriptionSubjectId, { transaction: t });
 
-    if (status === 'aprobada' && insSubj) {
-      // Check if there's already an approved final grade — don't overwrite if already approved
-      const existingFinal = await SubjectFinalGrade.findOne({
-        where: { inscriptionSubjectId },
+    if (insSubj) {
+      // Always upsert the final grade — allow overwriting even if previously approved
+      // This lets both teachers and Control de Estudios correct grades
+      await SubjectFinalGrade.upsert({
+        inscriptionSubjectId,
+        finalScore: finalIsAbsent ? 0 : roundedScore,
+        rawScore,
+        status,
+        calculatedAt: evaluationDate,
+        gradeType: 'materia_pendiente',
+      }, { transaction: t });
+
+      // Update PendingSubject status
+      const pending = await PendingSubject.findOne({
+        where: { newInscriptionId: insSubj.inscriptionId, subjectId: insSubj.subjectId },
         transaction: t,
       });
-
-      if (!existingFinal || existingFinal.status !== 'aprobada') {
-        await SubjectFinalGrade.upsert({
-          inscriptionSubjectId,
-          finalScore: roundedScore,
-          rawScore,
-          status: 'aprobada',
-          calculatedAt: evaluationDate,
-          gradeType: 'materia_pendiente',
-        }, { transaction: t });
-
-        // Update PendingSubject
-        const pending = await PendingSubject.findOne({
-          where: { newInscriptionId: insSubj.inscriptionId, subjectId: insSubj.subjectId },
-          transaction: t,
-        });
-        if (pending) {
-          await pending.update({ status: 'aprobada', resolvedAt: evaluationDate }, { transaction: t });
-        }
-      }
-    } else if (insSubj) {
-      // Score is failing or NP — save the qualification but don't mark as approved
-      // Only create/update SubjectFinalGrade if there isn't already an approved one
-      const existingFinal = await SubjectFinalGrade.findOne({
-        where: { inscriptionSubjectId },
-        transaction: t,
-      });
-      if (!existingFinal || existingFinal.status !== 'aprobada') {
-        await SubjectFinalGrade.upsert({
-          inscriptionSubjectId,
-          finalScore: finalIsAbsent ? 0 : roundedScore,
-          rawScore,
-          status: 'reprobada',
-          calculatedAt: evaluationDate,
-          gradeType: 'materia_pendiente',
+      if (pending) {
+        await pending.update({
+          status: status === 'aprobada' ? 'aprobada' : 'pendiente',
+          resolvedAt: status === 'aprobada' ? evaluationDate : null,
         }, { transaction: t });
       }
     }

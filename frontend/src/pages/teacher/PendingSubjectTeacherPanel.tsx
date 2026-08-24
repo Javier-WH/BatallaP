@@ -255,134 +255,168 @@ const PendingSubjectTeacherPanel: React.FC = () => {
     }
   };
 
-  /* ------------------- Student table columns (with plan items) ------------------- */
-  const studentColumns: ColumnsType<MpStudent> = useMemo(() => {
-    const baseCols: ColumnsType<MpStudent> = [
-      {
-        title: 'Estudiante',
-        key: 'name',
-        width: 200,
-        render: (_, r) => (
-          <Space direction="vertical" size={0}>
-            <Text strong style={{ fontSize: 12 }}>{r.studentName}</Text>
-            <Text type="secondary" style={{ fontSize: 10 }}>
-              {r.documentType === 'Venezolano' ? 'V' : r.documentType === 'Extranjero' ? 'E' : r.documentType === 'Pasaporte' ? 'P' : 'CE'}-{r.studentDni}
-            </Text>
-          </Space>
-        ),
-      },
-    ];
-
-    // Add a column per evaluation plan item
-    if (detail?.evaluationPlans.length) {
-      detail.evaluationPlans.forEach(planItem => {
-        baseCols.push({
-          title: (
-            <div style={{ textAlign: 'center', fontSize: 11 }}>
-              <div style={{ fontWeight: 700 }}>{planItem.description}</div>
-              <div style={{ color: '#999', fontSize: 9 }}>
-                {planItem.term?.name} · {planItem.percentage}%
-              </div>
-              <div style={{ color: '#999', fontSize: 9 }}>
-                {dayjs(planItem.date).format('DD/MM/YYYY')}
-              </div>
-            </div>
-          ),
-          key: `plan-${planItem.id}`,
-          width: 90,
-          align: 'center',
-          render: (_, student) => {
-            const qual = student.qualifications.find(q => q.evaluationPlanId === planItem.id);
-            const editKey = `${student.inscriptionSubjectId}-${planItem.id}`;
-            const editValue = qualEdits[editKey];
-            const isAbsent = !!qual?.isAbsent;
-            const displayValue = editValue !== undefined ? editValue : (qual ? Number(qual.score) : null);
-            const isApproved = student.finalGrade?.status === 'aprobada';
-            // Show NP overlay when absent (and not currently editing)
-            const showNp = isAbsent && editValue === undefined;
-            return (
-              <div className="mp-grading-cell" style={{ position: 'relative' }}>
-                <InputNumber
-                  size="small"
-                  min={0}
-                  max={20}
-                  step={1}
-                  value={displayValue}
-                  disabled={isApproved}
-                  style={{ width: 60 }}
-                  onChange={v => setQualEdits(prev => ({ ...prev, [editKey]: v }))}
-                  onBlur={() => {
-                    if (editValue !== undefined && editValue !== null) {
-                      handleSaveQualification(student, planItem, editValue);
-                    }
-                  }}
-                  onPressEnter={() => {
-                    if (editValue !== undefined && editValue !== null) {
-                      handleSaveQualification(student, planItem, editValue);
-                    }
-                  }}
-                />
-                {showNp && <span className="mp-np-overlay">NP</span>}
-              </div>
-            );
-          },
-        });
-      });
+  /* ------------------- Render grading table (native HTML, TeacherPanel style) ------------------- */
+  const renderGradingTable = () => {
+    if (!detail || detail.students.length === 0) {
+      return <Empty description="No hay estudiantes registrados" />;
     }
+    const hasPlan = detail.evaluationPlans.length > 0;
+    const sortedStudents = [...detail.students];
 
-    // Final grade column
-    baseCols.push({
-      title: 'Nota Final',
-      key: 'finalGrade',
-      width: 110,
-      render: (_, r) => {
-        if (!r.finalGrade || r.finalGrade.finalScore == null) {
-          return <Tag color="default">Sin nota</Tag>;
-        }
-        const isApproved = r.finalGrade.status === 'aprobada';
-        const isAbsent = r.finalGrade.finalScore === 0;
-        return (
-          <Tag color={isApproved ? 'success' : 'error'}>
-            {isAbsent ? 'NP' : Number(r.finalGrade.finalScore).toFixed(0)} — {isApproved ? 'Aprobada' : 'Reprobada'}
-          </Tag>
-        );
-      },
-    });
-
-    // Date column — shows the date from the evaluation plan
-    baseCols.push({
-      title: 'Fecha',
-      key: 'date',
-      width: 100,
-      render: (_, r) => r.finalGrade?.calculatedAt
-        ? dayjs(r.finalGrade.calculatedAt).format('DD/MM/YYYY')
-        : '—',
-    });
-
-    // Direct grade button — only show when there are no evaluation plan items
-    if (!detail?.evaluationPlans.length) {
-      baseCols.push({
-        title: 'Directa',
-        key: 'actions',
-        width: 90,
-        render: (_, r) => (
-          <Button
-            size="small"
-            icon={<EditOutlined />}
-            onClick={() => {
-              setGradeModalStudent(r);
-              setGradeValue(r.finalGrade?.finalScore ?? null);
-              setGradeModalOpen(true);
-            }}
-          >
-            Nota
-          </Button>
-        ),
-      });
-    }
-
-    return baseCols;
-  }, [detail, qualEdits]);
+    return (
+      <div className="mp-grading-container" style={{ overflowX: 'auto', maxHeight: 'calc(100vh - 380px)' }}>
+        <table className="mp-grading-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, border: '1px solid rgba(15, 23, 42, 0.08)' }}>
+          <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
+            <tr>
+              <th style={{ padding: '4px 6px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', backgroundColor: 'color-mix(in srgb, var(--color-text-main) 6%, var(--color-content-bg))', fontWeight: 700, fontSize: 11, whiteSpace: 'nowrap', color: 'var(--color-text-main)', width: 36 }}>#</th>
+              <th style={{ padding: '4px 6px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', backgroundColor: 'color-mix(in srgb, var(--color-text-main) 6%, var(--color-content-bg))', fontWeight: 700, fontSize: 11, whiteSpace: 'nowrap', color: 'var(--color-text-main)' }}>Cédula</th>
+              <th style={{ padding: '4px 6px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'left', backgroundColor: 'color-mix(in srgb, var(--color-text-main) 6%, var(--color-content-bg))', fontWeight: 700, fontSize: 11, whiteSpace: 'nowrap', color: 'var(--color-text-main)' }}>Estudiante</th>
+              {hasPlan && detail.evaluationPlans.map((planItem, colIndex) => (
+                <th key={planItem.id} style={{
+                  padding: '3px 4px',
+                  border: '1px solid rgba(15, 23, 42, 0.08)',
+                  borderLeft: colIndex > 0 ? '2px solid color-mix(in srgb, var(--color-text-main) 35%, transparent)' : undefined,
+                  textAlign: 'center',
+                  backgroundColor: 'color-mix(in srgb, var(--color-text-main) 6%, var(--color-content-bg))',
+                  verticalAlign: 'top',
+                  whiteSpace: 'nowrap',
+                  color: 'var(--color-text-main)',
+                  minWidth: 70,
+                }}>
+                  <div style={{ fontSize: 9, fontWeight: 600, lineHeight: 1.2 }}>
+                    {dayjs(planItem.date).format('DD/MM/YY')}
+                  </div>
+                  <div style={{ fontSize: 9, fontWeight: 700, lineHeight: 1.2, marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 80 }} title={planItem.description}>
+                    {planItem.description}
+                  </div>
+                  <div style={{ fontSize: 9, color: 'var(--color-text-muted)', lineHeight: 1.2, marginTop: 1 }}>
+                    {planItem.term?.name} · {planItem.percentage}%
+                  </div>
+                </th>
+              ))}
+              <th style={{ padding: '3px 6px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', backgroundColor: 'color-mix(in srgb, var(--color-text-main) 6%, var(--color-content-bg))', fontWeight: 700, fontSize: 11, whiteSpace: 'nowrap', color: 'var(--color-text-main)' }}>Nota</th>
+              <th style={{ padding: '3px 6px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', backgroundColor: 'color-mix(in srgb, var(--color-text-main) 6%, var(--color-content-bg))', fontWeight: 700, fontSize: 11, whiteSpace: 'nowrap', color: 'var(--color-text-main)' }}>Fecha</th>
+              {!hasPlan && (
+                <th style={{ padding: '3px 6px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', backgroundColor: 'color-mix(in srgb, var(--color-text-main) 6%, var(--color-content-bg))', fontWeight: 700, fontSize: 11, whiteSpace: 'nowrap', color: 'var(--color-text-main)' }}>Directa</th>
+              )}
+            </tr>
+          </thead>
+          <tbody>
+            {sortedStudents.map((student, rowIndex) => {
+              const isApproved = student.finalGrade?.status === 'aprobada';
+              const isAbsent = student.finalGrade?.finalScore === 0;
+              const rowBg = rowIndex % 2 === 0
+                ? 'var(--color-content-bg)'
+                : 'color-mix(in srgb, var(--color-text-main) 2%, var(--color-content-bg))';
+              return (
+                <tr key={student.inscriptionSubjectId} className="mp-grading-row" style={isApproved ? { background: '#f6ffed' } : undefined}>
+                  <td style={{ padding: '2px 4px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', background: rowBg, fontSize: 11, fontWeight: 600, color: 'var(--color-text-muted)' }}>
+                    {rowIndex + 1}
+                  </td>
+                  <td style={{ padding: '2px 4px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', background: rowBg, fontSize: 11, fontWeight: 500 }}>
+                    {student.studentDni || '-'}
+                  </td>
+                  <td style={{ padding: '2px 6px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'left', background: rowBg, fontSize: 12 }}>
+                    {student.studentName}
+                  </td>
+                  {hasPlan && detail.evaluationPlans.map((planItem, colIndex) => {
+                    const qual = student.qualifications.find(q => q.evaluationPlanId === planItem.id);
+                    const editKey = `${student.inscriptionSubjectId}-${planItem.id}`;
+                    const editValue = qualEdits[editKey];
+                    const cellIsAbsent = !!qual?.isAbsent;
+                    const displayValue = editValue !== undefined ? editValue : (qual ? Number(qual.score) : null);
+                    const showNp = cellIsAbsent && editValue === undefined;
+                    return (
+                      <td
+                        key={planItem.id}
+                        className={`mp-grading-cell${cellIsAbsent ? ' mp-grading-absent' : ''}`}
+                        style={{
+                          padding: '2px',
+                          border: '1px solid rgba(15, 23, 42, 0.08)',
+                          borderLeft: colIndex > 0 ? '2px solid color-mix(in srgb, var(--color-text-main) 35%, transparent)' : undefined,
+                          textAlign: 'center',
+                          background: rowBg,
+                          width: 50,
+                          position: 'relative',
+                        }}
+                      >
+                        <input
+                          type="number"
+                          min={0}
+                          max={20}
+                          step={1}
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          value={displayValue ?? ''}
+                          onChange={e => {
+                            const v = e.target.value === '' ? null : Number(e.target.value);
+                            setQualEdits(prev => ({ ...prev, [editKey]: v }));
+                          }}
+                          onBlur={() => {
+                            if (editValue !== undefined && editValue !== null) {
+                              handleSaveQualification(student, planItem, editValue);
+                            }
+                          }}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              if (editValue !== undefined && editValue !== null) {
+                                handleSaveQualification(student, planItem, editValue);
+                              }
+                            }
+                          }}
+                          style={{
+                            width: 48,
+                            textAlign: 'center',
+                            border: 'none',
+                            outline: 'none',
+                            background: 'transparent',
+                            fontSize: 12,
+                            padding: 0,
+                            color: displayValue !== null && displayValue !== undefined && displayValue > 0 && displayValue < 10 ? '#dc2626' : undefined,
+                            fontWeight: displayValue !== null && displayValue !== undefined && displayValue > 0 && displayValue < 10 ? 700 : undefined,
+                          }}
+                        />
+                        {showNp && <span className="mp-np-overlay">NP</span>}
+                      </td>
+                    );
+                  })}
+                  {/* Final grade */}
+                  <td style={{ padding: '2px 6px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', background: rowBg, fontSize: 12, fontWeight: 700 }}>
+                    {student.finalGrade && student.finalGrade.finalScore != null ? (
+                      <span style={{ color: isApproved ? '#52c41a' : '#ff4d4f' }}>
+                        {isAbsent ? 'NP' : Number(student.finalGrade.finalScore).toFixed(0)}
+                      </span>
+                    ) : '—'}
+                  </td>
+                  {/* Date */}
+                  <td style={{ padding: '2px 6px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', background: rowBg, fontSize: 11, color: 'var(--color-text-muted)' }}>
+                    {student.finalGrade?.calculatedAt ? dayjs(student.finalGrade.calculatedAt).format('DD/MM/YYYY') : '—'}
+                  </td>
+                  {/* Direct grade button — only when no plan */}
+                  {!hasPlan && (
+                    <td style={{ padding: '2px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', background: rowBg }}>
+                      <Button
+                        size="small"
+                        icon={<EditOutlined />}
+                        onClick={() => {
+                          setGradeModalStudent(student);
+                          setGradeValue(student.finalGrade?.finalScore ?? null);
+                          setGradeModalOpen(true);
+                        }}
+                      >
+                        Nota
+                      </Button>
+                    </td>
+                  )}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    );
+  };
 
   /* ------------------- Plan items columns ------------------- */
   const planColumns: ColumnsType<EvaluationPlanItem> = [
@@ -487,17 +521,7 @@ const PendingSubjectTeacherPanel: React.FC = () => {
                         {detail.students.length === 0 ? (
                           <Empty description="No hay estudiantes registrados" />
                         ) : (
-                          <div style={{ overflowX: 'auto' }}>
-                            <Table
-                              dataSource={detail.students}
-                              columns={studentColumns}
-                              rowKey="inscriptionSubjectId"
-                              size="small"
-                              pagination={false}
-                              scroll={{ x: 'max-content' }}
-                              rowClassName={r => r.finalGrade?.status === 'aprobada' ? 'mp-row-approved' : ''}
-                            />
-                          </div>
+                          renderGradingTable()
                         )}
                       </Card>
                     ),
