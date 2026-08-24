@@ -1014,6 +1014,16 @@ async function getMaxEncounters(): Promise<number> {
   return 4;
 }
 
+/** Get the list of locked encounter numbers. */
+async function getLockedEncounters(): Promise<number[]> {
+  const setting = await Setting.findOne({ where: { key: 'pending_subject_locked_encounters' } });
+  if (!setting || !setting.value) return [];
+  return setting.value
+    .split(',')
+    .map(s => parseInt(s.trim(), 10))
+    .filter(n => Number.isFinite(n));
+}
+
 /** Resolve the configured passing grade (default 10). */
 async function getPassingGrade(): Promise<number> {
   const setting = await Setting.findOne({ where: { key: 'passing_grade' } });
@@ -1376,13 +1386,10 @@ export const saveMpEncounterScore = async (req: Request, res: Response) => {
   try {
     const pendingSubjectId = Number(req.params.pendingSubjectId);
     const encounterNumber = Number(req.params.encounterNumber);
-    const { score, isAbsent } = req.body as { score: number; isAbsent?: boolean };
+    const { score, isAbsent } = req.body as { score: number | null; isAbsent?: boolean };
 
     if (!Number.isFinite(pendingSubjectId) || !Number.isFinite(encounterNumber)) {
       return res.status(400).json({ message: 'Parámetros inválidos' });
-    }
-    if (!Number.isFinite(score)) {
-      return res.status(400).json({ message: 'score es requerido' });
     }
 
     const pending = await PendingSubject.findByPk(pendingSubjectId, { transaction: t });
@@ -1390,14 +1397,38 @@ export const saveMpEncounterScore = async (req: Request, res: Response) => {
       await t.rollback();
       return res.status(404).json({ message: 'Materia pendiente no encontrada' });
     }
-    if (pending.status === 'aprobada') {
+
+    const userRoles = (req.session as any)?.user?.roles || [];
+    const isCE = userRoles.some((r: string) => r === 'Control de Estudios' || r === 'Master' || r === 'Administrador');
+
+    // Check per-encounter lock — only CE/Master/Admin can edit locked encounters
+    const lockSetting = await Setting.findOne({ where: { key: 'pending_subject_locked_encounters' } });
+    const lockedEncounters = (lockSetting?.value || '')
+      .split(',')
+      .map(s => parseInt(s.trim(), 10))
+      .filter(n => Number.isFinite(n));
+    if (lockedEncounters.includes(encounterNumber) && !isCE) {
       await t.rollback();
-      return res.status(400).json({ message: 'Esta materia pendiente ya está aprobada' });
+      return res.status(403).json({ message: `El encuentro ${encounterNumber} está bloqueado por Control de Estudios` });
     }
 
     const maxEnc = await getMaxEncounters();
     const passingGrade = await getPassingGrade();
     await ensureEncounters(pendingSubjectId, maxEnc, t);
+
+    // If the student already approved, find in which encounter they approved
+    // and block editing of subsequent encounters (only for non-CE users)
+    if (pending.status === 'aprobada') {
+      const allEncounters = await PendingSubjectEncounter.findAll({
+        where: { pendingSubjectId },
+        transaction: t,
+      });
+      const approvedEnc = allEncounters.find(e => e.score != null && e.score >= passingGrade && !e.isAbsent);
+      if (approvedEnc && encounterNumber > approvedEnc.encounterNumber && !isCE) {
+        await t.rollback();
+        return res.status(400).json({ message: 'El estudiante ya aprobó en un encuentro anterior' });
+      }
+    }
 
     const encounter = await PendingSubjectEncounter.findOne({
       where: { pendingSubjectId, encounterNumber },
@@ -1408,9 +1439,59 @@ export const saveMpEncounterScore = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Encuentro no encontrado' });
     }
 
+    // Find the InscriptionSubject for this pending subject to upsert final grade
+    const insSubj = await InscriptionSubject.findOne({
+      where: { inscriptionId: pending.newInscriptionId, subjectId: pending.subjectId },
+      transaction: t,
+    });
+
+    // --- Case: clearing the score (score === null) ---
+    if (score === null) {
+      await encounter.update({
+        score: null,
+        isAbsent: false,
+      }, { transaction: t });
+
+      // If the student was approved in THIS encounter, revert to pendiente
+      if (pending.status === 'aprobada') {
+        const allEncs = await PendingSubjectEncounter.findAll({
+          where: { pendingSubjectId },
+          transaction: t,
+        });
+        const stillApproved = allEncs.some(e =>
+          e.encounterNumber !== encounterNumber &&
+          e.score != null && e.score >= passingGrade && !e.isAbsent
+        );
+        if (!stillApproved) {
+          await pending.update({
+            status: 'pendiente',
+            resolvedAt: null,
+          }, { transaction: t });
+          // Remove the SubjectFinalGrade if it exists
+          if (insSubj) {
+            await SubjectFinalGrade.destroy({
+              where: { inscriptionSubjectId: insSubj.id },
+              transaction: t,
+            });
+          }
+        }
+      }
+
+      await t.commit();
+      return res.json({
+        message: 'Nota eliminada',
+        status: pending.status === 'aprobada' ? 'pendiente' : pending.status,
+        score: null,
+        isAbsent: false,
+        encounterNumber,
+        approved: false,
+      });
+    }
+
+    // --- Case: saving a score ---
     const finalIsAbsent = isAbsent ?? (score === 0);
     const roundedScore = roundFinalGrade(score);
-    const status = finalIsAbsent ? 'reprobada' : resolveGradeStatus(roundedScore, passingGrade);
+    const newStatus = finalIsAbsent ? 'reprobada' : resolveGradeStatus(roundedScore, passingGrade);
     const evaluationDate = encounter.date
       ? new Date(`${encounter.date}T12:00:00`)
       : new Date();
@@ -1421,18 +1502,27 @@ export const saveMpEncounterScore = async (req: Request, res: Response) => {
       isAbsent: finalIsAbsent,
     }, { transaction: t });
 
-    // If approved, mark PendingSubject as approved and update SubjectFinalGrade
-    if (status === 'aprobada') {
+    if (newStatus === 'aprobada') {
+      // Mark PendingSubject as approved
       await pending.update({
         status: 'aprobada',
         resolvedAt: evaluationDate,
       }, { transaction: t });
 
-      // Find the InscriptionSubject for this pending subject to upsert final grade
-      const insSubj = await InscriptionSubject.findOne({
-        where: { inscriptionId: pending.newInscriptionId, subjectId: pending.subjectId },
+      // Clear scores in subsequent encounters (they should be empty)
+      const subsequentEncs = await PendingSubjectEncounter.findAll({
+        where: {
+          pendingSubjectId,
+          encounterNumber: { [Op.gt]: encounterNumber },
+        },
         transaction: t,
       });
+      for (const subEnc of subsequentEncs) {
+        if (subEnc.score != null) {
+          await subEnc.update({ score: null, isAbsent: false }, { transaction: t });
+        }
+      }
+
       if (insSubj) {
         await SubjectFinalGrade.upsert({
           inscriptionSubjectId: insSubj.id,
@@ -1443,34 +1533,41 @@ export const saveMpEncounterScore = async (req: Request, res: Response) => {
           gradeType: 'materia_pendiente',
         }, { transaction: t });
       }
-    } else if (encounterNumber === maxEnc) {
-      // Last encounter and still failing → mark as reprobada in SubjectFinalGrade
-      const insSubj = await InscriptionSubject.findOne({
-        where: { inscriptionId: pending.newInscriptionId, subjectId: pending.subjectId },
-        transaction: t,
-      });
-      if (insSubj) {
-        await SubjectFinalGrade.upsert({
-          inscriptionSubjectId: insSubj.id,
-          finalScore: finalIsAbsent ? 0 : roundedScore,
-          rawScore: score,
-          status: 'reprobada',
-          calculatedAt: evaluationDate,
-          gradeType: 'materia_pendiente',
+    } else {
+      // Not approved — if the pending subject was previously approved (editing a score down),
+      // revert it to 'pendiente'
+      if (pending.status === 'aprobada') {
+        await pending.update({
+          status: 'pendiente',
+          resolvedAt: null,
         }, { transaction: t });
+      }
+
+      if (encounterNumber === maxEnc) {
+        // Last encounter and still failing → mark as reprobada in SubjectFinalGrade
+        if (insSubj) {
+          await SubjectFinalGrade.upsert({
+            inscriptionSubjectId: insSubj.id,
+            finalScore: finalIsAbsent ? 0 : roundedScore,
+            rawScore: score,
+            status: 'reprobada',
+            calculatedAt: evaluationDate,
+            gradeType: 'materia_pendiente',
+          }, { transaction: t });
+        }
       }
     }
 
     await t.commit();
     return res.json({
-      message: status === 'aprobada'
+      message: newStatus === 'aprobada'
         ? 'Estudiante aprobó — no aparecerá en encuentros posteriores'
         : 'Nota guardada',
-      status,
+      status: newStatus,
       score: finalIsAbsent ? 0 : roundedScore,
       isAbsent: finalIsAbsent,
       encounterNumber,
-      approved: status === 'aprobada',
+      approved: newStatus === 'aprobada',
     });
   } catch (error) {
     await t.rollback();
@@ -1523,7 +1620,9 @@ export const getMpNominaByEncounter = async (req: Request, res: Response) => {
         periodGradeSubjectId: pgs.id,
       }));
 
-    // Get all MP inscriptions for this grade
+    // Get all MP inscriptions for this grade — include ALL pending subjects
+    // (both 'pendiente' and 'aprobada') so we can show the score for this encounter
+    // even if the student already approved.
     const inscriptions = await Inscription.findAll({
       where: {
         schoolPeriodId: activePeriod.id,
@@ -1536,7 +1635,6 @@ export const getMpNominaByEncounter = async (req: Request, res: Response) => {
           model: PendingSubject,
           as: 'pendingSubjects',
           required: true,
-          where: { status: 'pendiente' },
           include: [
             {
               model: PendingSubjectEncounter,
@@ -1562,7 +1660,12 @@ export const getMpNominaByEncounter = async (req: Request, res: Response) => {
       studentName: `${ins.student?.lastName} ${ins.student?.firstName}`,
       studentDni: ins.student?.document,
       documentType: ins.student?.documentType,
-      subjects: ins.pendingSubjects?.map((ps: any) => {
+      subjects: ins.pendingSubjects?.filter((ps: any) => {
+        // Show if: status is 'pendiente' (still needs this encounter)
+        // OR: has a score for this encounter (even if approved)
+        const enc = ps.encounters?.[0];
+        return ps.status === 'pendiente' || (enc && enc.score != null);
+      }).map((ps: any) => {
         const enc = ps.encounters?.[0];
         // Find the matching InscriptionSubject for this pending subject
         const insSubj = ins.inscriptionSubjects?.find(
@@ -1575,6 +1678,7 @@ export const getMpNominaByEncounter = async (req: Request, res: Response) => {
           encounterScore: enc ? (enc.isAbsent ? 0 : enc.score) : null,
           encounterIsAbsent: enc ? enc.isAbsent : false,
           encounterDate: enc?.date ?? null,
+          status: ps.status,
         };
       }) || [],
     }));
@@ -1684,6 +1788,46 @@ export const getMpNominaFinal = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('[getMpNominaFinal] Error:', error);
     return res.status(500).json({ message: 'Error al obtener nómina final' });
+  }
+};
+
+/* ---------------------------------------------------------------------- */
+/* GET /pending-subjects/locked-encounters                                 */
+/* Returns the list of locked encounter numbers.                           */
+/* ---------------------------------------------------------------------- */
+export const getMpLockedEncounters = async (req: Request, res: Response) => {
+  try {
+    const locked = await getLockedEncounters();
+    return res.json({ lockedEncounters: locked });
+  } catch (error) {
+    console.error('[getMpLockedEncounters] Error:', error);
+    return res.status(500).json({ message: 'Error al obtener encuentros bloqueados' });
+  }
+};
+
+/* ---------------------------------------------------------------------- */
+/* PUT /pending-subjects/locked-encounters                                 */
+/* Update the list of locked encounter numbers.                            */
+/* Body: { lockedEncounters: number[] }                                    */
+/* ---------------------------------------------------------------------- */
+export const updateMpLockedEncounters = async (req: Request, res: Response) => {
+  try {
+    const { lockedEncounters } = req.body as { lockedEncounters: number[] };
+    if (!Array.isArray(lockedEncounters)) {
+      return res.status(400).json({ message: 'lockedEncounters debe ser un arreglo' });
+    }
+    const value = lockedEncounters.map(n => String(n)).join(',');
+    const [setting] = await Setting.findOrCreate({
+      where: { key: 'pending_subject_locked_encounters' },
+      defaults: { key: 'pending_subject_locked_encounters', value },
+    });
+    if (setting.value !== value) {
+      await setting.update({ value });
+    }
+    return res.json({ message: 'Encuentros bloqueados actualizados', lockedEncounters });
+  } catch (error) {
+    console.error('[updateMpLockedEncounters] Error:', error);
+    return res.status(500).json({ message: 'Error al actualizar encuentros bloqueados' });
   }
 };
 

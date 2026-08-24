@@ -23,6 +23,10 @@ router.get('/assignment/:periodGradeSubjectId/encounters', pendingSubjectControl
 router.get('/encounter-dates/:periodGradeSubjectId', pendingSubjectController.getMpEncounterDatesByPgs);
 router.put('/encounter-dates/:periodGradeSubjectId', pendingSubjectController.updateMpEncounterDatesByPgs);
 
+// Locked encounters (CE controls which encounters teachers can edit)
+router.get('/locked-encounters', pendingSubjectController.getMpLockedEncounters);
+router.put('/locked-encounters', pendingSubjectController.updateMpLockedEncounters);
+
 // Grades
 router.post('/final-grade', pendingSubjectController.saveMpFinalGrade);
 router.post('/evaluation-plan', pendingSubjectController.createMpEvaluationItem);

@@ -67,6 +67,7 @@ const PendingSubjectTeacherPanel: React.FC = () => {
   const dragScroll = useDragScroll<HTMLDivElement>();
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [lockedEncounters, setLockedEncounters] = useState<number[]>([]);
   const [assignments, setAssignments] = useState<MpAssignment[]>([]);
   const [selectedPgsId, setSelectedPgsId] = useState<number | null>(null);
   const [selectedSubjectId, setSelectedSubjectId] = useState<number | null>(null);
@@ -110,6 +111,15 @@ const PendingSubjectTeacherPanel: React.FC = () => {
   }, [selectedPgsId]);
 
   useEffect(() => { fetchAssignments(); }, [fetchAssignments]);
+
+  // Load locked encounters setting
+  useEffect(() => {
+    api.get('/settings').then(res => {
+      const lockedStr = res.data.pending_subject_locked_encounters || '';
+      const locked = lockedStr.split(',').map((s: string) => parseInt(s.trim(), 10)).filter((n: number) => Number.isFinite(n));
+      setLockedEncounters(locked);
+    }).catch(() => {});
+  }, []);
 
   // Group assignments: unique subjects + grades per subject
   const uniqueSubjects = useMemo(() => {
@@ -159,11 +169,30 @@ const PendingSubjectTeacherPanel: React.FC = () => {
 
   /* ------------------- Save encounter score (inline) ------------------- */
   const handleSaveEncounterScore = async (student: EncounterStudent, encounterNumber: number, score: number | null, isAbsent: boolean) => {
-    if (score == null && !isAbsent) return;
     if (!student.pendingSubjectId) return;
+    // score === null means "clear the note"
+    if (score === null && !isAbsent) {
+      // Clearing the score
+      setSaving(true);
+      try {
+        await api.post(`/pending-subjects/${student.pendingSubjectId}/encounters/${encounterNumber}/score`, {
+          score: null,
+        });
+        message.success(`${student.studentName} — Encuentro ${encounterNumber}: nota eliminada`);
+        setEncounterEdits(prev => { const n = { ...prev }; delete n[`${student.pendingSubjectId}-${encounterNumber}`]; return n; });
+        setEncounterAbsent(prev => { const n = { ...prev }; delete n[`${student.pendingSubjectId}-${encounterNumber}`]; return n; });
+        if (selectedPgsId) fetchEncounters(selectedPgsId);
+      } catch (error: any) {
+        message.error(error?.response?.data?.message || 'Error al eliminar nota');
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
+    if (score == null) return;
     setSaving(true);
     try {
-      const finalScore = isAbsent ? 0 : (score ?? 0);
+      const finalScore = isAbsent ? 0 : score;
       const res = await api.post(`/pending-subjects/${student.pendingSubjectId}/encounters/${encounterNumber}/score`, {
         score: finalScore,
         isAbsent,
@@ -412,6 +441,15 @@ const PendingSubjectTeacherPanel: React.FC = () => {
                             showIcon
                             style={{ marginBottom: 16 }}
                           />
+                          {lockedEncounters.length > 0 && (
+                            <Alert
+                              type="warning"
+                              message={`Encuentros bloqueados: ${lockedEncounters.map(n => n + '°').join(', ')}`}
+                              description="Control de Estudios ha bloqueado la edición de estos encuentros. Contacte al administrador si necesita realizar cambios."
+                              showIcon
+                              style={{ marginBottom: 16 }}
+                            />
+                          )}
                           {encounterData && encounterData.students.length > 0 ? (
                             <div style={{ overflowX: 'auto', maxHeight: 'calc(100vh - 380px)' }}>
                               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, border: '1px solid rgba(15, 23, 42, 0.08)' }}>
@@ -449,7 +487,14 @@ const PendingSubjectTeacherPanel: React.FC = () => {
                                           const displayValue = editValue !== undefined ? editValue : (enc ? enc.score : null);
                                           const displayAbsent = editAbsent !== undefined ? editAbsent : (enc ? enc.isAbsent : false);
                                           const showNp = displayAbsent && editValue === undefined;
-                                          const disabled = isApproved;
+                                          // Find the encounter where the student approved (score >= 10)
+                                          const approvedEncounter = student.encounters.find(e => e.score != null && e.score >= 10 && !e.isAbsent);
+                                          const approvedEncounterNum = approvedEncounter?.encounterNumber;
+                                          // Disable if: this encounter is locked by CE, OR student approved in a previous encounter
+                                          const isAfterApproval = isApproved && approvedEncounterNum != null && n > approvedEncounterNum;
+                                          const isEncounterLocked = lockedEncounters.includes(n);
+                                          const isDisabled = isEncounterLocked || isAfterApproval;
+                                          const hasScore = displayValue != null;
                                           return (
                                             <td key={n} style={{ padding: '2px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', position: 'relative', width: 50 }}>
                                               <input
@@ -458,23 +503,32 @@ const PendingSubjectTeacherPanel: React.FC = () => {
                                                 max={20}
                                                 step={1}
                                                 inputMode="numeric"
-                                                value={displayValue ?? ''}
-                                                disabled={disabled}
+                                                value={isAfterApproval ? '' : (displayValue ?? '')}
+                                                disabled={isDisabled}
                                                 onChange={e => {
                                                   const v = e.target.value === '' ? null : Number(e.target.value);
                                                   setEncounterEdits(prev => ({ ...prev, [editKey]: v }));
                                                   if (v !== 0) setEncounterAbsent(prev => ({ ...prev, [editKey]: false }));
                                                 }}
                                                 onBlur={() => {
-                                                  if (editValue !== undefined && editValue !== null) {
-                                                    handleSaveEncounterScore(student, n, editValue, editAbsent ?? false);
+                                                  if (editValue !== undefined) {
+                                                    if (editValue === null) {
+                                                      // Clear the score
+                                                      handleSaveEncounterScore(student, n, null, false);
+                                                    } else if (editValue !== null) {
+                                                      handleSaveEncounterScore(student, n, editValue, editAbsent ?? false);
+                                                    }
                                                   }
                                                 }}
                                                 onKeyDown={e => {
                                                   if (e.key === 'Enter') {
                                                     e.preventDefault();
-                                                    if (editValue !== undefined && editValue !== null) {
-                                                      handleSaveEncounterScore(student, n, editValue, editAbsent ?? false);
+                                                    if (editValue !== undefined) {
+                                                      if (editValue === null) {
+                                                        handleSaveEncounterScore(student, n, null, false);
+                                                      } else if (editValue !== null) {
+                                                        handleSaveEncounterScore(student, n, editValue, editAbsent ?? false);
+                                                      }
                                                     }
                                                   }
                                                 }}
@@ -491,6 +545,36 @@ const PendingSubjectTeacherPanel: React.FC = () => {
                                                 }}
                                               />
                                               {showNp && <span className="mp-np-overlay">NP</span>}
+                                              {hasScore && !isDisabled && (
+                                                <button
+                                                  title="Borrar nota"
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setEncounterEdits(prev => ({ ...prev, [editKey]: null }));
+                                                    handleSaveEncounterScore(student, n, null, false);
+                                                  }}
+                                                  style={{
+                                                    position: 'absolute',
+                                                    top: -4,
+                                                    right: -4,
+                                                    width: 14,
+                                                    height: 14,
+                                                    borderRadius: '50%',
+                                                    border: 'none',
+                                                    background: '#ff4d4f',
+                                                    color: '#fff',
+                                                    fontSize: 8,
+                                                    cursor: 'pointer',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center',
+                                                    padding: 0,
+                                                    lineHeight: 1,
+                                                  }}
+                                                >
+                                                  ×
+                                                </button>
+                                              )}
                                             </td>
                                           );
                                         })}

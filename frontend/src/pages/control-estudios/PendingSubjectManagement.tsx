@@ -8,7 +8,7 @@ import type { ColumnsType } from 'antd/es/table';
 import {
   ReloadOutlined, UserAddOutlined, UserOutlined, DeleteOutlined,
   CheckCircleOutlined, ExclamationCircleOutlined, BookOutlined,
-  LockOutlined, EditOutlined, SaveOutlined, CalendarOutlined,
+  LockOutlined, UnlockOutlined, EditOutlined, SaveOutlined, CalendarOutlined,
   PrinterOutlined, PlusOutlined, FileTextOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
@@ -144,6 +144,7 @@ interface NominaEncounterStudent {
     encounterScore: number | null;
     encounterIsAbsent: boolean;
     encounterDate: string | null;
+    status: string;
   }[];
 }
 
@@ -239,6 +240,10 @@ const PendingSubjectManagement: React.FC = () => {
   // Encounter dates per subject (for display in headers) — keyed by periodGradeSubjectId
   const [encounterDatesMap, setEncounterDatesMap] = useState<Record<number, { encounterNumber: number; date: string | null }[]>>({});
 
+  // Locked encounters (CE controls which encounters teachers can edit)
+  const [lockedEncounters, setLockedEncounters] = useState<number[]>([]);
+  const [lockSaving, setLockSaving] = useState(false);
+
   // Content modal
   const [contentModalOpen, setContentModalOpen] = useState(false);
   const [contentSubject, setContentSubject] = useState<NominaSubject | null>(null);
@@ -305,13 +310,33 @@ const PendingSubjectManagement: React.FC = () => {
   // Nomina general fetch removed — only encounter/final views remain.
   // The active view's useEffect (below) handles fetching.
 
-  /* ------------------- Fetch max encounters setting ------------------- */
+  /* ------------------- Fetch settings (max encounters + locked encounters) ------------------- */
   useEffect(() => {
     api.get('/settings').then(res => {
       const n = Number(res.data.pending_subject_max_encounters);
       if (Number.isFinite(n) && n >= 1) setMaxEncounters(n);
+      // Parse locked encounters from comma-separated string
+      const lockedStr = res.data.pending_subject_locked_encounters || '';
+      const locked = lockedStr.split(',').map((s: string) => parseInt(s.trim(), 10)).filter((n: number) => Number.isFinite(n));
+      setLockedEncounters(locked);
     }).catch(() => {});
   }, []);
+
+  const toggleEncounterLock = async (encounterNum: number) => {
+    const newValue = lockedEncounters.includes(encounterNum)
+      ? lockedEncounters.filter(n => n !== encounterNum)
+      : [...lockedEncounters, encounterNum].sort((a, b) => a - b);
+    setLockSaving(true);
+    try {
+      await api.put('/pending-subjects/locked-encounters', { lockedEncounters: newValue });
+      setLockedEncounters(newValue);
+      message.success(newValue.includes(encounterNum) ? `Encuentro ${encounterNum} bloqueado` : `Encuentro ${encounterNum} abierto`);
+    } catch (error: any) {
+      message.error(error?.response?.data?.message || 'Error al cambiar bloqueo');
+    } finally {
+      setLockSaving(false);
+    }
+  };
 
   /* ------------------- Fetch nomina by encounter ------------------- */
   const fetchNominaEncounter = useCallback(async (gradeId: number, encounter: number) => {
@@ -877,20 +902,32 @@ const PendingSubjectManagement: React.FC = () => {
             <div style={{ padding: '12px 16px', display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
               <Text strong>Encuentro:</Text>
               <Space>
-                {Array.from({ length: maxEncounters }, (_, i) => i + 1).map(n => (
-                  <Button
-                    key={n}
-                    size="small"
-                    type={selectedEncounter === n ? 'primary' : 'default'}
-                    onClick={() => setSelectedEncounter(n)}
-                  >
-                    {n}°
-                  </Button>
-                ))}
+                {Array.from({ length: maxEncounters }, (_, i) => i + 1).map(n => {
+                  const isLocked = lockedEncounters.includes(n);
+                  return (
+                    <Button
+                      key={n}
+                      size="small"
+                      type={selectedEncounter === n ? 'primary' : 'default'}
+                      onClick={() => setSelectedEncounter(n)}
+                    >
+                      {n}°
+                      <Button
+                        type="text"
+                        size="small"
+                        icon={isLocked ? <LockOutlined /> : <UnlockOutlined />}
+                        title={isLocked ? `Encuentro ${n} bloqueado (clic para abrir)` : `Encuentro ${n} abierto (clic para bloquear)`}
+                        loading={lockSaving}
+                        onClick={(e) => { e.stopPropagation(); toggleEncounterLock(n); }}
+                        style={{ marginLeft: 4, padding: '0 2px', color: isLocked ? '#ff4d4f' : '#52c41a' }}
+                      />
+                    </Button>
+                  );
+                })}
               </Space>
               <Alert
                 type="info"
-                message="Solo aparecen estudiantes que aún no han aprobado la materia."
+                message="Haga clic en el candado para bloquear/desbloquear la edición del encuentro por parte de los profesores."
                 showIcon
                 style={{ flex: 1, minWidth: 200, fontSize: 12 }}
               />
@@ -1277,6 +1314,32 @@ const PendingSubjectManagement: React.FC = () => {
             onClick={handleSaveEncounterScore}
           >
             Guardar
+          </Button>,
+          <Button
+            danger
+            icon={<DeleteOutlined />}
+            loading={encScoreSaving}
+            disabled={encScoreValue == null && !encScoreIsAbsent}
+            onClick={async () => {
+              if (!encScoreStudent || !encScoreSubject) return;
+              const subj = encScoreStudent.subjects.find(s => s.subjectId === encScoreSubject.id);
+              if (!subj) return;
+              setEncScoreSaving(true);
+              try {
+                await api.post(`/pending-subjects/${subj.pendingSubjectId}/encounters/${selectedEncounter}/score`, {
+                  score: null,
+                });
+                message.success('Nota eliminada');
+                setEncScoreModalOpen(false);
+                if (expandedGradeId) await fetchNominaEncounter(expandedGradeId, selectedEncounter);
+              } catch (error: any) {
+                message.error(error?.response?.data?.message || 'Error al eliminar nota');
+              } finally {
+                setEncScoreSaving(false);
+              }
+            }}
+          >
+            Eliminar
           </Button>,
         ]}
       >
