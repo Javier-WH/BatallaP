@@ -41,7 +41,9 @@ Los namespaces están registrados en [`backend/src/app.ts`](../backend/src/app.t
 |--------|------|-------------|
 | GET | `/periods` | Listar períodos. |
 | GET | `/active` o `/periods/active` | Período activo. |
+| GET | `/preinscription` o `/periods/preinscription` | Período de preinscripción. |
 | POST | `/periods` | Crear período. |
+| POST | `/periods/ensure-preinscription` | Garantiza que exista el período de preinscripción siguiente al activo (usa `ensureNextPreinscriptionPeriod`). |
 | PUT | `/periods/:id` | Actualizar período. |
 | PUT | `/periods/:id/activate` | Activar/desactivar. |
 | DELETE | `/periods/:id` | Eliminar. |

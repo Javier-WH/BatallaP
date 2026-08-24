@@ -53,7 +53,11 @@ El flujo típico es **Matriculation → Inscription**. También existe una vía 
 
 ## Flujo 3: Inscripción estándar con wizard
 
-- Página: `admin/EnrollStudent.tsx`.
+- Página: `admin/EnrollStudent.tsx` con 4 pestañas:
+  - **Nuevo Ingreso**: usa el componente `admin/components/NewStudentEnrollmentForm.tsx` con `mode="inscripcion"`. Permite elegir el período (por defecto el activo).
+  - **Preinscripción**: usa el mismo componente con `mode="preinscripcion"`. Selecciona automáticamente el período con `status: 'preinscripcion'`; si no existe, muestra un botón para crearlo vía `POST /api/academic/periods/ensure-preinscription` (que invoca `schoolPeriodService.ensureNextPreinscriptionPeriod()`).
+  - **Inscripción masiva**: ver Flujo 4.
+  - **Estudiante Regular**: inscribe un estudiante ya registrado en el período activo.
 - Endpoint principal: `POST /api/inscriptions/register` (Persona + Inscripción en una transacción).
 - No crea User (el estudiante inicialmente no necesita cuenta).
 

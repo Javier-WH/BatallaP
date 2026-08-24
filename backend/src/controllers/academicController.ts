@@ -113,6 +113,39 @@ export const getPreinscriptionPeriod = async (req: Request, res: Response) => {
   }
 };
 
+/**
+ * Guarantee that the school year following the active one exists and is flagged
+ * as 'preinscripcion'. Uses the same `ensureNextPreinscriptionPeriod` function
+ * that the system uses when activating a period or creating a new one.
+ *
+ * Returns the preinscription period (created or already existing). Requires an
+ * active period to exist, otherwise returns 400.
+ */
+export const ensurePreinscriptionPeriod = async (_req: Request, res: Response) => {
+  const transaction = await sequelize.transaction();
+  try {
+    const activePeriod = await SchoolPeriodService.getActivePeriod(transaction);
+    if (!activePeriod) {
+      await transaction.rollback();
+      return res.status(400).json({
+        error: 'No hay un período escolar activo desde el cual crear el de preinscripción.',
+      });
+    }
+
+    const preinscription = await SchoolPeriodService.ensureNextPreinscriptionPeriod(
+      activePeriod,
+      transaction
+    );
+
+    await transaction.commit();
+    res.status(200).json(preinscription);
+  } catch (error) {
+    await transaction.rollback();
+    console.error('[ensurePreinscriptionPeriod] Error:', error);
+    res.status(500).json({ error: 'Error al crear el período de preinscripción' });
+  }
+};
+
 export const createPeriod = async (req: Request, res: Response) => {
   const transaction = await sequelize.transaction();
   try {

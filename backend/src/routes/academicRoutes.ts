@@ -9,6 +9,7 @@ router.get('/active', academic.getActivePeriod);
 router.get('/periods/active', academic.getActivePeriod);
 router.get('/preinscription', academic.getPreinscriptionPeriod);
 router.get('/periods/preinscription', academic.getPreinscriptionPeriod);
+router.post('/periods/ensure-preinscription', academic.ensurePreinscriptionPeriod);
 router.post('/periods', academic.createPeriod);
 router.put('/periods/:id/activate', academic.togglePeriodActive);
 router.put('/periods/:id', academic.updatePeriod);

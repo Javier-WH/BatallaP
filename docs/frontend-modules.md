@@ -98,7 +98,8 @@ Todos los servicios consumen la instancia `api` con `withCredentials: true`.
 | `admin/Dashboard.tsx` | Dashboard administrativo. |
 | `admin/RegisterStaff.tsx` | Registrar personal (Profesor/Representante). |
 | `admin/RegisterRepresentative.tsx` | Registrar solo Representante. |
-| `admin/EnrollStudent.tsx` | Inscripción estándar de estudiante (~80 KB). Incluye wizard con datos personales, contacto, residencia, escuela previa, representantes, materias. |
+| `admin/EnrollStudent.tsx` | Página de inscripción con 4 pestañas: "Nuevo Ingreso", "Preinscripción", "Inscripción masiva" (Excel) y "Estudiante Regular". Las dos primeras usan el componente `NewStudentEnrollmentForm` con `mode="inscripcion"` y `mode="preinscripcion"` respectivamente. |
+| `admin/components/NewStudentEnrollmentForm.tsx` | Formulario extraído de inscripción/preinscripción de nuevo estudiante. Recibe `mode`, `allPeriods`, `venezuelaLocations` y `onPeriodsChanged`. En modo `preinscripcion` selecciona automáticamente el período con `status: 'preinscripcion'`; si no existe, ofrece crearlo vía `ensurePreinscriptionPeriod()`. |
 | `admin/QuickEnrollStudent.tsx` | Inscripción rápida con datos mínimos. |
 | `admin/StudentSubjectsModal.tsx` | Modal para gestionar materias (grupos electivos) del estudiante. |
 | `admin/SchoolManagement.tsx` | CRUD de planteles. |
