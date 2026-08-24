@@ -525,7 +525,12 @@ export const getMpTeacherAssignments = async (req: Request, res: Response) => {
           as: 'periodGradeSubject',
           include: [
             { model: Subject, as: 'subject' },
-            { model: PeriodGrade, as: 'periodGrade', where: { schoolPeriodId: activePeriod.id } },
+            {
+              model: PeriodGrade,
+              as: 'periodGrade',
+              where: { schoolPeriodId: activePeriod.id },
+              include: [{ model: Grade, as: 'grade' }],
+            },
           ],
         },
       ],
@@ -537,6 +542,7 @@ export const getMpTeacherAssignments = async (req: Request, res: Response) => {
       subjectId: a.periodGradeSubject?.subjectId,
       subjectName: a.periodGradeSubject?.subject?.name,
       gradeId: a.periodGradeSubject?.periodGrade?.gradeId,
+      gradeName: a.periodGradeSubject?.periodGrade?.grade?.name,
     }));
 
     return res.json({ assignments: result });

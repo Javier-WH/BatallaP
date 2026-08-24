@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
-  Card, Select, Button, Space, Typography, Spin, message, Tag, Empty,
+  Card, Button, Space, Typography, Spin, message, Tag, Empty,
   InputNumber, Alert, Tabs, Input, Modal, DatePicker,
 } from 'antd';
 import {
@@ -10,6 +10,18 @@ import {
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import api from '@/services/api';
+import { getSubjectVisual, withAlpha } from '@/utils/subjectVisuals';
+import { useDragScroll } from '@/utils/useDragScroll';
+
+const gradeOrder = (name: string): number => {
+  const GRADE_ORDINALS: Record<string, number> = {
+    primer: 1, primero: 1, segundo: 2, tercer: 3, tercero: 3,
+    cuarto: 4, quinto: 5, sexto: 6, septimo: 7, octavo: 8, noveno: 9, decimo: 10,
+  };
+  const lower = name.toLowerCase().trim();
+  const firstWord = lower.split(/\s+/)[0];
+  return GRADE_ORDINALS[firstWord] ?? 99;
+};
 
 const { Title, Text } = Typography;
 
@@ -22,6 +34,7 @@ interface MpAssignment {
   subjectId: number;
   subjectName: string;
   gradeId: number;
+  gradeName?: string;
 }
 
 interface EncounterStudent {
@@ -51,10 +64,13 @@ interface AssignmentEncounters {
 /* Component                                                           */
 /* ------------------------------------------------------------------ */
 const PendingSubjectTeacherPanel: React.FC = () => {
+  const dragScroll = useDragScroll<HTMLDivElement>();
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [assignments, setAssignments] = useState<MpAssignment[]>([]);
   const [selectedPgsId, setSelectedPgsId] = useState<number | null>(null);
+  const [selectedSubjectId, setSelectedSubjectId] = useState<number | null>(null);
+  const [selectedGradeId, setSelectedGradeId] = useState<number | null>(null);
 
   // Encounter system
   const [encounterData, setEncounterData] = useState<AssignmentEncounters | null>(null);
@@ -77,9 +93,14 @@ const PendingSubjectTeacherPanel: React.FC = () => {
     setLoading(true);
     try {
       const res = await api.get<{ assignments: MpAssignment[] }>('/pending-subjects/teacher-assignments');
-      setAssignments(res.data.assignments || []);
-      if ((res.data.assignments || []).length > 0 && !selectedPgsId) {
-        setSelectedPgsId(res.data.assignments[0].periodGradeSubjectId);
+      const list = res.data.assignments || [];
+      setAssignments(list);
+      // Auto-select first subject + first grade if nothing selected
+      if (list.length > 0 && !selectedPgsId) {
+        const firstSubjectId = list[0].subjectId;
+        setSelectedSubjectId(firstSubjectId);
+        setSelectedGradeId(list[0].gradeId);
+        setSelectedPgsId(list[0].periodGradeSubjectId);
       }
     } catch (error: any) {
       message.error(error?.response?.data?.message || 'Error al cargar asignaciones');
@@ -89,6 +110,35 @@ const PendingSubjectTeacherPanel: React.FC = () => {
   }, [selectedPgsId]);
 
   useEffect(() => { fetchAssignments(); }, [fetchAssignments]);
+
+  // Group assignments: unique subjects + grades per subject
+  const uniqueSubjects = useMemo(() => {
+    const map = new Map<number, { subjectId: number; subjectName: string }>();
+    assignments.forEach(a => {
+      if (!map.has(a.subjectId)) {
+        map.set(a.subjectId, { subjectId: a.subjectId, subjectName: a.subjectName });
+      }
+    });
+    return Array.from(map.values()).sort((a, b) => a.subjectName.localeCompare(b.subjectName, 'es'));
+  }, [assignments]);
+
+  const gradesForSubject = useMemo(() => {
+    if (!selectedSubjectId) return [];
+    return assignments
+      .filter(a => a.subjectId === selectedSubjectId)
+      .map(a => ({ gradeId: a.gradeId, gradeName: a.gradeName || `Grado ${a.gradeId}`, pgsId: a.periodGradeSubjectId }))
+      .sort((a, b) => gradeOrder(a.gradeName) - gradeOrder(b.gradeName));
+  }, [assignments, selectedSubjectId]);
+
+  // When subject or grade changes, update selectedPgsId
+  useEffect(() => {
+    if (selectedSubjectId && selectedGradeId) {
+      const match = assignments.find(a => a.subjectId === selectedSubjectId && a.gradeId === selectedGradeId);
+      if (match && match.periodGradeSubjectId !== selectedPgsId) {
+        setSelectedPgsId(match.periodGradeSubjectId);
+      }
+    }
+  }, [selectedSubjectId, selectedGradeId, assignments, selectedPgsId]);
 
   /* ------------------- Fetch encounters for assignment ------------------- */
   const fetchEncounters = useCallback(async (pgsId: number) => {
@@ -243,20 +293,85 @@ const PendingSubjectTeacherPanel: React.FC = () => {
         </Card>
       ) : (
         <>
-          <Card style={{ marginBottom: 16 }}>
-            <Space>
-              <Text strong>Asignación:</Text>
-              <Select
-                style={{ width: 350 }}
-                value={selectedPgsId ?? undefined}
-                onChange={v => setSelectedPgsId(v)}
-                options={assignments.map(a => ({
-                  value: a.periodGradeSubjectId,
-                  label: a.subjectName,
-                }))}
-              />
-            </Space>
-          </Card>
+          {/* Selector — materia → año (estilo TeacherPanel) */}
+          <div className="app-card app-card-hover p-5 flex flex-col" style={{ marginBottom: 16 }}>
+            <span className="text-[10px] font-bold uppercase tracking-widest mb-2" style={{ color: 'var(--color-text-muted)' }}>Seleccionar Asignatura</span>
+
+            {/* Nivel 1: Materia (tarjetas horizontales con icono+color) */}
+            <div
+              ref={dragScroll.ref}
+              onMouseDown={dragScroll.onMouseDown}
+              onMouseMove={dragScroll.onMouseMove}
+              onMouseUp={dragScroll.onMouseUp}
+              onMouseLeave={dragScroll.onMouseLeave}
+              onClickCapture={dragScroll.onClickCapture}
+              onTouchStart={dragScroll.onTouchStart}
+              onTouchMove={dragScroll.onTouchMove}
+              onTouchEnd={dragScroll.onTouchEnd}
+              className="flex gap-2.5 overflow-x-auto pb-2 shrink-0 drag-scroll-container"
+              style={{ minHeight: 64, cursor: 'grab', scrollbarWidth: 'none', msOverflowStyle: 'none', userSelect: 'none', WebkitUserSelect: 'none' }}
+            >
+              {uniqueSubjects.map(s => {
+                const isSelected = s.subjectId === selectedSubjectId;
+                const { Icon, color } = getSubjectVisual({ name: s.subjectName });
+                return (
+                  <div
+                    key={s.subjectId}
+                    onClick={() => {
+                      setSelectedSubjectId(s.subjectId);
+                      // Auto-select first grade for this subject
+                      const first = assignments.find(a => a.subjectId === s.subjectId);
+                      if (first) {
+                        setSelectedGradeId(first.gradeId);
+                        setSelectedPgsId(first.periodGradeSubjectId);
+                      }
+                    }}
+                    className="cursor-pointer min-w-[180px] rounded-xl p-3 transition-all flex items-center gap-3 border-none"
+                    style={{
+                      backgroundColor: isSelected ? 'var(--color-accent)' : 'var(--color-inactive)',
+                      color: isSelected ? 'var(--color-header-text)' : 'var(--color-text-main)',
+                    }}
+                  >
+                    <div
+                      className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0"
+                      style={{ backgroundColor: isSelected ? 'rgba(255,255,255,0.2)' : withAlpha(color, 0.12) }}
+                    >
+                      <Icon style={{ color: isSelected ? '#fff' : color, fontSize: 18 }} />
+                    </div>
+                    <div className="font-bold text-sm leading-tight" style={{ color: 'inherit' }}>
+                      {s.subjectName}
+                    </div>
+                  </div>
+                );
+              })}
+              {uniqueSubjects.length === 0 && (
+                <span className="text-xs self-center" style={{ color: 'var(--color-text-muted)' }}>Sin materias</span>
+              )}
+            </div>
+
+            {/* Nivel 2: Año */}
+            <div className="flex gap-2 mt-3 w-full" style={{ minHeight: 40 }}>
+              {selectedSubjectId && gradesForSubject.map(g => {
+                const isSelected = g.gradeId === selectedGradeId;
+                return (
+                  <button
+                    key={g.gradeId}
+                    onClick={() => {
+                      setSelectedGradeId(g.gradeId);
+                      setSelectedPgsId(g.pgsId);
+                    }}
+                    className="flex-1 py-2.5 text-sm font-bold rounded-lg transition-all border-none cursor-pointer"
+                    style={{
+                      backgroundColor: isSelected ? 'var(--color-accent)' : 'var(--color-inactive)',
+                      color: isSelected ? 'var(--color-header-text)' : 'var(--color-text-main)',
+                    }}
+                  >
+                    {g.gradeName}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
 
           <Spin spinning={loading}>
             {encounterData && (
