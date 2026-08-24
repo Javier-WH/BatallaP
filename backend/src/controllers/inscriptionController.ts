@@ -15,6 +15,7 @@ import { assignGuardians, GuardianAssignment } from '@/services/studentGuardianS
 import { EscolaridadStatus } from '@/types/enrollment';
 import { registerAndEnrollStudent } from '@/services/studentEnrollmentService';
 import { generateEnrollmentReport } from '@/services/enrollmentReportService';
+import { sortInscriptions } from '@/services/studentSortService';
 
 const ESCOLARIDAD_VALUES: EscolaridadStatus[] = ['regular', 'repitiente', 'materia_pendiente'];
 
@@ -279,6 +280,10 @@ export const getMatriculations = async (req: Request, res: Response) => {
       }
       return json;
     });
+
+    // Sort students canonically: document type → document number → lastName → firstName → grade → section
+    sortInscriptions(result);
+
     res.json(result);
   } catch (error) {
     console.error('Error fetching matriculations:', error);
@@ -715,6 +720,9 @@ export const getInscriptions = async (req: Request, res: Response) => {
     const filtered = isPrivileged
       ? result
       : result.filter((ins: any) => !ins.matriculation?.hiddenFromControlEstudios);
+
+    // Sort students canonically: document type → document number → lastName → firstName → grade → section
+    sortInscriptions(filtered);
 
     res.json(filtered);
   } catch (error) {

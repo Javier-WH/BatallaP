@@ -72,6 +72,394 @@ interface CouncilStudent {
   }[];
 }
 
+/* ------------------------------------------------------------------ */
+/* Standalone Excel builder — reused by single-section and bulk export */
+/* ------------------------------------------------------------------ */
+interface CouncilExcelParams {
+  students: CouncilStudent[];
+  columnDefs: { title: string; key: string; groupId?: number; subjectId?: number }[];
+  prevTerms: { termId: number; termName: string }[];
+  term: Term;
+  section: { section: Section; grade: Grade };
+  guideTeacher: string;
+  completedAt: Date | null;
+  allTerms: Term[];
+  showPrevTerms: boolean;
+  showPrevCouncilPts: boolean;
+  rounding: boolean;
+  passingGrade: number;
+  maxGrade: number;
+  institutionName: string;
+  periodName: string;
+  isPreliminary: boolean;
+}
+
+async function buildCouncilWorkbook(p: CouncilExcelParams): Promise<ArrayBuffer> {
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = 'BatallaProject';
+  workbook.created = new Date();
+  const worksheet = workbook.addWorksheet('Consejo de Curso', {
+    pageSetup: {
+      orientation: 'landscape',
+      paperSize: 9,
+      fitToPage: true,
+      fitToWidth: 1,
+      fitToHeight: 0,
+      horizontalCentered: true,
+      margins: { left: 0.25, right: 0.25, top: 0.4, bottom: 0.4, header: 0.2, footer: 0.2 }
+    }
+  });
+  worksheet.pageSetup.printTitlesRow = '6:7';
+
+  const fixedHeaders = ['#', 'Documento', 'Estudiante', 'Pos', 'Promedio', 'Rep'];
+  const leafHeaders: string[] = [...fixedHeaders];
+  const groupRanges: { title: string; start: number; end: number }[] = [
+    { title: 'Información del estudiante', start: 1, end: fixedHeaders.length }
+  ];
+
+  const currentLapNum = (p.term.name?.match(/\d+/)?.[0]) || String(p.term.order ?? 1);
+  const termOrderMap = new Map<number, string>();
+  p.allTerms.forEach(t => {
+    const num = t.name.match(/\d+/)?.[0] || String(t.order);
+    termOrderMap.set(t.id, num);
+  });
+
+  p.columnDefs.forEach(colDef => {
+    const start = leafHeaders.length + 1;
+    if (p.showPrevTerms) {
+      p.prevTerms.forEach(pt => {
+        const lapNum = termOrderMap.get(pt.termId) || '?';
+        leafHeaders.push(`L${lapNum}`);
+      });
+    }
+    leafHeaders.push(`L${currentLapNum}`, 'PC', 'NF');
+    groupRanges.push({ title: colDef.title, start, end: leafHeaders.length });
+  });
+
+  const widthFromPx = (px: number): number => (px - 5) / 7;
+  worksheet.getColumn(1).width = 2.86;
+  worksheet.getColumn(2).width = 12.86;
+  worksheet.getColumn(3).width = 42;
+  worksheet.getColumn(4).width = widthFromPx(29);
+  worksheet.getColumn(5).width = widthFromPx(57);
+  worksheet.getColumn(6).width = widthFromPx(29);
+  for (let i = 7; i <= leafHeaders.length; i++) worksheet.getColumn(i).width = 4;
+
+  const colWidths: number[] = [];
+  let totalWidth = 0;
+  for (let i = 1; i <= leafHeaders.length; i++) {
+    const w = worksheet.getColumn(i).width || 0;
+    colWidths.push(w);
+    totalWidth += w;
+  }
+  const third = totalWidth / 3;
+  let cut1 = 1, cut2 = 1, acc = 0;
+  for (let i = 0; i < colWidths.length; i++) {
+    acc += colWidths[i];
+    if (cut1 === 1 && acc >= third) cut1 = i + 1;
+    if (cut2 === 1 && acc >= third * 2) cut2 = i + 1;
+  }
+  cut1 = Math.max(2, Math.min(cut1, leafHeaders.length - 2));
+  cut2 = Math.max(cut1 + 1, Math.min(cut2, leafHeaders.length - 1));
+  const lastCol = leafHeaders.length;
+
+  for (let r = 1; r <= 5; r++) worksheet.addRow([]);
+
+  worksheet.mergeCells(1, 1, 1, cut1);
+  worksheet.mergeCells(1, cut1 + 1, 1, cut2);
+  worksheet.mergeCells(1, cut2 + 1, 1, lastCol);
+  const nameCell = worksheet.getCell(1, cut1 + 1);
+  nameCell.value = p.institutionName;
+  nameCell.alignment = { horizontal: 'center', vertical: 'middle' };
+  nameCell.font = { bold: true, size: 20, color: { argb: '17324D' } };
+  worksheet.getRow(1).height = 48;
+
+  worksheet.mergeCells(3, cut2 + 1, 3, lastCol);
+  const periodCell = worksheet.getCell(3, cut2 + 1);
+  periodCell.value = p.periodName || '';
+  periodCell.alignment = { horizontal: 'right', vertical: 'middle', indent: 1 };
+  periodCell.font = { bold: true, size: 14, color: { argb: '17324D' } };
+
+  worksheet.mergeCells(4, 1, 4, 2);
+  const profesorLabelCell = worksheet.getCell(4, 1);
+  profesorLabelCell.value = 'Profesor:';
+  profesorLabelCell.alignment = { horizontal: 'left', vertical: 'middle', indent: 1 };
+  profesorLabelCell.font = { size: 14, color: { argb: '17324D' } };
+  const profesorNameCell = worksheet.getCell(4, 3);
+  profesorNameCell.value = p.guideTeacher
+    ? p.guideTeacher.toLowerCase().replace(/\b\w/g, c => c.toUpperCase())
+    : '';
+  profesorNameCell.alignment = { horizontal: 'left', vertical: 'middle' };
+  profesorNameCell.font = { bold: true, size: 14, color: { argb: '17324D' } };
+
+  worksheet.mergeCells(4, cut1 + 1, 4, cut2);
+  const titleCell = worksheet.getCell(4, cut1 + 1);
+  titleCell.value = p.isPreliminary ? 'Acta Preliminar - Consejos de Curso' : 'Acta Final - Consejos de Curso';
+  titleCell.alignment = { horizontal: 'center', vertical: 'middle' };
+  titleCell.font = { bold: true, size: 14, color: { argb: '17324D' } };
+
+  worksheet.mergeCells(4, cut2 + 1, 4, lastCol);
+  const dateCell = worksheet.getCell(4, cut2 + 1);
+  dateCell.value = p.completedAt
+    ? `Fecha: ${p.completedAt.toLocaleDateString('es-VE', { day: '2-digit', month: '2-digit', year: 'numeric' })}`
+    : 'Fecha: __/__/____';
+  dateCell.alignment = { horizontal: 'right', vertical: 'middle', indent: 1 };
+  dateCell.font = { size: 14, color: { argb: '17324D' } };
+
+  worksheet.mergeCells(5, 1, 5, 2);
+  const cursoLabelCell = worksheet.getCell(5, 1);
+  cursoLabelCell.value = 'Curso:';
+  cursoLabelCell.alignment = { horizontal: 'left', vertical: 'middle', indent: 1 };
+  cursoLabelCell.font = { size: 14, color: { argb: '17324D' } };
+  const cursoNameCell = worksheet.getCell(5, 3);
+  const cursoGradeName = p.section.grade.name || '';
+  const cursoSectionName = p.section.section.name?.replace(/sección/gi, '').trim() || '';
+  cursoNameCell.value = `${cursoGradeName}, Sección ${cursoSectionName}`.trim();
+  cursoNameCell.alignment = { horizontal: 'left', vertical: 'middle' };
+  cursoNameCell.font = { bold: true, size: 14, color: { argb: '17324D' } };
+
+  worksheet.mergeCells(5, cut1 + 1, 5, cut2);
+  const lapsoCell = worksheet.getCell(5, cut1 + 1);
+  lapsoCell.value = p.term.name || '';
+  lapsoCell.alignment = { horizontal: 'center', vertical: 'middle' };
+  lapsoCell.font = { bold: true, size: 14, color: { argb: '17324D' } };
+
+  worksheet.getRow(2).height = 24.75;
+  worksheet.getRow(3).height = 24.75;
+  worksheet.getRow(4).height = 24.75;
+  worksheet.getRow(5).height = 24.75;
+
+  // Logo
+  const pxToColUnits = (px: number): number => {
+    let remaining = px;
+    for (let c = 1; c <= leafHeaders.length; c++) {
+      const w = worksheet.getColumn(c).width || 0;
+      const colPx = Math.round(w >= 1 ? w * 7 + 5 : w * 7);
+      if (remaining <= colPx) return (c - 1) + remaining / colPx;
+      remaining -= colPx;
+    }
+    return leafHeaders.length;
+  };
+  try {
+    const logoResponse = await api.get('/upload/logo', { responseType: 'arraybuffer' });
+    const logoBuffer = logoResponse.data as ArrayBuffer;
+    const view = new DataView(logoBuffer);
+    const pngWidth = view.getUint32(16, false);
+    const pngHeight = view.getUint32(20, false);
+    const targetHeightPx = Math.round(1.28 * 96);
+    const targetWidthPx = pngHeight > 0 ? Math.round((pngWidth / pngHeight) * targetHeightPx) : targetHeightPx;
+    const logoId = workbook.addImage({ buffer: logoBuffer, extension: 'png' });
+    worksheet.addImage(logoId, {
+      tl: { col: pxToColUnits(28), row: 5 / 48 },
+      ext: { width: targetWidthPx, height: targetHeightPx }
+    });
+  } catch { /* no logo */ }
+
+  const topRow = worksheet.addRow([]);
+  const headerRow = worksheet.addRow(leafHeaders);
+  groupRanges.forEach(range => {
+    topRow.getCell(range.start).value = range.title;
+    worksheet.mergeCells(6, range.start, 6, range.end);
+  });
+
+  const getSubject = (student: CouncilStudent, colDef: typeof p.columnDefs[number]) => (
+    colDef.groupId
+      ? student.subjects.find(s => s.groupId === colDef.groupId)
+      : student.subjects.find(s => s.id === colDef.subjectId)
+  );
+  const averageOf = (student: CouncilStudent) => {
+    const avg = student.subjects.filter(s => s.includeInAverage !== false);
+    const total = avg.reduce((sum, s) => sum + Math.max(1, Math.round((s.grade || 0) + (p.isPreliminary ? 0 : (s.points || 0)))), 0);
+    return avg.length > 0 ? Number((total / avg.length).toFixed(2)) : 0;
+  };
+  const sortedByAvg = [...p.students].sort((a, b) => averageOf(b) - averageOf(a));
+  const positionMap = new Map<number, number>();
+  sortedByAvg.forEach((s, idx) => positionMap.set(s.id, idx + 1));
+  const failedCount = (student: CouncilStudent) =>
+    student.subjects.filter(s => !isPassingGrade((s.grade || 0) + (p.isPreliminary ? 0 : (s.points || 0)), p.passingGrade)).length;
+
+  const zebraFill = { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: 'F7FAFC' } };
+  p.students.forEach((student, studentIndex) => {
+    const row: (string | number)[] = [
+      studentIndex + 1,
+      `${student.documentType === 'Venezolano' ? 'V' : student.documentType === 'Extranjero' ? 'E' : student.documentType === 'Pasaporte' ? 'P' : 'CE'}-${student.studentDni}`,
+      student.studentName,
+      positionMap.get(student.id) ?? studentIndex + 1,
+      Number(averageOf(student).toFixed(2)),
+      failedCount(student),
+    ];
+    p.columnDefs.forEach(colDef => {
+      const subject = getSubject(student, colDef);
+      if (p.showPrevTerms) {
+        p.prevTerms.forEach(pt => {
+          const prev = subject?.previousTermsData?.find(i => i.termId === pt.termId);
+          row.push(prev ? Number(formatGrade(prev.finalGrade, p.rounding)) : '-');
+        });
+      }
+      const baseGrade = subject?.grade ?? 0;
+      const points = subject?.points ?? 0;
+      row.push(
+        subject ? Number(formatGrade(baseGrade, p.rounding)) : '-',
+        p.isPreliminary ? '' : points,
+        p.isPreliminary ? '' : (subject ? Number(formatGrade(Math.round((baseGrade + points) * 100) / 100, p.rounding)) : '-'),
+      );
+    });
+    const dataRow = worksheet.addRow(row);
+    const isZebraRow = studentIndex % 2 === 1;
+
+    if (p.showPrevTerms && p.showPrevCouncilPts) {
+      let colOffset = 6;
+      p.columnDefs.forEach(colDef => {
+        const subject = getSubject(student, colDef);
+        if (p.showPrevTerms) {
+          p.prevTerms.forEach(pt => {
+            const prev = subject?.previousTermsData?.find(i => i.termId === pt.termId);
+            if (prev && prev.councilPoints > 0) {
+              const cell = dataRow.getCell(colOffset + 1);
+              const gradeStr = String(formatGrade(prev.finalGrade, p.rounding)).padStart(String(p.maxGrade).length, '0');
+              cell.value = { richText: [
+                { text: gradeStr, font: { size: 10 } },
+                { text: `+${prev.councilPoints}`, font: { size: 10, bold: true, vertAlign: 'superscript', color: { argb: 'FF3366FF' } } },
+              ]};
+            }
+            colOffset += 1;
+          });
+        }
+        colOffset += 3;
+      });
+    }
+    dataRow.eachCell(cell => {
+      cell.font = { size: 10 };
+      if (isZebraRow) cell.fill = zebraFill;
+      cell.border = {
+        top: { style: 'thin', color: { argb: 'D6DEE5' } }, left: { style: 'thin', color: { argb: 'D6DEE5' } },
+        bottom: { style: 'thin', color: { argb: 'D6DEE5' } }, right: { style: 'thin', color: { argb: 'D6DEE5' } }
+      };
+    });
+    dataRow.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
+    dataRow.getCell(2).alignment = { horizontal: 'center', vertical: 'middle' };
+    dataRow.getCell(3).alignment = { horizontal: 'left', vertical: 'middle' };
+    for (let ci = 4; ci <= leafHeaders.length; ci++) dataRow.getCell(ci).alignment = { horizontal: 'center', vertical: 'middle' };
+    dataRow.getCell(5).numFmt = '0.00';
+    const repCell = dataRow.getCell(6);
+    if (failedCount(student) > 0) repCell.font = { size: 10, color: { argb: 'FF0000' }, bold: true };
+
+    const maxDigits = String(p.maxGrade).length;
+    const gradeNumFmt = '0'.repeat(maxDigits);
+    let colIdx = 7;
+    p.columnDefs.forEach(() => {
+      if (p.showPrevTerms) { p.prevTerms.forEach(() => { dataRow.getCell(colIdx).numFmt = gradeNumFmt; colIdx += 1; }); }
+      dataRow.getCell(colIdx).numFmt = gradeNumFmt; colIdx += 1;
+      colIdx += 1; // PC
+      dataRow.getCell(colIdx).numFmt = gradeNumFmt; colIdx += 1; // NF
+    });
+  });
+
+  // Signature row
+  const signatureRow = worksheet.addRow([]);
+  worksheet.mergeCells(signatureRow.number, 1, signatureRow.number, 6);
+  const sigLabelCell = signatureRow.getCell(1);
+  sigLabelCell.value = 'Firma de los Docentes:';
+  sigLabelCell.alignment = { horizontal: 'left', vertical: 'middle', indent: 1 };
+  sigLabelCell.font = { bold: true, size: 10, color: { argb: '17324D' } };
+  groupRanges.forEach(range => {
+    if (range.title === 'Información del estudiante') return;
+    worksheet.mergeCells(signatureRow.number, range.start, signatureRow.number, range.end);
+  });
+  signatureRow.height = 54;
+
+  // Header styling
+  const headerFill = { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: 'D9EAF7' } };
+  const subHeaderFill = { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: 'F3F6F9' } };
+  const headerBorder = {
+    top: { style: 'thin' as const, color: { argb: 'B8C7D3' } }, left: { style: 'thin' as const, color: { argb: 'B8C7D3' } },
+    bottom: { style: 'thin' as const, color: { argb: 'B8C7D3' } }, right: { style: 'thin' as const, color: { argb: 'B8C7D3' } }
+  };
+  for (let ci = 1; ci <= leafHeaders.length; ci++) {
+    const gc = topRow.getCell(ci);
+    gc.fill = headerFill; gc.font = { bold: true, size: 10, color: { argb: '17324D' } };
+    gc.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true }; gc.border = headerBorder;
+    const lc = headerRow.getCell(ci);
+    lc.fill = subHeaderFill; lc.font = { bold: true, size: 9, color: { argb: '40566B' } };
+    lc.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true }; lc.border = headerBorder;
+  }
+  topRow.height = 24; headerRow.height = 32;
+
+  // Thick separators
+  const thickEdge = { style: 'medium' as const, color: { argb: '5A7085' } };
+  const lastRow = worksheet.rowCount;
+  const sigRowNumber = signatureRow.number;
+  groupRanges.forEach(range => {
+    const mc = worksheet.getCell(6, range.start);
+    mc.border = { ...mc.border, left: thickEdge, right: thickEdge };
+    for (let rn = 7; rn <= lastRow; rn++) {
+      if (rn === sigRowNumber) continue;
+      worksheet.getCell(rn, range.start).border = { ...worksheet.getCell(rn, range.start).border, left: thickEdge };
+      worksheet.getCell(rn, range.end).border = { ...worksheet.getCell(rn, range.end).border, right: thickEdge };
+    }
+  });
+  for (let ci = 1; ci <= lastCol; ci++) {
+    worksheet.getCell(6, ci).border = { ...worksheet.getCell(6, ci).border, top: thickEdge };
+    worksheet.getCell(lastRow, ci).border = { ...worksheet.getCell(lastRow, ci).border, bottom: thickEdge };
+  }
+  for (let ci = 1; ci <= lastCol; ci++) {
+    worksheet.getCell(sigRowNumber, ci).border = { ...worksheet.getCell(sigRowNumber, ci).border, top: thickEdge };
+  }
+  const sigLabelMaster = worksheet.getCell(sigRowNumber, 1);
+  sigLabelMaster.border = { ...sigLabelMaster.border, left: thickEdge, right: thickEdge };
+  groupRanges.forEach(range => {
+    if (range.title === 'Información del estudiante') return;
+    const sgm = worksheet.getCell(sigRowNumber, range.start);
+    sgm.border = { ...sgm.border, left: thickEdge, right: thickEdge };
+  });
+
+  if (p.showPrevTerms && p.prevTerms.length > 0) {
+    const doubleEdge = { style: 'double' as const, color: { argb: '5A7085' } };
+    const prevColsPerSubject = p.prevTerms.length;
+    groupRanges.forEach(range => {
+      if (range.title === 'Información del estudiante') return;
+      const currentLCol = range.start + prevColsPerSubject;
+      for (let rn = 7; rn <= lastRow; rn++) {
+        if (rn === sigRowNumber) continue;
+        const cell = worksheet.getCell(rn, currentLCol);
+        cell.border = { ...cell.border, left: doubleEdge };
+      }
+    });
+  }
+
+  worksheet.pageSetup.printArea = `A1:${worksheet.getColumn(leafHeaders.length).letter}${worksheet.rowCount}`;
+  return workbook.xlsx.writeBuffer();
+}
+
+/** Compute column definitions and previous term names from council students. */
+function computeCouncilColumns(students: CouncilStudent[]) {
+  const columnDefs: { title: string; key: string; groupId?: number; subjectId?: number }[] = [];
+  const seenGroups = new Set<number>();
+  const seenSubjects = new Set<number>();
+  students.forEach(student => {
+    student.subjects.forEach(sub => {
+      if (sub.groupId && sub.groupName) {
+        if (!seenGroups.has(sub.groupId)) {
+          columnDefs.push({ title: sub.groupName, key: `group-${sub.groupId}`, groupId: sub.groupId });
+          seenGroups.add(sub.groupId);
+        }
+      } else {
+        if (!seenSubjects.has(sub.id)) {
+          columnDefs.push({ title: sub.name, key: `subject-${sub.id}`, subjectId: sub.id });
+          seenSubjects.add(sub.id);
+        }
+      }
+    });
+  });
+  const prevTerms: { termId: number; termName: string }[] = [];
+  if (students.length > 0 && students[0].subjects.length > 0) {
+    (students[0].subjects[0].previousTermsData || []).forEach(pt =>
+      prevTerms.push({ termId: pt.termId, termName: pt.termName })
+    );
+  }
+  return { columnDefs, prevTerms };
+}
+
 const CourseCouncil: React.FC = () => {
   const { viewPeriod, isReadOnly } = useSchool();
   const [step, setStep] = useState(0); // 0: Term, 1: Section, 2: Data
@@ -79,6 +467,9 @@ const CourseCouncil: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [exportingExcel, setExportingExcel] = useState(false);
   const [exportingPreliminary, setExportingPreliminary] = useState(false);
+  const [bulkExporting, setBulkExporting] = useState(false);
+  const [bulkExportProgress, setBulkExportProgress] = useState<{ done: number; total: number }>({ done: 0, total: 0 });
+  const [selectedBulkSections, setSelectedBulkSections] = useState<Set<string>>(new Set());
 
   const [terms, setTerms] = useState<Term[]>([]);
   const [structure, setStructure] = useState<PeriodGradeStructure[]>([]);
@@ -191,6 +582,7 @@ const CourseCouncil: React.FC = () => {
     setCouncilCompletedAt(null);
     setGuideTeacherName('');
     setClosedSections(null);
+    setSelectedBulkSections(new Set());
     fetchData();
   }, [fetchData]);
 
@@ -409,6 +801,76 @@ const CourseCouncil: React.FC = () => {
     });
   };
 
+  // Bulk export: generate actas (preliminary or final) for all selected sections
+  const handleBulkExportActas = async (isPreliminary: boolean) => {
+    if (!selectedTerm || !viewPeriod) return;
+    const combos: { grade: Grade; section: Section }[] = [];
+    structure.forEach(pg => {
+      pg.sections.forEach(sec => {
+        const key = `${pg.grade.id}:${sec.id}`;
+        if (selectedBulkSections.has(key)) combos.push({ grade: pg.grade, section: sec });
+      });
+    });
+    if (combos.length === 0) {
+      message.warning('Seleccione al menos una sección');
+      return;
+    }
+    setBulkExporting(true);
+    setBulkExportProgress({ done: 0, total: combos.length });
+    let success = 0;
+    let failed = 0;
+    for (let i = 0; i < combos.length; i++) {
+      const { grade, section } = combos[i];
+      try {
+        const [res, checklistRes, guideRes] = await Promise.all([
+          api.get(`/council/data?sectionId=${section.id}&termId=${selectedTerm.id}&gradeId=${grade.id}`),
+          api.get(`/period-closure/${viewPeriod.id}/checklist?gradeId=${grade.id}&sectionId=${section.id}&termId=${selectedTerm.id}`).catch(() => ({ data: null })),
+          api.get(`/section-guides?schoolPeriodId=${viewPeriod.id}&gradeId=${grade.id}&sectionId=${section.id}`).catch(() => ({ data: null })),
+        ]);
+        const students = (res.data as CouncilStudent[]).slice().sort((a, b) => compareStudents(
+          { document: a.studentDni, documentType: a.documentType, lastName: a.studentName, firstName: '' },
+          { document: b.studentDni, documentType: b.documentType, lastName: b.studentName, firstName: '' }
+        ));
+        if (students.length === 0) { failed++; setBulkExportProgress({ done: i + 1, total: combos.length }); continue; }
+        const { columnDefs, prevTerms } = computeCouncilColumns(students);
+        const completedAt = checklistRes.data?.completedAt ? new Date(checklistRes.data.completedAt) : null;
+        const gt = guideRes.data?.guideTeacher;
+        const guideTeacher = gt ? `${gt.lastName} ${gt.firstName}` : '';
+        const buffer = await buildCouncilWorkbook({
+          students, columnDefs, prevTerms,
+          term: selectedTerm, section: { section, grade },
+          guideTeacher, completedAt,
+          allTerms: terms,
+          showPrevTerms: showPreviousTerms, showPrevCouncilPts: showPrevCouncilPoints,
+          rounding: enableRounding, passingGrade, maxGrade,
+          institutionName: settings.name, periodName: viewPeriod?.name || '',
+          isPreliminary,
+        });
+        const gradeName = grade.name?.replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ_-]+/g, '_') || 'grado';
+        const sectionName = section.name?.replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ_-]+/g, '_') || 'seccion';
+        const prefix = isPreliminary ? 'consejo_curso_preliminar' : 'consejo_curso';
+        saveAs(new Blob([buffer]), `${prefix}_${gradeName}_${sectionName}.xlsx`);
+        success++;
+      } catch (error: any) {
+        console.error(`Error generando acta para ${grade.name} ${section.name}:`, error?.response?.data || error?.message || error);
+        failed++;
+      }
+      setBulkExportProgress({ done: i + 1, total: combos.length });
+      // Small delay to avoid browser blocking consecutive downloads
+      if (i < combos.length - 1) await new Promise(r => setTimeout(r, 300));
+    }
+    setBulkExporting(false);
+    if (success > 0 && failed === 0) {
+      message.success(`Se generaron ${success} acta${success !== 1 ? 's' : ''} correctamente`);
+    } else if (success > 0 && failed > 0) {
+      message.warning(`Se generaron ${success} acta${success !== 1 ? 's' : ''}, ${failed} sin estudiantes o con errores`);
+    } else if (failed > 0) {
+      message.error(`No se pudieron generar las actas (${failed} error${failed !== 1 ? 'es' : ''}). Revise la consola para detalles.`);
+    } else {
+      message.error('No se pudieron generar las actas. Las secciones seleccionadas no tienen estudiantes.');
+    }
+  };
+
   const handleTermClick = async (term: Term) => {
     if (term.isBlocked) {
       // Term globally blocked → all sections are closed
@@ -598,6 +1060,55 @@ const CourseCouncil: React.FC = () => {
           />
         </div>
 
+        {/* Bulk acta export bar */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, padding: '12px 16px', background: '#fff', borderRadius: 12, border: '1px solid #f0f0f0' }} className="animate-card">
+          <Space size="middle">
+            <Checkbox
+              checked={sectionsByGrade.length > 0 && sectionsByGrade.every(g => g.sections.every(s => selectedBulkSections.has(`${g.grade.id}:${s.id}`)))}
+              indeterminate={selectedBulkSections.size > 0 && !(sectionsByGrade.length > 0 && sectionsByGrade.every(g => g.sections.every(s => selectedBulkSections.has(`${g.grade.id}:${s.id}`))))}
+              onChange={e => {
+                if (e.target.checked) {
+                  const all = new Set<string>();
+                  sectionsByGrade.forEach(g => g.sections.forEach(s => all.add(`${g.grade.id}:${s.id}`)));
+                  setSelectedBulkSections(all);
+                } else {
+                  setSelectedBulkSections(new Set());
+                }
+              }}
+              style={{ fontWeight: 700 }}
+            >
+              Seleccionar todas
+            </Checkbox>
+            <Text type="secondary" style={{ fontSize: 13 }}>
+              {selectedBulkSections.size} sección{selectedBulkSections.size !== 1 ? 'es' : ''} seleccionada{selectedBulkSections.size !== 1 ? 's' : ''}
+            </Text>
+          </Space>
+          <Space size="middle">
+            <Button
+              type="default"
+              size="large"
+              icon={<FileExcelOutlined />}
+              onClick={() => handleBulkExportActas(true)}
+              loading={bulkExporting}
+              disabled={selectedBulkSections.size === 0}
+              style={{ borderRadius: 10, fontWeight: 800, height: 36, padding: '0 16px', color: '#595959', borderColor: '#d9d9d9' }}
+            >
+              {bulkExporting ? `Generando... ${bulkExportProgress.done}/${bulkExportProgress.total}` : 'Actas Preliminares'}
+            </Button>
+            <Button
+              type="default"
+              size="large"
+              icon={<FileExcelOutlined />}
+              onClick={() => handleBulkExportActas(false)}
+              loading={bulkExporting}
+              disabled={selectedBulkSections.size === 0}
+              style={{ borderRadius: 10, fontWeight: 800, height: 36, padding: '0 16px', color: '#595959', borderColor: '#d9d9d9' }}
+            >
+              Actas Finales
+            </Button>
+          </Space>
+        </div>
+
         {sectionsByGrade.length === 0 ? (
           <Empty
             image={Empty.PRESENTED_IMAGE_SIMPLE}
@@ -642,20 +1153,25 @@ const CourseCouncil: React.FC = () => {
               <Row gutter={[24, 24]}>
                 {group.sections.map((sec, secIdx) => {
                   const sectionClosed = isSectionClosed(sec.id, group.grade.id);
+                  const selected = selectedBulkSections.has(`${group.grade.id}:${sec.id}`);
+                  const accentColor = group.grade.isDiversified ? '#fa541c' : '#1890ff';
+                  const accentColorDark = group.grade.isDiversified ? '#d4380d' : '#096dd9';
                   return (
                   <Col key={sec.id} xs={24} sm={12} md={8} lg={6}>
                     <Tooltip title={sectionClosed ? undefined : 'El lapso para esta sección no se ha cerrado'}>
                     <Card
                       hoverable={sectionClosed}
                       className="section-card-premium"
-                      styles={{ body: { padding: '14px' } }}
+                      styles={{ body: { padding: 0 } }}
                       style={{
                         borderRadius: 14,
-                        border: '1px solid rgba(0,0,0,0.05)',
+                        border: selected ? `2px solid ${accentColor}` : '1px solid rgba(0,0,0,0.05)',
                         animationDelay: `${(groupIdx * 0.1) + (secIdx * 0.05)}s`,
                         cursor: sectionClosed ? 'pointer' : 'not-allowed',
                         opacity: sectionClosed ? 1 : 0.5,
                         filter: sectionClosed ? 'none' : 'grayscale(0.6)',
+                        overflow: 'hidden',
+                        position: 'relative',
                       }}
                       onClick={() => {
                         if (!sectionClosed) return;
@@ -663,45 +1179,89 @@ const CourseCouncil: React.FC = () => {
                         if (selectedTerm) fetchCouncilData(sec.id, selectedTerm.id, group.grade.id);
                       }}
                     >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                        <div
-                          className="section-letter-wrapper"
-                          style={{
-                            width: 44,
-                            height: 44,
-                            borderRadius: 12,
-                            background: group.grade.isDiversified ? '#fff2e8' : '#f0f5ff',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            fontSize: 22,
-                            fontWeight: 900,
-                            color: group.grade.isDiversified ? '#fa541c' : '#1890ff',
-                            flexShrink: 0,
-                            transition: 'all 0.3s ease'
-                          }}
-                        >
-                          {sec.name.replace(/sección/gi, '').trim().charAt(0)}
-                        </div>
-                        <div style={{ flex: 1 }}>
-                          <div style={{ fontWeight: 800, fontSize: 16, color: '#1f1f1f', lineHeight: 1.2, marginBottom: 2 }}>
-                            Sección {sec.name.replace(/sección/gi, '').trim()}
+                      <div style={{ display: 'flex', alignItems: 'stretch', minHeight: 72 }}>
+                        {/* Main content (80%) */}
+                        <div style={{ flex: 1, padding: '14px', display: 'flex', alignItems: 'center', gap: 12 }}>
+                          <div
+                            className="section-letter-wrapper"
+                            style={{
+                              width: 44,
+                              height: 44,
+                              borderRadius: 12,
+                              background: group.grade.isDiversified ? '#fff2e8' : '#f0f5ff',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              fontSize: 22,
+                              fontWeight: 900,
+                              color: group.grade.isDiversified ? '#fa541c' : '#1890ff',
+                              flexShrink: 0,
+                              transition: 'all 0.3s ease'
+                            }}
+                          >
+                            {sec.name.replace(/sección/gi, '').trim().charAt(0)}
                           </div>
-                          <Space size={4}>
-                            <Tag color={group.grade.isDiversified ? 'volcano' : 'blue'} style={{ border: 'none', borderRadius: 6, fontSize: 10, fontWeight: 700, margin: 0 }}>
-                              {viewPeriod?.name}
-                            </Tag>
-                            {sectionClosed ? (
-                              <Tag color="success" style={{ border: 'none', borderRadius: 6, fontSize: 10, fontWeight: 700, margin: 0 }}>
-                                Lapso cerrado
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontWeight: 800, fontSize: 16, color: '#1f1f1f', lineHeight: 1.2, marginBottom: 2 }}>
+                              Sección {sec.name.replace(/sección/gi, '').trim()}
+                            </div>
+                            <Space size={4}>
+                              <Tag color={group.grade.isDiversified ? 'volcano' : 'blue'} style={{ border: 'none', borderRadius: 6, fontSize: 10, fontWeight: 700, margin: 0 }}>
+                                {viewPeriod?.name}
                               </Tag>
-                            ) : (
-                              <Tag color="warning" style={{ border: 'none', borderRadius: 6, fontSize: 10, fontWeight: 700, margin: 0 }}>
-                                Lapso abierto
-                              </Tag>
-                            )}
-                          </Space>
+                              {sectionClosed ? (
+                                <Tag color="success" style={{ border: 'none', borderRadius: 6, fontSize: 10, fontWeight: 700, margin: 0 }}>
+                                  Lapso cerrado
+                                </Tag>
+                              ) : (
+                                <Tag color="warning" style={{ border: 'none', borderRadius: 6, fontSize: 10, fontWeight: 700, margin: 0 }}>
+                                  Lapso abierto
+                                </Tag>
+                              )}
+                            </Space>
+                          </div>
                         </div>
+                        {/* Selection strip (20%) — acts as toggle */}
+                        {sectionClosed && (
+                          <div
+                            onClick={e => {
+                              e.stopPropagation();
+                              setSelectedBulkSections(prev => {
+                                const next = new Set(prev);
+                                const key = `${group.grade.id}:${sec.id}`;
+                                if (next.has(key)) next.delete(key); else next.add(key);
+                                return next;
+                              });
+                            }}
+                            style={{
+                              width: '22%',
+                              minWidth: 48,
+                              display: 'flex',
+                              flexDirection: 'column',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              gap: 4,
+                              cursor: 'pointer',
+                              background: selected
+                                ? `linear-gradient(180deg, ${accentColor} 0%, ${accentColorDark} 100%)`
+                                : '#f5f5f5',
+                              transition: 'all 0.25s ease',
+                              borderLeft: selected ? 'none' : '1px solid #e8e8e8',
+                            }}
+                          >
+                            {selected ? (
+                              <>
+                                <CheckCircleOutlined style={{ fontSize: 20, color: '#fff' }} />
+                                <Text style={{ fontSize: 9, fontWeight: 800, color: '#fff', textTransform: 'uppercase', letterSpacing: 0.5 }}>Sel.</Text>
+                              </>
+                            ) : (
+                              <>
+                                <CheckCircleOutlined style={{ fontSize: 20, color: '#bfbfbf' }} />
+                                <Text style={{ fontSize: 9, fontWeight: 700, color: '#8c8c8c', textTransform: 'uppercase', letterSpacing: 0.5 }}>Sel.</Text>
+                              </>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </Card>
                     </Tooltip>
@@ -773,480 +1333,25 @@ const CourseCouncil: React.FC = () => {
     const handleExportExcel = async (isPreliminary = false) => {
       if (studentsData.length === 0) return;
       if (isPreliminary) setExportingPreliminary(true); else setExportingExcel(true);
-
       try {
-        const workbook = new ExcelJS.Workbook();
-        workbook.creator = 'BatallaProject';
-        workbook.created = new Date();
-        const worksheet = workbook.addWorksheet('Consejo de Curso', {
-          pageSetup: {
-            orientation: 'landscape',
-            paperSize: 9,
-            fitToPage: true,
-            fitToWidth: 1,
-            fitToHeight: 0,
-            horizontalCentered: true,
-            margins: {
-              left: 0.25,
-              right: 0.25,
-              top: 0.4,
-              bottom: 0.4,
-              header: 0.2,
-              footer: 0.2
-            }
-          }
+        const buffer = await buildCouncilWorkbook({
+          students: studentsData,
+          columnDefs: columnDefinitions,
+          prevTerms: prevTermNames,
+          term: selectedTerm!,
+          section: selectedSection!,
+          guideTeacher: guideTeacherName,
+          completedAt: councilCompletedAt,
+          allTerms: terms,
+          showPrevTerms: showPreviousTerms,
+          showPrevCouncilPts: showPrevCouncilPoints,
+          rounding: enableRounding,
+          passingGrade,
+          maxGrade,
+          institutionName: settings.name,
+          periodName: viewPeriod?.name || '',
+          isPreliminary,
         });
-        // Repeat the grouped/leaf header rows on every printed page.
-        worksheet.pageSetup.printTitlesRow = '6:7';
-
-        const fixedHeaders = ['#', 'Documento', 'Estudiante', 'Pos', 'Promedio', 'Rep'];
-        const leafHeaders: string[] = [...fixedHeaders];
-        const groupRanges: { title: string; start: number; end: number }[] = [
-          { title: 'Información del estudiante', start: 1, end: fixedHeaders.length }
-        ];
-
-        const currentLapNum = (selectedTerm?.name?.match(/\d+/)?.[0])
-          || String(selectedTerm?.order ?? 1);
-
-        // Map termId → lapso number, using term.order from the terms state
-        const termOrderMap = new Map<number, string>();
-        terms.forEach(t => {
-          const num = t.name.match(/\d+/)?.[0] || String(t.order);
-          termOrderMap.set(t.id, num);
-        });
-
-        columnDefinitions.forEach(colDef => {
-          const start = leafHeaders.length + 1;
-          if (showPreviousTerms) {
-            prevTermNames.forEach(pt => {
-              const lapNum = termOrderMap.get(pt.termId) || '?';
-              leafHeaders.push(`L${lapNum}`);
-            });
-          }
-          leafHeaders.push(`L${currentLapNum}`, 'PC', 'NF');
-          groupRanges.push({ title: colDef.title, start, end: leafHeaders.length });
-        });
-
-        // Set column widths early so we can compute the table's total width
-        // and split the header rows into three roughly-equal visual thirds.
-        // Excel width → pixels: px = round(width * 7 + 5) for width >= 1.
-        // ExcelJS can truncate decimal widths, so we convert to the exact width
-        // that produces the target pixel value and set it with full precision.
-        const widthFromPx = (px: number): number => (px - 5) / 7;
-        worksheet.getColumn(1).width = 2.86;
-        worksheet.getColumn(2).width = 12.86;
-        worksheet.getColumn(3).width = 42;
-        worksheet.getColumn(4).width = widthFromPx(29);  // Pos  (29px)
-        worksheet.getColumn(5).width = widthFromPx(57);  // Promedio (57px)
-        worksheet.getColumn(6).width = widthFromPx(29);  // Rep  (29px)
-        for (let i = 7; i <= leafHeaders.length; i++) {
-          worksheet.getColumn(i).width = 4;
-        }
-
-        // Compute the accumulated width per column to find the 1/3 and 2/3 cut points.
-        const colWidths: number[] = [];
-        let totalWidth = 0;
-        for (let i = 1; i <= leafHeaders.length; i++) {
-          const w = worksheet.getColumn(i).width || 0;
-          colWidths.push(w);
-          totalWidth += w;
-        }
-        const third = totalWidth / 3;
-        let cut1 = 1;
-        let cut2 = 1;
-        let acc = 0;
-        for (let i = 0; i < colWidths.length; i++) {
-          acc += colWidths[i];
-          if (cut1 === 1 && acc >= third) {
-            cut1 = i + 1; // column index (1-based) where the first third ends
-          }
-          if (cut2 === 1 && acc >= third * 2) {
-            cut2 = i + 1; // column index where the second third ends
-          }
-        }
-        // Ensure the cuts are within bounds and leave room for the right section.
-        cut1 = Math.max(2, Math.min(cut1, leafHeaders.length - 2));
-        cut2 = Math.max(cut1 + 1, Math.min(cut2, leafHeaders.length - 1));
-        const lastCol = leafHeaders.length;
-
-        // Row 1: three merged sections. Center section holds the institution name.
-        worksheet.addRow([]);
-        worksheet.addRow([]);
-        worksheet.addRow([]);
-        worksheet.addRow([]);
-        worksheet.addRow([]);
-
-        // Merge row 1 into three parts: left (1..cut1), center (cut1+1..cut2), right (cut2+1..lastCol)
-        worksheet.mergeCells(1, 1, 1, cut1);
-        worksheet.mergeCells(1, cut1 + 1, 1, cut2);
-        worksheet.mergeCells(1, cut2 + 1, 1, lastCol);
-
-        const nameCell = worksheet.getCell(1, cut1 + 1);
-        nameCell.value = settings.name;
-        nameCell.alignment = { horizontal: 'center', vertical: 'middle' };
-        nameCell.font = { bold: true, size: 20, color: { argb: '17324D' } };
-
-        worksheet.getRow(1).height = 48;
-
-        // Row 3: merge the right third and show the school period (Año Escolar).
-        worksheet.mergeCells(3, cut2 + 1, 3, lastCol);
-        const periodCell = worksheet.getCell(3, cut2 + 1);
-        periodCell.value = viewPeriod?.name || '';
-        periodCell.alignment = { horizontal: 'right', vertical: 'middle', indent: 1 };
-        periodCell.font = { bold: true, size: 14, color: { argb: '17324D' } };
-
-        // Row 4: left side has "Profesor:" (A+B merged) and teacher name (C).
-        // Center third holds the report title, right third holds the closure date.
-        worksheet.mergeCells(4, 1, 4, 2);
-        const profesorLabelCell = worksheet.getCell(4, 1);
-        profesorLabelCell.value = 'Profesor:';
-        profesorLabelCell.alignment = { horizontal: 'left', vertical: 'middle', indent: 1 };
-        profesorLabelCell.font = { size: 14, color: { argb: '17324D' } };
-
-        const profesorNameCell = worksheet.getCell(4, 3);
-        const titleCaseName = guideTeacherName
-          ? guideTeacherName.toLowerCase().replace(/\b\w/g, c => c.toUpperCase())
-          : '';
-        profesorNameCell.value = titleCaseName;
-        profesorNameCell.alignment = { horizontal: 'left', vertical: 'middle' };
-        profesorNameCell.font = { bold: true, size: 14, color: { argb: '17324D' } };
-
-        worksheet.mergeCells(4, cut1 + 1, 4, cut2);
-        const titleCell = worksheet.getCell(4, cut1 + 1);
-        titleCell.value = isPreliminary ? 'Acta Preliminar - Consejos de Curso' : 'Acta Final - Consejos de Curso';
-        titleCell.alignment = { horizontal: 'center', vertical: 'middle' };
-        titleCell.font = { bold: true, size: 14, color: { argb: '17324D' } };
-
-        worksheet.mergeCells(4, cut2 + 1, 4, lastCol);
-        const dateCell = worksheet.getCell(4, cut2 + 1);
-        const formattedDate = councilCompletedAt
-          ? `Fecha: ${councilCompletedAt.toLocaleDateString('es-VE', { day: '2-digit', month: '2-digit', year: 'numeric' })}`
-          : 'Fecha: __/__/____';
-        dateCell.value = formattedDate;
-        dateCell.alignment = { horizontal: 'right', vertical: 'middle', indent: 1 };
-        dateCell.font = { size: 14, color: { argb: '17324D' } };
-
-        // Row 5: left side has "Curso:" (A+B merged) and grade+section name (C).
-        // Center third holds the term (lapso) name.
-        worksheet.mergeCells(5, 1, 5, 2);
-        const cursoLabelCell = worksheet.getCell(5, 1);
-        cursoLabelCell.value = 'Curso:';
-        cursoLabelCell.alignment = { horizontal: 'left', vertical: 'middle', indent: 1 };
-        cursoLabelCell.font = { size: 14, color: { argb: '17324D' } };
-
-        const cursoNameCell = worksheet.getCell(5, 3);
-        const cursoGradeName = selectedSection?.grade.name || '';
-        const cursoSectionName = selectedSection?.section.name?.replace(/sección/gi, '').trim() || '';
-        cursoNameCell.value = `${cursoGradeName}, Sección ${cursoSectionName}`.trim();
-        cursoNameCell.alignment = { horizontal: 'left', vertical: 'middle' };
-        cursoNameCell.font = { bold: true, size: 14, color: { argb: '17324D' } };
-
-        worksheet.mergeCells(5, cut1 + 1, 5, cut2);
-        const lapsoCell = worksheet.getCell(5, cut1 + 1);
-        lapsoCell.value = selectedTerm?.name || '';
-        lapsoCell.alignment = { horizontal: 'center', vertical: 'middle' };
-        lapsoCell.font = { bold: true, size: 14, color: { argb: '17324D' } };
-
-        worksheet.getRow(2).height = 24.75;
-        worksheet.getRow(3).height = 24.75;
-        worksheet.getRow(4).height = 24.75;
-        worksheet.getRow(5).height = 24.75;
-
-        // Institutional logo: top-left corner, 1.28" tall, preserving aspect ratio.
-        // Offsets: ~5px from top, ~28px from left.
-        // ExcelJS tl.col is a fractional column index. To convert pixels to column
-        // units we must accumulate each column's pixel width until we reach the target.
-        // Excel width → pixels: pixels = round(width * 7 + 5) for width >= 1.
-        const pxToColUnits = (px: number): number => {
-          let remaining = px;
-          for (let c = 1; c <= leafHeaders.length; c++) {
-            const w = worksheet.getColumn(c).width || 0;
-            const colPx = Math.round(w >= 1 ? w * 7 + 5 : w * 7);
-            if (remaining <= colPx) {
-              return (c - 1) + remaining / colPx;
-            }
-            remaining -= colPx;
-          }
-          return leafHeaders.length;
-        };
-        try {
-          const logoResponse = await api.get('/upload/logo', { responseType: 'arraybuffer' });
-          // Decode the PNG to read its native dimensions for aspect-ratio preservation.
-          const logoBuffer = logoResponse.data as ArrayBuffer;
-          const view = new DataView(logoBuffer);
-          // PNG: width at bytes 16-19, height at bytes 20-23 (big-endian uint32).
-          const pngWidth = view.getUint32(16, false);
-          const pngHeight = view.getUint32(20, false);
-          const targetHeightPx = Math.round(1.28 * 96); // 1.28" at 96 DPI ≈ 123px
-          const targetWidthPx = pngHeight > 0 ? Math.round((pngWidth / pngHeight) * targetHeightPx) : targetHeightPx;
-
-          const logoId = workbook.addImage({ buffer: logoBuffer, extension: 'png' });
-          worksheet.addImage(logoId, {
-            tl: { col: pxToColUnits(28), row: 5 / 48 }, // ~28px left, ~5px top (row 1 = 48px)
-            ext: { width: targetWidthPx, height: targetHeightPx }
-          });
-        } catch (error) {
-          console.warn('No se pudo incluir el logo institucional en el Excel:', error);
-        }
-
-        const topRow = worksheet.addRow([]);
-        const headerRow = worksheet.addRow(leafHeaders);
-
-        groupRanges.forEach(range => {
-          topRow.getCell(range.start).value = range.title;
-          worksheet.mergeCells(6, range.start, 6, range.end);
-        });
-
-        const getSubject = (student: CouncilStudent, colDef: typeof columnDefinitions[number]) => (
-          colDef.groupId
-            ? student.subjects.find(subject => subject.groupId === colDef.groupId)
-            : student.subjects.find(subject => subject.id === colDef.subjectId)
-        );
-        const averageOf = (student: CouncilStudent) => {
-          const avgSubjects = student.subjects.filter(s => s.includeInAverage !== false);
-          const total = avgSubjects.reduce((sum, subject) => {
-            const finalGrade = Math.max(1, Math.round((subject.grade || 0) + (isPreliminary ? 0 : (subject.points || 0))));
-            return sum + finalGrade;
-          }, 0);
-          return avgSubjects.length > 0 ? Number((total / avgSubjects.length).toFixed(2)) : 0;
-        };
-
-        // Pre-compute positions: sort students by average descending, assign rank.
-        const sortedByAvg = [...studentsData].sort((a, b) => averageOf(b) - averageOf(a));
-        const positionMap = new Map<number, number>();
-        sortedByAvg.forEach((s, idx) => {
-          positionMap.set(s.id, idx + 1);
-        });
-
-        // Count failing subjects per student (NF < passingGrade).
-        const failedCount = (student: CouncilStudent) => {
-          return student.subjects.filter(subject => {
-            const nf = (subject.grade || 0) + (isPreliminary ? 0 : (subject.points || 0));
-            return !isPassingGrade(nf, passingGrade);
-          }).length;
-        };
-
-        const zebraFill = { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: 'F7FAFC' } };
-        studentsData.forEach((student, studentIndex) => {
-          const studentKey = student.id;
-          const row: (string | number)[] = [
-            studentIndex + 1,
-            `${student.documentType === 'Venezolano' ? 'V' : student.documentType === 'Extranjero' ? 'E' : student.documentType === 'Pasaporte' ? 'P' : 'CE'}-${student.studentDni}`,
-            student.studentName,
-            positionMap.get(studentKey) ?? studentIndex + 1,
-            Number(averageOf(student).toFixed(2)),
-            failedCount(student),
-          ];
-
-          columnDefinitions.forEach(colDef => {
-            const subject = getSubject(student, colDef);
-            if (showPreviousTerms) {
-              prevTermNames.forEach(pt => {
-                const previous = subject?.previousTermsData?.find(item => item.termId === pt.termId);
-                row.push(previous ? Number(formatGrade(previous.finalGrade, enableRounding)) : '-');
-              });
-            }
-
-            const baseGrade = subject?.grade ?? 0;
-            const points = subject?.points ?? 0;
-            row.push(
-              subject ? Number(formatGrade(baseGrade, enableRounding)) : '-',
-              isPreliminary ? '' : points,
-              isPreliminary ? '' : (subject ? Number(formatGrade(Math.round((baseGrade + points) * 100) / 100, enableRounding)) : '-'),
-            );
-          });
-          const dataRow = worksheet.addRow(row);
-          const isZebraRow = studentIndex % 2 === 1;
-
-          // Apply superscript council points on previous-term L cells
-          if (showPreviousTerms && showPrevCouncilPoints) {
-            let colOffset = 6; // after #, Documento, Estudiante, Pos, Promedio, Rep
-            columnDefinitions.forEach(colDef => {
-              const subject = getSubject(student, colDef);
-              if (showPreviousTerms) {
-                prevTermNames.forEach(pt => {
-                  const previous = subject?.previousTermsData?.find(item => item.termId === pt.termId);
-                  if (previous && previous.councilPoints > 0) {
-                    const cell = dataRow.getCell(colOffset + 1);
-                    const gradeStr = String(formatGrade(previous.finalGrade, enableRounding)).padStart(String(maxGrade).length, '0');
-                    cell.value = {
-                      richText: [
-                        { text: gradeStr, font: { size: 10 } },
-                        { text: `+${previous.councilPoints}`, font: { size: 10, bold: true, vertAlign: 'superscript', color: { argb: 'FF3366FF' } } },
-                      ],
-                    };
-                  }
-                  colOffset += 1;
-                });
-              }
-              // Skip L (current), PC, NF
-              colOffset += 3;
-            });
-          }
-          dataRow.eachCell(cell => {
-            cell.font = { size: 10 };
-            if (isZebraRow) {
-              cell.fill = zebraFill;
-            }
-            cell.border = {
-              top: { style: 'thin', color: { argb: 'D6DEE5' } },
-              left: { style: 'thin', color: { argb: 'D6DEE5' } },
-              bottom: { style: 'thin', color: { argb: 'D6DEE5' } },
-              right: { style: 'thin', color: { argb: 'D6DEE5' } }
-            };
-          });
-          dataRow.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
-          dataRow.getCell(2).alignment = { horizontal: 'center', vertical: 'middle' };
-          dataRow.getCell(3).alignment = { horizontal: 'left', vertical: 'middle' };
-          for (let columnIndex = 4; columnIndex <= leafHeaders.length; columnIndex += 1) {
-            dataRow.getCell(columnIndex).alignment = { horizontal: 'center', vertical: 'middle' };
-          }
-          // Promedio column (5th column): show 2 decimals, no rounding
-          dataRow.getCell(5).numFmt = '0.00';
-
-          // Rep column (6th column): red font if student has failing subjects
-          const repCell = dataRow.getCell(6);
-          const repCount = failedCount(student);
-          if (repCount > 0) {
-            repCell.font = { size: 10, color: { argb: 'FF0000' }, bold: true };
-          }
-
-          // Apply zero-padded number format to grade columns based on maxGrade digits
-          const maxDigits = String(maxGrade).length;
-          const gradeNumFmt = '0'.repeat(maxDigits); // e.g. '00' for max=20, '000' for max=100
-          let colIdx = 7; // first subject column (after #, Documento, Estudiante, Pos, Promedio, Rep)
-          columnDefinitions.forEach(() => {
-            if (showPreviousTerms) {
-              prevTermNames.forEach(() => {
-                dataRow.getCell(colIdx).numFmt = gradeNumFmt; // L (previous term)
-                colIdx += 1;
-              });
-            }
-            dataRow.getCell(colIdx).numFmt = gradeNumFmt; // L (current term)
-            colIdx += 1;
-            // PC column: single digit, no padding
-            colIdx += 1;
-            // NF column: grade format
-            dataRow.getCell(colIdx).numFmt = gradeNumFmt;
-            colIdx += 1;
-          });
-        });
-
-        // Signature row: one merged cell for the label (cols 1-6), then one merged
-        // cell per subject group for teachers to sign.
-        const signatureRow = worksheet.addRow([]);
-        worksheet.mergeCells(signatureRow.number, 1, signatureRow.number, 6);
-        const sigLabelCell = signatureRow.getCell(1);
-        sigLabelCell.value = 'Firma de los Docentes:';
-        sigLabelCell.alignment = { horizontal: 'left', vertical: 'middle', indent: 1 };
-        sigLabelCell.font = { bold: true, size: 10, color: { argb: '17324D' } };
-        groupRanges.forEach(range => {
-          if (range.title === 'Información del estudiante') return;
-          worksheet.mergeCells(signatureRow.number, range.start, signatureRow.number, range.end);
-        });
-        signatureRow.height = 54;
-
-        const headerFill = { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: 'D9EAF7' } };
-        const subHeaderFill = { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: 'F3F6F9' } };
-        const headerBorder = {
-          top: { style: 'thin' as const, color: { argb: 'B8C7D3' } },
-          left: { style: 'thin' as const, color: { argb: 'B8C7D3' } },
-          bottom: { style: 'thin' as const, color: { argb: 'B8C7D3' } },
-          right: { style: 'thin' as const, color: { argb: 'B8C7D3' } }
-        };
-        for (let columnIndex = 1; columnIndex <= leafHeaders.length; columnIndex += 1) {
-          const groupCell = topRow.getCell(columnIndex);
-          groupCell.fill = headerFill;
-          groupCell.font = { bold: true, size: 10, color: { argb: '17324D' } };
-          groupCell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
-          groupCell.border = headerBorder;
-
-          const leafCell = headerRow.getCell(columnIndex);
-          leafCell.fill = subHeaderFill;
-          leafCell.font = { bold: true, size: 9, color: { argb: '40566B' } };
-          leafCell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
-          leafCell.border = headerBorder;
-        }
-        topRow.height = 24;
-        headerRow.height = 32;
-
-        // Thick separator between subjects so each block is easy to spot.
-        const thickEdge = { style: 'medium' as const, color: { argb: '5A7085' } };
-        const lastColumn = leafHeaders.length;
-        const lastRow = worksheet.rowCount;
-        const sigRowNumber = signatureRow.number;
-        groupRanges.forEach(range => {
-          // Row 6 holds the merged group titles. Merged cells share a single style
-          // object in ExcelJS, so both lateral borders must be written at once or
-          // the second assignment discards the first one.
-          const mergedCell = worksheet.getCell(6, range.start);
-          mergedCell.border = { ...mergedCell.border, left: thickEdge, right: thickEdge };
-
-          for (let rowNumber = 7; rowNumber <= lastRow; rowNumber += 1) {
-            // Skip the signature row — its merged cells need special handling below.
-            if (rowNumber === sigRowNumber) continue;
-            const startCell = worksheet.getCell(rowNumber, range.start);
-            startCell.border = { ...startCell.border, left: thickEdge };
-
-            // Apply thick right border to every group's end cell (not just the last)
-            const endCell = worksheet.getCell(rowNumber, range.end);
-            endCell.border = { ...endCell.border, right: thickEdge };
-          }
-        });
-
-        // Thick outline around the whole table (top + bottom edges; left/right already set above).
-        for (let columnIndex = 1; columnIndex <= lastColumn; columnIndex += 1) {
-          const topCell = worksheet.getCell(6, columnIndex);
-          topCell.border = { ...topCell.border, top: thickEdge };
-
-          const bottomCell = worksheet.getCell(lastRow, columnIndex);
-          bottomCell.border = { ...bottomCell.border, bottom: thickEdge };
-        }
-
-        // Signature row: thick top border to separate it from the table body,
-        // plus thick lateral borders on each subject's merged cell (written in a
-        // single assignment to avoid overwriting the shared merge style).
-        const sigRow = signatureRow.number;
-        for (let columnIndex = 1; columnIndex <= lastColumn; columnIndex += 1) {
-          const sigTopCell = worksheet.getCell(sigRow, columnIndex);
-          sigTopCell.border = { ...sigTopCell.border, top: thickEdge };
-        }
-        // Label cell (cols 1-6 merged): thick left + right
-        const sigLabelMaster = worksheet.getCell(sigRow, 1);
-        sigLabelMaster.border = { ...sigLabelMaster.border, left: thickEdge, right: thickEdge };
-        // Each subject group in the signature row: thick left + right on the master cell
-        groupRanges.forEach(range => {
-          if (range.title === 'Información del estudiante') return;
-          const sigGroupMaster = worksheet.getCell(sigRow, range.start);
-          sigGroupMaster.border = { ...sigGroupMaster.border, left: thickEdge, right: thickEdge };
-        });
-
-        // Double-line border separating previous terms from the current term (L actual).
-        // The current-term L column is the one right after all previous-term L columns.
-        if (showPreviousTerms && prevTermNames.length > 0) {
-          const doubleEdge = { style: 'double' as const, color: { argb: '5A7085' } };
-          const prevColsPerSubject = prevTermNames.length; // one L per previous term
-          groupRanges.forEach(range => {
-            // Skip the "Información del estudiante" group (only subject groups have previous terms)
-            if (range.title === 'Información del estudiante') return;
-            // Current-term L column index within this subject group. Start at row 9:
-            // this column sits inside row 6's merged title cell, and writing to a
-            // non-master cell of a merge would overwrite the group's lateral borders.
-            const currentLCol = range.start + prevColsPerSubject;
-            for (let rowNumber = 7; rowNumber <= lastRow; rowNumber += 1) {
-              // Skip the signature row: this column is a slave of its merged cell,
-              // so writing here would discard the group's thick lateral borders.
-              if (rowNumber === sigRowNumber) continue;
-              const cell = worksheet.getCell(rowNumber, currentLCol);
-              cell.border = { ...cell.border, left: doubleEdge };
-            }
-          });
-        }
-
-        // Constrain the printable area so the table is not cut off.
-        worksheet.pageSetup.printArea = `A1:${worksheet.getColumn(leafHeaders.length).letter}${worksheet.rowCount}`;
-
-        const buffer = await workbook.xlsx.writeBuffer();
         const gradeName = selectedSection?.grade.name?.replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ_-]+/g, '_') || 'grado';
         const sectionName = selectedSection?.section.name?.replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ_-]+/g, '_') || 'seccion';
         const fileNamePrefix = isPreliminary ? 'consejo_curso_preliminar' : 'consejo_curso';
