@@ -2,12 +2,14 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Card, Button, Tag, Space, Typography, Row, Col, Spin, message, Modal,
   Empty, Tooltip, Input, Checkbox, Table, InputNumber, Divider, Alert, DatePicker,
+  Segmented, List,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import {
   ReloadOutlined, UserAddOutlined, UserOutlined, DeleteOutlined,
   CheckCircleOutlined, ExclamationCircleOutlined, BookOutlined,
   LockOutlined, EditOutlined, SaveOutlined, CalendarOutlined,
+  PrinterOutlined, PlusOutlined, FileTextOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import api from '@/services/api';
@@ -113,6 +115,67 @@ interface MpAssignmentStudent {
   }[];
 }
 
+/* ---- Encounter system types ---- */
+interface MpEncounter {
+  id: number;
+  encounterNumber: number;
+  date: string | null;
+  score: number | null;
+  isAbsent: boolean;
+}
+
+interface MpEncounterResponse {
+  pendingSubjectId: number;
+  maxEncounters: number;
+  status: string;
+  encounters: MpEncounter[];
+}
+
+interface NominaEncounterStudent {
+  inscriptionId: number;
+  personId: number;
+  studentName: string;
+  studentDni: string;
+  documentType: string;
+  subjects: {
+    pendingSubjectId: number;
+    subjectId: number;
+    inscriptionSubjectId: number | null;
+    encounterScore: number | null;
+    encounterIsAbsent: boolean;
+    encounterDate: string | null;
+  }[];
+}
+
+interface NominaFinalStudent {
+  inscriptionId: number;
+  personId: number;
+  studentName: string;
+  studentDni: string;
+  documentType: string;
+  subjects: {
+    pendingSubjectId: number;
+    subjectId: number;
+    status: string;
+    finalScore: number | null;
+    finalEncounterNumber: number | null;
+    isAbsent: boolean;
+  }[];
+}
+
+interface MpContentItem {
+  id: number;
+  text: string;
+  order: number;
+}
+
+interface MpContent {
+  id: number;
+  pendingSubjectId: number;
+  themeTitle: string;
+  items: MpContentItem[];
+}
+
 /* ------------------------------------------------------------------ */
 /* Component                                                           */
 /* ------------------------------------------------------------------ */
@@ -149,6 +212,39 @@ const PendingSubjectManagement: React.FC = () => {
   const [assignmentLoading, setAssignmentLoading] = useState(false);
   const [qualEdits, setQualEdits] = useState<Record<string, number | null>>({});
 
+  // ---- Encounter system state ----
+  const [nominaView, setNominaView] = useState<'encounter' | 'final'>('encounter');
+  const [selectedEncounter, setSelectedEncounter] = useState(1);
+  const [maxEncounters, setMaxEncounters] = useState(4);
+  const [nominaEncounter, setNominaEncounter] = useState<{ grade: Grade; subjects: NominaSubject[]; students: NominaEncounterStudent[]; encounterNumber: number } | null>(null);
+  const [nominaEncounterLoading, setNominaEncounterLoading] = useState(false);
+  const [nominaFinal, setNominaFinal] = useState<{ grade: Grade; subjects: NominaSubject[]; students: NominaFinalStudent[] } | null>(null);
+  const [nominaFinalLoading, setNominaFinalLoading] = useState(false);
+
+  // Encounter score modal
+  const [encScoreModalOpen, setEncScoreModalOpen] = useState(false);
+  const [encScoreStudent, setEncScoreStudent] = useState<NominaEncounterStudent | null>(null);
+  const [encScoreSubject, setEncScoreSubject] = useState<NominaSubject | null>(null);
+  const [encScoreValue, setEncScoreValue] = useState<number | null>(null);
+  const [encScoreIsAbsent, setEncScoreIsAbsent] = useState(false);
+  const [encScoreSaving, setEncScoreSaving] = useState(false);
+
+  // Encounter dates modal (per pendingSubject)
+  const [encDatesModalOpen, setEncDatesModalOpen] = useState(false);
+  const [encDatesSubject, setEncDatesSubject] = useState<NominaSubject | null>(null);
+  const [encDatesData, setEncDatesData] = useState<MpEncounter[]>([]);
+  const [encDatesLoading, setEncDatesLoading] = useState(false);
+  const [encDatesSaving, setEncDatesSaving] = useState(false);
+
+  // Content modal
+  const [contentModalOpen, setContentModalOpen] = useState(false);
+  const [contentSubject, setContentSubject] = useState<NominaSubject | null>(null);
+  const [contentData, setContentData] = useState<MpContent | null>(null);
+  const [contentLoading, setContentLoading] = useState(false);
+  const [contentSaving, setContentSaving] = useState(false);
+  const [contentTheme, setContentTheme] = useState('');
+  const [contentItems, setContentItems] = useState<{ text: string; order: number }[]>([]);
+
   /* ------------------- Fetch structure ------------------- */
   const fetchStructure = useCallback(async () => {
     setLoading(true);
@@ -182,10 +278,225 @@ const PendingSubjectManagement: React.FC = () => {
 
   useEffect(() => { fetchStructure(); }, [fetchStructure]);
 
+  // Nomina general fetch removed — only encounter/final views remain.
+  // The active view's useEffect (below) handles fetching.
+
+  /* ------------------- Fetch max encounters setting ------------------- */
   useEffect(() => {
-    if (expandedGradeId) fetchNomina(expandedGradeId);
-    else setNomina(null);
-  }, [expandedGradeId, fetchNomina]);
+    api.get('/settings').then(res => {
+      const n = Number(res.data.pending_subject_max_encounters);
+      if (Number.isFinite(n) && n >= 1) setMaxEncounters(n);
+    }).catch(() => {});
+  }, []);
+
+  /* ------------------- Fetch nomina by encounter ------------------- */
+  const fetchNominaEncounter = useCallback(async (gradeId: number, encounter: number) => {
+    setNominaEncounterLoading(true);
+    try {
+      const res = await api.get(`/pending-subjects/nomina/${gradeId}/encounter`, { params: { encounter } });
+      setNominaEncounter(res.data);
+    } catch (error: any) {
+      message.error(error?.response?.data?.message || 'Error al cargar nómina por encuentro');
+    } finally {
+      setNominaEncounterLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (expandedGradeId && nominaView === 'encounter') {
+      fetchNominaEncounter(expandedGradeId, selectedEncounter);
+    } else {
+      setNominaEncounter(null);
+    }
+  }, [expandedGradeId, nominaView, selectedEncounter, fetchNominaEncounter]);
+
+  /* ------------------- Fetch nomina final ------------------- */
+  const fetchNominaFinal = useCallback(async (gradeId: number) => {
+    setNominaFinalLoading(true);
+    try {
+      const res = await api.get(`/pending-subjects/nomina-final/${gradeId}`);
+      setNominaFinal(res.data);
+    } catch (error: any) {
+      message.error(error?.response?.data?.message || 'Error al cargar nómina final');
+    } finally {
+      setNominaFinalLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (expandedGradeId && nominaView === 'final') {
+      fetchNominaFinal(expandedGradeId);
+    } else {
+      setNominaFinal(null);
+    }
+  }, [expandedGradeId, nominaView, fetchNominaFinal]);
+
+  /* ------------------- Open encounter score modal ------------------- */
+  const openEncScoreModal = (student: NominaEncounterStudent, subject: NominaSubject) => {
+    const subj = student.subjects.find(s => s.subjectId === subject.id);
+    setEncScoreStudent(student);
+    setEncScoreSubject(subject);
+    setEncScoreValue(subj?.encounterScore ?? null);
+    setEncScoreIsAbsent(subj?.encounterIsAbsent ?? false);
+    setEncScoreModalOpen(true);
+  };
+
+  const handleSaveEncounterScore = async () => {
+    if (!encScoreStudent || !encScoreSubject || encScoreValue == null) return;
+    const subj = encScoreStudent.subjects.find(s => s.subjectId === encScoreSubject.id);
+    if (!subj) {
+      message.error('Estudiante no registrado en esta materia');
+      return;
+    }
+    setEncScoreSaving(true);
+    try {
+      await api.post(`/pending-subjects/${subj.pendingSubjectId}/encounters/${selectedEncounter}/score`, {
+        score: encScoreValue,
+        isAbsent: encScoreIsAbsent,
+      });
+      message.success('Nota del encuentro guardada');
+      setEncScoreModalOpen(false);
+      if (expandedGradeId) await fetchNominaEncounter(expandedGradeId, selectedEncounter);
+    } catch (error: any) {
+      message.error(error?.response?.data?.message || 'Error al guardar nota');
+    } finally {
+      setEncScoreSaving(false);
+    }
+  };
+
+  /* ------------------- Open encounter dates modal ------------------- */
+  const openEncDatesModal = async (subject: NominaSubject) => {
+    setEncDatesSubject(subject);
+    setEncDatesModalOpen(true);
+    setEncDatesLoading(true);
+    setEncDatesData([]);
+    try {
+      // Find a pendingSubjectId for this subject — use the first student from nomina
+      const nominaRes = nomina?.students.find(s => s.subjects.find(sb => sb.subjectId === subject.id));
+      // We need to get encounters for a pendingSubject. Since encounters are per-pendingSubject
+      // and the dates are shared conceptually, we fetch from the first available student's pendingSubject.
+      // However, the dates are per-pendingSubject (per student). For CE editing, we should edit
+      // each student's encounters. For simplicity, we fetch from the first student we find.
+      if (!nominaRes) {
+        message.warning('No hay estudiantes registrados en esta materia');
+        setEncDatesLoading(false);
+        return;
+      }
+      // We need the pendingSubjectId — the nomina doesn't have it directly.
+      // Use the encounter nomina instead to get pendingSubjectId
+      const encRes = await api.get(`/pending-subjects/nomina/${expandedGradeId}/encounter`, { params: { encounter: 1 } });
+      const encStudent = encRes.data.students.find((s: NominaEncounterStudent) => s.subjects.find(sb => sb.subjectId === subject.id));
+      const pendingSubj = encStudent?.subjects.find(sb => sb.subjectId === subject.id);
+      if (!pendingSubj) {
+        message.warning('No se encontró la materia pendiente');
+        setEncDatesLoading(false);
+        return;
+      }
+      const res = await api.get<MpEncounterResponse>(`/pending-subjects/${pendingSubj.pendingSubjectId}/encounters`);
+      setEncDatesData(res.data.encounters);
+    } catch (error: any) {
+      message.error(error?.response?.data?.message || 'Error al cargar encuentros');
+    } finally {
+      setEncDatesLoading(false);
+    }
+  };
+
+  const handleSaveEncounterDates = async () => {
+    if (!encDatesSubject || encDatesData.length === 0) return;
+    // We need a pendingSubjectId — same approach as open
+    setEncDatesSaving(true);
+    try {
+      const encRes = await api.get(`/pending-subjects/nomina/${expandedGradeId}/encounter`, { params: { encounter: 1 } });
+      const encStudent = encRes.data.students.find((s: NominaEncounterStudent) => s.subjects.find(sb => sb.subjectId === encDatesSubject.id));
+      const pendingSubj = encStudent?.subjects.find(sb => sb.subjectId === encDatesSubject.id);
+      if (!pendingSubj) {
+        message.error('No se encontró la materia pendiente');
+        setEncDatesSaving(false);
+        return;
+      }
+      await api.put(`/pending-subjects/${pendingSubj.pendingSubjectId}/encounters`, {
+        encounters: encDatesData.map(e => ({ encounterNumber: e.encounterNumber, date: e.date })),
+      });
+      message.success('Fechas actualizadas');
+      setEncDatesModalOpen(false);
+    } catch (error: any) {
+      message.error(error?.response?.data?.message || 'Error al guardar fechas');
+    } finally {
+      setEncDatesSaving(false);
+    }
+  };
+
+  /* ------------------- Open content modal ------------------- */
+  const openContentModal = async (subject: NominaSubject) => {
+    setContentSubject(subject);
+    setContentModalOpen(true);
+    setContentLoading(true);
+    setContentData(null);
+    setContentTheme('');
+    setContentItems([]);
+    try {
+      // Find pendingSubjectId
+      const encRes = await api.get(`/pending-subjects/nomina/${expandedGradeId}/encounter`, { params: { encounter: 1 } });
+      const encStudent = encRes.data.students.find((s: NominaEncounterStudent) => s.subjects.find(sb => sb.subjectId === subject.id));
+      const pendingSubj = encStudent?.subjects.find(sb => sb.subjectId === subject.id);
+      if (!pendingSubj) {
+        setContentLoading(false);
+        return;
+      }
+      const res = await api.get<MpContent>(`/pending-subjects/${pendingSubj.pendingSubjectId}/content`);
+      setContentData(res.data);
+      setContentTheme(res.data.themeTitle || '');
+      setContentItems(res.data.items.map(it => ({ text: it.text, order: it.order })));
+    } catch {
+      // Content doesn't exist yet — that's ok
+    } finally {
+      setContentLoading(false);
+    }
+  };
+
+  const handleSaveContent = async () => {
+    if (!contentSubject) return;
+    setContentSaving(true);
+    try {
+      const encRes = await api.get(`/pending-subjects/nomina/${expandedGradeId}/encounter`, { params: { encounter: 1 } });
+      const encStudent = encRes.data.students.find((s: NominaEncounterStudent) => s.subjects.find(sb => sb.subjectId === contentSubject.id));
+      const pendingSubj = encStudent?.subjects.find(sb => sb.subjectId === contentSubject.id);
+      if (!pendingSubj) {
+        message.error('No se encontró la materia pendiente');
+        setContentSaving(false);
+        return;
+      }
+      await api.put(`/pending-subjects/${pendingSubj.pendingSubjectId}/content`, {
+        themeTitle: contentTheme,
+        items: contentItems,
+      });
+      message.success('Contenido guardado');
+      setContentModalOpen(false);
+    } catch (error: any) {
+      message.error(error?.response?.data?.message || 'Error al guardar contenido');
+    } finally {
+      setContentSaving(false);
+    }
+  };
+
+  const handlePrintContent = () => {
+    const printWin = window.open('', '_blank', 'width=800,height=600');
+    if (!printWin) return;
+    const subjName = contentSubject?.name || '';
+    const itemsHtml = contentItems.map((it, i) => `<li>${it.text}</li>`).join('');
+    printWin.document.write(`
+      <html><head><title>Contenido - ${subjName}</title>
+      <style>body{font-family:Arial,sans-serif;padding:40px;}h1{font-size:18px;}h2{font-size:14px;border-bottom:1px solid #ccc;padding-bottom:4px;}ol{font-size:13px;line-height:1.8;}</style>
+      </head><body>
+      <h1>Materia Pendiente: ${subjName}</h1>
+      <h2>Tema General: ${contentTheme || '—'}</h2>
+      <h2>Contenidos:</h2>
+      <ol>${itemsHtml}</ol>
+      </body></html>
+    `);
+    printWin.document.close();
+    printWin.print();
+  };
 
   /* ------------------- Open registration modal ------------------- */
   const openRegModal = async (group: MpGradeGroup, subject: MpSubject) => {
@@ -222,7 +533,10 @@ const PendingSubjectManagement: React.FC = () => {
       message.success(`${inscriptionIds.length} estudiante(s) registrado(s)`);
       setRegModalOpen(false);
       await fetchStructure();
-      if (expandedGradeId) await fetchNomina(expandedGradeId);
+      if (expandedGradeId) {
+        if (nominaView === 'encounter') await fetchNominaEncounter(expandedGradeId);
+        if (nominaView === 'final') await fetchNominaFinal(expandedGradeId);
+      }
     } catch (error: any) {
       message.error(error?.response?.data?.message || 'Error al registrar');
     } finally {
@@ -243,7 +557,10 @@ const PendingSubjectManagement: React.FC = () => {
           await api.delete(`/pending-subjects/remove/${inscriptionSubjectId}`);
           message.success('Estudiante removido');
           await fetchStructure();
-          if (expandedGradeId) await fetchNomina(expandedGradeId);
+          if (expandedGradeId) {
+            if (nominaView === 'encounter') await fetchNominaEncounter(expandedGradeId);
+            if (nominaView === 'final') await fetchNominaFinal(expandedGradeId);
+          }
         } catch (error: any) {
           message.error(error?.response?.data?.message || 'Error al remover');
         }
@@ -296,7 +613,10 @@ const PendingSubjectManagement: React.FC = () => {
           evaluationPlans: res.data.evaluationPlans || [],
         });
       }
-      if (expandedGradeId) await fetchNomina(expandedGradeId);
+      if (expandedGradeId) {
+        if (nominaView === 'encounter') await fetchNominaEncounter(expandedGradeId);
+        if (nominaView === 'final') await fetchNominaFinal(expandedGradeId);
+      }
     } catch (error: any) {
       message.error(error?.response?.data?.message || 'Error al guardar calificación');
     } finally {
@@ -321,7 +641,10 @@ const PendingSubjectManagement: React.FC = () => {
       });
       message.success('Nota guardada');
       setGradeModalOpen(false);
-      if (expandedGradeId) await fetchNomina(expandedGradeId);
+      if (expandedGradeId) {
+        if (nominaView === 'encounter') await fetchNominaEncounter(expandedGradeId);
+        if (nominaView === 'final') await fetchNominaFinal(expandedGradeId);
+      }
     } catch (error: any) {
       message.error(error?.response?.data?.message || 'Error al guardar nota');
     } finally {
@@ -501,6 +824,24 @@ const PendingSubjectManagement: React.FC = () => {
                         Registrar
                       </Button>
                     </div>
+                    {isEnabled && (
+                      <div style={{ display: 'flex', gap: 4, marginTop: 8 }}>
+                        <Button
+                          size="small"
+                          icon={<CalendarOutlined />}
+                          onClick={() => openEncDatesModal(subject)}
+                        >
+                          Encuentros
+                        </Button>
+                        <Button
+                          size="small"
+                          icon={<FileTextOutlined />}
+                          onClick={() => openContentModal(subject)}
+                        >
+                          Contenido
+                        </Button>
+                      </div>
+                    )}
                   </Card>
                 </Col>
               );
@@ -513,15 +854,51 @@ const PendingSubjectManagement: React.FC = () => {
       {expandedGradeId && (
         <Card
           title={
-            <Space>
-              <span>Nómina de Materia Pendiente</span>
-              {nomina?.grade && <Tag color="blue">{nomina.grade.name}</Tag>}
+            <Space direction="vertical" size={8} style={{ width: '100%' }}>
+              <Space>
+                <span>Nómina de Materia Pendiente</span>
+                {expandedGradeId && structure?.grades.find(g => g.grade.id === expandedGradeId) && (
+                  <Tag color="blue">{structure.grades.find(g => g.grade.id === expandedGradeId)!.grade.name}</Tag>
+                )}
+              </Space>
+              <Segmented
+                value={nominaView}
+                onChange={(v) => setNominaView(v as any)}
+                options={[
+                  { label: 'Nómina por Encuentro', value: 'encounter' },
+                  { label: 'Nómina Final', value: 'final' },
+                ]}
+                size="small"
+              />
             </Space>
           }
           styles={{ body: { padding: 0 } }}
         >
-          <Spin spinning={nominaLoading}>
-            {nomina && nomina.students.length > 0 ? (
+          {/* ---- Nómina por Encuentro ---- */}
+          {nominaView === 'encounter' && (
+          <Spin spinning={nominaEncounterLoading}>
+            <div style={{ padding: '12px 16px', display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+              <Text strong>Encuentro:</Text>
+              <Space>
+                {Array.from({ length: maxEncounters }, (_, i) => i + 1).map(n => (
+                  <Button
+                    key={n}
+                    size="small"
+                    type={selectedEncounter === n ? 'primary' : 'default'}
+                    onClick={() => setSelectedEncounter(n)}
+                  >
+                    {n}°
+                  </Button>
+                ))}
+              </Space>
+              <Alert
+                type="info"
+                message="Solo aparecen estudiantes que aún no han aprobado la materia."
+                showIcon
+                style={{ flex: 1, minWidth: 200, fontSize: 12 }}
+              />
+            </div>
+            {nominaEncounter && nominaEncounter.students.length > 0 ? (
               <div className="mp-nomina-container">
                 <table className="mp-nomina-sheet">
                   <thead>
@@ -529,7 +906,7 @@ const PendingSubjectManagement: React.FC = () => {
                       <th className="mp-col-idx">#</th>
                       <th className="mp-col-doc">Cédula</th>
                       <th className="mp-col-name">Apellidos y Nombres</th>
-                      {nomina.subjects.map(subj => (
+                      {nominaEncounter.subjects.map(subj => (
                         <th key={subj.id} className="mp-col-subj" title={subj.name}>
                           {subj.name.length > 15 ? subj.name.substring(0, 13) + '…' : subj.name}
                         </th>
@@ -537,32 +914,99 @@ const PendingSubjectManagement: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {nomina.students.map((student, idx) => (
+                    {nominaEncounter.students.map((student, idx) => (
                       <tr key={student.inscriptionId}>
                         <td className="mp-cell-idx">{idx + 1}</td>
                         <td className="mp-cell-doc">
                           {student.documentType === 'Venezolano' ? 'V' : student.documentType === 'Extranjero' ? 'E' : student.documentType === 'Pasaporte' ? 'P' : 'CE'}-{student.studentDni}
                         </td>
                         <td className="mp-cell-name">{student.studentName}</td>
-                        {nomina.subjects.map(subj => {
+                        {nominaEncounter.subjects.map(subj => {
                           const studentSubj = student.subjects.find(s => s.subjectId === subj.id);
-                          // Not registered → filled cell (greyed out)
                           if (!studentSubj) {
                             return <td key={subj.id} className="mp-cell-filled" />;
                           }
-                          // Registered → show grade or blank
-                          const fg = studentSubj.finalGrade;
-                          const isApproved = fg?.status === 'aprobada';
                           return (
                             <td
                               key={subj.id}
-                              className="mp-cell-blank"
-                              onClick={() => openGradeModal(student, subj)}
+                              className="mp-cell-blank mp-cell-registered"
+                              onClick={() => openEncScoreModal(student, subj)}
                               style={{ cursor: 'pointer' }}
                             >
-                              {fg && fg.finalScore != null ? (
+                              <div className="mp-cell-content">
+                                {studentSubj.encounterScore != null ? (
+                                  <span className={studentSubj.encounterScore >= 10 ? 'mp-pass' : 'mp-fail'}>
+                                    {studentSubj.encounterIsAbsent ? 'NP' : Number(studentSubj.encounterScore).toFixed(0)}
+                                  </span>
+                                ) : (
+                                  <span className="mp-pending">—</span>
+                                )}
+                              </div>
+                              {studentSubj.inscriptionSubjectId && (
+                                <button
+                                  className="mp-remove-btn"
+                                  title={`Remover de ${subj.name}`}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleRemove(studentSubj.inscriptionSubjectId!, student.studentName);
+                                  }}
+                                >
+                                  <DeleteOutlined />
+                                </button>
+                              )}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div style={{ padding: 40, textAlign: 'center' }}>
+                <Empty description="No hay estudiantes pendientes para este encuentro" />
+              </div>
+            )}
+          </Spin>
+          )}
+
+          {/* ---- Nómina Final ---- */}
+          {nominaView === 'final' && (
+          <Spin spinning={nominaFinalLoading}>
+            {nominaFinal && nominaFinal.students.length > 0 ? (
+              <div className="mp-nomina-container">
+                <table className="mp-nomina-sheet">
+                  <thead>
+                    <tr>
+                      <th className="mp-col-idx">#</th>
+                      <th className="mp-col-doc">Cédula</th>
+                      <th className="mp-col-name">Apellidos y Nombres</th>
+                      {nominaFinal.subjects.map(subj => (
+                        <th key={subj.id} className="mp-col-subj" title={subj.name}>
+                          {subj.name.length > 15 ? subj.name.substring(0, 13) + '…' : subj.name}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {nominaFinal.students.map((student, idx) => (
+                      <tr key={student.inscriptionId}>
+                        <td className="mp-cell-idx">{idx + 1}</td>
+                        <td className="mp-cell-doc">
+                          {student.documentType === 'Venezolano' ? 'V' : student.documentType === 'Extranjero' ? 'E' : student.documentType === 'Pasaporte' ? 'P' : 'CE'}-{student.studentDni}
+                        </td>
+                        <td className="mp-cell-name">{student.studentName}</td>
+                        {nominaFinal.subjects.map(subj => {
+                          const studentSubj = student.subjects.find(s => s.subjectId === subj.id);
+                          if (!studentSubj) {
+                            return <td key={subj.id} className="mp-cell-filled" />;
+                          }
+                          const isApproved = studentSubj.status === 'aprobada';
+                          return (
+                            <td key={subj.id} className="mp-cell-blank" style={{ cursor: 'default' }}>
+                              {studentSubj.finalScore != null ? (
                                 <span className={isApproved ? 'mp-pass' : 'mp-fail'}>
-                                  {Number(fg.finalScore).toFixed(0)}
+                                  {studentSubj.isAbsent ? 'NP' : Number(studentSubj.finalScore).toFixed(0)}
                                 </span>
                               ) : (
                                 <span className="mp-pending">—</span>
@@ -577,10 +1021,11 @@ const PendingSubjectManagement: React.FC = () => {
               </div>
             ) : (
               <div style={{ padding: 40, textAlign: 'center' }}>
-                <Empty description="No hay estudiantes registrados en materia pendiente para este grado" />
+                <Empty description="No hay estudiantes que cursaron materia pendiente para este grado" />
               </div>
             )}
           </Spin>
+          )}
         </Card>
       )}
 
@@ -812,6 +1257,173 @@ const PendingSubjectManagement: React.FC = () => {
         </Spin>
       </Modal>
 
+      {/* Encounter Score Modal */}
+      <Modal
+        open={encScoreModalOpen}
+        title={`Registrar Nota — Encuentro ${selectedEncounter}`}
+        onCancel={() => setEncScoreModalOpen(false)}
+        footer={[
+          <Button key="cancel" onClick={() => setEncScoreModalOpen(false)}>Cancelar</Button>,
+          <Button
+            key="save"
+            type="primary"
+            icon={<SaveOutlined />}
+            loading={encScoreSaving}
+            disabled={encScoreValue == null && !encScoreIsAbsent}
+            onClick={handleSaveEncounterScore}
+          >
+            Guardar
+          </Button>,
+        ]}
+      >
+        <div style={{ marginBottom: 16 }}>
+          <Text strong style={{ fontSize: 15 }}>{encScoreStudent?.studentName}</Text>
+          <br />
+          <Text type="secondary">{encScoreSubject?.name}</Text>
+        </div>
+        <Alert
+          type="info"
+          message="Si la nota es ≥ 10, el estudiante aprueba y no aparecerá en encuentros posteriores. 0 = NP (Inasistente)."
+          showIcon
+          style={{ marginBottom: 16 }}
+        />
+        <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+          <Space>
+            <Text>Nota:</Text>
+            <InputNumber
+              min={0}
+              max={20}
+              step={1}
+              value={encScoreValue}
+              onChange={v => { setEncScoreValue(v); if (v !== 0) setEncScoreIsAbsent(false); }}
+              style={{ width: 120 }}
+              disabled={encScoreIsAbsent}
+              autoFocus
+            />
+          </Space>
+          <Checkbox
+            checked={encScoreIsAbsent}
+            onChange={e => {
+              setEncScoreIsAbsent(e.target.checked);
+              if (e.target.checked) setEncScoreValue(0);
+            }}
+          >
+            Inasistente (NP)
+          </Checkbox>
+        </div>
+      </Modal>
+
+      {/* Encounter Dates Modal */}
+      <Modal
+        open={encDatesModalOpen}
+        title={`Configurar Encuentros — ${encDatesSubject?.name}`}
+        onCancel={() => setEncDatesModalOpen(false)}
+        footer={[
+          <Button key="cancel" onClick={() => setEncDatesModalOpen(false)}>Cancelar</Button>,
+          <Button
+            key="save"
+            type="primary"
+            icon={<SaveOutlined />}
+            loading={encDatesSaving}
+            onClick={handleSaveEncounterDates}
+          >
+            Guardar Fechas
+          </Button>,
+        ]}
+      >
+        <Spin spinning={encDatesLoading}>
+          <Alert
+            type="info"
+            message="Configure las fechas de los encuentros. El profesor también puede editar estas fechas."
+            showIcon
+            style={{ marginBottom: 16 }}
+          />
+          {encDatesData.map((enc, idx) => (
+            <div key={enc.id} style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 12 }}>
+              <Tag color="blue" style={{ minWidth: 80, textAlign: 'center' }}>Encuentro {enc.encounterNumber}</Tag>
+              <DatePicker
+                value={enc.date ? dayjs(enc.date) : null}
+                onChange={d => {
+                  setEncDatesData(prev => prev.map(e =>
+                    e.encounterNumber === enc.encounterNumber
+                      ? { ...e, date: d ? d.format('YYYY-MM-DD') : null }
+                      : e
+                  ));
+                }}
+                format="DD/MM/YYYY"
+                allowClear
+                style={{ flex: 1 }}
+              />
+            </div>
+          ))}
+        </Spin>
+      </Modal>
+
+      {/* Content Modal */}
+      <Modal
+        open={contentModalOpen}
+        title={`Contenido de Estudio — ${contentSubject?.name}`}
+        onCancel={() => setContentModalOpen(false)}
+        width={600}
+        footer={[
+          <Button key="print" icon={<PrinterOutlined />} onClick={handlePrintContent} disabled={!contentTheme && contentItems.length === 0}>
+            Imprimir
+          </Button>,
+          <Button key="cancel" onClick={() => setContentModalOpen(false)}>Cancelar</Button>,
+          <Button key="save" type="primary" icon={<SaveOutlined />} loading={contentSaving} onClick={handleSaveContent}>
+            Guardar
+          </Button>,
+        ]}
+      >
+        <Spin spinning={contentLoading}>
+          <Alert
+            type="info"
+            message="Tema General y lista de Contenidos para que los estudiantes sepan qué estudiar. Sin ponderación."
+            showIcon
+            style={{ marginBottom: 16 }}
+          />
+          <div style={{ marginBottom: 16 }}>
+            <Text strong>Tema General:</Text>
+            <Input
+              value={contentTheme}
+              onChange={e => setContentTheme(e.target.value)}
+              placeholder="Ej: Repaso general de la materia"
+              style={{ marginTop: 8 }}
+            />
+          </div>
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <Text strong>Contenidos:</Text>
+              <Button
+                size="small"
+                icon={<PlusOutlined />}
+                onClick={() => setContentItems(prev => [...prev, { text: '', order: prev.length }])}
+              >
+                Añadir
+              </Button>
+            </div>
+            {contentItems.map((item, idx) => (
+              <div key={idx} style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                <Input
+                  value={item.text}
+                  onChange={e => setContentItems(prev => prev.map((it, i) => i === idx ? { ...it, text: e.target.value } : it))}
+                  placeholder={`Contenido ${idx + 1}`}
+                />
+                <Button
+                  size="small"
+                  icon={<DeleteOutlined />}
+                  danger
+                  onClick={() => setContentItems(prev => prev.filter((_, i) => i !== idx))}
+                />
+              </div>
+            ))}
+            {contentItems.length === 0 && (
+              <Empty description="Sin contenidos. Haga clic en «Añadir»" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+            )}
+          </div>
+        </Spin>
+      </Modal>
+
       <style>{`
         .mp-nomina-container { overflow-x: auto; }
         .mp-nomina-sheet {
@@ -842,6 +1454,32 @@ const PendingSubjectManagement: React.FC = () => {
           border: 1px solid #d9dee5 !important;
         }
         .mp-cell-blank:hover { background: #f0f5ff; }
+        .mp-cell-registered { position: relative; }
+        .mp-cell-content { display: inline-block; }
+        .mp-remove-btn {
+          position: absolute;
+          top: 2px;
+          right: 2px;
+          display: none;
+          background: #fff;
+          border: 1px solid #ffccc7;
+          border-radius: 3px;
+          padding: 0;
+          width: 18px;
+          height: 18px;
+          line-height: 16px;
+          font-size: 10px;
+          color: #ff4d4f;
+          cursor: pointer;
+          align-items: center;
+          justify-content: center;
+        }
+        .mp-cell-registered:hover .mp-remove-btn { display: flex; }
+        .mp-remove-btn:hover {
+          background: #ff4d4f;
+          color: #fff;
+          border-color: #ff4d4f;
+        }
         .mp-pass { color: #52c41a; font-weight: 700; font-size: 14px; }
         .mp-fail { color: #ff4d4f; font-weight: 700; font-size: 14px; }
         .mp-pending { color: #d9d9d9; }

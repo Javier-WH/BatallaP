@@ -241,6 +241,33 @@ Ver [`flows/period-closure.md`](./flows/period-closure.md).
 | GET | `/:periodId/pending-subjects` | Materias pendientes. |
 | POST | `/pending-subjects/:pendingSubjectId/resolve` | Resolver materia pendiente. |
 
+## 📋 Materia Pendiente – `/api/pending-subjects` (`pendingSubjectRoutes.ts`)
+
+| Método | Ruta | Descripción |
+|--------|------|-------------|
+| GET | `/structure` | Estructura de MP por grado (período activo). |
+| GET | `/students/:gradeId` | Estudiantes disponibles para registrar en MP. |
+| POST | `/register` | Registrar estudiantes en MP. |
+| DELETE | `/remove/:inscriptionSubjectId` | Remover estudiante de MP. |
+| GET | `/nomina/:gradeId/encounter` | Nómina por encuentro (query `?encounter=N`). |
+| GET | `/nomina/:gradeId` | Nómina general de MP. |
+| GET | `/nomina-final/:gradeId` | Nómina final con última nota conseguida. |
+| GET | `/teacher-assignments` | Asignaciones de MP del profesor logueado. |
+| GET | `/assignment/:periodGradeSubjectId` | Detalle de asignación (plan + estudiantes). |
+| GET | `/assignment/:periodGradeSubjectId/encounters` | Estudiantes con encuentros para una asignación. |
+| POST | `/final-grade` | Guardar nota final directa (sistema legacy). |
+| POST | `/evaluation-plan` | Crear item de plan de evaluación MP (legacy). |
+| PUT | `/evaluation-plan/:id` | Editar item de plan (legacy). |
+| DELETE | `/evaluation-plan/:id` | Eliminar item de plan (legacy). |
+| POST | `/qualification` | Guardar calificación de plan (legacy). |
+| GET | `/:pendingSubjectId/encounters` | Listar encuentros (auto-crea N según setting). |
+| PUT | `/:pendingSubjectId/encounters` | Actualizar fechas de encuentros. |
+| POST | `/:pendingSubjectId/encounters/:encounterNumber/score` | Registrar nota de encuentro. Si aprueba (≥10), marca MP como aprobada. |
+| GET | `/:pendingSubjectId/content` | Obtener contenido de estudio (Tema General + Contenidos). |
+| PUT | `/:pendingSubjectId/content` | Guardar contenido de estudio. |
+
+**Setting relacionado**: `pending_subject_max_encounters` (default: 4) — configurable en `/control-estudios/configuracion`.
+
 ## ✏️ Permisos de edición de notas – `/api/grade-edit-permissions` (`gradeEditPermissionRoutes.ts`)
 
 | Método | Ruta | Descripción |

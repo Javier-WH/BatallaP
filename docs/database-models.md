@@ -72,6 +72,9 @@
 | `PeriodClosure` | Registro del cierre de un período (quién lo inició, estado). |
 | `StudentPeriodOutcome` | Resultado del estudiante en el período: aprobado, reprobado, con pendientes, grado de promoción destino. |
 | `PendingSubject` | Materia pendiente heredada al próximo período (link a nueva `Inscription` y `originPeriod`). |
+| `PendingSubjectEncounter` | Encuentro de evaluación de MP (1..N, N configurable via setting `pending_subject_max_encounters`). Fecha, nota, inasistencia. |
+| `PendingSubjectContent` | Contenido de estudio global de MP (Tema General). Uno por `PendingSubject`. |
+| `PendingSubjectContentItem` | Item de contenido dentro del Tema General de MP. Lista ordenada, sin ponderación. |
 
 ### 🔐 Edición de notas
 

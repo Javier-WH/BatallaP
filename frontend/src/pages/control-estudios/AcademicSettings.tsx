@@ -46,6 +46,7 @@ interface SettingsFormValues {
   grade_lock_mode?: boolean;
   council_points_limit?: number;
   council_points_per_subject_limit?: number;
+  pending_subject_max_encounters?: number;
   enable_grade_rounding?: boolean;
   letter_grades?: LetterGrade[];
   remedial_min_grade?: number;
@@ -103,6 +104,7 @@ const AcademicSettings: React.FC = () => {
         grade_lock_mode: res.data.grade_lock_mode === 'true',
         council_points_limit: res.data.council_points_limit !== undefined ? Number(res.data.council_points_limit) : 2,
         council_points_per_subject_limit: res.data.council_points_per_subject_limit !== undefined ? Number(res.data.council_points_per_subject_limit) : 2,
+        pending_subject_max_encounters: res.data.pending_subject_max_encounters !== undefined ? Number(res.data.pending_subject_max_encounters) : 4,
         enable_grade_rounding: res.data.enable_grade_rounding === 'true',
         remedial_min_grade: res.data.remedial_min_grade !== undefined ? Number(res.data.remedial_min_grade) : 1,
         remedial_max_grade: res.data.remedial_max_grade !== undefined ? Number(res.data.remedial_max_grade) : 9,
@@ -659,6 +661,19 @@ const AcademicSettings: React.FC = () => {
                     ]}
                   >
                     <InputNumber min={0} max={20} style={{ width: '100%', height: 44, display: 'flex', alignItems: 'center' }} />
+                  </Form.Item>
+                </Col>
+              </Row>
+
+              <Row gutter={24}>
+                <Col span={12}>
+                  <Form.Item
+                    name="pending_subject_max_encounters"
+                    label={<Text style={{ fontWeight: 700, fontSize: 13 }}>Encuentros de Materia Pendiente</Text>}
+                    tooltip="Cantidad máxima de encuentros de Materia Pendiente en el año escolar (por defecto 4)"
+                    rules={[{ required: true }]}
+                  >
+                    <InputNumber min={1} max={12} style={{ width: '100%', height: 44, display: 'flex', alignItems: 'center' }} />
                   </Form.Item>
                 </Col>
               </Row>

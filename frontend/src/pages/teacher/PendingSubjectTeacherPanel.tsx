@@ -1,16 +1,15 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Card, Select, Button, Space, Typography, Spin, message, Tag, Empty,
-  InputNumber, Table, Divider, Alert, Tabs, Input, Modal, Popconfirm, DatePicker,
+  InputNumber, Alert, Tabs, Input, Modal, DatePicker,
 } from 'antd';
-import type { ColumnsType } from 'antd/es/table';
 import {
-  SaveOutlined, ReloadOutlined, BookOutlined, EditOutlined,
-  PlusOutlined, DeleteOutlined, CheckCircleOutlined, CalendarOutlined,
+  SaveOutlined, ReloadOutlined,
+  PlusOutlined, DeleteOutlined, CalendarOutlined,
+  FileTextOutlined, PrinterOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import api from '@/services/api';
-import { compareStudents } from '@/utils/studentSort';
 
 const { Title, Text } = Typography;
 
@@ -25,44 +24,27 @@ interface MpAssignment {
   gradeId: number;
 }
 
-interface MpStudent {
+interface EncounterStudent {
   inscriptionId: number;
-  inscriptionSubjectId: number;
+  pendingSubjectId: number | null;
   personId: number;
   studentName: string;
   studentDni: string;
   documentType: string;
-  finalGrade: {
-    finalScore: number | null;
-    status: string;
-    gradeType: string;
-    calculatedAt: string;
-  } | null;
-  qualifications: {
+  status: string;
+  encounters: {
     id: number;
-    score: number;
-    remedialScore: number | null;
+    encounterNumber: number;
+    date: string | null;
+    score: number | null;
     isAbsent: boolean;
-    evaluationPlanId: number;
-    percentage: number;
-    termId: number;
-    description: string;
   }[];
 }
 
-interface EvaluationPlanItem {
-  id: number;
-  description: string;
-  percentage: number;
-  date: string;
-  termId: number;
-  term?: { name: string };
-}
-
-interface Term {
-  id: number;
-  name: string;
-  order: number;
+interface AssignmentEncounters {
+  subjectName: string;
+  maxEncounters: number;
+  students: EncounterStudent[];
 }
 
 /* ------------------------------------------------------------------ */
@@ -73,31 +55,22 @@ const PendingSubjectTeacherPanel: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [assignments, setAssignments] = useState<MpAssignment[]>([]);
   const [selectedPgsId, setSelectedPgsId] = useState<number | null>(null);
-  const [detail, setDetail] = useState<{
-    periodGradeSubject: any;
-    subjectName: string;
-    students: MpStudent[];
-    evaluationPlans: EvaluationPlanItem[];
-    terms: Term[];
-  } | null>(null);
 
-  // Grade editing (direct final grade)
-  const [gradeModalOpen, setGradeModalOpen] = useState(false);
-  const [gradeModalStudent, setGradeModalStudent] = useState<MpStudent | null>(null);
-  const [gradeValue, setGradeValue] = useState<number | null>(null);
+  // Encounter system
+  const [encounterData, setEncounterData] = useState<AssignmentEncounters | null>(null);
+  const [encounterLoading, setEncounterLoading] = useState(false);
+  const [encounterEdits, setEncounterEdits] = useState<Record<string, number | null>>({});
+  const [encounterAbsent, setEncounterAbsent] = useState<Record<string, boolean>>({});
+  const [encDatesModalOpen, setEncDatesModalOpen] = useState(false);
+  const [encDatesData, setEncDatesData] = useState<{ encounterNumber: number; date: string | null }[]>([]);
+  const [encDatesSaving, setEncDatesSaving] = useState(false);
 
-  // Evaluation plan modal (create/edit)
-  const [planModalOpen, setPlanModalOpen] = useState(false);
-  const [planEditingId, setPlanEditingId] = useState<number | null>(null);
-  const [planForm, setPlanForm] = useState({
-    description: '',
-    percentage: 100,
-    termId: 0,
-    date: dayjs(),
-  });
-
-  // Qualification grid — inline editing
-  const [qualEdits, setQualEdits] = useState<Record<string, number | null>>({});
+  // Content
+  const [contentModalOpen, setContentModalOpen] = useState(false);
+  const [contentLoading, setContentLoading] = useState(false);
+  const [contentSaving, setContentSaving] = useState(false);
+  const [contentTheme, setContentTheme] = useState('');
+  const [contentItems, setContentItems] = useState<{ text: string; order: number }[]>([]);
 
   /* ------------------- Fetch assignments ------------------- */
   const fetchAssignments = useCallback(async () => {
@@ -115,352 +88,143 @@ const PendingSubjectTeacherPanel: React.FC = () => {
     }
   }, [selectedPgsId]);
 
-  /* ------------------- Fetch detail ------------------- */
-  const fetchDetail = useCallback(async (pgsId: number) => {
-    setLoading(true);
+  useEffect(() => { fetchAssignments(); }, [fetchAssignments]);
+
+  /* ------------------- Fetch encounters for assignment ------------------- */
+  const fetchEncounters = useCallback(async (pgsId: number) => {
+    setEncounterLoading(true);
     try {
-      const res = await api.get(`/pending-subjects/assignment/${pgsId}`);
-      setDetail(res.data);
-      setQualEdits({});
+      const res = await api.get<AssignmentEncounters>(`/pending-subjects/assignment/${pgsId}/encounters`);
+      setEncounterData(res.data);
+      setEncounterEdits({});
+      setEncounterAbsent({});
     } catch (error: any) {
-      message.error(error?.response?.data?.message || 'Error al cargar detalle');
+      message.error(error?.response?.data?.message || 'Error al cargar encuentros');
     } finally {
-      setLoading(false);
+      setEncounterLoading(false);
     }
   }, []);
 
-  useEffect(() => { fetchAssignments(); }, [fetchAssignments]);
-  useEffect(() => { if (selectedPgsId) fetchDetail(selectedPgsId); }, [selectedPgsId, fetchDetail]);
+  useEffect(() => { if (selectedPgsId) fetchEncounters(selectedPgsId); }, [selectedPgsId, fetchEncounters]);
 
-  /* ------------------- Save direct grade ------------------- */
-  const handleSaveGrade = async () => {
-    if (!gradeModalStudent || gradeValue == null) return;
+  /* ------------------- Save encounter score (inline) ------------------- */
+  const handleSaveEncounterScore = async (student: EncounterStudent, encounterNumber: number, score: number | null, isAbsent: boolean) => {
+    if (score == null && !isAbsent) return;
+    if (!student.pendingSubjectId) return;
     setSaving(true);
     try {
-      await api.post('/pending-subjects/final-grade', {
-        inscriptionSubjectId: gradeModalStudent.inscriptionSubjectId,
-        finalScore: gradeValue,
+      const finalScore = isAbsent ? 0 : (score ?? 0);
+      const res = await api.post(`/pending-subjects/${student.pendingSubjectId}/encounters/${encounterNumber}/score`, {
+        score: finalScore,
+        isAbsent,
       });
-      message.success('Nota guardada');
-      setGradeModalOpen(false);
-      if (selectedPgsId) fetchDetail(selectedPgsId);
+      const isNp = isAbsent || finalScore === 0;
+      message.success(`${student.studentName} — Encuentro ${encounterNumber}: ${isNp ? 'NP' : finalScore}${res.data.approved ? ' (Aprobó)' : ''}`);
+      setEncounterEdits(prev => { const n = { ...prev }; delete n[`${student.pendingSubjectId}-${encounterNumber}`]; return n; });
+      setEncounterAbsent(prev => { const n = { ...prev }; delete n[`${student.pendingSubjectId}-${encounterNumber}`]; return n; });
+      if (selectedPgsId) fetchEncounters(selectedPgsId);
     } catch (error: any) {
-      message.error(error?.response?.data?.message || 'Error al guardar');
+      message.error(error?.response?.data?.message || 'Error al guardar nota');
     } finally {
       setSaving(false);
     }
   };
 
-  /* ------------------- Open plan modal (create or edit) ------------------- */
-  const openPlanModal = (item?: EvaluationPlanItem) => {
-    if (item) {
-      setPlanEditingId(item.id);
-      setPlanForm({
-        description: item.description,
-        percentage: item.percentage,
-        termId: item.termId,
-        date: dayjs(item.date),
-      });
-    } else {
-      setPlanEditingId(null);
-      setPlanForm({
-        description: '',
-        percentage: 100,
-        termId: detail?.terms[0]?.id || 0,
-        date: dayjs(),
-      });
-    }
-    setPlanModalOpen(true);
-  };
-
-  /* ------------------- Save plan item (create or update) ------------------- */
-  const handleSavePlanItem = async () => {
-    if (!selectedPgsId || !detail) return;
-    if (!planForm.description || !planForm.termId) {
-      message.warning('Complete todos los campos');
+  /* ------------------- Open encounter dates modal (teacher) ------------------- */
+  const openEncDatesModal = () => {
+    if (!encounterData || encounterData.students.length === 0) {
+      message.warning('No hay estudiantes para configurar encuentros');
       return;
     }
-    setSaving(true);
-    try {
-      // Get MP section id from structure
-      const structRes = await api.get('/pending-subjects/structure');
-      const sectionId = structRes.data?.grades?.[0]?.mpSection?.id;
-      if (!sectionId) {
-        message.error('No se pudo determinar la sección de materia pendiente');
-        return;
-      }
-      if (planEditingId) {
-        // Update
-        await api.put(`/pending-subjects/evaluation-plan/${planEditingId}`, {
-          description: planForm.description,
-          percentage: planForm.percentage,
-          termId: planForm.termId,
-          date: planForm.date.format('YYYY-MM-DD'),
-        });
-        message.success('Item actualizado');
-      } else {
-        // Create
-        await api.post('/pending-subjects/evaluation-plan', {
-          periodGradeSubjectId: selectedPgsId,
-          sectionId,
-          termId: planForm.termId,
-          description: planForm.description,
-          percentage: planForm.percentage,
-          date: planForm.date.format('YYYY-MM-DD'),
-        });
-        message.success('Item de evaluación creado');
-      }
-      setPlanModalOpen(false);
-      if (selectedPgsId) fetchDetail(selectedPgsId);
-    } catch (error: any) {
-      message.error(error?.response?.data?.message || 'Error al guardar item');
-    } finally {
-      setSaving(false);
+    // Use first student's encounters as template (dates are per-pendingSubject but we edit one)
+    const first = encounterData.students[0];
+    if (!first.pendingSubjectId || first.encounters.length === 0) {
+      message.warning('No hay encuentros configurados');
+      return;
     }
+    setEncDatesData(first.encounters.map(e => ({ encounterNumber: e.encounterNumber, date: e.date })));
+    setEncDatesModalOpen(true);
   };
 
-  /* ------------------- Delete plan item ------------------- */
-  const handleDeletePlanItem = async (id: number) => {
-    setSaving(true);
+  const handleSaveEncDates = async () => {
+    if (!encounterData || encounterData.students.length === 0) return;
+    const first = encounterData.students[0];
+    if (!first.pendingSubjectId) return;
+    setEncDatesSaving(true);
     try {
-      await api.delete(`/pending-subjects/evaluation-plan/${id}`);
-      message.success('Item eliminado');
-      if (selectedPgsId) fetchDetail(selectedPgsId);
-    } catch (error: any) {
-      message.error(error?.response?.data?.message || 'Error al eliminar');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  /* ------------------- Save qualification (inline grid) ------------------- */
-  const handleSaveQualification = async (student: MpStudent, planItem: EvaluationPlanItem, score: number | null) => {
-    if (score == null) return;
-    setSaving(true);
-    try {
-      await api.post('/pending-subjects/qualification', {
-        evaluationPlanId: planItem.id,
-        inscriptionSubjectId: student.inscriptionSubjectId,
-        score,
+      await api.put(`/pending-subjects/${first.pendingSubjectId}/encounters`, {
+        encounters: encDatesData.map(e => ({ encounterNumber: e.encounterNumber, date: e.date })),
       });
-      const isNp = score === 0;
-      message.success(`Calificación guardada: ${student.studentName} — ${isNp ? 'NP' : score}`);
-      // Clear the edit buffer for this cell
-      setQualEdits(prev => { const n = { ...prev }; delete n[`${student.inscriptionSubjectId}-${planItem.id}`]; return n; });
-      if (selectedPgsId) fetchDetail(selectedPgsId);
+      message.success('Fechas actualizadas');
+      setEncDatesModalOpen(false);
+      if (selectedPgsId) fetchEncounters(selectedPgsId);
     } catch (error: any) {
-      message.error(error?.response?.data?.message || 'Error al guardar calificación');
+      message.error(error?.response?.data?.message || 'Error al guardar fechas');
     } finally {
-      setSaving(false);
+      setEncDatesSaving(false);
     }
   };
 
-  /* ------------------- Render grading table (native HTML, TeacherPanel style) ------------------- */
-  const renderGradingTable = () => {
-    if (!detail || detail.students.length === 0) {
-      return <Empty description="No hay estudiantes registrados" />;
+  /* ------------------- Content modal (teacher) ------------------- */
+  const openContentModal = async () => {
+    if (!encounterData || encounterData.students.length === 0) {
+      message.warning('No hay estudiantes para gestionar contenido');
+      return;
     }
-    const hasPlan = detail.evaluationPlans.length > 0;
-    const sortedStudents = [...detail.students];
-
-    return (
-      <div className="mp-grading-container" style={{ overflowX: 'auto', maxHeight: 'calc(100vh - 380px)' }}>
-        <table className="mp-grading-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, border: '1px solid rgba(15, 23, 42, 0.08)' }}>
-          <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
-            <tr>
-              <th style={{ padding: '4px 6px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', backgroundColor: 'color-mix(in srgb, var(--color-text-main) 6%, var(--color-content-bg))', fontWeight: 700, fontSize: 11, whiteSpace: 'nowrap', color: 'var(--color-text-main)', width: 36 }}>#</th>
-              <th style={{ padding: '4px 6px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', backgroundColor: 'color-mix(in srgb, var(--color-text-main) 6%, var(--color-content-bg))', fontWeight: 700, fontSize: 11, whiteSpace: 'nowrap', color: 'var(--color-text-main)' }}>Cédula</th>
-              <th style={{ padding: '4px 6px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'left', backgroundColor: 'color-mix(in srgb, var(--color-text-main) 6%, var(--color-content-bg))', fontWeight: 700, fontSize: 11, whiteSpace: 'nowrap', color: 'var(--color-text-main)' }}>Estudiante</th>
-              {hasPlan && detail.evaluationPlans.map((planItem, colIndex) => (
-                <th key={planItem.id} style={{
-                  padding: '3px 4px',
-                  border: '1px solid rgba(15, 23, 42, 0.08)',
-                  borderLeft: colIndex > 0 ? '2px solid color-mix(in srgb, var(--color-text-main) 35%, transparent)' : undefined,
-                  textAlign: 'center',
-                  backgroundColor: 'color-mix(in srgb, var(--color-text-main) 6%, var(--color-content-bg))',
-                  verticalAlign: 'top',
-                  whiteSpace: 'nowrap',
-                  color: 'var(--color-text-main)',
-                  minWidth: 70,
-                }}>
-                  <div style={{ fontSize: 9, fontWeight: 600, lineHeight: 1.2 }}>
-                    {dayjs(planItem.date).format('DD/MM/YY')}
-                  </div>
-                  <div style={{ fontSize: 9, fontWeight: 700, lineHeight: 1.2, marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 80 }} title={planItem.description}>
-                    {planItem.description}
-                  </div>
-                  <div style={{ fontSize: 9, color: 'var(--color-text-muted)', lineHeight: 1.2, marginTop: 1 }}>
-                    {planItem.term?.name} · {planItem.percentage}%
-                  </div>
-                </th>
-              ))}
-              <th style={{ padding: '3px 6px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', backgroundColor: 'color-mix(in srgb, var(--color-text-main) 6%, var(--color-content-bg))', fontWeight: 700, fontSize: 11, whiteSpace: 'nowrap', color: 'var(--color-text-main)' }}>Nota</th>
-              <th style={{ padding: '3px 6px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', backgroundColor: 'color-mix(in srgb, var(--color-text-main) 6%, var(--color-content-bg))', fontWeight: 700, fontSize: 11, whiteSpace: 'nowrap', color: 'var(--color-text-main)' }}>Fecha</th>
-              {!hasPlan && (
-                <th style={{ padding: '3px 6px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', backgroundColor: 'color-mix(in srgb, var(--color-text-main) 6%, var(--color-content-bg))', fontWeight: 700, fontSize: 11, whiteSpace: 'nowrap', color: 'var(--color-text-main)' }}>Directa</th>
-              )}
-            </tr>
-          </thead>
-          <tbody>
-            {sortedStudents.map((student, rowIndex) => {
-              const isApproved = student.finalGrade?.status === 'aprobada';
-              const isAbsent = student.finalGrade?.finalScore === 0;
-              const rowBg = rowIndex % 2 === 0
-                ? 'var(--color-content-bg)'
-                : 'color-mix(in srgb, var(--color-text-main) 2%, var(--color-content-bg))';
-              return (
-                <tr key={student.inscriptionSubjectId} className="mp-grading-row" style={isApproved ? { background: '#f6ffed' } : undefined}>
-                  <td style={{ padding: '2px 4px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', background: rowBg, fontSize: 11, fontWeight: 600, color: 'var(--color-text-muted)' }}>
-                    {rowIndex + 1}
-                  </td>
-                  <td style={{ padding: '2px 4px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', background: rowBg, fontSize: 11, fontWeight: 500 }}>
-                    {student.studentDni || '-'}
-                  </td>
-                  <td style={{ padding: '2px 6px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'left', background: rowBg, fontSize: 12 }}>
-                    {student.studentName}
-                  </td>
-                  {hasPlan && detail.evaluationPlans.map((planItem, colIndex) => {
-                    const qual = student.qualifications.find(q => q.evaluationPlanId === planItem.id);
-                    const editKey = `${student.inscriptionSubjectId}-${planItem.id}`;
-                    const editValue = qualEdits[editKey];
-                    const cellIsAbsent = !!qual?.isAbsent;
-                    const displayValue = editValue !== undefined ? editValue : (qual ? Number(qual.score) : null);
-                    const showNp = cellIsAbsent && editValue === undefined;
-                    return (
-                      <td
-                        key={planItem.id}
-                        className={`mp-grading-cell${cellIsAbsent ? ' mp-grading-absent' : ''}`}
-                        style={{
-                          padding: '2px',
-                          border: '1px solid rgba(15, 23, 42, 0.08)',
-                          borderLeft: colIndex > 0 ? '2px solid color-mix(in srgb, var(--color-text-main) 35%, transparent)' : undefined,
-                          textAlign: 'center',
-                          background: rowBg,
-                          width: 50,
-                          position: 'relative',
-                        }}
-                      >
-                        <input
-                          type="number"
-                          min={0}
-                          max={20}
-                          step={1}
-                          inputMode="numeric"
-                          pattern="[0-9]*"
-                          value={displayValue ?? ''}
-                          onChange={e => {
-                            const v = e.target.value === '' ? null : Number(e.target.value);
-                            setQualEdits(prev => ({ ...prev, [editKey]: v }));
-                          }}
-                          onBlur={() => {
-                            if (editValue !== undefined && editValue !== null) {
-                              handleSaveQualification(student, planItem, editValue);
-                            }
-                          }}
-                          onKeyDown={e => {
-                            if (e.key === 'Enter') {
-                              e.preventDefault();
-                              if (editValue !== undefined && editValue !== null) {
-                                handleSaveQualification(student, planItem, editValue);
-                              }
-                            }
-                          }}
-                          style={{
-                            width: 48,
-                            textAlign: 'center',
-                            border: 'none',
-                            outline: 'none',
-                            background: 'transparent',
-                            fontSize: 12,
-                            padding: 0,
-                            color: displayValue !== null && displayValue !== undefined && displayValue > 0 && displayValue < 10 ? '#dc2626' : undefined,
-                            fontWeight: displayValue !== null && displayValue !== undefined && displayValue > 0 && displayValue < 10 ? 700 : undefined,
-                          }}
-                        />
-                        {showNp && <span className="mp-np-overlay">NP</span>}
-                      </td>
-                    );
-                  })}
-                  {/* Final grade */}
-                  <td style={{ padding: '2px 6px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', background: rowBg, fontSize: 12, fontWeight: 700 }}>
-                    {student.finalGrade && student.finalGrade.finalScore != null ? (
-                      <span style={{ color: isApproved ? '#52c41a' : '#ff4d4f' }}>
-                        {isAbsent ? 'NP' : Number(student.finalGrade.finalScore).toFixed(0)}
-                      </span>
-                    ) : '—'}
-                  </td>
-                  {/* Date */}
-                  <td style={{ padding: '2px 6px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', background: rowBg, fontSize: 11, color: 'var(--color-text-muted)' }}>
-                    {student.finalGrade?.calculatedAt ? dayjs(student.finalGrade.calculatedAt).format('DD/MM/YYYY') : '—'}
-                  </td>
-                  {/* Direct grade button — only when no plan */}
-                  {!hasPlan && (
-                    <td style={{ padding: '2px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', background: rowBg }}>
-                      <Button
-                        size="small"
-                        icon={<EditOutlined />}
-                        onClick={() => {
-                          setGradeModalStudent(student);
-                          setGradeValue(student.finalGrade?.finalScore ?? null);
-                          setGradeModalOpen(true);
-                        }}
-                      >
-                        Nota
-                      </Button>
-                    </td>
-                  )}
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-    );
+    const first = encounterData.students[0];
+    if (!first.pendingSubjectId) return;
+    setContentModalOpen(true);
+    setContentLoading(true);
+    setContentTheme('');
+    setContentItems([]);
+    try {
+      const res = await api.get(`/pending-subjects/${first.pendingSubjectId}/content`);
+      setContentTheme(res.data.themeTitle || '');
+      setContentItems(res.data.items.map((it: any) => ({ text: it.text, order: it.order })));
+    } catch {
+      // No content yet — ok
+    } finally {
+      setContentLoading(false);
+    }
   };
 
-  /* ------------------- Plan items columns ------------------- */
-  const planColumns: ColumnsType<EvaluationPlanItem> = [
-    { title: 'Descripción', dataIndex: 'description', key: 'description' },
-    {
-      title: 'Lapso',
-      key: 'term',
-      width: 120,
-      render: (_, r) => r.term?.name || '—',
-    },
-    {
-      title: 'Porcentaje',
-      dataIndex: 'percentage',
-      key: 'percentage',
-      width: 100,
-      render: v => `${v}%`,
-    },
-    {
-      title: 'Fecha',
-      dataIndex: 'date',
-      key: 'date',
-      width: 120,
-      render: v => dayjs(v).format('DD/MM/YYYY'),
-    },
-    {
-      title: 'Acciones',
-      key: 'actions',
-      width: 120,
-      render: (_, r) => (
-        <Space>
-          <Button size="small" icon={<EditOutlined />} onClick={() => openPlanModal(r)} />
-          <Popconfirm
-            title="¿Eliminar este item?"
-            description="Se eliminarán también las calificaciones asociadas."
-            onConfirm={() => handleDeletePlanItem(r.id)}
-            okText="Sí"
-            cancelText="No"
-          >
-            <Button size="small" danger icon={<DeleteOutlined />} />
-          </Popconfirm>
-        </Space>
-      ),
-    },
-  ];
+  const handleSaveContent = async () => {
+    if (!encounterData || encounterData.students.length === 0) return;
+    const first = encounterData.students[0];
+    if (!first.pendingSubjectId) return;
+    setContentSaving(true);
+    try {
+      await api.put(`/pending-subjects/${first.pendingSubjectId}/content`, {
+        themeTitle: contentTheme,
+        items: contentItems,
+      });
+      message.success('Contenido guardado');
+      setContentModalOpen(false);
+    } catch (error: any) {
+      message.error(error?.response?.data?.message || 'Error al guardar contenido');
+    } finally {
+      setContentSaving(false);
+    }
+  };
+
+  const handlePrintContent = () => {
+    const printWin = window.open('', '_blank', 'width=800,height=600');
+    if (!printWin) return;
+    const subjName = encounterData?.subjectName || '';
+    const itemsHtml = contentItems.map(it => `<li>${it.text}</li>`).join('');
+    printWin.document.write(`
+      <html><head><title>Contenido - ${subjName}</title>
+      <style>body{font-family:Arial,sans-serif;padding:40px;}h1{font-size:18px;}h2{font-size:14px;border-bottom:1px solid #ccc;padding-bottom:4px;}ol{font-size:13px;line-height:1.8;}</style>
+      </head><body>
+      <h1>Materia Pendiente: ${subjName}</h1>
+      <h2>Tema General: ${contentTheme || '—'}</h2>
+      <h2>Contenidos:</h2>
+      <ol>${itemsHtml}</ol>
+      </body></html>
+    `);
+    printWin.document.close();
+    printWin.print();
+  };
 
   /* ------------------- Render ------------------- */
   return (
@@ -495,68 +259,143 @@ const PendingSubjectTeacherPanel: React.FC = () => {
           </Card>
 
           <Spin spinning={loading}>
-            {detail && (
+            {encounterData && (
               <Tabs
                 items={[
                   {
-                    key: 'students',
-                    label: `Estudiantes (${detail.students.length})`,
-                    children: (
-                      <Card
-                        title={
-                          <Space>
-                            <BookOutlined />
-                            <span>{detail.subjectName}</span>
-                            <Tag>{detail.students.length} estudiantes</Tag>
-                          </Space>
-                        }
-                      >
-                        <Alert
-                          type="info"
-                          message="Evaluación de Materia Pendiente"
-                          description="Si un estudiante aprueba en cualquier item de evaluación (nota ≥ 10), la materia queda aprobada inmediatamente con la fecha del plan. Los lapsos NO se promedian. También puede usar el botón «Nota» para registrar una nota final directa."
-                          showIcon
-                          style={{ marginBottom: 16 }}
-                        />
-                        {detail.students.length === 0 ? (
-                          <Empty description="No hay estudiantes registrados" />
-                        ) : (
-                          renderGradingTable()
-                        )}
-                      </Card>
-                    ),
-                  },
-                  {
-                    key: 'plan',
-                    label: `Plan de Evaluación (${detail.evaluationPlans.length})`,
+                    key: 'encounters',
+                    label: `Encuentros (${encounterData?.maxEncounters ?? 4})`,
                     children: (
                       <Card
                         title={
                           <Space>
                             <CalendarOutlined />
-                            <span>Plan de Evaluación</span>
+                            <span>{encounterData?.subjectName}</span>
+                            <Tag>{encounterData?.students.length ?? 0} estudiantes</Tag>
                             <Button
                               size="small"
-                              type="primary"
-                              icon={<PlusOutlined />}
-                              onClick={() => openPlanModal()}
+                              icon={<CalendarOutlined />}
+                              onClick={openEncDatesModal}
                             >
-                              Nuevo item
+                              Fechas
+                            </Button>
+                            <Button
+                              size="small"
+                              icon={<FileTextOutlined />}
+                              onClick={openContentModal}
+                            >
+                              Contenido
                             </Button>
                           </Space>
                         }
                       >
-                        {detail.evaluationPlans.length === 0 ? (
-                          <Empty description="No hay items de evaluación. Cree items para calificar por lapsos, o use nota directa en la tab de Estudiantes." />
-                        ) : (
-                          <Table
-                            dataSource={detail.evaluationPlans}
-                            columns={planColumns}
-                            rowKey="id"
-                            size="small"
-                            pagination={false}
+                        <Spin spinning={encounterLoading}>
+                          <Alert
+                            type="info"
+                            message="Sistema de Encuentros"
+                            description="Si un estudiante aprueba en cualquier encuentro (nota ≥ 10), la materia queda aprobada y no aparece en encuentros posteriores. 0 = NP (Inasistente)."
+                            showIcon
+                            style={{ marginBottom: 16 }}
                           />
-                        )}
+                          {encounterData && encounterData.students.length > 0 ? (
+                            <div style={{ overflowX: 'auto', maxHeight: 'calc(100vh - 380px)' }}>
+                              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, border: '1px solid rgba(15, 23, 42, 0.08)' }}>
+                                <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
+                                  <tr>
+                                    <th style={{ padding: '4px 6px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', backgroundColor: '#f5f7fa', fontWeight: 700, fontSize: 11, width: 36 }}>#</th>
+                                    <th style={{ padding: '4px 6px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', backgroundColor: '#f5f7fa', fontWeight: 700, fontSize: 11 }}>Cédula</th>
+                                    <th style={{ padding: '4px 6px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'left', backgroundColor: '#f5f7fa', fontWeight: 700, fontSize: 11 }}>Estudiante</th>
+                                    {Array.from({ length: encounterData.maxEncounters }, (_, i) => i + 1).map(n => {
+                                      const firstStudent = encounterData.students[0];
+                                      const enc = firstStudent?.encounters.find(e => e.encounterNumber === n);
+                                      return (
+                                        <th key={n} style={{ padding: '3px 4px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', backgroundColor: '#f5f7fa', fontWeight: 700, fontSize: 11, minWidth: 60 }}>
+                                          <div>Enc. {n}</div>
+                                          {enc?.date && <div style={{ fontSize: 9, fontWeight: 400, color: '#999' }}>{dayjs(enc.date).format('DD/MM/YY')}</div>}
+                                        </th>
+                                      );
+                                    })}
+                                    <th style={{ padding: '4px 6px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', backgroundColor: '#f5f7fa', fontWeight: 700, fontSize: 11 }}>Estado</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {encounterData.students.map((student, idx) => {
+                                    const isApproved = student.status === 'aprobada';
+                                    return (
+                                      <tr key={student.inscriptionId} style={isApproved ? { background: '#f6ffed' } : undefined}>
+                                        <td style={{ padding: '2px 4px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', fontSize: 11, fontWeight: 600, color: '#999' }}>{idx + 1}</td>
+                                        <td style={{ padding: '2px 4px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', fontSize: 11 }}>{student.studentDni || '-'}</td>
+                                        <td style={{ padding: '2px 6px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'left', fontSize: 12 }}>{student.studentName}</td>
+                                        {Array.from({ length: encounterData.maxEncounters }, (_, i) => i + 1).map(n => {
+                                          const enc = student.encounters.find(e => e.encounterNumber === n);
+                                          const editKey = `${student.pendingSubjectId}-${n}`;
+                                          const editValue = encounterEdits[editKey];
+                                          const editAbsent = encounterAbsent[editKey];
+                                          const displayValue = editValue !== undefined ? editValue : (enc ? enc.score : null);
+                                          const displayAbsent = editAbsent !== undefined ? editAbsent : (enc ? enc.isAbsent : false);
+                                          const showNp = displayAbsent && editValue === undefined;
+                                          const disabled = isApproved;
+                                          return (
+                                            <td key={n} style={{ padding: '2px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', position: 'relative', width: 50 }}>
+                                              <input
+                                                type="number"
+                                                min={0}
+                                                max={20}
+                                                step={1}
+                                                inputMode="numeric"
+                                                value={displayValue ?? ''}
+                                                disabled={disabled}
+                                                onChange={e => {
+                                                  const v = e.target.value === '' ? null : Number(e.target.value);
+                                                  setEncounterEdits(prev => ({ ...prev, [editKey]: v }));
+                                                  if (v !== 0) setEncounterAbsent(prev => ({ ...prev, [editKey]: false }));
+                                                }}
+                                                onBlur={() => {
+                                                  if (editValue !== undefined && editValue !== null) {
+                                                    handleSaveEncounterScore(student, n, editValue, editAbsent ?? false);
+                                                  }
+                                                }}
+                                                onKeyDown={e => {
+                                                  if (e.key === 'Enter') {
+                                                    e.preventDefault();
+                                                    if (editValue !== undefined && editValue !== null) {
+                                                      handleSaveEncounterScore(student, n, editValue, editAbsent ?? false);
+                                                    }
+                                                  }
+                                                }}
+                                                style={{
+                                                  width: 48,
+                                                  textAlign: 'center',
+                                                  border: 'none',
+                                                  outline: 'none',
+                                                  background: 'transparent',
+                                                  fontSize: 12,
+                                                  padding: 0,
+                                                  color: displayValue != null && displayValue > 0 && displayValue < 10 ? '#dc2626' : undefined,
+                                                  fontWeight: displayValue != null && displayValue > 0 && displayValue < 10 ? 700 : undefined,
+                                                }}
+                                              />
+                                              {showNp && <span className="mp-np-overlay">NP</span>}
+                                            </td>
+                                          );
+                                        })}
+                                        <td style={{ padding: '2px 6px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', fontSize: 11, fontWeight: 700 }}>
+                                          {isApproved ? (
+                                            <Tag color="success">Aprobada</Tag>
+                                          ) : (
+                                            <Tag color="orange">Pendiente</Tag>
+                                          )}
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                            </div>
+                          ) : (
+                            <Empty description="No hay estudiantes registrados" />
+                          )}
+                        </Spin>
                       </Card>
                     ),
                   },
@@ -567,98 +406,110 @@ const PendingSubjectTeacherPanel: React.FC = () => {
         </>
       )}
 
-      {/* Direct grade modal */}
+      {/* Encounter Dates Modal (teacher) */}
       <Modal
-        open={gradeModalOpen}
-        title="Registrar Nota Directa de Materia Pendiente"
-        onCancel={() => setGradeModalOpen(false)}
+        open={encDatesModalOpen}
+        title="Configurar Fechas de Encuentros"
+        onCancel={() => setEncDatesModalOpen(false)}
         footer={[
-          <Button key="cancel" onClick={() => setGradeModalOpen(false)}>Cancelar</Button>,
-          <Button key="save" type="primary" icon={<SaveOutlined />} loading={saving} disabled={gradeValue == null} onClick={handleSaveGrade}>
+          <Button key="cancel" onClick={() => setEncDatesModalOpen(false)}>Cancelar</Button>,
+          <Button key="save" type="primary" icon={<SaveOutlined />} loading={encDatesSaving} onClick={handleSaveEncDates}>
+            Guardar Fechas
+          </Button>,
+        ]}
+      >
+        <Alert
+          type="info"
+          message="Configure las fechas de los encuentros para esta materia pendiente."
+          showIcon
+          style={{ marginBottom: 16 }}
+        />
+        {encDatesData.map((enc, idx) => (
+          <div key={idx} style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 12 }}>
+            <Tag color="blue" style={{ minWidth: 80, textAlign: 'center' }}>Encuentro {enc.encounterNumber}</Tag>
+            <DatePicker
+              value={enc.date ? dayjs(enc.date) : null}
+              onChange={d => {
+                setEncDatesData(prev => prev.map(e =>
+                  e.encounterNumber === enc.encounterNumber
+                    ? { ...e, date: d ? d.format('YYYY-MM-DD') : null }
+                    : e
+                ));
+              }}
+              format="DD/MM/YYYY"
+              allowClear
+              style={{ flex: 1 }}
+            />
+          </div>
+        ))}
+      </Modal>
+
+      {/* Content Modal (teacher) */}
+      <Modal
+        open={contentModalOpen}
+        title={`Contenido de Estudio — ${encounterData?.subjectName || ''}`}
+        onCancel={() => setContentModalOpen(false)}
+        width={600}
+        footer={[
+          <Button key="print" icon={<PrinterOutlined />} onClick={handlePrintContent} disabled={!contentTheme && contentItems.length === 0}>
+            Imprimir
+          </Button>,
+          <Button key="cancel" onClick={() => setContentModalOpen(false)}>Cancelar</Button>,
+          <Button key="save" type="primary" icon={<SaveOutlined />} loading={contentSaving} onClick={handleSaveContent}>
             Guardar
           </Button>,
         ]}
       >
-        <div style={{ marginBottom: 16 }}>
-          <Text strong>{gradeModalStudent?.studentName}</Text>
-        </div>
-        <Divider />
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <Text>Nota final:</Text>
-          <InputNumber min={0} max={20} step={1} value={gradeValue} onChange={v => setGradeValue(v)} style={{ width: 120 }} autoFocus />
-          <Text type="secondary" style={{ fontSize: 12 }}>(0=NP, 1-20, mínimo 10)</Text>
-          {gradeValue === 0 && <Tag color="red">NP (Inasistente)</Tag>}
-        </div>
-        <Alert
-          type="warning"
-          message="Esta nota reemplaza cualquier calificación del plan de evaluación."
-          style={{ marginTop: 16 }}
-          showIcon
-        />
-      </Modal>
-
-      {/* Plan item modal (create/edit) */}
-      <Modal
-        open={planModalOpen}
-        title={planEditingId ? 'Editar Item de Evaluación' : 'Nuevo Item de Evaluación'}
-        onCancel={() => setPlanModalOpen(false)}
-        footer={[
-          <Button key="cancel" onClick={() => setPlanModalOpen(false)}>Cancelar</Button>,
-          <Button key="save" type="primary" icon={<SaveOutlined />} loading={saving} onClick={handleSavePlanItem}>
-            {planEditingId ? 'Actualizar' : 'Crear'}
-          </Button>,
-        ]}
-      >
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <div>
-            <Text>Descripción:</Text>
+        <Spin spinning={contentLoading}>
+          <Alert
+            type="info"
+            message="Tema General y lista de Contenidos para que los estudiantes sepan qué estudiar."
+            showIcon
+            style={{ marginBottom: 16 }}
+          />
+          <div style={{ marginBottom: 16 }}>
+            <Text strong>Tema General:</Text>
             <Input
-              value={planForm.description}
-              onChange={e => setPlanForm({ ...planForm, description: e.target.value })}
-              style={{ marginTop: 4 }}
-              placeholder="Ej: Examen, Taller, etc."
+              value={contentTheme}
+              onChange={e => setContentTheme(e.target.value)}
+              placeholder="Ej: Repaso general de la materia"
+              style={{ marginTop: 8 }}
             />
           </div>
           <div>
-            <Text>Lapso:</Text>
-            <Select
-              style={{ width: '100%', marginTop: 4 }}
-              value={planForm.termId || undefined}
-              onChange={v => setPlanForm({ ...planForm, termId: v })}
-              options={detail?.terms.map(t => ({ value: t.id, label: t.name })) || []}
-            />
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <Text strong>Contenidos:</Text>
+              <Button
+                size="small"
+                icon={<PlusOutlined />}
+                onClick={() => setContentItems(prev => [...prev, { text: '', order: prev.length }])}
+              >
+                Añadir
+              </Button>
+            </div>
+            {contentItems.map((item, idx) => (
+              <div key={idx} style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                <Input
+                  value={item.text}
+                  onChange={e => setContentItems(prev => prev.map((it, i) => i === idx ? { ...it, text: e.target.value } : it))}
+                  placeholder={`Contenido ${idx + 1}`}
+                />
+                <Button
+                  size="small"
+                  icon={<DeleteOutlined />}
+                  danger
+                  onClick={() => setContentItems(prev => prev.filter((_, i) => i !== idx))}
+                />
+              </div>
+            ))}
+            {contentItems.length === 0 && (
+              <Empty description="Sin contenidos. Haga clic en «Añadir»" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+            )}
           </div>
-          <div>
-            <Text>Porcentaje:</Text>
-            <InputNumber
-              min={1}
-              max={100}
-              value={planForm.percentage}
-              onChange={v => setPlanForm({ ...planForm, percentage: v || 100 })}
-              style={{ width: '100%', marginTop: 4 }}
-              addonAfter="%"
-            />
-          </div>
-          <div>
-            <Text>Fecha de evaluación:</Text>
-            <DatePicker
-              style={{ width: '100%', marginTop: 4 }}
-              value={planForm.date}
-              onChange={d => setPlanForm({ ...planForm, date: d || dayjs() })}
-              format="DD/MM/YYYY"
-            />
-          </div>
-        </div>
+        </Spin>
       </Modal>
 
       <style>{`
-        .mp-row-approved {
-          background: #f6ffed !important;
-        }
-        .mp-row-approved:hover > td {
-          background: #d9f7be !important;
-        }
-        .mp-grading-cell { position: relative; }
         .mp-np-overlay {
           position: absolute;
           inset: 0;

@@ -7,7 +7,11 @@ import { QueryInterface, DataTypes } from 'sequelize';
 // The data is backfilled by seedChoicesForPeriod() after the table is created.
 
 export async function up(queryInterface: QueryInterface) {
-  await queryInterface.createTable('inscription_group_term_choices', {
+  // Guard: table may already exist if created by sequelize.sync() before
+  // migrations ran. Skip createTable if so, but still run the backfill.
+  const tables: any = await queryInterface.showAllTables();
+  if (!tables.includes('inscription_group_term_choices')) {
+    await queryInterface.createTable('inscription_group_term_choices', {
     id: {
       type: DataTypes.INTEGER,
       autoIncrement: true,
@@ -53,11 +57,12 @@ export async function up(queryInterface: QueryInterface) {
     },
   });
 
-  await queryInterface.addIndex(
-    'inscription_group_term_choices',
-    ['inscriptionId', 'subjectGroupId', 'termId'],
-    { unique: true, name: 'inscription_group_term_choices_unique_choice' }
-  );
+    await queryInterface.addIndex(
+      'inscription_group_term_choices',
+      ['inscriptionId', 'subjectGroupId', 'termId'],
+      { unique: true, name: 'inscription_group_term_choices_unique_choice' }
+    );
+  } // end if (!tables.includes)
 
   // Backfill: for every existing InscriptionSubject with a subjectGroupId,
   // create a choice record for every term of the inscription's school period.
@@ -89,9 +94,16 @@ export async function up(queryInterface: QueryInterface) {
 
   if (rows.length > 0) {
     // Insert in chunks to avoid MySQL max_allowed_packet issues on large datasets.
+    // Include timestamps explicitly because MySQL strict mode rejects NULL on
+    // NOT NULL columns without a DEFAULT clause.
+    const now = new Date();
     const chunkSize = 500;
     for (let i = 0; i < rows.length; i += chunkSize) {
-      const chunk = rows.slice(i, i + chunkSize);
+      const chunk = rows.slice(i, i + chunkSize).map(r => ({
+        ...r,
+        createdAt: now,
+        updatedAt: now,
+      }));
       await queryInterface.bulkInsert('inscription_group_term_choices', chunk);
     }
   }

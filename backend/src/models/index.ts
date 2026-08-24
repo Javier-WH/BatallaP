@@ -115,6 +115,9 @@ import SubjectFinalGrade from './SubjectFinalGrade';
 import SubjectTermGrade from './SubjectTermGrade';
 import StudentPeriodOutcome from './StudentPeriodOutcome';
 import PendingSubject from './PendingSubject';
+import PendingSubjectEncounter from './PendingSubjectEncounter';
+import PendingSubjectContent from './PendingSubjectContent';
+import PendingSubjectContentItem from './PendingSubjectContentItem';
 import SchoolPeriodTransitionRule from './SchoolPeriodTransitionRule';
 import EnrollmentDocument from './EnrollmentDocument';
 import GradeEditPermission from './GradeEditPermission';
@@ -347,6 +350,16 @@ PendingSubject.belongsTo(Subject, { foreignKey: 'subjectId', as: 'subject' });
 SchoolPeriod.hasMany(PendingSubject, { foreignKey: 'originPeriodId', as: 'pendingSubjects' });
 PendingSubject.belongsTo(SchoolPeriod, { foreignKey: 'originPeriodId', as: 'originPeriod' });
 
+// Pending subject encounters (evaluaciones por encuentro)
+PendingSubject.hasMany(PendingSubjectEncounter, { foreignKey: 'pendingSubjectId', as: 'encounters' });
+PendingSubjectEncounter.belongsTo(PendingSubject, { foreignKey: 'pendingSubjectId', as: 'pendingSubject' });
+
+// Pending subject content (Tema General + Contenidos)
+PendingSubject.hasOne(PendingSubjectContent, { foreignKey: 'pendingSubjectId', as: 'content' });
+PendingSubjectContent.belongsTo(PendingSubject, { foreignKey: 'pendingSubjectId', as: 'pendingSubject' });
+PendingSubjectContent.hasMany(PendingSubjectContentItem, { foreignKey: 'contentId', as: 'items' });
+PendingSubjectContentItem.belongsTo(PendingSubjectContent, { foreignKey: 'contentId', as: 'content' });
+
 // Transition rules
 Grade.hasOne(SchoolPeriodTransitionRule, { foreignKey: 'gradeFromId', as: 'transitionRule' });
 
@@ -450,6 +463,9 @@ export {
   SubjectTermGrade,
   StudentPeriodOutcome,
   PendingSubject,
+  PendingSubjectEncounter,
+  PendingSubjectContent,
+  PendingSubjectContentItem,
   SchoolPeriodTransitionRule,
   EnrollmentDocument,
   GradeEditPermission,
