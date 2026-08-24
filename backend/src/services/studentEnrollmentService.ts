@@ -306,7 +306,7 @@ export const registerAndEnrollStudent = async (
     const motherIsRepresentative = representativeSelection === 'mother';
     const fatherIsRepresentative = representativeSelection === 'father';
     const representativeDataRequired = !motherIsRepresentative && !fatherIsRepresentative;
-    const motherDataRequired = motherIsRepresentative || documentType === 'Cedula Escolar';
+    const motherDataRequired = motherIsRepresentative || (documentType === 'Cedula Escolar' && (!finalDocument || !finalDocument.trim()));
     const fatherDataRequired = fatherIsRepresentative;
 
     const motherData = validateGuardianPayload('la madre', mother, motherDataRequired, { relaxContactFields: relaxGuardianContactFields });

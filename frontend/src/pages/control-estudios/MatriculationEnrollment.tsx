@@ -50,6 +50,7 @@ import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
 import { generateMultiNomina } from '@/utils/generateNomina';
 import SearchGuardianModal from '@/components/shared/SearchGuardianModal';
+import EditStudentModal, { type EditStudentData } from '@/components/EditStudentModal';
 import type { GuardianProfileResponse } from '@/services/guardians';
 import MatriculationAgGrid, { type MatriculationAgGridHandle } from './MatriculationAgGrid';
 import {
@@ -241,6 +242,11 @@ const contextMenuItems: MenuProps['items'] = [
         key: 'change-representative',
         icon: <UserSwitchOutlined />,
         label: 'Cambiar Representante'
+      },
+      {
+        key: 'edit-student',
+        icon: <EditOutlined />,
+        label: 'Editar estudiante'
       }
     ]
   },
@@ -308,6 +314,8 @@ const MatriculationEnrollment: React.FC = () => {
     rowIndex: null
   });
   const [guardianModalVisible, setGuardianModalVisible] = useState(false);
+  const [editStudentModalVisible, setEditStudentModalVisible] = useState(false);
+  const [editStudentRowId, setEditStudentRowId] = useState<number | null>(null);
   const contextMenuRef = useRef<HTMLDivElement | null>(null);
   const agGridRef = useRef<MatriculationAgGridHandle>(null);
   // Mirror of selectedRowKeys that survives async clears (e.g. AG-Grid
@@ -467,6 +475,21 @@ const MatriculationEnrollment: React.FC = () => {
             return profile;
           };
 
+          // Find the representative by the isRepresentative flag, not by relationship name.
+          // The relationship could be 'mother', 'father', 'grandparent', 'sibling', etc.
+          const findRepresentativeProfile = (): GuardianProfile => {
+            const repGuardian = guardians.find((g: StudentGuardian) => {
+              const rawGuardian = g as StudentGuardian & {
+                dataValues?: { isRepresentative?: unknown; is_representative?: unknown };
+              };
+              return isTruthyRepresentative(g.isRepresentative)
+                || isTruthyRepresentative(g.is_representative)
+                || isTruthyRepresentative(rawGuardian.dataValues?.isRepresentative)
+                || isTruthyRepresentative(rawGuardian.dataValues?.is_representative);
+            });
+            return (repGuardian?.profile || {}) as GuardianProfile;
+          };
+
           // The API may serialize the boolean flag as boolean, 0/1, or a
           // string depending on the database driver. Support all formats and
           // normalize relationship names before mapping the Vínculo column.
@@ -532,7 +555,7 @@ const MatriculationEnrollment: React.FC = () => {
               birthdate: student.birthdate ? dayjs(student.birthdate) : null,
               mother: findGuardianProfile('mother'),
               father: findGuardianProfile('father'),
-              representative: findGuardianProfile('representative'),
+              representative: findRepresentativeProfile(),
               representativeType,
               enrollmentAnswers,
               address: student.contact?.address || 'N/A',
@@ -789,12 +812,16 @@ const MatriculationEnrollment: React.FC = () => {
           birthdate: tempData.birthdate ? tempData.birthdate.format('YYYY-MM-DD') : null,
           mother: fixGuardian(tempData.mother),
           father: fixGuardian(tempData.father),
+          representative: fixGuardian(tempData.representative),
           enrollmentAnswers: formattedAnswers
         };
         await api.post(`/matriculations/${row.id}/enroll`, payload);
         successCount++;
-      } catch (e) {
-        console.error(e);
+      } catch (e: any) {
+        const apiErr = e as { response?: { data?: { error?: string; details?: string } } };
+        const errMsg = apiErr?.response?.data?.details || apiErr?.response?.data?.error || e?.message || 'Error desconocido';
+        console.error('[handleBulkEnroll] Error enrolling row', row.id, errMsg, e);
+        message.error({ content: `Error con ${row.tempData.firstName} ${row.tempData.lastName}: ${errMsg}`, key: `err-${row.id}`, duration: 10 });
       }
     }
     message.success({ content: `${successCount} estudiantes inscritos correctamente`, key: 'bulk' });
@@ -941,6 +968,13 @@ const MatriculationEnrollment: React.FC = () => {
       }
       closeContextMenu();
     }
+    if (key === 'edit-student') {
+      if (contextMenuState.rowId !== null) {
+        setEditStudentRowId(contextMenuState.rowId);
+        setEditStudentModalVisible(true);
+      }
+      closeContextMenu();
+    }
     if (key === 'pin-left' && contextMenuState.colId) {
       agGridRef.current?.pinColumn(contextMenuState.colId, 'left');
       closeContextMenu();
@@ -997,6 +1031,33 @@ const MatriculationEnrollment: React.FC = () => {
     saveFieldChange(rowId, changes);
     message.success('Representante actualizado');
   }, [contextMenuState.rowId, matriculations, saveFieldChange]);
+
+  const handleEditStudentSave = useCallback((data: Partial<EditStudentData>) => {
+    if (editStudentRowId === null) return;
+    const rowId = editStudentRowId;
+
+    setMatriculations(prev => prev.map(row => {
+      if (row.id !== rowId) return row;
+      const updatedTempData = { ...row.tempData, ...data } as TempData;
+      return { ...row, tempData: updatedTempData };
+    }));
+
+    // Build payload for backend
+    const payload: Record<string, unknown> = {};
+    Object.entries(data).forEach(([k, v]) => {
+      if (k === 'birthdate') {
+        payload[k] = v ? (v as dayjs.Dayjs).format('YYYY-MM-DD') : null;
+      } else if (k === 'mother' || k === 'father' || k === 'representative') {
+        payload[k] = v;
+      } else {
+        payload[k] = v;
+      }
+    });
+    saveFieldChange(rowId, payload);
+    setEditStudentModalVisible(false);
+    setEditStudentRowId(null);
+    message.success('Datos del estudiante actualizados');
+  }, [editStudentRowId, saveFieldChange]);
 
   // Cerrar menú contextual con Escape o click fuera
   useEffect(() => {
@@ -2046,6 +2107,50 @@ const MatriculationEnrollment: React.FC = () => {
         onCancel={() => setGuardianModalVisible(false)}
         onSelect={handleGuardianSelected}
       />
+
+      {editStudentRowId !== null && (() => {
+        const row = matriculations.find(r => r.id === editStudentRowId);
+        if (!row) return null;
+        const td = row.tempData;
+        const initialData: EditStudentData = {
+          id: td.id,
+          firstName: td.firstName,
+          lastName: td.lastName,
+          documentType: td.documentType,
+          document: td.document,
+          gender: td.gender,
+          birthdate: td.birthdate,
+          birthState: td.birthState,
+          birthMunicipality: td.birthMunicipality,
+          birthParish: td.birthParish,
+          residenceState: td.residenceState,
+          residenceMunicipality: td.residenceMunicipality,
+          residenceParish: td.residenceParish,
+          address: td.address,
+          pathology: td.pathology,
+          livingWith: td.livingWith,
+          phone1: td.phone1,
+          whatsapp: td.whatsapp,
+          escolaridad: td.escolaridad,
+          mother: td.mother,
+          father: td.father,
+          representative: td.representative,
+          representativeType: td.representativeType,
+        };
+        return (
+          <EditStudentModal
+            visible={editStudentModalVisible}
+            onCancel={() => {
+              setEditStudentModalVisible(false);
+              setEditStudentRowId(null);
+            }}
+            onSave={handleEditStudentSave}
+            studentName={`${td.firstName} ${td.lastName}`}
+            initialData={initialData}
+            locations={locations}
+          />
+        );
+      })()}
 
       <Modal
         title="Imprimir Nóminas"

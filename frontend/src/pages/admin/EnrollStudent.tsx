@@ -286,6 +286,7 @@ const EnrollStudent: React.FC = () => {
   const [previewTitle, setPreviewTitle] = useState('');
   const representativeTypeValue = Form.useWatch('representativeType', newStudentForm);
   const studentDocumentType = Form.useWatch('documentType', newStudentForm);
+  const studentDocumentValue = Form.useWatch('document', newStudentForm);
   const birthStateValue = Form.useWatch('birthState', newStudentForm);
   const birthMunicipalityValue = Form.useWatch('birthMunicipality', newStudentForm);
   const residenceStateValue = Form.useWatch('residenceState', newStudentForm);
@@ -824,8 +825,11 @@ const EnrollStudent: React.FC = () => {
   const fatherIsRepresentative = representativeTypeValue === 'father';
   const representativeIsOther = !motherIsRepresentative && !fatherIsRepresentative;
 
-  // Dynamic Requirements: Strictly mandatory only if they are the representative OR if CE is used
-  const motherFieldsRequired = motherIsRepresentative || studentDocumentType === 'Cedula Escolar';
+  // Dynamic Requirements: mother is mandatory if she is the representative,
+  // OR if Cédula Escolar is selected AND no document number is provided
+  // (because the system needs the mother's cédula to generate it).
+  const motherFieldsRequired = motherIsRepresentative
+    || (studentDocumentType === 'Cedula Escolar' && !studentDocumentValue);
   const fatherFieldsRequired = fatherIsRepresentative;
   const representativeFieldsRequired = representativeIsOther;
 

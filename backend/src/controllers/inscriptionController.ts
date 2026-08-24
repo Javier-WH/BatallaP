@@ -468,7 +468,7 @@ export const enrollMatriculatedStudent = async (req: Request, res: Response) => 
     const motherIsRepresentative = representativeSelection === 'mother';
     const fatherIsRepresentative = representativeSelection === 'father';
     const representativeDataRequired = !motherIsRepresentative && !fatherIsRepresentative;
-    const motherDataRequired = motherIsRepresentative || documentType === 'Cedula Escolar';
+    const motherDataRequired = motherIsRepresentative || (documentType === 'Cedula Escolar' && (!document || !document.trim()));
     const fatherDataRequired = fatherIsRepresentative;
 
     const motherData = validateGuardianPayload('la madre', mother, motherDataRequired);
@@ -498,9 +498,12 @@ export const enrollMatriculatedStudent = async (req: Request, res: Response) => 
       });
     }
     if (representativeData) {
+      const repRelationship = (representativeSelection === 'sibling' || representativeSelection === 'grandparent' || representativeSelection === 'uncle_aunt')
+        ? (representativeSelection as GuardianRelationship)
+        : 'representative';
       assignments.push({
         payload: mapToGuardianProfilePayload(representativeData),
-        relationship: 'representative',
+        relationship: repRelationship,
         isRepresentative: true
       });
     }
@@ -608,8 +611,10 @@ export const enrollMatriculatedStudent = async (req: Request, res: Response) => 
     });
   } catch (error: any) {
     if (t) await t.rollback();
-    console.error('Error al inscribir matriculado:', error);
-    res.status(500).json({ error: 'Error al inscribir estudiante matriculado', details: error.message || error });
+    const errMsg = error?.message || (typeof error === 'string' ? error : JSON.stringify(error));
+    const errStack = error?.stack;
+    console.error('Error al inscribir matriculado:', errMsg, '\n', errStack);
+    res.status(500).json({ error: 'Error al inscribir estudiante matriculado', details: errMsg });
   }
 };
 
