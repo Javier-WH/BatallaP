@@ -189,7 +189,7 @@ const createCatalogSheet = async (workbook: ExcelJS.Workbook) => {
     { name: 'Escolaridad', values: escolaridadOptions },
     { name: 'Documentos', values: allowedDocumentTypes },
     { name: 'Genero', values: ['M', 'F'] },
-    { name: 'Representa', values: ['mother', 'father', 'other'] },
+    { name: 'Representa', values: ['mother', 'father', 'sibling', 'grandparent', 'uncle_aunt', 'other'] },
     { name: 'EstadosVenezuela', values: locationCatalogs.states },
     { name: 'MunicipiosVenezuela', values: locationCatalogs.municipalities },
     { name: 'ParroquiasVenezuela', values: locationCatalogs.parishes }
@@ -380,7 +380,8 @@ export const parseBulkExcel = async (filePath: string): Promise<ParsedBulkRow[]>
       : 'regular';
 
     const representativeTypeRaw = sanitizeString(normalized.representativeType).toLowerCase();
-    const representativeType = ['mother', 'father', 'other'].includes(representativeTypeRaw)
+    const validRepTypes = ['mother', 'father', 'sibling', 'grandparent', 'uncle_aunt', 'other'];
+    const representativeType = validRepTypes.includes(representativeTypeRaw)
       ? representativeTypeRaw as RegisterAndEnrollPayload['representativeType']
       : 'mother';
 
@@ -420,8 +421,8 @@ export const parseBulkExcel = async (filePath: string): Promise<ParsedBulkRow[]>
       residenceState: sanitizeString(normalized.residenceState),
       residenceMunicipality: sanitizeString(normalized.residenceMunicipality),
       residenceParish: sanitizeString(normalized.residenceParish),
-      phone1: sanitizeString(normalized.phone1) || null,
-      phone2: sanitizeString(normalized.phone2) || null,
+      phone1: sanitizeString(normalized.whatsapp) || null,
+      phone2: null,
       email: sanitizeString(normalized.email) || null,
       address: sanitizeString(normalized.address) || null,
       whatsapp: sanitizeString(normalized.whatsapp) || null,

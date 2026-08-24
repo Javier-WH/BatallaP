@@ -62,7 +62,7 @@ import {
 const { Text, Title } = Typography;
 const { Option } = Select;
 
-type RepresentativeType = 'mother' | 'father' | 'other';
+type RepresentativeType = 'mother' | 'father' | 'sibling' | 'grandparent' | 'uncle_aunt' | 'other';
 
 interface GuardianProfile {
   id?: number;
@@ -70,6 +70,8 @@ interface GuardianProfile {
   firstName?: string;
   lastName?: string;
   phone?: string;
+  phone2?: string;
+  whatsapp?: string;
   documentType?: string;
   residenceState?: string;
   residenceMunicipality?: string;
@@ -494,7 +496,13 @@ const MatriculationEnrollment: React.FC = () => {
               ? 'mother'
               : normalizedRepresentativeType === 'father' || normalizedRepresentativeType === 'padre'
                 ? 'father'
-                : 'other';
+                : normalizedRepresentativeType === 'sibling' || normalizedRepresentativeType === 'hermano'
+                  ? 'sibling'
+                  : normalizedRepresentativeType === 'grandparent' || normalizedRepresentativeType === 'abuelo'
+                    ? 'grandparent'
+                    : normalizedRepresentativeType === 'uncle_aunt' || normalizedRepresentativeType === 'tio'
+                      ? 'uncle_aunt'
+                      : 'other';
 
           const enrollmentAnswersList = student.enrollmentAnswers ?? [];
           const enrollmentAnswers = enrollmentAnswersList.reduce<EnrollmentAnswersMap>((acc, curr) => {
@@ -893,7 +901,8 @@ const MatriculationEnrollment: React.FC = () => {
     if (row.tempData.representativeType === 'father') {
       return { profile: row.tempData.father, label: 'Padre', editable: false };
     }
-    return { profile: row.tempData.representative, label: 'Otro', editable: true };
+    const labels: Record<string, string> = { sibling: 'Hermano/a', grandparent: 'Abuelo/a', uncle_aunt: 'Tío/a', other: 'Otro' };
+    return { profile: row.tempData.representative, label: labels[row.tempData.representativeType] || 'Otro', editable: true };
   };
 
   const closeContextMenu = useCallback(() => setContextMenuState(prev => ({ ...prev, visible: false })), []);
@@ -1105,7 +1114,7 @@ const MatriculationEnrollment: React.FC = () => {
         whatsapp: { header: 'WhatsApp', getValue: (r) => r.tempData.whatsapp || '' },
         // Representante
         representativeType: { header: 'Vínculo', getValue: (r) => {
-          const map: Record<string, string> = { mother: 'Madre', father: 'Padre', other: 'Otro' };
+          const map: Record<string, string> = { mother: 'Madre', father: 'Padre', sibling: 'Hermano/a', grandparent: 'Abuelo/a', uncle_aunt: 'Tío/a', other: 'Otro' };
           return map[r.tempData.representativeType] || r.tempData.representativeType || '';
         }},
         representativeDocumentType: { header: 'Tipo Doc. Rep.', getValue: (r) => {

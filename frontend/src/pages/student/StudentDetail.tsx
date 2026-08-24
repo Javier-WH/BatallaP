@@ -28,6 +28,8 @@ interface GuardianProfile {
   documentType: string;
   document: string;
   phone?: string;
+  phone2?: string;
+  whatsapp?: string;
   email?: string;
   address?: string;
   residenceState?: string;

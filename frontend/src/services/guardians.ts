@@ -9,6 +9,8 @@ export interface GuardianProfileResponse {
   documentType: GuardianDocumentType;
   document: string;
   phone: string;
+  phone2?: string;
+  whatsapp?: string;
   email: string;
   residenceState: string;
   residenceMunicipality: string;

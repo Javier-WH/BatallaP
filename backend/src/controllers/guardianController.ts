@@ -47,7 +47,7 @@ export const searchGuardian = async (req: Request, res: Response) => {
 
 export const createGuardian = async (req: Request, res: Response) => {
   try {
-    const { firstName, lastName, documentType, document, phone, email, residenceState, residenceMunicipality, residenceParish, address } = req.body || {};
+    const { firstName, lastName, documentType, document, phone, phone2, whatsapp, email, residenceState, residenceMunicipality, residenceParish, address } = req.body || {};
 
     // Validate required fields
     if (!firstName || !lastName || !documentType || !document) {
@@ -63,6 +63,8 @@ export const createGuardian = async (req: Request, res: Response) => {
       document: normalizedDoc,
       documentType: typeValue,
       phone,
+      phone2,
+      whatsapp,
       email,
       residenceState,
       residenceMunicipality,

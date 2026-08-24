@@ -93,6 +93,8 @@ type GuardianData = {
   documentType?: GuardianDocumentType;
   document?: string;
   phone?: string;
+  phone2?: string;
+  whatsapp?: string;
   email?: string;
   residenceState?: string;
   residenceMunicipality?: string;
@@ -133,6 +135,8 @@ const mapProfileToGuardianForm = (profile: GuardianProfileResponse): GuardianDat
   documentType: profile.documentType,
   document: profile.document,
   phone: profile.phone,
+  phone2: profile.phone2,
+  whatsapp: profile.whatsapp,
   email: profile.email,
   residenceState: profile.residenceState,
   residenceMunicipality: profile.residenceMunicipality,
@@ -818,7 +822,7 @@ const EnrollStudent: React.FC = () => {
 
   const motherIsRepresentative = representativeTypeValue === 'mother';
   const fatherIsRepresentative = representativeTypeValue === 'father';
-  const representativeIsOther = representativeTypeValue === 'other';
+  const representativeIsOther = !motherIsRepresentative && !fatherIsRepresentative;
 
   // Dynamic Requirements: Strictly mandatory only if they are the representative OR if CE is used
   const motherFieldsRequired = motherIsRepresentative || studentDocumentType === 'Cedula Escolar';
@@ -922,6 +926,16 @@ const EnrollStudent: React.FC = () => {
             .filter((path): path is string => Boolean(path)) ?? [],
       };
 
+      const syncGuardianPhone = (g: GuardianData | undefined) => {
+        if (!g) return undefined;
+        const { birthdate, ...rest } = g;
+        return {
+          ...rest,
+          phone: g.whatsapp || g.phone || '',  // WhatsApp is the main phone
+          birthdate: birthdate ? (birthdate as dayjs.Dayjs).format('YYYY-MM-DD') : null
+        };
+      };
+
       const payload = {
         ...values,
         pathology: values.pathology === 'ninguna' ? null : (values.pathology === 'otra' ? (values.customPathology as string) : values.pathology),
@@ -942,9 +956,9 @@ const EnrollStudent: React.FC = () => {
         })(),
         schoolPeriodId: selectedPeriodId,
         birthdate: values.birthdate ? (values.birthdate as dayjs.Dayjs).format('YYYY-MM-DD') : null,
-        mother: values.mother ? { ...values.mother, birthdate: (values.mother as GuardianData).birthdate ? ((values.mother as GuardianData).birthdate as dayjs.Dayjs).format('YYYY-MM-DD') : null } : undefined,
-        father: values.father ? { ...values.father, birthdate: (values.father as GuardianData).birthdate ? ((values.father as GuardianData).birthdate as dayjs.Dayjs).format('YYYY-MM-DD') : null } : undefined,
-        representative: values.representative ? { ...values.representative, birthdate: (values.representative as GuardianData).birthdate ? ((values.representative as GuardianData).birthdate as dayjs.Dayjs).format('YYYY-MM-DD') : null } : undefined,
+        mother: syncGuardianPhone(values.mother as GuardianData | undefined),
+        father: syncGuardianPhone(values.father as GuardianData | undefined),
+        representative: syncGuardianPhone(values.representative as GuardianData | undefined),
         enrollmentAnswers: transformAnswers(values.enrollmentAnswers as EnrollmentAnswerFormValues | undefined),
         documents: transformedDocuments
       };
@@ -1528,6 +1542,9 @@ const EnrollStudent: React.FC = () => {
                   <Radio.Group buttonStyle="solid">
                     <Radio.Button value="mother">La Madre</Radio.Button>
                     <Radio.Button value="father">El Padre</Radio.Button>
+                    <Radio.Button value="sibling">Hermano/a</Radio.Button>
+                    <Radio.Button value="grandparent">Abuelo/a</Radio.Button>
+                    <Radio.Button value="uncle_aunt">Tío/a</Radio.Button>
                     <Radio.Button value="other">Otra persona</Radio.Button>
                   </Radio.Group>
                 </Form.Item>
@@ -1569,10 +1586,17 @@ const EnrollStudent: React.FC = () => {
                       </Row>
                       <Row gutter={16}>
                         <Col span={12}>
-                          <Form.Item name={['mother', 'phone']} label="Teléfono" rules={motherFieldsRequired ? [{ required: true }, { pattern: /^(04|02)\d{2}-\d{7}$/, message: 'Formato: 04XX-XXXXXXX o 02XX-XXXXXXX' }] : [{ pattern: /^(04|02)\d{2}-\d{7}$/, message: 'Formato: 04XX-XXXXXXX o 02XX-XXXXXXX' }]}>
+                          <Form.Item name={['mother', 'whatsapp']} label="WhatsApp / Teléfono" rules={motherFieldsRequired ? [{ required: true }, { pattern: /^(04|02)\d{2}-\d{7}$/, message: 'Formato: 04XX-XXXXXXX o 02XX-XXXXXXX' }] : [{ pattern: /^(04|02)\d{2}-\d{7}$/, message: 'Formato: 04XX-XXXXXXX o 02XX-XXXXXXX' }]}>
                             <Input />
                           </Form.Item>
                         </Col>
+                        <Col span={12}>
+                          <Form.Item name={['mother', 'phone2']} label="Teléfono secundario" rules={[{ pattern: /^(04|02)\d{2}-\d{7}$/, message: 'Formato: 04XX-XXXXXXX o 02XX-XXXXXXX' }]}>
+                            <Input placeholder="Opcional" />
+                          </Form.Item>
+                        </Col>
+                      </Row>
+                      <Row gutter={16}>
                         <Col span={12}>
                           <Form.Item name={['mother', 'email']} label="Email" rules={[{ type: 'email' }]}>
                             <Input placeholder="Opcional" />
@@ -1640,10 +1664,17 @@ const EnrollStudent: React.FC = () => {
                       </Row>
                       <Row gutter={16}>
                         <Col span={12}>
-                          <Form.Item name={['father', 'phone']} label="Teléfono" rules={fatherFieldsRequired ? [{ required: true }, { pattern: /^(04|02)\d{2}-\d{7}$/, message: 'Formato: 04XX-XXXXXXX o 02XX-XXXXXXX' }] : [{ pattern: /^(04|02)\d{2}-\d{7}$/, message: 'Formato: 04XX-XXXXXXX o 02XX-XXXXXXX' }]}>
+                          <Form.Item name={['father', 'whatsapp']} label="WhatsApp / Teléfono" rules={fatherFieldsRequired ? [{ required: true }, { pattern: /^(04|02)\d{2}-\d{7}$/, message: 'Formato: 04XX-XXXXXXX o 02XX-XXXXXXX' }] : [{ pattern: /^(04|02)\d{2}-\d{7}$/, message: 'Formato: 04XX-XXXXXXX o 02XX-XXXXXXX' }]}>
                             <Input />
                           </Form.Item>
                         </Col>
+                        <Col span={12}>
+                          <Form.Item name={['father', 'phone2']} label="Teléfono secundario" rules={[{ pattern: /^(04|02)\d{2}-\d{7}$/, message: 'Formato: 04XX-XXXXXXX o 02XX-XXXXXXX' }]}>
+                            <Input placeholder="Opcional" />
+                          </Form.Item>
+                        </Col>
+                      </Row>
+                      <Row gutter={16}>
                         <Col span={12}>
                           <Form.Item name={['father', 'email']} label="Email" rules={[{ type: 'email' }]}>
                             <Input placeholder="Opcional" />
@@ -1721,10 +1752,17 @@ const EnrollStudent: React.FC = () => {
                         </Row>
                         <Row gutter={16}>
                           <Col span={12}>
-                            <Form.Item name={['representative', 'phone']} label="Teléfono" rules={representativeFieldsRequired ? [{ required: true }, { pattern: /^(04|02)\d{2}-\d{7}$/, message: 'Formato: 04XX-XXXXXXX o 02XX-XXXXXXX' }] : [{ pattern: /^(04|02)\d{2}-\d{7}$/, message: 'Formato: 04XX-XXXXXXX o 02XX-XXXXXXX' }]}>
+                            <Form.Item name={['representative', 'whatsapp']} label="WhatsApp / Teléfono" rules={representativeFieldsRequired ? [{ required: true }, { pattern: /^(04|02)\d{2}-\d{7}$/, message: 'Formato: 04XX-XXXXXXX o 02XX-XXXXXXX' }] : [{ pattern: /^(04|02)\d{2}-\d{7}$/, message: 'Formato: 04XX-XXXXXXX o 02XX-XXXXXXX' }]}>
                               <Input />
                             </Form.Item>
                           </Col>
+                          <Col span={12}>
+                            <Form.Item name={['representative', 'phone2']} label="Teléfono secundario" rules={[{ pattern: /^(04|02)\d{2}-\d{7}$/, message: 'Formato: 04XX-XXXXXXX o 02XX-XXXXXXX' }]}>
+                              <Input placeholder="Opcional" />
+                            </Form.Item>
+                          </Col>
+                        </Row>
+                        <Row gutter={16}>
                           <Col span={12}>
                             <Form.Item name={['representative', 'email']} label="Email" rules={[{ type: 'email' }]}>
                               <Input placeholder="Opcional" />

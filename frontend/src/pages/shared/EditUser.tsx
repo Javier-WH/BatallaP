@@ -92,6 +92,8 @@ interface GuardianProfile {
   documentType: string;
   email?: string;
   phone?: string;
+  phone2?: string;
+  whatsapp?: string;
 }
 
 interface GuardianRelation {

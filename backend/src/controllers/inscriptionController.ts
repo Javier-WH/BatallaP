@@ -18,13 +18,16 @@ import { generateEnrollmentReport } from '@/services/enrollmentReportService';
 
 const ESCOLARIDAD_VALUES: EscolaridadStatus[] = ['regular', 'repitiente', 'materia_pendiente'];
 
-type RepresentativeTypeResponse = 'mother' | 'father' | 'other';
+type RepresentativeTypeResponse = 'mother' | 'father' | 'sibling' | 'grandparent' | 'uncle_aunt' | 'other';
 
 const deriveRepresentativeType = (guardians: Array<{ relationship?: unknown; isRepresentative?: unknown }> = []): RepresentativeTypeResponse => {
   const assignment = guardians.find(g => g.isRepresentative === true || g.isRepresentative === 1);
   const relationship = String(assignment?.relationship ?? '').trim().toLowerCase();
   if (relationship === 'mother' || relationship === 'madre') return 'mother';
   if (relationship === 'father' || relationship === 'padre') return 'father';
+  if (relationship === 'sibling' || relationship === 'hermano') return 'sibling';
+  if (relationship === 'grandparent' || relationship === 'abuelo') return 'grandparent';
+  if (relationship === 'uncle_aunt' || relationship === 'tio') return 'uncle_aunt';
   return 'other';
 };
 
@@ -47,6 +50,8 @@ type GuardianInput = {
   residenceParish?: string;
   address?: string;
   phone?: string;
+  phone2?: string;
+  whatsapp?: string;
   email?: string;
   occupation?: string;
   birthdate?: string; // Expecting string (YYYY-MM-DD) from body
@@ -194,6 +199,8 @@ const mapToGuardianProfilePayload = (data: CompleteGuardianInput): GuardianProfi
   documentType: data.documentType,
   document: data.document,
   phone: data.phone,
+  phone2: data.phone2,
+  whatsapp: data.whatsapp,
   email: data.email,
   residenceState: data.residenceState,
   residenceMunicipality: data.residenceMunicipality,
@@ -445,12 +452,13 @@ export const enrollMatriculatedStudent = async (req: Request, res: Response) => 
     }
 
     // Guardians
-    const representativeSelection = typeof representativeType === 'string' && ['mother', 'father', 'other'].includes(representativeType)
+    const validRepresentativeTypes = ['mother', 'father', 'sibling', 'grandparent', 'uncle_aunt', 'other'];
+    const representativeSelection = typeof representativeType === 'string' && validRepresentativeTypes.includes(representativeType)
       ? representativeType
       : 'mother';
     const motherIsRepresentative = representativeSelection === 'mother';
     const fatherIsRepresentative = representativeSelection === 'father';
-    const representativeDataRequired = representativeSelection === 'other' || (!motherIsRepresentative && !fatherIsRepresentative);
+    const representativeDataRequired = !motherIsRepresentative && !fatherIsRepresentative;
     const motherDataRequired = motherIsRepresentative || documentType === 'Cedula Escolar';
     const fatherDataRequired = fatherIsRepresentative;
 
@@ -971,9 +979,12 @@ export const updateInscription = async (req: Request, res: Response) => {
       });
     }
     if (representative && hasGuardianData(representative)) {
+      const repRelationship = (representativeType === 'sibling' || representativeType === 'grandparent' || representativeType === 'uncle_aunt')
+        ? (representativeType as GuardianRelationship)
+        : 'representative';
       assignments.push({
         payload: mapToGuardianProfilePayload(representative as CompleteGuardianInput),
-        relationship: 'representative',
+        relationship: repRelationship,
         isRepresentative: true
       });
     }
@@ -1339,9 +1350,12 @@ export const updateMatriculation = async (req: Request, res: Response) => {
       });
     }
     if (representative && hasGuardianData(representative)) {
+      const repRelationship = (representativeType === 'sibling' || representativeType === 'grandparent' || representativeType === 'uncle_aunt')
+        ? (representativeType as GuardianRelationship)
+        : 'representative';
       assignments.push({
         payload: mapToGuardianProfilePayload(representative as CompleteGuardianInput),
-        relationship: 'representative',
+        relationship: repRelationship,
         isRepresentative: true
       });
     }

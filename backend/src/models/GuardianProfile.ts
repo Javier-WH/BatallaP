@@ -10,6 +10,8 @@ interface GuardianProfileAttributes {
   documentType: GuardianDocumentType;
   document: string;
   phone: string;
+  phone2?: string;
+  whatsapp?: string;
   email: string;
   residenceState: string;
   residenceMunicipality: string;
@@ -31,6 +33,8 @@ class GuardianProfile extends Model<GuardianProfileAttributes, GuardianProfileCr
   public documentType!: GuardianDocumentType;
   public document!: string;
   public phone!: string;
+  public phone2!: string;
+  public whatsapp!: string;
   public email!: string;
   public residenceState!: string;
   public residenceMunicipality!: string;
@@ -69,6 +73,14 @@ GuardianProfile.init(
     phone: {
       type: DataTypes.STRING,
       allowNull: false
+    },
+    phone2: {
+      type: DataTypes.STRING,
+      allowNull: true
+    },
+    whatsapp: {
+      type: DataTypes.STRING,
+      allowNull: true
     },
     email: {
       type: DataTypes.STRING,

@@ -110,7 +110,7 @@ DatePickerEditor.displayName = 'DatePickerEditor';
 
 // Re-export types needed by the parent
 export type EscolaridadStatus = 'regular' | 'repitiente' | 'materia_pendiente';
-export type RepresentativeType = 'mother' | 'father' | 'other';
+export type RepresentativeType = 'mother' | 'father' | 'sibling' | 'grandparent' | 'uncle_aunt' | 'other';
 
 export interface GuardianProfile {
   id?: number;
@@ -118,6 +118,8 @@ export interface GuardianProfile {
   firstName?: string;
   lastName?: string;
   phone?: string;
+  phone2?: string;
+  whatsapp?: string;
   documentType?: string;
   residenceState?: string;
   residenceMunicipality?: string;
@@ -1184,7 +1186,7 @@ export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<Matricul
       sortable: true,
       resizable: true,
       cellEditor: AutoOpenSelectEditor,
-      cellEditorParams: { values: ['mother', 'father', 'other'] },
+      cellEditorParams: { values: ['mother', 'father', 'sibling', 'grandparent', 'uncle_aunt', 'other'] },
       valueGetter: (p) => p.data?.tempData.representativeType ?? 'other',
       valueSetter: (p) => {
         if (p.newValue !== p.oldValue && p.data) {
@@ -1194,7 +1196,7 @@ export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<Matricul
         return false;
       },
       cellRenderer: (p: any) => {
-        const map: Record<string, string> = { mother: 'Madre', father: 'Padre', other: 'Otro' };
+        const map: Record<string, string> = { mother: 'Madre', father: 'Padre', sibling: 'Hermano/a', grandparent: 'Abuelo/a', uncle_aunt: 'Tío/a', other: 'Otro' };
         return map[p.value] ?? p.value;
       },
     });

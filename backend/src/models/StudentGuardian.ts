@@ -3,7 +3,7 @@ import sequelize from '@/config/database';
 import Person from './Person';
 import GuardianProfile from './GuardianProfile';
 
-export type GuardianRelationship = 'mother' | 'father' | 'representative';
+export type GuardianRelationship = 'mother' | 'father' | 'sibling' | 'grandparent' | 'uncle_aunt' | 'representative';
 
 interface StudentGuardianAttributes {
   id: number;
@@ -56,7 +56,7 @@ StudentGuardian.init(
       onDelete: 'CASCADE'
     },
     relationship: {
-      type: DataTypes.ENUM('mother', 'father', 'representative'),
+      type: DataTypes.ENUM('mother', 'father', 'sibling', 'grandparent', 'uncle_aunt', 'representative'),
       allowNull: false
     },
     isRepresentative: {

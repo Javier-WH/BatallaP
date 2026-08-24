@@ -18,6 +18,7 @@ import {
 import { saveEnrollmentAnswers, EnrollmentAnswerPayload } from '@/services/enrollmentAnswerService';
 import { assignGuardians, GuardianAssignment } from '@/services/studentGuardianService';
 import { GuardianDocumentType } from '@/models/GuardianProfile';
+import { GuardianRelationship } from '@/models/StudentGuardian';
 import { EscolaridadStatus } from '@/types/enrollment';
 import { generateEnrollmentReport } from '@/services/enrollmentReportService';
 
@@ -42,6 +43,8 @@ export type GuardianInput = {
   residenceParish?: string;
   address?: string;
   phone?: string;
+  phone2?: string;
+  whatsapp?: string;
   email?: string;
   occupation?: string;
 };
@@ -130,6 +133,8 @@ export const mapToGuardianProfilePayload = (data: Required<GuardianInput>) => ({
   documentType: data.documentType,
   document: data.document,
   phone: data.phone,
+  phone2: data.phone2 ?? '',
+  whatsapp: data.whatsapp ?? '',
   email: data.email,
   residenceState: data.residenceState,
   residenceMunicipality: data.residenceMunicipality,
@@ -157,7 +162,7 @@ export type RegisterAndEnrollPayload = {
   mother?: GuardianInput | null;
   father?: GuardianInput | null;
   representative?: GuardianInput | null;
-  representativeType?: 'mother' | 'father' | 'other';
+  representativeType?: 'mother' | 'father' | 'sibling' | 'grandparent' | 'uncle_aunt' | 'other';
   phone1?: string | null;
   phone2?: string | null;
   email?: string | null;
@@ -294,12 +299,13 @@ export const registerAndEnrollStudent = async (
 
     const person = await Person.create(personPayload, { transaction: t });
 
-    const representativeSelection = typeof representativeType === 'string' && ['mother', 'father', 'other'].includes(representativeType)
+    const validRepresentativeTypes = ['mother', 'father', 'sibling', 'grandparent', 'uncle_aunt', 'other'];
+    const representativeSelection = typeof representativeType === 'string' && validRepresentativeTypes.includes(representativeType)
       ? representativeType
       : 'mother';
     const motherIsRepresentative = representativeSelection === 'mother';
     const fatherIsRepresentative = representativeSelection === 'father';
-    const representativeDataRequired = representativeSelection === 'other' || (!motherIsRepresentative && !fatherIsRepresentative);
+    const representativeDataRequired = !motherIsRepresentative && !fatherIsRepresentative;
     const motherDataRequired = motherIsRepresentative || documentType === 'Cedula Escolar';
     const fatherDataRequired = fatherIsRepresentative;
 
@@ -378,9 +384,12 @@ export const registerAndEnrollStudent = async (
       });
     }
     if (representativeData) {
+      const repRelationship = (representativeSelection === 'sibling' || representativeSelection === 'grandparent' || representativeSelection === 'uncle_aunt')
+        ? (representativeSelection as GuardianRelationship)
+        : 'representative';
       assignments.push({
         payload: mapToGuardianProfilePayload(representativeData),
-        relationship: 'representative',
+        relationship: repRelationship,
         isRepresentative: true
       });
     }

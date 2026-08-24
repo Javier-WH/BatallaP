@@ -52,7 +52,10 @@ const ESCOLARIDAD_OPTIONS = [
 const REPRESENTATIVE_TYPE_OPTIONS = [
   { label: 'Madre', value: 'mother' },
   { label: 'Padre', value: 'father' },
-  { label: 'Otro representante', value: 'other' }
+  { label: 'Hermano/a', value: 'sibling' },
+  { label: 'Abuelo/a', value: 'grandparent' },
+  { label: 'Tío/a', value: 'uncle_aunt' },
+  { label: 'Otra persona', value: 'other' }
 ];
 
 const GUARDIAN_DOC_OPTIONS = [
@@ -215,15 +218,17 @@ const BulkRetryModal: React.FC<BulkRetryModalProps> = ({
   const buildFinalPayload = (values: Record<string, unknown>): Record<string, unknown> => {
     const repType = (values.representativeType as string) || 'other';
     const repData = values.representative;
+    // Sync whatsapp → phone so the backend's required `phone` field is satisfied.
+    const syncedRep = repData ? { ...repData, phone: (repData as any).whatsapp || (repData as any).phone || '' } : null;
     const finalPayload: Record<string, unknown> = {
       ...values,
       birthdate: values.birthdate ? (values.birthdate as dayjs.Dayjs).format('YYYY-MM-DD') : null,
       schoolPeriodId: values.schoolPeriodId || activePeriod?.id,
       // Route the single "representative" form group to the correct guardian
       // slot expected by the backend.
-      mother: repType === 'mother' ? repData : null,
-      father: repType === 'father' ? repData : null,
-      representative: repType === 'other' ? repData : null,
+      mother: repType === 'mother' ? syncedRep : null,
+      father: repType === 'father' ? syncedRep : null,
+      representative: repType === 'other' ? syncedRep : null,
     };
     return finalPayload;
   };
@@ -321,10 +326,17 @@ const BulkRetryModal: React.FC<BulkRetryModalProps> = ({
         </Row>
         <Row gutter={12}>
           <Col span={12}>
-            <Form.Item name={[prefix, 'phone']} label="Teléfono" {...fp(`${prefix}.phone`)}>
+            <Form.Item name={[prefix, 'whatsapp']} label="WhatsApp / Teléfono" {...fp(`${prefix}.whatsapp`)}>
               <Input />
             </Form.Item>
           </Col>
+          <Col span={12}>
+            <Form.Item name={[prefix, 'phone2']} label="Teléfono secundario" {...fp(`${prefix}.phone2`)}>
+              <Input placeholder="Opcional" />
+            </Form.Item>
+          </Col>
+        </Row>
+        <Row gutter={12}>
           <Col span={12}>
             <Form.Item name={[prefix, 'email']} label="Correo" {...fp(`${prefix}.email`)}>
               <Input />

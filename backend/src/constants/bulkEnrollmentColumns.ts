@@ -44,10 +44,8 @@ export const BULK_ENROLLMENT_COLUMNS: BulkEnrollmentColumn[] = [
   { key: 'address', header: 'Dirección de habitación' },
 
   // Contacto del estudiante
-  { key: 'phone1', header: 'Teléfono principal' },
-  { key: 'phone2', header: 'Teléfono secundario' },
+  { key: 'whatsapp', header: 'Teléfono / WhatsApp' },
   { key: 'email', header: 'Correo del estudiante' },
-  { key: 'whatsapp', header: 'Whatsapp' },
 
   // Información adicional
   { key: 'pathology', header: 'Patología' },
@@ -59,7 +57,7 @@ export const BULK_ENROLLMENT_COLUMNS: BulkEnrollmentColumn[] = [
   { key: 'grade', header: '* Grado (nombre)', required: true },
   { key: 'section', header: 'Sección (nombre)' },
   { key: 'escolaridad', header: '* Escolaridad (regular/repitiente/materia_pendiente)', required: true },
-  { key: 'representativeType', header: '* Quién representa (mother/father/other)', required: true, description: 'Valores permitidos: mother, father, other' }
+  { key: 'representativeType', header: '* Quién representa (mother/father/sibling/grandparent/uncle_aunt/other)', required: true, description: 'Valores permitidos: mother, father, sibling, grandparent, uncle_aunt, other' }
 ];
 
 guardianPrefixes.forEach((prefix) => {
