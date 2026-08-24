@@ -526,7 +526,7 @@ const EnrollStudent: React.FC = () => {
   return (
     <div style={{ maxWidth: 900, margin: '0 auto', paddingBottom: 40 }}>
       <Card title="Inscripción de Estudiantes">
-        <Tabs defaultActiveKey="new">
+        <Tabs defaultActiveKey="new" className="enrollment-tabs" tabBarGutter={8}>
 
           {/* TAB 1: NEW STUDENT (uses extracted component) */}
           <TabPane tab="Nuevo Ingreso (Registrar e Inscribir)" key="new">

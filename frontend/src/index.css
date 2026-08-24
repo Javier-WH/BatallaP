@@ -298,6 +298,52 @@ input[type=number] {
   border-bottom: none !important;
 }
 
+.enrollment-tabs .ant-tabs-nav {
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.enrollment-tabs .ant-tabs-nav-wrap {
+  overflow: visible !important;
+}
+
+.enrollment-tabs .ant-tabs-nav-list {
+  display: flex;
+  width: 100%;
+}
+
+.enrollment-tabs .ant-tabs-tab {
+  flex: 1 1 0;
+  justify-content: center;
+  min-width: 0;
+  margin-right: 0 !important;
+  padding: 8px 10px !important;
+}
+
+.enrollment-tabs .ant-tabs-tab-btn {
+  min-width: 0;
+  overflow: hidden;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.enrollment-tabs .ant-tabs-nav-more {
+  display: none !important;
+}
+
+@media (max-width: 640px) {
+  .enrollment-tabs .ant-tabs-nav-list {
+    width: max-content;
+    min-width: 100%;
+  }
+
+  .enrollment-tabs .ant-tabs-tab {
+    flex: 0 0 auto;
+    min-width: 130px;
+  }
+}
+
 /* Global Button Styling using Theme Variables (matched to Tabs logic) */
 /* Inactive/Default buttons use "Color Inactivo" for background and "Texto Base" for text */
 .ant-btn:not(.ant-btn-primary):not(.ant-btn-text):not(.ant-btn-link):not(.ant-btn-dangerous) {
