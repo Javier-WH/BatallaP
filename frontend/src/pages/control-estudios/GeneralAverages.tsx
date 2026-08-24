@@ -35,19 +35,37 @@ const lightenColor = (hex: string, amount: number): string => {
 
 const DEFAULT_GRADE_COLOR = '#1890ff';
 
-// Convert "Quinto Año" → "5to Año", "Primero Año" → "1ro Año", etc.
+// Convert "Quinto Año" → "5to Año", "Primer Año" → "1er Año", etc.
+// Keys are lowercase. Both apocopated ("primer", "tercer") and full
+// ("primero", "tercero") forms are supported.
 const ordinalToNumber: Record<string, string> = {
-  'primero': '1ro', 'segundo': '2do', 'tercero': '3ro',
-  'cuarto': '4to', 'quinto': '5to', 'sexto': '6to',
-  'séptimo': '7mo', 'octavo': '8vo', 'noveno': '9no',
-  'décimo': '10mo', 'undécimo': '11mo', 'duodécimo': '12mo',
-  'decimotercero': '13ro', 'decimocuarto': '14to', 'decimoquinto': '15to',
-  'decimosexto': '16to', 'decimoséptimo': '17mo', 'decimoctavo': '18vo',
-  'decimonoveno': '19no', 'vigésimo': '20mo',
+  'primero': '1ro', 'primer': '1er',
+  'segundo': '2do',
+  'tercero': '3ro', 'tercer': '3er',
+  'cuarto': '4to',
+  'quinto': '5to',
+  'sexto': '6to',
+  'séptimo': '7mo', 'septimo': '7mo',
+  'octavo': '8vo',
+  'noveno': '9no',
+  'décimo': '10mo', 'decimo': '10mo',
+  'undécimo': '11mo', 'undecimo': '11mo',
+  'duodécimo': '12mo', 'duodecimo': '12mo',
+  'decimotercero': '13ro',
+  'decimocuarto': '14to',
+  'decimoquinto': '15to',
+  'decimosexto': '16to',
+  'decimoséptimo': '17mo', 'decimoseptimo': '17mo',
+  'decimoctavo': '18vo',
+  'decimonoveno': '19no',
+  'vigésimo': '20mo', 'vigesimo': '20mo',
 };
 const shortGradeName = (name: string): string => {
   const lower = name.toLowerCase().trim();
-  for (const [word, num] of Object.entries(ordinalToNumber)) {
+  // Sort entries by key length descending so "primero" matches before "primer"
+  // when the input is "Primero Año".
+  const entries = Object.entries(ordinalToNumber).sort((a, b) => b[0].length - a[0].length);
+  for (const [word, num] of entries) {
     if (lower.startsWith(word)) {
       return num + name.slice(word.length);
     }
