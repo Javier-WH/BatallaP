@@ -44,7 +44,6 @@ export const BULK_ENROLLMENT_COLUMNS: BulkEnrollmentColumn[] = [
   { key: 'address', header: 'Dirección de habitación' },
 
   // Contacto del estudiante
-  { key: 'whatsapp', header: 'Teléfono / WhatsApp' },
   { key: 'email', header: 'Correo del estudiante' },
 
   // Información adicional

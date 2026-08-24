@@ -317,16 +317,26 @@ export const registerAndEnrollStudent = async (
       throw new Error('Debe registrar un representante si la madre o el padre no lo son.');
     }
 
-    if (phone1 || email || address || whatsapp || phone2) {
+    // Inherit phone from the representative if not explicitly provided.
+    const repForContact = representativeData || (motherIsRepresentative ? motherData : null) || (fatherIsRepresentative ? fatherData : null);
+    const inheritedPhone = repForContact?.phone || '';
+    const inheritedWhatsapp = repForContact?.whatsapp || repForContact?.phone || '';
+    const inheritedPhone2 = repForContact?.phone2 || '';
+
+    const finalPhone1 = phone1 || inheritedPhone;
+    const finalWhatsapp = whatsapp || inheritedWhatsapp;
+    const finalPhone2 = phone2 || inheritedPhone2;
+
+    if (finalPhone1 || email || address || finalWhatsapp || finalPhone2) {
       const contactPayload: ContactCreationAttributes = {
-        phone1: phone1 || '',
+        phone1: finalPhone1 || '',
         address: address || '',
         personId: person.id
       } as ContactCreationAttributes;
 
-      if (phone2) contactPayload.phone2 = phone2;
+      if (finalPhone2) contactPayload.phone2 = finalPhone2;
       if (email) contactPayload.email = email;
-      if (whatsapp) contactPayload.whatsapp = whatsapp;
+      if (finalWhatsapp) contactPayload.whatsapp = finalWhatsapp;
 
       await Contact.create(contactPayload, { transaction: t });
     }

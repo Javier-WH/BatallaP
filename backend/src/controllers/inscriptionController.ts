@@ -390,9 +390,18 @@ export const enrollMatriculatedStudent = async (req: Request, res: Response) => 
     person.birthdate = birthdate;
     await person.save({ transaction: t });
 
+    // Inherit phone from the representative if not explicitly provided.
+    const repSource = representative || (representativeType === 'mother' ? mother : representativeType === 'father' ? father : null);
+    const inheritedPhone = (repSource as any)?.phone || '';
+    const inheritedWhatsapp = (repSource as any)?.whatsapp || (repSource as any)?.phone || '';
+    const inheritedPhone2 = (repSource as any)?.phone2 || '';
+
     // Contact
-    if (phone1 || phone2 || email || address || whatsapp) {
-      const contactPayload = { phone1, phone2, email, address, whatsapp, personId: person.id };
+    const finalPhone1 = phone1 || inheritedPhone;
+    const finalWhatsapp = whatsapp || inheritedWhatsapp;
+    const finalPhone2 = phone2 || inheritedPhone2;
+    if (finalPhone1 || finalPhone2 || email || address || finalWhatsapp) {
+      const contactPayload = { phone1: finalPhone1, phone2: finalPhone2, email, address, whatsapp: finalWhatsapp, personId: person.id };
       const existingContact = await Contact.findOne({ where: { personId: person.id }, transaction: t, lock: t.LOCK.UPDATE });
       if (existingContact) {
         await existingContact.update(contactPayload, { transaction: t });
