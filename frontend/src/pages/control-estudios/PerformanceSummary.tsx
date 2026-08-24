@@ -480,7 +480,10 @@ const PerformanceSummary: React.FC = () => {
     setExporting(true);
     try {
       // One file per (grade, section) course.
-      for (const combo of validCombinations) {
+      // A small delay between downloads avoids the browser blocking
+      // consecutive programmatic clicks as "multiple downloads".
+      for (let i = 0; i < validCombinations.length; i++) {
+        const combo = validCombinations[i];
         const response = await api.get('/performance-summary/export', {
           params: {
             schoolPeriodId: selectedPeriodId,
@@ -501,6 +504,9 @@ const PerformanceSummary: React.FC = () => {
         link.click();
         link.remove();
         window.URL.revokeObjectURL(url);
+        if (i < validCombinations.length - 1) {
+          await new Promise(r => setTimeout(r, 300));
+        }
       }
       const n = validCombinations.length;
       message.success(`${n} ${n === 1 ? 'planilla exportada' : 'planillas exportadas'} correctamente`);
