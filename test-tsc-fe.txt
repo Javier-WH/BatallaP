@@ -1,0 +1,92 @@
+﻿src/components/EditStudentModal.tsx(382,28): error TS2322: Type '"left"' is not assignable to type 'Orientation | undefined'.
+src/components/EditStudentModal.tsx(428,28): error TS2322: Type '"left"' is not assignable to type 'Orientation | undefined'.
+src/components/EditStudentModal.tsx(430,28): error TS2322: Type '"left"' is not assignable to type 'Orientation | undefined'.
+src/components/EditStudentModal.tsx(434,32): error TS2322: Type '"left"' is not assignable to type 'Orientation | undefined'.
+src/components/pdf/BoletinHTML.ts(162,39): error TS6133: 't' is declared but its value is never read.
+src/components/shared/StudentAcademicRecord.tsx(18,10): error TS6133: 'formatGrade' is declared but its value is never read.
+src/components/shared/StudentAcademicRecord.tsx(79,9): error TS6133: 'enableRounding' is declared but its value is never read.
+src/pages/control-estudios/Dashboard.tsx(398,41): error TS6133: 'i' is declared but its value is never read.
+src/pages/control-estudios/Dashboard.tsx(652,9): error TS6133: 'navigate' is declared but its value is never read.
+src/pages/control-estudios/ExternalGrades.tsx(4,41): error TS6133: 'Tooltip' is declared but its value is never read.
+src/pages/control-estudios/ExternalGrades.tsx(4,62): error TS6133: 'Row' is declared but its value is never read.
+src/pages/control-estudios/ExternalGrades.tsx(4,67): error TS6133: 'Col' is declared but its value is never read.
+src/pages/control-estudios/ExternalGrades.tsx(8,33): error TS6133: 'EditOutlined' is declared but its value is never read.
+src/pages/control-estudios/ExternalGrades.tsx(8,61): error TS6133: 'SearchOutlined' is declared but its value is never read.
+src/pages/control-estudios/ExternalGrades.tsx(9,49): error TS6133: 'UploadOutlined' is declared but its value is never read.
+src/pages/control-estudios/ExternalGrades.tsx(94,26): error TS2552: Cannot find name 'listExternalGrades'. Did you mean 'ExternalGrades'?
+src/pages/control-estudios/ExternalGrades.tsx(292,10): error TS6133: 'bulkEntries' is declared but its value is never read.
+src/pages/control-estudios/ExternalGrades.tsx(292,23): error TS6133: 'setBulkEntries' is declared but its value is never read.
+src/pages/control-estudios/ExternalGrades.tsx(525,57): error TS2352: Conversion of type 'string' to type 'number' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+src/pages/control-estudios/ExternalGrades.tsx(529,18): error TS18047: 'selectedPersonId' is possibly 'null'.
+src/pages/control-estudios/FinalGradesEdit.tsx(17,10): error TS6133: 'formatGrade' is declared but its value is never read.
+src/pages/control-estudios/GeneralAverages.tsx(390,43): error TS2345: Argument of type 'null' is not assignable to parameter of type 'IDatasource | undefined'.
+src/pages/control-estudios/ManageGrades.tsx(8,1): error TS6133: 'formatGrade' is declared but its value is never read.
+src/pages/control-estudios/ManageGrades.tsx(187,9): error TS6133: 'enableRounding' is declared but its value is never read.
+src/pages/control-estudios/ManageGrades.tsx(369,13): error TS6133: 'resp' is declared but its value is never read.
+src/pages/control-estudios/MatriculationAgGrid.tsx(296,5): error TS2322: Type 'boolean | undefined' is not assignable to type 'boolean'.
+  Type 'undefined' is not assignable to type 'boolean'.
+src/pages/control-estudios/MatriculationAgGrid.tsx(607,11): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(props: AgGridReactProps<MatriculationRow>): AgGridReact<MatriculationRow>', gave the following error.
+    Type '{ ref: RefObject<AgGridReact<MatriculationRow> | null>; rowData: MatriculationRow[]; columnDefs: (ColDef<MatriculationRow, any> | ColGroupDef<...>)[]; ... 18 more ...; onBodyScroll: () => void; }' is not assignable to type 'IntrinsicAttributes & IntrinsicClassAttributes<AgGridReact<MatriculationRow>> & Readonly<AgGridReactProps<MatriculationRow>>'.
+      Property 'onCellMouseUp' does not exist on type 'IntrinsicAttributes & IntrinsicClassAttributes<AgGridReact<MatriculationRow>> & Readonly<AgGridReactProps<MatriculationRow>>'. Did you mean 'onCellMouseOut'?
+  Overload 2 of 2, '(props: AgGridReactProps<MatriculationRow>, context: any): AgGridReact<MatriculationRow>', gave the following error.
+    Type '{ ref: RefObject<AgGridReact<MatriculationRow> | null>; rowData: MatriculationRow[]; columnDefs: (ColDef<MatriculationRow, any> | ColGroupDef<...>)[]; ... 18 more ...; onBodyScroll: () => void; }' is not assignable to type 'IntrinsicAttributes & IntrinsicClassAttributes<AgGridReact<MatriculationRow>> & Readonly<AgGridReactProps<MatriculationRow>>'.
+      Property 'onCellMouseUp' does not exist on type 'IntrinsicAttributes & IntrinsicClassAttributes<AgGridReact<MatriculationRow>> & Readonly<AgGridReactProps<MatriculationRow>>'. Did you mean 'onCellMouseOut'?
+src/pages/control-estudios/matriculationColumns.tsx(30,11): error TS2339: Property 'onValueChange' does not exist on type 'ICellEditorParams<any, any, any>'.
+src/pages/control-estudios/matriculationColumns.tsx(72,15): error TS2339: Property 'onValueChange' does not exist on type 'ICellEditorParams<any, any, any>'.
+src/pages/control-estudios/matriculationColumns.tsx(72,36): error TS2339: Property 'onValueChange' does not exist on type 'ICellEditorParams<any, any, any>'.
+src/pages/control-estudios/matriculationColumns.tsx(922,50): error TS18048: 'p.data' is possibly 'undefined'.
+src/pages/control-estudios/matriculationColumns.tsx(959,63): error TS18048: 'p.data' is possibly 'undefined'.
+src/pages/control-estudios/matriculationColumns.tsx(960,58): error TS18048: 'p.data' is possibly 'undefined'.
+src/pages/control-estudios/matriculationColumns.tsx(997,63): error TS18048: 'p.data' is possibly 'undefined'.
+src/pages/control-estudios/MatriculationEnrollment.tsx(36,3): error TS6133: 'EyeInvisibleOutlined' is declared but its value is never read.
+src/pages/control-estudios/MatriculationEnrollment.tsx(1923,11): error TS2322: Type 'MatriculationRow[]' is not assignable to type 'import("D:/JavierWorkSpace/BatallaProject/frontend/src/pages/control-estudios/matriculationColumns").MatriculationRow[]'.
+  Type 'MatriculationRow' is not assignable to type 'import("D:/JavierWorkSpace/BatallaProject/frontend/src/pages/control-estudios/matriculationColumns").MatriculationRow'.
+    The types of 'student.guardians' are incompatible between these types.
+      Type 'StudentGuardian[]' is not assignable to type '{ relationship: string; isRepresentative?: boolean | undefined; profile?: GuardianProfile | undefined; }[]'.
+        Type 'StudentGuardian' is not assignable to type '{ relationship: string; isRepresentative?: boolean | undefined; profile?: GuardianProfile | undefined; }'.
+          Types of property 'isRepresentative' are incompatible.
+            Type 'string | number | boolean | undefined' is not assignable to type 'boolean | undefined'.
+              Type 'string' is not assignable to type 'boolean | undefined'.
+src/pages/control-estudios/PendingSubjectManagement.tsx(4,10): error TS6133: 'Tooltip' is declared but its value is never read.
+src/pages/control-estudios/PendingSubjectManagement.tsx(4,26): error TS6133: 'Checkbox' is declared but its value is never read.
+src/pages/control-estudios/PendingSubjectManagement.tsx(8,36): error TS6133: 'UserOutlined' is declared but its value is never read.
+src/pages/control-estudios/PendingSubjectManagement.tsx(8,50): error TS6133: 'DeleteOutlined' is declared but its value is never read.
+src/pages/control-estudios/PendingSubjectManagement.tsx(9,24): error TS6133: 'ExclamationCircleOutlined' is declared but its value is never read.
+src/pages/control-estudios/PendingSubjectManagement.tsx(10,17): error TS6133: 'EditOutlined' is declared but its value is never read.
+src/pages/control-estudios/PendingSubjectManagement.tsx(14,1): error TS6133: 'compareStudents' is declared but its value is never read.
+src/pages/control-estudios/PendingSubjectManagement.tsx(234,9): error TS6133: 'handleRemove' is declared but its value is never read.
+src/pages/control-estudios/PerformanceSummary.tsx(255,24): error TS6133: 'setStudentGroup' is declared but its value is never read.
+src/pages/control-estudios/PerformanceSummary.tsx(258,10): error TS6133: 'userOverrodeTemplate' is declared but its value is never read.
+src/pages/control-estudios/PerformanceSummary.tsx(707,55): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/pages/control-estudios/PerformanceSummary.tsx(903,44): error TS6133: 'idx' is declared but its value is never read.
+src/pages/control-estudios/RepairPeriodManagement.tsx(7,16): error TS6133: 'Text' is declared but its value is never read.
+src/pages/control-estudios/RepairPeriodManagement.tsx(140,9): error TS6133: 'statusColor' is declared but its value is never read.
+src/pages/control-estudios/TeacherProjection.tsx(2,86): error TS6133: 'Row' is declared but its value is never read.
+src/pages/control-estudios/TeacherProjection.tsx(2,91): error TS6133: 'Col' is declared but its value is never read.
+src/pages/control-estudios/TeacherProjection.tsx(13,11): error TS6196: 'PeriodGradeStructure' is declared but never used.
+src/pages/master/AcademicManagement.tsx(706,9): error TS6133: 'handleSectionColorChange' is declared but its value is never read.
+src/pages/master/AcademicManagement.tsx(1410,56): error TS2339: Property 'color' does not exist on type 'PeriodGradeStructureItem'.
+src/pages/master/AcademicManagement.tsx(1414,65): error TS2339: Property 'color' does not exist on type 'PeriodGradeStructureItem'.
+src/pages/master/AcademicManagement.tsx(1416,73): error TS2339: Property 'color' does not exist on type 'PeriodGradeStructureItem'.
+src/pages/master/AcademicManagement.tsx(1431,43): error TS2339: Property 'color' does not exist on type 'PeriodGradeStructureItem'.
+src/pages/master/AcademicManagement.tsx(1482,59): error TS2339: Property 'color' does not exist on type 'PeriodGradeStructureItem'.
+src/pages/master/SettingsManagement.tsx(381,17): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(props: UploadProps<any> & RefAttributes<UploadRef<any>>): ReactNode', gave the following error.
+    Type '{ children: Element; dragger: true; name: string; showUploadList: false; beforeUpload: (file: RcFile) => string | false; className: string; }' is not assignable to type 'IntrinsicAttributes & UploadProps<any> & RefAttributes<UploadRef<any>>'.
+      Property 'dragger' does not exist on type 'IntrinsicAttributes & UploadProps<any> & RefAttributes<UploadRef<any>>'.
+  Overload 2 of 2, '(props: UploadProps<any> & { children?: ReactNode; } & RefAttributes<any>): ReactElement<unknown, string | JSXElementConstructor<any>>', gave the following error.
+    Type '{ children: Element; dragger: true; name: string; showUploadList: false; beforeUpload: (file: RcFile) => string | false; className: string; }' is not assignable to type 'IntrinsicAttributes & UploadProps<any> & { children?: ReactNode; } & RefAttributes<any>'.
+      Property 'dragger' does not exist on type 'IntrinsicAttributes & UploadProps<any> & { children?: ReactNode; } & RefAttributes<any>'.
+src/pages/shared/DashboardEditor.tsx(9,10): error TS6133: 'UploadOutlined' is declared but its value is never read.
+src/pages/teacher/Observations.tsx(1,8): error TS6133: 'React' is declared but its value is never read.
+src/pages/teacher/Observations.tsx(42,10): error TS6133: 'terms' is declared but its value is never read.
+src/pages/teacher/PendingSubjectTeacherPanel.tsx(1,51): error TS6133: 'useMemo' is declared but its value is never read.
+src/pages/teacher/PendingSubjectTeacherPanel.tsx(9,33): error TS6133: 'CheckCircleOutlined' is declared but its value is never read.
+src/pages/teacher/PendingSubjectTeacherPanel.tsx(13,1): error TS6133: 'compareStudents' is declared but its value is never read.
+src/pages/teacher/TeacherPanel.tsx(10,10): error TS6133: 'sortNominaStudents' is declared but its value is never read.
+src/pages/teacher/TeacherPanel.tsx(13,1): error TS6133: 'formatGrade' is declared but its value is never read.
+src/pages/teacher/TeacherPanel.tsx(255,9): error TS6133: 'enableRounding' is declared but its value is never read.
+src/pages/teacher/TeacherPanel.tsx(1237,40): error TS6133: 'componentId' is declared but its value is never read.
+src/utils/gradeFormat.ts(13,63): error TS6133: 'enableRounding' is declared but its value is never read.
+src/utils/gradeFormat.ts(53,68): error TS6133: 'enableRounding' is declared but its value is never read.

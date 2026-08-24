@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { Op, Transaction } from 'sequelize';
+import { Op, Transaction, QueryTypes, literal, fn, col } from 'sequelize';
 import { Inscription, Person, Role, Subject, PeriodGrade, InscriptionSubject, SchoolPeriod, Grade, Section, Contact, PersonRole, PersonResidence, StudentGuardian, Matriculation, GuardianProfile, StudentPreviousSchool, Plantel, EnrollmentAnswer, EnrollmentQuestion, EnrollmentDocument, Term, SubjectTermGrade, InscriptionGroupTermChoice, SubjectGroup } from '../models';
 import { changeGroupSubjectFromTerm, setGroupSubjectForTerm as setGroupSubjectForTermSvc } from '@/services/groupSubjectChoiceService';
 import {
@@ -15,7 +15,8 @@ import { assignGuardians, GuardianAssignment } from '@/services/studentGuardianS
 import { EscolaridadStatus } from '@/types/enrollment';
 import { registerAndEnrollStudent } from '@/services/studentEnrollmentService';
 import { generateEnrollmentReport } from '@/services/enrollmentReportService';
-import { sortInscriptions } from '@/services/studentSortService';
+import { sortInscriptions, canonicalInscriptionOrder, numericDocumentSQL } from '@/services/studentSortService';
+import { parsePagination, buildPaginatedResponse } from '@/services/paginationService';
 
 const ESCOLARIDAD_VALUES: EscolaridadStatus[] = ['regular', 'repitiente', 'materia_pendiente'];
 
@@ -213,7 +214,7 @@ const mapToGuardianProfilePayload = (data: CompleteGuardianInput): GuardianProfi
 
 export const getMatriculations = async (req: Request, res: Response) => {
   try {
-    const { status, schoolPeriodId, gradeId, sectionId, q } = req.query;
+    const { status, schoolPeriodId, gradeId, sectionId, q, gender, escolaridad, hidden } = req.query;
 
     const where: any = {};
     if (status) where.status = status; // Solo filtrar si se especifica
@@ -221,12 +222,15 @@ export const getMatriculations = async (req: Request, res: Response) => {
     if (schoolPeriodId) where.schoolPeriodId = schoolPeriodId;
     if (gradeId) where.gradeId = gradeId;
     if (sectionId) where.sectionId = sectionId;
+    if (escolaridad) where.escolaridad = escolaridad;
 
     // Hide hidden students from non-admin roles
     const userRoles: string[] = (req.session as any).user?.roles || [];
     const isPrivileged = userRoles.includes('Master') || userRoles.includes('Administrador');
     if (!isPrivileged) {
       where.hiddenFromControlEstudios = false;
+    } else if (hidden !== undefined) {
+      where.hiddenFromControlEstudios = hidden === 'true' || hidden === '1';
     }
 
     const studentWhere: any = {};
@@ -240,38 +244,98 @@ export const getMatriculations = async (req: Request, res: Response) => {
       ];
       hasStudentFilter = true;
     }
+    if (gender) {
+      studentWhere.gender = gender;
+      hasStudentFilter = true;
+    }
 
-    const matriculations = await Matriculation.findAll({
+    // Pagination is opt-in: when page/pageSize are absent, behavior is identical
+    // to the legacy flow (return a flat array, no limit/offset).
+    const pagination = parsePagination(req.query as Record<string, unknown>);
+
+    // "IDs first, then hydrate" pattern (see getInscriptions for rationale).
+    // Note: the canonical order for Matriculation uses the same comparator as
+    // Inscription (documentType → document → lastName → firstName → grade → section),
+    // but the primary key is Matriculation.id, so we build the order inline.
+    const orderInclude: any[] = [
+      {
+        model: Person,
+        as: 'student',
+        where: hasStudentFilter ? studentWhere : undefined,
+        required: hasStudentFilter,
+        attributes: ['id', 'documentType', 'document', 'firstName', 'lastName'],
+      },
+      { model: Grade, as: 'grade', attributes: ['id', 'order', 'name'] },
+      { model: Section, as: 'section', attributes: ['id', 'name'] },
+    ];
+
+    const canonicalOrder: any[] = [
+      [literal(`FIELD(\`student\`.\`documentType\`, 'Venezolano', 'Cedula Escolar', 'Pasaporte', 'Extranjero')`), 'ASC'],
+      [literal(numericDocumentSQL('`student`.`document`')), 'ASC'],
+      [literal('LOWER(`student`.`lastName`)'), 'ASC'],
+      [literal('LOWER(`student`.`firstName`)'), 'ASC'],
+      [literal('COALESCE(`grade`.`order`, 9999)'), 'ASC'],
+      [literal('LOWER(`grade`.`name`)'), 'ASC'],
+      [literal('LOWER(`section`.`name`)'), 'ASC'],
+      ['id', 'ASC'],
+    ];
+
+    const idRows = await Matriculation.findAll({
       where,
-      include: [
-        {
-          model: Person,
-          as: 'student',
-          where: hasStudentFilter ? studentWhere : undefined,
-          required: hasStudentFilter,
-          include: [
-            { model: Contact, as: 'contact' },
-            { model: PersonResidence, as: 'residence' },
-            {
-              model: StudentGuardian,
-              as: 'guardians',
-              include: [{ model: GuardianProfile, as: 'profile' }]
-            },
-            { model: StudentPreviousSchool, as: 'previousSchools' },
-            {
-              model: EnrollmentAnswer,
-              as: 'enrollmentAnswers',
-              include: [{ model: EnrollmentQuestion, as: 'question' }]
-            }
-          ]
-        },
-        { model: SchoolPeriod, as: 'period' },
-        { model: Grade, as: 'grade' },
-        { model: Section, as: 'section' },
-        { model: EnrollmentDocument, as: 'documents' }
-      ],
-      order: [['createdAt', 'DESC']]
+      include: orderInclude,
+      attributes: ['id'],
+      order: canonicalOrder,
+      limit: pagination.isPaginated ? pagination.limit : undefined,
+      offset: pagination.isPaginated ? pagination.offset : undefined,
+      subQuery: false,
+      raw: true,
     });
+    const ids = idRows.map((r: any) => r.id);
+
+    let total = ids.length;
+    if (pagination.isPaginated) {
+      total = await Matriculation.count({
+        where,
+        include: orderInclude,
+        distinct: true,
+        col: 'id',
+      }) as unknown as number;
+    }
+
+    let matriculations: Matriculation[];
+    if (ids.length > 0) {
+      matriculations = await Matriculation.findAll({
+        where: { id: { [Op.in]: ids } },
+        include: [
+          {
+            model: Person,
+            as: 'student',
+            include: [
+              { model: Contact, as: 'contact' },
+              { model: PersonResidence, as: 'residence' },
+              {
+                model: StudentGuardian,
+                as: 'guardians',
+                include: [{ model: GuardianProfile, as: 'profile' }]
+              },
+              { model: StudentPreviousSchool, as: 'previousSchools' },
+              {
+                model: EnrollmentAnswer,
+                as: 'enrollmentAnswers',
+                include: [{ model: EnrollmentQuestion, as: 'question' }]
+              }
+            ]
+          },
+          { model: SchoolPeriod, as: 'period' },
+          { model: Grade, as: 'grade' },
+          { model: Section, as: 'section' },
+          { model: EnrollmentDocument, as: 'documents' }
+        ],
+        order: [literal(`FIELD(\`Matriculation\`.\`id\`, ${ids.join(',')})`)],
+      });
+    } else {
+      matriculations = [];
+    }
 
     const result = matriculations.map(matriculation => {
       const json = matriculation.toJSON() as any;
@@ -281,10 +345,14 @@ export const getMatriculations = async (req: Request, res: Response) => {
       return json;
     });
 
-    // Sort students canonically: document type → document number → lastName → firstName → grade → section
-    sortInscriptions(result);
+    // When paginated, order is already canonical from step 1.
+    // When unpaginated, preserve the exact legacy behavior (JS sort) so
+    // existing consumers see no difference.
+    if (!pagination.isPaginated) {
+      sortInscriptions(result);
+    }
 
-    res.json(result);
+    res.json(buildPaginatedResponse(result, total, pagination));
   } catch (error) {
     console.error('Error fetching matriculations:', error);
     res.status(500).json({ error: 'Error obteniendo matriculados' });
@@ -625,7 +693,7 @@ export const enrollMatriculatedStudent = async (req: Request, res: Response) => 
 
 export const getInscriptions = async (req: Request, res: Response) => {
   try {
-    const { schoolPeriodId, gradeId, sectionId, q, gender, escolaridad } = req.query;
+    const { schoolPeriodId, gradeId, sectionId, q, gender, escolaridad, hidden } = req.query;
     const where: any = {};
     // NO filtrar por schoolPeriodId por defecto - mostrar todos los períodos
     if (schoolPeriodId) where.schoolPeriodId = schoolPeriodId;
@@ -636,6 +704,21 @@ export const getInscriptions = async (req: Request, res: Response) => {
     // Hide hidden students from non-admin roles
     const userRoles: string[] = (req.session as any).user?.roles || [];
     const isPrivileged = userRoles.includes('Master') || userRoles.includes('Administrador');
+
+    // Move the hidden-student filter into the SQL WHERE (was a post-query JS filter).
+    // For non-privileged users, always exclude hidden. For privileged users, allow
+    // explicit filtering via the `hidden` query param (used by MatriculationEnrollment's
+    // "inscrito/no_inscrito" filter).
+    if (!isPrivileged) {
+      where[Op.and] = [
+        literal('`matriculation`.`hiddenFromControlEstudios` = false'),
+      ];
+    } else if (hidden !== undefined) {
+      const hiddenBool = hidden === 'true' || hidden === '1';
+      where[Op.and] = [
+        literal(`\`matriculation\`.\`hiddenFromControlEstudios\` = ${hiddenBool ? 'true' : 'false'}`),
+      ];
+    }
 
     const personWhere: any = {};
     let hasPersonFilter = false;
@@ -655,37 +738,91 @@ export const getInscriptions = async (req: Request, res: Response) => {
       hasPersonFilter = true;
     }
 
-    const inscriptions = await Inscription.findAll({
+    // Pagination is opt-in: when page/pageSize are absent, behavior is identical
+    // to the legacy flow (return a flat array, no limit/offset).
+    const pagination = parsePagination(req.query as Record<string, unknown>);
+
+    // The "IDs first, then hydrate" pattern avoids the Sequelize pitfall where
+    // `limit` + hasMany includes produce duplicated/truncated rows.
+    //
+    // Step 1: find the ordered IDs (and total count) with a lightweight query
+    //         that only includes the filters needed for WHERE and ORDER.
+    // Step 2: hydrate those IDs with the full include tree (no limit).
+    const orderInclude: any[] = [
+      {
+        model: Person,
+        as: 'student',
+        where: hasPersonFilter ? personWhere : undefined,
+        required: hasPersonFilter,
+        attributes: ['id', 'documentType', 'document', 'firstName', 'lastName'],
+      },
+      { model: Grade, as: 'grade', attributes: ['id', 'order', 'name'] },
+      { model: Section, as: 'section', attributes: ['id', 'name'] },
+      { model: Matriculation, as: 'matriculation', attributes: ['id', 'hiddenFromControlEstudios'] },
+    ];
+
+    const idRows = await Inscription.findAll({
       where,
-      include: [
-        {
-          model: Person,
-          as: 'student',
-          where: hasPersonFilter ? personWhere : undefined,
-          required: hasPersonFilter, // Force INNER JOIN if filtering by person
-          include: [
-            { model: Contact, as: 'contact' },
-            { model: PersonResidence, as: 'residence' },
-            {
-              model: StudentGuardian,
-              as: 'guardians',
-              include: [{ model: GuardianProfile, as: 'profile' }]
-            },
-            {
-              model: EnrollmentAnswer,
-              as: 'enrollmentAnswers',
-              include: [{ model: EnrollmentQuestion, as: 'question' }]
-            }
-          ]
-        },
-        { model: SchoolPeriod, as: 'period' },
-        { model: Grade, as: 'grade' },
-        { model: Section, as: 'section' },
-        { model: Subject, as: 'subjects', through: { attributes: [] } },
-        { model: Matriculation, as: 'matriculation', include: [{ model: EnrollmentDocument, as: 'documents' }] }
-      ],
-      order: [['createdAt', 'DESC']]
+      include: orderInclude,
+      attributes: ['id'],
+      order: canonicalInscriptionOrder(),
+      limit: pagination.isPaginated ? pagination.limit : undefined,
+      offset: pagination.isPaginated ? pagination.offset : undefined,
+      subQuery: false,
+      raw: true,
     });
+    const ids = idRows.map((r: any) => r.id);
+
+    // Total count for the paginated envelope. Computed with a separate count
+    // query that mirrors the WHERE/includes used above (without order/limit).
+    let total = ids.length;
+    if (pagination.isPaginated) {
+      total = await Inscription.count({
+        where,
+        include: orderInclude,
+        distinct: true,
+        col: 'id',
+      }) as unknown as number;
+    }
+
+    // Step 2: hydrate the IDs with the full include tree.
+    // When unpaginated, ids is the full set so behavior is identical to before.
+    let inscriptions: Inscription[];
+    if (ids.length > 0) {
+      inscriptions = await Inscription.findAll({
+        where: { id: { [Op.in]: ids } },
+        include: [
+          {
+            model: Person,
+            as: 'student',
+            include: [
+              { model: Contact, as: 'contact' },
+              { model: PersonResidence, as: 'residence' },
+              {
+                model: StudentGuardian,
+                as: 'guardians',
+                include: [{ model: GuardianProfile, as: 'profile' }]
+              },
+              {
+                model: EnrollmentAnswer,
+                as: 'enrollmentAnswers',
+                include: [{ model: EnrollmentQuestion, as: 'question' }]
+              }
+            ]
+          },
+          { model: SchoolPeriod, as: 'period' },
+          { model: Grade, as: 'grade' },
+          { model: Section, as: 'section' },
+          { model: Subject, as: 'subjects', through: { attributes: [] } },
+          { model: Matriculation, as: 'matriculation', include: [{ model: EnrollmentDocument, as: 'documents' }] }
+        ],
+        // Preserve the canonical order from step 1 (Inscription.findAll with
+        // where id IN (...) would otherwise return rows in PK order).
+        order: [literal(`FIELD(\`Inscription\`.\`id\`, ${ids.join(',')})`)],
+      });
+    } else {
+      inscriptions = [];
+    }
 
     // Apply canonical subject order per inscription
     const orderMapCache = new Map<string, Map<number, number>>();
@@ -716,18 +853,167 @@ export const getInscriptions = async (req: Request, res: Response) => {
       })
     );
 
-    // Filter out hidden students for non-privileged roles
-    const filtered = isPrivileged
-      ? result
-      : result.filter((ins: any) => !ins.matriculation?.hiddenFromControlEstudios);
+    // When paginated, the hidden filter is already in SQL and the order is
+    // already canonical from step 1, so we skip the in-memory sort/filter.
+    // When unpaginated, preserve the exact legacy behavior (JS sort + JS filter
+    // for non-privileged) so existing consumers see no difference.
+    let finalResult = result;
+    if (!pagination.isPaginated) {
+      const filtered = isPrivileged
+        ? result
+        : result.filter((ins: any) => !ins.matriculation?.hiddenFromControlEstudios);
+      sortInscriptions(filtered);
+      finalResult = filtered;
+    }
 
-    // Sort students canonically: document type → document number → lastName → firstName → grade → section
-    sortInscriptions(filtered);
-
-    res.json(filtered);
+    res.json(buildPaginatedResponse(finalResult, total, pagination));
   } catch (error) {
     console.error('Error en getInscriptions:', error);
     res.status(500).json({ error: 'Error obteniendo inscripciones' });
+  }
+};
+
+/**
+ * GET /api/inscriptions/stats
+ *
+ * Returns aggregate counts for the same filter set accepted by
+ * getInscriptions, so the frontend can show "N registros" and coverage
+ * badges WITHOUT downloading the full row set.
+ *
+ * Response: { total, byGrade?: { gradeId, gradeName, count }[] }
+ */
+export const getInscriptionsStats = async (req: Request, res: Response) => {
+  try {
+    const { schoolPeriodId, gradeId, sectionId, q, gender, escolaridad, hidden } = req.query;
+    const where: any = {};
+    if (schoolPeriodId) where.schoolPeriodId = schoolPeriodId;
+    if (gradeId) where.gradeId = gradeId;
+    if (sectionId) where.sectionId = sectionId;
+    if (escolaridad) where.escolaridad = escolaridad;
+
+    const userRoles: string[] = (req.session as any).user?.roles || [];
+    const isPrivileged = userRoles.includes('Master') || userRoles.includes('Administrador');
+    if (!isPrivileged) {
+      where[Op.and] = [literal('`matriculation`.`hiddenFromControlEstudios` = false')];
+    } else if (hidden !== undefined) {
+      const hiddenBool = hidden === 'true' || hidden === '1';
+      where[Op.and] = [literal(`\`matriculation\`.\`hiddenFromControlEstudios\` = ${hiddenBool ? 'true' : 'false'}`)];
+    }
+
+    const personWhere: any = {};
+    let hasPersonFilter = false;
+    if (gender) {
+      personWhere.gender = gender;
+      hasPersonFilter = true;
+    }
+    if (q) {
+      personWhere[Op.or] = [
+        { firstName: { [Op.like]: `%${q}%` } },
+        { lastName: { [Op.like]: `%${q}%` } },
+        { document: { [Op.like]: `%${q}%` } }
+      ];
+      hasPersonFilter = true;
+    }
+
+    const include: any[] = [
+      {
+        model: Person,
+        as: 'student',
+        where: hasPersonFilter ? personWhere : undefined,
+        required: hasPersonFilter,
+        attributes: [],
+      },
+      { model: Matriculation, as: 'matriculation', attributes: [] },
+    ];
+
+    const total = await Inscription.count({
+      where,
+      include,
+      distinct: true,
+      col: 'id',
+    }) as unknown as number;
+
+    // Optional breakdown by grade (used by coverage badges).
+    let byGrade: { gradeId: number | null; gradeName: string | null; count: number }[] | undefined;
+    if (!gradeId) {
+      const rows = await Inscription.findAll({
+        where,
+        attributes: [
+          [fn('COALESCE', col('grade.id'), literal('NULL')), 'gradeId'],
+          [col('grade.name'), 'gradeName'],
+          [fn('COUNT', fn('DISTINCT', col('Inscription.id'))), 'count'],
+        ],
+        include: [...include, { model: Grade, as: 'grade', attributes: [] }],
+        group: ['grade.id', 'grade.name'],
+        raw: true,
+        subQuery: false,
+      }) as unknown as { gradeId: number | null; gradeName: string | null; count: string }[];
+      byGrade = rows.map(r => ({ gradeId: r.gradeId, gradeName: r.gradeName, count: Number(r.count) }));
+    }
+
+    return res.json({ total, ...(byGrade ? { byGrade } : {}) });
+  } catch (error) {
+    console.error('[getInscriptionsStats] Error:', error);
+    return res.status(500).json({ error: 'Error obteniendo estadísticas de inscripciones' });
+  }
+};
+
+/**
+ * GET /api/matriculations/stats
+ *
+ * Same as above for matriculations.
+ */
+export const getMatriculationsStats = async (req: Request, res: Response) => {
+  try {
+    const { status, schoolPeriodId, gradeId, sectionId, q, gender, escolaridad, hidden } = req.query;
+    const where: any = {};
+    if (status) where.status = status;
+    if (schoolPeriodId) where.schoolPeriodId = schoolPeriodId;
+    if (gradeId) where.gradeId = gradeId;
+    if (sectionId) where.sectionId = sectionId;
+    if (escolaridad) where.escolaridad = escolaridad;
+
+    const userRoles: string[] = (req.session as any).user?.roles || [];
+    const isPrivileged = userRoles.includes('Master') || userRoles.includes('Administrador');
+    if (!isPrivileged) {
+      where.hiddenFromControlEstudios = false;
+    } else if (hidden !== undefined) {
+      where.hiddenFromControlEstudios = hidden === 'true' || hidden === '1';
+    }
+
+    const studentWhere: any = {};
+    let hasStudentFilter = false;
+    if (q) {
+      const like = `%${q}%`;
+      studentWhere[Op.or] = [
+        { firstName: { [Op.like]: like } },
+        { lastName: { [Op.like]: like } },
+        { document: { [Op.like]: like } }
+      ];
+      hasStudentFilter = true;
+    }
+    if (gender) {
+      studentWhere.gender = gender;
+      hasStudentFilter = true;
+    }
+
+    const total = await Matriculation.count({
+      where,
+      include: [{
+        model: Person,
+        as: 'student',
+        where: hasStudentFilter ? studentWhere : undefined,
+        required: hasStudentFilter,
+        attributes: [],
+      }],
+      distinct: true,
+      col: 'id',
+    }) as unknown as number;
+
+    return res.json({ total });
+  } catch (error) {
+    console.error('[getMatriculationsStats] Error:', error);
+    return res.status(500).json({ error: 'Error obteniendo estadísticas de matriculaciones' });
   }
 };
 

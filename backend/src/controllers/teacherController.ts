@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { Person, Role, TeacherAssignment, PeriodGradeSubject, Subject, Grade, Section, PeriodGrade, SchoolPeriod } from '@/models/index';
-import { Op } from 'sequelize';
+import { Op, literal } from 'sequelize';
+import { parsePagination, buildPaginatedResponse } from '@/services/paginationService';
 
 // Extender la interfaz de TeacherAssignment para TypeScript
 interface TeacherAssignmentWithRelations extends TeacherAssignment {
@@ -18,43 +19,76 @@ export const getTeachers = async (req: Request, res: Response) => {
       if (activePeriod) targetPeriodId = activePeriod.id;
     }
 
-    const teachers = await Person.findAll({
-      include: [
-        {
-          model: Role,
-          as: 'roles',
-          where: { name: 'Profesor' },
-          through: { attributes: [] }
-        },
-        {
-          model: TeacherAssignment,
-          as: 'teachingAssignments',
-          required: false, // Important: keep all teachers in the list
-          include: [
-            {
-              model: PeriodGradeSubject,
-              as: 'periodGradeSubject',
-              required: targetPeriodId ? true : false,
-              include: [
-                { model: Subject, as: 'subject' },
-                {
-                  model: PeriodGrade,
-                  as: 'periodGrade',
-                  required: targetPeriodId ? true : false,
-                  where: targetPeriodId ? { schoolPeriodId: targetPeriodId } : {},
-                  include: [
-                    { model: Grade, as: 'grade' },
-                    { model: SchoolPeriod, as: 'schoolPeriod' }
-                  ]
-                }
-              ]
-            },
-            { model: Section, as: 'section' }
-          ]
-        }
-      ]
+    const pagination = parsePagination(req.query as Record<string, unknown>);
+
+    const baseInclude: any[] = [
+      {
+        model: Role,
+        as: 'roles',
+        where: { name: 'Profesor' },
+        through: { attributes: [] }
+      },
+      {
+        model: TeacherAssignment,
+        as: 'teachingAssignments',
+        required: false,
+        include: [
+          {
+            model: PeriodGradeSubject,
+            as: 'periodGradeSubject',
+            required: targetPeriodId ? true : false,
+            include: [
+              { model: Subject, as: 'subject' },
+              {
+                model: PeriodGrade,
+                as: 'periodGrade',
+                required: targetPeriodId ? true : false,
+                where: targetPeriodId ? { schoolPeriodId: targetPeriodId } : {},
+                include: [
+                  { model: Grade, as: 'grade' },
+                  { model: SchoolPeriod, as: 'schoolPeriod' }
+                ]
+              }
+            ]
+          },
+          { model: Section, as: 'section' }
+        ]
+      }
+    ];
+
+    if (!pagination.isPaginated) {
+      const teachers = await Person.findAll({ include: baseInclude });
+      return res.json(teachers);
+    }
+
+    // Paginated: IDs first, then hydrate.
+    const idRows = await Person.findAll({
+      include: baseInclude,
+      attributes: ['id'],
+      order: [['id', 'ASC']],
+      limit: pagination.limit,
+      offset: pagination.offset,
+      subQuery: false,
+      raw: true,
     });
-    res.json(teachers);
+    const ids = idRows.map((r: any) => r.id);
+
+    const total = await Person.count({
+      include: baseInclude,
+      distinct: true,
+      col: 'id',
+    }) as unknown as number;
+
+    let teachers: Person[] = [];
+    if (ids.length > 0) {
+      teachers = await Person.findAll({
+        where: { id: { [Op.in]: ids } },
+        include: baseInclude,
+        order: [literal(`FIELD(\`Person\`.\`id\`, ${ids.join(',')})`)],
+      });
+    }
+
+    return res.json(buildPaginatedResponse(teachers, total, pagination));
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Error fetching teachers' });

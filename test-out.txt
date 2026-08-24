@@ -1,0 +1,47 @@
+﻿  console.log
+    [dotenv@17.2.3] injecting env (7) from .env.test -- tip: ΓÜÖ∩╕Å  write to custom object with { processEnv: myObject }
+
+      at _log (node_modules/dotenv/lib/main.js:142:11)
+
+  console.log
+    [dotenv@17.2.3] injecting env (1) from .env -- tip: ΓÜÖ∩╕Å  specify custom .env file path with { path: '/custom/path/.env' }
+
+      at _log (node_modules/dotenv/lib/main.js:142:11)
+
+  console.log
+    Test database connected
+
+      at src/__tests__/setup.ts:9:13
+
+  console.log
+    Test database connection closed
+
+      at src/__tests__/setup.ts:19:13
+
+node.exe : PASS src/__tests__/studentSortEquivalence.test.ts
+At line:1 char:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Users\Axioma\AppData\Roaming ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (PASS src/__test...valence.test.ts:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+  canonicalInscriptionOrder SQL Γåö JS equivalence
+    canonicalInscriptionOrder()
+      ΓêÜ returns 8 order items mirroring compareInscriptions + id tiebreaker (4 ms)
+    compareInscriptions edge cases (mirror SQL behavior)
+      ΓêÜ orders Venezolano before Cedula Escolar before Pasaporte before Extranjero (2 ms)
+      ΓêÜ treats unknown / null documentType as lowest priority (sorts last) (2 ms)
+      ΓêÜ compares documents by their numeric part, not lexicographically (1 ms)
+      ΓêÜ treats empty / non-numeric document as 0 (sorts first among equal types) (1 ms)
+      ΓêÜ falls back to lastName then firstName when type+document tie (1 ms)
+      ΓêÜ uses grade.order then grade.name as 5th criterion (1 ms)
+      ΓêÜ uses section.name as 6th criterion (1 ms)
+      ΓêÜ is case-insensitive on lastName and firstName (1 ms)
+    compareStudents (Person-level, no grade/section)
+      ΓêÜ matches compareInscriptions when grade/section are absent (1 ms)
+
+Test Suites: 1 passed, 1 total
+Tests:       10 passed, 10 total
+Snapshots:   0 total
+Time:        2.345 s, estimated 3 s
+Ran all test suites matching src/__tests__/studentSortEquivalence.test.ts.

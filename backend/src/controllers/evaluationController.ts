@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
-import { Op } from 'sequelize';
+import { Op, literal } from 'sequelize';
 import sequelize from '@/config/database';
+import { parsePagination, buildPaginatedResponse } from '@/services/paginationService';
 import ExcelJS from 'exceljs';
 import fs from 'fs';
 import path from 'path';
@@ -2523,43 +2524,76 @@ export const getAllAssignments = async (req: Request, res: Response) => {
     const user = (req.session as any).user;
     if (!user) return res.status(401).json({ message: 'No autorizado' });
 
-    const assignments = await TeacherAssignment.findAll({
-      include: [
-        {
-          model: PeriodGradeSubject,
-          as: 'periodGradeSubject',
-          required: true,
-          include: [
-            { model: Subject, as: 'subject' },
-            {
-              model: PeriodGrade,
-              as: 'periodGrade',
-              required: true,
-              include: [
-                { model: Grade, as: 'grade' },
-                {
-                  model: SchoolPeriod,
-                  as: 'schoolPeriod',
-                  required: true,
-                  where: { status: 'activo' }
-                }
-              ]
-            }
-          ]
-        },
-        { model: Section, as: 'section' },
-        { model: Person, as: 'teacher' }
-      ],
-      order: [
-        [{ model: PeriodGradeSubject, as: 'periodGradeSubject' },
-         { model: PeriodGrade, as: 'periodGrade' },
-         { model: Grade, as: 'grade' }, 'id', 'ASC'],
-        [{ model: Section, as: 'section' }, 'name', 'ASC'],
-        [{ model: PeriodGradeSubject, as: 'periodGradeSubject' }, 'order', 'ASC']
-      ]
-    });
+    const pagination = parsePagination(req.query as Record<string, unknown>);
 
-    res.json(assignments);
+    const baseInclude: any[] = [
+      {
+        model: PeriodGradeSubject,
+        as: 'periodGradeSubject',
+        required: true,
+        include: [
+          { model: Subject, as: 'subject' },
+          {
+            model: PeriodGrade,
+            as: 'periodGrade',
+            required: true,
+            include: [
+              { model: Grade, as: 'grade' },
+              {
+                model: SchoolPeriod,
+                as: 'schoolPeriod',
+                required: true,
+                where: { status: 'activo' }
+              }
+            ]
+          }
+        ]
+      },
+      { model: Section, as: 'section' },
+      { model: Person, as: 'teacher' }
+    ];
+
+    const order: any[] = [
+      [{ model: PeriodGradeSubject, as: 'periodGradeSubject' },
+       { model: PeriodGrade, as: 'periodGrade' },
+       { model: Grade, as: 'grade' }, 'id', 'ASC'],
+      [{ model: Section, as: 'section' }, 'name', 'ASC'],
+      [{ model: PeriodGradeSubject, as: 'periodGradeSubject' }, 'order', 'ASC']
+    ];
+
+    if (!pagination.isPaginated) {
+      const assignments = await TeacherAssignment.findAll({ include: baseInclude, order });
+      return res.json(assignments);
+    }
+
+    // Paginated: IDs first, then hydrate.
+    const idRows = await TeacherAssignment.findAll({
+      include: baseInclude,
+      attributes: ['id'],
+      order,
+      limit: pagination.limit,
+      offset: pagination.offset,
+      subQuery: false,
+      raw: true,
+    });
+    const ids = idRows.map((r: any) => r.id);
+
+    const total = await TeacherAssignment.count({
+      include: baseInclude,
+      distinct: true,
+      col: 'id',
+    }) as unknown as number;
+
+    let assignments: TeacherAssignment[] = [];
+    if (ids.length > 0) {
+      assignments = await TeacherAssignment.findAll({
+        where: { id: { [Op.in]: ids } },
+        include: baseInclude,
+        order: [literal(`FIELD(\`TeacherAssignment\`.\`id\`, ${ids.join(',')})`)],
+      });
+    }
+
+    return res.json(buildPaginatedResponse(assignments, total, pagination));
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Error al obtener asignaciones' });

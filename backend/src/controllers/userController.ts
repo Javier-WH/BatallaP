@@ -1,13 +1,20 @@
 import { Request, Response } from 'express';
 import { User, Person, Role, Contact, PersonRole, GuardianProfile, SchoolPeriod, Inscription, Matriculation, StudentGuardian } from '@/models/index';
 import sequelize from '@/config/database';
-import { Op } from 'sequelize';
+import { Op, literal } from 'sequelize';
 import bcrypt from 'bcrypt';
+import { parsePagination, buildPaginatedResponse } from '@/services/paginationService';
+
+// Canonical role name sets used by the activeOnly filter.
+const EXEMPT_ROLES = ['Master', 'Administrador', 'Control de Estudios', 'Profesor', 'Representante'];
+const STUDENT_ROLES = ['Alumno'];
 
 export const searchUsers = async (req: Request, res: Response) => {
   try {
     const { q, activeOnly, schoolPeriodId } = req.query;
     const query = q ? String(q) : '';
+    const activeOnlyBool = String(activeOnly) === 'true';
+    const pagination = parsePagination(req.query as Record<string, unknown>);
 
     const whereClause: any = {};
     if (query) {
@@ -19,113 +26,229 @@ export const searchUsers = async (req: Request, res: Response) => {
     }
 
     const activePeriod = await SchoolPeriod.findOne({ where: { status: 'activo' } });
-    console.log('[searchUsers] activePeriod:', activePeriod?.id, 'activeOnly:', activeOnly, 'schoolPeriodId:', schoolPeriodId);
-
-    // Determinar qué período usar para el filtro
     const targetPeriodId = schoolPeriodId ? Number(schoolPeriodId) : (activePeriod?.id);
 
-    const people = await Person.findAll({
-      where: whereClause,
-      include: [
-        {
-          model: User,
-          as: 'user',
-          attributes: ['id', 'username']
-        },
-        {
-          model: Role,
-          as: 'roles',
-          through: { attributes: [] }
-        },
-        {
-          model: Inscription,
-          as: 'inscriptions',
-          required: false,
-          where: targetPeriodId ? { schoolPeriodId: targetPeriodId } : undefined,
-          attributes: ['id', 'schoolPeriodId']
-        },
-        {
-          model: Matriculation,
-          as: 'matriculations',
-          required: false,
-          where: targetPeriodId ? { schoolPeriodId: targetPeriodId } : undefined,
-          attributes: ['id', 'schoolPeriodId']
-        }
-      ],
-      limit: 2000
-    });
+    // Build the role-based filter in SQL when activeOnly=true so that pagination
+    // is consistent (the old JS post-filter would break page counts).
+    //
+    // activeOnly logic:
+    //   - Exempt roles (Master/Admin/ControlEstudios/Profesor/Representante) → always shown.
+    //   - Non-student, non-exempt users → always shown.
+    //   - Students (Alumno) → only shown if they have an Inscription or Matriculation
+    //     in the target period (when a period is specified), or hidden entirely
+    //     when no period is specified.
+    //
+    // We express this as: (has exempt role) OR (NOT a student) OR (student AND has period enrollment)
+    // When no period: (has exempt role) OR (NOT a student)
+    const roleInclude: any = {
+      model: Role,
+      as: 'roles',
+      through: { attributes: [] },
+      attributes: ['id', 'name'],
+    };
 
-    let results = people;
+    const inscriptionInclude: any = {
+      model: Inscription,
+      as: 'inscriptions',
+      required: false,
+      where: targetPeriodId ? { schoolPeriodId: targetPeriodId } : undefined,
+      attributes: ['id', 'schoolPeriodId'],
+    };
 
-    if (String(activeOnly) === 'true') {
-      const exemptRoles = ['master', 'administrador', 'control de estudios', 'profesor', 'representante', 'admin'];
+    const matriculationInclude: any = {
+      model: Matriculation,
+      as: 'matriculations',
+      required: false,
+      where: targetPeriodId ? { schoolPeriodId: targetPeriodId } : undefined,
+      attributes: ['id', 'schoolPeriodId'],
+    };
 
-      if (!targetPeriodId) {
-        // If no specific period, hide students unless they have an exempt role
-        console.log('[searchUsers] No period specified. Filtering students...');
-        results = people.filter(person => {
-          const roles = (person as any).roles || [];
+    if (activeOnlyBool) {
+      // Sub-query: person has at least one exempt role.
+      const hasExemptRoleSub = `(SELECT COUNT(*) FROM person_roles pr_ex
+        INNER JOIN roles r_ex ON r_ex.id = pr_ex.roleId
+        WHERE pr_ex.personId = Person.id AND r_ex.name IN (${EXEMPT_ROLES.map(r => `'${r}'`).join(',')})) > 0`;
 
-          // If has any exempt role, KEEP
-          const hasExemptRole = roles.some((r: any) => exemptRoles.includes(r.name.toLowerCase()));
-          if (hasExemptRole) return true;
+      // Sub-query: person has at least one student role.
+      const hasStudentRoleSub = `(SELECT COUNT(*) FROM person_roles pr_st
+        INNER JOIN roles r_st ON r_st.id = pr_st.roleId
+        WHERE pr_st.personId = Person.id AND r_st.name IN (${STUDENT_ROLES.map(r => `'${r}'`).join(',')})) > 0`;
 
-          // If is student (and not exempt), HIDE (since no period specified)
-          const isStudent = roles.some((r: any) =>
-            ['student', 'estudiante', 'alumno'].includes(r.name.toLowerCase())
-          );
-          return !isStudent;
-        });
+      if (targetPeriodId) {
+        // (exempt) OR (NOT student) OR (student AND has inscription/matriculation in period)
+        // The "has inscription/matriculation in period" is handled by the includes
+        // with required: false + a HAVING-like condition. Since Sequelize doesn't
+        // support HAVING on findAll directly, we use a literal in WHERE that
+        // checks the existence via correlated subqueries.
+        const hasPeriodEnrollmentSub = `(
+          (SELECT COUNT(*) FROM inscriptions i_per
+            WHERE i_per.personId = Person.id AND i_per.schoolPeriodId = ${targetPeriodId}) > 0
+          OR
+          (SELECT COUNT(*) FROM matriculations m_per
+            WHERE m_per.personId = Person.id AND m_per.schoolPeriodId = ${targetPeriodId}) > 0
+        )`;
+
+        whereClause[Op.and] = [
+          literal(`(${hasExemptRoleSub} OR NOT ${hasStudentRoleSub} OR ${hasPeriodEnrollmentSub})`),
+        ];
       } else {
-        // If period exists
-        console.log('[searchUsers] Period specified. Filtering non-matriculated students...');
-        results = people.filter(person => {
-          const roles = (person as any).roles || [];
-
-          // 1. Exempt Roles: Always show Admin, Master, Teacher, Representative, etc.
-          const hasExemptRole = roles.some((r: any) => exemptRoles.includes(r.name.toLowerCase()));
-          if (hasExemptRole) return true;
-
-          // 2. Check if the user is a Student
-          const isStudent = roles.some((r: any) =>
-            ['student', 'estudiante', 'alumno'].includes(r.name.toLowerCase())
-          );
-
-          // 3. If NOT a student (and not exempt, e.g. just a basic user), Keep them.
-          if (!isStudent) return true;
-
-          // 4. If IS a Student (and NOT exempt), Check for Inscriptions or Matriculations in the specified period
-          const inscriptions = (person as any).inscriptions || [];
-          const matriculations = (person as any).matriculations || [];
-          const isMatriculated = inscriptions.length > 0 || matriculations.length > 0;
-
-          return isMatriculated;
-        });
+        // No period: (exempt) OR (NOT student)
+        whereClause[Op.and] = [
+          literal(`(${hasExemptRoleSub} OR NOT ${hasStudentRoleSub})`),
+        ];
+        // When no period, we don't need the inscription/matriculation includes
+        // for filtering, but we keep them for the response shape (they'll be empty).
       }
     }
 
-    console.log('[searchUsers] Count before:', people.length, 'After:', results.length);
+    // "IDs first, then hydrate" pattern for paginated mode.
+    // In unpaginated mode (no page/pageSize), preserve legacy behavior: return
+    // flat array with limit: 2000 (same as before) so existing consumers don't break.
+    if (!pagination.isPaginated) {
+      const people = await Person.findAll({
+        where: whereClause,
+        include: [
+          { model: User, as: 'user', attributes: ['id', 'username'] },
+          roleInclude,
+          inscriptionInclude,
+          matriculationInclude,
+        ],
+        limit: 2000,
+      });
 
-    // Transform Person objects (include persons even without a user account)
-    const users = results.map((person: any) => ({
+      // Legacy JS post-filter (kept for backward compat in unpaginated mode).
+      let results = people;
+      if (activeOnlyBool) {
+        const exemptRolesLower = EXEMPT_ROLES.map(r => r.toLowerCase());
+        const studentRolesLower = STUDENT_ROLES.map(r => r.toLowerCase());
+        results = people.filter(person => {
+          const roles = (person as any).roles || [];
+          const hasExemptRole = roles.some((r: any) => exemptRolesLower.includes(r.name.toLowerCase()));
+          if (hasExemptRole) return true;
+          const isStudent = roles.some((r: any) => studentRolesLower.includes(r.name.toLowerCase()));
+          if (!targetPeriodId) return !isStudent;
+          if (!isStudent) return true;
+          const inscriptions = (person as any).inscriptions || [];
+          const matriculations = (person as any).matriculations || [];
+          return inscriptions.length > 0 || matriculations.length > 0;
+        });
+      }
+
+      const users = results.map((person: any) => ({
+        id: person.id,
+        userId: person.user?.id ?? null,
+        username: person.user?.username ?? null,
+        firstName: person.firstName,
+        lastName: person.lastName,
+        document: person.document,
+        person: { firstName: person.firstName, lastName: person.lastName, document: person.document },
+        roles: person.roles,
+      }));
+
+      return res.json(users);
+    }
+
+    // Paginated mode: IDs first, then hydrate.
+    const idRows = await Person.findAll({
+      where: whereClause,
+      attributes: ['id'],
+      order: [['id', 'ASC']],
+      limit: pagination.limit,
+      offset: pagination.offset,
+      subQuery: false,
+      raw: true,
+    });
+    const ids = idRows.map((r: any) => r.id);
+
+    const total = await Person.count({ where: whereClause }) as unknown as number;
+
+    let people: Person[] = [];
+    if (ids.length > 0) {
+      people = await Person.findAll({
+        where: { id: { [Op.in]: ids } },
+        include: [
+          { model: User, as: 'user', attributes: ['id', 'username'] },
+          roleInclude,
+          inscriptionInclude,
+          matriculationInclude,
+        ],
+        order: [literal(`FIELD(\`Person\`.\`id\`, ${ids.join(',')})`)],
+      });
+    }
+
+    const users = people.map((person: any) => ({
       id: person.id,
       userId: person.user?.id ?? null,
       username: person.user?.username ?? null,
       firstName: person.firstName,
       lastName: person.lastName,
       document: person.document,
-      person: {
-        firstName: person.firstName,
-        lastName: person.lastName,
-        document: person.document
-      },
-      roles: person.roles
+      person: { firstName: person.firstName, lastName: person.lastName, document: person.document },
+      roles: person.roles,
     }));
 
-    res.json(users);
+    return res.json(buildPaginatedResponse(users, total, pagination));
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Error searching users' });
+  }
+};
+
+/**
+ * GET /api/users/search/stats
+ *
+ * Returns the total count for the same filter set accepted by searchUsers,
+ * so the frontend can show "N resultados" without downloading the full list.
+ */
+export const searchUsersStats = async (req: Request, res: Response) => {
+  try {
+    const { q, activeOnly, schoolPeriodId } = req.query;
+    const query = q ? String(q) : '';
+    const activeOnlyBool = String(activeOnly) === 'true';
+
+    const whereClause: any = {};
+    if (query) {
+      whereClause[Op.or] = [
+        { firstName: { [Op.like]: `%${query}%` } },
+        { lastName: { [Op.like]: `%${query}%` } },
+        { document: { [Op.like]: `%${query}%` } }
+      ];
+    }
+
+    const activePeriod = await SchoolPeriod.findOne({ where: { status: 'activo' } });
+    const targetPeriodId = schoolPeriodId ? Number(schoolPeriodId) : (activePeriod?.id);
+
+    if (activeOnlyBool) {
+      const hasExemptRoleSub = `(SELECT COUNT(*) FROM person_roles pr_ex
+        INNER JOIN roles r_ex ON r_ex.id = pr_ex.roleId
+        WHERE pr_ex.personId = Person.id AND r_ex.name IN (${EXEMPT_ROLES.map(r => `'${r}'`).join(',')})) > 0`;
+      const hasStudentRoleSub = `(SELECT COUNT(*) FROM person_roles pr_st
+        INNER JOIN roles r_st ON r_st.id = pr_st.roleId
+        WHERE pr_st.personId = Person.id AND r_st.name IN (${STUDENT_ROLES.map(r => `'${r}'`).join(',')})) > 0`;
+
+      if (targetPeriodId) {
+        const hasPeriodEnrollmentSub = `(
+          (SELECT COUNT(*) FROM inscriptions i_per
+            WHERE i_per.personId = Person.id AND i_per.schoolPeriodId = ${targetPeriodId}) > 0
+          OR
+          (SELECT COUNT(*) FROM matriculations m_per
+            WHERE m_per.personId = Person.id AND m_per.schoolPeriodId = ${targetPeriodId}) > 0
+        )`;
+        whereClause[Op.and] = [
+          literal(`(${hasExemptRoleSub} OR NOT ${hasStudentRoleSub} OR ${hasPeriodEnrollmentSub})`),
+        ];
+      } else {
+        whereClause[Op.and] = [
+          literal(`(${hasExemptRoleSub} OR NOT ${hasStudentRoleSub})`),
+        ];
+      }
+    }
+
+    const total = await Person.count({ where: whereClause }) as unknown as number;
+    return res.json({ total });
+  } catch (error) {
+    console.error('[searchUsersStats] Error:', error);
+    return res.status(500).json({ message: 'Error obteniendo estadísticas de búsqueda' });
   }
 };
 

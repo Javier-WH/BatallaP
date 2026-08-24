@@ -22,25 +22,6 @@ interface ActiveSchoolPeriod {
   startYear?: number;
   endYear?: number;
 }
-interface GradeCatalogItem { id: number; name: string; }
-interface PeriodStructureEntry {
-  id: number;
-  grade?: { id: number; name: string } | null;
-  sections?: { id: number; name: string }[];
-  subjects?: { id: number; name: string; subjectGroupId?: number | null }[];
-}
-interface TeacherRecordLite { id: number; teachingAssignments?: { id: number }[]; }
-interface StudentGuardianLite {
-  isRepresentative?: boolean;
-  profile?: { id?: number; document?: string } | null;
-}
-interface InscriptionRecordLite {
-  id: number;
-  section?: { id: number; name: string } | null;
-  subjects?: { id: number }[] | null;
-  student?: { guardians?: StudentGuardianLite[] };
-}
-interface MatriculationRecordLite { id: number; status?: 'pending' | 'completed' | string; }
 
 interface AdminOverviewData {
   period: ActiveSchoolPeriod;
@@ -234,77 +215,29 @@ const AdminDashboard: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const periodRes = await api.get<ActiveSchoolPeriod | null>('/academic/periods/active');
-      const activePeriod = periodRes.data;
-      if (!activePeriod?.id) {
+      // The backend now computes all aggregates via SQL COUNT/GROUP BY
+      // instead of downloading the full inscriptions/matriculations/teachers
+      // lists. The response shape matches AdminOverviewData exactly.
+      const statsRes = await api.get<AdminOverviewData | null>('/dashboard/admin-stats');
+      const stats = statsRes.data;
+      if (!stats) {
         setData(null);
         return;
       }
 
-      const [structureRes, gradesRes, inscriptionsRes, pendingMatriculationsRes, teachersRes] = await Promise.all([
-        api.get<PeriodStructureEntry[]>(`/academic/structure/${activePeriod.id}`),
-        api.get<GradeCatalogItem[]>('/academic/grades'),
-        api.get<InscriptionRecordLite[]>('/inscriptions', { params: { schoolPeriodId: activePeriod.id } }),
-        api.get<MatriculationRecordLite[]>('/matriculations', { params: { schoolPeriodId: activePeriod.id, status: 'pending' } }),
-        api.get<TeacherRecordLite[]>('/teachers', { params: { schoolPeriodId: activePeriod.id } }),
-      ]);
-
-      const structure = structureRes.data ?? [];
-      const gradeCatalog = gradesRes.data ?? [];
-      const inscriptions = inscriptionsRes.data ?? [];
-      const pendingMatriculationsList = pendingMatriculationsRes.data ?? [];
-      const teachers = teachersRes.data ?? [];
-
-      const matriculatedCount = inscriptions.length;
-      const pendingMatriculations = pendingMatriculationsList.length;
-      const totalStudents = matriculatedCount + pendingMatriculations;
-      const teachersWithoutAssignments = teachers.filter(t => !t.teachingAssignments || t.teachingAssignments.length === 0).length;
-      const representativeSet = new Set<string>();
-      inscriptions.forEach(inscription => {
-        inscription.student?.guardians?.forEach(guardian => {
-          if (guardian.isRepresentative) {
-            const uniqueId = guardian.profile?.id ? `profile-${guardian.profile.id}` : guardian.profile?.document || `ins-${inscription.id}`;
-            representativeSet.add(uniqueId);
-          }
-        });
-      });
-
-      const studentsWithoutSection = inscriptions.filter(ins => !ins.section).length;
-      const studentsWithoutSubjects = inscriptions.filter(ins => !ins.subjects || ins.subjects.length === 0).length;
-
-      const configuredGradeIds = new Set(
-        structure.map(entry => entry.grade?.id).filter((id): id is number => typeof id === 'number')
-      );
-      const totalGrades = gradeCatalog.length;
-      const missingGrades = gradeCatalog.filter(g => !configuredGradeIds.has(g.id)).map(g => g.name);
-      const gradesWithoutSections = structure
-        .filter(entry => entry.grade && (!entry.sections || entry.sections.length === 0))
-        .map(entry => entry.grade?.name ?? `ID ${entry.id}`);
-      const gradesWithoutSubjects = structure
-        .filter(entry => entry.grade && (!entry.subjects || entry.subjects.length === 0))
-        .map(entry => entry.grade?.name ?? `ID ${entry.id}`);
-
-      const coveragePercentage = totalGrades === 0 ? 0 : (configuredGradeIds.size / totalGrades) * 100;
-
-      const alerts: string[] = [];
-      if (missingGrades.length) alerts.push(`Faltan ${missingGrades.length} grados por configurar: ${missingGrades.join(', ')}`);
-      if (gradesWithoutSections.length) alerts.push(`Hay ${gradesWithoutSections.length} grados sin secciones asignadas.`);
-      if (gradesWithoutSubjects.length) alerts.push(`Hay ${gradesWithoutSubjects.length} grados sin materias configuradas.`);
-      if (studentsWithoutSection > 0) alerts.push(`${studentsWithoutSection} alumnos inscritos no tienen sección definida.`);
-      if (studentsWithoutSubjects > 0) alerts.push(`${studentsWithoutSubjects} alumnos están inscritos sin materias asociadas.`);
+      const {
+        counts,
+        students,
+        coverage,
+        alerts,
+        period: activePeriod,
+      } = stats;
 
       setData({
         period: activePeriod,
-        counts: { representatives: representativeSet.size, totalTeachers: teachers.length, teachersWithoutAssignments, studentsWithoutSection, studentsWithoutSubjects },
-        students: { total: totalStudents, matriculated: matriculatedCount, pending: pendingMatriculations },
-        coverage: {
-          percentage: Number(coveragePercentage.toFixed(1)),
-          configuredGrades: configuredGradeIds.size,
-          totalGrades,
-          missingGrades,
-          gradesWithoutSections,
-          gradesWithoutSubjects,
-        },
+        counts,
+        students,
+        coverage,
         alerts,
       });
     } catch (err) {

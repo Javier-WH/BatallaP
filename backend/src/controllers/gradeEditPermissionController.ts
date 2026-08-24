@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { Op } from 'sequelize';
+import { Op, literal } from 'sequelize';
 import {
   GradeEditPermission,
   GradeEditAudit,
@@ -12,6 +12,7 @@ import {
   Inscription,
   Role
 } from '@/models/index';
+import { parsePagination, buildPaginatedResponse } from '@/services/paginationService';
 
 // Helper function to check if user has required role
 const hasRole = (user: any, roles: string[]): boolean => {
@@ -120,32 +121,51 @@ export const getPermissions = async (req: Request, res: Response) => {
       return res.status(403).json({ message: 'Solo Master y Administrador pueden ver permisos' });
     }
 
-    const permissions = await GradeEditPermission.findAll({
-      include: [
-        {
-          model: SchoolPeriod,
-          as: 'schoolPeriod'
-        },
-        {
-          model: User,
-          as: 'granter',
-          include: [{ model: Person, as: 'person' }]
-        },
-        {
-          model: User,
-          as: 'recipient',
-          include: [{ model: Person, as: 'person' }]
-        },
-        {
-          model: User,
-          as: 'revoker',
-          include: [{ model: Person, as: 'person' }]
-        }
-      ],
-      order: [['grantedAt', 'DESC']]
-    });
+    const pagination = parsePagination(req.query as Record<string, unknown>);
 
-    res.json(permissions);
+    const baseInclude: any[] = [
+      { model: SchoolPeriod, as: 'schoolPeriod' },
+      { model: User, as: 'granter', include: [{ model: Person, as: 'person' }] },
+      { model: User, as: 'recipient', include: [{ model: Person, as: 'person' }] },
+      { model: User, as: 'revoker', include: [{ model: Person, as: 'person' }] },
+    ];
+
+    if (!pagination.isPaginated) {
+      const permissions = await GradeEditPermission.findAll({
+        include: baseInclude,
+        order: [['grantedAt', 'DESC']],
+      });
+      return res.json(permissions);
+    }
+
+    // Paginated: IDs first, then hydrate.
+    const idRows = await GradeEditPermission.findAll({
+      include: baseInclude,
+      attributes: ['id'],
+      order: [['grantedAt', 'DESC']],
+      limit: pagination.limit,
+      offset: pagination.offset,
+      subQuery: false,
+      raw: true,
+    });
+    const ids = idRows.map((r: any) => r.id);
+
+    const total = await GradeEditPermission.count({
+      include: baseInclude,
+      distinct: true,
+      col: 'id',
+    }) as unknown as number;
+
+    let permissions: GradeEditPermission[] = [];
+    if (ids.length > 0) {
+      permissions = await GradeEditPermission.findAll({
+        where: { id: { [Op.in]: ids } },
+        include: baseInclude,
+        order: [literal(`FIELD(\`GradeEditPermission\`.\`id\`, ${ids.join(',')})`)],
+      });
+    }
+
+    return res.json(buildPaginatedResponse(permissions, total, pagination));
   } catch (error) {
     console.error('Error fetching permissions:', error);
     res.status(500).json({ message: 'Error al obtener permisos' });

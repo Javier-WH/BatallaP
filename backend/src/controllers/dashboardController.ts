@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
-import { Op, fn, col, literal } from 'sequelize';
+import { Op, fn, col, literal, QueryTypes } from 'sequelize';
+import sequelize from '@/config/database';
 import SchoolPeriod from '@/models/SchoolPeriod';
 import Inscription from '@/models/Inscription';
 import Matriculation from '@/models/Matriculation';
@@ -18,6 +19,9 @@ import ThematicComponent from '@/models/ThematicComponent';
 import ExpectedLearningContent from '@/models/ExpectedLearningContent';
 import Setting from '@/models/Setting';
 import User from '@/models/User';
+import Role from '@/models/Role';
+import StudentGuardian from '@/models/StudentGuardian';
+import InscriptionSubject from '@/models/InscriptionSubject';
 import { PeriodClosureService } from '@/services/periodClosureService';
 
 interface TeacherAssignmentWithRelations extends TeacherAssignment {
@@ -465,6 +469,192 @@ const buildAcademicSnapshot = async (): Promise<AcademicSnapshot> => {
       byGradeContent
     }
   };
+};
+
+/**
+ * GET /api/dashboard/admin-stats
+ *
+ * Returns the aggregate metrics consumed by the Admin Dashboard
+ * (`frontend/src/pages/admin/Dashboard.tsx`) WITHOUT downloading the full
+ * inscriptions / matriculations / teachers lists.
+ *
+ * Replaces the previous flow that did 3 full-table downloads + in-memory
+ * aggregation with SQL COUNT / GROUP BY queries. The response shape matches
+ * exactly the `AdminOverviewData` interface the frontend already builds, so
+ * the only change on the frontend is the data source.
+ *
+ * Query params:
+ *  - schoolPeriodId (optional, defaults to the active period)
+ */
+export const getAdminDashboardStats = async (req: Request, res: Response) => {
+  try {
+    const userRoles: string[] = (req.session as any).user?.roles || [];
+    const isPrivileged = userRoles.includes('Master') || userRoles.includes('Administrador');
+
+    // Resolve target period: explicit param → active period.
+    let schoolPeriodId: number | undefined;
+    if (req.query.schoolPeriodId) {
+      schoolPeriodId = Number(req.query.schoolPeriodId);
+    } else {
+      const active = await SchoolPeriod.findOne({ where: { status: 'activo' } });
+      if (!active) {
+        return res.json(null);
+      }
+      schoolPeriodId = active.id;
+    }
+
+    // Structure (PeriodGrade → Grade, Sections, Subjects) and grade catalog.
+    // These are small and already needed for coverage analysis.
+    const [structure, gradeCatalog] = await Promise.all([
+      PeriodGrade.findAll({
+        where: { schoolPeriodId },
+        include: [
+          { model: Grade, as: 'grade' },
+          { model: Section, as: 'sections' },
+          { model: Subject, as: 'subjects' },
+        ],
+      }),
+      Grade.findAll({ order: [['order', 'ASC'], ['name', 'ASC']] }),
+    ]);
+
+    // Inscription counts and derived metrics via SQL.
+    // Hide hidden students from non-privileged roles (mirrors getInscriptions).
+    const inscriptionWhere: any = { schoolPeriodId };
+    if (!isPrivileged) {
+      inscriptionWhere[Op.and] = [
+        literal('`matriculation`.`hiddenFromControlEstudios` = false'),
+      ];
+    }
+
+    const [
+      matriculatedCount,
+      pendingMatriculations,
+      studentsWithoutSection,
+      studentsWithoutSubjects,
+      totalTeachers,
+      teachersWithoutAssignments,
+      representativeCount,
+    ] = await Promise.all([
+      // matriculated = inscriptions in this period (excluding hidden for non-privileged)
+      Inscription.count({
+        where: inscriptionWhere,
+        include: [{ model: Matriculation, as: 'matriculation', required: false }],
+      }),
+      // pending matriculations
+      Matriculation.count({
+        where: { schoolPeriodId, status: 'pending' },
+      }),
+      // students without section
+      Inscription.count({
+        where: { ...inscriptionWhere, sectionId: null },
+        include: [{ model: Matriculation, as: 'matriculation', required: false }],
+      }),
+      // students without subjects — raw query (HAVING not supported by Model.count typings)
+      sequelize.query(
+        `SELECT COUNT(*) AS \`cnt\` FROM (
+           SELECT i.id
+           FROM inscriptions i
+           LEFT JOIN matriculations m ON m.inscriptionId = i.id
+           LEFT JOIN inscription_subjects ins ON ins.inscriptionId = i.id
+           WHERE i.schoolPeriodId = :spId
+             ${isPrivileged ? '' : 'AND m.hiddenFromControlEstudios = false'}
+           GROUP BY i.id
+           HAVING COUNT(ins.id) = 0
+         ) AS t`,
+        { replacements: { spId: schoolPeriodId }, type: QueryTypes.SELECT }
+      ).then((r: any) => Number(r?.[0]?.cnt ?? 0)),
+      // total teachers (Person with role Profesor)
+      Person.count({
+        include: [{ model: Role, as: 'roles', where: { name: 'Profesor' }, through: { attributes: [] } }],
+      }),
+      // teachers without assignments in this period — raw query
+      sequelize.query(
+        `SELECT COUNT(*) AS \`cnt\` FROM (
+           SELECT p.id
+           FROM people p
+           INNER JOIN person_roles pr ON pr.personId = p.id
+           INNER JOIN roles r ON r.id = pr.roleId AND r.name = 'Profesor'
+           LEFT JOIN teacher_assignments ta ON ta.teacherId = p.id
+           LEFT JOIN period_grade_subjects pgs ON pgs.id = ta.periodGradeSubjectId
+           LEFT JOIN period_grades pg ON pg.id = pgs.periodGradeId AND pg.schoolPeriodId = :spId
+           WHERE pg.id IS NULL
+           GROUP BY p.id
+         ) AS t`,
+        { replacements: { spId: schoolPeriodId }, type: QueryTypes.SELECT }
+      ).then((r: any) => Number(r?.[0]?.cnt ?? 0)),
+      // distinct representatives (GuardianProfile) referenced by inscriptions
+      // in this period with isRepresentative=true on StudentGuardian.
+      StudentGuardian.count({
+        distinct: true,
+        col: 'guardianId',
+        where: { isRepresentative: true },
+        include: [{
+          model: Person,
+          as: 'student',
+          required: true,
+          include: [{
+            model: Inscription,
+            as: 'inscriptions',
+            required: true,
+            where: { schoolPeriodId },
+          }],
+        }],
+      }),
+    ]);
+
+    // Coverage analysis (mirrors the in-memory logic exactly).
+    const configuredGradeIds = new Set(
+      structure.map((pg: any) => pg.grade?.id).filter((id: any): id is number => typeof id === 'number')
+    );
+    const totalGrades = gradeCatalog.length;
+    const missingGrades = gradeCatalog
+      .filter((g: any) => !configuredGradeIds.has(g.id))
+      .map((g: any) => g.name);
+    const gradesWithoutSections = structure
+      .filter((pg: any) => pg.grade && (!pg.sections || pg.sections.length === 0))
+      .map((pg: any) => pg.grade?.name ?? `ID ${pg.id}`);
+    const gradesWithoutSubjects = structure
+      .filter((pg: any) => pg.grade && (!pg.subjects || pg.subjects.length === 0))
+      .map((pg: any) => pg.grade?.name ?? `ID ${pg.id}`);
+    const coveragePercentage = totalGrades === 0 ? 0 : (configuredGradeIds.size / totalGrades) * 100;
+
+    const alerts: string[] = [];
+    if (missingGrades.length) alerts.push(`Faltan ${missingGrades.length} grados por configurar: ${missingGrades.join(', ')}`);
+    if (gradesWithoutSections.length) alerts.push(`Hay ${gradesWithoutSections.length} grados sin secciones asignadas.`);
+    if (gradesWithoutSubjects.length) alerts.push(`Hay ${gradesWithoutSubjects.length} grados sin materias configuradas.`);
+    if (studentsWithoutSection > 0) alerts.push(`${studentsWithoutSection} alumnos inscritos no tienen sección definida.`);
+    if (studentsWithoutSubjects > 0) alerts.push(`${studentsWithoutSubjects} alumnos están inscritos sin materias asociadas.`);
+
+    const period = await SchoolPeriod.findByPk(schoolPeriodId);
+
+    return res.json({
+      period,
+      counts: {
+        representatives: representativeCount,
+        totalTeachers,
+        teachersWithoutAssignments,
+        studentsWithoutSection,
+        studentsWithoutSubjects,
+      },
+      students: {
+        total: matriculatedCount + pendingMatriculations,
+        matriculated: matriculatedCount,
+        pending: pendingMatriculations,
+      },
+      coverage: {
+        percentage: Number(coveragePercentage.toFixed(1)),
+        configuredGrades: configuredGradeIds.size,
+        totalGrades,
+        missingGrades,
+        gradesWithoutSections,
+        gradesWithoutSubjects,
+      },
+      alerts,
+    });
+  } catch (error) {
+    console.error('[getAdminDashboardStats] Error:', error);
+    return res.status(500).json({ message: 'Error obteniendo métricas del panel administrativo' });
+  }
 };
 
 export const getControlPanelMetrics = async (req: Request, res: Response) => {

@@ -17,6 +17,8 @@
  * helper antes de enviar la respuesta.
  */
 
+import { literal, type OrderItem } from 'sequelize';
+
 export type StudentDocumentType =
   | 'Venezolano'
   | 'Cedula Escolar'
@@ -135,4 +137,82 @@ export function sortInscriptions<T extends SortableInscription>(arr: T[]): T[] {
 export function sortStudents<T extends SortableStudent>(arr: T[]): T[] {
   arr.sort(compareStudents as (a: T, b: T) => number);
   return arr;
+}
+
+// ---------------------------------------------------------------------------
+// SQL mirror of the canonical ordering above.
+//
+// Used by paginated endpoints so that `LIMIT`/`OFFSET` produce pages that are
+// globally consistent with the in-memory `sortInscriptions` order. Without
+// this, pages would be internally sorted but a student could appear on two
+// pages or on none, because the JS sort runs AFTER the SQL slice.
+//
+// The SQL expression mirrors `compareInscriptions` exactly:
+//   1. documentType priority (Venezolano=0, Cedula Escolar=1, Pasaporte=2, Extranjero=3, else=99)
+//   2. numeric part of document ascending
+//   3. lastName (case-insensitive)
+//   4. firstName (case-insensitive)
+//   5. grade.order (fallback 9999), then grade.name
+//   6. section.name
+//   7. Inscription.id ASC — final tiebreaker to guarantee a TOTAL, STABLE order
+//      (required for safe pagination; without it, ties could reorder between pages).
+// ---------------------------------------------------------------------------
+
+/**
+ * Portable SQL expression that extracts the numeric part of a document string,
+ * mirroring the JS `numericDocument()` helper. Uses nested `REPLACE()` instead
+ * of `REGEXP_REPLACE()` because the latter is not available in MySQL < 8.0.4
+ * or some MariaDB versions.
+ *
+ * Strips the common Venezuelan document characters: V, E, P, C (upper/lower),
+ * hyphens, dots, and spaces. This covers all practical document formats:
+ *   "V-12345678", "E-87654321", "12.345.678", "CE-12345", "P-99999999", etc.
+ *
+ * @param columnExpr - SQL column reference, e.g. "`student`.`document`"
+ * @returns SQL expression that evaluates to an UNSIGNED integer (0 for empty/null)
+ */
+export function numericDocumentSQL(columnExpr: string): string {
+  // Order matters: strip letters first, then separators, then spaces.
+  // Each REPLACE wraps the previous one.
+  const chars = ['V', 'v', 'E', 'e', 'P', 'p', 'C', 'c', '-', '.', ' '];
+  let expr = columnExpr;
+  for (const ch of chars) {
+    expr = `REPLACE(${expr}, '${ch}', '')`;
+  }
+  // NULLIF(..., '') converts empty string to NULL, COALESCE(..., 0) → 0 to match JS.
+  return `CAST(COALESCE(NULLIF(${expr}, ''), 0) AS UNSIGNED)`;
+}
+
+/**
+ * Returns a Sequelize `OrderItem[]` that reproduces the canonical ordering at
+ * the SQL level, assuming the `Person` model is aliased as `student` and the
+ * `Grade`/`Section` models are included with their canonical aliases.
+ *
+ * The caller is responsible for ensuring those associations are present in the
+ * `include` array (they already are in `getInscriptions` and `getMatriculations`).
+ */
+export function canonicalInscriptionOrder(): OrderItem[] {
+  return [
+    // 1. documentType priority via FIELD() — lower priority value first.
+    //    Unknown / NULL types get 99 so they sort last, matching documentTypePriority().
+    [
+      literal(
+        `FIELD(\`student\`.\`documentType\`, 'Venezolano', 'Cedula Escolar', 'Pasaporte', 'Extranjero')`
+      ),
+      'ASC',
+    ],
+    // 2. numeric part of document ascending. NULL/empty → 0 (matches numericDocument()).
+    [literal(numericDocumentSQL('`student`.`document`')), 'ASC'],
+    // 3. lastName (case-insensitive via LOWER()).
+    [literal('LOWER(`student`.`lastName`)'), 'ASC'],
+    // 4. firstName (case-insensitive via LOWER()).
+    [literal('LOWER(`student`.`firstName`)'), 'ASC'],
+    // 5. grade.order (NULL → 9999), then grade.name.
+    [literal('COALESCE(`grade`.`order`, 9999)'), 'ASC'],
+    [literal('LOWER(`grade`.`name`)'), 'ASC'],
+    // 6. section.name (case-insensitive).
+    [literal('LOWER(`section`.`name`)'), 'ASC'],
+    // 7. Final stable tiebreaker on the primary key of Inscription.
+    ['id', 'ASC'],
+  ];
 }

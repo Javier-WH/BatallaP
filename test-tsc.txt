@@ -1,0 +1,12 @@
+﻿src/__tests__/endpoints/academic.test.ts(2,17): error TS2307: Cannot find module '@/app' or its corresponding type declarations.
+src/__tests__/endpoints/auth.test.ts(2,17): error TS2307: Cannot find module '@/app' or its corresponding type declarations.
+src/__tests__/endpoints/enrollment-form.test.ts(2,17): error TS2307: Cannot find module '@/app' or its corresponding type declarations.
+src/__tests__/endpoints/inscription.test.ts(2,17): error TS2307: Cannot find module '@/app' or its corresponding type declarations.
+src/__tests__/endpoints/periodClosure.test.ts(2,17): error TS2307: Cannot find module '@/app' or its corresponding type declarations.
+src/__tests__/endpoints/periodOutcome.test.ts(2,17): error TS2307: Cannot find module '@/app' or its corresponding type declarations.
+src/__tests__/endpoints/user.test.ts(2,17): error TS2307: Cannot find module '@/app' or its corresponding type declarations.
+src/run_migration_docs.ts(2,41): error TS7016: Could not find a declaration file for module 'umzug'. 'D:/JavierWorkSpace/BatallaProject/backend/node_modules/umzug/lib/index.js' implicitly has an 'any' type.
+  Try `npm i --save-dev @types/umzug` if it exists or add a new declaration (.d.ts) file containing `declare module 'umzug';`
+src/run_migration_docs.ts(10,19): error TS7031: Binding element 'name' implicitly has an 'any' type.
+src/run_migration_docs.ts(10,31): error TS7031: Binding element 'migrationPath' implicitly has an 'any' type.
+src/run_migration_docs.ts(10,46): error TS7031: Binding element 'context' implicitly has an 'any' type.

@@ -73,7 +73,8 @@ Los namespaces están registrados en [`backend/src/app.ts`](../backend/src/app.t
 
 | Método | Ruta | Descripción |
 |--------|------|-------------|
-| GET | `/` | Listar inscripciones (filtros por query). |
+| GET | `/` | Listar inscripciones (filtros por query). Paginación opt-in vía `page`/`pageSize`. |
+| GET | `/stats` | Conteo agregado (total + desglose por grado) sin descargar filas. |
 | GET | `/:id` | Detalle de inscripción + materias. |
 | POST | `/` | Crear inscripción para persona existente. |
 | POST | `/register` | Registrar Persona + inscribir (sin crear User). |
@@ -98,7 +99,8 @@ Ver [`flows/enrollment.md`](./flows/enrollment.md).
 
 | Método | Ruta | Descripción |
 |--------|------|-------------|
-| GET | `/` | Listar matrículas. |
+| GET | `/` | Listar matrículas. Paginación opt-in vía `page`/`pageSize`. |
+| GET | `/stats` | Conteo agregado sin descargar filas. |
 | GET | `/:id` | Detalle. |
 | PATCH | `/:id` | Actualizar matrícula. |
 | POST | `/:id/enroll` | Convertir matrícula en inscripción formal. |
@@ -257,6 +259,7 @@ Ver [`flows/grade-edit.md`](./flows/grade-edit.md).
 |--------|------|-------------|
 | GET | `/control` | Métricas del panel de control (Administrador/Control de Estudios). |
 | GET | `/master` | Métricas del dashboard Master. |
+| GET | `/admin-stats` | Métricas agregadas del dashboard Admin (COUNT/GROUP BY, sin descargar listas). |
 
 ## 🖼️ Contenido editable del dashboard – `/api/dashboard-content` (`dashboardContentRoutes.ts`)
 

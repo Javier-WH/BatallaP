@@ -2,6 +2,7 @@ import { Router } from 'express';
 import {
   createInscription,
   getInscriptions,
+  getInscriptionsStats,
   getInscriptionById,
   updateInscription,
   deleteInscription,
@@ -17,6 +18,8 @@ import {
 const router = Router();
 
 router.get('/', getInscriptions);
+// /stats must be registered before /:id to avoid the param route capturing "stats".
+router.get('/stats', getInscriptionsStats);
 router.get('/:id', getInscriptionById);
 router.post('/', createInscription);
 router.post('/register', registerAndEnroll); // New: Register Person + Enroll (no User)

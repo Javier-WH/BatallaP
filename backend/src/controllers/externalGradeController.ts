@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import ExcelJS from 'exceljs';
+import { Op, literal } from 'sequelize';
 import sequelize from '@/config/database';
 import {
   Inscription,
@@ -21,6 +22,7 @@ import {
   ExternalGradeType,
   ExternalGradeStatus,
 } from '@/services/externalGradeService';
+import { parsePagination, buildPaginatedResponse } from '@/services/paginationService';
 
 // Helper function to check if user has required role
 const hasRole = (user: any, roles: string[]): boolean => {
@@ -259,6 +261,7 @@ export const listSubjects = async (_req: Request, res: Response) => {
 /**
  * GET /api/external-grades/grades
  * Returns external grades with optional filters (personId, plantelId).
+ * Supports opt-in pagination via page/pageSize query params.
  */
 export const listGrades = async (req: Request, res: Response) => {
   try {
@@ -268,32 +271,72 @@ export const listGrades = async (req: Request, res: Response) => {
     const where: any = { gradeType: ['transferencia', 'equivalencia'] };
     if (plantelId) where.plantelId = Number(plantelId);
 
-    const fullGrades = await SubjectFinalGrade.findAll({
-      where,
-      include: [
-        {
-          model: InscriptionSubject,
-          as: 'inscriptionSubject',
-          include: [
-            {
-              model: Inscription,
-              as: 'inscription',
-              where: personId ? { personId: Number(personId) } : undefined,
-              include: [
-                { model: Person, as: 'student' },
-                { model: SchoolPeriod, as: 'period' },
-                { model: Grade, as: 'grade' },
-              ],
-            },
-            { model: Subject, as: 'subject' },
-          ],
-        },
-        { model: Plantel, as: 'plantel' },
-      ],
-      order: [['calculatedAt', 'DESC']],
-    });
+    const pagination = parsePagination(req.query as Record<string, unknown>);
 
-    return res.json(fullGrades);
+    // Shared include tree for both ID query and hydration.
+    const inscriptionWhere = personId ? { personId: Number(personId) } : undefined;
+    const baseInclude: any[] = [
+      {
+        model: InscriptionSubject,
+        as: 'inscriptionSubject',
+        include: [
+          {
+            model: Inscription,
+            as: 'inscription',
+            where: inscriptionWhere,
+            required: !!personId, // INNER JOIN when filtering by person
+            include: [
+              { model: Person, as: 'student' },
+              { model: SchoolPeriod, as: 'period' },
+              { model: Grade, as: 'grade' },
+            ],
+          },
+          { model: Subject, as: 'subject' },
+        ],
+      },
+      { model: Plantel, as: 'plantel' },
+    ];
+
+    if (!pagination.isPaginated) {
+      // Legacy: return flat array, no limit.
+      const fullGrades = await SubjectFinalGrade.findAll({
+        where,
+        include: baseInclude,
+        order: [['calculatedAt', 'DESC']],
+      });
+      return res.json(fullGrades);
+    }
+
+    // Paginated: IDs first, then hydrate.
+    const idRows = await SubjectFinalGrade.findAll({
+      where,
+      include: baseInclude,
+      attributes: ['id'],
+      order: [['calculatedAt', 'DESC']],
+      limit: pagination.limit,
+      offset: pagination.offset,
+      subQuery: false,
+      raw: true,
+    });
+    const ids = idRows.map((r: any) => r.id);
+
+    const total = await SubjectFinalGrade.count({
+      where,
+      include: baseInclude,
+      distinct: true,
+      col: 'id',
+    }) as unknown as number;
+
+    let fullGrades: SubjectFinalGrade[] = [];
+    if (ids.length > 0) {
+      fullGrades = await SubjectFinalGrade.findAll({
+        where: { id: { [Op.in]: ids } },
+        include: baseInclude,
+        order: [literal(`FIELD(\`SubjectFinalGrade\`.\`id\`, ${ids.join(',')})`)],
+      });
+    }
+
+    return res.json(buildPaginatedResponse(fullGrades, total, pagination));
   } catch (error: any) {
     console.error('[listExternalGrades] Error:', error);
     return res.status(500).json({ message: error.message || 'Error al listar notas externas' });
