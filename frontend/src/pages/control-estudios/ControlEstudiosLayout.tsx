@@ -2,7 +2,7 @@ import React from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { Button, Tooltip, Dropdown } from 'antd';
 import type { MenuProps } from 'antd';
-import { DashboardOutlined, SettingOutlined, UserAddOutlined, CheckCircleFilled, LockOutlined, ProjectOutlined, EditOutlined, DownOutlined, FileExcelOutlined, ToolOutlined, SwapOutlined, TrophyOutlined } from '@ant-design/icons';
+import { DashboardOutlined, SettingOutlined, UserAddOutlined, CheckCircleFilled, LockOutlined, ProjectOutlined, EditOutlined, DownOutlined, FileExcelOutlined, ToolOutlined, SwapOutlined, TrophyOutlined, AlertOutlined } from '@ant-design/icons';
 
 const NavButton: React.FC<{
   icon: React.ReactNode;
@@ -45,6 +45,7 @@ const ControlEstudiosLayout: React.FC = () => {
     { path: '/control-estudios/resumen-rendimiento', icon: <FileExcelOutlined />, label: 'Resumen', tooltip: 'Resumen de Rendimiento Estudiantil' },
     { path: '/control-estudios/promedios-generales', icon: <TrophyOutlined />, label: 'Promedios', tooltip: 'Promedios Generales y Posiciones' },
     { path: '/control-estudios/reparacion', icon: <ToolOutlined />, label: 'Reparación', tooltip: 'Período de Reparación de Materias' },
+    { path: '/control-estudios/materia-pendiente', icon: <AlertOutlined />, label: 'Materia Pendiente', tooltip: 'Gestión de Materias Pendientes' },
   ];
 
   const notasItems: MenuProps['items'] = [

@@ -28,6 +28,7 @@ import SchoolManagement from '@/pages/admin/SchoolManagement';
 import EnrollmentQuestions from '@/pages/admin/EnrollmentQuestions';
 import TeacherPanel from '@/pages/teacher/TeacherPanel';
 import RepairGradesPanel from '@/pages/teacher/RepairGradesPanel';
+import PendingSubjectTeacherPanel from '@/pages/teacher/PendingSubjectTeacherPanel';
 import Observations from '@/pages/teacher/Observations';
 import AdminDashboard from '@/pages/admin/Dashboard';
 import StudentDetail from '@/pages/student/StudentDetail';
@@ -47,6 +48,7 @@ import ManageGrades from '@/pages/control-estudios/ManageGrades';
 import PerformanceSummary from '@/pages/control-estudios/PerformanceSummary';
 import GeneralAverages from '@/pages/control-estudios/GeneralAverages';
 import RepairPeriodManagement from '@/pages/control-estudios/RepairPeriodManagement';
+import PendingSubjectManagement from '@/pages/control-estudios/PendingSubjectManagement';
 import ExternalGrades from '@/pages/control-estudios/ExternalGrades';
 import RegisterRepresentative from '@/pages/admin/RegisterRepresentative';
 
@@ -241,6 +243,7 @@ function AppRoutes() {
           <Route path="resumen-rendimiento" element={<PerformanceSummary />} />
           <Route path="promedios-generales" element={<GeneralAverages />} />
           <Route path="reparacion" element={<RepairPeriodManagement />} />
+          <Route path="materia-pendiente" element={<PendingSubjectManagement />} />
           <Route path="edit/:id" element={<EditUser />} />
           <Route path="search" element={<SearchUsers />} />
         </Route>
@@ -261,6 +264,7 @@ function AppRoutes() {
           <Route index element={<h1>Panel del Profesor</h1>} />
         </Route>
         <Route path="profesor/reparacion" element={<RequireAuth allowedRoles={['Profesor']}><RepairGradesPanel /></RequireAuth>} />
+        <Route path="profesor/materia-pendiente" element={<RequireAuth allowedRoles={['Profesor']}><PendingSubjectTeacherPanel /></RequireAuth>} />
         <Route path="profesor/observaciones" element={<RequireAuth allowedRoles={['Profesor']}><Observations /></RequireAuth>} />
 
         {/* Representative Module */}

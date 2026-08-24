@@ -83,6 +83,7 @@ import sectionGuideRoutes from '@/routes/sectionGuideRoutes';
 import observationRoutes from '@/routes/observationRoutes';
 import subjectPresetRoutes from '@/routes/subjectPresetRoutes';
 import structurePresetRoutes from '@/routes/structurePresetRoutes';
+import pendingSubjectRoutes from '@/routes/pendingSubjectRoutes';
 
 app.get('/', (req, res) => {
   res.send('API is running...');
@@ -128,6 +129,7 @@ app.use('/api/section-guides', sectionGuideRoutes);
 app.use('/api/observations', observationRoutes);
 app.use('/api/subject-presets', subjectPresetRoutes);
 app.use('/api/structure-presets', structurePresetRoutes);
+app.use('/api/pending-subjects', pendingSubjectRoutes);
 
 export { sessionStore };
 export default app;

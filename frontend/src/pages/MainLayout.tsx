@@ -16,6 +16,7 @@ import {
   LockOutlined,
   HistoryOutlined,
   CommentOutlined,
+  AlertOutlined,
 } from '@ant-design/icons';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
@@ -99,6 +100,13 @@ const MainLayout: React.FC = () => {
       label: 'Observaciones',
       roles: ['Profesor'],
       path: '/profesor/observaciones'
+    },
+    {
+      key: 'profesor-materia-pendiente',
+      icon: <AlertOutlined />,
+      label: 'Materia Pendiente',
+      roles: ['Profesor'],
+      path: '/profesor/materia-pendiente'
     },
     {
       key: 'representative-module',
