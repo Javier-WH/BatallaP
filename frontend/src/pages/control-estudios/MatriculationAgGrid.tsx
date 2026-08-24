@@ -27,7 +27,7 @@ interface MatriculationAgGridProps extends ColumnCallbacks {
   onHideFloatingButton: () => void;
 }
 
-const STORAGE_KEY = 'matriculation-grid-state-v2';
+const STORAGE_KEY = 'matriculation-grid-state-v3';
 
 interface GridState {
   columnWidths: Record<string, number>;

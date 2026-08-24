@@ -800,7 +800,9 @@ export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<Matricul
     estudianteCols.push({
       colId: 'nationality',
       headerName: 'N',
-      width: 50,
+      width: 35,
+      minWidth: 35,
+      maxWidth: 35,
       editable: false,
       sortable: true,
       resizable: true,

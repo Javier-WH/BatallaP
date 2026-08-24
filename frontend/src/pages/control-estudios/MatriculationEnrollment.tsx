@@ -1689,6 +1689,28 @@ const MatriculationEnrollment: React.FC = () => {
                 <Col>
                   <Button icon={<ReloadOutlined />} onClick={fetchData} loading={loading} size="small">Actualizar</Button>
                 </Col>
+                <Col>
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    padding: '4px 12px',
+                    background: '#f1f5f9',
+                    borderRadius: 6,
+                    fontSize: 12,
+                    fontWeight: 600,
+                    color: '#475569',
+                    whiteSpace: 'nowrap',
+                  }}>
+                    <span>{filteredData.length} {filteredData.length === 1 ? 'estudiante' : 'estudiantes'}</span>
+                    {selectedRowKeys.length > 0 && (
+                      <>
+                        <span style={{ color: '#cbd5e1' }}>|</span>
+                        <span style={{ color: '#2563eb' }}>{selectedRowKeys.length} seleccionado{selectedRowKeys.length === 1 ? '' : 's'}</span>
+                      </>
+                    )}
+                  </div>
+                </Col>
               </Row>
             </Col>
           </Row>
