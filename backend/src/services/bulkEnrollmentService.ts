@@ -8,10 +8,17 @@ import { BULK_ENROLLMENT_COLUMNS } from '@/constants/bulkEnrollmentColumns';
 import { SchoolPeriod, Grade, Section } from '@/models/index';
 import { registerAndEnrollStudent, RegisterAndEnrollPayload, GuardianInput } from '@/services/studentEnrollmentService';
 import { GuardianDocumentType } from '@/models/GuardianProfile';
+import { PersonAttributes } from '@/models/Person';
 
-const allowedDocumentTypes: GuardianDocumentType[] = ['Venezolano', 'Extranjero', 'Pasaporte'];
-const isGuardianDocumentType = (value: string): value is GuardianDocumentType =>
+// All document types supported by the system (Person.documentType ENUM).
+type StudentDocumentType = PersonAttributes['documentType'];
+const allowedDocumentTypes: StudentDocumentType[] = ['Venezolano', 'Extranjero', 'Pasaporte', 'Cedula Escolar'];
+const isDocumentType = (value: string): value is StudentDocumentType =>
   allowedDocumentTypes.some((type) => type === value);
+// Guardian documents exclude 'Cédula Escolar'.
+const guardianDocumentTypes: GuardianDocumentType[] = ['Venezolano', 'Extranjero', 'Pasaporte'];
+const isGuardianDocumentType = (value: string): value is GuardianDocumentType =>
+  guardianDocumentTypes.some((type) => type === value);
 const escolaridadOptions = ['regular', 'repitiente', 'materia_pendiente'];
 const templateDataStartRow = 2;
 const templateDataEndRow = 1000;
@@ -182,7 +189,6 @@ const createCatalogSheet = async (workbook: ExcelJS.Workbook) => {
     { name: 'Escolaridad', values: escolaridadOptions },
     { name: 'Documentos', values: allowedDocumentTypes },
     { name: 'Genero', values: ['M', 'F'] },
-    { name: 'Nacionalidad', values: ['V', 'E'] },
     { name: 'Representa', values: ['mother', 'father', 'other'] },
     { name: 'EstadosVenezuela', values: locationCatalogs.states },
     { name: 'MunicipiosVenezuela', values: locationCatalogs.municipalities },
@@ -365,7 +371,7 @@ export const parseBulkExcel = async (filePath: string): Promise<ParsedBulkRow[]>
     if (!birthdate) errors.push('Fecha de nacimiento inválida.');
 
     const documentTypeRaw = sanitizeString(normalized.documentType) || 'Venezolano';
-    const documentType = isGuardianDocumentType(documentTypeRaw) ? documentTypeRaw : 'Venezolano';
+    const documentType = isDocumentType(documentTypeRaw) ? documentTypeRaw : 'Venezolano';
     const document = sanitizeString(normalized.document) || undefined;
 
     const escolaridadRaw = sanitizeString(normalized.escolaridad).toLowerCase();
@@ -430,7 +436,9 @@ export const parseBulkExcel = async (filePath: string): Promise<ParsedBulkRow[]>
       enrollmentAnswers: [],
       escolaridad,
       documents: undefined,
-      nationality: sanitizeString(normalized.nationality) === 'E' ? 'Extranjero' : 'Venezolano'
+      // Derive nationality from documentType: 'Extranjero' → E, everything else → V.
+      // This is only used when documentType === 'Cédula Escolar' to generate the document number.
+      nationality: documentType === 'Extranjero' ? 'Extranjero' : 'Venezolano'
     };
 
     ['birthState', 'birthMunicipality', 'birthParish', 'residenceState', 'residenceMunicipality', 'residenceParish'].forEach((field) => {
@@ -622,7 +630,6 @@ export const generateTemplate = async (options: BulkTemplateOptions = {}) => {
     { key: 'escolaridad', catalog: 'Escolaridad', message: 'Seleccione una escolaridad válida.' },
     { key: 'documentType', catalog: 'Documentos', message: 'Seleccione un tipo de documento válido.' },
     { key: 'gender', catalog: 'Genero', message: 'Seleccione M o F.' },
-    { key: 'nationality', catalog: 'Nacionalidad', message: 'Seleccione V o E.' },
     { key: 'representativeType', catalog: 'Representa', message: 'Seleccione quién representa al estudiante.' },
     { key: 'birthState', catalog: 'EstadosVenezuela', message: 'Seleccione un estado válido de la lista.' },
     { key: 'birthMunicipality', catalog: 'MunicipiosVenezuela', message: 'Seleccione un municipio válido de la lista.' },

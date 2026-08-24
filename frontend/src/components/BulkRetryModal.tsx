@@ -465,14 +465,6 @@ const BulkRetryModal: React.FC<BulkRetryModalProps> = ({
                 <DatePicker style={{ width: '100%' }} format="YYYY-MM-DD" />
               </Form.Item>
             </Col>
-            <Col span={12}>
-              <Form.Item name="nationality" label="Nacionalidad">
-                <Select allowClear>
-                  <Option value="Venezolano">Venezolano</Option>
-                  <Option value="Extranjero">Extranjero</Option>
-                </Select>
-              </Form.Item>
-            </Col>
           </Row>
         </>
       )

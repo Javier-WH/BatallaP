@@ -27,7 +27,6 @@ export const BULK_ENROLLMENT_COLUMNS: BulkEnrollmentColumn[] = [
   { key: 'lastName', header: '* Apellidos estudiante', required: true },
   { key: 'documentType', header: '* Tipo de documento estudiante', required: true },
   { key: 'document', header: 'Documento estudiante' },
-  { key: 'nationality', header: 'Nacionalidad (V/E) para Cédula Escolar' },
 
   // Datos personales obligatorios
   { key: 'gender', header: '* Género (M/F)', required: true },
