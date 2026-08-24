@@ -1140,6 +1140,232 @@ export const updateMpEncounterDates = async (req: Request, res: Response) => {
 };
 
 /* ---------------------------------------------------------------------- */
+/* GET /pending-subjects/encounter-dates/:periodGradeSubjectId             */
+/* Get encounter dates for a subject+grade (across all students).         */
+/* Returns dates from the first student's encounters, or default empty.   */
+/* ---------------------------------------------------------------------- */
+export const getMpEncounterDatesByPgs = async (req: Request, res: Response) => {
+  try {
+    const pgsId = Number(req.params.periodGradeSubjectId);
+    if (!Number.isFinite(pgsId)) {
+      return res.status(400).json({ message: 'periodGradeSubjectId inválido' });
+    }
+
+    const maxEnc = await getMaxEncounters();
+
+    // Get the subjectId and gradeId from the PGS
+    const pgs = await PeriodGradeSubject.findByPk(pgsId, {
+      include: [{ model: PeriodGrade, as: 'periodGrade' }],
+    });
+    if (!pgs || !(pgs as any).periodGrade) {
+      return res.status(404).json({ message: 'PeriodGradeSubject no encontrado' });
+    }
+    const subjectId = pgs.subjectId;
+    const gradeId = (pgs as any).periodGrade.gradeId;
+
+    // Find MP section
+    const mpSection = await Section.findOne({ where: { name: MP_SECTION_NAME } });
+    if (!mpSection) {
+      return res.json({
+        periodGradeSubjectId: pgsId,
+        maxEncounters: maxEnc,
+        encounters: Array.from({ length: maxEnc }, (_, i) => ({
+          encounterNumber: i + 1,
+          date: null,
+        })),
+      });
+    }
+
+    // Find MP inscriptions for this grade in the active period
+    const activePeriod = await SchoolPeriod.findOne({ where: { status: 'activo' } });
+    if (!activePeriod) {
+      return res.json({
+        periodGradeSubjectId: pgsId,
+        maxEncounters: maxEnc,
+        encounters: Array.from({ length: maxEnc }, (_, i) => ({
+          encounterNumber: i + 1,
+          date: null,
+        })),
+      });
+    }
+
+    const mpInscriptions = await Inscription.findAll({
+      where: { schoolPeriodId: activePeriod.id, gradeId, sectionId: mpSection.id },
+      attributes: ['id'],
+    });
+    const inscriptionIds = mpInscriptions.map(i => i.id);
+
+    if (inscriptionIds.length === 0) {
+      // No students — return default empty encounters
+      return res.json({
+        periodGradeSubjectId: pgsId,
+        maxEncounters: maxEnc,
+        encounters: Array.from({ length: maxEnc }, (_, i) => ({
+          encounterNumber: i + 1,
+          date: null,
+        })),
+      });
+    }
+
+    // Find PendingSubjects for these inscriptions + this subject
+    const pendingSubjects = await PendingSubject.findAll({
+      where: {
+        newInscriptionId: { [Op.in]: inscriptionIds },
+        subjectId,
+      },
+      include: [
+        {
+          model: PendingSubjectEncounter,
+          as: 'encounters',
+          required: false,
+        },
+      ],
+    });
+
+    // Find the one with the most dates set (use it as template)
+    let template: any = null;
+    let maxDatesSet = -1;
+    for (const ps of pendingSubjects) {
+      const encs = (ps as any).encounters || [];
+      const datesSet = encs.filter((e: any) => e.date != null).length;
+      if (datesSet > maxDatesSet) {
+        maxDatesSet = datesSet;
+        template = ps;
+      }
+    }
+
+    let encounters: { encounterNumber: number; date: string | null }[];
+    if (template && (template as any).encounters?.length > 0) {
+      const existing = (template as any).encounters as PendingSubjectEncounter[];
+      const encMap = new Map(existing.map(e => [e.encounterNumber, e.date]));
+      encounters = Array.from({ length: maxEnc }, (_, i) => ({
+        encounterNumber: i + 1,
+        date: (encMap.get(i + 1) as string | null) ?? null,
+      }));
+    } else {
+      encounters = Array.from({ length: maxEnc }, (_, i) => ({
+        encounterNumber: i + 1,
+        date: null,
+      }));
+    }
+
+    return res.json({
+      periodGradeSubjectId: pgsId,
+      maxEncounters: maxEnc,
+      encounters,
+    });
+  } catch (error) {
+    console.error('[getMpEncounterDatesByPgs] Error:', error);
+    return res.status(500).json({ message: 'Error al obtener fechas de encuentros' });
+  }
+};
+
+/* ---------------------------------------------------------------------- */
+/* PUT /pending-subjects/encounter-dates/:periodGradeSubjectId             */
+/* Update encounter dates for ALL pendingSubjects of this subject+grade.  */
+/* ---------------------------------------------------------------------- */
+export const updateMpEncounterDatesByPgs = async (req: Request, res: Response) => {
+  const t = await sequelize.transaction();
+  try {
+    const pgsId = Number(req.params.periodGradeSubjectId);
+    if (!Number.isFinite(pgsId)) {
+      return res.status(400).json({ message: 'periodGradeSubjectId inválido' });
+    }
+    const { encounters } = req.body as {
+      encounters: { encounterNumber: number; date?: string | null }[];
+    };
+    if (!Array.isArray(encounters)) {
+      return res.status(400).json({ message: 'encounters debe ser un arreglo' });
+    }
+
+    const maxEnc = await getMaxEncounters();
+
+    // Get the subjectId and gradeId from the PGS
+    const pgs = await PeriodGradeSubject.findByPk(pgsId, {
+      include: [{ model: PeriodGrade, as: 'periodGrade' }],
+      transaction: t,
+    });
+    if (!pgs || !(pgs as any).periodGrade) {
+      await t.rollback();
+      return res.status(404).json({ message: 'PeriodGradeSubject no encontrado' });
+    }
+    const subjectId = pgs.subjectId;
+    const gradeId = (pgs as any).periodGrade.gradeId;
+
+    // Find MP section
+    const mpSection = await Section.findOne({ where: { name: MP_SECTION_NAME }, transaction: t });
+    if (!mpSection) {
+      await t.commit();
+      return res.json({
+        message: 'Fechas guardadas (sin sección MP)',
+        updatedCount: 0,
+        encounters,
+      });
+    }
+
+    // Find MP inscriptions for this grade
+    const activePeriod = await SchoolPeriod.findOne({ where: { status: 'activo' }, transaction: t });
+    if (!activePeriod) {
+      await t.commit();
+      return res.json({
+        message: 'Fechas guardadas (sin período activo)',
+        updatedCount: 0,
+        encounters,
+      });
+    }
+
+    const mpInscriptions = await Inscription.findAll({
+      where: { schoolPeriodId: activePeriod.id, gradeId, sectionId: mpSection.id },
+      attributes: ['id'],
+      transaction: t,
+    });
+    const inscriptionIds = mpInscriptions.map(i => i.id);
+
+    if (inscriptionIds.length === 0) {
+      // No students — nothing to update, but return success
+      await t.commit();
+      return res.json({
+        message: 'Fechas guardadas (sin estudiantes registrados)',
+        updatedCount: 0,
+        encounters,
+      });
+    }
+
+    // Find all PendingSubjects for these inscriptions + this subject
+    const pendingSubjects = await PendingSubject.findAll({
+      where: {
+        newInscriptionId: { [Op.in]: inscriptionIds },
+        subjectId,
+      },
+      transaction: t,
+    });
+
+    // Update dates for all pendingSubjects
+    for (const ps of pendingSubjects) {
+      await ensureEncounters(ps.id, maxEnc, t);
+      for (const enc of encounters) {
+        if (!Number.isFinite(enc.encounterNumber)) continue;
+        await PendingSubjectEncounter.update(
+          { date: enc.date ?? null },
+          { where: { pendingSubjectId: ps.id, encounterNumber: enc.encounterNumber }, transaction: t }
+        );
+      }
+    }
+
+    await t.commit();
+    return res.json({
+      message: 'Fechas actualizadas',
+      updatedCount: pendingSubjects.length,
+      encounters,
+    });
+  } catch (error) {
+    await t.rollback();
+    console.error('[updateMpEncounterDatesByPgs] Error:', error);
+    return res.status(500).json({ message: 'Error al actualizar fechas' });
+  }
+};
+
+/* ---------------------------------------------------------------------- */
 /* POST /pending-subjects/:pendingSubjectId/encounters/:encounterNumber/score */
 /* Register the score for a single encounter.                             */
 /* If the student passes (>= passing_grade), the PendingSubject is        */

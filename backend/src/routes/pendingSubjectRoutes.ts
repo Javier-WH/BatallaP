@@ -19,6 +19,10 @@ router.get('/teacher-assignments', pendingSubjectController.getMpTeacherAssignme
 router.get('/assignment/:periodGradeSubjectId', pendingSubjectController.getMpAssignmentDetail);
 router.get('/assignment/:periodGradeSubjectId/encounters', pendingSubjectController.getMpAssignmentEncounters);
 
+// Encounter dates by periodGradeSubjectId (CE — works without students)
+router.get('/encounter-dates/:periodGradeSubjectId', pendingSubjectController.getMpEncounterDatesByPgs);
+router.put('/encounter-dates/:periodGradeSubjectId', pendingSubjectController.updateMpEncounterDatesByPgs);
+
 // Grades
 router.post('/final-grade', pendingSubjectController.saveMpFinalGrade);
 router.post('/evaluation-plan', pendingSubjectController.createMpEvaluationItem);

@@ -236,6 +236,9 @@ const PendingSubjectManagement: React.FC = () => {
   const [encDatesLoading, setEncDatesLoading] = useState(false);
   const [encDatesSaving, setEncDatesSaving] = useState(false);
 
+  // Encounter dates per subject (for display in headers) — keyed by periodGradeSubjectId
+  const [encounterDatesMap, setEncounterDatesMap] = useState<Record<number, { encounterNumber: number; date: string | null }[]>>({});
+
   // Content modal
   const [contentModalOpen, setContentModalOpen] = useState(false);
   const [contentSubject, setContentSubject] = useState<NominaSubject | null>(null);
@@ -277,6 +280,27 @@ const PendingSubjectManagement: React.FC = () => {
   }, []);
 
   useEffect(() => { fetchStructure(); }, [fetchStructure]);
+
+  // Fetch encounter dates for all subjects of the expanded grade
+  useEffect(() => {
+    if (!expandedGradeId || !structure) return;
+    const gradeGroup = structure.grades.find(g => g.grade.id === expandedGradeId);
+    if (!gradeGroup) return;
+    // Load dates for each subject in parallel
+    Promise.all(
+      gradeGroup.subjects.map(subj =>
+        api.get(`/pending-subjects/encounter-dates/${subj.periodGradeSubjectId}`)
+          .then(res => ({ pgsId: subj.periodGradeSubjectId, encounters: res.data.encounters as { encounterNumber: number; date: string | null }[] }))
+          .catch(() => ({ pgsId: subj.periodGradeSubjectId, encounters: [] as { encounterNumber: number; date: string | null }[] }))
+      )
+    ).then(results => {
+      setEncounterDatesMap(prev => {
+        const next = { ...prev };
+        results.forEach(r => { next[r.pgsId] = r.encounters; });
+        return next;
+      });
+    });
+  }, [expandedGradeId, structure]);
 
   // Nomina general fetch removed — only encounter/final views remain.
   // The active view's useEffect (below) handles fetching.
@@ -371,28 +395,7 @@ const PendingSubjectManagement: React.FC = () => {
     setEncDatesLoading(true);
     setEncDatesData([]);
     try {
-      // Find a pendingSubjectId for this subject — use the first student from nomina
-      const nominaRes = nomina?.students.find(s => s.subjects.find(sb => sb.subjectId === subject.id));
-      // We need to get encounters for a pendingSubject. Since encounters are per-pendingSubject
-      // and the dates are shared conceptually, we fetch from the first available student's pendingSubject.
-      // However, the dates are per-pendingSubject (per student). For CE editing, we should edit
-      // each student's encounters. For simplicity, we fetch from the first student we find.
-      if (!nominaRes) {
-        message.warning('No hay estudiantes registrados en esta materia');
-        setEncDatesLoading(false);
-        return;
-      }
-      // We need the pendingSubjectId — the nomina doesn't have it directly.
-      // Use the encounter nomina instead to get pendingSubjectId
-      const encRes = await api.get(`/pending-subjects/nomina/${expandedGradeId}/encounter`, { params: { encounter: 1 } });
-      const encStudent = encRes.data.students.find((s: NominaEncounterStudent) => s.subjects.find(sb => sb.subjectId === subject.id));
-      const pendingSubj = encStudent?.subjects.find(sb => sb.subjectId === subject.id);
-      if (!pendingSubj) {
-        message.warning('No se encontró la materia pendiente');
-        setEncDatesLoading(false);
-        return;
-      }
-      const res = await api.get<MpEncounterResponse>(`/pending-subjects/${pendingSubj.pendingSubjectId}/encounters`);
+      const res = await api.get(`/pending-subjects/encounter-dates/${subject.periodGradeSubjectId}`);
       setEncDatesData(res.data.encounters);
     } catch (error: any) {
       message.error(error?.response?.data?.message || 'Error al cargar encuentros');
@@ -403,21 +406,17 @@ const PendingSubjectManagement: React.FC = () => {
 
   const handleSaveEncounterDates = async () => {
     if (!encDatesSubject || encDatesData.length === 0) return;
-    // We need a pendingSubjectId — same approach as open
     setEncDatesSaving(true);
     try {
-      const encRes = await api.get(`/pending-subjects/nomina/${expandedGradeId}/encounter`, { params: { encounter: 1 } });
-      const encStudent = encRes.data.students.find((s: NominaEncounterStudent) => s.subjects.find(sb => sb.subjectId === encDatesSubject.id));
-      const pendingSubj = encStudent?.subjects.find(sb => sb.subjectId === encDatesSubject.id);
-      if (!pendingSubj) {
-        message.error('No se encontró la materia pendiente');
-        setEncDatesSaving(false);
-        return;
-      }
-      await api.put(`/pending-subjects/${pendingSubj.pendingSubjectId}/encounters`, {
+      await api.put(`/pending-subjects/encounter-dates/${encDatesSubject.periodGradeSubjectId}`, {
         encounters: encDatesData.map(e => ({ encounterNumber: e.encounterNumber, date: e.date })),
       });
       message.success('Fechas actualizadas');
+      // Update the local map so headers refresh immediately
+      setEncounterDatesMap(prev => ({
+        ...prev,
+        [encDatesSubject.periodGradeSubjectId]: encDatesData.map(e => ({ encounterNumber: e.encounterNumber, date: e.date })),
+      }));
       setEncDatesModalOpen(false);
     } catch (error: any) {
       message.error(error?.response?.data?.message || 'Error al guardar fechas');
@@ -824,24 +823,22 @@ const PendingSubjectManagement: React.FC = () => {
                         Registrar
                       </Button>
                     </div>
-                    {isEnabled && (
-                      <div style={{ display: 'flex', gap: 4, marginTop: 8 }}>
-                        <Button
-                          size="small"
-                          icon={<CalendarOutlined />}
-                          onClick={() => openEncDatesModal(subject)}
-                        >
-                          Encuentros
-                        </Button>
-                        <Button
-                          size="small"
-                          icon={<FileTextOutlined />}
-                          onClick={() => openContentModal(subject)}
-                        >
-                          Contenido
-                        </Button>
-                      </div>
-                    )}
+                    <div style={{ display: 'flex', gap: 4, marginTop: 8 }}>
+                      <Button
+                        size="small"
+                        icon={<CalendarOutlined />}
+                        onClick={() => openEncDatesModal(subject)}
+                      >
+                        Encuentros
+                      </Button>
+                      <Button
+                        size="small"
+                        icon={<FileTextOutlined />}
+                        onClick={() => openContentModal(subject)}
+                      >
+                        Contenido
+                      </Button>
+                    </div>
                   </Card>
                 </Col>
               );
@@ -906,11 +903,18 @@ const PendingSubjectManagement: React.FC = () => {
                       <th className="mp-col-idx">#</th>
                       <th className="mp-col-doc">Cédula</th>
                       <th className="mp-col-name">Apellidos y Nombres</th>
-                      {nominaEncounter.subjects.map(subj => (
-                        <th key={subj.id} className="mp-col-subj" title={subj.name}>
-                          {subj.name.length > 15 ? subj.name.substring(0, 13) + '…' : subj.name}
-                        </th>
-                      ))}
+                      {nominaEncounter.subjects.map(subj => {
+                        const dates = encounterDatesMap[subj.periodGradeSubjectId] || [];
+                        const encDate = dates.find(d => d.encounterNumber === selectedEncounter);
+                        return (
+                          <th key={subj.id} className="mp-col-subj" title={subj.name}>
+                            <div>{subj.name.length > 15 ? subj.name.substring(0, 13) + '…' : subj.name}</div>
+                            {encDate?.date && (
+                              <div style={{ fontSize: 9, fontWeight: 400, color: '#999' }}>{dayjs(encDate.date).format('DD/MM/YY')}</div>
+                            )}
+                          </th>
+                        );
+                      })}
                     </tr>
                   </thead>
                   <tbody>
