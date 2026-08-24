@@ -7,6 +7,7 @@ const { Option } = Select;
 const { Text } = Typography;
 
 const normalizeText = (s?: string) => (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+const isMpSection = (name?: string) => normalizeText(name) === 'materia pendiente';
 
 interface Grade { id: number; name: string; isDiversified: boolean; order: number; }
 interface Section { id: number; name: string; }
@@ -33,6 +34,16 @@ const TeacherProjection: React.FC = () => {
   const [guideLoading, setGuideLoading] = useState(false);
   const [guideSavingId, setGuideSavingId] = useState<string | null>(null);
 
+  // MP teacher assignment tab state
+  const [mpStructure, setMpStructure] = useState<any[]>([]);
+  const [mpSectionId, setMpSectionId] = useState<number | null>(null);
+  const [mpShowModal, setMpShowModal] = useState(false);
+  const [mpSelectedTeacher, setMpSelectedTeacher] = useState<any>(null);
+  const [mpForm] = Form.useForm();
+  const [mpSubmitting, setMpSubmitting] = useState(false);
+  const [mpSelectedSubjectId, setMpSelectedSubjectId] = useState<number | null>(null);
+  const [mpSelectedGradeIds, setMpSelectedGradeIds] = useState<number[]>([]);
+
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
@@ -53,6 +64,21 @@ const TeacherProjection: React.FC = () => {
           if (orderA !== orderB) return orderA - orderB;
           return (a.grade?.name || '').localeCompare(b.grade?.name || '', 'es');
         }));
+
+        // Fetch MP structure
+        try {
+          const mpRes = await api.get('/pending-subjects/structure');
+          const mpGrades = (mpRes.data?.grades || []).slice().sort((a: any, b: any) => {
+            const orderA = a.grade?.order ?? 0;
+            const orderB = b.grade?.order ?? 0;
+            if (orderA !== orderB) return orderA - orderB;
+            return (a.grade?.name || '').localeCompare(b.grade?.name || '', 'es');
+          });
+          setMpStructure(mpGrades);
+          setMpSectionId(mpRes.data?.grades?.[0]?.mpSection?.id ?? null);
+        } catch (mpErr) {
+          console.error('[fetchData] MP structure error:', mpErr);
+        }
       }
     } catch (error) {
       console.error(error);
@@ -191,6 +217,77 @@ const TeacherProjection: React.FC = () => {
     }
   };
 
+  // --- MP teacher assignment handlers ---
+  const handleOpenMpModal = (teacher: any) => {
+    setMpSelectedTeacher(teacher);
+    setMpShowModal(true);
+    mpForm.resetFields();
+    setMpSelectedSubjectId(null);
+    setMpSelectedGradeIds([]);
+  };
+
+  const handleMpAssign = async () => {
+    if (!mpSectionId) {
+      message.error('No se encontró la sección de Materia Pendiente');
+      return;
+    }
+    if (!mpSelectedSubjectId) {
+      message.warning('Seleccione una materia');
+      return;
+    }
+    if (mpSelectedGradeIds.length === 0) {
+      message.warning('Seleccione al menos un año');
+      return;
+    }
+    setMpSubmitting(true);
+    try {
+      // For each selected grade, find the periodGradeSubjectId for this subject
+      const results = await Promise.allSettled(
+        mpSelectedGradeIds.map(gradeId => {
+          const gradeStruct = mpStructure.find(gs => gs.grade?.id === gradeId);
+          const subjectObj = gradeStruct?.subjects.find((s: any) => s.id === mpSelectedSubjectId);
+          const periodGradeSubjectId = subjectObj?.periodGradeSubjectId || subjectObj?.PeriodGradeSubject?.id;
+          if (!periodGradeSubjectId) {
+            return Promise.reject(new Error('PeriodGradeSubject no encontrado'));
+          }
+          return api.post('/teachers/assign', {
+            teacherId: mpSelectedTeacher.id,
+            periodGradeSubjectId,
+            sectionId: mpSectionId,
+          });
+        })
+      );
+
+      const fulfilled = results.filter(r => r.status === 'fulfilled').length;
+      const rejected = results.filter(r => r.status === 'rejected').length;
+
+      if (fulfilled > 0 && rejected === 0) {
+        message.success(`Materia pendiente asignada a ${fulfilled} año${fulfilled > 1 ? 's' : ''} correctamente`);
+      } else if (fulfilled > 0 && rejected > 0) {
+        message.warning(`Asignada en ${fulfilled} año${fulfilled > 1 ? 's' : ''}, falló en ${rejected}`);
+      } else {
+        message.error('Error al asignar la materia pendiente');
+      }
+
+      setMpShowModal(false);
+      fetchData();
+    } catch (error: any) {
+      message.error(error.response?.data?.message || 'Error al asignar materia pendiente');
+    } finally {
+      setMpSubmitting(false);
+    }
+  };
+
+  const handleMpRemove = async (assignmentId: number) => {
+    try {
+      await api.delete(`/teachers/assign/${assignmentId}`);
+      message.success('Asignación removida');
+      fetchData();
+    } catch (error) {
+      message.error('Error al remover asignación');
+    }
+  };
+
   // Calculate subjects without assigned teachers across all grades/sections.
   // Each "slot" is a (periodGradeSubjectId, sectionId) pair that should have a teacher.
   const unassignedSubjects = useMemo(() => {
@@ -241,6 +338,31 @@ const TeacherProjection: React.FC = () => {
 
   const unassignedCount = unassignedSubjects.length;
 
+  // Build unique subject list from MP structure, and map which grades have each subject
+  const mpUniqueSubjects = useMemo(() => {
+    const map = new Map<number, { id: number; name: string; grades: { gradeId: number; gradeName: string }[] }>();
+    mpStructure.forEach((gs: any) => {
+      const gradeId = gs.grade?.id;
+      const gradeName = gs.grade?.name;
+      (gs.subjects || []).forEach((sub: any) => {
+        if (!map.has(sub.id)) {
+          map.set(sub.id, { id: sub.id, name: sub.name, grades: [] });
+        }
+        if (gradeId) {
+          map.get(sub.id)!.grades.push({ gradeId, gradeName });
+        }
+      });
+    });
+    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name, 'es'));
+  }, [mpStructure]);
+
+  // Grades available for the currently selected subject
+  const mpGradesForSubject = useMemo(() => {
+    if (!mpSelectedSubjectId) return [];
+    const subj = mpUniqueSubjects.find(s => s.id === mpSelectedSubjectId);
+    return subj?.grades || [];
+  }, [mpSelectedSubjectId, mpUniqueSubjects]);
+
   // Build a sort key map from availableStructure so teachingAssignments can be
   // displayed in canonical order (grade.order, then subject order within grade).
   const subjectSortKey = useMemo(() => {
@@ -274,35 +396,41 @@ const TeacherProjection: React.FC = () => {
     {
       title: 'Materias Asignadas',
       key: 'assignments',
-      render: (_: any, record: any) => (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          {record.teachingAssignments?.length > 0 ? (
-            [...record.teachingAssignments]
-              .sort((a: any, b: any) => {
-                const nameA = normalizeText(a.periodGradeSubject?.subject?.name || '');
-                const nameB = normalizeText(b.periodGradeSubject?.subject?.name || '');
-                const isOrientA = nameA === 'orientacion y convivencia';
-                const isOrientB = nameB === 'orientacion y convivencia';
-                if (isOrientA !== isOrientB) return isOrientA ? 1 : -1;
+      render: (_: any, record: any) => {
+        // Exclude MP assignments — those are shown in the MP tab
+        const regularAssignments = (record.teachingAssignments || []).filter(
+          (as: any) => !isMpSection(as.section?.name)
+        );
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {regularAssignments.length > 0 ? (
+              [...regularAssignments]
+                .sort((a: any, b: any) => {
+                  const nameA = normalizeText(a.periodGradeSubject?.subject?.name || '');
+                  const nameB = normalizeText(b.periodGradeSubject?.subject?.name || '');
+                  const isOrientA = nameA === 'orientacion y convivencia';
+                  const isOrientB = nameB === 'orientacion y convivencia';
+                  if (isOrientA !== isOrientB) return isOrientA ? 1 : -1;
 
-                const keyA = `${a.periodGradeSubject?.id}`;
-                const keyB = `${b.periodGradeSubject?.id}`;
-                const ordA = subjectSortKey.get(keyA) ?? { gradeOrder: 999, subjectOrder: 999 };
-                const ordB = subjectSortKey.get(keyB) ?? { gradeOrder: 999, subjectOrder: 999 };
-                if (ordA.gradeOrder !== ordB.gradeOrder) return ordA.gradeOrder - ordB.gradeOrder;
-                if (ordA.subjectOrder !== ordB.subjectOrder) return ordA.subjectOrder - ordB.subjectOrder;
-                return (a.section?.name || '').localeCompare(b.section?.name || '', 'es');
-              })
-              .map((as: any) => (
-                <Tag key={as.id} color="blue" closable onClose={(e) => { e.preventDefault(); handleRemove(as.id); }}>
-                  {as.periodGradeSubject?.subject?.name} - {as.periodGradeSubject?.periodGrade?.grade?.name} ({as.section?.name})
-                </Tag>
-              ))
-          ) : (
-            <span style={{ color: '#999', fontSize: '0.85rem' }}>Sin materias asignadas</span>
-          )}
-        </div>
-      )
+                  const keyA = `${a.periodGradeSubject?.id}`;
+                  const keyB = `${b.periodGradeSubject?.id}`;
+                  const ordA = subjectSortKey.get(keyA) ?? { gradeOrder: 999, subjectOrder: 999 };
+                  const ordB = subjectSortKey.get(keyB) ?? { gradeOrder: 999, subjectOrder: 999 };
+                  if (ordA.gradeOrder !== ordB.gradeOrder) return ordA.gradeOrder - ordB.gradeOrder;
+                  if (ordA.subjectOrder !== ordB.subjectOrder) return ordA.subjectOrder - ordB.subjectOrder;
+                  return (a.section?.name || '').localeCompare(b.section?.name || '', 'es');
+                })
+                .map((as: any) => (
+                  <Tag key={as.id} color="blue" closable onClose={(e) => { e.preventDefault(); handleRemove(as.id); }}>
+                    {as.periodGradeSubject?.subject?.name} - {as.periodGradeSubject?.periodGrade?.grade?.name} ({as.section?.name})
+                  </Tag>
+                ))
+            ) : (
+              <span style={{ color: '#999', fontSize: '0.85rem' }}>Sin materias asignadas</span>
+            )}
+          </div>
+        );
+      }
     },
     {
       title: 'Acciones',
@@ -421,6 +549,83 @@ const TeacherProjection: React.FC = () => {
     </div>
   );
 
+  // --- MP teacher assignment tab ---
+  // Filter teaching assignments to only show MP section ones
+  const mpColumns = [
+    {
+      title: 'Profesor',
+      key: 'teacher',
+      render: (_: any, record: any) => (
+        <Space>
+          <UserOutlined />
+          <span style={{ fontWeight: 600 }}>{record.firstName} {record.lastName}</span>
+        </Space>
+      )
+    },
+    {
+      title: 'Materias Pendientes Asignadas',
+      key: 'assignments',
+      render: (_: any, record: any) => {
+        const mpAssignments = (record.teachingAssignments || []).filter((as: any) =>
+          isMpSection(as.section?.name)
+        );
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {mpAssignments.length > 0 ? (
+              [...mpAssignments]
+                .sort((a: any, b: any) => {
+                  const nameA = normalizeText(a.periodGradeSubject?.subject?.name || '');
+                  const nameB = normalizeText(b.periodGradeSubject?.subject?.name || '');
+                  return nameA.localeCompare(nameB, 'es');
+                })
+                .map((as: any) => (
+                  <Tag key={as.id} color="purple" closable onClose={(e) => { e.preventDefault(); handleMpRemove(as.id); }}>
+                    {as.periodGradeSubject?.subject?.name} - {as.periodGradeSubject?.periodGrade?.grade?.name}
+                  </Tag>
+                ))
+            ) : (
+              <span style={{ color: '#999', fontSize: '0.85rem' }}>Sin materias pendientes asignadas</span>
+            )}
+          </div>
+        );
+      }
+    },
+    {
+      title: 'Acciones',
+      key: 'actions',
+      align: 'right' as const,
+      render: (_: any, record: any) => (
+        <Button
+          type="primary"
+          ghost
+          icon={<PlusOutlined />}
+          size="small"
+          onClick={() => handleOpenMpModal(record)}
+        >
+          Asignar Materia
+        </Button>
+      )
+    }
+  ];
+
+  const mpTab = (
+    <>
+      {(!activePeriod && !loading) ? (
+        <Alert message="Periodo Inactivo" description="No hay un periodo escolar activo." type="warning" showIcon style={{ margin: 24 }} />
+      ) : !mpSectionId ? (
+        <Alert message="Sección MP no encontrada" description="No se pudo obtener la sección de Materia Pendiente." type="error" showIcon style={{ margin: 24 }} />
+      ) : (
+        <Table
+          loading={loading}
+          dataSource={teachers}
+          columns={mpColumns}
+          rowKey="id"
+          pagination={{ pageSize: 10 }}
+        />
+      )}
+    </>
+  );
+
   return (
     <div style={{ maxWidth: 1000, margin: '0 auto' }}>
       <Card
@@ -517,6 +722,16 @@ const TeacherProjection: React.FC = () => {
               ),
               children: guideTab,
             },
+            {
+              key: 'mp-teacher',
+              label: (
+                <span>
+                  <BookOutlined style={{ marginRight: 6 }} />
+                  Materia Pendiente
+                </span>
+              ),
+              children: mpTab,
+            },
           ]}
         />
       </Card>
@@ -587,6 +802,71 @@ const TeacherProjection: React.FC = () => {
             <Space>
               <Button onClick={() => setShowModal(false)}>Cancelar</Button>
               <Button type="primary" htmlType="submit" loading={submitting}>Asignar</Button>
+            </Space>
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      {/* MP Assignment Modal — one subject + multiple years (no section, single MP section) */}
+      <Modal
+        title={`Asignar Materia Pendiente a: ${mpSelectedTeacher?.firstName} ${mpSelectedTeacher?.lastName}`}
+        open={mpShowModal}
+        onCancel={() => setMpShowModal(false)}
+        footer={null}
+        destroyOnClose
+      >
+        <Form form={mpForm} layout="vertical" onFinish={handleMpAssign}>
+          <Form.Item label="Materia" required>
+            <Select
+              placeholder="Seleccione Materia"
+              showSearch
+              filterOption={(input, option) =>
+                normalizeText(String(option?.children ?? '')).includes(normalizeText(input))
+              }
+              value={mpSelectedSubjectId ?? undefined}
+              onChange={(val: number) => {
+                setMpSelectedSubjectId(val);
+                setMpSelectedGradeIds([]);
+              }}
+            >
+              {mpUniqueSubjects.map(sub => (
+                <Option key={sub.id} value={sub.id}>{sub.name}</Option>
+              ))}
+            </Select>
+          </Form.Item>
+
+          <Form.Item label="Años" required>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              {mpGradesForSubject.length > 0 ? (
+                mpGradesForSubject.map(g => {
+                  const selected = mpSelectedGradeIds.includes(g.gradeId);
+                  return (
+                    <Button
+                      key={g.gradeId}
+                      type={selected ? 'primary' : 'default'}
+                      disabled={!mpSelectedSubjectId}
+                      onClick={() => {
+                        setMpSelectedGradeIds(prev =>
+                          prev.includes(g.gradeId)
+                            ? prev.filter(id => id !== g.gradeId)
+                            : [...prev, g.gradeId]
+                        );
+                      }}
+                    >
+                      {g.gradeName}
+                    </Button>
+                  );
+                })
+              ) : (
+                <span style={{ color: '#999' }}>Seleccione una materia primero</span>
+              )}
+            </div>
+          </Form.Item>
+
+          <Form.Item style={{ marginTop: 24, marginBottom: 0, textAlign: 'right' }}>
+            <Space>
+              <Button onClick={() => setMpShowModal(false)}>Cancelar</Button>
+              <Button type="primary" htmlType="submit" loading={mpSubmitting}>Asignar</Button>
             </Space>
           </Form.Item>
         </Form>
