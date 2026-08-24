@@ -363,16 +363,15 @@ const PerformanceSummary: React.FC = () => {
     fetchStructure(selectedPeriodId);
   }, [selectedPeriodId, fetchStructure]);
 
-  // Template assignment is resolved from the first selected course.
+  // Template assignment is resolved from the first selected grade.
+  // Templates are per-grade (all sections share the same template).
   useEffect(() => {
     const gradeId = selectedGradeIds[0];
     if (!gradeId) { setSelectedTemplate(null); return; }
-    const sectionId = selectedSectionIds[0];
-    const params = sectionId ? `?sectionId=${sectionId}` : '';
-    api.get(`/templates/assignment/${gradeId}${params}`)
+    api.get(`/templates/assignment/${gradeId}`)
       .then((res) => { setSelectedTemplate(res.data?.templateName || null); })
       .catch(() => setSelectedTemplate(null));
-  }, [selectedGradeIds, selectedSectionIds]);
+  }, [selectedGradeIds]);
 
   useEffect(() => {
     setUserOverrodeTemplate(false);
@@ -1734,7 +1733,6 @@ const PerformanceSummary: React.FC = () => {
         onClose={() => setTemplateModalOpen(false)}
         selectedTemplate={selectedTemplate}
         defaultGradeId={selectedGradeIds[0] ?? null}
-        defaultSectionId={selectedSectionIds[0] ?? null}
         onSelect={(name) => { setSelectedTemplate(name || null); setUserOverrodeTemplate(true); }}
       />
     </div>

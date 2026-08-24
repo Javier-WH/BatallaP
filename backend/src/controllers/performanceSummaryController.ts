@@ -564,16 +564,13 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
       }
       templatePath = candidate;
     } else {
-      // Look up the template assigned to this grade / section
+      // Look up the template assigned to this grade (per-grade only;
+      // all sections share the same template).
       const { Setting } = await import('@/models/index');
       const tryKey = (k: string) => Setting.findOne({ where: { key: k } });
       const gradeId = String(grade.id);
-      const sectionId = section.id;
-      const sectionKey = `template_assignment:grade:${gradeId}:section:${sectionId}`;
       const gradeKey = `template_assignment:grade:${gradeId}`;
-      const sectionAssignment = await tryKey(sectionKey);
-      const gradeAssignment = sectionAssignment ? null : await tryKey(gradeKey);
-      const assignment = sectionAssignment || gradeAssignment;
+      const assignment = await tryKey(gradeKey);
       if (assignment && fs.existsSync(path.join(templatesRoot, path.basename(assignment.value)))) {
         templatePath = path.join(templatesRoot, path.basename(assignment.value));
       }

@@ -7,13 +7,9 @@ import { Setting } from '@/models/index';
 
 const templatesDir = path.join(__dirname, '../../templates');
 
-function templateAssignmentKey(gradeId: number | string, sectionId?: number | string | null): string {
-  // Section is optional; when present the assignment is scoped to that
-  // specific (grade, section) combination so different sections of the same
-  // grade can use different templates.
-  if (sectionId != null && sectionId !== '') {
-    return `template_assignment:grade:${gradeId}:section:${sectionId}`;
-  }
+function templateAssignmentKey(gradeId: number | string): string {
+  // Templates are assigned strictly per grade (year). All sections of the
+  // same grade share the same template.
   return `template_assignment:grade:${gradeId}`;
 }
 
@@ -91,39 +87,41 @@ export const deleteTemplate = async (req: Request, res: Response) => {
   }
 };
 
-// Returns the template assigned to a given grade (or grade+section), or null
-// if none. Pass `?sectionId=...` to scope the lookup to a specific section.
+// Returns the template assigned to a given grade, or null if none.
+// Templates are strictly per-grade (all sections share the same template).
 export const getTemplateForGrade = async (req: Request, res: Response) => {
   try {
     const { gradeId } = req.params;
-    const sectionId = (req.query.sectionId as string | undefined) || null;
     if (!gradeId) {
       return res.status(400).json({ message: 'gradeId es requerido' });
     }
-    const setting = await Setting.findOne({ where: { key: templateAssignmentKey(gradeId, sectionId) } });
+    const setting = await Setting.findOne({ where: { key: templateAssignmentKey(gradeId) } });
     if (!setting) {
-      return res.json({ gradeId: Number(gradeId), sectionId: sectionId ? Number(sectionId) : null, templateName: null });
+      return res.json({ gradeId: Number(gradeId), templateName: null });
     }
     const targetPath = safeTemplatePath(setting.value);
     if (!targetPath || !fs.existsSync(targetPath)) {
-      return res.json({ gradeId: Number(gradeId), sectionId: sectionId ? Number(sectionId) : null, templateName: null });
+      return res.json({ gradeId: Number(gradeId), templateName: null });
     }
-    res.json({ gradeId: Number(gradeId), sectionId: sectionId ? Number(sectionId) : null, templateName: setting.value });
+    res.json({ gradeId: Number(gradeId), templateName: setting.value });
   } catch (error) {
     console.error('[getTemplateForGrade] Error:', error);
     res.status(500).json({ message: 'Error al obtener la plantilla del grado' });
   }
 };
 
-// Returns all template assignments keyed by `${gradeId}` or `${gradeId}:${sectionId}`.
+// Returns all template assignments keyed by `${gradeId}`.
 export const listTemplateAssignments = async (_req: Request, res: Response) => {
   try {
     const settings = await Setting.findAll({
-      where: { key: { [Op.like]: 'template_assignment:%' } },
+      where: { key: { [Op.like]: 'template_assignment:grade:%' } },
     });
     const assignments: Record<string, string> = {};
     for (const s of settings) {
-      const key = s.key.replace('template_assignment:', '');
+      // Skip any legacy per-section keys (they contain ":section:")
+      if (s.key.includes(':section:')) continue;
+      // Strip the full prefix so the key is just the gradeId (e.g. "5").
+      const key = s.key.replace('template_assignment:grade:', '');
       const targetPath = safeTemplatePath(s.value);
       if (targetPath && fs.existsSync(targetPath)) {
         assignments[key] = s.value;
@@ -136,11 +134,10 @@ export const listTemplateAssignments = async (_req: Request, res: Response) => {
   }
 };
 
-// Assigns a template to a grade (or grade+section). Body:
-// { gradeId, templateName, sectionId? }.
+// Assigns a template to a grade. Body: { gradeId, templateName }.
 export const assignTemplateToGrade = async (req: Request, res: Response) => {
   try {
-    const { gradeId, sectionId, templateName } = req.body;
+    const { gradeId, templateName } = req.body;
     if (!gradeId || !templateName) {
       return res.status(400).json({ message: 'gradeId y templateName son requeridos' });
     }
@@ -149,27 +146,25 @@ export const assignTemplateToGrade = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'La plantilla no existe' });
     }
     await Setting.upsert({
-      key: templateAssignmentKey(gradeId, sectionId || null),
+      key: templateAssignmentKey(gradeId),
       value: templateName,
     });
-    res.json({ gradeId: Number(gradeId), sectionId: sectionId ? Number(sectionId) : null, templateName });
+    res.json({ gradeId: Number(gradeId), templateName });
   } catch (error) {
     console.error('[assignTemplateToGrade] Error:', error);
     res.status(500).json({ message: 'Error al asignar la plantilla' });
   }
 };
 
-// Removes a template assignment for a grade (or grade+section). The
-// sectionId is taken from the query string (?sectionId=...).
+// Removes a template assignment for a grade.
 export const unassignTemplateFromGrade = async (req: Request, res: Response) => {
   try {
     const { gradeId } = req.params;
-    const sectionId = (req.query.sectionId as string | undefined) || null;
     if (!gradeId) {
       return res.status(400).json({ message: 'gradeId es requerido' });
     }
-    await Setting.destroy({ where: { key: templateAssignmentKey(gradeId, sectionId) } });
-    res.json({ gradeId: Number(gradeId), sectionId: sectionId ? Number(sectionId) : null, templateName: null });
+    await Setting.destroy({ where: { key: templateAssignmentKey(gradeId) } });
+    res.json({ gradeId: Number(gradeId), templateName: null });
   } catch (error) {
     console.error('[unassignTemplateFromGrade] Error:', error);
     res.status(500).json({ message: 'Error al desasignar la plantilla' });
