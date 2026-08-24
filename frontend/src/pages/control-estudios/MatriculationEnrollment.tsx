@@ -6,6 +6,7 @@ import {
   Card,
   Checkbox,
   Col,
+  Dropdown,
   Input,
   Menu,
   message,
@@ -38,6 +39,7 @@ import {
   VerticalLeftOutlined,
   ColumnWidthOutlined,
   MoreOutlined,
+  DownOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useNavigate } from 'react-router-dom';
@@ -278,6 +280,8 @@ const MatriculationEnrollment: React.FC = () => {
   const [structure, setStructure] = useState<EnrollStructureEntry[]>([]);
   const [locations, setLocations] = useState<VenezuelaState[]>([]);
   const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
+  const [visibilityMenuOpen, setVisibilityMenuOpen] = useState(false);
+  const [visibilityOverrides, setVisibilityOverrides] = useState<Record<number, boolean>>({});
   const [subjectModalVisible, setSubjectModalVisible] = useState(false);
   const [selectedStudentForSubjects, setSelectedStudentForSubjects] = useState<{
     inscriptionId: number;
@@ -304,6 +308,13 @@ const MatriculationEnrollment: React.FC = () => {
   const [guardianModalVisible, setGuardianModalVisible] = useState(false);
   const contextMenuRef = useRef<HTMLDivElement | null>(null);
   const agGridRef = useRef<MatriculationAgGridHandle>(null);
+  // Mirror of selectedRowKeys that survives async clears (e.g. AG-Grid
+  // firing onSelectionChanged with empty rows when a dropdown steals focus).
+  const selectedRowKeysRef = useRef<number[]>([]);
+  // Snapshot of selected IDs captured when a dropdown opens, so the
+  // menu onClick can use them even after the grid clears the selection.
+  const visibilityCapturedIds = useRef<number[]>([]);
+  const preserveVisibilitySelectionRef = useRef(false);
   // Helper function to load filters from localStorage
   const loadSavedFilters = () => {
     try {
@@ -695,16 +706,35 @@ const MatriculationEnrollment: React.FC = () => {
     saveFieldChange(rowId, { enrollmentAnswers: formattedAnswers });
   }, [saveFieldChange]);
 
-  const handleBulkToggleVisibility = async (hidden: boolean) => {
-    const ids = selectedRowKeys.map(k => Number(k));
-    if (ids.length === 0) return;
+  const handleBulkToggleVisibility = async (hidden: boolean, capturedIds?: number[]) => {
+    const ids = (capturedIds?.length ? capturedIds : selectedRowKeysRef.current).map(k => Number(k));
+    if (ids.length === 0) {
+      message.warning('Seleccione al menos un estudiante');
+      return;
+    }
 
-    message.loading({ content: hidden ? 'Desinscribiendo estudiantes...' : 'Inscribiendo estudiantes...', key: 'vis' });
+    message.loading({ content: hidden ? 'Marcando como no inscritos...' : 'Marcando como inscritos...', key: 'vis' });
     try {
       await api.post('/matriculations/bulk-visibility', { ids, hidden });
-      message.success({ content: hidden ? 'Estudiantes desinscritos' : 'Estudiantes inscritos', key: 'vis' });
-      setSelectedRowKeys([]);
-      fetchData();
+      preserveVisibilitySelectionRef.current = true;
+      const selectedIds = new Set(ids);
+      setMatriculations(prev => prev.map(row => (
+        selectedIds.has(row.id) ? { ...row, hiddenFromControlEstudios: hidden } : row
+      )));
+      setVisibilityOverrides(prev => {
+        const next = { ...prev };
+        ids.forEach(id => { next[id] = hidden; });
+        return next;
+      });
+      selectedRowKeysRef.current = ids;
+      setSelectedRowKeys([...ids]);
+      setVisibilityMenuOpen(false);
+      requestAnimationFrame(() => {
+        selectedRowKeysRef.current = ids;
+        setSelectedRowKeys([...ids]);
+        requestAnimationFrame(() => { preserveVisibilitySelectionRef.current = false; });
+      });
+      message.success({ content: hidden ? 'Estado cambiado a No Inscrito' : 'Estado cambiado a Inscrito', key: 'vis' });
     } catch (err: any) {
       const apiErr = err as { response?: { data?: { error?: string } } };
       message.error({ content: apiErr?.response?.data?.error || 'Error al cambiar inscripción', key: 'vis' });
@@ -1722,28 +1752,59 @@ const MatriculationEnrollment: React.FC = () => {
                 </div>
 
                 {/* Section 2b: Inscription controls (Admin/Master only) */}
-                {canManageVisibility && (
-                  <div className="pl-4 border-l border-slate-300/50 flex gap-2">
-                    <Tooltip title="Marcar como inscrito (visible para Control de Estudios)">
-                      <Button
-                        size="small"
-                        icon={<EyeOutlined />}
-                        onClick={() => handleBulkToggleVisibility(false)}
+                {canManageVisibility && (() => {
+                  const selectedRows = matriculations.filter(r => selectedRowKeys.includes(r.id));
+                  const isHidden = (row: MatriculationRow) => visibilityOverrides[row.id] ?? !!row.hiddenFromControlEstudios;
+                  const allHidden = selectedRows.length > 0 && selectedRows.every(isHidden);
+                  const allVisible = selectedRows.length > 0 && selectedRows.every(r => !isHidden(r));
+                  const currentLabel = selectedRows.length === 0
+                    ? 'Visibilidad'
+                    : allVisible ? 'Inscrito'
+                    : allHidden ? 'No Inscrito'
+                    : 'Visibilidad';
+                  const currentColor = allVisible ? '#16a34a' : allHidden ? '#dc2626' : undefined;
+                  const preventGridBlur = (event: React.MouseEvent) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                  };
+                  const menuItems: MenuProps['items'] = [
+                    {
+                      key: 'inscrito',
+                      label: <span onMouseDown={preventGridBlur} style={{ color: '#16a34a', fontWeight: 600 }}>Inscrito</span>,
+                    },
+                    {
+                      key: 'no_inscrito',
+                      label: <span onMouseDown={preventGridBlur} style={{ color: '#dc2626', fontWeight: 600 }}>No Inscrito</span>,
+                    },
+                  ];
+                  return (
+                    <div className="pl-4 border-l border-slate-300/50">
+                      <Dropdown
+                        menu={{
+                          items: menuItems,
+                          onClick: ({ key }) => {
+                            handleBulkToggleVisibility(
+                              key === 'no_inscrito',
+                              visibilityCapturedIds.current
+                            );
+                          },
+                        }}
+                        trigger={['click']}
+                        open={visibilityMenuOpen}
+                        onOpenChange={(open) => {
+                          if (open) {
+                            visibilityCapturedIds.current = [...selectedRowKeysRef.current];
+                          }
+                          setVisibilityMenuOpen(open);
+                        }}
                       >
-                        Inscribir
-                      </Button>
-                    </Tooltip>
-                    <Tooltip title="Desinscribir (ocultar de Control de Estudios)">
-                      <Button
-                        size="small"
-                        icon={<EyeInvisibleOutlined />}
-                        onClick={() => handleBulkToggleVisibility(true)}
-                      >
-                        Desinscribir
-                      </Button>
-                    </Tooltip>
-                  </div>
-                )}
+                        <Button size="small" icon={<DownOutlined />} disabled={selectedRows.length === 0}>
+                          <span style={currentColor ? { color: currentColor, fontWeight: 600 } : undefined}>{currentLabel}</span>
+                        </Button>
+                      </Dropdown>
+                    </div>
+                  );
+                })()}
 
                 {/* Section 3: Primary Action */}
                 {viewStatus === 'pending' && (
@@ -1754,7 +1815,7 @@ const MatriculationEnrollment: React.FC = () => {
                       onClick={handleBulkEnroll}
                       className="bg-blue-600 hover:bg-blue-500 border-none shadow-md shadow-blue-500/30"
                     >
-                      Inscribir
+                      Matricular
                     </Button>
                   </div>
                 )}
@@ -1774,7 +1835,11 @@ const MatriculationEnrollment: React.FC = () => {
           visibleColumnKeys={visibleColumnKeys}
           locations={locations}
           selectedRowIds={selectedRowKeys}
-          onSelectionChanged={setSelectedRowKeys}
+          onSelectionChanged={(ids: number[]) => {
+            if ((visibilityMenuOpen || preserveVisibilitySelectionRef.current) && ids.length === 0) return;
+            selectedRowKeysRef.current = ids;
+            setSelectedRowKeys(ids);
+          }}
           height={scrollY}
           onUpdateField={handleUpdateRow}
           onUpdateFields={handleUpdateFields}
