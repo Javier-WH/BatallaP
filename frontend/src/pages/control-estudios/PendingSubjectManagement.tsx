@@ -609,9 +609,11 @@ const PendingSubjectManagement: React.FC = () => {
         .mp-cell-name { text-align: left; font-weight: 500; }
         .mp-cell-filled {
           background: #e8ecf0;
+          border: 1px solid #c4cad3 !important;
         }
         .mp-cell-blank {
           background: #fff; cursor: pointer; transition: background 0.15s;
+          border: 1px solid #d9dee5 !important;
         }
         .mp-cell-blank:hover { background: #f0f5ff; }
         .mp-pass { color: #52c41a; font-weight: 700; font-size: 14px; }

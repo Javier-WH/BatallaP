@@ -359,25 +359,27 @@ const PendingSubjectTeacherPanel: React.FC = () => {
         : '—',
     });
 
-    // Actions
-    baseCols.push({
-      title: 'Directa',
-      key: 'actions',
-      width: 90,
-      render: (_, r) => (
-        <Button
-          size="small"
-          icon={<EditOutlined />}
-          onClick={() => {
-            setGradeModalStudent(r);
-            setGradeValue(r.finalGrade?.finalScore ?? null);
-            setGradeModalOpen(true);
-          }}
-        >
-          Nota
-        </Button>
-      ),
-    });
+    // Direct grade button — only show when there are no evaluation plan items
+    if (!detail?.evaluationPlans.length) {
+      baseCols.push({
+        title: 'Directa',
+        key: 'actions',
+        width: 90,
+        render: (_, r) => (
+          <Button
+            size="small"
+            icon={<EditOutlined />}
+            onClick={() => {
+              setGradeModalStudent(r);
+              setGradeValue(r.finalGrade?.finalScore ?? null);
+              setGradeModalOpen(true);
+            }}
+          >
+            Nota
+          </Button>
+        ),
+      });
+    }
 
     return baseCols;
   }, [detail, qualEdits]);
