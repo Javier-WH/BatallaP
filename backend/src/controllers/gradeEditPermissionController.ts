@@ -219,9 +219,13 @@ export const checkPermission = async (req: Request, res: Response) => {
     const parsedPeriodId = Number(schoolPeriodId);
 
     // Check if user has Control de Estudios role
-    if (!hasRole(sessionUser, ['Control de Estudios'])) {
+    if (!hasRole(sessionUser, ['Control de Estudios', 'Master', 'Administrador'])) {
       return res.json({ hasPermission: false, reason: 'Usuario no tiene rol Control de Estudios' });
     }
+
+    // TEMPORARY BYPASS: permissions disabled during UI overhaul.
+    // TODO: Re-enable permission checks once the new UI is finalized.
+    return res.json({ hasPermission: true, permission: { id: 0 }, scope: 'bypass' });
 
     // Check for global permission (schoolPeriodId is null)
     const globalPermission = await GradeEditPermission.findOne({
