@@ -509,7 +509,12 @@ const PendingSubjectTeacherPanel: React.FC = () => {
                                                 onChange={e => {
                                                   const v = e.target.value === '' ? null : Number(e.target.value);
                                                   setEncounterEdits(prev => ({ ...prev, [editKey]: v }));
-                                                  if (v !== 0) setEncounterAbsent(prev => ({ ...prev, [editKey]: false }));
+                                                  // 0 = NP (Inasistente): automatically mark as absent
+                                                  if (v === 0) {
+                                                    setEncounterAbsent(prev => ({ ...prev, [editKey]: true }));
+                                                  } else if (v !== null) {
+                                                    setEncounterAbsent(prev => ({ ...prev, [editKey]: false }));
+                                                  }
                                                 }}
                                                 onBlur={() => {
                                                   if (editValue !== undefined) {

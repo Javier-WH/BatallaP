@@ -319,6 +319,13 @@ const PerformanceSummary: React.FC = () => {
     return combos;
   }, [structure, selectedGradeIds, selectedSectionIds]);
 
+  // Detect if any selected combination is the "Materia Pendiente" section.
+  // MP sections can only generate the Resumen Final, not Revisión or Anual.
+  const hasMpSection = useMemo(
+    () => validCombinations.some(c => c.sectionName.toUpperCase() === 'MATERIA PENDIENTE'),
+    [validCombinations]
+  );
+
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
@@ -1407,15 +1414,23 @@ const PerformanceSummary: React.FC = () => {
                         <div className="rb-chips">
                           {availableSections.map(sec => {
                             const on = selectedSectionIds.includes(sec.id);
+                            const isMp = sec.name.toUpperCase() === 'MATERIA PENDIENTE';
                             return (
                               <button
                                 key={sec.id}
                                 type="button"
                                 aria-pressed={on}
                                 className={`rb-chip${on ? ' active' : ''}`}
-                                onClick={() => setSelectedSectionIds(prev =>
-                                  prev.includes(sec.id) ? prev.filter(id => id !== sec.id) : [...prev, sec.id]
-                                )}
+                                onClick={() => setSelectedSectionIds(prev => {
+                                  if (prev.includes(sec.id)) return prev.filter(id => id !== sec.id);
+                                  // MP is mutually exclusive with other sections
+                                  if (isMp) return [sec.id];
+                                  // Selecting a non-MP section deselects MP
+                                  return prev.filter(id => {
+                                    const s = availableSections.find(a => a.id === id);
+                                    return s && s.name.toUpperCase() !== 'MATERIA PENDIENTE';
+                                  }).concat(sec.id);
+                                })}
                               >
                                 {sec.name}
                               </button>
@@ -1454,7 +1469,7 @@ const PerformanceSummary: React.FC = () => {
                       className="rb-export-btn"
                       style={{ width: 'auto', flex: '1 1 220px', minHeight: 48, background: '#EEF0F3', color: '#A7ADB8' }}
                       disabled
-                      title="Próximamente"
+                      title={hasMpSection ? 'No disponible para Materia Pendiente' : 'Próximamente'}
                     >
                       <IconDownload size={16} />
                       Resumen de Revisión
@@ -1462,13 +1477,22 @@ const PerformanceSummary: React.FC = () => {
                     <button
                       className="rb-export-btn"
                       style={{ width: 'auto', flex: '1 1 260px', minHeight: 48 }}
-                      disabled={!readyToExport || annualLoading}
+                      disabled={!readyToExport || annualLoading || hasMpSection}
+                      title={hasMpSection ? 'No disponible para Materia Pendiente' : undefined}
                       onClick={handleExportAnnual}
                     >
                       {annualLoading ? <Spin size="small" /> : <IconBarChart size={16} />}
                       {annualLoading ? 'Generando…' : 'Resumen del Rendimiento Anual'}
                     </button>
                   </div>
+                  {hasMpSection && (
+                    <div className="rb-warning" style={{ marginTop: 12 }}>
+                      <IconAlert size={15} />
+                      <div className="rb-warning-text">
+                        La sección <b>Materia Pendiente</b> solo permite generar el <b>Resumen Final</b>.
+                      </div>
+                    </div>
+                  )}
                   {!readyToExport && <p className="rb-export-hint">Seleccione al menos un grado y una sección para continuar</p>}
                   {!selectedTemplate && readyToExport && (
                     <div className="rb-warning" style={{ marginTop: 12 }}>

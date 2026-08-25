@@ -350,7 +350,17 @@ function fillSheetByNamedRanges(
       const col = subjectColList[i].col;
       const row = 15 + n;
       const isLiteral = insSub?.subject?.usesLiteralGrades ?? columnSubject?.usesLiteralGrades;
-      if (isLiteral) {
+      // For MP sections, check if the student was absent (I) instead of showing 00
+      const mpIsAbsent = isMpSection && insSub ? (() => {
+        const encs = (insSub.encounters || []).sort((a: any, b: any) => a.encounterNumber - b.encounterNumber);
+        const approvedEnc = encs.find((e: any) => e.score !== null && e.score >= 10 && !e.isAbsent);
+        if (approvedEnc) return false;
+        const lastScored = [...encs].reverse().find((e: any) => e.score !== null || e.isAbsent);
+        return lastScored ? !!lastScored.isAbsent : false;
+      })() : false;
+      if (isMpSection && mpIsAbsent) {
+        sheet.getRow(row).getCell(col).value = 'I';
+      } else if (isLiteral) {
         if (score != null) {
           sheet.getRow(row).getCell(col).value = numericToLetter(score, letterGradesConfig || []);
         }
