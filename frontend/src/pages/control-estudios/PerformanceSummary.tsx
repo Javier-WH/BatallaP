@@ -257,6 +257,8 @@ const PerformanceSummary: React.FC = () => {
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
   const [userOverrodeTemplate, setUserOverrodeTemplate] = useState(false);
   const [reportType, setReportType] = useState<ReportType>('resumen');
+  const [mpGradeId, setMpGradeId] = useState<number | null>(null);
+  const [mpExporting, setMpExporting] = useState(false);
 
   // boletin tab state
   const [boletinPeriodId, setBoletinPeriodId] = useState<number | null>(null);
@@ -296,7 +298,11 @@ const PerformanceSummary: React.FC = () => {
     const byId = new Map<number, Section>();
     structure.forEach(s => {
       if (!selectedGradeIds.includes(s.grade.id)) return;
-      s.sections.forEach(sec => byId.set(sec.id, sec));
+      s.sections.forEach(sec => {
+        // Materia Pendiente is handled by its own button, not in the section list
+        if (sec.name.toUpperCase() === 'MATERIA PENDIENTE') return;
+        byId.set(sec.id, sec);
+      });
     });
     return [...byId.values()].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'es', { numeric: true }));
   }, [structure, selectedGradeIds]);
@@ -312,19 +318,13 @@ const PerformanceSummary: React.FC = () => {
       [...s.sections]
         .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'es', { numeric: true }))
         .forEach(sec => {
+          if (sec.name.toUpperCase() === 'MATERIA PENDIENTE') return;
           if (!selectedSectionIds.includes(sec.id)) return;
           combos.push({ gradeId: s.grade.id, gradeName: s.grade.name, sectionId: sec.id, sectionName: sec.name });
         });
     });
     return combos;
   }, [structure, selectedGradeIds, selectedSectionIds]);
-
-  // Detect if any selected combination is the "Materia Pendiente" section.
-  // MP sections can only generate the Resumen Final, not Revisión or Anual.
-  const hasMpSection = useMemo(
-    () => validCombinations.some(c => c.sectionName.toUpperCase() === 'MATERIA PENDIENTE'),
-    [validCombinations]
-  );
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -531,6 +531,69 @@ const PerformanceSummary: React.FC = () => {
       } else { message.error('Error al exportar el resumen'); }
     } finally { setExporting(false); }
   };
+
+  // --- Resumen de Materia Pendiente ---
+  // Exports the MP section for a single grade. Only grades from 1st to
+  // penultimate are eligible (the last grade has no MP).
+  const handleExportMp = async () => {
+    if (!selectedPeriodId || !mpGradeId) {
+      message.warning('Seleccione un año para el resumen de Materia Pendiente');
+      return;
+    }
+    // Find the MP section for this grade in the structure
+    const gradeEntry = structure.find(s => s.grade.id === mpGradeId);
+    if (!gradeEntry) {
+      message.error('No se encontró la estructura para el grado seleccionado');
+      return;
+    }
+    const mpSection = gradeEntry.sections.find(sec => sec.name.toUpperCase() === 'MATERIA PENDIENTE');
+    if (!mpSection) {
+      message.error('No hay sección de Materia Pendiente para este grado');
+      return;
+    }
+    setMpExporting(true);
+    try {
+      const response = await api.get('/performance-summary/export', {
+        params: {
+          schoolPeriodId: selectedPeriodId,
+          gradeId: mpGradeId,
+          sectionId: mpSection.id,
+          template: selectedTemplate || undefined,
+          group: studentGroup,
+        },
+        responseType: 'blob',
+      });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      const fileName = response.headers['content-disposition']
+        ?.split('filename="')[1]?.split('"')[0] || 'resumen-materia-pendiente.xlsx';
+      link.setAttribute('download', fileName);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      message.success('Resumen de Materia Pendiente exportado correctamente');
+    } catch (error: any) {
+      console.error('Error exporting MP', error);
+      if (error.response?.data) {
+        const reader = new FileReader();
+        reader.onload = () => {
+          try {
+            const err = JSON.parse(reader.result as string);
+            message.error(err.message || 'Error al exportar');
+          } catch { message.error('Error al exportar el resumen de Materia Pendiente'); }
+        };
+        reader.readAsText(error.response.data);
+      } else { message.error('Error al exportar el resumen de Materia Pendiente'); }
+    } finally { setMpExporting(false); }
+  };
+
+  // Grades eligible for MP: all except the last one (sorted by order).
+  const mpEligibleGrades = useMemo(() => {
+    if (structure.length <= 1) return [];
+    return structure.slice(0, -1).map(s => ({ id: s.grade.id, name: s.grade.name }));
+  }, [structure]);
 
   // --- Resumen del Rendimiento Anual ---
   // Generates an Excel from boletin-data, cloning the CourseCouncil format
@@ -1414,23 +1477,15 @@ const PerformanceSummary: React.FC = () => {
                         <div className="rb-chips">
                           {availableSections.map(sec => {
                             const on = selectedSectionIds.includes(sec.id);
-                            const isMp = sec.name.toUpperCase() === 'MATERIA PENDIENTE';
                             return (
                               <button
                                 key={sec.id}
                                 type="button"
                                 aria-pressed={on}
                                 className={`rb-chip${on ? ' active' : ''}`}
-                                onClick={() => setSelectedSectionIds(prev => {
-                                  if (prev.includes(sec.id)) return prev.filter(id => id !== sec.id);
-                                  // MP is mutually exclusive with other sections
-                                  if (isMp) return [sec.id];
-                                  // Selecting a non-MP section deselects MP
-                                  return prev.filter(id => {
-                                    const s = availableSections.find(a => a.id === id);
-                                    return s && s.name.toUpperCase() !== 'MATERIA PENDIENTE';
-                                  }).concat(sec.id);
-                                })}
+                                onClick={() => setSelectedSectionIds(prev =>
+                                  prev.includes(sec.id) ? prev.filter(id => id !== sec.id) : [...prev, sec.id]
+                                )}
                               >
                                 {sec.name}
                               </button>
@@ -1469,7 +1524,7 @@ const PerformanceSummary: React.FC = () => {
                       className="rb-export-btn"
                       style={{ width: 'auto', flex: '1 1 220px', minHeight: 48, background: '#EEF0F3', color: '#A7ADB8' }}
                       disabled
-                      title={hasMpSection ? 'No disponible para Materia Pendiente' : 'Próximamente'}
+                      title="Próximamente"
                     >
                       <IconDownload size={16} />
                       Resumen de Revisión
@@ -1477,22 +1532,39 @@ const PerformanceSummary: React.FC = () => {
                     <button
                       className="rb-export-btn"
                       style={{ width: 'auto', flex: '1 1 260px', minHeight: 48 }}
-                      disabled={!readyToExport || annualLoading || hasMpSection}
-                      title={hasMpSection ? 'No disponible para Materia Pendiente' : undefined}
+                      disabled={!readyToExport || annualLoading}
                       onClick={handleExportAnnual}
                     >
                       {annualLoading ? <Spin size="small" /> : <IconBarChart size={16} />}
                       {annualLoading ? 'Generando…' : 'Resumen del Rendimiento Anual'}
                     </button>
                   </div>
-                  {hasMpSection && (
-                    <div className="rb-warning" style={{ marginTop: 12 }}>
-                      <IconAlert size={15} />
-                      <div className="rb-warning-text">
-                        La sección <b>Materia Pendiente</b> solo permite generar el <b>Resumen Final</b>.
-                      </div>
+
+                  {/* Resumen de Materia Pendiente — solo necesita seleccionar un año */}
+                  <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end', marginTop: 12, paddingTop: 12, borderTop: `1px solid #E5E0D0` }}>
+                    <div style={{ flex: '0 0 auto' }}>
+                      <label style={{ display: 'block', fontSize: 11, color: '#8B93A6', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                        Resumen de Materia Pendiente
+                      </label>
+                      <Select
+                        value={mpGradeId ?? undefined}
+                        onChange={(val) => setMpGradeId(val ?? null)}
+                        placeholder="Seleccionar año…"
+                        style={{ width: 180 }}
+                        options={mpEligibleGrades.map(g => ({ value: g.id, label: g.name }))}
+                        allowClear
+                      />
                     </div>
-                  )}
+                    <button
+                      className="rb-export-btn"
+                      style={{ width: 'auto', flex: '0 0 auto', minHeight: 36, padding: '0 20px' }}
+                      disabled={!mpGradeId || !selectedPeriodId || mpExporting}
+                      onClick={handleExportMp}
+                    >
+                      {mpExporting ? <Spin size="small" /> : <IconDownload size={16} />}
+                      {mpExporting ? 'Exportando…' : 'Exportar MP'}
+                    </button>
+                  </div>
                   {!readyToExport && <p className="rb-export-hint">Seleccione al menos un grado y una sección para continuar</p>}
                   {!selectedTemplate && readyToExport && (
                     <div className="rb-warning" style={{ marginTop: 12 }}>
@@ -1509,6 +1581,7 @@ const PerformanceSummary: React.FC = () => {
                   <h2 className="rb-info-title">Qué incluye cada reporte</h2>
                   <ul className="rb-info-list">
                     <li><IconCheck size={15} /><span><b>Resumen Final</b>: Excel con el promedio final de notas por estudiante, usando plantilla configurada. Columnas: Nro, Apellidos, Nombres, Lugar de Nacimiento, EF, Día, Mes, Año, y materias con encabezados abreviados.</span></li>
+                    <li><IconCheck size={15} /><span><b>Resumen de Materia Pendiente</b>: Igual al Resumen Final pero para la sección de Materia Pendiente del año seleccionado. Solo disponible del 1ro al penúltimo año.</span></li>
                     <li><IconCheck size={15} /><span><b>Resumen del Rendimiento Anual</b>: Planilla tipo consejo de curso con columnas L1, L2, L3 y NF por materia. Muestra las notas finales de cada lapso y la definitiva.</span></li>
                   </ul>
                 </section>

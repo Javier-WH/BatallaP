@@ -312,7 +312,7 @@ const HistoricalGradesBySection: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [activePeriodId, selectedSectionId, selectedGradeId, sections]);
+  }, [activePeriodId, selectedSectionId, selectedGradeId, selectedStudent, mode, sections, maxGrade]);
 
   useEffect(() => {
     if (mode === 'section' && selectedSectionId) loadGrades();
