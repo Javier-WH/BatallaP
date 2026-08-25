@@ -277,7 +277,7 @@ function fillSheetByNamedRanges(
     const d = new Date(lastCouncilDate);
     if (!isNaN(d.getTime())) {
       const months = ['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO','JULIO','AGOSTO','SEPTIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE'];
-      const dateStr = `${months[d.getMonth()]} DE ${d.getFullYear()}`;
+      const dateStr = `${months[d.getUTCMonth()]} DE ${d.getUTCFullYear()}`;
       // Try named range first, fall back to direct Z4 cell
       let dateRef = namedRanges.getCell(lookupSheetName, 'inst_date');
       if (!dateRef) {
