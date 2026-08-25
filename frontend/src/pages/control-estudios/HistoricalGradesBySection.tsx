@@ -26,8 +26,8 @@ const T = {
 const STATUS_META: Record<string, { label: string; color: string; bg: string; gradeType: string }> = {
   F:  { label: 'Regular',            color: '#3F6C4E', bg: '#E3ECE4', gradeType: 'regular' },
   R:  { label: 'Reparación',         color: '#B5632B', bg: '#F3E3D2', gradeType: 'revision' },
-  MP: { label: 'Materia Pendiente',  color: '#35548C', bg: '#E1E7F1', gradeType: 'materia_pendiente' },
-  RP: { label: 'Rev. Materia Pend.', color: '#7B4B8C', bg: '#EBE1F1', gradeType: 'revision_materia_pendiente' },
+  P:  { label: 'Materia Pendiente',  color: '#35548C', bg: '#E1E7F1', gradeType: 'materia_pendiente' },
+  M:  { label: 'Rev. Materia Pend.', color: '#7B4B8C', bg: '#EBE1F1', gradeType: 'revision_materia_pendiente' },
   T:  { label: 'Transferencia',      color: '#5B6B85', bg: '#E8EAF0', gradeType: 'transferencia' },
   E:  { label: 'Equivalencia',       color: '#5B6B85', bg: '#E8EAF0', gradeType: 'equivalencia' },
 };
