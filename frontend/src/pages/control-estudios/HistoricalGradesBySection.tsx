@@ -3,6 +3,7 @@ import { Spin, message, Button, Select } from 'antd';
 import { ReloadOutlined, SaveOutlined } from '@ant-design/icons';
 import api from '@/services/api';
 import PlantelMultiSelect from '@/components/shared/PlantelMultiSelect';
+import { formatGradePadded } from '@/utils/gradeFormat';
 
 /* ── Theme ── */
 const T = {
@@ -138,6 +139,7 @@ const HistoricalGradesBySection: React.FC = () => {
   const [years, setYears] = useState<YearCol[]>([]);
   const [planteles, setPlanteles] = useState<PlantelItem[]>([]);
   const [rows, setRows] = useState<RowData[]>([]);
+  const [maxGrade, setMaxGrade] = useState<number>(20);
   const inputRefs = useRef<Record<string, HTMLInputElement | HTMLSelectElement | null>>({});
 
   // Mode: section or individual student
@@ -146,14 +148,18 @@ const HistoricalGradesBySection: React.FC = () => {
   const [studentSearchResults, setStudentSearchResults] = useState<Student[]>([]);
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
 
-  /* ── Load sections for active period ── */
+  /* ── Load sections for active period + max_grade ── */
   useEffect(() => {
     (async () => {
       try {
-        const activeRes = await api.get('/academic/active');
+        const [activeRes, maxGradeRes] = await Promise.all([
+          api.get('/academic/active'),
+          api.get('/settings/max_grade').catch(() => null),
+        ]);
         const period = activeRes.data;
         if (!period?.id) { message.warning('No hay un período escolar activo'); return; }
         setActivePeriodId(period.id);
+        if (maxGradeRes?.data?.max_grade) setMaxGrade(Number(maxGradeRes.data.max_grade));
 
         const structureRes = await api.get(`/academic/structure/${period.id}`);
         const data = Array.isArray(structureRes.data) ? structureRes.data : [];
@@ -256,7 +262,7 @@ const HistoricalGradesBySection: React.FC = () => {
             instNum = `g__pid:${g.plantelId}`;
           }
           cells[key] = {
-            score: g.finalScore != null ? String(g.finalScore) : '',
+            score: g.finalScore != null ? formatGradePadded(g.finalScore, maxGrade) : '',
             status: statusCode,
             date: dateDisplay,
             inst: instNum,
@@ -346,9 +352,15 @@ const HistoricalGradesBySection: React.FC = () => {
       const cellKey = `${parts[0]}__${parts[1]}`;
       const field = parts[2] as keyof CellData;
       const cell = row.cells[cellKey] || emptyCell();
+      // Pad score fields to match maxGrade digit count
+      let finalValue = value;
+      if (field === 'score' && value !== '') {
+        const num = Number(value);
+        if (!isNaN(num)) finalValue = formatGradePadded(num, maxGrade);
+      }
       return {
         ...row,
-        cells: { ...row.cells, [cellKey]: { ...cell, [field]: value, dirty: true } },
+        cells: { ...row.cells, [cellKey]: { ...cell, [field]: finalValue, dirty: true } },
       };
     }
     return row;
@@ -769,8 +781,8 @@ const HistoricalGradesBySection: React.FC = () => {
                           {y.subjects.map((subj, si) => {
                             const cellKey = `g__${y.gradeId}__${subj.id}`;
                             const cell = row.cells[cellKey] || emptyCell();
-                            const failing = cell.score !== '' && Number(cell.score) < 10;
-                            const passing = cell.score !== '' && Number(cell.score) >= 10;
+                            const failing = cell.score !== '' && Number(cell.score) < maxGrade / 2;
+                            const passing = cell.score !== '' && Number(cell.score) >= maxGrade / 2;
                             const statusMeta = STATUS_META[cell.status] || STATUS_META.F;
                             const scoreKey = `${cellKey}__score`;
                             const statusKey = `${cellKey}__status`;
@@ -786,11 +798,19 @@ const HistoricalGradesBySection: React.FC = () => {
                                   background: failing ? T.redBg : passing ? T.greenBg : 'transparent',
                                 }}>
                                   <input
-                                    type="number" min={0} max={20} step={1}
+                                    type="number" min={0} max={maxGrade} step={1}
                                     data-row={ri} data-field={scoreKey}
                                     ref={registerRef(ri, scoreKey)}
                                     value={cell.score}
                                     onChange={e => updateCell(ri, scoreKey, e.target.value)}
+                                    onBlur={() => {
+                                      if (cell.score !== '') {
+                                        const padded = formatGradePadded(Number(cell.score), maxGrade);
+                                        if (padded !== '-' && padded !== cell.score) {
+                                          updateCell(ri, scoreKey, padded);
+                                        }
+                                      }
+                                    }}
                                     onKeyDown={e => handleKeyDown(e, ri, scoreKey)}
                                     onPaste={e => handlePaste(e, ri, scoreKey)}
                                     placeholder="—"

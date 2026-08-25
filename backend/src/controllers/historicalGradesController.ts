@@ -20,6 +20,7 @@ import {
   HistoricalGrade,
 } from '@/models/index';
 import { sortInscriptions } from '@/services/studentSortService';
+import { roundFinalGrade, roundGrade, isPassingGrade } from '@/services/gradeEvaluationService';
 
 /**
  * GET /api/historical-grades/by-section?schoolPeriodId=X&sectionId=Y&gradeId=Z
@@ -258,7 +259,7 @@ export const getHistoricalGradesBySection = async (req: Request, res: Response) 
       const termGrades: any[] = (is as any).termGrades || [];
       if (!ins || !subj) continue;
 
-      let finalScore: number | null = fg?.finalScore ?? null;
+      let finalScore: number | null = fg?.finalScore != null ? roundGrade(Number(fg.finalScore)) : null;
       let status: string | null = fg?.status ?? null;
       let gradeType: string | null = fg?.gradeType ?? null;
       let date: string | null = fg?.calculatedAt ? new Date(fg.calculatedAt).toISOString().split('T')[0] : null;
@@ -267,8 +268,8 @@ export const getHistoricalGradesBySection = async (req: Request, res: Response) 
       if (!fg && termGrades.length > 0) {
         const sum = termGrades.reduce((acc, tg) => acc + Number(tg.score || 0), 0);
         const avg = sum / termGrades.length;
-        finalScore = Math.round(avg * 100) / 100;
-        status = finalScore >= 10 ? 'aprobada' : 'reprobada';
+        finalScore = roundFinalGrade(avg);
+        status = isPassingGrade(avg, 10) ? 'aprobada' : 'reprobada';
         gradeType = 'regular';
         const latestCalculated = termGrades
           .map(tg => tg.calculatedAt)
@@ -320,12 +321,12 @@ export const getHistoricalGradesBySection = async (req: Request, res: Response) 
       const approvedEnc = encs.find(e => e.score !== null && Number(e.score) >= 10 && !e.isAbsent);
       const lastScored = [...encs].reverse().find(e => e.score !== null || e.isAbsent);
       let score: number | null = null;
-      if (approvedEnc) score = Number(approvedEnc.score);
-      else if (lastScored) score = lastScored.isAbsent ? 0 : Number(lastScored.score);
+      if (approvedEnc) score = roundGrade(Number(approvedEnc.score));
+      else if (lastScored) score = lastScored.isAbsent ? 0 : roundGrade(Number(lastScored.score));
 
       if (score === null) continue;
 
-      const psStatus = score >= 10 ? 'aprobada' : 'reprobada';
+      const psStatus = isPassingGrade(score, 10) ? 'aprobada' : 'reprobada';
       const lastDate = [...encs].reverse().find(e => e.date)?.date;
 
       const targetPeriodId = originPeriod?.id ?? ins.schoolPeriodId;
@@ -368,7 +369,7 @@ export const getHistoricalGradesBySection = async (req: Request, res: Response) 
         subjectId: hg.subjectId,
         subjectGroupId: subj?.subjectGroupId ?? null,
         subjectName: subj?.name ?? null,
-        finalScore: hg.finalScore != null ? Number(hg.finalScore) : null,
+        finalScore: hg.finalScore != null ? roundGrade(Number(hg.finalScore)) : null,
         status: hg.status,
         gradeType: hg.gradeType,
         plantelId: hg.plantelId ?? null,
@@ -452,8 +453,9 @@ export const saveHistoricalGrades = async (req: Request, res: Response) => {
           continue;
         }
 
-        const score = finalScore !== null && finalScore !== undefined ? Number(finalScore) : null;
-        const status = score !== null ? (score >= passingGrade ? 'aprobada' : 'reprobada') : 'reprobada';
+        const rawScore = finalScore !== null && finalScore !== undefined ? Number(finalScore) : null;
+        const score = rawScore !== null ? roundFinalGrade(rawScore) : null;
+        const status = score !== null ? (isPassingGrade(rawScore!, passingGrade) ? 'aprobada' : 'reprobada') : 'reprobada';
         const parsedDate = date ? new Date(`${date}T12:00:00`) : new Date();
         const dateOnly = date ? new Date(date).toISOString().split('T')[0] : null;
 
