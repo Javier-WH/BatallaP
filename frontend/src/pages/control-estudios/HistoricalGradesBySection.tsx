@@ -141,6 +141,7 @@ const HistoricalGradesBySection: React.FC = () => {
   const [rows, setRows] = useState<RowData[]>([]);
   const [maxGrade, setMaxGrade] = useState<number>(20);
   const inputRefs = useRef<Record<string, HTMLInputElement | HTMLSelectElement | null>>({});
+  const [activeCell, setActiveCell] = useState<{ row: number; field: string } | null>(null);
 
   // Mode: section or individual student
   const [mode, setMode] = useState<'section' | 'individual'>('section');
@@ -531,6 +532,10 @@ const HistoricalGradesBySection: React.FC = () => {
         input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
         input[type=number] { -moz-appearance: textfield; }
         .hg-grid input:focus, .hg-grid select:focus { background: #FFF7DE !important; box-shadow: inset 0 0 0 1.5px #A9814B; }
+        .hg-row:hover td { background: #F6F0DE !important; }
+        .hg-row.active-row td { background: #FDF6E3 !important; }
+        .hg-row.active-row td.hg-frozen { background: #FBF1D3 !important; }
+        .hg-row.active-row td:hover { background: #F6E9C4 !important; }
       `}</style>
 
       <div className="px-5 py-4">
@@ -686,31 +691,38 @@ const HistoricalGradesBySection: React.FC = () => {
                       const span = y.subjects.length * 4 + (hasGrp ? 1 : 0);
                       const width = y.subjects.length * SUB_W + (hasGrp ? GROUP_COL_W : 0);
                       const gc = y.gradeColor || T.hairline;
+                      const isActiveYear = activeCell?.field.startsWith(`g__${y.gradeId}__`);
                       return (
                         <th key={`y-${y.gradeId}`} colSpan={span}
-                          style={{ ...thPlain(width), borderLeft: `2px solid ${T.hairline}`, borderTop: `3px solid ${gc}`, fontSize: 12 }}>
+                          style={{ ...thPlain(width), borderLeft: `3px solid ${T.hairline}`, borderTop: `3px solid ${gc}`, fontSize: 12,
+                            background: isActiveYear ? T.brassBg : T.headerBg }}>
                           {y.gradeName}
                         </th>
                       );
                     })}
                   </tr>
                   <tr>
-                    {years.map(y => (
+                    {years.map(y => {
+                      const isActiveYear = activeCell?.field.startsWith(`g__${y.gradeId}__`);
+                      return (
                       <React.Fragment key={`s-row-${y.gradeId}`}>
                         {y.subjects.map((subj, si) => (
                           <th key={`s-${y.gradeId}-${subj.id}`} colSpan={4} title={subj.name}
-                            style={{ ...thSub(206), borderLeft: si === 0 ? `2px solid ${y.gradeColor || T.hairline}` : `1px solid ${T.hairline}` }}>
+                            style={{ ...thSub(206), borderLeft: si === 0 ? `3px solid ${y.gradeColor || T.hairline}` : `1px solid ${T.hairline}`,
+                              background: isActiveYear ? '#F3E5C4' : T.headerBg }}>
                             {subj.name}
                           </th>
                         ))}
                         {yearHasGroups(y) && (
-                          <th key={`s-grp-${y.schoolPeriodId}-${y.gradeId}`} title="Materia del grupo cursada"
-                            style={{ ...thSub(GROUP_COL_W), borderLeft: `1px solid ${T.hairline}`, fontSize: 9 }}>
+                          <th key={`s-grp-${y.gradeId}`} title="Materia del grupo cursada"
+                            style={{ ...thSub(GROUP_COL_W), borderLeft: `1px solid ${T.hairline}`, fontSize: 9,
+                              background: isActiveYear ? '#F3E5C4' : T.headerBg }}>
                             Materia
                           </th>
                         )}
                       </React.Fragment>
-                    ))}
+                      );
+                    })}
                   </tr>
                   <tr>
                     <th key="h2-n" style={{ ...thFrozen(leftOf.n, COL.n), top: 56, zIndex: 4 }}></th>
@@ -718,50 +730,56 @@ const HistoricalGradesBySection: React.FC = () => {
                     <th key="h2-ap" style={{ ...thFrozen(leftOf.apellidos, COL.apellidos), top: 56, zIndex: 4 }}></th>
                     <th key="h2-nom" style={{ ...thFrozen(leftOf.nombres, COL.nombres), top: 56, zIndex: 4 }}></th>
                     <th key="h2-inst" style={{ ...thFrozen(leftOf.inst, COL.inst), top: 56, zIndex: 4, textAlign: 'left', borderRight: `2px solid ${T.hairline}` }}></th>
-                    {years.map(y => (
+                    {years.map(y => {
+                      const isActiveYear = activeCell?.field.startsWith(`g__${y.gradeId}__`);
+                      return (
                       <React.Fragment key={`sub-${y.gradeId}`}>
                         {y.subjects.map((subj, si) => (
                           <React.Fragment key={`${y.gradeId}-${subj.id}-sub`}>
-                            <th style={{ ...thSub2(44), borderLeft: si === 0 ? `2px solid ${y.gradeColor || T.hairline}` : `1px solid ${T.hairline}` }}>Nota</th>
-                            <th style={{ ...thSub2(44) }}>Est.</th>
-                            <th style={{ ...thSub2(78) }}>Fecha</th>
-                            <th style={{ ...thSub2(40) }}>Inst</th>
+                            <th style={{ ...thSub2(44), borderLeft: si === 0 ? `3px solid ${y.gradeColor || T.hairline}` : `1px solid ${T.hairline}`,
+                              background: isActiveYear ? '#F3E5C4' : T.headerBg }}>Nota</th>
+                            <th style={{ ...thSub2(44), background: isActiveYear ? '#F3E5C4' : T.headerBg }}>Est.</th>
+                            <th style={{ ...thSub2(78), background: isActiveYear ? '#F3E5C4' : T.headerBg }}>Fecha</th>
+                            <th style={{ ...thSub2(40), background: isActiveYear ? '#F3E5C4' : T.headerBg }}>Inst</th>
                           </React.Fragment>
                         ))}
                         {yearHasGroups(y) && (
-                          <th style={{ ...thSub2(GROUP_COL_W), borderLeft: `1px solid ${T.hairline}` }}></th>
+                          <th style={{ ...thSub2(GROUP_COL_W), borderLeft: `1px solid ${T.hairline}`, background: isActiveYear ? '#F3E5C4' : T.headerBg }}></th>
                         )}
                       </React.Fragment>
-                    ))}
+                      );
+                    })}
                   </tr>
                 </thead>
                 <tbody>
                   {rows.map((row, ri) => {
                     const rowBg = ri % 2 === 0 ? '#FBF9F3' : T.card;
+                    const isActiveRow = activeCell?.row === ri;
                     return (
                     <tr key={row.personId}
+                      className={`hg-row${isActiveRow ? ' active-row' : ''}`}
                       style={{
                         borderTop: `1px solid ${T.hairline}`,
                         backgroundColor: rowBg,
                       }}>
                       {/* N° */}
-                      <td style={{ ...tdFrozen(leftOf.n, COL.n, rowBg), textAlign: 'center', fontFamily: 'monospace', fontSize: 11, color: T.inkFaint }}>
-                        {String(ri + 1).padStart(2, '0')}
+                      <td className="hg-frozen" style={{ ...tdFrozen(leftOf.n, COL.n, rowBg), textAlign: 'center', fontFamily: 'monospace', fontSize: 11, color: isActiveRow ? T.brass : T.inkFaint, fontWeight: isActiveRow ? 700 : 400 }}>
+                        {isActiveRow ? '▸' : String(ri + 1).padStart(2, '0')}
                       </td>
                       {/* Cédula */}
-                      <td style={{ ...tdFrozen(leftOf.cedula, COL.cedula, rowBg), fontFamily: 'monospace', fontSize: 11, color: T.inkSoft, padding: '3px 6px' }}>
+                      <td className="hg-frozen" style={{ ...tdFrozen(leftOf.cedula, COL.cedula, rowBg), fontFamily: 'monospace', fontSize: 11, color: T.inkSoft, padding: '3px 6px' }}>
                         {row.cedula}
                       </td>
                       {/* Apellidos */}
-                      <td style={{ ...tdFrozen(leftOf.apellidos, COL.apellidos, rowBg), fontSize: 12, fontWeight: 500, color: T.ink, padding: '3px 8px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      <td className="hg-frozen" style={{ ...tdFrozen(leftOf.apellidos, COL.apellidos, rowBg), fontSize: 12, fontWeight: 500, color: T.ink, padding: '3px 8px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {row.apellidos}
                       </td>
                       {/* Nombres */}
-                      <td style={{ ...tdFrozen(leftOf.nombres, COL.nombres, rowBg), fontSize: 12, color: T.ink, padding: '3px 8px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      <td className="hg-frozen" style={{ ...tdFrozen(leftOf.nombres, COL.nombres, rowBg), fontSize: 12, color: T.ink, padding: '3px 8px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {row.nombres}
                       </td>
                       {/* Instituciones (PlantelMultiSelect — one per row) */}
-                      <td style={{ ...tdFrozen(leftOf.inst, COL.inst, rowBg), padding: '2px 4px', borderRight: `2px solid ${T.hairline}` }}>
+                      <td className="hg-frozen" style={{ ...tdFrozen(leftOf.inst, COL.inst, rowBg), padding: '2px 4px', borderRight: `2px solid ${T.hairline}` }}>
                         <PlantelMultiSelect
                           planteles={planteles}
                           selectedIds={row.plantelIds}
@@ -790,7 +808,7 @@ const HistoricalGradesBySection: React.FC = () => {
                                 {/* Nota */}
                                 <td style={{
                                   ...tdPlain(44),
-                                  borderLeft: si === 0 ? `2px solid ${T.hairline}` : `1px solid ${T.hairline}`,
+                                  borderLeft: si === 0 ? `3px solid ${y.gradeColor || T.hairline}` : `1px solid ${T.hairline}`,
                                   background: failing ? T.redBg : passing ? T.greenBg : 'transparent',
                                 }}>
                                   <input
@@ -799,6 +817,7 @@ const HistoricalGradesBySection: React.FC = () => {
                                     ref={registerRef(ri, scoreKey)}
                                     value={cell.score}
                                     onChange={e => updateCell(ri, scoreKey, e.target.value)}
+                                    onFocus={() => setActiveCell({ row: ri, field: scoreKey })}
                                     onBlur={() => {
                                       if (cell.score !== '') {
                                         const padded = formatGradePadded(Number(cell.score), maxGrade);
@@ -820,10 +839,13 @@ const HistoricalGradesBySection: React.FC = () => {
                                     ref={registerRef(ri, statusKey) as any}
                                     value={cell.status}
                                     onChange={e => updateCell(ri, statusKey, e.target.value)}
+                                    onFocus={() => setActiveCell({ row: ri, field: statusKey })}
                                     onKeyDown={e => handleKeyDown(e, ri, statusKey)}
                                     style={{
                                       ...cellInputStyle, fontWeight: 700, textAlign: 'center',
-                                      color: statusMeta.color, background: statusMeta.bg, borderRadius: 3, cursor: 'pointer',
+                                      color: statusMeta.color,
+                                      background: cell.status !== 'F' ? statusMeta.bg : 'transparent',
+                                      borderRadius: 3, cursor: 'pointer',
                                     }}
                                   >
                                     {STATUS_KEYS.map(k => <option key={k} value={k}>{k}</option>)}
@@ -837,6 +859,7 @@ const HistoricalGradesBySection: React.FC = () => {
                                     ref={registerRef(ri, dateKey)}
                                     value={cell.date}
                                     onChange={e => updateCell(ri, dateKey, e.target.value)}
+                                    onFocus={() => setActiveCell({ row: ri, field: dateKey })}
                                     onKeyDown={e => handleKeyDown(e, ri, dateKey)}
                                     onPaste={e => handlePaste(e, ri, dateKey)}
                                     placeholder="dd/mm/aaaa"
@@ -851,6 +874,7 @@ const HistoricalGradesBySection: React.FC = () => {
                                     ref={registerRef(ri, instKey)}
                                     value={cell.inst}
                                     onChange={e => updateCell(ri, instKey, e.target.value)}
+                                    onFocus={() => setActiveCell({ row: ri, field: instKey })}
                                     onKeyDown={e => handleKeyDown(e, ri, instKey)}
                                     onPaste={e => handlePaste(e, ri, instKey)}
                                     placeholder="—"
