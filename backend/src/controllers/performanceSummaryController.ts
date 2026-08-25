@@ -180,7 +180,7 @@ function fillSheetByNamedRanges(
   students: any[],
   academicSubjects: any[],
   groupedSubjectIds: Set<number>,
-  subjectColList: { col: number; abbr: string }[],
+  subjectColList: { col: number; abbr: string; subjIdx: number; subjectId: number }[],
   subjectToSubjIndex: Map<number, number>,
   calculateFinalScore: (insSub: any) => number | null,
   subjectOrderMap: Map<number, number>,
@@ -336,7 +336,7 @@ function fillSheetByNamedRanges(
         );
 
     for (let i = 0; i < subjectColList.length; i++) {
-      const subjId = subjectToSubjIndex.get(i + 1);
+      const subjId = subjectColList[i].subjectId;
       if (!subjId) continue;
       const columnSubject = academicSubjects.find((s: any) => s.id === subjId);
       const insSub = insSubjects.find((is: any) =>
@@ -568,25 +568,30 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
     // Also seed subjectMap from the grade's curriculum (PeriodGradeSubject) so
     // that subjects added to the grade appear in the Excel even if no student
     // has an InscriptionSubject for them yet.
+    // For MP sections, we still query PeriodGradeSubject to know the canonical
+    // order and positions, but we do NOT add them to subjectMap — only subjects
+    // with actual PendingSubject records get written.
     const pgSubjects = await PeriodGradeSubject.findAll({
-      where: isMpSection ? { periodGradeId: pg.id, active: true } : { periodGradeId: pg.id },
+      where: { periodGradeId: pg.id },
       include: [
         { model: Subject, as: 'subject', include: [{ model: SubjectGroup, as: 'subjectGroup' }] },
       ],
     });
-    for (const pgs of pgSubjects) {
-      const subj = (pgs as any).subject;
-      if (subj && !subjectMap.has(subj.id)) {
-        subjectMap.set(subj.id, {
-          id: subj.id,
-          name: subj.name,
-          abbreviation: subj.abbreviation || null,
-          subjectGroupId: subj.subjectGroupId || null,
-          subjectGroupName: subj.subjectGroup?.name || null,
-          subjectGroupShortAbbr: subj.subjectGroup?.shortAbbreviation || null,
-          subjectGroupLongAbbr: subj.subjectGroup?.longAbbreviation || null,
-          usesLiteralGrades: subj.usesLiteralGrades || false,
-        });
+    if (!isMpSection) {
+      for (const pgs of pgSubjects) {
+        const subj = (pgs as any).subject;
+        if (subj && !subjectMap.has(subj.id)) {
+          subjectMap.set(subj.id, {
+            id: subj.id,
+            name: subj.name,
+            abbreviation: subj.abbreviation || null,
+            subjectGroupId: subj.subjectGroupId || null,
+            subjectGroupName: subj.subjectGroup?.name || null,
+            subjectGroupShortAbbr: subj.subjectGroup?.shortAbbreviation || null,
+            subjectGroupLongAbbr: subj.subjectGroup?.longAbbreviation || null,
+            usesLiteralGrades: subj.usesLiteralGrades || false,
+          });
+        }
       }
     }
 
@@ -602,14 +607,32 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
       allSubjects.filter(s => s.subjectGroupId !== null).map(s => s.id)
     );
 
-    // For MP sections, only include subjects that actually have pending
-    // subjects assigned (from subjectMap built from pendingSubjects).
+    // For MP sections, build academicSubjects from the full grade curriculum
+    // (PeriodGradeSubject) in canonical order, so each subject maps to its
+    // correct subj_i position. Only subjects that have PendingSubject students
+    // (i.e., are in subjectMap) will actually be written to cells; the rest
+    // keep their template placeholders (asterisks).
     // For regular sections, collapse group subjects into one column.
     let academicSubjects: any[];
     if (isMpSection) {
-      // subjectMap for MP was built only from pendingSubjects, so allSubjects
-      // already contains only MP-involved subjects. No further filtering needed.
-      academicSubjects = allSubjects;
+      const mpSubjectIds = new Set(allSubjects.map(s => s.id));
+      academicSubjects = pgSubjects
+        .map((pgs: any) => {
+          const subj = pgs.subject;
+          if (!subj) return null;
+          return {
+            id: subj.id,
+            name: subj.name,
+            abbreviation: subj.abbreviation || null,
+            subjectGroupId: subj.subjectGroupId || null,
+            subjectGroupName: subj.subjectGroup?.name || null,
+            subjectGroupShortAbbr: subj.subjectGroup?.shortAbbreviation || null,
+            subjectGroupLongAbbr: subj.subjectGroup?.longAbbreviation || null,
+            usesLiteralGrades: subj.usesLiteralGrades || false,
+            hasMpStudents: mpSubjectIds.has(subj.id),
+          };
+        })
+        .filter(Boolean);
     } else {
       // The Excel has one column per academic subject, but group subjects are
       // alternatives: a student has one subject from a group, not all of them.
@@ -774,6 +797,7 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
       const zeroCountBySubject = new Map<number, number>();
 
       for (const columnSubject of sortedAcademicSubjects) {
+        if (isMpSection && !(columnSubject as any).hasMpStudents) continue;
         let enrolled = 0;
         let failed = 0;
         let passed = 0;
@@ -814,20 +838,20 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
     // Discover subj_i named ranges and WRITE the abbreviation of the i-th
     // subject (in canonical order) into that cell. The map is subjIndex → subjectId
     // so that fillSheetByNamedRanges can look up which subject a column belongs to.
-    const subjectColList: { col: number; abbr: string }[] = [];
+    const subjectColList: { col: number; abbr: string; subjIdx: number; subjectId: number }[] = [];
     const subjectToSubjIndex = new Map<number, number>();
     let subjIdx = 1;
     while (true) {
       const ref = findRef('subj_' + subjIdx);
       if (!ref) break;
       const subj = sortedAcademicSubjects[subjIdx - 1];
-      if (subj) {
+      if (subj && (!isMpSection || (subj as any).hasMpStudents)) {
         const abbrText = subj.subjectGroupId
           ? (subj.subjectGroupShortAbbr || subj.subjectGroupLongAbbr || subj.name)
           : (subj.abbreviation || subj.name);
         const headerText = abbrText;
         sheet!.getCell(ref.cell).value = headerText;
-        subjectColList.push({ col: ref.col, abbr: abbrText.toUpperCase() });
+        subjectColList.push({ col: ref.col, abbr: abbrText.toUpperCase(), subjIdx, subjectId: subj.id });
         subjectToSubjIndex.set(subjIdx, subj.id);
         // Also write the full subject name into subjname_i if defined
         const nameRef = findRef('subjname_' + subjIdx);
@@ -896,6 +920,7 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
       for (let i = 1; i <= sortedAcademicSubjects.length; i++) {
         const subj = sortedAcademicSubjects[i - 1];
         if (!subj) continue;
+        if (isMpSection && !(subj as any).hasMpStudents) continue;
         const teacher = teacherMap.get(subj.id);
         if (!teacher) continue;
 
@@ -1020,7 +1045,7 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
         const zeroRef = findRef('subj_zero_' + i);
         const unenrolledRef = findRef('subj_unenrolled_' + i);
         const subj = sortedAcademicSubjects[i - 1];
-        if (subj) {
+        if (subj && (!isMpSection || (subj as any).hasMpStudents)) {
           const abbrText = subj.subjectGroupId
             ? (subj.subjectGroupShortAbbr || subj.subjectGroupLongAbbr || subj.name)
             : (subj.abbreviation || subj.name);
