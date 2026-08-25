@@ -27,6 +27,8 @@ import {
   SectionGuide,
   CouncilChecklist,
   StudentObservation,
+  PendingSubject,
+  PendingSubjectEncounter,
 } from '@/models/index';
 import {
   getSubjectOrderMap,
@@ -188,6 +190,7 @@ function fillSheetByNamedRanges(
   sectionName?: string,
   letterGradesConfig?: { letter: string; max: number }[],
   lastCouncilDate?: string | null,
+  isMpSection?: boolean,
 ): void {
   // Only writes when value is non-empty. Empty/undefined values leave the
   // cell untouched, preserving the template's decorative content (e.g. "***"
@@ -322,12 +325,15 @@ function fillSheetByNamedRanges(
       setByRange('std_by_' + n, padNumber(birthDate.getFullYear() % 100));
     }
 
-    const insSubjects = sortSubjectsByOrder(
-      ins.inscriptionSubjects || [],
-      (is: any) => is.subjectId,
-      (is: any) => is.subject?.name,
-      subjectOrderMap
-    );
+    // For MP sections, use pendingSubjects; for regular, use inscriptionSubjects
+    const insSubjects = isMpSection
+      ? (ins.pendingSubjects || [])
+      : sortSubjectsByOrder(
+          ins.inscriptionSubjects || [],
+          (is: any) => is.subjectId,
+          (is: any) => is.subject?.name,
+          subjectOrderMap
+        );
 
     for (let i = 0; i < subjectColList.length; i++) {
       const subjId = subjectToSubjIndex.get(i + 1);
@@ -353,11 +359,13 @@ function fillSheetByNamedRanges(
       }
     }
 
-    const groupedInsSub = insSubjects.find((is: any) =>
-      groupedSubjectIds.has(is.subjectId)
-    );
-    if (groupedInsSub?.subject?.name) {
-      setByRange('std_part_' + n, groupedInsSub.subject.name);
+    if (!isMpSection) {
+      const groupedInsSub = insSubjects.find((is: any) =>
+        groupedSubjectIds.has(is.subjectId)
+      );
+      if (groupedInsSub?.subject?.name) {
+        setByRange('std_part_' + n, groupedInsSub.subject.name);
+      }
     }
   }
 }
@@ -393,6 +401,8 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
     const section = await Section.findByPk(Number(sectionId));
     if (!section) return res.status(404).json({ message: 'Seccion no encontrada' });
 
+    const isMpSection = section.name.toUpperCase() === 'MATERIA PENDIENTE';
+
     const gradeOrder = grade.order || 1;
     const gradeSuffix = gradeOrder === 1 || gradeOrder === 3 ? 'ER' : gradeOrder === 2 ? 'DO' : 'TO';
     const templateGradeName = `${gradeOrder}${gradeSuffix} AÑO`;
@@ -425,7 +435,20 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
     const councilDates = councilChecklists
       .filter((c: any) => c.completedAt)
       .sort((a: any, b: any) => new Date(b.completedAt).getTime() - new Date(a.completedAt).getTime());
-    const lastCouncilDate = councilDates.length > 0 ? String(councilDates[0].completedAt) : null;
+    let lastCouncilDate = councilDates.length > 0 ? String(councilDates[0].completedAt) : null;
+
+    // For MP sections, use the date of the last encounter with a score
+    // (instead of the council completion date) for inst_date.
+    if (isMpSection) {
+      const lastEncounter: any = await PendingSubjectEncounter.findOne({
+        where: { score: { [Op.ne]: null } },
+        order: [['date', 'DESC']],
+        raw: true,
+      });
+      if (lastEncounter?.date) {
+        lastCouncilDate = String(lastEncounter.date);
+      }
+    }
     const isCouncilDone = GradeCalculationService.buildCouncilDoneChecker(
       councilChecklists.map((c: any) => ({ termId: c.termId, sectionId: c.sectionId, status: c.status })),
     );
@@ -460,7 +483,7 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
             { model: PersonResidence, as: 'residence' },
           ],
         },
-        {
+        ...(isMpSection ? [] : [{
           model: InscriptionSubject,
           as: 'inscriptionSubjects',
           include: [
@@ -470,7 +493,16 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
             { model: Qualification, as: 'qualifications', include: [{ model: EvaluationPlan, as: 'evaluationPlan' }], required: false },
             { model: CouncilPoint, as: 'councilPoints', required: false },
           ],
-        },
+        }]),
+        ...(isMpSection ? [{
+          model: PendingSubject,
+          as: 'pendingSubjects',
+          required: true,
+          include: [
+            { model: Subject, as: 'subject', include: [{ model: SubjectGroup, as: 'subjectGroup' }] },
+            { model: PendingSubjectEncounter, as: 'encounters', required: false },
+          ],
+        }] : []),
       ],
       order: [
         [{ model: Person, as: 'student' }, 'lastName', 'ASC'],
@@ -489,34 +521,55 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
 
     const subjectMap = new Map<number, { id: number; name: string; abbreviation: string | null; subjectGroupId: number | null; subjectGroupName: string | null; subjectGroupShortAbbr: string | null; subjectGroupLongAbbr: string | null; usesLiteralGrades: boolean }>();
 
-    inscriptions.forEach((ins: any) => {
-      const sorted = sortSubjectsByOrder(
-        ins.inscriptionSubjects || [],
-        (is: any) => is.subjectId,
-        (is: any) => is.subject?.name,
-        subjectOrderMap
-      );
-      sorted.forEach((is: any) => {
-        if (is.subject && !subjectMap.has(is.subjectId)) {
-          subjectMap.set(is.subjectId, {
-            id: is.subject.id,
-            name: is.subject.name,
-            abbreviation: is.subject.abbreviation || null,
-            subjectGroupId: is.subject.subjectGroupId || null,
-            subjectGroupName: is.subject.subjectGroup?.name || null,
-            subjectGroupShortAbbr: is.subject.subjectGroup?.shortAbbreviation || null,
-            subjectGroupLongAbbr: is.subject.subjectGroup?.longAbbreviation || null,
-            usesLiteralGrades: is.subject.usesLiteralGrades || false,
-          });
-        }
+    if (isMpSection) {
+      // For MP section, build subjectMap from pendingSubjects (each student's
+      // pending subjects with their subject info).
+      inscriptions.forEach((ins: any) => {
+        (ins.pendingSubjects || []).forEach((ps: any) => {
+          if (ps.subject && !subjectMap.has(ps.subjectId)) {
+            subjectMap.set(ps.subjectId, {
+              id: ps.subject.id,
+              name: ps.subject.name,
+              abbreviation: ps.subject.abbreviation || null,
+              subjectGroupId: ps.subject.subjectGroupId || null,
+              subjectGroupName: ps.subject.subjectGroup?.name || null,
+              subjectGroupShortAbbr: ps.subject.subjectGroup?.shortAbbreviation || null,
+              subjectGroupLongAbbr: ps.subject.subjectGroup?.longAbbreviation || null,
+              usesLiteralGrades: ps.subject.usesLiteralGrades || false,
+            });
+          }
+        });
       });
-    });
+    } else {
+      inscriptions.forEach((ins: any) => {
+        const sorted = sortSubjectsByOrder(
+          ins.inscriptionSubjects || [],
+          (is: any) => is.subjectId,
+          (is: any) => is.subject?.name,
+          subjectOrderMap
+        );
+        sorted.forEach((is: any) => {
+          if (is.subject && !subjectMap.has(is.subjectId)) {
+            subjectMap.set(is.subjectId, {
+              id: is.subject.id,
+              name: is.subject.name,
+              abbreviation: is.subject.abbreviation || null,
+              subjectGroupId: is.subject.subjectGroupId || null,
+              subjectGroupName: is.subject.subjectGroup?.name || null,
+              subjectGroupShortAbbr: is.subject.subjectGroup?.shortAbbreviation || null,
+              subjectGroupLongAbbr: is.subject.subjectGroup?.longAbbreviation || null,
+              usesLiteralGrades: is.subject.usesLiteralGrades || false,
+            });
+          }
+        });
+      });
+    }
 
     // Also seed subjectMap from the grade's curriculum (PeriodGradeSubject) so
     // that subjects added to the grade appear in the Excel even if no student
     // has an InscriptionSubject for them yet.
     const pgSubjects = await PeriodGradeSubject.findAll({
-      where: { periodGradeId: pg.id },
+      where: isMpSection ? { periodGradeId: pg.id, active: true } : { periodGradeId: pg.id },
       include: [
         { model: Subject, as: 'subject', include: [{ model: SubjectGroup, as: 'subjectGroup' }] },
       ],
@@ -549,19 +602,29 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
       allSubjects.filter(s => s.subjectGroupId !== null).map(s => s.id)
     );
 
-    // The Excel has one column per academic subject, but group subjects are
-    // alternatives: a student has one subject from a group, not all of them.
-    // Collapse all official subjects with the same subjectGroupId into one
-    // representative column while preserving every student's actual subject
-    // for the grade lookup below.
-    const officialSubjects = allSubjects.filter(s => pgSubjectIds.has(s.id));
-    const seenGroupIds = new Set<number>();
-    const academicSubjects = officialSubjects.filter((subject) => {
-      if (subject.subjectGroupId === null) return true;
-      if (seenGroupIds.has(subject.subjectGroupId)) return false;
-      seenGroupIds.add(subject.subjectGroupId);
-      return true;
-    });
+    // For MP sections, only include subjects that actually have pending
+    // subjects assigned (from subjectMap built from pendingSubjects).
+    // For regular sections, collapse group subjects into one column.
+    let academicSubjects: any[];
+    if (isMpSection) {
+      // subjectMap for MP was built only from pendingSubjects, so allSubjects
+      // already contains only MP-involved subjects. No further filtering needed.
+      academicSubjects = allSubjects;
+    } else {
+      // The Excel has one column per academic subject, but group subjects are
+      // alternatives: a student has one subject from a group, not all of them.
+      // Collapse all official subjects with the same subjectGroupId into one
+      // representative column while preserving every student's actual subject
+      // for the grade lookup below.
+      const officialSubjects = allSubjects.filter(s => pgSubjectIds.has(s.id));
+      const seenGroupIds = new Set<number>();
+      academicSubjects = officialSubjects.filter((subject) => {
+        if (subject.subjectGroupId === null) return true;
+        if (seenGroupIds.has(subject.subjectGroupId)) return false;
+        seenGroupIds.add(subject.subjectGroupId);
+        return true;
+      });
+    }
 
     // Query teacher assignments for this section + periodGrade. Build map:
     // subjectId → { fullName, docWithType }
@@ -595,27 +658,42 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
       }
     }
 
-    const calculateFinalScore = (insSub: any): number | null => {
-      // Build term grades with fallback to qualifications + councilPoints
-      const termGradesArr = GradeCalculationService.buildTermGradesWithFallback(
-        (insSub.termGrades || []).map((tg: any) => ({ termId: tg.termId, score: Number(tg.score) })),
-        insSub.qualifications || [],
-        insSub.councilPoints || [],
-        terms.map((t: any) => t.id),
-      );
-
-      // Build lapsos with council-done filter
-      const lapsos = terms.map((t: any) => {
-        const councilDone = isCouncilDone(t.id, Number(sectionId));
-        const finalScore = GradeCalculationService.calculateFinalTermScore(t.id, termGradesArr, councilDone);
-        return { termId: t.id, finalScore };
-      });
-
-      return GradeCalculationService.calculateFinalScore(
-        lapsos,
-        insSub.finalGrade ? { finalScore: insSub.finalGrade.finalScore, gradeType: insSub.finalGrade.gradeType } : null,
-      );
+    // For MP sections, calculate score from PendingSubject encounters.
+    // For regular sections, use the standard term-grade calculation.
+    const calculateMpScore = (pendingSubj: any): number | null => {
+      const encs = (pendingSubj.encounters || []).sort((a: any, b: any) => a.encounterNumber - b.encounterNumber);
+      // Find the encounter where the student approved (score >= 10, not absent)
+      const approvedEnc = encs.find((e: any) => e.score !== null && e.score >= 10 && !e.isAbsent);
+      if (approvedEnc) return Number(approvedEnc.score);
+      // Otherwise, find the last encounter with a non-null score
+      const lastScored = [...encs].reverse().find((e: any) => e.score !== null || e.isAbsent);
+      if (lastScored) return lastScored.isAbsent ? 0 : Number(lastScored.score);
+      return null;
     };
+
+    const calculateFinalScore = isMpSection
+      ? (insSub: any): number | null => calculateMpScore(insSub)
+      : (insSub: any): number | null => {
+        // Build term grades with fallback to qualifications + councilPoints
+        const termGradesArr = GradeCalculationService.buildTermGradesWithFallback(
+          (insSub.termGrades || []).map((tg: any) => ({ termId: tg.termId, score: Number(tg.score) })),
+          insSub.qualifications || [],
+          insSub.councilPoints || [],
+          terms.map((t: any) => t.id),
+        );
+
+        // Build lapsos with council-done filter
+        const lapsos = terms.map((t: any) => {
+          const councilDone = isCouncilDone(t.id, Number(sectionId));
+          const finalScore = GradeCalculationService.calculateFinalTermScore(t.id, termGradesArr, councilDone);
+          return { termId: t.id, finalScore };
+        });
+
+        return GradeCalculationService.calculateFinalScore(
+          lapsos,
+          insSub.finalGrade ? { finalScore: insSub.finalGrade.finalScore, gradeType: insSub.finalGrade.gradeType } : null,
+        );
+      };
 
     // Resolve template path. Precedence:
 //   1. ?template= override in the query string
@@ -702,7 +780,8 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
         let zero = 0;
 
         for (const ins of students) {
-          const insSub = (ins as any).inscriptionSubjects?.find((is: any) =>
+          const subjectsList = isMpSection ? (ins as any).pendingSubjects : (ins as any).inscriptionSubjects;
+          const insSub = subjectsList?.find((is: any) =>
             is.subjectId === columnSubject.id || (
               columnSubject.subjectGroupId !== null &&
               columnSubject.subjectGroupId !== undefined &&
@@ -989,6 +1068,7 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
         section?.name,
         letterGradesConfig,
         lastCouncilDate,
+        isMpSection,
       );
 
       // Override the evaluation type for this group. We do it after the
@@ -1104,7 +1184,7 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
     const allSheetNames: string[] = [];
     for (const dtg of docTypeGroups) {
       if (dtg.students.length === 0) continue;
-      const names = renderGroup(dtg.students, 'Final', dtg.label, isFirst);
+      const names = renderGroup(dtg.students, isMpSection ? 'Materia Pendiente' : 'Final', dtg.label, isFirst);
       allSheetNames.push(...names);
       isFirst = false;
     }
