@@ -187,6 +187,7 @@ function fillSheetByNamedRanges(
   gradeName?: string,
   sectionName?: string,
   letterGradesConfig?: { letter: string; max: number }[],
+  lastCouncilDate?: string | null,
 ): void {
   // Only writes when value is non-empty. Empty/undefined values leave the
   // cell untouched, preserving the template's decorative content (e.g. "***"
@@ -196,9 +197,48 @@ function fillSheetByNamedRanges(
   // coordinates by the original sheet's name and write to the same absolute
   // coordinates in the destination sheet.
   const lookupSheetName = sourceSheetName || sheetName;
+  // Map of Venezuelan states with correct accents (uppercase)
+  const STATE_ACCENTS: Record<string, string> = {
+    'GUARICO': 'GUÁRICO',
+    'AMAZONAS': 'AMAZONAS',
+    'ANZOATEGUI': 'ANZOÁTEGUI',
+    'APURE': 'APURE',
+    'ARAGUA': 'ARAGUA',
+    'BARINAS': 'BARINAS',
+    'BOLIVAR': 'BOLÍVAR',
+    'CARABOBO': 'CARABOBO',
+    'COJEDES': 'COJEDES',
+    'DELTA AMACURO': 'DELTA AMACURO',
+    'FALCON': 'FALCÓN',
+    'GUAYANA': 'GUAYANA',
+    'LARA': 'LARA',
+    'MERIDA': 'MÉRIDA',
+    'MIRANDA': 'MIRANDA',
+    'MONAGAS': 'MONAGAS',
+    'NUEVA ESPARTA': 'NUEVA ESPARTA',
+    'PORTUGUESA': 'PORTUGUESA',
+    'SUCRE': 'SUCRE',
+    'TACHIRA': 'TÁCHIRA',
+    'TRUJILLO': 'TRUJILLO',
+    'VARGAS': 'VARGAS',
+    'YARACUY': 'YARACUY',
+    'ZULIA': 'ZULIA',
+    'DISTRITO CAPITAL': 'DISTRITO CAPITAL',
+    'DEPENDENCIAS FEDERALES': 'DEPENDENCIAS FEDERALES',
+  };
+  const fixAccents = (name: string, value: string): string => {
+    if (name === 'inst_state') {
+      const upper = value.toUpperCase();
+      return STATE_ACCENTS[upper] || upper;
+    }
+    return value;
+  };
   const setByRange = (name: string, value: any) => {
     if (value === undefined || value === null || value === '') return;
-    if (typeof value === 'string') value = value.toUpperCase();
+    if (typeof value === 'string') {
+      value = value.toUpperCase();
+      value = fixAccents(name, value);
+    }
     let ref = namedRanges.getCell(lookupSheetName, name);
     if (!ref) {
       for (const sn of namedRanges.bySheet.keys()) {
@@ -219,7 +259,7 @@ function fillSheetByNamedRanges(
   setByRange('inst_address', settings.institution_address);
   setByRange('inst_phone', settings.institution_phone);
   setByRange('inst_municipality', settings.institution_municipality || plantel?.municipality);
-  setByRange('inst_state', plantel?.state);
+  setByRange('inst_state', plantel?.state || settings.institution_state);
   setByRange('inst_cdcee', settings.institution_cdcee);
   setByRange('inst_director', settings.director_name);
   setByRange('inst_director_doc', settings.director_document);
@@ -227,6 +267,30 @@ function fillSheetByNamedRanges(
   setByRange('inst_director_doc_2', settings.director_document);
   setByRange('inst_grade', gradeName);
   setByRange('inst_section', sectionName);
+
+  // Write the council date to cell Z4 (no named range defined in template).
+  // Format: "MES DE AÑO" (e.g. "JULIO DE 2026") in uppercase.
+  if (lastCouncilDate) {
+    const d = new Date(lastCouncilDate);
+    if (!isNaN(d.getTime())) {
+      const months = ['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO','JULIO','AGOSTO','SEPTIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE'];
+      const dateStr = `${months[d.getMonth()]} DE ${d.getFullYear()}`;
+      // Try named range first, fall back to direct Z4 cell
+      let dateRef = namedRanges.getCell(lookupSheetName, 'inst_date');
+      if (!dateRef) {
+        for (const sn of namedRanges.bySheet.keys()) {
+          dateRef = namedRanges.getCell(sn, 'inst_date');
+          if (dateRef) break;
+        }
+      }
+      if (dateRef) {
+        sheet.getCell(dateRef.cell).value = dateStr;
+      } else {
+        // Direct write to Z4 (hardcoded in template)
+        sheet.getCell('Z4').value = dateStr;
+      }
+    }
+  }
 
   for (let n = 1; n <= MAX_STUDENTS_PER_SHEET; n++) {
     const studentIdx = studentOffset + (n - 1);
@@ -355,8 +419,13 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
         termId: terms.map((t: any) => t.id),
         sectionId: Number(sectionId),
       },
-      attributes: ['termId', 'sectionId', 'status'],
+      attributes: ['termId', 'sectionId', 'status', 'completedAt'],
     });
+    // Find the most recent council completion date for this section
+    const councilDates = councilChecklists
+      .filter((c: any) => c.completedAt)
+      .sort((a: any, b: any) => new Date(b.completedAt).getTime() - new Date(a.completedAt).getTime());
+    const lastCouncilDate = councilDates.length > 0 ? String(councilDates[0].completedAt) : null;
     const isCouncilDone = GradeCalculationService.buildCouncilDoneChecker(
       councilChecklists.map((c: any) => ({ termId: c.termId, sectionId: c.sectionId, status: c.status })),
     );
@@ -919,6 +988,7 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
         templateGradeName,
         section?.name,
         letterGradesConfig,
+        lastCouncilDate,
       );
 
       // Override the evaluation type for this group. We do it after the

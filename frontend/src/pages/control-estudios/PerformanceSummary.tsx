@@ -1213,6 +1213,7 @@ const PerformanceSummary: React.FC = () => {
       <LegendRow name="inst_director_doc" desc="Cédula del director(a)." />
       <LegendRow name="inst_grade" desc="Nombre del grado/año cursado (ej. 1er Año, PRIMERO)." />
       <LegendRow name="inst_section" desc="Nombre de la sección (ej. B)." />
+      <LegendRow name="inst_date" desc="Fecha del documento en formato 'MES DE AÑO' (ej. JULIO DE 2027), basada en la fecha del último consejo de curso completado." />
       <div style={{ borderTop: '1px solid #e2e8f0', margin: '10px 0' }} />
       <div style={{ fontWeight: 700, color: '#0f172a', marginBottom: 6 }}>Datos por estudiante — <span style={{ fontWeight: 400, color: '#475569' }}>reemplaza <b>n</b> por el número de estudiante (1 a 35)</span></div>
       <LegendRow name="std_num_n" desc="Nº de lista del estudiante (01, 02, …)." />
