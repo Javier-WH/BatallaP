@@ -503,6 +503,7 @@ const PendingSubjectTeacherPanel: React.FC = () => {
                                                 max={20}
                                                 step={1}
                                                 inputMode="numeric"
+                                                className="no-spinners"
                                                 value={isAfterApproval ? '' : (displayValue ?? '')}
                                                 disabled={isDisabled}
                                                 onChange={e => {
@@ -721,6 +722,14 @@ const PendingSubjectTeacherPanel: React.FC = () => {
           font-size: 14px;
           pointer-events: none;
           border-radius: 4px;
+        }
+        .no-spinners::-webkit-outer-spin-button,
+        .no-spinners::-webkit-inner-spin-button {
+          -webkit-appearance: none;
+          margin: 0;
+        }
+        .no-spinners[type=number] {
+          -moz-appearance: textfield;
         }
       `}</style>
     </div>

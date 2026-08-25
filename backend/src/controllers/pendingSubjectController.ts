@@ -1761,6 +1761,8 @@ export const getMpNominaFinal = async (req: Request, res: Response) => {
 
     sortInscriptions(inscriptions as any[]);
 
+    const maxEnc = await getMaxEncounters();
+
     const students = inscriptions.map((ins: any) => ({
       inscriptionId: ins.id,
       personId: ins.personId,
@@ -1768,10 +1770,20 @@ export const getMpNominaFinal = async (req: Request, res: Response) => {
       studentDni: ins.student?.document,
       documentType: ins.student?.documentType,
       subjects: ins.pendingSubjects?.map((ps: any) => {
-        const encs = (ps.encounters || []).sort((a: any, b: any) => b.encounterNumber - a.encounterNumber);
-        // Find the last encounter with a non-null score
-        const lastScored = encs.find((e: any) => e.score !== null || e.isAbsent);
+        const encs = (ps.encounters || []).sort((a: any, b: any) => a.encounterNumber - b.encounterNumber);
         const approvedEnc = encs.find((e: any) => e.score !== null && e.score >= 10 && !e.isAbsent);
+        const lastScored = [...encs].reverse().find((e: any) => e.score !== null || e.isAbsent);
+        // Build full encounters array (1..maxEnc), filling missing with nulls
+        const encMap = new Map<number, any>(encs.map((e: any) => [e.encounterNumber, e]));
+        const allEncounters = Array.from({ length: maxEnc }, (_, i) => {
+          const e = encMap.get(i + 1);
+          return {
+            encounterNumber: i + 1,
+            score: e ? (e.isAbsent ? 0 : e.score) : null,
+            isAbsent: e ? e.isAbsent : false,
+            date: e ? e.date : null,
+          };
+        });
         return {
           pendingSubjectId: ps.id,
           subjectId: ps.subjectId,
@@ -1779,12 +1791,13 @@ export const getMpNominaFinal = async (req: Request, res: Response) => {
           finalScore: approvedEnc ? approvedEnc.score : (lastScored ? (lastScored.isAbsent ? 0 : lastScored.score) : null),
           finalEncounterNumber: approvedEnc ? approvedEnc.encounterNumber : (lastScored ? lastScored.encounterNumber : null),
           isAbsent: lastScored?.isAbsent ?? false,
+          encounters: allEncounters,
         };
       }) || [],
     }));
 
     const grade = await Grade.findByPk(gradeIdNum);
-    return res.json({ grade, subjects, students });
+    return res.json({ grade, subjects, students, maxEncounters: maxEnc });
   } catch (error) {
     console.error('[getMpNominaFinal] Error:', error);
     return res.status(500).json({ message: 'Error al obtener nómina final' });

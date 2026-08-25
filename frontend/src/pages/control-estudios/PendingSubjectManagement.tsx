@@ -14,6 +14,8 @@ import {
 import dayjs from 'dayjs';
 import api from '@/services/api';
 import { compareStudents } from '@/utils/studentSort';
+import { generateMpNominaHTML } from '@/components/pdf/MpNominaHTML';
+import type { MpNominaPrintData } from '@/components/pdf/MpNominaHTML';
 
 const { Title, Text } = Typography;
 
@@ -161,6 +163,12 @@ interface NominaFinalStudent {
     finalScore: number | null;
     finalEncounterNumber: number | null;
     isAbsent: boolean;
+    encounters: {
+      encounterNumber: number;
+      score: number | null;
+      isAbsent: boolean;
+      date: string | null;
+    }[];
   }[];
 }
 
@@ -219,7 +227,7 @@ const PendingSubjectManagement: React.FC = () => {
   const [maxEncounters, setMaxEncounters] = useState(4);
   const [nominaEncounter, setNominaEncounter] = useState<{ grade: Grade; subjects: NominaSubject[]; students: NominaEncounterStudent[]; encounterNumber: number } | null>(null);
   const [nominaEncounterLoading, setNominaEncounterLoading] = useState(false);
-  const [nominaFinal, setNominaFinal] = useState<{ grade: Grade; subjects: NominaSubject[]; students: NominaFinalStudent[] } | null>(null);
+  const [nominaFinal, setNominaFinal] = useState<{ grade: Grade; subjects: NominaSubject[]; students: NominaFinalStudent[]; maxEncounters: number } | null>(null);
   const [nominaFinalLoading, setNominaFinalLoading] = useState(false);
 
   // Encounter score modal
@@ -239,6 +247,11 @@ const PendingSubjectManagement: React.FC = () => {
 
   // Encounter dates per subject (for display in headers) — keyed by periodGradeSubjectId
   const [encounterDatesMap, setEncounterDatesMap] = useState<Record<number, { encounterNumber: number; date: string | null }[]>>({});
+
+  // Institution data for printable nómina
+  const [institutionData, setInstitutionData] = useState<{ name: string; period: string; code: string; principal: string } | null>(null);
+  const [logoBase64, setLogoBase64] = useState<string | null>(null);
+  const printIframeRef = React.useRef<HTMLIFrameElement>(null);
 
   // Locked encounters (CE controls which encounters teachers can edit)
   const [lockedEncounters, setLockedEncounters] = useState<number[]>([]);
@@ -338,6 +351,119 @@ const PendingSubjectManagement: React.FC = () => {
     }
   };
 
+  // Load institution data + logo for printable nómina
+  useEffect(() => {
+    api.get('/settings').then(res => {
+      setInstitutionData({
+        name: res.data.institution_name || '',
+        period: res.data.active_period_name || '',
+        code: res.data.institution_code || '',
+        principal: res.data.principal_name || '',
+      });
+    }).catch(() => {});
+
+    // Load logo as base64 (resized to 100x100)
+    let cancelled = false;
+    api.get('/upload/logo', { responseType: 'blob' })
+      .then(res => {
+        if (cancelled) return;
+        const blob = res.data as Blob;
+        const url = URL.createObjectURL(blob);
+        const img = new Image();
+        img.onload = () => {
+          URL.revokeObjectURL(url);
+          if (cancelled) return;
+          const canvas = document.createElement('canvas');
+          canvas.width = 100;
+          canvas.height = 100;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) return;
+          ctx.drawImage(img, 0, 0, 100, 100);
+          if (!cancelled) setLogoBase64(canvas.toDataURL('image/png'));
+        };
+        img.onerror = () => { URL.revokeObjectURL(url); };
+        img.src = url;
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
+  // Get active period name from structure
+  const activePeriodName = structure?.period?.name || institutionData?.period || '';
+
+  const [printLoading, setPrintLoading] = useState(false);
+
+  const handlePrintNominaFinal = useCallback(async () => {
+    if (!structure || structure.grades.length === 0) {
+      message.warning('No hay grados para imprimir');
+      return;
+    }
+    setPrintLoading(true);
+    try {
+      // Fetch nómina final for ALL grades in parallel
+      const results = await Promise.all(
+        structure.grades.map(g =>
+          api.get(`/pending-subjects/nomina-final/${g.grade.id}`)
+            .then(res => ({ grade: g.grade, data: res.data }))
+            .catch(() => ({ grade: g.grade, data: null }))
+        )
+      );
+      // Build grade sections, filtering out empty ones
+      const gradeSections = results
+        .filter(r => r.data && r.data.students && r.data.students.length > 0)
+        .map(r => ({
+          grade: r.grade,
+          subjects: r.data.subjects,
+          students: r.data.students.map((s: any) => ({
+            inscriptionId: s.inscriptionId,
+            studentName: s.studentName,
+            studentDni: s.studentDni,
+            documentType: s.documentType,
+            subjects: s.subjects.map((ss: any) => ({
+              subjectId: ss.subjectId,
+              status: ss.status,
+              finalScore: ss.finalScore,
+              encounters: ss.encounters,
+            })),
+          })),
+          maxEncounters: r.data.maxEncounters || maxEncounters,
+        }));
+      if (gradeSections.length === 0) {
+        message.warning('No hay estudiantes de materia pendiente en ningún grado');
+        setPrintLoading(false);
+        return;
+      }
+      const printData: MpNominaPrintData = {
+        institution: {
+          name: institutionData?.name || '',
+          period: activePeriodName,
+        },
+        grades: gradeSections,
+        logoBase64,
+      };
+      const html = generateMpNominaHTML(printData);
+      const iframe = printIframeRef.current;
+      if (iframe) {
+        const doc = iframe.contentWindow?.document;
+        if (doc) {
+          doc.open();
+          doc.write(html);
+          doc.close();
+          setTimeout(() => {
+            if (iframe.contentWindow) {
+              iframe.contentWindow.focus();
+              iframe.contentWindow.print();
+            }
+          }, 600);
+        }
+      }
+    } catch (error: any) {
+      message.error('Error al generar el documento');
+    } finally {
+      setPrintLoading(false);
+    }
+  }, [structure, institutionData, activePeriodName, maxEncounters, logoBase64]);
+
   /* ------------------- Fetch nomina by encounter ------------------- */
   const fetchNominaEncounter = useCallback(async (gradeId: number, encounter: number) => {
     setNominaEncounterLoading(true);
@@ -381,6 +507,8 @@ const PendingSubjectManagement: React.FC = () => {
   }, [expandedGradeId, nominaView, fetchNominaFinal]);
 
   /* ------------------- Open encounter score modal ------------------- */
+  const encScoreInputRef = React.useRef<any>(null);
+
   const openEncScoreModal = (student: NominaEncounterStudent, subject: NominaSubject) => {
     const subj = student.subjects.find(s => s.subjectId === subject.id);
     setEncScoreStudent(student);
@@ -388,6 +516,10 @@ const PendingSubjectManagement: React.FC = () => {
     setEncScoreValue(subj?.encounterScore ?? null);
     setEncScoreIsAbsent(subj?.encounterIsAbsent ?? false);
     setEncScoreModalOpen(true);
+    // Focus the input after the modal renders
+    setTimeout(() => {
+      encScoreInputRef.current?.focus();
+    }, 100);
   };
 
   const handleSaveEncounterScore = async () => {
@@ -877,11 +1009,21 @@ const PendingSubjectManagement: React.FC = () => {
         <Card
           title={
             <Space direction="vertical" size={8} style={{ width: '100%' }}>
-              <Space>
-                <span>Nómina de Materia Pendiente</span>
-                {expandedGradeId && structure?.grades.find(g => g.grade.id === expandedGradeId) && (
-                  <Tag color="blue">{structure.grades.find(g => g.grade.id === expandedGradeId)!.grade.name}</Tag>
-                )}
+              <Space style={{ justifyContent: 'space-between', width: '100%' }}>
+                <Space>
+                  <span>Nómina de Materia Pendiente</span>
+                  {expandedGradeId && structure?.grades.find(g => g.grade.id === expandedGradeId) && (
+                    <Tag color="blue">{structure.grades.find(g => g.grade.id === expandedGradeId)!.grade.name}</Tag>
+                  )}
+                </Space>
+                <Button
+                  icon={<PrinterOutlined />}
+                  onClick={handlePrintNominaFinal}
+                  loading={printLoading}
+                  size="small"
+                >
+                  Imprimir / Guardar PDF (todos los grados)
+                </Button>
               </Space>
               <Segmented
                 value={nominaView}
@@ -1015,6 +1157,7 @@ const PendingSubjectManagement: React.FC = () => {
           {nominaView === 'final' && (
           <Spin spinning={nominaFinalLoading}>
             {nominaFinal && nominaFinal.students.length > 0 ? (
+              <>
               <div className="mp-nomina-container">
                 <table className="mp-nomina-sheet">
                   <thead>
@@ -1060,6 +1203,7 @@ const PendingSubjectManagement: React.FC = () => {
                   </tbody>
                 </table>
               </div>
+              </>
             ) : (
               <div style={{ padding: 40, textAlign: 'center' }}>
                 <Empty description="No hay estudiantes que cursaron materia pendiente para este grado" />
@@ -1266,7 +1410,7 @@ const PendingSubjectManagement: React.FC = () => {
                     value={gradeValue}
                     onChange={v => setGradeValue(v)}
                     style={{ width: 120 }}
-                    autoFocus
+                    controls={false}
                   />
                   <Text type="secondary" style={{ fontSize: 12 }}>(0=NP, 1-20, mínimo 10)</Text>
                   {gradeValue === 0 && <Tag color="red">NP (Inasistente)</Tag>}
@@ -1358,14 +1502,16 @@ const PendingSubjectManagement: React.FC = () => {
           <Space>
             <Text>Nota:</Text>
             <InputNumber
+              ref={encScoreInputRef}
               min={0}
               max={20}
               step={1}
               value={encScoreValue}
               onChange={v => { setEncScoreValue(v); if (v !== 0) setEncScoreIsAbsent(false); }}
+              onPressEnter={() => handleSaveEncounterScore()}
               style={{ width: 120 }}
               disabled={encScoreIsAbsent}
-              autoFocus
+              controls={false}
             />
           </Space>
           <Checkbox
@@ -1550,7 +1696,23 @@ const PendingSubjectManagement: React.FC = () => {
         .mp-pass { color: #52c41a; font-weight: 700; font-size: 14px; }
         .mp-fail { color: #ff4d4f; font-weight: 700; font-size: 14px; }
         .mp-pending { color: #d9d9d9; }
+        /* Hide number input spinners */
+        .no-spinners input::-webkit-outer-spin-button,
+        .no-spinners input::-webkit-inner-spin-button {
+          -webkit-appearance: none;
+          margin: 0;
+        }
+        .no-spinners input[type=number] {
+          -moz-appearance: textfield;
+        }
       `}</style>
+
+      {/* Hidden iframe for printing */}
+      <iframe
+        ref={printIframeRef}
+        style={{ position: 'absolute', width: 0, height: 0, border: 'none', left: -9999, top: -9999 }}
+        title="print-frame"
+      />
     </div>
   );
 };
