@@ -247,8 +247,19 @@ export class RevisionPeriodService {
     return { revisionPeriod, revisionsCreated };
   }
 
-  static async closeRevisionPeriod(
+  /**
+   * Mark the revision period as completed (the "check").
+   *
+   * This auto-fails all pending revisions (no grade entered = failed) and
+   * sets status='completed'. From this point, FinalGradeCalculator will
+   * use revision grades when computing final scores.
+   *
+   * This is independent from the school year closure — it only signals that
+   * revision grades are final and ready for calculation.
+   */
+  static async completeRevisionPeriod(
     schoolPeriodId: number,
+    completedByUserId: number,
     transaction?: Transaction
   ): Promise<RevisionPeriod> {
     const revisionPeriod = await RevisionPeriod.findOne({
@@ -300,6 +311,39 @@ export class RevisionPeriodService {
           }, { transaction });
         }
       }
+    }
+
+    await revisionPeriod.update({
+      status: 'completed',
+      completedAt: new Date(),
+      completedBy: completedByUserId,
+    }, { transaction });
+
+    return revisionPeriod;
+  }
+
+  /**
+   * Lock the revision period (status='closed').
+   *
+   * This is set by periodClosureExecutor after the school year closure, or
+   * can be called manually to prevent further edits. It does NOT trigger
+   * grade calculation — that happens at 'completed'.
+   */
+  static async lockRevisionPeriod(
+    schoolPeriodId: number,
+    transaction?: Transaction
+  ): Promise<RevisionPeriod> {
+    const revisionPeriod = await RevisionPeriod.findOne({
+      where: { schoolPeriodId },
+      transaction,
+    });
+
+    if (!revisionPeriod) throw new Error('No existe un período de reparación para este período escolar');
+    if (revisionPeriod.status === 'closed') {
+      return revisionPeriod; // already locked, idempotent
+    }
+    if (revisionPeriod.status !== 'completed') {
+      throw new Error('El período de reparación debe estar completado antes de bloquearlo');
     }
 
     await revisionPeriod.update({
@@ -462,6 +506,8 @@ export class RevisionPeriodService {
     await revisionPeriod.update({
       status: 'pending',
       openedAt: null,
+      completedAt: null,
+      completedBy: null,
       closedAt: null,
     }, { transaction });
 

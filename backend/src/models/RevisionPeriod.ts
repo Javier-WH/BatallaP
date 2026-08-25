@@ -2,7 +2,7 @@ import { DataTypes, Model, Optional } from 'sequelize';
 import sequelize from '@/config/database';
 import SchoolPeriod from './SchoolPeriod';
 
-export type RevisionPeriodStatus = 'pending' | 'open' | 'closed';
+export type RevisionPeriodStatus = 'pending' | 'open' | 'completed' | 'closed';
 
 interface RevisionPeriodAttributes {
   id: number;
@@ -11,6 +11,8 @@ interface RevisionPeriodAttributes {
   maxOpportunities: number;
   passingGrade: number;
   openedAt?: Date | null;
+  completedAt?: Date | null;
+  completedBy?: number | null;
   closedAt?: Date | null;
   createdAt?: Date;
   updatedAt?: Date;
@@ -18,7 +20,7 @@ interface RevisionPeriodAttributes {
 
 type RevisionPeriodCreationAttributes = Optional<
   RevisionPeriodAttributes,
-  'id' | 'status' | 'maxOpportunities' | 'passingGrade' | 'openedAt' | 'closedAt'
+  'id' | 'status' | 'maxOpportunities' | 'passingGrade' | 'openedAt' | 'completedAt' | 'completedBy' | 'closedAt'
 >;
 
 class RevisionPeriod
@@ -31,6 +33,8 @@ class RevisionPeriod
   public maxOpportunities!: number;
   public passingGrade!: number;
   public openedAt!: Date | null;
+  public completedAt!: Date | null;
+  public completedBy!: number | null;
   public closedAt!: Date | null;
 
   public readonly createdAt!: Date;
@@ -53,7 +57,7 @@ RevisionPeriod.init(
       },
     },
     status: {
-      type: DataTypes.ENUM('pending', 'open', 'closed'),
+      type: DataTypes.ENUM('pending', 'open', 'completed', 'closed'),
       allowNull: false,
       defaultValue: 'pending',
     },
@@ -70,6 +74,16 @@ RevisionPeriod.init(
     openedAt: {
       type: DataTypes.DATE,
       allowNull: true,
+    },
+    completedAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
+    completedBy: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      references: { model: 'users', key: 'id' },
+      onDelete: 'SET NULL',
     },
     closedAt: {
       type: DataTypes.DATE,

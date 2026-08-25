@@ -53,7 +53,7 @@ export const openRevisionPeriod = async (req: Request, res: Response) => {
   }
 };
 
-export const closeRevisionPeriod = async (req: Request, res: Response) => {
+export const completeRevisionPeriod = async (req: Request, res: Response) => {
   const t = await sequelize.transaction();
   try {
     const schoolPeriodId = parseInt(req.params.schoolPeriodId, 10);
@@ -61,16 +61,42 @@ export const closeRevisionPeriod = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'schoolPeriodId es obligatorio' });
     }
 
-    const revisionPeriod = await RevisionPeriodService.closeRevisionPeriod(schoolPeriodId, t);
+    const userId = (req.session as any)?.user?.id;
+    if (!userId) {
+      return res.status(401).json({ message: 'No autorizado' });
+    }
+
+    const revisionPeriod = await RevisionPeriodService.completeRevisionPeriod(schoolPeriodId, userId, t);
     await t.commit();
     return res.json({
-      message: 'Período de reparación cerrado correctamente',
+      message: 'Período de reparación completado correctamente',
       revisionPeriod,
     });
   } catch (error: any) {
     await t.rollback();
-    console.error('[closeRevisionPeriod] Error:', error);
-    return res.status(500).json({ message: error.message || 'Error al cerrar período de reparación' });
+    console.error('[completeRevisionPeriod] Error:', error);
+    return res.status(500).json({ message: error.message || 'Error al completar período de reparación' });
+  }
+};
+
+export const lockRevisionPeriod = async (req: Request, res: Response) => {
+  const t = await sequelize.transaction();
+  try {
+    const schoolPeriodId = parseInt(req.params.schoolPeriodId, 10);
+    if (!schoolPeriodId) {
+      return res.status(400).json({ message: 'schoolPeriodId es obligatorio' });
+    }
+
+    const revisionPeriod = await RevisionPeriodService.lockRevisionPeriod(schoolPeriodId, t);
+    await t.commit();
+    return res.json({
+      message: 'Período de reparación bloqueado correctamente',
+      revisionPeriod,
+    });
+  } catch (error: any) {
+    await t.rollback();
+    console.error('[lockRevisionPeriod] Error:', error);
+    return res.status(500).json({ message: error.message || 'Error al bloquear período de reparación' });
   }
 };
 
@@ -85,7 +111,7 @@ export const getRevisionStudents = async (req: Request, res: Response) => {
       where: { schoolPeriodId },
     });
 
-    // If period is open or closed, return actual revision records
+    // If period is open, completed, or closed, return actual revision records
     if (revisionPeriod && revisionPeriod.status !== 'pending') {
       const revisions = await InscriptionSubjectRevision.findAll({
         where: { revisionPeriodId: revisionPeriod.id },

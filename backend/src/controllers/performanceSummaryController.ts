@@ -1707,7 +1707,12 @@ export const getGeneralAverages = async (req: Request, res: Response) => {
     // Sort students canonically: document type → document number → lastName → firstName → grade → section
     sortInscriptions(inscriptions as any[]);
 
-    const students = inscriptions.map((ins: any) => {
+    // Exclude "MATERIA PENDIENTE" sections — those are not regular grades
+    const regularInscriptions = inscriptions.filter((ins: any) =>
+      (ins.section?.name || '').toUpperCase() !== 'MATERIA PENDIENTE'
+    );
+
+    const students = regularInscriptions.map((ins: any) => {
       const gradeId = ins.grade?.id || 0;
       const studentSectionId = ins.section?.id || 0;
       const averageEligibleSubjects = includeInAverageMap.get(gradeId);

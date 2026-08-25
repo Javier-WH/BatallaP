@@ -5,6 +5,7 @@ import {
   InscriptionSubject,
   Subject,
   SubjectFinalGrade,
+  SubjectTermGrade,
   SchoolPeriod,
   Grade,
   Section,
@@ -13,27 +14,34 @@ import {
   Plantel,
   Person,
   SubjectGroup,
+  Term,
+  PendingSubject,
+  PendingSubjectEncounter,
+  HistoricalGrade,
 } from '@/models/index';
 import { sortInscriptions } from '@/services/studentSortService';
 
 /**
- * GET /api/historical-grades/by-section?schoolPeriodId=X&sectionId=Y
+ * GET /api/historical-grades/by-section?schoolPeriodId=X&sectionId=Y&gradeId=Z
+ * GET /api/historical-grades/by-section?schoolPeriodId=X&personId=P
  *
- * Returns all students in the given section (for the active school period),
- * along with their final grades across ALL school periods / years (1ro–5to).
+ * Returns students + ALL years (1ro–5to) with their subjects, plus all known
+ * grades from multiple sources (SubjectFinalGrade, SubjectTermGrade fallback,
+ * PendingSubject, HistoricalGrade).
+ *
+ * Years are built from ALL Grade records in the system, not just the ones
+ * where the student has inscriptions. This allows the user to manually fill
+ * in legacy data for years where the student has no records in the system.
  *
  * Response shape:
  * {
  *   students: [{ id, firstName, lastName, document, documentType }],
  *   years: [{
- *     schoolPeriodId, period, name, gradeId, gradeName,
- *     subjects: [{ id, name, abbreviation }],
+ *     gradeId, gradeName, gradeOrder,
+ *     schoolPeriodId,  // the period used for subject lookup (may be null)
+ *     subjects: [{ id, name, abbreviation, subjectGroupId, memberIds }],
  *   }],
- *   grades: [{
- *     personId, schoolPeriodId, subjectId,
- *     finalScore, status, gradeType, plantelId, plantelName,
- *     finalGradeId, inscriptionSubjectId,
- *   }],
+ *   grades: [{ personId, schoolPeriodId, gradeId, subjectId, finalScore, status, gradeType, plantelId, ... }],
  *   planteles: [{ id, code, name }],
  * }
  */
@@ -44,48 +52,174 @@ export const getHistoricalGradesBySection = async (req: Request, res: Response) 
       return res.status(401).json({ message: 'No autorizado' });
     }
 
-    const { schoolPeriodId, sectionId, gradeId } = req.query;
-    if (!schoolPeriodId || !sectionId) {
-      return res.status(400).json({ message: 'schoolPeriodId y sectionId son requeridos' });
+    const { schoolPeriodId, sectionId, gradeId, personId } = req.query;
+    if (!schoolPeriodId) {
+      return res.status(400).json({ message: 'schoolPeriodId es requerido' });
     }
 
     const periodId = Number(schoolPeriodId);
-    const secId = Number(sectionId);
+    const secId = sectionId ? Number(sectionId) : null;
     const grdId = gradeId ? Number(gradeId) : null;
+    const individualPersonId = personId ? Number(personId) : null;
 
-    // 1. Get the active period to determine the grade of the section
+    // 1. Get the active period
     const activePeriod = await SchoolPeriod.findByPk(periodId);
     if (!activePeriod) {
       return res.status(404).json({ message: 'Período escolar no encontrado' });
     }
 
-    // 2. Get all inscriptions for this section+grade in the active period
-    const inscriptionWhere: any = { schoolPeriodId: periodId, sectionId: secId };
-    if (grdId) inscriptionWhere.gradeId = grdId;
-    const inscriptions = await Inscription.findAll({
-      where: inscriptionWhere,
-      include: [
-        {
-          model: Person,
-          as: 'student',
-          attributes: ['id', 'firstName', 'lastName', 'document', 'documentType'],
-        },
-        { model: Grade, as: 'grade', attributes: ['id', 'name', 'order'] },
-      ],
-    });
+    // 2. Get students — either by section or individual
+    let personIds: number[] = [];
+    let students: any[] = [];
 
-    if (inscriptions.length === 0) {
+    if (individualPersonId) {
+      // Individual student mode
+      const person = await Person.findByPk(individualPersonId, {
+        attributes: ['id', 'firstName', 'lastName', 'document', 'documentType'],
+      });
+      if (!person) {
+        return res.json({ students: [], years: [], grades: [], planteles: [] });
+      }
+      personIds = [person.id];
+      students = [{
+        id: person.id,
+        firstName: person.firstName,
+        lastName: person.lastName,
+        document: person.document,
+        documentType: person.documentType,
+      }];
+    } else {
+      if (!secId) {
+        return res.status(400).json({ message: 'sectionId o personId es requerido' });
+      }
+      // Section mode
+      const inscriptionWhere: any = { schoolPeriodId: periodId, sectionId: secId };
+      if (grdId) inscriptionWhere.gradeId = grdId;
+      const inscriptions = await Inscription.findAll({
+        where: inscriptionWhere,
+        include: [
+          {
+            model: Person,
+            as: 'student',
+            attributes: ['id', 'firstName', 'lastName', 'document', 'documentType'],
+          },
+          { model: Grade, as: 'grade', attributes: ['id', 'name', 'order'] },
+        ],
+      });
+
+      if (inscriptions.length === 0) {
+        return res.json({ students: [], years: [], grades: [], planteles: [] });
+      }
+
+      // Filter out MATERIA PENDIENTE section inscriptions — those are not regular students
+      const regularInscriptions = inscriptions.filter((ins: any) =>
+        (ins.section?.name || '').toUpperCase() !== 'MATERIA PENDIENTE'
+      );
+      // If all were MP, use original list
+      const inscriptionsToUse = regularInscriptions.length > 0 ? regularInscriptions : inscriptions;
+
+      sortInscriptions(inscriptionsToUse as any);
+      personIds = inscriptionsToUse.map(i => i.personId);
+      students = inscriptionsToUse.map(ins => ({
+        id: ins.personId,
+        firstName: (ins as any).student?.firstName,
+        lastName: (ins as any).student?.lastName,
+        document: (ins as any).student?.document,
+        documentType: (ins as any).student?.documentType,
+      }));
+    }
+
+    if (personIds.length === 0) {
       return res.json({ students: [], years: [], grades: [], planteles: [] });
     }
 
-    // Apply canonical student ordering (documentType → cédula → apellidos → nombres)
-    sortInscriptions(inscriptions as any);
+    // 3. Get ALL Grade records from the system — these define the year columns.
+    //    Every grade is shown regardless of whether the student has inscriptions.
+    const allGrades = await Grade.findAll({
+      attributes: ['id', 'name', 'order'],
+      order: [['order', 'ASC']],
+    });
 
-    const personIds = inscriptions.map(i => i.personId);
-    const currentGradeId = inscriptions[0].gradeId;
+    // 4. For each grade, find the PeriodGrade to get subjects.
+    //    Try the active period first; if not found, try any period that has
+    //    a PeriodGrade for this grade.
+    const years: any[] = [];
+    for (const gr of allGrades) {
+      // Try active period first
+      let pg = await PeriodGrade.findOne({
+        where: { schoolPeriodId: periodId, gradeId: gr.id },
+        attributes: ['id', 'schoolPeriodId', 'gradeId', 'color'],
+      });
+      let pgPeriodId = periodId;
 
-    // 3. Get all school periods that include this grade (or lower grades for the same student path)
-    // We want all periods where these students have inscriptions
+      // If not found, try any period with a PeriodGrade for this grade
+      if (!pg) {
+        pg = await PeriodGrade.findOne({
+          where: { gradeId: gr.id },
+          attributes: ['id', 'schoolPeriodId', 'gradeId', 'color'],
+          order: [['id', 'DESC']], // most recent
+        });
+        if (pg) {
+          pgPeriodId = pg.schoolPeriodId;
+        }
+      }
+
+      // Get subjects for this period grade
+      let subjects: any[] = [];
+      if (pg) {
+        const pgs = await PeriodGradeSubject.findAll({
+          where: { periodGradeId: pg.id },
+          include: [{
+            model: Subject,
+            as: 'subject',
+            attributes: ['id', 'name', 'abbreviation', 'subjectGroupId'],
+            include: [{ model: SubjectGroup, as: 'subjectGroup', attributes: ['id', 'name'] }],
+          }],
+          order: [['order', 'ASC']],
+        });
+        // Collapse subjects sharing a subjectGroupId
+        const seenGroupIds = new Set<number>();
+        for (const p of pgs) {
+          const subj = (p as any).subject;
+          if (!subj) continue;
+          const groupId = subj.subjectGroupId ?? null;
+          if (groupId !== null) {
+            if (seenGroupIds.has(groupId)) {
+              const existing = subjects.find(s => s.subjectGroupId === groupId);
+              if (existing) existing.memberIds.push(subj.id);
+              continue;
+            }
+            seenGroupIds.add(groupId);
+            subjects.push({
+              id: subj.id,
+              name: subj.subjectGroup?.name || subj.name,
+              abbreviation: subj.abbreviation,
+              subjectGroupId: groupId,
+              memberIds: [subj.id],
+            });
+          } else {
+            subjects.push({
+              id: subj.id,
+              name: subj.name,
+              abbreviation: subj.abbreviation,
+              subjectGroupId: null,
+              memberIds: [subj.id],
+            });
+          }
+        }
+      }
+
+      years.push({
+        gradeId: gr.id,
+        gradeName: gr.name,
+        gradeOrder: gr.order,
+        schoolPeriodId: pgPeriodId,
+        gradeColor: (pg as any)?.color ?? null,
+        subjects,
+      });
+    }
+
+    // 5. Get all inscriptions for these students (across all periods)
     const allInscriptionsForStudents = await Inscription.findAll({
       where: { personId: personIds as any },
       include: [
@@ -94,96 +228,9 @@ export const getHistoricalGradesBySection = async (req: Request, res: Response) 
       ],
     });
 
-    // Group by schoolPeriodId to build the "years" structure
-    const periodMap = new Map<number, any>();
-    for (const ins of allInscriptionsForStudents) {
-      const sp = (ins as any).period;
-      const gr = (ins as any).grade;
-      if (!sp || !gr) continue;
-      if (!periodMap.has(sp.id)) {
-        periodMap.set(sp.id, {
-          schoolPeriodId: sp.id,
-          period: sp.period,
-          name: sp.name,
-          startYear: sp.startYear,
-          endYear: sp.endYear,
-          status: sp.status,
-          gradeId: gr.id,
-          gradeName: gr.name,
-          gradeOrder: gr.order,
-        });
-      }
-    }
-
-    // Sort years by grade order (1ro → 5to)
-    const years = Array.from(periodMap.values()).sort((a, b) => (a.gradeOrder ?? 999) - (b.gradeOrder ?? 999));
-
-    // 4. Get all subjects for each period+grade combination
-    const periodGradeIds = new Set<number>();
-    const pgByPeriod = new Map<number, number>();
-    for (const y of years) {
-      const pg = await PeriodGrade.findOne({
-        where: { schoolPeriodId: y.schoolPeriodId, gradeId: y.gradeId },
-      });
-      if (pg) {
-        periodGradeIds.add(pg.id);
-        pgByPeriod.set(y.schoolPeriodId, pg.id);
-      }
-    }
-
-    // Get subjects per period grade (include SubjectGroup to collapse electives)
-    for (const y of years) {
-      const pgId = pgByPeriod.get(y.schoolPeriodId);
-      if (!pgId) { y.subjects = []; continue; }
-      const pgs = await PeriodGradeSubject.findAll({
-        where: { periodGradeId: pgId },
-        include: [{
-          model: Subject,
-          as: 'subject',
-          attributes: ['id', 'name', 'abbreviation', 'subjectGroupId'],
-          include: [{ model: SubjectGroup, as: 'subjectGroup', attributes: ['id', 'name'] }],
-        }],
-        order: [['order', 'ASC']],
-      });
-      // Collapse subjects sharing a subjectGroupId into one representative column.
-      // The representative uses the group name; all subjectIds in the group are
-      // kept so the frontend can match grades against any of them.
-      const seenGroupIds = new Set<number>();
-      const subjects: any[] = [];
-      for (const p of pgs) {
-        const subj = (p as any).subject;
-        if (!subj) continue;
-        const groupId = subj.subjectGroupId ?? null;
-        if (groupId !== null) {
-          if (seenGroupIds.has(groupId)) {
-            // Add this subjectId to the existing group entry's memberIds
-            const existing = subjects.find(s => s.subjectGroupId === groupId);
-            if (existing) existing.memberIds.push(subj.id);
-            continue;
-          }
-          seenGroupIds.add(groupId);
-          subjects.push({
-            id: subj.id,
-            name: subj.subjectGroup?.name || subj.name,
-            abbreviation: subj.abbreviation,
-            subjectGroupId: groupId,
-            memberIds: [subj.id],
-          });
-        } else {
-          subjects.push({
-            id: subj.id,
-            name: subj.name,
-            abbreviation: subj.abbreviation,
-            subjectGroupId: null,
-            memberIds: [subj.id],
-          });
-        }
-      }
-      y.subjects = subjects;
-    }
-
-    // 5. Get all InscriptionSubjects + SubjectFinalGrades for these students across all periods
     const allInsIds = allInscriptionsForStudents.map(i => i.id);
+
+    // 6. Get InscriptionSubjects + SubjectFinalGrades + SubjectTermGrades
     const insSubjects = await InscriptionSubject.findAll({
       where: { inscriptionId: allInsIds as any },
       include: [
@@ -198,49 +245,147 @@ export const getHistoricalGradesBySection = async (req: Request, res: Response) 
           as: 'finalGrade',
           include: [{ model: Plantel, as: 'plantel', attributes: ['id', 'code', 'name'] }],
         },
+        { model: SubjectTermGrade, as: 'termGrades', include: [{ model: Term, as: 'term' }] },
       ],
     });
 
-    // Build grades map: personId → schoolPeriodId → subjectId → grade data.
-    // Include subjectGroupId so the frontend can match a grade to a collapsed
-    // group column (where the column's subjectId is just the representative).
+    // Build grades map from InscriptionSubjects
     const gradesMap: any[] = [];
     for (const is of insSubjects) {
       const ins = (is as any).inscription;
       const subj = (is as any).subject;
       const fg = (is as any).finalGrade;
+      const termGrades: any[] = (is as any).termGrades || [];
       if (!ins || !subj) continue;
+
+      let finalScore: number | null = fg?.finalScore ?? null;
+      let status: string | null = fg?.status ?? null;
+      let gradeType: string | null = fg?.gradeType ?? null;
+      let date: string | null = fg?.calculatedAt ? new Date(fg.calculatedAt).toISOString().split('T')[0] : null;
+
+      // Fallback: compute from term grades if no SubjectFinalGrade exists
+      if (!fg && termGrades.length > 0) {
+        const sum = termGrades.reduce((acc, tg) => acc + Number(tg.score || 0), 0);
+        const avg = sum / termGrades.length;
+        finalScore = Math.round(avg * 100) / 100;
+        status = finalScore >= 10 ? 'aprobada' : 'reprobada';
+        gradeType = 'regular';
+        const latestCalculated = termGrades
+          .map(tg => tg.calculatedAt)
+          .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0];
+        date = latestCalculated ? new Date(latestCalculated).toISOString().split('T')[0] : null;
+      }
+
       gradesMap.push({
         personId: ins.personId,
         schoolPeriodId: ins.schoolPeriodId,
+        gradeId: ins.gradeId ?? null,
         subjectId: subj.id,
         subjectGroupId: subj.subjectGroupId ?? null,
         subjectName: subj.name ?? null,
-        finalScore: fg?.finalScore ?? null,
-        status: fg?.status ?? null,
-        gradeType: fg?.gradeType ?? null,
+        finalScore,
+        status,
+        gradeType,
         plantelId: fg?.plantelId ?? null,
         plantelName: fg?.plantel?.name ?? null,
         finalGradeId: fg?.id ?? null,
         inscriptionSubjectId: is.id,
-        date: fg?.calculatedAt ? new Date(fg.calculatedAt).toISOString().split('T')[0] : null,
+        date,
+        source: 'system',
       });
     }
 
-    // 6. Get all planteles
+    // 7. Get PendingSubject grades
+    const pendingSubjects = await PendingSubject.findAll({
+      where: { newInscriptionId: allInsIds as any },
+      include: [
+        {
+          model: Inscription,
+          as: 'inscription',
+          attributes: ['id', 'personId', 'schoolPeriodId', 'gradeId'],
+        },
+        { model: Subject, as: 'subject', attributes: ['id', 'name', 'abbreviation', 'subjectGroupId'] },
+        { model: SchoolPeriod, as: 'originPeriod', attributes: ['id', 'period', 'name'] },
+        { model: PendingSubjectEncounter, as: 'encounters' },
+      ],
+    });
+
+    for (const ps of pendingSubjects) {
+      const ins = (ps as any).inscription;
+      const subj = (ps as any).subject;
+      const originPeriod = (ps as any).originPeriod;
+      const encs: any[] = ((ps as any).encounters || []).sort((a: any, b: any) => a.encounterNumber - b.encounterNumber);
+      if (!ins || !subj) continue;
+
+      const approvedEnc = encs.find(e => e.score !== null && Number(e.score) >= 10 && !e.isAbsent);
+      const lastScored = [...encs].reverse().find(e => e.score !== null || e.isAbsent);
+      let score: number | null = null;
+      if (approvedEnc) score = Number(approvedEnc.score);
+      else if (lastScored) score = lastScored.isAbsent ? 0 : Number(lastScored.score);
+
+      if (score === null) continue;
+
+      const psStatus = score >= 10 ? 'aprobada' : 'reprobada';
+      const lastDate = [...encs].reverse().find(e => e.date)?.date;
+
+      const targetPeriodId = originPeriod?.id ?? ins.schoolPeriodId;
+      const targetGradeId = ins.gradeId ?? null;
+
+      gradesMap.push({
+        personId: ins.personId,
+        schoolPeriodId: targetPeriodId,
+        gradeId: targetGradeId,
+        subjectId: subj.id,
+        subjectGroupId: subj.subjectGroupId ?? null,
+        subjectName: subj.name ?? null,
+        finalScore: score,
+        status: psStatus,
+        gradeType: 'materia_pendiente',
+        plantelId: null,
+        plantelName: null,
+        finalGradeId: null,
+        inscriptionSubjectId: null,
+        date: lastDate ? new Date(lastDate).toISOString().split('T')[0] : null,
+        source: 'pending_subject',
+      });
+    }
+
+    // 8. Get HistoricalGrade records (legacy data entered manually)
+    const historicalGrades = await HistoricalGrade.findAll({
+      where: { personId: personIds as any },
+      include: [
+        { model: Subject, as: 'subject', attributes: ['id', 'name', 'abbreviation', 'subjectGroupId'] },
+        { model: Plantel, as: 'plantel', attributes: ['id', 'code', 'name'] },
+      ],
+    });
+
+    for (const hg of historicalGrades) {
+      const subj = (hg as any).subject;
+      gradesMap.push({
+        personId: hg.personId,
+        schoolPeriodId: hg.schoolPeriodId ?? null,
+        gradeId: hg.gradeId,
+        subjectId: hg.subjectId,
+        subjectGroupId: subj?.subjectGroupId ?? null,
+        subjectName: subj?.name ?? null,
+        finalScore: hg.finalScore != null ? Number(hg.finalScore) : null,
+        status: hg.status,
+        gradeType: hg.gradeType,
+        plantelId: hg.plantelId ?? null,
+        plantelName: (hg as any).plantel?.name ?? null,
+        finalGradeId: null,
+        inscriptionSubjectId: null,
+        historicalGradeId: hg.id,
+        date: hg.date ? new Date(hg.date).toISOString().split('T')[0] : null,
+        source: 'historical',
+      });
+    }
+
+    // 9. Get all planteles
     const planteles = await Plantel.findAll({
       attributes: ['id', 'code', 'name', 'state'],
       order: [['name', 'ASC']],
     });
-
-    // 7. Build students list (sorted)
-    const students = inscriptions.map(ins => ({
-      id: ins.personId,
-      firstName: (ins as any).student?.firstName,
-      lastName: (ins as any).student?.lastName,
-      document: (ins as any).student?.document,
-      documentType: (ins as any).student?.documentType,
-    }));
 
     return res.json({
       students,
@@ -259,18 +404,17 @@ export const getHistoricalGradesBySection = async (req: Request, res: Response) 
  *
  * Body: {
  *   changes: [{
- *     personId, schoolPeriodId, subjectId,
- *     finalScore, gradeType, plantelId,
- *     finalGradeId?, inscriptionSubjectId?,
+ *     personId, schoolPeriodId, gradeId, subjectId,
+ *     finalScore, gradeType, plantelId, date,
+ *     finalGradeId?, inscriptionSubjectId?, historicalGradeId?,
  *   }]
  * }
  *
  * For each change:
- * - If inscriptionSubjectId exists, use it; otherwise find or create it
- * - If finalGradeId exists, update; otherwise create SubjectFinalGrade
- * - Status is derived from finalScore (>= 10 = aprobada, < 10 = reprobada)
- *
- * Returns: { saved: number, errors: string[] }
+ * - If historicalGradeId exists → update HistoricalGrade
+ * - Else if inscriptionSubjectId exists → update/create SubjectFinalGrade
+ * - Else if there's an inscription for (personId, schoolPeriodId) → use SubjectFinalGrade
+ * - Else → create/update HistoricalGrade (no inscription needed)
  */
 export const saveHistoricalGrades = async (req: Request, res: Response) => {
   const t = await sequelize.transaction();
@@ -279,6 +423,7 @@ export const saveHistoricalGrades = async (req: Request, res: Response) => {
     if (!sessionUser) {
       return res.status(401).json({ message: 'No autorizado' });
     }
+    const userId = sessionUser.id;
 
     const { changes } = req.body;
     if (!Array.isArray(changes) || changes.length === 0) {
@@ -296,63 +441,58 @@ export const saveHistoricalGrades = async (req: Request, res: Response) => {
 
     for (const change of changes) {
       try {
-        const { personId, schoolPeriodId, subjectId, finalScore, gradeType, plantelId, finalGradeId, inscriptionSubjectId, date } = change;
+        const {
+          personId, schoolPeriodId, gradeId, subjectId,
+          finalScore, gradeType, plantelId,
+          finalGradeId, inscriptionSubjectId, historicalGradeId, date,
+        } = change;
 
-        if (!personId || !schoolPeriodId || !subjectId) {
-          errors.push(`Faltan datos: personId, schoolPeriodId o subjectId`);
+        if (!personId || !gradeId || !subjectId) {
+          errors.push(`Faltan datos: personId, gradeId o subjectId`);
           continue;
         }
 
-        // Find or create InscriptionSubject
-        let insSubId = inscriptionSubjectId;
-        if (!insSubId) {
-          // Find the inscription for this person + period
-          const inscription = await Inscription.findOne({
-            where: { personId, schoolPeriodId },
-            transaction: t,
-          });
-          if (!inscription) {
-            errors.push(`No se encontró inscripción para persona ${personId} en período ${schoolPeriodId}`);
-            continue;
-          }
-          const existing = await InscriptionSubject.findOne({
-            where: { inscriptionId: inscription.id, subjectId },
-            transaction: t,
-          });
-          if (existing) {
-            insSubId = existing.id;
-          } else {
-            const created = await InscriptionSubject.create({
-              inscriptionId: inscription.id,
-              subjectId,
-            }, { transaction: t });
-            insSubId = created.id;
-          }
-        }
-
-        // Determine status from score
         const score = finalScore !== null && finalScore !== undefined ? Number(finalScore) : null;
         const status = score !== null ? (score >= passingGrade ? 'aprobada' : 'reprobada') : 'reprobada';
+        const parsedDate = date ? new Date(`${date}T12:00:00`) : new Date();
+        const dateOnly = date ? new Date(date).toISOString().split('T')[0] : null;
 
-        // Parse date or default to now
-        const calculatedAt = date ? new Date(`${date}T12:00:00`) : new Date();
+        // ── Case 1: Update existing HistoricalGrade ──
+        if (historicalGradeId) {
+          await HistoricalGrade.update({
+            finalScore: score,
+            status,
+            gradeType: gradeType || 'regular',
+            plantelId: plantelId || null,
+            date: dateOnly,
+          }, {
+            where: { id: historicalGradeId },
+            transaction: t,
+          });
+          saved++;
+          continue;
+        }
 
-        // Update or create SubjectFinalGrade
+        // ── Case 2: Update existing SubjectFinalGrade ──
         if (finalGradeId) {
           await SubjectFinalGrade.update({
             finalScore: score,
             status,
             gradeType: gradeType || 'regular',
             plantelId: plantelId || null,
-            calculatedAt,
+            calculatedAt: parsedDate,
           }, {
             where: { id: finalGradeId },
             transaction: t,
           });
-        } else {
-          // Check if one already exists
+          saved++;
+          continue;
+        }
+
+        // ── Case 3: Have inscriptionSubjectId → use SubjectFinalGrade ──
+        if (inscriptionSubjectId) {
           const existing = await SubjectFinalGrade.findOne({
-            where: { inscriptionSubjectId: insSubId },
+            where: { inscriptionSubjectId },
             transaction: t,
           });
           if (existing) {
@@ -361,21 +501,103 @@ export const saveHistoricalGrades = async (req: Request, res: Response) => {
               status,
               gradeType: gradeType || 'regular',
               plantelId: plantelId || null,
-              calculatedAt,
+              calculatedAt: parsedDate,
             }, {
               where: { id: existing.id },
               transaction: t,
             });
           } else {
             await SubjectFinalGrade.create({
-              inscriptionSubjectId: insSubId,
+              inscriptionSubjectId,
               finalScore: score,
               status,
               gradeType: gradeType || 'regular',
               plantelId: plantelId || null,
-              calculatedAt,
+              calculatedAt: parsedDate,
             }, { transaction: t });
           }
+          saved++;
+          continue;
+        }
+
+        // ── Case 4: Try to find an inscription for (personId, schoolPeriodId) ──
+        if (schoolPeriodId) {
+          const inscription = await Inscription.findOne({
+            where: { personId, schoolPeriodId },
+            transaction: t,
+          });
+          if (inscription) {
+            // Find or create InscriptionSubject
+            let insSub = await InscriptionSubject.findOne({
+              where: { inscriptionId: inscription.id, subjectId },
+              transaction: t,
+            });
+            if (!insSub) {
+              insSub = await InscriptionSubject.create({
+                inscriptionId: inscription.id,
+                subjectId,
+              }, { transaction: t });
+            }
+            const existing = await SubjectFinalGrade.findOne({
+              where: { inscriptionSubjectId: insSub.id },
+              transaction: t,
+            });
+            if (existing) {
+              await SubjectFinalGrade.update({
+                finalScore: score,
+                status,
+                gradeType: gradeType || 'regular',
+                plantelId: plantelId || null,
+                calculatedAt: parsedDate,
+              }, {
+                where: { id: existing.id },
+                transaction: t,
+              });
+            } else {
+              await SubjectFinalGrade.create({
+                inscriptionSubjectId: insSub.id,
+                finalScore: score,
+                status,
+                gradeType: gradeType || 'regular',
+                plantelId: plantelId || null,
+                calculatedAt: parsedDate,
+              }, { transaction: t });
+            }
+            saved++;
+            continue;
+          }
+        }
+
+        // ── Case 5: No inscription → use HistoricalGrade ──
+        const existingHist = await HistoricalGrade.findOne({
+          where: { personId, gradeId, subjectId },
+          transaction: t,
+        });
+        if (existingHist) {
+          await HistoricalGrade.update({
+            schoolPeriodId: schoolPeriodId || null,
+            finalScore: score,
+            status,
+            gradeType: gradeType || 'regular',
+            plantelId: plantelId || null,
+            date: dateOnly,
+          }, {
+            where: { id: existingHist.id },
+            transaction: t,
+          });
+        } else {
+          await HistoricalGrade.create({
+            personId,
+            gradeId,
+            subjectId,
+            schoolPeriodId: schoolPeriodId || null,
+            finalScore: score,
+            status,
+            gradeType: gradeType || 'regular',
+            plantelId: plantelId || null,
+            date: dateOnly,
+            createdBy: userId,
+          }, { transaction: t });
         }
         saved++;
       } catch (err: any) {

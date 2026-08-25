@@ -113,6 +113,7 @@ import CouncilChecklist from './CouncilChecklist';
 import TermSectionClosure from './TermSectionClosure';
 import SubjectFinalGrade from './SubjectFinalGrade';
 import SubjectTermGrade from './SubjectTermGrade';
+import HistoricalGrade from './HistoricalGrade';
 import StudentPeriodOutcome from './StudentPeriodOutcome';
 import PendingSubject from './PendingSubject';
 import PendingSubjectEncounter from './PendingSubjectEncounter';
@@ -336,6 +337,14 @@ SubjectTermGrade.belongsTo(InscriptionSubject, { foreignKey: 'inscriptionSubject
 SubjectTermGrade.belongsTo(Term, { foreignKey: 'termId', as: 'term' });
 Term.hasMany(SubjectTermGrade, { foreignKey: 'termId', as: 'termGrades' });
 
+// Historical grades (legacy data without InscriptionSubject)
+HistoricalGrade.belongsTo(Person, { foreignKey: 'personId', as: 'person' });
+Person.hasMany(HistoricalGrade, { foreignKey: 'personId', as: 'historicalGrades' });
+HistoricalGrade.belongsTo(Grade, { foreignKey: 'gradeId', as: 'grade' });
+HistoricalGrade.belongsTo(Subject, { foreignKey: 'subjectId', as: 'subject' });
+HistoricalGrade.belongsTo(SchoolPeriod, { foreignKey: 'schoolPeriodId', as: 'schoolPeriod' });
+HistoricalGrade.belongsTo(Plantel, { foreignKey: 'plantelId', as: 'plantel' });
+
 // Student period outcomes
 Inscription.hasOne(StudentPeriodOutcome, { foreignKey: 'inscriptionId', as: 'periodOutcome' });
 StudentPeriodOutcome.belongsTo(Inscription, { foreignKey: 'inscriptionId', as: 'inscription' });
@@ -461,6 +470,7 @@ export {
   TermSectionClosure,
   SubjectFinalGrade,
   SubjectTermGrade,
+  HistoricalGrade,
   StudentPeriodOutcome,
   PendingSubject,
   PendingSubjectEncounter,

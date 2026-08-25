@@ -52,16 +52,19 @@ interface SubjectItem {
   memberIds: number[];   // all subject ids in this group (or just [id] if no group)
 }
 interface YearCol {
-  schoolPeriodId: number;
+  schoolPeriodId: number | null;
+  gradeId: number;
   period: string;
   name: string;
   gradeName: string;
   gradeOrder: number;
+  gradeColor: string | null;
   subjects: SubjectItem[];
 }
 interface GradeEntry {
   personId: number;
-  schoolPeriodId: number;
+  schoolPeriodId: number | null;
+  gradeId: number | null;
   subjectId: number;
   subjectGroupId: number | null;
   subjectName: string | null;
@@ -71,8 +74,10 @@ interface GradeEntry {
   plantelId: number | null;
   plantelName: string | null;
   finalGradeId: number | null;
-  inscriptionSubjectId: number;
+  inscriptionSubjectId: number | null;
+  historicalGradeId?: number | null;
   date: string | null;
+  source?: string;
 }
 interface PlantelItem { id: number; code: string; name: string; }
 interface SectionOption { id: number; name: string; gradeName: string; gradeId: number; }
@@ -84,8 +89,8 @@ interface RowData {
   apellidos: string;
   nombres: string;
   plantelIds: number[];      // selected planteles for this student (all years)
-  cells: Record<string, CellData>;  // key: `${spId}__${subjId}` → cell
-  groupSubjectNames: Record<number, string[]>;  // spId → list of actual subject names from groups
+  cells: Record<string, CellData>;  // key: `g__${gradeId}__${subjId}` → cell
+  groupSubjectNames: Record<string, string[]>;  // `g__${gradeId}` → list of actual subject names from groups
 }
 interface CellData {
   score: string;       // "16", ""
@@ -94,12 +99,13 @@ interface CellData {
   inst: string;        // "1", "2" (references plantelIds index+1)
   finalGradeId: number | null;
   inscriptionSubjectId: number | null;
+  historicalGradeId: number | null;
   dirty: boolean;
 }
 
 /* ── Helpers ── */
 function emptyCell(): CellData {
-  return { score: '', status: 'F', date: '', inst: '', finalGradeId: null, inscriptionSubjectId: null, dirty: false };
+  return { score: '', status: 'F', date: '', inst: '', finalGradeId: null, inscriptionSubjectId: null, historicalGradeId: null, dirty: false };
 }
 
 /* Flat ordered list of field keys for Tab navigation + paste.
@@ -109,11 +115,11 @@ function buildFieldKeys(years: YearCol[]): string[] {
   const keys: string[] = ['cedula', 'apellidos', 'nombres', 'plantelIds'];
   for (const y of years) {
     for (const subj of y.subjects) {
-      const prefix = `${y.schoolPeriodId}__${subj.id}`;
-      keys.push(`${prefix}__score`);
-      keys.push(`${prefix}__status`);
-      keys.push(`${prefix}__date`);
-      keys.push(`${prefix}__inst`);
+      const prefix = `g__${y.gradeId}__${subj.id}`;
+      keys.push(`${prefix}g__score`);
+      keys.push(`${prefix}g__status`);
+      keys.push(`${prefix}g__date`);
+      keys.push(`${prefix}g__inst`);
     }
   }
   return keys;
@@ -133,6 +139,12 @@ const HistoricalGradesBySection: React.FC = () => {
   const [planteles, setPlanteles] = useState<PlantelItem[]>([]);
   const [rows, setRows] = useState<RowData[]>([]);
   const inputRefs = useRef<Record<string, HTMLInputElement | HTMLSelectElement | null>>({});
+
+  // Mode: section or individual student
+  const [mode, setMode] = useState<'section' | 'individual'>('section');
+  const [studentSearch, setStudentSearch] = useState<string>('');
+  const [studentSearchResults, setStudentSearchResults] = useState<Student[]>([]);
+  const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
 
   /* ── Load sections for active period ── */
   useEffect(() => {
@@ -166,14 +178,23 @@ const HistoricalGradesBySection: React.FC = () => {
     })();
   }, []);
 
-  /* ── Load grades when section is selected ── */
+  /* ── Load grades when section or student is selected ── */
   const loadGrades = useCallback(async () => {
-    if (!activePeriodId || !selectedSectionId) return;
+    if (!activePeriodId) return;
+    if (mode === 'section' && !selectedSectionId) return;
+    if (mode === 'individual' && !selectedStudent) return;
+
     setLoading(true);
     try {
-      const res = await api.get('/historical-grades/by-section', {
-        params: { schoolPeriodId: activePeriodId, sectionId: selectedSectionId, gradeId: selectedGradeId },
-      });
+      const params: any = { schoolPeriodId: activePeriodId };
+      if (mode === 'section') {
+        params.sectionId = selectedSectionId;
+        if (selectedGradeId) params.gradeId = selectedGradeId;
+      } else {
+        params.personId = selectedStudent!.id;
+      }
+
+      const res = await api.get('/historical-grades/by-section', { params });
       const data = res.data;
       const rawStudents: Student[] = data.students || [];
       const rawYears: YearCol[] = data.years || [];
@@ -181,25 +202,29 @@ const HistoricalGradesBySection: React.FC = () => {
       const rawPlanteles: PlantelItem[] = data.planteles || [];
 
       setStudents(rawStudents);
-      setYears(rawYears);
       setPlanteles(rawPlanteles);
 
       // Determine current grade order to filter years (only up to current)
-      const currentSection = sections.find(s => s.id === selectedSectionId);
-      const currentGradeOrder = rawYears.find(y => y.schoolPeriodId === activePeriodId)?.gradeOrder ?? 999;
+      let currentGradeOrder = 999;
+      if (mode === 'section') {
+        const currentSection = sections.find(s => s.id === selectedSectionId);
+        currentGradeOrder = rawYears.find(y => y.gradeId === selectedGradeId)?.gradeOrder ?? 999;
+      } else {
+        // Individual: show all years
+        currentGradeOrder = 999;
+      }
       setActiveGradeOrder(currentGradeOrder);
 
-      // Filter years: only show up to current grade
+      // Filter years: only show up to current grade (section mode) or all (individual mode)
       const visibleYears = rawYears.filter(y => (y.gradeOrder ?? 999) <= currentGradeOrder);
       setYears(visibleYears);
 
-      // Build a lookup map: schoolPeriodId → realSubjectId → columnKey
-      // so that grades for any member of a group column map to that column.
-      const subjectLookup = new Map<string, string>(); // `${spId}__${realSubjectId}` → columnKey
+      // Build a lookup map: gradeId → realSubjectId → columnKey
+      const subjectLookup = new Map<string, string>(); // `g__${gradeId}__${realSubjectId}` → columnKey
       for (const y of visibleYears) {
         for (const subj of y.subjects) {
           for (const memberId of subj.memberIds) {
-            subjectLookup.set(`${y.schoolPeriodId}__${memberId}`, `${y.schoolPeriodId}__${subj.id}`);
+            subjectLookup.set(`g__${y.gradeId}__${memberId}`, `g__${y.gradeId}__${subj.id}`);
           }
         }
       }
@@ -207,23 +232,28 @@ const HistoricalGradesBySection: React.FC = () => {
       // Build rows
       const newRows: RowData[] = rawStudents.map(st => {
         const cells: Record<string, CellData> = {};
-        // Pre-populate from existing grades
-        const groupNames: Record<number, string[]> = {};  // spId → actual subject names from groups
+        const groupNames: Record<string, string[]> = {};  // `g__${gradeId}` → actual subject names
         for (const g of rawGrades) {
           if (g.personId !== st.id) continue;
-          const key = subjectLookup.get(`${g.schoolPeriodId}__${g.subjectId}`);
-          if (!key) continue; // grade doesn't match any visible column
+          // Match by gradeId first (most reliable), fallback to schoolPeriodId+gradeId
+          let key = subjectLookup.get(`g__${g.gradeId}__${g.subjectId}`);
+          if (!key && g.schoolPeriodId != null) {
+            // Try matching by schoolPeriodId+gradeId for legacy grades
+            const yearMatch = visibleYears.find(y => y.schoolPeriodId === g.schoolPeriodId && y.gradeId === g.gradeId);
+            if (yearMatch) {
+              key = subjectLookup.get(`g__${yearMatch.gradeId}__${g.subjectId}`);
+            }
+          }
+          if (!key) continue;
           const statusCode = g.gradeType ? (GRADE_TYPE_TO_CODE[g.gradeType] || 'F') : 'F';
           let dateDisplay = '';
           if (g.date) {
             const parts = g.date.split('-');
             if (parts.length === 3) dateDisplay = `${parts[2]}/${parts[1]}/${parts[0]}`;
           }
-          // Find which plantel number this is
           let instNum = '';
           if (g.plantelId) {
-            // We'll resolve this after plantelIds are set; for now store plantelId
-            instNum = `__pid:${g.plantelId}`;
+            instNum = `g__pid:${g.plantelId}`;
           }
           cells[key] = {
             score: g.finalScore != null ? String(g.finalScore) : '',
@@ -232,29 +262,30 @@ const HistoricalGradesBySection: React.FC = () => {
             inst: instNum,
             finalGradeId: g.finalGradeId,
             inscriptionSubjectId: g.inscriptionSubjectId,
+            historicalGradeId: g.historicalGradeId ?? null,
             dirty: false,
           };
-          // Track actual subject name for group subjects
           if (g.subjectGroupId != null && g.subjectName) {
-            if (!groupNames[g.schoolPeriodId]) groupNames[g.schoolPeriodId] = [];
-            if (!groupNames[g.schoolPeriodId].includes(g.subjectName)) {
-              groupNames[g.schoolPeriodId].push(g.subjectName);
+            const gk = `g__${g.gradeId}`;
+            if (!groupNames[gk]) groupNames[gk] = [];
+            if (!groupNames[gk].includes(g.subjectName)) {
+              groupNames[gk].push(g.subjectName);
             }
           }
         }
 
-        // Collect unique plantelIds for this student (from all their grades)
+        // Collect unique plantelIds for this student
         const studentPlantelIds: number[] = [];
         for (const g of rawGrades) {
           if (g.personId !== st.id || !g.plantelId) continue;
           if (!studentPlantelIds.includes(g.plantelId)) studentPlantelIds.push(g.plantelId);
         }
 
-        // Now resolve inst numbers from plantelIds
+        // Resolve inst numbers from plantelIds
         for (const key of Object.keys(cells)) {
           const c = cells[key];
-          if (c.inst.startsWith('__pid:')) {
-            const pid = Number(c.inst.replace('__pid:', ''));
+          if (c.inst.startsWith('g__pid:')) {
+            const pid = Number(c.inst.replace('g__pid:', ''));
             const idx = studentPlantelIds.indexOf(pid);
             c.inst = idx >= 0 ? String(idx + 1) : '';
           }
@@ -280,7 +311,10 @@ const HistoricalGradesBySection: React.FC = () => {
     }
   }, [activePeriodId, selectedSectionId, selectedGradeId, sections]);
 
-  useEffect(() => { if (selectedSectionId) loadGrades(); }, [selectedSectionId, selectedGradeId, loadGrades]);
+  useEffect(() => {
+    if (mode === 'section' && selectedSectionId) loadGrades();
+    if (mode === 'individual' && selectedStudent) loadGrades();
+  }, [selectedSectionId, selectedGradeId, selectedStudent, mode, loadGrades]);
 
   /* ── Field accessors ── */
   const getField = (row: RowData, key: string): string => {
@@ -288,8 +322,8 @@ const HistoricalGradesBySection: React.FC = () => {
     if (key === 'apellidos') return row.apellidos;
     if (key === 'nombres') return row.nombres;
     if (key === 'plantelIds') return row.plantelIds.join(',');
-    // cell key: spId__subjId__field
-    const parts = key.split('__');
+    // cell key: spIdg__subjIdg__field
+    const parts = key.split('g__');
     if (parts.length === 3) {
       const cellKey = `${parts[0]}__${parts[1]}`;
       const cell = row.cells[cellKey];
@@ -307,7 +341,7 @@ const HistoricalGradesBySection: React.FC = () => {
       const ids = value ? value.split(',').map(Number).filter(n => !isNaN(n)) : [];
       return { ...row, plantelIds: ids };
     }
-    const parts = key.split('__');
+    const parts = key.split('g__');
     if (parts.length === 3) {
       const cellKey = `${parts[0]}__${parts[1]}`;
       const field = parts[2] as keyof CellData;
@@ -409,7 +443,9 @@ const HistoricalGradesBySection: React.FC = () => {
     for (const row of rows) {
       for (const [cellKey, cell] of Object.entries(row.cells)) {
         if (!cell.dirty) continue;
-        const [spId, subjId] = cellKey.split('__').map(Number);
+        const parts = cellKey.split('__');
+        const gradeId = Number(parts[1]);
+        const subjId = Number(parts[2]);
         // Map inst number → plantelId
         let plantelId: number | null = null;
         if (cell.inst && cell.inst.trim() !== '') {
@@ -425,10 +461,15 @@ const HistoricalGradesBySection: React.FC = () => {
           if (parts.length === 3) dateStr = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
         }
         const gradeType = STATUS_META[cell.status]?.gradeType || 'regular';
+        // Find the schoolPeriodId for this grade from the years array
+        const yearMatch = years.find(y => y.gradeId === gradeId);
+        const spId = yearMatch?.schoolPeriodId ?? null;
         changes.push({
           personId: row.personId,
           schoolPeriodId: spId,
+          gradeId,
           subjectId: subjId,
+          historicalGradeId: cell.historicalGradeId,
           finalScore: cell.score === '' ? null : Number(cell.score),
           gradeType,
           plantelId,
@@ -488,29 +529,91 @@ const HistoricalGradesBySection: React.FC = () => {
         {/* Header / toolbar */}
         <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
           <div>
-            <h1 style={{ fontSize: 20, fontWeight: 700, color: T.ink }}>Notas Históricas por Sección</h1>
+            <h1 style={{ fontSize: 20, fontWeight: 700, color: T.ink }}>Notas Históricas</h1>
             <p style={{ fontSize: 12, color: T.inkFaint }}>
               {students.length} estudiantes · {years.length} años · {dirtyCount > 0 ? `${dirtyCount} cambios sin guardar` : 'Sin cambios'}
               · Tab para moverte, Enter para bajar de fila, pega bloques desde Excel
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Mode toggle */}
             <Select
-              value={selectedSectionId != null && selectedGradeId != null
-                ? `${selectedGradeId}-${selectedSectionId}`
-                : undefined}
+              value={mode}
               onChange={(val) => {
-                const sec = sections.find(s => `${s.gradeId}-${s.id}` === val);
-                setSelectedSectionId(sec?.id ?? null);
-                setSelectedGradeId(sec?.gradeId ?? null);
+                setMode(val);
+                setSelectedSectionId(null);
+                setSelectedGradeId(null);
+                setSelectedStudent(null);
+                setStudentSearch('');
+                setStudentSearchResults([]);
+                setRows([]);
+                setStudents([]);
               }}
-              placeholder="Seleccionar sección…"
-              style={{ width: 220 }}
-              showSearch
-              optionFilterProp="label"
-              options={sections.map(s => ({ value: `${s.gradeId}-${s.id}`, label: `${s.gradeName} — ${s.name}` }))}
+              style={{ width: 160 }}
+              options={[
+                { value: 'section', label: 'Por sección' },
+                { value: 'individual', label: 'Estudiante individual' },
+              ]}
             />
-            <Button icon={<ReloadOutlined />} onClick={loadGrades} disabled={!selectedSectionId || loading}>Actualizar</Button>
+
+            {mode === 'section' && (
+              <Select
+                value={selectedSectionId != null && selectedGradeId != null
+                  ? `${selectedGradeId}-${selectedSectionId}`
+                  : undefined}
+                onChange={(val) => {
+                  const sec = sections.find(s => `${s.gradeId}-${s.id}` === val);
+                  setSelectedSectionId(sec?.id ?? null);
+                  setSelectedGradeId(sec?.gradeId ?? null);
+                }}
+                placeholder="Seleccionar sección…"
+                style={{ width: 220 }}
+                showSearch
+                optionFilterProp="label"
+                options={sections.map(s => ({ value: `${s.gradeId}-${s.id}`, label: `${s.gradeName} — ${s.name}` }))}
+              />
+            )}
+
+            {mode === 'individual' && (
+              <Select
+                showSearch
+                value={selectedStudent?.id}
+                onChange={(val) => {
+                  const st = studentSearchResults.find(s => s.id === val);
+                  setSelectedStudent(st ?? null);
+                }}
+                onSearch={async (search) => {
+                  setStudentSearch(search);
+                  if (search.length >= 2) {
+                    try {
+                      const res = await api.get('/users', { params: { q: search, role: 'Alumno' } });
+                      const results = (res.data?.users || res.data || []).map((u: any) => ({
+                        id: u.personId || u.id,
+                        firstName: u.firstName,
+                        lastName: u.lastName,
+                        document: u.document || '',
+                        documentType: u.documentType || '',
+                      }));
+                      setStudentSearchResults(results);
+                    } catch { setStudentSearchResults([]); }
+                  } else {
+                    setStudentSearchResults([]);
+                  }
+                }}
+                filterOption={false}
+                placeholder="Buscar estudiante…"
+                style={{ width: 280 }}
+                options={studentSearchResults.map(s => ({
+                  value: s.id,
+                  label: `${s.lastName || ''} ${s.firstName || ''} ${s.document ? `· ${s.documentType || ''}${s.document}` : ''}`.trim(),
+                }))}
+              />
+            )}
+
+            <Button icon={<ReloadOutlined />} onClick={loadGrades}
+              disabled={(mode === 'section' && !selectedSectionId) || (mode === 'individual' && !selectedStudent) || loading}>
+              Actualizar
+            </Button>
             <Button type="primary" icon={<SaveOutlined />} onClick={handleSave} disabled={dirtyCount === 0 || saving} loading={saving}>
               Guardar ({dirtyCount})
             </Button>
@@ -550,9 +653,9 @@ const HistoricalGradesBySection: React.FC = () => {
                   <col style={{ width: COL.nombres }} />
                   <col style={{ width: COL.inst }} />
                   {years.map(y => (
-                    <React.Fragment key={`col-year-${y.schoolPeriodId}`}>
+                    <React.Fragment key={`col-year-${y.schoolPeriodId}-${y.gradeId}`}>
                       {y.subjects.map((subj) => (
-                        <React.Fragment key={`col-${y.schoolPeriodId}-${subj.id}`}>
+                        <React.Fragment key={`col-${y.schoolPeriodId}-${y.gradeId}-${subj.id}`}>
                           <col style={{ width: 44 }} />
                           <col style={{ width: 44 }} />
                           <col style={{ width: 78 }} />
@@ -574,25 +677,26 @@ const HistoricalGradesBySection: React.FC = () => {
                       const hasGrp = yearHasGroups(y);
                       const span = y.subjects.length * 4 + (hasGrp ? 1 : 0);
                       const width = y.subjects.length * SUB_W + (hasGrp ? GROUP_COL_W : 0);
+                      const gc = y.gradeColor || T.hairline;
                       return (
-                        <th key={`y-${y.schoolPeriodId}`} colSpan={span}
-                          style={{ ...thPlain(width), borderLeft: `2px solid ${T.hairline}`, fontSize: 12 }}>
-                          {y.gradeName} · {y.period}
+                        <th key={`y-${y.gradeId}`} colSpan={span}
+                          style={{ ...thPlain(width), borderLeft: `2px solid ${T.hairline}`, borderTop: `3px solid ${gc}`, fontSize: 12 }}>
+                          {y.gradeName}
                         </th>
                       );
                     })}
                   </tr>
                   <tr>
                     {years.map(y => (
-                      <React.Fragment key={`s-row-${y.schoolPeriodId}`}>
+                      <React.Fragment key={`s-row-${y.gradeId}`}>
                         {y.subjects.map((subj, si) => (
-                          <th key={`s-${y.schoolPeriodId}-${subj.id}`} colSpan={4} title={subj.name}
-                            style={{ ...thSub(206), borderLeft: si === 0 ? `2px solid ${T.hairline}` : `1px solid ${T.hairline}` }}>
+                          <th key={`s-${y.gradeId}-${subj.id}`} colSpan={4} title={subj.name}
+                            style={{ ...thSub(206), borderLeft: si === 0 ? `2px solid ${y.gradeColor || T.hairline}` : `1px solid ${T.hairline}` }}>
                             {subj.name}
                           </th>
                         ))}
                         {yearHasGroups(y) && (
-                          <th key={`s-grp-${y.schoolPeriodId}`} title="Materia del grupo cursada"
+                          <th key={`s-grp-${y.schoolPeriodId}-${y.gradeId}`} title="Materia del grupo cursada"
                             style={{ ...thSub(GROUP_COL_W), borderLeft: `1px solid ${T.hairline}`, fontSize: 9 }}>
                             Materia
                           </th>
@@ -607,10 +711,10 @@ const HistoricalGradesBySection: React.FC = () => {
                     <th key="h2-nom" style={{ ...thFrozen(leftOf.nombres, COL.nombres), top: 56, zIndex: 4 }}></th>
                     <th key="h2-inst" style={{ ...thFrozen(leftOf.inst, COL.inst), top: 56, zIndex: 4, textAlign: 'left', borderRight: `2px solid ${T.hairline}` }}></th>
                     {years.map(y => (
-                      <React.Fragment key={`sub-${y.schoolPeriodId}`}>
+                      <React.Fragment key={`sub-${y.gradeId}`}>
                         {y.subjects.map((subj, si) => (
-                          <React.Fragment key={`${y.schoolPeriodId}-${subj.id}-sub`}>
-                            <th style={{ ...thSub2(44), borderLeft: si === 0 ? `2px solid ${T.hairline}` : `1px solid ${T.hairline}` }}>Nota</th>
+                          <React.Fragment key={`${y.gradeId}-${subj.id}-sub`}>
+                            <th style={{ ...thSub2(44), borderLeft: si === 0 ? `2px solid ${y.gradeColor || T.hairline}` : `1px solid ${T.hairline}` }}>Nota</th>
                             <th style={{ ...thSub2(44) }}>Est.</th>
                             <th style={{ ...thSub2(78) }}>Fecha</th>
                             <th style={{ ...thSub2(40) }}>Inst</th>
@@ -624,26 +728,32 @@ const HistoricalGradesBySection: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((row, ri) => (
-                    <tr key={row.personId} style={{ borderTop: `1px solid ${T.hairline}` }}>
+                  {rows.map((row, ri) => {
+                    const rowBg = ri % 2 === 0 ? '#FBF9F3' : T.card;
+                    return (
+                    <tr key={row.personId}
+                      style={{
+                        borderTop: `1px solid ${T.hairline}`,
+                        backgroundColor: rowBg,
+                      }}>
                       {/* N° */}
-                      <td style={{ ...tdFrozen(leftOf.n, COL.n), textAlign: 'center', fontFamily: 'monospace', fontSize: 11, color: T.inkFaint }}>
+                      <td style={{ ...tdFrozen(leftOf.n, COL.n, rowBg), textAlign: 'center', fontFamily: 'monospace', fontSize: 11, color: T.inkFaint }}>
                         {String(ri + 1).padStart(2, '0')}
                       </td>
                       {/* Cédula */}
-                      <td style={{ ...tdFrozen(leftOf.cedula, COL.cedula), fontFamily: 'monospace', fontSize: 11, color: T.inkSoft, padding: '3px 6px' }}>
+                      <td style={{ ...tdFrozen(leftOf.cedula, COL.cedula, rowBg), fontFamily: 'monospace', fontSize: 11, color: T.inkSoft, padding: '3px 6px' }}>
                         {row.cedula}
                       </td>
                       {/* Apellidos */}
-                      <td style={{ ...tdFrozen(leftOf.apellidos, COL.apellidos), fontSize: 12, fontWeight: 500, color: T.ink, padding: '3px 8px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      <td style={{ ...tdFrozen(leftOf.apellidos, COL.apellidos, rowBg), fontSize: 12, fontWeight: 500, color: T.ink, padding: '3px 8px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {row.apellidos}
                       </td>
                       {/* Nombres */}
-                      <td style={{ ...tdFrozen(leftOf.nombres, COL.nombres), fontSize: 12, color: T.ink, padding: '3px 8px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      <td style={{ ...tdFrozen(leftOf.nombres, COL.nombres, rowBg), fontSize: 12, color: T.ink, padding: '3px 8px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {row.nombres}
                       </td>
                       {/* Instituciones (PlantelMultiSelect — one per row) */}
-                      <td style={{ ...tdFrozen(leftOf.inst, COL.inst), padding: '2px 4px', borderRight: `2px solid ${T.hairline}` }}>
+                      <td style={{ ...tdFrozen(leftOf.inst, COL.inst, rowBg), padding: '2px 4px', borderRight: `2px solid ${T.hairline}` }}>
                         <PlantelMultiSelect
                           planteles={planteles}
                           selectedIds={row.plantelIds}
@@ -655,9 +765,9 @@ const HistoricalGradesBySection: React.FC = () => {
 
                       {/* Subject cells + optional group subject name column */}
                       {years.map(y => (
-                        <React.Fragment key={`body-year-${y.schoolPeriodId}`}>
+                        <React.Fragment key={`body-year-${y.schoolPeriodId}-${y.gradeId}`}>
                           {y.subjects.map((subj, si) => {
-                            const cellKey = `${y.schoolPeriodId}__${subj.id}`;
+                            const cellKey = `g__${y.gradeId}__${subj.id}`;
                             const cell = row.cells[cellKey] || emptyCell();
                             const failing = cell.score !== '' && Number(cell.score) < 10;
                             const passing = cell.score !== '' && Number(cell.score) >= 10;
@@ -742,20 +852,23 @@ const HistoricalGradesBySection: React.FC = () => {
                               fontSize: 11, color: T.inkSoft, padding: '3px 6px',
                               whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
                             }}>
-                              {(row.groupSubjectNames[y.schoolPeriodId] || []).join(', ')}
+                              {(row.groupSubjectNames[`g__${y.gradeId}`] || []).join(', ')}
                             </td>
                           )}
                         </React.Fragment>
                       ))}
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
           ) : (
             !loading && (
               <div style={{ textAlign: 'center', padding: 60, color: T.inkFaint, fontSize: 14 }}>
-                {selectedSectionId ? 'No hay estudiantes ni notas para esta sección' : 'Seleccione una sección para comenzar'}
+                {mode === 'section'
+                  ? (selectedSectionId ? 'No hay estudiantes ni notas para esta sección' : 'Seleccione una sección para comenzar')
+                  : (selectedStudent ? 'No hay datos para este estudiante' : 'Busque y seleccione un estudiante para comenzar')}
               </div>
             )
           )}
@@ -781,8 +894,8 @@ function thFrozen(left: number, w: number): React.CSSProperties {
 function tdPlain(w: number): React.CSSProperties {
   return { width: w, minWidth: w, padding: 0, borderRight: `1px solid ${T.hairline}`, borderBottom: `1px solid ${T.hairline}` };
 }
-function tdFrozen(left: number, w: number): React.CSSProperties {
-  return { ...tdPlain(w), position: 'sticky', left, background: T.card, zIndex: 1, borderRight: `1px solid ${T.hairline}` };
+function tdFrozen(left: number, w: number, bg: string = T.card): React.CSSProperties {
+  return { ...tdPlain(w), position: 'sticky', left, background: bg, zIndex: 1, borderRight: `1px solid ${T.hairline}` };
 }
 
 export default HistoricalGradesBySection;

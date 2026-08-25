@@ -30,10 +30,12 @@ interface RevisionStats {
 interface RevisionPeriodData {
   id: number;
   schoolPeriodId: number;
-  status: 'pending' | 'open' | 'closed';
+  status: 'pending' | 'open' | 'completed' | 'closed';
   maxOpportunities: number;
   passingGrade: number;
   openedAt: string | null;
+  completedAt: string | null;
+  completedBy: number | null;
   closedAt: string | null;
 }
 
@@ -126,15 +128,29 @@ const RepairPeriodManagement: React.FC = () => {
     }
   };
 
-  const handleClose = async () => {
+  const handleComplete = async () => {
     if (!activePeriodId) return;
     setActing(true);
     try {
-      const res = await api.post(`/revision-periods/${activePeriodId}/close`);
-      message.success(res.data.message || 'Período de reparación cerrado');
+      const res = await api.post(`/revision-periods/${activePeriodId}/complete`);
+      message.success(res.data.message || 'Período de reparación completado');
       await fetchData();
     } catch (error: any) {
-      message.error(error?.response?.data?.message || 'Error al cerrar');
+      message.error(error?.response?.data?.message || 'Error al completar');
+    } finally {
+      setActing(false);
+    }
+  };
+
+  const handleLock = async () => {
+    if (!activePeriodId) return;
+    setActing(true);
+    try {
+      const res = await api.post(`/revision-periods/${activePeriodId}/lock`);
+      message.success(res.data.message || 'Período de reparación bloqueado');
+      await fetchData();
+    } catch (error: any) {
+      message.error(error?.response?.data?.message || 'Error al bloquear');
     } finally {
       setActing(false);
     }
@@ -171,12 +187,14 @@ const RepairPeriodManagement: React.FC = () => {
   const statusColor: Record<string, string> = {
     pending: 'default',
     open: 'processing',
+    completed: 'success',
     closed: 'error',
   };
   const statusLabel: Record<string, string> = {
     pending: 'Pendiente',
     open: 'Abierto',
-    closed: 'Cerrado',
+    completed: 'Completado',
+    closed: 'Bloqueado',
   };
 
   // Group students by grade and build subject list per grade (in configured order)
@@ -222,8 +240,8 @@ const RepairPeriodManagement: React.FC = () => {
                   <Statistic
                     title="Estado"
                     value={statusLabel[summary.revisionPeriod?.status || 'pending']}
-                    valueStyle={{ color: summary.revisionPeriod?.status === 'open' ? '#1677ff' : summary.revisionPeriod?.status === 'closed' ? '#ff4d4f' : '#666' }}
-                    prefix={summary.revisionPeriod?.status === 'open' ? <CheckCircleOutlined /> : summary.revisionPeriod?.status === 'closed' ? <CloseCircleOutlined /> : <ClockCircleOutlined />}
+                    valueStyle={{ color: summary.revisionPeriod?.status === 'open' ? '#1677ff' : summary.revisionPeriod?.status === 'completed' ? '#52c41a' : summary.revisionPeriod?.status === 'closed' ? '#ff4d4f' : '#666' }}
+                    prefix={summary.revisionPeriod?.status === 'open' ? <CheckCircleOutlined /> : summary.revisionPeriod?.status === 'completed' ? <CheckCircleOutlined /> : summary.revisionPeriod?.status === 'closed' ? <CloseCircleOutlined /> : <ClockCircleOutlined />}
                   />
                 </Card>
               </Col>
@@ -266,13 +284,40 @@ const RepairPeriodManagement: React.FC = () => {
               <Alert
                 type="success"
                 message="Período de reparación abierto"
-                description="Los profesores pueden calificar las reparaciones. Cuando todos los estudiantes estén calificados, cierre el período para proceder al cierre escolar."
+                description="Los profesores pueden calificar las reparaciones. Cuando todos los estudiantes estén calificados, marque el período como completado para que las notas estén disponibles."
                 showIcon
                 action={
                   <Space wrap>
                     <Button type="primary" icon={<ReloadOutlined />} onClick={fetchData}>Actualizar</Button>
                     <Button icon={<RetweetOutlined />} onClick={handleRecalculate} loading={acting}>Recalcular</Button>
-                    <Button danger icon={<StopOutlined />} onClick={handleClose} loading={acting}>Cerrar período</Button>
+                    <Button type="primary" icon={<CheckCircleOutlined />} onClick={handleComplete} loading={acting}>Completar período</Button>
+                    {isMaster && (
+                      <Popconfirm
+                        title="¿Reiniciar el período de reparación?"
+                        description="Se eliminarán TODOS los registros de reparación y el período volverá a estado pendiente. Esta acción no se puede deshacer."
+                        okText="Sí, reiniciar"
+                        cancelText="Cancelar"
+                        okButtonProps={{ danger: true }}
+                        onConfirm={handleReset}
+                      >
+                        <Button danger type="dashed" icon={<UndoOutlined />} loading={acting}>Reiniciar (Master)</Button>
+                      </Popconfirm>
+                    )}
+                  </Space>
+                }
+                style={{ marginBottom: 16 }}
+              />
+            )}
+
+            {summary.revisionPeriod?.status === 'completed' && (
+              <Alert
+                type="success"
+                message="Período de reparación completado"
+                description={`Completado el ${summary.revisionPeriod.completedAt ? new Date(summary.revisionPeriod.completedAt).toLocaleDateString() : '—'}. Las notas de reparación están disponibles para boletines y cálculos. Puede bloquear el período para evitar ediciones.`}
+                showIcon
+                action={
+                  <Space wrap>
+                    <Button danger icon={<StopOutlined />} onClick={handleLock} loading={acting}>Bloquear período</Button>
                     {isMaster && (
                       <Popconfirm
                         title="¿Reiniciar el período de reparación?"
@@ -294,8 +339,8 @@ const RepairPeriodManagement: React.FC = () => {
             {summary.revisionPeriod?.status === 'closed' && (
               <Alert
                 type="error"
-                message="Período de reparación cerrado"
-                description={`Cerrado el ${summary.revisionPeriod.closedAt ? new Date(summary.revisionPeriod.closedAt).toLocaleDateString() : '—'}. Las notas de reparación serán aplicadas al ejecutar el cierre de período.`}
+                message="Período de reparación bloqueado"
+                description={`Bloqueado el ${summary.revisionPeriod.closedAt ? new Date(summary.revisionPeriod.closedAt).toLocaleDateString() : '—'}. El período de reparación está bloqueado y no admite más ediciones.`}
                 showIcon
                 action={
                   isMaster ? (

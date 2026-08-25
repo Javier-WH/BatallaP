@@ -116,10 +116,11 @@ export class PeriodClosureExecutor {
       );
     }
 
-    // Validate RevisionPeriod status
+    // Validate RevisionPeriod status — must be 'completed' or 'closed'.
+    // 'open' means revisions are still in progress and cannot be used for closure.
     const revisionPeriod = await RevisionPeriod.findOne({ where: { schoolPeriodId } });
-    if (revisionPeriod && revisionPeriod.status !== 'closed') {
-      errors.push('El período de reparación debe estar cerrado antes de ejecutar el cierre de período');
+    if (revisionPeriod && revisionPeriod.status === 'open') {
+      errors.push('El período de reparación debe estar completado antes de ejecutar el cierre de período');
     }
 
     const inscriptions = await Inscription.findAll({
@@ -212,8 +213,11 @@ export class PeriodClosureExecutor {
 
       const processLog: Record<string, unknown>[] = [];
 
+      // Fetch revision period for locking at the end of closure
+      const revisionPeriod = await RevisionPeriod.findOne({ where: { schoolPeriodId }, transaction });
+
       // Repair grades are now applied by FinalGradeCalculator automatically
-      // when it detects a closed RevisionPeriod for this school period.
+      // when it detects a completed/closed RevisionPeriod for this school period.
 
       for (const inscription of inscriptions) {
         try {
@@ -403,6 +407,15 @@ export class PeriodClosureExecutor {
       await nextPeriod.update({ status: 'activo' }, { transaction });
 
       await SchoolPeriodService.ensureNextPreinscriptionPeriod(nextPeriod, transaction);
+
+      // Lock the revision period (status='closed') to prevent further edits.
+      // This is separate from 'completed' which signals grades are ready.
+      if (revisionPeriod && revisionPeriod.status !== 'closed') {
+        await revisionPeriod.update({
+          status: 'closed',
+          closedAt: new Date(),
+        }, { transaction });
+      }
 
       await transaction.commit();
 

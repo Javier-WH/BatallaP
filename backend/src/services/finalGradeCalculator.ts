@@ -166,7 +166,7 @@ export class FinalGradeCalculator {
     });
     let repairPassingGrade: number | null = null;
     let repairScoresBySubject: Map<number, number> = new Map();
-    if (revisionPeriod && revisionPeriod.status === 'closed') {
+    if (revisionPeriod && (revisionPeriod.status === 'completed' || revisionPeriod.status === 'closed')) {
       repairPassingGrade = revisionPeriod.passingGrade;
       const revisions = await InscriptionSubjectRevision.findAll({
         where: { revisionPeriodId: revisionPeriod.id },
