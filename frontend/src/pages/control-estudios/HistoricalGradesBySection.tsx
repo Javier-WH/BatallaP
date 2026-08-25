@@ -152,33 +152,38 @@ const HistoricalGradesBySection: React.FC = () => {
   useEffect(() => {
     (async () => {
       try {
-        const [activeRes, maxGradeRes] = await Promise.all([
-          api.get('/academic/active'),
-          api.get('/settings/max_grade').catch(() => null),
-        ]);
+        const activeRes = await api.get('/academic/active');
         const period = activeRes.data;
         if (!period?.id) { message.warning('No hay un período escolar activo'); return; }
         setActivePeriodId(period.id);
-        if (maxGradeRes?.data?.max_grade) setMaxGrade(Number(maxGradeRes.data.max_grade));
+
+        // Load max_grade in parallel (non-blocking)
+        api.get('/settings/max_grade').then(res => {
+          if (res.data?.max_grade) setMaxGrade(Number(res.data.max_grade));
+        }).catch(() => {});
 
         const structureRes = await api.get(`/academic/structure/${period.id}`);
         const data = Array.isArray(structureRes.data) ? structureRes.data : [];
 
         // Deduplicate by grade.id (PeriodGrade may have multiple entries per grade due to specializations)
         const seenGradeIds = new Set<number>();
+        const gradeOrderMap = new Map<number, number>();
         const secs: SectionOption[] = [];
         for (const s of data) {
           if (!s.grade || seenGradeIds.has(s.grade.id)) continue;
           seenGradeIds.add(s.grade.id);
+          gradeOrderMap.set(s.grade.id, s.grade.order ?? 999);
           for (const sec of s.sections) {
             if (sec.name?.toUpperCase() === 'MATERIA PENDIENTE') continue;
             secs.push({ id: sec.id, name: sec.name, gradeName: s.grade.name, gradeId: s.grade.id });
           }
         }
-        secs.sort((a, b) =>
-          a.gradeName.localeCompare(b.gradeName, 'es', { numeric: true }) ||
-          a.name.localeCompare(b.name, 'es', { numeric: true })
-        );
+        secs.sort((a, b) => {
+          const orderA = gradeOrderMap.get(a.gradeId) ?? 999;
+          const orderB = gradeOrderMap.get(b.gradeId) ?? 999;
+          if (orderA !== orderB) return orderA - orderB;
+          return a.name.localeCompare(b.name, 'es', { numeric: true });
+        });
         setSections(secs);
       } catch (err) { console.error(err); message.error('Error al cargar estructura académica'); }
     })();
@@ -210,19 +215,10 @@ const HistoricalGradesBySection: React.FC = () => {
       setStudents(rawStudents);
       setPlanteles(rawPlanteles);
 
-      // Determine current grade order to filter years (only up to current)
-      let currentGradeOrder = 999;
-      if (mode === 'section') {
-        const currentSection = sections.find(s => s.id === selectedSectionId);
-        currentGradeOrder = rawYears.find(y => y.gradeId === selectedGradeId)?.gradeOrder ?? 999;
-      } else {
-        // Individual: show all years
-        currentGradeOrder = 999;
-      }
-      setActiveGradeOrder(currentGradeOrder);
-
-      // Filter years: only show up to current grade (section mode) or all (individual mode)
-      const visibleYears = rawYears.filter(y => (y.gradeOrder ?? 999) <= currentGradeOrder);
+      // Show all years — the user needs to see and fill all grades (1ro–5to)
+      // regardless of which section they're currently viewing.
+      setActiveGradeOrder(999);
+      const visibleYears = rawYears;
       setYears(visibleYears);
 
       // Build a lookup map: gradeId → realSubjectId → columnKey
