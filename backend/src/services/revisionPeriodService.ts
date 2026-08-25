@@ -309,4 +309,162 @@ export class RevisionPeriodService {
 
     return revisionPeriod;
   }
+
+  /**
+   * Recalculate failed subjects based on current grades.
+   * - Keeps revisions that already have a grade (approved/failed) intact.
+   * - Deletes pending revisions for subjects that are now passing.
+   * - Creates pending revisions for newly-failed subjects (that don't already have one).
+   * Only works when the revision period is 'open'.
+   */
+  static async recalculateRevisionPeriod(
+    schoolPeriodId: number,
+    transaction?: Transaction
+  ): Promise<{ revisionPeriod: RevisionPeriod; created: number; removed: number }> {
+    const revisionPeriod = await RevisionPeriod.findOne({
+      where: { schoolPeriodId },
+      transaction,
+    });
+    if (!revisionPeriod) throw new Error('No existe un período de reparación para este período escolar');
+    if (revisionPeriod.status !== 'open') {
+      throw new Error('El período de reparación debe estar abierto para recalcular');
+    }
+
+    const terms = await Term.findAll({ where: { schoolPeriodId }, transaction });
+    const termIds = terms.map(t => t.id);
+    const termCount = terms.length || 1;
+
+    const passingGrade = revisionPeriod.passingGrade || 10;
+
+    // Recalculate final scores for all inscriptions
+    const allInscriptions = await Inscription.findAll({
+      where: { schoolPeriodId },
+      include: [
+        {
+          model: InscriptionSubject,
+          as: 'inscriptionSubjects',
+          include: [
+            {
+              model: Qualification,
+              as: 'qualifications',
+              include: [{ model: EvaluationPlan, as: 'evaluationPlan' }],
+            },
+            { model: CouncilPoint, as: 'councilPoints' },
+          ],
+        },
+      ],
+      transaction,
+    });
+
+    // Build set of currently-failed inscriptionSubjectIds
+    const failedSubjectIds = new Set<number>();
+    for (const ins of allInscriptions) {
+      const insSubjects = (ins as any).inscriptionSubjects || [];
+      for (const insSub of insSubjects) {
+        const termScores: Record<number, number> = {};
+        termIds.forEach(tid => { termScores[tid] = 0; });
+
+        (insSub.qualifications || []).forEach((q: any) => {
+          if (q.isAbsent) return;
+          const score = q.remedialScore != null && Number(q.remedialScore) > 0
+            ? Number(q.remedialScore)
+            : Number(q.score) || 0;
+          const percentage = Number(q.evaluationPlan?.percentage) || 0;
+          const termId = q.evaluationPlan?.termId;
+          if (termId && termScores[termId] !== undefined) {
+            termScores[termId] += score * (percentage / 100);
+          }
+        });
+
+        (insSub.councilPoints || []).forEach((cp: any) => {
+          const pVal = Number(cp.points) || 0;
+          if (cp.termId && termScores[cp.termId] !== undefined) {
+            termScores[cp.termId] += pVal;
+          }
+        });
+
+        let totalAccumulated = 0;
+        Object.values(termScores).forEach(v => { totalAccumulated += v; });
+        const finalScore = totalAccumulated / termCount;
+
+        if (!isPassingGrade(finalScore, passingGrade)) {
+          failedSubjectIds.add(insSub.id);
+        }
+      }
+    }
+
+    // Get all existing revisions for this period
+    const existingRevisions = await InscriptionSubjectRevision.findAll({
+      where: { revisionPeriodId: revisionPeriod.id },
+      transaction,
+    });
+
+    // Group by inscriptionSubjectId
+    const revisionsBySubject = new Map<number, InscriptionSubjectRevision[]>();
+    for (const rev of existingRevisions) {
+      if (!revisionsBySubject.has(rev.inscriptionSubjectId)) {
+        revisionsBySubject.set(rev.inscriptionSubjectId, []);
+      }
+      revisionsBySubject.get(rev.inscriptionSubjectId)!.push(rev);
+    }
+
+    let created = 0;
+    let removed = 0;
+
+    // Remove pending revisions for subjects that are now passing
+    for (const rev of existingRevisions) {
+      if (rev.status === 'pending' && !failedSubjectIds.has(rev.inscriptionSubjectId)) {
+        await rev.destroy({ transaction });
+        removed++;
+      }
+    }
+
+    // Create pending revisions (opportunity 1) for newly-failed subjects
+    // that don't already have any revision
+    for (const subjId of failedSubjectIds) {
+      const existing = revisionsBySubject.get(subjId);
+      if (!existing || existing.length === 0) {
+        await InscriptionSubjectRevision.create({
+          revisionPeriodId: revisionPeriod.id,
+          inscriptionSubjectId: subjId,
+          opportunity: 1,
+          status: 'pending',
+        }, { transaction });
+        created++;
+      }
+    }
+
+    return { revisionPeriod, created, removed };
+  }
+
+  /**
+   * Reset the revision period back to 'pending' state.
+   * Deletes ALL revision records and resets the period as if it was never opened.
+   * Only Master role can call this (enforced in the controller).
+   */
+  static async resetRevisionPeriod(
+    schoolPeriodId: number,
+    transaction?: Transaction
+  ): Promise<{ revisionPeriod: RevisionPeriod; deleted: number }> {
+    const revisionPeriod = await RevisionPeriod.findOne({
+      where: { schoolPeriodId },
+      transaction,
+    });
+    if (!revisionPeriod) throw new Error('No existe un período de reparación para este período escolar');
+
+    // Delete all revision records
+    const deleted = await InscriptionSubjectRevision.destroy({
+      where: { revisionPeriodId: revisionPeriod.id },
+      transaction,
+    });
+
+    // Reset the period to pending
+    await revisionPeriod.update({
+      status: 'pending',
+      openedAt: null,
+      closedAt: null,
+    }, { transaction });
+
+    return { revisionPeriod, deleted };
+  }
 }

@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Card, Button, Tag, Space, Typography, Spin, message, Alert, Statistic, Row, Col } from 'antd';
-import { PlayCircleOutlined, StopOutlined, ReloadOutlined, CheckCircleOutlined, ClockCircleOutlined, CloseCircleOutlined, PrinterOutlined } from '@ant-design/icons';
+import { Card, Button, Tag, Space, Typography, Spin, message, Alert, Statistic, Row, Col, Popconfirm } from 'antd';
+import { PlayCircleOutlined, StopOutlined, ReloadOutlined, CheckCircleOutlined, ClockCircleOutlined, CloseCircleOutlined, PrinterOutlined, RetweetOutlined, UndoOutlined } from '@ant-design/icons';
 import api from '@/services/api';
 import { compareStudents } from '@/utils/studentSort';
+import { useAuth } from '@/context/AuthContext';
 
 const { Title, Text } = Typography;
 
@@ -73,6 +74,8 @@ interface StudentRevision {
 }
 
 const RepairPeriodManagement: React.FC = () => {
+  const { user } = useAuth();
+  const isMaster = user?.roles.includes('Master');
   const [loading, setLoading] = useState(false);
   const [acting, setActing] = useState(false);
   const [summary, setSummary] = useState<Summary | null>(null);
@@ -132,6 +135,34 @@ const RepairPeriodManagement: React.FC = () => {
       await fetchData();
     } catch (error: any) {
       message.error(error?.response?.data?.message || 'Error al cerrar');
+    } finally {
+      setActing(false);
+    }
+  };
+
+  const handleRecalculate = async () => {
+    if (!activePeriodId) return;
+    setActing(true);
+    try {
+      const res = await api.post(`/revision-periods/${activePeriodId}/recalculate`);
+      message.success(res.data.message || 'Recálculo completado');
+      await fetchData();
+    } catch (error: any) {
+      message.error(error?.response?.data?.message || 'Error al recalcular');
+    } finally {
+      setActing(false);
+    }
+  };
+
+  const handleReset = async () => {
+    if (!activePeriodId) return;
+    setActing(true);
+    try {
+      const res = await api.post(`/revision-periods/${activePeriodId}/reset`);
+      message.success(res.data.message || 'Período reiniciado');
+      await fetchData();
+    } catch (error: any) {
+      message.error(error?.response?.data?.message || 'Error al reiniciar');
     } finally {
       setActing(false);
     }
@@ -238,9 +269,22 @@ const RepairPeriodManagement: React.FC = () => {
                 description="Los profesores pueden calificar las reparaciones. Cuando todos los estudiantes estén calificados, cierre el período para proceder al cierre escolar."
                 showIcon
                 action={
-                  <Space>
+                  <Space wrap>
                     <Button type="primary" icon={<ReloadOutlined />} onClick={fetchData}>Actualizar</Button>
+                    <Button icon={<RetweetOutlined />} onClick={handleRecalculate} loading={acting}>Recalcular</Button>
                     <Button danger icon={<StopOutlined />} onClick={handleClose} loading={acting}>Cerrar período</Button>
+                    {isMaster && (
+                      <Popconfirm
+                        title="¿Reiniciar el período de reparación?"
+                        description="Se eliminarán TODOS los registros de reparación y el período volverá a estado pendiente. Esta acción no se puede deshacer."
+                        okText="Sí, reiniciar"
+                        cancelText="Cancelar"
+                        okButtonProps={{ danger: true }}
+                        onConfirm={handleReset}
+                      >
+                        <Button danger type="dashed" icon={<UndoOutlined />} loading={acting}>Reiniciar (Master)</Button>
+                      </Popconfirm>
+                    )}
                   </Space>
                 }
                 style={{ marginBottom: 16 }}
@@ -253,6 +297,20 @@ const RepairPeriodManagement: React.FC = () => {
                 message="Período de reparación cerrado"
                 description={`Cerrado el ${summary.revisionPeriod.closedAt ? new Date(summary.revisionPeriod.closedAt).toLocaleDateString() : '—'}. Las notas de reparación serán aplicadas al ejecutar el cierre de período.`}
                 showIcon
+                action={
+                  isMaster ? (
+                    <Popconfirm
+                      title="¿Reiniciar el período de reparación?"
+                      description="Se eliminarán TODOS los registros de reparación y el período volverá a estado pendiente. Esta acción no se puede deshacer."
+                      okText="Sí, reiniciar"
+                      cancelText="Cancelar"
+                      okButtonProps={{ danger: true }}
+                      onConfirm={handleReset}
+                    >
+                      <Button danger type="dashed" icon={<UndoOutlined />} loading={acting}>Reiniciar (Master)</Button>
+                    </Popconfirm>
+                  ) : undefined
+                }
                 style={{ marginBottom: 16 }}
               />
             )}

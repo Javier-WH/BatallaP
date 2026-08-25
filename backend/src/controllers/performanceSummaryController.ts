@@ -362,7 +362,7 @@ function fillSheetByNamedRanges(
         sheet.getRow(row).getCell(col).value = 'I';
       } else if (isLiteral) {
         if (score != null) {
-          sheet.getRow(row).getCell(col).value = numericToLetter(score, letterGradesConfig || []);
+          sheet.getRow(row).getCell(col).value = numericToLetter(score, letterGradesConfig || []).toUpperCase();
         }
       } else if (score != null) {
         sheet.getRow(row).getCell(col).value = padNumber(score);
@@ -859,15 +859,15 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
         const abbrText = subj.subjectGroupId
           ? (subj.subjectGroupShortAbbr || subj.subjectGroupLongAbbr || subj.name)
           : (subj.abbreviation || subj.name);
-        const headerText = abbrText;
+        const headerText = abbrText.toUpperCase();
         sheet!.getCell(ref.cell).value = headerText;
         subjectColList.push({ col: ref.col, abbr: abbrText.toUpperCase(), subjIdx, subjectId: subj.id });
         subjectToSubjIndex.set(subjIdx, subj.id);
         // Also write the full subject name into subjname_i if defined
         const nameRef = findRef('subjname_' + subjIdx);
-        const nameText = subj.subjectGroupId
+        const nameText = (subj.subjectGroupId
           ? 'Participación en Grupos de \r\nCreación, Recreación y Producción'
-          : subj.name;
+          : subj.name).toUpperCase();
         if (nameRef) {
           sheet!.getCell(nameRef.cell).value = nameText;
         }
@@ -875,9 +875,9 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
         // allow the global subj_N name to point to two different cells.
         const areaRef = findRef('area_subj_' + subjIdx);
         const areaNameRef = findRef('area_subjname_' + subjIdx);
-        const areaHeaderText = subj.subjectGroupId
+        const areaHeaderText = (subj.subjectGroupId
           ? (subj.subjectGroupLongAbbr || '-')
-          : (subj.abbreviation || '-');
+          : (subj.abbreviation || '-')).toUpperCase();
         if (areaRef) {
           sheet!.getCell(areaRef.cell).value = areaHeaderText;
         }
@@ -937,8 +937,8 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
         const teacherNameRef = findRef(`teacher_name_${i}`);
         const teacherDocRef = findRef(`teacher_doc_${i}`);
         const teacherSignRef = findRef(`teacher_sign_${i}`);
-        if (teacherNameRef) ws.getCell(teacherNameRef.cell).value = teacher.fullName;
-        if (teacherDocRef) ws.getCell(teacherDocRef.cell).value = teacher.docWithType;
+        if (teacherNameRef) ws.getCell(teacherNameRef.cell).value = teacher.fullName.toUpperCase();
+        if (teacherDocRef) ws.getCell(teacherDocRef.cell).value = teacher.docWithType.toUpperCase();
         // Remove the template placeholder only when a teacher exists. If no
         // teacher is assigned, leave the template cell untouched.
         if (teacherSignRef) ws.getCell(teacherSignRef.cell).value = '';
@@ -1059,19 +1059,19 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
           const abbrText = subj.subjectGroupId
             ? (subj.subjectGroupShortAbbr || subj.subjectGroupLongAbbr || subj.name)
             : (subj.abbreviation || subj.name);
-          const headerText = abbrText;
+          const headerText = abbrText.toUpperCase();
           if (ref) ws.getCell(ref.cell).value = headerText;
-          const nameText = subj.subjectGroupId
+          const nameText = (subj.subjectGroupId
             ? 'Participación en Grupos de \r\nCreación, Recreación y Producción'
-            : subj.name;
+            : subj.name).toUpperCase();
           if (nameRef) {
             ws.getCell(nameRef.cell).value = nameText;
           }
           const areaRef = findRef('area_subj_' + i);
           const areaNameRef = findRef('area_subjname_' + i);
-          const areaHeaderText = subj.subjectGroupId
+          const areaHeaderText = (subj.subjectGroupId
             ? (subj.subjectGroupLongAbbr || '-')
-            : (subj.abbreviation || '-');
+            : (subj.abbreviation || '-')).toUpperCase();
           if (areaRef) ws.getCell(areaRef.cell).value = areaHeaderText;
           if (areaNameRef) ws.getCell(areaNameRef.cell).value = nameText;
           if (countRef) {

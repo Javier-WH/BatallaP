@@ -491,3 +491,55 @@ export const bulkSaveRevisionGrades = async (req: Request, res: Response) => {
     return res.status(500).json({ message: error.message || 'Error al guardar notas' });
   }
 };
+
+export const recalculateRevisionPeriod = async (req: Request, res: Response) => {
+  const t = await sequelize.transaction();
+  try {
+    const schoolPeriodId = parseInt(req.params.schoolPeriodId, 10);
+    if (!schoolPeriodId) {
+      return res.status(400).json({ message: 'schoolPeriodId es obligatorio' });
+    }
+
+    const result = await RevisionPeriodService.recalculateRevisionPeriod(schoolPeriodId, t);
+    await t.commit();
+    return res.json({
+      message: `Recálculo completado: ${result.created} nuevas reparaciones, ${result.removed} reparaciones eliminadas`,
+      revisionPeriod: result.revisionPeriod,
+      created: result.created,
+      removed: result.removed,
+    });
+  } catch (error: any) {
+    await t.rollback();
+    console.error('[recalculateRevisionPeriod] Error:', error);
+    return res.status(500).json({ message: error.message || 'Error al recalcular período de reparación' });
+  }
+};
+
+export const resetRevisionPeriod = async (req: Request, res: Response) => {
+  const t = await sequelize.transaction();
+  try {
+    const schoolPeriodId = parseInt(req.params.schoolPeriodId, 10);
+    if (!schoolPeriodId) {
+      return res.status(400).json({ message: 'schoolPeriodId es obligatorio' });
+    }
+
+    // Only Master can reset
+    const userRoles = (req.session as any)?.user?.roles || [];
+    if (!userRoles.includes('Master')) {
+      await t.rollback();
+      return res.status(403).json({ message: 'Solo el rol Master puede reiniciar el período de reparación' });
+    }
+
+    const result = await RevisionPeriodService.resetRevisionPeriod(schoolPeriodId, t);
+    await t.commit();
+    return res.json({
+      message: `Período de reparación reiniciado. ${result.deleted} registros eliminados.`,
+      revisionPeriod: result.revisionPeriod,
+      deleted: result.deleted,
+    });
+  } catch (error: any) {
+    await t.rollback();
+    console.error('[resetRevisionPeriod] Error:', error);
+    return res.status(500).json({ message: error.message || 'Error al reiniciar período de reparación' });
+  }
+};
