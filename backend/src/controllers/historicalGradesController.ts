@@ -12,6 +12,7 @@ import {
   PeriodGradeSubject,
   Plantel,
   Person,
+  SubjectGroup,
 } from '@/models/index';
 import { sortInscriptions } from '@/services/studentSortService';
 
@@ -130,20 +131,55 @@ export const getHistoricalGradesBySection = async (req: Request, res: Response) 
       }
     }
 
-    // Get subjects per period grade
+    // Get subjects per period grade (include SubjectGroup to collapse electives)
     for (const y of years) {
       const pgId = pgByPeriod.get(y.schoolPeriodId);
       if (!pgId) { y.subjects = []; continue; }
       const pgs = await PeriodGradeSubject.findAll({
         where: { periodGradeId: pgId },
-        include: [{ model: Subject, as: 'subject', attributes: ['id', 'name', 'abbreviation'] }],
+        include: [{
+          model: Subject,
+          as: 'subject',
+          attributes: ['id', 'name', 'abbreviation', 'subjectGroupId'],
+          include: [{ model: SubjectGroup, as: 'subjectGroup', attributes: ['id', 'name'] }],
+        }],
         order: [['order', 'ASC']],
       });
-      y.subjects = pgs.map((p: any) => ({
-        id: p.subject?.id,
-        name: p.subject?.name,
-        abbreviation: p.subject?.abbreviation,
-      })).filter((s: any) => s.id);
+      // Collapse subjects sharing a subjectGroupId into one representative column.
+      // The representative uses the group name; all subjectIds in the group are
+      // kept so the frontend can match grades against any of them.
+      const seenGroupIds = new Set<number>();
+      const subjects: any[] = [];
+      for (const p of pgs) {
+        const subj = (p as any).subject;
+        if (!subj) continue;
+        const groupId = subj.subjectGroupId ?? null;
+        if (groupId !== null) {
+          if (seenGroupIds.has(groupId)) {
+            // Add this subjectId to the existing group entry's memberIds
+            const existing = subjects.find(s => s.subjectGroupId === groupId);
+            if (existing) existing.memberIds.push(subj.id);
+            continue;
+          }
+          seenGroupIds.add(groupId);
+          subjects.push({
+            id: subj.id,
+            name: subj.subjectGroup?.name || subj.name,
+            abbreviation: subj.abbreviation,
+            subjectGroupId: groupId,
+            memberIds: [subj.id],
+          });
+        } else {
+          subjects.push({
+            id: subj.id,
+            name: subj.name,
+            abbreviation: subj.abbreviation,
+            subjectGroupId: null,
+            memberIds: [subj.id],
+          });
+        }
+      }
+      y.subjects = subjects;
     }
 
     // 5. Get all InscriptionSubjects + SubjectFinalGrades for these students across all periods
@@ -151,7 +187,7 @@ export const getHistoricalGradesBySection = async (req: Request, res: Response) 
     const insSubjects = await InscriptionSubject.findAll({
       where: { inscriptionId: allInsIds as any },
       include: [
-        { model: Subject, as: 'subject', attributes: ['id', 'name', 'abbreviation'] },
+        { model: Subject, as: 'subject', attributes: ['id', 'name', 'abbreviation', 'subjectGroupId'] },
         {
           model: Inscription,
           as: 'inscription',
@@ -165,7 +201,9 @@ export const getHistoricalGradesBySection = async (req: Request, res: Response) 
       ],
     });
 
-    // Build grades map: personId → schoolPeriodId → subjectId → grade data
+    // Build grades map: personId → schoolPeriodId → subjectId → grade data.
+    // Include subjectGroupId so the frontend can match a grade to a collapsed
+    // group column (where the column's subjectId is just the representative).
     const gradesMap: any[] = [];
     for (const is of insSubjects) {
       const ins = (is as any).inscription;
@@ -176,6 +214,8 @@ export const getHistoricalGradesBySection = async (req: Request, res: Response) 
         personId: ins.personId,
         schoolPeriodId: ins.schoolPeriodId,
         subjectId: subj.id,
+        subjectGroupId: subj.subjectGroupId ?? null,
+        subjectName: subj.name ?? null,
         finalScore: fg?.finalScore ?? null,
         status: fg?.status ?? null,
         gradeType: fg?.gradeType ?? null,

@@ -44,7 +44,13 @@ interface Student {
   document: string;
   documentType?: string;
 }
-interface SubjectItem { id: number; name: string; abbreviation: string; }
+interface SubjectItem {
+  id: number;
+  name: string;
+  abbreviation: string;
+  subjectGroupId: number | null;
+  memberIds: number[];   // all subject ids in this group (or just [id] if no group)
+}
 interface YearCol {
   schoolPeriodId: number;
   period: string;
@@ -57,6 +63,8 @@ interface GradeEntry {
   personId: number;
   schoolPeriodId: number;
   subjectId: number;
+  subjectGroupId: number | null;
+  subjectName: string | null;
   finalScore: number | null;
   status: string | null;
   gradeType: string | null;
@@ -77,6 +85,7 @@ interface RowData {
   nombres: string;
   plantelIds: number[];      // selected planteles for this student (all years)
   cells: Record<string, CellData>;  // key: `${spId}__${subjId}` → cell
+  groupSubjectNames: Record<number, string[]>;  // spId → list of actual subject names from groups
 }
 interface CellData {
   score: string;       // "16", ""
@@ -184,13 +193,26 @@ const HistoricalGradesBySection: React.FC = () => {
       const visibleYears = rawYears.filter(y => (y.gradeOrder ?? 999) <= currentGradeOrder);
       setYears(visibleYears);
 
+      // Build a lookup map: schoolPeriodId → realSubjectId → columnKey
+      // so that grades for any member of a group column map to that column.
+      const subjectLookup = new Map<string, string>(); // `${spId}__${realSubjectId}` → columnKey
+      for (const y of visibleYears) {
+        for (const subj of y.subjects) {
+          for (const memberId of subj.memberIds) {
+            subjectLookup.set(`${y.schoolPeriodId}__${memberId}`, `${y.schoolPeriodId}__${subj.id}`);
+          }
+        }
+      }
+
       // Build rows
       const newRows: RowData[] = rawStudents.map(st => {
         const cells: Record<string, CellData> = {};
         // Pre-populate from existing grades
+        const groupNames: Record<number, string[]> = {};  // spId → actual subject names from groups
         for (const g of rawGrades) {
           if (g.personId !== st.id) continue;
-          const key = `${g.schoolPeriodId}__${g.subjectId}`;
+          const key = subjectLookup.get(`${g.schoolPeriodId}__${g.subjectId}`);
+          if (!key) continue; // grade doesn't match any visible column
           const statusCode = g.gradeType ? (GRADE_TYPE_TO_CODE[g.gradeType] || 'F') : 'F';
           let dateDisplay = '';
           if (g.date) {
@@ -212,6 +234,13 @@ const HistoricalGradesBySection: React.FC = () => {
             inscriptionSubjectId: g.inscriptionSubjectId,
             dirty: false,
           };
+          // Track actual subject name for group subjects
+          if (g.subjectGroupId != null && g.subjectName) {
+            if (!groupNames[g.schoolPeriodId]) groupNames[g.schoolPeriodId] = [];
+            if (!groupNames[g.schoolPeriodId].includes(g.subjectName)) {
+              groupNames[g.schoolPeriodId].push(g.subjectName);
+            }
+          }
         }
 
         // Collect unique plantelIds for this student (from all their grades)
@@ -238,6 +267,7 @@ const HistoricalGradesBySection: React.FC = () => {
           nombres: st.firstName,
           plantelIds: studentPlantelIds,
           cells,
+          groupSubjectNames: groupNames,
         };
       });
 
@@ -435,7 +465,11 @@ const HistoricalGradesBySection: React.FC = () => {
   };
   const frozenWidth = COL.n + COL.cedula + COL.apellidos + COL.nombres + COL.inst;
   const SUB_W = 44 + 44 + 78 + 40; // = 206 per subject
-  const totalTableWidth = frozenWidth + years.reduce((s, y) => s + y.subjects.length * SUB_W, 0);
+  const GROUP_COL_W = 130;        // extra column for group subject name
+  // Years that have at least one group subject get an extra trailing column
+  const yearHasGroups = (y: YearCol) => y.subjects.some(s => s.subjectGroupId !== null);
+  const totalTableWidth = frozenWidth + years.reduce((s, y) =>
+    s + y.subjects.length * SUB_W + (yearHasGroups(y) ? GROUP_COL_W : 0), 0);
 
   const cellInputStyle: React.CSSProperties = {
     width: '100%', border: 'none', outline: 'none', background: 'transparent',
@@ -515,14 +549,19 @@ const HistoricalGradesBySection: React.FC = () => {
                   <col style={{ width: COL.apellidos }} />
                   <col style={{ width: COL.nombres }} />
                   <col style={{ width: COL.inst }} />
-                  {years.map(y => y.subjects.map((subj) => (
-                    <React.Fragment key={`col-${y.schoolPeriodId}-${subj.id}`}>
-                      <col style={{ width: 44 }} />
-                      <col style={{ width: 44 }} />
-                      <col style={{ width: 78 }} />
-                      <col style={{ width: 40 }} />
+                  {years.map(y => (
+                    <React.Fragment key={`col-year-${y.schoolPeriodId}`}>
+                      {y.subjects.map((subj) => (
+                        <React.Fragment key={`col-${y.schoolPeriodId}-${subj.id}`}>
+                          <col style={{ width: 44 }} />
+                          <col style={{ width: 44 }} />
+                          <col style={{ width: 78 }} />
+                          <col style={{ width: 40 }} />
+                        </React.Fragment>
+                      ))}
+                      {yearHasGroups(y) && <col style={{ width: GROUP_COL_W }} />}
                     </React.Fragment>
-                  )))}
+                  ))}
                 </colgroup>
                 <thead>
                   <tr>
@@ -531,20 +570,35 @@ const HistoricalGradesBySection: React.FC = () => {
                     <th key="h-ap" rowSpan={2} style={{ ...thFrozen(leftOf.apellidos, COL.apellidos), zIndex: 5 }}>Apellidos</th>
                     <th key="h-nom" rowSpan={2} style={{ ...thFrozen(leftOf.nombres, COL.nombres), zIndex: 5 }}>Nombres</th>
                     <th key="h-inst" rowSpan={2} style={{ ...thFrozen(leftOf.inst, COL.inst), zIndex: 5, textAlign: 'left', borderRight: `2px solid ${T.hairline}` }}>Instituciones</th>
-                    {years.map(y => (
-                      <th key={`y-${y.schoolPeriodId}`} colSpan={y.subjects.length * 4}
-                        style={{ ...thPlain(y.subjects.length * 206), borderLeft: `2px solid ${T.hairline}`, fontSize: 12 }}>
-                        {y.gradeName} · {y.period}
-                      </th>
-                    ))}
+                    {years.map(y => {
+                      const hasGrp = yearHasGroups(y);
+                      const span = y.subjects.length * 4 + (hasGrp ? 1 : 0);
+                      const width = y.subjects.length * SUB_W + (hasGrp ? GROUP_COL_W : 0);
+                      return (
+                        <th key={`y-${y.schoolPeriodId}`} colSpan={span}
+                          style={{ ...thPlain(width), borderLeft: `2px solid ${T.hairline}`, fontSize: 12 }}>
+                          {y.gradeName} · {y.period}
+                        </th>
+                      );
+                    })}
                   </tr>
                   <tr>
-                    {years.map(y => y.subjects.map((subj, si) => (
-                      <th key={`s-${y.schoolPeriodId}-${subj.id}`} colSpan={4} title={subj.name}
-                        style={{ ...thSub(206), borderLeft: si === 0 ? `2px solid ${T.hairline}` : `1px solid ${T.hairline}` }}>
-                        {subj.abbreviation || subj.name}
-                      </th>
-                    )))}
+                    {years.map(y => (
+                      <React.Fragment key={`s-row-${y.schoolPeriodId}`}>
+                        {y.subjects.map((subj, si) => (
+                          <th key={`s-${y.schoolPeriodId}-${subj.id}`} colSpan={4} title={subj.name}
+                            style={{ ...thSub(206), borderLeft: si === 0 ? `2px solid ${T.hairline}` : `1px solid ${T.hairline}` }}>
+                            {subj.name}
+                          </th>
+                        ))}
+                        {yearHasGroups(y) && (
+                          <th key={`s-grp-${y.schoolPeriodId}`} title="Materia del grupo cursada"
+                            style={{ ...thSub(GROUP_COL_W), borderLeft: `1px solid ${T.hairline}`, fontSize: 9 }}>
+                            Materia
+                          </th>
+                        )}
+                      </React.Fragment>
+                    ))}
                   </tr>
                   <tr>
                     <th key="h2-n" style={{ ...thFrozen(leftOf.n, COL.n), top: 56, zIndex: 4 }}></th>
@@ -552,14 +606,21 @@ const HistoricalGradesBySection: React.FC = () => {
                     <th key="h2-ap" style={{ ...thFrozen(leftOf.apellidos, COL.apellidos), top: 56, zIndex: 4 }}></th>
                     <th key="h2-nom" style={{ ...thFrozen(leftOf.nombres, COL.nombres), top: 56, zIndex: 4 }}></th>
                     <th key="h2-inst" style={{ ...thFrozen(leftOf.inst, COL.inst), top: 56, zIndex: 4, textAlign: 'left', borderRight: `2px solid ${T.hairline}` }}></th>
-                    {years.map(y => y.subjects.map((subj, si) => (
-                      <React.Fragment key={`${y.schoolPeriodId}-${subj.id}-sub`}>
-                        <th style={{ ...thSub2(44), borderLeft: si === 0 ? `2px solid ${T.hairline}` : `1px solid ${T.hairline}` }}>Nota</th>
-                        <th style={{ ...thSub2(44) }}>Est.</th>
-                        <th style={{ ...thSub2(78) }}>Fecha</th>
-                        <th style={{ ...thSub2(40) }}>Inst</th>
+                    {years.map(y => (
+                      <React.Fragment key={`sub-${y.schoolPeriodId}`}>
+                        {y.subjects.map((subj, si) => (
+                          <React.Fragment key={`${y.schoolPeriodId}-${subj.id}-sub`}>
+                            <th style={{ ...thSub2(44), borderLeft: si === 0 ? `2px solid ${T.hairline}` : `1px solid ${T.hairline}` }}>Nota</th>
+                            <th style={{ ...thSub2(44) }}>Est.</th>
+                            <th style={{ ...thSub2(78) }}>Fecha</th>
+                            <th style={{ ...thSub2(40) }}>Inst</th>
+                          </React.Fragment>
+                        ))}
+                        {yearHasGroups(y) && (
+                          <th style={{ ...thSub2(GROUP_COL_W), borderLeft: `1px solid ${T.hairline}` }}></th>
+                        )}
                       </React.Fragment>
-                    )))}
+                    ))}
                   </tr>
                 </thead>
                 <tbody>
@@ -592,85 +653,100 @@ const HistoricalGradesBySection: React.FC = () => {
                         />
                       </td>
 
-                      {/* Subject cells */}
-                      {years.map(y => y.subjects.map((subj, si) => {
-                        const cellKey = `${y.schoolPeriodId}__${subj.id}`;
-                        const cell = row.cells[cellKey] || emptyCell();
-                        const failing = cell.score !== '' && Number(cell.score) < 10;
-                        const passing = cell.score !== '' && Number(cell.score) >= 10;
-                        const statusMeta = STATUS_META[cell.status] || STATUS_META.F;
-                        const scoreKey = `${cellKey}__score`;
-                        const statusKey = `${cellKey}__status`;
-                        const dateKey = `${cellKey}__date`;
-                        const instKey = `${cellKey}__inst`;
+                      {/* Subject cells + optional group subject name column */}
+                      {years.map(y => (
+                        <React.Fragment key={`body-year-${y.schoolPeriodId}`}>
+                          {y.subjects.map((subj, si) => {
+                            const cellKey = `${y.schoolPeriodId}__${subj.id}`;
+                            const cell = row.cells[cellKey] || emptyCell();
+                            const failing = cell.score !== '' && Number(cell.score) < 10;
+                            const passing = cell.score !== '' && Number(cell.score) >= 10;
+                            const statusMeta = STATUS_META[cell.status] || STATUS_META.F;
+                            const scoreKey = `${cellKey}__score`;
+                            const statusKey = `${cellKey}__status`;
+                            const dateKey = `${cellKey}__date`;
+                            const instKey = `${cellKey}__inst`;
 
-                        return (
-                          <React.Fragment key={cellKey}>
-                            {/* Nota */}
+                            return (
+                              <React.Fragment key={cellKey}>
+                                {/* Nota */}
+                                <td style={{
+                                  ...tdPlain(44),
+                                  borderLeft: si === 0 ? `2px solid ${T.hairline}` : `1px solid ${T.hairline}`,
+                                  background: failing ? T.redBg : passing ? T.greenBg : 'transparent',
+                                }}>
+                                  <input
+                                    type="number" min={0} max={20} step={1}
+                                    data-row={ri} data-field={scoreKey}
+                                    ref={registerRef(ri, scoreKey)}
+                                    value={cell.score}
+                                    onChange={e => updateCell(ri, scoreKey, e.target.value)}
+                                    onKeyDown={e => handleKeyDown(e, ri, scoreKey)}
+                                    onPaste={e => handlePaste(e, ri, scoreKey)}
+                                    placeholder="—"
+                                    style={{ ...cellInputStyle, textAlign: 'center', color: failing ? T.red : passing ? T.green : T.ink, fontWeight: 700 }}
+                                  />
+                                </td>
+                                {/* Est. */}
+                                <td style={{ ...tdPlain(44), padding: 0 }}>
+                                  <select
+                                    data-row={ri} data-field={statusKey}
+                                    ref={registerRef(ri, statusKey) as any}
+                                    value={cell.status}
+                                    onChange={e => updateCell(ri, statusKey, e.target.value)}
+                                    onKeyDown={e => handleKeyDown(e, ri, statusKey)}
+                                    style={{
+                                      ...cellInputStyle, fontWeight: 700, textAlign: 'center',
+                                      color: statusMeta.color, background: statusMeta.bg, borderRadius: 3, cursor: 'pointer',
+                                    }}
+                                  >
+                                    {STATUS_KEYS.map(k => <option key={k} value={k}>{k}</option>)}
+                                  </select>
+                                </td>
+                                {/* Fecha */}
+                                <td style={{ ...tdPlain(78) }}>
+                                  <input
+                                    type="text"
+                                    data-row={ri} data-field={dateKey}
+                                    ref={registerRef(ri, dateKey)}
+                                    value={cell.date}
+                                    onChange={e => updateCell(ri, dateKey, e.target.value)}
+                                    onKeyDown={e => handleKeyDown(e, ri, dateKey)}
+                                    onPaste={e => handlePaste(e, ri, dateKey)}
+                                    placeholder="dd/mm/aaaa"
+                                    style={cellInputStyle}
+                                  />
+                                </td>
+                                {/* Inst */}
+                                <td style={{ ...tdPlain(40) }}>
+                                  <input
+                                    type="text" maxLength={2}
+                                    data-row={ri} data-field={instKey}
+                                    ref={registerRef(ri, instKey)}
+                                    value={cell.inst}
+                                    onChange={e => updateCell(ri, instKey, e.target.value)}
+                                    onKeyDown={e => handleKeyDown(e, ri, instKey)}
+                                    onPaste={e => handlePaste(e, ri, instKey)}
+                                    placeholder="—"
+                                    style={{ ...cellInputStyle, textAlign: 'center', color: T.brass, fontWeight: 700 }}
+                                  />
+                                </td>
+                              </React.Fragment>
+                            );
+                          })}
+                          {/* Group subject name column */}
+                          {yearHasGroups(y) && (
                             <td style={{
-                              ...tdPlain(44),
-                              borderLeft: si === 0 ? `2px solid ${T.hairline}` : `1px solid ${T.hairline}`,
-                              background: failing ? T.redBg : passing ? T.greenBg : 'transparent',
+                              ...tdPlain(GROUP_COL_W),
+                              borderLeft: `1px solid ${T.hairline}`,
+                              fontSize: 11, color: T.inkSoft, padding: '3px 6px',
+                              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
                             }}>
-                              <input
-                                type="number" min={0} max={20} step={1}
-                                data-row={ri} data-field={scoreKey}
-                                ref={registerRef(ri, scoreKey)}
-                                value={cell.score}
-                                onChange={e => updateCell(ri, scoreKey, e.target.value)}
-                                onKeyDown={e => handleKeyDown(e, ri, scoreKey)}
-                                onPaste={e => handlePaste(e, ri, scoreKey)}
-                                placeholder="—"
-                                style={{ ...cellInputStyle, textAlign: 'center', color: failing ? T.red : passing ? T.green : T.ink, fontWeight: 700 }}
-                              />
+                              {(row.groupSubjectNames[y.schoolPeriodId] || []).join(', ')}
                             </td>
-                            {/* Est. */}
-                            <td style={{ ...tdPlain(44), padding: 0 }}>
-                              <select
-                                data-row={ri} data-field={statusKey}
-                                ref={registerRef(ri, statusKey) as any}
-                                value={cell.status}
-                                onChange={e => updateCell(ri, statusKey, e.target.value)}
-                                onKeyDown={e => handleKeyDown(e, ri, statusKey)}
-                                style={{
-                                  ...cellInputStyle, fontWeight: 700, textAlign: 'center',
-                                  color: statusMeta.color, background: statusMeta.bg, borderRadius: 3, cursor: 'pointer',
-                                }}
-                              >
-                                {STATUS_KEYS.map(k => <option key={k} value={k}>{k}</option>)}
-                              </select>
-                            </td>
-                            {/* Fecha */}
-                            <td style={{ ...tdPlain(78) }}>
-                              <input
-                                type="text"
-                                data-row={ri} data-field={dateKey}
-                                ref={registerRef(ri, dateKey)}
-                                value={cell.date}
-                                onChange={e => updateCell(ri, dateKey, e.target.value)}
-                                onKeyDown={e => handleKeyDown(e, ri, dateKey)}
-                                onPaste={e => handlePaste(e, ri, dateKey)}
-                                placeholder="dd/mm/aaaa"
-                                style={cellInputStyle}
-                              />
-                            </td>
-                            {/* Inst */}
-                            <td style={{ ...tdPlain(40) }}>
-                              <input
-                                type="text" maxLength={2}
-                                data-row={ri} data-field={instKey}
-                                ref={registerRef(ri, instKey)}
-                                value={cell.inst}
-                                onChange={e => updateCell(ri, instKey, e.target.value)}
-                                onKeyDown={e => handleKeyDown(e, ri, instKey)}
-                                onPaste={e => handlePaste(e, ri, instKey)}
-                                placeholder="—"
-                                style={{ ...cellInputStyle, textAlign: 'center', color: T.brass, fontWeight: 700 }}
-                              />
-                            </td>
-                          </React.Fragment>
-                        );
-                      }))}
+                          )}
+                        </React.Fragment>
+                      ))}
                     </tr>
                   ))}
                 </tbody>
