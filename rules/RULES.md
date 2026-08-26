@@ -161,6 +161,35 @@ Reglas de visualización:
 - **NUNCA** mostrar una nota final en un documento oficial si el consejo de ese
   lapso no está completado.
 
+### R17: Respaldo obligatorio antes de operaciones destructivas en la base de datos
+Toda acción que implique **borrar, truncar, dropear o sobrescribir** la base de
+datos de desarrollo o producción (`bp` en MySQL) **DEBE** seguir este protocolo:
+
+1. **Respaldar ANTES de destruir**: El agente debe generar un dump SQL completo
+   de la base de datos antes de ejecutar cualquier comando destructivo.
+   - Comando: `mysqldump -u root bp > backups/bp_backup_YYYYMMDD_HHmmss.sql`
+   - Si no existe el directorio `backups/`, crearlo primero.
+   - Verificar que el archivo `.sql` se generó correctamente (tamaño > 0).
+
+2. **Ejecutar la operación destructiva**: Solo después de confirmar que el
+   respaldo existe y es válido.
+
+3. **Restaurar si es necesario**: Si la operación destructiva fue accidental,
+   causó pérdida de datos no intencional, o el usuario lo solicita, restaurar
+   desde el respaldo más reciente:
+   - Comando: `mysql -u root bp < backups/bp_backup_YYYYMMDD_HHmmss.sql`
+
+**Operaciones que activan esta regla** (lista no exhaustiva):
+- `DROP DATABASE`, `DROP TABLE`, `TRUNCATE TABLE`
+- `sequelize.sync({ force: true })` contra la base de desarrollo/producción
+- `DELETE FROM` sin `WHERE` o con `WHERE` que afecte múltiples registros
+- Ejecutar migraciones que borren columnas o tablas
+- Cualquier script que llame a `db:sync` o `seed` contra MySQL (no SQLite)
+
+**Excepción**: Los tests con Jest que usan SQLite en memoria (`DB_DIALECT=sqlite`)
+**no** activan esta regla, ya que la base de datos es efímera y se recrea en
+cada ejecución.
+
 ---
 
 ## 🟡 Archivos críticos (requieren Safety Commit antes de modificar)
