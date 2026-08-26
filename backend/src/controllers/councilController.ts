@@ -12,7 +12,8 @@ import {
   Term,
   Qualification,
   EvaluationPlan,
-  Setting
+  Setting,
+  SchoolPeriod
 } from '@/models/index';
 import { TermGradeSyncService } from '@/services/termGradeSyncService';
 import { MIN_FINAL_GRADE } from '@/services/gradeEvaluationService';
@@ -276,8 +277,20 @@ export const bulkSaveCouncilPoints = async (req: Request, res: Response) => {
     const inscriptionSubjectIds = updates.map((u: any) => u.inscriptionSubjectId);
     const insSubs = await InscriptionSubject.findAll({
       where: { id: inscriptionSubjectIds },
-      attributes: ['id', 'inscriptionId']
+      attributes: ['id', 'inscriptionId', 'schoolPeriodId', 'gradeId', 'sectionId']
     });
+
+    // Validate that all InscriptionSubjects belong to the active period
+    const activePeriod = await SchoolPeriod.findOne({ where: { status: 'activo' } });
+    if (activePeriod) {
+      const outOfPeriod = insSubs.filter((s: any) => s.schoolPeriodId && s.schoolPeriodId !== activePeriod.id);
+      if (outOfPeriod.length > 0) {
+        return res.status(400).json({
+          message: 'Algunas materias no pertenecen al período escolar activo',
+          count: outOfPeriod.length,
+        });
+      }
+    }
 
     const inscriptionMap = new Map<number, number[]>();
     insSubs.forEach((is: any) => {

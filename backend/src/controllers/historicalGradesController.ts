@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import { Op } from 'sequelize';
 import sequelize from '@/config/database';
 import {
   Inscription,
@@ -220,9 +221,13 @@ export const getHistoricalGradesBySection = async (req: Request, res: Response) 
       });
     }
 
-    // 5. Get all inscriptions for these students (across all periods)
+    // 5. Get all inscriptions for these students (across all periods),
+    //    excluding auxiliary MP inscriptions (they're handled via PendingSubject)
     const allInscriptionsForStudents = await Inscription.findAll({
-      where: { personId: personIds as any },
+      where: {
+        personId: personIds as any,
+        escolaridad: { [Op.ne]: 'materia_pendiente' },
+      },
       include: [
         { model: SchoolPeriod, as: 'period', attributes: ['id', 'period', 'name', 'startYear', 'endYear', 'status'] },
         { model: Grade, as: 'grade', attributes: ['id', 'name', 'order'] },
@@ -493,6 +498,12 @@ export const saveHistoricalGrades = async (req: Request, res: Response) => {
 
         // ── Case 3: Have inscriptionSubjectId → use SubjectFinalGrade ──
         if (inscriptionSubjectId) {
+          // Load InscriptionSubject with Inscription to denormalize context
+          const ctxInsSub = await InscriptionSubject.findByPk(inscriptionSubjectId, {
+            include: [{ model: Inscription, as: 'inscription', attributes: ['id', 'schoolPeriodId', 'gradeId'] }],
+            transaction: t,
+          });
+          const ctxIns = (ctxInsSub as any)?.inscription;
           const existing = await SubjectFinalGrade.findOne({
             where: { inscriptionSubjectId },
             transaction: t,
@@ -504,6 +515,9 @@ export const saveHistoricalGrades = async (req: Request, res: Response) => {
               gradeType: gradeType || 'regular',
               plantelId: plantelId || null,
               calculatedAt: parsedDate,
+              schoolPeriodId: ctxIns?.schoolPeriodId ?? null,
+              subjectId: ctxInsSub?.subjectId ?? null,
+              gradeId: ctxIns?.gradeId ?? null,
             }, {
               where: { id: existing.id },
               transaction: t,
@@ -516,16 +530,21 @@ export const saveHistoricalGrades = async (req: Request, res: Response) => {
               gradeType: gradeType || 'regular',
               plantelId: plantelId || null,
               calculatedAt: parsedDate,
+              schoolPeriodId: ctxIns?.schoolPeriodId ?? null,
+              subjectId: ctxInsSub?.subjectId ?? null,
+              gradeId: ctxIns?.gradeId ?? null,
             }, { transaction: t });
           }
           saved++;
           continue;
         }
 
-        // ── Case 4: Try to find an inscription for (personId, schoolPeriodId) ──
+        // ── Case 4: Try to find an inscription for (personId, schoolPeriodId, gradeId) ──
         if (schoolPeriodId) {
+          const inscWhere: any = { personId, schoolPeriodId };
+          if (gradeId) inscWhere.gradeId = gradeId;
           const inscription = await Inscription.findOne({
-            where: { personId, schoolPeriodId },
+            where: inscWhere,
             transaction: t,
           });
           if (inscription) {
@@ -538,6 +557,9 @@ export const saveHistoricalGrades = async (req: Request, res: Response) => {
               insSub = await InscriptionSubject.create({
                 inscriptionId: inscription.id,
                 subjectId,
+                schoolPeriodId: inscription.schoolPeriodId,
+                gradeId: inscription.gradeId,
+                sectionId: inscription.sectionId,
               }, { transaction: t });
             }
             const existing = await SubjectFinalGrade.findOne({
@@ -551,6 +573,9 @@ export const saveHistoricalGrades = async (req: Request, res: Response) => {
                 gradeType: gradeType || 'regular',
                 plantelId: plantelId || null,
                 calculatedAt: parsedDate,
+                schoolPeriodId: inscription.schoolPeriodId,
+                subjectId: insSub.subjectId,
+                gradeId: inscription.gradeId,
               }, {
                 where: { id: existing.id },
                 transaction: t,
@@ -563,6 +588,9 @@ export const saveHistoricalGrades = async (req: Request, res: Response) => {
                 gradeType: gradeType || 'regular',
                 plantelId: plantelId || null,
                 calculatedAt: parsedDate,
+                schoolPeriodId: inscription.schoolPeriodId,
+                subjectId: insSub.subjectId,
+                gradeId: inscription.gradeId,
               }, { transaction: t });
             }
             saved++;

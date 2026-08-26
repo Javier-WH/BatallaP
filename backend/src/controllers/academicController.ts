@@ -678,11 +678,14 @@ export const addSubjectToGrade = async (req: Request, res: Response) => {
             schoolPeriodId: periodGrade.schoolPeriodId,
             gradeId: periodGrade.gradeId,
           },
-          attributes: ['id'],
+          attributes: ['id', 'schoolPeriodId', 'gradeId', 'sectionId'],
         });
         const toCreate = inscriptions.map((ins: any) => ({
           inscriptionId: ins.id,
           subjectId,
+          schoolPeriodId: ins.schoolPeriodId,
+          gradeId: ins.gradeId,
+          sectionId: ins.sectionId,
         }));
         if (toCreate.length > 0) {
           await InscriptionSubject.bulkCreate(toCreate, { ignoreDuplicates: true });

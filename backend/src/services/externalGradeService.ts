@@ -198,7 +198,13 @@ export const upsertExternalGrade = async (
   });
   if (!insSub) {
     insSub = await InscriptionSubject.create(
-      { inscriptionId: input.inscriptionId, subjectId: input.subjectId },
+      {
+        inscriptionId: input.inscriptionId,
+        subjectId: input.subjectId,
+        schoolPeriodId: inscription.schoolPeriodId,
+        gradeId: inscription.gradeId,
+        sectionId: inscription.sectionId,
+      },
       { transaction }
     );
   }
@@ -235,6 +241,9 @@ export const upsertExternalGrade = async (
       gradeType: input.gradeType,
       rawScore: null,
       councilPoints: 0,
+      schoolPeriodId: inscription.schoolPeriodId,
+      subjectId: insSub.subjectId,
+      gradeId: inscription.gradeId,
     },
     { transaction }
   );

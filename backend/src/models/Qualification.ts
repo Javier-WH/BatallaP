@@ -11,9 +11,15 @@ interface QualificationAttributes {
   observations?: string;
   remedialScore?: number;
   isAbsent: boolean;
+  schoolPeriodId?: number | null;
+  termId?: number | null;
+  subjectId?: number | null;
+  gradeId?: number | null;
+  sectionId?: number | null;
+  date?: Date | null;
 }
 
-interface QualificationCreationAttributes extends Optional<QualificationAttributes, 'id' | 'observations' | 'remedialScore' | 'isAbsent'> { }
+interface QualificationCreationAttributes extends Optional<QualificationAttributes, 'id' | 'observations' | 'remedialScore' | 'isAbsent' | 'schoolPeriodId' | 'termId' | 'subjectId' | 'gradeId' | 'sectionId' | 'date'> { }
 
 class Qualification extends Model<QualificationAttributes, QualificationCreationAttributes> implements QualificationAttributes {
   public id!: number;
@@ -23,6 +29,12 @@ class Qualification extends Model<QualificationAttributes, QualificationCreation
   public observations!: string;
   public remedialScore!: number;
   public isAbsent!: boolean;
+  public schoolPeriodId!: number | null;
+  public termId!: number | null;
+  public subjectId!: number | null;
+  public gradeId!: number | null;
+  public sectionId!: number | null;
+  public date!: Date | null;
 
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
@@ -67,6 +79,36 @@ Qualification.init(
     observations: {
       type: DataTypes.TEXT,
       allowNull: true
+    },
+    schoolPeriodId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      comment: 'Denormalizado desde PeriodGrade.schoolPeriodId via EvaluationPlan',
+    },
+    termId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      comment: 'Denormalizado desde EvaluationPlan.termId',
+    },
+    subjectId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      comment: 'Denormalizado desde PeriodGradeSubject.subjectId via EvaluationPlan',
+    },
+    gradeId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      comment: 'Denormalizado desde PeriodGrade.gradeId via EvaluationPlan',
+    },
+    sectionId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      comment: 'Denormalizado desde EvaluationPlan.sectionId',
+    },
+    date: {
+      type: DataTypes.DATEONLY,
+      allowNull: true,
+      comment: 'Denormalizado desde EvaluationPlan.date',
     }
   },
   {
@@ -76,6 +118,10 @@ Qualification.init(
       {
         unique: true,
         fields: ['evaluationPlanId', 'inscriptionSubjectId'] // A student gets one score per evaluation item
+      },
+      {
+        fields: ['schoolPeriodId', 'gradeId', 'subjectId', 'termId'],
+        name: 'idx_qualifications_context',
       }
     ]
   }

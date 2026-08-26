@@ -500,9 +500,10 @@ export const getStudentsForAssignment = async (req: Request, res: Response) => {
 export const getQualifications = async (req: Request, res: Response) => {
   try {
     const { inscriptionSubjectId } = req.params;
-    const qualifications = await Qualification.findAll({
-      where: { inscriptionSubjectId }
-    });
+    const { termId } = req.query;
+    const where: any = { inscriptionSubjectId: Number(inscriptionSubjectId) };
+    if (termId) where.termId = Number(termId);
+    const qualifications = await Qualification.findAll({ where });
     res.json(qualifications);
   } catch (error) {
     res.status(500).json({ message: 'Error al obtener calificaciones' });
@@ -546,6 +547,8 @@ export const saveQualification = async (req: Request, res: Response) => {
 
       const evalPlanWithSubject = ep as any;
       if (evalPlanWithSubject && evalPlanWithSubject.periodGradeSubject) {
+        // Fetch inscription to denormalize context into InscriptionSubject
+        const ctxInscription = await Inscription.findByPk(inscriptionId, { attributes: ['id', 'schoolPeriodId', 'gradeId', 'sectionId'] });
         const [insSub] = await InscriptionSubject.findOrCreate({
           where: {
             inscriptionId,
@@ -553,7 +556,10 @@ export const saveQualification = async (req: Request, res: Response) => {
           },
           defaults: {
             inscriptionId,
-            subjectId: evalPlanWithSubject.periodGradeSubject.subjectId
+            subjectId: evalPlanWithSubject.periodGradeSubject.subjectId,
+            schoolPeriodId: ctxInscription?.schoolPeriodId ?? null,
+            gradeId: ctxInscription?.gradeId ?? null,
+            sectionId: ctxInscription?.sectionId ?? null,
           }
         });
         finalInscriptionSubjectId = insSub.id;
@@ -564,6 +570,16 @@ export const saveQualification = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'No se pudo determinar el enlace del estudiante con la materia' });
     }
 
+    // Load EvaluationPlan context to denormalize into Qualification
+    const evalPlanWithContext = await EvaluationPlan.findByPk(evaluationPlanId, {
+      include: [{
+        model: PeriodGradeSubject, as: 'periodGradeSubject',
+        include: [{ model: PeriodGrade, as: 'periodGrade' }]
+      }]
+    });
+    const pgs = (evalPlanWithContext as any)?.periodGradeSubject;
+    const pg = pgs?.periodGrade;
+
     // Check if exists to update, else create
     const [qualification, created] = await Qualification.findOrCreate({
       where: { evaluationPlanId, inscriptionSubjectId: finalInscriptionSubjectId },
@@ -573,7 +589,13 @@ export const saveQualification = async (req: Request, res: Response) => {
         score: score !== undefined ? score : 0,
         remedialScore: remedialScore !== undefined ? remedialScore : null,
         isAbsent: isAbsent || false,
-        observations
+        observations,
+        schoolPeriodId: pg?.schoolPeriodId ?? null,
+        termId: evalPlanWithContext?.termId ?? null,
+        subjectId: pgs?.subjectId ?? null,
+        gradeId: pg?.gradeId ?? null,
+        sectionId: evalPlanWithContext?.sectionId ?? null,
+        date: evalPlanWithContext?.date ?? null,
       }
     });
 
@@ -617,6 +639,7 @@ export const saveQualification = async (req: Request, res: Response) => {
 export const getStudentFullAcademicRecord = async (req: Request, res: Response) => {
   try {
     const { personId } = req.params;
+    const { termId } = req.query;
 
     const records = await Inscription.findAll({
       where: { personId },
@@ -636,6 +659,7 @@ export const getStudentFullAcademicRecord = async (req: Request, res: Response) 
             {
               model: Qualification,
               as: 'qualifications',
+              where: termId ? { termId: Number(termId) } : undefined,
               include: [{ model: EvaluationPlan, as: 'evaluationPlan' }]
             },
             {
@@ -872,11 +896,15 @@ export const updateFinalGrade = async (req: Request, res: Response) => {
       const passingGradeSetting = await Setting.findOne({ where: { key: 'passing_grade' } });
       const passingGrade = Number(passingGradeSetting?.value) || 10;
 
+      const insRecord = (inscriptionSubject as any).inscription;
       const newFinalGrade = await SubjectFinalGrade.create({
         inscriptionSubjectId: Number(inscriptionSubjectId),
         finalScore,
         status: status || resolveGradeStatus(finalScore, passingGrade),
-        plantelId: normalizedPlantelId ?? null
+        plantelId: normalizedPlantelId ?? null,
+        schoolPeriodId: insRecord?.schoolPeriodId ?? null,
+        subjectId: inscriptionSubject.subjectId ?? null,
+        gradeId: insRecord?.gradeId ?? null,
       });
 
       // Create audit record
@@ -1014,7 +1042,7 @@ export const getFinalGradesByPeriod = async (req: Request, res: Response) => {
       return res.status(403).json({ message: 'Solo Control de Estudios puede ver las notas finales' });
     }
 
-    const { schoolPeriodId } = req.query;
+    const { schoolPeriodId, gradeId, includeMp } = req.query;
 
     if (!schoolPeriodId) {
       return res.status(400).json({ message: 'schoolPeriodId es requerido' });
@@ -1050,9 +1078,16 @@ export const getFinalGradesByPeriod = async (req: Request, res: Response) => {
       return res.status(403).json({ message: 'No tiene permiso para modificar notas de este período' });
     }
 
-    // Get all inscriptions for this period
+    // Get all inscriptions for this period, excluding MP by default
+    const inscWhere: any = { schoolPeriodId: Number(schoolPeriodId) };
+    if (gradeId) inscWhere.gradeId = Number(gradeId);
+    // Exclude materia_pendiente inscriptions unless explicitly requested
+    if (includeMp !== 'true') {
+      inscWhere.escolaridad = { [Op.ne]: 'materia_pendiente' };
+    }
+
     const inscriptions = await Inscription.findAll({
-      where: { schoolPeriodId: Number(schoolPeriodId) },
+      where: inscWhere,
       include: [
         {
           model: Person,
@@ -1162,7 +1197,10 @@ export const getFinalGradesByPeriod = async (req: Request, res: Response) => {
         if (periodGrade && (periodGrade as any).subjects) {
           const subjectsToCreate = (periodGrade as any).subjects.map((subject: any) => ({
             inscriptionId: inscription.id,
-            subjectId: subject.id
+            subjectId: subject.id,
+            schoolPeriodId: inscription.schoolPeriodId,
+            gradeId: inscription.gradeId,
+            sectionId: inscription.sectionId
           }));
 
           await InscriptionSubject.bulkCreate(subjectsToCreate);

@@ -103,6 +103,7 @@ export class TermGradeSyncService {
   ): Promise<void> {
     const insSubs = await InscriptionSubject.findAll({
       where: { inscriptionId },
+      attributes: ['id', 'inscriptionId', 'schoolPeriodId', 'gradeId', 'subjectId', 'sectionId'],
       transaction: options.transaction,
     });
 

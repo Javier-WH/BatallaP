@@ -295,7 +295,10 @@ export class PeriodClosureExecutor {
           if (targetPeriodGrade.subjects && targetPeriodGrade.subjects.length > 0) {
             const regularSubjects = targetPeriodGrade.subjects.map((s: any) => ({
               inscriptionId: newInscription.id,
-              subjectId: s.id
+              subjectId: s.id,
+              schoolPeriodId: nextPeriod.id,
+              gradeId: targetGradeId,
+              sectionId: finalSectionId
             }));
 
             if (regularSubjects.length > 0) {
@@ -354,7 +357,10 @@ export class PeriodClosureExecutor {
 
                 await InscriptionSubject.create({
                   inscriptionId: mpInscription.id,
-                  subjectId: pendingSubj.subjectId
+                  subjectId: pendingSubj.subjectId,
+                  schoolPeriodId: nextPeriod.id,
+                  gradeId: mpGradeId,
+                  sectionId: mpSection.id
                 }, { transaction });
 
                 stats.pendingSubjectsCreated++;

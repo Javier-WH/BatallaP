@@ -310,6 +310,9 @@ export const registerStudentsInMp = async (req: Request, res: Response) => {
         await InscriptionSubject.create({
           inscriptionId: mpInscription.id,
           subjectId,
+          schoolPeriodId: mpInscription.schoolPeriodId,
+          gradeId: mpInscription.gradeId,
+          sectionId: mpInscription.sectionId,
         }, { transaction: t });
       }
 

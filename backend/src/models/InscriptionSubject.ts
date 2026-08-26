@@ -7,17 +7,23 @@ interface InscriptionSubjectAttributes {
   id: number;
   inscriptionId: number;
   subjectId: number;
+  schoolPeriodId?: number | null;
+  gradeId?: number | null;
+  sectionId?: number | null;
   subject?: any;
   inscription?: any;
   finalGrade?: any;
 }
 
-interface InscriptionSubjectCreationAttributes extends Optional<InscriptionSubjectAttributes, 'id'> { }
+interface InscriptionSubjectCreationAttributes extends Optional<InscriptionSubjectAttributes, 'id' | 'schoolPeriodId' | 'gradeId' | 'sectionId'> { }
 
 class InscriptionSubject extends Model<InscriptionSubjectAttributes, InscriptionSubjectCreationAttributes> implements InscriptionSubjectAttributes {
   public id!: number;
   public inscriptionId!: number;
   public subjectId!: number;
+  public schoolPeriodId!: number | null;
+  public gradeId!: number | null;
+  public sectionId!: number | null;
 
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
@@ -43,6 +49,21 @@ InscriptionSubject.init(
       type: DataTypes.INTEGER,
       references: { model: Subject, key: 'id' },
       allowNull: false
+    },
+    schoolPeriodId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      comment: 'Denormalizado desde Inscription.schoolPeriodId',
+    },
+    gradeId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      comment: 'Denormalizado desde Inscription.gradeId',
+    },
+    sectionId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      comment: 'Denormalizado desde Inscription.sectionId',
     }
   },
   {
@@ -52,6 +73,10 @@ InscriptionSubject.init(
       {
         unique: true,
         fields: ['inscriptionId', 'subjectId']
+      },
+      {
+        fields: ['schoolPeriodId', 'gradeId', 'subjectId'],
+        name: 'idx_inscription_subjects_context',
       }
     ]
   }

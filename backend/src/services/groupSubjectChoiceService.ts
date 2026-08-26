@@ -55,6 +55,7 @@ export async function seedChoicesForInscription(
     const inscriptionSubjects = await InscriptionSubject.findAll({
       where: { inscriptionId },
       include: [{ model: Subject, as: 'subject' }],
+      attributes: ['id', 'inscriptionId', 'subjectId', 'schoolPeriodId', 'gradeId', 'sectionId'],
       transaction: t,
     });
 
@@ -167,8 +168,16 @@ export async function changeGroupSubjectFromTerm(
 
     // Ensure the new subject has an InscriptionSubject row so the professor
     // can enter notes. The old subject's row and notes are left untouched.
+    const ctxIns = await Inscription.findByPk(inscriptionId, { attributes: ['id', 'schoolPeriodId', 'gradeId', 'sectionId'], transaction: t });
     await InscriptionSubject.findOrCreate({
       where: { inscriptionId, subjectId: newSubjectId },
+      defaults: {
+        inscriptionId,
+        subjectId: newSubjectId,
+        schoolPeriodId: ctxIns?.schoolPeriodId ?? null,
+        gradeId: ctxIns?.gradeId ?? null,
+        sectionId: ctxIns?.sectionId ?? null,
+      },
       transaction: t,
     });
 
@@ -211,8 +220,16 @@ export async function setGroupSubjectForTerm(
       { transaction: t }
     );
     // Ensure the InscriptionSubject row exists so notes can be attached.
+    const ctxIns = await Inscription.findByPk(inscriptionId, { attributes: ['id', 'schoolPeriodId', 'gradeId', 'sectionId'], transaction: t });
     await InscriptionSubject.findOrCreate({
       where: { inscriptionId, subjectId },
+      defaults: {
+        inscriptionId,
+        subjectId,
+        schoolPeriodId: ctxIns?.schoolPeriodId ?? null,
+        gradeId: ctxIns?.gradeId ?? null,
+        sectionId: ctxIns?.sectionId ?? null,
+      },
       transaction: t,
     });
     if (ownTransaction) await t.commit();

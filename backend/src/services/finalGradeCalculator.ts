@@ -318,7 +318,10 @@ export class FinalGradeCalculator {
           plantelId: existingGrade?.plantelId ?? institutionPlantelId,
           gradeType,
           originalScore: hasRepair ? originalScore : (existingGrade?.originalScore ?? null),
-          originalStatus: hasRepair ? originalStatus : (existingGrade?.originalStatus ?? null)
+          originalStatus: hasRepair ? originalStatus : (existingGrade?.originalStatus ?? null),
+          schoolPeriodId: inscriptionSimple.schoolPeriodId,
+          subjectId: insSub.subjectId,
+          gradeId: inscriptionSimple.gradeId,
         },
         { transaction: options.transaction }
       );

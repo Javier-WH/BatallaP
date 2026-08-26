@@ -635,7 +635,10 @@ export const enrollMatriculatedStudent = async (req: Request, res: Response) => 
         .filter((s: any) => !s.subjectGroupId)
         .map((s: any) => ({
           inscriptionId: inscription.id,
-          subjectId: s.id
+          subjectId: s.id,
+          schoolPeriodId: targetPeriodId,
+          gradeId: targetGradeId,
+          sectionId: targetSectionId
         }));
 
       // 2. Selected group subjects
@@ -643,7 +646,10 @@ export const enrollMatriculatedStudent = async (req: Request, res: Response) => 
         .filter((s: any) => s.subjectGroupId && selectedGroupSubjectIds.includes(s.id))
         .map((s: any) => ({
           inscriptionId: inscription.id,
-          subjectId: s.id
+          subjectId: s.id,
+          schoolPeriodId: targetPeriodId,
+          gradeId: targetGradeId,
+          sectionId: targetSectionId
         }));
 
       const subjectsToAdd = [...coreSubjects, ...groupSubjects];
@@ -1378,7 +1384,10 @@ export const updateInscription = async (req: Request, res: Response) => {
           })
           .map((s: any) => ({
             inscriptionId: inscription.id,
-            subjectId: s.id
+            subjectId: s.id,
+            schoolPeriodId: inscription.schoolPeriodId,
+            gradeId: gradeId,
+            sectionId: inscription.sectionId
           }));
 
         console.log(`[UpdateInscription] Enrolling in ${subjectsToAdd.length} subjects`);
@@ -1436,6 +1445,13 @@ export const updateInscription = async (req: Request, res: Response) => {
           for (const subjectId of subjectIds) {
             await InscriptionSubject.findOrCreate({
               where: { inscriptionId: inscription.id, subjectId: Number(subjectId) },
+              defaults: {
+                inscriptionId: inscription.id,
+                subjectId: Number(subjectId),
+                schoolPeriodId: inscription.schoolPeriodId,
+                gradeId: inscription.gradeId,
+                sectionId: inscription.sectionId,
+              },
               transaction: t,
             });
           }
@@ -1483,7 +1499,13 @@ export const addSubjectToInscription = async (req: Request, res: Response) => {
     const inscription = await Inscription.findByPk(id);
     if (!inscription) return res.status(404).json({ error: 'Inscripción no encontrada' });
 
-    await InscriptionSubject.create({ inscriptionId: Number(id), subjectId });
+    await InscriptionSubject.create({
+      inscriptionId: Number(id),
+      subjectId,
+      schoolPeriodId: inscription.schoolPeriodId,
+      gradeId: inscription.gradeId,
+      sectionId: inscription.sectionId,
+    });
     res.json({ message: 'Materia agregada a la inscripción' });
   } catch (error: any) {
     res.status(500).json({ error: 'Error agregando materia', details: error.message });
@@ -1751,7 +1773,10 @@ export const updateMatriculation = async (req: Request, res: Response) => {
             .filter((s: any) => !s.subjectGroupId)
             .map((s: any) => ({
               inscriptionId: inscription.id,
-              subjectId: s.id
+              subjectId: s.id,
+              schoolPeriodId: inscription.schoolPeriodId,
+              gradeId: gradeId,
+              sectionId: inscription.sectionId
             }));
 
           if (subjectsToAdd.length > 0) {
@@ -1799,6 +1824,13 @@ export const updateMatriculation = async (req: Request, res: Response) => {
             for (const subjectId of subjectIds) {
               await InscriptionSubject.findOrCreate({
                 where: { inscriptionId: inscription.id, subjectId: Number(subjectId) },
+                defaults: {
+                  inscriptionId: inscription.id,
+                  subjectId: Number(subjectId),
+                  schoolPeriodId: inscription.schoolPeriodId,
+                  gradeId: inscription.gradeId,
+                  sectionId: inscription.sectionId,
+                },
                 transaction: t,
               });
             }
