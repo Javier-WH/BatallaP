@@ -12,6 +12,7 @@ import {
   LockOutlined,
   DownOutlined,
   SettingOutlined,
+  DollarOutlined,
 } from '@ant-design/icons';
 
 const NavButton: React.FC<{
@@ -63,9 +64,10 @@ const AdminLayout: React.FC = () => {
   const configItems: MenuProps['items'] = [
     { key: '/admin/planteles', icon: <BookOutlined />, label: 'Planteles' },
     { key: '/admin/enrollment-questions', icon: <QuestionCircleOutlined />, label: 'Preguntas' },
+    { key: '/admin/pagos', icon: <DollarOutlined />, label: 'Pagos' },
   ];
 
-  const isConfigActive = location.pathname === '/admin/planteles' || location.pathname === '/admin/enrollment-questions';
+  const isConfigActive = location.pathname === '/admin/planteles' || location.pathname === '/admin/enrollment-questions' || location.pathname === '/admin/pagos';
 
   return (
     <div className="flex flex-col h-full min-h-0">

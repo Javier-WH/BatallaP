@@ -85,6 +85,7 @@ import observationRoutes from '@/routes/observationRoutes';
 import subjectPresetRoutes from '@/routes/subjectPresetRoutes';
 import structurePresetRoutes from '@/routes/structurePresetRoutes';
 import pendingSubjectRoutes from '@/routes/pendingSubjectRoutes';
+import paymentsRoutes from '@/routes/paymentsRoutes';
 
 app.get('/', (req, res) => {
   res.send('API is running...');
@@ -132,6 +133,7 @@ app.use('/api/observations', observationRoutes);
 app.use('/api/subject-presets', subjectPresetRoutes);
 app.use('/api/structure-presets', structurePresetRoutes);
 app.use('/api/pending-subjects', pendingSubjectRoutes);
+app.use('/api/payments', paymentsRoutes);
 
 export { sessionStore };
 export default app;

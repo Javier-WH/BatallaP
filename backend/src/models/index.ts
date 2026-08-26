@@ -140,6 +140,12 @@ import SectionGuide from './SectionGuide';
 import StudentObservation from './StudentObservation';
 import SubjectPreset from './SubjectPreset';
 import StructurePreset from './StructurePreset';
+import ExchangeRateType from './ExchangeRateType';
+import ExchangeRate from './ExchangeRate';
+import Fee from './Fee';
+import SellableItem from './SellableItem';
+import EnrollmentPlan from './EnrollmentPlan';
+import EnrollmentPlanItem from './EnrollmentPlanItem';
 
 
 // ... (Existing User/Person/Role/Contact associations) ...
@@ -432,6 +438,39 @@ Matriculation.hasMany(EnrollmentReport, { foreignKey: 'matriculationId', as: 'en
 EnrollmentReport.belongsTo(Person, { foreignKey: 'personId', as: 'student' });
 Person.hasMany(EnrollmentReport, { foreignKey: 'personId', as: 'enrollmentReports' });
 
+// ── Payments module ──────────────────────────────────────────────
+// ExchangeRateType <-> ExchangeRate
+ExchangeRateType.hasMany(ExchangeRate, { foreignKey: 'exchangeRateTypeId', as: 'rates' });
+ExchangeRate.belongsTo(ExchangeRateType, { foreignKey: 'exchangeRateTypeId', as: 'type' });
+
+// ExchangeRateType <-> Fee
+ExchangeRateType.hasMany(Fee, { foreignKey: 'exchangeRateTypeId', as: 'fees' });
+Fee.belongsTo(ExchangeRateType, { foreignKey: 'exchangeRateTypeId', as: 'exchangeRateType' });
+
+// SchoolPeriod <-> Fee
+SchoolPeriod.hasMany(Fee, { foreignKey: 'schoolPeriodId', as: 'fees' });
+Fee.belongsTo(SchoolPeriod, { foreignKey: 'schoolPeriodId', as: 'schoolPeriod' });
+
+// ExchangeRateType <-> SellableItem
+ExchangeRateType.hasMany(SellableItem, { foreignKey: 'exchangeRateTypeId', as: 'sellableItems' });
+SellableItem.belongsTo(ExchangeRateType, { foreignKey: 'exchangeRateTypeId', as: 'exchangeRateType' });
+
+// ExchangeRateType <-> EnrollmentPlan (target currency)
+ExchangeRateType.hasMany(EnrollmentPlan, { foreignKey: 'targetExchangeRateTypeId', as: 'enrollmentPlans' });
+EnrollmentPlan.belongsTo(ExchangeRateType, { foreignKey: 'targetExchangeRateTypeId', as: 'targetExchangeRateType' });
+
+// EnrollmentPlan <-> EnrollmentPlanItem
+EnrollmentPlan.hasMany(EnrollmentPlanItem, { foreignKey: 'enrollmentPlanId', as: 'items' });
+EnrollmentPlanItem.belongsTo(EnrollmentPlan, { foreignKey: 'enrollmentPlanId', as: 'plan' });
+
+// EnrollmentPlanItem <-> Fee
+Fee.hasMany(EnrollmentPlanItem, { foreignKey: 'feeId', as: 'planItems' });
+EnrollmentPlanItem.belongsTo(Fee, { foreignKey: 'feeId', as: 'fee' });
+
+// EnrollmentPlanItem <-> SellableItem
+SellableItem.hasMany(EnrollmentPlanItem, { foreignKey: 'sellableItemId', as: 'planItems' });
+EnrollmentPlanItem.belongsTo(SellableItem, { foreignKey: 'sellableItemId', as: 'sellableItem' });
+
 export {
   User,
   Person,
@@ -496,5 +535,11 @@ export {
   SectionGuide,
   StudentObservation,
   SubjectPreset,
-  StructurePreset
+  StructurePreset,
+  ExchangeRateType,
+  ExchangeRate,
+  Fee,
+  SellableItem,
+  EnrollmentPlan,
+  EnrollmentPlanItem
 };

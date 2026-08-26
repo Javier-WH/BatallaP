@@ -26,6 +26,7 @@ import GradeEditPermissions from '@/pages/admin/GradeEditPermissions';
 import TeacherProjection from '@/pages/control-estudios/TeacherProjection';
 import SchoolManagement from '@/pages/admin/SchoolManagement';
 import EnrollmentQuestions from '@/pages/admin/EnrollmentQuestions';
+import PaymentsConfig from '@/pages/admin/PaymentsConfig';
 import TeacherPanel from '@/pages/teacher/TeacherPanel';
 import RepairGradesPanel from '@/pages/teacher/RepairGradesPanel';
 import PendingSubjectTeacherPanel from '@/pages/teacher/PendingSubjectTeacherPanel';
@@ -219,6 +220,7 @@ function AppRoutes() {
           <Route path="projection" element={<TeacherProjection />} />
           <Route path="planteles" element={<SchoolManagement />} />
           <Route path="enrollment-questions" element={<EnrollmentQuestions />} />
+          <Route path="pagos" element={<PaymentsConfig />} />
           <Route path="search" element={<SearchUsers />} />
           <Route path="edit/:id" element={<EditUser />} />
           <Route path="permisos-edicion-notas" element={<GradeEditPermissions />} />
