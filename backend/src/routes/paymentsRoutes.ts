@@ -8,6 +8,7 @@ import {
   // Exchange rates
   listExchangeRates,
   upsertExchangeRate,
+  getRatesAtDate,
   bulkImportExchangeRates,
   // Fees
   listFees,
@@ -37,6 +38,7 @@ router.delete('/exchange-rate-types/:id', deleteExchangeRateType);
 
 // ── Exchange Rates (historical) ──
 router.get('/exchange-rates', listExchangeRates);
+router.get('/exchange-rates/at-date', getRatesAtDate);
 router.post('/exchange-rates', upsertExchangeRate);
 router.post('/exchange-rates/bulk', bulkImportExchangeRates);
 

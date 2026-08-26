@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Layout, Button, Badge, Modal, Dropdown, Tag } from 'antd';
 import {
   LeftOutlined,
@@ -21,6 +21,8 @@ import {
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { useSchool } from '@/context/SchoolContext';
+import ExchangeRateBar from '@/components/ExchangeRateBar';
+import { getRatesAtDate } from '@/services/paymentsService';
 
 const { Header, Sider, Content } = Layout;
 
@@ -30,6 +32,23 @@ const MainLayout: React.FC = () => {
   const { settings, viewPeriod, allPeriods, isReadOnly, setViewPeriod, resetViewPeriod } = useSchool();
   const navigate = useNavigate();
   const location = useLocation();
+
+  // Exchange rates for the bar
+  const [usdRate, setUsdRate] = useState<number | null>(null);
+  const [eurRate, setEurRate] = useState<number | null>(null);
+  const [rateDate, setRateDate] = useState<string | null>(null);
+
+  useEffect(() => {
+    getRatesAtDate()
+      .then((result) => {
+        const usd = result.rates.find(r => r.currency === 'USD');
+        const eur = result.rates.find(r => r.currency === 'EUR');
+        setUsdRate(usd?.rate ?? null);
+        setEurRate(eur?.rate ?? null);
+        setRateDate(usd?.date ?? eur?.date ?? null);
+      })
+      .catch(() => { /* rates not available — bar shows — */ });
+  }, []);
 
   const canSeePreinscripcion = user?.roles?.some(r => r === 'Master' || r === 'Administrador');
   const visiblePeriods = allPeriods.filter(p => p.status !== 'preinscripcion' || canSeePreinscripcion);
@@ -285,6 +304,7 @@ const MainLayout: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-4">
+            <ExchangeRateBar usdRate={usdRate} eurRate={eurRate} rateDate={rateDate} />
             <Button
               danger
               type="primary"

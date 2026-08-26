@@ -119,6 +119,22 @@ export async function listExchangeRates(params?: { typeId?: number; from?: strin
   return data;
 }
 
+export interface RateAtDate {
+  typeId: number;
+  code: string;
+  name: string;
+  currency: string;
+  rate: number | null;
+  date: string | null;
+}
+
+export async function getRatesAtDate(date?: string): Promise<{ date: string; rates: RateAtDate[] }> {
+  const { data } = await api.get<{ date: string; rates: RateAtDate[] }>('/payments/exchange-rates/at-date', {
+    params: date ? { date } : undefined,
+  });
+  return data;
+}
+
 export async function upsertExchangeRate(payload: { exchangeRateTypeId: number; rate: number; date: string }): Promise<ExchangeRate> {
   const { data } = await api.post<ExchangeRate>('/payments/exchange-rates', payload);
   return data;

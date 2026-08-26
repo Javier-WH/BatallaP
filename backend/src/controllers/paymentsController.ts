@@ -165,6 +165,37 @@ export const upsertExchangeRate = async (req: Request, res: Response) => {
   }
 };
 
+// Get the rate closest to (or on) a specific date for all active types
+export const getRatesAtDate = async (req: Request, res: Response) => {
+  try {
+    const { date } = req.query;
+    const targetDate = date ? String(date) : new Date().toISOString().slice(0, 10);
+
+    const types = await ExchangeRateType.findAll({ where: { active: true } });
+    const result: any[] = [];
+
+    for (const t of types) {
+      const rate = await ExchangeRate.findOne({
+        where: { exchangeRateTypeId: t.id, date: { [Op.lte]: targetDate } },
+        order: [['date', 'DESC']],
+      });
+      result.push({
+        typeId: t.id,
+        code: t.code,
+        name: t.name,
+        currency: t.currency,
+        rate: rate ? Number(rate.rate) : null,
+        date: rate ? rate.date : null,
+      });
+    }
+
+    return res.json({ date: targetDate, rates: result });
+  } catch (error) {
+    console.error('[getRatesAtDate] Error:', error);
+    return res.status(500).json({ message: 'Error al obtener tipos de cambio' });
+  }
+};
+
 export const bulkImportExchangeRates = async (req: Request, res: Response) => {
   try {
     const { rates } = req.body; // [{ exchangeRateTypeId, rate, date }, ...]
