@@ -15,7 +15,7 @@ import { assignGuardians, GuardianAssignment } from '@/services/studentGuardianS
 import { EscolaridadStatus } from '@/types/enrollment';
 import { registerAndEnrollStudent } from '@/services/studentEnrollmentService';
 import { generateEnrollmentReport } from '@/services/enrollmentReportService';
-import { sortInscriptions, canonicalInscriptionOrder, numericDocumentSQL } from '@/services/studentSortService';
+import { sortInscriptions, canonicalInscriptionOrder, numericDocumentSQL, fieldExpr, quoteQualified, lower } from '@/services/studentSortService';
 import { parsePagination, buildPaginatedResponse } from '@/services/paginationService';
 
 const ESCOLARIDAD_VALUES: EscolaridadStatus[] = ['regular', 'repitiente', 'materia_pendiente'];
@@ -270,13 +270,13 @@ export const getMatriculations = async (req: Request, res: Response) => {
     ];
 
     const canonicalOrder: any[] = [
-      [literal(`FIELD(\`student\`.\`documentType\`, 'Venezolano', 'Cedula Escolar', 'Pasaporte', 'Extranjero')`), 'ASC'],
-      [literal(numericDocumentSQL('`student`.`document`')), 'ASC'],
-      [literal('LOWER(`student`.`lastName`)'), 'ASC'],
-      [literal('LOWER(`student`.`firstName`)'), 'ASC'],
-      [literal('COALESCE(`grade`.`order`, 9999)'), 'ASC'],
-      [literal('LOWER(`grade`.`name`)'), 'ASC'],
-      [literal('LOWER(`section`.`name`)'), 'ASC'],
+      [literal(fieldExpr(quoteQualified('student', 'documentType'), ['Venezolano', 'Cedula Escolar', 'Pasaporte', 'Extranjero'])), 'ASC'],
+      [literal(numericDocumentSQL(quoteQualified('student', 'document'))), 'ASC'],
+      [literal(lower(quoteQualified('student', 'lastName'))), 'ASC'],
+      [literal(lower(quoteQualified('student', 'firstName'))), 'ASC'],
+      [literal(`COALESCE(${quoteQualified('grade', 'order')}, 9999)`), 'ASC'],
+      [literal(lower(quoteQualified('grade', 'name'))), 'ASC'],
+      [literal(lower(quoteQualified('section', 'name'))), 'ASC'],
       ['id', 'ASC'],
     ];
 
@@ -331,7 +331,7 @@ export const getMatriculations = async (req: Request, res: Response) => {
           { model: Section, as: 'section' },
           { model: EnrollmentDocument, as: 'documents' }
         ],
-        order: [literal(`FIELD(\`Matriculation\`.\`id\`, ${ids.join(',')})`)],
+        order: [literal(fieldExpr(quoteQualified('Matriculation', 'id'), ids.map(String)))],
       });
     } else {
       matriculations = [];
@@ -716,11 +716,12 @@ export const getInscriptions = async (req: Request, res: Response) => {
     // explicit filtering via the `hidden` query param (used by MatriculationEnrollment's
     // "inscrito/no_inscrito" filter).
     const andConditions: any[] = [];
+    const hiddenCol = quoteQualified('matriculation', 'hiddenFromControlEstudios');
     if (!isPrivileged) {
-      andConditions.push(literal('`matriculation`.`hiddenFromControlEstudios` = false'));
+      andConditions.push(literal(`${hiddenCol} = false`));
     } else if (hidden !== undefined) {
       const hiddenBool = hidden === 'true' || hidden === '1';
-      andConditions.push(literal(`\`matriculation\`.\`hiddenFromControlEstudios\` = ${hiddenBool ? 'true' : 'false'}`));
+      andConditions.push(literal(`${hiddenCol} = ${hiddenBool ? 'true' : 'false'}`));
     }
 
     // Exclude auxiliary "Materia Pendiente" inscriptions by default.
@@ -838,7 +839,7 @@ export const getInscriptions = async (req: Request, res: Response) => {
         ],
         // Preserve the canonical order from step 1 (Inscription.findAll with
         // where id IN (...) would otherwise return rows in PK order).
-        order: [literal(`FIELD(\`Inscription\`.\`id\`, ${ids.join(',')})`)],
+        order: [literal(fieldExpr(quoteQualified('Inscription', 'id'), ids.map(String)))],
       });
     } else {
       inscriptions = [];
@@ -915,11 +916,12 @@ export const getInscriptionsStats = async (req: Request, res: Response) => {
     const isPrivileged = userRoles.includes('Master') || userRoles.includes('Administrador');
 
     const andConditions: any[] = [];
+    const hiddenCol = quoteQualified('matriculation', 'hiddenFromControlEstudios');
     if (!isPrivileged) {
-      andConditions.push(literal('`matriculation`.`hiddenFromControlEstudios` = false'));
+      andConditions.push(literal(`${hiddenCol} = false`));
     } else if (hidden !== undefined) {
       const hiddenBool = hidden === 'true' || hidden === '1';
-      andConditions.push(literal(`\`matriculation\`.\`hiddenFromControlEstudios\` = ${hiddenBool ? 'true' : 'false'}`));
+      andConditions.push(literal(`${hiddenCol} = ${hiddenBool ? 'true' : 'false'}`));
     }
 
     // Exclude auxiliary "Materia Pendiente" inscriptions (same logic as getInscriptions)

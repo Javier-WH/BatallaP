@@ -21,6 +21,9 @@ import {
   canonicalInscriptionOrder,
   type SortableInscription,
 } from '@/services/studentSortService';
+import sequelize from '@/config/database';
+
+const isSqlite = sequelize.getDialect() === 'sqlite';
 
 describe('canonicalInscriptionOrder SQL ↔ JS equivalence', () => {
   describe('canonicalInscriptionOrder()', () => {
@@ -40,15 +43,18 @@ describe('canonicalInscriptionOrder SQL ↔ JS equivalence', () => {
         return [expr, item[1]];
       };
 
-      // 1. documentType priority via FIELD()
+      // 1. documentType priority — FIELD() on MySQL, CASE WHEN on SQLite.
       let [expr, dir] = at(0);
-      expect(expr).toMatch(/FIELD\([\s\S]+documentType[\s\S]+Venezolano[\s\S]+Cedula Escolar[\s\S]+Pasaporte[\s\S]+Extranjero/);
+      const docTypePattern = isSqlite
+        ? /CASE[\s\S]+documentType[\s\S]+Venezolano[\s\S]+Cedula Escolar[\s\S]+Pasaporte[\s\S]+Extranjero/
+        : /FIELD\([\s\S]+documentType[\s\S]+Venezolano[\s\S]+Cedula Escolar[\s\S]+Pasaporte[\s\S]+Extranjero/;
+      expect(expr).toMatch(docTypePattern);
       expect(dir).toBe('ASC');
 
-      // 2. numeric document via nested REPLACE + CAST AS UNSIGNED (portable, no REGEXP_REPLACE)
+      // 2. numeric document via nested REPLACE + CAST (UNSIGNED on MySQL, INTEGER on SQLite)
       [expr, dir] = at(1);
       expect(expr).toMatch(/REPLACE\([\s\S]+document/);
-      expect(expr).toMatch(/UNSIGNED/);
+      expect(expr).toMatch(isSqlite ? /INTEGER/ : /UNSIGNED/);
       expect(expr).toMatch(/COALESCE/);
       expect(dir).toBe('ASC');
 

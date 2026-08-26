@@ -14,22 +14,30 @@ import {
   Setting,
   Term
 } from '@/models/index';
-import bcrypt from 'bcrypt';
+
+// Monotonic counters to generate unique default values across calls
+// within the same test (several columns have UNIQUE constraints).
+let testUserCounter = 0;
+let testStructureCounter = 0;
 
 export async function createTestUser(overrides: Partial<any> = {}) {
-  const hashedPassword = await bcrypt.hash('password123', 10);
-  
+  testUserCounter += 1;
+  const suffix = testUserCounter.toString().padStart(6, '0');
+
+  // Do NOT pre-hash the password: the User model has a beforeCreate hook
+  // that hashes it. Pre-hashing here would cause a double hash and make
+  // every login fail whenever `overrides` omits `password`.
   const user = await User.create({
-    username: overrides.username || 'testuser',
-    password: hashedPassword,
-    ...overrides
+    username: overrides.username || `testuser${suffix}`,
+    password: overrides.password || 'password123',
+    ...overrides,
   });
 
   const person = await Person.create({
     userId: user.id,
     firstName: overrides.firstName || 'Test',
     lastName: overrides.lastName || 'User',
-    document: overrides.document || '12345678',
+    document: overrides.document || `${suffix}`,
     documentType: overrides.documentType || 'Venezolano',
     birthdate: overrides.birthdate || new Date('2000-01-01'),
     gender: overrides.gender || 'M'
@@ -39,10 +47,14 @@ export async function createTestUser(overrides: Partial<any> = {}) {
 }
 
 export async function createTestRole(name: 'Master' | 'Administrador' | 'Control de Estudios' | 'Profesor' | 'Representante' | 'Alumno') {
-  return await Role.create({ name });
+  // Use findOrCreate to avoid unique constraint violations when the same role
+  // is requested multiple times across different tests in the same suite.
+  const [role] = await Role.findOrCreate({ where: { name } });
+  return role;
 }
 
 export async function createTestPeriod(overrides: Partial<any> = {}) {
+  testStructureCounter += 1;
   // Accepts either `status` or the legacy `isActive` flag
   let status = overrides.status;
   if (!status) {
@@ -50,9 +62,10 @@ export async function createTestPeriod(overrides: Partial<any> = {}) {
     status = active ? 'activo' : 'historico';
   }
 
+  const idx = testStructureCounter;
   return await SchoolPeriod.create({
-    period: overrides.period || '2025-2026',
-    name: overrides.name || 'Año Escolar 2025-2026',
+    period: overrides.period || `2025-2026-${idx}`,
+    name: overrides.name || `Año Escolar 2025-2026 #${idx}`,
     startYear: overrides.startYear || 2025,
     endYear: overrides.endYear || 2026,
     status
@@ -60,21 +73,27 @@ export async function createTestPeriod(overrides: Partial<any> = {}) {
 }
 
 export async function createTestGrade(overrides: Partial<any> = {}) {
+  testStructureCounter += 1;
+  const idx = testStructureCounter;
   return await Grade.create({
-    name: overrides.name || 'Primer año',
+    name: overrides.name || `Primer año #${idx}`,
     isDiversified: overrides.isDiversified || false
   });
 }
 
 export async function createTestSection(overrides: Partial<any> = {}) {
+  testStructureCounter += 1;
+  const idx = testStructureCounter;
   return await Section.create({
-    name: overrides.name || 'Sección A'
+    name: overrides.name || `Sección ${String.fromCharCode(65 + (idx % 26))}${Math.floor(idx / 26)}`
   });
 }
 
 export async function createTestSubject(overrides: Partial<any> = {}) {
+  testStructureCounter += 1;
+  const idx = testStructureCounter;
   return await Subject.create({
-    name: overrides.name || 'Matemática'
+    name: overrides.name || `Matemática #${idx}`
   });
 }
 

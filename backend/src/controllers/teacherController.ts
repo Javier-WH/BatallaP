@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { Person, Role, TeacherAssignment, PeriodGradeSubject, Subject, Grade, Section, PeriodGrade, SchoolPeriod } from '@/models/index';
 import { Op, literal } from 'sequelize';
+import { fieldExpr, quoteQualified } from '@/services/studentSortService';
 import { parsePagination, buildPaginatedResponse } from '@/services/paginationService';
 
 // Extender la interfaz de TeacherAssignment para TypeScript
@@ -84,7 +85,7 @@ export const getTeachers = async (req: Request, res: Response) => {
       teachers = await Person.findAll({
         where: { id: { [Op.in]: ids } },
         include: baseInclude,
-        order: [literal(`FIELD(\`Person\`.\`id\`, ${ids.join(',')})`)],
+        order: [literal(fieldExpr(quoteQualified('Person', 'id'), ids.map(String)))],
       });
     }
 

@@ -98,14 +98,15 @@ describe('Enrollment Form - Data Type Validation', () => {
       // Verify Person record
       const person = await Person.findByPk(res.body.person.id);
       expect(person).not.toBeNull();
-      expect(person!.firstName).toBe('Juan');
-      expect(person!.lastName).toBe('Pérez');
+      // Person.beforeCreate uppercases firstName/lastName/pathology/livingWith
+      expect(person!.firstName).toBe('JUAN');
+      expect(person!.lastName).toBe('PÉREZ');
       expect(person!.documentType).toBe('Venezolano');
       expect(person!.document).toBe(payload.document); // stored as-is
       expect(person!.gender).toBe('M');
       expect(person!.birthdate).toBeTruthy(); // birthdate stored
-      expect(person!.pathology).toBe('Asma');
-      expect(person!.livingWith).toBe('ambos_padres');
+      expect(person!.pathology).toBe('ASMA');
+      expect(person!.livingWith).toBe('AMBOS_PADRES');
       expect(person!.userId).toBeNull(); // student has no user account
     });
 
@@ -168,7 +169,7 @@ describe('Enrollment Form - Data Type Validation', () => {
         .expect(201);
 
       const person = await Person.findByPk(res.body.person.id);
-      expect(person!.pathology).toBe('Asma y alergias');
+      expect(person!.pathology).toBe('ASMA Y ALERGIAS');
     });
 
     it('should store null pathology for none/nulla', async () => {
@@ -190,7 +191,7 @@ describe('Enrollment Form - Data Type Validation', () => {
         .expect(201);
 
       const person = await Person.findByPk(res.body.person.id);
-      expect(person!.livingWith).toBe('madre');
+      expect(person!.livingWith).toBe('MADRE');
     });
 
     it('should store birthdate as Date object', async () => {
@@ -255,12 +256,13 @@ describe('Enrollment Form - Data Type Validation', () => {
 
       const mother = guardians.find((g: any) => g.relationship === 'mother') as any;
       expect(mother).toBeDefined();
-      expect(mother.profile.firstName).toBe('María');
+      // GuardianProfile.beforeCreate uppercases firstName/lastName
+      expect(mother.profile.firstName).toBe('MARÍA');
       expect(mother.profile.phone).toBe('0414-1112233');
 
       const father = guardians.find((g: any) => g.relationship === 'father') as any;
       expect(father).toBeDefined();
-      expect(father.profile.firstName).toBe('Pedro');
+      expect(father.profile.firstName).toBe('PEDRO');
     });
 
     it('should create matriculation with correct data', async () => {

@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { User, Person, Role, Contact, PersonRole, GuardianProfile, SchoolPeriod, Inscription, Matriculation, StudentGuardian } from '@/models/index';
 import sequelize from '@/config/database';
 import { Op, literal } from 'sequelize';
+import { fieldExpr, quoteQualified } from '@/services/studentSortService';
 import bcrypt from 'bcrypt';
 import { parsePagination, buildPaginatedResponse } from '@/services/paginationService';
 
@@ -172,7 +173,7 @@ export const searchUsers = async (req: Request, res: Response) => {
           inscriptionInclude,
           matriculationInclude,
         ],
-        order: [literal(`FIELD(\`Person\`.\`id\`, ${ids.join(',')})`)],
+        order: [literal(fieldExpr(quoteQualified('Person', 'id'), ids.map(String)))],
       });
     }
 

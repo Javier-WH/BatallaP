@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { Op, literal } from 'sequelize';
+import { fieldExpr, quoteQualified } from '@/services/studentSortService';
 import {
   GradeEditPermission,
   GradeEditAudit,
@@ -161,7 +162,7 @@ export const getPermissions = async (req: Request, res: Response) => {
       permissions = await GradeEditPermission.findAll({
         where: { id: { [Op.in]: ids } },
         include: baseInclude,
-        order: [literal(`FIELD(\`GradeEditPermission\`.\`id\`, ${ids.join(',')})`)],
+        order: [literal(fieldExpr(quoteQualified('GradeEditPermission', 'id'), ids.map(String)))],
       });
     }
 

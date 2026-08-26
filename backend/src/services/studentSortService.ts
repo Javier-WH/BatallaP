@@ -18,12 +18,73 @@
  */
 
 import { literal, type OrderItem } from 'sequelize';
+import sequelize from '@/config/database';
 
 export type StudentDocumentType =
   | 'Venezolano'
   | 'Cedula Escolar'
   | 'Pasaporte'
   | 'Extranjero';
+
+/**
+ * Returns true when the active Sequelize dialect is SQLite.
+ * Used to emit portable SQL across MySQL (production) and SQLite (tests).
+ */
+function isSqliteDialect(): boolean {
+  try {
+    return sequelize.getDialect() === 'sqlite';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Quotes a SQL identifier (column or table alias) using the dialect-appropriate
+ * quoting character: backticks for MySQL, double quotes for SQLite.
+ */
+export function quoteIdentifier(name: string): string {
+  return isSqliteDialect() ? `"${name}"` : `\`${name}\``;
+}
+
+/**
+ * Quotes a qualified identifier like `student`.`document` →
+ * `"student"."document"` on SQLite, `student`.`document` on MySQL.
+ */
+export function quoteQualified(tableAlias: string, column: string): string {
+  return `${quoteIdentifier(tableAlias)}.${quoteIdentifier(column)}`;
+}
+
+/**
+ * Portable CASE expression that mirrors MySQL's `FIELD(x, a, b, c)`:
+ * returns the 1-based index of `x` in the list, or 0 when not found.
+ *
+ * SQLite has no `FIELD()` function, so we emit an equivalent `CASE WHEN`.
+ */
+export function fieldExpr(column: string, values: string[]): string {
+  if (!isSqliteDialect()) {
+    return `FIELD(${column}, ${values.map((v) => `'${v}'`).join(', ')})`;
+  }
+  const whens = values
+    .map((v, i) => `WHEN ${column} = '${v}' THEN ${i + 1}`)
+    .join(' ');
+  return `CASE ${whens} ELSE 0 END`;
+}
+
+/**
+ * Portable cast to an unsigned/integer type. MySQL uses `AS UNSIGNED`,
+ * SQLite uses `AS INTEGER`.
+ */
+export function castUnsigned(expr: string): string {
+  return isSqliteDialect() ? `CAST(${expr} AS INTEGER)` : `CAST(${expr} AS UNSIGNED)`;
+}
+
+/**
+ * Portable LOWER() — both MySQL and SQLite support it, but this helper
+ * exists for symmetry with the other helpers.
+ */
+export function lower(expr: string): string {
+  return `LOWER(${expr})`;
+}
 
 /** Prioridad de tipo de documento (menor = aparece primero). */
 const DOCUMENT_TYPE_PRIORITY: Record<string, number> = {
@@ -180,7 +241,7 @@ export function numericDocumentSQL(columnExpr: string): string {
     expr = `REPLACE(${expr}, '${ch}', '')`;
   }
   // NULLIF(..., '') converts empty string to NULL, COALESCE(..., 0) → 0 to match JS.
-  return `CAST(COALESCE(NULLIF(${expr}, ''), 0) AS UNSIGNED)`;
+  return castUnsigned(`COALESCE(NULLIF(${expr}, ''), 0)`);
 }
 
 /**
@@ -192,26 +253,29 @@ export function numericDocumentSQL(columnExpr: string): string {
  * `include` array (they already are in `getInscriptions` and `getMatriculations`).
  */
 export function canonicalInscriptionOrder(): OrderItem[] {
+  const studentDocType = quoteQualified('student', 'documentType');
+  const studentDoc = quoteQualified('student', 'document');
+  const studentLast = quoteQualified('student', 'lastName');
+  const studentFirst = quoteQualified('student', 'firstName');
+  const gradeOrder = quoteQualified('grade', 'order');
+  const gradeName = quoteQualified('grade', 'name');
+  const sectionName = quoteQualified('section', 'name');
+
   return [
-    // 1. documentType priority via FIELD() — lower priority value first.
+    // 1. documentType priority via FIELD()/CASE — lower priority value first.
     //    Unknown / NULL types get 99 so they sort last, matching documentTypePriority().
-    [
-      literal(
-        `FIELD(\`student\`.\`documentType\`, 'Venezolano', 'Cedula Escolar', 'Pasaporte', 'Extranjero')`
-      ),
-      'ASC',
-    ],
+    [literal(fieldExpr(studentDocType, ['Venezolano', 'Cedula Escolar', 'Pasaporte', 'Extranjero'])), 'ASC'],
     // 2. numeric part of document ascending. NULL/empty → 0 (matches numericDocument()).
-    [literal(numericDocumentSQL('`student`.`document`')), 'ASC'],
+    [literal(numericDocumentSQL(studentDoc)), 'ASC'],
     // 3. lastName (case-insensitive via LOWER()).
-    [literal('LOWER(`student`.`lastName`)'), 'ASC'],
+    [literal(lower(studentLast)), 'ASC'],
     // 4. firstName (case-insensitive via LOWER()).
-    [literal('LOWER(`student`.`firstName`)'), 'ASC'],
+    [literal(lower(studentFirst)), 'ASC'],
     // 5. grade.order (NULL → 9999), then grade.name.
-    [literal('COALESCE(`grade`.`order`, 9999)'), 'ASC'],
-    [literal('LOWER(`grade`.`name`)'), 'ASC'],
+    [literal(`COALESCE(${gradeOrder}, 9999)`), 'ASC'],
+    [literal(lower(gradeName)), 'ASC'],
     // 6. section.name (case-insensitive).
-    [literal('LOWER(`section`.`name`)'), 'ASC'],
+    [literal(lower(sectionName)), 'ASC'],
     // 7. Final stable tiebreaker on the primary key of Inscription.
     ['id', 'ASC'],
   ];

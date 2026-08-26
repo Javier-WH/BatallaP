@@ -10,7 +10,8 @@ import {
   createTestSetting,
   createTestTerm
 } from '../helpers/testData';
-import { Term, CouncilChecklist, PeriodGrade } from '@/models/index';
+import { Term, CouncilChecklist, PeriodGrade, PersonRole } from '@/models/index';
+import { createTestRole } from '../helpers/testData';
 
 describe('Period Closure Endpoints', () => {
   let agent: any;
@@ -19,10 +20,12 @@ describe('Period Closure Endpoints', () => {
 
   beforeEach(async () => {
     agent = request.agent(app);
-    
-    const { user } = await createTestUser({ username: 'admin' });
+
+    const { user, person } = await createTestUser({ username: 'admin' });
     userId = user.id;
-    
+    const masterRole = await createTestRole('Master');
+    await PersonRole.create({ personId: person.id, roleId: masterRole.id });
+
     await agent
       .post('/api/auth/login')
       .send({ username: 'admin', password: 'password123' });
@@ -98,15 +101,19 @@ describe('Period Closure Endpoints', () => {
         isActive: false
       });
 
-      await createTestTerm(periodId, { isBlocked: false });
+      // Create a structure with sections so areAllSectionsClosed returns false
+      // (totalSections > 0 but no TermSectionClosure records).
+      const structure = await createAcademicStructure({ periodId });
+      await createTestTerm(periodId, { isBlocked: false, name: 'Primer Lapso' });
 
       const response = await agent
         .get(`/api/period-closure/${periodId}/validate`)
         .expect(200);
 
       expect(response.body.valid).toBe(false);
-      expect(response.body.errors.some((e: string) => 
-        e.includes('Todos los lapsos deben estar bloqueados')
+      // Validation now checks per-term: either blocked OR all sections closed
+      expect(response.body.errors.some((e: string) =>
+        e.includes('no tiene todas sus secciones cerradas')
       )).toBe(true);
     });
   });

@@ -74,7 +74,7 @@ describe('Auth Endpoints', () => {
 
       expect(response.body.user.roles).toBeDefined();
       expect(response.body.user.roles.length).toBe(1);
-      expect(response.body.user.roles[0].name).toBe('Master');
+      expect(response.body.user.roles[0]).toBe('Master');
     });
   });
 
@@ -110,7 +110,8 @@ describe('Auth Endpoints', () => {
         .get('/api/auth/me')
         .expect(200);
 
-      expect(response.body.username).toBe('testuser');
+      expect(response.body.authenticated).toBe(true);
+      expect(response.body.user.username).toBe('testuser');
     });
 
     it('should return 401 when not authenticated', async () => {

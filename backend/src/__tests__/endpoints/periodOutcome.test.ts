@@ -6,7 +6,8 @@ import {
   createAcademicStructure,
   createTestInscription
 } from '../helpers/testData';
-import { StudentPeriodOutcome, PendingSubject } from '@/models/index';
+import { StudentPeriodOutcome, PendingSubject, PersonRole } from '@/models/index';
+import { createTestRole } from '../helpers/testData';
 
 describe('Period Outcome Endpoints', () => {
   let agent: any;
@@ -14,9 +15,11 @@ describe('Period Outcome Endpoints', () => {
 
   beforeEach(async () => {
     agent = request.agent(app);
-    
-    const { user } = await createTestUser({ username: 'admin' });
-    
+
+    const { user, person } = await createTestUser({ username: 'admin' });
+    const masterRole = await createTestRole('Master');
+    await PersonRole.create({ personId: person.id, roleId: masterRole.id });
+
     await agent
       .post('/api/auth/login')
       .send({ username: 'admin', password: 'password123' });
@@ -59,7 +62,8 @@ describe('Period Outcome Endpoints', () => {
 
       expect(response.body.length).toBe(1);
       expect(response.body[0].status).toBe('aprobado');
-      expect(response.body[0].finalAverage).toBe('15.50');
+      // DECIMAL(5,2) — SQLite stores as REAL, MySQL as string; compare numerically
+      expect(Number(response.body[0].finalAverage)).toBeCloseTo(15.5, 2);
     });
 
     it('should filter outcomes by status', async () => {

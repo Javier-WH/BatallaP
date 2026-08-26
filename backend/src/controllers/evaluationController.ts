@@ -47,7 +47,7 @@ import { filterActiveGroupSubjects, filterActiveGroupSubjectsForTerm } from '@/s
 import { resolveGradeStatus, MIN_FINAL_GRADE } from '@/services/gradeEvaluationService';
 import { TermSectionClosureService } from '@/services/termSectionClosureService';
 import { TermGradeSyncService } from '@/services/termGradeSyncService';
-import { sortInscriptions } from '@/services/studentSortService';
+import { sortInscriptions, fieldExpr, quoteQualified } from '@/services/studentSortService';
 
 export const getMyAssignments = async (req: Request, res: Response) => {
   try {
@@ -2656,7 +2656,7 @@ export const getAllAssignments = async (req: Request, res: Response) => {
       assignments = await TeacherAssignment.findAll({
         where: { id: { [Op.in]: ids } },
         include: baseInclude,
-        order: [literal(`FIELD(\`TeacherAssignment\`.\`id\`, ${ids.join(',')})`)],
+        order: [literal(fieldExpr(quoteQualified('TeacherAssignment', 'id'), ids.map(String)))],
       });
     }
 

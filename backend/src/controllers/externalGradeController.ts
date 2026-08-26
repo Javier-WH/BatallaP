@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import ExcelJS from 'exceljs';
 import { Op, literal } from 'sequelize';
+import { fieldExpr, quoteQualified } from '@/services/studentSortService';
 import sequelize from '@/config/database';
 import {
   Inscription,
@@ -332,7 +333,7 @@ export const listGrades = async (req: Request, res: Response) => {
       fullGrades = await SubjectFinalGrade.findAll({
         where: { id: { [Op.in]: ids } },
         include: baseInclude,
-        order: [literal(`FIELD(\`SubjectFinalGrade\`.\`id\`, ${ids.join(',')})`)],
+        order: [literal(fieldExpr(quoteQualified('SubjectFinalGrade', 'id'), ids.map(String)))],
       });
     }
 

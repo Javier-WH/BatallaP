@@ -4,16 +4,11 @@ import {
   sortSubjectsByOrder,
   sortSubjectsWithPendingAtEnd,
 } from '@/services/subjectOrderService';
-import PeriodGradeSubject from '@/models/PeriodGradeSubject';
-import PeriodGrade from '@/models/PeriodGrade';
-
-// Mock models
-jest.mock('@/models/PeriodGradeSubject');
-jest.mock('@/models/PeriodGrade');
+import { PeriodGradeSubject, PeriodGrade } from '@/models/index';
 
 describe('subjectOrderService', () => {
   beforeEach(() => {
-    jest.clearAllMocks();
+    jest.restoreAllMocks();
   });
 
   describe('getSubjectOrderMap', () => {
@@ -33,7 +28,7 @@ describe('subjectOrderService', () => {
         { subjectId: 2, order: 2 },
         { subjectId: 3, order: 3 },
       ];
-      (PeriodGradeSubject.findAll as jest.Mock).mockResolvedValue(mockRows);
+      jest.spyOn(PeriodGradeSubject, 'findAll').mockResolvedValue(mockRows as any);
 
       const map = await getSubjectOrderMap(100);
       expect(map.size).toBe(3);
@@ -48,7 +43,7 @@ describe('subjectOrderService', () => {
         { subjectId: 2, order: null },
         { subjectId: 3, order: 3 },
       ];
-      (PeriodGradeSubject.findAll as jest.Mock).mockResolvedValue(mockRows);
+      jest.spyOn(PeriodGradeSubject, 'findAll').mockResolvedValue(mockRows as any);
 
       const map = await getSubjectOrderMap(100);
       expect(map.size).toBe(2);
@@ -71,10 +66,10 @@ describe('subjectOrderService', () => {
 
     it('should fetch PeriodGrade and call getSubjectOrderMap', async () => {
       const mockPg = { id: 100 };
-      (PeriodGrade.findOne as jest.Mock).mockResolvedValue(mockPg);
-      (PeriodGradeSubject.findAll as jest.Mock).mockResolvedValue([
+      jest.spyOn(PeriodGrade, 'findOne').mockResolvedValue(mockPg as any);
+      jest.spyOn(PeriodGradeSubject, 'findAll').mockResolvedValue([
         { subjectId: 1, order: 1 },
-      ]);
+      ] as any);
 
       const map = await getSubjectOrderMapByGradeAndPeriod(5, 10);
       expect(PeriodGrade.findOne).toHaveBeenCalledWith({
@@ -87,7 +82,7 @@ describe('subjectOrderService', () => {
     });
 
     it('should return empty map if PeriodGrade not found', async () => {
-      (PeriodGrade.findOne as jest.Mock).mockResolvedValue(null);
+      jest.spyOn(PeriodGrade, 'findOne').mockResolvedValue(null as any);
 
       const map = await getSubjectOrderMapByGradeAndPeriod(5, 10);
       expect(map.size).toBe(0);
