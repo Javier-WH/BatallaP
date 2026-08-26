@@ -116,8 +116,6 @@ export const findOrCreateGuardianProfile = async (
 ): Promise<GuardianProfile> => {
   const normalizedDocument = normalizeDocument(payload.document);
 
-  console.log('hola');
-
   if (payload.id) {
     const existing = await GuardianProfile.findByPk(payload.id, { transaction: options.transaction });
     if (existing) {
