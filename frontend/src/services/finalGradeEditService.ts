@@ -18,6 +18,10 @@ export interface FinalGrade {
     state: string;
   };
   gradeType?: GradeType | null;
+  schoolPeriodId?: number | null;
+  subjectId?: number | null;
+  gradeId?: number | null;
+  termId?: number | null;
   includeInAverage?: boolean;
   inscriptionSubject: {
     id: number;
@@ -51,6 +55,12 @@ export interface FinalGrade {
   };
 }
 
+export interface FinalGradeContext {
+  schoolPeriodId: number;
+  gradeId?: number;
+  sectionId?: number;
+}
+
 export interface UpdateFinalGradeData {
   finalScore: number;
   status: 'aprobada' | 'reprobada';
@@ -63,9 +73,9 @@ export interface UpdateFinalGradeData {
 }
 
 const finalGradeEditService = {
-  getFinalGradesByPeriod: async (schoolPeriodId: number): Promise<FinalGrade[]> => {
+  getFinalGradesByPeriod: async (context: FinalGradeContext): Promise<FinalGrade[]> => {
     const response = await api.get('/evaluation/final-grades-by-period', {
-      params: { schoolPeriodId }
+      params: context
     });
     return response.data;
   },

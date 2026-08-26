@@ -128,6 +128,12 @@ interface Qualification {
   id: number;
   evaluationPlanId: number;
   score: number;
+  schoolPeriodId?: number | null;
+  termId?: number | null;
+  subjectId?: number | null;
+  gradeId?: number | null;
+  sectionId?: number | null;
+  date?: string | null;
   observations?: string;
   remedialScore?: number | null;
   isAbsent?: boolean;
@@ -138,9 +144,16 @@ interface Qualification {
 
 interface StudentEnrollment {
   id: number;
+  schoolPeriodId?: number | null;
+  gradeId?: number | null;
+  sectionId?: number | null;
   student: { firstName: string; lastName: string; document: string };
   inscriptionSubjects: Array<{
     id: number;
+    schoolPeriodId?: number | null;
+    gradeId?: number | null;
+    sectionId?: number | null;
+    subjectId?: number | null;
     qualifications: Qualification[];
   }>;
 }
@@ -334,7 +347,9 @@ const ManageGrades: React.FC = () => {
     try {
       const [planRes, studentsRes, thematicRes] = await Promise.all([
         api.get(`/evaluation/plan/${selectedAssignment.periodGradeSubjectId}?term=${selectedTerm}&sectionId=${selectedAssignment.sectionId}`),
-        api.get(`/evaluation/students/${selectedAssignment.id}`),
+        api.get(`/evaluation/students/${selectedAssignment.id}`, {
+          params: { termId: selectedTerm },
+        }),
         api.get('/thematic-components', {
           params: {
             pgsId: selectedAssignment.periodGradeSubjectId,
@@ -359,6 +374,18 @@ const ManageGrades: React.FC = () => {
     fetchPlanAndStudents();
   }, [fetchPlanAndStudents]);
 
+  const getQualificationContext = (subjectId: number) => ({
+    schoolPeriodId: selectedAssignment?.periodGradeSubject.periodGrade.schoolPeriod.id,
+    gradeId: selectedAssignment?.periodGradeSubject.periodGrade.grade.id,
+    sectionId: selectedAssignment?.sectionId,
+    termId: selectedTerm,
+    subjectId,
+  });
+
+  const matchesSelectedTerm = (qualification: Qualification) => (
+    qualification.termId == null || qualification.termId === selectedTerm
+  );
+
   const handleSaveScoreInGrid = async (enrollment: StudentEnrollment, evalPlanId: number, score: number | null, comment?: string, remedialClear?: boolean) => {
     if (isSelectedTermBlocked) {
       message.warning('Este lapso está bloqueado.');
@@ -366,10 +393,11 @@ const ManageGrades: React.FC = () => {
     }
     const inscriptionSubjectId = enrollment.inscriptionSubjects?.[0]?.id;
     try {
-      const resp = await api.post('/evaluation/qualifications', {
+      await api.post('/evaluation/qualifications', {
         evaluationPlanId: evalPlanId,
         inscriptionSubjectId,
         inscriptionId: enrollment.id,
+        ...getQualificationContext(selectedAssignment!.periodGradeSubject.subject.id),
         score: score === null ? 0 : score,
         isAbsent: false,
         observations: '',
@@ -394,6 +422,7 @@ const ManageGrades: React.FC = () => {
         evaluationPlanId: evalPlanId,
         inscriptionSubjectId,
         inscriptionId: enrollment.id,
+        ...getQualificationContext(selectedAssignment!.periodGradeSubject.subject.id),
         remedialScore: remedialScore,
         observations: '',
       });
@@ -492,7 +521,7 @@ const ManageGrades: React.FC = () => {
       if (!insSub) return s;
       const quals = [...(insSub.qualifications || [])];
       for (const u of updates) {
-        const idx = quals.findIndex(q => q.evaluationPlanId === u.target.evalPlanId);
+        const idx = quals.findIndex(q => q.evaluationPlanId === u.target.evalPlanId && matchesSelectedTerm(q));
         if (idx >= 0) {
           quals[idx] = { ...quals[idx], score: u.score ?? 0, isAbsent: false };
         } else {
@@ -515,6 +544,7 @@ const ManageGrades: React.FC = () => {
         evaluationPlanId: p.target.evalPlanId,
         inscriptionSubjectId,
         inscriptionId: p.target.enrollment.id,
+        ...getQualificationContext(selectedAssignment!.periodGradeSubject.subject.id),
         score: p.score === null ? 0 : p.score,
         isAbsent: false,
         observations: '',
@@ -616,7 +646,7 @@ const ManageGrades: React.FC = () => {
       const insSub = enrollment.inscriptionSubjects?.[0];
       const quals = insSub?.qualifications || [];
       const hasAll = evaluationPlan.every(plan => {
-        return quals.some((q: Qualification) => q.evaluationPlanId === plan.id && (!!q.isAbsent || (q.score !== null && q.score > 0)));
+        return quals.some((q: Qualification) => q.evaluationPlanId === plan.id && matchesSelectedTerm(q) && (!!q.isAbsent || (q.score !== null && q.score > 0)));
       });
       if (!hasAll) missing++;
     });
@@ -631,7 +661,7 @@ const ManageGrades: React.FC = () => {
       let missing = 0;
       students.forEach(enrollment => {
         const insSub = enrollment.inscriptionSubjects?.[0];
-        const q = insSub?.qualifications?.find((sq: Qualification) => sq.evaluationPlanId === ep.id);
+        const q = insSub?.qualifications?.find((sq: Qualification) => sq.evaluationPlanId === ep.id && matchesSelectedTerm(sq));
         if (!!q?.isAbsent) {
           missing++;
         } else if (!q || q.score === null) {
@@ -1235,7 +1265,7 @@ const ManageGrades: React.FC = () => {
                               const studentQuals = insSub?.qualifications || [];
                               let rowTotal = 0;
                               evaluationPlan.forEach(item => {
-                                const q = studentQuals.find((sq: Qualification) => sq.evaluationPlanId === item.id);
+                                const q = studentQuals.find((sq: Qualification) => sq.evaluationPlanId === item.id && matchesSelectedTerm(sq));
                                 if (q) {
                                   if (q.isAbsent) {
                                     // absent counts as 0
@@ -1255,7 +1285,7 @@ const ManageGrades: React.FC = () => {
                                     {enrollment.student?.lastName}, {enrollment.student?.firstName}
                                   </td>
                                   {evaluationPlan.map((item, colIndex) => {
-                                    const q = studentQuals.find((sq: Qualification) => sq.evaluationPlanId === item.id);
+                                    const q = studentQuals.find((sq: Qualification) => sq.evaluationPlanId === item.id && matchesSelectedTerm(sq));
                                     const currentScore = q ? q.score : null;
                                     const isAbsent = !!(q?.isAbsent);
                                     const stats = evalStats.get(item.id);

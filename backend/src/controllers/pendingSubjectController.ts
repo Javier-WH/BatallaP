@@ -26,6 +26,7 @@ import {
 import { sortInscriptions } from '@/services/studentSortService';
 import { getSubjectOrderMap } from '@/services/subjectOrderService';
 import { roundFinalGrade, MIN_FINAL_GRADE, resolveGradeStatus } from '@/services/gradeEvaluationService';
+import { AcademicContextError, getInscriptionAcademicContext, resolveAcademicContext } from '@/services/academicContextService';
 
 /* ------------------------------------------------------------------ */
 /* Helpers                                                             */
@@ -779,6 +780,7 @@ export const saveMpFinalGrade = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'InscriptionSubject no encontrado' });
     }
 
+    const academicContext = await getInscriptionAcademicContext(inscriptionSubjectId, t);
     const activePeriod = await SchoolPeriod.findOne({ where: { status: 'activo' } });
     const roundedScore = roundFinalGrade(finalScore);
     // Score 0 is treated as NP (inasistente), same logic as regular grades
@@ -795,6 +797,9 @@ export const saveMpFinalGrade = async (req: Request, res: Response) => {
       status,
       calculatedAt: calculatedDate,
       gradeType: 'materia_pendiente',
+      schoolPeriodId: academicContext.schoolPeriodId,
+      subjectId: academicContext.subjectId,
+      gradeId: academicContext.gradeId,
     }, { transaction: t });
 
     // Update PendingSubject status
@@ -819,6 +824,9 @@ export const saveMpFinalGrade = async (req: Request, res: Response) => {
     });
   } catch (error) {
     await t.rollback();
+    if (error instanceof AcademicContextError) {
+      return res.status(error.statusCode).json({ message: error.message });
+    }
     console.error('[saveMpFinalGrade] Error:', error);
     return res.status(500).json({ message: 'Error al guardar la nota' });
   }
@@ -934,7 +942,21 @@ export const saveMpQualification = async (req: Request, res: Response) => {
     const rawScore = score ?? 0;
     const finalIsAbsent = isAbsent ?? (rawScore === 0);
 
+    const academicContext = await resolveAcademicContext(
+      Number(evaluationPlanId),
+      Number(inscriptionSubjectId),
+      t,
+    );
+
     // Upsert qualification
+    const qualificationContext = {
+      schoolPeriodId: academicContext.schoolPeriodId,
+      termId: academicContext.termId,
+      subjectId: academicContext.subjectId,
+      gradeId: academicContext.gradeId,
+      sectionId: academicContext.sectionId,
+      date: academicContext.date,
+    };
     const existing = await Qualification.findOne({
       where: { evaluationPlanId, inscriptionSubjectId },
       transaction: t,
@@ -944,6 +966,7 @@ export const saveMpQualification = async (req: Request, res: Response) => {
       await existing.update({
         score: rawScore,
         isAbsent: finalIsAbsent,
+        ...qualificationContext,
       }, { transaction: t });
     } else {
       await Qualification.create({
@@ -951,6 +974,7 @@ export const saveMpQualification = async (req: Request, res: Response) => {
         inscriptionSubjectId,
         score: rawScore,
         isAbsent: finalIsAbsent,
+        ...qualificationContext,
       }, { transaction: t });
     }
 
@@ -979,6 +1003,9 @@ export const saveMpQualification = async (req: Request, res: Response) => {
         status,
         calculatedAt: evaluationDate,
         gradeType: 'materia_pendiente',
+        schoolPeriodId: academicContext.schoolPeriodId,
+        subjectId: academicContext.subjectId,
+        gradeId: academicContext.gradeId,
       }, { transaction: t });
 
       // Update PendingSubject status
@@ -998,6 +1025,9 @@ export const saveMpQualification = async (req: Request, res: Response) => {
     return res.json({ message: 'Calificación guardada', status, score: roundedScore, date: evaluationDate, isAbsent: finalIsAbsent });
   } catch (error) {
     await t.rollback();
+    if (error instanceof AcademicContextError) {
+      return res.status(error.statusCode).json({ message: error.message });
+    }
     console.error('[saveMpQualification] Error:', error);
     return res.status(500).json({ message: 'Error al guardar calificación' });
   }

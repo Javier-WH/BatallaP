@@ -100,6 +100,12 @@ interface Qualification {
   id: number;
   evaluationPlanId: number;
   score: number;
+  schoolPeriodId?: number | null;
+  termId?: number | null;
+  subjectId?: number | null;
+  gradeId?: number | null;
+  sectionId?: number | null;
+  date?: string | null;
   observations?: string;
   remedialScore?: number | null;
   isAbsent?: boolean;
@@ -110,6 +116,10 @@ interface Qualification {
 
 interface InscriptionSubject {
   id: number;
+  schoolPeriodId?: number | null;
+  gradeId?: number | null;
+  sectionId?: number | null;
+  subjectId?: number | null;
   qualifications: Qualification[];
 }
 
@@ -121,6 +131,9 @@ interface Student {
 
 interface StudentEnrollment {
   id: number;
+  schoolPeriodId?: number | null;
+  gradeId?: number | null;
+  sectionId?: number | null;
   student: Student;
   inscriptionSubjects: InscriptionSubject[];
 }
@@ -286,6 +299,10 @@ const TeacherPanel: React.FC = () => {
     };
   }, [availableTerms, selectedTerm]);
 
+  const matchesSelectedTerm = (qualification: Qualification) => (
+    qualification.termId == null || qualification.termId === selectedTerm
+  );
+
   const pendingGradesCount = useMemo(() => {
     if (evaluationPlan.length === 0 || students.length === 0) return { missing: 0, total: 0 };
     let missing = 0;
@@ -293,7 +310,7 @@ const TeacherPanel: React.FC = () => {
       const insSub = enrollment.inscriptionSubjects?.[0];
       const quals = insSub?.qualifications || [];
       const hasAll = evaluationPlan.every(plan => {
-        return quals.some((q: Qualification) => q.evaluationPlanId === plan.id && (!!q.isAbsent || (q.score !== null && q.score > 0)));
+        return quals.some((q: Qualification) => q.evaluationPlanId === plan.id && matchesSelectedTerm(q) && (!!q.isAbsent || (q.score !== null && q.score > 0)));
       });
       if (!hasAll) missing++;
     });
@@ -308,7 +325,7 @@ const TeacherPanel: React.FC = () => {
       let missing = 0;
       students.forEach(enrollment => {
         const insSub = enrollment.inscriptionSubjects?.[0];
-        const q = insSub?.qualifications?.find((sq: Qualification) => sq.evaluationPlanId === ep.id);
+        const q = insSub?.qualifications?.find((sq: Qualification) => sq.evaluationPlanId === ep.id && matchesSelectedTerm(sq));
         if (!!q?.isAbsent) {
           missing++;
         } else if (!q || q.score === null) {
@@ -481,7 +498,9 @@ const TeacherPanel: React.FC = () => {
     try {
       const [planRes, studentsRes] = await Promise.all([
         api.get(`/evaluation/plan/${assignment.periodGradeSubjectId}?term=${selectedTerm}&sectionId=${assignment.sectionId}`),
-        api.get(`/evaluation/students/${selectedAssignmentId}`)
+        api.get(`/evaluation/students/${selectedAssignmentId}`, {
+          params: { termId: selectedTerm },
+        })
       ]);
 
       console.log('fetchPlanAndStudents: API responses received', {
@@ -756,18 +775,29 @@ const TeacherPanel: React.FC = () => {
   };
 
 
+  const getQualificationContext = (assignment: Assignment) => ({
+    schoolPeriodId: assignment.periodGradeSubject.periodGrade.schoolPeriod.id,
+    gradeId: assignment.periodGradeSubject.periodGrade.grade.id,
+    sectionId: assignment.sectionId,
+    termId: selectedTerm,
+    subjectId: assignment.periodGradeSubject.subject.id,
+  });
+
   const handleSaveScoreInGrid = async (enrollment: StudentEnrollment, evalPlanId: number, score: number | null, remedialScore?: number | null) => {
     if (isSelectedTermBlocked) {
       message.warning('Este lapso está bloqueado. No puedes modificar calificaciones.');
       return;
     }
     const inscriptionSubjectId = enrollment.inscriptionSubjects?.[0]?.id;
+    const assignment = assignments.find(a => a.id === selectedAssignmentId);
+    if (!assignment || !selectedTerm) return;
 
     try {
       const payload: any = {
         evaluationPlanId: evalPlanId,
         inscriptionSubjectId,
         inscriptionId: enrollment.id,
+        ...getQualificationContext(assignment),
         score: score === null ? 0 : score,
         isAbsent: false,
         observations: ''
@@ -789,7 +819,7 @@ const handleToggleAbsent = async (enrollment: StudentEnrollment, evalPlanId: num
     }
 
     const insSub = enrollment.inscriptionSubjects?.[0];
-    const existingQ = insSub?.qualifications?.find(q => q.evaluationPlanId === evalPlanId);
+    const existingQ = insSub?.qualifications?.find(q => q.evaluationPlanId === evalPlanId && matchesSelectedTerm(q));
     const previousScore = existingQ?.score;
     const previousRemedial = existingQ?.remedialScore;
 
@@ -798,8 +828,8 @@ const handleToggleAbsent = async (enrollment: StudentEnrollment, evalPlanId: num
       if (s.id !== enrollment.id) return s;
       const insSubS = s.inscriptionSubjects?.[0];
       if (!insSubS) return s;
-      const quals = insSubS.qualifications?.some(q => q.evaluationPlanId === evalPlanId)
-        ? insSubS.qualifications.map(q => q.evaluationPlanId === evalPlanId
+      const quals = insSubS.qualifications?.some(q => q.evaluationPlanId === evalPlanId && matchesSelectedTerm(q))
+        ? insSubS.qualifications.map(q => q.evaluationPlanId === evalPlanId && matchesSelectedTerm(q)
           ? { ...q, isAbsent: !currentIsAbsent, score: !currentIsAbsent ? 0 : (previousScore ?? q.score), remedialScore: !currentIsAbsent ? null : (previousRemedial ?? q.remedialScore) }
           : q)
         : [...(insSubS.qualifications || []), {
@@ -813,11 +843,14 @@ const handleToggleAbsent = async (enrollment: StudentEnrollment, evalPlanId: num
 
     // Sync with backend
     const inscriptionSubjectId = enrollment.inscriptionSubjects?.[0]?.id;
+    const assignment = assignments.find(a => a.id === selectedAssignmentId);
+    if (!assignment || !selectedTerm) return;
     try {
       await api.post('/evaluation/qualifications', {
         evaluationPlanId: evalPlanId,
         inscriptionSubjectId,
         inscriptionId: enrollment.id,
+        ...getQualificationContext(assignment),
         isAbsent: !currentIsAbsent,
         score: !currentIsAbsent ? 0 : (previousScore ?? undefined),
         remedialScore: !currentIsAbsent ? null : (previousRemedial ?? undefined),
@@ -835,12 +868,15 @@ const handleToggleAbsent = async (enrollment: StudentEnrollment, evalPlanId: num
       return;
     }
     const inscriptionSubjectId = enrollment.inscriptionSubjects?.[0]?.id;
+    const assignment = assignments.find(a => a.id === selectedAssignmentId);
+    if (!assignment || !selectedTerm) return;
 
     try {
       await api.post('/evaluation/qualifications', {
         evaluationPlanId: evalPlanId,
         inscriptionSubjectId,
         inscriptionId: enrollment.id,
+        ...getQualificationContext(assignment),
         remedialScore: remedialScore,
         observations: ''
       });
@@ -1144,12 +1180,15 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
     }
 
     // Save all notes to backend in parallel, then refresh once
+    const assignment = assignments.find(a => a.id === selectedAssignmentId);
+    if (!assignment || !selectedTerm) return;
     Promise.all(parsed.map(p => {
       const inscriptionSubjectId = p.target.enrollment.inscriptionSubjects?.[0]?.id;
       return api.post('/evaluation/qualifications', {
         evaluationPlanId: p.target.evalPlanId,
         inscriptionSubjectId,
         inscriptionId: p.target.enrollment.id,
+        ...getQualificationContext(assignment),
         score: p.score === null ? 0 : p.score,
         isAbsent: false,
         observations: '',

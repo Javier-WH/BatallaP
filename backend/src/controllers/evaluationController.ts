@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { Op, literal } from 'sequelize';
 import sequelize from '@/config/database';
 import { parsePagination, buildPaginatedResponse } from '@/services/paginationService';
+import { AcademicContextError, assertRequestedContext, resolveAcademicContext } from '@/services/academicContextService';
 import ExcelJS from 'exceljs';
 import fs from 'fs';
 import path from 'path';
@@ -397,6 +398,10 @@ export const deleteEvaluationItem = async (req: Request, res: Response) => {
 export const getStudentsForAssignment = async (req: Request, res: Response) => {
   try {
     const { assignmentId } = req.params;
+    const requestedTermId = Number(req.query.termId);
+    if (!Number.isInteger(requestedTermId)) {
+      return res.status(400).json({ message: 'termId es requerido y debe ser válido' });
+    }
     const assignment = await TeacherAssignment.findByPk(assignmentId, {
       include: [
         {
@@ -421,6 +426,12 @@ export const getStudentsForAssignment = async (req: Request, res: Response) => {
     const pg = await PeriodGrade.findByPk(periodGradeSubject.periodGradeId);
     if (!pg) return res.status(404).json({ message: 'Estructura no encontrada' });
 
+    const requestedTerm = await Term.findByPk(requestedTermId);
+    if (!requestedTerm) return res.status(404).json({ message: 'Lapso no encontrado' });
+    if (Number(requestedTerm.schoolPeriodId) !== Number(pg.schoolPeriodId)) {
+      return res.status(400).json({ message: 'El lapso no pertenece al período de la asignación' });
+    }
+
     const inscriptions = await Inscription.findAll({
       where: {
         schoolPeriodId: pg.schoolPeriodId,
@@ -438,6 +449,8 @@ export const getStudentsForAssignment = async (req: Request, res: Response) => {
             {
               model: Qualification,
               as: 'qualifications',
+              required: false,
+              where: { termId: requestedTermId },
               include: [
                 { model: EvaluationPlan, as: 'evaluationPlan', include: [{ model: EvaluationCriteria, as: 'criteria' }] },
                 {
@@ -512,7 +525,20 @@ export const getQualifications = async (req: Request, res: Response) => {
 
 export const saveQualification = async (req: Request, res: Response) => {
   try {
-    const { evaluationPlanId, inscriptionSubjectId, score, remedialScore, isAbsent, observations, inscriptionId } = req.body;
+    const {
+      evaluationPlanId,
+      inscriptionSubjectId,
+      score,
+      remedialScore,
+      isAbsent,
+      observations,
+      inscriptionId,
+      schoolPeriodId,
+      gradeId,
+      sectionId,
+      termId,
+      subjectId,
+    } = req.body;
 
     let finalInscriptionSubjectId = inscriptionSubjectId;
 
@@ -570,15 +596,20 @@ export const saveQualification = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'No se pudo determinar el enlace del estudiante con la materia' });
     }
 
-    // Load EvaluationPlan context to denormalize into Qualification
-    const evalPlanWithContext = await EvaluationPlan.findByPk(evaluationPlanId, {
-      include: [{
-        model: PeriodGradeSubject, as: 'periodGradeSubject',
-        include: [{ model: PeriodGrade, as: 'periodGrade' }]
-      }]
+    const academicContext = await resolveAcademicContext(
+      Number(evaluationPlanId),
+      Number(finalInscriptionSubjectId),
+    );
+    if (inscriptionId && academicContext.inscriptionId !== Number(inscriptionId)) {
+      throw new AcademicContextError('La inscripción no coincide con la materia del estudiante');
+    }
+    assertRequestedContext(academicContext, {
+      schoolPeriodId,
+      gradeId,
+      sectionId,
+      termId,
+      subjectId,
     });
-    const pgs = (evalPlanWithContext as any)?.periodGradeSubject;
-    const pg = pgs?.periodGrade;
 
     // Check if exists to update, else create
     const [qualification, created] = await Qualification.findOrCreate({
@@ -590,19 +621,27 @@ export const saveQualification = async (req: Request, res: Response) => {
         remedialScore: remedialScore !== undefined ? remedialScore : null,
         isAbsent: isAbsent || false,
         observations,
-        schoolPeriodId: pg?.schoolPeriodId ?? null,
-        termId: evalPlanWithContext?.termId ?? null,
-        subjectId: pgs?.subjectId ?? null,
-        gradeId: pg?.gradeId ?? null,
-        sectionId: evalPlanWithContext?.sectionId ?? null,
-        date: evalPlanWithContext?.date ?? null,
+        schoolPeriodId: academicContext.schoolPeriodId,
+        termId: academicContext.termId,
+        subjectId: academicContext.subjectId,
+        gradeId: academicContext.gradeId,
+        sectionId: academicContext.sectionId,
+        date: academicContext.date,
       }
     });
 
     if (!created) {
       const previousScore = qualification.score;
       
-      const updateData: any = { observations };
+      const updateData: any = {
+        observations,
+        schoolPeriodId: academicContext.schoolPeriodId,
+        termId: academicContext.termId,
+        subjectId: academicContext.subjectId,
+        gradeId: academicContext.gradeId,
+        sectionId: academicContext.sectionId,
+        date: academicContext.date,
+      };
       if (score !== undefined) updateData.score = score;
       if (remedialScore !== undefined) updateData.remedialScore = remedialScore;
       if (isAbsent !== undefined) updateData.isAbsent = isAbsent;
@@ -631,8 +670,11 @@ export const saveQualification = async (req: Request, res: Response) => {
 
     res.json(qualification);
   } catch (error) {
+    if (error instanceof AcademicContextError) {
+      return res.status(error.statusCode).json({ message: error.message });
+    }
     console.error('Error in saveQualification:', error);
-    res.status(500).json({ message: 'Error al guardar calificación' });
+    return res.status(500).json({ message: 'Error al guardar calificación' });
   }
 };
 
@@ -659,6 +701,7 @@ export const getStudentFullAcademicRecord = async (req: Request, res: Response) 
             {
               model: Qualification,
               as: 'qualifications',
+              required: false,
               where: termId ? { termId: Number(termId) } : undefined,
               include: [{ model: EvaluationPlan, as: 'evaluationPlan' }]
             },
@@ -1042,7 +1085,7 @@ export const getFinalGradesByPeriod = async (req: Request, res: Response) => {
       return res.status(403).json({ message: 'Solo Control de Estudios puede ver las notas finales' });
     }
 
-    const { schoolPeriodId, gradeId, includeMp } = req.query;
+    const { schoolPeriodId, gradeId, sectionId, includeMp } = req.query;
 
     if (!schoolPeriodId) {
       return res.status(400).json({ message: 'schoolPeriodId es requerido' });
@@ -1081,6 +1124,7 @@ export const getFinalGradesByPeriod = async (req: Request, res: Response) => {
     // Get all inscriptions for this period, excluding MP by default
     const inscWhere: any = { schoolPeriodId: Number(schoolPeriodId) };
     if (gradeId) inscWhere.gradeId = Number(gradeId);
+    if (sectionId) inscWhere.sectionId = Number(sectionId);
     // Exclude materia_pendiente inscriptions unless explicitly requested
     if (includeMp !== 'true') {
       inscWhere.escolaridad = { [Op.ne]: 'materia_pendiente' };

@@ -124,7 +124,7 @@ const FinalGradesEdit: React.FC = () => {
     }
 
     try {
-      const grades = await finalGradeEditService.getFinalGradesByPeriod(periodId);
+      const grades = await finalGradeEditService.getFinalGradesByPeriod({ schoolPeriodId: periodId });
       setFinalGrades(grades);
     } catch (err: unknown) {
       const error = err as { response?: { status: number } };
@@ -138,6 +138,27 @@ const FinalGradesEdit: React.FC = () => {
     }
   };
 
+  const reloadGradesForSelection = async (gradeName: string | null, sectionName: string | null) => {
+    if (!selectedPeriod || !gradeName || !sectionName || finalGrades.length === 0) return;
+    const sample = finalGrades.find(grade => (
+      grade.inscriptionSubject?.inscription?.grade?.name === gradeName
+      && grade.inscriptionSubject?.inscription?.section?.name === sectionName
+    ));
+    const gradeId = sample?.gradeId ?? sample?.inscriptionSubject?.inscription?.grade?.id;
+    const sectionId = sample?.inscriptionSubject?.inscription?.section?.id;
+    if (!gradeId || !sectionId) return;
+    try {
+      const grades = await finalGradeEditService.getFinalGradesByPeriod({
+        schoolPeriodId: selectedPeriod,
+        gradeId,
+        sectionId,
+      });
+      setFinalGrades(grades);
+    } catch {
+      message.error('Error al filtrar notas finales');
+    }
+  };
+
   const handleGradeChange = (gradeName: string | null) => {
     if (hasUnsavedChanges) {
       setPendingFilterChange({ type: 'grade', value: gradeName });
@@ -145,6 +166,7 @@ const FinalGradesEdit: React.FC = () => {
       return;
     }
     setSelectedGrade(gradeName);
+    void reloadGradesForSelection(gradeName, selectedSection);
   };
 
   const handleSectionChange = (sectionName: string | null) => {
@@ -154,6 +176,7 @@ const FinalGradesEdit: React.FC = () => {
       return;
     }
     setSelectedSection(sectionName);
+    void reloadGradesForSelection(selectedGrade, sectionName);
   };
 
   // Group grades by student and create dynamic columns
@@ -413,7 +436,7 @@ const FinalGradesEdit: React.FC = () => {
       reasonForm.resetFields();
 
       // Reload grades
-      const grades = await finalGradeEditService.getFinalGradesByPeriod(selectedPeriod);
+      const grades = await finalGradeEditService.getFinalGradesByPeriod({ schoolPeriodId: selectedPeriod });
       setFinalGrades(grades);
     } catch (err: unknown) {
       console.error('Error saving changes:', err);
