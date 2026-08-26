@@ -425,10 +425,7 @@ export const getStudentsForAssignment = async (req: Request, res: Response) => {
       where: {
         schoolPeriodId: pg.schoolPeriodId,
         sectionId,
-        [Op.or]: [
-          { gradeId: pg.gradeId },
-          { escolaridad: 'materia_pendiente' }
-        ]
+        gradeId: pg.gradeId,
       },
       include: [
         { model: Person, as: 'student' },
@@ -1747,7 +1744,7 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
       where: {
         schoolPeriodId: pg.schoolPeriodId,
         sectionId: assignment.sectionId,
-        [Op.or]: [{ gradeId: pg.gradeId }, { escolaridad: 'materia_pendiente' }]
+        gradeId: pg.gradeId,
       },
       include: [
         {
@@ -2287,7 +2284,7 @@ export const exportGradesExcel = async (req: Request, res: Response) => {
       where: {
         schoolPeriodId: pg.schoolPeriodId,
         sectionId: assignment.sectionId,
-        [Op.or]: [{ gradeId: pg.gradeId }, { escolaridad: 'materia_pendiente' }]
+        gradeId: pg.gradeId,
       },
       include: [
         {

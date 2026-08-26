@@ -215,3 +215,106 @@ export async function calculateEnrollmentPlan(id: number, date?: string): Promis
   });
   return data;
 }
+
+// ── Ledger ──
+
+export interface LedgerStudent {
+  inscriptionId: number;
+  personId: number;
+  name: string;
+  document: string;
+  gradeName: string;
+  sectionName: string;
+  months: Record<string, {
+    charges: any[];
+    payments: any[];
+    totalCharged: number;
+    totalPaid: number;
+  }>;
+  nonMonthly: {
+    charges: any[];
+    payments: any[];
+  };
+}
+
+export interface LedgerResponse {
+  students: LedgerStudent[];
+  monthlyFee: {
+    id: number;
+    amount: number;
+    currency: string;
+    currencyName: string;
+  } | null;
+}
+
+export interface LedgerSection {
+  sectionId: number;
+  sectionName: string;
+  gradeId: number;
+  gradeName: string;
+}
+
+export async function getLedgerSections(schoolPeriodId: number): Promise<LedgerSection[]> {
+  const { data } = await api.get<LedgerSection[]>(`/ledger/sections/${schoolPeriodId}`);
+  return data;
+}
+
+export async function getLedgerBySection(schoolPeriodId: number, gradeId: number, sectionId: number): Promise<LedgerResponse> {
+  const { data } = await api.get<LedgerResponse>(`/ledger/${schoolPeriodId}/${gradeId}/${sectionId}`);
+  return data;
+}
+
+export interface PaymentPayload {
+  inscriptionId: number;
+  schoolPeriodId: number;
+  feeId?: number | null;
+  sellableItemId?: number | null;
+  chargeId?: number | null;
+  month?: string | null;
+  amount: number;
+  currency: string;
+  amountVES?: number | null;
+  exchangeRate?: number | null;
+  method?: string;
+  reference?: string;
+  bank?: string;
+  paymentDate?: string;
+  notes?: string;
+}
+
+export async function createPayment(payload: PaymentPayload): Promise<any> {
+  const { data } = await api.post('/ledger/payments', payload);
+  return data;
+}
+
+export interface ChargePayload {
+  inscriptionId: number;
+  schoolPeriodId: number;
+  feeId?: number | null;
+  sellableItemId?: number | null;
+  type: string;
+  month?: string | null;
+  description: string;
+  amount: number;
+  currency: string;
+  amountVES?: number | null;
+  dueDate?: string;
+}
+
+export async function createCharge(payload: ChargePayload): Promise<any> {
+  const { data } = await api.post('/ledger/charges', payload);
+  return data;
+}
+
+export async function bulkCreateCharges(charges: ChargePayload[]): Promise<{ created: number }> {
+  const { data } = await api.post<{ created: number }>('/ledger/charges/bulk', { charges });
+  return data;
+}
+
+export async function deletePayment(id: number): Promise<void> {
+  await api.delete(`/ledger/payments/${id}`);
+}
+
+export async function deleteCharge(id: number): Promise<void> {
+  await api.delete(`/ledger/charges/${id}`);
+}

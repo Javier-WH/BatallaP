@@ -22,6 +22,8 @@ import User from '@/models/User';
 import Role from '@/models/Role';
 import StudentGuardian from '@/models/StudentGuardian';
 import InscriptionSubject from '@/models/InscriptionSubject';
+import PendingSubject from '@/models/PendingSubject';
+import PendingSubjectEncounter from '@/models/PendingSubjectEncounter';
 import { PeriodClosureService } from '@/services/periodClosureService';
 
 interface TeacherAssignmentWithRelations extends TeacherAssignment {
@@ -75,6 +77,7 @@ interface SectionDetail {
   teacherName: string;
   hasPlan: boolean;
   hasGrades: boolean;
+  disabled?: boolean;
 }
 
 interface SubjectProgress {
@@ -255,6 +258,71 @@ const buildAcademicSnapshot = async (): Promise<AcademicSnapshot> => {
     qualificationMap.set(key, record.qualificationCount);
   });
 
+  // ── Materia Pendiente: check completion via PendingSubject + encounters ──
+  // Rules for a MP subject (assignment in the "MATERIA PENDIENTE" section):
+  //   1. No students enrolled in MP for that subject+grade → disabled (not counted)
+  //   2. All students approved (status aprobada/convalidada) → 100% complete
+  //   3. All encounters exhausted AND all students presented → 100% complete
+  //      (even if nobody approved — they ran out of chances)
+  //   4. Otherwise → incomplete (still in progress)
+  // Key: must group by subjectId + gradeId, because the same subject (e.g. Inglés)
+  // can have pending subjects in different grades (3rd year MP vs 4th year MP).
+  const mpSection = await Section.findOne({ where: { name: 'MATERIA PENDIENTE' } });
+  const mpSectionId = mpSection?.id ?? null;
+  // Map: `${subjectId}:${gradeId}` → { hasStudents, allApproved, allDone }
+  const mpCompletionMap = new Map<string, { hasStudents: boolean; allApproved: boolean; allDone: boolean }>();
+  if (mpSectionId) {
+    const mpAssignments = assignments.filter(a => a.sectionId === mpSectionId);
+    // Collect (subjectId, gradeId) pairs from the assignments
+    const mpPairs = new Set<string>();
+    mpAssignments.forEach(a => {
+      const subjId = a.periodGradeSubject?.subjectId;
+      const gradeId = a.periodGradeSubject?.periodGrade?.gradeId;
+      if (subjId && gradeId) mpPairs.add(`${subjId}:${gradeId}`);
+    });
+    const mpSubjectIds = [...new Set([...mpPairs].map(p => Number(p.split(':')[0])))];
+
+    if (mpSubjectIds.length > 0) {
+      // Get max encounters setting
+      const maxEncSetting = await Setting.findOne({ where: { key: 'pending_subject_max_encounters' } });
+      const maxEnc = maxEncSetting && Number.isFinite(parseInt(maxEncSetting.value, 10))
+        ? Math.max(1, parseInt(maxEncSetting.value, 10)) : 4;
+
+      // Fetch all PendingSubjects for these subjects, with their encounters + inscription (for gradeId)
+      const mpRecords = await PendingSubject.findAll({
+        where: { subjectId: { [Op.in]: mpSubjectIds } },
+        include: [
+          { model: PendingSubjectEncounter, as: 'encounters' },
+          { model: Inscription, as: 'inscription', attributes: ['gradeId'] },
+        ],
+      }) as any[];
+
+      // Group by subjectId + gradeId (from the inscription)
+      const byPair = new Map<string, any[]>();
+      mpRecords.forEach(ps => {
+        const gradeId = ps.inscription?.gradeId;
+        if (gradeId == null) return;
+        const pairKey = `${ps.subjectId}:${gradeId}`;
+        const arr = byPair.get(pairKey) || [];
+        arr.push(ps);
+        byPair.set(pairKey, arr);
+      });
+
+      for (const [pairKey, psList] of byPair.entries()) {
+        const allApproved = psList.every(ps => ps.status === 'aprobada' || ps.status === 'convalidada');
+        // A student "presented all encounters" if their last scored encounter is #maxEnc
+        // (i.e., they went through all chances without approving)
+        const allDone = psList.every(ps => {
+          if (ps.status === 'aprobada' || ps.status === 'convalidada') return true;
+          const encs = (ps.encounters || []).sort((a: any, b: any) => a.encounterNumber - b.encounterNumber);
+          const lastScored = [...encs].reverse().find((e: any) => e.score !== null || e.isAbsent);
+          return lastScored && lastScored.encounterNumber >= maxEnc;
+        });
+        mpCompletionMap.set(pairKey, { hasStudents: true, allApproved, allDone });
+      }
+    }
+  }
+
   const assignmentsWithoutPlan: AssignmentInsight[] = [];
   const assignmentsWithoutGrades: AssignmentInsight[] = [];
 
@@ -267,12 +335,29 @@ const buildAcademicSnapshot = async (): Promise<AcademicSnapshot> => {
       section: assignment.section?.name || '—'
     };
 
-    if (!planMap.get(key)) {
-      assignmentsWithoutPlan.push(baseInfo);
-    }
+    // For Materia Pendiente section, use PendingSubject + encounters logic
+    const isMP = mpSectionId && assignment.sectionId === mpSectionId;
+    const subjectId = assignment.periodGradeSubject?.subjectId;
+    const gradeId = assignment.periodGradeSubject?.periodGrade?.gradeId;
+    const mpKey = isMP && subjectId != null && gradeId != null ? `${subjectId}:${gradeId}` : null;
+    const mpData = mpKey ? mpCompletionMap.get(mpKey) : null;
 
-    if (!qualificationMap.get(key)) {
-      assignmentsWithoutGrades.push(baseInfo);
+    // MP with no students → disabled, skip from "without plan/grades" lists
+    const mpDisabled = isMP && !(mpData && mpData.hasStudents);
+
+    if (!mpDisabled) {
+      const hasPlan = isMP ? (mpData ? mpData.hasStudents : !!planMap.get(key)) : !!planMap.get(key);
+      const hasGrades = isMP
+        ? (mpData ? (mpData.hasStudents && (mpData.allApproved || mpData.allDone)) : false)
+        : !!qualificationMap.get(key);
+
+      if (!hasPlan) {
+        assignmentsWithoutPlan.push(baseInfo);
+      }
+
+      if (!hasGrades) {
+        assignmentsWithoutGrades.push(baseInfo);
+      }
     }
   });
 
@@ -328,8 +413,25 @@ const buildAcademicSnapshot = async (): Promise<AcademicSnapshot> => {
     const subjProgress = gradeEntry.subjects.get(subject.id)!;
 
     const key = assignmentKey(assignment.periodGradeSubjectId, assignment.sectionId);
-    const hasPlan = !!planMap.get(key);
-    const hasGrades = !!qualificationMap.get(key);
+    let hasPlan = !!planMap.get(key);
+    let hasGrades = !!qualificationMap.get(key);
+
+    // For Materia Pendiente section, use PendingSubject + encounters logic
+    let mpDisabled = false;
+    if (mpSectionId && assignment.sectionId === mpSectionId) {
+      const gradeId = assignment.periodGradeSubject?.periodGrade?.gradeId;
+      const mpKey = gradeId != null ? `${subject.id}:${gradeId}` : null;
+      const mpData = mpKey ? mpCompletionMap.get(mpKey) : null;
+      if (mpData && mpData.hasStudents) {
+        hasPlan = true;
+        hasGrades = mpData.allApproved || mpData.allDone;
+      } else {
+        // No students enrolled in MP for this subject+grade → disabled
+        mpDisabled = true;
+        hasPlan = false;
+        hasGrades = false;
+      }
+    }
     const teacherName = assignment.teacher
       ? `${assignment.teacher.firstName} ${assignment.teacher.lastName}`
       : 'Sin asignar';
@@ -337,10 +439,13 @@ const buildAcademicSnapshot = async (): Promise<AcademicSnapshot> => {
     const sectionId = assignment.sectionId;
     const sectionColor = sectionColorMap.get(`${periodGrade?.id}:${sectionId}`) || '#cccccc';
 
-    subjProgress.totalSections += 1;
-    if (hasPlan) subjProgress.withPlan += 1; else subjProgress.withoutPlan += 1;
-    if (hasGrades) subjProgress.withGrades += 1; else subjProgress.withoutGrades += 1;
-    subjProgress.sections.push({ sectionId, sectionName, sectionColor, teacherName, hasPlan, hasGrades });
+    // Disabled sections (MP with no students) don't count in totals
+    if (!mpDisabled) {
+      subjProgress.totalSections += 1;
+      if (hasPlan) subjProgress.withPlan += 1; else subjProgress.withoutPlan += 1;
+      if (hasGrades) subjProgress.withGrades += 1; else subjProgress.withoutGrades += 1;
+    }
+    subjProgress.sections.push({ sectionId, sectionName, sectionColor, teacherName, hasPlan, hasGrades, disabled: mpDisabled });
   });
 
   // Convert maps to sorted arrays: grades by Grade.order, sections alphabetically

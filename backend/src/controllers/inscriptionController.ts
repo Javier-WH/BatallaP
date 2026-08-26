@@ -693,7 +693,7 @@ export const enrollMatriculatedStudent = async (req: Request, res: Response) => 
 
 export const getInscriptions = async (req: Request, res: Response) => {
   try {
-    const { schoolPeriodId, gradeId, sectionId, q, gender, escolaridad, hidden } = req.query;
+    const { schoolPeriodId, gradeId, sectionId, q, gender, escolaridad, hidden, includeAuxiliary } = req.query;
     const where: any = {};
     // NO filtrar por schoolPeriodId por defecto - mostrar todos los períodos
     if (schoolPeriodId) where.schoolPeriodId = schoolPeriodId;
@@ -709,15 +709,29 @@ export const getInscriptions = async (req: Request, res: Response) => {
     // For non-privileged users, always exclude hidden. For privileged users, allow
     // explicit filtering via the `hidden` query param (used by MatriculationEnrollment's
     // "inscrito/no_inscrito" filter).
+    const andConditions: any[] = [];
     if (!isPrivileged) {
-      where[Op.and] = [
-        literal('`matriculation`.`hiddenFromControlEstudios` = false'),
-      ];
+      andConditions.push(literal('`matriculation`.`hiddenFromControlEstudios` = false'));
     } else if (hidden !== undefined) {
       const hiddenBool = hidden === 'true' || hidden === '1';
-      where[Op.and] = [
-        literal(`\`matriculation\`.\`hiddenFromControlEstudios\` = ${hiddenBool ? 'true' : 'false'}`),
-      ];
+      andConditions.push(literal(`\`matriculation\`.\`hiddenFromControlEstudios\` = ${hiddenBool ? 'true' : 'false'}`));
+    }
+
+    // Exclude auxiliary "Materia Pendiente" inscriptions by default.
+    // These are separate inscriptions created during period closure for students
+    // who need to retake subjects from a previous grade. They should NOT appear
+    // in the normal enrollment list — the student's real inscription is in their
+    // current grade with a regular section.
+    // Use includeAuxiliary=true to include them (e.g. for the pending subjects module).
+    if (includeAuxiliary !== 'true' && sectionId === undefined) {
+      const mpSection = await Section.findOne({ where: { name: 'MATERIA PENDIENTE' } });
+      if (mpSection) {
+        andConditions.push({ sectionId: { [Op.ne]: mpSection.id } });
+      }
+    }
+
+    if (andConditions.length > 0) {
+      where[Op.and] = andConditions;
     }
 
     const personWhere: any = {};
@@ -884,7 +898,7 @@ export const getInscriptions = async (req: Request, res: Response) => {
  */
 export const getInscriptionsStats = async (req: Request, res: Response) => {
   try {
-    const { schoolPeriodId, gradeId, sectionId, q, gender, escolaridad, hidden } = req.query;
+    const { schoolPeriodId, gradeId, sectionId, q, gender, escolaridad, hidden, includeAuxiliary } = req.query;
     const where: any = {};
     if (schoolPeriodId) where.schoolPeriodId = schoolPeriodId;
     if (gradeId) where.gradeId = gradeId;
@@ -893,11 +907,25 @@ export const getInscriptionsStats = async (req: Request, res: Response) => {
 
     const userRoles: string[] = (req.session as any).user?.roles || [];
     const isPrivileged = userRoles.includes('Master') || userRoles.includes('Administrador');
+
+    const andConditions: any[] = [];
     if (!isPrivileged) {
-      where[Op.and] = [literal('`matriculation`.`hiddenFromControlEstudios` = false')];
+      andConditions.push(literal('`matriculation`.`hiddenFromControlEstudios` = false'));
     } else if (hidden !== undefined) {
       const hiddenBool = hidden === 'true' || hidden === '1';
-      where[Op.and] = [literal(`\`matriculation\`.\`hiddenFromControlEstudios\` = ${hiddenBool ? 'true' : 'false'}`)];
+      andConditions.push(literal(`\`matriculation\`.\`hiddenFromControlEstudios\` = ${hiddenBool ? 'true' : 'false'}`));
+    }
+
+    // Exclude auxiliary "Materia Pendiente" inscriptions (same logic as getInscriptions)
+    if (includeAuxiliary !== 'true' && sectionId === undefined) {
+      const mpSection = await Section.findOne({ where: { name: 'MATERIA PENDIENTE' } });
+      if (mpSection) {
+        andConditions.push({ sectionId: { [Op.ne]: mpSection.id } });
+      }
+    }
+
+    if (andConditions.length > 0) {
+      where[Op.and] = andConditions;
     }
 
     const personWhere: any = {};

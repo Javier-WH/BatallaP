@@ -146,6 +146,8 @@ import Fee from './Fee';
 import SellableItem from './SellableItem';
 import EnrollmentPlan from './EnrollmentPlan';
 import EnrollmentPlanItem from './EnrollmentPlanItem';
+import Payment from './Payment';
+import Charge from './Charge';
 
 
 // ... (Existing User/Person/Role/Contact associations) ...
@@ -471,6 +473,44 @@ EnrollmentPlanItem.belongsTo(Fee, { foreignKey: 'feeId', as: 'fee' });
 SellableItem.hasMany(EnrollmentPlanItem, { foreignKey: 'sellableItemId', as: 'planItems' });
 EnrollmentPlanItem.belongsTo(SellableItem, { foreignKey: 'sellableItemId', as: 'sellableItem' });
 
+// ── Ledger: Payment & Charge ──
+
+// Inscription <-> Charge (one student can have many charges in a period)
+Inscription.hasMany(Charge, { foreignKey: 'inscriptionId', as: 'charges' });
+Charge.belongsTo(Inscription, { foreignKey: 'inscriptionId', as: 'inscription' });
+
+// Inscription <-> Payment
+Inscription.hasMany(Payment, { foreignKey: 'inscriptionId', as: 'payments' });
+Payment.belongsTo(Inscription, { foreignKey: 'inscriptionId', as: 'inscription' });
+
+// SchoolPeriod <-> Charge
+SchoolPeriod.hasMany(Charge, { foreignKey: 'schoolPeriodId', as: 'charges' });
+Charge.belongsTo(SchoolPeriod, { foreignKey: 'schoolPeriodId', as: 'schoolPeriod' });
+
+// SchoolPeriod <-> Payment
+SchoolPeriod.hasMany(Payment, { foreignKey: 'schoolPeriodId', as: 'payments' });
+Payment.belongsTo(SchoolPeriod, { foreignKey: 'schoolPeriodId', as: 'schoolPeriod' });
+
+// Charge <-> Payment (a charge can be settled by multiple payments)
+Charge.hasMany(Payment, { foreignKey: 'chargeId', as: 'payments' });
+Payment.belongsTo(Charge, { foreignKey: 'chargeId', as: 'charge' });
+
+// Fee <-> Charge (optional link)
+Fee.hasMany(Charge, { foreignKey: 'feeId', as: 'charges' });
+Charge.belongsTo(Fee, { foreignKey: 'feeId', as: 'fee' });
+
+// Fee <-> Payment (optional link)
+Fee.hasMany(Payment, { foreignKey: 'feeId', as: 'payments' });
+Payment.belongsTo(Fee, { foreignKey: 'feeId', as: 'fee' });
+
+// SellableItem <-> Charge
+SellableItem.hasMany(Charge, { foreignKey: 'sellableItemId', as: 'charges' });
+Charge.belongsTo(SellableItem, { foreignKey: 'sellableItemId', as: 'sellableItem' });
+
+// SellableItem <-> Payment
+SellableItem.hasMany(Payment, { foreignKey: 'sellableItemId', as: 'payments' });
+Payment.belongsTo(SellableItem, { foreignKey: 'sellableItemId', as: 'sellableItem' });
+
 export {
   User,
   Person,
@@ -541,5 +581,7 @@ export {
   Fee,
   SellableItem,
   EnrollmentPlan,
-  EnrollmentPlanItem
+  EnrollmentPlanItem,
+  Payment,
+  Charge
 };

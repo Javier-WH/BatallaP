@@ -52,6 +52,7 @@ interface SectionDetail {
   teacherName: string;
   hasPlan: boolean;
   hasGrades: boolean;
+  disabled?: boolean;
 }
 
 interface SubjectProgress {
@@ -304,8 +305,10 @@ const GradeProgressCard: React.FC<{
 
   // Per-grade overall percentage for the tab badge
   const gradePct = (grade: GradeProgress): number => {
-    const totalDone = grade.subjects.reduce((sum, s) => sum + (mode === 'plan' ? s.withPlan : s.withGrades), 0);
-    const totalSections = grade.subjects.reduce((sum, s) => sum + s.totalSections, 0);
+    // Exclude disabled sections (e.g. MP subjects with no students) from the total
+    const activeSections = grade.subjects.flatMap(s => s.sections.filter(sec => !sec.disabled));
+    const totalDone = activeSections.filter(sec => mode === 'plan' ? sec.hasPlan : sec.hasGrades).length;
+    const totalSections = activeSections.length;
     return totalSections > 0 ? Math.round((totalDone / totalSections) * 100) : 0;
   };
 
@@ -396,11 +399,12 @@ const GradeProgressCard: React.FC<{
                   Materia
                 </th>
                 {sectionColumns.map((c, i) => {
-                  const colAvg = avgOf(activeGradeData.subjects.map(s => {
+                  const colValues = activeGradeData.subjects.map(s => {
                     const sec = s.sections.find(x => x.sectionId === c.sectionId);
-                    if (!sec) return 0;
+                    if (!sec || sec.disabled) return null;
                     return (mode === 'plan' ? sec.hasPlan : sec.hasGrades) ? 100 : 0;
-                  }));
+                  }).filter((v): v is number => v !== null);
+                  const colAvg = avgOf(colValues);
                   return (
                     <th
                       key={c.sectionId}
@@ -442,6 +446,13 @@ const GradeProgressCard: React.FC<{
                     </td>
                     {sectionColumns.map(col => {
                       const sec = sectionMap.get(col.sectionId);
+                      if (sec?.disabled) {
+                        return (
+                          <td key={col.sectionId} className="px-3 py-1.5 border-b border-slate-100 last:border-0 text-center" title="Sin estudiantes en materia pendiente">
+                            <span className="text-[10px]" style={{ color: 'rgba(15,23,42,0.15)' }}>—</span>
+                          </td>
+                        );
+                      }
                       const v = sec ? ((mode === 'plan' ? sec.hasPlan : sec.hasGrades) ? 100 : 0) : -1;
                       if (v < 0) {
                         return (
