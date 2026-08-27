@@ -3,6 +3,7 @@ import { Spin, message, Button, Select, DatePicker } from 'antd';
 import { ReloadOutlined, SaveOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import api from '@/services/api';
+import { useSchool } from '@/context/SchoolContext';
 import PlantelMultiSelect from '@/components/shared/PlantelMultiSelect';
 import { formatGradePadded } from '@/utils/gradeFormat';
 
@@ -93,7 +94,8 @@ interface RowData {
   cedula: string;
   apellidos: string;
   nombres: string;
-  plantelIds: number[];      // selected planteles for this student (all years)
+  plantelIds: number[];      // selected planteles for this student (all years), ordered
+  systemPlantelIds: number[]; // planteles that come from system grades (cannot be removed)
   cells: Record<string, CellData>;  // key: `g__${gradeId}__${subjId}` → cell
   groupSubjectNames: Record<string, string[]>;  // `g__${gradeId}` → list of actual subject names from groups
 }
@@ -173,6 +175,19 @@ const LocalInput = React.memo(function LocalInput({
     />
   );
 });
+
+/* ── Inst number resolver ── */
+/* System cells store "g__pid:<plantelId>" → resolve to index+1 in plantelIds.
+   Historical cells store a plain number string ("1", "2") → return as-is. */
+function resolveInstNum(inst: string, plantelIds: number[]): string {
+  if (!inst) return '';
+  if (inst.startsWith('g__pid:')) {
+    const pid = Number(inst.replace('g__pid:', ''));
+    const idx = plantelIds.indexOf(pid);
+    return idx >= 0 ? String(idx + 1) : '';
+  }
+  return inst;
+}
 
 /* ── LocalDatePicker: date picker with local state, commits on blur/change ── */
 /* Allows both calendar selection and typing/pasting dates in DD/MM/YYYY format. */
@@ -263,6 +278,10 @@ function buildFieldKeys(years: YearCol[]): string[] {
 
 /* ── Main Component ── */
 const HistoricalGradesBySection: React.FC = () => {
+  const { settings } = useSchool();
+  // System plantel: uses institution_name from settings, with a virtual id of -1
+  const SYSTEM_PLANTEL_ID = -1;
+  const systemPlantelName = settings.name || 'Institución';
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [sections, setSections] = useState<SectionOption[]>([]);
@@ -350,8 +369,14 @@ const HistoricalGradesBySection: React.FC = () => {
       const rawPlanteles: PlantelItem[] = data.planteles || [];
       const rawAllPeriods: PeriodOption[] = data.allPeriods || [];
 
+      // Add the system institution as a virtual plantel (id -1) so it appears in the dropdown
+      const plantelesWithSystem = [
+        { id: SYSTEM_PLANTEL_ID, code: 'SIST', name: systemPlantelName },
+        ...rawPlanteles,
+      ];
+
       setStudents(rawStudents);
-      setPlanteles(rawPlanteles);
+      setPlanteles(plantelesWithSystem);
       setAllPeriods(rawAllPeriods);
 
       // Show all years — the user needs to see and fill all grades (1ro–5to)
@@ -396,7 +421,10 @@ const HistoricalGradesBySection: React.FC = () => {
             if (parts.length === 3) dateDisplay = `${parts[2]}/${parts[1]}/${parts[0]}`;
           }
           let instNum = '';
-          if (g.plantelId) {
+          if (g.source === 'system') {
+            // System grades always belong to the institution's plantel (virtual id -1)
+            instNum = `g__pid:${SYSTEM_PLANTEL_ID}`;
+          } else if (g.plantelId) {
             instNum = `g__pid:${g.plantelId}`;
           }
           cells[key] = {
@@ -420,22 +448,29 @@ const HistoricalGradesBySection: React.FC = () => {
           }
         }
 
-        // Collect unique plantelIds for this student
+        // Collect unique plantelIds for this student.
+        // System grades always use the institution's plantel (virtual id -1).
+        // Historical grades may have their own plantelId.
         const studentPlantelIds: number[] = [];
+        let hasSystemGrades = false;
         for (const g of rawGrades) {
-          if (g.personId !== st.id || !g.plantelId) continue;
-          if (!studentPlantelIds.includes(g.plantelId)) studentPlantelIds.push(g.plantelId);
-        }
-
-        // Resolve inst numbers from plantelIds
-        for (const key of Object.keys(cells)) {
-          const c = cells[key];
-          if (c.inst.startsWith('g__pid:')) {
-            const pid = Number(c.inst.replace('g__pid:', ''));
-            const idx = studentPlantelIds.indexOf(pid);
-            c.inst = idx >= 0 ? String(idx + 1) : '';
+          if (g.personId !== st.id) continue;
+          if (g.source === 'system') {
+            hasSystemGrades = true;
+            // System grades use the virtual plantel id
+            if (!studentPlantelIds.includes(SYSTEM_PLANTEL_ID)) studentPlantelIds.push(SYSTEM_PLANTEL_ID);
+          } else if (g.plantelId && !studentPlantelIds.includes(g.plantelId)) {
+            studentPlantelIds.push(g.plantelId);
           }
         }
+        // Ensure system plantel is always present if there are system grades
+        if (hasSystemGrades && !studentPlantelIds.includes(SYSTEM_PLANTEL_ID)) {
+          studentPlantelIds.unshift(SYSTEM_PLANTEL_ID);
+        }
+
+        // cell.inst keeps the plantelId (with prefix "pid:") for system cells.
+        // The display number is resolved at render time from plantelIds order.
+        // No need to convert here — the number updates automatically when plantelIds is reordered.
 
         return {
           personId: st.id,
@@ -443,6 +478,7 @@ const HistoricalGradesBySection: React.FC = () => {
           apellidos: st.lastName,
           nombres: st.firstName,
           plantelIds: studentPlantelIds,
+          systemPlantelIds: [...studentPlantelIds],  // snapshot of system planteles
           cells,
           groupSubjectNames: groupNames,
         };
@@ -626,12 +662,21 @@ const HistoricalGradesBySection: React.FC = () => {
         const parts = cellKey.split('__');
         const gradeId = Number(parts[1]);
         const subjId = Number(parts[2]);
-        // Map inst number → plantelId
+        // Map inst → plantelId
+        // System cells: cell.inst = "g__pid:<plantelId>" → extract directly
+        //   (SYSTEM_PLANTEL_ID = -1 → send null to backend, it's the institution's own plantel)
+        // Historical cells: cell.inst = "1", "2" → map via plantelIds[index-1]
         let plantelId: number | null = null;
         if (cell.inst && cell.inst.trim() !== '') {
-          const instNum = parseInt(cell.inst, 10);
-          if (!isNaN(instNum) && instNum >= 1 && instNum <= row.plantelIds.length) {
-            plantelId = row.plantelIds[instNum - 1];
+          if (cell.inst.startsWith('g__pid:')) {
+            const pid = Number(cell.inst.replace('g__pid:', ''));
+            plantelId = (pid === SYSTEM_PLANTEL_ID || !pid) ? null : pid;
+          } else {
+            const instNum = parseInt(cell.inst, 10);
+            if (!isNaN(instNum) && instNum >= 1 && instNum <= row.plantelIds.length) {
+              const mappedId = row.plantelIds[instNum - 1];
+              plantelId = (mappedId === SYSTEM_PLANTEL_ID) ? null : mappedId;
+            }
           }
         }
         // Convert dd/mm/aaaa → yyyy-mm-dd
@@ -968,6 +1013,7 @@ const HistoricalGradesBySection: React.FC = () => {
                         <PlantelMultiSelect
                           planteles={planteles}
                           selectedIds={row.plantelIds}
+                          systemIds={row.systemPlantelIds}
                           onChange={ids => updatePlantelIds(ri, ids)}
                           width={COL.inst - 8}
                           placeholder="Buscar plantel…"
@@ -1064,7 +1110,7 @@ const HistoricalGradesBySection: React.FC = () => {
                                     type="text" maxLength={2}
                                     data-row={ri} data-field={instKey}
                                     registerRef={registerRef(ri, instKey)}
-                                    value={cell.inst}
+                                    value={isSystem ? resolveInstNum(cell.inst, row.plantelIds) : cell.inst}
                                     onCommit={val => updateCell(ri, instKey, val)}
                                     onFocus={() => setActiveCell({ row: ri, field: instKey })}
                                     onKeyDown={e => handleKeyDown(e, ri, instKey)}

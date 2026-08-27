@@ -10,6 +10,7 @@ interface Plantel {
 interface PlantelMultiSelectProps {
   planteles: Plantel[];
   selectedIds: number[];
+  systemIds?: number[];      // planteles from system grades (cannot be removed, only reordered)
   onChange: (ids: number[]) => void;
   placeholder?: string;
   width?: number;
@@ -17,11 +18,13 @@ interface PlantelMultiSelectProps {
 
 /**
  * Multi-select with filter dropdown and chip display.
- * Each selected plantel shows as a chip with its number (1, 2, 3...) and an × to remove.
+ * Each selected plantel shows as a chip with its number (1, 2, 3...) and ↑/↓ to reorder.
+ * System planteles (in systemIds) cannot be removed, only reordered.
  */
 const PlantelMultiSelect: React.FC<PlantelMultiSelectProps> = ({
   planteles,
   selectedIds,
+  systemIds = [],
   onChange,
   placeholder = 'Buscar plantel…',
   width = 200,
@@ -37,7 +40,6 @@ const PlantelMultiSelect: React.FC<PlantelMultiSelectProps> = ({
     if (open && containerRef.current) {
       const rect = containerRef.current.getBoundingClientRect();
       const dropdownWidth = 360;
-      // Clamp to viewport so it doesn't overflow the right edge
       const left = Math.min(rect.left, window.innerWidth - dropdownWidth - 8);
       setDropdownPos({ top: rect.bottom + 2, left: Math.max(8, left), width: dropdownWidth });
     } else {
@@ -50,14 +52,12 @@ const PlantelMultiSelect: React.FC<PlantelMultiSelectProps> = ({
     if (!open) return;
     const handler = (e: MouseEvent) => {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        // Don't close if clicking inside the portal dropdown
         const dropdown = document.querySelector('[data-plantel-dropdown]');
         if (dropdown && dropdown.contains(e.target as Node)) return;
         setOpen(false);
       }
     };
     const scrollHandler = (e: Event) => {
-      // Only close if the scroll didn't come from the dropdown itself
       const dropdown = document.querySelector('[data-plantel-dropdown]');
       if (dropdown && dropdown.contains(e.target as Node)) return;
       setOpen(false);
@@ -77,6 +77,8 @@ const PlantelMultiSelect: React.FC<PlantelMultiSelectProps> = ({
 
   const toggle = (id: number) => {
     if (selectedIds.includes(id)) {
+      // Don't allow removing system planteles
+      if (systemIds.includes(id)) return;
       onChange(selectedIds.filter(x => x !== id));
     } else {
       onChange([...selectedIds, id]);
@@ -85,12 +87,30 @@ const PlantelMultiSelect: React.FC<PlantelMultiSelectProps> = ({
 
   const remove = (id: number, e: React.MouseEvent) => {
     e.stopPropagation();
+    if (systemIds.includes(id)) return;
     onChange(selectedIds.filter(x => x !== id));
+  };
+
+  const moveUp = (idx: number, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (idx === 0) return;
+    const next = [...selectedIds];
+    [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
+    onChange(next);
+  };
+
+  const moveDown = (idx: number, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (idx === selectedIds.length - 1) return;
+    const next = [...selectedIds];
+    [next[idx], next[idx + 1]] = [next[idx + 1], next[idx]];
+    onChange(next);
   };
 
   const selectedPlanteles = selectedIds.map((id, idx) => ({
     ...planteles.find(p => p.id === id),
     number: idx + 1,
+    isSystem: systemIds.includes(id),
   })).filter(p => p.id);
 
   return (
@@ -111,34 +131,46 @@ const PlantelMultiSelect: React.FC<PlantelMultiSelectProps> = ({
           width: '100%',
         }}
       >
-        {selectedPlanteles.map(p => (
+        {selectedPlanteles.map((p, idx) => (
           <span
             key={p.id}
             style={{
               display: 'inline-flex',
               alignItems: 'center',
-              gap: 2,
-              background: '#EFE3C7',
+              gap: 1,
+              background: p.isSystem ? '#E8E0D0' : '#EFE3C7',
               color: '#A9814B',
               borderRadius: 3,
-              padding: '0 4px',
+              padding: '0 2px',
               fontSize: 10,
               fontWeight: 600,
               whiteSpace: 'nowrap',
               maxWidth: '100%',
               overflow: 'hidden',
-              textOverflow: 'ellipsis',
             }}
-            title={p.name}
+            title={p.name + (p.isSystem ? ' (sistema)' : '')}
           >
             <span style={{ fontWeight: 700 }}>#{p.number}</span>
-            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 80 }}>{p.name}</span>
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 70 }}>{p.name}</span>
+            {/* Reorder buttons */}
             <span
-              onClick={(e) => remove(p.id, e)}
-              style={{ cursor: 'pointer', fontWeight: 700, marginLeft: 1, flexShrink: 0 }}
-            >
-              ×
-            </span>
+              onClick={(e) => moveUp(idx, e)}
+              style={{ cursor: idx === 0 ? 'default' : 'pointer', opacity: idx === 0 ? 0.3 : 1, fontWeight: 700, flexShrink: 0, padding: '0 1px' }}
+              title="Mover arriba"
+            >▲</span>
+            <span
+              onClick={(e) => moveDown(idx, e)}
+              style={{ cursor: idx === selectedPlanteles.length - 1 ? 'default' : 'pointer', opacity: idx === selectedPlanteles.length - 1 ? 0.3 : 1, fontWeight: 700, flexShrink: 0, padding: '0 1px' }}
+              title="Mover abajo"
+            >▼</span>
+            {/* Remove button — only for non-system planteles */}
+            {!p.isSystem && (
+              <span
+                onClick={(e) => remove(p.id, e)}
+                style={{ cursor: 'pointer', fontWeight: 700, marginLeft: 1, flexShrink: 0 }}
+                title="Quitar"
+              >×</span>
+            )}
           </span>
         ))}
         <input
@@ -186,6 +218,7 @@ const PlantelMultiSelect: React.FC<PlantelMultiSelectProps> = ({
           ) : (
             filtered.map(p => {
               const isSelected = selectedIds.includes(p.id);
+              const isSystem = systemIds.includes(p.id);
               return (
                 <div
                   key={p.id}
@@ -193,7 +226,7 @@ const PlantelMultiSelect: React.FC<PlantelMultiSelectProps> = ({
                   style={{
                     padding: '5px 12px',
                     fontSize: 12,
-                    cursor: 'pointer',
+                    cursor: isSystem && isSelected ? 'default' : 'pointer',
                     background: isSelected ? '#EFE3C7' : 'transparent',
                     color: '#1E2A44',
                     display: 'flex',
@@ -209,6 +242,7 @@ const PlantelMultiSelect: React.FC<PlantelMultiSelectProps> = ({
                     : <span style={{ flex: '0 0 14px' }}>&nbsp;</span>}
                   <span style={{ fontWeight: 600, color: '#A9814B', flex: '0 0 60px' }}>{p.code}</span>
                   <span style={{ flex: '1 1 auto', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
+                  {isSystem && isSelected && <span style={{ fontSize: 9, color: '#8B93A6', flexShrink: 0, fontStyle: 'italic' }}>sistema</span>}
                 </div>
               );
             })
