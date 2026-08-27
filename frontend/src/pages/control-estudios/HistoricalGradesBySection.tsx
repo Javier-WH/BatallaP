@@ -940,7 +940,7 @@ const HistoricalGradesBySection: React.FC = () => {
     inst: COL.n + COL.cedula + COL.apellidos + COL.nombres,
   };
   const frozenWidth = COL.n + COL.cedula + COL.apellidos + COL.nombres + COL.inst;
-  const SUB_W = 44 + 44 + 110 + 40 + 48; // = 286 per subject (score, status, date, inst, per)
+  const SUB_W = 44 + 44 + 88 + 40 + 53; // = 269 per subject (score, status, date, inst, per)
   const GROUP_COL_W = 130;        // extra column for group subject name
   // Years that have at least one group subject get an extra trailing column
   const yearHasGroups = (y: YearCol) => y.subjects.some(s => s.subjectGroupId !== null);
@@ -949,7 +949,7 @@ const HistoricalGradesBySection: React.FC = () => {
 
   const cellInputStyle: React.CSSProperties = {
     width: '100%', border: 'none', outline: 'none', background: 'transparent',
-    fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: T.ink, padding: '3px 4px',
+    fontFamily: "'IBM Plex Mono', monospace", fontSize: 14, color: T.ink, padding: '3px 4px',
   };
 
   return (
@@ -1119,9 +1119,9 @@ const HistoricalGradesBySection: React.FC = () => {
                         <React.Fragment key={`col-${y.schoolPeriodId}-${y.gradeId}-${subj.id}`}>
                           <col style={{ width: 44 }} />
                           <col style={{ width: 44 }} />
-                          <col style={{ width: 110 }} />
+                          <col style={{ width: 88 }} />
                           <col style={{ width: 40 }} />
-                          <col style={{ width: 48 }} />
+                          <col style={{ width: 53 }} />
                         </React.Fragment>
                       ))}
                       {yearHasGroups(y) && <col style={{ width: GROUP_COL_W }} />}
@@ -1189,9 +1189,9 @@ const HistoricalGradesBySection: React.FC = () => {
                             <th style={{ ...thSub2(44), borderLeft: si === 0 ? `3px solid ${y.gradeColor || T.hairline}` : `2px solid ${y.gradeColor || T.hairline}`,
                               background: isActiveYear ? '#F3E5C4' : T.headerBg }}>Nota</th>
                             <th style={{ ...thSub2(44), background: isActiveYear ? '#F3E5C4' : T.headerBg }}>Est.</th>
-                            <th style={{ ...thSub2(110), background: isActiveYear ? '#F3E5C4' : T.headerBg }}>Fecha</th>
+                            <th style={{ ...thSub2(88), background: isActiveYear ? '#F3E5C4' : T.headerBg }}>Fecha</th>
                             <th style={{ ...thSub2(40), background: isActiveYear ? '#F3E5C4' : T.headerBg }}>Inst</th>
-                            <th style={{ ...thSub2(48), background: isActiveYear ? '#F3E5C4' : T.headerBg }}>Per.</th>
+                            <th style={{ ...thSub2(53), background: isActiveYear ? '#F3E5C4' : T.headerBg }}>Per.</th>
                           </React.Fragment>
                         ))}
                         {yearHasGroups(y) && (
@@ -1311,7 +1311,7 @@ const HistoricalGradesBySection: React.FC = () => {
                                   </select>
                                 </td>
                                 {/* Fecha */}
-                                <td style={{ ...tdPlain(110) }}>
+                                <td style={{ ...tdPlain(88) }}>
                                   <LocalDatePicker
                                     data-row={ri} data-field={dateKey}
                                     registerRef={registerRef(ri, dateKey)}
@@ -1341,7 +1341,7 @@ const HistoricalGradesBySection: React.FC = () => {
                                   />
                                 </td>
                                 {/* Per. (School Period) — input with datalist for existing periods + free text */}
-                                <td style={{ ...tdPlain(48), padding: 0 }}>
+                                <td style={{ ...tdPlain(53), padding: 0 }}>
                                   <LocalInput
                                     type="text"
                                     data-row={ri} data-field={perKey}
