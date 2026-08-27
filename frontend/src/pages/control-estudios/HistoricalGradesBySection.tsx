@@ -505,6 +505,7 @@ const HistoricalGradesBySection: React.FC = () => {
 
       setRows(newRows);
       plantelChangesRef.current.clear();
+      setPlantelDirtyCount(0);
     } catch (err: any) {
       console.error(err);
       message.error(err?.response?.data?.message || 'Error al cargar notas');
@@ -582,6 +583,7 @@ const HistoricalGradesBySection: React.FC = () => {
       }
       return r;
     }));
+    setPlantelDirtyCount(plantelChangesRef.current.size);
   }, []);
 
   /* ── Ref management ── */
@@ -671,16 +673,18 @@ const HistoricalGradesBySection: React.FC = () => {
   };
 
   /* ── Save ── */
+  const [plantelDirtyCount, setPlantelDirtyCount] = useState(0);
   const dirtyCount = useMemo(() => {
     let c = 0;
     for (const row of rows) {
       for (const key of Object.keys(row.cells)) {
         if (row.cells[key].dirty) c++;
       }
-      // plantelIds changes don't count as cell dirty, but we track separately
     }
+    // Add plantel changes count
+    c += plantelDirtyCount;
     return c;
-  }, [rows]);
+  }, [rows, plantelDirtyCount]);
 
   const handleSave = async () => {
     const changes: any[] = [];
@@ -735,14 +739,19 @@ const HistoricalGradesBySection: React.FC = () => {
       }
     }
 
-    if (changes.length === 0) { message.info('No hay cambios para guardar'); return; }
+    const hasPlantelChanges = plantelChangesRef.current.size > 0;
+
+    if (changes.length === 0 && !hasPlantelChanges) { message.info('No hay cambios para guardar'); return; }
 
     setSaving(true);
     try {
-      const res = await api.post('/historical-grades/save', { changes });
-      message.success(`${res.data.saved} nota${res.data.saved !== 1 ? 's' : ''} guardada${res.data.saved !== 1 ? 's' : ''}`);
-      if (res.data.errors?.length > 0) {
-        for (const err of res.data.errors) message.error(err);
+      // Save note changes (if any)
+      if (changes.length > 0) {
+        const res = await api.post('/historical-grades/save', { changes });
+        message.success(`${res.data.saved} nota${res.data.saved !== 1 ? 's' : ''} guardada${res.data.saved !== 1 ? 's' : ''}`);
+        if (res.data.errors?.length > 0) {
+          for (const err of res.data.errors) message.error(err);
+        }
       }
 
       // Save plantelIds for students that had plantel changes
@@ -763,6 +772,10 @@ const HistoricalGradesBySection: React.FC = () => {
       if (plantelSaves.length > 0) {
         await Promise.all(plantelSaves);
         plantelChangesRef.current.clear();
+        setPlantelDirtyCount(0);
+        if (changes.length === 0) {
+          message.success(`Planteles guardados (${plantelSaves.length})`);
+        }
       }
 
       await loadGrades();
