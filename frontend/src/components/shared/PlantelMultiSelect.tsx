@@ -1,4 +1,5 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 
 interface Plantel {
   id: number;
@@ -29,16 +30,34 @@ const PlantelMultiSelect: React.FC<PlantelMultiSelectProps> = ({
   const [filter, setFilter] = useState('');
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number; width: number } | null>(null);
 
+  // Recalculate dropdown position when opening
   useEffect(() => {
+    if (open && containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect();
+      setDropdownPos({ top: rect.bottom + 2, left: rect.left, width: Math.max(width, 220) });
+    } else {
+      setDropdownPos(null);
+    }
+  }, [open, width]);
+
+  // Close on outside click or scroll
+  useEffect(() => {
+    if (!open) return;
     const handler = (e: MouseEvent) => {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
         setOpen(false);
       }
     };
+    const scrollHandler = () => setOpen(false);
     document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, []);
+    document.addEventListener('scroll', scrollHandler, true);
+    return () => {
+      document.removeEventListener('mousedown', handler);
+      document.removeEventListener('scroll', scrollHandler, true);
+    };
+  }, [open]);
 
   const filtered = planteles.filter(p =>
     p.name.toLowerCase().includes(filter.toLowerCase()) ||
@@ -132,21 +151,21 @@ const PlantelMultiSelect: React.FC<PlantelMultiSelectProps> = ({
         />
       </div>
 
-      {/* Dropdown */}
-      {open && (
+      {/* Dropdown — rendered via portal to escape overflow:auto containers */}
+      {open && dropdownPos && createPortal(
         <div
           style={{
-            position: 'absolute',
-            top: '100%',
-            left: 0,
-            zIndex: 1000,
+            position: 'fixed',
+            top: dropdownPos.top,
+            left: dropdownPos.left,
+            zIndex: 99999,
             background: '#fff',
             border: '1px solid #DDD5C0',
             borderRadius: 6,
             boxShadow: '0 4px 12px rgba(0,0,0,0.12)',
             maxHeight: 200,
             overflowY: 'auto',
-            width: Math.max(width, 220),
+            width: dropdownPos.width,
           }}
         >
           {filtered.length === 0 ? (
@@ -178,10 +197,11 @@ const PlantelMultiSelect: React.FC<PlantelMultiSelectProps> = ({
               );
             })
           )}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
 };
 
-export default PlantelMultiSelect;
+export default React.memo(PlantelMultiSelect);

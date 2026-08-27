@@ -1,6 +1,7 @@
 import React, { useMemo, useRef, useState, useEffect, useCallback } from 'react';
-import { Spin, message, Button, Select } from 'antd';
+import { Spin, message, Button, Select, DatePicker } from 'antd';
 import { ReloadOutlined, SaveOutlined } from '@ant-design/icons';
+import dayjs from 'dayjs';
 import api from '@/services/api';
 import PlantelMultiSelect from '@/components/shared/PlantelMultiSelect';
 import { formatGradePadded } from '@/utils/gradeFormat';
@@ -169,6 +170,70 @@ const LocalInput = React.memo(function LocalInput({
       }}
       onKeyDown={onKeyDown}
       onPaste={onPaste}
+    />
+  );
+});
+
+/* ── LocalDatePicker: date picker with local state, commits on blur/change ── */
+/* Allows both calendar selection and typing/pasting dates in DD/MM/YYYY format. */
+interface LocalDatePickerProps {
+  value: string;              // "dd/mm/yyyy" or ""
+  onCommit: (value: string) => void;  // receives "dd/mm/yyyy" or ""
+  onFocus?: () => void;
+  onKeyDown?: (e: React.KeyboardEvent) => void;
+  onPaste?: (e: React.ClipboardEvent) => void;
+  registerRef?: (el: HTMLInputElement | null) => void;
+  readOnly?: boolean;
+  style?: React.CSSProperties;
+  'data-row'?: number;
+  'data-field'?: string;
+}
+const DATE_FORMAT = 'DD/MM/YYYY';
+const LocalDatePicker = React.memo(function LocalDatePicker({
+  value, onCommit, onFocus, onKeyDown, onPaste, registerRef,
+  readOnly, style, ...rest
+}: LocalDatePickerProps) {
+  // Convert "dd/mm/yyyy" → dayjs
+  const toDayjs = (s: string) => {
+    if (!s) return null;
+    const d = dayjs(s, DATE_FORMAT, true);
+    return d.isValid() ? d : null;
+  };
+  // dayjs → "dd/mm/yyyy"
+  const fromDayjs = (d: dayjs.Dayjs | null) => d ? d.format(DATE_FORMAT) : '';
+
+  const [localDate, setLocalDate] = useState<dayjs.Dayjs | null>(toDayjs(value));
+  const focusedRef = useRef(false);
+  const lastCommitted = useRef(value);
+
+  useEffect(() => {
+    if (!focusedRef.current || value !== lastCommitted.current) {
+      setLocalDate(toDayjs(value));
+    }
+  }, [value]);
+
+  return (
+    <DatePicker
+      {...rest as any}
+      format={DATE_FORMAT}
+      value={localDate}
+      onChange={(d) => {
+        setLocalDate(d);
+        const str = fromDayjs(d);
+        lastCommitted.current = str;
+        onCommit(str);
+      }}
+      onFocus={() => { focusedRef.current = true; onFocus?.(); }}
+      onBlur={() => { focusedRef.current = false; }}
+      onKeyDown={onKeyDown as any}
+      onPaste={onPaste as any}
+      ref={registerRef as any}
+      disabled={readOnly}
+      allowClear
+      placeholder="dd/mm/aaaa"
+      style={style}
+      variant="borderless"
+      inputReadOnly={false}
     />
   );
 });
@@ -451,17 +516,20 @@ const HistoricalGradesBySection: React.FC = () => {
     setRows(prev => prev.map((r, i) => i === rowIdx ? setField(r, key, value) : r));
   };
 
-  const updatePlantelIds = (rowIdx: number, ids: number[]) => {
+  const updatePlantelIds = useCallback((rowIdx: number, ids: number[]) => {
     setRows(prev => prev.map((r, i) => i === rowIdx ? { ...r, plantelIds: ids } : r));
-  };
+  }, []);
 
   /* ── Ref management ── */
   const registerRef = (rowIdx: number, key: string) => (el: HTMLInputElement | HTMLSelectElement | null) => {
     inputRefs.current[`${rowIdx}__${key}`] = el;
   };
   const focusCell = (rowIdx: number, key: string) => {
-    const el = inputRefs.current[`${rowIdx}__${key}`];
-    if (el) { el.focus(); if ((el as HTMLInputElement).select) (el as HTMLInputElement).select(); }
+    const el = inputRefs.current[`${rowIdx}__${key}`] as any;
+    if (el) {
+      if (typeof el.focus === 'function') el.focus();
+      if (typeof el.select === 'function') el.select();
+    }
   };
 
   /* ── Keyboard navigation ── */
@@ -978,8 +1046,7 @@ const HistoricalGradesBySection: React.FC = () => {
                                 </td>
                                 {/* Fecha */}
                                 <td style={{ ...tdPlain(78) }}>
-                                  <LocalInput
-                                    type="text"
+                                  <LocalDatePicker
                                     data-row={ri} data-field={dateKey}
                                     registerRef={registerRef(ri, dateKey)}
                                     value={cell.date}
@@ -987,9 +1054,8 @@ const HistoricalGradesBySection: React.FC = () => {
                                     onFocus={() => setActiveCell({ row: ri, field: dateKey })}
                                     onKeyDown={e => handleKeyDown(e, ri, dateKey)}
                                     onPaste={e => handlePaste(e, ri, dateKey)}
-                                    placeholder="dd/mm/aaaa"
                                     readOnly={isSystem}
-                                    style={{ ...cellInputStyle, cursor: isSystem ? 'default' : 'text' }}
+                                    style={{ ...cellInputStyle, cursor: isSystem ? 'default' : 'text', width: '100%' }}
                                   />
                                 </td>
                                 {/* Inst */}
