@@ -142,7 +142,7 @@ export const getHistoricalGradesBySection = async (req: Request, res: Response) 
 
     // 3b. Batch-fetch all SchoolPeriods to build a short period label (e.g. "25/26")
     const allPeriods = await SchoolPeriod.findAll({
-      attributes: ['id', 'startYear', 'endYear', 'period', 'name'],
+      attributes: ['id', 'startYear', 'endYear', 'period', 'name', 'status'],
       order: [['startYear', 'ASC']],
     });
     const periodShortMap = new Map<number, string>();
@@ -312,6 +312,7 @@ export const getHistoricalGradesBySection = async (req: Request, res: Response) 
       gradesMap.push({
         personId: ins.personId,
         schoolPeriodId: ins.schoolPeriodId,
+        periodShort: ins.schoolPeriodId != null ? (periodShortMap.get(ins.schoolPeriodId) ?? null) : null,
         gradeId: ins.gradeId ?? null,
         subjectId: subj.id,
         subjectGroupId: subj.subjectGroupId ?? null,
@@ -346,6 +347,7 @@ export const getHistoricalGradesBySection = async (req: Request, res: Response) 
       gradesMap.push({
         personId: hg.personId,
         schoolPeriodId: hg.schoolPeriodId ?? null,
+        periodShort: hg.schoolPeriodId != null ? (periodShortMap.get(hg.schoolPeriodId) ?? null) : null,
         gradeId: hg.gradeId,
         subjectId: hg.subjectId,
         subjectGroupId: subj?.subjectGroupId ?? null,
@@ -379,6 +381,7 @@ export const getHistoricalGradesBySection = async (req: Request, res: Response) 
         periodShort: periodShortMap.get(p.id) ?? null,
         period: p.period,
         name: p.name,
+        status: p.status,
       })),
     });
   } catch (error: any) {
@@ -388,11 +391,86 @@ export const getHistoricalGradesBySection = async (req: Request, res: Response) 
 };
 
 /**
+ * Resolve a period label (e.g. "03/04" or "2003-2004") to a SchoolPeriod id.
+ * If the period doesn't exist AND is in the past, create it with status 'historico'.
+ * Rejects the active period or future periods.
+ * Returns null if the label is empty or invalid.
+ */
+async function resolveOrCreatePeriod(periodLabel: string | null | undefined, transaction: any): Promise<number | null> {
+  if (!periodLabel || typeof periodLabel !== 'string') return null;
+  const label = periodLabel.trim();
+  if (!label) return null;
+
+  // Load all periods to match and to find the active one
+  const allPeriods = await SchoolPeriod.findAll({
+    attributes: ['id', 'startYear', 'endYear', 'period', 'status'],
+    transaction,
+  });
+
+  // Helper: reject active or future periods
+  const rejectIfNotHistorical = (p: any) => {
+    if (p.status === 'activo' || p.status === 'preinscripcion') {
+      throw new Error(
+        `No se puede usar el periodo "${p.period}" en notas históricas. ` +
+        `Solo se permiten periodos anteriores al actual.`
+      );
+    }
+  };
+
+  // Try to match by periodShort (YY/YY format, e.g. "03/04")
+  for (const p of allPeriods) {
+    const s = String(p.startYear).slice(-2);
+    const e = String(p.endYear).slice(-2);
+    if (`${s}/${e}` === label) {
+      rejectIfNotHistorical(p);
+      return p.id;
+    }
+  }
+
+  // Try to match by period string (YYYY-YYYY format, e.g. "2003-2004")
+  const byPeriod = allPeriods.find(p => p.period === label);
+  if (byPeriod) {
+    rejectIfNotHistorical(byPeriod);
+    return byPeriod.id;
+  }
+
+  // Validate YYYY-YYYY format
+  const match = /^(\d{4})-(\d{4})$/.exec(label);
+  if (!match) {
+    throw new Error(`Formato de periodo inválido: "${label}". Use AAAA-AAAA (ej. 2003-2004)`);
+  }
+  const startYear = parseInt(match[1], 10);
+  const endYear = parseInt(match[2], 10);
+  if (!(endYear > startYear)) {
+    throw new Error(`Periodo inválido: "${label}". El año final debe ser mayor al inicial`);
+  }
+
+  // Reject the active period or any period that starts in the same year or after
+  const activePeriod = allPeriods.find(p => p.status === 'activo');
+  if (activePeriod && startYear >= activePeriod.startYear) {
+    throw new Error(
+      `No se puede usar el periodo "${label}" en notas históricas. ` +
+      `Solo se permiten periodos anteriores al actual (${activePeriod.period}).`
+    );
+  }
+
+  const created = await SchoolPeriod.create({
+    period: label,
+    name: `Año Escolar ${label}`,
+    startYear,
+    endYear,
+    status: 'historico',
+  }, { transaction });
+
+  return created.id;
+}
+
+/**
  * POST /api/historical-grades/save
  *
  * Body: {
  *   changes: [{
- *     personId, schoolPeriodId, gradeId, subjectId,
+ *     personId, periodLabel, gradeId, subjectId,
  *     finalScore, gradeType, plantelId, date,
  *     finalGradeId?, inscriptionSubjectId?, historicalGradeId?,
  *   }]
@@ -430,7 +508,7 @@ export const saveHistoricalGrades = async (req: Request, res: Response) => {
     for (const change of changes) {
       try {
         const {
-          personId, schoolPeriodId, gradeId, subjectId,
+          personId, periodLabel, gradeId, subjectId,
           finalScore, gradeType, plantelId,
           finalGradeId, inscriptionSubjectId, historicalGradeId, date,
         } = change;
@@ -440,16 +518,43 @@ export const saveHistoricalGrades = async (req: Request, res: Response) => {
           continue;
         }
 
+        // Resolve periodLabel → schoolPeriodId (creates SchoolPeriod if needed)
+        let schoolPeriodId: number | null = null;
+        try {
+          schoolPeriodId = await resolveOrCreatePeriod(periodLabel, t);
+        } catch (periodErr: any) {
+          errors.push(periodErr.message);
+          continue;
+        }
+
         const rawScore = finalScore !== null && finalScore !== undefined ? Number(finalScore) : null;
-        const score = rawScore !== null ? roundFinalGrade(rawScore) : null;
-        const status = score !== null ? (isPassingGrade(rawScore!, passingGrade) ? 'aprobada' : 'reprobada') : 'reprobada';
+        // Use roundGrade (not roundFinalGrade) for historical grades — they can be 0.
+        // roundFinalGrade enforces MIN_FINAL_GRADE=1 which is for system-calculated grades only.
+        const score = rawScore !== null ? roundGrade(rawScore) : null;
+        // Validate score range (0 is treated as "no grade" → null)
+        if (score !== null && (score < 0 || score > 20)) {
+          errors.push(`Nota inválida: ${score}. Debe estar entre 1 y 20.`);
+          continue;
+        }
+        const normalizedScore = score === 0 ? null : score;
+        const status = normalizedScore !== null ? (isPassingGrade(rawScore!, passingGrade) ? 'aprobada' : 'reprobada') : 'reprobada';
         const parsedDate = date ? new Date(`${date}T12:00:00`) : new Date();
         const dateOnly = date ? new Date(date).toISOString().split('T')[0] : null;
 
         // ── Case 1: Update existing HistoricalGrade ──
         if (historicalGradeId) {
+          // If score is null (empty or 0), the user wants to delete the note
+          if (normalizedScore === null) {
+            await HistoricalGrade.destroy({
+              where: { id: historicalGradeId },
+              transaction: t,
+            });
+            saved++;
+            continue;
+          }
           await HistoricalGrade.update({
-            finalScore: score,
+            schoolPeriodId: schoolPeriodId || null,
+            finalScore: normalizedScore,
             status,
             gradeType: gradeType || 'regular',
             plantelId: plantelId || null,
@@ -465,7 +570,7 @@ export const saveHistoricalGrades = async (req: Request, res: Response) => {
         // ── Case 2: Update existing SubjectFinalGrade ──
         if (finalGradeId) {
           await SubjectFinalGrade.update({
-            finalScore: score,
+            finalScore: normalizedScore,
             status,
             gradeType: gradeType || 'regular',
             plantelId: plantelId || null,
@@ -492,7 +597,7 @@ export const saveHistoricalGrades = async (req: Request, res: Response) => {
           });
           if (existing) {
             await SubjectFinalGrade.update({
-              finalScore: score,
+              finalScore: normalizedScore,
               status,
               gradeType: gradeType || 'regular',
               plantelId: plantelId || null,
@@ -507,7 +612,7 @@ export const saveHistoricalGrades = async (req: Request, res: Response) => {
           } else {
             await SubjectFinalGrade.create({
               inscriptionSubjectId,
-              finalScore: score,
+              finalScore: normalizedScore,
               status,
               gradeType: gradeType || 'regular',
               plantelId: plantelId || null,
@@ -550,7 +655,7 @@ export const saveHistoricalGrades = async (req: Request, res: Response) => {
             });
             if (existing) {
               await SubjectFinalGrade.update({
-                finalScore: score,
+                finalScore: normalizedScore,
                 status,
                 gradeType: gradeType || 'regular',
                 plantelId: plantelId || null,
@@ -565,7 +670,7 @@ export const saveHistoricalGrades = async (req: Request, res: Response) => {
             } else {
               await SubjectFinalGrade.create({
                 inscriptionSubjectId: insSub.id,
-                finalScore: score,
+                finalScore: normalizedScore,
                 status,
                 gradeType: gradeType || 'regular',
                 plantelId: plantelId || null,
@@ -581,6 +686,22 @@ export const saveHistoricalGrades = async (req: Request, res: Response) => {
         }
 
         // ── Case 5: No inscription → use HistoricalGrade ──
+        // Don't create empty historical grades — if score is null, skip
+        if (normalizedScore === null) {
+          // Check if there's an existing one to delete
+          const existingHist = await HistoricalGrade.findOne({
+            where: { personId, gradeId, subjectId },
+            transaction: t,
+          });
+          if (existingHist) {
+            await HistoricalGrade.destroy({
+              where: { id: existingHist.id },
+              transaction: t,
+            });
+            saved++;
+          }
+          continue;
+        }
         const existingHist = await HistoricalGrade.findOne({
           where: { personId, gradeId, subjectId },
           transaction: t,
@@ -588,7 +709,7 @@ export const saveHistoricalGrades = async (req: Request, res: Response) => {
         if (existingHist) {
           await HistoricalGrade.update({
             schoolPeriodId: schoolPeriodId || null,
-            finalScore: score,
+            finalScore: normalizedScore,
             status,
             gradeType: gradeType || 'regular',
             plantelId: plantelId || null,
@@ -603,7 +724,7 @@ export const saveHistoricalGrades = async (req: Request, res: Response) => {
             gradeId,
             subjectId,
             schoolPeriodId: schoolPeriodId || null,
-            finalScore: score,
+            finalScore: normalizedScore,
             status,
             gradeType: gradeType || 'regular',
             plantelId: plantelId || null,

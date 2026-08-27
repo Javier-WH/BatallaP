@@ -66,6 +66,7 @@ interface YearCol {
 interface GradeEntry {
   personId: number;
   schoolPeriodId: number | null;
+  periodShort?: string | null;
   gradeId: number | null;
   subjectId: number;
   subjectGroupId: number | null;
@@ -83,7 +84,7 @@ interface GradeEntry {
 }
 interface PlantelItem { id: number; code: string; name: string; }
 interface SectionOption { id: number; name: string; gradeName: string; gradeId: number; }
-interface PeriodOption { id: number; periodShort: string | null; period: string; name: string; }
+interface PeriodOption { id: number; periodShort: string | null; period: string; name: string; status?: string; }
 
 /* ── Row data: one per student ── */
 interface RowData {
@@ -274,7 +275,7 @@ const HistoricalGradesBySection: React.FC = () => {
             status: statusCode,
             date: dateDisplay,
             inst: instNum,
-            per: g.schoolPeriodId != null ? String(g.schoolPeriodId) : '',
+            per: g.periodShort ?? '',
             source: g.source ?? '',
             finalGradeId: g.finalGradeId,
             inscriptionSubjectId: g.inscriptionSubjectId,
@@ -362,11 +363,17 @@ const HistoricalGradesBySection: React.FC = () => {
       const cellKey = `g__${m[1]}__${m[2]}`;
       const field = m[3] as keyof CellData;
       const cell = row.cells[cellKey] || emptyCell();
-      // Pad score fields to match maxGrade digit count
+      // Pad score fields to match maxGrade digit count, and reject values > maxGrade
       let finalValue = value;
       if (field === 'score' && value !== '') {
         const num = Number(value);
-        if (!isNaN(num)) finalValue = formatGradePadded(num, maxGrade);
+        if (isNaN(num)) {
+          finalValue = '';
+        } else if (num > maxGrade) {
+          finalValue = '';  // reject values above maxGrade
+        } else {
+          finalValue = formatGradePadded(num, maxGrade);
+        }
       }
       return {
         ...row,
@@ -395,6 +402,19 @@ const HistoricalGradesBySection: React.FC = () => {
 
   /* ── Keyboard navigation ── */
   const fieldKeys = useMemo(() => buildFieldKeys(years), [years]);
+
+  // Periods available for the "Per." dropdown: only past periods (historico/externo),
+  // excluding the active period and future periods. Deduplicated by periodShort.
+  const editablePeriods = useMemo(() => {
+    const seen = new Set<string>();
+    return allPeriods.filter(p => {
+      if (p.status !== 'historico' && p.status !== 'externo') return false;
+      const key = p.periodShort ?? p.period;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [allPeriods]);
 
   const handleKeyDown = (e: React.KeyboardEvent, rowIdx: number, key: string) => {
     if (e.key === 'Escape') {
@@ -489,17 +509,18 @@ const HistoricalGradesBySection: React.FC = () => {
           if (parts.length === 3) dateStr = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
         }
         const gradeType = STATUS_META[cell.status]?.gradeType || 'regular';
-        // Use the cell's own schoolPeriodId (editable per-cell), fallback to column's
-        const cellSpId = cell.per ? Number(cell.per) : null;
-        const yearMatch = years.find(y => y.gradeId === gradeId);
-        const spId = cellSpId ?? yearMatch?.schoolPeriodId ?? null;
+        // cell.per is a periodShort (e.g. "03/04") or a YYYY-YYYY string (e.g. "2003-2004")
+        // or empty. The backend resolves it: finds existing SchoolPeriod or creates a new one.
+        // Only send periodLabel if the cell has one; don't fallback to the year's periodShort
+        // (which could be the active period and get rejected by the backend).
+        const cellPer = cell.per || null;
         changes.push({
           personId: row.personId,
-          schoolPeriodId: spId,
+          periodLabel: cellPer,
           gradeId,
           subjectId: subjId,
           historicalGradeId: cell.historicalGradeId,
-          finalScore: cell.score === '' ? null : Number(cell.score),
+          finalScore: (cell.score === '' || Number(cell.score) === 0) ? null : Number(cell.score),
           gradeType,
           plantelId,
           finalGradeId: cell.finalGradeId,
@@ -515,7 +536,9 @@ const HistoricalGradesBySection: React.FC = () => {
     try {
       const res = await api.post('/historical-grades/save', { changes });
       message.success(`${res.data.saved} nota${res.data.saved !== 1 ? 's' : ''} guardada${res.data.saved !== 1 ? 's' : ''}`);
-      if (res.data.errors?.length > 0) message.warning(`Errores: ${res.data.errors.length}`);
+      if (res.data.errors?.length > 0) {
+        for (const err of res.data.errors) message.error(err);
+      }
       await loadGrades();
     } catch (err: any) {
       message.error(err?.response?.data?.message || 'Error al guardar');
@@ -835,10 +858,8 @@ const HistoricalGradesBySection: React.FC = () => {
                             const instKey = `${cellKey}__inst`;
                             const perKey = `${cellKey}__per`;
 
-                            // For system cells, show the periodShort from allPeriods
-                            const perShort = cell.per
-                              ? (allPeriods.find(p => p.id === Number(cell.per))?.periodShort ?? '')
-                              : '';
+                            // For system cells, cell.per already contains the periodShort
+                            const perShort = cell.per;
 
                             return (
                               <React.Fragment key={cellKey}>
@@ -855,10 +876,11 @@ const HistoricalGradesBySection: React.FC = () => {
                                     value={cell.score}
                                     onChange={e => updateCell(ri, scoreKey, e.target.value)}
                                     onFocus={() => setActiveCell({ row: ri, field: scoreKey })}
-                                    onBlur={() => {
-                                      if (cell.score !== '') {
-                                        const padded = formatGradePadded(Number(cell.score), maxGrade);
-                                        if (padded !== '-' && padded !== cell.score) {
+                                    onBlur={(e) => {
+                                      const val = e.target.value;
+                                      if (val !== '') {
+                                        const padded = formatGradePadded(Number(val), maxGrade);
+                                        if (padded !== '-' && padded !== val) {
                                           updateCell(ri, scoreKey, padded);
                                         }
                                       }
@@ -922,27 +944,31 @@ const HistoricalGradesBySection: React.FC = () => {
                                     style={{ ...cellInputStyle, textAlign: 'center', color: T.brass, fontWeight: 700, cursor: isSystem ? 'default' : 'text' }}
                                   />
                                 </td>
-                                {/* Per. (School Period) */}
+                                {/* Per. (School Period) — input with datalist for existing periods + free text */}
                                 <td style={{ ...tdPlain(48), padding: 0 }}>
-                                  <select
+                                  <input
+                                    type="text"
                                     data-row={ri} data-field={perKey}
-                                    ref={registerRef(ri, perKey) as any}
+                                    ref={registerRef(ri, perKey)}
                                     value={cell.per}
                                     onChange={e => updateCell(ri, perKey, e.target.value)}
                                     onFocus={() => setActiveCell({ row: ri, field: perKey })}
                                     onKeyDown={e => handleKeyDown(e, ri, perKey)}
-                                    disabled={isSystem}
-                                    title={allPeriods.find(p => p.id === Number(cell.per))?.name ?? ''}
+                                    readOnly={isSystem}
+                                    list={`periods-${ri}`}
+                                    placeholder="—"
                                     style={{
                                       ...cellInputStyle, fontSize: 10, textAlign: 'center',
-                                      color: T.inkSoft, cursor: isSystem ? 'default' : 'pointer',
+                                      color: T.inkSoft, cursor: isSystem ? 'default' : 'text',
                                     }}
-                                  >
-                                    <option value="">{perShort || '—'}</option>
-                                    {!isSystem && allPeriods.map(p => (
-                                      <option key={p.id} value={p.id}>{p.periodShort ?? p.period}</option>
-                                    ))}
-                                  </select>
+                                  />
+                                  {!isSystem && (
+                                    <datalist id={`periods-${ri}`}>
+                                      {editablePeriods.map(p => (
+                                        <option key={p.id} value={p.periodShort ?? p.period}>{p.name}</option>
+                                      ))}
+                                    </datalist>
+                                  )}
                                 </td>
                               </React.Fragment>
                             );
