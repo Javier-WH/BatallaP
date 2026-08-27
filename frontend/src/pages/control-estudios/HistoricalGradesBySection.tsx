@@ -338,13 +338,13 @@ const HistoricalGradesBySection: React.FC = () => {
     if (key === 'apellidos') return row.apellidos;
     if (key === 'nombres') return row.nombres;
     if (key === 'plantelIds') return row.plantelIds.join(',');
-    // cell key: spIdg__subjIdg__field
-    const parts = key.split('g__');
-    if (parts.length === 3) {
-      const cellKey = `${parts[0]}__${parts[1]}`;
+    // cell key format: g__${gradeId}__${subjId}__${field}
+    const m = key.match(/^g__(\d+)__(\d+)__(\w+)$/);
+    if (m) {
+      const cellKey = `g__${m[1]}__${m[2]}`;
       const cell = row.cells[cellKey];
       if (!cell) return '';
-      return (cell as any)[parts[2]] ?? '';
+      return (cell as any)[m[3]] ?? '';
     }
     return '';
   };
@@ -357,10 +357,10 @@ const HistoricalGradesBySection: React.FC = () => {
       const ids = value ? value.split(',').map(Number).filter(n => !isNaN(n)) : [];
       return { ...row, plantelIds: ids };
     }
-    const parts = key.split('g__');
-    if (parts.length === 3) {
-      const cellKey = `${parts[0]}__${parts[1]}`;
-      const field = parts[2] as keyof CellData;
+    const m = key.match(/^g__(\d+)__(\d+)__(\w+)$/);
+    if (m) {
+      const cellKey = `g__${m[1]}__${m[2]}`;
+      const field = m[3] as keyof CellData;
       const cell = row.cells[cellKey] || emptyCell();
       // Pad score fields to match maxGrade digit count
       let finalValue = value;
@@ -397,6 +397,12 @@ const HistoricalGradesBySection: React.FC = () => {
   const fieldKeys = useMemo(() => buildFieldKeys(years), [years]);
 
   const handleKeyDown = (e: React.KeyboardEvent, rowIdx: number, key: string) => {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      setActiveCell(null);
+      (e.target as HTMLElement).blur();
+      return;
+    }
     if (e.key === 'Enter') {
       e.preventDefault();
       const dir = e.shiftKey ? -1 : 1;
