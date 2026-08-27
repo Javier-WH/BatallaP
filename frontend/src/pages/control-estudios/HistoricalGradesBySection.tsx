@@ -303,6 +303,8 @@ const HistoricalGradesBySection: React.FC = () => {
   const [studentSearch, setStudentSearch] = useState<string>('');
   const [studentSearchResults, setStudentSearchResults] = useState<Student[]>([]);
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
+  // Grade type filter: 'final' | 'revision' | 'materia_pendiente'
+  const [gradeTypeFilter, setGradeTypeFilter] = useState<'final' | 'revision' | 'materia_pendiente'>('final');
 
   /* ── Load sections for active period + max_grade ── */
   useEffect(() => {
@@ -353,7 +355,7 @@ const HistoricalGradesBySection: React.FC = () => {
 
     setLoading(true);
     try {
-      const params: any = { schoolPeriodId: activePeriodId };
+      const params: any = { schoolPeriodId: activePeriodId, gradeTypeFilter };
       if (mode === 'section') {
         params.sectionId = selectedSectionId;
         if (selectedGradeId) params.gradeId = selectedGradeId;
@@ -381,8 +383,11 @@ const HistoricalGradesBySection: React.FC = () => {
 
       // Show all years — the user needs to see and fill all grades (1ro–5to)
       // regardless of which section they're currently viewing.
+      // For materia_pendiente, exclude the last year (5to) since there are no pending subjects there.
       setActiveGradeOrder(999);
-      const visibleYears = rawYears;
+      const visibleYears = gradeTypeFilter === 'materia_pendiente'
+        ? rawYears.filter(y => y.gradeOrder < 5)
+        : rawYears;
       setYears(visibleYears);
 
       // Build a lookup map: gradeId → realSubjectId → columnKey
@@ -491,12 +496,12 @@ const HistoricalGradesBySection: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [activePeriodId, selectedSectionId, selectedGradeId, selectedStudent, mode, sections, maxGrade]);
+  }, [activePeriodId, selectedSectionId, selectedGradeId, selectedStudent, mode, gradeTypeFilter, sections, maxGrade]);
 
   useEffect(() => {
     if (mode === 'section' && selectedSectionId) loadGrades();
     if (mode === 'individual' && selectedStudent) loadGrades();
-  }, [selectedSectionId, selectedGradeId, selectedStudent, mode, loadGrades]);
+  }, [selectedSectionId, selectedGradeId, selectedStudent, mode, gradeTypeFilter, loadGrades]);
 
   /* ── Field accessors ── */
   const getField = (row: RowData, key: string): string => {
@@ -770,6 +775,18 @@ const HistoricalGradesBySection: React.FC = () => {
             </p>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
+            {/* Grade type filter */}
+            <Select
+              value={gradeTypeFilter}
+              onChange={(val) => setGradeTypeFilter(val)}
+              style={{ width: 170 }}
+              options={[
+                { value: 'final', label: 'Final' },
+                { value: 'revision', label: 'Revisión' },
+                { value: 'materia_pendiente', label: 'Materia Pendiente' },
+              ]}
+            />
+
             {/* Mode toggle */}
             <Select
               value={mode}

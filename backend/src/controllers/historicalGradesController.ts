@@ -51,7 +51,7 @@ export const getHistoricalGradesBySection = async (req: Request, res: Response) 
       return res.status(401).json({ message: 'No autorizado' });
     }
 
-    const { schoolPeriodId, sectionId, gradeId, personId } = req.query;
+    const { schoolPeriodId, sectionId, gradeId, personId, gradeTypeFilter } = req.query;
     if (!schoolPeriodId) {
       return res.status(400).json({ message: 'schoolPeriodId es requerido' });
     }
@@ -60,6 +60,8 @@ export const getHistoricalGradesBySection = async (req: Request, res: Response) 
     const secId = sectionId ? Number(sectionId) : null;
     const grdId = gradeId ? Number(gradeId) : null;
     const individualPersonId = personId ? Number(personId) : null;
+    // gradeTypeFilter: 'final' (default) | 'revision' | 'materia_pendiente'
+    const typeFilter = (gradeTypeFilter as string) || 'final';
 
     // 1. Get the active period
     const activePeriod = await SchoolPeriod.findByPk(periodId);
@@ -237,6 +239,8 @@ export const getHistoricalGradesBySection = async (req: Request, res: Response) 
     //    escolaridad — registering a student in Materia Pendiente also flips the
     //    escolaridad of their REGULAR inscription to 'materia_pendiente', so
     //    filtering by escolaridad would wrongly drop all their regular grades.
+    //    For materia_pendiente filter, we DO need the auxiliary MP inscriptions
+    //    because that's where the MP SubjectFinalGrades live.
     const allInscriptionsRaw = await Inscription.findAll({
       where: { personId: personIds as any },
       include: [
@@ -246,9 +250,11 @@ export const getHistoricalGradesBySection = async (req: Request, res: Response) 
       ],
     });
 
-    const allInscriptionsForStudents = allInscriptionsRaw.filter((ins: any) =>
-      (ins.section?.name || '').toUpperCase() !== 'MATERIA PENDIENTE'
-    );
+    const allInscriptionsForStudents = typeFilter === 'materia_pendiente'
+      ? allInscriptionsRaw  // include MP inscriptions when filtering by materia_pendiente
+      : allInscriptionsRaw.filter((ins: any) =>
+          (ins.section?.name || '').toUpperCase() !== 'MATERIA PENDIENTE'
+        );
 
     const allInsIds = allInscriptionsForStudents.map(i => i.id);
 
@@ -298,15 +304,17 @@ export const getHistoricalGradesBySection = async (req: Request, res: Response) 
         date = latestCalculated ? new Date(latestCalculated).toISOString().split('T')[0] : null;
       }
 
-      // Only show regular/transferencia/equivalencia final grades.
-      // Exclude materia_pendiente and revision_materia_pendiente (shown in another view).
-      // For revision grades, show the original aplazada score (not the repair score).
-      if (gradeType === 'materia_pendiente' || gradeType === 'revision_materia_pendiente') continue;
-      if (gradeType === 'revision') {
-        // Show the original aplazada score, not the repair score
-        finalScore = fg?.originalScore != null ? roundGrade(Number(fg.originalScore)) : finalScore;
-        status = fg?.originalStatus ?? status;
-        gradeType = 'regular';
+      // Filter by gradeTypeFilter:
+      // - 'final': only regular + transferencia + equivalencia (exclude revision, materia_pendiente, revision_materia_pendiente)
+      // - 'revision': only revision (show repair score, not original)
+      // - 'materia_pendiente': only materia_pendiente + revision_materia_pendiente
+      if (typeFilter === 'final') {
+        if (gradeType === 'materia_pendiente' || gradeType === 'revision_materia_pendiente' || gradeType === 'revision') continue;
+      } else if (typeFilter === 'revision') {
+        if (gradeType !== 'revision') continue;
+        // Show the repair score (finalScore already has it), keep gradeType as revision
+      } else if (typeFilter === 'materia_pendiente') {
+        if (gradeType !== 'materia_pendiente' && gradeType !== 'revision_materia_pendiente') continue;
       }
 
       gradesMap.push({
@@ -344,6 +352,15 @@ export const getHistoricalGradesBySection = async (req: Request, res: Response) 
 
     for (const hg of historicalGrades) {
       const subj = (hg as any).subject;
+      const hgGradeType = hg.gradeType;
+      // Filter HistoricalGrade by typeFilter
+      if (typeFilter === 'final') {
+        if (hgGradeType === 'revision' || hgGradeType === 'materia_pendiente') continue;
+      } else if (typeFilter === 'revision') {
+        if (hgGradeType !== 'revision') continue;
+      } else if (typeFilter === 'materia_pendiente') {
+        if (hgGradeType !== 'materia_pendiente') continue;
+      }
       gradesMap.push({
         personId: hg.personId,
         schoolPeriodId: hg.schoolPeriodId ?? null,
