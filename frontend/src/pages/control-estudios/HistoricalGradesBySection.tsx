@@ -23,6 +23,19 @@ const T = {
   greenBg: '#E3ECE4',
 };
 
+/* ── Pick black or white text based on background brightness ── */
+function readableTextOn(bgHex: string | null | undefined): string {
+  if (!bgHex) return T.inkSoft;
+  const hex = bgHex.replace('#', '');
+  if (hex.length !== 6) return T.inkSoft;
+  const r = parseInt(hex.substring(0, 2), 16);
+  const g = parseInt(hex.substring(2, 4), 16);
+  const b = parseInt(hex.substring(4, 6), 16);
+  // Relative luminance (per WCAG)
+  const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return lum > 0.55 ? '#1E2A44' : '#FFFFFF';
+}
+
 // Letter codes matching the reference grid
 const STATUS_META: Record<string, { label: string; color: string; bg: string; gradeType: string }> = {
   F:  { label: 'Regular',            color: '#3F6C4E', bg: '#E3ECE4', gradeType: 'regular' },
@@ -1128,14 +1141,12 @@ const HistoricalGradesBySection: React.FC = () => {
                       const width = y.subjects.length * SUB_W + (hasGrp ? GROUP_COL_W : 0);
                       const gc = y.gradeColor || T.hairline;
                       const isActiveYear = activeGradeId === y.gradeId;
+                      const headerBg = y.gradeColor || (isActiveYear ? T.brassBg : T.headerBg);
                       return (
                         <th key={`y-${y.gradeId}`} colSpan={span}
-                          style={{ ...thPlain(width), borderLeft: `3px solid ${T.hairline}`, borderTop: `3px solid ${gc}`, fontSize: 12,
-                            background: isActiveYear ? T.brassBg : T.headerBg }}>
+                          style={{ ...thPlain(width), borderLeft: `3px solid ${T.hairline}`, borderTop: `3px solid ${gc}`, fontSize: 14, fontWeight: 700,
+                            background: headerBg, color: '#FFFFFF' }}>
                           {y.gradeName}
-                          {y.periodShort && (
-                            <div style={{ fontSize: 9, fontWeight: 400, color: T.inkFaint }}>{y.periodShort}</div>
-                          )}
                         </th>
                       );
                     })}
