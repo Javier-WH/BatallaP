@@ -329,6 +329,7 @@ export const getSectionsForPeriod = async (req: Request, res: Response) => {
         gradeName: (i.grade as any)?.name ?? '—',
       }))
       .filter((v: any, idx: number, arr: any[]) => arr.findIndex((a: any) => a.gradeId === v.gradeId && a.sectionId === v.sectionId) === idx)
+      .filter((s: any) => (s.sectionName || '').toUpperCase() !== 'MATERIA PENDIENTE')
       .sort((a: any, b: any) => a.gradeName.localeCompare(b.gradeName) || a.sectionName.localeCompare(b.sectionName));
 
     return res.json(sections);

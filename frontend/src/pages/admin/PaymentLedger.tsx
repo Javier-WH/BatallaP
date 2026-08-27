@@ -17,8 +17,8 @@ const MONTH_FULL: Record<string, string> = {
   Jan: 'Enero', Feb: 'Febrero', Mar: 'Marzo', Apr: 'Abril',
   May: 'Mayo', Jun: 'Junio', Jul: 'Julio', Aug: 'Agosto',
 };
-const NAME_COL = 240;
-const MONTH_COL = 104;
+const NAME_COL = 468;
+const MONTH_COL = 143;
 const METHODS = [
   { value: 'efectivo', label: 'Efectivo' },
   { value: 'pago_movil', label: 'Pago Móvil' },
@@ -531,7 +531,7 @@ export default function PaymentLedger() {
 
   return (
     <div className="min-h-screen bg-[#EDEEF1] font-sans text-[#14181F] p-6">
-      <div className="max-w-6xl mx-auto">
+      <div className="w-full">
         {/* toolbar */}
         <div className="flex items-stretch justify-between bg-white border border-[#C5CAD2] mb-px flex-wrap">
           <div className="flex items-center gap-3 px-4 py-3 border-r border-[#E4E6EB]">
