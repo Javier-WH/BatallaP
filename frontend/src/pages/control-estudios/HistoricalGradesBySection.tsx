@@ -1159,7 +1159,7 @@ const HistoricalGradesBySection: React.FC = () => {
                         {y.subjects.map((subj, si) => (
                           <th key={`s-${y.gradeId}-${subj.id}`} colSpan={5} title={subj.name}
                             style={{ ...thSub(254), borderLeft: si === 0 ? `3px solid ${y.gradeColor || T.hairline}` : `2px solid ${y.gradeColor || T.hairline}`,
-                              background: isActiveYear ? '#F3E5C4' : T.headerBg }}>
+                              background: isActiveYear ? '#F3E5C4' : T.headerBg, color: '#000000', textTransform: 'uppercase', fontSize: 10 }}>
                             {subj.name}
                           </th>
                         ))}
