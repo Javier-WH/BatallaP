@@ -658,6 +658,8 @@ const HistoricalGradesBySection: React.FC = () => {
       const cellKey = `g__${m[1]}__${m[2]}`;
       const field = m[3] as keyof CellData;
       const cell = row.cells[cellKey] || emptyCell();
+      // Skip if value hasn't changed (e.g. blur without editing)
+      if ((cell as any)[field] === value) return row;
       // Pad score fields to match maxGrade digit count, and reject values > maxGrade
       let finalValue = value;
       if (field === 'score' && value !== '') {
@@ -994,6 +996,18 @@ const HistoricalGradesBySection: React.FC = () => {
               title="Vista consolidada: muestra todas las notas con prioridad (Materia Pendiente > Revisión > Regular). Solo lectura."
               style={{ display: 'flex', alignItems: 'center' }}
             />
+            <span
+              onClick={() => setConsolidated(c => !c)}
+              style={{
+                fontSize: 12,
+                fontWeight: 600,
+                color: consolidated ? '#1677FF' : '#BFBFBF',
+                cursor: 'pointer',
+                userSelect: 'none',
+              }}
+            >
+              Vista Consolidada
+            </span>
             {/* Grade type filter */}
             <Select
               value={gradeTypeFilter}
