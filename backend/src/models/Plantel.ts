@@ -6,6 +6,7 @@ interface PlantelAttributes {
   code: string;
   name: string;
   state: string;
+  stateCode?: string;
   dependency?: string;
   municipality?: string;
   parish?: string;
@@ -18,6 +19,7 @@ class Plantel extends Model<PlantelAttributes, PlantelCreationAttributes> implem
   public code!: string;
   public name!: string;
   public state!: string;
+  public stateCode!: string;
   public dependency!: string;
   public municipality?: string;
   public parish?: string;
@@ -45,6 +47,10 @@ Plantel.init(
     state: {
       type: DataTypes.STRING(100),
       allowNull: false,
+    },
+    stateCode: {
+      type: DataTypes.STRING(5),
+      allowNull: true,
     },
     dependency: {
       type: DataTypes.STRING(100),
@@ -83,6 +89,10 @@ Plantel.init(
         if (instance.dependency) instance.dependency = instance.dependency.toUpperCase().trim();
         if (instance.municipality) instance.municipality = instance.municipality.toUpperCase().trim();
         if (instance.parish) instance.parish = instance.parish.toUpperCase().trim();
+        // Auto-generate stateCode from first 2 letters of state if not provided
+        if (instance.state && !instance.stateCode) {
+          instance.stateCode = instance.state.substring(0, 2).toUpperCase();
+        }
       },
       beforeUpdate: (instance: Plantel) => {
         if (instance.changed('name') && instance.name) instance.name = instance.name.toUpperCase().trim();
@@ -90,6 +100,10 @@ Plantel.init(
         if (instance.changed('dependency') && instance.dependency) instance.dependency = instance.dependency.toUpperCase().trim();
         if (instance.changed('municipality') && instance.municipality) instance.municipality = instance.municipality.toUpperCase().trim();
         if (instance.changed('parish') && instance.parish) instance.parish = instance.parish.toUpperCase().trim();
+        // Auto-regenerate stateCode when state changes
+        if (instance.changed('state') && instance.state) {
+          instance.stateCode = instance.state.substring(0, 2).toUpperCase();
+        }
       }
     }
   }

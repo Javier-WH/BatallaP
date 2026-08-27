@@ -31,6 +31,7 @@ interface Plantel {
   code: string;
   name: string;
   state: string;
+  stateCode?: string;
   dependency: string;
   municipality?: string;
   parish?: string;
@@ -186,6 +187,15 @@ const SchoolManagement: React.FC = () => {
       render: (name: string) => (
         <Text strong>{name}</Text>
       )
+    },
+    {
+      title: 'Edo.',
+      dataIndex: 'stateCode',
+      key: 'stateCode',
+      width: 70,
+      render: (stateCode: string) => stateCode ? (
+        <Tag color="gold">{stateCode}</Tag>
+      ) : <Text type="secondary">-</Text>
     },
     {
       title: 'Estado',
@@ -366,7 +376,30 @@ const SchoolManagement: React.FC = () => {
             label="Estado"
             rules={[{ required: true, message: 'El estado es obligatorio' }]}
           >
-            <Input placeholder="Ej: Distrito Capital" />
+            <Input
+              placeholder="Ej: Distrito Capital"
+              onChange={(e) => {
+                // Auto-update stateCode preview when state changes
+                const val = e.target.value;
+                if (val.length >= 2) {
+                  form.setFieldsValue({ stateCode: val.substring(0, 2).toUpperCase() });
+                } else {
+                  form.setFieldsValue({ stateCode: '' });
+                }
+              }}
+            />
+          </Form.Item>
+
+          <Form.Item
+            name="stateCode"
+            label="Abrev. Estado"
+            tooltip="Se genera automáticamente con las 2 primeras letras del estado"
+          >
+            <Input
+              placeholder="Auto"
+              maxLength={5}
+              style={{ width: 100 }}
+            />
           </Form.Item>
 
           <Form.Item

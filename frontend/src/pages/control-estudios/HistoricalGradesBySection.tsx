@@ -246,9 +246,10 @@ const LocalDatePicker = React.memo(function LocalDatePicker({
       disabled={readOnly}
       allowClear
       placeholder="dd/mm/aaaa"
-      style={style}
+      style={{ ...style, width: '100%', minWidth: 'unset' }}
       variant="borderless"
       inputReadOnly={false}
+      popupStyle={{ zIndex: 99999 }}
     />
   );
 });
@@ -739,7 +740,7 @@ const HistoricalGradesBySection: React.FC = () => {
     inst: COL.n + COL.cedula + COL.apellidos + COL.nombres,
   };
   const frozenWidth = COL.n + COL.cedula + COL.apellidos + COL.nombres + COL.inst;
-  const SUB_W = 44 + 44 + 78 + 40 + 48; // = 254 per subject (score, status, date, inst, per)
+  const SUB_W = 44 + 44 + 110 + 40 + 48; // = 286 per subject (score, status, date, inst, per)
   const GROUP_COL_W = 130;        // extra column for group subject name
   // Years that have at least one group subject get an extra trailing column
   const yearHasGroups = (y: YearCol) => y.subjects.some(s => s.subjectGroupId !== null);
@@ -913,7 +914,7 @@ const HistoricalGradesBySection: React.FC = () => {
                         <React.Fragment key={`col-${y.schoolPeriodId}-${y.gradeId}-${subj.id}`}>
                           <col style={{ width: 44 }} />
                           <col style={{ width: 44 }} />
-                          <col style={{ width: 78 }} />
+                          <col style={{ width: 110 }} />
                           <col style={{ width: 40 }} />
                           <col style={{ width: 48 }} />
                         </React.Fragment>
@@ -985,7 +986,7 @@ const HistoricalGradesBySection: React.FC = () => {
                             <th style={{ ...thSub2(44), borderLeft: si === 0 ? `3px solid ${y.gradeColor || T.hairline}` : `1px solid ${T.hairline}`,
                               background: isActiveYear ? '#F3E5C4' : T.headerBg }}>Nota</th>
                             <th style={{ ...thSub2(44), background: isActiveYear ? '#F3E5C4' : T.headerBg }}>Est.</th>
-                            <th style={{ ...thSub2(78), background: isActiveYear ? '#F3E5C4' : T.headerBg }}>Fecha</th>
+                            <th style={{ ...thSub2(110), background: isActiveYear ? '#F3E5C4' : T.headerBg }}>Fecha</th>
                             <th style={{ ...thSub2(40), background: isActiveYear ? '#F3E5C4' : T.headerBg }}>Inst</th>
                             <th style={{ ...thSub2(48), background: isActiveYear ? '#F3E5C4' : T.headerBg }}>Per.</th>
                           </React.Fragment>
@@ -1108,7 +1109,7 @@ const HistoricalGradesBySection: React.FC = () => {
                                   </select>
                                 </td>
                                 {/* Fecha */}
-                                <td style={{ ...tdPlain(78) }}>
+                                <td style={{ ...tdPlain(110) }}>
                                   <LocalDatePicker
                                     data-row={ri} data-field={dateKey}
                                     registerRef={registerRef(ri, dateKey)}
