@@ -932,6 +932,11 @@ export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<Matricul
         }
         return false;
       },
+      comparator: (valueA: string, valueB: string) => {
+        const orderA = structure.find(s => s.grade?.name === valueA)?.grade?.order ?? 999;
+        const orderB = structure.find(s => s.grade?.name === valueB)?.grade?.order ?? 999;
+        return orderA - orderB;
+      },
       cellRenderer: (p: any) => {
         if (!p.value) return 'N/A';
         return p.value;

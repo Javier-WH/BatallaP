@@ -542,6 +542,9 @@ const HistoricalGradesBySection: React.FC = () => {
             instNum = `g__pid:${SYSTEM_PLANTEL_ID}`;
           } else if (g.plantelId) {
             instNum = `g__pid:${g.plantelId}`;
+          } else {
+            // Historical grade with null plantelId → system plantel
+            instNum = `g__pid:${SYSTEM_PLANTEL_ID}`;
           }
           cells[key] = {
             score: g.finalScore != null ? formatGradePadded(g.finalScore, maxGrade) : '',
@@ -834,6 +837,9 @@ const HistoricalGradesBySection: React.FC = () => {
             if (!isNaN(instNum) && instNum >= 1 && instNum <= row.plantelIds.length) {
               const mappedId = row.plantelIds[instNum - 1];
               plantelId = (mappedId === SYSTEM_PLANTEL_ID) ? null : mappedId;
+            } else if (!isNaN(instNum) && instNum === 1 && row.plantelIds.length === 0) {
+              // No planteles assigned but user wrote "1" → assume system plantel (null)
+              plantelId = null;
             }
           }
         }
