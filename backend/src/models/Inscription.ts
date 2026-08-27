@@ -15,12 +15,13 @@ interface InscriptionAttributes {
   escolaridad: EscolaridadStatus;
   originPeriodId?: number | null;
   isRepeater: boolean;
+  withdrawnAt?: Date | null;
   createdAt?: Date;
   updatedAt?: Date;
 }
 
 interface InscriptionCreationAttributes
-  extends Optional<InscriptionAttributes, 'id' | 'sectionId' | 'originPeriodId' | 'isRepeater'> { }
+  extends Optional<InscriptionAttributes, 'id' | 'sectionId' | 'originPeriodId' | 'isRepeater' | 'withdrawnAt'> { }
 
 class Inscription extends Model<InscriptionAttributes, InscriptionCreationAttributes> implements InscriptionAttributes {
   public id!: number;
@@ -31,6 +32,7 @@ class Inscription extends Model<InscriptionAttributes, InscriptionCreationAttrib
   public escolaridad!: EscolaridadStatus;
   public originPeriodId!: number | null;
   public isRepeater!: boolean;
+  public withdrawnAt!: Date | null;
 
   public readonly subjects?: import('./Subject').default[];
   public readonly student?: Person;
@@ -83,6 +85,11 @@ Inscription.init(
       type: DataTypes.BOOLEAN,
       allowNull: false,
       defaultValue: false
+    },
+    withdrawnAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      defaultValue: null
     }
   },
   {

@@ -7,7 +7,7 @@ import Section from './Section';
 import Inscription from './Inscription';
 import { EscolaridadStatus } from '@/types/enrollment';
 
-export type MatriculationStatus = 'pending' | 'completed';
+export type MatriculationStatus = 'pending' | 'completed' | 'withdrawn';
 
 interface MatriculationAttributes {
   id: number;
@@ -87,7 +87,7 @@ Matriculation.init(
       defaultValue: 'regular'
     },
     status: {
-      type: DataTypes.ENUM('pending', 'completed'),
+      type: DataTypes.ENUM('pending', 'completed', 'withdrawn'),
       allowNull: false,
       defaultValue: 'pending'
     },

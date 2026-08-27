@@ -212,6 +212,7 @@ export interface MatriculationRow {
   };
   tempData: TempData;
   hiddenFromControlEstudios?: boolean;
+  status?: string;
   documents?: EnrollmentDocumentInfo | null;
   matriculation?: { documents?: EnrollmentDocumentInfo | null } | null;
 }
@@ -1032,10 +1033,12 @@ export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<Matricul
       cellEditorParams: { values: ['inscrito', 'no_inscrito'] },
       valueGetter: (p) => {
         if (!p.data) return '';
+        if (p.data.status === 'withdrawn') return 'retirado';
         return p.data.hiddenFromControlEstudios ? 'no_inscrito' : 'inscrito';
       },
       valueSetter: (p) => {
         if (p.newValue !== p.oldValue && p.data) {
+          if (p.data.status === 'withdrawn') return false; // Can't edit retired students
           callbacks.onToggleInscription(p.data.id, p.newValue === 'no_inscrito');
           return true;
         }
@@ -1043,6 +1046,9 @@ export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<Matricul
       },
       cellRenderer: (p: any) => {
         if (!p.value) return null;
+        if (p.value === 'retirado') {
+          return <span style={{ color: '#faad14', fontSize: 12, fontWeight: 600 }}>Retirado</span>;
+        }
         const inscrito = p.value === 'inscrito';
         return (
           <span style={{ color: inscrito ? '#52c41a' : '#ff4d4f', fontSize: 12 }}>
@@ -1050,6 +1056,7 @@ export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<Matricul
           </span>
         );
       },
+      cellEditorPopup: true,
     });
   }
 

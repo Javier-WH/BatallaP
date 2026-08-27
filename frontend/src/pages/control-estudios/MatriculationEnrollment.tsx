@@ -40,6 +40,8 @@ import {
   ColumnWidthOutlined,
   MoreOutlined,
   DownOutlined,
+  LogoutOutlined,
+  LoginOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useNavigate } from 'react-router-dom';
@@ -351,7 +353,7 @@ const MatriculationEnrollment: React.FC = () => {
   const [filterSchoolPeriod, setFilterSchoolPeriod] = useState<number | null>(savedFilters.filterSchoolPeriod ?? null);
   const [allPeriods, setAllPeriods] = useState<SchoolPeriod[]>([]);
   const [filterMissing, setFilterMissing] = useState<string | null>(savedFilters.filterMissing ?? null);
-  const [filterInscription, setFilterInscription] = useState<'inscrito' | 'no_inscrito' | null>(savedFilters.filterInscription ?? null);
+  const [filterInscription, setFilterInscription] = useState<'inscrito' | 'no_inscrito' | 'retirado' | null>(savedFilters.filterInscription ?? null);
   const [nominaModalOpen, setNominaModalOpen] = useState(false);
   const [nominaSelectedGradeIds, setNominaSelectedGradeIds] = useState<number[]>([]);
   const [nominaSelectedSectionIds, setNominaSelectedSectionIds] = useState<number[]>([]);
@@ -440,10 +442,13 @@ const MatriculationEnrollment: React.FC = () => {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const endpoint = viewStatus === 'completed' ? '/inscriptions' : '/matriculations';
+      // When filtering "Retirados", always use /inscriptions with includeWithdrawn=true
+      const isWithdrawnView = filterInscription === 'retirado';
+      const endpoint = (viewStatus === 'completed' || isWithdrawnView) ? '/inscriptions' : '/matriculations';
       const params: any = {
-        status: viewStatus === 'pending' ? 'pending' : undefined,
-        schoolPeriodId: filterSchoolPeriod || undefined // Usar filtro si está seleccionado, sino no filtrar
+        status: viewStatus === 'pending' && !isWithdrawnView ? 'pending' : undefined,
+        schoolPeriodId: filterSchoolPeriod || undefined, // Usar filtro si está seleccionado, sino no filtrar
+        includeWithdrawn: isWithdrawnView ? 'true' : undefined,
       };
       const [dataRes, structRes, locRes] = await Promise.all([
         api.get(endpoint, { params }),
@@ -453,7 +458,7 @@ const MatriculationEnrollment: React.FC = () => {
       if (locRes.data) setLocations(locRes.data);
       if (dataRes.data) {
         const mapped = dataRes.data.map((item: MatriculationApiResponse) => {
-          const isInscription = viewStatus === 'completed';
+          const isInscription = viewStatus === 'completed' || isWithdrawnView;
           const m = isInscription ? {
             ...item.matriculation,
             id: item.matriculation?.id || -item.id,
@@ -461,7 +466,7 @@ const MatriculationEnrollment: React.FC = () => {
             gradeId: item.gradeId,
             sectionId: item.sectionId,
             schoolPeriodId: item.schoolPeriodId,
-            status: 'completed' as const,
+            status: isWithdrawnView ? 'withdrawn' as const : (item.matriculation?.status || 'completed') as const,
             inscriptionId: item.id,
             escolaridad: item.escolaridad
           } : item;
@@ -625,7 +630,7 @@ const MatriculationEnrollment: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [viewStatus, filterSchoolPeriod, activePeriod]);
+  }, [viewStatus, filterSchoolPeriod, activePeriod, filterInscription]);
 
   useEffect(() => {
     fetchData();
@@ -829,6 +834,37 @@ const MatriculationEnrollment: React.FC = () => {
     setSelectedRowKeys([]);
   };
 
+  const handleBulkUnmatriculate = async () => {
+    const selectedRows = matriculations.filter(r => selectedRowKeys.includes(r.id));
+    if (selectedRows.length === 0) return;
+
+    Modal.confirm({
+      title: 'Sacar de Matrícula',
+      content: `¿Confirmar que ${selectedRows.length} estudiante(s) serán enviados a "No Matriculados"? Se les quitará la sección pero NO se borrarán sus datos académicos (notas, materias).`,
+      okText: 'Sacar de Matrícula',
+      okType: 'danger',
+      cancelText: 'Cancelar',
+      onOk: async () => {
+        message.loading({ content: `Procesando ${selectedRows.length}...`, key: 'unmat' });
+        let successCount = 0;
+        for (const row of selectedRows) {
+          const inscriptionId = row.inscriptionId;
+          if (!inscriptionId) continue;
+          try {
+            await api.post(`/inscriptions/${inscriptionId}/unmatriculate`);
+            successCount++;
+          } catch (e: any) {
+            const errMsg = e?.response?.data?.error || 'Error desconocido';
+            message.error({ content: `Error con ${row.tempData.firstName} ${row.tempData.lastName}: ${errMsg}`, key: `err-${row.id}`, duration: 10 });
+          }
+        }
+        message.success({ content: `${successCount} estudiante(s) enviados a No Matriculados`, key: 'unmat' });
+        fetchData();
+        setSelectedRowKeys([]);
+      },
+    });
+  };
+
   const handleBulkUpdate = <K extends keyof TempData>(field: K, value: TempData[K]) => {
     setMatriculations(prev => prev.map(row => {
       if (selectedRowKeys.includes(row.id)) {
@@ -1012,7 +1048,172 @@ const MatriculationEnrollment: React.FC = () => {
       agGridRef.current?.pinColumn(contextMenuState.colId, null);
       closeContextMenu();
     }
-  }, [handleContextEdit, closeContextMenu, contextMenuState.rowId, contextMenuState.colId]);
+    if (key === 'withdraw') {
+      const row = contextMenuState.rowId !== null
+        ? matriculations.find(r => r.id === contextMenuState.rowId)
+        : null;
+      const inscriptionId = row?.inscriptionId;
+      const studentName = row ? `${row.tempData.firstName} ${row.tempData.lastName}` : 'este estudiante';
+      if (inscriptionId) {
+        Modal.confirm({
+          title: 'Retirar estudiante',
+          content: `¿Confirmar que ${studentName} será retirado de la sección? Sus datos académicos (notas, materias) se conservarán para futuras consultas.`,
+          okText: 'Retirar',
+          okType: 'danger',
+          cancelText: 'Cancelar',
+          onOk: async () => {
+            try {
+              await api.post(`/inscriptions/${inscriptionId}/withdraw`);
+              message.success('Estudiante retirado correctamente');
+              await fetchData();
+            } catch (e: any) {
+              const errMsg = e?.response?.data?.error || 'Error al retirar estudiante';
+              message.error(errMsg);
+            }
+          },
+        });
+      }
+      closeContextMenu();
+    }
+    if (key === 'reactivate') {
+      const row = contextMenuState.rowId !== null
+        ? matriculations.find(r => r.id === contextMenuState.rowId)
+        : null;
+      const inscriptionId = row?.inscriptionId;
+      const studentName = row ? `${row.tempData.firstName} ${row.tempData.lastName}` : 'este estudiante';
+      if (inscriptionId) {
+        // Need to pick a section to reactivate into
+        const gradeStruct = structure.find(s => s.gradeId === row?.tempData.gradeId);
+        const sections = gradeStruct?.sections || [];
+        if (sections.length === 0) {
+          message.error('No hay secciones disponibles para reactivar');
+          closeContextMenu();
+          return;
+        }
+        let selectedSectionId: number | undefined;
+        Modal.confirm({
+          title: 'Reactivar estudiante',
+          content: (
+            <div>
+              <p style={{ marginBottom: 12 }}>Seleccione la sección para reactivar a {studentName}:</p>
+              <Select
+                placeholder="Seleccionar sección..."
+                style={{ width: '100%' }}
+                onChange={v => { selectedSectionId = v; }}
+              >
+                {sections.map(sec => <Select.Option key={sec.id} value={sec.id}>{sec.name}</Select.Option>)}
+              </Select>
+            </div>
+          ),
+          okText: 'Reactivar',
+          cancelText: 'Cancelar',
+          onOk: async () => {
+            if (!selectedSectionId) {
+              message.error('Debe seleccionar una sección');
+              return;
+            }
+            try {
+              await api.post(`/inscriptions/${inscriptionId}/reactivate`, { sectionId: selectedSectionId });
+              message.success('Estudiante reactivado correctamente');
+              await fetchData();
+            } catch (e: any) {
+              const errMsg = e?.response?.data?.error || 'Error al reactivar estudiante';
+              message.error(errMsg);
+            }
+          },
+        });
+      }
+      closeContextMenu();
+    }
+  }, [handleContextEdit, closeContextMenu, contextMenuState.rowId, contextMenuState.colId, matriculations, structure, fetchData]);
+
+  // Build context menu items dynamically — add withdraw/reactivate based on row state
+  const dynamicContextMenuItems = useMemo<MenuProps['items']>(() => {
+    const row = contextMenuState.rowId !== null
+      ? matriculations.find(r => r.id === contextMenuState.rowId)
+      : null;
+    const isWithdrawn = row?.tempData.status === 'withdrawn' || (row as any)?.status === 'withdrawn';
+    const isInscription = viewStatus === 'completed';
+    const hasInscriptionId = !!row?.inscriptionId;
+
+    const rowActions: MenuProps['items'] = [
+      {
+        key: 'edit',
+        icon: <EditOutlined />,
+        label: 'Editar celda'
+      },
+      {
+        key: 'cancel',
+        icon: <CloseOutlined />,
+        label: 'Cancelar'
+      },
+      {
+        key: 'change-representative',
+        icon: <UserSwitchOutlined />,
+        label: 'Cambiar Representante'
+      },
+      {
+        key: 'edit-student',
+        icon: <EditOutlined />,
+        label: 'Editar estudiante'
+      },
+    ];
+
+    // Add withdraw/reactivate only for inscribed students (completed view)
+    // and only for Admin/Master (Control de Estudios can matricular but not withdraw)
+    if (isInscription && hasInscriptionId && canManageVisibility) {
+      if (isWithdrawn) {
+        rowActions.push({
+          type: 'divider',
+        });
+        rowActions.push({
+          key: 'reactivate',
+          icon: <LoginOutlined />,
+          label: 'Reactivar estudiante',
+          danger: false,
+        });
+      } else {
+        rowActions.push({
+          type: 'divider',
+        });
+        rowActions.push({
+          key: 'withdraw',
+          icon: <LogoutOutlined />,
+          label: 'Retirar estudiante',
+          danger: true,
+        });
+      }
+    }
+
+    return [
+      {
+        type: 'group' as const,
+        label: <span className="text-[11px] text-slate-400 uppercase tracking-wide">Acciones de fila</span>,
+        children: rowActions,
+      },
+      {
+        type: 'group' as const,
+        label: <span className="text-[11px] text-slate-400 uppercase tracking-wide">Acciones de columna</span>,
+        children: [
+          {
+            key: 'pin-left',
+            icon: <VerticalRightOutlined />,
+            label: 'Fijar a la izquierda'
+          },
+          {
+            key: 'pin-right',
+            icon: <VerticalLeftOutlined />,
+            label: 'Fijar a la derecha'
+          },
+          {
+            key: 'unpin',
+            icon: <ColumnWidthOutlined />,
+            label: 'Quitar fijación'
+          }
+        ]
+      }
+    ];
+  }, [contextMenuState.rowId, matriculations, viewStatus, canManageVisibility]);
 
   const handleGuardianSelected = useCallback((guardian: GuardianProfileResponse) => {
     if (contextMenuState.rowId === null) return;
@@ -1124,7 +1325,7 @@ const MatriculationEnrollment: React.FC = () => {
       if (filterGender && item.student.gender !== filterGender) return false;
       if (filterEscolaridad && item.tempData.escolaridad !== filterEscolaridad) return false;
       if (filterSchoolPeriod && item.schoolPeriodId !== filterSchoolPeriod) return false;
-      if (canManageVisibility && filterInscription) {
+      if (canManageVisibility && filterInscription && filterInscription !== 'retirado') {
         const isHidden = !!item.hiddenFromControlEstudios;
         if (filterInscription === 'inscrito' && isHidden) return false;
         if (filterInscription === 'no_inscrito' && !isHidden) return false;
@@ -1535,7 +1736,7 @@ const MatriculationEnrollment: React.FC = () => {
               <div className="flex flex-col items-start gap-1">
                 <Space>
                   <Title level={5} style={{ margin: 0 }}>Matrícula Estudiantes</Title>
-                  {user?.roles?.includes('Administrador') && (
+                  {canManageVisibility && (
                     <Button type="primary" size="small" icon={<UserAddOutlined />} onClick={() => navigate('/admin/inscribir-estudiante')}>
                       Inscribir Estudiante
                     </Button>
@@ -1660,6 +1861,7 @@ const MatriculationEnrollment: React.FC = () => {
                     >
                       <Option value="inscrito">Inscritos</Option>
                       <Option value="no_inscrito">No Inscritos</Option>
+                      <Option value="retirado">Retirados</Option>
                     </Select>
                   </Col>
                 )}
@@ -1872,14 +2074,17 @@ const MatriculationEnrollment: React.FC = () => {
                 {canManageVisibility && (() => {
                   const selectedRows = matriculations.filter(r => selectedRowKeys.includes(r.id));
                   const isHidden = (row: MatriculationRow) => visibilityOverrides[row.id] ?? !!row.hiddenFromControlEstudios;
+                  const isWithdrawnRow = (row: MatriculationRow) => row.status === 'withdrawn';
                   const allHidden = selectedRows.length > 0 && selectedRows.every(isHidden);
                   const allVisible = selectedRows.length > 0 && selectedRows.every(r => !isHidden(r));
+                  const allWithdrawn = selectedRows.length > 0 && selectedRows.every(isWithdrawnRow);
                   const currentLabel = selectedRows.length === 0
                     ? 'Visibilidad'
+                    : allWithdrawn ? 'Retirado'
                     : allVisible ? 'Inscrito'
                     : allHidden ? 'No Inscrito'
                     : 'Visibilidad';
-                  const currentColor = allVisible ? '#16a34a' : allHidden ? '#dc2626' : undefined;
+                  const currentColor = allWithdrawn ? '#faad14' : allVisible ? '#16a34a' : allHidden ? '#dc2626' : undefined;
                   const preventGridBlur = (event: React.MouseEvent) => {
                     event.preventDefault();
                     event.stopPropagation();
@@ -1933,6 +2138,17 @@ const MatriculationEnrollment: React.FC = () => {
                       className="bg-blue-600 hover:bg-blue-500 border-none shadow-md shadow-blue-500/30"
                     >
                       Matricular
+                    </Button>
+                  </div>
+                )}
+                {viewStatus === 'completed' && canManageVisibility && filterInscription !== 'retirado' && (
+                  <div className="pl-4 border-l border-slate-300/50">
+                    <Button
+                      danger
+                      icon={<LogoutOutlined />}
+                      onClick={handleBulkUnmatriculate}
+                    >
+                      Sacar de Matrícula
                     </Button>
                   </div>
                 )}
@@ -2042,7 +2258,7 @@ const MatriculationEnrollment: React.FC = () => {
         >
           <Menu
             selectable={false}
-            items={contextMenuItems}
+            items={dynamicContextMenuItems}
             onClick={handleContextMenuClick}
           />
         </div>,

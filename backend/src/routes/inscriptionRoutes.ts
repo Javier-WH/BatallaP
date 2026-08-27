@@ -13,6 +13,9 @@ import {
   getGroupSubjectChoices,
   setGroupSubjectForTerm,
   checkGroupSubjectChangeImpact,
+  withdrawInscription,
+  reactivateInscription,
+  unmatriculateInscription,
 } from '../controllers/inscriptionController';
 
 const router = Router();
@@ -36,5 +39,11 @@ router.delete('/:id/subjects/:subjectId', removeSubjectFromInscription);
 router.get('/:id/group-choices', getGroupSubjectChoices);
 router.put('/:id/group-choices', setGroupSubjectForTerm);
 router.post('/:id/group-choices/check', checkGroupSubjectChangeImpact);
+
+// Withdraw / reactivate (retire student from section, preserve academic data)
+router.post('/:id/withdraw', withdrawInscription);
+router.post('/:id/reactivate', reactivateInscription);
+// Un-matriculate: send back to "No Matriculados" without deleting anything
+router.post('/:id/unmatriculate', unmatriculateInscription);
 
 export default router;
