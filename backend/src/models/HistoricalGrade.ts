@@ -21,7 +21,7 @@ interface HistoricalGradeAttributes {
   gradeType: HistoricalGradeType;
   plantelId?: number | null;
   date?: string | null;
-  notes?: string | null;
+  subjectName?: string | null;
   createdBy?: number | null;
   createdAt?: Date;
   updatedAt?: Date;
@@ -29,7 +29,7 @@ interface HistoricalGradeAttributes {
 
 type HistoricalGradeCreationAttributes = Optional<
   HistoricalGradeAttributes,
-  'id' | 'schoolPeriodId' | 'finalScore' | 'status' | 'gradeType' | 'plantelId' | 'date' | 'notes' | 'createdBy' | 'createdAt' | 'updatedAt'
+  'id' | 'schoolPeriodId' | 'finalScore' | 'status' | 'gradeType' | 'plantelId' | 'date' | 'subjectName' | 'createdBy' | 'createdAt' | 'updatedAt'
 >;
 
 class HistoricalGrade
@@ -46,7 +46,7 @@ class HistoricalGrade
   public gradeType!: HistoricalGradeType;
   public plantelId!: number | null;
   public date!: string | null;
-  public notes!: string | null;
+  public subjectName!: string | null;
   public createdBy!: number | null;
 
   public readonly createdAt!: Date;
@@ -104,7 +104,7 @@ HistoricalGrade.init(
       type: DataTypes.DATEONLY,
       allowNull: true,
     },
-    notes: {
+    subjectName: {
       type: DataTypes.TEXT,
       allowNull: true,
     },

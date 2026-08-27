@@ -1,7 +1,6 @@
 import React, { useMemo, useRef, useState, useEffect, useCallback } from 'react';
-import { Spin, message, Button, Select, DatePicker } from 'antd';
+import { Spin, message, Button, Select } from 'antd';
 import { ReloadOutlined, SaveOutlined } from '@ant-design/icons';
-import dayjs from 'dayjs';
 import api from '@/services/api';
 import { useSchool } from '@/context/SchoolContext';
 import PlantelMultiSelect from '@/components/shared/PlantelMultiSelect';
@@ -97,7 +96,7 @@ interface RowData {
   plantelIds: number[];      // selected planteles for this student (all years), ordered
   systemPlantelIds: number[]; // planteles that come from system grades (cannot be removed)
   cells: Record<string, CellData>;  // key: `g__${gradeId}__${subjId}` → cell
-  groupSubjectNames: Record<string, string[]>;  // `g__${gradeId}` → list of actual subject names from groups
+  groupSubjectNames: Record<string, string>;  // `g__${gradeId}` → editable subject name for group
 }
 interface CellData {
   score: string;       // "16", ""
@@ -189,8 +188,8 @@ function resolveInstNum(inst: string, plantelIds: number[]): string {
   return inst;
 }
 
-/* ── LocalDatePicker: date picker with local state, commits on blur/change ── */
-/* Allows both calendar selection and typing/pasting dates in DD/MM/YYYY format. */
+/* ── LocalDatePicker: simple text input for dates in DD/MM/YYYY format ── */
+/* Replaces Ant Design DatePicker — much lighter, allows typing, copy/paste, selection. */
 interface LocalDatePickerProps {
   value: string;              // "dd/mm/yyyy" or ""
   onCommit: (value: string) => void;  // receives "dd/mm/yyyy" or ""
@@ -203,144 +202,132 @@ interface LocalDatePickerProps {
   'data-row'?: number;
   'data-field'?: string;
 }
-const DATE_FORMAT = 'DD/MM/YYYY';
-// Track which LocalDatePicker is currently editing — only one can be open at a time
-let activeDatePickerClose: (() => void) | null = null;
 
 const LocalDatePicker = React.memo(function LocalDatePicker({
   value, onCommit, onFocus, onKeyDown, onPaste, registerRef,
   readOnly, style, ...rest
 }: LocalDatePickerProps) {
-  // Convert "dd/mm/yyyy" → dayjs
-  const toDayjs = (s: string) => {
-    if (!s) return null;
-    const d = dayjs(s, DATE_FORMAT, true);
-    return d.isValid() ? d : null;
-  };
-  // dayjs → "dd/mm/yyyy"
-  const fromDayjs = (d: dayjs.Dayjs | null) => d ? d.format(DATE_FORMAT) : '';
-
-  const [localDate, setLocalDate] = useState<dayjs.Dayjs | null>(toDayjs(value));
-  const [editing, setEditing] = useState(false);
+  const [local, setLocal] = useState(value);
   const focusedRef = useRef(false);
   const lastCommitted = useRef(value);
-  const inputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (!focusedRef.current || value !== lastCommitted.current) {
-      setLocalDate(toDayjs(value));
+      setLocal(value);
     }
   }, [value]);
 
-  // Register the ref — prefer the text input, fallback to the DatePicker's input
-  useEffect(() => {
-    if (registerRef) {
-      registerRef(inputRef.current);
-    }
-  }, [registerRef, editing]);
-
-  // Register a close function so other DatePickers can close this one
-  useEffect(() => {
-    if (editing) {
-      const closeFn = () => {
-        focusedRef.current = false;
-        setEditing(false);
-      };
-      activeDatePickerClose = closeFn;
-
-      // Close on outside click or Escape — the DatePicker popup is a portal in document.body,
-      // so onBlur doesn't fire reliably. We need to handle this manually.
-      const mouseHandler = (e: MouseEvent) => {
-        const target = e.target as Node;
-        // Click inside the DatePicker container or its popup → keep open
-        const dpEl = inputRef.current?.closest('.ant-picker');
-        if (dpEl && dpEl.contains(target)) return;
-        // Check the popup (portal in body)
-        const popup = document.querySelector('.ant-picker-dropdown');
-        if (popup && popup.contains(target)) return;
-        // Outside click → close
-        closeFn();
-        activeDatePickerClose = null;
-      };
-      const keyHandler = (e: KeyboardEvent) => {
-        if (e.key === 'Escape') {
-          closeFn();
-          activeDatePickerClose = null;
-        }
-      };
-      // Use mousedown to catch clicks before the DatePicker's own handlers
-      document.addEventListener('mousedown', mouseHandler, true);
-      document.addEventListener('keydown', keyHandler, true);
-
-      return () => {
-        document.removeEventListener('mousedown', mouseHandler, true);
-        document.removeEventListener('keydown', keyHandler, true);
-        if (activeDatePickerClose === closeFn) {
-          activeDatePickerClose = null;
-        }
-      };
-    }
-  }, [editing]);
-
-  // Lightweight text input for display — only mount the heavy Ant Design DatePicker on focus
-  if (!editing) {
-    return (
-      <input
-        {...rest as any}
-        type="text"
-        value={value}
-        readOnly={readOnly}
-        placeholder="dd/mm/aaaa"
-        style={style}
-        ref={inputRef}
-        onChange={() => {}}  // uncontrolled-like, value comes from parent
-        onFocus={() => {
-          // Close any previously open DatePicker
-          if (activeDatePickerClose) {
-            activeDatePickerClose();
-            activeDatePickerClose = null;
-          }
-          focusedRef.current = true;
-          onFocus?.();
-          if (!readOnly) setEditing(true);
-        }}
-        onKeyDown={onKeyDown}
-        onPaste={onPaste}
-      />
-    );
-  }
-
-  // Heavy Ant Design DatePicker — only mounted while editing
   return (
-    <DatePicker
+    <input
       {...rest as any}
-      format={DATE_FORMAT}
-      value={localDate}
-      onChange={(d) => {
-        setLocalDate(d);
-        const str = fromDayjs(d);
-        lastCommitted.current = str;
-        onCommit(str);
-        // Close after selecting a date
-        focusedRef.current = false;
-        setEditing(false);
-        activeDatePickerClose = null;
+      type="text"
+      value={local}
+      readOnly={readOnly}
+      placeholder="dd/mm/aaaa"
+      maxLength={10}
+      style={style}
+      ref={registerRef as any}
+      onChange={e => {
+        let val = e.target.value;
+        // Auto-insert slashes only if the user is NOT typing slashes themselves.
+        // If the user types "1/7/22" manually, don't interfere — normalize on blur instead.
+        const digits = val.replace(/\D/g, '');
+        const prevDigits = local.replace(/\D/g, '');
+        const hasSlash = val.includes('/');
+        const prevHadSlash = local.includes('/');
+        // Only auto-format when: user added a digit (not a slash), no slash was typed yet,
+        // and we're growing the digit count
+        if (digits.length > prevDigits.length && digits.length <= 8 && !hasSlash && !prevHadSlash) {
+          let formatted = '';
+          if (digits.length >= 1) formatted = digits.substring(0, 2);
+          if (digits.length >= 3) formatted = digits.substring(0, 2) + '/' + digits.substring(2, 4);
+          if (digits.length >= 5) formatted = digits.substring(0, 2) + '/' + digits.substring(2, 4) + '/' + digits.substring(4, 8);
+          if (digits.length === 3) formatted = digits.substring(0, 2) + '/' + digits.substring(2);
+          if (digits.length === 5) formatted = digits.substring(0, 2) + '/' + digits.substring(2, 4) + '/' + digits.substring(4);
+          val = formatted;
+        }
+        setLocal(val);
       }}
       onFocus={() => { focusedRef.current = true; onFocus?.(); }}
-      onBlur={() => { focusedRef.current = false; setEditing(false); activeDatePickerClose = null; }}
-      onKeyDown={onKeyDown as any}
-      onPaste={onPaste as any}
-      open={true}
-      disabled={readOnly}
-      allowClear
-      placeholder="dd/mm/aaaa"
-      style={{ ...style, width: '100%', minWidth: 'unset' }}
-      variant="borderless"
-      inputReadOnly={false}
-      popupStyle={{ zIndex: 99999 }}
+      onBlur={(e) => {
+        focusedRef.current = false;
+        const normalized = normalizeDate(e.target.value);
+        lastCommitted.current = normalized;
+        onCommit(normalized);
+      }}
+      onKeyDown={onKeyDown}
+      onPaste={onPaste}
     />
   );
 });
+
+/* ── LocalGroupInput: text input with local state for group subject names ── */
+const LocalGroupInput = React.memo(function LocalGroupInput({
+  value, onCommit, onFocus, style,
+}: {
+  value: string;
+  onCommit: (value: string) => void;
+  onFocus?: () => void;
+  style?: React.CSSProperties;
+}) {
+  const [local, setLocal] = useState(value);
+  const focusedRef = useRef(false);
+  const lastCommitted = useRef(value);
+
+  useEffect(() => {
+    if (!focusedRef.current || value !== lastCommitted.current) {
+      setLocal(value);
+    }
+  }, [value]);
+
+  const commit = () => {
+    focusedRef.current = false;
+    lastCommitted.current = local;
+    onCommit(local);
+  };
+
+  return (
+    <input
+      type="text"
+      value={local}
+      placeholder="—"
+      style={style}
+      onChange={e => setLocal(e.target.value)}
+      onFocus={() => { focusedRef.current = true; onFocus?.(); }}
+      onBlur={commit}
+      onKeyDown={e => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          (e.target as HTMLInputElement).blur();
+        }
+      }}
+    />
+  );
+});
+
+/* ── Date normalization: accepts "1/7/22", "01/7/2022", "1/07/22", etc → "01/07/2022" ── */
+function normalizeDate(input: string): string {
+  if (!input || !input.trim()) return '';
+  const trimmed = input.trim();
+  // Extract parts split by / or - or .
+  const parts = trimmed.split(/[\/\-.]/).map(p => p.trim());
+  if (parts.length !== 3) return trimmed; // not a date, return as-is
+  let [dd, mm, yyyy] = parts;
+  // Pad day and month to 2 digits
+  dd = dd.padStart(2, '0');
+  mm = mm.padStart(2, '0');
+  // Expand 2-digit year to 4 digits: 00-30 → 2000-2030, 31-99 → 1931-1999
+  if (yyyy.length === 2) {
+    const yy = parseInt(yyyy, 10);
+    yyyy = yy <= 30 ? `20${yyyy.padStart(2, '0')}` : `19${yyyy.padStart(2, '0')}`;
+  }
+  // Validate
+  const d = parseInt(dd, 10);
+  const m = parseInt(mm, 10);
+  const y = parseInt(yyyy, 10);
+  if (d < 1 || d > 31 || m < 1 || m > 12 || y < 1900 || y > 2100) return trimmed; // invalid, return as-is
+  return `${dd}/${mm}/${yyyy}`;
+}
 
 /* ── Helpers ── */
 function emptyCell(): CellData {
@@ -505,7 +492,7 @@ const HistoricalGradesBySection: React.FC = () => {
       // Build rows
       const newRows: RowData[] = rawStudents.map(st => {
         const cells: Record<string, CellData> = {};
-        const groupNames: Record<string, string[]> = {};  // `g__${gradeId}` → actual subject names
+        const groupNames: Record<string, string> = {};  // `g__${gradeId}` → subject name for group
         for (const g of rawGrades) {
           if (g.personId !== st.id) continue;
           // Match by gradeId first (most reliable), fallback to schoolPeriodId+gradeId
@@ -548,10 +535,8 @@ const HistoricalGradesBySection: React.FC = () => {
           };
           if (g.subjectGroupId != null && g.subjectName) {
             const gk = `g__${g.gradeId}`;
-            if (!groupNames[gk]) groupNames[gk] = [];
-            if (!groupNames[gk].includes(g.subjectName)) {
-              groupNames[gk].push(g.subjectName);
-            }
+            // For system grades, use the subject name. For historical grades, use subjectName if saved.
+            if (!groupNames[gk]) groupNames[gk] = g.subjectName;
           }
         }
 
@@ -606,6 +591,8 @@ const HistoricalGradesBySection: React.FC = () => {
       setRows(newRows);
       plantelChangesRef.current.clear();
       setPlantelDirtyCount(0);
+      groupSubjectChangesRef.current.clear();
+      setGroupSubjectDirtyCount(0);
     } catch (err: any) {
       console.error(err);
       message.error(err?.response?.data?.message || 'Error al cargar notas');
@@ -684,6 +671,21 @@ const HistoricalGradesBySection: React.FC = () => {
       return r;
     }));
     setPlantelDirtyCount(plantelChangesRef.current.size);
+  }, []);
+
+  // Track group subject name changes: { personId_gradeId → newName }
+  const groupSubjectChangesRef = useRef<Set<string>>(new Set());
+  const [groupSubjectDirtyCount, setGroupSubjectDirtyCount] = useState(0);
+
+  const updateGroupSubjectName = useCallback((rowIdx: number, gk: string, value: string) => {
+    setRows(prev => prev.map((r, i) => {
+      if (i === rowIdx) {
+        groupSubjectChangesRef.current.add(`${r.personId}_${gk}`);
+        return { ...r, groupSubjectNames: { ...r.groupSubjectNames, [gk]: value } };
+      }
+      return r;
+    }));
+    setGroupSubjectDirtyCount(groupSubjectChangesRef.current.size);
   }, []);
 
   /* ── Ref management ── */
@@ -781,8 +783,8 @@ const HistoricalGradesBySection: React.FC = () => {
         if (row.cells[key].dirty) c++;
       }
     }
-    // Add plantel changes count
-    c += plantelDirtyCount;
+    // Add plantel and group subject changes count
+    c += plantelDirtyCount + groupSubjectDirtyCount;
     return c;
   }, [rows, plantelDirtyCount]);
 
@@ -823,6 +825,9 @@ const HistoricalGradesBySection: React.FC = () => {
         // Only send periodLabel if the cell has one; don't fallback to the year's periodShort
         // (which could be the active period and get rejected by the backend).
         const cellPer = cell.per || null;
+        // Get the group subject name if this subject belongs to a group
+        const groupKey = `g__${gradeId}`;
+        const subjName = row.groupSubjectNames[groupKey] || null;
         changes.push({
           personId: row.personId,
           periodLabel: cellPer,
@@ -835,13 +840,15 @@ const HistoricalGradesBySection: React.FC = () => {
           finalGradeId: cell.finalGradeId,
           inscriptionSubjectId: cell.inscriptionSubjectId,
           date: dateStr,
+          subjectName: subjName,
         });
       }
     }
 
     const hasPlantelChanges = plantelChangesRef.current.size > 0;
+    const hasGroupSubjectChanges = groupSubjectChangesRef.current.size > 0;
 
-    if (changes.length === 0 && !hasPlantelChanges) { message.info('No hay cambios para guardar'); return; }
+    if (changes.length === 0 && !hasPlantelChanges && !hasGroupSubjectChanges) { message.info('No hay cambios para guardar'); return; }
 
     setSaving(true);
     try {
@@ -875,6 +882,30 @@ const HistoricalGradesBySection: React.FC = () => {
         setPlantelDirtyCount(0);
         if (changes.length === 0) {
           message.success(`Planteles guardados (${plantelSaves.length})`);
+        }
+      }
+      // Save group subject names for students that had changes
+      const groupSaves: Promise<any>[] = [];
+      for (const row of rows) {
+        for (const gk of Object.keys(row.groupSubjectNames)) {
+          const changeKey = `${row.personId}_${gk}`;
+          if (!groupSubjectChangesRef.current.has(changeKey)) continue;
+          const gradeId = Number(gk.replace('g__', ''));
+          groupSaves.push(
+            api.post('/historical-grades/group-subject-name', {
+              personId: row.personId,
+              gradeId,
+              subjectName: row.groupSubjectNames[gk] || '',
+            })
+          );
+        }
+      }
+      if (groupSaves.length > 0) {
+        await Promise.all(groupSaves);
+        groupSubjectChangesRef.current.clear();
+        setGroupSubjectDirtyCount(0);
+        if (changes.length === 0 && plantelSaves.length === 0) {
+          message.success(`Materias guardadas (${groupSaves.length})`);
         }
       }
 
@@ -957,6 +988,10 @@ const HistoricalGradesBySection: React.FC = () => {
                 setStudentSearchResults([]);
                 setRows([]);
                 setStudents([]);
+                plantelChangesRef.current.clear();
+                setPlantelDirtyCount(0);
+                groupSubjectChangesRef.current.clear();
+                setGroupSubjectDirtyCount(0);
               }}
               style={{ width: 160 }}
               options={[
@@ -1284,7 +1319,7 @@ const HistoricalGradesBySection: React.FC = () => {
                                     type="text" maxLength={2}
                                     data-row={ri} data-field={instKey}
                                     registerRef={registerRef(ri, instKey)}
-                                    value={isSystem ? resolveInstNum(cell.inst, row.plantelIds) : cell.inst}
+                                    value={resolveInstNum(cell.inst, row.plantelIds)}
                                     onCommit={val => updateCell(ri, instKey, val)}
                                     onFocus={() => setActiveCell({ row: ri, field: instKey })}
                                     onKeyDown={e => handleKeyDown(e, ri, instKey)}
@@ -1323,15 +1358,23 @@ const HistoricalGradesBySection: React.FC = () => {
                               </React.Fragment>
                             );
                           })}
-                          {/* Group subject name column */}
+                          {/* Group subject name column — editable for historical grades */}
                           {yearHasGroups(y) && (
                             <td style={{
                               ...tdPlain(GROUP_COL_W),
                               borderLeft: `2px solid ${y.gradeColor || T.hairline}`,
-                              fontSize: 11, color: T.inkSoft, padding: '3px 6px',
-                              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                              padding: 0,
                             }}>
-                              {(row.groupSubjectNames[`g__${y.gradeId}`] || []).join(', ')}
+                              <LocalGroupInput
+                                value={row.groupSubjectNames[`g__${y.gradeId}`] || ''}
+                                onCommit={val => updateGroupSubjectName(ri, `g__${y.gradeId}`, val)}
+                                onFocus={() => setActiveCell({ row: ri, field: `g__${y.gradeId}__grp` })}
+                                style={{
+                                  width: '100%', border: 'none', outline: 'none', background: 'transparent',
+                                  fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: T.inkSoft,
+                                  padding: '3px 6px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                                }}
+                              />
                             </td>
                           )}
                         </React.Fragment>

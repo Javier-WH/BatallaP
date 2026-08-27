@@ -369,7 +369,7 @@ export const getHistoricalGradesBySection = async (req: Request, res: Response) 
         gradeId: hg.gradeId,
         subjectId: hg.subjectId,
         subjectGroupId: subj?.subjectGroupId ?? null,
-        subjectName: subj?.name ?? null,
+        subjectName: hg.subjectName || (subj?.name ?? null),
         finalScore: hg.finalScore != null ? roundGrade(Number(hg.finalScore)) : null,
         status: hg.status,
         gradeType: hg.gradeType,
@@ -542,6 +542,7 @@ export const saveHistoricalGrades = async (req: Request, res: Response) => {
           personId, periodLabel, gradeId, subjectId,
           finalScore, gradeType, plantelId,
           finalGradeId, inscriptionSubjectId, historicalGradeId, date,
+          subjectName,
         } = change;
 
         if (!personId || !gradeId || !subjectId) {
@@ -590,6 +591,7 @@ export const saveHistoricalGrades = async (req: Request, res: Response) => {
             gradeType: gradeType || 'regular',
             plantelId: plantelId || null,
             date: dateOnly,
+            subjectName: subjectName || null,
           }, {
             where: { id: historicalGradeId },
             transaction: t,
@@ -745,6 +747,7 @@ export const saveHistoricalGrades = async (req: Request, res: Response) => {
             gradeType: gradeType || 'regular',
             plantelId: plantelId || null,
             date: dateOnly,
+            subjectName: subjectName || null,
           }, {
             where: { id: existingHist.id },
             transaction: t,
@@ -760,6 +763,7 @@ export const saveHistoricalGrades = async (req: Request, res: Response) => {
             gradeType: gradeType || 'regular',
             plantelId: plantelId || null,
             date: dateOnly,
+            subjectName: subjectName || null,
             createdBy: userId,
           }, { transaction: t });
         }
@@ -833,5 +837,34 @@ export const savePersonPlanteles = async (req: Request, res: Response) => {
     await t.rollback();
     console.error('[savePersonPlanteles] Error:', error);
     return res.status(500).json({ message: error.message || 'Error al guardar planteles' });
+  }
+};
+
+/**
+ * Save the group subject name for a student's grade.
+ * Updates all HistoricalGrade records for (personId, gradeId) with the new subjectName.
+ * Body: { personId, gradeId, subjectName }
+ */
+export const saveGroupSubjectName = async (req: Request, res: Response) => {
+  try {
+    const sessionUser = (req.session as any)?.user;
+    if (!sessionUser) {
+      return res.status(401).json({ message: 'No autorizado' });
+    }
+
+    const { personId, gradeId, subjectName } = req.body;
+    if (!personId || !gradeId) {
+      return res.status(400).json({ message: 'personId y gradeId son requeridos' });
+    }
+
+    const [updated] = await HistoricalGrade.update(
+      { subjectName: subjectName || null },
+      { where: { personId, gradeId } }
+    );
+
+    return res.json({ updated });
+  } catch (error: any) {
+    console.error('[saveGroupSubjectName] Error:', error);
+    return res.status(500).json({ message: error.message || 'Error al guardar nombre de materia' });
   }
 };
