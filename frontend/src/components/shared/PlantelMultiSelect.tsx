@@ -36,21 +36,32 @@ const PlantelMultiSelect: React.FC<PlantelMultiSelectProps> = ({
   useEffect(() => {
     if (open && containerRef.current) {
       const rect = containerRef.current.getBoundingClientRect();
-      setDropdownPos({ top: rect.bottom + 2, left: rect.left, width: Math.max(width, 220) });
+      const dropdownWidth = 360;
+      // Clamp to viewport so it doesn't overflow the right edge
+      const left = Math.min(rect.left, window.innerWidth - dropdownWidth - 8);
+      setDropdownPos({ top: rect.bottom + 2, left: Math.max(8, left), width: dropdownWidth });
     } else {
       setDropdownPos(null);
     }
-  }, [open, width]);
+  }, [open]);
 
-  // Close on outside click or scroll
+  // Close on outside click or scroll from the table (not from the dropdown itself)
   useEffect(() => {
     if (!open) return;
     const handler = (e: MouseEvent) => {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        // Don't close if clicking inside the portal dropdown
+        const dropdown = document.querySelector('[data-plantel-dropdown]');
+        if (dropdown && dropdown.contains(e.target as Node)) return;
         setOpen(false);
       }
     };
-    const scrollHandler = () => setOpen(false);
+    const scrollHandler = (e: Event) => {
+      // Only close if the scroll didn't come from the dropdown itself
+      const dropdown = document.querySelector('[data-plantel-dropdown]');
+      if (dropdown && dropdown.contains(e.target as Node)) return;
+      setOpen(false);
+    };
     document.addEventListener('mousedown', handler);
     document.addEventListener('scroll', scrollHandler, true);
     return () => {
@@ -154,6 +165,8 @@ const PlantelMultiSelect: React.FC<PlantelMultiSelectProps> = ({
       {/* Dropdown — rendered via portal to escape overflow:auto containers */}
       {open && dropdownPos && createPortal(
         <div
+          data-plantel-dropdown="true"
+          onScroll={e => e.stopPropagation()}
           style={{
             position: 'fixed',
             top: dropdownPos.top,
@@ -178,21 +191,24 @@ const PlantelMultiSelect: React.FC<PlantelMultiSelectProps> = ({
                   key={p.id}
                   onClick={() => toggle(p.id)}
                   style={{
-                    padding: '4px 10px',
-                    fontSize: 11,
+                    padding: '5px 12px',
+                    fontSize: 12,
                     cursor: 'pointer',
                     background: isSelected ? '#EFE3C7' : 'transparent',
                     color: '#1E2A44',
                     display: 'flex',
                     alignItems: 'center',
-                    gap: 6,
+                    gap: 8,
+                    whiteSpace: 'nowrap',
                   }}
                   onMouseEnter={e => { if (!isSelected) (e.currentTarget as HTMLElement).style.background = '#F7F4EC'; }}
                   onMouseLeave={e => { if (!isSelected) (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
                 >
-                  {isSelected && <span style={{ color: '#A9814B', fontWeight: 700 }}>✓</span>}
-                  <span style={{ fontWeight: 600, color: '#A9814B', minWidth: 28 }}>{p.code}</span>
-                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
+                  {isSelected
+                    ? <span style={{ color: '#A9814B', fontWeight: 700, flex: '0 0 14px' }}>✓</span>
+                    : <span style={{ flex: '0 0 14px' }}>&nbsp;</span>}
+                  <span style={{ fontWeight: 600, color: '#A9814B', flex: '0 0 60px' }}>{p.code}</span>
+                  <span style={{ flex: '1 1 auto', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
                 </div>
               );
             })
