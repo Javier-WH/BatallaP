@@ -204,6 +204,9 @@ interface LocalDatePickerProps {
   'data-field'?: string;
 }
 const DATE_FORMAT = 'DD/MM/YYYY';
+// Track which LocalDatePicker is currently editing — only one can be open at a time
+let activeDatePickerClose: (() => void) | null = null;
+
 const LocalDatePicker = React.memo(function LocalDatePicker({
   value, onCommit, onFocus, onKeyDown, onPaste, registerRef,
   readOnly, style, ...rest
@@ -218,8 +221,10 @@ const LocalDatePicker = React.memo(function LocalDatePicker({
   const fromDayjs = (d: dayjs.Dayjs | null) => d ? d.format(DATE_FORMAT) : '';
 
   const [localDate, setLocalDate] = useState<dayjs.Dayjs | null>(toDayjs(value));
+  const [editing, setEditing] = useState(false);
   const focusedRef = useRef(false);
   const lastCommitted = useRef(value);
+  const inputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (!focusedRef.current || value !== lastCommitted.current) {
@@ -227,6 +232,85 @@ const LocalDatePicker = React.memo(function LocalDatePicker({
     }
   }, [value]);
 
+  // Register the ref — prefer the text input, fallback to the DatePicker's input
+  useEffect(() => {
+    if (registerRef) {
+      registerRef(inputRef.current);
+    }
+  }, [registerRef, editing]);
+
+  // Register a close function so other DatePickers can close this one
+  useEffect(() => {
+    if (editing) {
+      const closeFn = () => {
+        focusedRef.current = false;
+        setEditing(false);
+      };
+      activeDatePickerClose = closeFn;
+
+      // Close on outside click or Escape — the DatePicker popup is a portal in document.body,
+      // so onBlur doesn't fire reliably. We need to handle this manually.
+      const mouseHandler = (e: MouseEvent) => {
+        const target = e.target as Node;
+        // Click inside the DatePicker container or its popup → keep open
+        const dpEl = inputRef.current?.closest('.ant-picker');
+        if (dpEl && dpEl.contains(target)) return;
+        // Check the popup (portal in body)
+        const popup = document.querySelector('.ant-picker-dropdown');
+        if (popup && popup.contains(target)) return;
+        // Outside click → close
+        closeFn();
+        activeDatePickerClose = null;
+      };
+      const keyHandler = (e: KeyboardEvent) => {
+        if (e.key === 'Escape') {
+          closeFn();
+          activeDatePickerClose = null;
+        }
+      };
+      // Use mousedown to catch clicks before the DatePicker's own handlers
+      document.addEventListener('mousedown', mouseHandler, true);
+      document.addEventListener('keydown', keyHandler, true);
+
+      return () => {
+        document.removeEventListener('mousedown', mouseHandler, true);
+        document.removeEventListener('keydown', keyHandler, true);
+        if (activeDatePickerClose === closeFn) {
+          activeDatePickerClose = null;
+        }
+      };
+    }
+  }, [editing]);
+
+  // Lightweight text input for display — only mount the heavy Ant Design DatePicker on focus
+  if (!editing) {
+    return (
+      <input
+        {...rest as any}
+        type="text"
+        value={value}
+        readOnly={readOnly}
+        placeholder="dd/mm/aaaa"
+        style={style}
+        ref={inputRef}
+        onChange={() => {}}  // uncontrolled-like, value comes from parent
+        onFocus={() => {
+          // Close any previously open DatePicker
+          if (activeDatePickerClose) {
+            activeDatePickerClose();
+            activeDatePickerClose = null;
+          }
+          focusedRef.current = true;
+          onFocus?.();
+          if (!readOnly) setEditing(true);
+        }}
+        onKeyDown={onKeyDown}
+        onPaste={onPaste}
+      />
+    );
+  }
+
+  // Heavy Ant Design DatePicker — only mounted while editing
   return (
     <DatePicker
       {...rest as any}
@@ -237,12 +321,16 @@ const LocalDatePicker = React.memo(function LocalDatePicker({
         const str = fromDayjs(d);
         lastCommitted.current = str;
         onCommit(str);
+        // Close after selecting a date
+        focusedRef.current = false;
+        setEditing(false);
+        activeDatePickerClose = null;
       }}
       onFocus={() => { focusedRef.current = true; onFocus?.(); }}
-      onBlur={() => { focusedRef.current = false; }}
+      onBlur={() => { focusedRef.current = false; setEditing(false); activeDatePickerClose = null; }}
       onKeyDown={onKeyDown as any}
       onPaste={onPaste as any}
-      ref={registerRef as any}
+      open={true}
       disabled={readOnly}
       allowClear
       placeholder="dd/mm/aaaa"
@@ -297,7 +385,19 @@ const HistoricalGradesBySection: React.FC = () => {
   const [rows, setRows] = useState<RowData[]>([]);
   const [maxGrade, setMaxGrade] = useState<number>(20);
   const inputRefs = useRef<Record<string, HTMLInputElement | HTMLSelectElement | null>>({});
-  const [activeCell, setActiveCell] = useState<{ row: number; field: string } | null>(null);
+  const activeCellRef = useRef<{ row: number; field: string } | null>(null);
+  // Only store gradeId for header highlighting — updates only when year changes
+  const [activeGradeId, setActiveGradeId] = useState<number | null>(null);
+
+  const setActiveCell = useCallback((cell: { row: number; field: string } | null) => {
+    activeCellRef.current = cell;
+    if (cell) {
+      const gradeId = Number(cell.field.split('__')[1]);
+      setActiveGradeId(prev => prev === gradeId ? prev : gradeId);
+    } else {
+      setActiveGradeId(prev => prev === null ? prev : null);
+    }
+  }, []);
 
   // Mode: section or individual student
   const [mode, setMode] = useState<'section' | 'individual'>('section');
@@ -815,9 +915,10 @@ const HistoricalGradesBySection: React.FC = () => {
         input[type=number] { -moz-appearance: textfield; }
         .hg-grid input:focus, .hg-grid select:focus { background: #FFF7DE !important; box-shadow: inset 0 0 0 1.5px #A9814B; }
         .hg-row:hover td { background: #F6F0DE !important; }
-        .hg-row.active-row td { background: #FDF6E3 !important; }
-        .hg-row.active-row td.hg-frozen { background: #FBF1D3 !important; }
-        .hg-row.active-row td:hover { background: #F6E9C4 !important; }
+        .hg-row:focus-within td { background: #FDF6E3 !important; }
+        .hg-row:focus-within td.hg-frozen { background: #FBF1D3 !important; }
+        .hg-row:focus-within td:hover { background: #F6E9C4 !important; }
+        .hg-row:focus-within .hg-row-num { color: #A9814B !important; font-weight: 700 !important; }
       `}</style>
 
       <div className="px-5 py-4">
@@ -991,7 +1092,7 @@ const HistoricalGradesBySection: React.FC = () => {
                       const span = y.subjects.length * 5 + (hasGrp ? 1 : 0);
                       const width = y.subjects.length * SUB_W + (hasGrp ? GROUP_COL_W : 0);
                       const gc = y.gradeColor || T.hairline;
-                      const isActiveYear = activeCell?.field.startsWith(`g__${y.gradeId}__`);
+                      const isActiveYear = activeGradeId === y.gradeId;
                       return (
                         <th key={`y-${y.gradeId}`} colSpan={span}
                           style={{ ...thPlain(width), borderLeft: `3px solid ${T.hairline}`, borderTop: `3px solid ${gc}`, fontSize: 12,
@@ -1006,7 +1107,7 @@ const HistoricalGradesBySection: React.FC = () => {
                   </tr>
                   <tr>
                     {years.map(y => {
-                      const isActiveYear = activeCell?.field.startsWith(`g__${y.gradeId}__`);
+                      const isActiveYear = activeGradeId === y.gradeId;
                       return (
                       <React.Fragment key={`s-row-${y.gradeId}`}>
                         {y.subjects.map((subj, si) => (
@@ -1034,7 +1135,7 @@ const HistoricalGradesBySection: React.FC = () => {
                     <th key="h2-nom" style={{ ...thFrozen(leftOf.nombres, COL.nombres), top: 56, zIndex: 4 }}></th>
                     <th key="h2-inst" style={{ ...thFrozen(leftOf.inst, COL.inst), top: 56, zIndex: 4, textAlign: 'left', borderRight: `2px solid ${T.hairline}` }}></th>
                     {years.map(y => {
-                      const isActiveYear = activeCell?.field.startsWith(`g__${y.gradeId}__`);
+                      const isActiveYear = activeGradeId === y.gradeId;
                       return (
                       <React.Fragment key={`sub-${y.gradeId}`}>
                         {y.subjects.map((subj, si) => (
@@ -1058,17 +1159,16 @@ const HistoricalGradesBySection: React.FC = () => {
                 <tbody>
                   {rows.map((row, ri) => {
                     const rowBg = ri % 2 === 0 ? '#FBF9F3' : T.card;
-                    const isActiveRow = activeCell?.row === ri;
                     return (
                     <tr key={row.personId}
-                      className={`hg-row${isActiveRow ? ' active-row' : ''}`}
+                      className="hg-row"
                       style={{
                         borderTop: `1px solid ${T.hairline}`,
                         backgroundColor: rowBg,
                       }}>
                       {/* N° */}
-                      <td className="hg-frozen" style={{ ...tdFrozen(leftOf.n, COL.n, rowBg), textAlign: 'center', fontFamily: 'monospace', fontSize: 11, color: isActiveRow ? T.brass : T.inkFaint, fontWeight: isActiveRow ? 700 : 400 }}>
-                        {isActiveRow ? '▸' : String(ri + 1).padStart(2, '0')}
+                      <td className="hg-frozen hg-row-num" style={{ ...tdFrozen(leftOf.n, COL.n, rowBg), textAlign: 'center', fontFamily: 'monospace', fontSize: 11, color: T.inkFaint, fontWeight: 400 }}>
+                        {String(ri + 1).padStart(2, '0')}
                       </td>
                       {/* Cédula */}
                       <td className="hg-frozen" style={{ ...tdFrozen(leftOf.cedula, COL.cedula, rowBg), fontFamily: 'monospace', fontSize: 11, color: T.inkSoft, padding: '3px 6px' }}>
