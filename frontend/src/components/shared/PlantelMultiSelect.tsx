@@ -47,14 +47,22 @@ const PlantelMultiSelect: React.FC<PlantelMultiSelectProps> = ({
     }
   }, [open]);
 
-  // Close on outside click or scroll from the table (not from the dropdown itself)
+  // Close on outside click, Escape, or scroll from the table
   useEffect(() => {
     if (!open) return;
     const handler = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        const dropdown = document.querySelector('[data-plantel-dropdown]');
-        if (dropdown && dropdown.contains(e.target as Node)) return;
+      // Click inside the container → keep open
+      if (containerRef.current && containerRef.current.contains(e.target as Node)) return;
+      // Click inside the portal dropdown → keep open (don't close on item click, toggle handles that)
+      const dropdown = document.querySelector('[data-plantel-dropdown]');
+      if (dropdown && dropdown.contains(e.target as Node)) return;
+      // Otherwise close
+      setOpen(false);
+    };
+    const escapeHandler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
         setOpen(false);
+        setFilter('');
       }
     };
     const scrollHandler = (e: Event) => {
@@ -63,9 +71,11 @@ const PlantelMultiSelect: React.FC<PlantelMultiSelectProps> = ({
       setOpen(false);
     };
     document.addEventListener('mousedown', handler);
+    document.addEventListener('keydown', escapeHandler);
     document.addEventListener('scroll', scrollHandler, true);
     return () => {
       document.removeEventListener('mousedown', handler);
+      document.removeEventListener('keydown', escapeHandler);
       document.removeEventListener('scroll', scrollHandler, true);
     };
   }, [open]);
@@ -83,6 +93,9 @@ const PlantelMultiSelect: React.FC<PlantelMultiSelectProps> = ({
     } else {
       onChange([...selectedIds, id]);
     }
+    // Close dropdown after selecting
+    setOpen(false);
+    setFilter('');
   };
 
   const remove = (id: number, e: React.MouseEvent) => {
@@ -151,7 +164,7 @@ const PlantelMultiSelect: React.FC<PlantelMultiSelectProps> = ({
             title={p.name + (p.isSystem ? ' (sistema)' : '')}
           >
             <span style={{ fontWeight: 700 }}>#{p.number}</span>
-            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 70 }}>{p.name}</span>
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 230 }}>{p.name}</span>
             {/* Reorder buttons */}
             <span
               onClick={(e) => moveUp(idx, e)}

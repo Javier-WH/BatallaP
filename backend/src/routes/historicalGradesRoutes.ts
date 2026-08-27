@@ -5,5 +5,6 @@ const router = Router();
 
 router.get('/by-section', historicalGradesController.getHistoricalGradesBySection);
 router.post('/save', historicalGradesController.saveHistoricalGrades);
+router.post('/person-planteles', historicalGradesController.savePersonPlanteles);
 
 export default router;

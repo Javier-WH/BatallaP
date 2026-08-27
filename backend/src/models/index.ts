@@ -7,6 +7,7 @@ import PersonResidence from './PersonResidence';
 import StudentGuardian from './StudentGuardian';
 import StudentPreviousSchool from './StudentPreviousSchool';
 import Plantel from './Plantel';
+import PersonPlantel from './PersonPlantel';
 import GuardianProfile from './GuardianProfile';
 
 // User <-> Person Association
@@ -353,6 +354,22 @@ HistoricalGrade.belongsTo(Subject, { foreignKey: 'subjectId', as: 'subject' });
 HistoricalGrade.belongsTo(SchoolPeriod, { foreignKey: 'schoolPeriodId', as: 'schoolPeriod' });
 HistoricalGrade.belongsTo(Plantel, { foreignKey: 'plantelId', as: 'plantel' });
 
+// Person-Plantel relationship (ordered list of planteles per student)
+Person.belongsToMany(Plantel, {
+  through: PersonPlantel,
+  foreignKey: 'personId',
+  otherKey: 'plantelId',
+  as: 'planteles',
+});
+Plantel.belongsToMany(Person, {
+  through: PersonPlantel,
+  foreignKey: 'plantelId',
+  otherKey: 'personId',
+  as: 'persons',
+});
+PersonPlantel.belongsTo(Person, { foreignKey: 'personId', as: 'person' });
+PersonPlantel.belongsTo(Plantel, { foreignKey: 'plantelId', as: 'plantel' });
+
 // Student period outcomes
 Inscription.hasOne(StudentPeriodOutcome, { foreignKey: 'inscriptionId', as: 'periodOutcome' });
 StudentPeriodOutcome.belongsTo(Inscription, { foreignKey: 'inscriptionId', as: 'inscription' });
@@ -524,6 +541,7 @@ export {
   GuardianProfile,
   StudentPreviousSchool,
   Plantel,
+  PersonPlantel,
   SchoolPeriod,
   Grade,
   Section,

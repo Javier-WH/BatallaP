@@ -16,6 +16,7 @@ import {
   SubjectGroup,
   Term,
   HistoricalGrade,
+  PersonPlantel,
 } from '@/models/index';
 import { sortInscriptions } from '@/services/studentSortService';
 import { roundFinalGrade, roundGrade, isPassingGrade } from '@/services/gradeEvaluationService';
@@ -388,11 +389,24 @@ export const getHistoricalGradesBySection = async (req: Request, res: Response) 
       order: [['name', 'ASC']],
     });
 
+    // 10. Get saved person-planteles (ordered list per student)
+    const personPlanteles = await PersonPlantel.findAll({
+      where: { personId: personIds as any },
+      order: [['order', 'ASC']],
+    });
+    // Group by personId: { [personId]: [{ plantelId, order, isSystem }] }
+    const personPlantelesMap: Record<number, { plantelId: number; order: number; isSystem: boolean }[]> = {};
+    for (const pp of personPlanteles) {
+      if (!personPlantelesMap[pp.personId]) personPlantelesMap[pp.personId] = [];
+      personPlantelesMap[pp.personId].push({ plantelId: pp.plantelId, order: pp.order, isSystem: pp.isSystem });
+    }
+
     return res.json({
       students,
       years,
       grades: gradesMap,
       planteles: planteles.map((p: any) => ({ id: p.id, code: p.code, name: p.name })),
+      personPlanteles: personPlantelesMap,
       allPeriods: allPeriods.map((p: any) => ({
         id: p.id,
         periodShort: periodShortMap.get(p.id) ?? null,
@@ -761,5 +775,63 @@ export const saveHistoricalGrades = async (req: Request, res: Response) => {
     await t.rollback();
     console.error('[saveHistoricalGrades] Error:', error);
     return res.status(500).json({ message: error.message || 'Error al guardar notas históricas' });
+  }
+};
+
+/**
+ * Save the ordered list of planteles for a student.
+ * Body: { personId, planteles: [{ plantelId, isSystem }] }
+ * The order is determined by the array order.
+ * Uses SYSTEM_PLANTEL_ID = -1 to represent the institution's own plantel (stored as isSystem=true, plantelId=null).
+ */
+export const savePersonPlanteles = async (req: Request, res: Response) => {
+  const t = await sequelize.transaction();
+  try {
+    const sessionUser = (req.session as any)?.user;
+    if (!sessionUser) {
+      return res.status(401).json({ message: 'No autorizado' });
+    }
+
+    const { personId, planteles } = req.body;
+    if (!personId) {
+      return res.status(400).json({ message: 'personId es requerido' });
+    }
+    if (!Array.isArray(planteles)) {
+      return res.status(400).json({ message: 'planteles debe ser un array' });
+    }
+
+    // Delete existing entries for this person
+    await PersonPlantel.destroy({
+      where: { personId },
+      transaction: t,
+    });
+
+    // Insert new entries with order
+    for (let i = 0; i < planteles.length; i++) {
+      const p = planteles[i];
+      // Skip the system plantel (id -1) — it's virtual, stored as isSystem=true with a null plantelId
+      if (p.plantelId === -1 || p.isSystem) {
+        await PersonPlantel.create({
+          personId,
+          plantelId: null as any,
+          order: i,
+          isSystem: true,
+        }, { transaction: t });
+      } else {
+        await PersonPlantel.create({
+          personId,
+          plantelId: p.plantelId,
+          order: i,
+          isSystem: false,
+        }, { transaction: t });
+      }
+    }
+
+    await t.commit();
+    return res.json({ saved: planteles.length });
+  } catch (error: any) {
+    await t.rollback();
+    console.error('[savePersonPlanteles] Error:', error);
+    return res.status(500).json({ message: error.message || 'Error al guardar planteles' });
   }
 };

@@ -371,6 +371,7 @@ const HistoricalGradesBySection: React.FC = () => {
       const rawGrades: GradeEntry[] = data.grades || [];
       const rawPlanteles: PlantelItem[] = data.planteles || [];
       const rawAllPeriods: PeriodOption[] = data.allPeriods || [];
+      const rawPersonPlanteles: Record<number, { plantelId: number | null; order: number; isSystem: boolean }[]> = data.personPlanteles || {};
 
       // Add the system institution as a virtual plantel (id -1) so it appears in the dropdown
       const plantelesWithSystem = [
@@ -454,19 +455,31 @@ const HistoricalGradesBySection: React.FC = () => {
           }
         }
 
-        // Collect unique plantelIds for this student.
-        // System grades always use the institution's plantel (virtual id -1).
-        // Historical grades may have their own plantelId.
+        // Collect plantelIds for this student.
+        // Priority: saved personPlanteles (from PersonPlantel table) > reconstruct from grades.
+        const savedPlanteles = rawPersonPlanteles[st.id];
         const studentPlantelIds: number[] = [];
         let hasSystemGrades = false;
-        for (const g of rawGrades) {
-          if (g.personId !== st.id) continue;
-          if (g.source === 'system') {
-            hasSystemGrades = true;
-            // System grades use the virtual plantel id
-            if (!studentPlantelIds.includes(SYSTEM_PLANTEL_ID)) studentPlantelIds.push(SYSTEM_PLANTEL_ID);
-          } else if (g.plantelId && !studentPlantelIds.includes(g.plantelId)) {
-            studentPlantelIds.push(g.plantelId);
+
+        if (savedPlanteles && savedPlanteles.length > 0) {
+          // Use saved order — system plantel is stored as plantelId=null → use SYSTEM_PLANTEL_ID
+          for (const sp of savedPlanteles) {
+            const pid = sp.isSystem ? SYSTEM_PLANTEL_ID : sp.plantelId;
+            if (pid != null && !studentPlantelIds.includes(pid)) studentPlantelIds.push(pid);
+            if (sp.isSystem) hasSystemGrades = true;
+          }
+        }
+
+        // If no saved planteles, reconstruct from grades
+        if (studentPlantelIds.length === 0) {
+          for (const g of rawGrades) {
+            if (g.personId !== st.id) continue;
+            if (g.source === 'system') {
+              hasSystemGrades = true;
+              if (!studentPlantelIds.includes(SYSTEM_PLANTEL_ID)) studentPlantelIds.push(SYSTEM_PLANTEL_ID);
+            } else if (g.plantelId && !studentPlantelIds.includes(g.plantelId)) {
+              studentPlantelIds.push(g.plantelId);
+            }
           }
         }
         // Ensure system plantel is always present if there are system grades
@@ -491,6 +504,7 @@ const HistoricalGradesBySection: React.FC = () => {
       });
 
       setRows(newRows);
+      plantelChangesRef.current.clear();
     } catch (err: any) {
       console.error(err);
       message.error(err?.response?.data?.message || 'Error al cargar notas');
@@ -558,8 +572,16 @@ const HistoricalGradesBySection: React.FC = () => {
     setRows(prev => prev.map((r, i) => i === rowIdx ? setField(r, key, value) : r));
   };
 
+  const plantelChangesRef = useRef<Set<number>>(new Set());
+
   const updatePlantelIds = useCallback((rowIdx: number, ids: number[]) => {
-    setRows(prev => prev.map((r, i) => i === rowIdx ? { ...r, plantelIds: ids } : r));
+    setRows(prev => prev.map((r, i) => {
+      if (i === rowIdx) {
+        plantelChangesRef.current.add(r.personId);
+        return { ...r, plantelIds: ids };
+      }
+      return r;
+    }));
   }, []);
 
   /* ── Ref management ── */
@@ -722,6 +744,27 @@ const HistoricalGradesBySection: React.FC = () => {
       if (res.data.errors?.length > 0) {
         for (const err of res.data.errors) message.error(err);
       }
+
+      // Save plantelIds for students that had plantel changes
+      const plantelSaves: Promise<any>[] = [];
+      for (const row of rows) {
+        if (!plantelChangesRef.current.has(row.personId)) continue;
+        const plantelesPayload = row.plantelIds.map(pid => ({
+          plantelId: pid,
+          isSystem: pid === SYSTEM_PLANTEL_ID,
+        }));
+        plantelSaves.push(
+          api.post('/historical-grades/person-planteles', {
+            personId: row.personId,
+            planteles: plantelesPayload,
+          })
+        );
+      }
+      if (plantelSaves.length > 0) {
+        await Promise.all(plantelSaves);
+        plantelChangesRef.current.clear();
+      }
+
       await loadGrades();
     } catch (err: any) {
       message.error(err?.response?.data?.message || 'Error al guardar');
