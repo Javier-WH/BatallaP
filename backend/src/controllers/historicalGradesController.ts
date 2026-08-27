@@ -1,5 +1,4 @@
 import { Request, Response } from 'express';
-import { Op } from 'sequelize';
 import sequelize from '@/config/database';
 import {
   Inscription,
@@ -16,8 +15,6 @@ import {
   Person,
   SubjectGroup,
   Term,
-  PendingSubject,
-  PendingSubjectEncounter,
   HistoricalGrade,
 } from '@/models/index';
 import { sortInscriptions } from '@/services/studentSortService';
@@ -106,6 +103,7 @@ export const getHistoricalGradesBySection = async (req: Request, res: Response) 
             attributes: ['id', 'firstName', 'lastName', 'document', 'documentType'],
           },
           { model: Grade, as: 'grade', attributes: ['id', 'name', 'order'] },
+          { model: Section, as: 'section', attributes: ['id', 'name'] },
         ],
       });
 
@@ -141,6 +139,18 @@ export const getHistoricalGradesBySection = async (req: Request, res: Response) 
       attributes: ['id', 'name', 'order'],
       order: [['order', 'ASC']],
     });
+
+    // 3b. Batch-fetch all SchoolPeriods to build a short period label (e.g. "25/26")
+    const allPeriods = await SchoolPeriod.findAll({
+      attributes: ['id', 'startYear', 'endYear', 'period', 'name'],
+      order: [['startYear', 'ASC']],
+    });
+    const periodShortMap = new Map<number, string>();
+    for (const p of allPeriods) {
+      const s = String(p.startYear).slice(-2);
+      const e = String(p.endYear).slice(-2);
+      periodShortMap.set(p.id, `${s}/${e}`);
+    }
 
     // 4. For each grade, find the PeriodGrade to get subjects.
     //    Try the active period first; if not found, try any period that has
@@ -216,23 +226,29 @@ export const getHistoricalGradesBySection = async (req: Request, res: Response) 
         gradeName: gr.name,
         gradeOrder: gr.order,
         schoolPeriodId: pgPeriodId,
+        periodShort: pgPeriodId ? (periodShortMap.get(pgPeriodId) ?? null) : null,
         gradeColor: (pg as any)?.color ?? null,
         subjects,
       });
     }
 
-    // 5. Get all inscriptions for these students (across all periods),
-    //    excluding auxiliary MP inscriptions (they're handled via PendingSubject)
-    const allInscriptionsForStudents = await Inscription.findAll({
-      where: {
-        personId: personIds as any,
-        escolaridad: { [Op.ne]: 'materia_pendiente' },
-      },
+    // 5. Get all inscriptions for these students (across all periods).
+    //    Auxiliary MP inscriptions are identified by their SECTION name, not by
+    //    escolaridad — registering a student in Materia Pendiente also flips the
+    //    escolaridad of their REGULAR inscription to 'materia_pendiente', so
+    //    filtering by escolaridad would wrongly drop all their regular grades.
+    const allInscriptionsRaw = await Inscription.findAll({
+      where: { personId: personIds as any },
       include: [
         { model: SchoolPeriod, as: 'period', attributes: ['id', 'period', 'name', 'startYear', 'endYear', 'status'] },
         { model: Grade, as: 'grade', attributes: ['id', 'name', 'order'] },
+        { model: Section, as: 'section', attributes: ['id', 'name'] },
       ],
     });
+
+    const allInscriptionsForStudents = allInscriptionsRaw.filter((ins: any) =>
+      (ins.section?.name || '').toUpperCase() !== 'MATERIA PENDIENTE'
+    );
 
     const allInsIds = allInscriptionsForStudents.map(i => i.id);
 
@@ -282,6 +298,17 @@ export const getHistoricalGradesBySection = async (req: Request, res: Response) 
         date = latestCalculated ? new Date(latestCalculated).toISOString().split('T')[0] : null;
       }
 
+      // Only show regular/transferencia/equivalencia final grades.
+      // Exclude materia_pendiente and revision_materia_pendiente (shown in another view).
+      // For revision grades, show the original aplazada score (not the repair score).
+      if (gradeType === 'materia_pendiente' || gradeType === 'revision_materia_pendiente') continue;
+      if (gradeType === 'revision') {
+        // Show the original aplazada score, not the repair score
+        finalScore = fg?.originalScore != null ? roundGrade(Number(fg.originalScore)) : finalScore;
+        status = fg?.originalStatus ?? status;
+        gradeType = 'regular';
+      }
+
       gradesMap.push({
         personId: ins.personId,
         schoolPeriodId: ins.schoolPeriodId,
@@ -301,60 +328,9 @@ export const getHistoricalGradesBySection = async (req: Request, res: Response) 
       });
     }
 
-    // 7. Get PendingSubject grades
-    const pendingSubjects = await PendingSubject.findAll({
-      where: { newInscriptionId: allInsIds as any },
-      include: [
-        {
-          model: Inscription,
-          as: 'inscription',
-          attributes: ['id', 'personId', 'schoolPeriodId', 'gradeId'],
-        },
-        { model: Subject, as: 'subject', attributes: ['id', 'name', 'abbreviation', 'subjectGroupId'] },
-        { model: SchoolPeriod, as: 'originPeriod', attributes: ['id', 'period', 'name'] },
-        { model: PendingSubjectEncounter, as: 'encounters' },
-      ],
-    });
-
-    for (const ps of pendingSubjects) {
-      const ins = (ps as any).inscription;
-      const subj = (ps as any).subject;
-      const originPeriod = (ps as any).originPeriod;
-      const encs: any[] = ((ps as any).encounters || []).sort((a: any, b: any) => a.encounterNumber - b.encounterNumber);
-      if (!ins || !subj) continue;
-
-      const approvedEnc = encs.find(e => e.score !== null && Number(e.score) >= 10 && !e.isAbsent);
-      const lastScored = [...encs].reverse().find(e => e.score !== null || e.isAbsent);
-      let score: number | null = null;
-      if (approvedEnc) score = roundGrade(Number(approvedEnc.score));
-      else if (lastScored) score = lastScored.isAbsent ? 0 : roundGrade(Number(lastScored.score));
-
-      if (score === null) continue;
-
-      const psStatus = isPassingGrade(score, 10) ? 'aprobada' : 'reprobada';
-      const lastDate = [...encs].reverse().find(e => e.date)?.date;
-
-      const targetPeriodId = originPeriod?.id ?? ins.schoolPeriodId;
-      const targetGradeId = ins.gradeId ?? null;
-
-      gradesMap.push({
-        personId: ins.personId,
-        schoolPeriodId: targetPeriodId,
-        gradeId: targetGradeId,
-        subjectId: subj.id,
-        subjectGroupId: subj.subjectGroupId ?? null,
-        subjectName: subj.name ?? null,
-        finalScore: score,
-        status: psStatus,
-        gradeType: 'materia_pendiente',
-        plantelId: null,
-        plantelName: null,
-        finalGradeId: null,
-        inscriptionSubjectId: null,
-        date: lastDate ? new Date(lastDate).toISOString().split('T')[0] : null,
-        source: 'pending_subject',
-      });
-    }
+    // 7. PendingSubject grades are NOT shown in this view — only final grades
+    //    from the conventional evaluation process (lapsos, evaluaciones, consejos)
+    //    and manually-entered historical grades are displayed.
 
     // 8. Get HistoricalGrade records (legacy data entered manually)
     const historicalGrades = await HistoricalGrade.findAll({
@@ -398,6 +374,12 @@ export const getHistoricalGradesBySection = async (req: Request, res: Response) 
       years,
       grades: gradesMap,
       planteles: planteles.map((p: any) => ({ id: p.id, code: p.code, name: p.name })),
+      allPeriods: allPeriods.map((p: any) => ({
+        id: p.id,
+        periodShort: periodShortMap.get(p.id) ?? null,
+        period: p.period,
+        name: p.name,
+      })),
     });
   } catch (error: any) {
     console.error('[getHistoricalGradesBySection] Error:', error);

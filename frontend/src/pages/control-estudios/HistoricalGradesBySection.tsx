@@ -54,6 +54,7 @@ interface SubjectItem {
 }
 interface YearCol {
   schoolPeriodId: number | null;
+  periodShort: string | null;
   gradeId: number;
   period: string;
   name: string;
@@ -82,6 +83,7 @@ interface GradeEntry {
 }
 interface PlantelItem { id: number; code: string; name: string; }
 interface SectionOption { id: number; name: string; gradeName: string; gradeId: number; }
+interface PeriodOption { id: number; periodShort: string | null; period: string; name: string; }
 
 /* ── Row data: one per student ── */
 interface RowData {
@@ -98,6 +100,8 @@ interface CellData {
   status: string;      // "F", "R", "MP", ...
   date: string;        // "dd/mm/aaaa"
   inst: string;        // "1", "2" (references plantelIds index+1)
+  per: string;         // schoolPeriodId as string, "" if unset
+  source: string;      // "system", "historical", ""
   finalGradeId: number | null;
   inscriptionSubjectId: number | null;
   historicalGradeId: number | null;
@@ -106,12 +110,12 @@ interface CellData {
 
 /* ── Helpers ── */
 function emptyCell(): CellData {
-  return { score: '', status: 'F', date: '', inst: '', finalGradeId: null, inscriptionSubjectId: null, historicalGradeId: null, dirty: false };
+  return { score: '', status: 'F', date: '', inst: '', per: '', source: '', finalGradeId: null, inscriptionSubjectId: null, historicalGradeId: null, dirty: false };
 }
 
 /* Flat ordered list of field keys for Tab navigation + paste.
    Order: cedula, apellidos, nombres, plantelIds,
-   then for each year → for each subject: score, status, date, inst */
+   then for each year → for each subject: score, status, date, inst, per */
 function buildFieldKeys(years: YearCol[]): string[] {
   const keys: string[] = ['cedula', 'apellidos', 'nombres', 'plantelIds'];
   for (const y of years) {
@@ -121,6 +125,7 @@ function buildFieldKeys(years: YearCol[]): string[] {
       keys.push(`${prefix}g__status`);
       keys.push(`${prefix}g__date`);
       keys.push(`${prefix}g__inst`);
+      keys.push(`${prefix}g__per`);
     }
   }
   return keys;
@@ -138,6 +143,7 @@ const HistoricalGradesBySection: React.FC = () => {
   const [students, setStudents] = useState<Student[]>([]);
   const [years, setYears] = useState<YearCol[]>([]);
   const [planteles, setPlanteles] = useState<PlantelItem[]>([]);
+  const [allPeriods, setAllPeriods] = useState<PeriodOption[]>([]);
   const [rows, setRows] = useState<RowData[]>([]);
   const [maxGrade, setMaxGrade] = useState<number>(20);
   const inputRefs = useRef<Record<string, HTMLInputElement | HTMLSelectElement | null>>({});
@@ -212,9 +218,11 @@ const HistoricalGradesBySection: React.FC = () => {
       const rawYears: YearCol[] = data.years || [];
       const rawGrades: GradeEntry[] = data.grades || [];
       const rawPlanteles: PlantelItem[] = data.planteles || [];
+      const rawAllPeriods: PeriodOption[] = data.allPeriods || [];
 
       setStudents(rawStudents);
       setPlanteles(rawPlanteles);
+      setAllPeriods(rawAllPeriods);
 
       // Show all years — the user needs to see and fill all grades (1ro–5to)
       // regardless of which section they're currently viewing.
@@ -248,6 +256,9 @@ const HistoricalGradesBySection: React.FC = () => {
             }
           }
           if (!key) continue;
+          // System grades take priority over historical grades for the same cell
+          const existing = cells[key];
+          if (existing && existing.source === 'system' && g.source !== 'system') continue;
           const statusCode = g.gradeType ? (GRADE_TYPE_TO_CODE[g.gradeType] || 'F') : 'F';
           let dateDisplay = '';
           if (g.date) {
@@ -263,6 +274,8 @@ const HistoricalGradesBySection: React.FC = () => {
             status: statusCode,
             date: dateDisplay,
             inst: instNum,
+            per: g.schoolPeriodId != null ? String(g.schoolPeriodId) : '',
+            source: g.source ?? '',
             finalGradeId: g.finalGradeId,
             inscriptionSubjectId: g.inscriptionSubjectId,
             historicalGradeId: g.historicalGradeId ?? null,
@@ -470,9 +483,10 @@ const HistoricalGradesBySection: React.FC = () => {
           if (parts.length === 3) dateStr = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
         }
         const gradeType = STATUS_META[cell.status]?.gradeType || 'regular';
-        // Find the schoolPeriodId for this grade from the years array
+        // Use the cell's own schoolPeriodId (editable per-cell), fallback to column's
+        const cellSpId = cell.per ? Number(cell.per) : null;
         const yearMatch = years.find(y => y.gradeId === gradeId);
-        const spId = yearMatch?.schoolPeriodId ?? null;
+        const spId = cellSpId ?? yearMatch?.schoolPeriodId ?? null;
         changes.push({
           personId: row.personId,
           schoolPeriodId: spId,
@@ -514,7 +528,7 @@ const HistoricalGradesBySection: React.FC = () => {
     inst: COL.n + COL.cedula + COL.apellidos + COL.nombres,
   };
   const frozenWidth = COL.n + COL.cedula + COL.apellidos + COL.nombres + COL.inst;
-  const SUB_W = 44 + 44 + 78 + 40; // = 206 per subject
+  const SUB_W = 44 + 44 + 78 + 40 + 48; // = 254 per subject (score, status, date, inst, per)
   const GROUP_COL_W = 130;        // extra column for group subject name
   // Years that have at least one group subject get an extra trailing column
   const yearHasGroups = (y: YearCol) => y.subjects.some(s => s.subjectGroupId !== null);
@@ -546,6 +560,7 @@ const HistoricalGradesBySection: React.FC = () => {
             <p style={{ fontSize: 12, color: T.inkFaint }}>
               {students.length} estudiantes · {years.length} años · {dirtyCount > 0 ? `${dirtyCount} cambios sin guardar` : 'Sin cambios'}
               · Tab para moverte, Enter para bajar de fila, pega bloques desde Excel
+              · Las celdas grises son notas del sistema (no editable)
             </p>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
@@ -644,6 +659,10 @@ const HistoricalGradesBySection: React.FC = () => {
             </span>
           ))}
           <span>Inst = número de la lista de instituciones de esa fila</span>
+          <span className="flex items-center gap-1">
+            <span style={{ width: 9, height: 9, borderRadius: 3, background: '#F0F0F0', border: `1px solid ${T.hairline}`, display: 'inline-block' }} />
+            Gris = nota del sistema (no editable)
+          </span>
         </div>
 
         <Spin spinning={loading}>
@@ -673,6 +692,7 @@ const HistoricalGradesBySection: React.FC = () => {
                           <col style={{ width: 44 }} />
                           <col style={{ width: 78 }} />
                           <col style={{ width: 40 }} />
+                          <col style={{ width: 48 }} />
                         </React.Fragment>
                       ))}
                       {yearHasGroups(y) && <col style={{ width: GROUP_COL_W }} />}
@@ -688,7 +708,7 @@ const HistoricalGradesBySection: React.FC = () => {
                     <th key="h-inst" rowSpan={2} style={{ ...thFrozen(leftOf.inst, COL.inst), zIndex: 5, textAlign: 'left', borderRight: `2px solid ${T.hairline}` }}>Instituciones</th>
                     {years.map(y => {
                       const hasGrp = yearHasGroups(y);
-                      const span = y.subjects.length * 4 + (hasGrp ? 1 : 0);
+                      const span = y.subjects.length * 5 + (hasGrp ? 1 : 0);
                       const width = y.subjects.length * SUB_W + (hasGrp ? GROUP_COL_W : 0);
                       const gc = y.gradeColor || T.hairline;
                       const isActiveYear = activeCell?.field.startsWith(`g__${y.gradeId}__`);
@@ -697,6 +717,9 @@ const HistoricalGradesBySection: React.FC = () => {
                           style={{ ...thPlain(width), borderLeft: `3px solid ${T.hairline}`, borderTop: `3px solid ${gc}`, fontSize: 12,
                             background: isActiveYear ? T.brassBg : T.headerBg }}>
                           {y.gradeName}
+                          {y.periodShort && (
+                            <div style={{ fontSize: 9, fontWeight: 400, color: T.inkFaint }}>{y.periodShort}</div>
+                          )}
                         </th>
                       );
                     })}
@@ -707,8 +730,8 @@ const HistoricalGradesBySection: React.FC = () => {
                       return (
                       <React.Fragment key={`s-row-${y.gradeId}`}>
                         {y.subjects.map((subj, si) => (
-                          <th key={`s-${y.gradeId}-${subj.id}`} colSpan={4} title={subj.name}
-                            style={{ ...thSub(206), borderLeft: si === 0 ? `3px solid ${y.gradeColor || T.hairline}` : `1px solid ${T.hairline}`,
+                          <th key={`s-${y.gradeId}-${subj.id}`} colSpan={5} title={subj.name}
+                            style={{ ...thSub(254), borderLeft: si === 0 ? `3px solid ${y.gradeColor || T.hairline}` : `1px solid ${T.hairline}`,
                               background: isActiveYear ? '#F3E5C4' : T.headerBg }}>
                             {subj.name}
                           </th>
@@ -741,6 +764,7 @@ const HistoricalGradesBySection: React.FC = () => {
                             <th style={{ ...thSub2(44), background: isActiveYear ? '#F3E5C4' : T.headerBg }}>Est.</th>
                             <th style={{ ...thSub2(78), background: isActiveYear ? '#F3E5C4' : T.headerBg }}>Fecha</th>
                             <th style={{ ...thSub2(40), background: isActiveYear ? '#F3E5C4' : T.headerBg }}>Inst</th>
+                            <th style={{ ...thSub2(48), background: isActiveYear ? '#F3E5C4' : T.headerBg }}>Per.</th>
                           </React.Fragment>
                         ))}
                         {yearHasGroups(y) && (
@@ -795,6 +819,7 @@ const HistoricalGradesBySection: React.FC = () => {
                           {y.subjects.map((subj, si) => {
                             const cellKey = `g__${y.gradeId}__${subj.id}`;
                             const cell = row.cells[cellKey] || emptyCell();
+                            const isSystem = cell.source === 'system';
                             const failing = cell.score !== '' && Number(cell.score) < maxGrade / 2;
                             const passing = cell.score !== '' && Number(cell.score) >= maxGrade / 2;
                             const statusMeta = STATUS_META[cell.status] || STATUS_META.F;
@@ -802,6 +827,12 @@ const HistoricalGradesBySection: React.FC = () => {
                             const statusKey = `${cellKey}__status`;
                             const dateKey = `${cellKey}__date`;
                             const instKey = `${cellKey}__inst`;
+                            const perKey = `${cellKey}__per`;
+
+                            // For system cells, show the periodShort from allPeriods
+                            const perShort = cell.per
+                              ? (allPeriods.find(p => p.id === Number(cell.per))?.periodShort ?? '')
+                              : '';
 
                             return (
                               <React.Fragment key={cellKey}>
@@ -809,7 +840,7 @@ const HistoricalGradesBySection: React.FC = () => {
                                 <td style={{
                                   ...tdPlain(44),
                                   borderLeft: si === 0 ? `3px solid ${y.gradeColor || T.hairline}` : `1px solid ${T.hairline}`,
-                                  background: failing ? T.redBg : passing ? T.greenBg : 'transparent',
+                                  background: failing ? T.redBg : passing ? T.greenBg : isSystem ? '#F0F0F0' : 'transparent',
                                 }}>
                                   <input
                                     type="number" min={0} max={maxGrade} step={1}
@@ -829,7 +860,8 @@ const HistoricalGradesBySection: React.FC = () => {
                                     onKeyDown={e => handleKeyDown(e, ri, scoreKey)}
                                     onPaste={e => handlePaste(e, ri, scoreKey)}
                                     placeholder="—"
-                                    style={{ ...cellInputStyle, textAlign: 'center', color: failing ? T.red : passing ? T.green : T.ink, fontWeight: 700 }}
+                                    readOnly={isSystem}
+                                    style={{ ...cellInputStyle, textAlign: 'center', color: failing ? T.red : passing ? T.green : T.ink, fontWeight: 700, cursor: isSystem ? 'default' : 'text' }}
                                   />
                                 </td>
                                 {/* Est. */}
@@ -841,11 +873,12 @@ const HistoricalGradesBySection: React.FC = () => {
                                     onChange={e => updateCell(ri, statusKey, e.target.value)}
                                     onFocus={() => setActiveCell({ row: ri, field: statusKey })}
                                     onKeyDown={e => handleKeyDown(e, ri, statusKey)}
+                                    disabled={isSystem}
                                     style={{
                                       ...cellInputStyle, fontWeight: 700, textAlign: 'center',
                                       color: statusMeta.color,
                                       background: cell.status !== 'F' ? statusMeta.bg : 'transparent',
-                                      borderRadius: 3, cursor: 'pointer',
+                                      borderRadius: 3, cursor: isSystem ? 'default' : 'pointer',
                                     }}
                                   >
                                     {STATUS_KEYS.map(k => <option key={k} value={k}>{k}</option>)}
@@ -863,7 +896,8 @@ const HistoricalGradesBySection: React.FC = () => {
                                     onKeyDown={e => handleKeyDown(e, ri, dateKey)}
                                     onPaste={e => handlePaste(e, ri, dateKey)}
                                     placeholder="dd/mm/aaaa"
-                                    style={cellInputStyle}
+                                    readOnly={isSystem}
+                                    style={{ ...cellInputStyle, cursor: isSystem ? 'default' : 'text' }}
                                   />
                                 </td>
                                 {/* Inst */}
@@ -878,8 +912,31 @@ const HistoricalGradesBySection: React.FC = () => {
                                     onKeyDown={e => handleKeyDown(e, ri, instKey)}
                                     onPaste={e => handlePaste(e, ri, instKey)}
                                     placeholder="—"
-                                    style={{ ...cellInputStyle, textAlign: 'center', color: T.brass, fontWeight: 700 }}
+                                    readOnly={isSystem}
+                                    style={{ ...cellInputStyle, textAlign: 'center', color: T.brass, fontWeight: 700, cursor: isSystem ? 'default' : 'text' }}
                                   />
+                                </td>
+                                {/* Per. (School Period) */}
+                                <td style={{ ...tdPlain(48), padding: 0 }}>
+                                  <select
+                                    data-row={ri} data-field={perKey}
+                                    ref={registerRef(ri, perKey) as any}
+                                    value={cell.per}
+                                    onChange={e => updateCell(ri, perKey, e.target.value)}
+                                    onFocus={() => setActiveCell({ row: ri, field: perKey })}
+                                    onKeyDown={e => handleKeyDown(e, ri, perKey)}
+                                    disabled={isSystem}
+                                    title={allPeriods.find(p => p.id === Number(cell.per))?.name ?? ''}
+                                    style={{
+                                      ...cellInputStyle, fontSize: 10, textAlign: 'center',
+                                      color: T.inkSoft, cursor: isSystem ? 'default' : 'pointer',
+                                    }}
+                                  >
+                                    <option value="">{perShort || '—'}</option>
+                                    {!isSystem && allPeriods.map(p => (
+                                      <option key={p.id} value={p.id}>{p.periodShort ?? p.period}</option>
+                                    ))}
+                                  </select>
                                 </td>
                               </React.Fragment>
                             );

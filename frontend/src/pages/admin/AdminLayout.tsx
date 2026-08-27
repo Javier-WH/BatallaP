@@ -49,6 +49,7 @@ const AdminLayout: React.FC = () => {
   const tools = [
     { path: '/admin', icon: <DashboardOutlined />, label: 'Panel', tooltip: 'Panel Principal Admin' },
     { path: '/admin/matricular-estudiante', icon: <UserAddOutlined />, label: 'Matrícula', tooltip: 'Matriculación de Estudiantes' },
+    { path: '/admin/ledger', icon: <DollarOutlined />, label: 'Ledger', tooltip: 'Ledger de Pagos' },
     { path: '/admin/directorio', icon: <TeamOutlined />, label: 'Directorio', tooltip: 'Directorio de Usuarios' },
     { path: '/admin/permisos-edicion-notas', icon: <LockOutlined />, label: 'Permisos Notas', tooltip: 'Permisos de Edición de Notas' },
   ];
@@ -65,10 +66,9 @@ const AdminLayout: React.FC = () => {
     { key: '/admin/planteles', icon: <BookOutlined />, label: 'Planteles' },
     { key: '/admin/enrollment-questions', icon: <QuestionCircleOutlined />, label: 'Preguntas' },
     { key: '/admin/pagos', icon: <DollarOutlined />, label: 'Pagos' },
-    { key: '/admin/ledger', icon: <DollarOutlined />, label: 'Ledger de Pagos' },
   ];
 
-  const isConfigActive = location.pathname === '/admin/planteles' || location.pathname === '/admin/enrollment-questions' || location.pathname === '/admin/pagos' || location.pathname === '/admin/ledger';
+  const isConfigActive = location.pathname === '/admin/planteles' || location.pathname === '/admin/enrollment-questions' || location.pathname === '/admin/pagos';
 
   return (
     <div className="flex flex-col h-full min-h-0">
