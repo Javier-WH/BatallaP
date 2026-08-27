@@ -166,13 +166,53 @@ export const createPayment = async (req: Request, res: Response) => {
       }
     }
 
+    // If no month specified, auto-distribute to the first month with outstanding debt
+    let finalMonth = month ?? null;
+    if (!finalMonth) {
+      // Find charges for this inscription that have a month, ordered by month order
+      const existingCharges = await Charge.findAll({
+        where: { inscriptionId: Number(inscriptionId), month: { [Op.ne]: null } },
+        order: [['id', 'ASC']],
+      });
+      const existingPayments = await Payment.findAll({
+        where: { inscriptionId: Number(inscriptionId), month: { [Op.ne]: null } },
+        attributes: ['month', 'amount', 'currency'],
+      });
+      // Build per-month balance: charged - paid
+      const monthBalance: Record<string, number> = {};
+      for (const c of existingCharges) {
+        const m = (c as any).month;
+        if (!monthBalance[m]) monthBalance[m] = 0;
+        monthBalance[m] += Number((c as any).amount);
+      }
+      for (const p of existingPayments) {
+        const m = (p as any).month;
+        if (!monthBalance[m]) monthBalance[m] = 0;
+        monthBalance[m] -= Number((p as any).amount);
+      }
+      // Find the first month (in MONTHS order) with a positive balance (debt)
+      const MONTHS_ORDER = ['Sep', 'Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug'];
+      for (const m of MONTHS_ORDER) {
+        if (monthBalance[m] && monthBalance[m] > 0) {
+          finalMonth = m;
+          break;
+        }
+      }
+      // If no month with debt found, assign to the current month
+      if (!finalMonth) {
+        const now = new Date().getMonth();
+        const map = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        finalMonth = map[now];
+      }
+    }
+
     const payment = await Payment.create({
       inscriptionId: Number(inscriptionId),
       schoolPeriodId: Number(schoolPeriodId),
       feeId: feeId ?? null,
       sellableItemId: sellableItemId ?? null,
       chargeId: chargeId ?? null,
-      month: month ?? null,
+      month: finalMonth,
       amount: Number(amount),
       currency,
       amountVES: finalAmountVES,

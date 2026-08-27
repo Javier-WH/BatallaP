@@ -223,7 +223,7 @@ function AddPaymentModal({ students, prefill, monthlyFee, onClose, onSubmit }: {
 }) {
   const [form, setForm] = useState({
     studentId: (prefill as any).studentId || '',
-    month: (prefill as any).month || CURRENT_MONTH,
+    month: (prefill as any).month || '',
     currency: monthlyFee?.currency || 'USD',
     amount: '',
     amountVES: '',
@@ -256,6 +256,7 @@ function AddPaymentModal({ students, prefill, monthlyFee, onClose, onSubmit }: {
           </Field>
           <Field label="Mes">
             <select value={form.month} onChange={set('month')} className={inputCls}>
+              <option value="">Automática (al primer mes con deuda)</option>
               {MONTHS.map(m => <option key={m} value={m}>{MONTH_FULL[m]}</option>)}
             </select>
           </Field>
@@ -469,7 +470,7 @@ export default function PaymentLedger() {
       await createPayment({
         inscriptionId: Number(form.studentId),
         schoolPeriodId,
-        month: form.month,
+        month: form.month || undefined,
         amount: parseFloat(form.amount),
         currency: form.currency,
         amountVES: form.currency === 'VES' ? parseFloat(form.amount) : null,
@@ -478,8 +479,12 @@ export default function PaymentLedger() {
         bank: form.bank || undefined,
       });
       setPaymentModal(null);
-      setOpenKey(`${form.studentId}-${form.month}`);
-      setFlash(`Pago de ${form.amount} ${form.currency} registrado · ${MONTH_FULL[form.month]}`);
+      if (form.month) {
+        setOpenKey(`${form.studentId}-${form.month}`);
+        setFlash(`Pago de ${form.amount} ${form.currency} registrado · ${MONTH_FULL[form.month]}`);
+      } else {
+        setFlash(`Pago de ${form.amount} ${form.currency} registrado · distribución automática`);
+      }
       setTimeout(() => setFlash(null), 3500);
       loadLedger();
     } catch {
@@ -581,12 +586,6 @@ export default function PaymentLedger() {
                 >
                   <AlertTriangle size={15} /> Agregar deuda
                 </button>
-                <button
-                  onClick={() => setPaymentModal({})}
-                  className="flex items-center gap-1.5 text-sm font-semibold text-white bg-[#2F5EA8] hover:bg-[#284F8E] px-4 border-l border-[#284F8E]"
-                >
-                  <Plus size={15} /> Registrar pago
-                </button>
               </>
             )}
           </div>
@@ -657,19 +656,33 @@ export default function PaymentLedger() {
                     <div key={student.inscriptionId}>
                       <div className={`flex ${rowBg}`}>
                         <div style={{ width: NAME_COL }}
-                          className={`sticky left-0 z-10 ${rowBg} px-4 py-2.5 flex items-center gap-2.5 min-w-0 border-r-2 border-[#B9BEC7] border-b border-[#DBDEE4]`}>
-                          <span className="text-[10px] font-bold w-6 h-6 rounded-sm flex items-center justify-center shrink-0 bg-[#DEDBFB] text-[#3730A3]">
-                            {initials(student.name)}
-                          </span>
-                          <div className="min-w-0 flex-1">
-                            <div className="text-sm font-medium truncate leading-tight">{student.name}</div>
-                            <div className="flex items-center gap-1.5 mt-0.5">
-                              <span className="flex-1 h-1.5 bg-[#EDEEF1] border border-[#DBDEE4] overflow-hidden max-w-[90px]">
-                                <span className="block h-full bg-[#2F5EA8]" style={{ width: `${progress * 100}%` }} />
-                              </span>
-                              <span className="text-[10px] text-[#8B909A] tabular-nums shrink-0">{Math.round(progress * 100)}%</span>
+                          className={`sticky left-0 z-10 ${rowBg} flex items-stretch min-w-0 border-r-2 border-[#B9BEC7] border-b border-[#DBDEE4]`}>
+                          {/* Name — 80% */}
+                          <div className="flex items-center gap-2.5 min-w-0 flex-1 px-4 py-2.5">
+                            <span className="text-[10px] font-bold w-6 h-6 rounded-sm flex items-center justify-center shrink-0 bg-[#DEDBFB] text-[#3730A3]">
+                              {initials(student.name)}
+                            </span>
+                            <div className="min-w-0 flex-1">
+                              <div className="text-sm font-medium truncate leading-tight">{student.name}</div>
+                              <div className="flex items-center gap-1.5 mt-0.5">
+                                <span className="flex-1 h-1.5 bg-[#EDEEF1] border border-[#DBDEE4] overflow-hidden max-w-[90px]">
+                                  <span className="block h-full bg-[#2F5EA8]" style={{ width: `${progress * 100}%` }} />
+                                </span>
+                                <span className="text-[10px] text-[#8B909A] tabular-nums shrink-0">{Math.round(progress * 100)}%</span>
+                              </div>
                             </div>
                           </div>
+                          {/* Pay button — ~10% */}
+                          <button
+                            onClick={() => setPaymentModal({ studentId: student.inscriptionId })}
+                            className="flex items-center justify-center bg-[#2F5EA8] hover:bg-[#284F8E] transition-colors border-l border-[#284F8E] shrink-0"
+                            style={{ width: '10%' }}
+                            title="Registrar pago (distribución automática)"
+                          >
+                            <svg width="18" height="18" viewBox="0 0 251 229" fill="currentColor" className="text-white">
+                              <path d="M245.2,133.4l-62,62c-7.2,7.5-18,12.8-29.4,12.8h-46.6c-5.9,0-11.2,2.3-15.1,6.2L76.6,229H6l67.9-68.8l-0.1-0.1c7.2-7.2,17.3-11.7,28.4-11.8h67c7.1,0,12.8,5.7,12.8,12.8c0,7.1-5.7,12.8-12.8,12.8h-54c-2.3-0.2-4.2,1.7-4.2,4.2s1.9,4.3,4.3,4.3h53.7c5.7,0.2,11.1-2.2,15.1-6.2c4-4,6.2-9.5,6.2-15.1c0.2-2.6-0.5-5.4-1.4-7.8l38.1-38.1c5.1-5.1,13.1-5.1,18.1-0.2C250.3,120.1,250.2,128.4,245.2,133.4z M69,69c0-37.2,29.8-67.4,67-67.4c37.2,0,67.2,30,67.2,67.2S173.1,136,136.1,136C99.1,136,69,106,69,69z M144.9,84.5c0,4.6-3.8,8-11.5,8c-7.2,0-13.9-2.5-18.2-4.6l-3.4,13.6c3.9,2.2,12,4.3,20,4.3V116h9.3v-10.5c13.6-3,20-11.1,20-21.6s-5.9-17-18.6-21.6C133.3,58.5,129,56.7,129,52c0-3.4,3.7-6.8,10.5-6.8c6.8,0,11.8,2.1,14.9,3.4l3.8-13.3c-4.1-2.2-9.7-3.8-17.4-3.8V21.1h-9.3v11.1c-12.4,2.5-19.2,10.5-19.2,20.8c0,11.1,7.7,17.3,20,21.6C141.2,78,144.9,79.9,144.9,84.5z"/>
+                            </svg>
+                          </button>
                         </div>
 
                         {MONTHS.map(m => {
