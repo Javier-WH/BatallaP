@@ -109,6 +109,70 @@ interface CellData {
   dirty: boolean;
 }
 
+/* ── LocalInput: keeps local state while editing, commits to parent on blur ── */
+/* This prevents re-rendering the entire table on every keystroke. */
+interface LocalInputProps {
+  value: string;
+  onCommit: (value: string) => void;
+  onFocus?: () => void;
+  onKeyDown?: (e: React.KeyboardEvent) => void;
+  onPaste?: (e: React.ClipboardEvent) => void;
+  registerRef?: (el: HTMLInputElement | null) => void;
+  type?: string;
+  min?: number;
+  max?: number;
+  step?: number;
+  maxLength?: number;
+  list?: string;
+  placeholder?: string;
+  readOnly?: boolean;
+  style?: React.CSSProperties;
+  'data-row'?: number;
+  'data-field'?: string;
+}
+const LocalInput = React.memo(function LocalInput({
+  value, onCommit, onFocus, onKeyDown, onPaste, registerRef,
+  type = 'text', min, max, step, maxLength, list, placeholder, readOnly, style, ...rest
+}: LocalInputProps) {
+  const [local, setLocal] = useState(value);
+  const focusedRef = useRef(false);
+  const lastCommitted = useRef(value);
+
+  // Sync from parent when not focused, or when the parent value changed
+  // externally (e.g. multi-cell paste updated rows while this input is focused)
+  useEffect(() => {
+    if (!focusedRef.current || value !== lastCommitted.current) {
+      setLocal(value);
+    }
+  }, [value]);
+
+  return (
+    <input
+      {...rest as any}
+      type={type}
+      min={min}
+      max={max}
+      step={step}
+      maxLength={maxLength}
+      list={list}
+      placeholder={placeholder}
+      readOnly={readOnly}
+      style={style}
+      ref={registerRef}
+      value={local}
+      onChange={e => { setLocal(e.target.value); }}
+      onFocus={() => { focusedRef.current = true; onFocus?.(); }}
+      onBlur={(e) => {
+        focusedRef.current = false;
+        lastCommitted.current = e.target.value;
+        onCommit(e.target.value);
+      }}
+      onKeyDown={onKeyDown}
+      onPaste={onPaste}
+    />
+  );
+});
+
 /* ── Helpers ── */
 function emptyCell(): CellData {
   return { score: '', status: 'F', date: '', inst: '', per: '', source: '', finalGradeId: null, inscriptionSubjectId: null, historicalGradeId: null, dirty: false };
@@ -869,22 +933,22 @@ const HistoricalGradesBySection: React.FC = () => {
                                   borderLeft: si === 0 ? `3px solid ${y.gradeColor || T.hairline}` : `1px solid ${T.hairline}`,
                                   background: failing ? T.redBg : passing ? T.greenBg : isSystem ? '#F0F0F0' : 'transparent',
                                 }}>
-                                  <input
+                                  <LocalInput
                                     type="number" min={0} max={maxGrade} step={1}
                                     data-row={ri} data-field={scoreKey}
-                                    ref={registerRef(ri, scoreKey)}
+                                    registerRef={registerRef(ri, scoreKey)}
                                     value={cell.score}
-                                    onChange={e => updateCell(ri, scoreKey, e.target.value)}
-                                    onFocus={() => setActiveCell({ row: ri, field: scoreKey })}
-                                    onBlur={(e) => {
-                                      const val = e.target.value;
+                                    onCommit={(val) => {
                                       if (val !== '') {
                                         const padded = formatGradePadded(Number(val), maxGrade);
                                         if (padded !== '-' && padded !== val) {
                                           updateCell(ri, scoreKey, padded);
+                                          return;
                                         }
                                       }
+                                      updateCell(ri, scoreKey, val);
                                     }}
+                                    onFocus={() => setActiveCell({ row: ri, field: scoreKey })}
                                     onKeyDown={e => handleKeyDown(e, ri, scoreKey)}
                                     onPaste={e => handlePaste(e, ri, scoreKey)}
                                     placeholder="—"
@@ -914,12 +978,12 @@ const HistoricalGradesBySection: React.FC = () => {
                                 </td>
                                 {/* Fecha */}
                                 <td style={{ ...tdPlain(78) }}>
-                                  <input
+                                  <LocalInput
                                     type="text"
                                     data-row={ri} data-field={dateKey}
-                                    ref={registerRef(ri, dateKey)}
+                                    registerRef={registerRef(ri, dateKey)}
                                     value={cell.date}
-                                    onChange={e => updateCell(ri, dateKey, e.target.value)}
+                                    onCommit={val => updateCell(ri, dateKey, val)}
                                     onFocus={() => setActiveCell({ row: ri, field: dateKey })}
                                     onKeyDown={e => handleKeyDown(e, ri, dateKey)}
                                     onPaste={e => handlePaste(e, ri, dateKey)}
@@ -930,12 +994,12 @@ const HistoricalGradesBySection: React.FC = () => {
                                 </td>
                                 {/* Inst */}
                                 <td style={{ ...tdPlain(40) }}>
-                                  <input
+                                  <LocalInput
                                     type="text" maxLength={2}
                                     data-row={ri} data-field={instKey}
-                                    ref={registerRef(ri, instKey)}
+                                    registerRef={registerRef(ri, instKey)}
                                     value={cell.inst}
-                                    onChange={e => updateCell(ri, instKey, e.target.value)}
+                                    onCommit={val => updateCell(ri, instKey, val)}
                                     onFocus={() => setActiveCell({ row: ri, field: instKey })}
                                     onKeyDown={e => handleKeyDown(e, ri, instKey)}
                                     onPaste={e => handlePaste(e, ri, instKey)}
@@ -946,12 +1010,12 @@ const HistoricalGradesBySection: React.FC = () => {
                                 </td>
                                 {/* Per. (School Period) — input with datalist for existing periods + free text */}
                                 <td style={{ ...tdPlain(48), padding: 0 }}>
-                                  <input
+                                  <LocalInput
                                     type="text"
                                     data-row={ri} data-field={perKey}
-                                    ref={registerRef(ri, perKey)}
+                                    registerRef={registerRef(ri, perKey)}
                                     value={cell.per}
-                                    onChange={e => updateCell(ri, perKey, e.target.value)}
+                                    onCommit={val => updateCell(ri, perKey, val)}
                                     onFocus={() => setActiveCell({ row: ri, field: perKey })}
                                     onKeyDown={e => handleKeyDown(e, ri, perKey)}
                                     readOnly={isSystem}
