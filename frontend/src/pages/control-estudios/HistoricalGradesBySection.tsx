@@ -931,7 +931,7 @@ const HistoricalGradesBySection: React.FC = () => {
   };
 
   /* ── Column layout ── */
-  const COL = { n: 34, cedula: 120, apellidos: 100, nombres: 100, inst: 200 };
+  const COL = { n: 34, cedula: 84, apellidos: 118, nombres: 118, inst: 200 };
   const leftOf = {
     n: 0,
     cedula: COL.n,
