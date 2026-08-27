@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useAuth } from '@/context/AuthContext';
 import {
@@ -933,6 +933,31 @@ const MatriculationEnrollment: React.FC = () => {
   };
 
   const closeContextMenu = useCallback(() => setContextMenuState(prev => ({ ...prev, visible: false })), []);
+
+  // Reposition context menu if it would overflow the viewport (bottom or right edges)
+  useLayoutEffect(() => {
+    if (!contextMenuState.visible || !contextMenuRef.current) return;
+    const el = contextMenuRef.current;
+    const rect = el.getBoundingClientRect();
+    const margin = 8;
+    let shiftX = 0;
+    let shiftY = 0;
+    // Right overflow: menu extends beyond right edge
+    if (rect.right + margin > window.innerWidth) {
+      shiftX = window.innerWidth - rect.right - margin;
+    }
+    // Left overflow (after translate(-50%) the left half may go off-screen)
+    if (rect.left < margin) {
+      shiftX = margin - rect.left;
+    }
+    // Bottom overflow: flip menu above the click point
+    if (rect.bottom + margin > window.innerHeight) {
+      shiftY = window.innerHeight - rect.bottom - margin;
+    }
+    if (shiftX !== 0 || shiftY !== 0) {
+      el.style.transform = `translate(calc(-50% + ${shiftX}px), ${4 + shiftY}px)`;
+    }
+  }, [contextMenuState.visible, contextMenuState.x, contextMenuState.y]);
 
   const handleGridContextMenu = useCallback((rowId: number, colId: string, rowIndex: number, x: number, y: number) => {
     setFloatingButton(prev => ({ ...prev, visible: false }));
