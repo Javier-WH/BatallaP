@@ -1,6 +1,6 @@
 import React, { useMemo, useRef, useState, useEffect, useCallback } from 'react';
 import { Spin, message, Button, Select } from 'antd';
-import { ReloadOutlined, SaveOutlined } from '@ant-design/icons';
+import { ReloadOutlined, SaveOutlined, EyeOutlined, EyeInvisibleOutlined } from '@ant-design/icons';
 import api from '@/services/api';
 import { useSchool } from '@/context/SchoolContext';
 import PlantelMultiSelect from '@/components/shared/PlantelMultiSelect';
@@ -276,12 +276,13 @@ const LocalDatePicker = React.memo(function LocalDatePicker({
 
 /* ── LocalGroupInput: text input with local state for group subject names ── */
 const LocalGroupInput = React.memo(function LocalGroupInput({
-  value, onCommit, onFocus, style,
+  value, onCommit, onFocus, style, readOnly,
 }: {
   value: string;
   onCommit: (value: string) => void;
   onFocus?: () => void;
   style?: React.CSSProperties;
+  readOnly?: boolean;
 }) {
   const [local, setLocal] = useState(value);
   const focusedRef = useRef(false);
@@ -305,6 +306,7 @@ const LocalGroupInput = React.memo(function LocalGroupInput({
       value={local}
       placeholder="—"
       style={style}
+      readOnly={readOnly}
       onChange={e => setLocal(e.target.value)}
       onFocus={() => { focusedRef.current = true; onFocus?.(); }}
       onBlur={commit}
@@ -406,6 +408,8 @@ const HistoricalGradesBySection: React.FC = () => {
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
   // Grade type filter: 'final' | 'revision' | 'materia_pendiente'
   const [gradeTypeFilter, setGradeTypeFilter] = useState<'final' | 'revision' | 'materia_pendiente'>('final');
+  // Consolidated view: shows all note types with priority (MP > revision > regular), read-only
+  const [consolidated, setConsolidated] = useState(false);
 
   /* ── Load sections for active period + max_grade ── */
   useEffect(() => {
@@ -456,7 +460,12 @@ const HistoricalGradesBySection: React.FC = () => {
 
     setLoading(true);
     try {
-      const params: any = { schoolPeriodId: activePeriodId, gradeTypeFilter };
+      const params: any = { schoolPeriodId: activePeriodId };
+      if (consolidated) {
+        params.consolidated = 'true';
+      } else {
+        params.gradeTypeFilter = gradeTypeFilter;
+      }
       if (mode === 'section') {
         params.sectionId = selectedSectionId;
         if (selectedGradeId) params.gradeId = selectedGradeId;
@@ -487,7 +496,7 @@ const HistoricalGradesBySection: React.FC = () => {
       // regardless of which section they're currently viewing.
       // For materia_pendiente, exclude the last year (5to) since there are no pending subjects there.
       setActiveGradeOrder(999);
-      const visibleYears = gradeTypeFilter === 'materia_pendiente'
+      const visibleYears = (!consolidated && gradeTypeFilter === 'materia_pendiente')
         ? rawYears.filter(y => y.gradeOrder < 5)
         : rawYears;
       setYears(visibleYears);
@@ -612,12 +621,12 @@ const HistoricalGradesBySection: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [activePeriodId, selectedSectionId, selectedGradeId, selectedStudent, mode, gradeTypeFilter, sections, maxGrade]);
+  }, [activePeriodId, selectedSectionId, selectedGradeId, selectedStudent, mode, gradeTypeFilter, consolidated, sections, maxGrade]);
 
   useEffect(() => {
     if (mode === 'section' && selectedSectionId) loadGrades();
     if (mode === 'individual' && selectedStudent) loadGrades();
-  }, [selectedSectionId, selectedGradeId, selectedStudent, mode, gradeTypeFilter, loadGrades]);
+  }, [selectedSectionId, selectedGradeId, selectedStudent, mode, gradeTypeFilter, consolidated, loadGrades]);
 
   /* ── Field accessors ── */
   const getField = (row: RowData, key: string): string => {
@@ -977,10 +986,19 @@ const HistoricalGradesBySection: React.FC = () => {
             </p>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
+            {/* Consolidated view toggle (eye) */}
+            <Button
+              type={consolidated ? 'primary' : 'default'}
+              icon={consolidated ? <EyeOutlined /> : <EyeInvisibleOutlined />}
+              onClick={() => setConsolidated(c => !c)}
+              title="Vista consolidada: muestra todas las notas con prioridad (Materia Pendiente > Revisión > Regular). Solo lectura."
+              style={{ display: 'flex', alignItems: 'center' }}
+            />
             {/* Grade type filter */}
             <Select
               value={gradeTypeFilter}
               onChange={(val) => setGradeTypeFilter(val)}
+              disabled={consolidated}
               style={{ width: 170 }}
               options={[
                 { value: 'final', label: 'Final' },
@@ -1071,7 +1089,7 @@ const HistoricalGradesBySection: React.FC = () => {
               disabled={(mode === 'section' && !selectedSectionId) || (mode === 'individual' && !selectedStudent) || loading}>
               Actualizar
             </Button>
-            <Button type="primary" icon={<SaveOutlined />} onClick={handleSave} disabled={dirtyCount === 0 || saving} loading={saving}>
+            <Button type="primary" icon={<SaveOutlined />} onClick={handleSave} disabled={consolidated || dirtyCount === 0 || saving} loading={saving}>
               Guardar ({dirtyCount})
             </Button>
           </div>
@@ -1237,6 +1255,7 @@ const HistoricalGradesBySection: React.FC = () => {
                           onChange={ids => updatePlantelIds(ri, ids)}
                           width={COL.inst - 8}
                           placeholder="Buscar plantel…"
+                          disabled={consolidated}
                         />
                       </td>
 
@@ -1286,8 +1305,8 @@ const HistoricalGradesBySection: React.FC = () => {
                                     onKeyDown={e => handleKeyDown(e, ri, scoreKey)}
                                     onPaste={e => handlePaste(e, ri, scoreKey)}
                                     placeholder="—"
-                                    readOnly={isSystem}
-                                    style={{ ...cellInputStyle, textAlign: 'center', color: failing ? T.red : passing ? T.green : T.ink, fontWeight: 700, cursor: isSystem ? 'default' : 'text' }}
+                                    readOnly={isSystem || consolidated}
+                                    style={{ ...cellInputStyle, textAlign: 'center', color: failing ? T.red : passing ? T.green : T.ink, fontWeight: 700, cursor: (isSystem || consolidated) ? 'default' : 'text' }}
                                   />
                                 </td>
                                 {/* Est. */}
@@ -1299,12 +1318,12 @@ const HistoricalGradesBySection: React.FC = () => {
                                     onChange={e => updateCell(ri, statusKey, e.target.value)}
                                     onFocus={() => setActiveCell({ row: ri, field: statusKey })}
                                     onKeyDown={e => handleKeyDown(e, ri, statusKey)}
-                                    disabled={isSystem}
+                                    disabled={isSystem || consolidated}
                                     style={{
                                       ...cellInputStyle, fontWeight: 700, textAlign: 'center',
                                       color: statusMeta.color,
                                       background: cell.status !== 'F' ? statusMeta.bg : 'transparent',
-                                      borderRadius: 3, cursor: isSystem ? 'default' : 'pointer',
+                                      borderRadius: 3, cursor: (isSystem || consolidated) ? 'default' : 'pointer',
                                     }}
                                   >
                                     {STATUS_KEYS.map(k => <option key={k} value={k}>{k}</option>)}
@@ -1320,8 +1339,8 @@ const HistoricalGradesBySection: React.FC = () => {
                                     onFocus={() => setActiveCell({ row: ri, field: dateKey })}
                                     onKeyDown={e => handleKeyDown(e, ri, dateKey)}
                                     onPaste={e => handlePaste(e, ri, dateKey)}
-                                    readOnly={isSystem}
-                                    style={{ ...cellInputStyle, cursor: isSystem ? 'default' : 'text', width: '100%' }}
+                                    readOnly={isSystem || consolidated}
+                                    style={{ ...cellInputStyle, cursor: (isSystem || consolidated) ? 'default' : 'text', width: '100%' }}
                                   />
                                 </td>
                                 {/* Inst */}
@@ -1336,8 +1355,8 @@ const HistoricalGradesBySection: React.FC = () => {
                                     onKeyDown={e => handleKeyDown(e, ri, instKey)}
                                     onPaste={e => handlePaste(e, ri, instKey)}
                                     placeholder="—"
-                                    readOnly={isSystem}
-                                    style={{ ...cellInputStyle, textAlign: 'center', color: T.brass, fontWeight: 700, cursor: isSystem ? 'default' : 'text' }}
+                                    readOnly={isSystem || consolidated}
+                                    style={{ ...cellInputStyle, textAlign: 'center', color: T.brass, fontWeight: 700, cursor: (isSystem || consolidated) ? 'default' : 'text' }}
                                   />
                                 </td>
                                 {/* Per. (School Period) — input with datalist for existing periods + free text */}
@@ -1350,7 +1369,7 @@ const HistoricalGradesBySection: React.FC = () => {
                                     onCommit={val => updateCell(ri, perKey, val)}
                                     onFocus={() => setActiveCell({ row: ri, field: perKey })}
                                     onKeyDown={e => handleKeyDown(e, ri, perKey)}
-                                    readOnly={isSystem}
+                                    readOnly={isSystem || consolidated}
                                     list={`periods-${ri}`}
                                     placeholder="—"
                                     style={{
@@ -1380,6 +1399,7 @@ const HistoricalGradesBySection: React.FC = () => {
                                 value={row.groupSubjectNames[`g__${y.gradeId}`] || ''}
                                 onCommit={val => updateGroupSubjectName(ri, `g__${y.gradeId}`, val)}
                                 onFocus={() => setActiveCell({ row: ri, field: `g__${y.gradeId}__grp` })}
+                                readOnly={consolidated}
                                 style={{
                                   width: '100%', border: 'none', outline: 'none', background: 'transparent',
                                   fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: T.inkSoft,

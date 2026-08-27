@@ -52,7 +52,7 @@ export const getHistoricalGradesBySection = async (req: Request, res: Response) 
       return res.status(401).json({ message: 'No autorizado' });
     }
 
-    const { schoolPeriodId, sectionId, gradeId, personId, gradeTypeFilter } = req.query;
+    const { schoolPeriodId, sectionId, gradeId, personId, gradeTypeFilter, consolidated } = req.query;
     if (!schoolPeriodId) {
       return res.status(400).json({ message: 'schoolPeriodId es requerido' });
     }
@@ -63,6 +63,8 @@ export const getHistoricalGradesBySection = async (req: Request, res: Response) 
     const individualPersonId = personId ? Number(personId) : null;
     // gradeTypeFilter: 'final' (default) | 'revision' | 'materia_pendiente'
     const typeFilter = (gradeTypeFilter as string) || 'final';
+    // consolidated: when true, show all note types with priority (MP > revision > regular)
+    const isConsolidated = consolidated === 'true';
 
     // 1. Get the active period
     const activePeriod = await SchoolPeriod.findByPk(periodId);
@@ -251,8 +253,8 @@ export const getHistoricalGradesBySection = async (req: Request, res: Response) 
       ],
     });
 
-    const allInscriptionsForStudents = typeFilter === 'materia_pendiente'
-      ? allInscriptionsRaw  // include MP inscriptions when filtering by materia_pendiente
+    const allInscriptionsForStudents = (typeFilter === 'materia_pendiente' || isConsolidated)
+      ? allInscriptionsRaw  // include MP inscriptions when filtering by materia_pendiente or consolidated
       : allInscriptionsRaw.filter((ins: any) =>
           (ins.section?.name || '').toUpperCase() !== 'MATERIA PENDIENTE'
         );
@@ -305,17 +307,19 @@ export const getHistoricalGradesBySection = async (req: Request, res: Response) 
         date = latestCalculated ? new Date(latestCalculated).toISOString().split('T')[0] : null;
       }
 
-      // Filter by gradeTypeFilter:
+      // Filter by gradeTypeFilter (skip when consolidated — show all types):
       // - 'final': only regular + transferencia + equivalencia (exclude revision, materia_pendiente, revision_materia_pendiente)
       // - 'revision': only revision (show repair score, not original)
       // - 'materia_pendiente': only materia_pendiente + revision_materia_pendiente
-      if (typeFilter === 'final') {
-        if (gradeType === 'materia_pendiente' || gradeType === 'revision_materia_pendiente' || gradeType === 'revision') continue;
-      } else if (typeFilter === 'revision') {
-        if (gradeType !== 'revision') continue;
-        // Show the repair score (finalScore already has it), keep gradeType as revision
-      } else if (typeFilter === 'materia_pendiente') {
-        if (gradeType !== 'materia_pendiente' && gradeType !== 'revision_materia_pendiente') continue;
+      if (!isConsolidated) {
+        if (typeFilter === 'final') {
+          if (gradeType === 'materia_pendiente' || gradeType === 'revision_materia_pendiente' || gradeType === 'revision') continue;
+        } else if (typeFilter === 'revision') {
+          if (gradeType !== 'revision') continue;
+          // Show the repair score (finalScore already has it), keep gradeType as revision
+        } else if (typeFilter === 'materia_pendiente') {
+          if (gradeType !== 'materia_pendiente' && gradeType !== 'revision_materia_pendiente') continue;
+        }
       }
 
       gradesMap.push({
@@ -354,13 +358,15 @@ export const getHistoricalGradesBySection = async (req: Request, res: Response) 
     for (const hg of historicalGrades) {
       const subj = (hg as any).subject;
       const hgGradeType = hg.gradeType;
-      // Filter HistoricalGrade by typeFilter
-      if (typeFilter === 'final') {
-        if (hgGradeType === 'revision' || hgGradeType === 'materia_pendiente') continue;
-      } else if (typeFilter === 'revision') {
-        if (hgGradeType !== 'revision') continue;
-      } else if (typeFilter === 'materia_pendiente') {
-        if (hgGradeType !== 'materia_pendiente') continue;
+      // Filter HistoricalGrade by typeFilter (skip when consolidated)
+      if (!isConsolidated) {
+        if (typeFilter === 'final') {
+          if (hgGradeType === 'revision' || hgGradeType === 'materia_pendiente') continue;
+        } else if (typeFilter === 'revision') {
+          if (hgGradeType !== 'revision') continue;
+        } else if (typeFilter === 'materia_pendiente') {
+          if (hgGradeType !== 'materia_pendiente') continue;
+        }
       }
       gradesMap.push({
         personId: hg.personId,
@@ -381,6 +387,34 @@ export const getHistoricalGradesBySection = async (req: Request, res: Response) 
         date: hg.date ? new Date(hg.date).toISOString().split('T')[0] : null,
         source: 'historical',
       });
+    }
+
+    // 8b. Consolidated mode: deduplicate grades by (personId, gradeId, subjectId)
+    //     Priority: 1) materia_pendiente / revision_materia_pendiente, 2) revision, 3) regular/transferencia/equivalencia
+    if (isConsolidated) {
+      const priority = (gt: string | null): number => {
+        if (!gt) return 3;
+        if (gt === 'materia_pendiente' || gt === 'revision_materia_pendiente') return 1;
+        if (gt === 'revision') return 2;
+        return 3;
+      };
+      const gradeByKey = new Map<string, any>();
+      for (const g of gradesMap) {
+        const key = `${g.personId}__${g.gradeId}__${g.subjectId}`;
+        const existing = gradeByKey.get(key);
+        if (!existing) {
+          gradeByKey.set(key, g);
+        } else {
+          // Keep the one with higher priority (lower number)
+          const existingPri = priority(existing.gradeType);
+          const newPri = priority(g.gradeType);
+          if (newPri < existingPri) {
+            gradeByKey.set(key, g);
+          }
+        }
+      }
+      gradesMap.length = 0;
+      gradesMap.push(...gradeByKey.values());
     }
 
     // 9. Get all planteles

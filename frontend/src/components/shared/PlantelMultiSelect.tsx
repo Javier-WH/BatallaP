@@ -14,6 +14,7 @@ interface PlantelMultiSelectProps {
   onChange: (ids: number[]) => void;
   placeholder?: string;
   width?: number;
+  disabled?: boolean;
 }
 
 /**
@@ -28,6 +29,7 @@ const PlantelMultiSelect: React.FC<PlantelMultiSelectProps> = ({
   onChange,
   placeholder = 'Buscar plantel…',
   width = 200,
+  disabled = false,
 }) => {
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState('');
@@ -130,13 +132,14 @@ const PlantelMultiSelect: React.FC<PlantelMultiSelectProps> = ({
     <div ref={containerRef} style={{ position: 'relative', width }}>
       {/* Chips + input */}
       <div
-        onClick={() => { setOpen(true); inputRef.current?.focus(); }}
+        onClick={() => { if (!disabled) { setOpen(true); inputRef.current?.focus(); } }}
         style={{
           minHeight: 24,
           padding: '2px 4px',
           border: 'none',
           background: 'transparent',
-          cursor: 'text',
+          cursor: disabled ? 'default' : 'text',
+          opacity: disabled ? 0.6 : 1,
           display: 'flex',
           flexWrap: 'wrap',
           gap: 2,
