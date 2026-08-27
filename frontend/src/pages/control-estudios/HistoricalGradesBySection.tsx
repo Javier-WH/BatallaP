@@ -955,14 +955,14 @@ const HistoricalGradesBySection: React.FC = () => {
                       <React.Fragment key={`s-row-${y.gradeId}`}>
                         {y.subjects.map((subj, si) => (
                           <th key={`s-${y.gradeId}-${subj.id}`} colSpan={5} title={subj.name}
-                            style={{ ...thSub(254), borderLeft: si === 0 ? `3px solid ${y.gradeColor || T.hairline}` : `1px solid ${T.hairline}`,
+                            style={{ ...thSub(254), borderLeft: si === 0 ? `3px solid ${y.gradeColor || T.hairline}` : `2px solid ${y.gradeColor || T.hairline}`,
                               background: isActiveYear ? '#F3E5C4' : T.headerBg }}>
                             {subj.name}
                           </th>
                         ))}
                         {yearHasGroups(y) && (
                           <th key={`s-grp-${y.gradeId}`} title="Materia del grupo cursada"
-                            style={{ ...thSub(GROUP_COL_W), borderLeft: `1px solid ${T.hairline}`, fontSize: 9,
+                            style={{ ...thSub(GROUP_COL_W), borderLeft: `2px solid ${y.gradeColor || T.hairline}`, fontSize: 9,
                               background: isActiveYear ? '#F3E5C4' : T.headerBg }}>
                             Materia
                           </th>
@@ -983,7 +983,7 @@ const HistoricalGradesBySection: React.FC = () => {
                       <React.Fragment key={`sub-${y.gradeId}`}>
                         {y.subjects.map((subj, si) => (
                           <React.Fragment key={`${y.gradeId}-${subj.id}-sub`}>
-                            <th style={{ ...thSub2(44), borderLeft: si === 0 ? `3px solid ${y.gradeColor || T.hairline}` : `1px solid ${T.hairline}`,
+                            <th style={{ ...thSub2(44), borderLeft: si === 0 ? `3px solid ${y.gradeColor || T.hairline}` : `2px solid ${y.gradeColor || T.hairline}`,
                               background: isActiveYear ? '#F3E5C4' : T.headerBg }}>Nota</th>
                             <th style={{ ...thSub2(44), background: isActiveYear ? '#F3E5C4' : T.headerBg }}>Est.</th>
                             <th style={{ ...thSub2(110), background: isActiveYear ? '#F3E5C4' : T.headerBg }}>Fecha</th>
@@ -992,7 +992,7 @@ const HistoricalGradesBySection: React.FC = () => {
                           </React.Fragment>
                         ))}
                         {yearHasGroups(y) && (
-                          <th style={{ ...thSub2(GROUP_COL_W), borderLeft: `1px solid ${T.hairline}`, background: isActiveYear ? '#F3E5C4' : T.headerBg }}></th>
+                          <th style={{ ...thSub2(GROUP_COL_W), borderLeft: `2px solid ${y.gradeColor || T.hairline}`, background: isActiveYear ? '#F3E5C4' : T.headerBg }}></th>
                         )}
                       </React.Fragment>
                       );
@@ -1062,7 +1062,7 @@ const HistoricalGradesBySection: React.FC = () => {
                                 {/* Nota */}
                                 <td style={{
                                   ...tdPlain(44),
-                                  borderLeft: si === 0 ? `3px solid ${y.gradeColor || T.hairline}` : `1px solid ${T.hairline}`,
+                                  borderLeft: si === 0 ? `3px solid ${y.gradeColor || T.hairline}` : `2px solid ${y.gradeColor || T.hairline}`,
                                   background: failing ? T.redBg : passing ? T.greenBg : isSystem ? '#F0F0F0' : 'transparent',
                                 }}>
                                   <LocalInput
@@ -1171,7 +1171,7 @@ const HistoricalGradesBySection: React.FC = () => {
                           {yearHasGroups(y) && (
                             <td style={{
                               ...tdPlain(GROUP_COL_W),
-                              borderLeft: `1px solid ${T.hairline}`,
+                              borderLeft: `2px solid ${y.gradeColor || T.hairline}`,
                               fontSize: 11, color: T.inkSoft, padding: '3px 6px',
                               whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
                             }}>
