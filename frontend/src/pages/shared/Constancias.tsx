@@ -7,6 +7,7 @@ import { Button, Select, Input, message, Spin, Modal, Empty, Tabs, Card } from '
 import {
   PlusOutlined, EditOutlined, DeleteOutlined, EyeOutlined,
   FilePdfOutlined, FileWordOutlined, ArrowLeftOutlined, SaveOutlined,
+  BorderOuterOutlined,
 } from '@ant-design/icons';
 import ConstanciaEditor from './ConstanciaEditor';
 import type { VariableDef } from './ConstanciaEditor';
@@ -53,6 +54,7 @@ const Constancias: React.FC = () => {
   const [previewHtml, setPreviewHtml] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
+  const [showGuides, setShowGuides] = useState(false);
 
   // Template editor tab state
   const [editingTemplate, setEditingTemplate] = useState<Template | null>(null);
@@ -163,6 +165,7 @@ const Constancias: React.FC = () => {
             margin: 0;
             padding: 0;
             color: #000;
+            white-space: pre-wrap;
           }
           p { margin: 0; }
           h1, h2, h3 { margin: 0; }
@@ -361,6 +364,12 @@ const Constancias: React.FC = () => {
           title="Vista previa"
           extra={
             <div className="flex gap-2">
+              <Button
+                icon={<BorderOuterOutlined />}
+                onClick={() => setShowGuides(v => !v)}
+                type={showGuides ? 'primary' : 'default'}
+                title="Mostrar/ocultar guías de márgenes"
+              >Guías</Button>
               <Button icon={<FilePdfOutlined />} onClick={handlePrintPdf}>PDF</Button>
               <Button icon={<FileWordOutlined />} onClick={handleExportWord}>Word</Button>
             </div>
@@ -369,7 +378,7 @@ const Constancias: React.FC = () => {
         >
           <div className="bg-slate-200 p-8 rounded-lg" style={{ overflowY: 'auto' }}>
             <div
-              className="constancia-page bg-white"
+              className={`constancia-page bg-white${showGuides ? ' constancia-editor-page' : ''}`}
               style={{
                 fontFamily: "'Times New Roman', serif",
                 fontSize: '12pt',
@@ -384,6 +393,7 @@ const Constancias: React.FC = () => {
               }}
             >
               <style>{`
+                .constancia-preview { white-space: pre-wrap; }
                 .constancia-preview p { margin: 0; }
                 .constancia-preview h1, .constancia-preview h2, .constancia-preview h3 { margin: 0; }
                 .constancia-preview ul, .constancia-preview ol { margin: 0; padding-left: 2em; }
