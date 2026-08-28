@@ -127,8 +127,8 @@ const ConstanciaEditor: React.FC<ConstanciaEditorProps> = ({ content, onChange, 
     },
     editorProps: {
       attributes: {
-        class: 'prose prose-slate focus:outline-none',
-        style: 'font-family: "Times New Roman", serif; font-size: 12pt; line-height: 1.5; width: 8.5in; min-height: 11in; padding: 1in 1in; margin: 0 auto; background: white; box-shadow: 0 1px 3px rgba(0,0,0,0.1); box-sizing: border-box;',
+        class: 'prose prose-slate constancia-page constancia-editor-page focus:outline-none',
+        style: 'font-family: "Times New Roman", serif; font-size: 12pt; line-height: 1.5; width: 8.5in; height: 11in; min-height: 11in; padding: 1in; margin: 0 auto; background: white; box-shadow: 0 1px 3px rgba(0,0,0,0.1); box-sizing: border-box;',
       },
     },
   });

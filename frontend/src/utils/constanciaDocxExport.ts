@@ -58,6 +58,12 @@ const tiptapNodes: NodeSerializer = {
 
     state.addParagraphOptions(opts);
     state.renderInline(node);
+
+    // If the paragraph is empty (just an enter), add a blank TextRun so Word preserves the line
+    if (state.current.length === 0) {
+      state.text(' ');
+    }
+
     state.closeBlock(node);
   },
 

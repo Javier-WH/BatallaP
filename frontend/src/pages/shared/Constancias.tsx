@@ -12,6 +12,11 @@ import ConstanciaEditor from './ConstanciaEditor';
 import type { VariableDef } from './ConstanciaEditor';
 import { exportConstanciaToDocx } from '@/utils/constanciaDocxExport';
 
+// The editor keeps empty paragraphs as visual line breaks. Preserve them in the generated preview.
+function normalizePreviewHtml(html: string): string {
+  return html.replace(/<p(\s[^>]*)?><\/p>/gi, '<p$1><br></p>');
+}
+
 interface Template {
   id: number;
   name: string;
@@ -130,7 +135,7 @@ const Constancias: React.FC = () => {
         schoolPeriodId: activePeriod?.id || null,
         customVars: customValues,
       });
-      setPreviewHtml(res.data.html);
+      setPreviewHtml(normalizePreviewHtml(res.data.html));
     } catch (error: any) {
       message.error(error.response?.data?.message || 'Error al generar vista previa');
     } finally {
@@ -159,10 +164,9 @@ const Constancias: React.FC = () => {
             padding: 0;
             color: #000;
           }
-          p { margin: 0; min-height: 1.5em; }
-          p:empty { min-height: 1.5em; }
-          h1, h2, h3 { margin: 0.5em 0; }
-          ul, ol { margin: 0.5em 0; padding-left: 2em; }
+          p { margin: 0; }
+          h1, h2, h3 { margin: 0; }
+          ul, ol { margin: 0; padding-left: 2em; }
           img { max-width: 100%; }
         </style>
       </head>
@@ -365,24 +369,24 @@ const Constancias: React.FC = () => {
         >
           <div className="bg-slate-200 p-8 rounded-lg" style={{ overflowY: 'auto' }}>
             <div
-              className="bg-white"
+              className="constancia-page bg-white"
               style={{
                 fontFamily: "'Times New Roman', serif",
                 fontSize: '12pt',
                 lineHeight: 1.5,
                 width: '8.5in',
+                height: '11in',
                 minHeight: '11in',
-                padding: '1in 1in',
+                padding: '1in',
                 margin: '0 auto',
                 boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
                 boxSizing: 'border-box',
               }}
             >
               <style>{`
-                .constancia-preview p { margin: 0; min-height: 1.5em; }
-                .constancia-preview p:empty { min-height: 1.5em; }
-                .constancia-preview h1, .constancia-preview h2, .constancia-preview h3 { margin: 0.5em 0; }
-                .constancia-preview ul, .constancia-preview ol { margin: 0.5em 0; padding-left: 2em; }
+                .constancia-preview p { margin: 0; }
+                .constancia-preview h1, .constancia-preview h2, .constancia-preview h3 { margin: 0; }
+                .constancia-preview ul, .constancia-preview ol { margin: 0; padding-left: 2em; }
               `}</style>
               <div className="constancia-preview" dangerouslySetInnerHTML={{ __html: previewHtml }} />
             </div>

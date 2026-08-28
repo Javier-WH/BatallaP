@@ -390,3 +390,22 @@ input[type=number] {
 .ant-radio-button-wrapper-checked:not(.ant-radio-button-wrapper-disabled) .ant-radio-button-wrapper-btn {
   color: var(--color-header-text) !important;
 }
+
+.constancia-page {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.constancia-editor-page::after {
+  content: '';
+  position: absolute;
+  inset: 1in;
+  border: 1px dashed rgba(30, 64, 175, 0.28);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.constancia-editor-page > * {
+  position: relative;
+  z-index: 1;
+}
