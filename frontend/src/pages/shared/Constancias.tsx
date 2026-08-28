@@ -181,18 +181,24 @@ const Constancias: React.FC = () => {
     setShowNameModal(true);
   };
 
-  const handleEditTemplate = (tpl: Template) => {
-    setEditingTemplate(tpl);
-    setTemplateName(tpl.name);
-    setTemplateContent(tpl.content);
-    setActiveTab('templates');
+  const handleEditTemplate = async (tpl: Template) => {
+    try {
+      const res = await api.get(`/constancias/${tpl.id}`);
+      const full = res.data;
+      setEditingTemplate(full);
+      setTemplateName(full.name);
+      setTemplateContent(full.content || '');
+      setActiveTab('templates');
+    } catch {
+      message.error('Error al cargar la plantilla');
+    }
   };
 
   const handleSaveTemplate = async () => {
     if (!templateName.trim()) { message.warning('Ingrese un nombre'); return; }
     setSaving(true);
     try {
-      if (editingTemplate) {
+      if (editingTemplate && editingTemplate.id !== 0) {
         await api.put(`/constancias/${editingTemplate.id}`, { name: templateName.trim(), content: templateContent });
         message.success('Plantilla actualizada');
       } else {
@@ -438,6 +444,32 @@ const Constancias: React.FC = () => {
         className="constancias-tabs"
         tabBarStyle={{ paddingLeft: 24, marginBottom: 0 }}
       />
+
+      {/* New template name modal */}
+      <Modal
+        title="Nueva plantilla"
+        open={showNameModal}
+        onOk={() => {
+          if (!templateName.trim()) { message.warning('Ingrese un nombre'); return; }
+          setShowNameModal(false);
+          setEditingTemplate({ id: 0, name: '', content: '', createdAt: '', updatedAt: '' } as any);
+        }}
+        onCancel={() => setShowNameModal(false)}
+        okText="Crear"
+        cancelText="Cancelar"
+      >
+        <Input
+          value={templateName}
+          onChange={e => setTemplateName(e.target.value)}
+          placeholder="Ej: Constancia de Estudios"
+          autoFocus
+          onPressEnter={() => {
+            if (!templateName.trim()) { message.warning('Ingrese un nombre'); return; }
+            setShowNameModal(false);
+            setEditingTemplate({ id: 0, name: '', content: '', createdAt: '', updatedAt: '' } as any);
+          }}
+        />
+      </Modal>
     </div>
   );
 };

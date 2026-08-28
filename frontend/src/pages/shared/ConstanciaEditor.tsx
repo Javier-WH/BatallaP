@@ -87,8 +87,8 @@ const ConstanciaEditor: React.FC<ConstanciaEditorProps> = ({ content, onChange, 
     },
     editorProps: {
       attributes: {
-        class: 'prose prose-slate max-w-none min-h-[500px] p-6 focus:outline-none',
-        style: 'font-family: "Times New Roman", serif; font-size: 14px;',
+        class: 'prose prose-slate focus:outline-none',
+        style: 'font-family: "Times New Roman", serif; font-size: 12pt; line-height: 1.5; width: 8.5in; min-height: 11in; padding: 1in 1in; margin: 0 auto; background: white; box-shadow: 0 1px 3px rgba(0,0,0,0.1); box-sizing: border-box;',
       },
     },
   });
@@ -126,9 +126,9 @@ const ConstanciaEditor: React.FC<ConstanciaEditorProps> = ({ content, onChange, 
   }));
 
   return (
-    <div className="border border-slate-200 rounded-lg overflow-hidden bg-white">
+    <div className="rounded-lg overflow-hidden">
       {/* Toolbar */}
-      <div className="flex flex-wrap gap-2 p-3 border-b border-slate-200 bg-slate-50 items-center">
+      <div className="flex flex-wrap gap-2 p-3 border border-slate-200 border-b-0 rounded-t-lg bg-slate-50 items-center sticky top-0 z-10">
         <Space>
           <Button icon={<UndoOutlined />} onClick={() => editor.chain().focus().undo().run()} disabled={!editor.can().undo()} size="small" />
           <Button icon={<RedoOutlined />} onClick={() => editor.chain().focus().redo().run()} disabled={!editor.can().redo()} size="small" />
@@ -151,20 +151,22 @@ const ConstanciaEditor: React.FC<ConstanciaEditorProps> = ({ content, onChange, 
         />
 
         <Select
-          defaultValue="14px"
+          defaultValue="12pt"
           size="small"
           style={{ width: 90 }}
           onChange={(value) => editor.chain().focus().setMark('textStyle', { fontSize: value }).run()}
           options={[
-            { value: '10px', label: '10' },
-            { value: '12px', label: '12' },
-            { value: '14px', label: '14' },
-            { value: '16px', label: '16' },
-            { value: '18px', label: '18' },
-            { value: '20px', label: '20' },
-            { value: '24px', label: '24' },
-            { value: '28px', label: '28' },
-            { value: '32px', label: '32' },
+            { value: '8pt', label: '8' },
+            { value: '10pt', label: '10' },
+            { value: '11pt', label: '11' },
+            { value: '12pt', label: '12' },
+            { value: '14pt', label: '14' },
+            { value: '16pt', label: '16' },
+            { value: '18pt', label: '18' },
+            { value: '20pt', label: '20' },
+            { value: '24pt', label: '24' },
+            { value: '28pt', label: '28' },
+            { value: '32pt', label: '32' },
           ]}
         />
 
@@ -219,8 +221,10 @@ const ConstanciaEditor: React.FC<ConstanciaEditorProps> = ({ content, onChange, 
         </Dropdown>
       </div>
 
-      {/* Editor */}
-      <EditorContent editor={editor} />
+      {/* Editor — page-like canvas */}
+      <div className="bg-slate-200 p-8 rounded-b-lg" style={{ minHeight: 'calc(100vh - 200px)', overflowY: 'auto' }}>
+        <EditorContent editor={editor} />
+      </div>
     </div>
   );
 };
