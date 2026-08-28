@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Card, Button, Tag, Space, Typography, Spin, message, Alert, Statistic, Row, Col, Popconfirm } from 'antd';
+import { Card, Button, Tag, Space, Typography, Spin, message, Alert, Statistic, Row, Col, Popconfirm, Collapse } from 'antd';
 import { PlayCircleOutlined, StopOutlined, ReloadOutlined, CheckCircleOutlined, ClockCircleOutlined, CloseCircleOutlined, PrinterOutlined, RetweetOutlined, UndoOutlined } from '@ant-design/icons';
 import api from '@/services/api';
 import { compareStudents } from '@/utils/studentSort';
@@ -383,65 +383,76 @@ const RepairPeriodManagement: React.FC = () => {
                     No hay estudiantes en reparación
                   </div>
                 ) : (
-                  gradeGroups.map((group) => (
-                    <div key={group.grade} className="repair-grade-section">
-                      <div className="repair-grade-title">{group.grade}</div>
-                      <table className="repair-sheet">
-                        <thead>
-                          <tr>
-                            <th className="repair-col-idx">#</th>
-                            <th className="repair-col-doc">Cédula</th>
-                            <th className="repair-col-name">Apellidos y Nombres</th>
-                            {group.subjects.map((subj) => (
-                              <th key={subj.abbreviation} className="repair-col-subj" title={subj.subjectName}>
-                                {subj.abbreviation}
-                              </th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {group.students.map((student, idx) => (
-                            <tr key={student.studentId}>
-                              <td className="repair-cell-idx">{idx + 1}</td>
-                              <td className="repair-cell-doc">{student.document}</td>
-                              <td className="repair-cell-name">{student.studentName}</td>
-                              {group.subjects.map((subj) => {
-                                const studentSubj = student.subjects.find(
-                                  (sub) => sub.abbreviation === subj.abbreviation
-                                );
-                                // No revision in this subject → filled cell
-                                if (!studentSubj) {
-                                  return <td key={subj.abbreviation} className="repair-cell-filled" />;
-                                }
-                                // Has revision → blank cell (for writing or showing score)
-                                if (isPreview) {
-                                  return <td key={subj.abbreviation} className="repair-cell-blank" />;
-                                }
-                                const approved = studentSubj.revisions.some((r) => r.status === 'approved');
-                                const pending = studentSubj.revisions.some((r) => r.status === 'pending');
-                                const hasFailed = studentSubj.revisions.some((r) => r.status === 'failed');
-                                return (
-                                  <td key={subj.abbreviation} className="repair-cell-blank">
-                                    {approved && <span className="repair-pass">✓</span>}
-                                    {pending && (
-                                      <span className="repair-score-list">
-                                        {studentSubj.revisions.map((r) => (
-                                          <span key={r.id} className={`repair-score-tag ${r.status}`}>
-                                            {r.score != null ? r.score.toFixed(1) : '—'}
+                  <Collapse
+                    defaultActiveKey={gradeGroups.map(g => g.grade)}
+                    items={gradeGroups.map((group) => ({
+                      key: group.grade,
+                      label: (
+                        <Space>
+                          <span style={{ fontWeight: 700 }}>{group.grade}</span>
+                          <Tag>{group.students.length} estudiantes</Tag>
+                        </Space>
+                      ),
+                      children: (
+                        <div className="repair-grade-section">
+                          <table className="repair-sheet">
+                            <thead>
+                              <tr>
+                                <th className="repair-col-idx">#</th>
+                                <th className="repair-col-doc">Cédula</th>
+                                <th className="repair-col-name">Apellidos y Nombres</th>
+                                {group.subjects.map((subj) => (
+                                  <th key={subj.abbreviation} className="repair-col-subj" title={subj.subjectName}>
+                                    {subj.abbreviation}
+                                  </th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {group.students.map((student, idx) => (
+                                <tr key={student.studentId}>
+                                  <td className="repair-cell-idx">{idx + 1}</td>
+                                  <td className="repair-cell-doc">{student.document}</td>
+                                  <td className="repair-cell-name">{student.studentName}</td>
+                                  {group.subjects.map((subj) => {
+                                    const studentSubj = student.subjects.find(
+                                      (sub) => sub.abbreviation === subj.abbreviation
+                                    );
+                                    // No revision in this subject → filled cell
+                                    if (!studentSubj) {
+                                      return <td key={subj.abbreviation} className="repair-cell-filled" />;
+                                    }
+                                    // Has revision → blank cell (for writing or showing score)
+                                    if (isPreview) {
+                                      return <td key={subj.abbreviation} className="repair-cell-blank" />;
+                                    }
+                                    const approved = studentSubj.revisions.some((r) => r.status === 'approved');
+                                    const pending = studentSubj.revisions.some((r) => r.status === 'pending');
+                                    const hasFailed = studentSubj.revisions.some((r) => r.status === 'failed');
+                                    return (
+                                      <td key={subj.abbreviation} className="repair-cell-blank">
+                                        {approved && <span className="repair-pass">✓</span>}
+                                        {pending && (
+                                          <span className="repair-score-list">
+                                            {studentSubj.revisions.map((r) => (
+                                              <span key={r.id} className={`repair-score-tag ${r.status}`}>
+                                                {r.score != null ? r.score.toFixed(1) : '—'}
+                                              </span>
+                                            ))}
                                           </span>
-                                        ))}
-                                      </span>
-                                    )}
-                                    {hasFailed && !pending && <span className="repair-fail">✕</span>}
-                                  </td>
-                                );
-                              })}
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  ))
+                                        )}
+                                        {hasFailed && !pending && <span className="repair-fail">✕</span>}
+                                      </td>
+                                    );
+                                  })}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      ),
+                    }))}
+                  />
                 )}
               </div>
             </Card>
