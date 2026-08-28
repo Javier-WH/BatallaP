@@ -20,6 +20,10 @@ import {
 import { saveAs } from 'file-saver';
 import { FontSize, FontFamily, LineHeight, TextTransform } from '@/pages/shared/ConstanciaEditor';
 
+// docx v9 declares IParagraphOptions / IRunOptions properties as `readonly`.
+// Build the objects mutably, then hand them off to docx (mutable → readonly is fine).
+type Writable<T> = { -readonly [K in keyof T]: T[K] };
+
 // ── Node serializers ──
 // Map Tiptap's camelCase node names to prosemirror-docx's snake_case defaults,
 // and add custom handlers that read Tiptap's paragraph/heading attributes.
@@ -39,7 +43,7 @@ const tiptapNodes: NodeSerializer = {
     const textAlign = node.attrs.textAlign;
     const lineHeight = node.attrs.lineHeight;
 
-    const opts: IParagraphOptions = {};
+    const opts: Writable<IParagraphOptions> = {};
     if (textAlign === 'center') opts.alignment = AlignmentType.CENTER;
     else if (textAlign === 'right') opts.alignment = AlignmentType.RIGHT;
     else if (textAlign === 'justify') opts.alignment = AlignmentType.JUSTIFIED;
@@ -62,7 +66,7 @@ const tiptapNodes: NodeSerializer = {
     const textAlign = node.attrs.textAlign;
     const lineHeight = node.attrs.lineHeight;
 
-    const opts: IParagraphOptions = {};
+    const opts: Writable<IParagraphOptions> = {};
     if (textAlign === 'center') opts.alignment = AlignmentType.CENTER;
     else if (textAlign === 'right') opts.alignment = AlignmentType.RIGHT;
     else if (textAlign === 'justify') opts.alignment = AlignmentType.JUSTIFIED;
@@ -120,7 +124,7 @@ const tiptapMarks: MarkSerializer = {
     return { underline: {} };
   },
   textStyle(state, node, mark): IRunOptions {
-    const opts: IRunOptions = {};
+    const opts: Writable<IRunOptions> = {};
     const color = mark.attrs?.color;
     if (color) {
       const hex = cssColorToHex(color);
