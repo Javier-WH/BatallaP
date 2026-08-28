@@ -13,9 +13,33 @@ import ConstanciaEditor from './ConstanciaEditor';
 import type { VariableDef } from './ConstanciaEditor';
 import { exportConstanciaToDocx } from '@/utils/constanciaDocxExport';
 
-// The editor keeps empty paragraphs as visual line breaks. Preserve them in the generated preview.
+// Match the visual line breaks that Tiptap adds to the editor DOM.
 function normalizePreviewHtml(html: string): string {
-  return html.replace(/<p(\s[^>]*)?><\/p>/gi, '<p$1><br></p>');
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  const paragraphs = Array.from(doc.body.querySelectorAll('p'));
+
+  while (paragraphs.length > 0 && paragraphs[paragraphs.length - 1].innerHTML.trim() === '') {
+    paragraphs.pop()?.remove();
+  }
+
+  paragraphs.forEach((paragraph) => {
+    if (paragraph.innerHTML.trim() === '') {
+      paragraph.appendChild(doc.createElement('br'));
+      return;
+    }
+
+    const lastElement = paragraph.lastElementChild;
+    const lastChildOfSpan = lastElement?.tagName === 'SPAN'
+      ? lastElement.lastElementChild
+      : null;
+
+    // ProseMirror adds a trailing break when the last inline span ends in a hard break.
+    if (lastChildOfSpan?.tagName === 'BR') {
+      paragraph.appendChild(doc.createElement('br'));
+    }
+  });
+
+  return doc.body.innerHTML;
 }
 
 interface Template {
@@ -165,7 +189,6 @@ const Constancias: React.FC = () => {
             margin: 0;
             padding: 0;
             color: #000;
-            white-space: pre-wrap;
           }
           p { margin: 0; }
           h1, h2, h3 { margin: 0; }
@@ -393,7 +416,6 @@ const Constancias: React.FC = () => {
               }}
             >
               <style>{`
-                .constancia-preview { white-space: pre-wrap; }
                 .constancia-preview p { margin: 0; }
                 .constancia-preview h1, .constancia-preview h2, .constancia-preview h3 { margin: 0; }
                 .constancia-preview ul, .constancia-preview ol { margin: 0; padding-left: 2em; }
