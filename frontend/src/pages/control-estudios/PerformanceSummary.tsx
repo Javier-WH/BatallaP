@@ -1540,7 +1540,7 @@ const PerformanceSummary: React.FC = () => {
                       onClick={handleExportMp}
                     >
                       {mpExporting ? <Spin size="small" /> : <IconDownload size={16} />}
-                      {mpExporting ? 'Exportando…' : 'Exportar MP'}
+                      {mpExporting ? 'Exportando…' : 'Resumen de Materia Pendiente'}
                     </button>
                     <button
                       className="rb-export-btn"
