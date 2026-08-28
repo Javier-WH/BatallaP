@@ -3,9 +3,7 @@ import { useEditor, EditorContent, Extension } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import { TextStyle } from '@tiptap/extension-text-style';
 import Color from '@tiptap/extension-color';
-import Underline from '@tiptap/extension-underline';
 import TextAlign from '@tiptap/extension-text-align';
-import Link from '@tiptap/extension-link';
 import { Button, Space, Select, Dropdown } from 'antd';
 import {
   BoldOutlined, ItalicOutlined, UnderlineOutlined,
@@ -16,7 +14,7 @@ import {
 } from '@ant-design/icons';
 
 // Custom FontSize extension (same as DashboardEditor)
-const FontSize = Extension.create({
+export const FontSize = Extension.create({
   name: 'fontSize',
   addOptions() { return { types: ['textStyle'] }; },
   addGlobalAttributes() {
@@ -37,7 +35,7 @@ const FontSize = Extension.create({
 });
 
 // Custom FontFamily extension
-const FontFamily = Extension.create({
+export const FontFamily = Extension.create({
   name: 'fontFamily',
   addOptions() { return { types: ['textStyle'] }; },
   addGlobalAttributes() {
@@ -50,6 +48,48 @@ const FontFamily = Extension.create({
           renderHTML: attributes => {
             if (!attributes.fontFamily) return {};
             return { style: `font-family: ${attributes.fontFamily}` };
+          },
+        },
+      },
+    }];
+  },
+});
+
+// Custom LineHeight extension (applies to paragraphs and headings)
+export const LineHeight = Extension.create({
+  name: 'lineHeight',
+  addOptions() { return { types: ['paragraph', 'heading'] }; },
+  addGlobalAttributes() {
+    return [{
+      types: this.options.types,
+      attributes: {
+        lineHeight: {
+          default: null,
+          parseHTML: element => element.style.lineHeight || null,
+          renderHTML: attributes => {
+            if (!attributes.lineHeight) return {};
+            return { style: `line-height: ${attributes.lineHeight}` };
+          },
+        },
+      },
+    }];
+  },
+});
+
+// Custom TextTransform extension (uppercase, lowercase, capitalize)
+export const TextTransform = Extension.create({
+  name: 'textTransform',
+  addOptions() { return { types: ['textStyle'] }; },
+  addGlobalAttributes() {
+    return [{
+      types: this.options.types,
+      attributes: {
+        textTransform: {
+          default: null,
+          parseHTML: element => element.style.textTransform || null,
+          renderHTML: attributes => {
+            if (!attributes.textTransform) return {};
+            return { style: `text-transform: ${attributes.textTransform}` };
           },
         },
       },
@@ -77,9 +117,9 @@ const ConstanciaEditor: React.FC<ConstanciaEditorProps> = ({ content, onChange, 
       Color,
       FontSize,
       FontFamily,
-      Underline,
+      TextTransform,
+      LineHeight,
       TextAlign.configure({ types: ['heading', 'paragraph'] }),
-      Link.configure({ openOnClick: false }),
     ],
     content,
     onUpdate: ({ editor }) => {
@@ -203,6 +243,53 @@ const ConstanciaEditor: React.FC<ConstanciaEditorProps> = ({ content, onChange, 
         <div className="w-px h-6 bg-slate-300 mx-1" />
 
         <Button icon={<LinkOutlined />} onClick={addLink} type={editor.isActive('link') ? 'primary' : 'default'} size="small" />
+
+        <div className="w-px h-6 bg-slate-300 mx-1" />
+
+        {/* Text transform (uppercase / lowercase / capitalize) */}
+        <Select
+          size="small"
+          style={{ width: 130 }}
+          placeholder="Mayús/Minús"
+          allowClear
+          value={editor.getAttributes('textStyle').textTransform || undefined}
+          onChange={(value) => {
+            if (value) {
+              editor.chain().focus().setMark('textStyle', { textTransform: value }).run();
+            } else {
+              editor.chain().focus().setMark('textStyle', { textTransform: null }).run();
+            }
+          }}
+          options={[
+            { value: 'uppercase', label: 'MAYÚSCULAS' },
+            { value: 'lowercase', label: 'minúsculas' },
+            { value: 'capitalize', label: 'Primera Letra' },
+          ]}
+        />
+
+        {/* Line spacing */}
+        <Select
+          size="small"
+          style={{ width: 110 }}
+          placeholder="Interlineado"
+          allowClear
+          value={editor.getAttributes('paragraph').lineHeight || undefined}
+          onChange={(value) => {
+            if (value) {
+              editor.chain().focus().updateAttributes('paragraph', { lineHeight: value }).run();
+            } else {
+              editor.chain().focus().resetAttributes('paragraph', 'lineHeight').run();
+            }
+          }}
+          options={[
+            { value: '1.0', label: 'Sencillo' },
+            { value: '1.15', label: '1.15' },
+            { value: '1.5', label: '1.5' },
+            { value: '2.0', label: 'Doble' },
+            { value: '2.5', label: '2.5' },
+            { value: '3.0', label: 'Triple' },
+          ]}
+        />
 
         <div className="w-px h-6 bg-slate-300 mx-1" />
 

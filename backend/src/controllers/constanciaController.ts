@@ -15,6 +15,22 @@ function hasRole(req: Request, roles: string[]): boolean {
 // ── Variable resolution ──
 // Variables use the {{category.field}} format, e.g. {{student.firstName}}
 // Returns an object with all resolved variables for a given student + period
+// Convert grade order (1-5) to ordinal string: 1→1er, 2→2do, 3→3er, 4→4to, 5→5to
+function gradeToOrdinal(order?: number | null): string {
+  if (order == null) return '';
+  const suffixes: Record<number, string> = { 1: 'er', 2: 'do', 3: 'er', 4: 'to', 5: 'to', 6: 'to' };
+  const suffix = suffixes[order] || 'to';
+  return `${order}${suffix}`;
+}
+
+// Convert day number to ordinal: 1→1ero, 2→2do, 15→15, etc.
+function toOrdinal(day: number): string {
+  if (day === 1) return '1ero';
+  if (day === 2) return '2do';
+  if (day === 3) return '3ero';
+  return String(day);
+}
+
 async function resolveVariables(personId: number, schoolPeriodId: number): Promise<Record<string, string>> {
   const person = await Person.findByPk(personId);
   if (!person) throw new Error('Estudiante no encontrado');
@@ -91,6 +107,9 @@ async function resolveVariables(personId: number, schoolPeriodId: number): Promi
     'student.birthdateLong': birthdate ? formatDate(birthdate) : '',
     'student.age': age !== null ? String(age) : '',
     'student.gender': gender,
+    // Determined articles based on gender (el/la)
+    'student.article': gender === 'F' ? 'la' : 'el',
+    'student.articleUpper': gender === 'F' ? 'La' : 'El',
     // Institution
     'institution.name': settingsMap['institution_name'] || '',
     'institution.code': settingsMap['institution_code'] || '',
@@ -102,13 +121,18 @@ async function resolveVariables(personId: number, schoolPeriodId: number): Promi
     'institution.directorDocument': settingsMap['director_document'] || '',
     // Academic
     'grade.name': inscription?.grade?.name || '',
+    'grade.nameUpper': (inscription?.grade?.name || '').toUpperCase(),
+    'grade.ordinal': gradeToOrdinal(inscription?.grade?.order),
     'section.name': inscription?.section?.name || '',
+    'section.nameUpper': (inscription?.section?.name || '').toUpperCase(),
     'period.name': period?.name || '',
     // Certificate
     'date': new Date().toISOString().split('T')[0],
     'date.long': formatDate(new Date()),
     'date.day': String(new Date().getDate()),
+    'date.dayOrdinal': toOrdinal(new Date().getDate()),
     'date.month': new Date().toLocaleString('es-ES', { month: 'long' }),
+    'date.monthUpper': new Date().toLocaleString('es-ES', { month: 'long' }).toUpperCase(),
     'date.year': String(new Date().getFullYear()),
   };
 
@@ -292,7 +316,9 @@ export const getVariables = async (_req: Request, res: Response) => {
     { group: 'Estudiante', key: 'student.birthdate', label: 'Fecha de nacimiento' },
     { group: 'Estudiante', key: 'student.birthdateLong', label: 'Fecha de nacimiento (texto)' },
     { group: 'Estudiante', key: 'student.age', label: 'Edad' },
-    { group: 'Estudiante', key: 'student.gender', label: 'Sexo' },
+    { group: 'Estudiante', key: 'student.gender', label: 'Sexo (M/F)' },
+    { group: 'Estudiante', key: 'student.article', label: 'Artículo (el/la)' },
+    { group: 'Estudiante', key: 'student.articleUpper', label: 'Artículo mayúscula (El/La)' },
     // Institution
     { group: 'Institución', key: 'institution.name', label: 'Nombre de la institución' },
     { group: 'Institución', key: 'institution.code', label: 'Código' },
@@ -303,14 +329,19 @@ export const getVariables = async (_req: Request, res: Response) => {
     { group: 'Institución', key: 'institution.director', label: 'Director' },
     { group: 'Institución', key: 'institution.directorDocument', label: 'Cédula del director' },
     // Academic
-    { group: 'Académico', key: 'grade.name', label: 'Grado/Año' },
+    { group: 'Académico', key: 'grade.name', label: 'Grado/Año (ej: Quinto año)' },
+    { group: 'Académico', key: 'grade.nameUpper', label: 'Grado/Año mayúsculas (ej: QUINTO AÑO)' },
+    { group: 'Académico', key: 'grade.ordinal', label: 'Grado ordinal (ej: 5to)' },
     { group: 'Académico', key: 'section.name', label: 'Sección' },
+    { group: 'Académico', key: 'section.nameUpper', label: 'Sección mayúsculas' },
     { group: 'Académico', key: 'period.name', label: 'Período escolar' },
     // Date
     { group: 'Fecha', key: 'date', label: 'Fecha actual (corta)' },
     { group: 'Fecha', key: 'date.long', label: 'Fecha actual (texto)' },
-    { group: 'Fecha', key: 'date.day', label: 'Día' },
+    { group: 'Fecha', key: 'date.day', label: 'Día (número)' },
+    { group: 'Fecha', key: 'date.dayOrdinal', label: 'Día ordinal (ej: 1ero)' },
     { group: 'Fecha', key: 'date.month', label: 'Mes' },
+    { group: 'Fecha', key: 'date.monthUpper', label: 'Mes mayúscula' },
     { group: 'Fecha', key: 'date.year', label: 'Año' },
     // Custom (user fills these when generating)
     { group: 'Campos personalizados', key: 'custom.title', label: 'Título/Cargo (ej: Docente)' },

@@ -10,6 +10,7 @@ import {
 } from '@ant-design/icons';
 import ConstanciaEditor from './ConstanciaEditor';
 import type { VariableDef } from './ConstanciaEditor';
+import { exportConstanciaToDocx } from '@/utils/constanciaDocxExport';
 
 interface Template {
   id: number;
@@ -148,8 +149,21 @@ const Constancias: React.FC = () => {
       <head>
         <title>Constancia</title>
         <style>
-          @page { margin: 2cm; }
-          body { font-family: 'Times New Roman', serif; font-size: 14px; line-height: 1.6; }
+          @page { size: letter; margin: 1in; }
+          * { box-sizing: border-box; }
+          html, body {
+            font-family: 'Times New Roman', serif;
+            font-size: 12pt;
+            line-height: 1.5;
+            margin: 0;
+            padding: 0;
+            color: #000;
+          }
+          p { margin: 0; min-height: 1.5em; }
+          p:empty { min-height: 1.5em; }
+          h1, h2, h3 { margin: 0.5em 0; }
+          ul, ol { margin: 0.5em 0; padding-left: 2em; }
+          img { max-width: 100%; }
         </style>
       </head>
       <body>${previewHtml}</body>
@@ -160,17 +174,15 @@ const Constancias: React.FC = () => {
     setTimeout(() => { printWindow.print(); }, 300);
   }, [previewHtml]);
 
-  // Export to Word (HTML → .doc)
-  const handleExportWord = useCallback(() => {
-    if (!previewHtml) return;
-    const header = `<!DOCTYPE html><html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'><head><meta charset='utf-8'><title>Constancia</title></head><body>`;
-    const footer = '</body></html>';
-    const sourceHTML = header + previewHtml + footer;
-    const source = 'data:application/vnd.ms-word;charset=utf-8,' + encodeURIComponent(sourceHTML);
-    const fileDownload = document.createElement('a');
-    fileDownload.href = source;
-    fileDownload.download = 'constancia.doc';
-    fileDownload.click();
+  // Export to Word (uses prosemirror-docx in the frontend)
+  const handleExportWord = useCallback(async () => {
+    if (!previewHtml) { message.warning('Genere la vista previa primero'); return; }
+    try {
+      await exportConstanciaToDocx(previewHtml);
+    } catch (error: any) {
+      console.error('Word export error:', error);
+      message.error('Error al generar el documento Word');
+    }
   }, [previewHtml]);
 
   // Template CRUD
@@ -351,11 +363,30 @@ const Constancias: React.FC = () => {
           }
           className="shadow-sm"
         >
-          <div
-            className="bg-white border border-slate-200 p-8 min-h-[400px]"
-            style={{ fontFamily: "'Times New Roman', serif" }}
-            dangerouslySetInnerHTML={{ __html: previewHtml }}
-          />
+          <div className="bg-slate-200 p-8 rounded-lg" style={{ overflowY: 'auto' }}>
+            <div
+              className="bg-white"
+              style={{
+                fontFamily: "'Times New Roman', serif",
+                fontSize: '12pt',
+                lineHeight: 1.5,
+                width: '8.5in',
+                minHeight: '11in',
+                padding: '1in 1in',
+                margin: '0 auto',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+                boxSizing: 'border-box',
+              }}
+            >
+              <style>{`
+                .constancia-preview p { margin: 0; min-height: 1.5em; }
+                .constancia-preview p:empty { min-height: 1.5em; }
+                .constancia-preview h1, .constancia-preview h2, .constancia-preview h3 { margin: 0.5em 0; }
+                .constancia-preview ul, .constancia-preview ol { margin: 0.5em 0; padding-left: 2em; }
+              `}</style>
+              <div className="constancia-preview" dangerouslySetInnerHTML={{ __html: previewHtml }} />
+            </div>
+          </div>
         </Card>
       )}
     </div>
