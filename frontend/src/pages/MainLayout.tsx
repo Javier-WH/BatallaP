@@ -17,6 +17,7 @@ import {
   HistoryOutlined,
   CommentOutlined,
   AlertOutlined,
+  FileProtectOutlined,
 } from '@ant-design/icons';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
@@ -104,6 +105,13 @@ const MainLayout: React.FC = () => {
       label: 'Control Estudios',
       roles: ['Control de Estudios'],
       path: '/control-estudios'
+    },
+    {
+      key: 'constancias',
+      icon: <FileProtectOutlined />,
+      label: 'Constancias',
+      roles: ['Control de Estudios', 'Administrador', 'Master'],
+      path: '/constancias'
     },
 
     {

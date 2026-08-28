@@ -149,6 +149,7 @@ import EnrollmentPlan from './EnrollmentPlan';
 import EnrollmentPlanItem from './EnrollmentPlanItem';
 import Payment from './Payment';
 import Charge from './Charge';
+import ConstanciaTemplate from './ConstanciaTemplate';
 
 
 // ... (Existing User/Person/Role/Contact associations) ...
@@ -601,5 +602,6 @@ export {
   EnrollmentPlan,
   EnrollmentPlanItem,
   Payment,
-  Charge
+  Charge,
+  ConstanciaTemplate
 };

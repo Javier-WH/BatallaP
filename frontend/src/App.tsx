@@ -10,6 +10,7 @@ import '@/index.css';
 // Shared Components
 import SearchUsers from '@/pages/shared/SearchUsers';
 import EditUser from '@/pages/shared/EditUser';
+import Constancias from '@/pages/shared/Constancias';
 
 // Master Module Imports
 import MasterLayout from '@/pages/master/MasterLayout';
@@ -260,6 +261,15 @@ function AppRoutes() {
           element={
             <RequireAuth allowedRoles={['Master', 'Administrador']}>
               <SearchUsers />
+            </RequireAuth>
+          }
+        />
+
+        <Route
+          path="constancias"
+          element={
+            <RequireAuth allowedRoles={['Control de Estudios', 'Administrador', 'Master']}>
+              <Constancias />
             </RequireAuth>
           }
         />

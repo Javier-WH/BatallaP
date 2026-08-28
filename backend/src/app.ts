@@ -87,6 +87,7 @@ import structurePresetRoutes from '@/routes/structurePresetRoutes';
 import pendingSubjectRoutes from '@/routes/pendingSubjectRoutes';
 import paymentsRoutes from '@/routes/paymentsRoutes';
 import ledgerRoutes from '@/routes/ledgerRoutes';
+import constanciaRoutes from '@/routes/constanciaRoutes';
 
 app.get('/', (req, res) => {
   res.send('API is running...');
@@ -136,6 +137,7 @@ app.use('/api/structure-presets', structurePresetRoutes);
 app.use('/api/pending-subjects', pendingSubjectRoutes);
 app.use('/api/payments', paymentsRoutes);
 app.use('/api/ledger', ledgerRoutes);
+app.use('/api/constancias', constanciaRoutes);
 
 export { sessionStore };
 export default app;
