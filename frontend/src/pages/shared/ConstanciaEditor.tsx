@@ -8,7 +8,7 @@ import { Button, Space, Select, Dropdown } from 'antd';
 import {
   BoldOutlined, ItalicOutlined, UnderlineOutlined,
   UnorderedListOutlined, OrderedListOutlined,
-  AlignLeftOutlined, AlignCenterOutlined, AlignRightOutlined,
+  AlignLeftOutlined, AlignCenterOutlined, AlignRightOutlined, MenuOutlined,
   UndoOutlined, RedoOutlined, LinkOutlined,
   PlusOutlined,
 } from '@ant-design/icons';
@@ -238,6 +238,7 @@ const ConstanciaEditor: React.FC<ConstanciaEditorProps> = ({ content, onChange, 
           <Button icon={<AlignLeftOutlined />} onClick={() => editor.chain().focus().setTextAlign('left').run()} type={editor.isActive({ textAlign: 'left' }) ? 'primary' : 'default'} size="small" />
           <Button icon={<AlignCenterOutlined />} onClick={() => editor.chain().focus().setTextAlign('center').run()} type={editor.isActive({ textAlign: 'center' }) ? 'primary' : 'default'} size="small" />
           <Button icon={<AlignRightOutlined />} onClick={() => editor.chain().focus().setTextAlign('right').run()} type={editor.isActive({ textAlign: 'right' }) ? 'primary' : 'default'} size="small" />
+          <Button icon={<MenuOutlined />} onClick={() => editor.chain().focus().setTextAlign('justify').run()} type={editor.isActive({ textAlign: 'justify' }) ? 'primary' : 'default'} size="small" />
         </Space>
 
         <div className="w-px h-6 bg-slate-300 mx-1" />
