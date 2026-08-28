@@ -165,6 +165,7 @@ export const getRevisionStudents = async (req: Request, res: Response) => {
             studentName: `${ins.student?.lastName || ''} ${ins.student?.firstName || ''}`.trim(),
             document: ins.student?.document || '',
             grade: ins.grade?.name || '',
+            gradeOrder: (ins.grade as any)?.order ?? 999,
             section: ins.section?.name || '',
             subjects: [],
           });
@@ -281,6 +282,7 @@ export const getRevisionStudents = async (req: Request, res: Response) => {
           document: insAny.student?.document || '',
           documentType: insAny.student?.documentType || '',
           grade: insAny.grade?.name || '',
+          gradeOrder: insAny.grade?.order ?? 999,
           section: insAny.section?.name || '',
           subjects,
         });

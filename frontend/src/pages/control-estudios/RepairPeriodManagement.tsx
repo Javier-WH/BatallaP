@@ -71,6 +71,7 @@ interface StudentRevision {
   document: string;
   documentType?: string;
   grade: string;
+  gradeOrder?: number;
   section: string;
   subjects: StudentSubject[];
 }
@@ -221,7 +222,12 @@ const RepairPeriodManagement: React.FC = () => {
         { document: b.document, documentType: b.documentType, lastName: b.studentName, firstName: '' }
       ));
     }
-    return Array.from(groups.values()).sort((a, b) => a.grade.localeCompare(b.grade));
+    return Array.from(groups.values()).sort((a, b) => {
+      const orderA = a.students[0]?.gradeOrder ?? 999;
+      const orderB = b.students[0]?.gradeOrder ?? 999;
+      if (orderA !== orderB) return orderA - orderB;
+      return a.grade.localeCompare(b.grade, 'es', { numeric: true });
+    });
   }, [students]);
 
   return (
