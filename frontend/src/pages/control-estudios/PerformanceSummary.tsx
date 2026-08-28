@@ -257,7 +257,6 @@ const PerformanceSummary: React.FC = () => {
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
   const [userOverrodeTemplate, setUserOverrodeTemplate] = useState(false);
   const [reportType, setReportType] = useState<ReportType>('resumen');
-  const [mpGradeId, setMpGradeId] = useState<number | null>(null);
   const [mpExporting, setMpExporting] = useState(false);
 
   // boletin tab state
@@ -533,15 +532,20 @@ const PerformanceSummary: React.FC = () => {
   };
 
   // --- Resumen de Materia Pendiente ---
-  // Exports the MP section for a single grade. Only grades from 1st to
-  // penultimate are eligible (the last grade has no MP).
+  // Exports the MP section for the first selected eligible grade.
+  // Only grades from 1st to penultimate are eligible (the last grade has no MP).
   const handleExportMp = async () => {
-    if (!selectedPeriodId || !mpGradeId) {
-      message.warning('Seleccione un año para el resumen de Materia Pendiente');
+    if (!selectedPeriodId) {
+      message.warning('Seleccione un año escolar');
       return;
     }
-    // Find the MP section for this grade in the structure
-    const gradeEntry = structure.find(s => s.grade.id === mpGradeId);
+    // Find the first selected grade that is MP-eligible
+    const eligibleGrade = mpEligibleGrades.find(g => selectedGradeIds.includes(g.id));
+    if (!eligibleGrade) {
+      message.warning('Seleccione un grado elegible para Materia Pendiente (1ro al penúltimo año)');
+      return;
+    }
+    const gradeEntry = structure.find(s => s.grade.id === eligibleGrade.id);
     if (!gradeEntry) {
       message.error('No se encontró la estructura para el grado seleccionado');
       return;
@@ -556,7 +560,7 @@ const PerformanceSummary: React.FC = () => {
       const response = await api.get('/performance-summary/export', {
         params: {
           schoolPeriodId: selectedPeriodId,
-          gradeId: mpGradeId,
+          gradeId: eligibleGrade.id,
           sectionId: mpSection.id,
           template: selectedTemplate || undefined,
           group: studentGroup,
@@ -1531,6 +1535,15 @@ const PerformanceSummary: React.FC = () => {
                     </button>
                     <button
                       className="rb-export-btn"
+                      style={{ width: 'auto', flex: '1 1 220px', minHeight: 48 }}
+                      disabled={!selectedPeriodId || !mpEligibleGrades.some(g => selectedGradeIds.includes(g.id)) || mpExporting}
+                      onClick={handleExportMp}
+                    >
+                      {mpExporting ? <Spin size="small" /> : <IconDownload size={16} />}
+                      {mpExporting ? 'Exportando…' : 'Exportar MP'}
+                    </button>
+                    <button
+                      className="rb-export-btn"
                       style={{ width: 'auto', flex: '1 1 260px', minHeight: 48 }}
                       disabled={!readyToExport || annualLoading}
                       onClick={handleExportAnnual}
@@ -1540,31 +1553,6 @@ const PerformanceSummary: React.FC = () => {
                     </button>
                   </div>
 
-                  {/* Resumen de Materia Pendiente — solo necesita seleccionar un año */}
-                  <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end', marginTop: 12, paddingTop: 12, borderTop: `1px solid #E5E0D0` }}>
-                    <div style={{ flex: '0 0 auto' }}>
-                      <label style={{ display: 'block', fontSize: 11, color: '#8B93A6', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                        Resumen de Materia Pendiente
-                      </label>
-                      <Select
-                        value={mpGradeId ?? undefined}
-                        onChange={(val) => setMpGradeId(val ?? null)}
-                        placeholder="Seleccionar año…"
-                        style={{ width: 180 }}
-                        options={mpEligibleGrades.map(g => ({ value: g.id, label: g.name }))}
-                        allowClear
-                      />
-                    </div>
-                    <button
-                      className="rb-export-btn"
-                      style={{ width: 'auto', flex: '0 0 auto', minHeight: 36, padding: '0 20px' }}
-                      disabled={!mpGradeId || !selectedPeriodId || mpExporting}
-                      onClick={handleExportMp}
-                    >
-                      {mpExporting ? <Spin size="small" /> : <IconDownload size={16} />}
-                      {mpExporting ? 'Exportando…' : 'Exportar MP'}
-                    </button>
-                  </div>
                   {!readyToExport && <p className="rb-export-hint">Seleccione al menos un grado y una sección para continuar</p>}
                   {!selectedTemplate && readyToExport && (
                     <div className="rb-warning" style={{ marginTop: 12 }}>
