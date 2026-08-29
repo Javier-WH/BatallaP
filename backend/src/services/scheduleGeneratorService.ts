@@ -1,21 +1,24 @@
 /**
  * scheduleGeneratorService
  *
- * Generates schedules automatically for all sections of a grade in a school period.
- * Uses backtracking with heuristics to place subjects into the weekly grid.
+ * Generates schedules automatically for ALL sections of ALL grades in a school period.
+ * Uses Google OR-Tools CP-SAT solver via a Python child process.
  *
- * Constraints respected:
- *  - weeklyBlocks per subject (total hours to place)
- *  - min_academic_hours_per_block (block size = N consecutive periods)
- *  - allowConsecutiveBlocks (whether a subject can use multi-period blocks)
- *  - maxHoursPerDay per subject (null = no limit)
- *  - Group subjects (same subjectGroupId) must be placed in the same slot across all sections
- *  - Teacher availability (TeacherAvailability: 'available' | 'busy' | 'preferred')
- *  - No teacher conflicts (a teacher can't be in two sections at the same time)
- *  - avoid_last_morning_first_afternoon: if a section uses the last morning period,
- *    the first afternoon period must be left empty for that section.
+ * The TypeScript side:
+ *   1. Loads all data from the DB (sections, subjects, teachers, availability, settings)
+ *   2. Builds a JSON problem description
+ *   3. Calls schedule_solver.py via child_process
+ *   4. Parses the solution and saves to DB
+ *
+ * The Python side (schedule_solver.py):
+ *   1. Reads the JSON problem from stdin
+ *   2. Builds a CP-SAT model with all constraints
+ *   3. Solves it
+ *   4. Returns the solution as JSON on stdout
  */
 
+import { spawn } from 'child_process';
+import path from 'path';
 import sequelize from '@/config/database';
 import {
   Schedule, ScheduleEntry, PeriodGradeSection, PeriodGrade, PeriodGradeSubject,
@@ -24,45 +27,70 @@ import {
 
 // ── Types ──
 interface PeriodSlot {
-  id: string;          // m1, m2, t1, etc.
+  id: string;
   section: 'manana' | 'tarde';
   isBreak: boolean;
-  order: number;       // global order across all periods
-  sectionOrder: number; // order within section (manana/tarde)
+  order: number;
+  sectionOrder: number;
 }
 
-interface SubjectInfo {
+interface BlockDef {
+  id: string;          // e.g. "m1_m2" (composite of period IDs)
+  day: string;
+  section: 'manana' | 'tarde';
+  periodIds: string[];
+  order: number;       // order within the day+section
+  globalOrder: number; // global order across all blocks (manana before tarde, days in order)
+}
+
+interface SubjectInput {
   subjectId: number;
-  subjectName: string;
   weeklyBlocks: number;
-  allowConsecutiveBlocks: boolean;
+  allowConsecutiveBlocks: number;
   maxHoursPerDay: number | null;
   subjectGroupId: number | null;
-  teachers: { teacherId: number; teacherName: string }[];
+  teacherId: number | null;
 }
 
-interface SectionInfo {
-  periodGradeSectionId: number;
-  sectionName: string;
-  gradeName: string;
-  subjects: SubjectInfo[];
+interface SectionInput {
+  id: number;          // PeriodGradeSection.id
+  periodGradeId: number;
+  subjects: SubjectInput[];
 }
 
-interface PlacedEntry {
-  day: string;
-  periodId: string;
-  subjectId: number;
-  teacherId: number;
-  isGroupSubject: boolean;
-  periodGradeSectionId: number;
+interface GroupSubjectInput {
+  subjectGroupId: number;
+  periodGradeId: number;
+  subjectIds: number[];
+}
+
+interface ProblemJson {
+  blockSize: number;
+  avoidLastMorningFirstAfternoon: boolean;
+  days: string[];
+  blocks: BlockDef[];
+  sections: SectionInput[];
+  teacherBusy: { teacherId: number; day: string; blockId: string }[];
+  teacherPreferred: { teacherId: number; day: string; blockId: string }[];
+  groupSubjects: GroupSubjectInput[];
+}
+
+interface SolverResult {
+  success: boolean;
+  placed: {
+    sectionId: number; subjectId: number; teacherId: number;
+    day: string; blockId: string; periodIds: string[]; isGroupSubject: boolean;
+  }[];
+  unplaced: { sectionId: number; subjectId: number; reason: string }[];
+  stats: { filledBlocks: number; totalBlocks: number; status: string };
 }
 
 interface GenerationResult {
   success: boolean;
-  placed: PlacedEntry[];
+  placed: { day: string; periodId: string; subjectId: number; teacherId: number; isGroupSubject: boolean; periodGradeSectionId: number }[];
   unplaced: { sectionId: number; subjectId: number; reason: string }[];
-  conflicts: { teacherId: number; day: string; periodId: string; sections: number[] }[];
-  stats: { totalSlots: number; filledSlots: number; sections: number; subjects: number };
+  conflicts: any[];
+  stats: { totalSlots: number; filledSlots: number; sections: number; subjects: number; solverStatus: string };
 }
 
 // ── Days ──
@@ -102,25 +130,83 @@ function buildPeriodSlots(settings: Record<string, string>): PeriodSlot[] {
   return slots;
 }
 
-// Get non-break slots
-function getTeachingSlots(slots: PeriodSlot[]): PeriodSlot[] {
-  return slots.filter(s => !s.isBreak);
+// ── Build fixed blocks from period slots ──
+// Blocks are groups of `blockSize` consecutive non-break periods within the same section (manana/tarde).
+// A class can only start at the beginning of a block.
+function buildBlocks(slots: PeriodSlot[], blockSize: number): BlockDef[] {
+  const blocks: BlockDef[] = [];
+  const days = DAYS;
+  let globalOrder = 0;
+
+  for (const day of days) {
+    for (const sec of ['manana', 'tarde'] as const) {
+      const sectionSlots = slots.filter(s => s.section === sec && !s.isBreak);
+      let order = 0;
+      for (let i = 0; i < sectionSlots.length; i += blockSize) {
+        const chunk = sectionSlots.slice(i, i + blockSize);
+        if (chunk.length < blockSize) break; // incomplete block, skip
+        const periodIds = chunk.map(s => s.id);
+        const blockId = periodIds.join('_');
+        blocks.push({
+          id: blockId,
+          day,
+          section: sec,
+          periodIds,
+          order,
+          globalOrder,
+        });
+        order++;
+        globalOrder++;
+      }
+    }
+  }
+
+  return blocks;
 }
 
-// Get the last morning slot and first afternoon slot
-function getLastMorningFirstAfternoon(slots: PeriodSlot[]): { lastMorning?: PeriodSlot; firstAfternoon?: PeriodSlot } {
-  const morning = slots.filter(s => s.section === 'manana' && !s.isBreak);
-  const afternoon = slots.filter(s => s.section === 'tarde' && !s.isBreak);
-  return {
-    lastMorning: morning[morning.length - 1],
-    firstAfternoon: afternoon[0],
-  };
+// ── Call the Python solver ──
+function callSolver(problem: ProblemJson): Promise<SolverResult> {
+  return new Promise((resolve, reject) => {
+    const scriptPath = path.join(__dirname, '..', '..', 'scripts', 'schedule_solver.py');
+    const py = spawn('python', [scriptPath], {
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+
+    let stdout = '';
+    let stderr = '';
+
+    py.stdout.on('data', (data) => { stdout += data.toString(); });
+    py.stderr.on('data', (data) => { stderr += data.toString(); });
+
+    py.on('close', (code) => {
+      if (stderr) {
+        console.log(`[scheduleSolver] stderr: ${stderr}`);
+      }
+      if (code !== 0) {
+        reject(new Error(`Python solver exited with code ${code}. stderr: ${stderr}`));
+        return;
+      }
+      try {
+        const result = JSON.parse(stdout);
+        resolve(result);
+      } catch (e) {
+        reject(new Error(`Failed to parse solver output: ${e}. stdout: ${stdout.slice(0, 500)}. stderr: ${stderr.slice(0, 500)}`));
+      }
+    });
+
+    py.on('error', (err) => {
+      reject(new Error(`Failed to spawn python: ${err.message}`));
+    });
+
+    // Send the problem as JSON on stdin
+    py.stdin.write(JSON.stringify(problem));
+    py.stdin.end();
+  });
 }
 
 // ── Main generation function ──
-export async function generateSchedulesForGrade(
-  schoolPeriodId: number,
-  periodGradeId: number
+export async function generateSchedulesForPeriod(
+  schoolPeriodId: number
 ): Promise<GenerationResult> {
   // 1. Load settings
   const settingsRows = await Setting.findAll();
@@ -130,419 +216,220 @@ export async function generateSchedulesForGrade(
   const blockSize = Number(settings.min_academic_hours_per_block) || 1;
   const avoidLastMorningFirstAfternoon = settings.avoid_last_morning_first_afternoon === 'true';
 
-  // 2. Build period slots
+  // 2. Build period slots and blocks
   const allSlots = buildPeriodSlots(settings);
-  const teachingSlots = getTeachingSlots(allSlots);
-  const { lastMorning, firstAfternoon } = getLastMorningFirstAfternoon(allSlots);
+  const blocks = buildBlocks(allSlots, blockSize);
 
-  // 3. Load all sections for this grade
-  const pgsList = await PeriodGradeSection.findAll({
-    where: { periodGradeId },
+  // 3. Load ALL period grades
+  const periodGrades = await PeriodGrade.findAll({
+    where: { schoolPeriodId },
+    include: [{ model: Grade, as: 'grade' }],
+  });
+
+  if (periodGrades.length === 0) {
+    return { success: false, placed: [], unplaced: [], conflicts: [], stats: { totalSlots: 0, filledSlots: 0, sections: 0, subjects: 0, solverStatus: 'NO_GRADES' } };
+  }
+
+  const periodGradeIds = periodGrades.map(pg => pg.id);
+
+  // 4. Load ALL sections, excluding MATERIA PENDIENTE
+  const mpSection = await Section.findOne({ where: { name: 'MATERIA PENDIENTE' } });
+  const allPgs = await PeriodGradeSection.findAll({
+    where: { periodGradeId: periodGradeIds },
     include: [
       { model: PeriodGrade, as: 'periodGrade', include: [{ model: Grade, as: 'grade' }] },
       { model: Section, as: 'section' },
     ],
   });
+  const allPgsFiltered = mpSection
+    ? allPgs.filter(pgs => (pgs as any).sectionId !== mpSection.id)
+    : allPgs;
 
-  if (pgsList.length === 0) {
-    return { success: false, placed: [], unplaced: [], conflicts: [], stats: { totalSlots: 0, filledSlots: 0, sections: 0, subjects: 0 } };
-  }
-
-  // 4. Load subjects + teacher assignments for each section
-  const pgsSubjects = await PeriodGradeSubject.findAll({
-    where: { periodGradeId, active: true },
+  // 5. Load ALL subjects for ALL grades
+  const allPgsSubjects = await PeriodGradeSubject.findAll({
+    where: { periodGradeId: periodGradeIds, active: true },
     include: [{ model: Subject, as: 'subject' }],
     order: [['order', 'ASC']],
   });
 
-  const sections: SectionInfo[] = [];
-  for (const pgs of pgsList) {
-    const assignments = await TeacherAssignment.findAll({
-      where: { sectionId: pgs.id },
-      include: [
-        { model: Person, as: 'teacher', attributes: ['id', 'firstName', 'lastName'] },
-        { model: PeriodGradeSubject, as: 'periodGradeSubject', attributes: ['id', 'subjectId', 'weeklyBlocks'] },
-      ],
-    });
+  // 6. Load ALL teacher assignments
+  // TeacherAssignment.sectionId references Section.id (NOT PeriodGradeSection.id)
+  const allSectionIds = allPgsFiltered.map(pgs => (pgs as any).sectionId);
+  const allAssignments = await TeacherAssignment.findAll({
+    where: { sectionId: allSectionIds },
+    include: [
+      { model: Person, as: 'teacher', attributes: ['id', 'firstName', 'lastName'] },
+      { model: PeriodGradeSubject, as: 'periodGradeSubject', attributes: ['id', 'subjectId', 'weeklyBlocks'] },
+    ],
+  });
 
-    const subjects: SubjectInfo[] = pgsSubjects.map(p => {
+  // 7. Build section inputs for the solver
+  const sectionInputs: SectionInput[] = [];
+  const sectionPgMap = new Map<number, number>(); // sectionId (PGS.id) -> periodGradeId
+
+  for (const pgs of allPgsFiltered) {
+    const gradeSubjects = allPgsSubjects.filter(p => p.periodGradeId === pgs.periodGradeId);
+    const sectionAssignments = allAssignments.filter(a => a.sectionId === (pgs as any).sectionId);
+
+    const subjects: SubjectInput[] = gradeSubjects.map(p => {
       const subject = (p as any).subject;
-      const teachers = assignments
-        .filter(a => a.periodGradeSubjectId === p.id)
-        .map(a => ({
-          teacherId: (a as any).teacherId,
-          teacherName: `${(a as any).teacher?.firstName ?? ''} ${(a as any).teacher?.lastName ?? ''}`.trim(),
-        }));
+      const assignment = sectionAssignments.find(a => a.periodGradeSubjectId === p.id);
       return {
         subjectId: p.subjectId,
-        subjectName: subject?.name ?? '',
         weeklyBlocks: p.weeklyBlocks,
-        allowConsecutiveBlocks: subject?.allowConsecutiveBlocks ?? false,
+        allowConsecutiveBlocks: (subject as any)?.allowConsecutiveBlocks ?? 0,
         maxHoursPerDay: (subject as any)?.maxHoursPerDay ?? null,
         subjectGroupId: subject?.subjectGroupId ?? null,
-        teachers,
+        teacherId: assignment ? (assignment as any).teacherId : null,
       };
     });
 
-    sections.push({
-      periodGradeSectionId: pgs.id,
-      sectionName: (pgs as any).section?.name ?? '',
-      gradeName: (pgs as any).periodGrade?.grade?.name ?? '',
+    sectionInputs.push({
+      id: pgs.id,
+      periodGradeId: pgs.periodGradeId,
       subjects,
     });
+    sectionPgMap.set(pgs.id, pgs.periodGradeId);
   }
 
-  // 5. Load teacher availability for all teachers involved
+  // 8. Load teacher availability (busy slots)
   const allTeacherIds = new Set<number>();
-  sections.forEach(s => s.subjects.forEach(sub => sub.teachers.forEach(t => allTeacherIds.add(t.teacherId))));
+  allAssignments.forEach(a => allTeacherIds.add((a as any).teacherId));
   const availabilityRows = await TeacherAvailability.findAll({
     where: { personId: Array.from(allTeacherIds) },
   });
-  // Map: teacherId -> Set("day|periodId") for 'busy' status
-  const busyMap = new Map<number, Set<string>>();
-  const preferredMap = new Map<number, Set<string>>();
+
+  // Map teacher busy slots to block IDs
+  // TeacherAvailability uses periodId (single period), we need to find which block contains that period
+  const periodToBlock = new Map<string, BlockDef>(); // periodId -> block (for a given day)
+  // Actually blocks are per-day, so we need (day, periodId) -> blockId
+  const dayPeriodToBlock = new Map<string, string>();
+  for (const b of blocks) {
+    for (const pid of b.periodIds) {
+      dayPeriodToBlock.set(`${b.day}|${pid}`, b.id);
+    }
+  }
+
+  const teacherBusy: { teacherId: number; day: string; blockId: string }[] = [];
+  const teacherPreferred: { teacherId: number; day: string; blockId: string }[] = [];
   availabilityRows.forEach(a => {
-    const key = `${a.day}|${a.periodId}`;
+    const blockId = dayPeriodToBlock.get(`${a.day}|${a.periodId}`);
+    if (!blockId) return;
     if (a.status === 'busy') {
-      if (!busyMap.has(a.personId)) busyMap.set(a.personId, new Set());
-      busyMap.get(a.personId)!.add(key);
+      teacherBusy.push({ teacherId: a.personId, day: a.day, blockId });
     } else if (a.status === 'preferred') {
-      if (!preferredMap.has(a.personId)) preferredMap.set(a.personId, new Set());
-      preferredMap.get(a.personId)!.add(key);
+      teacherPreferred.push({ teacherId: a.personId, day: a.day, blockId });
     }
   });
 
-  // 6. Build the placement grid
-  // For each section: a map of "day|periodId" -> entry
-  // For group subjects: we need to coordinate across sections
-
-  // Group subjects by subjectGroupId
-  const groupSubjectMap = new Map<number, SubjectInfo[]>(); // groupId -> subjects across all sections
-  sections.forEach(sec => {
-    sec.subjects.forEach(sub => {
-      if (sub.subjectGroupId) {
-        if (!groupSubjectMap.has(sub.subjectGroupId)) groupSubjectMap.set(sub.subjectGroupId, []);
-        groupSubjectMap.get(sub.subjectGroupId)!.push(sub);
+  // 9. Build group subjects list
+  // Group subjects by subjectGroupId within each periodGradeId
+  const groupMap = new Map<string, { subjectGroupId: number; periodGradeId: number; subjectIds: number[] }>();
+  for (const pgs of allPgsFiltered) {
+    const gradeSubjects = allPgsSubjects.filter(p => p.periodGradeId === pgs.periodGradeId);
+    for (const p of gradeSubjects) {
+      const subject = (p as any).subject;
+      const sgId = subject?.subjectGroupId;
+      if (sgId) {
+        const key = `${pgs.periodGradeId}|${sgId}`;
+        if (!groupMap.has(key)) {
+          groupMap.set(key, { subjectGroupId: sgId, periodGradeId: pgs.periodGradeId, subjectIds: [] });
+        }
+        const entry = groupMap.get(key)!;
+        if (!entry.subjectIds.includes(p.subjectId)) {
+          entry.subjectIds.push(p.subjectId);
+        }
       }
+    }
+  }
+  const groupSubjects = Array.from(groupMap.values());
+
+  // 10. Build the problem JSON
+  const problem: ProblemJson = {
+    blockSize,
+    avoidLastMorningFirstAfternoon,
+    days: DAYS,
+    blocks,
+    sections: sectionInputs,
+    teacherBusy,
+    teacherPreferred,
+    groupSubjects,
+  };
+
+  // Debug: log problem summary
+  console.log(`[scheduleGenerator] Problem: ${sectionInputs.length} sections, ${blocks.length} blocks, ${groupSubjects.length} group subjects, ${teacherBusy.length} busy slots, ${teacherPreferred.length} preferred slots`);
+  console.log(`[scheduleGenerator] blockSize=${blockSize}, avoidLastMorningFirstAfternoon=${avoidLastMorningFirstAfternoon}`);
+  // Log busy slots per teacher for the group subject teachers
+  const groupTeacherIds = new Set<number>();
+  for (const sec of sectionInputs) {
+    for (const sub of sec.subjects) {
+      if (sub.subjectGroupId !== null && sub.teacherId !== null) {
+        groupTeacherIds.add(sub.teacherId);
+      }
+    }
+  }
+  for (const tid of groupTeacherIds) {
+    const busyCount = teacherBusy.filter(b => b.teacherId === tid).length;
+    const prefCount = teacherPreferred.filter(p => p.teacherId === tid).length;
+    const teacher = allAssignments.find(a => (a as any).teacherId === tid);
+    const tName = teacher ? `${(teacher as any).teacher?.firstName} ${(teacher as any).teacher?.lastName}` : `ID ${tid}`;
+    console.log(`[scheduleGenerator] Group teacher ${tName} (id=${tid}): ${busyCount} busy slots, ${prefCount} preferred slots`);
+    // Log which days are busy
+    const busyByDay: Record<string, number> = {};
+    teacherBusy.filter(b => b.teacherId === tid).forEach(b => {
+      busyByDay[b.day] = (busyByDay[b.day] || 0) + 1;
     });
-  });
-
-  // Track teacher assignments: "teacherId|day|periodId" -> sectionId
-  const teacherSlotMap = new Map<string, number>();
-
-  // Track placed entries
-  const placed: PlacedEntry[] = [];
-  const unplaced: { sectionId: number; subjectId: number; reason: string }[] = [];
-
-  // Track hours placed per subject per day per section
-  // key: "sectionId|subjectId|day" -> count
-  const hoursPerDay = new Map<string, number>();
-  // key: "sectionId|subjectId" -> total placed
-  const totalPlaced = new Map<string, number>();
-
-  // Section grid: "sectionId|day|periodId" -> entry (for checking)
-  const sectionGrid = new Map<string, PlacedEntry>();
-
-  // ── Helper: check if a slot is available for a section ──
-  const isSlotFree = (sectionId: number, day: string, periodId: string): boolean => {
-    return !sectionGrid.has(`${sectionId}|${day}|${periodId}`);
-  };
-
-  // ── Helper: check if teacher is available ──
-  const isTeacherAvailable = (teacherId: number, day: string, periodId: string): boolean => {
-    const key = `${day}|${periodId}`;
-    const busy = busyMap.get(teacherId);
-    if (busy && busy.has(key)) return false;
-    return true;
-  };
-
-  // ── Helper: check teacher conflict ──
-  const hasTeacherConflict = (teacherId: number, day: string, periodId: string, sectionId: number): boolean => {
-    const key = `${teacherId}|${day}|${periodId}`;
-    const existing = teacherSlotMap.get(key);
-    return existing !== undefined && existing !== sectionId;
-  };
-
-  // ── Helper: check avoid_last_morning_first_afternoon ──
-  const passesGapRule = (sectionId: number, day: string, slot: PeriodSlot): boolean => {
-    if (!avoidLastMorningFirstAfternoon || !lastMorning || !firstAfternoon) return true;
-    // If placing in first afternoon, check if section already has last morning that day
-    if (slot.id === firstAfternoon.id) {
-      const lastMorningKey = `${sectionId}|${day}|${lastMorning.id}`;
-      if (sectionGrid.has(lastMorningKey)) return false;
-    }
-    return true;
-  };
-
-  // ── Helper: check maxHoursPerDay ──
-  const passesMaxHours = (sectionId: number, subjectId: number, day: string, maxHours: number | null, hoursToAdd: number): boolean => {
-    if (maxHours === null) return true;
-    const current = hoursPerDay.get(`${sectionId}|${subjectId}|${day}`) ?? 0;
-    return current + hoursToAdd <= maxHours;
-  };
-
-  // ── Helper: get consecutive slots for a block (same section, no break) ──
-  const getBlockSlots = (startSlot: PeriodSlot, size: number): PeriodSlot[] => {
-    if (size <= 1) return [startSlot];
-    const sectionSlots = teachingSlots.filter(s => s.section === startSlot.section);
-    const idx = sectionSlots.findIndex(s => s.id === startSlot.id);
-    if (idx < 0) return [startSlot];
-    return sectionSlots.slice(idx, idx + size);
-  };
-
-  // ── Helper: try to place a subject in a section at a given day+slot ──
-  const tryPlace = (
-    sectionId: number,
-    subject: SubjectInfo,
-    day: string,
-    startSlot: PeriodSlot,
-    isGroup: boolean
-  ): boolean => {
-    const size = blockSize;
-    const blockSlots = getBlockSlots(startSlot, size);
-    if (blockSlots.length < size) return false;
-
-    // Pick a teacher
-    const teacher = subject.teachers[0];
-    if (!teacher) return false; // no teacher assigned
-
-    // Check all slots in the block
-    for (const slot of blockSlots) {
-      if (!isSlotFree(sectionId, day, slot.id)) return false;
-      if (!passesGapRule(sectionId, day, slot)) return false;
-      if (hasTeacherConflict(teacher.teacherId, day, slot.id, sectionId)) return false;
-      if (!isTeacherAvailable(teacher.teacherId, day, slot.id)) return false;
-    }
-    if (!passesMaxHours(sectionId, subject.subjectId, day, subject.maxHoursPerDay, blockSlots.length)) return false;
-
-    // For group subjects: check that all other sections with the same subjectGroupId
-    // can also place their group subject in the same slot
-    if (isGroup && subject.subjectGroupId) {
-      const groupSubjects = groupSubjectMap.get(subject.subjectGroupId) ?? [];
-      // Find which sections have this group subject and need it placed
-      for (const gs of groupSubjects) {
-        // Find the section that has this subject
-        const targetSection = sections.find(s => s.subjects.some(sub => sub.subjectId === gs.subjectId && sub.subjectGroupId === subject.subjectGroupId));
-        if (!targetSection) continue;
-        const targetSectionId = targetSection.periodGradeSectionId;
-        if (targetSectionId === sectionId) continue;
-        // Check if the target section's slot is free
-        for (const slot of blockSlots) {
-          if (!isSlotFree(targetSectionId, day, slot.id)) {
-            // It might be already placed with the same group subject — that's ok
-            const existing = sectionGrid.get(`${targetSectionId}|${day}|${slot.id}`);
-            if (!existing || existing.subjectId !== gs.subjectId) return false;
-          }
-        }
-      }
-    }
-
-    // Place the entry
-    for (const slot of blockSlots) {
-      const entry: PlacedEntry = {
-        day,
-        periodId: slot.id,
-        subjectId: subject.subjectId,
-        teacherId: teacher.teacherId,
-        isGroupSubject: isGroup,
-        periodGradeSectionId: sectionId,
-      };
-      sectionGrid.set(`${sectionId}|${day}|${slot.id}`, entry);
-      teacherSlotMap.set(`${teacher.teacherId}|${day}|${slot.id}`, sectionId);
-      placed.push(entry);
-      const hpKey = `${sectionId}|${subject.subjectId}|${day}`;
-      hoursPerDay.set(hpKey, (hoursPerDay.get(hpKey) ?? 0) + 1);
-      const tpKey = `${sectionId}|${subject.subjectId}`;
-      totalPlaced.set(tpKey, (totalPlaced.get(tpKey) ?? 0) + 1);
-    }
-
-    // For group subjects: also place in other sections
-    if (isGroup && subject.subjectGroupId) {
-      const groupSubjects = groupSubjectMap.get(subject.subjectGroupId) ?? [];
-      for (const gs of groupSubjects) {
-        const targetSection = sections.find(s => s.subjects.some(sub => sub.subjectId === gs.subjectId && sub.subjectGroupId === subject.subjectGroupId));
-        if (!targetSection) continue;
-        const targetSectionId = targetSection.periodGradeSectionId;
-        if (targetSectionId === sectionId) continue;
-        const gsTeacher = gs.teachers[0];
-        if (!gsTeacher) continue;
-        for (const slot of blockSlots) {
-          if (sectionGrid.has(`${targetSectionId}|${day}|${slot.id}`)) continue; // already placed
-          const entry: PlacedEntry = {
-            day,
-            periodId: slot.id,
-            subjectId: gs.subjectId,
-            teacherId: gsTeacher.teacherId,
-            isGroupSubject: true,
-            periodGradeSectionId: targetSectionId,
-          };
-          sectionGrid.set(`${targetSectionId}|${day}|${slot.id}`, entry);
-          teacherSlotMap.set(`${gsTeacher.teacherId}|${day}|${slot.id}`, targetSectionId);
-          placed.push(entry);
-          const hpKey = `${targetSectionId}|${gs.subjectId}|${day}`;
-          hoursPerDay.set(hpKey, (hoursPerDay.get(hpKey) ?? 0) + 1);
-          const tpKey = `${targetSectionId}|${gs.subjectId}`;
-          totalPlaced.set(tpKey, (totalPlaced.get(tpKey) ?? 0) + 1);
-        }
-      }
-    }
-
-    return true;
-  };
-
-  // ── Helper: remove a placement (for backtracking) ──
-  const removePlacement = (sectionId: number, subjectId: number, day: string, blockSlots: PeriodSlot[], isGroup: boolean, subjectGroupId: number | null) => {
-    for (const slot of blockSlots) {
-      const key = `${sectionId}|${day}|${slot.id}`;
-      const entry = sectionGrid.get(key);
-      if (entry) {
-        sectionGrid.delete(key);
-        teacherSlotMap.delete(`${entry.teacherId}|${day}|${slot.id}`);
-        const idx = placed.findIndex(p => p.periodGradeSectionId === sectionId && p.day === day && p.periodId === slot.id && p.subjectId === subjectId);
-        if (idx >= 0) placed.splice(idx, 1);
-        const hpKey = `${sectionId}|${subjectId}|${day}`;
-        hoursPerDay.set(hpKey, Math.max(0, (hoursPerDay.get(hpKey) ?? 0) - 1));
-        const tpKey = `${sectionId}|${subjectId}`;
-        totalPlaced.set(tpKey, Math.max(0, (totalPlaced.get(tpKey) ?? 0) - 1));
-      }
-    }
-    // Remove group placements in other sections
-    if (isGroup && subjectGroupId) {
-      const groupSubjects = groupSubjectMap.get(subjectGroupId) ?? [];
-      for (const gs of groupSubjects) {
-        const targetSection = sections.find(s => s.subjects.some(sub => sub.subjectId === gs.subjectId && sub.subjectGroupId === subjectGroupId));
-        if (!targetSection) continue;
-        const targetSectionId = targetSection.periodGradeSectionId;
-        if (targetSectionId === sectionId) continue;
-        for (const slot of blockSlots) {
-          const key = `${targetSectionId}|${day}|${slot.id}`;
-          const entry = sectionGrid.get(key);
-          if (entry && entry.subjectId === gs.subjectId) {
-            sectionGrid.delete(key);
-            teacherSlotMap.delete(`${entry.teacherId}|${day}|${slot.id}`);
-            const idx = placed.findIndex(p => p.periodGradeSectionId === targetSectionId && p.day === day && p.periodId === slot.id && p.subjectId === gs.subjectId);
-            if (idx >= 0) placed.splice(idx, 1);
-            const hpKey = `${targetSectionId}|${gs.subjectId}|${day}`;
-            hoursPerDay.set(hpKey, Math.max(0, (hoursPerDay.get(hpKey) ?? 0) - 1));
-            const tpKey = `${targetSectionId}|${gs.subjectId}`;
-            totalPlaced.set(tpKey, Math.max(0, (totalPlaced.get(tpKey) ?? 0) - 1));
-          }
-        }
-      }
-    }
-  };
-
-  // ── Build list of (section, subject) pairs to place, sorted by difficulty ──
-  interface PlacementTask {
-    sectionId: number;
-    subject: SubjectInfo;
-    isGroup: boolean;
-    remaining: number; // hours remaining to place
-    difficulty: number; // higher = harder to place, place first
+    console.log(`[scheduleGenerator]   busy by day:`, JSON.stringify(busyByDay));
   }
 
-  const buildTasks = (): PlacementTask[] => {
-    const tasks: PlacementTask[] = [];
-    for (const sec of sections) {
-      for (const sub of sec.subjects) {
-        const isGroup = !!sub.subjectGroupId;
-        // Difficulty: more weeklyBlocks = harder, fewer teachers = harder, group = harder
-        const teacherCount = sub.teachers.length;
-        const difficulty = sub.weeklyBlocks * 2 + (teacherCount === 0 ? 100 : 0) + (isGroup ? 5 : 0) + (sub.maxHoursPerDay ? 3 : 0);
-        tasks.push({
-          sectionId: sec.periodGradeSectionId,
-          subject: sub,
-          isGroup,
-          remaining: sub.weeklyBlocks,
-          difficulty,
-        });
-      }
-    }
-    // Sort by difficulty descending (hardest first)
-    tasks.sort((a, b) => b.difficulty - a.difficulty);
-    return tasks;
-  };
+  // 11. Call the solver
+  let solverResult: SolverResult;
+  try {
+    solverResult = await callSolver(problem);
+  } catch (e: any) {
+    console.error('[scheduleGenerator] Solver error:', e.message);
+    return {
+      success: false,
+      placed: [],
+      unplaced: [],
+      conflicts: [],
+      stats: { totalSlots: 0, filledSlots: 0, sections: sectionInputs.length, subjects: 0, solverStatus: `SOLVER_ERROR: ${e.message}` },
+    };
+  }
 
-  // ── Backtracking placement ──
-  // For each task, try to place all remaining hours across the week
-  const maxAttempts = 5000;
-  let attempts = 0;
-
-  const placeTask = (task: PlacementTask): boolean => {
-    if (task.remaining <= 0) return true;
-    if (attempts++ > maxAttempts) return false;
-
-    // Try each day, each starting slot
-    // Shuffle days to distribute evenly
-    const dayOrder = [...DAYS].sort(() => Math.random() - 0.5);
-    const slotOrder = [...teachingSlots].sort(() => Math.random() - 0.5);
-
-    for (const day of dayOrder) {
-      // Check maxHoursPerDay for this day
-      const currentDayHours = hoursPerDay.get(`${task.sectionId}|${task.subject.subjectId}|${day}`) ?? 0;
-      const maxHours = task.subject.maxHoursPerDay;
-      if (maxHours !== null && currentDayHours + blockSize > maxHours) continue;
-
-      for (const slot of slotOrder) {
-        if (slot.section !== slot.section) continue;
-        const blockSlots = getBlockSlots(slot, blockSize);
-        if (blockSlots.length < blockSize) continue;
-
-        // Check if all slots are free and valid
-        let canPlace = true;
-        for (const s of blockSlots) {
-          if (!isSlotFree(task.sectionId, day, s.id)) { canPlace = false; break; }
-          if (!passesGapRule(task.sectionId, day, s)) { canPlace = false; break; }
-        }
-        if (!canPlace) continue;
-
-        // Try to place
-        if (tryPlace(task.sectionId, task.subject, day, slot, task.isGroup)) {
-          task.remaining -= blockSize;
-          if (task.remaining <= 0) return true;
-          if (placeTask(task)) return true;
-          // Backtrack
-          task.remaining += blockSize;
-          removePlacement(task.sectionId, task.subject.subjectId, day, blockSlots, task.isGroup, task.subject.subjectGroupId);
-        }
-      }
-    }
-    return false;
-  };
-
-  // ── Run the algorithm ──
-  const tasks = buildTasks();
-  for (const task of tasks) {
-    if (task.subject.teachers.length === 0) {
-      unplaced.push({ sectionId: task.sectionId, subjectId: task.subject.subjectId, reason: 'Sin profesor asignado' });
-      continue;
-    }
-    if (!placeTask(task)) {
-      unplaced.push({ sectionId: task.sectionId, subjectId: task.subject.subjectId, reason: 'No se encontró espacio disponible' });
+  // 12. Convert solver result to DB entries
+  // Each placed block has periodIds — we need to create one ScheduleEntry per period
+  const placedEntries: { day: string; periodId: string; subjectId: number; teacherId: number; isGroupSubject: boolean; periodGradeSectionId: number }[] = [];
+  for (const p of solverResult.placed) {
+    for (const pid of p.periodIds) {
+      placedEntries.push({
+        day: p.day,
+        periodId: pid,
+        subjectId: p.subjectId,
+        teacherId: p.teacherId,
+        isGroupSubject: p.isGroupSubject,
+        periodGradeSectionId: p.sectionId,
+      });
     }
   }
 
-  // 7. Save to database
-  if (placed.length > 0) {
+  // 13. Save to database
+  if (placedEntries.length > 0) {
     const t = await sequelize.transaction();
     try {
-      // Group placed entries by section
-      const bySection = new Map<number, PlacedEntry[]>();
-      placed.forEach(e => {
+      const bySection = new Map<number, typeof placedEntries>();
+      placedEntries.forEach(e => {
         if (!bySection.has(e.periodGradeSectionId)) bySection.set(e.periodGradeSectionId, []);
         bySection.get(e.periodGradeSectionId)!.push(e);
       });
 
       for (const [sectionId, entries] of bySection) {
-        // Find or create schedule
         const [schedule] = await Schedule.findOrCreate({
           where: { schoolPeriodId, periodGradeSectionId: sectionId },
           defaults: { schoolPeriodId, periodGradeSectionId: sectionId, status: 'draft' },
           transaction: t,
         });
-        // Clear existing entries
         await ScheduleEntry.destroy({ where: { scheduleId: schedule.id }, transaction: t });
-        // Bulk create
         await ScheduleEntry.bulkCreate(
           entries.map(e => ({
             scheduleId: schedule.id,
@@ -562,19 +449,19 @@ export async function generateSchedulesForGrade(
     }
   }
 
-  // 8. Build result
-  const totalSlots = sections.length * teachingSlots.length * DAYS.length;
-  const result: GenerationResult = {
-    success: unplaced.length === 0,
-    placed,
-    unplaced,
+  // 14. Return result
+  const totalSlots = sectionInputs.length * blocks.length;
+  return {
+    success: solverResult.success,
+    placed: placedEntries,
+    unplaced: solverResult.unplaced,
     conflicts: [],
     stats: {
       totalSlots,
-      filledSlots: placed.length,
-      sections: sections.length,
-      subjects: tasks.length,
+      filledSlots: placedEntries.length,
+      sections: sectionInputs.length,
+      subjects: sectionInputs.reduce((acc, s) => acc + s.subjects.length, 0),
+      solverStatus: solverResult.stats.status,
     },
   };
-  return result;
 }

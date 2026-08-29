@@ -488,16 +488,16 @@ export const getSubjects = async (req: Request, res: Response) => {
 };
 
 export const createSubject = async (req: Request, res: Response) => {
-  const { name, subjectGroupId, usesLiteralGrades, abbreviation, icon, color, allowConsecutiveBlocks } = req.body as { name: string; subjectGroupId?: number | null; usesLiteralGrades?: boolean; abbreviation?: string | null; icon?: string | null; color?: string | null; allowConsecutiveBlocks?: boolean };
-  const subject = await Subject.create({ name, subjectGroupId: subjectGroupId ?? null, usesLiteralGrades: usesLiteralGrades ?? false, abbreviation: abbreviation ?? null, icon: icon ?? null, color: color ?? null, allowConsecutiveBlocks: allowConsecutiveBlocks ?? false });
+  const { name, subjectGroupId, usesLiteralGrades, abbreviation, icon, color, allowConsecutiveBlocks, maxHoursPerDay } = req.body as { name: string; subjectGroupId?: number | null; usesLiteralGrades?: boolean; abbreviation?: string | null; icon?: string | null; color?: string | null; allowConsecutiveBlocks?: number; maxHoursPerDay?: number | null };
+  const subject = await Subject.create({ name, subjectGroupId: subjectGroupId ?? null, usesLiteralGrades: usesLiteralGrades ?? false, abbreviation: abbreviation ?? null, icon: icon ?? null, color: color ?? null, allowConsecutiveBlocks: allowConsecutiveBlocks ?? 0, maxHoursPerDay: maxHoursPerDay ?? null });
   res.json(subject);
 };
 
 export const updateSubject = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { name, subjectGroupId, usesLiteralGrades, abbreviation, icon, color, allowConsecutiveBlocks } = req.body as { name?: string; subjectGroupId?: number | null; usesLiteralGrades?: boolean; abbreviation?: string | null; icon?: string | null; color?: string | null; allowConsecutiveBlocks?: boolean };
-    await Subject.update({ name, subjectGroupId: subjectGroupId ?? null, usesLiteralGrades: usesLiteralGrades ?? false, abbreviation: abbreviation ?? null, icon: icon ?? null, color: color ?? null, allowConsecutiveBlocks: allowConsecutiveBlocks ?? false }, { where: { id } });
+    const { name, subjectGroupId, usesLiteralGrades, abbreviation, icon, color, allowConsecutiveBlocks, maxHoursPerDay } = req.body as { name?: string; subjectGroupId?: number | null; usesLiteralGrades?: boolean; abbreviation?: string | null; icon?: string | null; color?: string | null; allowConsecutiveBlocks?: number; maxHoursPerDay?: number | null };
+    await Subject.update({ name, subjectGroupId: subjectGroupId ?? null, usesLiteralGrades: usesLiteralGrades ?? false, abbreviation: abbreviation ?? null, icon: icon ?? null, color: color ?? null, allowConsecutiveBlocks: allowConsecutiveBlocks ?? 0, maxHoursPerDay: maxHoursPerDay ?? null }, { where: { id } });
     res.json({ message: 'Subject updated' });
   } catch (error) {
     console.error('[updateSubject] Error:', error);

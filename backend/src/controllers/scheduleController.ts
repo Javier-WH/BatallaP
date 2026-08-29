@@ -1,16 +1,16 @@
 import { Request, Response } from 'express';
 import sequelize from '@/config/database';
 import { Schedule, ScheduleEntry, PeriodGradeSection, Subject, Person, SchoolPeriod, PeriodGrade, Grade, Section, TeacherAssignment, PeriodGradeSubject } from '@/models';
-import { generateSchedulesForGrade } from '@/services/scheduleGeneratorService';
+import { generateSchedulesForPeriod } from '@/services/scheduleGeneratorService';
 
-// POST /api/schedules/generate?schoolPeriodId=&periodGradeId=
+// POST /api/schedules/generate?schoolPeriodId=
 export const generateSchedules = async (req: Request, res: Response) => {
   try {
-    const { schoolPeriodId, periodGradeId } = req.query;
-    if (!schoolPeriodId || !periodGradeId) {
-      return res.status(400).json({ message: 'schoolPeriodId y periodGradeId son requeridos' });
+    const { schoolPeriodId } = req.query;
+    if (!schoolPeriodId) {
+      return res.status(400).json({ message: 'schoolPeriodId es requerido' });
     }
-    const result = await generateSchedulesForGrade(Number(schoolPeriodId), Number(periodGradeId));
+    const result = await generateSchedulesForPeriod(Number(schoolPeriodId));
     return res.json(result);
   } catch (error) {
     console.error('[generateSchedules] Error:', error);
@@ -231,8 +231,9 @@ export const getSectionScheduleOptions = async (req: Request, res: Response) => 
     });
 
     // Get teacher assignments for this section
+    // TeacherAssignment.sectionId references Section.id, NOT PeriodGradeSection.id
     const assignments = await TeacherAssignment.findAll({
-      where: { sectionId: Number(sectionId) },
+      where: { sectionId: pgs.sectionId },
       include: [
         { model: Person, as: 'teacher', attributes: ['id', 'firstName', 'lastName'] },
         { model: PeriodGradeSubject, as: 'periodGradeSubject', attributes: ['id', 'subjectId', 'weeklyBlocks'] },
@@ -253,7 +254,7 @@ export const getSectionScheduleOptions = async (req: Request, res: Response) => 
         subjectId: p.subjectId,
         subjectName: subject?.name ?? '',
         weeklyBlocks: p.weeklyBlocks,
-        allowConsecutiveBlocks: subject?.allowConsecutiveBlocks ?? false,
+        allowConsecutiveBlocks: subject?.allowConsecutiveBlocks ?? 0,
         maxHoursPerDay: (subject as any)?.maxHoursPerDay ?? null,
         subjectGroupId: subject?.subjectGroupId ?? null,
         teachers,

@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Tabs, Select, Card, Spin, message, Button, Tag, Empty, Tooltip, Modal, Switch, InputNumber, Alert, Popconfirm } from 'antd';
-import { TableOutlined, UserOutlined, ReloadOutlined, EditOutlined, SaveOutlined, CloseOutlined, DeleteOutlined, WarningOutlined, ThunderboltOutlined } from '@ant-design/icons';
+import { TableOutlined, UserOutlined, ReloadOutlined, EditOutlined, SaveOutlined, CloseOutlined, DeleteOutlined, WarningOutlined, ThunderboltOutlined, ScheduleOutlined } from '@ant-design/icons';
 import api from '@/services/api';
 import { useSchool } from '@/context/SchoolContext';
 import dayjs from 'dayjs';
@@ -101,7 +101,7 @@ interface SectionOption {
   subjectId: number;
   subjectName: string;
   weeklyBlocks: number;
-  allowConsecutiveBlocks: boolean;
+  allowConsecutiveBlocks: number; // 0 = off, 1 = try, 2 = mandatory
   subjectGroupId: number | null;
   teachers: { teacherId: number; teacherName: string }[];
 }
@@ -460,6 +460,242 @@ const CellEditorModal: React.FC<CellEditorModalProps> = ({ open, day, period, ce
   );
 };
 
+// ── Teacher Availability Panel (for Control de Estudios) ──
+const AVAIL_STATUSES = [
+  { key: 'available', label: 'Disponible', swatch: 'bg-emerald-400', ring: 'ring-emerald-500' },
+  { key: 'busy', label: 'Ocupado', swatch: 'bg-rose-400', ring: 'ring-rose-500' },
+  { key: 'preferred', label: 'Preferido', swatch: 'bg-sky-400', ring: 'ring-sky-500' },
+];
+
+interface TeacherAvailabilityPanelProps {
+  teachers: { id: number; label: string }[];
+  sections: ScheduleSection[];
+}
+
+const TeacherAvailabilityPanel: React.FC<TeacherAvailabilityPanelProps> = ({ teachers, sections }) => {
+  const [selectedTeacherId, setSelectedTeacherId] = useState<number | undefined>();
+  const [cellStatus, setCellStatus] = useState<Record<string, string>>({});
+  const [activeKey, setActiveKey] = useState<string | null>('busy');
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const painting = useRef(false);
+  const paintValue = useRef<string | null>(null);
+
+  useEffect(() => {
+    const stop = () => { painting.current = false; };
+    window.addEventListener('mouseup', stop);
+    return () => window.removeEventListener('mouseup', stop);
+  }, []);
+
+  const loadAvailability = useCallback(async (teacherId: number) => {
+    setLoading(true);
+    try {
+      const res = await api.get(`/teacher-availability/${teacherId}`);
+      setCellStatus(res.data || {});
+    } catch (e) {
+      console.error('Error loading availability:', e);
+      setCellStatus({});
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (selectedTeacherId) loadAvailability(selectedTeacherId);
+    else setCellStatus({});
+  }, [selectedTeacherId, loadAvailability]);
+
+  const keyFor = (day: string, periodId: string) => `${day}|${periodId}`;
+
+  const applyPaint = useCallback((day: string, periodId: string, value: string | null) => {
+    setCellStatus(prev => {
+      const next = { ...prev };
+      const k = keyFor(day, periodId);
+      if (value === null) delete next[k];
+      else next[k] = value;
+      return next;
+    });
+  }, []);
+
+  const handleDown = (day: string, periodId: string) => {
+    if (!selectedTeacherId) return;
+    const current = cellStatus[keyFor(day, periodId)] ?? null;
+    const value = current === activeKey ? null : activeKey;
+    painting.current = true;
+    paintValue.current = value;
+    applyPaint(day, periodId, value);
+  };
+
+  const handleEnter = (day: string, periodId: string) => {
+    if (!painting.current || !selectedTeacherId) return;
+    applyPaint(day, periodId, paintValue.current);
+  };
+
+  const statusMeta = (key: string) => AVAIL_STATUSES.find(s => s.key === key);
+
+  const handleSave = async () => {
+    if (!selectedTeacherId) return;
+    setSaving(true);
+    try {
+      await api.post(`/teacher-availability/${selectedTeacherId}`, { availability: cellStatus });
+      message.success('Disponibilidad guardada');
+    } catch (e) {
+      console.error('Error saving availability:', e);
+      message.error('Error al guardar disponibilidad');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const clearAll = () => setCellStatus({});
+
+  return (
+    <div>
+      <div className="mb-4 flex items-center gap-4 flex-wrap">
+        <Select
+          placeholder="Seleccionar profesor"
+          style={{ width: 300 }}
+          value={selectedTeacherId}
+          onChange={setSelectedTeacherId}
+          options={teachers.map(t => ({ value: t.id, label: t.label }))}
+          showSearch
+          optionFilterProp="label"
+        />
+        {selectedTeacherId && (
+          <Button icon={<ReloadOutlined />} onClick={() => loadAvailability(selectedTeacherId)}>Recargar</Button>
+        )}
+      </div>
+
+      {!selectedTeacherId ? (
+        <Empty description="Seleccione un profesor para ver/editar su disponibilidad" />
+      ) : loading ? (
+        <div className="flex justify-center p-12"><Spin size="large" /></div>
+      ) : (
+        <Card title={`Disponibilidad: ${teachers.find(t => t.id === selectedTeacherId)?.label ?? ''}`}>
+          {/* Toolbar */}
+          <div className="flex flex-wrap items-center gap-2 mb-4">
+            {AVAIL_STATUSES.map(s => (
+              <button
+                key={s.key}
+                onClick={() => setActiveKey(s.key)}
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border text-xs font-medium transition-all ${
+                  activeKey === s.key
+                    ? `border-slate-800 ring-2 ring-offset-1 ${s.ring} bg-slate-50`
+                    : 'border-slate-200 bg-white hover:bg-slate-50'
+                }`}
+              >
+                <span className={`w-3 h-3 rounded-sm ${s.swatch}`} />
+                {s.label}
+              </button>
+            ))}
+            <button
+              onClick={() => setActiveKey(null)}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border text-xs font-medium transition-all ${
+                activeKey === null
+                  ? 'border-slate-800 ring-2 ring-offset-1 ring-slate-400 bg-slate-50'
+                  : 'border-slate-200 bg-white hover:bg-slate-50'
+              }`}
+            >
+              <span className="w-3 h-3 rounded-sm border border-slate-400 bg-white" />
+              Borrar
+            </button>
+            <span className="flex-1" />
+            <button
+              onClick={clearAll}
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-md text-xs font-medium text-slate-500 hover:text-slate-700 hover:bg-slate-50 border border-transparent"
+            >
+              <DeleteOutlined /> Limpiar todo
+            </button>
+          </div>
+
+          {/* Grid */}
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse text-sm" style={{ minWidth: '640px', tableLayout: 'fixed' }}>
+              <thead>
+                <tr>
+                  <th className="border border-slate-300 bg-slate-800 text-white py-2 text-xs" style={{ width: `${100 / (DAYS.length + 1)}%` }}>
+                    Hora
+                  </th>
+                  {DAYS.map(d => (
+                    <th
+                      key={d}
+                      className="border border-slate-300 bg-slate-800 text-white py-2 text-xs uppercase tracking-wide"
+                      style={{ width: `${100 / (DAYS.length + 1)}%` }}
+                    >
+                      {d}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {sections.map(section => (
+                  <React.Fragment key={section.id}>
+                    <tr>
+                      <td
+                        colSpan={DAYS.length + 1}
+                        className={`${section.id === 'manana' ? 'bg-teal-700' : 'bg-indigo-700'} text-white text-center font-bold tracking-widest py-1.5 text-xs`}
+                      >
+                        {section.label}
+                      </td>
+                    </tr>
+                    {section.periods.map(period =>
+                      period.break ? (
+                        <tr key={period.id}>
+                          <td
+                            colSpan={DAYS.length + 1}
+                            className="bg-amber-50 border-t-2 border-b-2 border-amber-400 text-amber-700 text-center text-[11px] py-1 font-medium"
+                          >
+                            ⏸ {period.label} · {period.start}–{period.end}
+                          </td>
+                        </tr>
+                      ) : (
+                        <tr key={period.id}>
+                          <td className="border border-slate-300 bg-slate-50 text-slate-600 text-xs text-center py-2 font-medium whitespace-nowrap">
+                            {period.start} - {period.end}
+                          </td>
+                          {DAYS.map(day => {
+                            const status = statusMeta(cellStatus[keyFor(day, period.id)]);
+                            return (
+                              <td
+                                key={day}
+                                onMouseDown={() => handleDown(day, period.id)}
+                                onMouseEnter={() => handleEnter(day, period.id)}
+                                className={`border border-slate-300 h-9 cursor-pointer select-none transition-colors ${
+                                  status ? status.swatch : 'bg-white hover:bg-slate-100'
+                                }`}
+                              />
+                            );
+                          })}
+                        </tr>
+                      )
+                    )}
+                  </React.Fragment>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Legend + Save */}
+          <div className="mt-4 flex items-center justify-between">
+            <div className="flex items-center gap-3 text-xs text-slate-500">
+              <span>Clic para marcar · arrastra para marcar varias</span>
+            </div>
+            <Button
+              type="primary"
+              icon={<SaveOutlined />}
+              onClick={handleSave}
+              loading={saving}
+              className="!rounded-xl !font-bold"
+            >
+              Guardar disponibilidad
+            </Button>
+          </div>
+        </Card>
+      )}
+    </div>
+  );
+};
+
 // ── Main Component ──
 const ScheduleManagement: React.FC = () => {
   const { activePeriod } = useSchool();
@@ -506,22 +742,27 @@ const ScheduleManagement: React.FC = () => {
     if (!activePeriod) return;
     try {
       const res = await api.get(`/academic/structure/${activePeriod.id}`);
-      // structure is PeriodGrade[] with { grade, sections: [{ id, name, PeriodGradeSection: { id, color } }] }
-      // Use PeriodGradeSection.id as unique key (a Section can belong to multiple grades)
       const flat: any[] = [];
       (res.data || []).forEach((pg: any) => {
         (pg.sections || []).forEach((s: any) => {
+          // Exclude the "MATERIA PENDIENTE" auxiliary section
+          if ((s.name || '').toUpperCase() === 'MATERIA PENDIENTE') return;
           const pgsId = s.PeriodGradeSection?.id ?? s.id;
           flat.push({
             id: pgsId,
             sectionId: s.id,
             label: `${pg.grade?.name ?? ''} - ${s.name ?? ''}`,
             gradeName: pg.grade?.name,
+            gradeOrder: pg.grade?.order ?? 99,
             sectionName: s.name,
           });
         });
       });
-      flat.sort((a, b) => a.label.localeCompare(b.label));
+      // Sort by grade order first, then section name
+      flat.sort((a, b) => {
+        if (a.gradeOrder !== b.gradeOrder) return a.gradeOrder - b.gradeOrder;
+        return (a.sectionName || '').localeCompare(b.sectionName || '', 'es');
+      });
       setSectionsList(flat);
     } catch (e) {
       console.error('Error loading sections:', e);
@@ -827,38 +1068,26 @@ const ScheduleManagement: React.FC = () => {
     }
   };
 
-  // Generate schedules automatically for the grade of the selected section
+  // Generate schedules automatically for ALL grades in the school period
   const [generating, setGenerating] = useState(false);
   const handleGenerate = async () => {
-    if (!activePeriod || !selectedSectionId) return;
-    // Find the periodGradeId for the selected section
-    const sectionInfo = sectionsList.find(s => s.id === selectedSectionId);
-    if (!sectionInfo) return;
-    // We need periodGradeId — get it from the section's schedule or structure
+    if (!activePeriod) return;
     try {
       setGenerating(true);
-      // Get the PeriodGradeSection to find periodGradeId
-      const structRes = await api.get(`/academic/structure/${activePeriod.id}`);
-      const pg = (structRes.data || []).find((p: any) =>
-        (p.sections || []).some((s: any) => (s.PeriodGradeSection?.id ?? s.id) === selectedSectionId)
-      );
-      if (!pg) {
-        message.error('No se encontró el grado de esta sección');
-        return;
-      }
       const res = await api.post('/schedules/generate', null, {
-        params: { schoolPeriodId: activePeriod.id, periodGradeId: pg.id },
+        params: { schoolPeriodId: activePeriod.id },
       });
       const result = res.data;
       if (result.success) {
-        message.success(`Horario generado: ${result.stats.filledSlots} bloques colocados en ${result.stats.sections} secciones`);
+        message.success(`Horarios generados (${result.stats.solverStatus}): ${result.stats.filledSlots} bloques en ${result.stats.sections} secciones`);
       } else {
-        message.warning(`Generación parcial: ${result.unplaced.length} materia(s) sin colocar`);
+        message.warning(`Generación parcial (${result.stats.solverStatus}): ${result.unplaced.length} materia(s) sin colocar`);
         if (result.unplaced.length > 0) {
           Modal.info({
             title: 'Materias sin colocar',
+            width: 600,
             content: (
-              <div className="text-xs">
+              <div className="text-xs" style={{ maxHeight: 400, overflow: 'auto' }}>
                 {result.unplaced.map((u: any, i: number) => {
                   const sec = sectionsList.find(s => s.id === u.sectionId);
                   return (
@@ -872,11 +1101,13 @@ const ScheduleManagement: React.FC = () => {
           });
         }
       }
-      // Reload the section schedule
-      await loadSectionSchedule(selectedSectionId);
+      // Reload the currently selected section schedule
+      if (selectedSectionId) {
+        await loadSectionSchedule(selectedSectionId);
+      }
     } catch (e: any) {
       console.error('Error generating schedule:', e);
-      message.error(e?.response?.data?.message ?? 'Error al generar horario');
+      message.error(e?.response?.data?.message ?? 'Error al generar horarios');
     } finally {
       setGenerating(false);
     }
@@ -931,12 +1162,10 @@ const ScheduleManagement: React.FC = () => {
                       {dirty && <Tag color="orange">Sin guardar</Tag>}
                     </>
                   )}
-                  {selectedSectionId && !editMode && (
-                    <>
-                      <Button icon={<ReloadOutlined />} onClick={() => loadSectionSchedule(selectedSectionId)}>Recargar</Button>
-                      <Popconfirm
+                  {activePeriod && (
+                    <Popconfirm
                         title="¿Generar horarios automáticamente?"
-                        description="Se generará el horario de TODAS las secciones del grado. Esto reemplazará cualquier horario existente."
+                        description="Se generarán los horarios de TODAS las secciones de TODOS los grados del período. Esto reemplazará cualquier horario existente."
                         okText="Sí, generar"
                         cancelText="Cancelar"
                         onConfirm={handleGenerate}
@@ -946,7 +1175,9 @@ const ScheduleManagement: React.FC = () => {
                           Generar automáticamente
                         </Button>
                       </Popconfirm>
-                    </>
+                  )}
+                  {selectedSectionId && !editMode && (
+                    <Button icon={<ReloadOutlined />} onClick={() => loadSectionSchedule(selectedSectionId)}>Recargar</Button>
                   )}
                 </div>
                 {!selectedSectionId ? (
@@ -1045,6 +1276,13 @@ const ScheduleManagement: React.FC = () => {
                   </Card>
                 )}
               </div>
+            ),
+          },
+          {
+            key: 'availability',
+            label: <span><ScheduleOutlined /> Disponibilidad Profesores</span>,
+            children: (
+              <TeacherAvailabilityPanel teachers={teachersList} sections={scheduleSections} />
             ),
           },
         ]}

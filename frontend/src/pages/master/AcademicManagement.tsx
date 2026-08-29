@@ -160,7 +160,7 @@ interface Subject extends BaseCatalogItem {
   color?: string | null;
   includeInAverage?: boolean;
   weeklyBlocks?: number;
-  allowConsecutiveBlocks?: boolean;
+  allowConsecutiveBlocks?: number; // 0 = off, 1 = try, 2 = mandatory
   maxHoursPerDay?: number | null;
 }
 
@@ -1088,7 +1088,7 @@ const AcademicManagement: React.FC = () => {
         abbreviation: subjectRecord.abbreviation ?? null,
         subjectGroupId: subjectRecord.subjectGroupId ?? null,
         usesLiteralGrades: subjectRecord.usesLiteralGrades ?? false,
-        allowConsecutiveBlocks: subjectRecord.allowConsecutiveBlocks ?? false,
+        allowConsecutiveBlocks: subjectRecord.allowConsecutiveBlocks ?? 0,
         maxHoursPerDay: subjectRecord.maxHoursPerDay ?? null,
         icon: subjectRecord.icon ?? null,
         color: subjectRecord.color ?? null,
@@ -1099,7 +1099,7 @@ const AcademicManagement: React.FC = () => {
     setEditCatalogVisible(true);
   };
 
-  const handleEditCatalog = async (values: { name: string; isDiversified?: boolean; subjectGroupId?: number | null; usesLiteralGrades?: boolean; allowConsecutiveBlocks?: boolean; maxHoursPerDay?: number | null; abbreviation?: string | null; icon?: string | null; color?: unknown }) => {
+  const handleEditCatalog = async (values: { name: string; isDiversified?: boolean; subjectGroupId?: number | null; usesLiteralGrades?: boolean; allowConsecutiveBlocks?: number; maxHoursPerDay?: number | null; abbreviation?: string | null; icon?: string | null; color?: unknown }) => {
     if (!editCatalogTarget) return;
     console.log('[handleEditCatalog] Form values:', values);
     try {
@@ -1122,7 +1122,7 @@ const AcademicManagement: React.FC = () => {
           abbreviation: values.abbreviation ?? null,
           subjectGroupId: values.subjectGroupId ?? null,
           usesLiteralGrades: values.usesLiteralGrades ?? false,
-          allowConsecutiveBlocks: values.allowConsecutiveBlocks ?? false,
+          allowConsecutiveBlocks: values.allowConsecutiveBlocks ?? 0,
           maxHoursPerDay: values.maxHoursPerDay ?? null,
           icon: values.icon ?? null,
           color: normalizeColorValue(values.color),
@@ -1890,7 +1890,7 @@ const AcademicManagement: React.FC = () => {
                             ...v,
                             subjectGroupId: v.subjectGroupId ?? null,
                             usesLiteralGrades: v.usesLiteralGrades ?? false,
-                            allowConsecutiveBlocks: v.allowConsecutiveBlocks ?? false,
+                            allowConsecutiveBlocks: v.allowConsecutiveBlocks ?? 0,
                             maxHoursPerDay: v.maxHoursPerDay ?? null,
                             icon: v.icon ?? null,
                             color: normalizeColorValue(v.color),
@@ -1936,8 +1936,12 @@ const AcademicManagement: React.FC = () => {
                           <Form.Item name="usesLiteralGrades" valuePropName="checked">
                             <Checkbox>Literales</Checkbox>
                           </Form.Item>
-                          <Form.Item name="allowConsecutiveBlocks" valuePropName="checked">
-                            <Checkbox>Bloques consec.</Checkbox>
+                          <Form.Item name="allowConsecutiveBlocks" tooltip="0=Apagado, 1=Tratar de juntar, 2=Obligatorio juntar">
+                            <Select style={{ width: 140 }} placeholder="Consecutivos" options={[
+                              { value: 0, label: 'Consec: No' },
+                              { value: 1, label: 'Consec: Tratar' },
+                              { value: 2, label: 'Consec: Obligatorio' },
+                            ]} />
                           </Form.Item>
                           <Form.Item name="maxHoursPerDay" tooltip="Máximo de horas de esta materia por día. Vacío = sin límite.">
                             <InputNumber min={1} max={20} placeholder="Máx hrs/día" style={{ width: 120 }} />
@@ -2189,8 +2193,12 @@ const AcademicManagement: React.FC = () => {
                 <Form.Item name="usesLiteralGrades" valuePropName="checked" style={{ marginBottom: 24 }}>
                   <Checkbox>Usar Notas Literales (A, B, C...)</Checkbox>
                 </Form.Item>
-                <Form.Item name="allowConsecutiveBlocks" valuePropName="checked" style={{ marginBottom: 24 }}>
-                  <Checkbox>Permitir bloques consecutivos (Ej: Educación Física, materias de grupo)</Checkbox>
+                <Form.Item name="allowConsecutiveBlocks" label={<Text style={{ fontWeight: 700 }}>Bloques consecutivos</Text>} tooltip="0=Apagado (distribuir normalmente), 1=Tratar de juntar todas las horas en un día, 2=Obligatorio juntarlas (si no cabe, no se coloca)" style={{ marginBottom: 24 }}>
+                  <Select options={[
+                    { value: 0, label: 'Apagado — distribuir en varios días' },
+                    { value: 1, label: 'Tratar de juntar — intentar todas las horas en un día' },
+                    { value: 2, label: 'Obligatorio — deben estar juntas (ej: Educación Física)' },
+                  ]} />
                 </Form.Item>
                 <Form.Item name="maxHoursPerDay" label="Máximo de horas por día" tooltip="null = sin límite (el algoritmo distribuye). Un número = máximo de horas de esta materia por día. Ej: 4 = puede concentrarse en un solo día." style={{ marginBottom: 24 }}>
                   <InputNumber min={1} max={20} placeholder="Sin límite" style={{ width: '100%' }} />

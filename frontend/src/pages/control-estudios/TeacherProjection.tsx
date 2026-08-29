@@ -309,7 +309,10 @@ const TeacherProjection: React.FC = () => {
 
     availableStructure.forEach((gs: any) => {
       const gradeName = gs.grade?.name || '—';
-      const sections: any[] = gs.sections || [];
+      // Exclude the "MATERIA PENDIENTE" auxiliary section — it's managed separately
+      const sections: any[] = (gs.sections || []).filter(
+        (sec: any) => (sec.name || '').toUpperCase() !== 'MATERIA PENDIENTE'
+      );
       const subjects: any[] = gs.subjects || [];
 
       subjects.forEach((sub: any) => {
@@ -761,7 +764,9 @@ const TeacherProjection: React.FC = () => {
 
           <Form.Item label="Sección" required>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-              {[...(availableStructure.find(gs => gs.id === selectedGradeId)?.sections || [])].sort((a: any, b: any) => a.name.localeCompare(b.name, 'es')).map((sec: any) => {
+              {[...(availableStructure.find(gs => gs.id === selectedGradeId)?.sections || [])]
+                .filter((sec: any) => (sec.name || '').toUpperCase() !== 'MATERIA PENDIENTE')
+                .sort((a: any, b: any) => a.name.localeCompare(b.name, 'es')).map((sec: any) => {
                 const selected = selectedSectionIds.includes(sec.id);
                 return (
                   <Button

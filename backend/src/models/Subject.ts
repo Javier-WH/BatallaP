@@ -9,7 +9,7 @@ interface SubjectAttributes {
   usesLiteralGrades?: boolean;
   icon?: string | null;
   color?: string | null;
-  allowConsecutiveBlocks?: boolean;
+  allowConsecutiveBlocks?: number; // 0 = off, 1 = try, 2 = mandatory
   maxHoursPerDay?: number | null;
 }
 
@@ -23,7 +23,7 @@ class Subject extends Model<SubjectAttributes, SubjectCreationAttributes> implem
   public usesLiteralGrades?: boolean;
   public icon?: string | null;
   public color?: string | null;
-  public allowConsecutiveBlocks?: boolean;
+  public allowConsecutiveBlocks?: number;
   public maxHoursPerDay?: number | null;
 
   public readonly createdAt!: Date;
@@ -64,9 +64,9 @@ Subject.init(
       allowNull: true,
     },
     allowConsecutiveBlocks: {
-      type: DataTypes.BOOLEAN,
+      type: DataTypes.INTEGER,
       allowNull: false,
-      defaultValue: false,
+      defaultValue: 0,
     },
     maxHoursPerDay: {
       type: DataTypes.INTEGER,

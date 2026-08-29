@@ -85,3 +85,50 @@ export const getAllAvailability = async (_req: Request, res: Response) => {
     return res.status(500).json({ message: 'Error al obtener disponibilidad de profesores' });
   }
 };
+
+// GET /api/teacher-availability/:personId — returns a specific teacher's availability
+export const getTeacherAvailability = async (req: Request, res: Response) => {
+  try {
+    const personId = Number(req.params.personId);
+    const rows = await TeacherAvailability.findAll({ where: { personId } });
+    const map: Record<string, string> = {};
+    rows.forEach(r => {
+      map[`${r.day}|${r.periodId}`] = r.status;
+    });
+    return res.json(map);
+  } catch (error) {
+    console.error('[getTeacherAvailability] Error:', error);
+    return res.status(500).json({ message: 'Error al obtener disponibilidad' });
+  }
+};
+
+// POST /api/teacher-availability/:personId — saves a specific teacher's availability (for Control de Estudios)
+// Body: { availability: { "Lunes|m1": "available", ... } }
+export const saveTeacherAvailability = async (req: Request, res: Response) => {
+  try {
+    const personId = Number(req.params.personId);
+    const { availability } = req.body as { availability: Record<string, string> };
+    if (!availability || typeof availability !== 'object') {
+      return res.status(400).json({ message: 'availability es requerido' });
+    }
+
+    await TeacherAvailability.destroy({ where: { personId } });
+
+    const rows: Array<{ personId: number; day: string; periodId: string; status: string }> = [];
+    for (const [key, status] of Object.entries(availability)) {
+      const [day, periodId] = key.split('|');
+      if (day && periodId && status) {
+        rows.push({ personId, day, periodId, status });
+      }
+    }
+
+    if (rows.length > 0) {
+      await TeacherAvailability.bulkCreate(rows);
+    }
+
+    return res.json({ message: 'Disponibilidad guardada', count: rows.length });
+  } catch (error) {
+    console.error('[saveTeacherAvailability] Error:', error);
+    return res.status(500).json({ message: 'Error al guardar disponibilidad' });
+  }
+};
