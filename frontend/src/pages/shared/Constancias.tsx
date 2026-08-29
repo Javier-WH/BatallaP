@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { useSchool } from '@/context/SchoolContext';
 import api from '@/services/api';
-import { Button, Select, Input, message, Spin, Modal, Empty, Tabs, Card } from 'antd';
+import { Button, Select, Input, message, Spin, Modal, Empty, Tabs, Card, DatePicker, Checkbox } from 'antd';
+import dayjs from 'dayjs';
 import {
   PlusOutlined, EditOutlined, DeleteOutlined, EyeOutlined,
   FilePdfOutlined, FileWordOutlined, ArrowLeftOutlined, SaveOutlined,
@@ -66,6 +67,8 @@ const Constancias: React.FC = () => {
   const [generating, setGenerating] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [showGuides, setShowGuides] = useState(false);
+  const [useCustomDate, setUseCustomDate] = useState(false);
+  const [customDate, setCustomDate] = useState<dayjs.Dayjs | null>(null);
 
   // Template editor tab state
   const [editingTemplate, setEditingTemplate] = useState<Template | null>(null);
@@ -162,6 +165,7 @@ const Constancias: React.FC = () => {
     if (!selectedTemplateId) { message.warning('Seleccione una plantilla'); return; }
     if (templateAnalysis?.needsStudent && !selectedStudent) { message.warning('Seleccione un estudiante'); return; }
     if (templateAnalysis?.needsWorker && !selectedWorker) { message.warning('Seleccione un trabajador'); return; }
+    if (useCustomDate && !customDate) { message.warning('Seleccione una fecha personalizada'); return; }
     setGenerating(true);
     try {
       const personId = selectedStudent?.id || selectedWorker?.id || null;
@@ -170,6 +174,7 @@ const Constancias: React.FC = () => {
         personId,
         schoolPeriodId: activePeriod?.id || null,
         customVars: customValues,
+        customDate: useCustomDate && customDate ? customDate.format('YYYY-MM-DD') : null,
       });
       setPreviewHtml(res.data.html);
     } catch (error: any) {
@@ -177,7 +182,7 @@ const Constancias: React.FC = () => {
     } finally {
       setGenerating(false);
     }
-  }, [selectedTemplateId, selectedStudent, selectedWorker, activePeriod, customValues, templateAnalysis]);
+  }, [selectedTemplateId, selectedStudent, selectedWorker, activePeriod, customValues, templateAnalysis, useCustomDate, customDate]);
 
   // Print PDF (uses browser print)
   const handlePrintPdf = useCallback(() => {
@@ -401,13 +406,36 @@ const Constancias: React.FC = () => {
                 </div>
               )}
 
+              {/* Custom date override */}
+              <div className="flex flex-col gap-2">
+                <Checkbox
+                  checked={useCustomDate}
+                  onChange={e => {
+                    setUseCustomDate(e.target.checked);
+                    setPreviewHtml(null);
+                  }}
+                >
+                  Usar fecha personalizada
+                </Checkbox>
+                {useCustomDate && (
+                  <DatePicker
+                    value={customDate}
+                    onChange={(d) => { setCustomDate(d); setPreviewHtml(null); }}
+                    format="YYYY-MM-DD"
+                    size="large"
+                    style={{ width: '100%' }}
+                    placeholder="Seleccione la fecha de expedición"
+                  />
+                )}
+              </div>
+
               {/* Generate button */}
               <Button
                 type="primary"
                 size="large"
                 icon={<EyeOutlined />}
                 onClick={generatePreview}
-                disabled={(templateAnalysis.needsStudent && !selectedStudent) || (templateAnalysis.needsWorker && !selectedWorker) || generating}
+                disabled={(templateAnalysis.needsStudent && !selectedStudent) || (templateAnalysis.needsWorker && !selectedWorker) || (useCustomDate && !customDate) || generating}
                 loading={generating}
               >
                 Generar vista previa

@@ -49,7 +49,35 @@ function toSpanishWords(n: number): string {
   return String(n);
 }
 
-async function resolveVariables(personId: number, schoolPeriodId: number): Promise<Record<string, string>> {
+// Parse a YYYY-MM-DD string as a local date (not UTC) to avoid timezone shifts.
+// new Date('2025-06-15') treats it as UTC midnight, which in negative-offset zones
+// like Venezuela (UTC-4) shifts getDate() to the 14th.
+function parseLocalDate(s: string): Date {
+  const [y, m, d] = s.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
+
+// Build only the date.* variables from a given Date — used when there is no person
+// but the user still wants to override the current date.
+function buildDateVars(d: Date): Record<string, string> {
+  const formatDate = (date: Date): string => {
+    const months = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+    return `${date.getDate()} de ${months[date.getMonth()]} de ${date.getFullYear()}`;
+  };
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return {
+    'date': `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`,
+    'date.long': formatDate(d),
+    'date.day': String(d.getDate()),
+    'date.dayOrdinal': toOrdinal(d.getDate()),
+    'date.dayWords': toSpanishWords(d.getDate()),
+    'date.month': d.toLocaleString('es-ES', { month: 'long' }),
+    'date.monthUpper': d.toLocaleString('es-ES', { month: 'long' }).toUpperCase(),
+    'date.year': String(d.getFullYear()),
+  };
+}
+
+async function resolveVariables(personId: number, schoolPeriodId: number, customDate: string | null = null): Promise<Record<string, string>> {
   const person = await Person.findByPk(personId);
   if (!person) throw new Error('Estudiante no encontrado');
 
@@ -117,7 +145,7 @@ async function resolveVariables(personId: number, schoolPeriodId: number): Promi
   const docDigits = document.replace(/^(V|E|P|CE)[-.\s]*/i, '').replace(/[^0-9]/g, '');
   const docGrouped = docDigits.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
   const fullDocument = `${docPrefix}${docPrefix && docGrouped ? '-' : ''}${docGrouped}`;
-  const birthdate = person.birthdate ? new Date(person.birthdate) : null;
+  const birthdate = person.birthdate ? parseLocalDate(String(person.birthdate)) : null;
   const gender = person.gender || '';
 
   // Format date in Spanish
@@ -131,7 +159,7 @@ async function resolveVariables(personId: number, schoolPeriodId: number): Promi
     ? Math.floor((Date.now() - birthdate.getTime()) / (365.25 * 24 * 60 * 60 * 1000))
     : null;
 
-  const now = new Date();
+  const now = customDate ? parseLocalDate(customDate) : new Date();
 
   const vars: Record<string, string> = {
     // Student
@@ -142,7 +170,7 @@ async function resolveVariables(personId: number, schoolPeriodId: number): Promi
     'student.documentTypeLabel': documentTypeLabel,
     'student.document': document,
     'student.fullDocument': fullDocument,
-    'student.birthdate': birthdate ? birthdate.toISOString().split('T')[0] : '',
+    'student.birthdate': birthdate ? `${birthdate.getFullYear()}-${String(birthdate.getMonth() + 1).padStart(2, '0')}-${String(birthdate.getDate()).padStart(2, '0')}` : '',
     'student.birthdateLong': birthdate ? formatDate(birthdate) : '',
     'student.age': age !== null ? String(age) : '',
     'student.gender': gender,
@@ -158,14 +186,14 @@ async function resolveVariables(personId: number, schoolPeriodId: number): Promi
     'worker.documentTypeLabel': documentTypeLabel,
     'worker.document': document,
     'worker.fullDocument': fullDocument,
-    'worker.birthdate': birthdate ? birthdate.toISOString().split('T')[0] : '',
+    'worker.birthdate': birthdate ? `${birthdate.getFullYear()}-${String(birthdate.getMonth() + 1).padStart(2, '0')}-${String(birthdate.getDate()).padStart(2, '0')}` : '',
     'worker.birthdateLong': birthdate ? formatDate(birthdate) : '',
     'worker.age': age !== null ? String(age) : '',
     'worker.gender': gender,
     'worker.article': gender === 'F' ? 'la' : 'el',
     'worker.articleUpper': gender === 'F' ? 'La' : 'El',
-    'worker.hireDate': person.hireDate ? new Date(person.hireDate).toISOString().split('T')[0] : '',
-    'worker.hireDateLong': person.hireDate ? formatDate(new Date(person.hireDate)) : '',
+    'worker.hireDate': person.hireDate ? (() => { const h = parseLocalDate(String(person.hireDate)); return `${h.getFullYear()}-${String(h.getMonth() + 1).padStart(2, '0')}-${String(h.getDate()).padStart(2, '0')}`; })() : '',
+    'worker.hireDateLong': person.hireDate ? formatDate(parseLocalDate(String(person.hireDate))) : '',
     // Institution
     'institution.name': settingsMap['institution_name'] || '',
     'institution.code': settingsMap['institution_code'] || '',
@@ -186,8 +214,8 @@ async function resolveVariables(personId: number, schoolPeriodId: number): Promi
     'section.nameUpper': (inscription?.section?.name || '').toUpperCase(),
     'period.name': period?.name || '',
     // Certificate
-    'date': now.toISOString().split('T')[0],
-    'date.long': formatDate(new Date()),
+    'date': `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`,
+    'date.long': formatDate(now),
     'date.day': String(now.getDate()),
     'date.dayOrdinal': toOrdinal(now.getDate()),
     'date.dayWords': toSpanishWords(now.getDate()),
@@ -332,11 +360,12 @@ export const deleteTemplate = async (req: Request, res: Response) => {
 // ── Generate ──
 
 // Returns rendered HTML for preview.
-// Body: { templateId, personId?, schoolPeriodId?, customVars?: Record<string, string> }
+// Body: { templateId, personId?, schoolPeriodId?, customVars?, customDate? }
 // personId is optional — some constancias (e.g. work certificates) may not need a student.
+// customDate (YYYY-MM-DD) overrides the current date used for all date.* variables.
 export const generatePreview = async (req: Request, res: Response) => {
   try {
-    const { templateId, personId, schoolPeriodId, customVars } = req.body;
+    const { templateId, personId, schoolPeriodId, customVars, customDate } = req.body;
     if (!templateId) {
       return res.status(400).json({ message: 'templateId es requerido' });
     }
@@ -347,7 +376,10 @@ export const generatePreview = async (req: Request, res: Response) => {
     let vars: Record<string, string> = {};
     if (personId) {
       const periodId = schoolPeriodId || null;
-      vars = await resolveVariables(Number(personId), periodId);
+      vars = await resolveVariables(Number(personId), periodId, customDate || null);
+    } else if (customDate) {
+      // No person, but a custom date — still populate date variables.
+      vars = buildDateVars(parseLocalDate(customDate));
     }
 
     // Merge custom variables (user-provided text inputs)
