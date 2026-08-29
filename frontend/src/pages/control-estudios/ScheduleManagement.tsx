@@ -192,7 +192,7 @@ function ScheduleGrid({ sections, entries, onCellClick, editable, getCellLabel }
               {sec.periods.map(period =>
                 period.break ? (
                   <tr key={period.id}>
-                    <td colSpan={DAYS.length + 1} className="bg-amber-50 border-t-2 border-b-2 border-amber-400 text-amber-700 text-center text-[11px] py-1 font-medium">
+                    <td colSpan={DAYS.length + 1} className="bg-amber-50 border-t border-b border-amber-300 text-amber-700 text-center text-[10px] py-0.5 font-medium">
                       ⏸ {period.label} · {period.start}–{period.end}
                     </td>
                   </tr>
@@ -643,7 +643,7 @@ const TeacherAvailabilityPanel: React.FC<TeacherAvailabilityPanelProps> = ({ tea
                         <tr key={period.id}>
                           <td
                             colSpan={DAYS.length + 1}
-                            className="bg-amber-50 border-t-2 border-b-2 border-amber-400 text-amber-700 text-center text-[11px] py-1 font-medium"
+                            className="bg-amber-50 border-t border-b border-amber-300 text-amber-700 text-center text-[10px] py-0.5 font-medium"
                           >
                             ⏸ {period.label} · {period.start}–{period.end}
                           </td>
@@ -698,7 +698,7 @@ const TeacherAvailabilityPanel: React.FC<TeacherAvailabilityPanelProps> = ({ tea
 
 // ── Main Component ──
 const ScheduleManagement: React.FC = () => {
-  const { activePeriod } = useSchool();
+  const { viewPeriod, isReadOnly } = useSchool();
   const [activeTab, setActiveTab] = useState('sections');
   const [settings, setSettings] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
@@ -739,9 +739,9 @@ const ScheduleManagement: React.FC = () => {
 
   // Load sections list
   const loadSections = useCallback(async () => {
-    if (!activePeriod) return;
+    if (!viewPeriod) return;
     try {
-      const res = await api.get(`/academic/structure/${activePeriod.id}`);
+      const res = await api.get(`/academic/structure/${viewPeriod.id}`);
       const flat: any[] = [];
       (res.data || []).forEach((pg: any) => {
         (pg.sections || []).forEach((s: any) => {
@@ -767,7 +767,7 @@ const ScheduleManagement: React.FC = () => {
     } catch (e) {
       console.error('Error loading sections:', e);
     }
-  }, [activePeriod]);
+  }, [viewPeriod]);
 
   // Load teachers list
   const loadTeachers = useCallback(async () => {
@@ -795,10 +795,10 @@ const ScheduleManagement: React.FC = () => {
 
   // Load section schedule
   const loadSectionSchedule = useCallback(async (sectionId: number) => {
-    if (!activePeriod) return;
+    if (!viewPeriod) return;
     setSectionLoading(true);
     try {
-      const createRes = await api.post('/schedules', { schoolPeriodId: activePeriod.id, periodGradeSectionId: sectionId });
+      const createRes = await api.post('/schedules', { schoolPeriodId: viewPeriod.id, periodGradeSectionId: sectionId });
       const scheduleId = createRes.data.id;
       const res = await api.get(`/schedules/${scheduleId}`);
       setSectionSchedule(res.data);
@@ -812,14 +812,14 @@ const ScheduleManagement: React.FC = () => {
     } finally {
       setSectionLoading(false);
     }
-  }, [activePeriod]);
+  }, [viewPeriod]);
 
   // Load teacher schedule
   const loadTeacherSchedule = useCallback(async (personId: number) => {
-    if (!activePeriod) return;
+    if (!viewPeriod) return;
     setTeacherLoading(true);
     try {
-      const res = await api.get(`/schedules/teacher/${personId}`, { params: { schoolPeriodId: activePeriod.id } });
+      const res = await api.get(`/schedules/teacher/${personId}`, { params: { schoolPeriodId: viewPeriod.id } });
       setTeacherEntries(res.data || []);
     } catch (e) {
       console.error('Error loading teacher schedule:', e);
@@ -827,7 +827,7 @@ const ScheduleManagement: React.FC = () => {
     } finally {
       setTeacherLoading(false);
     }
-  }, [activePeriod]);
+  }, [viewPeriod]);
 
   useEffect(() => {
     if (selectedSectionId) loadSectionSchedule(selectedSectionId);
@@ -928,7 +928,7 @@ const ScheduleManagement: React.FC = () => {
                 periodId: p.id,
                 teacherId,
                 scheduleId: sectionSchedule?.id,
-                schoolPeriodId: activePeriod?.id,
+                schoolPeriodId: viewPeriod?.id,
               },
             });
             if (res.data?.hasConflict) allConflicts.push(...res.data.conflicts);
@@ -1031,7 +1031,7 @@ const ScheduleManagement: React.FC = () => {
             periodId: p.id,
             teacherId,
             scheduleId: sectionSchedule?.id,
-            schoolPeriodId: activePeriod?.id,
+            schoolPeriodId: viewPeriod?.id,
           },
         });
         if (res.data?.hasConflict) allConflicts.push(...res.data.conflicts);
@@ -1071,11 +1071,11 @@ const ScheduleManagement: React.FC = () => {
   // Generate schedules automatically for ALL grades in the school period
   const [generating, setGenerating] = useState(false);
   const handleGenerate = async () => {
-    if (!activePeriod) return;
+    if (!viewPeriod) return;
     try {
       setGenerating(true);
       const res = await api.post('/schedules/generate', null, {
-        params: { schoolPeriodId: activePeriod.id },
+        params: { schoolPeriodId: viewPeriod.id },
       });
       const result = res.data;
       if (result.success) {
@@ -1124,6 +1124,15 @@ const ScheduleManagement: React.FC = () => {
 
   return (
     <div className="p-6">
+      {isReadOnly && (
+        <Alert
+          message="Período histórico"
+          description={`Estás viendo los horarios del período "${viewPeriod?.name ?? ''}". La edición y generación están deshabilitadas.`}
+          type="info"
+          showIcon
+          className="mb-4"
+        />
+      )}
       <Tabs
         activeKey={activeTab}
         onChange={setActiveTab}
@@ -1143,7 +1152,7 @@ const ScheduleManagement: React.FC = () => {
                     showSearch
                     optionFilterProp="label"
                   />
-                  {selectedSectionId && !editMode && (
+                  {selectedSectionId && !editMode && !isReadOnly && (
                     <Button icon={<EditOutlined />} onClick={enterEditMode}>Editar</Button>
                   )}
                   {selectedSectionId && editMode && (
@@ -1162,7 +1171,7 @@ const ScheduleManagement: React.FC = () => {
                       {dirty && <Tag color="orange">Sin guardar</Tag>}
                     </>
                   )}
-                  {activePeriod && (
+                  {viewPeriod && !isReadOnly && (
                     <Popconfirm
                         title="¿Generar horarios automáticamente?"
                         description="Se generarán los horarios de TODAS las secciones de TODOS los grados del período. Esto reemplazará cualquier horario existente."
