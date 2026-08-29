@@ -71,6 +71,7 @@ interface EditUserFormValues {
   document: string;
   gender: string;
   birthdate: Dayjs | null;
+  hireDate?: Dayjs | null;
   username?: string;
   password?: string;
   address?: string;
@@ -191,6 +192,7 @@ const EditUser: React.FC = () => {
           document: data.document,
           gender: data.gender,
           birthdate: data.birthdate ? dayjs(data.birthdate) : null,
+          hireDate: data.hireDate ? dayjs(data.hireDate) : null,
           username: data.user?.username,
           address: data.contact?.address,
           phone1: data.contact?.phone1,
@@ -219,6 +221,7 @@ const EditUser: React.FC = () => {
       const payload = {
         ...values,
         birthdate: values.birthdate ? values.birthdate.format('YYYY-MM-DD') : null,
+        hireDate: values.hireDate ? values.hireDate.format('YYYY-MM-DD') : null,
         representativeId: newRepresentativeId
       };
 
@@ -276,6 +279,7 @@ const EditUser: React.FC = () => {
 
 
   const targetHasRestrictedRoles = targetUserRoles.includes('Master') || targetUserRoles.includes('Administrador');
+  const isTargetStaff = targetUserRoles.some(r => ['Master', 'Administrador', 'Control de Estudios', 'Profesor'].includes(r));
 
   if (loading) return <div style={{ display: 'flex', justifyContent: 'center', padding: 50 }}><Spin size="large" /></div>;
 
@@ -395,6 +399,12 @@ const EditUser: React.FC = () => {
             <Form.Item name="birthdate" label="Fecha de Nacimiento" rules={[{ required: true }]}>
               <DatePicker style={{ width: '100%' }} format="YYYY-MM-DD" />
             </Form.Item>
+
+            {isTargetStaff && (
+              <Form.Item name="hireDate" label="Fecha de Inicio (laboral)">
+                <DatePicker style={{ width: '100%' }} format="YYYY-MM-DD" placeholder="Cuándo empezó a trabajar" />
+              </Form.Item>
+            )}
 
             <div style={{ gridColumn: 'span 2', marginTop: 16 }}>
               <h4 style={{ margin: 0, marginBottom: 8, color: '#666' }}>Datos de Contacto</h4>

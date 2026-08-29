@@ -142,6 +142,7 @@ export const searchUsers = async (req: Request, res: Response) => {
         firstName: person.firstName,
         lastName: person.lastName,
         document: person.document,
+        hireDate: person.hireDate ?? null,
         person: { firstName: person.firstName, lastName: person.lastName, document: person.document },
         roles: person.roles,
       }));
@@ -184,6 +185,7 @@ export const searchUsers = async (req: Request, res: Response) => {
       firstName: person.firstName,
       lastName: person.lastName,
       document: person.document,
+      hireDate: person.hireDate ?? null,
       person: { firstName: person.firstName, lastName: person.lastName, document: person.document },
       roles: person.roles,
     }));
@@ -355,7 +357,7 @@ export const updateUser = async (req: Request, res: Response) => {
     const { id } = req.params; // Person ID
     const {
       // Person
-      firstName, lastName, documentType, document, gender, birthdate,
+      firstName, lastName, documentType, document, gender, birthdate, hireDate,
       // User
       username, password,
       // Contact
@@ -386,7 +388,7 @@ export const updateUser = async (req: Request, res: Response) => {
     const targetHasRestrictedRoles = currentRoles.some((r: any) => ['Master', 'Administrador'].includes(r.name));
 
     // Update Person Data (Allowed for all admins)
-    await person.update({ firstName, lastName, documentType, document, gender, birthdate });
+    await person.update({ firstName, lastName, documentType, document, gender, birthdate, hireDate: hireDate || null });
 
     // Update User (Account/Security) - Protected for Admin/Master by non-Master
     if (!targetHasRestrictedRoles || isMaster) {

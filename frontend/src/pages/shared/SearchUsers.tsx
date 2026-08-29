@@ -15,8 +15,11 @@ interface User {
   firstName: string;
   lastName: string;
   document: string;
+  hireDate?: string | null;
   roles: Role[];
 }
+
+const STAFF_ROLES = ['Master', 'Administrador', 'Control de Estudios', 'Profesor'];
 
 const { Search } = Input;
 const { Title, Text } = Typography;
@@ -88,6 +91,15 @@ const SearchUsers: React.FC<{ initialRoleFilter?: string }> = ({ initialRoleFilt
     return false;
   }, [isMaster, isAdminUser, isControlUser]);
 
+  const filteredData = useMemo(() => {
+    if (roleFilter === 'Todos') return data;
+    return data.filter(user => user.roles?.some(role => role.name === roleFilter));
+  }, [data, roleFilter]);
+
+  // Only show the hireDate column when viewing staff roles (or all).
+  const NON_STAFF_FILTERS = ['Alumno', 'Representante'];
+  const showHireDateColumn = !NON_STAFF_FILTERS.includes(roleFilter);
+
   const columns = [
     {
       title: 'Nombre',
@@ -99,6 +111,16 @@ const SearchUsers: React.FC<{ initialRoleFilter?: string }> = ({ initialRoleFilt
       dataIndex: 'document',
       key: 'document',
     },
+    ...(showHireDateColumn ? [{
+      title: 'Fecha de inicio',
+      dataIndex: 'hireDate' as keyof User,
+      key: 'hireDate',
+      render: (hireDate: string | null, record: User) => {
+        const isStaff = (record.roles || []).some(r => STAFF_ROLES.includes(r.name));
+        if (!isStaff || !hireDate) return '—';
+        return new Date(hireDate).toLocaleDateString('es-VE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+      },
+    }] : []),
     {
       title: 'Roles',
       key: 'roles',
@@ -178,11 +200,6 @@ const SearchUsers: React.FC<{ initialRoleFilter?: string }> = ({ initialRoleFilt
       }
     }
   ];
-
-  const filteredData = useMemo(() => {
-    if (roleFilter === 'Todos') return data;
-    return data.filter(user => user.roles?.some(role => role.name === roleFilter));
-  }, [data, roleFilter]);
 
   const roleStats = useMemo(() => {
     const stats: Record<string, number> = {};

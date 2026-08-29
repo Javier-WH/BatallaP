@@ -12,6 +12,7 @@ export interface PersonAttributes {
   birthdate: Date;
   pathology?: string;
   livingWith?: string;
+  hireDate?: Date | null;
   userId?: number | null;
 }
 
@@ -27,6 +28,7 @@ class Person extends Model<PersonAttributes, PersonCreationAttributes> implement
   public birthdate!: Date;
   public pathology!: string;
   public livingWith!: string;
+  public hireDate!: Date | null;
   public userId!: number | null;
 
   public readonly roles?: import('./Role').default[];
@@ -76,6 +78,10 @@ Person.init(
     livingWith: {
       type: DataTypes.STRING,
       allowNull: true
+    },
+    hireDate: {
+      type: DataTypes.DATEONLY,
+      allowNull: true,
     },
     userId: {
       type: DataTypes.INTEGER,
