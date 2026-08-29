@@ -96,6 +96,53 @@ export const saveScheduleEntries = async (req: Request, res: Response) => {
     const schedule = await Schedule.findByPk(Number(id));
     if (!schedule) return res.status(404).json({ message: 'Horario no encontrado' });
 
+    // ── Validate group subject rule ──
+    // For each (day, periodId), at most ONE non-group entry is allowed.
+    // Multiple group entries are allowed only if they all share the same subjectGroupId.
+    if (entries && entries.length > 0) {
+      // Build a map subjectId -> subjectGroupId
+      const subjectIds = Array.from(new Set(entries.map(e => e.subjectId).filter((s): s is number => s !== null)));
+      const subjects = await Subject.findAll({ where: { id: subjectIds }, attributes: ['id', 'subjectGroupId'] });
+      const subjGroupMap = new Map<number, number | null>();
+      subjects.forEach(s => subjGroupMap.set(s.id, (s as any).subjectGroupId ?? null));
+
+      // Group entries by `${day}|${periodId}`
+      const cellMap = new Map<string, typeof entries>();
+      entries.forEach(e => {
+        const k = `${e.day}|${e.periodId}`;
+        if (!cellMap.has(k)) cellMap.set(k, []);
+        cellMap.get(k)!.push(e);
+      });
+
+      for (const [cellKey, cellEntries] of cellMap) {
+        const nonGroup = cellEntries.filter(e => !e.isGroupSubject);
+        const groupEntries = cellEntries.filter(e => e.isGroupSubject);
+
+        // At most one non-group subject per cell
+        if (nonGroup.length > 1) {
+          const subjNames = await Subject.findAll({ where: { id: nonGroup.map(e => e.subjectId).filter((s): s is number => s !== null) } });
+          return res.status(400).json({
+            message: `No se pueden colocar múltiples materias regulares en el mismo bloque (${cellKey}). Materias en conflicto: ${subjNames.map(s => s.name).join(', ')}`,
+          });
+        }
+        // A non-group subject cannot coexist with group subjects in the same cell
+        if (nonGroup.length > 0 && groupEntries.length > 0) {
+          return res.status(400).json({
+            message: `No se puede mezclar una materia regular con materias de grupo en el mismo bloque (${cellKey})`,
+          });
+        }
+        // All group subjects in the same cell must share the same subjectGroupId
+        if (groupEntries.length > 1) {
+          const groupIds = new Set(groupEntries.map(e => subjGroupMap.get(e.subjectId!) ?? null));
+          if (groupIds.size > 1) {
+            return res.status(400).json({
+              message: `Las materias de grupo en el mismo bloque (${cellKey}) deben pertenecer al mismo grupo. Grupos detectados: ${Array.from(groupIds).join(', ')}`,
+            });
+          }
+        }
+      }
+    }
+
     const t = await sequelize.transaction();
     try {
       await ScheduleEntry.destroy({ where: { scheduleId: schedule.id }, transaction: t });

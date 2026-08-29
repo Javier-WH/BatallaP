@@ -107,60 +107,55 @@ interface SectionOption {
 }
 
 // ── Schedule Grid Component ──
+// entries: key `${day}|${periodId}` -> array of entries (1 for regular, multiple for group subjects)
+function cellSignature(cellEntries: ScheduleEntryData[] | undefined): string {
+  if (!cellEntries || cellEntries.length === 0) return '';
+  return cellEntries
+    .map(e => `${e.subjectId}:${e.teacherId}:${e.isGroupSubject ? 1 : 0}`)
+    .sort()
+    .join('|');
+}
+
 function ScheduleGrid({ sections, entries, onCellClick, editable, getCellLabel }: {
   sections: ScheduleSection[];
-  entries: Record<string, ScheduleEntryData>;
+  entries: Record<string, ScheduleEntryData[]>;
   onCellClick?: (day: string, period: Period) => void;
   editable: boolean;
-  getCellLabel: (day: string, period: Period, entry: ScheduleEntryData | undefined) => React.ReactNode;
+  getCellLabel: (day: string, period: Period, cellEntries: ScheduleEntryData[]) => React.ReactNode;
 }) {
   // Build an ordered list of non-break periods (row order)
   const orderedPeriods: Period[] = [];
   sections.forEach(s => s.periods.forEach(p => { if (!p.break) orderedPeriods.push(p); }));
-  const periodRowIdx = new Map<string, number>();
-  orderedPeriods.forEach((p, i) => periodRowIdx.set(p.id, i));
-
-  // For each (day, period), compute rowspan if it's the start of a merged block, or 0 if covered by a rowspan above.
-  // Two consecutive non-break periods in the same section are mergeable when they share subjectId+teacherId+isGroupSubject.
-  const sameBlock = (a: ScheduleEntryData | undefined, b: ScheduleEntryData | undefined): boolean => {
-    if (!a || !b) return false;
-    if (!a.subjectId || !b.subjectId) return false;
-    return a.subjectId === b.subjectId && a.teacherId === b.teacherId && !!a.isGroupSubject === !!b.isGroupSubject;
-  };
 
   // rowspanMap: key `${day}|${period.id}` -> number (rowspan if start, 0 if covered)
-  // Only merge periods that are truly consecutive in the original periods array (no break between them).
+  // Two consecutive non-break periods in the same section are mergeable when they have the same signature.
+  // Stops at a break (don't merge across recess).
   const rowspanMap: Record<string, number> = {};
   DAYS.forEach(day => {
     for (let i = 0; i < orderedPeriods.length; i++) {
       const p = orderedPeriods[i];
       const key = `${day}|${p.id}`;
-      const entry = entries[key];
-      if (!entry || !entry.subjectId) { rowspanMap[key] = 1; continue; }
-      // Find the section and the raw periods list (with breaks) to detect adjacency
+      const sig = cellSignature(entries[key]);
+      if (!sig) { rowspanMap[key] = 1; continue; }
       const section = sections.find(s => s.id === p.section);
       if (!section) { rowspanMap[key] = 1; continue; }
       const rawPeriods = section.periods;
       const localIdx = rawPeriods.findIndex(pp => pp.id === p.id);
       if (localIdx < 0) { rowspanMap[key] = 1; continue; }
-      // Walk forward through raw periods; only merge the next one if it's NOT a break AND shares the same block.
-      // Stops at a break (don't merge across recess) or when subject/teacher changes.
       let span = 1;
       let cursor = localIdx + 1;
       while (cursor < rawPeriods.length) {
         const nextRaw = rawPeriods[cursor];
-        if (nextRaw.break) break; // recess separates blocks — do not merge
+        if (nextRaw.break) break;
         const nextKey = `${day}|${nextRaw.id}`;
-        if (sameBlock(entry, entries[nextKey])) {
+        if (sig === cellSignature(entries[nextKey])) {
           span++;
           cursor++;
         } else {
           break;
         }
       }
-      // Mark this one with span, and the following (span-1) covered ones with 0
       rowspanMap[key] = span;
-      // Walk again to mark covered (non-break) periods as 0
       let markCursor = localIdx + 1;
       let marked = 0;
       while (marked < span - 1 && markCursor < rawPeriods.length) {
@@ -171,7 +166,7 @@ function ScheduleGrid({ sections, entries, onCellClick, editable, getCellLabel }
         }
         markCursor++;
       }
-      i += span - 1; // skip covered periods in the outer orderedPeriods loop
+      i += span - 1;
     }
   });
 
@@ -208,44 +203,37 @@ function ScheduleGrid({ sections, entries, onCellClick, editable, getCellLabel }
                     </td>
                     {DAYS.map(day => {
                       const key = `${day}|${period.id}`;
-                      const entry = entries[key];
+                      const cellEntries = entries[key] ?? [];
                       const span = rowspanMap[key] ?? 1;
-                      if (span === 0) return null; // covered by a rowspan above
-                      // For merged blocks, show the time range of the whole block
-                      let label = getCellLabel(day, period, entry);
-                      if (span > 1 && entry?.subjectId) {
-                        // Find the last period in the merged block (walking raw periods, stopping at break)
+                      if (span === 0) return null;
+                      // For merged blocks, compute the end time of the whole block
+                      let blockEndTime = period.end;
+                      if (span > 1 && cellEntries.length > 0) {
                         const section = sections.find(s => s.id === period.section);
                         const raw = section?.periods ?? [];
                         const li = raw.findIndex(pp => pp.id === period.id);
-                        let lastP: Period | null = null;
                         if (li >= 0) {
                           let count = 1;
                           for (let k = li + 1; k < raw.length && count < span; k++) {
-                            if (!raw[k].break) { count++; lastP = raw[k]; }
+                            if (!raw[k].break) { count++; blockEndTime = raw[k].end; }
                           }
                         }
-                        if (lastP) {
-                          label = (
-                            <div className="flex flex-col items-center justify-center h-full">
-                              <div className="font-semibold">{entry.subject?.name ?? ''}</div>
-                              <div className="text-[10px] text-slate-500 mt-0.5">{period.start}–{lastP.end}</div>
-                              {entry.teacher && (
-                                <div className="text-[10px] text-slate-600 mt-0.5">{entry.teacher.firstName} {entry.teacher.lastName}</div>
-                              )}
-                            </div>
-                          );
-                        }
                       }
+                      const isMerged = span > 1 && cellEntries.length > 0;
                       return (
                         <td
                           key={day}
                           rowSpan={span}
-                          className={`border border-slate-300 text-center text-xs px-1 align-middle ${editable ? 'cursor-pointer hover:bg-blue-50 hover:border-blue-400 transition-colors' : ''} ${span > 1 ? 'h-auto' : 'h-12'}`}
-                          style={{ background: entry?.subjectId ? colorForSubject(entry.subjectId) : '#ffffff' }}
+                          className={`border border-slate-300 text-center text-xs px-1 align-middle ${editable ? 'cursor-pointer hover:bg-blue-50 hover:border-blue-400 transition-colors' : ''} ${isMerged ? 'h-auto py-2' : 'h-12'}`}
+                          style={{ background: cellEntries.length === 1 ? colorForSubject(cellEntries[0].subjectId) : '#ffffff' }}
                           onClick={() => editable && onCellClick?.(day, period)}
                         >
-                          {label}
+                          {getCellLabel(day, period, cellEntries)}
+                          {isMerged && (
+                            <div className="text-[9px] text-slate-400 mt-1 border-t border-slate-200 pt-0.5">
+                              {period.start}–{blockEndTime}
+                            </div>
+                          )}
                         </td>
                       );
                     })}
@@ -265,139 +253,207 @@ interface CellEditorModalProps {
   open: boolean;
   day: string;
   period: Period;
-  entry: ScheduleEntryData | null;
+  cellEntries: ScheduleEntryData[];
   options: SectionOption[];
   onClose: () => void;
   onSave: (entry: { subjectId: number | null; teacherId: number | null; isGroupSubject: boolean }) => void;
-  onClear: () => void;
+  onRemoveEntry: (subjectId: number) => void;
+  onClearAll: () => void;
   onTeacherChange: (teacherId: number | null) => void;
   teacherConflict: { hasConflict: boolean; conflicts: any[] } | null;
   blockPeriods: Period[];
 }
 
-const CellEditorModal: React.FC<CellEditorModalProps> = ({ open, day, period, entry, options, onClose, onSave, onClear, onTeacherChange, teacherConflict, blockPeriods }) => {
+const CellEditorModal: React.FC<CellEditorModalProps> = ({ open, day, period, cellEntries, options, onClose, onSave, onRemoveEntry, onClearAll, onTeacherChange, teacherConflict, blockPeriods }) => {
   const [selectedSubjectId, setSelectedSubjectId] = useState<number | null>(null);
   const [selectedTeacherId, setSelectedTeacherId] = useState<number | null>(null);
   const [isGroup, setIsGroup] = useState(false);
 
   useEffect(() => {
-    setSelectedSubjectId(entry?.subjectId ?? null);
-    setSelectedTeacherId(entry?.teacherId ?? null);
-    setIsGroup(entry?.isGroupSubject ?? false);
-  }, [entry, open]);
+    // Reset form when modal opens; don't pre-fill since we're adding new entries
+    setSelectedSubjectId(null);
+    setSelectedTeacherId(null);
+    setIsGroup(false);
+  }, [open]);
 
   const selectedOption = options.find(o => o.subjectId === selectedSubjectId);
+
+  // Determine which subject options are available for adding
+  // - If cell is empty: all options
+  // - If cell has a non-group entry: no more can be added (block is full)
+  // - If cell has group entries: only subjects from the same subjectGroupId, not already in the cell
+  const hasNonGroup = cellEntries.some(e => !e.isGroupSubject);
+  const hasGroup = cellEntries.some(e => e.isGroupSubject);
+  const existingSubjectIds = new Set(cellEntries.map(e => e.subjectId));
+  const existingGroupId = hasGroup ? options.find(o => o.subjectId === cellEntries.find(e => e.isGroupSubject)?.subjectId)?.subjectGroupId : null;
+
+  const availableOptions = hasNonGroup
+    ? [] // can't add more to a non-group cell
+    : hasGroup
+      ? options.filter(o => o.subjectGroupId === existingGroupId && !existingSubjectIds.has(o.subjectId))
+      : options;
+
+  const canAddMore = availableOptions.length > 0;
+
+  // Auto-set isGroup when adding to a group cell
+  useEffect(() => {
+    if (hasGroup) setIsGroup(true);
+  }, [hasGroup]);
 
   return (
     <Modal
       title={`${day} · ${period.start} - ${period.end}`}
       open={open}
       onCancel={onClose}
-      width={480}
+      width={520}
       footer={[
-        entry?.subjectId && (
-          <Button key="clear" danger icon={<DeleteOutlined />} onClick={onClear} style={{ float: 'left' }}>
-            Limpiar
+        cellEntries.length > 0 && (
+          <Button key="clearAll" danger icon={<DeleteOutlined />} onClick={onClearAll} style={{ float: 'left' }}>
+            Limpiar todo
           </Button>
         ),
-        <Button key="cancel" icon={<CloseOutlined />} onClick={onClose}>Cancelar</Button>,
-        <Button
-          key="save"
-          type="primary"
-          icon={<SaveOutlined />}
-          disabled={!selectedSubjectId}
-          onClick={() => onSave({ subjectId: selectedSubjectId, teacherId: selectedTeacherId, isGroupSubject: isGroup })}
-        >
-          Guardar
-        </Button>,
+        <Button key="cancel" icon={<CloseOutlined />} onClick={onClose}>Cerrar</Button>,
+        canAddMore && (
+          <Button
+            key="save"
+            type="primary"
+            icon={<SaveOutlined />}
+            disabled={!selectedSubjectId}
+            onClick={() => onSave({ subjectId: selectedSubjectId, teacherId: selectedTeacherId, isGroupSubject: isGroup })}
+          >
+            {cellEntries.length > 0 ? 'Añadir' : 'Guardar'}
+          </Button>
+        ),
       ]}
     >
       <div className="flex flex-col gap-4 py-2">
-        <div>
-          <label className="text-xs font-bold text-slate-600 uppercase tracking-wide block mb-1">Materia</label>
-          <Select
-            placeholder="Seleccionar materia"
-            style={{ width: '100%' }}
-            value={selectedSubjectId}
-            onChange={(val) => { setSelectedSubjectId(val); setSelectedTeacherId(null); }}
-            options={options.map(o => ({
-              value: o.subjectId,
-              label: `${o.subjectName}${o.allowConsecutiveBlocks ? ' ⚡' : ''}${o.subjectGroupId ? ' 👥' : ''}`,
-            }))}
-            showSearch
-            optionFilterProp="label"
-            allowClear
-          />
-        </div>
-
-        {selectedOption && (
+        {/* Existing entries list */}
+        {cellEntries.length > 0 && (
           <div>
             <label className="text-xs font-bold text-slate-600 uppercase tracking-wide block mb-1">
-              Profesor {selectedOption.teachers.length === 0 && <span className="text-red-500">(sin asignar)</span>}
+              Materias en este bloque ({cellEntries.length})
             </label>
-            <Select
-              placeholder="Seleccionar profesor"
-              style={{ width: '100%' }}
-              value={selectedTeacherId}
-              onChange={(val) => { setSelectedTeacherId(val); onTeacherChange(val); }}
-              options={selectedOption.teachers.map(t => ({ value: t.teacherId, label: t.teacherName }))}
-              allowClear
-              disabled={selectedOption.teachers.length === 0}
-            />
-          </div>
-        )}
-
-        {selectedOption?.subjectGroupId && (
-          <div>
-            <label className="text-xs font-bold text-slate-600 uppercase tracking-wide block mb-1">Materia de grupo</label>
-            <Switch
-              checked={isGroup}
-              onChange={setIsGroup}
-              checkedChildren="Sí"
-              unCheckedChildren="No"
-            />
-            <span className="text-xs text-slate-500 ml-2">Múltiples secciones pueden ver esta materia simultáneamente</span>
-          </div>
-        )}
-
-        {teacherConflict?.hasConflict && (
-          <Alert
-            type="warning"
-            showIcon
-            icon={<WarningOutlined />}
-            message="Conflicto de profesor"
-            description={
-              <div>
-                <p className="text-xs mb-1">Este profesor ya tiene clase en este bloque:</p>
-                {teacherConflict.conflicts.map((c: any, i: number) => (
-                  <div key={i} className="text-xs">
-                    • {c.schedule?.section?.periodGrade?.grade?.name} {c.schedule?.section?.section?.name} — {c.subject?.name}
+            <div className="flex flex-col gap-1">
+              {cellEntries.map((e, i) => (
+                <div key={i} className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded px-2 py-1.5" style={{ borderLeft: `3px solid ${colorForSubject(e.subjectId)}` }}>
+                  <div className="flex flex-col">
+                    <span className="font-semibold text-xs text-slate-800">{e.subject?.name ?? '—'}</span>
+                    <span className="text-[10px] text-slate-500">
+                      {e.teacher ? `${e.teacher.firstName} ${e.teacher.lastName}` : 'Sin profesor'}
+                      {e.isGroupSubject && <span className="ml-1 text-purple-600">👥 Grupo</span>}
+                    </span>
                   </div>
-                ))}
-              </div>
-            }
-          />
-        )}
-
-        {selectedOption && (
-          <div className="text-xs text-slate-500 bg-slate-50 rounded p-2">
-            <strong>Bloques semanales requeridos:</strong> {selectedOption.weeklyBlocks}
-            {selectedOption.allowConsecutiveBlocks && <span className="ml-2 text-purple-600">⚡ Permite bloques consecutivos</span>}
-          </div>
-        )}
-
-        {blockPeriods.length > 1 && (
-          <div className="text-xs text-blue-700 bg-blue-50 rounded p-2 border border-blue-200">
-            <strong>Se asignará a {blockPeriods.length} horas académicas consecutivas:</strong>
-            <div className="mt-1">
-              {blockPeriods.map((p, i) => (
-                <span key={p.id} className="inline-block mr-1">
-                  {i > 0 && <span className="text-slate-400">→ </span>}
-                  <span className="font-medium">{p.start}–{p.end}</span>
-                </span>
+                  <Button
+                    size="small"
+                    type="text"
+                    danger
+                    icon={<DeleteOutlined />}
+                    onClick={() => onRemoveEntry(e.subjectId!)}
+                  />
+                </div>
               ))}
             </div>
           </div>
+        )}
+
+        {/* Add new entry form */}
+        {canAddMore ? (
+          <>
+            <div className="border-t border-slate-200 pt-3">
+              <label className="text-xs font-bold text-slate-600 uppercase tracking-wide block mb-1">
+                {cellEntries.length > 0 ? 'Añadir materia de grupo' : 'Materia'}
+              </label>
+              <Select
+                placeholder="Seleccionar materia"
+                style={{ width: '100%' }}
+                value={selectedSubjectId}
+                onChange={(val) => { setSelectedSubjectId(val); setSelectedTeacherId(null); }}
+                options={availableOptions.map(o => ({
+                  value: o.subjectId,
+                  label: `${o.subjectName}${o.allowConsecutiveBlocks ? ' ⚡' : ''}${o.subjectGroupId ? ' 👥' : ''}`,
+                }))}
+                showSearch
+                optionFilterProp="label"
+                allowClear
+              />
+            </div>
+
+            {selectedOption && (
+              <div>
+                <label className="text-xs font-bold text-slate-600 uppercase tracking-wide block mb-1">
+                  Profesor {selectedOption.teachers.length === 0 && <span className="text-red-500">(sin asignar)</span>}
+                </label>
+                <Select
+                  placeholder="Seleccionar profesor"
+                  style={{ width: '100%' }}
+                  value={selectedTeacherId}
+                  onChange={(val) => { setSelectedTeacherId(val); onTeacherChange(val); }}
+                  options={selectedOption.teachers.map(t => ({ value: t.teacherId, label: t.teacherName }))}
+                  allowClear
+                  disabled={selectedOption.teachers.length === 0}
+                />
+              </div>
+            )}
+
+            {selectedOption?.subjectGroupId && !hasGroup && (
+              <div>
+                <label className="text-xs font-bold text-slate-600 uppercase tracking-wide block mb-1">Materia de grupo</label>
+                <Switch
+                  checked={isGroup}
+                  onChange={setIsGroup}
+                  checkedChildren="Sí"
+                  unCheckedChildren="No"
+                />
+                <span className="text-xs text-slate-500 ml-2">Múltiples secciones pueden ver esta materia simultáneamente</span>
+              </div>
+            )}
+
+            {teacherConflict?.hasConflict && (
+              <Alert
+                type="warning"
+                showIcon
+                icon={<WarningOutlined />}
+                message="Conflicto de profesor"
+                description={
+                  <div>
+                    <p className="text-xs mb-1">Este profesor ya tiene clase en este bloque:</p>
+                    {teacherConflict.conflicts.map((c: any, i: number) => (
+                      <div key={i} className="text-xs">
+                        • {c.schedule?.section?.periodGrade?.grade?.name} {c.schedule?.section?.section?.name} — {c.subject?.name}
+                      </div>
+                    ))}
+                  </div>
+                }
+              />
+            )}
+
+            {selectedOption && (
+              <div className="text-xs text-slate-500 bg-slate-50 rounded p-2">
+                <strong>Bloques semanales requeridos:</strong> {selectedOption.weeklyBlocks}
+                {selectedOption.allowConsecutiveBlocks && <span className="ml-2 text-purple-600">⚡ Permite bloques consecutivos</span>}
+              </div>
+            )}
+
+            {blockPeriods.length > 1 && (
+              <div className="text-xs text-blue-700 bg-blue-50 rounded p-2 border border-blue-200">
+                <strong>Se asignará a {blockPeriods.length} horas académicas consecutivas:</strong>
+                <div className="mt-1">
+                  {blockPeriods.map((p, i) => (
+                    <span key={p.id} className="inline-block mr-1">
+                      {i > 0 && <span className="text-slate-400">→ </span>}
+                      <span className="font-medium">{p.start}–{p.end}</span>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
+        ) : (
+          cellEntries.length > 0 && hasNonGroup && (
+            <div className="text-xs text-amber-700 bg-amber-50 rounded p-2 border border-amber-200">
+              Este bloque ya tiene una materia regular asignada. No se pueden añadir más materias.
+            </div>
+          )
         )}
       </div>
     </Modal>
@@ -541,19 +597,20 @@ const ScheduleManagement: React.FC = () => {
   }, [selectedTeacherId, loadTeacherSchedule]);
 
   // Build entries map for section schedule (editable copy when in edit mode)
-  const [editableEntries, setEditableEntries] = useState<Record<string, ScheduleEntryData>>({});
+  // entries: Record<string, ScheduleEntryData[]> — supports multiple group subjects per cell
+  const [editableEntries, setEditableEntries] = useState<Record<string, ScheduleEntryData[]>>({});
 
-  const sectionEntriesMap = useMemo(() => {
-    const map: Record<string, ScheduleEntryData> = {};
+  const sectionEntriesMap = useMemo<Record<string, ScheduleEntryData[]>>(() => {
+    const map: Record<string, ScheduleEntryData[]> = {};
     if (editMode) {
-      // editableEntries is a Record<string, ScheduleEntryData>
-      Object.entries(editableEntries).forEach(([key, e]) => {
-        map[key] = e;
+      Object.entries(editableEntries).forEach(([key, arr]) => {
+        map[key] = arr;
       });
     } else if (Array.isArray(sectionSchedule?.entries)) {
       sectionSchedule!.entries.forEach((e: any) => {
         const key = `${e.day}|${e.periodId}`;
-        map[key] = {
+        if (!map[key]) map[key] = [];
+        map[key].push({
           id: e.id,
           day: e.day,
           periodId: e.periodId,
@@ -562,36 +619,38 @@ const ScheduleManagement: React.FC = () => {
           isGroupSubject: e.isGroupSubject,
           subject: e.subject,
           teacher: e.teacher,
-        };
+        });
       });
     }
     return map;
   }, [sectionSchedule, editableEntries, editMode]);
 
-  // Build entries map for teacher schedule
-  const teacherEntriesMap = useMemo(() => {
-    const map: Record<string, { subjectName?: string; teacherName?: string; isGroup?: boolean; sectionLabel?: string }> = {};
+  // Build entries map for teacher schedule — wrap in array for ScheduleGrid compatibility
+  const teacherEntriesMap = useMemo<Record<string, any[]>>(() => {
+    const map: Record<string, any[]> = {};
     teacherEntries.forEach((e: any) => {
       const key = `${e.day}|${e.periodId}`;
       const sec = e.schedule?.section;
       const gradeName = sec?.periodGrade?.grade?.name ?? '';
       const sectionName = sec?.section?.name ?? '';
-      map[key] = {
+      if (!map[key]) map[key] = [];
+      map[key].push({
         subjectName: e.subject?.name,
         sectionLabel: `${gradeName} ${sectionName}`.trim(),
         isGroup: e.isGroupSubject,
-      };
+      });
     });
     return map;
   }, [teacherEntries]);
 
   // Enter edit mode
   const enterEditMode = () => {
-    const map: Record<string, ScheduleEntryData> = {};
+    const map: Record<string, ScheduleEntryData[]> = {};
     if (sectionSchedule?.entries) {
       sectionSchedule.entries.forEach((e: any) => {
         const key = `${e.day}|${e.periodId}`;
-        map[key] = { ...e };
+        if (!map[key]) map[key] = [];
+        map[key].push({ ...e });
       });
     }
     setEditableEntries(map);
@@ -608,28 +667,31 @@ const ScheduleManagement: React.FC = () => {
   const handleCellClick = async (day: string, period: Period) => {
     if (!editMode) return;
     const key = `${day}|${period.id}`;
-    const entry = editableEntries[key] ?? null;
+    const cellEntries = editableEntries[key] ?? [];
     setEditingCell({ day, period });
     setCellModalOpen(true);
     setTeacherConflict(null);
 
-    // If entry has a teacher, check for conflicts across all block periods
-    if (entry?.teacherId) {
+    // If any entry has a teacher, check for conflicts across all block periods
+    const teachersToCheck = Array.from(new Set(cellEntries.map(e => e.teacherId).filter((t): t is number => t !== null)));
+    if (teachersToCheck.length > 0) {
       const blockSize = Number(settings.min_academic_hours_per_block) || 1;
       const blockPds = getBlockPeriods(scheduleSections, period, blockSize);
       try {
         const allConflicts: any[] = [];
-        for (const p of blockPds) {
-          const res = await api.get('/schedules/conflicts', {
-            params: {
-              day,
-              periodId: p.id,
-              teacherId: entry.teacherId,
-              scheduleId: sectionSchedule?.id,
-              schoolPeriodId: activePeriod?.id,
-            },
-          });
-          if (res.data?.hasConflict) allConflicts.push(...res.data.conflicts);
+        for (const teacherId of teachersToCheck) {
+          for (const p of blockPds) {
+            const res = await api.get('/schedules/conflicts', {
+              params: {
+                day,
+                periodId: p.id,
+                teacherId,
+                scheduleId: sectionSchedule?.id,
+                schoolPeriodId: activePeriod?.id,
+              },
+            });
+            if (res.data?.hasConflict) allConflicts.push(...res.data.conflicts);
+          }
         }
         setTeacherConflict({ hasConflict: allConflicts.length > 0, conflicts: allConflicts });
       } catch (e) {
@@ -638,27 +700,32 @@ const ScheduleManagement: React.FC = () => {
     }
   };
 
-  // Save cell from modal — fills min_academic_hours_per_block consecutive periods
+  // Save cell from modal — adds a new entry to all block periods
   const handleSaveCell = (data: { subjectId: number | null; teacherId: number | null; isGroupSubject: boolean }) => {
-    if (!editingCell) return;
+    if (!editingCell || !data.subjectId) return;
     const blockSize = Number(settings.min_academic_hours_per_block) || 1;
     const blockPds = getBlockPeriods(scheduleSections, editingCell.period, blockSize);
-    const subjectObj = data.subjectId ? sectionOptions.find(o => o.subjectId === data.subjectId) : undefined;
+    const subjectObj = sectionOptions.find(o => o.subjectId === data.subjectId);
     const teacherObj = data.teacherId ? sectionOptions.flatMap(o => o.teachers).find(t => t.teacherId === data.teacherId) : undefined;
     setEditableEntries(prev => {
       const copy = { ...prev };
       blockPds.forEach(p => {
         const key = `${editingCell.day}|${p.id}`;
-        copy[key] = {
-          ...copy[key],
+        const arr = copy[key] ? [...copy[key]] : [];
+        // Replace if same subjectId already exists, otherwise add
+        const idx = arr.findIndex(e => e.subjectId === data.subjectId);
+        const newEntry: ScheduleEntryData = {
           day: editingCell.day,
           periodId: p.id,
           subjectId: data.subjectId,
           teacherId: data.teacherId,
           isGroupSubject: data.isGroupSubject,
-          subject: subjectObj ? { id: data.subjectId!, name: subjectObj.subjectName } : undefined,
+          subject: subjectObj ? { id: data.subjectId!, name: subjectObj.subjectName, subjectGroupId: subjectObj.subjectGroupId } : undefined,
           teacher: teacherObj ? { id: data.teacherId!, firstName: teacherObj.teacherName, lastName: '' } : undefined,
         };
+        if (idx >= 0) arr[idx] = newEntry;
+        else arr.push(newEntry);
+        copy[key] = arr;
       });
       return copy;
     });
@@ -667,22 +734,37 @@ const ScheduleManagement: React.FC = () => {
     setEditingCell(null);
   };
 
-  // Clear cell — clears all consecutive periods in the same block that share the same subject+teacher
-  const handleClearCell = () => {
+  // Remove a single entry (by subjectId) from all block periods
+  const handleRemoveEntry = (subjectId: number) => {
     if (!editingCell) return;
-    const key = `${editingCell.day}|${editingCell.period.id}`;
-    const existing = editableEntries[key];
     const blockSize = Number(settings.min_academic_hours_per_block) || 1;
     const blockPds = getBlockPeriods(scheduleSections, editingCell.period, blockSize);
     setEditableEntries(prev => {
       const copy = { ...prev };
-      // Clear all periods in the block that have the same subject+teacher as the clicked cell
       blockPds.forEach(p => {
-        const k = `${editingCell.day}|${p.id}`;
-        const e = copy[k];
-        if (!e || (existing && e.subjectId === existing.subjectId && e.teacherId === existing.teacherId)) {
-          delete copy[k];
+        const key = `${editingCell.day}|${p.id}`;
+        if (copy[key]) {
+          const filtered = copy[key].filter(e => e.subjectId !== subjectId);
+          if (filtered.length === 0) delete copy[key];
+          else copy[key] = filtered;
         }
+      });
+      return copy;
+    });
+    setDirty(true);
+    // Don't close modal — user might want to add another
+  };
+
+  // Clear all entries from all block periods
+  const handleClearAll = () => {
+    if (!editingCell) return;
+    const blockSize = Number(settings.min_academic_hours_per_block) || 1;
+    const blockPds = getBlockPeriods(scheduleSections, editingCell.period, blockSize);
+    setEditableEntries(prev => {
+      const copy = { ...prev };
+      blockPds.forEach(p => {
+        const key = `${editingCell.day}|${p.id}`;
+        delete copy[key];
       });
       return copy;
     });
@@ -719,12 +801,12 @@ const ScheduleManagement: React.FC = () => {
     }
   };
 
-  // Save all entries
+  // Save all entries — flatten all arrays into a single list
   const handleSaveAll = async () => {
     if (!sectionSchedule) return;
     setSaving(true);
     try {
-      const entries = Object.values(editableEntries).map(e => ({
+      const entries = Object.values(editableEntries).flat().map(e => ({
         day: e.day,
         periodId: e.periodId,
         subjectId: e.subjectId,
@@ -736,9 +818,10 @@ const ScheduleManagement: React.FC = () => {
       setEditMode(false);
       setDirty(false);
       await loadSectionSchedule(selectedSectionId!);
-    } catch (e) {
+    } catch (e: any) {
       console.error('Error saving schedule:', e);
-      message.error('Error al guardar el horario');
+      const errMsg = e?.response?.data?.message ?? 'Error al guardar el horario';
+      message.error(errMsg);
     } finally {
       setSaving(false);
     }
@@ -808,21 +891,38 @@ const ScheduleManagement: React.FC = () => {
                       entries={sectionEntriesMap}
                       editable={editMode}
                       onCellClick={handleCellClick}
-                      getCellLabel={(_day, _period, entry) => {
-                        if (!entry?.subjectId) {
+                      getCellLabel={(_day, _period, cellEntries) => {
+                        if (cellEntries.length === 0) {
                           return editMode
                             ? <span className="text-blue-400 text-[10px]">+ asignar</span>
                             : <span className="text-slate-300">—</span>;
                         }
+                        if (cellEntries.length === 1) {
+                          const e = cellEntries[0];
+                          return (
+                            <div className="flex flex-col gap-0.5">
+                              <span className="font-semibold text-slate-800">{e.subject?.name ?? '—'}</span>
+                              {e.teacher && (
+                                <span className="text-slate-500 text-[10px]">
+                                  {e.teacher.firstName} {e.teacher.lastName}
+                                </span>
+                              )}
+                              {e.isGroupSubject && <Tag color="purple" style={{ fontSize: 9, margin: 0 }}>Grupo</Tag>}
+                            </div>
+                          );
+                        }
+                        // Multiple group subjects — render as stacked rows
                         return (
-                          <div className="flex flex-col gap-0.5">
-                            <span className="font-semibold text-slate-800">{entry.subject?.name ?? '—'}</span>
-                            {entry.teacher && (
-                              <span className="text-slate-500 text-[10px]">
-                                {entry.teacher.firstName} {entry.teacher.lastName}
-                              </span>
-                            )}
-                            {entry.isGroupSubject && <Tag color="purple" style={{ fontSize: 9, margin: 0 }}>Grupo</Tag>}
+                          <div className="flex flex-col gap-1 w-full">
+                            {cellEntries.map((e, i) => (
+                              <div key={i} className="rounded px-1 py-0.5 text-left" style={{ background: colorForSubject(e.subjectId), borderLeft: '2px solid rgba(0,0,0,0.15)' }}>
+                                <div className="font-semibold text-slate-800 leading-tight" style={{ fontSize: 10 }}>{e.subject?.name ?? '—'}</div>
+                                <div className="text-slate-500 leading-tight" style={{ fontSize: 9 }}>
+                                  {e.teacher ? `${e.teacher.firstName} ${e.teacher.lastName}` : 'Sin profesor'}
+                                </div>
+                              </div>
+                            ))}
+                            <Tag color="purple" style={{ fontSize: 8, margin: 0, alignSelf: 'center' }}>👥 Grupo</Tag>
                           </div>
                         );
                       }}
@@ -861,7 +961,8 @@ const ScheduleManagement: React.FC = () => {
                       sections={scheduleSections}
                       entries={teacherEntriesMap as any}
                       editable={false}
-                      getCellLabel={(_day, _period, entry: any) => {
+                      getCellLabel={(_day, _period, cellEntries: any) => {
+                        const entry = Array.isArray(cellEntries) ? cellEntries[0] : cellEntries;
                         if (!entry?.subjectName) return <span className="text-slate-300">—</span>;
                         return (
                           <div className="flex flex-col gap-0.5">
@@ -885,11 +986,12 @@ const ScheduleManagement: React.FC = () => {
         open={cellModalOpen}
         day={editingCell?.day ?? ''}
         period={editingCell?.period ?? { id: '', start: '', end: '', section: '' }}
-        entry={editingCell ? editableEntries[`${editingCell.day}|${editingCell.period.id}`] ?? null : null}
+        cellEntries={editingCell ? editableEntries[`${editingCell.day}|${editingCell.period.id}`] ?? [] : []}
         options={sectionOptions}
         onClose={() => { setCellModalOpen(false); setEditingCell(null); setTeacherConflict(null); }}
         onSave={handleSaveCell}
-        onClear={handleClearCell}
+        onRemoveEntry={handleRemoveEntry}
+        onClearAll={handleClearAll}
         onTeacherChange={handleModalTeacherChange}
         teacherConflict={teacherConflict}
         blockPeriods={editingCell ? getBlockPeriods(scheduleSections, editingCell.period, Number(settings.min_academic_hours_per_block) || 1) : []}

@@ -49,7 +49,8 @@ ScheduleEntry.init({
   sequelize,
   tableName: 'schedule_entries',
   indexes: [
-    { unique: true, fields: ['scheduleId', 'day', 'period_id'] },
+    // Prevent exact duplicate (same subject in same slot) but allow multiple group subjects
+    { unique: true, fields: ['scheduleId', 'day', 'period_id', 'subjectId'] },
   ],
 });
 
