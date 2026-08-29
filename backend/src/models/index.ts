@@ -150,6 +150,7 @@ import EnrollmentPlanItem from './EnrollmentPlanItem';
 import Payment from './Payment';
 import Charge from './Charge';
 import ConstanciaTemplate from './ConstanciaTemplate';
+import TeacherAvailability from './TeacherAvailability';
 
 
 // ... (Existing User/Person/Role/Contact associations) ...
@@ -333,6 +334,10 @@ EnrollmentAnswer.belongsTo(EnrollmentQuestion, { foreignKey: 'questionId', as: '
 
 Person.hasMany(EnrollmentAnswer, { foreignKey: 'personId', as: 'enrollmentAnswers' });
 EnrollmentAnswer.belongsTo(Person, { foreignKey: 'personId', as: 'student' });
+
+// Teacher Availability
+Person.hasMany(TeacherAvailability, { foreignKey: 'personId', as: 'availability' });
+TeacherAvailability.belongsTo(Person, { foreignKey: 'personId', as: 'person' });
 
 // Subject final grades
 InscriptionSubject.hasOne(SubjectFinalGrade, { foreignKey: 'inscriptionSubjectId', as: 'finalGrade' });
@@ -603,5 +608,6 @@ export {
   EnrollmentPlanItem,
   Payment,
   Charge,
-  ConstanciaTemplate
+  ConstanciaTemplate,
+  TeacherAvailability
 };

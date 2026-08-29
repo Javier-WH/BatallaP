@@ -33,6 +33,7 @@ import TeacherPanel from '@/pages/teacher/TeacherPanel';
 import RepairGradesPanel from '@/pages/teacher/RepairGradesPanel';
 import PendingSubjectTeacherPanel from '@/pages/teacher/PendingSubjectTeacherPanel';
 import Observations from '@/pages/teacher/Observations';
+import TeacherAvailability from '@/pages/teacher/TeacherAvailability';
 import AdminDashboard from '@/pages/admin/Dashboard';
 import StudentDetail from '@/pages/student/StudentDetail';
 import SettingsManagement from '@/pages/master/SettingsManagement';
@@ -282,6 +283,7 @@ function AppRoutes() {
         <Route path="profesor/reparacion" element={<RequireAuth allowedRoles={['Profesor']}><RepairGradesPanel /></RequireAuth>} />
         <Route path="profesor/materia-pendiente" element={<RequireAuth allowedRoles={['Profesor']}><PendingSubjectTeacherPanel /></RequireAuth>} />
         <Route path="profesor/observaciones" element={<RequireAuth allowedRoles={['Profesor']}><Observations /></RequireAuth>} />
+        <Route path="profesor/disponibilidad" element={<RequireAuth allowedRoles={['Profesor']}><TeacherAvailability /></RequireAuth>} />
 
         {/* Representative Module */}
         <Route path="representante" element={<RequireAuth allowedRoles={['Representante']}><RepresentativeLayout /></RequireAuth>}>

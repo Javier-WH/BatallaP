@@ -136,6 +136,13 @@ const MainLayout: React.FC = () => {
       path: '/profesor/materia-pendiente'
     },
     {
+      key: 'profesor-disponibilidad',
+      icon: <CalendarOutlined />,
+      label: 'Disponibilidad',
+      roles: ['Profesor'],
+      path: '/profesor/disponibilidad'
+    },
+    {
       key: 'representative-module',
       icon: <TeamOutlined />,
       label: 'Representante',

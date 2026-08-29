@@ -88,6 +88,7 @@ import pendingSubjectRoutes from '@/routes/pendingSubjectRoutes';
 import paymentsRoutes from '@/routes/paymentsRoutes';
 import ledgerRoutes from '@/routes/ledgerRoutes';
 import constanciaRoutes from '@/routes/constanciaRoutes';
+import teacherAvailabilityRoutes from '@/routes/teacherAvailabilityRoutes';
 
 app.get('/', (req, res) => {
   res.send('API is running...');
@@ -138,6 +139,7 @@ app.use('/api/pending-subjects', pendingSubjectRoutes);
 app.use('/api/payments', paymentsRoutes);
 app.use('/api/ledger', ledgerRoutes);
 app.use('/api/constancias', constanciaRoutes);
+app.use('/api/teacher-availability', teacherAvailabilityRoutes);
 
 export { sessionStore };
 export default app;
