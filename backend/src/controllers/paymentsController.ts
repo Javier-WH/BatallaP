@@ -390,13 +390,15 @@ export const deleteSellableItem = async (req: Request, res: Response) => {
 
 export const listEnrollmentPlans = async (req: Request, res: Response) => {
   try {
-    const { active } = req.query;
+    const { active, schoolPeriodId } = req.query;
     const where: any = {};
     if (active !== undefined) where.active = active === 'true';
+    if (schoolPeriodId !== undefined) where.schoolPeriodId = Number(schoolPeriodId);
     const plans = await EnrollmentPlan.findAll({
       where,
       include: [
         { model: ExchangeRateType, as: 'targetExchangeRateType' },
+        { model: SchoolPeriod, as: 'schoolPeriod' },
         { model: EnrollmentPlanItem, as: 'items', include: [
           { model: Fee, as: 'fee', include: [{ model: ExchangeRateType, as: 'exchangeRateType' }] },
           { model: SellableItem, as: 'sellableItem', include: [{ model: ExchangeRateType, as: 'exchangeRateType' }] },
@@ -417,6 +419,7 @@ export const getEnrollmentPlan = async (req: Request, res: Response) => {
     const plan = await EnrollmentPlan.findByPk(Number(id), {
       include: [
         { model: ExchangeRateType, as: 'targetExchangeRateType' },
+        { model: SchoolPeriod, as: 'schoolPeriod' },
         { model: EnrollmentPlanItem, as: 'items', include: [
           { model: Fee, as: 'fee', include: [{ model: ExchangeRateType, as: 'exchangeRateType' }] },
           { model: SellableItem, as: 'sellableItem', include: [{ model: ExchangeRateType, as: 'exchangeRateType' }] },
@@ -433,9 +436,9 @@ export const getEnrollmentPlan = async (req: Request, res: Response) => {
 
 export const createEnrollmentPlan = async (req: Request, res: Response) => {
   try {
-    const { name, description, targetExchangeRateTypeId, conversionMode, active, items } = req.body;
-    if (!name || !targetExchangeRateTypeId) {
-      return res.status(400).json({ message: 'name y targetExchangeRateTypeId son requeridos' });
+    const { name, description, schoolPeriodId, targetExchangeRateTypeId, conversionMode, active, items } = req.body;
+    if (!name || !targetExchangeRateTypeId || !schoolPeriodId) {
+      return res.status(400).json({ message: 'name, schoolPeriodId y targetExchangeRateTypeId son requeridos' });
     }
     const t = await sequelize.transaction();
     try {
@@ -443,6 +446,7 @@ export const createEnrollmentPlan = async (req: Request, res: Response) => {
         {
           name,
           description: description ?? null,
+          schoolPeriodId: Number(schoolPeriodId),
           targetExchangeRateTypeId: Number(targetExchangeRateTypeId),
           conversionMode: conversionMode ?? 'exchange_rate',
           active: active !== false,
@@ -475,7 +479,7 @@ export const createEnrollmentPlan = async (req: Request, res: Response) => {
 export const updateEnrollmentPlan = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { name, description, targetExchangeRateTypeId, conversionMode, active, items } = req.body;
+    const { name, description, schoolPeriodId, targetExchangeRateTypeId, conversionMode, active, items } = req.body;
     const plan = await EnrollmentPlan.findByPk(Number(id));
     if (!plan) return res.status(404).json({ message: 'Plan no encontrado' });
 
@@ -484,6 +488,7 @@ export const updateEnrollmentPlan = async (req: Request, res: Response) => {
       await plan.update({
         name: name ?? plan.name,
         description: description ?? plan.description,
+        schoolPeriodId: schoolPeriodId ?? plan.schoolPeriodId,
         targetExchangeRateTypeId: targetExchangeRateTypeId ?? plan.targetExchangeRateTypeId,
         conversionMode: conversionMode ?? plan.conversionMode,
         active: active ?? plan.active,
@@ -540,6 +545,7 @@ export const calculateEnrollmentPlan = async (req: Request, res: Response) => {
     const plan = await EnrollmentPlan.findByPk(Number(id), {
       include: [
         { model: ExchangeRateType, as: 'targetExchangeRateType' },
+        { model: SchoolPeriod, as: 'schoolPeriod' },
         { model: EnrollmentPlanItem, as: 'items', include: [
           { model: Fee, as: 'fee', include: [{ model: ExchangeRateType, as: 'exchangeRateType' }] },
           { model: SellableItem, as: 'sellableItem', include: [{ model: ExchangeRateType, as: 'exchangeRateType' }] },

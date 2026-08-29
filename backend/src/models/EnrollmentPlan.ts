@@ -9,6 +9,7 @@ interface EnrollmentPlanAttributes {
   id: number;
   name: string;
   description: string | null;
+  schoolPeriodId: number;
   targetExchangeRateTypeId: number; // currency in which the total is expressed
   conversionMode: ConversionMode;   // how to compute the total
   active: boolean;
@@ -22,6 +23,7 @@ class EnrollmentPlan extends Model<EnrollmentPlanAttributes, EnrollmentPlanCreat
   public id!: number;
   public name!: string;
   public description!: string | null;
+  public schoolPeriodId!: number;
   public targetExchangeRateTypeId!: number;
   public conversionMode!: ConversionMode;
   public active!: boolean;
@@ -44,6 +46,12 @@ EnrollmentPlan.init(
     description: {
       type: DataTypes.TEXT,
       allowNull: true,
+    },
+    schoolPeriodId: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      references: { model: 'school_periods', key: 'id' },
+      onDelete: 'CASCADE',
     },
     targetExchangeRateTypeId: {
       type: DataTypes.INTEGER,

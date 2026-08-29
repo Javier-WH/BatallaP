@@ -488,6 +488,10 @@ EnrollmentPlan.belongsTo(ExchangeRateType, { foreignKey: 'targetExchangeRateType
 EnrollmentPlan.hasMany(EnrollmentPlanItem, { foreignKey: 'enrollmentPlanId', as: 'items' });
 EnrollmentPlanItem.belongsTo(EnrollmentPlan, { foreignKey: 'enrollmentPlanId', as: 'plan' });
 
+// EnrollmentPlan <-> SchoolPeriod
+SchoolPeriod.hasMany(EnrollmentPlan, { foreignKey: 'schoolPeriodId', as: 'enrollmentPlans' });
+EnrollmentPlan.belongsTo(SchoolPeriod, { foreignKey: 'schoolPeriodId', as: 'schoolPeriod' });
+
 // EnrollmentPlanItem <-> Fee
 Fee.hasMany(EnrollmentPlanItem, { foreignKey: 'feeId', as: 'planItems' });
 EnrollmentPlanItem.belongsTo(Fee, { foreignKey: 'feeId', as: 'fee' });

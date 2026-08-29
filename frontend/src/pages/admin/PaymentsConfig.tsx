@@ -63,6 +63,7 @@ const PaymentsConfig: React.FC = () => {
   const [planItems, setPlanItems] = useState<any[]>([]);
   const [calculation, setCalculation] = useState<PlanCalculation | null>(null);
   const [calcLoading, setCalcLoading] = useState(false);
+  const [planPeriodFilter, setPlanPeriodFilter] = useState<number | undefined>(undefined);
 
   // ── Load functions ──
   const loadRateTypes = useCallback(async () => {
@@ -104,11 +105,11 @@ const PaymentsConfig: React.FC = () => {
   const loadPlans = useCallback(async () => {
     setPlansLoading(true);
     try {
-      const data = await listEnrollmentPlans();
+      const data = await listEnrollmentPlans(planPeriodFilter ? { schoolPeriodId: planPeriodFilter } : undefined);
       setPlans(data);
     } catch { message.error('Error al cargar planes'); }
     finally { setPlansLoading(false); }
-  }, []);
+  }, [planPeriodFilter]);
 
   useEffect(() => { loadRateTypes(); loadRates(); }, [loadRateTypes, loadRates]);
   useEffect(() => { loadFees(); }, [loadFees]);
@@ -242,6 +243,7 @@ const PaymentsConfig: React.FC = () => {
     } else {
       planForm.resetFields();
       planForm.setFieldsValue({
+        schoolPeriodId: activePeriod?.id,
         targetExchangeRateTypeId: rateTypes.find(t => t.isDefault)?.id ?? rateTypes[0]?.id,
         conversionMode: 'exchange_rate',
         active: true,
@@ -250,6 +252,12 @@ const PaymentsConfig: React.FC = () => {
     }
     setPlanModalOpen(true);
   };
+
+  // Fees filtered by the plan's selected period (for the item dropdown)
+  const planSelectedPeriodId = Form.useWatch('schoolPeriodId', planForm);
+  const feesForPlanPeriod = planSelectedPeriodId
+    ? fees.filter(f => f.schoolPeriodId === planSelectedPeriodId)
+    : fees;
 
   const handleAddPlanItem = () => {
     setPlanItems([...planItems, { itemType: 'fee', feeId: null, sellableItemId: null, quantity: 1 }]);
@@ -372,6 +380,7 @@ const PaymentsConfig: React.FC = () => {
 
   const planColumns = [
     { title: 'Nombre', dataIndex: 'name', key: 'name' },
+    { title: 'Período', key: 'schoolPeriod', render: (_: any, p: EnrollmentPlan) => p.schoolPeriod?.period ?? '—' },
     { title: 'Descripción', dataIndex: 'description', key: 'description', ellipsis: true },
     { title: 'Moneda destino', key: 'target', render: (_: any, p: EnrollmentPlan) => p.targetExchangeRateType?.name ?? '—' },
     { title: 'Items', key: 'items', render: (_: any, p: EnrollmentPlan) => p.items?.length ?? 0 },
@@ -513,7 +522,17 @@ const PaymentsConfig: React.FC = () => {
             children: (
               <Space direction="vertical" style={{ width: '100%' }} size="large">
                 <Card title="Planes" extra={
-                  <Button type="primary" icon={<PlusOutlined />} onClick={() => openPlanModal()}>Nuevo Plan</Button>
+                  <Space>
+                    <Select
+                      placeholder="Filtrar por período"
+                      allowClear
+                      style={{ width: 200 }}
+                      value={planPeriodFilter}
+                      onChange={setPlanPeriodFilter}
+                      options={allPeriods.map((p: any) => ({ value: p.id, label: p.period }))}
+                    />
+                    <Button type="primary" icon={<PlusOutlined />} onClick={() => openPlanModal()}>Nuevo Plan</Button>
+                  </Space>
                 }>
                   <Table columns={planColumns} dataSource={plans} rowKey="id" loading={plansLoading} pagination={false} size="small" />
                 </Card>
@@ -722,6 +741,12 @@ const PaymentsConfig: React.FC = () => {
           <Form.Item name="name" label="Nombre del Plan" rules={[{ required: true }]}>
             <Input placeholder="Inscripción Básica" />
           </Form.Item>
+          <Form.Item name="schoolPeriodId" label="Período Escolar" rules={[{ required: true, message: 'Seleccione el período' }]}>
+            <Select
+              options={allPeriods.map((p: any) => ({ value: p.id, label: p.period }))}
+              placeholder="Seleccione el período al que aplica este plan"
+            />
+          </Form.Item>
           <Form.Item name="description" label="Descripción">
             <Input.TextArea rows={2} />
           </Form.Item>
@@ -765,7 +790,7 @@ const PaymentsConfig: React.FC = () => {
                   style={{ width: '100%' }}
                   placeholder="Seleccionar..."
                   options={it.itemType === 'fee'
-                    ? fees.map(f => ({ value: f.id, label: `${f.name} (${f.schoolPeriod?.period ?? ''})` }))
+                    ? feesForPlanPeriod.map(f => ({ value: f.id, label: `${f.name} (${f.schoolPeriod?.period ?? ''})` }))
                     : items.map(i => ({ value: i.id, label: i.name }))
                   }
                 />

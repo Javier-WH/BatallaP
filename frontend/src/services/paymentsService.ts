@@ -57,10 +57,12 @@ export interface EnrollmentPlan {
   id: number;
   name: string;
   description: string | null;
+  schoolPeriodId: number;
   targetExchangeRateTypeId: number;
   conversionMode: 'exchange_rate' | 'same_amount';
   active: boolean;
   targetExchangeRateType?: ExchangeRateType;
+  schoolPeriod?: { id: number; period: string; name?: string };
   items?: EnrollmentPlanItem[];
 }
 
@@ -185,7 +187,7 @@ export async function deleteSellableItem(id: number): Promise<void> {
 
 // ── Enrollment Plans ──
 
-export async function listEnrollmentPlans(params?: { active?: boolean }): Promise<EnrollmentPlan[]> {
+export async function listEnrollmentPlans(params?: { active?: boolean; schoolPeriodId?: number }): Promise<EnrollmentPlan[]> {
   const { data } = await api.get<EnrollmentPlan[]>('/payments/enrollment-plans', { params });
   return data;
 }
