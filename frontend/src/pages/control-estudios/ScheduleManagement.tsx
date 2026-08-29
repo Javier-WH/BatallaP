@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Tabs, Select, Card, Spin, message, Button, Tag, Empty, Tooltip, Modal, Switch, InputNumber, Alert, Popconfirm } from 'antd';
-import { TableOutlined, UserOutlined, ReloadOutlined, EditOutlined, SaveOutlined, CloseOutlined, DeleteOutlined, WarningOutlined } from '@ant-design/icons';
+import { TableOutlined, UserOutlined, ReloadOutlined, EditOutlined, SaveOutlined, CloseOutlined, DeleteOutlined, WarningOutlined, ThunderboltOutlined } from '@ant-design/icons';
 import api from '@/services/api';
 import { useSchool } from '@/context/SchoolContext';
 import dayjs from 'dayjs';
@@ -827,6 +827,61 @@ const ScheduleManagement: React.FC = () => {
     }
   };
 
+  // Generate schedules automatically for the grade of the selected section
+  const [generating, setGenerating] = useState(false);
+  const handleGenerate = async () => {
+    if (!activePeriod || !selectedSectionId) return;
+    // Find the periodGradeId for the selected section
+    const sectionInfo = sectionsList.find(s => s.id === selectedSectionId);
+    if (!sectionInfo) return;
+    // We need periodGradeId — get it from the section's schedule or structure
+    try {
+      setGenerating(true);
+      // Get the PeriodGradeSection to find periodGradeId
+      const structRes = await api.get(`/academic/structure/${activePeriod.id}`);
+      const pg = (structRes.data || []).find((p: any) =>
+        (p.sections || []).some((s: any) => (s.PeriodGradeSection?.id ?? s.id) === selectedSectionId)
+      );
+      if (!pg) {
+        message.error('No se encontró el grado de esta sección');
+        return;
+      }
+      const res = await api.post('/schedules/generate', null, {
+        params: { schoolPeriodId: activePeriod.id, periodGradeId: pg.id },
+      });
+      const result = res.data;
+      if (result.success) {
+        message.success(`Horario generado: ${result.stats.filledSlots} bloques colocados en ${result.stats.sections} secciones`);
+      } else {
+        message.warning(`Generación parcial: ${result.unplaced.length} materia(s) sin colocar`);
+        if (result.unplaced.length > 0) {
+          Modal.info({
+            title: 'Materias sin colocar',
+            content: (
+              <div className="text-xs">
+                {result.unplaced.map((u: any, i: number) => {
+                  const sec = sectionsList.find(s => s.id === u.sectionId);
+                  return (
+                    <div key={i} className="mb-1">
+                      • {sec?.label ?? `Sección ${u.sectionId}`}: {u.reason}
+                    </div>
+                  );
+                })}
+              </div>
+            ),
+          });
+        }
+      }
+      // Reload the section schedule
+      await loadSectionSchedule(selectedSectionId);
+    } catch (e: any) {
+      console.error('Error generating schedule:', e);
+      message.error(e?.response?.data?.message ?? 'Error al generar horario');
+    } finally {
+      setGenerating(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center p-24 gap-4">
@@ -877,7 +932,21 @@ const ScheduleManagement: React.FC = () => {
                     </>
                   )}
                   {selectedSectionId && !editMode && (
-                    <Button icon={<ReloadOutlined />} onClick={() => loadSectionSchedule(selectedSectionId)}>Recargar</Button>
+                    <>
+                      <Button icon={<ReloadOutlined />} onClick={() => loadSectionSchedule(selectedSectionId)}>Recargar</Button>
+                      <Popconfirm
+                        title="¿Generar horarios automáticamente?"
+                        description="Se generará el horario de TODAS las secciones del grado. Esto reemplazará cualquier horario existente."
+                        okText="Sí, generar"
+                        cancelText="Cancelar"
+                        onConfirm={handleGenerate}
+                        disabled={generating}
+                      >
+                        <Button type="primary" loading={generating} icon={<ThunderboltOutlined />}>
+                          Generar automáticamente
+                        </Button>
+                      </Popconfirm>
+                    </>
                   )}
                 </div>
                 {!selectedSectionId ? (

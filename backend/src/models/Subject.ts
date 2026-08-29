@@ -10,6 +10,7 @@ interface SubjectAttributes {
   icon?: string | null;
   color?: string | null;
   allowConsecutiveBlocks?: boolean;
+  maxHoursPerDay?: number | null;
 }
 
 interface SubjectCreationAttributes extends Optional<SubjectAttributes, 'id'> { }
@@ -23,6 +24,7 @@ class Subject extends Model<SubjectAttributes, SubjectCreationAttributes> implem
   public icon?: string | null;
   public color?: string | null;
   public allowConsecutiveBlocks?: boolean;
+  public maxHoursPerDay?: number | null;
 
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
@@ -65,6 +67,11 @@ Subject.init(
       type: DataTypes.BOOLEAN,
       allowNull: false,
       defaultValue: false,
+    },
+    maxHoursPerDay: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      defaultValue: null,
     },
   },
   {

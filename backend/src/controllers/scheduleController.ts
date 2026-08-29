@@ -1,6 +1,22 @@
 import { Request, Response } from 'express';
 import sequelize from '@/config/database';
 import { Schedule, ScheduleEntry, PeriodGradeSection, Subject, Person, SchoolPeriod, PeriodGrade, Grade, Section, TeacherAssignment, PeriodGradeSubject } from '@/models';
+import { generateSchedulesForGrade } from '@/services/scheduleGeneratorService';
+
+// POST /api/schedules/generate?schoolPeriodId=&periodGradeId=
+export const generateSchedules = async (req: Request, res: Response) => {
+  try {
+    const { schoolPeriodId, periodGradeId } = req.query;
+    if (!schoolPeriodId || !periodGradeId) {
+      return res.status(400).json({ message: 'schoolPeriodId y periodGradeId son requeridos' });
+    }
+    const result = await generateSchedulesForGrade(Number(schoolPeriodId), Number(periodGradeId));
+    return res.json(result);
+  } catch (error) {
+    console.error('[generateSchedules] Error:', error);
+    return res.status(500).json({ message: 'Error al generar horarios automáticamente' });
+  }
+};
 
 // GET /api/schedules?schoolPeriodId=&sectionId=
 export const listSchedules = async (req: Request, res: Response) => {
@@ -238,6 +254,7 @@ export const getSectionScheduleOptions = async (req: Request, res: Response) => 
         subjectName: subject?.name ?? '',
         weeklyBlocks: p.weeklyBlocks,
         allowConsecutiveBlocks: subject?.allowConsecutiveBlocks ?? false,
+        maxHoursPerDay: (subject as any)?.maxHoursPerDay ?? null,
         subjectGroupId: subject?.subjectGroupId ?? null,
         teachers,
       };

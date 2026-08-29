@@ -161,6 +161,7 @@ const AcademicSettings: React.FC = () => {
       scheduleForm.setFieldsValue({
         academic_hour_minutes: settingsRes.data.academic_hour_minutes !== undefined ? Number(settingsRes.data.academic_hour_minutes) : 45,
         min_academic_hours_per_block: settingsRes.data.min_academic_hours_per_block !== undefined ? Number(settingsRes.data.min_academic_hours_per_block) : 1,
+        avoid_last_morning_first_afternoon: settingsRes.data.avoid_last_morning_first_afternoon === 'true',
         morning_start_time: settingsRes.data.morning_start_time ? dayjs(settingsRes.data.morning_start_time, 'HH:mm') : dayjs('07:00', 'HH:mm'),
         afternoon_start_time: settingsRes.data.afternoon_start_time ? dayjs(settingsRes.data.afternoon_start_time, 'HH:mm') : dayjs('13:00', 'HH:mm'),
         morning_blocks_before_recess: settingsRes.data.morning_blocks_before_recess !== undefined ? Number(settingsRes.data.morning_blocks_before_recess) : 3,
@@ -396,6 +397,7 @@ const AcademicSettings: React.FC = () => {
         settings: {
           academic_hour_minutes: String(values.academic_hour_minutes),
           min_academic_hours_per_block: String(values.min_academic_hours_per_block),
+          avoid_last_morning_first_afternoon: String(values.avoid_last_morning_first_afternoon ?? false),
           morning_start_time: values.morning_start_time ? values.morning_start_time.format('HH:mm') : '07:00',
           afternoon_start_time: values.afternoon_start_time ? values.afternoon_start_time.format('HH:mm') : '13:00',
           morning_blocks_before_recess: String(values.morning_blocks_before_recess),
@@ -1124,6 +1126,15 @@ const AcademicSettings: React.FC = () => {
                         rules={[{ required: true, message: 'Ingrese el mínimo' }]}
                       >
                         <InputNumber min={1} max={10} style={{ width: '100%', height: 44, display: 'flex', alignItems: 'center' }} />
+                      </Form.Item>
+
+                      <Form.Item
+                        name="avoid_last_morning_first_afternoon"
+                        valuePropName="checked"
+                        label={<Text style={{ fontWeight: 700, fontSize: 13 }}>Evitar último bloque de la mañana + primero de la tarde</Text>}
+                        tooltip="Si una sección tiene clase en el último bloque de la mañana, el primer bloque de la tarde se deja vacío para que los estudiantes tengan tiempo de ir a comer a casa."
+                      >
+                        <Switch checkedChildren="Sí" unCheckedChildren="No" />
                       </Form.Item>
 
                       <Form.Item
