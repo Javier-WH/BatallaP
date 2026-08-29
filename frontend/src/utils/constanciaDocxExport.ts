@@ -18,7 +18,7 @@ import {
   type IParagraphOptions,
 } from 'docx';
 import { saveAs } from 'file-saver';
-import { FontSize, FontFamily, LineHeight, TextTransform } from '@/pages/shared/ConstanciaEditor';
+import { FontSize, FontFamily, LineHeight, TextTransform, FloatingImage } from '@/pages/shared/ConstanciaEditor';
 
 // docx v9 declares IParagraphOptions / IRunOptions properties as `readonly`.
 // Build the objects mutably, then hand them off to docx (mutable → readonly is fine).
@@ -38,6 +38,9 @@ const tiptapNodes: NodeSerializer = {
   listItem: defaultNodes.list_item,
   horizontalRule: defaultNodes.horizontal_rule,
 
+  // Image handler — reads wrap attribute and passes through to default image serializer
+  image: defaultNodes.image,
+
   // Custom paragraph handler — reads textAlign and lineHeight attrs from Tiptap
   paragraph(state, node) {
     const textAlign = node.attrs.textAlign;
@@ -48,20 +51,22 @@ const tiptapNodes: NodeSerializer = {
     else if (textAlign === 'right') opts.alignment = AlignmentType.RIGHT;
     else if (textAlign === 'justify') opts.alignment = AlignmentType.JUSTIFIED;
 
-    // line-height: docx uses "line" in 240ths of a line (240 = single)
-    if (lineHeight) {
-      const lh = parseFloat(lineHeight);
-      if (!isNaN(lh)) {
-        opts.spacing = { line: Math.round(lh * 240), lineRule: 'auto' };
-      }
-    }
+    // Match the editor's line height and remove Word's default paragraph spacing.
+    const parsedLineHeight = lineHeight ? parseFloat(lineHeight) : 1.5;
+    const effectiveLineHeight = Number.isNaN(parsedLineHeight) ? 1.5 : parsedLineHeight;
+    opts.spacing = {
+      before: 0,
+      after: 0,
+      line: Math.round(effectiveLineHeight * 240),
+      lineRule: 'auto',
+    };
 
     state.addParagraphOptions(opts);
     state.renderInline(node);
 
-    // If the paragraph is empty (just an enter), add a blank TextRun so Word preserves the line
+    // Preserve an empty editor paragraph using the editor's base font instead of Word's Normal style.
     if (state.current.length === 0) {
-      state.text(' ');
+      state.text(' ', { font: 'Times New Roman', size: 24 });
     }
 
     state.closeBlock(node);
@@ -77,12 +82,15 @@ const tiptapNodes: NodeSerializer = {
     else if (textAlign === 'right') opts.alignment = AlignmentType.RIGHT;
     else if (textAlign === 'justify') opts.alignment = AlignmentType.JUSTIFIED;
 
-    if (lineHeight) {
-      const lh = parseFloat(lineHeight);
-      if (!isNaN(lh)) {
-        opts.spacing = { line: Math.round(lh * 240), lineRule: 'auto' };
-      }
-    }
+    // Match the editor's line height and remove Word's default paragraph spacing.
+    const parsedLineHeight = lineHeight ? parseFloat(lineHeight) : 1.5;
+    const effectiveLineHeight = Number.isNaN(parsedLineHeight) ? 1.5 : parsedLineHeight;
+    opts.spacing = {
+      before: 0,
+      after: 0,
+      line: Math.round(effectiveLineHeight * 240),
+      lineRule: 'auto',
+    };
 
     const heading = [
       HeadingLevel.HEADING_1,
@@ -178,6 +186,7 @@ export async function exportConstanciaToDocx(html: string, filename = 'constanci
       TextTransform,
       LineHeight,
       TextAlign.configure({ types: ['heading', 'paragraph'] }),
+      FloatingImage,
     ],
     content: html,
   });

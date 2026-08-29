@@ -80,7 +80,25 @@ async function resolveVariables(personId: number, schoolPeriodId: number): Promi
   const fullName = `${firstName} ${lastName}`.trim();
   const documentType = person.documentType || '';
   const document = person.document || '';
-  const fullDocument = `${documentType} ${document}`.trim();
+  const documentTypeLabel = ({
+    Venezolano: 'Cédula de Identidad',
+    Extranjero: 'Cédula de Identidad',
+    Pasaporte: 'Pasaporte',
+    'Cedula Escolar': 'Cédula Escolar',
+  } as Record<string, string>)[documentType] || documentType;
+
+  // Build a formatted document string like "V-33.293.938" from the raw values.
+  const docPrefixMap: Record<string, string> = {
+    Venezolano: 'V',
+    Extranjero: 'E',
+    Pasaporte: 'P',
+    'Cedula Escolar': 'CE',
+  };
+  const docPrefix = docPrefixMap[documentType] || '';
+  // Strip any existing prefix (V-, E-, P-, CE-) and non-digits, then group with dots.
+  const docDigits = document.replace(/^(V|E|P|CE)[-.\s]*/i, '').replace(/[^0-9]/g, '');
+  const docGrouped = docDigits.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  const fullDocument = `${docPrefix}${docPrefix && docGrouped ? '-' : ''}${docGrouped}`;
   const birthdate = person.birthdate ? new Date(person.birthdate) : null;
   const gender = person.gender || '';
 
@@ -101,6 +119,7 @@ async function resolveVariables(personId: number, schoolPeriodId: number): Promi
     'student.lastName': lastName,
     'student.fullName': fullName,
     'student.documentType': documentType,
+    'student.documentTypeLabel': documentTypeLabel,
     'student.document': document,
     'student.fullDocument': fullDocument,
     'student.birthdate': birthdate ? birthdate.toISOString().split('T')[0] : '',
@@ -119,9 +138,12 @@ async function resolveVariables(personId: number, schoolPeriodId: number): Promi
     'institution.state': settingsMap['institution_state'] || '',
     'institution.director': settingsMap['director_name'] || '',
     'institution.directorDocument': settingsMap['director_document'] || '',
-    // Academic
-    'grade.name': inscription?.grade?.name || '',
-    'grade.nameUpper': (inscription?.grade?.name || '').toUpperCase(),
+    // Academic — grade.name strips the trailing "Año" so the template can compose
+    // phrases like "pertenece al Quinto (5to) Año". Use grade.fullName for the full string.
+    'grade.name': (inscription?.grade?.name || '').replace(/\s+A[ñn]o\s*$/i, '').trim(),
+    'grade.nameUpper': (inscription?.grade?.name || '').replace(/\s+A[ñn]o\s*$/i, '').trim().toUpperCase(),
+    'grade.fullName': inscription?.grade?.name || '',
+    'grade.fullNameUpper': (inscription?.grade?.name || '').toUpperCase(),
     'grade.ordinal': gradeToOrdinal(inscription?.grade?.order),
     'section.name': inscription?.section?.name || '',
     'section.nameUpper': (inscription?.section?.name || '').toUpperCase(),
@@ -310,7 +332,8 @@ export const getVariables = async (_req: Request, res: Response) => {
     { group: 'Estudiante', key: 'student.firstName', label: 'Nombre' },
     { group: 'Estudiante', key: 'student.lastName', label: 'Apellido' },
     { group: 'Estudiante', key: 'student.fullName', label: 'Nombre completo' },
-    { group: 'Estudiante', key: 'student.documentType', label: 'Tipo de documento' },
+    { group: 'Estudiante', key: 'student.documentType', label: 'Tipo de documento (Venezolano, etc.)' },
+    { group: 'Estudiante', key: 'student.documentTypeLabel', label: 'Tipo de documento (texto: Cédula de Identidad, Cédula Escolar...)' },
     { group: 'Estudiante', key: 'student.document', label: 'Cédula' },
     { group: 'Estudiante', key: 'student.fullDocument', label: 'Documento completo' },
     { group: 'Estudiante', key: 'student.birthdate', label: 'Fecha de nacimiento' },
@@ -318,7 +341,6 @@ export const getVariables = async (_req: Request, res: Response) => {
     { group: 'Estudiante', key: 'student.age', label: 'Edad' },
     { group: 'Estudiante', key: 'student.gender', label: 'Sexo (M/F)' },
     { group: 'Estudiante', key: 'student.article', label: 'Artículo (el/la)' },
-    { group: 'Estudiante', key: 'student.articleUpper', label: 'Artículo mayúscula (El/La)' },
     // Institution
     { group: 'Institución', key: 'institution.name', label: 'Nombre de la institución' },
     { group: 'Institución', key: 'institution.code', label: 'Código' },
@@ -329,11 +351,10 @@ export const getVariables = async (_req: Request, res: Response) => {
     { group: 'Institución', key: 'institution.director', label: 'Director' },
     { group: 'Institución', key: 'institution.directorDocument', label: 'Cédula del director' },
     // Academic
-    { group: 'Académico', key: 'grade.name', label: 'Grado/Año (ej: Quinto año)' },
-    { group: 'Académico', key: 'grade.nameUpper', label: 'Grado/Año mayúsculas (ej: QUINTO AÑO)' },
+    { group: 'Académico', key: 'grade.name', label: 'Grado (ej: Quinto)' },
+    { group: 'Académico', key: 'grade.fullName', label: 'Grado completo (ej: Quinto Año)' },
     { group: 'Académico', key: 'grade.ordinal', label: 'Grado ordinal (ej: 5to)' },
     { group: 'Académico', key: 'section.name', label: 'Sección' },
-    { group: 'Académico', key: 'section.nameUpper', label: 'Sección mayúsculas' },
     { group: 'Académico', key: 'period.name', label: 'Período escolar' },
     // Date
     { group: 'Fecha', key: 'date', label: 'Fecha actual (corta)' },
@@ -341,7 +362,6 @@ export const getVariables = async (_req: Request, res: Response) => {
     { group: 'Fecha', key: 'date.day', label: 'Día (número)' },
     { group: 'Fecha', key: 'date.dayOrdinal', label: 'Día ordinal (ej: 1ero)' },
     { group: 'Fecha', key: 'date.month', label: 'Mes' },
-    { group: 'Fecha', key: 'date.monthUpper', label: 'Mes mayúscula' },
     { group: 'Fecha', key: 'date.year', label: 'Año' },
     // Custom (user fills these when generating)
     { group: 'Campos personalizados', key: 'custom.title', label: 'Título/Cargo (ej: Docente)' },

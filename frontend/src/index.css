@@ -405,7 +405,64 @@ input[type=number] {
   z-index: 2;
 }
 
-.constancia-editor-page > * {
+/* Image layers: behind sits under the text, front sits above it.
+   Layer geometry is shared with the preview via CONSTANCIA_PAGE_CSS. */
+.constancia-content {
   position: relative;
-  z-index: 1;
+  z-index: 10;
+  height: 100%;
 }
+
+/* Floating image node view */
+.fimg-anchor {
+  display: inline;
+}
+
+.fimg-anchor-detached {
+  display: inline-block;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+}
+
+.fimg-box {
+  position: relative;
+  display: inline-block;
+  line-height: 0;
+  pointer-events: auto;
+}
+
+.fimg-box[data-wrap='front'],
+.fimg-box[data-wrap='behind'] {
+  cursor: move;
+}
+
+.fimg-box img {
+  max-width: 100%;
+  display: block;
+}
+
+.fimg-box.is-selected {
+  outline: 2px solid #1890ff;
+  outline-offset: 2px;
+}
+
+.fimg-handle {
+  display: none;
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  background: #1890ff;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  z-index: 40;
+}
+
+.fimg-box.is-selected .fimg-handle {
+  display: block;
+}
+
+.fimg-handle-nw { top: -6px; left: -6px; cursor: nw-resize; }
+.fimg-handle-ne { top: -6px; right: -6px; cursor: ne-resize; }
+.fimg-handle-sw { bottom: -6px; left: -6px; cursor: sw-resize; }
+.fimg-handle-se { bottom: -6px; right: -6px; cursor: se-resize; }

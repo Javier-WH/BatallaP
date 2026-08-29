@@ -11,33 +11,16 @@ import {
 } from '@ant-design/icons';
 import ConstanciaEditor from './ConstanciaEditor';
 import type { VariableDef } from './ConstanciaEditor';
+import { CONSTANCIA_PAGE_CSS, CONSTANCIA_PAGE_STYLE, buildConstanciaPageHtml } from './constanciaPage';
 import { exportConstanciaToDocx } from '@/utils/constanciaDocxExport';
 
-// Match the visual line breaks that Tiptap adds to the editor DOM.
-function normalizePreviewHtml(html: string): string {
+function normalizeWordHtml(html: string): string {
   const doc = new DOMParser().parseFromString(html, 'text/html');
   const paragraphs = Array.from(doc.body.querySelectorAll('p'));
 
   while (paragraphs.length > 0 && paragraphs[paragraphs.length - 1].innerHTML.trim() === '') {
     paragraphs.pop()?.remove();
   }
-
-  paragraphs.forEach((paragraph) => {
-    if (paragraph.innerHTML.trim() === '') {
-      paragraph.appendChild(doc.createElement('br'));
-      return;
-    }
-
-    const lastElement = paragraph.lastElementChild;
-    const lastChildOfSpan = lastElement?.tagName === 'SPAN'
-      ? lastElement.lastElementChild
-      : null;
-
-    // ProseMirror adds a trailing break when the last inline span ends in a hard break.
-    if (lastChildOfSpan?.tagName === 'BR') {
-      paragraph.appendChild(doc.createElement('br'));
-    }
-  });
 
   return doc.body.innerHTML;
 }
@@ -161,7 +144,7 @@ const Constancias: React.FC = () => {
         schoolPeriodId: activePeriod?.id || null,
         customVars: customValues,
       });
-      setPreviewHtml(normalizePreviewHtml(res.data.html));
+      setPreviewHtml(res.data.html);
     } catch (error: any) {
       message.error(error.response?.data?.message || 'Error al generar vista previa');
     } finally {
@@ -180,23 +163,27 @@ const Constancias: React.FC = () => {
       <head>
         <title>Constancia</title>
         <style>
-          @page { size: letter; margin: 1in; }
+          /* Margins live on the body so absolute image coordinates match the editor page box. */
+          @page { size: letter; margin: 0; }
           * { box-sizing: border-box; }
-          html, body {
+          html {
+            margin: 0;
+            padding: 0;
+          }
+          body {
+            position: relative;
             font-family: 'Times New Roman', serif;
             font-size: 12pt;
             line-height: 1.5;
             margin: 0;
-            padding: 0;
+            padding: 1in;
             color: #000;
           }
-          p { margin: 0; }
-          h1, h2, h3 { margin: 0; }
-          ul, ol { margin: 0; padding-left: 2em; }
           img { max-width: 100%; }
+          ${CONSTANCIA_PAGE_CSS}
         </style>
       </head>
-      <body>${previewHtml}</body>
+      <body>${buildConstanciaPageHtml(previewHtml)}</body>
       </html>
     `);
     printWindow.document.close();
@@ -208,7 +195,7 @@ const Constancias: React.FC = () => {
   const handleExportWord = useCallback(async () => {
     if (!previewHtml) { message.warning('Genere la vista previa primero'); return; }
     try {
-      await exportConstanciaToDocx(previewHtml);
+      await exportConstanciaToDocx(normalizeWordHtml(previewHtml));
     } catch (error: any) {
       console.error('Word export error:', error);
       message.error('Error al generar el documento Word');
@@ -400,28 +387,12 @@ const Constancias: React.FC = () => {
           className="shadow-sm"
         >
           <div className="bg-slate-200 p-8 rounded-lg" style={{ overflowY: 'auto' }}>
+            <style>{CONSTANCIA_PAGE_CSS}</style>
             <div
-              className={`constancia-page bg-white${showGuides ? ' constancia-editor-page' : ''}`}
-              style={{
-                fontFamily: "'Times New Roman', serif",
-                fontSize: '12pt',
-                lineHeight: 1.5,
-                width: '8.5in',
-                height: '11in',
-                minHeight: '11in',
-                padding: '1in',
-                margin: '0 auto',
-                boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-                boxSizing: 'border-box',
-              }}
-            >
-              <style>{`
-                .constancia-preview p { margin: 0; }
-                .constancia-preview h1, .constancia-preview h2, .constancia-preview h3 { margin: 0; }
-                .constancia-preview ul, .constancia-preview ol { margin: 0; padding-left: 2em; }
-              `}</style>
-              <div className="constancia-preview" dangerouslySetInnerHTML={{ __html: previewHtml }} />
-            </div>
+              className={`constancia-page${showGuides ? ' constancia-editor-page' : ''}`}
+              style={CONSTANCIA_PAGE_STYLE}
+              dangerouslySetInnerHTML={{ __html: buildConstanciaPageHtml(previewHtml) }}
+            />
           </div>
         </Card>
       )}

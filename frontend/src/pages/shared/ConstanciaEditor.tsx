@@ -4,13 +4,16 @@ import StarterKit from '@tiptap/starter-kit';
 import { TextStyle } from '@tiptap/extension-text-style';
 import Color from '@tiptap/extension-color';
 import TextAlign from '@tiptap/extension-text-align';
-import { Button, Space, Select, Dropdown } from 'antd';
+import { FloatingImage } from './FloatingImage';
+import type { ImageWrapMode } from './FloatingImage';
+import { CONSTANCIA_PAGE_CSS, CONSTANCIA_PAGE_STYLE } from './constanciaPage';
+import { Button, Space, Select, Dropdown, Upload } from 'antd';
 import {
   BoldOutlined, ItalicOutlined, UnderlineOutlined,
   UnorderedListOutlined, OrderedListOutlined,
   AlignLeftOutlined, AlignCenterOutlined, AlignRightOutlined, MenuOutlined,
   UndoOutlined, RedoOutlined, LinkOutlined,
-  PlusOutlined,
+  PlusOutlined, PictureOutlined,
 } from '@ant-design/icons';
 
 // Custom FontSize extension (same as DashboardEditor)
@@ -97,6 +100,9 @@ export const TextTransform = Extension.create({
   },
 });
 
+export { FloatingImage };
+export type { ImageWrapMode };
+
 export interface VariableDef {
   group: string;
   key: string;
@@ -120,6 +126,7 @@ const ConstanciaEditor: React.FC<ConstanciaEditorProps> = ({ content, onChange, 
       TextTransform,
       LineHeight,
       TextAlign.configure({ types: ['heading', 'paragraph'] }),
+      FloatingImage,
     ],
     content,
     onUpdate: ({ editor }) => {
@@ -127,8 +134,8 @@ const ConstanciaEditor: React.FC<ConstanciaEditorProps> = ({ content, onChange, 
     },
     editorProps: {
       attributes: {
-        class: 'prose prose-slate constancia-page constancia-editor-page focus:outline-none',
-        style: 'font-family: "Times New Roman", serif; font-size: 12pt; line-height: 1.5; width: 8.5in; height: 11in; min-height: 11in; padding: 1in; margin: 0 auto; background: white; box-shadow: 0 1px 3px rgba(0,0,0,0.1); box-sizing: border-box;',
+        class: 'prose prose-slate focus:outline-none',
+        style: 'min-height: 100%;',
       },
     },
   });
@@ -184,9 +191,16 @@ const ConstanciaEditor: React.FC<ConstanciaEditorProps> = ({ content, onChange, 
           options={[
             { value: "'Times New Roman', serif", label: 'Times New Roman' },
             { value: "'Arial', sans-serif", label: 'Arial' },
-            { value: "'Courier New', monospace", label: 'Courier New' },
+            { value: "'Cambria', serif", label: 'Cambria' },
+            { value: "'Calibri', sans-serif", label: 'Calibri' },
+            { value: "'Garamond', serif", label: 'Garamond' },
             { value: "'Georgia', serif", label: 'Georgia' },
+            { value: "'Palatino Linotype', 'Book Antiqua', Palatino, serif", label: 'Palatino' },
+            { value: "'Trebuchet MS', sans-serif", label: 'Trebuchet MS' },
+            { value: "'Tahoma', sans-serif", label: 'Tahoma' },
             { value: "'Verdana', sans-serif", label: 'Verdana' },
+            { value: "'Courier New', monospace", label: 'Courier New' },
+            { value: "'Lucida Sans Unicode', sans-serif", label: 'Lucida Sans' },
           ]}
         />
 
@@ -244,6 +258,43 @@ const ConstanciaEditor: React.FC<ConstanciaEditorProps> = ({ content, onChange, 
         <div className="w-px h-6 bg-slate-300 mx-1" />
 
         <Button icon={<LinkOutlined />} onClick={addLink} type={editor.isActive('link') ? 'primary' : 'default'} size="small" />
+
+        <div className="w-px h-6 bg-slate-300 mx-1" />
+
+        {/* Image insertion + wrapping mode */}
+        <Upload
+          accept="image/*"
+          showUploadList={false}
+          beforeUpload={(file) => {
+            const reader = new FileReader();
+            reader.onload = () => {
+              const src = reader.result as string;
+              editor.chain().focus().setImage({ src, alt: file.name }).run();
+            };
+            reader.readAsDataURL(file);
+            return false;
+          }}
+        >
+          <Button icon={<PictureOutlined />} size="small" title="Insertar imagen">Imagen</Button>
+        </Upload>
+
+        {editor.isActive('image') && (
+          <Select
+            size="small"
+            style={{ width: 150 }}
+            value={editor.getAttributes('image').wrap || 'inline'}
+            onChange={(value: ImageWrapMode) => {
+              editor.chain().focus().setImageWrap(value).run();
+            }}
+            options={[
+              { value: 'inline', label: 'En línea' },
+              { value: 'left', label: 'Flotar izquierda' },
+              { value: 'right', label: 'Flotar derecha' },
+              { value: 'front', label: 'Delante del texto' },
+              { value: 'behind', label: 'Detrás del texto' },
+            ]}
+          />
+        )}
 
         <div className="w-px h-6 bg-slate-300 mx-1" />
 
@@ -309,9 +360,14 @@ const ConstanciaEditor: React.FC<ConstanciaEditorProps> = ({ content, onChange, 
         </Dropdown>
       </div>
 
-      {/* Editor — page-like canvas */}
+      {/* Editor — page-like canvas with background/foreground image layers */}
       <div className="bg-slate-200 p-8 rounded-b-lg" style={{ minHeight: 'calc(100vh - 200px)', overflowY: 'auto' }}>
-        <EditorContent editor={editor} />
+        <style>{CONSTANCIA_PAGE_CSS}</style>
+        <div className="constancia-page constancia-editor-page" style={CONSTANCIA_PAGE_STYLE}>
+          <div className="constancia-layer constancia-layer-behind" />
+          <EditorContent editor={editor} className="constancia-content" />
+          <div className="constancia-layer constancia-layer-front" />
+        </div>
       </div>
     </div>
   );
