@@ -22,7 +22,7 @@ interface Section {
   periods: Period[];
 }
 
-const DAYS = ['Lunes', 'Martes', 'Miercoles', 'Jueves', 'Viernes'];
+const DAYS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'];
 
 const STATUSES = [
   { key: 'available', label: 'Disponible', swatch: 'bg-emerald-400', ring: 'ring-emerald-500' },
@@ -269,16 +269,17 @@ export default function TeacherAvailability() {
 
         {/* Grid */}
         <div className="overflow-x-auto">
-          <table className="w-full border-collapse text-sm" style={{ minWidth: '640px' }}>
+          <table className="w-full border-collapse text-sm" style={{ minWidth: '640px', tableLayout: 'fixed' }}>
             <thead>
               <tr>
-                <th className="border border-slate-300 bg-slate-800 text-white py-2 w-28 text-xs">
+                <th className="border border-slate-300 bg-slate-800 text-white py-2 text-xs" style={{ width: `${100 / (DAYS.length + 1)}%` }}>
                   Hora
                 </th>
                 {DAYS.map(d => (
                   <th
                     key={d}
                     className="border border-slate-300 bg-slate-800 text-white py-2 text-xs uppercase tracking-wide"
+                    style={{ width: `${100 / (DAYS.length + 1)}%` }}
                   >
                     {d}
                   </th>
