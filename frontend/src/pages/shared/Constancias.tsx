@@ -41,6 +41,8 @@ interface Student {
   documentType: string;
 }
 
+const STAFF_ROLES = ['Master', 'Administrador', 'Control de Estudios', 'Profesor'];
+
 const Constancias: React.FC = () => {
   const { user } = useAuth();
   const { activePeriod } = useSchool();
@@ -53,10 +55,12 @@ const Constancias: React.FC = () => {
 
   // Generate tab state
   const [selectedTemplateId, setSelectedTemplateId] = useState<number | null>(null);
-  const [templateAnalysis, setTemplateAnalysis] = useState<{ needsStudent: boolean; customVars: string[] } | null>(null);
+  const [templateAnalysis, setTemplateAnalysis] = useState<{ needsStudent: boolean; needsWorker: boolean; customVars: string[] } | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<Student[]>([]);
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
+  const [workerResults, setWorkerResults] = useState<Student[]>([]);
+  const [selectedWorker, setSelectedWorker] = useState<Student | null>(null);
   const [customValues, setCustomValues] = useState<Record<string, string>>({});
   const [previewHtml, setPreviewHtml] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
@@ -97,6 +101,7 @@ const Constancias: React.FC = () => {
     setSelectedTemplateId(templateId);
     setPreviewHtml(null);
     setSelectedStudent(null);
+    setSelectedWorker(null);
     setCustomValues({});
     setTemplateAnalysis(null);
     setAnalyzing(true);
@@ -105,7 +110,7 @@ const Constancias: React.FC = () => {
       setTemplateAnalysis(res.data);
     } catch {
       // If analysis fails, assume it needs student
-      setTemplateAnalysis({ needsStudent: true, customVars: [] });
+      setTemplateAnalysis({ needsStudent: true, needsWorker: false, customVars: [] });
     } finally {
       setAnalyzing(false);
     }
@@ -132,15 +137,37 @@ const Constancias: React.FC = () => {
     }
   }, []);
 
+  // Search staff (workers) — filters by staff roles
+  const searchWorkers = useCallback(async (query: string) => {
+    if (query.trim().length < 2) { setWorkerResults([]); return; }
+    try {
+      const res = await api.get('/users', { params: { q: query } });
+      const workers = (res.data?.data || res.data || [])
+        .filter((u: any) => u.roles?.some((r: any) => STAFF_ROLES.includes(r.name)))
+        .map((u: any) => ({
+          id: u.id,
+          firstName: u.firstName,
+          lastName: u.lastName,
+          document: u.document || '',
+          documentType: u.documentType || '',
+        }));
+      setWorkerResults(workers);
+    } catch {
+      setWorkerResults([]);
+    }
+  }, []);
+
   // Generate preview
   const generatePreview = useCallback(async () => {
     if (!selectedTemplateId) { message.warning('Seleccione una plantilla'); return; }
     if (templateAnalysis?.needsStudent && !selectedStudent) { message.warning('Seleccione un estudiante'); return; }
+    if (templateAnalysis?.needsWorker && !selectedWorker) { message.warning('Seleccione un trabajador'); return; }
     setGenerating(true);
     try {
+      const personId = selectedStudent?.id || selectedWorker?.id || null;
       const res = await api.post('/constancias/preview', {
         templateId: selectedTemplateId,
-        personId: selectedStudent?.id || null,
+        personId,
         schoolPeriodId: activePeriod?.id || null,
         customVars: customValues,
       });
@@ -150,7 +177,7 @@ const Constancias: React.FC = () => {
     } finally {
       setGenerating(false);
     }
-  }, [selectedTemplateId, selectedStudent, activePeriod, customValues, templateAnalysis]);
+  }, [selectedTemplateId, selectedStudent, selectedWorker, activePeriod, customValues, templateAnalysis]);
 
   // Print PDF (uses browser print)
   const handlePrintPdf = useCallback(() => {
@@ -321,11 +348,39 @@ const Constancias: React.FC = () => {
                 </div>
               )}
 
+              {/* Worker search — only if template uses worker variables */}
+              {templateAnalysis.needsWorker && (
+                <div>
+                  <label className="block text-sm font-medium text-slate-600 mb-1">
+                    2. Trabajador
+                  </label>
+                  <Select
+                    className="w-full"
+                    showSearch
+                    placeholder="Buscar por nombre o cédula…"
+                    value={selectedWorker?.id}
+                    onSearch={searchWorkers}
+                    onChange={(v) => {
+                      const w = workerResults.find(w => w.id === v);
+                      setSelectedWorker(w || null);
+                      setPreviewHtml(null);
+                    }}
+                    filterOption={false}
+                    options={workerResults.map(w => ({
+                      value: w.id,
+                      label: `${w.firstName} ${w.lastName} — ${w.documentType} ${w.document}`,
+                    }))}
+                    size="large"
+                    allowClear
+                  />
+                </div>
+              )}
+
               {/* Custom text inputs — for each custom.* variable in the template */}
               {templateAnalysis.customVars.length > 0 && (
                 <div className="space-y-3">
                   <label className="block text-sm font-medium text-slate-600">
-                    {templateAnalysis.needsStudent ? '3. ' : '2. '} Datos adicionales
+                    {(templateAnalysis.needsStudent || templateAnalysis.needsWorker) ? '3. ' : '2. '} Datos adicionales
                   </label>
                   {templateAnalysis.customVars.map(varName => (
                     <div key={varName}>
@@ -352,7 +407,7 @@ const Constancias: React.FC = () => {
                 size="large"
                 icon={<EyeOutlined />}
                 onClick={generatePreview}
-                disabled={(templateAnalysis.needsStudent && !selectedStudent) || generating}
+                disabled={(templateAnalysis.needsStudent && !selectedStudent) || (templateAnalysis.needsWorker && !selectedWorker) || generating}
                 loading={generating}
               >
                 Generar vista previa

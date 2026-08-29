@@ -31,6 +31,24 @@ function toOrdinal(day: number): string {
   return String(day);
 }
 
+// Convert day number to Spanish words (apocoped for use before nouns, e.g. "un" not "uno"):
+// 1→un, 15→quince, 21→veintiún, 31→treinta y un, etc.
+function toSpanishWords(n: number): string {
+  const ones = ['', 'un', 'dos', 'tres', 'cuatro', 'cinco', 'seis', 'siete', 'ocho', 'nueve',
+    'diez', 'once', 'doce', 'trece', 'catorce', 'quince', 'dieciséis', 'diecisiete', 'dieciocho', 'diecinueve',
+    'veinte', 'veintiún', 'veintidós', 'veintitrés', 'veinticuatro', 'veinticinco', 'veintiséis', 'veintisiete', 'veintiocho', 'veintinueve'];
+  const tens = ['', '', '', 'treinta', 'cuarenta', 'cincuenta', 'sesenta', 'setenta', 'ochenta', 'noventa'];
+
+  if (n === 0) return 'cero';
+  if (n < 30) return ones[n];
+  if (n < 100) {
+    const t = Math.floor(n / 10);
+    const o = n % 10;
+    return o === 0 ? tens[t] : `${tens[t]} y ${ones[o]}`;
+  }
+  return String(n);
+}
+
 async function resolveVariables(personId: number, schoolPeriodId: number): Promise<Record<string, string>> {
   const person = await Person.findByPk(personId);
   if (!person) throw new Error('Estudiante no encontrado');
@@ -113,6 +131,8 @@ async function resolveVariables(personId: number, schoolPeriodId: number): Promi
     ? Math.floor((Date.now() - birthdate.getTime()) / (365.25 * 24 * 60 * 60 * 1000))
     : null;
 
+  const now = new Date();
+
   const vars: Record<string, string> = {
     // Student
     'student.firstName': firstName,
@@ -129,6 +149,23 @@ async function resolveVariables(personId: number, schoolPeriodId: number): Promi
     // Determined articles based on gender (el/la)
     'student.article': gender === 'F' ? 'la' : 'el',
     'student.articleUpper': gender === 'F' ? 'La' : 'El',
+    // Worker (staff) — same person data, plus hireDate for work certificates.
+    // hireDate is only meaningful for staff; for students it will be empty.
+    'worker.firstName': firstName,
+    'worker.lastName': lastName,
+    'worker.fullName': fullName,
+    'worker.documentType': documentType,
+    'worker.documentTypeLabel': documentTypeLabel,
+    'worker.document': document,
+    'worker.fullDocument': fullDocument,
+    'worker.birthdate': birthdate ? birthdate.toISOString().split('T')[0] : '',
+    'worker.birthdateLong': birthdate ? formatDate(birthdate) : '',
+    'worker.age': age !== null ? String(age) : '',
+    'worker.gender': gender,
+    'worker.article': gender === 'F' ? 'la' : 'el',
+    'worker.articleUpper': gender === 'F' ? 'La' : 'El',
+    'worker.hireDate': person.hireDate ? new Date(person.hireDate).toISOString().split('T')[0] : '',
+    'worker.hireDateLong': person.hireDate ? formatDate(new Date(person.hireDate)) : '',
     // Institution
     'institution.name': settingsMap['institution_name'] || '',
     'institution.code': settingsMap['institution_code'] || '',
@@ -149,13 +186,14 @@ async function resolveVariables(personId: number, schoolPeriodId: number): Promi
     'section.nameUpper': (inscription?.section?.name || '').toUpperCase(),
     'period.name': period?.name || '',
     // Certificate
-    'date': new Date().toISOString().split('T')[0],
+    'date': now.toISOString().split('T')[0],
     'date.long': formatDate(new Date()),
-    'date.day': String(new Date().getDate()),
-    'date.dayOrdinal': toOrdinal(new Date().getDate()),
-    'date.month': new Date().toLocaleString('es-ES', { month: 'long' }),
-    'date.monthUpper': new Date().toLocaleString('es-ES', { month: 'long' }).toUpperCase(),
-    'date.year': String(new Date().getFullYear()),
+    'date.day': String(now.getDate()),
+    'date.dayOrdinal': toOrdinal(now.getDate()),
+    'date.dayWords': toSpanishWords(now.getDate()),
+    'date.month': now.toLocaleString('es-ES', { month: 'long' }),
+    'date.monthUpper': now.toLocaleString('es-ES', { month: 'long' }).toUpperCase(),
+    'date.year': String(now.getFullYear()),
   };
 
   // Add subject grades as variables: subject.<name> = score
@@ -194,7 +232,8 @@ export const analyzeTemplate = async (req: Request, res: Response) => {
     if (!template) return res.status(404).json({ message: 'Plantilla no encontrada' });
 
     const allVars = extractVariables(template.content);
-    const needsStudent = allVars.some(v => v.startsWith('student.'));
+    const needsStudent = allVars.some(v => v.startsWith('student.') || v.startsWith('grade.') || v.startsWith('section.') || v.startsWith('subject.'));
+    const needsWorker = allVars.some(v => v.startsWith('worker.'));
     const customVars = allVars
       .filter(v => v.startsWith('custom.'))
       .map(v => v.replace('custom.', ''));
@@ -202,6 +241,7 @@ export const analyzeTemplate = async (req: Request, res: Response) => {
     return res.json({
       allVariables: allVars,
       needsStudent,
+      needsWorker,
       customVars,
     });
   } catch (error) {
@@ -341,6 +381,21 @@ export const getVariables = async (_req: Request, res: Response) => {
     { group: 'Estudiante', key: 'student.age', label: 'Edad' },
     { group: 'Estudiante', key: 'student.gender', label: 'Sexo (M/F)' },
     { group: 'Estudiante', key: 'student.article', label: 'Artículo (el/la)' },
+    // Worker (staff) — for work certificates (constancias de trabajo)
+    { group: 'Trabajador', key: 'worker.firstName', label: 'Nombre' },
+    { group: 'Trabajador', key: 'worker.lastName', label: 'Apellido' },
+    { group: 'Trabajador', key: 'worker.fullName', label: 'Nombre completo' },
+    { group: 'Trabajador', key: 'worker.documentType', label: 'Tipo de documento (Venezolano, etc.)' },
+    { group: 'Trabajador', key: 'worker.documentTypeLabel', label: 'Tipo de documento (texto: Cédula de Identidad...)' },
+    { group: 'Trabajador', key: 'worker.document', label: 'Cédula' },
+    { group: 'Trabajador', key: 'worker.fullDocument', label: 'Documento completo' },
+    { group: 'Trabajador', key: 'worker.birthdate', label: 'Fecha de nacimiento' },
+    { group: 'Trabajador', key: 'worker.birthdateLong', label: 'Fecha de nacimiento (texto)' },
+    { group: 'Trabajador', key: 'worker.age', label: 'Edad' },
+    { group: 'Trabajador', key: 'worker.gender', label: 'Sexo (M/F)' },
+    { group: 'Trabajador', key: 'worker.article', label: 'Artículo (el/la)' },
+    { group: 'Trabajador', key: 'worker.hireDate', label: 'Fecha de inicio (laboral)' },
+    { group: 'Trabajador', key: 'worker.hireDateLong', label: 'Fecha de inicio (texto)' },
     // Institution
     { group: 'Institución', key: 'institution.name', label: 'Nombre de la institución' },
     { group: 'Institución', key: 'institution.code', label: 'Código' },
@@ -361,6 +416,7 @@ export const getVariables = async (_req: Request, res: Response) => {
     { group: 'Fecha', key: 'date.long', label: 'Fecha actual (texto)' },
     { group: 'Fecha', key: 'date.day', label: 'Día (número)' },
     { group: 'Fecha', key: 'date.dayOrdinal', label: 'Día ordinal (ej: 1ero)' },
+    { group: 'Fecha', key: 'date.dayWords', label: 'Día en letras (ej: quince)' },
     { group: 'Fecha', key: 'date.month', label: 'Mes' },
     { group: 'Fecha', key: 'date.year', label: 'Año' },
     // Custom (user fills these when generating)
