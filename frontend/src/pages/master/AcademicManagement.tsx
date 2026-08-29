@@ -21,7 +21,8 @@ import {
   Tooltip,
   Empty,
   ColorPicker,
-  Switch
+  Switch,
+  InputNumber
 } from 'antd';
 import {
   PlusOutlined,
@@ -158,6 +159,7 @@ interface Subject extends BaseCatalogItem {
   icon?: string | null;
   color?: string | null;
   includeInAverage?: boolean;
+  weeklyBlocks?: number;
 }
 
 type Specialization = BaseCatalogItem;
@@ -222,9 +224,10 @@ interface SortableSubjectItemProps {
   onRemove: (periodGradeId: number, subjectId: number) => void;
   onAssignTeacher?: (periodGradeId: number, subjectId: number) => void;
   onToggleAverage?: (periodGradeId: number, subjectId: number, includeInAverage: boolean) => void;
+  onUpdateWeeklyBlocks?: (periodGradeId: number, subjectId: number, weeklyBlocks: number) => void;
 }
 
-const SortableSubjectItem: React.FC<SortableSubjectItemProps> = ({ subject, periodGradeId, onRemove, onAssignTeacher, onToggleAverage }) => {
+const SortableSubjectItem: React.FC<SortableSubjectItemProps> = ({ subject, periodGradeId, onRemove, onAssignTeacher, onToggleAverage, onUpdateWeeklyBlocks }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: `${periodGradeId}-${subject.id}`,
   });
@@ -267,6 +270,24 @@ const SortableSubjectItem: React.FC<SortableSubjectItemProps> = ({ subject, peri
                 onClick={(checked, e) => {
                   e?.stopPropagation();
                   onToggleAverage(periodGradeId, subject.id, checked);
+                }}
+              />
+            </Space>
+          </Tooltip>
+        )}
+        {onUpdateWeeklyBlocks && (
+          <Tooltip title="Bloques semanales para esta materia en este grado">
+            <Space size={4}>
+              <span style={{ fontSize: 11, fontWeight: 600, color: '#722ed1' }}>Bloques</span>
+              <InputNumber
+                size="small"
+                min={1}
+                max={20}
+                value={subject.weeklyBlocks ?? 2}
+                style={{ width: 50 }}
+                onClick={(e) => e.stopPropagation()}
+                onChange={(val) => {
+                  if (val && onUpdateWeeklyBlocks) onUpdateWeeklyBlocks(periodGradeId, subject.id, val);
                 }}
               />
             </Space>
@@ -569,12 +590,13 @@ const AcademicManagement: React.FC = () => {
     if (!activePeriodId) return;
     try {
       const res = await api.get<PeriodGradeStructureItem[]>(`/academic/structure/${activePeriodId}`);
-      // Map includeInAverage from through table to subject level
+      // Map includeInAverage and weeklyBlocks from through table to subject level
       const mapped = res.data.map((item: any) => ({
         ...item,
         subjects: (item.subjects || []).map((sub: any) => ({
           ...sub,
           includeInAverage: sub.PeriodGradeSubject?.includeInAverage !== false,
+          weeklyBlocks: sub.PeriodGradeSubject?.weeklyBlocks ?? 2,
         })),
       }));
       setStructure(mapped);
@@ -844,6 +866,24 @@ const AcademicManagement: React.FC = () => {
     }
   };
 
+  const handleUpdateWeeklyBlocks = async (periodGradeId: number, subjectId: number, weeklyBlocks: number) => {
+    try {
+      await api.post('/academic/structure/subject/weekly-blocks', { periodGradeId, subjectId, weeklyBlocks });
+      // Update local state without full refetch to avoid losing drag context
+      setStructure(prev => prev.map(item => ({
+        ...item,
+        subjects: (item.subjects || []).map(sub =>
+          sub.id === subjectId && item.periodGradeId === periodGradeId
+            ? { ...sub, weeklyBlocks }
+            : sub
+        ),
+      })));
+    } catch (error) {
+      console.error(error);
+      message.error('Error al actualizar bloques semanales');
+    }
+  };
+
   const handleSubjectDragEnd = async (event: DragEndEvent, periodGradeId: number) => {
     const { active, over } = event;
 
@@ -1016,6 +1056,7 @@ const AcademicManagement: React.FC = () => {
         abbreviation: subjectRecord.abbreviation ?? null,
         subjectGroupId: subjectRecord.subjectGroupId ?? null,
         usesLiteralGrades: subjectRecord.usesLiteralGrades ?? false,
+        allowConsecutiveBlocks: subjectRecord.allowConsecutiveBlocks ?? false,
         icon: subjectRecord.icon ?? null,
         color: subjectRecord.color ?? null,
       });
@@ -1025,7 +1066,7 @@ const AcademicManagement: React.FC = () => {
     setEditCatalogVisible(true);
   };
 
-  const handleEditCatalog = async (values: { name: string; isDiversified?: boolean; subjectGroupId?: number | null; usesLiteralGrades?: boolean; abbreviation?: string | null; icon?: string | null; color?: unknown }) => {
+  const handleEditCatalog = async (values: { name: string; isDiversified?: boolean; subjectGroupId?: number | null; usesLiteralGrades?: boolean; allowConsecutiveBlocks?: boolean; abbreviation?: string | null; icon?: string | null; color?: unknown }) => {
     if (!editCatalogTarget) return;
     console.log('[handleEditCatalog] Form values:', values);
     try {
@@ -1048,6 +1089,7 @@ const AcademicManagement: React.FC = () => {
           abbreviation: values.abbreviation ?? null,
           subjectGroupId: values.subjectGroupId ?? null,
           usesLiteralGrades: values.usesLiteralGrades ?? false,
+          allowConsecutiveBlocks: values.allowConsecutiveBlocks ?? false,
           icon: values.icon ?? null,
           color: normalizeColorValue(values.color),
         });
@@ -1562,6 +1604,7 @@ const AcademicManagement: React.FC = () => {
                                         onRemove={handleRemoveSubjectFromGrade}
                                         onAssignTeacher={handleOpenAssignTeacher}
                                         onToggleAverage={handleToggleAverage}
+                                        onUpdateWeeklyBlocks={handleUpdateWeeklyBlocks}
                                       />
                                     ))}
                                   </div>
@@ -1812,6 +1855,7 @@ const AcademicManagement: React.FC = () => {
                             ...v,
                             subjectGroupId: v.subjectGroupId ?? null,
                             usesLiteralGrades: v.usesLiteralGrades ?? false,
+                            allowConsecutiveBlocks: v.allowConsecutiveBlocks ?? false,
                             icon: v.icon ?? null,
                             color: normalizeColorValue(v.color),
                           });
@@ -1855,6 +1899,9 @@ const AcademicManagement: React.FC = () => {
                           </Form.Item>
                           <Form.Item name="usesLiteralGrades" valuePropName="checked">
                             <Checkbox>Literales</Checkbox>
+                          </Form.Item>
+                          <Form.Item name="allowConsecutiveBlocks" valuePropName="checked">
+                            <Checkbox>Bloques consec.</Checkbox>
                           </Form.Item>
                           <Button type="primary" htmlType="submit" icon={<PlusOutlined />} style={{ borderRadius: 8, height: 32 }}>Crear Materia</Button>
                           <Button
@@ -2102,6 +2149,9 @@ const AcademicManagement: React.FC = () => {
                 </Row>
                 <Form.Item name="usesLiteralGrades" valuePropName="checked" style={{ marginBottom: 24 }}>
                   <Checkbox>Usar Notas Literales (A, B, C...)</Checkbox>
+                </Form.Item>
+                <Form.Item name="allowConsecutiveBlocks" valuePropName="checked" style={{ marginBottom: 24 }}>
+                  <Checkbox>Permitir bloques consecutivos (Ej: Educación Física, materias de grupo)</Checkbox>
                 </Form.Item>
               </>
             )}

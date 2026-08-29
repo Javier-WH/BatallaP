@@ -25,6 +25,7 @@ import GradeEditPermissions from '@/pages/admin/GradeEditPermissions';
 
 
 import TeacherProjection from '@/pages/control-estudios/TeacherProjection';
+import ScheduleManagement from '@/pages/control-estudios/ScheduleManagement';
 import SchoolManagement from '@/pages/admin/SchoolManagement';
 import EnrollmentQuestions from '@/pages/admin/EnrollmentQuestions';
 import PaymentsConfig from '@/pages/admin/PaymentsConfig';
@@ -244,6 +245,7 @@ function AppRoutes() {
           <Route path="configuracion" element={<AcademicSettings />} />
           <Route path="consejos-curso" element={<CourseCouncil />} />
           <Route path="proyeccion" element={<TeacherProjection />} />
+          <Route path="horarios" element={<ScheduleManagement />} />
           <Route path="editar-notas" element={<FinalGradesEdit />} />
           <Route path="notas-historicas" element={<HistoricalGradesBySection />} />
           <Route path="calificaciones" element={<ManageGrades />} />

@@ -2,7 +2,7 @@ import React from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { Button, Tooltip, Dropdown } from 'antd';
 import type { MenuProps } from 'antd';
-import { DashboardOutlined, SettingOutlined, UserAddOutlined, CheckCircleFilled, LockOutlined, ProjectOutlined, EditOutlined, DownOutlined, FileExcelOutlined, ToolOutlined, SwapOutlined, TrophyOutlined, AlertOutlined, HistoryOutlined } from '@ant-design/icons';
+import { DashboardOutlined, SettingOutlined, UserAddOutlined, CheckCircleFilled, LockOutlined, ProjectOutlined, EditOutlined, DownOutlined, FileExcelOutlined, ToolOutlined, SwapOutlined, TrophyOutlined, AlertOutlined, HistoryOutlined, CalendarOutlined } from '@ant-design/icons';
 
 const NavButton: React.FC<{
   icon: React.ReactNode;
@@ -42,6 +42,7 @@ const ControlEstudiosLayout: React.FC = () => {
     { path: '/control-estudios/configuracion', icon: <SettingOutlined />, label: 'Configuración', tooltip: 'Ajustes Académicos' },
     { path: '/control-estudios/consejos-curso', icon: <CheckCircleFilled />, label: 'Consejos', tooltip: 'Consejos de Curso y Evaluación' },
     { path: '/control-estudios/proyeccion', icon: <ProjectOutlined />, label: 'Proyección', tooltip: 'Asignación Académica' },
+    { path: '/control-estudios/horarios', icon: <CalendarOutlined />, label: 'Horarios', tooltip: 'Gestión de Horarios' },
     { path: '/control-estudios/resumen-rendimiento', icon: <FileExcelOutlined />, label: 'Resumen', tooltip: 'Resumen de Rendimiento Estudiantil' },
     { path: '/control-estudios/promedios-generales', icon: <TrophyOutlined />, label: 'Promedios', tooltip: 'Promedios Generales y Posiciones' },
     { path: '/control-estudios/reparacion', icon: <ToolOutlined />, label: 'Reparación', tooltip: 'Período de Reparación de Materias' },

@@ -89,6 +89,7 @@ import paymentsRoutes from '@/routes/paymentsRoutes';
 import ledgerRoutes from '@/routes/ledgerRoutes';
 import constanciaRoutes from '@/routes/constanciaRoutes';
 import teacherAvailabilityRoutes from '@/routes/teacherAvailabilityRoutes';
+import scheduleRoutes from '@/routes/scheduleRoutes';
 
 app.get('/', (req, res) => {
   res.send('API is running...');
@@ -140,6 +141,7 @@ app.use('/api/payments', paymentsRoutes);
 app.use('/api/ledger', ledgerRoutes);
 app.use('/api/constancias', constanciaRoutes);
 app.use('/api/teacher-availability', teacherAvailabilityRoutes);
+app.use('/api/schedules', scheduleRoutes);
 
 export { sessionStore };
 export default app;

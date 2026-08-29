@@ -151,6 +151,8 @@ import Payment from './Payment';
 import Charge from './Charge';
 import ConstanciaTemplate from './ConstanciaTemplate';
 import TeacherAvailability from './TeacherAvailability';
+import Schedule from './Schedule';
+import ScheduleEntry from './ScheduleEntry';
 
 
 // ... (Existing User/Person/Role/Contact associations) ...
@@ -338,6 +340,14 @@ EnrollmentAnswer.belongsTo(Person, { foreignKey: 'personId', as: 'student' });
 // Teacher Availability
 Person.hasMany(TeacherAvailability, { foreignKey: 'personId', as: 'availability' });
 TeacherAvailability.belongsTo(Person, { foreignKey: 'personId', as: 'person' });
+
+// Schedules
+PeriodGradeSection.hasOne(Schedule, { foreignKey: 'periodGradeSectionId', as: 'schedule' });
+Schedule.belongsTo(PeriodGradeSection, { foreignKey: 'periodGradeSectionId', as: 'section' });
+Schedule.hasMany(ScheduleEntry, { foreignKey: 'scheduleId', as: 'entries' });
+ScheduleEntry.belongsTo(Schedule, { foreignKey: 'scheduleId', as: 'schedule' });
+ScheduleEntry.belongsTo(Subject, { foreignKey: 'subjectId', as: 'subject' });
+ScheduleEntry.belongsTo(Person, { foreignKey: 'teacherId', as: 'teacher' });
 
 // Subject final grades
 InscriptionSubject.hasOne(SubjectFinalGrade, { foreignKey: 'inscriptionSubjectId', as: 'finalGrade' });
@@ -613,5 +623,7 @@ export {
   Payment,
   Charge,
   ConstanciaTemplate,
-  TeacherAvailability
+  TeacherAvailability,
+  Schedule,
+  ScheduleEntry
 };

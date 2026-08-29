@@ -173,6 +173,7 @@ const AcademicSettings: React.FC = () => {
         afternoon_recess_minutes: settingsRes.data.afternoon_recess_minutes !== undefined ? Number(settingsRes.data.afternoon_recess_minutes) : 15,
         afternoon_blocks_after_recess: settingsRes.data.afternoon_blocks_after_recess !== undefined ? Number(settingsRes.data.afternoon_blocks_after_recess) : 2,
         afternoon_block_minutes_after: settingsRes.data.afternoon_block_minutes_after !== undefined ? Number(settingsRes.data.afternoon_block_minutes_after) : 40,
+        default_weekly_blocks_per_subject: settingsRes.data.default_weekly_blocks_per_subject !== undefined ? Number(settingsRes.data.default_weekly_blocks_per_subject) : 2,
       });
     } catch (error) {
       console.error('Error fetching terms', error);
@@ -407,6 +408,7 @@ const AcademicSettings: React.FC = () => {
           afternoon_recess_minutes: String(values.afternoon_recess_minutes),
           afternoon_blocks_after_recess: String(values.afternoon_blocks_after_recess),
           afternoon_block_minutes_after: String(values.afternoon_block_minutes_after),
+          default_weekly_blocks_per_subject: String(values.default_weekly_blocks_per_subject),
         },
       });
       message.success('Configuración de horarios guardada');
@@ -1122,6 +1124,15 @@ const AcademicSettings: React.FC = () => {
                         rules={[{ required: true, message: 'Ingrese el mínimo' }]}
                       >
                         <InputNumber min={1} max={10} style={{ width: '100%', height: 44, display: 'flex', alignItems: 'center' }} />
+                      </Form.Item>
+
+                      <Form.Item
+                        name="default_weekly_blocks_per_subject"
+                        label={<Text style={{ fontWeight: 700, fontSize: 13 }}>Bloques semanales por materia (por defecto)</Text>}
+                        tooltip="Cantidad por defecto de bloques semanales que una materia tiene en un grado. Las horas semanales = bloques × horas académicas por bloque."
+                        rules={[{ required: true, message: 'Ingrese el valor' }]}
+                      >
+                        <InputNumber min={1} max={20} style={{ width: '100%', height: 44, display: 'flex', alignItems: 'center' }} />
                       </Form.Item>
 
                       <Divider style={{ margin: '24px 0' }} />

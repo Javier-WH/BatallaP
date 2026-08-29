@@ -9,6 +9,7 @@ interface SubjectAttributes {
   usesLiteralGrades?: boolean;
   icon?: string | null;
   color?: string | null;
+  allowConsecutiveBlocks?: boolean;
 }
 
 interface SubjectCreationAttributes extends Optional<SubjectAttributes, 'id'> { }
@@ -21,6 +22,7 @@ class Subject extends Model<SubjectAttributes, SubjectCreationAttributes> implem
   public usesLiteralGrades?: boolean;
   public icon?: string | null;
   public color?: string | null;
+  public allowConsecutiveBlocks?: boolean;
 
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
@@ -58,6 +60,11 @@ Subject.init(
     color: {
       type: DataTypes.STRING(7),
       allowNull: true,
+    },
+    allowConsecutiveBlocks: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
     },
   },
   {

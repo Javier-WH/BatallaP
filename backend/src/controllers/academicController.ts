@@ -488,16 +488,16 @@ export const getSubjects = async (req: Request, res: Response) => {
 };
 
 export const createSubject = async (req: Request, res: Response) => {
-  const { name, subjectGroupId, usesLiteralGrades, abbreviation, icon, color } = req.body as { name: string; subjectGroupId?: number | null; usesLiteralGrades?: boolean; abbreviation?: string | null; icon?: string | null; color?: string | null };
-  const subject = await Subject.create({ name, subjectGroupId: subjectGroupId ?? null, usesLiteralGrades: usesLiteralGrades ?? false, abbreviation: abbreviation ?? null, icon: icon ?? null, color: color ?? null });
+  const { name, subjectGroupId, usesLiteralGrades, abbreviation, icon, color, allowConsecutiveBlocks } = req.body as { name: string; subjectGroupId?: number | null; usesLiteralGrades?: boolean; abbreviation?: string | null; icon?: string | null; color?: string | null; allowConsecutiveBlocks?: boolean };
+  const subject = await Subject.create({ name, subjectGroupId: subjectGroupId ?? null, usesLiteralGrades: usesLiteralGrades ?? false, abbreviation: abbreviation ?? null, icon: icon ?? null, color: color ?? null, allowConsecutiveBlocks: allowConsecutiveBlocks ?? false });
   res.json(subject);
 };
 
 export const updateSubject = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { name, subjectGroupId, usesLiteralGrades, abbreviation, icon, color } = req.body as { name?: string; subjectGroupId?: number | null; usesLiteralGrades?: boolean; abbreviation?: string | null; icon?: string | null; color?: string | null };
-    await Subject.update({ name, subjectGroupId: subjectGroupId ?? null, usesLiteralGrades: usesLiteralGrades ?? false, abbreviation: abbreviation ?? null, icon: icon ?? null, color: color ?? null }, { where: { id } });
+    const { name, subjectGroupId, usesLiteralGrades, abbreviation, icon, color, allowConsecutiveBlocks } = req.body as { name?: string; subjectGroupId?: number | null; usesLiteralGrades?: boolean; abbreviation?: string | null; icon?: string | null; color?: string | null; allowConsecutiveBlocks?: boolean };
+    await Subject.update({ name, subjectGroupId: subjectGroupId ?? null, usesLiteralGrades: usesLiteralGrades ?? false, abbreviation: abbreviation ?? null, icon: icon ?? null, color: color ?? null, allowConsecutiveBlocks: allowConsecutiveBlocks ?? false }, { where: { id } });
     res.json({ message: 'Subject updated' });
   } catch (error) {
     console.error('[updateSubject] Error:', error);
@@ -629,7 +629,7 @@ export const getPeriodStructure = async (req: Request, res: Response) => {
         {
           model: Subject,
           as: 'subjects',
-          through: { attributes: ['id', 'order', 'includeInAverage'], where: { active: true } },
+          through: { attributes: ['id', 'order', 'includeInAverage', 'weeklyBlocks'], where: { active: true } },
           include: [{ model: SubjectGroup, as: 'subjectGroup' }]
         }
       ],
@@ -745,6 +745,34 @@ export const toggleSubjectIncludeInAverage = async (req: Request, res: Response)
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Error updating includeInAverage' });
+  }
+};
+
+export const updateSubjectWeeklyBlocks = async (req: Request, res: Response) => {
+  try {
+    const { periodGradeId, subjectId, weeklyBlocks } = req.body as {
+      periodGradeId: number;
+      subjectId: number;
+      weeklyBlocks: number;
+    };
+
+    if (!Number.isFinite(weeklyBlocks) || weeklyBlocks < 1 || weeklyBlocks > 20) {
+      return res.status(400).json({ error: 'weeklyBlocks debe ser un número entre 1 y 20' });
+    }
+
+    const pgs = await PeriodGradeSubject.unscoped().findOne({
+      where: { periodGradeId, subjectId },
+    });
+
+    if (!pgs) {
+      return res.status(404).json({ error: 'Materia no vinculada a este grado' });
+    }
+
+    await pgs.update({ weeklyBlocks });
+    res.json({ message: 'Updated', weeklyBlocks });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Error updating weeklyBlocks' });
   }
 };
 
