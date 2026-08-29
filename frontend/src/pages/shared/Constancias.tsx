@@ -187,9 +187,25 @@ const Constancias: React.FC = () => {
   // Print PDF (uses browser print)
   const handlePrintPdf = useCallback(() => {
     if (!previewHtml) return;
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) { message.error('Permita popups para imprimir'); return; }
-    printWindow.document.write(`
+    // Use a hidden iframe instead of window.open to avoid leaving a blank tab open.
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = '0';
+    document.body.appendChild(iframe);
+
+    const doc = iframe.contentWindow?.document;
+    if (!doc) {
+      document.body.removeChild(iframe);
+      message.error('Error al generar el PDF');
+      return;
+    }
+
+    doc.open();
+    doc.write(`
       <!DOCTYPE html>
       <html>
       <head>
@@ -218,9 +234,20 @@ const Constancias: React.FC = () => {
       <body>${buildConstanciaPageHtml(previewHtml)}</body>
       </html>
     `);
-    printWindow.document.close();
-    printWindow.focus();
-    setTimeout(() => { printWindow.print(); }, 300);
+    doc.close();
+
+    iframe.onload = () => {
+      try {
+        iframe.contentWindow?.focus();
+        iframe.contentWindow?.print();
+      } catch (e) {
+        console.error('Print error:', e);
+      }
+      // Remove the iframe after the print dialog is handled.
+      setTimeout(() => {
+        if (iframe.parentNode) document.body.removeChild(iframe);
+      }, 1000);
+    };
   }, [previewHtml]);
 
   // Export to Word (uses prosemirror-docx in the frontend)

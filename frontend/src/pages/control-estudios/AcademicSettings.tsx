@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Card, Form, Input, InputNumber, Button, Typography, Space, message, Spin, DatePicker, Switch, Table, Modal, Popconfirm, Tooltip, Alert, Tag, Row, Col, Empty, Tabs } from 'antd';
+import { Card, Form, Input, InputNumber, Button, Typography, Space, message, Spin, DatePicker, TimePicker, Switch, Table, Modal, Popconfirm, Tooltip, Alert, Tag, Row, Col, Empty, Tabs, Divider } from 'antd';
 import {
   SaveOutlined,
   PlusOutlined,
@@ -13,7 +13,8 @@ import {
   ControlOutlined,
   MergeOutlined,
   SortAscendingOutlined,
-  SortDescendingOutlined
+  SortDescendingOutlined,
+  ClockCircleOutlined
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import api from '@/services/api';
@@ -21,6 +22,7 @@ import LetterGradeSlider from '@/components/LetterGradeSlider';
 import type { LetterGrade } from '@/components/LetterGradeSlider';
 import TermSectionClosurePanel from '@/components/shared/TermSectionClosurePanel';
 import AcademicManagement from '@/pages/master/AcademicManagement';
+import SchoolManagement from '@/pages/admin/SchoolManagement';
 
 const { Text, Title } = Typography;
 
@@ -90,6 +92,9 @@ const AcademicSettings: React.FC = () => {
   const [structure, setStructure] = useState<any[]>([]);
   const [closurePanelTerm, setClosurePanelTerm] = useState<Term | null>(null);
   const [autoTransition, setAutoTransition] = useState(false);
+  const [scheduleForm] = Form.useForm();
+  const [savingSchedule, setSavingSchedule] = useState(false);
+  const [timeFormat, setTimeFormat] = useState<'12' | '24'>('24');
 
   const fetchSettings = useCallback(async () => {
     setLoading(true);
@@ -151,6 +156,14 @@ const AcademicSettings: React.FC = () => {
       }
       const settingsRes = await api.get('/settings');
       setAutoTransition(settingsRes.data.auto_term_transition === 'true');
+      const tf = settingsRes.data.time_format === '12' ? '12' : '24';
+      setTimeFormat(tf);
+      scheduleForm.setFieldsValue({
+        academic_hour_minutes: settingsRes.data.academic_hour_minutes !== undefined ? Number(settingsRes.data.academic_hour_minutes) : 45,
+        min_academic_hours_per_block: settingsRes.data.min_academic_hours_per_block !== undefined ? Number(settingsRes.data.min_academic_hours_per_block) : 1,
+        morning_start_time: settingsRes.data.morning_start_time ? dayjs(settingsRes.data.morning_start_time, 'HH:mm') : dayjs('07:00', 'HH:mm'),
+        afternoon_start_time: settingsRes.data.afternoon_start_time ? dayjs(settingsRes.data.afternoon_start_time, 'HH:mm') : dayjs('13:00', 'HH:mm'),
+      });
     } catch (error) {
       console.error('Error fetching terms', error);
       message.error('Error al cargar los lapsos');
@@ -362,6 +375,26 @@ const AcademicSettings: React.FC = () => {
     } catch (error) {
       console.error('Error updating auto transition setting', error);
       message.error('Error al actualizar la configuración');
+    }
+  };
+
+  const onSaveSchedule = async (values: any) => {
+    setSavingSchedule(true);
+    try {
+      await api.post('/settings', {
+        settings: {
+          academic_hour_minutes: String(values.academic_hour_minutes),
+          min_academic_hours_per_block: String(values.min_academic_hours_per_block),
+          morning_start_time: values.morning_start_time ? values.morning_start_time.format('HH:mm') : '07:00',
+          afternoon_start_time: values.afternoon_start_time ? values.afternoon_start_time.format('HH:mm') : '13:00',
+        },
+      });
+      message.success('Configuración de horarios guardada');
+    } catch (error) {
+      console.error('Error saving schedule settings', error);
+      message.error('Error al guardar la configuración de horarios');
+    } finally {
+      setSavingSchedule(false);
     }
   };
 
@@ -850,6 +883,7 @@ const AcademicSettings: React.FC = () => {
             key: 'evaluacion',
             label: 'Listas',
             children: (
+              <>
               <Row gutter={[32, 32]} style={{ marginTop: 32 }}>
         <Col xs={24} lg={12}>
           <Card
@@ -1014,12 +1048,107 @@ const AcademicSettings: React.FC = () => {
           </Card>
         </Col>
       </Row>
+      <div style={{ marginTop: 32 }}>
+        <SchoolManagement />
+      </div>
+              </>
             ),
           },
           {
             key: 'academico',
             label: 'Académico',
             children: <AcademicManagement />,
+          },
+          {
+            key: 'horarios',
+            label: 'Horarios',
+            children: (
+              <Row gutter={[32, 32]} style={{ marginTop: 32 }}>
+                <Col xs={24} lg={12}>
+                  <Card
+                    className="premium-card animate-card"
+                    styles={{ body: { padding: 0 } }}
+                  >
+                    <div className="settings-header">
+                      <ClockCircleOutlined style={{ color: '#bae7ff', fontSize: 18 }} />
+                      <Title level={5} style={{ color: '#fff', margin: 0, fontWeight: 700 }}>Configuración de Horarios</Title>
+                    </div>
+                    <Form
+                      form={scheduleForm}
+                      layout="vertical"
+                      onFinish={onSaveSchedule}
+                      style={{ padding: '28px' }}
+                      requiredMark={false}
+                    >
+                      <Alert
+                        message="Hora académica"
+                        description="Define la duración en minutos de una hora académica (hora-clase). Se usa para calcular bloques y cargas horarias."
+                        type="info"
+                        showIcon
+                        style={{ marginBottom: 20, borderRadius: 12, border: 'none', background: '#e6f7ff' }}
+                      />
+                      <Form.Item
+                        name="academic_hour_minutes"
+                        label={<Text style={{ fontWeight: 700, fontSize: 13 }}>Duración de la hora académica (minutos)</Text>}
+                        rules={[{ required: true, message: 'Ingrese la duración' }]}
+                      >
+                        <InputNumber min={1} max={120} style={{ width: '100%', height: 44, display: 'flex', alignItems: 'center' }} />
+                      </Form.Item>
+
+                      <Form.Item
+                        name="min_academic_hours_per_block"
+                        label={<Text style={{ fontWeight: 700, fontSize: 13 }}>Mínimo de horas académicas por bloque</Text>}
+                        tooltip="Cantidad mínima de horas académicas que debe tener un bloque de clase"
+                        rules={[{ required: true, message: 'Ingrese el mínimo' }]}
+                      >
+                        <InputNumber min={1} max={10} style={{ width: '100%', height: 44, display: 'flex', alignItems: 'center' }} />
+                      </Form.Item>
+
+                      <Divider style={{ margin: '24px 0' }} />
+
+                      <Alert
+                        message="Turnos"
+                        description="Indica la hora de inicio de cada turno. Se usa para generar y validar horarios."
+                        type="info"
+                        showIcon
+                        style={{ marginBottom: 20, borderRadius: 12, border: 'none', background: '#f6ffed' }}
+                      />
+                      <Row gutter={16}>
+                        <Col span={12}>
+                          <Form.Item
+                            name="morning_start_time"
+                            label={<Text style={{ fontWeight: 700, fontSize: 13 }}>Inicio turno Mañana</Text>}
+                            rules={[{ required: true, message: 'Ingrese la hora' }]}
+                          >
+                            <TimePicker format={timeFormat === '12' ? 'h:mm A' : 'HH:mm'} style={{ width: '100%', height: 44 }} minuteStep={5} />
+                          </Form.Item>
+                        </Col>
+                        <Col span={12}>
+                          <Form.Item
+                            name="afternoon_start_time"
+                            label={<Text style={{ fontWeight: 700, fontSize: 13 }}>Inicio turno Tarde</Text>}
+                            rules={[{ required: true, message: 'Ingrese la hora' }]}
+                          >
+                            <TimePicker format={timeFormat === '12' ? 'h:mm A' : 'HH:mm'} style={{ width: '100%', height: 44 }} minuteStep={5} />
+                          </Form.Item>
+                        </Col>
+                      </Row>
+
+                      <Button
+                        type="primary"
+                        htmlType="submit"
+                        icon={<SaveOutlined />}
+                        loading={savingSchedule}
+                        size="large"
+                        style={{ width: '100%', borderRadius: 12, marginTop: 8 }}
+                      >
+                        Guardar configuración de horarios
+                      </Button>
+                    </Form>
+                  </Card>
+                </Col>
+              </Row>
+            ),
           },
         ]}
       />

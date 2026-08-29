@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import React, { useState, useEffect } from 'react';
 import { Card, Form, Input, Button, Typography, message, Spin, Upload, Segmented, AutoComplete } from 'antd';
-import { SettingOutlined, SaveOutlined, UploadOutlined, BankOutlined, BorderOutlined, CheckCircleOutlined } from '@ant-design/icons';
+import { SettingOutlined, SaveOutlined, UploadOutlined, BankOutlined, BorderOutlined, CheckCircleOutlined, ClockCircleOutlined } from '@ant-design/icons';
 import api from '@/services/api';
 import { useSchool } from '@/context/SchoolContext';
 
@@ -21,6 +21,7 @@ interface SettingsFormValues {
   institution_level?: string;
   institution_logo?: string;
   institution_logo_shape?: 'circle' | 'square';
+  time_format?: '12' | '24';
   director_name?: string;
   director_document?: string;
   institution_address?: string;
@@ -93,6 +94,7 @@ const SettingsManagement: React.FC = () => {
           institution_dea_code: res.data.institution_dea_code || '',
           institution_logo: res.data.institution_logo || '',
           institution_logo_shape: res.data.institution_logo_shape || 'square',
+          time_format: res.data.time_format || '24',
           director_name: res.data.director_name || '',
           director_document: res.data.director_document || '',
           institution_address: res.data.institution_address || '',
@@ -355,6 +357,21 @@ const SettingsManagement: React.FC = () => {
                   options={[
                     { label: 'Cuadrado', value: 'square', icon: <BorderOutlined /> },
                     { label: 'Redondo', value: 'circle', icon: <CheckCircleOutlined /> },
+                  ]}
+                  className="rounded-xl p-1"
+                />
+              </Form.Item>
+
+              <Form.Item
+                label={<span className="text-[var(--color-text-main)] font-bold">Formato de Hora</span>}
+                name="time_format"
+                tooltip="Define cómo se muestran las horas en todo el sistema (ej: 14:30 o 02:30 PM)"
+              >
+                <Segmented
+                  block
+                  options={[
+                    { label: '24 horas (14:30)', value: '24', icon: <ClockCircleOutlined /> },
+                    { label: '12 horas (02:30 PM)', value: '12' },
                   ]}
                   className="rounded-xl p-1"
                 />
