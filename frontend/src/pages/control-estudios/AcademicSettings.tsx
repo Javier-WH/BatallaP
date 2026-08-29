@@ -163,6 +163,16 @@ const AcademicSettings: React.FC = () => {
         min_academic_hours_per_block: settingsRes.data.min_academic_hours_per_block !== undefined ? Number(settingsRes.data.min_academic_hours_per_block) : 1,
         morning_start_time: settingsRes.data.morning_start_time ? dayjs(settingsRes.data.morning_start_time, 'HH:mm') : dayjs('07:00', 'HH:mm'),
         afternoon_start_time: settingsRes.data.afternoon_start_time ? dayjs(settingsRes.data.afternoon_start_time, 'HH:mm') : dayjs('13:00', 'HH:mm'),
+        morning_blocks_before_recess: settingsRes.data.morning_blocks_before_recess !== undefined ? Number(settingsRes.data.morning_blocks_before_recess) : 3,
+        morning_block_minutes_before: settingsRes.data.morning_block_minutes_before !== undefined ? Number(settingsRes.data.morning_block_minutes_before) : 45,
+        morning_recess_minutes: settingsRes.data.morning_recess_minutes !== undefined ? Number(settingsRes.data.morning_recess_minutes) : 15,
+        morning_blocks_after_recess: settingsRes.data.morning_blocks_after_recess !== undefined ? Number(settingsRes.data.morning_blocks_after_recess) : 2,
+        morning_block_minutes_after: settingsRes.data.morning_block_minutes_after !== undefined ? Number(settingsRes.data.morning_block_minutes_after) : 40,
+        afternoon_blocks_before_recess: settingsRes.data.afternoon_blocks_before_recess !== undefined ? Number(settingsRes.data.afternoon_blocks_before_recess) : 2,
+        afternoon_block_minutes_before: settingsRes.data.afternoon_block_minutes_before !== undefined ? Number(settingsRes.data.afternoon_block_minutes_before) : 45,
+        afternoon_recess_minutes: settingsRes.data.afternoon_recess_minutes !== undefined ? Number(settingsRes.data.afternoon_recess_minutes) : 15,
+        afternoon_blocks_after_recess: settingsRes.data.afternoon_blocks_after_recess !== undefined ? Number(settingsRes.data.afternoon_blocks_after_recess) : 2,
+        afternoon_block_minutes_after: settingsRes.data.afternoon_block_minutes_after !== undefined ? Number(settingsRes.data.afternoon_block_minutes_after) : 40,
       });
     } catch (error) {
       console.error('Error fetching terms', error);
@@ -387,6 +397,16 @@ const AcademicSettings: React.FC = () => {
           min_academic_hours_per_block: String(values.min_academic_hours_per_block),
           morning_start_time: values.morning_start_time ? values.morning_start_time.format('HH:mm') : '07:00',
           afternoon_start_time: values.afternoon_start_time ? values.afternoon_start_time.format('HH:mm') : '13:00',
+          morning_blocks_before_recess: String(values.morning_blocks_before_recess),
+          morning_block_minutes_before: String(values.morning_block_minutes_before),
+          morning_recess_minutes: String(values.morning_recess_minutes),
+          morning_blocks_after_recess: String(values.morning_blocks_after_recess),
+          morning_block_minutes_after: String(values.morning_block_minutes_after),
+          afternoon_blocks_before_recess: String(values.afternoon_blocks_before_recess),
+          afternoon_block_minutes_before: String(values.afternoon_block_minutes_before),
+          afternoon_recess_minutes: String(values.afternoon_recess_minutes),
+          afternoon_blocks_after_recess: String(values.afternoon_blocks_after_recess),
+          afternoon_block_minutes_after: String(values.afternoon_block_minutes_after),
         },
       });
       message.success('Configuración de horarios guardada');
@@ -1133,6 +1153,181 @@ const AcademicSettings: React.FC = () => {
                           </Form.Item>
                         </Col>
                       </Row>
+
+                      <Divider style={{ margin: '16px 0' }} />
+
+                      <Alert
+                        message="Bloques y recesos por turno"
+                        description="Define cuántos bloques hay antes y después del receso, y la duración de cada uno. Si no hay receso, pon 0 en los minutos del receso."
+                        type="info"
+                        showIcon
+                        style={{ marginBottom: 20, borderRadius: 12, border: 'none', background: '#f6ffed' }}
+                      />
+
+                      {/* Morning blocks */}
+                      <div style={{ background: '#f0f9ff', borderRadius: 16, padding: 20, marginBottom: 16, border: '1px solid #bae7ff' }}>
+                        <Text style={{ fontWeight: 800, fontSize: 14, color: '#0050b3', display: 'block', marginBottom: 12 }}>Turno Mañana</Text>
+                        <Row gutter={12}>
+                          <Col span={12}>
+                            <Form.Item
+                              name="morning_blocks_before_recess"
+                              label={<Text style={{ fontSize: 12, fontWeight: 600 }}>Bloques antes del receso</Text>}
+                              rules={[{ required: true }]}
+                            >
+                              <InputNumber min={0} max={10} style={{ width: '100%', height: 40 }} />
+                            </Form.Item>
+                          </Col>
+                          <Col span={12}>
+                            <Form.Item
+                              name="morning_block_minutes_before"
+                              label={<Text style={{ fontSize: 12, fontWeight: 600 }}>Minutos por bloque</Text>}
+                              rules={[{ required: true }]}
+                            >
+                              <InputNumber min={1} max={120} style={{ width: '100%', height: 40 }} />
+                            </Form.Item>
+                          </Col>
+                        </Row>
+                        <Row gutter={12}>
+                          <Col span={12}>
+                            <Form.Item
+                              name="morning_recess_minutes"
+                              label={<Text style={{ fontSize: 12, fontWeight: 600 }}>Receso (min) — 0 si no hay</Text>}
+                            >
+                              <InputNumber min={0} max={60} style={{ width: '100%', height: 40 }} />
+                            </Form.Item>
+                          </Col>
+                        </Row>
+                        <Row gutter={12}>
+                          <Col span={12}>
+                            <Form.Item
+                              name="morning_blocks_after_recess"
+                              label={<Text style={{ fontSize: 12, fontWeight: 600 }}>Bloques después del receso</Text>}
+                            >
+                              <InputNumber min={0} max={10} style={{ width: '100%', height: 40 }} />
+                            </Form.Item>
+                          </Col>
+                          <Col span={12}>
+                            <Form.Item
+                              name="morning_block_minutes_after"
+                              label={<Text style={{ fontSize: 12, fontWeight: 600 }}>Minutos por bloque</Text>}
+                            >
+                              <InputNumber min={1} max={120} style={{ width: '100%', height: 40 }} />
+                            </Form.Item>
+                          </Col>
+                        </Row>
+                      </div>
+
+                      {/* Afternoon blocks */}
+                      <div style={{ background: '#fff7e6', borderRadius: 16, padding: 20, marginBottom: 16, border: '1px solid #ffd591' }}>
+                        <Text style={{ fontWeight: 800, fontSize: 14, color: '#ad6800', display: 'block', marginBottom: 12 }}>Turno Tarde</Text>
+                        <Row gutter={12}>
+                          <Col span={12}>
+                            <Form.Item
+                              name="afternoon_blocks_before_recess"
+                              label={<Text style={{ fontSize: 12, fontWeight: 600 }}>Bloques antes del receso</Text>}
+                              rules={[{ required: true }]}
+                            >
+                              <InputNumber min={0} max={10} style={{ width: '100%', height: 40 }} />
+                            </Form.Item>
+                          </Col>
+                          <Col span={12}>
+                            <Form.Item
+                              name="afternoon_block_minutes_before"
+                              label={<Text style={{ fontSize: 12, fontWeight: 600 }}>Minutos por bloque</Text>}
+                              rules={[{ required: true }]}
+                            >
+                              <InputNumber min={1} max={120} style={{ width: '100%', height: 40 }} />
+                            </Form.Item>
+                          </Col>
+                        </Row>
+                        <Row gutter={12}>
+                          <Col span={12}>
+                            <Form.Item
+                              name="afternoon_recess_minutes"
+                              label={<Text style={{ fontSize: 12, fontWeight: 600 }}>Receso (min) — 0 si no hay</Text>}
+                            >
+                              <InputNumber min={0} max={60} style={{ width: '100%', height: 40 }} />
+                            </Form.Item>
+                          </Col>
+                        </Row>
+                        <Row gutter={12}>
+                          <Col span={12}>
+                            <Form.Item
+                              name="afternoon_blocks_after_recess"
+                              label={<Text style={{ fontSize: 12, fontWeight: 600 }}>Bloques después del receso</Text>}
+                            >
+                              <InputNumber min={0} max={10} style={{ width: '100%', height: 40 }} />
+                            </Form.Item>
+                          </Col>
+                          <Col span={12}>
+                            <Form.Item
+                              name="afternoon_block_minutes_after"
+                              label={<Text style={{ fontSize: 12, fontWeight: 600 }}>Minutos por bloque</Text>}
+                            >
+                              <InputNumber min={1} max={120} style={{ width: '100%', height: 40 }} />
+                            </Form.Item>
+                          </Col>
+                        </Row>
+                      </div>
+
+                      <Form.Item shouldUpdate noStyle>
+                        {() => {
+                          const fmt = timeFormat === '12' ? 'h:mm A' : 'HH:mm';
+                          const calcEndTime = (
+                            startVal: any,
+                            blocksBefore: number,
+                            minBefore: number,
+                            recess: number,
+                            blocksAfter: number,
+                            minAfter: number,
+                          ): string => {
+                            if (!startVal) return '—';
+                            let base = dayjs(startVal);
+                            if (blocksBefore > 0) base = base.add(blocksBefore * minBefore, 'minute');
+                            if (recess > 0) base = base.add(recess, 'minute');
+                            if (blocksAfter > 0) base = base.add(blocksAfter * minAfter, 'minute');
+                            return base.format(fmt);
+                          };
+
+                          const mStart = scheduleForm.getFieldValue('morning_start_time');
+                          const aStart = scheduleForm.getFieldValue('afternoon_start_time');
+
+                          const mEnd = calcEndTime(
+                            mStart,
+                            scheduleForm.getFieldValue('morning_blocks_before_recess') || 0,
+                            scheduleForm.getFieldValue('morning_block_minutes_before') || 0,
+                            scheduleForm.getFieldValue('morning_recess_minutes') || 0,
+                            scheduleForm.getFieldValue('morning_blocks_after_recess') || 0,
+                            scheduleForm.getFieldValue('morning_block_minutes_after') || 0,
+                          );
+
+                          const aEnd = calcEndTime(
+                            aStart,
+                            scheduleForm.getFieldValue('afternoon_blocks_before_recess') || 0,
+                            scheduleForm.getFieldValue('afternoon_block_minutes_before') || 0,
+                            scheduleForm.getFieldValue('afternoon_recess_minutes') || 0,
+                            scheduleForm.getFieldValue('afternoon_blocks_after_recess') || 0,
+                            scheduleForm.getFieldValue('afternoon_block_minutes_after') || 0,
+                          );
+
+                          return (
+                            <Row gutter={16} style={{ marginBottom: 8 }}>
+                              <Col span={12}>
+                                <div style={{ background: '#e6f7ff', padding: '12px 16px', borderRadius: 12, border: '1px solid #91d5ff' }}>
+                                  <Text style={{ fontSize: 12, color: '#0050b3', display: 'block' }}>Salida Mañana (calculada)</Text>
+                                  <Text style={{ fontSize: 18, fontWeight: 800, color: '#0050b3' }}>{mEnd}</Text>
+                                </div>
+                              </Col>
+                              <Col span={12}>
+                                <div style={{ background: '#fffbe6', padding: '12px 16px', borderRadius: 12, border: '1px solid #ffe58f' }}>
+                                  <Text style={{ fontSize: 12, color: '#ad6800', display: 'block' }}>Salida Tarde (calculada)</Text>
+                                  <Text style={{ fontSize: 18, fontWeight: 800, color: '#ad6800' }}>{aEnd}</Text>
+                                </div>
+                              </Col>
+                            </Row>
+                          );
+                        }}
+                      </Form.Item>
 
                       <Button
                         type="primary"
