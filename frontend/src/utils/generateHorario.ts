@@ -198,7 +198,7 @@ export async function generateHorario(input: HorarioInput) {
   r7.getCell(1).font = { name: 'Cambria', size: 11, bold: true };
   r7.getCell(1).alignment = rightAlign;
   r7.getCell(2).value = formattedSectionLabel;
-  r7.getCell(2).font = { name: 'Cambria', size: 11 };
+  r7.getCell(2).font = { name: 'Cambria', size: 11, bold: true };
   r7.getCell(2).alignment = { horizontal: 'left', vertical: 'middle' };
   if (room) {
     r7.getCell(5).value = room.toUpperCase();
