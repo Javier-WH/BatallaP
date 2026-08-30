@@ -154,6 +154,7 @@ import TeacherAvailability from './TeacherAvailability';
 import Schedule from './Schedule';
 import ScheduleEntry from './ScheduleEntry';
 import ScheduleException from './ScheduleException';
+import ClassroomAssignment from './ClassroomAssignment';
 
 
 // ... (Existing User/Person/Role/Contact associations) ...
@@ -353,6 +354,9 @@ ScheduleEntry.belongsTo(Person, { foreignKey: 'teacherId', as: 'teacher' });
 // Schedule exceptions (per-subject overrides for the automatic generator)
 ScheduleException.belongsTo(Subject, { foreignKey: 'subjectId', as: 'subject' });
 Subject.hasOne(ScheduleException, { foreignKey: 'subjectId', as: 'scheduleException' });
+
+// Classroom assignments (room <-> section/subject)
+ClassroomAssignment.belongsTo(Subject, { foreignKey: 'subjectId', as: 'subject' });
 
 // Subject final grades
 InscriptionSubject.hasOne(SubjectFinalGrade, { foreignKey: 'inscriptionSubjectId', as: 'finalGrade' });
@@ -631,5 +635,6 @@ export {
   TeacherAvailability,
   Schedule,
   ScheduleEntry,
-  ScheduleException
+  ScheduleException,
+  ClassroomAssignment
 };

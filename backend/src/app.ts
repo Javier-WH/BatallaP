@@ -91,6 +91,7 @@ import constanciaRoutes from '@/routes/constanciaRoutes';
 import teacherAvailabilityRoutes from '@/routes/teacherAvailabilityRoutes';
 import scheduleRoutes from '@/routes/scheduleRoutes';
 import scheduleExceptionRoutes from '@/routes/scheduleExceptionRoutes';
+import classroomAssignmentRoutes from '@/routes/classroomAssignmentRoutes';
 
 app.get('/', (req, res) => {
   res.send('API is running...');
@@ -144,6 +145,7 @@ app.use('/api/constancias', constanciaRoutes);
 app.use('/api/teacher-availability', teacherAvailabilityRoutes);
 app.use('/api/schedules', scheduleRoutes);
 app.use('/api/schedule-exceptions', scheduleExceptionRoutes);
+app.use('/api/classroom-assignments', classroomAssignmentRoutes);
 
 export { sessionStore };
 export default app;

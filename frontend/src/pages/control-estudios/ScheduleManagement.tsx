@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Tabs, Select, Card, Spin, message, Button, Tag, Empty, Tooltip, Modal, Switch, InputNumber, Alert, Popconfirm } from 'antd';
-import { TableOutlined, UserOutlined, ReloadOutlined, EditOutlined, SaveOutlined, CloseOutlined, DeleteOutlined, WarningOutlined, ThunderboltOutlined, ScheduleOutlined, SettingOutlined, PlusOutlined } from '@ant-design/icons';
+import { TableOutlined, UserOutlined, ReloadOutlined, EditOutlined, SaveOutlined, CloseOutlined, DeleteOutlined, WarningOutlined, ThunderboltOutlined, ScheduleOutlined, SettingOutlined, PlusOutlined, HomeOutlined } from '@ant-design/icons';
 import api from '@/services/api';
 import { useSchool } from '@/context/SchoolContext';
 import dayjs from 'dayjs';
+import ClassroomDistribution from './ClassroomDistribution';
 
 const DAYS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'];
 
@@ -786,10 +787,13 @@ const ScheduleManagement: React.FC = () => {
           flat.push({
             id: pgsId,
             sectionId: s.id,
+            gradeId: pg.grade?.id,
             label: `${pg.grade?.name ?? ''} - ${s.name ?? ''}`,
             gradeName: pg.grade?.name,
             gradeOrder: pg.grade?.order ?? 99,
             sectionName: s.name,
+            color: s.PeriodGradeSection?.color ?? null,
+            periodGradeColor: pg.color ?? null,
           });
         });
       });
@@ -819,14 +823,31 @@ const ScheduleManagement: React.FC = () => {
     }
   }, []);
 
+  // Load subjects from structure (used by exceptions modal + classroom distribution)
+  const loadSubjects = useCallback(async () => {
+    if (!viewPeriod) return;
+    try {
+      const res = await api.get(`/academic/structure/${viewPeriod.id}`);
+      const subjMap = new Map<number, { id: number; name: string; subjectGroupId?: number | null; color?: string | null }>();
+      (res.data || []).forEach((grade: any) => {
+        (grade.subjects || []).forEach((sub: any) => {
+          if (!subjMap.has(sub.id)) subjMap.set(sub.id, { id: sub.id, name: sub.name, subjectGroupId: sub.subjectGroupId ?? null, color: sub.color ?? null });
+        });
+      });
+      setStructureSubjects(Array.from(subjMap.values()));
+    } catch (e) {
+      console.error('Error loading subjects:', e);
+    }
+  }, [viewPeriod]);
+
   useEffect(() => {
     const load = async () => {
       setLoading(true);
-      await Promise.all([loadSections(), loadTeachers()]);
+      await Promise.all([loadSections(), loadTeachers(), loadSubjects()]);
       setLoading(false);
     };
     load();
-  }, [loadSections, loadTeachers]);
+  }, [loadSections, loadTeachers, loadSubjects]);
 
   // Load section schedule
   const loadSectionSchedule = useCallback(async (sectionId: number) => {
@@ -1182,26 +1203,19 @@ const ScheduleManagement: React.FC = () => {
   const loadExceptions = useCallback(async () => {
     setExceptionsLoading(true);
     try {
-      const [excRes, structRes] = await Promise.all([
-        api.get('/schedule-exceptions'),
-        api.get(`/academic/structure/${viewPeriod?.id}`),
-      ]);
+      const excRes = await api.get('/schedule-exceptions');
       setExceptions(excRes.data || []);
-      // Extract unique subjects from the structure
-      const subjMap = new Map<number, { id: number; name: string }>();
-      (structRes.data || []).forEach((grade: any) => {
-        (grade.subjects || []).forEach((sub: any) => {
-          if (!subjMap.has(sub.id)) subjMap.set(sub.id, { id: sub.id, name: sub.name });
-        });
-      });
-      setStructureSubjects(Array.from(subjMap.values()));
+      // Ensure subjects are loaded (in case loadSubjects hasn't run yet)
+      if (structureSubjects.length === 0) {
+        await loadSubjects();
+      }
     } catch (e) {
       console.error('Error loading exceptions:', e);
       message.error('Error al cargar excepciones');
     } finally {
       setExceptionsLoading(false);
     }
-  }, [viewPeriod]);
+  }, [viewPeriod, structureSubjects.length, loadSubjects]);
 
   const handleOpenExceptions = () => {
     setNewExcSubjectId(null);
@@ -1445,6 +1459,13 @@ const ScheduleManagement: React.FC = () => {
             label: <span><ScheduleOutlined /> Disponibilidad Profesores</span>,
             children: (
               <TeacherAvailabilityPanel teachers={teachersList} sections={scheduleSections} />
+            ),
+          },
+          {
+            key: 'classrooms',
+            label: <span><HomeOutlined /> Distribución de Aulas</span>,
+            children: (
+              <ClassroomDistribution settings={settings} sectionsList={sectionsList} subjectsList={structureSubjects} schoolPeriodId={viewPeriod?.id} gradesList={sectionsList.filter((s: any, i: number, arr: any[]) => arr.findIndex(x => x.gradeId === s.gradeId) === i).map((s: any) => ({ id: s.gradeId, name: s.gradeName }))} />
             ),
           },
         ]}

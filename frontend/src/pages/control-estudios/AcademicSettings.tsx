@@ -175,6 +175,7 @@ const AcademicSettings: React.FC = () => {
         afternoon_blocks_after_recess: settingsRes.data.afternoon_blocks_after_recess !== undefined ? Number(settingsRes.data.afternoon_blocks_after_recess) : 2,
         afternoon_block_minutes_after: settingsRes.data.afternoon_block_minutes_after !== undefined ? Number(settingsRes.data.afternoon_block_minutes_after) : 40,
         default_weekly_blocks_per_subject: settingsRes.data.default_weekly_blocks_per_subject !== undefined ? Number(settingsRes.data.default_weekly_blocks_per_subject) : 2,
+        available_classrooms: settingsRes.data.available_classrooms !== undefined ? Number(settingsRes.data.available_classrooms) : null,
       });
     } catch (error) {
       console.error('Error fetching terms', error);
@@ -411,6 +412,7 @@ const AcademicSettings: React.FC = () => {
           afternoon_blocks_after_recess: String(values.afternoon_blocks_after_recess),
           afternoon_block_minutes_after: String(values.afternoon_block_minutes_after),
           default_weekly_blocks_per_subject: String(values.default_weekly_blocks_per_subject),
+          available_classrooms: values.available_classrooms != null ? String(values.available_classrooms) : '',
         },
       });
       message.success('Configuración de horarios guardada');
@@ -1144,6 +1146,14 @@ const AcademicSettings: React.FC = () => {
                         rules={[{ required: true, message: 'Ingrese el valor' }]}
                       >
                         <InputNumber min={1} max={20} style={{ width: '100%', height: 44, display: 'flex', alignItems: 'center' }} />
+                      </Form.Item>
+
+                      <Form.Item
+                        name="available_classrooms"
+                        label={<Text style={{ fontWeight: 700, fontSize: 13 }}>Aulas disponibles</Text>}
+                        tooltip="Cantidad total de aulas de la institución. Se usa para distribuir las secciones entre aulas al generar horarios."
+                      >
+                        <InputNumber min={1} max={200} placeholder="Ej: 12" style={{ width: '100%', height: 44, display: 'flex', alignItems: 'center' }} />
                       </Form.Item>
 
                       <Divider style={{ margin: '24px 0' }} />
