@@ -1411,6 +1411,9 @@ const ScheduleManagement: React.FC = () => {
                               entries: sectionEntriesMap,
                               gradeOrder: sec?.gradeOrder,
                               sectionName: sec?.sectionName,
+                              institutionName: settings.institution_name,
+                              institutionParish: settings.institution_parish,
+                              institutionState: settings.institution_state,
                             });
                           } catch (e) {
                             message.error('Error al exportar horario');
@@ -1504,6 +1507,9 @@ const ScheduleManagement: React.FC = () => {
                             schoolPeriodName: viewPeriod?.name ?? '',
                             sections: scheduleSections,
                             entries: teacherEntriesMap as any,
+                            institutionName: settings.institution_name,
+                            institutionParish: settings.institution_parish,
+                            institutionState: settings.institution_state,
                           }).catch(e => message.error('Error al exportar horario'));
                         }}
                       >

@@ -40,6 +40,9 @@ export interface HorarioInput {
   entries: Record<string, ScheduleEntryData[]>;
   gradeOrder?: number;        // e.g. 1 for "Primer año"
   sectionName?: string;       // e.g. "SECCIÓN A" or "A"
+  institutionName?: string;   // e.g. "Unidad Educativa Colegio \"Batalla de La Altagracia\""
+  institutionParish?: string; // e.g. "Altagracia de Orituco"
+  institutionState?: string;  // e.g. "Guárico"
 }
 
 // Build a signature to detect mergeable consecutive cells
@@ -129,7 +132,7 @@ const rightAlign: Partial<ExcelJS.Alignment> = {
  * Generate a horario Excel file matching the UECBV mockup format.
  */
 export async function generateHorario(input: HorarioInput) {
-  const { sectionLabel, teacherName, room, schoolPeriodName, sections, entries, gradeOrder, sectionName } = input;
+  const { sectionLabel, teacherName, room, schoolPeriodName, sections, entries, gradeOrder, sectionName, institutionName, institutionParish, institutionState } = input;
 
   // Build formatted section label: "1° "A"" from gradeOrder + sectionName
   let formattedSectionLabel = sectionLabel;
@@ -151,11 +154,14 @@ export async function generateHorario(input: HorarioInput) {
   ws.columns = Array(6).fill(0).map(() => ({ width: 15.71 }));
 
   // ── Header rows (R1-R4): School info ──
+  const locationLine = [institutionParish, institutionState ? `Estado ${institutionState}` : null]
+    .filter(Boolean)
+    .join('-') || 'Altagracia de Orituco-Estado Guárico.';
   const schoolInfo = [
     'República Bolivariana de Venezuela',
     'Ministerio del Poder Popular Para La Educación',
-    'Unidad Educativa Colegio "Batalla de La Altagracia"',
-    'Altagracia de Orituco-Estado Guárico.',
+    institutionName || 'Unidad Educativa Colegio "Batalla de La Altagracia"',
+    locationLine,
   ];
   schoolInfo.forEach((text, i) => {
     const row = ws.getRow(i + 1);
@@ -171,7 +177,7 @@ export async function generateHorario(input: HorarioInput) {
   ws.mergeCells('A5:F5');
   const r5 = ws.getRow(5);
   const r5c1 = r5.getCell(1);
-  r5c1.value = 'H O R A R I O   D E  C L A S E S';
+  r5c1.value = 'HORARIO DE CLASES';
   r5c1.font = titleFont;
   r5c1.alignment = centerAlign;
 
@@ -210,8 +216,19 @@ export async function generateHorario(input: HorarioInput) {
   // For each section, get non-break periods in order. Within each day, find runs of
   // consecutive non-break periods with the same signature and merge them.
   // Empty cells (no subject) are never merged.
-  const mergeInfoBySection: { sectionId: string; nonBreakPeriods: Period[]; mergeInfo: Record<string, { span: number; start: boolean }> }[] = sections.map(sec => {
+  // Also track which non-break periods are followed by a break (for double border in time column).
+  const mergeInfoBySection: { sectionId: string; nonBreakPeriods: Period[]; mergeInfo: Record<string, { span: number; start: boolean }>; breakAfter: Set<string> }[] = sections.map(sec => {
     const nonBreakPeriods = sec.periods.filter(p => !p.break);
+    // Build set of non-break period IDs that are immediately followed by a break in the original periods list
+    const breakAfter = new Set<string>();
+    for (let i = 0; i < sec.periods.length; i++) {
+      const p = sec.periods[i];
+      if (p.break) continue;
+      // Check if the next period in the original list is a break
+      if (i + 1 < sec.periods.length && sec.periods[i + 1].break) {
+        breakAfter.add(p.id);
+      }
+    }
     const mergeInfo: Record<string, { span: number; start: boolean }> = {};
     DAYS.forEach(day => {
       let i = 0;
@@ -238,7 +255,7 @@ export async function generateHorario(input: HorarioInput) {
         i = j;
       }
     });
-    return { sectionId: sec.id, nonBreakPeriods, mergeInfo };
+    return { sectionId: sec.id, nonBreakPeriods, mergeInfo, breakAfter };
   });
 
   // ── Write grid rows ──
@@ -246,7 +263,7 @@ export async function generateHorario(input: HorarioInput) {
   let sectionStartRow = 0; // track first data row of each section for outer border
   for (const secData of mergeInfoBySection) {
     const sec = sections.find(s => s.id === secData.sectionId)!;
-    const { nonBreakPeriods, mergeInfo } = secData;
+    const { nonBreakPeriods, mergeInfo, breakAfter } = secData;
 
     // Section banner row (MAÑANA / TARDE) — no fill, black text
     ws.mergeCells(`A${currentRow}:F${currentRow}`);
@@ -284,6 +301,8 @@ export async function generateHorario(input: HorarioInput) {
     currentRow++;
 
     // Period rows
+    // Track which Excel rows correspond to periods followed by a break (for double border)
+    const breakAfterRows: number[] = [];
     for (const period of nonBreakPeriods) {
       const row = ws.getRow(currentRow);
 
@@ -292,6 +311,11 @@ export async function generateHorario(input: HorarioInput) {
       timeCell.value = `${period.start} - ${period.end}`;
       timeCell.font = timeFont;
       timeCell.alignment = centerAlign;
+
+      // Track if this period is followed by a break
+      if (breakAfter.has(period.id)) {
+        breakAfterRows.push(currentRow);
+      }
 
       // Day columns
       DAYS.forEach((day, dayIdx) => {
@@ -343,6 +367,23 @@ export async function generateHorario(input: HorarioInput) {
           top: { style: isTop ? 'medium' : 'thin', color: { argb: 'FF000000' } },
           bottom: { style: isBottom ? 'medium' : 'thin', color: { argb: 'FF000000' } },
         };
+      }
+    }
+
+    // Apply double border on the time column (col 1) for rows followed by a break
+    for (const r of breakAfterRows) {
+      const cell = ws.getRow(r).getCell(1);
+      cell.border = {
+        ...cell.border,
+        bottom: { style: 'double', color: { argb: 'FF000000' } },
+      } as any;
+      // Also set double top border on the next row's time cell
+      if (r + 1 <= sectionEndRow) {
+        const nextCell = ws.getRow(r + 1).getCell(1);
+        nextCell.border = {
+          ...nextCell.border,
+          top: { style: 'double', color: { argb: 'FF000000' } },
+        } as any;
       }
     }
   }

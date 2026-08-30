@@ -25,7 +25,9 @@ interface SettingsFormValues {
   director_name?: string;
   director_document?: string;
   institution_address?: string;
+  institution_state?: string;
   institution_municipality?: string;
+  institution_parish?: string;
   institution_phone?: string;
   institution_cdcee?: string;
   theme_primary_color?: string;
@@ -53,6 +55,10 @@ const SettingsManagement: React.FC = () => {
   const [mutedTextColor, setMutedTextColor] = useState('#94a3b8');
   const [directorName, setDirectorName] = useState('');
   const [directorDocument, setDirectorDocument] = useState('');
+  const [venezuelaData, setVenezuelaData] = useState<any[]>([]);
+  const [stateOptions, setStateOptions] = useState<{ value: string; label: string }[]>([]);
+  const [municipalityOptions, setMunicipalityOptions] = useState<{ value: string; label: string }[]>([]);
+  const [parishOptions, setParishOptions] = useState<{ value: string; label: string }[]>([]);
   const { refreshSettings } = useSchool();
 
   useEffect(() => {
@@ -98,7 +104,9 @@ const SettingsManagement: React.FC = () => {
           director_name: res.data.director_name || '',
           director_document: res.data.director_document || '',
           institution_address: res.data.institution_address || '',
+          institution_state: res.data.institution_state || '',
           institution_municipality: res.data.institution_municipality || '',
+          institution_parish: res.data.institution_parish || '',
           institution_phone: res.data.institution_phone || '',
           institution_cdcee: res.data.institution_cdcee || '',
           institution_code: res.data.institution_code || '',
@@ -133,6 +141,51 @@ const SettingsManagement: React.FC = () => {
     };
     fetchSettings();
   }, [form]);
+
+  // Load Venezuela locations catalog
+  useEffect(() => {
+    api.get('/locations/venezuela')
+      .then(res => {
+        const data = res.data || [];
+        setVenezuelaData(data);
+        // Build state options
+        const states = data.map((s: any) => ({ value: s.estado, label: s.estado }));
+        states.sort((a, b) => a.label.localeCompare(b.label));
+        setStateOptions(states);
+        // Load municipalities for the currently selected state
+        const currentState = form.getFieldValue('institution_state');
+        if (currentState) {
+          updateMunicipalityOptions(currentState);
+        }
+      })
+      .catch(() => {});
+  }, [form]);
+
+  // Update municipality options when state changes
+  const updateMunicipalityOptions = (stateName: string) => {
+    if (!stateName) {
+      setMunicipalityOptions([]);
+      setParishOptions([]);
+      return;
+    }
+    const state = venezuelaData.find((s: any) => s.estado === stateName);
+    const munis = (state?.municipios || []).map((m: any) => ({ value: m.municipio, label: m.municipio }));
+    munis.sort((a, b) => a.label.localeCompare(b.label));
+    setMunicipalityOptions(munis);
+  };
+
+  // Update parish options when municipality changes
+  const updateParishOptions = (municipalityName: string) => {
+    if (!municipalityName) {
+      setParishOptions([]);
+      return;
+    }
+    const currentState = form.getFieldValue('institution_state');
+    const state = venezuelaData.find((s: any) => s.estado === currentState);
+    const m = (state?.municipios || []).find((mm: any) => mm.municipio === municipalityName);
+    const parishes = (m?.parroquias || []).map((p: string) => ({ value: p, label: p }));
+    setParishOptions(parishes);
+  };
 
   const handlePlantelSearch = async (searchText: string) => {
     if (!searchText || searchText.length < 2) {
@@ -289,12 +342,58 @@ const SettingsManagement: React.FC = () => {
               </Form.Item>
 
               <Form.Item
+                label={<span className="text-[var(--color-text-main)] font-bold">Estado / Entidad Federal</span>}
+                name="institution_state"
+                tooltip="Estado donde se ubica la institución."
+              >
+                <AutoComplete
+                  options={stateOptions}
+                  placeholder="Ej: Guárico"
+                  filterOption={(input, option) =>
+                    (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                  }
+                  onChange={(value) => {
+                    updateMunicipalityOptions(value);
+                    form.setFieldValue('institution_municipality', '');
+                    form.setFieldValue('institution_parish', '');
+                    setParishOptions([]);
+                  }}
+                  className="h-12 border-slate-200 focus:border-brand-primary focus:ring-4 focus:ring-brand-primary/10 rounded-xl transition-all"
+                />
+              </Form.Item>
+
+              <Form.Item
                 label={<span className="text-[var(--color-text-main)] font-bold">Municipio de la Institución</span>}
                 name="institution_municipality"
                 tooltip="Municipio donde se ubica la institución. Se usa en el resumen de rendimiento (named range: inst_municipality)."
               >
-                <Input
-                  placeholder="Ej: Francisco José Muñoz"
+                <AutoComplete
+                  options={municipalityOptions}
+                  placeholder="Seleccione primero el estado"
+                  filterOption={(input, option) =>
+                    (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                  }
+                  disabled={municipalityOptions.length === 0}
+                  onChange={(value) => {
+                    updateParishOptions(value);
+                    form.setFieldValue('institution_parish', '');
+                  }}
+                  className="h-12 border-slate-200 focus:border-brand-primary focus:ring-4 focus:ring-brand-primary/10 rounded-xl transition-all"
+                />
+              </Form.Item>
+
+              <Form.Item
+                label={<span className="text-[var(--color-text-main)] font-bold">Parroquia de la Institución</span>}
+                name="institution_parish"
+                tooltip="Parroquia donde se ubica la institución."
+              >
+                <AutoComplete
+                  options={parishOptions}
+                  placeholder="Seleccione primero el municipio"
+                  filterOption={(input, option) =>
+                    (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                  }
+                  disabled={parishOptions.length === 0}
                   className="h-12 border-slate-200 focus:border-brand-primary focus:ring-4 focus:ring-brand-primary/10 rounded-xl transition-all"
                 />
               </Form.Item>
