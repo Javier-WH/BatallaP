@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Tabs, Select, Card, Spin, message, Button, Tag, Empty, Tooltip, Modal, Switch, InputNumber, Alert, Popconfirm } from 'antd';
-import { TableOutlined, UserOutlined, ReloadOutlined, EditOutlined, SaveOutlined, CloseOutlined, DeleteOutlined, WarningOutlined, ThunderboltOutlined, ScheduleOutlined, SettingOutlined, PlusOutlined, HomeOutlined } from '@ant-design/icons';
+import { TableOutlined, UserOutlined, ReloadOutlined, EditOutlined, SaveOutlined, CloseOutlined, DeleteOutlined, WarningOutlined, ThunderboltOutlined, ScheduleOutlined, SettingOutlined, PlusOutlined, HomeOutlined, FileExcelOutlined } from '@ant-design/icons';
 import api from '@/services/api';
 import { useSchool } from '@/context/SchoolContext';
 import dayjs from 'dayjs';
+import { generateHorario } from '@/utils/generateHorario';
 import ClassroomDistribution from './ClassroomDistribution';
 
 const DAYS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'];
@@ -925,6 +926,7 @@ const ScheduleManagement: React.FC = () => {
           subjectId: e.subjectId,
           teacherId: e.teacherId,
           isGroupSubject: e.isGroupSubject,
+          subjectName: e.subject?.name,
           subject: e.subject,
           teacher: e.teacher,
         });
@@ -1363,7 +1365,59 @@ const ScheduleManagement: React.FC = () => {
                     </>
                   )}
                   {selectedSectionId && !editMode && (
-                    <Button icon={<ReloadOutlined />} onClick={() => loadSectionSchedule(selectedSectionId)}>Recargar</Button>
+                    <>
+                      <Button icon={<ReloadOutlined />} onClick={() => loadSectionSchedule(selectedSectionId)}>Recargar</Button>
+                      <Button
+                        icon={<FileExcelOutlined />}
+                        onClick={async () => {
+                          const sec = sectionsList.find(s => s.id === selectedSectionId);
+                          if (!sec || !viewPeriod) return;
+                          try {
+                            // Fetch guide teacher for this section
+                            let guideTeacherName = '';
+                            try {
+                              const guideRes = await api.get('/section-guides', {
+                                params: { schoolPeriodId: viewPeriod.id, gradeId: sec.gradeId, sectionId: sec.sectionId },
+                              });
+                              if (guideRes.data?.guideTeacher) {
+                                const t = guideRes.data.guideTeacher;
+                                guideTeacherName = `${t.firstName || ''} ${t.lastName || ''}`.trim();
+                              }
+                            } catch { /* ignore */ }
+
+                            // Fetch classroom assignment for this section
+                            let roomName = '';
+                            try {
+                              const gridRes = await api.get(`/classroom-assignments/grid/${viewPeriod.id}`);
+                              const grid = gridRes.data || {};
+                              const sectionKey = `${sec.gradeId}-${sec.sectionId}`;
+                              // Find which room has this sectionKey assigned
+                              for (const [cellKey, value] of Object.entries(grid)) {
+                                if (value === sectionKey) {
+                                  // cellKey format: "day|periodId|room"
+                                  const parts = cellKey.split('|');
+                                  roomName = (parts[2] || '').toUpperCase();
+                                  break;
+                                }
+                              }
+                            } catch { /* ignore */ }
+
+                            await generateHorario({
+                              sectionLabel: sec?.label ?? '',
+                              teacherName: guideTeacherName,
+                              room: roomName,
+                              schoolPeriodName: viewPeriod?.name ?? '',
+                              sections: scheduleSections,
+                              entries: sectionEntriesMap,
+                            });
+                          } catch (e) {
+                            message.error('Error al exportar horario');
+                          }
+                        }}
+                      >
+                        Exportar Excel
+                      </Button>
+                    </>
                   )}
                 </div>
                 {!selectedSectionId ? (
@@ -1436,7 +1490,24 @@ const ScheduleManagement: React.FC = () => {
                     optionFilterProp="label"
                   />
                   {selectedTeacherId && (
-                    <Button icon={<ReloadOutlined />} onClick={() => loadTeacherSchedule(selectedTeacherId)}>Recargar</Button>
+                    <>
+                      <Button icon={<ReloadOutlined />} onClick={() => loadTeacherSchedule(selectedTeacherId)}>Recargar</Button>
+                      <Button
+                        icon={<FileExcelOutlined />}
+                        onClick={() => {
+                          const t = teachersList.find(t => t.id === selectedTeacherId);
+                          generateHorario({
+                            sectionLabel: 'Profesor',
+                            teacherName: t?.label ?? '',
+                            schoolPeriodName: viewPeriod?.name ?? '',
+                            sections: scheduleSections,
+                            entries: teacherEntriesMap as any,
+                          }).catch(e => message.error('Error al exportar horario'));
+                        }}
+                      >
+                        Exportar Excel
+                      </Button>
+                    </>
                   )}
                 </div>
                 {!selectedTeacherId ? (
