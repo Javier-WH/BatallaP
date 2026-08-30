@@ -51,7 +51,7 @@ const RepairGradesPanel: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [assignments, setAssignments] = useState<Assignment[]>([]);
-  const [selectedPgsId, setSelectedPgsId] = useState<number | null>(null);
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [detail, setDetail] = useState<AssignmentDetail | null>(null);
   const [grades, setGrades] = useState<Record<number, number | null>>({});
   const [editingRevision, setEditingRevision] = useState<RevisionItem | null>(null);
@@ -67,9 +67,10 @@ const RepairGradesPanel: React.FC = () => {
     setLoading(true);
     try {
       const res = await api.get('/revision-grades/my-assignments');
-      setAssignments(res.data.assignments || []);
-      if ((res.data.assignments || []).length > 0 && !selectedPgsId) {
-        setSelectedPgsId(res.data.assignments[0].periodGradeSubjectId);
+      const loaded: Assignment[] = res.data.assignments || [];
+      setAssignments(loaded);
+      if (loaded.length > 0 && !selectedKey) {
+        setSelectedKey(`${loaded[0].periodGradeSubjectId}-${loaded[0].sectionId}`);
       }
     } catch (error: any) {
       message.error(error?.response?.data?.message || 'Error al cargar');
@@ -80,12 +81,20 @@ const RepairGradesPanel: React.FC = () => {
 
   useEffect(() => { fetchAssignments(); }, []);
 
+  const selectedAssignment = assignments.find(
+    a => `${a.periodGradeSubjectId}-${a.sectionId}` === selectedKey
+  ) || null;
+  const selectedPgsId = selectedAssignment?.periodGradeSubjectId ?? null;
+  const selectedSectionId = selectedAssignment?.sectionId ?? null;
+
   useEffect(() => {
-    if (!selectedPgsId) { setDetail(null); setGrades({}); setThematicComponents([]); setSelectedComponentIds([]); return; }
+    if (!selectedPgsId || !selectedSectionId) { setDetail(null); setGrades({}); setThematicComponents([]); setSelectedComponentIds([]); return; }
     const loadDetail = async () => {
       setLoading(true);
       try {
-        const res = await api.get(`/revision-grades/my-assignments/${selectedPgsId}`);
+        const res = await api.get(`/revision-grades/my-assignments/${selectedPgsId}`, {
+          params: { sectionId: selectedSectionId },
+        });
         setDetail(res.data);
         const initial: Record<number, number | null> = {};
         (res.data.students || []).forEach((s: StudentRevisionData) => {
@@ -96,15 +105,11 @@ const RepairGradesPanel: React.FC = () => {
         setGrades(initial);
 
         // Load thematic components + saved selection for this assignment
-        const assignment = assignments.find(a => a.periodGradeSubjectId === selectedPgsId);
-        const sectionId = assignment?.sectionId;
-        if (sectionId) {
-          const thRes = await api.get('/revision-grades/thematic-selection', {
-            params: { pgsId: selectedPgsId, sectionId },
-          });
-          setThematicComponents(thRes.data.components || []);
-          setSelectedComponentIds(thRes.data.selectedComponentIds || []);
-        }
+        const thRes = await api.get('/revision-grades/thematic-selection', {
+          params: { pgsId: selectedPgsId, sectionId: selectedSectionId },
+        });
+        setThematicComponents(thRes.data.components || []);
+        setSelectedComponentIds(thRes.data.selectedComponentIds || []);
       } catch (error: any) {
         message.error(error?.response?.data?.message || 'Error al cargar detalle');
       } finally {
@@ -112,17 +117,15 @@ const RepairGradesPanel: React.FC = () => {
       }
     };
     loadDetail();
-  }, [selectedPgsId, assignments]);
+  }, [selectedPgsId, selectedSectionId]);
 
   const handleSaveThematic = async () => {
-    if (!selectedPgsId) return;
-    const assignment = assignments.find(a => a.periodGradeSubjectId === selectedPgsId);
-    if (!assignment?.sectionId) return;
+    if (!selectedPgsId || !selectedSectionId) return;
     setThematicSaving(true);
     try {
       await api.put('/revision-grades/thematic-selection', {
         periodGradeSubjectId: selectedPgsId,
-        sectionId: assignment.sectionId,
+        sectionId: selectedSectionId,
         thematicComponentIds: selectedComponentIds,
       });
       message.success('Contenido temático guardado');
@@ -157,7 +160,9 @@ const RepairGradesPanel: React.FC = () => {
       const res = await api.put(`/revision-periods/${activePeriod.id}/revisions/bulk`, { grades: gradesList });
       message.success(res.data.message || 'Notas guardadas');
       // Reload detail
-      const detailRes = await api.get(`/revision-grades/my-assignments/${selectedPgsId}`);
+      const detailRes = await api.get(`/revision-grades/my-assignments/${selectedPgsId}`, {
+        params: { sectionId: selectedSectionId },
+      });
       setDetail(detailRes.data);
       const updated: Record<number, number | null> = {};
       (detailRes.data.students || []).forEach((s: StudentRevisionData) => {
@@ -189,7 +194,9 @@ const RepairGradesPanel: React.FC = () => {
       setEditModalValue(null);
       // Reload detail
       if (selectedPgsId) {
-        const detailRes = await api.get(`/revision-grades/my-assignments/${selectedPgsId}`);
+        const detailRes = await api.get(`/revision-grades/my-assignments/${selectedPgsId}`, {
+          params: { sectionId: selectedSectionId },
+        });
         setDetail(detailRes.data);
         const updated: Record<number, number | null> = {};
         (detailRes.data.students || []).forEach((s: StudentRevisionData) => {
@@ -207,8 +214,8 @@ const RepairGradesPanel: React.FC = () => {
   };
 
   const assignmentOptions = assignments.map((a) => ({
-    value: a.periodGradeSubjectId,
-    label: `${a.subjectName} — ${a.gradeName} ${a.sectionName}`,
+    value: `${a.periodGradeSubjectId}-${a.sectionId}`,
+    label: `${a.gradeName} — ${a.sectionName} — ${a.subjectName}`,
   }));
 
   return (
@@ -226,7 +233,7 @@ const RepairGradesPanel: React.FC = () => {
         {assignments.length > 0 && (
           <Space style={{ marginBottom: 0 }}>
             <Text strong>Materia:</Text>
-            <Select style={{ width: 400 }} value={selectedPgsId} onChange={setSelectedPgsId} options={assignmentOptions} />
+            <Select style={{ width: 420 }} value={selectedKey} onChange={setSelectedKey} options={assignmentOptions} />
             <Button icon={<ReloadOutlined />} onClick={fetchAssignments}>Actualizar</Button>
             {detail && activeTab === 'grades' && (
               <Button type="primary" icon={<SaveOutlined />} onClick={handleSave} loading={saving}>

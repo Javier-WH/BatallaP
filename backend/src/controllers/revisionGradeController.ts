@@ -58,9 +58,16 @@ export const getMyRevisionAssignments = async (req: Request, res: Response) => {
     });
 
     const result = [];
+    const processedAssignments = new Set<string>();
     for (const assign of assignments) {
       const pgs = (assign as any).periodGradeSubject;
       if (!pgs || !pgs.subject) continue;
+
+      // A teacher may hold repeated assignment rows for the same subject and
+      // section. Emit a single option per subject + section pair.
+      const assignmentKey = `${pgs.id}-${assign.sectionId}`;
+      if (processedAssignments.has(assignmentKey)) continue;
+      processedAssignments.add(assignmentKey);
 
       // Find revision entries for this subject via InscriptionSubjectRevision
       const revisionEntries = await InscriptionSubjectRevision.findAll({
@@ -175,6 +182,7 @@ export const getMyRevisionAssignmentDetail = async (req: Request, res: Response)
     }
 
     const pgsGradeId = (pgs as any).periodGrade?.gradeId;
+    const sectionId = parseInt(req.query.sectionId as string, 10) || null;
 
     const revisionEntries = await InscriptionSubjectRevision.findAll({
       where: {
@@ -198,6 +206,7 @@ export const getMyRevisionAssignmentDetail = async (req: Request, res: Response)
               where: {
                 schoolPeriodId: activePeriod.id,
                 ...(pgsGradeId ? { gradeId: pgsGradeId } : {}),
+                ...(sectionId ? { sectionId } : {}),
               },
               include: [
                 { association: 'student' },
