@@ -163,6 +163,7 @@ export class RevisionPeriodService {
       status: 'open',
       maxOpportunities,
       passingGrade,
+      currentOpportunity: 1,
       openedAt: new Date(),
     }, { transaction });
 
@@ -581,6 +582,7 @@ export class RevisionPeriodService {
     // Reset the period to pending
     await revisionPeriod.update({
       status: 'pending',
+      currentOpportunity: 1,
       openedAt: null,
       completedAt: null,
       completedBy: null,
@@ -588,5 +590,60 @@ export class RevisionPeriodService {
     }, { transaction });
 
     return { revisionPeriod, deleted };
+  }
+
+  /**
+   * Advance the currentOpportunity counter by 1. Only allowed when the
+   * revision period is 'open' and currentOpportunity < maxOpportunities.
+   */
+  static async advanceOpportunity(
+    schoolPeriodId: number,
+    transaction?: Transaction
+  ): Promise<RevisionPeriod> {
+    const revisionPeriod = await RevisionPeriod.findOne({
+      where: { schoolPeriodId },
+      transaction,
+    });
+    if (!revisionPeriod) throw new Error('No existe un período de reparación para este período escolar');
+    if (revisionPeriod.status !== 'open') {
+      throw new Error('El período de reparación no está abierto');
+    }
+    if (revisionPeriod.currentOpportunity >= revisionPeriod.maxOpportunities) {
+      throw new Error('Ya está en la última oportunidad, no se puede avanzar más');
+    }
+
+    await revisionPeriod.update({
+      currentOpportunity: revisionPeriod.currentOpportunity + 1,
+    }, { transaction });
+
+    return revisionPeriod;
+  }
+
+  /**
+   * Set the currentOpportunity to a specific value. Only allowed when the
+   * revision period is 'open'. The target must be between 1 and maxOpportunities.
+   */
+  static async setOpportunity(
+    schoolPeriodId: number,
+    opportunity: number,
+    transaction?: Transaction
+  ): Promise<RevisionPeriod> {
+    const revisionPeriod = await RevisionPeriod.findOne({
+      where: { schoolPeriodId },
+      transaction,
+    });
+    if (!revisionPeriod) throw new Error('No existe un período de reparación para este período escolar');
+    if (revisionPeriod.status !== 'open') {
+      throw new Error('El período de reparación no está abierto');
+    }
+    if (!Number.isInteger(opportunity) || opportunity < 1 || opportunity > revisionPeriod.maxOpportunities) {
+      throw new Error(`La oportunidad debe estar entre 1 y ${revisionPeriod.maxOpportunities}`);
+    }
+
+    await revisionPeriod.update({
+      currentOpportunity: opportunity,
+    }, { transaction });
+
+    return revisionPeriod;
   }
 }

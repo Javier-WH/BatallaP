@@ -265,6 +265,7 @@ export const getMyRevisionAssignmentDetail = async (req: Request, res: Response)
       subjectName: (pgs as any).subject?.name || '',
       passingGrade: revisionPeriod.passingGrade,
       maxOpportunities: revisionPeriod.maxOpportunities,
+      currentOpportunity: revisionPeriod.currentOpportunity,
       students,
     });
   } catch (error: any) {

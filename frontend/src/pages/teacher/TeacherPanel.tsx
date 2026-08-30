@@ -235,6 +235,7 @@ interface RevisionAssignmentDetail {
   subjectName: string;
   passingGrade: number;
   maxOpportunities: number;
+  currentOpportunity: number;
   students: StudentRevisionData[];
 }
 
@@ -781,7 +782,7 @@ const TeacherPanel: React.FC = () => {
       const allowedRevisionIds = new Set(
         (revisionDetail.students || []).flatMap(student =>
           student.revisions
-            .filter(revision => revision.opportunity <= (revisionDetail.maxOpportunities ?? Infinity))
+            .filter(revision => revision.opportunity === (revisionDetail.currentOpportunity ?? 1))
             .map(revision => revision.id)
         )
       );
@@ -2090,6 +2091,8 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                             <span>Nota de aprobación: <strong>{revisionDetail.passingGrade}</strong></span>
                             <span>·</span>
                             <span>Intentos: <strong>{revisionDetail.maxOpportunities}</strong></span>
+                            <span>·</span>
+                            <span>Oportunidad activa: <strong>{revisionDetail.currentOpportunity ?? 1}</strong></span>
                           </Space>
                         }
                         style={{ marginBottom: 16 }}
@@ -2142,8 +2145,9 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                                     </td>
                                     {Array.from({ length: revisionDetail.maxOpportunities }, (_, i) => i + 1).map(opp => {
                                       const rev = revisionsByOpp.get(opp);
-                                      const isLocked = rev?.status === 'approved' || rev?.status === 'failed';
-                                      if (!rev) {
+                                      const currentOpp = revisionDetail.currentOpportunity ?? 1;
+                                      const isLocked = !rev || rev.opportunity !== currentOpp;
+                                      if (!rev || opp > currentOpp) {
                                         return <td key={opp} style={{ padding: '2px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-content-bg)' : 'color-mix(in srgb, var(--color-text-main) 2%, var(--color-content-bg))', width: '60px' }}>—</td>;
                                       }
                                       return (

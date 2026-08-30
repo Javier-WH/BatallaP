@@ -385,6 +385,14 @@ export const saveRevisionGrade = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Revisión no encontrada' });
     }
 
+    // Only allow saving grades for the currently active opportunity
+    if (revision.opportunity !== revisionPeriod.currentOpportunity) {
+      await t.rollback();
+      return res.status(400).json({
+        message: `Solo se puede editar la Oportunidad ${revisionPeriod.currentOpportunity}. La Oportunidad ${revision.opportunity} no está activa.`,
+      });
+    }
+
     const userId = (req.session as any)?.user?.personId;
     const numericScore = score != null ? Number(score) : null;
     const isApproved = numericScore != null && numericScore >= revisionPeriod.passingGrade;
@@ -465,6 +473,14 @@ export const bulkSaveRevisionGrades = async (req: Request, res: Response) => {
     for (const { revisionId, score } of grades) {
       const revision = await InscriptionSubjectRevision.findByPk(revisionId, { transaction: t });
       if (!revision || revision.revisionPeriodId !== revisionPeriod.id) continue;
+
+      // Only allow saving grades for the currently active opportunity
+      if (revision.opportunity !== revisionPeriod.currentOpportunity) {
+        await t.rollback();
+        return res.status(400).json({
+          message: `Solo se puede editar la Oportunidad ${revisionPeriod.currentOpportunity}. La Oportunidad ${revision.opportunity} no está activa.`,
+        });
+      }
 
       const numericScore = score != null ? Number(score) : null;
       const isApproved = numericScore != null && numericScore >= revisionPeriod.passingGrade;
@@ -569,6 +585,32 @@ export const resetRevisionPeriod = async (req: Request, res: Response) => {
     await t.rollback();
     console.error('[resetRevisionPeriod] Error:', error);
     return res.status(500).json({ message: error.message || 'Error al reiniciar período de reparación' });
+  }
+};
+
+export const advanceOpportunity = async (req: Request, res: Response) => {
+  const t = await sequelize.transaction();
+  try {
+    const schoolPeriodId = parseInt(req.params.schoolPeriodId, 10);
+    if (!schoolPeriodId) {
+      await t.rollback();
+      return res.status(400).json({ message: 'schoolPeriodId es obligatorio' });
+    }
+
+    const requestedOpportunity = req.body?.opportunity ? parseInt(req.body.opportunity, 10) : null;
+    const revisionPeriod = requestedOpportunity
+      ? await RevisionPeriodService.setOpportunity(schoolPeriodId, requestedOpportunity, t)
+      : await RevisionPeriodService.advanceOpportunity(schoolPeriodId, t);
+
+    await t.commit();
+    return res.json({
+      message: `Oportunidad ${revisionPeriod.currentOpportunity} habilitada`,
+      currentOpportunity: revisionPeriod.currentOpportunity,
+    });
+  } catch (error: any) {
+    await t.rollback();
+    console.error('[advanceOpportunity] Error:', error);
+    return res.status(400).json({ message: error.message || 'Error al avanzar oportunidad' });
   }
 };
 

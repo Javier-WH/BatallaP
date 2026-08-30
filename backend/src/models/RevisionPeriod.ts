@@ -10,6 +10,7 @@ interface RevisionPeriodAttributes {
   status: RevisionPeriodStatus;
   maxOpportunities: number;
   passingGrade: number;
+  currentOpportunity: number;
   openedAt?: Date | null;
   completedAt?: Date | null;
   completedBy?: number | null;
@@ -20,7 +21,7 @@ interface RevisionPeriodAttributes {
 
 type RevisionPeriodCreationAttributes = Optional<
   RevisionPeriodAttributes,
-  'id' | 'status' | 'maxOpportunities' | 'passingGrade' | 'openedAt' | 'completedAt' | 'completedBy' | 'closedAt'
+  'id' | 'status' | 'maxOpportunities' | 'passingGrade' | 'currentOpportunity' | 'openedAt' | 'completedAt' | 'completedBy' | 'closedAt'
 >;
 
 class RevisionPeriod
@@ -32,6 +33,7 @@ class RevisionPeriod
   public status!: RevisionPeriodStatus;
   public maxOpportunities!: number;
   public passingGrade!: number;
+  public currentOpportunity!: number;
   public openedAt!: Date | null;
   public completedAt!: Date | null;
   public completedBy!: number | null;
@@ -70,6 +72,11 @@ RevisionPeriod.init(
       type: DataTypes.DECIMAL(5, 2),
       allowNull: false,
       defaultValue: 10.0,
+    },
+    currentOpportunity: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      defaultValue: 1,
     },
     openedAt: {
       type: DataTypes.DATE,

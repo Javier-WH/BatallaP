@@ -11,6 +11,7 @@ router.post('/:schoolPeriodId/reopen', revisionPeriodController.reopenRevisionPe
 router.post('/:schoolPeriodId/recalculate', revisionPeriodController.recalculateRevisionPeriod);
 router.post('/:schoolPeriodId/reset', revisionPeriodController.resetRevisionPeriod);
 router.put('/:schoolPeriodId/max-opportunities', revisionPeriodController.updateMaxOpportunities);
+router.post('/:schoolPeriodId/advance-opportunity', revisionPeriodController.advanceOpportunity);
 router.get('/:schoolPeriodId/students', revisionPeriodController.getRevisionStudents);
 router.get('/:schoolPeriodId/grades', revisionPeriodController.getRevisionGrades);
 router.put('/:schoolPeriodId/revisions/bulk', revisionPeriodController.bulkSaveRevisionGrades);

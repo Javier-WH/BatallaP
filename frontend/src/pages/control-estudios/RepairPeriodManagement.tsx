@@ -33,6 +33,7 @@ interface RevisionPeriodData {
   status: 'pending' | 'open' | 'completed' | 'closed';
   maxOpportunities: number;
   passingGrade: number;
+  currentOpportunity: number;
   openedAt: string | null;
   completedAt: string | null;
   completedBy: number | null;
@@ -87,6 +88,7 @@ const RepairPeriodManagement: React.FC = () => {
   const [activePeriodId, setActivePeriodId] = useState<number | null>(null);
   const [maxOppInput, setMaxOppInput] = useState<number>(3);
   const [maxOppSaving, setMaxOppSaving] = useState(false);
+  const [pendingOpp, setPendingOpp] = useState<number | null>(null);
 
   const fetchData = async () => {
     setLoading(true);
@@ -215,6 +217,22 @@ const RepairPeriodManagement: React.FC = () => {
       message.error(error?.response?.data?.message || 'Error al actualizar intentos');
     } finally {
       setMaxOppSaving(false);
+    }
+  };
+
+  const handleSetOpportunity = async (opp: number) => {
+    if (!activePeriodId) return;
+    setPendingOpp(opp);
+    setActing(true);
+    try {
+      const res = await api.post(`/revision-periods/${activePeriodId}/advance-opportunity`, { opportunity: opp });
+      message.success(res.data.message || `Oportunidad ${opp} habilitada`);
+      await fetchData();
+    } catch (error: any) {
+      message.error(error?.response?.data?.message || 'Error al habilitar oportunidad');
+    } finally {
+      setActing(false);
+      setPendingOpp(null);
     }
   };
 
@@ -347,6 +365,7 @@ const RepairPeriodManagement: React.FC = () => {
             )}
 
             {summary.revisionPeriod?.status === 'open' && (
+              <>
               <Alert
                 type="success"
                 message="Período de reparación abierto"
@@ -382,6 +401,58 @@ const RepairPeriodManagement: React.FC = () => {
                 }
                 style={{ marginBottom: 16 }}
               />
+
+              {/* Opportunity selector — radio buttons styled as buttons */}
+              <Card size="small" style={{ marginBottom: 16 }}>
+                <Space direction="vertical" size={8} style={{ width: '100%' }}>
+                  <Space>
+                    <Text strong style={{ fontSize: 14 }}>Habilitar oportunidad:</Text>
+                    <Tag color="blue" style={{ fontSize: 13, padding: '2px 10px' }}>
+                      Activa: {summary.revisionPeriod.currentOpportunity} de {summary.revisionPeriod.maxOpportunities}
+                    </Tag>
+                  </Space>
+                  <Space wrap>
+                    {Array.from({ length: summary.revisionPeriod.maxOpportunities }, (_, i) => i + 1).map(opp => {
+                      const current = summary.revisionPeriod.currentOpportunity ?? 1;
+                      const isActive = opp === current;
+                      const isPast = opp < current;
+                      const isFuture = opp > current;
+                      return (
+                        <Popconfirm
+                          key={opp}
+                          title={`¿Desea habilitar la Oportunidad ${opp}?`}
+                          description={isPast
+                            ? 'Esta oportunidad ya pasó. Los profesores ya no podrán editar las oportunidades anteriores.'
+                            : isFuture
+                              ? 'Los profesores no podrán editar las oportunidades anteriores. Solo podrán calificar la nueva oportunidad activa.'
+                              : 'Esta oportunidad ya está activa.'}
+                          okText="Sí, habilitar"
+                          cancelText="Cancelar"
+                          onConfirm={() => handleSetOpportunity(opp)}
+                          disabled={isActive}
+                        >
+                          <Button
+                            type={isActive ? 'primary' : isPast ? 'default' : 'dashed'}
+                            disabled={isActive}
+                            loading={acting && pendingOpp === opp}
+                            style={{
+                              fontWeight: 700,
+                              minWidth: 120,
+                              ...(isActive ? {} : isPast ? { opacity: 0.6 } : {}),
+                            }}
+                            icon={isActive ? <CheckCircleOutlined /> : isPast ? <LockOutlined /> : <UnlockOutlined />}
+                          >
+                            Oportunidad {opp}
+                            {isActive && ' (Activa)'}
+                            {isPast && ' (Pasada)'}
+                          </Button>
+                        </Popconfirm>
+                      );
+                    })}
+                  </Space>
+                </Space>
+              </Card>
+              </>
             )}
 
             {summary.revisionPeriod?.status === 'completed' && (
