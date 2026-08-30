@@ -1638,8 +1638,6 @@ export const exportRevisionSummary = async (req: Request, res: Response) => {
       return { studentCountBySubject, failedCountBySubject, passedCountBySubject, zeroCountBySubject };
     };
 
-    const { studentCountBySubject, failedCountBySubject, passedCountBySubject, zeroCountBySubject } =
-      buildSubjectStats(inscriptions);
     // Total students in the section (ALL enrolled students, not only those
     // with repair grades). Used for the "no inscritos" per-subject count so
     // it reflects the real section size.
@@ -1651,9 +1649,9 @@ export const exportRevisionSummary = async (req: Request, res: Response) => {
       },
     });
 
-    // Discover subj_i named ranges and write subject headers. Subjects keep
-    // their canonical position; those without repair grades are skipped so the
-    // template's placeholders remain untouched.
+    // Build the subject-column map without writing anything to the template.
+    // Headers and statistics are written later per page, based on the scores
+    // present in that page only.
     const subjectColList: { col: number; abbr: string; subjIdx: number; subjectId: number }[] = [];
     const subjectToSubjIndex = new Map<number, number>();
     let subjIdx = 1;
@@ -1665,64 +1663,17 @@ export const exportRevisionSummary = async (req: Request, res: Response) => {
         const abbrText = subj.subjectGroupId
           ? (subj.subjectGroupShortAbbr || subj.subjectGroupLongAbbr || subj.name)
           : (subj.abbreviation || subj.name);
-        const headerText = abbrText.toUpperCase();
-        sheet!.getCell(ref.cell).value = headerText;
         subjectColList.push({ col: ref.col, abbr: abbrText.toUpperCase(), subjIdx, subjectId: subj.id });
         subjectToSubjIndex.set(subjIdx, subj.id);
-        const nameRef = findRef('subjname_' + subjIdx);
-        const nameText = (subj.subjectGroupId
-          ? 'Participación en Grupos de \r\nCreación, Recreación y Producción'
-          : subj.name).toUpperCase();
-        if (nameRef) {
-          sheet!.getCell(nameRef.cell).value = nameText;
-        }
-        const areaRef = findRef('area_subj_' + subjIdx);
-        const areaNameRef = findRef('area_subjname_' + subjIdx);
-        const areaHeaderText = (subj.subjectGroupId
-          ? (subj.subjectGroupLongAbbr || '-')
-          : (subj.abbreviation || '-')).toUpperCase();
-        if (areaRef) {
-          sheet!.getCell(areaRef.cell).value = areaHeaderText;
-        }
-        if (areaNameRef) {
-          sheet!.getCell(areaNameRef.cell).value = nameText;
-        }
-        const countVal = studentCountBySubject.get(subj.id) || 0;
-        const countRef = findRef('subj_count_' + subjIdx);
-        if (countRef) {
-          sheet!.getCell(countRef.cell).value = countVal;
-        }
-        const failedVal = failedCountBySubject.get(subj.id) || 0;
-        const failedRef = findRef('subj_failed_' + subjIdx);
-        if (failedRef) {
-          sheet!.getCell(failedRef.cell).value = failedVal;
-        }
-        const passedVal = passedCountBySubject.get(subj.id) || 0;
-        const passedRef = findRef('subj_passed_' + subjIdx);
-        if (passedRef) {
-          sheet!.getCell(passedRef.cell).value = passedVal;
-        }
-        const zeroVal = zeroCountBySubject.get(subj.id) || 0;
-        const zeroRef = findRef('subj_zero_' + subjIdx);
-        if (zeroRef) {
-          sheet!.getCell(zeroRef.cell).value = zeroVal;
-        }
-        const unenrolledVal = totalStudents - (studentCountBySubject.get(subj.id) || 0);
-        const unenrolledRef = findRef('subj_unenrolled_' + subjIdx);
-        if (unenrolledRef) {
-          sheet!.getCell(unenrolledRef.cell).value = unenrolledVal;
-        }
       }
       subjIdx++;
     }
 
-    // Write teacher data
-    const setTeacherData = (ws: ExcelJS.Worksheet) => {
+    // Write teacher data only for subjects that have a score on the page.
+    const setTeacherData = (ws: ExcelJS.Worksheet, activeSubjectIds: Set<number>) => {
       for (let i = 1; i <= sortedAcademicSubjects.length; i++) {
         const subj = sortedAcademicSubjects[i - 1];
-        if (!subj) continue;
-        // Leave the template untouched for subjects without repair grades.
-        if (!(subj as any).hasRevisionStudents) continue;
+        if (!subj || !activeSubjectIds.has(subj.id)) continue;
         const teacher = teacherMap.get(subj.id);
         if (!teacher) continue;
 
@@ -1734,8 +1685,6 @@ export const exportRevisionSummary = async (req: Request, res: Response) => {
         if (teacherSignRef) ws.getCell(teacherSignRef.cell).value = '';
       }
     };
-
-    setTeacherData(sheet!);
 
     // Group students by document type
     const docTypeGroups: { label: string; students: any[] }[] = [
@@ -1828,7 +1777,8 @@ export const exportRevisionSummary = async (req: Request, res: Response) => {
         const zeroRef = findRef('subj_zero_' + i);
         const unenrolledRef = findRef('subj_unenrolled_' + i);
         const subj = sortedAcademicSubjects[i - 1];
-        if (subj && (subj as any).hasRevisionStudents) {
+        const hasPageRevision = Boolean(subj && (subj as any).hasRevisionStudents && (pgStCount.get(subj.id) || 0) > 0);
+        if (hasPageRevision) {
           const abbrText = subj.subjectGroupId
             ? (subj.subjectGroupShortAbbr || subj.subjectGroupLongAbbr || subj.name)
             : (subj.abbreviation || subj.name);
@@ -1852,6 +1802,12 @@ export const exportRevisionSummary = async (req: Request, res: Response) => {
           if (unenrolledRef) ws.getCell(unenrolledRef.cell).value = pageCount - (pgStCount.get(subj.id) || 0);
         }
       }
+
+      const activeSubjectIds = new Set<number>();
+      for (const [subjectId, count] of pgStCount) {
+        if (count > 0) activeSubjectIds.add(subjectId);
+      }
+      setTeacherData(ws, activeSubjectIds);
 
       fillSheetByNamedRanges(
         ws, ws.name, namedRanges, settings, plantel, period,
