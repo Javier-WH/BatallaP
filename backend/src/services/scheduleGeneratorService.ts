@@ -23,6 +23,7 @@ import sequelize from '@/config/database';
 import {
   Schedule, ScheduleEntry, PeriodGradeSection, PeriodGrade, PeriodGradeSubject,
   Subject, TeacherAssignment, TeacherAvailability, Setting, Grade, Section, Person,
+  ScheduleException,
 } from '@/models';
 
 // ── Types ──
@@ -264,6 +265,15 @@ export async function generateSchedulesForPeriod(
   });
 
   // 7. Build section inputs for the solver
+  // Load schedule exceptions (per-subject overrides)
+  const allSubjectIds = new Set<number>();
+  allPgsSubjects.forEach(p => allSubjectIds.add(p.subjectId));
+  const exceptions = await ScheduleException.findAll({
+    where: { subjectId: Array.from(allSubjectIds) },
+  });
+  const exceptionMap = new Map<number, ScheduleException>();
+  exceptions.forEach(e => exceptionMap.set(e.subjectId, e));
+
   const sectionInputs: SectionInput[] = [];
   const sectionPgMap = new Map<number, number>(); // sectionId (PGS.id) -> periodGradeId
 
@@ -274,11 +284,12 @@ export async function generateSchedulesForPeriod(
     const subjects: SubjectInput[] = gradeSubjects.map(p => {
       const subject = (p as any).subject;
       const assignment = sectionAssignments.find(a => a.periodGradeSubjectId === p.id);
+      const exc = exceptionMap.get(p.subjectId);
       return {
         subjectId: p.subjectId,
-        weeklyBlocks: p.weeklyBlocks,
-        allowConsecutiveBlocks: (subject as any)?.allowConsecutiveBlocks ?? 0,
-        maxHoursPerDay: (subject as any)?.maxHoursPerDay ?? null,
+        weeklyBlocks: exc?.weeklyBlocks != null ? exc.weeklyBlocks : p.weeklyBlocks,
+        allowConsecutiveBlocks: exc?.allowConsecutiveBlocks != null ? exc.allowConsecutiveBlocks : ((subject as any)?.allowConsecutiveBlocks ?? 0),
+        maxHoursPerDay: exc?.maxHoursPerDay != null ? exc.maxHoursPerDay : ((subject as any)?.maxHoursPerDay ?? null),
         subjectGroupId: subject?.subjectGroupId ?? null,
         teacherId: assignment ? (assignment as any).teacherId : null,
       };

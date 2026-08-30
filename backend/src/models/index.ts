@@ -153,6 +153,7 @@ import ConstanciaTemplate from './ConstanciaTemplate';
 import TeacherAvailability from './TeacherAvailability';
 import Schedule from './Schedule';
 import ScheduleEntry from './ScheduleEntry';
+import ScheduleException from './ScheduleException';
 
 
 // ... (Existing User/Person/Role/Contact associations) ...
@@ -348,6 +349,10 @@ Schedule.hasMany(ScheduleEntry, { foreignKey: 'scheduleId', as: 'entries' });
 ScheduleEntry.belongsTo(Schedule, { foreignKey: 'scheduleId', as: 'schedule' });
 ScheduleEntry.belongsTo(Subject, { foreignKey: 'subjectId', as: 'subject' });
 ScheduleEntry.belongsTo(Person, { foreignKey: 'teacherId', as: 'teacher' });
+
+// Schedule exceptions (per-subject overrides for the automatic generator)
+ScheduleException.belongsTo(Subject, { foreignKey: 'subjectId', as: 'subject' });
+Subject.hasOne(ScheduleException, { foreignKey: 'subjectId', as: 'scheduleException' });
 
 // Subject final grades
 InscriptionSubject.hasOne(SubjectFinalGrade, { foreignKey: 'inscriptionSubjectId', as: 'finalGrade' });
@@ -625,5 +630,6 @@ export {
   ConstanciaTemplate,
   TeacherAvailability,
   Schedule,
-  ScheduleEntry
+  ScheduleEntry,
+  ScheduleException
 };

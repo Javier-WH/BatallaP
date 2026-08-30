@@ -160,8 +160,6 @@ interface Subject extends BaseCatalogItem {
   color?: string | null;
   includeInAverage?: boolean;
   weeklyBlocks?: number;
-  allowConsecutiveBlocks?: number; // 0 = off, 1 = try, 2 = mandatory
-  maxHoursPerDay?: number | null;
 }
 
 type Specialization = BaseCatalogItem;
@@ -226,25 +224,12 @@ interface SortableSubjectItemProps {
   onRemove: (periodGradeId: number, subjectId: number) => void;
   onAssignTeacher?: (periodGradeId: number, subjectId: number) => void;
   onToggleAverage?: (periodGradeId: number, subjectId: number, includeInAverage: boolean) => void;
-  onUpdateWeeklyBlocks?: (periodGradeId: number, subjectId: number, weeklyBlocks: number) => void;
-  defaultWeeklyBlocks?: number;
 }
 
-const SortableSubjectItem: React.FC<SortableSubjectItemProps> = ({ subject, periodGradeId, onRemove, onAssignTeacher, onToggleAverage, onUpdateWeeklyBlocks, defaultWeeklyBlocks = 2 }) => {
+const SortableSubjectItem: React.FC<SortableSubjectItemProps> = ({ subject, periodGradeId, onRemove, onAssignTeacher, onToggleAverage }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: `${periodGradeId}-${subject.id}`,
   });
-  const [editingBlocks, setEditingBlocks] = useState(false);
-  const isException = subject.weeklyBlocks !== undefined && subject.weeklyBlocks !== defaultWeeklyBlocks;
-  const currentBlocks = subject.weeklyBlocks ?? defaultWeeklyBlocks;
-
-  const commitBlocks = (val: number | null) => {
-    if (val === null || val === undefined) return;
-    if (onUpdateWeeklyBlocks && val !== currentBlocks) {
-      onUpdateWeeklyBlocks(periodGradeId, subject.id, val);
-    }
-    if (val === defaultWeeklyBlocks) setEditingBlocks(false);
-  };
 
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
@@ -289,39 +274,6 @@ const SortableSubjectItem: React.FC<SortableSubjectItemProps> = ({ subject, peri
             </Space>
           </Tooltip>
         )}
-        {onUpdateWeeklyBlocks && (
-          isException || editingBlocks ? (
-            <Space size={4}>
-              <span style={{ fontSize: 11, fontWeight: 600, color: '#722ed1' }}>Bloques</span>
-              <InputNumber
-                key={`blocks-${subject.id}-${currentBlocks}`}
-                size="small"
-                min={1}
-                max={20}
-                defaultValue={currentBlocks}
-                style={{ width: 50 }}
-                onPointerDown={(e) => e.stopPropagation()}
-                onClick={(e) => e.stopPropagation()}
-                onBlur={(e) => commitBlocks(Number(e.target.value) || currentBlocks)}
-                onPressEnter={(e) => {
-                  const val = Number((e.target as HTMLInputElement).value) || currentBlocks;
-                  commitBlocks(val);
-                  (e.target as HTMLInputElement).blur();
-                }}
-              />
-            </Space>
-          ) : (
-            <Tooltip title={`Usa el default (${defaultWeeklyBlocks} bloques). Click para personalizar.`}>
-              <span
-                style={{ fontSize: 11, color: '#bfbfbf', cursor: 'pointer', textDecoration: 'underline dotted' }}
-                onPointerDown={(e) => e.stopPropagation()}
-                onClick={(e) => { e.stopPropagation(); setEditingBlocks(true); }}
-              >
-                {defaultWeeklyBlocks} bloques
-              </span>
-            </Tooltip>
-          )
-        )}
         {onAssignTeacher && (
           <UserAddOutlined
             style={{ color: '#1890ff', cursor: 'pointer' }}
@@ -353,7 +305,6 @@ const AcademicManagement: React.FC = () => {
   const [specializations, setSpecializations] = useState<Specialization[]>([]);
   const [activePeriodId, setActivePeriodId] = useState<number | null>(null); // For structure view
   const [structure, setStructure] = useState<PeriodGradeStructureItem[]>([]);
-  const [defaultWeeklyBlocks, setDefaultWeeklyBlocks] = useState<number>(2);
 
 
 
@@ -515,7 +466,6 @@ const AcademicManagement: React.FC = () => {
       setPeriods(periodsData);
       setGrades(gRes.data);
       setSections(sRes.data);
-      setDefaultWeeklyBlocks(Number(settingsRes.data?.default_weekly_blocks_per_subject) || 2);
       setSubjects(subRes.data);
       setSpecializations(specRes.data);
       setSubjectGroups(sgRes.data);
@@ -898,24 +848,6 @@ const AcademicManagement: React.FC = () => {
     }
   };
 
-  const handleUpdateWeeklyBlocks = async (periodGradeId: number, subjectId: number, weeklyBlocks: number) => {
-    try {
-      await api.post('/academic/structure/subject/weekly-blocks', { periodGradeId, subjectId, weeklyBlocks });
-      // Update local state without full refetch to avoid losing drag context
-      setStructure(prev => prev.map(item => ({
-        ...item,
-        subjects: (item.subjects || []).map(sub =>
-          sub.id === subjectId && item.periodGradeId === periodGradeId
-            ? { ...sub, weeklyBlocks }
-            : sub
-        ),
-      })));
-    } catch (error) {
-      console.error(error);
-      message.error('Error al actualizar bloques semanales');
-    }
-  };
-
   const handleSubjectDragEnd = async (event: DragEndEvent, periodGradeId: number) => {
     const { active, over } = event;
 
@@ -1088,8 +1020,6 @@ const AcademicManagement: React.FC = () => {
         abbreviation: subjectRecord.abbreviation ?? null,
         subjectGroupId: subjectRecord.subjectGroupId ?? null,
         usesLiteralGrades: subjectRecord.usesLiteralGrades ?? false,
-        allowConsecutiveBlocks: subjectRecord.allowConsecutiveBlocks ?? 0,
-        maxHoursPerDay: subjectRecord.maxHoursPerDay ?? null,
         icon: subjectRecord.icon ?? null,
         color: subjectRecord.color ?? null,
       });
@@ -1099,7 +1029,7 @@ const AcademicManagement: React.FC = () => {
     setEditCatalogVisible(true);
   };
 
-  const handleEditCatalog = async (values: { name: string; isDiversified?: boolean; subjectGroupId?: number | null; usesLiteralGrades?: boolean; allowConsecutiveBlocks?: number; maxHoursPerDay?: number | null; abbreviation?: string | null; icon?: string | null; color?: unknown }) => {
+  const handleEditCatalog = async (values: { name: string; isDiversified?: boolean; subjectGroupId?: number | null; usesLiteralGrades?: boolean; abbreviation?: string | null; icon?: string | null; color?: unknown }) => {
     if (!editCatalogTarget) return;
     console.log('[handleEditCatalog] Form values:', values);
     try {
@@ -1122,8 +1052,6 @@ const AcademicManagement: React.FC = () => {
           abbreviation: values.abbreviation ?? null,
           subjectGroupId: values.subjectGroupId ?? null,
           usesLiteralGrades: values.usesLiteralGrades ?? false,
-          allowConsecutiveBlocks: values.allowConsecutiveBlocks ?? 0,
-          maxHoursPerDay: values.maxHoursPerDay ?? null,
           icon: values.icon ?? null,
           color: normalizeColorValue(values.color),
         });
@@ -1638,8 +1566,6 @@ const AcademicManagement: React.FC = () => {
                                         onRemove={handleRemoveSubjectFromGrade}
                                         onAssignTeacher={handleOpenAssignTeacher}
                                         onToggleAverage={handleToggleAverage}
-                                        onUpdateWeeklyBlocks={handleUpdateWeeklyBlocks}
-                                        defaultWeeklyBlocks={defaultWeeklyBlocks}
                                       />
                                     ))}
                                   </div>
@@ -1890,8 +1816,6 @@ const AcademicManagement: React.FC = () => {
                             ...v,
                             subjectGroupId: v.subjectGroupId ?? null,
                             usesLiteralGrades: v.usesLiteralGrades ?? false,
-                            allowConsecutiveBlocks: v.allowConsecutiveBlocks ?? 0,
-                            maxHoursPerDay: v.maxHoursPerDay ?? null,
                             icon: v.icon ?? null,
                             color: normalizeColorValue(v.color),
                           });
@@ -1935,16 +1859,6 @@ const AcademicManagement: React.FC = () => {
                           </Form.Item>
                           <Form.Item name="usesLiteralGrades" valuePropName="checked">
                             <Checkbox>Literales</Checkbox>
-                          </Form.Item>
-                          <Form.Item name="allowConsecutiveBlocks" tooltip="0=Apagado, 1=Tratar de juntar, 2=Obligatorio juntar">
-                            <Select style={{ width: 140 }} placeholder="Consecutivos" options={[
-                              { value: 0, label: 'Consec: No' },
-                              { value: 1, label: 'Consec: Tratar' },
-                              { value: 2, label: 'Consec: Obligatorio' },
-                            ]} />
-                          </Form.Item>
-                          <Form.Item name="maxHoursPerDay" tooltip="Máximo de horas de esta materia por día. Vacío = sin límite.">
-                            <InputNumber min={1} max={20} placeholder="Máx hrs/día" style={{ width: 120 }} />
                           </Form.Item>
                           <Button type="primary" htmlType="submit" icon={<PlusOutlined />} style={{ borderRadius: 8, height: 32 }}>Crear Materia</Button>
                           <Button
@@ -2192,16 +2106,6 @@ const AcademicManagement: React.FC = () => {
                 </Row>
                 <Form.Item name="usesLiteralGrades" valuePropName="checked" style={{ marginBottom: 24 }}>
                   <Checkbox>Usar Notas Literales (A, B, C...)</Checkbox>
-                </Form.Item>
-                <Form.Item name="allowConsecutiveBlocks" label={<Text style={{ fontWeight: 700 }}>Bloques consecutivos</Text>} tooltip="0=Apagado (distribuir normalmente), 1=Tratar de juntar todas las horas en un día, 2=Obligatorio juntarlas (si no cabe, no se coloca)" style={{ marginBottom: 24 }}>
-                  <Select options={[
-                    { value: 0, label: 'Apagado — distribuir en varios días' },
-                    { value: 1, label: 'Tratar de juntar — intentar todas las horas en un día' },
-                    { value: 2, label: 'Obligatorio — deben estar juntas (ej: Educación Física)' },
-                  ]} />
-                </Form.Item>
-                <Form.Item name="maxHoursPerDay" label="Máximo de horas por día" tooltip="null = sin límite (el algoritmo distribuye). Un número = máximo de horas de esta materia por día. Ej: 4 = puede concentrarse en un solo día." style={{ marginBottom: 24 }}>
-                  <InputNumber min={1} max={20} placeholder="Sin límite" style={{ width: '100%' }} />
                 </Form.Item>
               </>
             )}

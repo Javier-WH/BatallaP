@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Tabs, Select, Card, Spin, message, Button, Tag, Empty, Tooltip, Modal, Switch, InputNumber, Alert, Popconfirm } from 'antd';
-import { TableOutlined, UserOutlined, ReloadOutlined, EditOutlined, SaveOutlined, CloseOutlined, DeleteOutlined, WarningOutlined, ThunderboltOutlined, ScheduleOutlined } from '@ant-design/icons';
+import { TableOutlined, UserOutlined, ReloadOutlined, EditOutlined, SaveOutlined, CloseOutlined, DeleteOutlined, WarningOutlined, ThunderboltOutlined, ScheduleOutlined, SettingOutlined, PlusOutlined } from '@ant-design/icons';
 import api from '@/services/api';
 import { useSchool } from '@/context/SchoolContext';
 import dayjs from 'dayjs';
@@ -747,6 +747,16 @@ const ScheduleManagement: React.FC = () => {
   const [teacherEntries, setTeacherEntries] = useState<any[]>([]);
   const [teacherLoading, setTeacherLoading] = useState(false);
 
+  // Exceptions modal state
+  const [exceptionsModalOpen, setExceptionsModalOpen] = useState(false);
+  const [exceptions, setExceptions] = useState<any[]>([]);
+  const [exceptionsLoading, setExceptionsLoading] = useState(false);
+  const [structureSubjects, setStructureSubjects] = useState<any[]>([]);
+  const [newExcSubjectId, setNewExcSubjectId] = useState<number | null>(null);
+  const [newExcConsecutive, setNewExcConsecutive] = useState<number | null>(null);
+  const [newExcWeekly, setNewExcWeekly] = useState<number | null>(null);
+  const [newExcMaxHours, setNewExcMaxHours] = useState<number | null>(null);
+
   const scheduleSections = useMemo(() => buildSections(settings), [settings]);
 
   // Load settings
@@ -1168,6 +1178,88 @@ const ScheduleManagement: React.FC = () => {
     }
   };
 
+  // ── Schedule exceptions ──
+  const loadExceptions = useCallback(async () => {
+    setExceptionsLoading(true);
+    try {
+      const [excRes, structRes] = await Promise.all([
+        api.get('/schedule-exceptions'),
+        api.get(`/academic/structure/${viewPeriod?.id}`),
+      ]);
+      setExceptions(excRes.data || []);
+      // Extract unique subjects from the structure
+      const subjMap = new Map<number, { id: number; name: string }>();
+      (structRes.data || []).forEach((grade: any) => {
+        (grade.subjects || []).forEach((sub: any) => {
+          if (!subjMap.has(sub.id)) subjMap.set(sub.id, { id: sub.id, name: sub.name });
+        });
+      });
+      setStructureSubjects(Array.from(subjMap.values()));
+    } catch (e) {
+      console.error('Error loading exceptions:', e);
+      message.error('Error al cargar excepciones');
+    } finally {
+      setExceptionsLoading(false);
+    }
+  }, [viewPeriod]);
+
+  const handleOpenExceptions = () => {
+    setNewExcSubjectId(null);
+    setNewExcConsecutive(null);
+    setNewExcWeekly(null);
+    setNewExcMaxHours(null);
+    loadExceptions();
+    setExceptionsModalOpen(true);
+  };
+
+  const handleAddException = async () => {
+    if (!newExcSubjectId) { message.warning('Seleccione una materia'); return; }
+    if (newExcConsecutive === null && newExcWeekly === null && newExcMaxHours === null) {
+      message.warning('Configure al menos una excepción');
+      return;
+    }
+    try {
+      await api.post('/schedule-exceptions', {
+        subjectId: newExcSubjectId,
+        allowConsecutiveBlocks: newExcConsecutive,
+        weeklyBlocks: newExcWeekly,
+        maxHoursPerDay: newExcMaxHours,
+      });
+      message.success('Excepción guardada');
+      setNewExcSubjectId(null);
+      setNewExcConsecutive(null);
+      setNewExcWeekly(null);
+      setNewExcMaxHours(null);
+      loadExceptions();
+    } catch (e: any) {
+      message.error(e?.response?.data?.message ?? 'Error al guardar excepción');
+    }
+  };
+
+  const handleUpdateException = async (id: number, field: 'allowConsecutiveBlocks' | 'weeklyBlocks' | 'maxHoursPerDay', value: number | null) => {
+    try {
+      const exc = exceptions.find(e => e.id === id);
+      await api.put(`/schedule-exceptions/${id}`, {
+        allowConsecutiveBlocks: field === 'allowConsecutiveBlocks' ? value : exc?.allowConsecutiveBlocks ?? null,
+        weeklyBlocks: field === 'weeklyBlocks' ? value : exc?.weeklyBlocks ?? null,
+        maxHoursPerDay: field === 'maxHoursPerDay' ? value : exc?.maxHoursPerDay ?? null,
+      });
+      loadExceptions();
+    } catch (e: any) {
+      message.error('Error al actualizar excepción');
+    }
+  };
+
+  const handleDeleteException = async (id: number) => {
+    try {
+      await api.delete(`/schedule-exceptions/${id}`);
+      message.success('Excepción eliminada');
+      loadExceptions();
+    } catch {
+      message.error('Error al eliminar excepción');
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center p-24 gap-4">
@@ -1227,7 +1319,11 @@ const ScheduleManagement: React.FC = () => {
                     </>
                   )}
                   {viewPeriod && !isReadOnly && (
-                    <Popconfirm
+                    <>
+                      <Button icon={<SettingOutlined />} onClick={handleOpenExceptions}>
+                        Excepciones
+                      </Button>
+                      <Popconfirm
                         title="¿Generar horarios automáticamente?"
                         description="Se generarán los horarios de TODAS las secciones de TODOS los grados del período. Esto reemplazará cualquier horario existente."
                         okText="Sí, generar"
@@ -1239,6 +1335,7 @@ const ScheduleManagement: React.FC = () => {
                           Generar automáticamente
                         </Button>
                       </Popconfirm>
+                    </>
                   )}
                   {selectedSectionId && !editMode && (
                     <Button icon={<ReloadOutlined />} onClick={() => loadSectionSchedule(selectedSectionId)}>Recargar</Button>
@@ -1368,6 +1465,154 @@ const ScheduleManagement: React.FC = () => {
         teacherConflict={teacherConflict}
         blockPeriods={editingCell ? getBlockPeriods(scheduleSections, editingCell.period, Number(settings.min_academic_hours_per_block) || 1) : []}
       />
+
+      {/* Exceptions Modal */}
+      <Modal
+        title="Excepciones de generación de horarios"
+        open={exceptionsModalOpen}
+        onCancel={() => setExceptionsModalOpen(false)}
+        footer={null}
+        width={700}
+      >
+        {exceptionsLoading ? (
+          <div className="flex justify-center p-8"><Spin /></div>
+        ) : (
+          <div className="space-y-6">
+            <Alert
+              type="info"
+              message="Las excepciones se aplican a la materia en todos los grados y secciones."
+              style={{ marginBottom: 16 }}
+            />
+
+            {/* Existing exceptions */}
+            {exceptions.length > 0 && (
+              <div>
+                <h3 className="text-sm font-bold text-slate-700 mb-2">Excepciones configuradas</h3>
+                <div className="space-y-2">
+                  {exceptions.map((exc: any) => (
+                    <div key={exc.id} className="flex items-center gap-3 p-3 border border-slate-200 rounded-lg">
+                      <div className="flex-1">
+                        <span className="font-medium text-slate-800">{exc.subject?.name ?? `Materia ${exc.subjectId}`}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <label className="text-xs text-slate-500">Consecutivos:</label>
+                        <Select
+                          size="small"
+                          style={{ width: 120 }}
+                          value={exc.allowConsecutiveBlocks ?? undefined}
+                          placeholder="—"
+                          allowClear
+                          onChange={(v) => handleUpdateException(exc.id, 'allowConsecutiveBlocks', v ?? null)}
+                          options={[
+                            { value: 0, label: 'No' },
+                            { value: 1, label: 'Tratar' },
+                            { value: 2, label: 'Obligatorio' },
+                          ]}
+                        />
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <label className="text-xs text-slate-500">Bloques/sem:</label>
+                        <InputNumber
+                          size="small"
+                          style={{ width: 60 }}
+                          min={1}
+                          max={10}
+                          value={exc.weeklyBlocks ?? undefined}
+                          placeholder="—"
+                          onChange={(v) => handleUpdateException(exc.id, 'weeklyBlocks', v ?? null)}
+                        />
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <label className="text-xs text-slate-500">Máx hrs/día:</label>
+                        <InputNumber
+                          size="small"
+                          style={{ width: 60 }}
+                          min={1}
+                          max={20}
+                          value={exc.maxHoursPerDay ?? undefined}
+                          placeholder="—"
+                          onChange={(v) => handleUpdateException(exc.id, 'maxHoursPerDay', v ?? null)}
+                        />
+                      </div>
+                      <Button
+                        size="small"
+                        type="text"
+                        danger
+                        icon={<DeleteOutlined />}
+                        onClick={() => handleDeleteException(exc.id)}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Add new exception */}
+            <div className="border-t border-slate-200 pt-4">
+              <h3 className="text-sm font-bold text-slate-700 mb-2">Agregar excepción</h3>
+              <div className="flex items-end gap-2 flex-wrap">
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs text-slate-500">Materia</label>
+                  <Select
+                    showSearch
+                    style={{ width: 220 }}
+                    placeholder="Seleccionar materia…"
+                    value={newExcSubjectId ?? undefined}
+                    onChange={setNewExcSubjectId}
+                    optionFilterProp="label"
+                    options={structureSubjects
+                      .filter((s: any) => !exceptions.some(e => e.subjectId === s.id))
+                      .map((s: any) => ({ value: s.id, label: s.name }))}
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs text-slate-500">Consecutivos</label>
+                  <Select
+                    style={{ width: 120 }}
+                    placeholder="—"
+                    value={newExcConsecutive ?? undefined}
+                    allowClear
+                    onChange={(v) => setNewExcConsecutive(v ?? null)}
+                    options={[
+                      { value: 0, label: 'No' },
+                      { value: 1, label: 'Tratar' },
+                      { value: 2, label: 'Obligatorio' },
+                    ]}
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs text-slate-500">Bloques/sem</label>
+                  <InputNumber
+                    style={{ width: 60 }}
+                    min={1}
+                    max={10}
+                    value={newExcWeekly ?? undefined}
+                    placeholder="—"
+                    onChange={(v) => setNewExcWeekly(v ?? null)}
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs text-slate-500">Máx hrs/día</label>
+                  <InputNumber
+                    style={{ width: 60 }}
+                    min={1}
+                    max={20}
+                    value={newExcMaxHours ?? undefined}
+                    placeholder="—"
+                    onChange={(v) => setNewExcMaxHours(v ?? null)}
+                  />
+                </div>
+                <Button type="primary" icon={<PlusOutlined />} onClick={handleAddException}>
+                  Agregar
+                </Button>
+              </div>
+              <p className="text-xs text-slate-400 mt-2">
+                Deje un campo vacío si no quiere sobrescribirlo. Al menos uno debe estar configurado.
+              </p>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 };
