@@ -412,8 +412,8 @@ const RepairPeriodManagement: React.FC = () => {
                     </Tag>
                   </Space>
                   <Space wrap>
-                    {Array.from({ length: summary.revisionPeriod.maxOpportunities }, (_, i) => i + 1).map(opp => {
-                      const current = summary.revisionPeriod.currentOpportunity ?? 1;
+                    {Array.from({ length: summary.revisionPeriod?.maxOpportunities || 1 }, (_, i) => i + 1).map(opp => {
+                      const current = summary.revisionPeriod?.currentOpportunity ?? 1;
                       const isActive = opp === current;
                       const isPast = opp < current;
                       const isFuture = opp > current;

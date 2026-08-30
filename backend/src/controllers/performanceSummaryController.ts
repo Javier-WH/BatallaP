@@ -8,6 +8,8 @@ import {
   Person,
   PersonResidence,
   InscriptionSubject,
+  InscriptionSubjectRevision,
+  RevisionPeriod,
   Subject,
   SubjectFinalGrade,
   SubjectTermGrade,
@@ -1282,6 +1284,698 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
 } catch (error: any) {
     console.error('[exportPerformanceSummary] Error:', error);
     res.status(500).json({ message: error.message || 'Error al exportar resumen de rendimiento' });
+  }
+};
+
+// ── Resumen de Revisión ─────────────────────────────────────────────
+// Same template and layout as exportPerformanceSummary, but:
+//  - Only students with InscriptionSubjectRevision entries are included
+//  - Only subjects that have revision entries appear as columns
+//  - Each cell shows the revision result (approval score or last score)
+export const exportRevisionSummary = async (req: Request, res: Response) => {
+  try {
+    const { schoolPeriodId, gradeId, sectionId, template } = req.query;
+
+    const numericFields: Array<[string, unknown]> = [
+      ['schoolPeriodId', schoolPeriodId],
+      ['gradeId', gradeId],
+      ['sectionId', sectionId],
+    ];
+    for (const [name, raw] of numericFields) {
+      if (raw === undefined || raw === null || raw === '') {
+        return res.status(400).json({ message: `${name} es requerido` });
+      }
+      const n = Number(raw);
+      if (!Number.isFinite(n) || !Number.isInteger(n) || n <= 0) {
+        return res.status(400).json({ message: `${name} debe ser un número entero positivo` });
+      }
+    }
+
+    const period = await SchoolPeriod.findByPk(Number(schoolPeriodId));
+    if (!period) return res.status(404).json({ message: 'Periodo no encontrado' });
+
+    const grade = await Grade.findByPk(Number(gradeId));
+    if (!grade) return res.status(404).json({ message: 'Grado no encontrado' });
+
+    const section = await Section.findByPk(Number(sectionId));
+    if (!section) return res.status(404).json({ message: 'Seccion no encontrada' });
+
+    // Find the revision period for this school period
+    const revisionPeriod = await RevisionPeriod.findOne({
+      where: { schoolPeriodId: Number(schoolPeriodId) },
+    });
+    if (!revisionPeriod) {
+      return res.status(404).json({ message: 'No hay período de reparación para este año escolar' });
+    }
+
+    const gradeOrder = grade.order || 1;
+    const gradeSuffix = gradeOrder === 1 || gradeOrder === 3 ? 'ER' : gradeOrder === 2 ? 'DO' : 'TO';
+    const templateGradeName = `${gradeOrder}${gradeSuffix} AÑO`;
+    const sheetName = gradeOrderToSheetName[gradeOrder] || '1er Año';
+
+    const pg = await PeriodGrade.findOne({
+      where: { schoolPeriodId: Number(schoolPeriodId), gradeId: Number(gradeId) },
+    });
+    if (!pg) return res.status(404).json({ message: 'Estructura academica no encontrada' });
+
+    // Find all InscriptionSubjectRevision entries for this revision period + section
+    const revisionEntries = await InscriptionSubjectRevision.findAll({
+      where: {
+        revisionPeriodId: revisionPeriod.id,
+      },
+      include: [
+        {
+          model: InscriptionSubject,
+          as: 'inscriptionSubject',
+          required: true,
+          include: [
+            { model: Subject, as: 'subject', include: [{ model: SubjectGroup, as: 'subjectGroup' }] },
+            {
+              model: Inscription,
+              as: 'inscription',
+              where: {
+                schoolPeriodId: Number(schoolPeriodId),
+                sectionId: Number(sectionId),
+                gradeId: Number(gradeId),
+              },
+              include: [{ association: 'student', include: [{ model: PersonResidence, as: 'residence' }] }],
+            },
+          ],
+        },
+      ],
+    });
+
+    if (revisionEntries.length === 0) {
+      return res.status(404).json({ message: 'No hay estudiantes con reparación en esta sección' });
+    }
+
+    // Build a set of subjectIds that have revision entries
+    const revisionSubjectIds = new Set<number>();
+    for (const rev of revisionEntries) {
+      const insSub = (rev as any).inscriptionSubject;
+      if (insSub?.subject) {
+        revisionSubjectIds.add(insSub.subject.id);
+      }
+    }
+
+    // Build a set of personIds (students) that have revision entries
+    const revisionStudentIds = new Set<number>();
+    for (const rev of revisionEntries) {
+      const ins = (rev as any).inscriptionSubject?.inscription;
+      if (ins?.personId) {
+        revisionStudentIds.add(ins.personId);
+      }
+    }
+
+    // Build a map: inscriptionSubjectId → revisions array
+    const revisionsByInsSub = new Map<number, any[]>();
+    for (const rev of revisionEntries) {
+      if (!revisionsByInsSub.has(rev.inscriptionSubjectId)) {
+        revisionsByInsSub.set(rev.inscriptionSubjectId, []);
+      }
+      revisionsByInsSub.get(rev.inscriptionSubjectId)!.push(rev);
+    }
+
+    // Load inscriptions for ONLY the students that have revision entries
+    const inscriptions = await Inscription.findAll({
+      where: {
+        schoolPeriodId: Number(schoolPeriodId),
+        sectionId: Number(sectionId),
+        gradeId: Number(gradeId),
+        personId: { [Op.in]: Array.from(revisionStudentIds) },
+      },
+      include: [
+        {
+          model: Person,
+          as: 'student',
+          include: [{ model: PersonResidence, as: 'residence' }],
+        },
+        {
+          model: InscriptionSubject,
+          as: 'inscriptionSubjects',
+          include: [
+            { model: Subject, as: 'subject', include: [{ model: SubjectGroup, as: 'subjectGroup' }] },
+          ],
+        },
+      ],
+      order: [
+        [{ model: Person, as: 'student' }, 'lastName', 'ASC'],
+        [{ model: Person, as: 'student' }, 'firstName', 'ASC'],
+      ],
+    });
+
+    if (inscriptions.length === 0) {
+      return res.status(404).json({ message: 'No hay estudiantes con reparación en esta sección' });
+    }
+
+    sortInscriptions(inscriptions as any[]);
+
+    const subjectOrderMap = await getSubjectOrderMap(pg.id);
+
+    // Build subjectMap ONLY from subjects that have revision entries
+    const subjectMap = new Map<number, { id: number; name: string; abbreviation: string | null; subjectGroupId: number | null; subjectGroupName: string | null; subjectGroupShortAbbr: string | null; subjectGroupLongAbbr: string | null; usesLiteralGrades: boolean }>();
+
+    // Query PeriodGradeSubject to get canonical order and subject info
+    const pgSubjects = await PeriodGradeSubject.findAll({
+      where: { periodGradeId: pg.id },
+      include: [{ model: Subject, as: 'subject', include: [{ model: SubjectGroup, as: 'subjectGroup' }] }],
+    });
+
+    // Only include subjects that have revision entries
+    for (const pgs of pgSubjects) {
+      const subj = (pgs as any).subject;
+      if (subj && revisionSubjectIds.has(subj.id)) {
+        subjectMap.set(subj.id, {
+          id: subj.id,
+          name: subj.name,
+          abbreviation: subj.abbreviation || null,
+          subjectGroupId: subj.subjectGroupId || null,
+          subjectGroupName: subj.subjectGroup?.name || null,
+          subjectGroupShortAbbr: subj.subjectGroup?.shortAbbreviation || null,
+          subjectGroupLongAbbr: subj.subjectGroup?.longAbbreviation || null,
+          usesLiteralGrades: subj.usesLiteralGrades || false,
+        });
+      }
+    }
+
+    const allSubjects = Array.from(subjectMap.values());
+
+    // Collapse group subjects into one representative column (same as regular)
+    const seenGroupIds = new Set<number>();
+    const academicSubjects = allSubjects.filter((subject) => {
+      if (subject.subjectGroupId === null) return true;
+      if (seenGroupIds.has(subject.subjectGroupId)) return false;
+      seenGroupIds.add(subject.subjectGroupId);
+      return true;
+    });
+
+    // Query teacher assignments for this section
+    const teacherAssignments = await TeacherAssignment.findAll({
+      where: { sectionId: section.id },
+      include: [
+        {
+          model: PeriodGradeSubject,
+          as: 'periodGradeSubject',
+          required: true,
+          where: { periodGradeId: pg.id },
+        },
+        {
+          model: Person,
+          as: 'teacher',
+          attributes: ['firstName', 'lastName', 'documentType', 'document'],
+        },
+      ],
+    });
+    const teacherMap = new Map<number, { fullName: string; docWithType: string }>();
+    for (const ta of teacherAssignments) {
+      const pgs = (ta as any).periodGradeSubject;
+      const teacher = (ta as any).teacher;
+      if (pgs && teacher) {
+        const docType = teacher.documentType === 'Venezolano' ? 'V' :
+                        teacher.documentType === 'Extranjero' ? 'E' : 'V';
+        teacherMap.set(pgs.subjectId, {
+          fullName: `${teacher.lastName || ''} ${teacher.firstName || ''}`.trim(),
+          docWithType: docType + ' ' + (teacher.document || ''),
+        });
+      }
+    }
+
+    // Calculate revision score: if approved in any opportunity → approval score,
+    // otherwise the last recorded score, otherwise null
+    const calculateRevisionScore = (insSub: any): number | null => {
+      const revs = revisionsByInsSub.get(insSub.id) || [];
+      if (revs.length === 0) return null;
+      const sorted = revs.sort((a: any, b: any) => a.opportunity - b.opportunity);
+      const approved = sorted.find((r: any) => r.status === 'approved' && r.score != null);
+      if (approved) return Number(approved.score);
+      const lastScored = [...sorted].reverse().find((r: any) => r.score != null);
+      return lastScored ? Number(lastScored.score) : null;
+    };
+
+    const settings = await getInstitutionSettings();
+
+    const letterGradesConfig: { letter: string; max: number }[] = (() => {
+      try {
+        const raw = settings.letter_grades;
+        if (!raw) return [];
+        const parsed = JSON.parse(raw);
+        return parsed.scale || parsed || [];
+      } catch { return []; }
+    })();
+
+    let plantel: any = null;
+    if (settings.institution_dea_code) {
+      plantel = await Plantel.findOne({ where: { code: settings.institution_dea_code } });
+    }
+
+    const groupedSubjectIds = new Set(
+      allSubjects.filter(s => s.subjectGroupId !== null).map(s => s.id)
+    );
+
+    // Resolve template path (same logic as exportPerformanceSummary)
+    const templatesRoot = path.resolve(process.cwd(), 'templates');
+    let templatePath: string | null = null;
+    if (template && typeof template === 'string') {
+      const requested = path.basename(template);
+      const candidate = path.join(templatesRoot, requested);
+      if (!candidate.startsWith(templatesRoot) || !fs.existsSync(candidate)) {
+        return res.status(400).json({ message: 'La plantilla seleccionada no existe' });
+      }
+      templatePath = candidate;
+    } else {
+      const tryKey = (k: string) => Setting.findOne({ where: { key: k } });
+      const gradeIdStr = String(grade.id);
+      const gradeKey = `template_assignment:grade:${gradeIdStr}`;
+      const assignment = await tryKey(gradeKey);
+      if (assignment && fs.existsSync(path.join(templatesRoot, path.basename(assignment.value)))) {
+        templatePath = path.join(templatesRoot, path.basename(assignment.value));
+      }
+    }
+    if (!templatePath) {
+      return res.status(400).json({
+        message: 'Debe seleccionar una plantilla (mediante ?template= en la URL o asignada al grado/sección).',
+      });
+    }
+
+    const namedRanges = readTemplateNamedRanges(templatePath);
+
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.readFile(templatePath);
+
+    let sheet = workbook.getWorksheet(sheetName);
+    if (!sheet) {
+      sheet = workbook.worksheets[0];
+    }
+    const actualSheetName = sheet!.name;
+
+    const findRef = (name: string) => {
+      let r = namedRanges.getCell(actualSheetName, name);
+      if (!r) {
+        for (const sn of namedRanges.bySheet.keys()) {
+          r = namedRanges.getCell(sn, name);
+          if (r) break;
+        }
+      }
+      return r;
+    };
+
+    const sortedAcademicSubjects = [...academicSubjects].sort((a, b) => {
+      const orderA = subjectOrderMap.get(a.id) ?? 999;
+      const orderB = subjectOrderMap.get(b.id) ?? 999;
+      return orderA - orderB;
+    });
+
+    const passingGrade = Number(settings.passing_grade) || 10;
+
+    // Build statistics
+    const buildSubjectStats = (students: any[]) => {
+      const studentCountBySubject = new Map<number, number>();
+      const failedCountBySubject = new Map<number, number>();
+      const passedCountBySubject = new Map<number, number>();
+      const zeroCountBySubject = new Map<number, number>();
+
+      for (const columnSubject of sortedAcademicSubjects) {
+        let enrolled = 0;
+        let failed = 0;
+        let passed = 0;
+        let zero = 0;
+
+        for (const ins of students) {
+          const insSub = (ins.inscriptionSubjects || []).find((is: any) =>
+            is.subjectId === columnSubject.id || (
+              columnSubject.subjectGroupId !== null &&
+              columnSubject.subjectGroupId !== undefined &&
+              is.subject?.subjectGroupId === columnSubject.subjectGroupId
+            )
+          );
+          if (!insSub) continue;
+
+          enrolled++;
+          const score = calculateRevisionScore(insSub);
+          if (score == null) continue;
+          if (score === 0) zero++;
+          if (isPassingGrade(score, passingGrade)) passed++;
+          else failed++;
+        }
+
+        studentCountBySubject.set(columnSubject.id, enrolled);
+        failedCountBySubject.set(columnSubject.id, failed);
+        passedCountBySubject.set(columnSubject.id, passed);
+        zeroCountBySubject.set(columnSubject.id, zero);
+      }
+
+      return { studentCountBySubject, failedCountBySubject, passedCountBySubject, zeroCountBySubject };
+    };
+
+    const { studentCountBySubject, failedCountBySubject, passedCountBySubject, zeroCountBySubject } =
+      buildSubjectStats(inscriptions);
+    const totalStudents = inscriptions.length;
+
+    // Discover subj_i named ranges and write subject headers
+    const subjectColList: { col: number; abbr: string; subjIdx: number; subjectId: number }[] = [];
+    const subjectToSubjIndex = new Map<number, number>();
+    let subjIdx = 1;
+    while (true) {
+      const ref = findRef('subj_' + subjIdx);
+      if (!ref) break;
+      const subj = sortedAcademicSubjects[subjIdx - 1];
+      if (subj) {
+        const abbrText = subj.subjectGroupId
+          ? (subj.subjectGroupShortAbbr || subj.subjectGroupLongAbbr || subj.name)
+          : (subj.abbreviation || subj.name);
+        const headerText = abbrText.toUpperCase();
+        sheet!.getCell(ref.cell).value = headerText;
+        subjectColList.push({ col: ref.col, abbr: abbrText.toUpperCase(), subjIdx, subjectId: subj.id });
+        subjectToSubjIndex.set(subjIdx, subj.id);
+        const nameRef = findRef('subjname_' + subjIdx);
+        const nameText = (subj.subjectGroupId
+          ? 'Participación en Grupos de \r\nCreación, Recreación y Producción'
+          : subj.name).toUpperCase();
+        if (nameRef) {
+          sheet!.getCell(nameRef.cell).value = nameText;
+        }
+        const areaRef = findRef('area_subj_' + subjIdx);
+        const areaNameRef = findRef('area_subjname_' + subjIdx);
+        const areaHeaderText = (subj.subjectGroupId
+          ? (subj.subjectGroupLongAbbr || '-')
+          : (subj.abbreviation || '-')).toUpperCase();
+        if (areaRef) {
+          sheet!.getCell(areaRef.cell).value = areaHeaderText;
+        }
+        if (areaNameRef) {
+          sheet!.getCell(areaNameRef.cell).value = nameText;
+        }
+        const countVal = studentCountBySubject.get(subj.id) || 0;
+        const countRef = findRef('subj_count_' + subjIdx);
+        if (countRef) {
+          sheet!.getCell(countRef.cell).value = countVal;
+        }
+        const failedVal = failedCountBySubject.get(subj.id) || 0;
+        const failedRef = findRef('subj_failed_' + subjIdx);
+        if (failedRef) {
+          sheet!.getCell(failedRef.cell).value = failedVal;
+        }
+        const passedVal = passedCountBySubject.get(subj.id) || 0;
+        const passedRef = findRef('subj_passed_' + subjIdx);
+        if (passedRef) {
+          sheet!.getCell(passedRef.cell).value = passedVal;
+        }
+        const zeroVal = zeroCountBySubject.get(subj.id) || 0;
+        const zeroRef = findRef('subj_zero_' + subjIdx);
+        if (zeroRef) {
+          sheet!.getCell(zeroRef.cell).value = zeroVal;
+        }
+        const unenrolledVal = totalStudents - (studentCountBySubject.get(subj.id) || 0);
+        const unenrolledRef = findRef('subj_unenrolled_' + subjIdx);
+        if (unenrolledRef) {
+          sheet!.getCell(unenrolledRef.cell).value = unenrolledVal;
+        }
+      }
+      subjIdx++;
+    }
+
+    // Write teacher data
+    const setTeacherData = (ws: ExcelJS.Worksheet) => {
+      for (let i = 1; i <= sortedAcademicSubjects.length; i++) {
+        const subj = sortedAcademicSubjects[i - 1];
+        if (!subj) continue;
+        const teacher = teacherMap.get(subj.id);
+        if (!teacher) continue;
+
+        const teacherNameRef = findRef(`teacher_name_${i}`);
+        const teacherDocRef = findRef(`teacher_doc_${i}`);
+        const teacherSignRef = findRef(`teacher_sign_${i}`);
+        if (teacherNameRef) ws.getCell(teacherNameRef.cell).value = teacher.fullName.toUpperCase();
+        if (teacherDocRef) ws.getCell(teacherDocRef.cell).value = teacher.docWithType.toUpperCase();
+        if (teacherSignRef) ws.getCell(teacherSignRef.cell).value = '';
+      }
+    };
+
+    setTeacherData(sheet!);
+
+    // Group students by document type
+    const docTypeGroups: { label: string; students: any[] }[] = [
+      { label: 'Venezolano', students: inscriptions.filter(ins => ins.student?.documentType === 'Venezolano') },
+      { label: 'Extranjero', students: inscriptions.filter(ins => ins.student?.documentType === 'Extranjero') },
+      { label: 'Pasaporte', students: inscriptions.filter(ins => ins.student?.documentType === 'Pasaporte') },
+      { label: 'Cedula Escolar', students: inscriptions.filter(ins => ins.student?.documentType === 'Cedula Escolar') },
+    ];
+
+    const cloneSheetInPlace = (
+      sourceWs: ExcelJS.Worksheet,
+      newName: string
+    ): ExcelJS.Worksheet => {
+      const cloned = workbook.addWorksheet(newName);
+      sourceWs.eachRow({ includeEmpty: true }, (row, rowNum) => {
+        row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+          const c = cloned.getRow(rowNum).getCell(colNumber);
+          c.value = cell.value && typeof cell.value === 'object' ? JSON.parse(JSON.stringify(cell.value)) : cell.value;
+          if (cell.style) c.style = JSON.parse(JSON.stringify(cell.style));
+          if (cell.numFmt) c.numFmt = cell.numFmt;
+        });
+        if (row.height != null) cloned.getRow(rowNum).height = row.height;
+      });
+      if (sourceWs.columns) {
+        sourceWs.columns.forEach((col, idx) => {
+          if (col && col.width != null) cloned.getColumn(idx + 1).width = col.width;
+        });
+      }
+      if (sourceWs.model.merges) {
+        sourceWs.model.merges.forEach((merge: string) => (cloned as any).mergeCellsWithoutStyle(merge));
+      }
+      return cloned;
+    };
+
+    const originalImages = sheet!.getImages();
+    const originalMedia: any[] = (workbook as any).model?.media || [];
+    const preImageIds: number[] = [];
+    for (const img of originalImages) {
+      const media = originalMedia[(img as any).imageId];
+      if (media && media.buffer) {
+        preImageIds.push(workbook.addImage({
+          buffer: media.buffer,
+          extension: media.extension || 'png',
+        }) as number);
+      } else {
+        preImageIds.push(-1);
+      }
+    }
+
+    const fillGroupPage = (
+      ws: ExcelJS.Worksheet,
+      studentList: any[],
+      studentOffset: number,
+      evalType: string,
+      sectionTotal: number,
+      pageCount: number,
+    ) => {
+      const makeAnchor = (a: any) => ({
+        nativeCol: a.nativeCol,
+        nativeColOff: a.nativeColOff,
+        nativeRow: a.nativeRow,
+        nativeRowOff: a.nativeRowOff,
+      });
+      for (let i = 0; i < originalImages.length; i++) {
+        const img = originalImages[i];
+        if (preImageIds[i] < 0) continue;
+        (ws as any).addImage(preImageIds[i], {
+          tl: makeAnchor(img.range.tl),
+          br: makeAnchor(img.range.br),
+          editAs: (img as any).range.editAs,
+        });
+      }
+
+      const pageStats = buildSubjectStats(
+        studentList.slice(studentOffset, studentOffset + pageCount)
+      );
+      const {
+        studentCountBySubject: pgStCount,
+        failedCountBySubject: pgFailCount,
+        passedCountBySubject: pgPassCount,
+        zeroCountBySubject: pgZeroCount,
+      } = pageStats;
+
+      for (let i = 1; i <= sortedAcademicSubjects.length; i++) {
+        const ref = findRef('subj_' + i);
+        const nameRef = findRef('subjname_' + i);
+        const countRef = findRef('subj_count_' + i);
+        const failedRef = findRef('subj_failed_' + i);
+        const passedRef = findRef('subj_passed_' + i);
+        const zeroRef = findRef('subj_zero_' + i);
+        const unenrolledRef = findRef('subj_unenrolled_' + i);
+        const subj = sortedAcademicSubjects[i - 1];
+        if (subj) {
+          const abbrText = subj.subjectGroupId
+            ? (subj.subjectGroupShortAbbr || subj.subjectGroupLongAbbr || subj.name)
+            : (subj.abbreviation || subj.name);
+          const headerText = abbrText.toUpperCase();
+          if (ref) ws.getCell(ref.cell).value = headerText;
+          const nameText = (subj.subjectGroupId
+            ? 'Participación en Grupos de \r\nCreación, Recreación y Producción'
+            : subj.name).toUpperCase();
+          if (nameRef) ws.getCell(nameRef.cell).value = nameText;
+          const areaRef = findRef('area_subj_' + i);
+          const areaNameRef = findRef('area_subjname_' + i);
+          const areaHeaderText = (subj.subjectGroupId
+            ? (subj.subjectGroupLongAbbr || '-')
+            : (subj.abbreviation || '-')).toUpperCase();
+          if (areaRef) ws.getCell(areaRef.cell).value = areaHeaderText;
+          if (areaNameRef) ws.getCell(areaNameRef.cell).value = nameText;
+          if (countRef) ws.getCell(countRef.cell).value = pgStCount.get(subj.id) || 0;
+          if (failedRef) ws.getCell(failedRef.cell).value = pgFailCount.get(subj.id) || 0;
+          if (passedRef) ws.getCell(passedRef.cell).value = pgPassCount.get(subj.id) || 0;
+          if (zeroRef) ws.getCell(zeroRef.cell).value = pgZeroCount.get(subj.id) || 0;
+          if (unenrolledRef) ws.getCell(unenrolledRef.cell).value = pageCount - (pgStCount.get(subj.id) || 0);
+        }
+      }
+
+      fillSheetByNamedRanges(
+        ws, ws.name, namedRanges, settings, plantel, period,
+        studentList, academicSubjects, groupedSubjectIds,
+        subjectColList, subjectToSubjIndex,
+        calculateRevisionScore, subjectOrderMap, studentOffset,
+        actualSheetName,
+        templateGradeName,
+        section?.name,
+        letterGradesConfig,
+        null, // lastCouncilDate — not applicable for revision
+        false, // isMpSection
+      );
+
+      const evalRef = findRef('inst_eval_type');
+      if (evalRef) ws.getCell(evalRef.cell).value = 'REPARACIÓN';
+
+      const setLocal = (name: string, value: any) => {
+        if (value === undefined || value === null || value === '') return;
+        const r = findRef(name);
+        if (r) ws.getCell(r.cell).value = value;
+      };
+      setLocal('std_total', sectionTotal);
+      setLocal('std_page_count', pageCount);
+
+      const nameToRef = new Map<string, string>();
+      for (const [origName, namesMap] of namedRanges.bySheet) {
+        if (ws.name.startsWith(origName)) {
+          for (const [name, ref] of namesMap) {
+            nameToRef.set(name, `'${ws.name}'!$${ref.cell}`);
+          }
+        }
+      }
+      ws.eachRow((row) => {
+        row.eachCell((cell) => {
+          const v = cell.value;
+          if (v && typeof v === 'object' && 'formula' in v) {
+            let formula = (v as any).formula;
+            if (!formula) return;
+            let changed = false;
+            for (const [name, cellRef] of nameToRef) {
+              const re = new RegExp(`\\b${name}\\b`, 'g');
+              const newFormula = formula.replace(re, cellRef);
+              if (newFormula !== formula) {
+                formula = newFormula;
+                changed = true;
+              }
+            }
+            if (changed) {
+              (v as any).formula = formula;
+            }
+          }
+        });
+      });
+    };
+
+    const cleanTemplateSheet = cloneSheetInPlace(sheet!, `${actualSheetName} (Template Source)`);
+
+    const renderGroup = (
+      group: any[],
+      evalType: string,
+      groupLabel: string,
+      isFirst: boolean
+    ): string[] => {
+      if (group.length === 0) return [];
+      const pages = Math.ceil(group.length / MAX_STUDENTS_PER_SHEET);
+      const pageSheets: ExcelJS.Worksheet[] = [];
+      const pageNames: string[] = [];
+
+      for (let pageIdx = 0; pageIdx < pages; pageIdx++) {
+        const name = `${actualSheetName} (${groupLabel}) (${pageIdx + 1})`;
+        if (isFirst && pageIdx === 0) {
+          pageSheets[0] = sheet!;
+          pageNames[0] = name;
+        } else {
+          pageSheets.push(cloneSheetInPlace(cleanTemplateSheet, name));
+          pageNames.push(name);
+        }
+      }
+      if (isFirst && pages > 0 && pageSheets[0] === sheet!) {
+        sheet!.name = pageNames[0];
+      }
+
+      for (let pageIdx = 0; pageIdx < pages; pageIdx++) {
+        const studentOffset = pageIdx * MAX_STUDENTS_PER_SHEET;
+        const pageCount = Math.min(group.length - studentOffset, MAX_STUDENTS_PER_SHEET);
+        fillGroupPage(pageSheets[pageIdx], group, studentOffset, 'Reparación', inscriptions.length, pageCount);
+      }
+
+      return pageNames;
+    };
+
+    let isFirst = true;
+    const allSheetNames: string[] = [];
+    for (const dtg of docTypeGroups) {
+      if (dtg.students.length === 0) continue;
+      const names = renderGroup(dtg.students, 'Reparación', dtg.label, isFirst);
+      allSheetNames.push(...names);
+      isFirst = false;
+    }
+
+    if (allSheetNames.length === 0) {
+      return res.status(404).json({ message: 'No hay estudiantes con reparación en esta sección' });
+    }
+
+    const keepNames = new Set<string>(allSheetNames);
+    workbook.worksheets
+      .filter(ws => !keepNames.has(ws.name))
+      .forEach(ws => workbook.removeWorksheet(ws.id!));
+
+    (workbook as any)._definedNames.matrixMap = {};
+
+    const addWithSheet = (name: string, wsName: string, cell: string) => {
+      const sheetLabel = wsName.includes(' ') ? `'${wsName}'` : wsName;
+      try {
+        workbook.definedNames.add(`${sheetLabel}!$${cell}`, name);
+      } catch {}
+    };
+
+    for (const ws of workbook.worksheets) {
+      const wsName = ws.name;
+      for (const [origName, namesMap] of namedRanges.bySheet) {
+        if (wsName.startsWith(origName)) {
+          for (const [name, ref] of namesMap) {
+            addWithSheet(name, wsName, ref.cell);
+          }
+        }
+      }
+      for (let i = 1; i <= sortedAcademicSubjects.length; i++) {
+        const teacherNameRef = findRef(`teacher_name_${i}`);
+        const teacherDocRef = findRef(`teacher_doc_${i}`);
+        if (teacherNameRef) {
+          addWithSheet('teacher_name_' + i, wsName, teacherNameRef.cell);
+        }
+        if (teacherDocRef) {
+          addWithSheet('teacher_doc_' + i, wsName, teacherDocRef.cell);
+        }
+      }
+    }
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    const fileName = 'resumen-revision-' + grade.name.replace(/\s+/g, '_') + '-' + section.name.replace(/\s+/g, '_') + '.xlsx';
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename="' + fileName + '"');
+    res.send(buffer);
+  } catch (error: any) {
+    console.error('[exportRevisionSummary] Error:', error);
+    res.status(500).json({ message: error.message || 'Error al exportar resumen de revisión' });
   }
 };
 

@@ -258,6 +258,7 @@ const PerformanceSummary: React.FC = () => {
   const [userOverrodeTemplate, setUserOverrodeTemplate] = useState(false);
   const [reportType, setReportType] = useState<ReportType>('resumen');
   const [mpExporting, setMpExporting] = useState(false);
+  const [revisionExporting, setRevisionExporting] = useState(false);
 
   // boletin tab state
   const [boletinPeriodId, setBoletinPeriodId] = useState<number | null>(null);
@@ -529,6 +530,62 @@ const PerformanceSummary: React.FC = () => {
         reader.readAsText(error.response.data);
       } else { message.error('Error al exportar el resumen'); }
     } finally { setExporting(false); }
+  };
+
+  // --- Resumen de Revisión ---
+  // Same template as Resumen Final, but only includes students with revision
+  // entries and only subjects that have revision grades.
+  const handleExportRevision = async () => {
+    if (!selectedPeriodId || validCombinations.length === 0) {
+      message.warning('Seleccione periodo, grado y sección');
+      return;
+    }
+    if (!selectedTemplate) {
+      setTemplateModalOpen(true);
+      return;
+    }
+    setRevisionExporting(true);
+    try {
+      for (let i = 0; i < validCombinations.length; i++) {
+        const combo = validCombinations[i];
+        const response = await api.get('/performance-summary/export-revision', {
+          params: {
+            schoolPeriodId: selectedPeriodId,
+            gradeId: combo.gradeId,
+            sectionId: combo.sectionId,
+            template: selectedTemplate || undefined,
+          },
+          responseType: 'blob',
+        });
+        const url = window.URL.createObjectURL(new Blob([response.data]));
+        const link = document.createElement('a');
+        link.href = url;
+        const fileName = response.headers['content-disposition']
+          ?.split('filename="')[1]?.split('"')[0] || 'resumen-revision.xlsx';
+        link.setAttribute('download', fileName);
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.URL.revokeObjectURL(url);
+        if (i < validCombinations.length - 1) {
+          await new Promise(r => setTimeout(r, 300));
+        }
+      }
+      const n = validCombinations.length;
+      message.success(`${n} ${n === 1 ? 'planilla de revisión exportada' : 'planillas de revisión exportadas'} correctamente`);
+    } catch (error: any) {
+      console.error('Error exporting revision', error);
+      if (error.response?.data) {
+        const reader = new FileReader();
+        reader.onload = () => {
+          try {
+            const err = JSON.parse(reader.result as string);
+            message.error(err.message || 'Error al exportar');
+          } catch { message.error('Error al exportar el resumen de revisión'); }
+        };
+        reader.readAsText(error.response.data);
+      } else { message.error('Error al exportar el resumen de revisión'); }
+    } finally { setRevisionExporting(false); }
   };
 
   // --- Resumen de Materia Pendiente ---
@@ -1526,12 +1583,12 @@ const PerformanceSummary: React.FC = () => {
                     </button>
                     <button
                       className="rb-export-btn"
-                      style={{ width: 'auto', flex: '1 1 220px', minHeight: 48, background: '#EEF0F3', color: '#A7ADB8' }}
-                      disabled
-                      title="Próximamente"
+                      style={{ width: 'auto', flex: '1 1 220px', minHeight: 48 }}
+                      disabled={!readyToExport || revisionExporting}
+                      onClick={handleExportRevision}
                     >
-                      <IconDownload size={16} />
-                      Resumen de Revisión
+                      {revisionExporting ? <Spin size="small" /> : <IconDownload size={16} />}
+                      {revisionExporting ? 'Exportando…' : 'Resumen de Revisión'}
                     </button>
                     <button
                       className="rb-export-btn"
@@ -1569,6 +1626,7 @@ const PerformanceSummary: React.FC = () => {
                   <h2 className="rb-info-title">Qué incluye cada reporte</h2>
                   <ul className="rb-info-list">
                     <li><IconCheck size={15} /><span><b>Resumen Final</b>: Excel con el promedio final de notas por estudiante, usando plantilla configurada. Columnas: Nro, Apellidos, Nombres, Lugar de Nacimiento, EF, Día, Mes, Año, y materias con encabezados abreviados.</span></li>
+                    <li><IconCheck size={15} /><span><b>Resumen de Revisión</b>: Igual al Resumen Final pero solo incluye estudiantes con reparación y las materias que tienen notas de reparación registradas.</span></li>
                     <li><IconCheck size={15} /><span><b>Resumen de Materia Pendiente</b>: Igual al Resumen Final pero para la sección de Materia Pendiente del año seleccionado. Solo disponible del 1ro al penúltimo año.</span></li>
                     <li><IconCheck size={15} /><span><b>Resumen del Rendimiento Anual</b>: Planilla tipo consejo de curso con columnas L1, L2, L3 y NF por materia. Muestra las notas finales de cada lapso y la definitiva.</span></li>
                   </ul>
