@@ -791,7 +791,7 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
 
     // Sort academic subjects by canonical order (subjectOrderMap) so subj_i
     // always maps to the same subject regardless of insertion order.
-    const sortedAcademicSubjects = [...academicSubjects].sort((a, b) => {
+    const sortedAcademicSubjects = [...academicSubjects].sort((a: any, b: any) => {
       const orderA = subjectOrderMap.get(a.id) ?? 999;
       const orderB = subjectOrderMap.get(b.id) ?? 999;
       return orderA - orderB;
@@ -1369,18 +1369,31 @@ export const exportRevisionSummary = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'No hay estudiantes con reparación en esta sección' });
     }
 
-    // Build a set of subjectIds that have revision entries
+    // A revision row is created for every enrolled subject when the repair
+    // period opens, with status 'pending' and a null score. Those rows do not
+    // represent an actual repair grade, so only rows that were really graded
+    // count towards the report.
+    const isGradedRevision = (rev: any) =>
+      rev.score !== null && rev.score !== undefined;
+
+    // Build a set of subjectIds that have at least one graded revision
     const revisionSubjectIds = new Set<number>();
     for (const rev of revisionEntries) {
+      if (!isGradedRevision(rev)) continue;
       const insSub = (rev as any).inscriptionSubject;
       if (insSub?.subject) {
         revisionSubjectIds.add(insSub.subject.id);
       }
     }
 
-    // Build a set of personIds (students) that have revision entries
+    if (revisionSubjectIds.size === 0) {
+      return res.status(404).json({ message: 'No hay notas de reparación registradas en esta sección' });
+    }
+
+    // Build a set of personIds (students) that have at least one graded revision
     const revisionStudentIds = new Set<number>();
     for (const rev of revisionEntries) {
+      if (!isGradedRevision(rev)) continue;
       const ins = (rev as any).inscriptionSubject?.inscription;
       if (ins?.personId) {
         revisionStudentIds.add(ins.personId);
@@ -1432,20 +1445,21 @@ export const exportRevisionSummary = async (req: Request, res: Response) => {
 
     const subjectOrderMap = await getSubjectOrderMap(pg.id);
 
-    // Build subjectMap ONLY from subjects that have revision entries
-    const subjectMap = new Map<number, { id: number; name: string; abbreviation: string | null; subjectGroupId: number | null; subjectGroupName: string | null; subjectGroupShortAbbr: string | null; subjectGroupLongAbbr: string | null; usesLiteralGrades: boolean }>();
-
     // Query PeriodGradeSubject to get canonical order and subject info
     const pgSubjects = await PeriodGradeSubject.findAll({
       where: { periodGradeId: pg.id },
       include: [{ model: Subject, as: 'subject', include: [{ model: SubjectGroup, as: 'subjectGroup' }] }],
     });
 
-    // Only include subjects that have revision entries
-    for (const pgs of pgSubjects) {
-      const subj = (pgs as any).subject;
-      if (subj && revisionSubjectIds.has(subj.id)) {
-        subjectMap.set(subj.id, {
+    // Build academicSubjects from the FULL grade curriculum so that each
+    // subject keeps its canonical position (subj_1, subj_2, …). Subjects
+    // without repair grades are flagged and simply left untouched, preserving
+    // the template's own placeholders ("**").
+    const academicSubjects: any[] = pgSubjects
+      .map((pgs: any) => {
+        const subj = pgs.subject;
+        if (!subj) return null;
+        return {
           id: subj.id,
           name: subj.name,
           abbreviation: subj.abbreviation || null,
@@ -1454,20 +1468,10 @@ export const exportRevisionSummary = async (req: Request, res: Response) => {
           subjectGroupShortAbbr: subj.subjectGroup?.shortAbbreviation || null,
           subjectGroupLongAbbr: subj.subjectGroup?.longAbbreviation || null,
           usesLiteralGrades: subj.usesLiteralGrades || false,
-        });
-      }
-    }
-
-    const allSubjects = Array.from(subjectMap.values());
-
-    // Collapse group subjects into one representative column (same as regular)
-    const seenGroupIds = new Set<number>();
-    const academicSubjects = allSubjects.filter((subject) => {
-      if (subject.subjectGroupId === null) return true;
-      if (seenGroupIds.has(subject.subjectGroupId)) return false;
-      seenGroupIds.add(subject.subjectGroupId);
-      return true;
-    });
+          hasRevisionStudents: revisionSubjectIds.has(subj.id),
+        };
+      })
+      .filter(Boolean) as any[];
 
     // Query teacher assignments for this section
     const teacherAssignments = await TeacherAssignment.findAll({
@@ -1528,8 +1532,12 @@ export const exportRevisionSummary = async (req: Request, res: Response) => {
       plantel = await Plantel.findOne({ where: { code: settings.institution_dea_code } });
     }
 
+    // Only grouped subjects that actually have repair grades may write the
+    // "Participación en Grupos" column; otherwise leave the template as is.
     const groupedSubjectIds = new Set(
-      allSubjects.filter(s => s.subjectGroupId !== null).map(s => s.id)
+      academicSubjects
+        .filter((s: any) => s.subjectGroupId !== null && s.hasRevisionStudents)
+        .map((s: any) => s.id)
     );
 
     // Resolve template path (same logic as exportPerformanceSummary)
@@ -1579,7 +1587,7 @@ export const exportRevisionSummary = async (req: Request, res: Response) => {
       return r;
     };
 
-    const sortedAcademicSubjects = [...academicSubjects].sort((a, b) => {
+    const sortedAcademicSubjects = [...academicSubjects].sort((a: any, b: any) => {
       const orderA = subjectOrderMap.get(a.id) ?? 999;
       const orderB = subjectOrderMap.get(b.id) ?? 999;
       return orderA - orderB;
@@ -1594,7 +1602,8 @@ export const exportRevisionSummary = async (req: Request, res: Response) => {
       const passedCountBySubject = new Map<number, number>();
       const zeroCountBySubject = new Map<number, number>();
 
-      for (const columnSubject of sortedAcademicSubjects) {
+      for (const columnSubject of sortedAcademicSubjects as any[]) {
+        if (!columnSubject?.hasRevisionStudents) continue;
         let enrolled = 0;
         let failed = 0;
         let passed = 0;
@@ -1610,9 +1619,11 @@ export const exportRevisionSummary = async (req: Request, res: Response) => {
           );
           if (!insSub) continue;
 
-          enrolled++;
+          // Count only students that actually have a repair grade for this
+          // subject, not everyone enrolled in it.
           const score = calculateRevisionScore(insSub);
           if (score == null) continue;
+          enrolled++;
           if (score === 0) zero++;
           if (isPassingGrade(score, passingGrade)) passed++;
           else failed++;
@@ -1631,7 +1642,9 @@ export const exportRevisionSummary = async (req: Request, res: Response) => {
       buildSubjectStats(inscriptions);
     const totalStudents = inscriptions.length;
 
-    // Discover subj_i named ranges and write subject headers
+    // Discover subj_i named ranges and write subject headers. Subjects keep
+    // their canonical position; those without repair grades are skipped so the
+    // template's placeholders remain untouched.
     const subjectColList: { col: number; abbr: string; subjIdx: number; subjectId: number }[] = [];
     const subjectToSubjIndex = new Map<number, number>();
     let subjIdx = 1;
@@ -1639,7 +1652,7 @@ export const exportRevisionSummary = async (req: Request, res: Response) => {
       const ref = findRef('subj_' + subjIdx);
       if (!ref) break;
       const subj = sortedAcademicSubjects[subjIdx - 1];
-      if (subj) {
+      if (subj && (subj as any).hasRevisionStudents) {
         const abbrText = subj.subjectGroupId
           ? (subj.subjectGroupShortAbbr || subj.subjectGroupLongAbbr || subj.name)
           : (subj.abbreviation || subj.name);
@@ -1699,6 +1712,8 @@ export const exportRevisionSummary = async (req: Request, res: Response) => {
       for (let i = 1; i <= sortedAcademicSubjects.length; i++) {
         const subj = sortedAcademicSubjects[i - 1];
         if (!subj) continue;
+        // Leave the template untouched for subjects without repair grades.
+        if (!(subj as any).hasRevisionStudents) continue;
         const teacher = teacherMap.get(subj.id);
         if (!teacher) continue;
 
@@ -1804,7 +1819,7 @@ export const exportRevisionSummary = async (req: Request, res: Response) => {
         const zeroRef = findRef('subj_zero_' + i);
         const unenrolledRef = findRef('subj_unenrolled_' + i);
         const subj = sortedAcademicSubjects[i - 1];
-        if (subj) {
+        if (subj && (subj as any).hasRevisionStudents) {
           const abbrText = subj.subjectGroupId
             ? (subj.subjectGroupShortAbbr || subj.subjectGroupLongAbbr || subj.name)
             : (subj.abbreviation || subj.name);
