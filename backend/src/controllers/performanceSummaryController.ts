@@ -1640,7 +1640,16 @@ export const exportRevisionSummary = async (req: Request, res: Response) => {
 
     const { studentCountBySubject, failedCountBySubject, passedCountBySubject, zeroCountBySubject } =
       buildSubjectStats(inscriptions);
-    const totalStudents = inscriptions.length;
+    // Total students in the section (ALL enrolled students, not only those
+    // with repair grades). Used for the "no inscritos" per-subject count so
+    // it reflects the real section size.
+    const totalStudents = await Inscription.count({
+      where: {
+        schoolPeriodId: Number(schoolPeriodId),
+        sectionId: Number(sectionId),
+        gradeId: Number(gradeId),
+      },
+    });
 
     // Discover subj_i named ranges and write subject headers. Subjects keep
     // their canonical position; those without repair grades are skipped so the
@@ -1929,7 +1938,7 @@ export const exportRevisionSummary = async (req: Request, res: Response) => {
       for (let pageIdx = 0; pageIdx < pages; pageIdx++) {
         const studentOffset = pageIdx * MAX_STUDENTS_PER_SHEET;
         const pageCount = Math.min(group.length - studentOffset, MAX_STUDENTS_PER_SHEET);
-        fillGroupPage(pageSheets[pageIdx], group, studentOffset, 'Reparación', inscriptions.length, pageCount);
+        fillGroupPage(pageSheets[pageIdx], group, studentOffset, 'Reparación', totalStudents, pageCount);
       }
 
       return pageNames;
