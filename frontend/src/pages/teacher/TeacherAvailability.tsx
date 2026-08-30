@@ -1,9 +1,10 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { Button, message, Spin, Tabs, Tag, Empty } from 'antd';
-import { SaveOutlined, DeleteOutlined, ScheduleOutlined } from '@ant-design/icons';
+import { Button, message, Spin, Tabs, Tag, Empty, DatePicker, Input, Alert, Modal, List } from 'antd';
+import { SaveOutlined, DeleteOutlined, ScheduleOutlined, HomeOutlined, PlusOutlined, CheckOutlined, CloseOutlined } from '@ant-design/icons';
 import api from '@/services/api';
 import { useAuth } from '@/context/AuthContext';
 import { useSchool } from '@/context/SchoolContext';
+import ClassroomDistribution from '@/pages/control-estudios/ClassroomDistribution';
 import dayjs from 'dayjs';
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -25,6 +26,13 @@ interface Section {
 }
 
 const DAYS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'];
+
+// Map dayjs day() (0=Sun, 1=Mon..5=Fri, 6=Sat) to our day names
+function dayjsToDayName(d: dayjs.Dayjs): string | null {
+  const idx = d.day();
+  if (idx >= 1 && idx <= 5) return DAYS[idx - 1];
+  return null;
+}
 
 const STATUSES = [
   { key: 'available', label: 'Disponible', swatch: 'bg-emerald-400', ring: 'ring-emerald-500' },
@@ -146,6 +154,23 @@ export default function TeacherAvailability() {
   const [scheduleEntries, setScheduleEntries] = useState<any[]>([]);
   const [scheduleLoading, setScheduleLoading] = useState(false);
 
+  // Classroom distribution state
+  const [classroomSettings, setClassroomSettings] = useState<Record<string, string>>({});
+  const [classroomSections, setClassroomSections] = useState<any[]>([]);
+  const [classroomSubjects, setClassroomSubjects] = useState<any[]>([]);
+  const [classroomLoading, setClassroomLoading] = useState(false);
+
+  // Teacher room requests state
+  const [requestTab, setRequestTab] = useState('new'); // 'new' | 'myRequests'
+  const [requestDate, setRequestDate] = useState<dayjs.Dayjs | null>(null);
+  const [requestReason, setRequestReason] = useState('');
+  const [requestSubject, setRequestSubject] = useState('');
+  const [myRequests, setMyRequests] = useState<any[]>([]);
+  const [myRequestsLoading, setMyRequestsLoading] = useState(false);
+  const [selectedRequestCells, setSelectedRequestCells] = useState<Set<string>>(new Set());
+  const [requestSelectionMode, setRequestSelectionMode] = useState(false);
+  const requestSelecting = useRef(false);
+
   const painting = useRef(false);
   const paintValue = useRef<string | null>(null);
 
@@ -200,6 +225,177 @@ export default function TeacherAvailability() {
   useEffect(() => {
     if (activeTab === 'schedule') loadSchedule();
   }, [activeTab, loadSchedule]);
+
+  // Load classroom distribution data
+  const loadClassroomData = useCallback(async () => {
+    if (!activePeriod?.id) return;
+    setClassroomLoading(true);
+    try {
+      const [settingsRes, structRes] = await Promise.all([
+        api.get('/settings'),
+        api.get(`/academic/structure/${activePeriod.id}`),
+      ]);
+      setClassroomSettings(settingsRes.data || {});
+
+      const flat: any[] = [];
+      const subjMap = new Map<number, { id: number; name: string; subjectGroupId?: number | null; color?: string | null }>();
+      (structRes.data || []).forEach((pg: any) => {
+        (pg.sections || []).forEach((s: any) => {
+          if ((s.name || '').toUpperCase() === 'MATERIA PENDIENTE') return;
+          const pgsId = s.PeriodGradeSection?.id ?? s.id;
+          flat.push({
+            id: pgsId,
+            sectionId: s.id,
+            gradeId: pg.grade?.id,
+            label: `${pg.grade?.name ?? ''} - ${s.name ?? ''}`,
+            gradeName: pg.grade?.name,
+            gradeOrder: pg.grade?.order ?? 99,
+            sectionName: s.name,
+            color: s.PeriodGradeSection?.color ?? null,
+            periodGradeColor: pg.color ?? null,
+          });
+        });
+        (pg.subjects || []).forEach((sub: any) => {
+          if (!subjMap.has(sub.id)) subjMap.set(sub.id, { id: sub.id, name: sub.name, subjectGroupId: sub.subjectGroupId ?? null, color: sub.color ?? null });
+        });
+      });
+      flat.sort((a, b) => {
+        if (a.gradeOrder !== b.gradeOrder) return a.gradeOrder - b.gradeOrder;
+        return (a.sectionName || '').localeCompare(b.sectionName || '', 'es');
+      });
+      setClassroomSections(flat);
+      setClassroomSubjects(Array.from(subjMap.values()));
+    } catch (e) {
+      console.error('Error loading classroom data:', e);
+    } finally {
+      setClassroomLoading(false);
+    }
+  }, [activePeriod]);
+
+  useEffect(() => {
+    if (activeTab === 'classrooms') loadClassroomData();
+  }, [activeTab, loadClassroomData]);
+
+  // Load teacher's room requests
+  const loadMyRequests = useCallback(async () => {
+    if (!activePeriod?.id || !user?.personId) return;
+    setMyRequestsLoading(true);
+    try {
+      const res = await api.get('/room-bookings', {
+        params: { schoolPeriodId: activePeriod.id },
+      });
+      // Filter to only this teacher's requests
+      const mine = (res.data || []).filter((b: any) => b.requestedBy === user.personId);
+      setMyRequests(mine);
+    } catch {
+      setMyRequests([]);
+    } finally {
+      setMyRequestsLoading(false);
+    }
+  }, [activePeriod, user]);
+
+  useEffect(() => {
+    if (activeTab === 'requestRoom') {
+      loadClassroomData();
+      loadMyRequests();
+    }
+  }, [activeTab, loadClassroomData, loadMyRequests]);
+
+  // Cell key helper for request selection
+  const reqCellKey = (day: string, periodId: string, room: string) => `${day}|${periodId}|${room}`;
+
+  const handleReqSelectDown = (day: string, periodId: string, room: string) => {
+    requestSelecting.current = true;
+    const k = reqCellKey(day, periodId, room);
+    setSelectedRequestCells(prev => {
+      const next = new Set(prev);
+      if (next.has(k)) next.delete(k);
+      else next.add(k);
+      return next;
+    });
+  };
+
+  const handleReqSelectEnter = (day: string, periodId: string, room: string) => {
+    if (!requestSelecting.current) return;
+    const k = reqCellKey(day, periodId, room);
+    setSelectedRequestCells(prev => {
+      if (prev.has(k)) return prev;
+      const next = new Set(prev);
+      next.add(k);
+      return next;
+    });
+  };
+
+  useEffect(() => {
+    const stop = () => { requestSelecting.current = false; };
+    window.addEventListener('mouseup', stop);
+    return () => window.removeEventListener('mouseup', stop);
+  }, []);
+
+  const selectedRequestGroups = useMemo(() => {
+    const groups: Record<string, { day: string; room: string; periodIds: string[] }> = {};
+    for (const k of selectedRequestCells) {
+      const [day, periodId, room] = k.split('|');
+      const gk = `${day}|${room}`;
+      if (!groups[gk]) groups[gk] = { day, room, periodIds: [] };
+      groups[gk].periodIds.push(periodId);
+    }
+    return Object.values(groups);
+  }, [selectedRequestCells]);
+
+  // Days of week present in the selection (e.g. ["Lunes"])
+  const selectedDays = useMemo(() => {
+    const days = new Set<string>();
+    for (const k of selectedRequestCells) days.add(k.split('|')[0]);
+    return Array.from(days);
+  }, [selectedRequestCells]);
+
+  // Map day names to dayjs day() numbers
+  const dayNameToNumber = (name: string): number => {
+    const idx = DAYS.indexOf(name);
+    return idx >= 0 ? idx + 1 : -1; // 1=Mon..5=Fri
+  };
+
+  // Disable dates that don't match any selected day
+  const disabledRequestDate = (d: dayjs.Dayjs): boolean => {
+    if (selectedDays.length === 0) return false; // no selection = all enabled
+    const dayNum = d.day();
+    return !selectedDays.some(name => dayNameToNumber(name) === dayNum);
+  };
+
+  const handleSubmitRequest = async () => {
+    if (!requestDate) { message.warning('Seleccione una fecha'); return; }
+    if (!requestSubject.trim()) { message.warning('Ingrese la materia/actividad'); return; }
+    if (selectedRequestGroups.length === 0) { message.warning('Seleccione al menos un bloque en la grid'); return; }
+    try {
+      for (const g of selectedRequestGroups) {
+        await api.post('/room-bookings', {
+          room: g.room,
+          day: g.day,
+          periodIds: g.periodIds,
+          specificDate: requestDate.format('YYYY-MM-DD'),
+          teacherName: `${user?.firstName ?? ''} ${user?.lastName ?? ''}`.trim() || user?.username || 'Profesor',
+          subjectName: requestSubject.trim(),
+          reason: requestReason.trim(),
+          status: 'pending',
+          requestedBy: user?.personId,
+          schoolPeriodId: activePeriod?.id,
+        });
+      }
+      message.success('Solicitud enviada. Pendiente de aprobación por Control de Estudios.');
+      setRequestDate(null);
+      setRequestSubject('');
+      setRequestReason('');
+      setSelectedRequestCells(new Set());
+      loadMyRequests();
+    } catch (err: any) {
+      if (err?.response?.status === 409) {
+        message.error(err.response.data?.message || 'Conflicto: el aula ya tiene una reserva para esos bloques');
+      } else {
+        message.error('Error al enviar la solicitud');
+      }
+    }
+  };
 
   // Build schedule entries map for the grid
   const scheduleEntriesMap = useMemo<Record<string, any[]>>(() => {
@@ -627,6 +823,111 @@ export default function TeacherAvailability() {
             key: 'schedule',
             label: <span><ScheduleOutlined /> Mi Horario</span>,
             children: scheduleTab,
+          },
+          {
+            key: 'classrooms',
+            label: <span><HomeOutlined /> Distribución de Aulas</span>,
+            children: classroomLoading ? (
+              <div className="flex justify-center p-12"><Spin size="large" /></div>
+            ) : classroomSections.length > 0 ? (
+              <ClassroomDistribution
+                settings={classroomSettings}
+                sectionsList={classroomSections}
+                subjectsList={classroomSubjects}
+                schoolPeriodId={activePeriod?.id}
+                gradesList={classroomSections.filter((s: any, i: number, arr: any[]) => arr.findIndex(x => x.gradeId === s.gradeId) === i).map((s: any) => ({ id: s.gradeId, name: s.gradeName }))}
+                readOnly
+              />
+            ) : (
+              <Empty description="No hay datos de estructura académica para este período" />
+            ),
+          },
+          {
+            key: 'requestRoom',
+            label: <span><PlusOutlined /> Solicitar Aula</span>,
+            children: classroomLoading ? (
+              <div className="flex justify-center p-12"><Spin size="large" /></div>
+            ) : classroomSections.length > 0 ? (
+              <div className="space-y-4">
+                <Alert
+                  type="info"
+                  showIcon
+                  message="Solicitar un aula para una fecha específica"
+                  description="1. Marque los bloques en la grid. 2. Seleccione la fecha. 3. Complete los datos y envíe."
+                />
+                <div className="flex flex-wrap items-center gap-3 bg-slate-50 p-3 rounded-md">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 mb-1">Fecha *</label>
+                    <DatePicker
+                      value={requestDate}
+                      onChange={setRequestDate}
+                      format="DD/MM/YYYY"
+                      placeholder={selectedDays.length === 0 ? 'Primero marque bloques' : `Solo ${selectedDays.join(', ')}`}
+                      disabledDate={disabledRequestDate}
+                    />
+                  </div>
+                  <div className="flex-1 min-w-[200px]">
+                    <label className="block text-xs font-semibold text-slate-600 mb-1">Materia / Actividad *</label>
+                    <Input value={requestSubject} onChange={e => setRequestSubject(e.target.value)} placeholder="Ej: Ciencias de la Tierra" style={{ width: '100%' }} />
+                  </div>
+                  <div className="flex-1 min-w-[200px]">
+                    <label className="block text-xs font-semibold text-slate-600 mb-1">Motivo (opcional)</label>
+                    <Input value={requestReason} onChange={e => setRequestReason(e.target.value)} placeholder="Ej: Práctica de laboratorio" style={{ width: '100%' }} />
+                  </div>
+                  <div className="flex items-end gap-2">
+                    {selectedRequestCells.size > 0 && (
+                      <Button onClick={() => setSelectedRequestCells(new Set())}>Cancelar selección</Button>
+                    )}
+                    <Button type="primary" icon={<PlusOutlined />} onClick={handleSubmitRequest} disabled={selectedRequestCells.size === 0}>
+                      Enviar solicitud ({selectedRequestCells.size})
+                    </Button>
+                  </div>
+                </div>
+                <ClassroomDistribution
+                  settings={classroomSettings}
+                  sectionsList={classroomSections}
+                  subjectsList={classroomSubjects}
+                  schoolPeriodId={activePeriod?.id}
+                  gradesList={classroomSections.filter((s: any, i: number, arr: any[]) => arr.findIndex(x => x.gradeId === s.gradeId) === i).map((s: any) => ({ id: s.gradeId, name: s.gradeName }))}
+                  readOnly
+                  externalSelectionMode
+                  externalSelectedCells={selectedRequestCells}
+                  onExternalSelectDown={handleReqSelectDown}
+                  onExternalSelectEnter={handleReqSelectEnter}
+                />
+
+                {/* My requests list */}
+                <div className="mt-6">
+                  <h3 className="text-sm font-bold text-slate-700 mb-2">Mis solicitudes</h3>
+                  {myRequestsLoading ? (
+                    <div className="flex justify-center p-4"><Spin /></div>
+                  ) : myRequests.length === 0 ? (
+                    <Empty description="No has enviado solicitudes" />
+                  ) : (
+                    <List
+                      size="small"
+                      bordered
+                      dataSource={myRequests}
+                      renderItem={(b: any) => (
+                        <List.Item>
+                          <div className="flex items-center justify-between w-full">
+                            <div>
+                              <strong>{b.subjectName}</strong> — {b.room} · {b.day} · {b.specificDate}
+                              <div className="text-xs text-slate-500">{b.teacherName}{b.reason ? ` · ${b.reason}` : ''}</div>
+                            </div>
+                            <Tag color={b.status === 'approved' ? 'green' : b.status === 'rejected' ? 'red' : 'orange'}>
+                              {b.status === 'approved' ? 'Aprobada' : b.status === 'rejected' ? 'Rechazada' : 'Pendiente'}
+                            </Tag>
+                          </div>
+                        </List.Item>
+                      )}
+                    />
+                  )}
+                </div>
+              </div>
+            ) : (
+              <Empty description="No hay datos de estructura académica para este período" />
+            ),
           },
         ]}
       />

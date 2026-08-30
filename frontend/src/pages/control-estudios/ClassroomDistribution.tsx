@@ -1,10 +1,17 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { Button, Empty, Spin, Tag, Tooltip, Modal, Select, message, Alert } from 'antd';
-import { DeleteOutlined, ClearOutlined, ThunderboltOutlined } from '@ant-design/icons';
+import { Button, Empty, Spin, Tag, Tooltip, Modal, Select, message, Alert, DatePicker, Input, List } from 'antd';
+import { DeleteOutlined, ClearOutlined, ThunderboltOutlined, HighlightOutlined, PlusOutlined, InboxOutlined } from '@ant-design/icons';
 import api from '@/services/api';
 import dayjs from 'dayjs';
 
 const DAYS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'];
+
+// Map dayjs day() (0=Sun, 1=Mon..5=Fri, 6=Sat) to our day names
+function dayjsToDayName(d: dayjs.Dayjs): string | null {
+  const idx = d.day(); // 0-6
+  if (idx >= 1 && idx <= 5) return DAYS[idx - 1];
+  return null; // weekend
+}
 
 interface Period { id: string; start: string; end: string; break?: boolean; label?: string; section: string; }
 interface ScheduleSection { id: string; label: string; periods: Period[]; }
@@ -164,9 +171,21 @@ interface ClassroomDistributionProps {
   subjectsList: { id: number; name: string; subjectGroupId?: number | null; color?: string | null }[];
   schoolPeriodId?: number;
   gradesList: { id: number; name: string }[];
+  readOnly?: boolean;
+  // External selection (for teacher requests)
+  externalSelectedCells?: Set<string>;
+  onExternalSelectDown?: (day: string, periodId: string, room: string) => void;
+  onExternalSelectEnter?: (day: string, periodId: string, room: string) => void;
+  externalSelectionMode?: boolean;
+  // When set, only allow external selection on this day (e.g. "Miércoles")
+  allowedSelectionDay?: string | null;
 }
 
-const ClassroomDistribution: React.FC<ClassroomDistributionProps> = ({ settings, sectionsList, subjectsList, schoolPeriodId, gradesList }) => {
+const ClassroomDistribution: React.FC<ClassroomDistributionProps> = ({
+  settings, sectionsList, subjectsList, schoolPeriodId, gradesList, readOnly = false,
+  externalSelectedCells, onExternalSelectDown, onExternalSelectEnter, externalSelectionMode = false,
+  allowedSelectionDay = null,
+}) => {
   const scheduleSections = useMemo(() => buildSections(settings), [settings]);
 
   // Build class items from sectionsList
@@ -189,7 +208,13 @@ const ClassroomDistribution: React.FC<ClassroomDistributionProps> = ({ settings,
 
   // assignments: "Lunes|m1|Aula 3" -> classKey
   const [assignments, setAssignments] = useState<Record<string, string>>({});
-  const [activeKey, setActiveKey] = useState<string | null>(null);
+  // activeKey: undefined = no tool, null = erase, string = paint section
+  const [activeKey, setActiveKey] = useState<string | null | undefined>(undefined);
+
+  // Block selection state (for extraordinary assignments)
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedCells, setSelectedCells] = useState<Set<string>>(new Set());
+  const selecting = useRef(false);
 
   // Auto-distribution modal state
   const [autoModalOpen, setAutoModalOpen] = useState(false);
@@ -200,6 +225,214 @@ const ClassroomDistribution: React.FC<ClassroomDistributionProps> = ({ settings,
   const [newAssignSection, setNewAssignSection] = useState<string | null>(null);
   const [newAssignSubject, setNewAssignSubject] = useState<number | null>(null);
   const [newAssignGrade, setNewAssignGrade] = useState<number | null>(null);
+
+  // Extraordinary booking modal state
+  const [bookingModalOpen, setBookingModalOpen] = useState(false);
+  const [bookingDate, setBookingDate] = useState<dayjs.Dayjs | null>(null);
+  const [bookingTeacher, setBookingTeacher] = useState<string>('');
+  const [bookingSubject, setBookingSubject] = useState<string>('');
+  const [bookingReason, setBookingReason] = useState<string>('');
+  const [bookings, setBookings] = useState<any[]>([]);
+  const [bookingsLoading, setBookingsLoading] = useState(false);
+  // Map: "day|periodId" -> array of sectionKeys that the teacher is normally in (to clear when they have a booking)
+  const [teacherSlots, setTeacherSlots] = useState<Record<string, string[]>>({});
+
+  // Selected date for viewing extraordinary bookings
+  const [viewDate, setViewDate] = useState<dayjs.Dayjs | null>(null);
+
+  // Pending requests modal (Control de Estudios)
+  const [requestsModalOpen, setRequestsModalOpen] = useState(false);
+  const [pendingRequests, setPendingRequests] = useState<any[]>([]);
+  const [requestsLoading, setRequestsLoading] = useState(false);
+
+  const loadPendingRequests = useCallback(async () => {
+    if (!schoolPeriodId) return;
+    setRequestsLoading(true);
+    try {
+      const res = await api.get('/room-bookings', { params: { schoolPeriodId, status: 'pending' } });
+      setPendingRequests(res.data || []);
+    } catch {
+      setPendingRequests([]);
+    } finally {
+      setRequestsLoading(false);
+    }
+  }, [schoolPeriodId]);
+
+  const handleApproveRequest = async (id: number) => {
+    try {
+      await api.put(`/room-bookings/${id}`, { status: 'approved' });
+      message.success('Solicitud aprobada. Solicitudes en conflicto rechazadas automáticamente.');
+      loadPendingRequests();
+      if (viewDate) loadBookingsForDate(viewDate);
+    } catch (err: any) {
+      if (err?.response?.status === 409) {
+        message.error(err.response.data?.message || 'Conflicto al aprobar: el aula ya está reservada');
+      } else {
+        message.error('Error al aprobar');
+      }
+    }
+  };
+
+  const handleRejectRequest = async (id: number) => {
+    try {
+      await api.put(`/room-bookings/${id}`, { status: 'rejected' });
+      message.success('Solicitud rechazada');
+      loadPendingRequests();
+    } catch {
+      message.error('Error al rechazar');
+    }
+  };
+
+  // Load bookings for a specific date
+  const loadBookingsForDate = useCallback(async (date: dayjs.Dayjs) => {
+    if (!schoolPeriodId) return;
+    setBookingsLoading(true);
+    try {
+      const res = await api.get('/room-bookings', {
+        params: { schoolPeriodId, date: date.format('YYYY-MM-DD'), status: 'approved' },
+      });
+      const approvedBookings = res.data || [];
+      setBookings(approvedBookings);
+
+      // For each booking, load the teacher's regular schedule to know which cells to clear
+      // Group bookings by requestedBy (teacher personId)
+      const teacherIds = [...new Set(approvedBookings.map((b: any) => b.requestedBy).filter(Boolean))];
+      if (teacherIds.length > 0) {
+        const teacherSlotsMap: Record<string, string[]> = {};
+        for (const tid of teacherIds) {
+          try {
+            const schedRes = await api.get(`/schedules/teacher/${tid}`, { params: { schoolPeriodId } });
+            const entries = schedRes.data || [];
+            for (const e of entries) {
+              const key = `${e.day}|${e.periodId}`;
+              if (!teacherSlotsMap[key]) teacherSlotsMap[key] = [];
+              // Track which rooms this teacher is normally in
+              const sec = e.schedule?.section;
+              if (sec) {
+                // We need the room assignment for this section — look it up in assignments
+                const gradeId = sec.periodGrade?.grade?.id;
+                const sectionId = sec.section?.id;
+                if (gradeId != null && sectionId != null) {
+                  const sectionKey = `${gradeId}-${sectionId}`;
+                  teacherSlotsMap[key].push(sectionKey);
+                }
+              }
+            }
+          } catch { /* ignore */ }
+        }
+        setTeacherSlots(teacherSlotsMap);
+      } else {
+        setTeacherSlots({});
+      }
+    } catch {
+      setBookings([]);
+      setTeacherSlots({});
+    } finally {
+      setBookingsLoading(false);
+    }
+  }, [schoolPeriodId]);
+
+  useEffect(() => {
+    if (viewDate) loadBookingsForDate(viewDate);
+    else setBookings([]);
+  }, [viewDate, loadBookingsForDate]);
+
+  // Parse bookings into a map: cellKey -> booking
+  const bookingMap = useMemo(() => {
+    const map: Record<string, any> = {};
+    for (const b of bookings) {
+      const periodIds: string[] = JSON.parse(b.periodIds || '[]');
+      for (const pid of periodIds) {
+        map[`${b.day}|${pid}|${b.room}`] = b;
+      }
+    }
+    return map;
+  }, [bookings]);
+
+  // Build a set of cellKeys that should be shown as "empty" because the teacher
+  // has an extraordinary booking at that time slot in a different room.
+  // Logic: for each booking, the teacher's regular slots at that day+period
+  // should be cleared (the teacher can't be in 2 places at once).
+  const clearedCells = useMemo(() => {
+    const cleared = new Set<string>();
+    for (const b of bookings) {
+      const periodIds: string[] = JSON.parse(b.periodIds || '[]');
+      for (const pid of periodIds) {
+        const slotKey = `${b.day}|${pid}`;
+        const sectionKeys = teacherSlots[slotKey];
+        if (!sectionKeys) continue;
+        // For each section the teacher is normally in at this slot,
+        // find which room that section is assigned to, and mark it as cleared
+        for (const sk of sectionKeys) {
+          // Search all rooms for this sectionKey at this day+period
+          for (const room of rooms) {
+            const ck = `${b.day}|${pid}|${room}`;
+            const val = assignments[ck];
+            if (val === sk) {
+              cleared.add(ck);
+            }
+          }
+        }
+      }
+    }
+    return cleared;
+  }, [bookings, teacherSlots, assignments, rooms]);
+
+  // Group selected cells by day+room to determine which periods are selected
+  const selectedGroups = useMemo(() => {
+    const groups: Record<string, { day: string; room: string; periodIds: string[] }> = {};
+    for (const k of selectedCells) {
+      const [day, periodId, room] = k.split('|');
+      const gk = `${day}|${room}`;
+      if (!groups[gk]) groups[gk] = { day, room, periodIds: [] };
+      groups[gk].periodIds.push(periodId);
+    }
+    return Object.values(groups);
+  }, [selectedCells]);
+
+  const handleSaveBooking = async () => {
+    if (!bookingDate) { message.warning('Seleccione una fecha'); return; }
+    if (!bookingTeacher.trim()) { message.warning('Ingrese el nombre del profesor'); return; }
+    if (!bookingSubject.trim()) { message.warning('Ingrese la materia/actividad'); return; }
+    if (selectedGroups.length === 0) { message.warning('Seleccione al menos un bloque'); return; }
+    // Validate that the selected blocks' day matches the date's day of week
+    const expectedDay = dayjsToDayName(bookingDate);
+    if (!expectedDay) { message.warning('La fecha seleccionada es fin de semana. Elija un día de lunes a viernes.'); return; }
+    const mismatchedDays = selectedGroups.filter(g => g.day !== expectedDay);
+    if (mismatchedDays.length > 0) {
+      message.warning(`Los bloques seleccionados son de ${mismatchedDays[0].day} pero la fecha corresponde a ${expectedDay}. Seleccione bloques de ${expectedDay} o cambie la fecha.`);
+      return;
+    }
+    try {
+      for (const g of selectedGroups) {
+        await api.post('/room-bookings', {
+          room: g.room,
+          day: g.day,
+          periodIds: g.periodIds,
+          specificDate: bookingDate.format('YYYY-MM-DD'),
+          teacherName: bookingTeacher.trim(),
+          subjectName: bookingSubject.trim(),
+          reason: bookingReason.trim(),
+          status: 'approved',
+          schoolPeriodId,
+        });
+      }
+      message.success('Asignación extraordinaria guardada');
+      setBookingModalOpen(false);
+      setBookingTeacher('');
+      setBookingSubject('');
+      setBookingReason('');
+      setBookingDate(null);
+      clearSelection();
+      setViewDate(bookingDate);
+    } catch (err: any) {
+      if (err?.response?.status === 409) {
+        message.error(err.response.data?.message || 'Conflicto: el aula ya tiene una reserva para esos bloques');
+      } else {
+        message.error('Error al guardar la asignación');
+      }
+    }
+  };
 
   const painting = useRef(false);
   const paintValue = useRef<string | null>(null);
@@ -224,6 +457,7 @@ const ClassroomDistribution: React.FC<ClassroomDistributionProps> = ({ settings,
   }, []);
 
   const handleDown = (day: string, periodId: string, room: string) => {
+    if (activeKey === undefined) return; // no tool selected
     const current = assignments[cellKey(day, periodId, room)] ?? null;
     const value = current === activeKey ? null : activeKey;
     painting.current = true;
@@ -236,6 +470,37 @@ const ClassroomDistribution: React.FC<ClassroomDistributionProps> = ({ settings,
     applyPaint(day, periodId, room, paintValue.current);
   };
 
+  // ── Block selection (for extraordinary assignments) ──
+  const handleSelectDown = (day: string, periodId: string, room: string) => {
+    selecting.current = true;
+    const k = cellKey(day, periodId, room);
+    setSelectedCells(prev => {
+      const next = new Set(prev);
+      if (next.has(k)) next.delete(k);
+      else next.add(k);
+      return next;
+    });
+  };
+
+  const handleSelectEnter = (day: string, periodId: string, room: string) => {
+    if (!selecting.current) return;
+    const k = cellKey(day, periodId, room);
+    setSelectedCells(prev => {
+      if (prev.has(k)) return prev;
+      const next = new Set(prev);
+      next.add(k);
+      return next;
+    });
+  };
+
+  const clearSelection = () => setSelectedCells(new Set());
+
+  useEffect(() => {
+    const stop = () => { selecting.current = false; };
+    window.addEventListener('mouseup', stop);
+    return () => window.removeEventListener('mouseup', stop);
+  }, []);
+
   const clearAll = () => setAssignments({});
 
   // Load saved grid state on mount
@@ -246,16 +511,16 @@ const ClassroomDistribution: React.FC<ClassroomDistributionProps> = ({ settings,
       .catch(() => {});
   }, [schoolPeriodId]);
 
-  // Save grid state whenever assignments change (debounced)
+  // Save grid state whenever assignments change (debounced, skipped in readOnly mode)
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
-    if (!schoolPeriodId) return;
+    if (!schoolPeriodId || readOnly) return;
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
       api.put(`/classroom-assignments/grid/${schoolPeriodId}`, assignments).catch(() => {});
     }, 1000);
     return () => { if (saveTimer.current) clearTimeout(saveTimer.current); };
-  }, [assignments, schoolPeriodId]);
+  }, [assignments, schoolPeriodId, readOnly]);
 
   // ── Auto-distribution modal ──
   const loadRoomAssignments = useCallback(async () => {
@@ -440,40 +705,84 @@ const ClassroomDistribution: React.FC<ClassroomDistributionProps> = ({ settings,
 
   return (
     <div className="p-4">
-      {/* Toolbar */}
-      <div className="flex flex-wrap items-center gap-1.5 mb-4">
-        {classes.map(c => {
-          const color = colorForClass(c.key);
-          const isActive = activeKey === c.key;
-          return (
-            <button
-              key={c.key}
-              onClick={() => setActiveKey(c.key)}
-              className={`flex items-center gap-1.5 px-2 py-1 rounded-md border text-xs font-medium transition-all ${
-                isActive
-                  ? 'border-slate-800 ring-2 ring-offset-1 ring-slate-400 bg-slate-50'
-                  : 'border-slate-200 bg-white hover:bg-slate-50'
-              }`}
+      {/* Toolbar (hidden in readOnly mode) */}
+      {!readOnly && (
+        <div className="flex flex-wrap items-center gap-1.5 mb-4">
+          {classes.map(c => {
+            const color = colorForClass(c.key);
+            const isActive = activeKey === c.key;
+            return (
+              <button
+                key={c.key}
+                onClick={() => setActiveKey(isActive ? undefined : c.key)}
+                className={`flex items-center gap-1.5 px-2 py-1 rounded-md border text-xs font-medium transition-all ${
+                  isActive
+                    ? 'border-slate-800 ring-2 ring-offset-1 ring-slate-400 bg-slate-50'
+                    : 'border-slate-200 bg-white hover:bg-slate-50'
+                }`}
+              >
+                <span className="w-3 h-3 rounded-sm" style={{ background: color.bg, border: `1px solid ${color.border}` }} />
+                {c.label}
+              </button>
+            );
+          })}
+          <button
+            onClick={() => setActiveKey(activeKey === null ? undefined : null)}
+            className={`flex items-center gap-1.5 px-2 py-1 rounded-md border text-xs font-medium transition-all ${
+              activeKey === null
+                ? 'border-slate-800 ring-2 ring-offset-1 ring-slate-400 bg-slate-50'
+                : 'border-slate-200 bg-white hover:bg-slate-50'
+            }`}
+          >
+            <span className="w-3 h-3 rounded-sm border border-slate-400 bg-white" />
+            Borrar
+          </button>
+          <span className="flex-1" />
+          <Button
+            size="small"
+            type={selectionMode ? 'primary' : 'default'}
+            icon={<HighlightOutlined />}
+            onClick={() => { setSelectionMode(!selectionMode); clearSelection(); }}
+          >
+            Seleccionar
+          </Button>
+          {selectedCells.size > 0 && (
+            <>
+              <Button size="small" onClick={clearSelection}>Cancelar selección</Button>
+              <Button size="small" type="primary" icon={<PlusOutlined />} onClick={() => setBookingModalOpen(true)}>
+                Asignar extraordinaria ({selectedCells.size})
+              </Button>
+            </>
+          )}
+          <Button size="small" icon={<ThunderboltOutlined />} onClick={handleOpenAutoModal}>Distribución automática</Button>
+          <Button size="small" icon={<ClearOutlined />} onClick={clearAll}>Limpiar todo</Button>
+          {!readOnly && (
+            <Button
+              size="small"
+              icon={<InboxOutlined />}
+              onClick={() => { loadPendingRequests(); setRequestsModalOpen(true); }}
             >
-              <span className="w-3 h-3 rounded-sm" style={{ background: color.bg, border: `1px solid ${color.border}` }} />
-              {c.label}
-            </button>
-          );
-        })}
-        <button
-          onClick={() => setActiveKey(null)}
-          className={`flex items-center gap-1.5 px-2 py-1 rounded-md border text-xs font-medium transition-all ${
-            activeKey === null
-              ? 'border-slate-800 ring-2 ring-offset-1 ring-slate-400 bg-slate-50'
-              : 'border-slate-200 bg-white hover:bg-slate-50'
-          }`}
-        >
-          <span className="w-3 h-3 rounded-sm border border-slate-400 bg-white" />
-          Borrar
-        </button>
-        <span className="flex-1" />
-        <Button size="small" icon={<ThunderboltOutlined />} onClick={handleOpenAutoModal}>Distribución automática</Button>
-        <Button size="small" icon={<ClearOutlined />} onClick={clearAll}>Limpiar todo</Button>
+              Solicitudes
+              {pendingRequests.length > 0 && <Tag color="orange" style={{ marginLeft: 4 }}>{pendingRequests.length}</Tag>}
+            </Button>
+          )}
+        </div>
+      )}
+
+      {/* Date picker for viewing extraordinary bookings (visible in all modes) */}
+      <div className="flex items-center gap-2 mb-3">
+        <span className="text-xs text-slate-500 font-semibold">Ver asignaciones para fecha:</span>
+        <DatePicker
+          size="small"
+          allowClear
+          placeholder="Seleccionar fecha"
+          value={viewDate}
+          onChange={(d) => setViewDate(d)}
+          format="DD/MM/YYYY"
+        />
+        {viewDate && bookings.length > 0 && (
+          <Tag color="orange">{bookings.length} asignación{bookings.length > 1 ? 'es' : ''} extraordinaria{bookings.length > 1 ? 's' : ''}</Tag>
+        )}
       </div>
 
       {/* Grid */}
@@ -491,7 +800,7 @@ const ClassroomDistribution: React.FC<ClassroomDistributionProps> = ({ settings,
                 <tr>
                   <td
                     rowSpan={totalRowsPerDay}
-                    className="border border-slate-300 border-t-4 border-t-slate-900 bg-slate-800 text-white text-center align-middle font-bold text-xs py-2"
+                    className="border border-slate-300 border-t-4 border-t-slate-900 bg-slate-800 text-white text-center align-middle font-bold text-[16px] py-2"
                     style={{ writingMode: 'vertical-rl', textOrientation: 'upright', letterSpacing: '0.2em' }}
                   >
                     {day.toUpperCase()}
@@ -520,12 +829,25 @@ const ClassroomDistribution: React.FC<ClassroomDistributionProps> = ({ settings,
                             const groupPeriods = section.periods.filter(p => !p.break);
                             const pIdx = groupPeriods.findIndex(p => p.id === period.id);
                             if (pIdx < 0) {
+                              const k = cellKey(day, period.id, room);
+                              const isSelected = selectedCells.has(k) || (externalSelectedCells?.has(k) ?? false);
+                              const useExternal = externalSelectionMode && onExternalSelectDown;
+                              const dayAllowed = !allowedSelectionDay || day === allowedSelectionDay;
+                              const canSelect = useExternal && dayAllowed;
                               return (
                                 <td
                                   key={room}
-                                  className="border border-slate-300 bg-white h-9 cursor-pointer select-none hover:bg-slate-100 transition-colors"
-                                  onMouseDown={() => handleDown(day, period.id, room)}
-                                  onMouseEnter={() => handleEnter(day, period.id, room)}
+                                  className={`border border-slate-300 bg-white h-9 transition-colors ${
+                                    isSelected ? 'ring-2 ring-inset ring-amber-400 bg-amber-50' : ''
+                                  } ${
+                                    !canSelect && useExternal ? 'opacity-30' : ''
+                                  } ${
+                                    readOnly && !canSelect ? '' : canSelect
+                                      ? 'cursor-crosshair select-none'
+                                      : activeKey !== undefined ? 'cursor-pointer select-none hover:bg-slate-100' : ''
+                                  }`}
+                                  onMouseDown={(readOnly && !canSelect) ? undefined : canSelect ? () => onExternalSelectDown!(day, period.id, room) : () => handleDown(day, period.id, room)}
+                                  onMouseEnter={(readOnly && !canSelect) ? undefined : canSelect ? () => onExternalSelectEnter!(day, period.id, room) : () => handleEnter(day, period.id, room)}
                                 />
                               );
                             }
@@ -533,11 +855,28 @@ const ClassroomDistribution: React.FC<ClassroomDistributionProps> = ({ settings,
                             const info = mergeInfo[pIdx];
                             if (!info || info.skip) return null;
                             const parsed = info.value ? parseCellValue(info.value) : null;
+                            const k = cellKey(day, period.id, room);
+                            const booking = bookingMap[k];
+                            const isCleared = clearedCells.has(k);
                             let cellLabel = '';
                             let cellBg = '';
                             let cellText = '';
                             let cellBorder = '';
-                            if (parsed?.type === 'section') {
+                            let cellCleared = false;
+                            if (booking) {
+                              // Extraordinary booking overlay
+                              cellLabel = `${booking.teacherName}\n${booking.subjectName}`;
+                              cellBg = '#dc2626';
+                              cellText = '#ffffff';
+                              cellBorder = '#991b1b';
+                            } else if (isCleared && viewDate) {
+                              // Teacher has an extraordinary booking elsewhere — this slot is empty
+                              cellCleared = true;
+                              cellLabel = '—';
+                              cellBg = '#f1f5f9';
+                              cellText = '#94a3b8';
+                              cellBorder = '#cbd5e1';
+                            } else if (parsed?.type === 'section') {
                               const meta = classMeta(parsed.sectionKey);
                               cellLabel = meta?.label ?? '';
                               // Priority: section color > periodGrade color > grade palette
@@ -562,19 +901,38 @@ const ClassroomDistribution: React.FC<ClassroomDistributionProps> = ({ settings,
                               cellText = darkenColor(baseColor, 0.45);
                               cellBorder = baseColor;
                             }
+                            const isSelected = selectedCells.has(k) || (externalSelectedCells?.has(k) ?? false);
+                            const useExternal = externalSelectionMode && onExternalSelectDown;
+                            const dayAllowed = !allowedSelectionDay || day === allowedSelectionDay;
+                            const canSelect = useExternal && dayAllowed;
                             return (
                               <td
                                 key={room}
                                 rowSpan={info.rowSpan}
-                                onMouseDown={() => handleDown(day, period.id, room)}
-                                onMouseEnter={() => handleEnter(day, period.id, room)}
-                                className={`border border-slate-300 cursor-pointer select-none text-center align-middle text-[11px] font-semibold transition-colors ${
-                                  parsed ? '' : 'bg-white hover:bg-slate-100'
-                                } ${parsed?.type === 'group' ? 'italic' : ''} ${info.rowSpan > 1 ? 'py-2' : 'h-9'}`}
-                                style={cellBg ? { background: cellBg, color: cellText, borderLeft: `3px solid ${cellBorder}` } : {}}
+                                onMouseDown={(readOnly && !canSelect) ? undefined : canSelect ? () => onExternalSelectDown!(day, period.id, room) : () => handleDown(day, period.id, room)}
+                                onMouseEnter={(readOnly && !canSelect) ? undefined : canSelect ? () => onExternalSelectEnter!(day, period.id, room) : () => handleEnter(day, period.id, room)}
+                                className={`border border-slate-300 text-center align-middle text-[11px] font-semibold transition-colors ${
+                                  !canSelect && useExternal ? 'opacity-30' : ''
+                                } ${
+                                  (readOnly && !canSelect) ? '' : canSelect ? 'cursor-crosshair select-none' : activeKey !== undefined ? 'cursor-pointer select-none' : ''
+                                } ${parsed ? '' : 'bg-white hover:bg-slate-100'} ${parsed?.type === 'group' ? 'italic' : ''} ${info.rowSpan > 1 ? 'py-2' : 'h-9'} ${
+                                  isSelected ? 'ring-2 ring-inset ring-amber-400' : ''
+                                }`}
+                                style={cellBg ? { background: isSelected ? '#fef3c7' : cellBg, color: cellText, borderLeft: `3px solid ${cellBorder}` } : isSelected ? { background: '#fef3c7' } : {}}
                               >
-                                {cellLabel}
-                                {info.rowSpan > 1 && parsed && (
+                                {booking ? (
+                                  <Tooltip title={`${booking.teacherName} — ${booking.subjectName}${booking.reason ? ` (${booking.reason})` : ''}`}>
+                                    <div className="leading-tight">
+                                      <div className="font-bold text-[10px]">{booking.teacherName}</div>
+                                      <div className="text-[9px] italic opacity-80">{booking.subjectName}</div>
+                                    </div>
+                                  </Tooltip>
+                                ) : cellCleared ? (
+                                  <Tooltip title="Profesor con asignación extraordinaria en otra aula">
+                                    <span className="text-slate-400 italic">{cellLabel}</span>
+                                  </Tooltip>
+                                ) : cellLabel}
+                                {info.rowSpan > 1 && parsed && !booking && !cellCleared && (
                                   <div className="text-[9px] opacity-60 mt-1 border-t border-current pt-0.5">
                                     {period.start}–{groupPeriods[Math.min(pIdx + info.rowSpan - 1, groupPeriods.length - 1)].end}
                                   </div>
@@ -591,6 +949,124 @@ const ClassroomDistribution: React.FC<ClassroomDistributionProps> = ({ settings,
           </tbody>
         </table>
       </div>
+
+      {/* Pending Requests Modal (Control de Estudios) */}
+      <Modal
+        title="Solicitudes de aula pendientes"
+        open={requestsModalOpen}
+        onCancel={() => setRequestsModalOpen(false)}
+        footer={<Button onClick={() => setRequestsModalOpen(false)}>Cerrar</Button>}
+        width={680}
+        styles={{ body: { maxHeight: '70vh', overflowY: 'auto' } }}
+      >
+        {requestsLoading ? (
+          <div className="flex justify-center p-8"><Spin /></div>
+        ) : pendingRequests.length === 0 ? (
+          <Empty description="No hay solicitudes pendientes" />
+        ) : (
+          <List
+            itemLayout="vertical"
+            dataSource={pendingRequests}
+            renderItem={(b: any) => {
+              const periodIds: string[] = JSON.parse(b.periodIds || '[]');
+              const conflicts: number[] = b.conflictsWith || [];
+              const hasConflicts = conflicts.length > 0;
+              return (
+                <List.Item
+                  actions={[
+                    <Button key="approve" type="primary" size="small" onClick={() => handleApproveRequest(b.id)}>
+                      Aprobar
+                    </Button>,
+                    <Button key="reject" danger size="small" onClick={() => handleRejectRequest(b.id)}>
+                      Rechazar
+                    </Button>,
+                  ]}
+                >
+                  <List.Item.Meta
+                    title={
+                      <span>
+                        {b.teacherName} — {b.subjectName}
+                        {hasConflicts && (
+                          <Tag color="red" style={{ marginLeft: 8 }}>Conflicto con {conflicts.length} solicitud{conflicts.length > 1 ? 'es' : ''}</Tag>
+                        )}
+                      </span>
+                    }
+                    description={
+                      <div className="text-sm text-slate-600">
+                        <div><strong>Aula:</strong> {b.room} · <strong>Día:</strong> {b.day} · <strong>Fecha:</strong> {b.specificDate}</div>
+                        <div><strong>Bloques:</strong> {periodIds.length} ({periodIds.join(', ')})</div>
+                        {b.reason && <div><strong>Motivo:</strong> {b.reason}</div>}
+                        {hasConflicts && (
+                          <div className="text-red-600 text-xs mt-1">
+                            Al aprobar esta solicitud, las demás en conflicto se rechazarán automáticamente.
+                          </div>
+                        )}
+                      </div>
+                    }
+                  />
+                </List.Item>
+              );
+            }}
+          />
+        )}
+      </Modal>
+
+      {/* Extraordinary Booking Modal */}
+      <Modal
+        title="Asignación extraordinaria de aula"
+        open={bookingModalOpen}
+        onCancel={() => setBookingModalOpen(false)}
+        onOk={handleSaveBooking}
+        okText="Guardar"
+        cancelText="Cancelar"
+        width={520}
+      >
+        <Alert
+          type="info"
+          showIcon
+          message="Asignación para una fecha específica"
+          description="Esta asignación solo aplica para el día seleccionado. No afecta la distribución semanal regular."
+          style={{ marginBottom: 16 }}
+        />
+        <div className="space-y-3">
+          <div>
+            <label className="block text-xs font-semibold text-slate-600 mb-1">Fecha *</label>
+            <DatePicker
+              value={bookingDate}
+              onChange={setBookingDate}
+              format="DD/MM/YYYY"
+              style={{ width: '100%' }}
+              placeholder="Seleccione la fecha"
+            />
+            {bookingDate && dayjsToDayName(bookingDate) && (
+              <div className="text-xs text-blue-600 mt-1">Día de la semana: <strong>{dayjsToDayName(bookingDate)}</strong> — solo se guardarán bloques de {dayjsToDayName(bookingDate)}.</div>
+            )}
+            {bookingDate && !dayjsToDayName(bookingDate) && (
+              <div className="text-xs text-red-600 mt-1">La fecha es fin de semana — seleccione un día de lunes a viernes.</div>
+            )}
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-600 mb-1">Profesor *</label>
+            <Input value={bookingTeacher} onChange={e => setBookingTeacher(e.target.value)} placeholder="Nombre del profesor" />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-600 mb-1">Materia / Actividad *</label>
+            <Input value={bookingSubject} onChange={e => setBookingSubject(e.target.value)} placeholder="Ej: Ciencias de la Tierra" />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-600 mb-1">Motivo (opcional)</label>
+            <Input.TextArea value={bookingReason} onChange={e => setBookingReason(e.target.value)} placeholder="Ej: Práctica de laboratorio" rows={2} />
+          </div>
+          <div className="bg-slate-50 rounded-md p-3 text-xs text-slate-600">
+            <strong>Bloques seleccionados:</strong>
+            <ul className="mt-1 space-y-0.5">
+              {selectedGroups.map((g, i) => (
+                <li key={i}>{g.day} — {g.room} ({g.periodIds.length} bloque{g.periodIds.length > 1 ? 's' : ''})</li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      </Modal>
 
       {/* Auto-distribution Modal */}
       <Modal

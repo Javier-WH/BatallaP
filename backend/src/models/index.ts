@@ -155,6 +155,7 @@ import Schedule from './Schedule';
 import ScheduleEntry from './ScheduleEntry';
 import ScheduleException from './ScheduleException';
 import ClassroomAssignment from './ClassroomAssignment';
+import RoomBooking from './RoomBooking';
 
 
 // ... (Existing User/Person/Role/Contact associations) ...
@@ -636,5 +637,6 @@ export {
   Schedule,
   ScheduleEntry,
   ScheduleException,
-  ClassroomAssignment
+  ClassroomAssignment,
+  RoomBooking
 };

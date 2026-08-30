@@ -92,6 +92,7 @@ import teacherAvailabilityRoutes from '@/routes/teacherAvailabilityRoutes';
 import scheduleRoutes from '@/routes/scheduleRoutes';
 import scheduleExceptionRoutes from '@/routes/scheduleExceptionRoutes';
 import classroomAssignmentRoutes from '@/routes/classroomAssignmentRoutes';
+import roomBookingRoutes from '@/routes/roomBookingRoutes';
 
 app.get('/', (req, res) => {
   res.send('API is running...');
@@ -146,6 +147,7 @@ app.use('/api/teacher-availability', teacherAvailabilityRoutes);
 app.use('/api/schedules', scheduleRoutes);
 app.use('/api/schedule-exceptions', scheduleExceptionRoutes);
 app.use('/api/classroom-assignments', classroomAssignmentRoutes);
+app.use('/api/room-bookings', roomBookingRoutes);
 
 export { sessionStore };
 export default app;
