@@ -262,7 +262,7 @@ function fillSheetByNamedRanges(
   setByRange('inst_address', settings.institution_address);
   setByRange('inst_phone', settings.institution_phone);
   setByRange('inst_municipality', settings.institution_municipality || plantel?.municipality);
-  setByRange('inst_state', plantel?.state || settings.institution_state);
+  setByRange('inst_state', settings.institution_state || plantel?.state);
   setByRange('inst_cdcee', settings.institution_cdcee);
   setByRange('inst_director', settings.director_name);
   setByRange('inst_director_doc', settings.director_document);
