@@ -2110,6 +2110,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                                     </div>
                                   </th>
                                 ))}
+                                <th style={{ padding: '4px 6px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', backgroundColor: 'color-mix(in srgb, var(--color-text-main) 6%, var(--color-content-bg))', fontWeight: 700, fontSize: 11, whiteSpace: 'nowrap', color: 'var(--color-text-main)' }}>Nota Final</th>
                                 <th style={{ padding: '4px 6px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', backgroundColor: 'color-mix(in srgb, var(--color-text-main) 6%, var(--color-content-bg))', fontWeight: 700, fontSize: 11, whiteSpace: 'nowrap', color: 'var(--color-text-main)' }}>Resultado</th>
                               </tr>
                             </thead>
@@ -2124,6 +2125,10 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                                 const hasApproved = student.revisions.some(r => r.status === 'approved');
                                 const allFailed = student.revisions.length > 0 && student.revisions.every(r => r.status === 'failed' || (r.score === null && r.status === 'pending'));
                                 const resultStatus = hasApproved ? 'approved' : allFailed ? 'failed' : 'pending';
+                                // Final grade: approved score if any, otherwise the last non-null score
+                                const approvedRev = student.revisions.find(r => r.status === 'approved');
+                                const scoredRevs = student.revisions.filter(r => r.score != null).sort((a, b) => a.opportunity - b.opportunity);
+                                const finalGrade = approvedRev ? approvedRev.score : (scoredRevs.length > 0 ? scoredRevs[scoredRevs.length - 1].score : null);
                                 return (
                                   <tr key={student.inscriptionSubjectId} className="grading-row">
                                     <td style={{ padding: '2px 4px', border: '1px solid var(--color-text-muted)', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-content-bg)' : 'color-mix(in srgb, var(--color-text-main) 2%, var(--color-content-bg))', fontSize: 11, fontWeight: 600, color: 'var(--color-text-muted)' }}>
@@ -2173,6 +2178,9 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                                         </td>
                                       );
                                     })}
+                                    <td style={{ padding: '2px 4px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-content-bg)' : 'color-mix(in srgb, var(--color-text-main) 2%, var(--color-content-bg))', fontWeight: 700, fontSize: 12, color: finalGrade != null && Number(finalGrade) > 0 && Number(finalGrade) < revisionDetail.passingGrade ? '#dc2626' : undefined }}>
+                                      {finalGrade != null ? padGrade(Number(finalGrade)) : '—'}
+                                    </td>
                                     <td style={{ padding: '2px 4px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-content-bg)' : 'color-mix(in srgb, var(--color-text-main) 2%, var(--color-content-bg))', fontWeight: 700, fontSize: 12 }}>
                                       <Tag color={resultStatus === 'approved' ? 'green' : resultStatus === 'failed' ? 'red' : 'default'} style={{ margin: 0 }}>
                                         {resultStatus === 'approved' ? 'Aprobado' : resultStatus === 'failed' ? 'Reprobado' : 'Pendiente'}
