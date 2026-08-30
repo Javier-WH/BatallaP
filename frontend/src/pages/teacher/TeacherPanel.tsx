@@ -2017,6 +2017,12 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                                       return;
                                     }
                                   }
+                                  for (let p = 1; p <= revisionDetail.maxOpportunities; p++) {
+                                    if (p !== opp && opportunityDates[p] && dayjs(newDate).isSame(dayjs(opportunityDates[p]), 'day')) {
+                                      message.warning(`La Oportunidad ${opp} no puede tener la misma fecha que la Oportunidad ${p}`);
+                                      return;
+                                    }
+                                  }
                                 }
                                 setOpportunityDates(prev => ({ ...prev, [opp]: newDate }));
                               }}
@@ -2024,6 +2030,10 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                                 if (!current) return false;
                                 if (minDate && current.isBefore(minDate, 'day')) return true;
                                 if (maxDate && current.isAfter(maxDate, 'day')) return true;
+                                // No repeats: disable dates already used by other opportunities
+                                for (let p = 1; p <= revisionDetail.maxOpportunities; p++) {
+                                  if (p !== opp && opportunityDates[p] && current.isSame(dayjs(opportunityDates[p]), 'day')) return true;
+                                }
                                 return false;
                               }}
                               style={{ width: 200 }}

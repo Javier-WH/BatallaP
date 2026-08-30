@@ -447,12 +447,18 @@ export const saveRevisionOpportunityDates = async (req: Request, res: Response) 
     }
 
     // Validate chronological order: a higher opportunity cannot have a date
-    // earlier than a lower opportunity.
+    // earlier than a lower opportunity, and no two opportunities can share
+    // the same date.
     const sorted = [...dates].filter(d => d.date).sort((a, b) => a.opportunity - b.opportunity);
     for (let i = 1; i < sorted.length; i++) {
       if (sorted[i].date! < sorted[i - 1].date!) {
         return res.status(400).json({
           message: `La Oportunidad ${sorted[i].opportunity} (${sorted[i].date}) no puede ser anterior a la Oportunidad ${sorted[i - 1].opportunity} (${sorted[i - 1].date})`,
+        });
+      }
+      if (sorted[i].date === sorted[i - 1].date) {
+        return res.status(400).json({
+          message: `La Oportunidad ${sorted[i].opportunity} y la Oportunidad ${sorted[i - 1].opportunity} no pueden tener la misma fecha (${sorted[i].date})`,
         });
       }
     }
