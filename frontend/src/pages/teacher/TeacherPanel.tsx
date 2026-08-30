@@ -2163,18 +2163,28 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                                       return (
                                         <td key={opp} className="grading-cell" style={{ padding: '2px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-content-bg)' : 'color-mix(in srgb, var(--color-text-main) 2%, var(--color-content-bg))', width: '60px' }}>
                                           <input
-                                            type="number"
-                                            min={0}
-                                            max={revisionDetail.passingGrade > 0 ? revisionDetail.passingGrade * 2 : 20}
-                                            step={1}
+                                            type="text"
                                             inputMode="numeric"
                                             pattern="[0-9]*"
-                                            defaultValue={revisionGrades[rev.id] != null ? padGrade(Number(revisionGrades[rev.id])) : ''}
-                                            key={`${rev.id}-${revisionGrades[rev.id]}`}
+                                            value={revisionGrades[rev.id] != null ? String(revisionGrades[rev.id]) : ''}
                                             disabled={isLocked}
                                             onChange={(e) => {
                                               const raw = e.target.value;
-                                              setRevisionGrades(prev => ({ ...prev, [rev.id]: raw === '' ? null : Number(raw) }));
+                                              if (raw === '' || /^\d*$/.test(raw)) {
+                                                setRevisionGrades(prev => ({ ...prev, [rev.id]: raw === '' ? null : Number(raw) }));
+                                              }
+                                            }}
+                                            onBlur={(e) => {
+                                              const raw = e.target.value;
+                                              if (raw !== '') {
+                                                e.target.value = padGrade(Number(raw));
+                                              }
+                                            }}
+                                            onFocus={(e) => {
+                                              const raw = e.target.value;
+                                              if (raw !== '') {
+                                                e.target.value = String(Number(raw));
+                                              }
                                             }}
                                             style={{
                                               width: '48px',
