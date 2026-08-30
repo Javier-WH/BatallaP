@@ -619,8 +619,9 @@ const TeacherPanel: React.FC = () => {
   }, [selectedTerm, availableTerms]);
 
   useEffect(() => {
+    if (repairMode) return;
     fetchPlanAndStudents();
-  }, [fetchPlanAndStudents]);
+  }, [fetchPlanAndStudents, repairMode]);
 
   const fetchThematicComponents = useCallback(async () => {
     if (!selectedAssignmentId || !selectedTerm) {
@@ -842,6 +843,7 @@ const TeacherPanel: React.FC = () => {
 
   const enterRepairMode = () => {
     setRepairMode(true);
+    setSelectedTerm(null);
     setActiveTab('1');
     loadRevisionAssignments();
   };
@@ -1783,7 +1785,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
             </div>
             <div className="flex p-1 gap-2 rounded-xl w-full" style={{ backgroundColor: 'var(--color-input-bg)' }}>
               {availableTerms.map(term => {
-                const isSelected = selectedTerm === term.id;
+                const isSelected = !repairMode && selectedTerm === term.id;
                 const activeTerm = availableTerms.find(t => t.isActive);
                 const activeOrder = activeTerm?.order ?? null;
                 // Future terms (order > active) are disabled/greyed out
