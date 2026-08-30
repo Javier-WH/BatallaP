@@ -585,6 +585,8 @@ const TeacherAvailabilityPanel: React.FC<TeacherAvailabilityPanelProps> = ({ tea
         <Select
           placeholder="Seleccionar profesor"
           style={{ width: 300 }}
+          className="teacher-select"
+          popupClassName="teacher-select-dropdown"
           value={selectedTeacherId}
           onChange={setSelectedTeacherId}
           options={teachers.map(t => ({ value: t.id, label: t.label }))}
@@ -1425,6 +1427,8 @@ const ScheduleManagement: React.FC = () => {
                   <Select
                     placeholder="Seleccionar profesor"
                     style={{ width: 300 }}
+                    className="teacher-select"
+                    popupClassName="teacher-select-dropdown"
                     value={selectedTeacherId}
                     onChange={setSelectedTeacherId}
                     options={teachersList.map(t => ({ value: t.id, label: t.label }))}

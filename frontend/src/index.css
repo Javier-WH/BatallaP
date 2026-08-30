@@ -163,6 +163,15 @@
   border-color: var(--color-accent) !important;
 }
 
+/* Teacher selects: uppercase labels in both input and dropdown options */
+.teacher-select .ant-select-selection-item,
+.teacher-select .ant-select-selection-placeholder {
+  text-transform: uppercase;
+}
+.teacher-select-dropdown .ant-select-item-option-content {
+  text-transform: uppercase;
+}
+
 .ant-input:focus,
 .ant-input-focused,
 .ant-input-number-focused,
