@@ -8,7 +8,7 @@ import dayjs from 'dayjs';
 import {
   PlusOutlined, EditOutlined, DeleteOutlined, EyeOutlined,
   FilePdfOutlined, FileWordOutlined, ArrowLeftOutlined, SaveOutlined,
-  BorderOuterOutlined,
+  BorderOuterOutlined, CopyOutlined,
 } from '@ant-design/icons';
 import ConstanciaEditor from './ConstanciaEditor';
 import type { VariableDef } from './ConstanciaEditor';
@@ -324,6 +324,18 @@ const Constancias: React.FC = () => {
     });
   };
 
+  const handleCopyTemplate = async (tpl: Template) => {
+    try {
+      const res = await api.get(`/constancias/${tpl.id}`);
+      const full = res.data;
+      await api.post('/constancias', { name: `${full.name} (copia)`, content: full.content || '' });
+      message.success('Plantilla copiada');
+      fetchData();
+    } catch (error: any) {
+      message.error(error.response?.data?.message || 'Error al copiar la plantilla');
+    }
+  };
+
   // ── Generate Tab ──
   const generateTab = (
     <div className="max-w-5xl mx-auto p-6 space-y-6">
@@ -563,7 +575,10 @@ const Constancias: React.FC = () => {
                   <div className="flex gap-2">
                     <Button icon={<EditOutlined />} onClick={() => handleEditTemplate(tpl)}>Editar</Button>
                     {canEdit && (
-                      <Button icon={<DeleteOutlined />} danger onClick={() => handleDeleteTemplate(tpl)}>Eliminar</Button>
+                      <>
+                        <Button icon={<CopyOutlined />} onClick={() => handleCopyTemplate(tpl)}>Copiar</Button>
+                        <Button icon={<DeleteOutlined />} danger onClick={() => handleDeleteTemplate(tpl)}>Eliminar</Button>
+                      </>
                     )}
                   </div>
                 </div>
