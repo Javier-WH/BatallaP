@@ -385,7 +385,7 @@ export const saveRevisionGrade = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Revisión no encontrada' });
     }
 
-    const userId = (req.session as any)?.user?.id;
+    const userId = (req.session as any)?.user?.personId;
     const numericScore = score != null ? Number(score) : null;
     const isApproved = numericScore != null && numericScore >= revisionPeriod.passingGrade;
 
@@ -459,7 +459,7 @@ export const bulkSaveRevisionGrades = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'El período de reparación no está abierto' });
     }
 
-    const userId = (req.session as any)?.user?.id;
+    const userId = (req.session as any)?.user?.personId;
     let saved = 0;
 
     for (const { revisionId, score } of grades) {
@@ -569,5 +569,57 @@ export const resetRevisionPeriod = async (req: Request, res: Response) => {
     await t.rollback();
     console.error('[resetRevisionPeriod] Error:', error);
     return res.status(500).json({ message: error.message || 'Error al reiniciar período de reparación' });
+  }
+};
+
+export const reopenRevisionPeriod = async (req: Request, res: Response) => {
+  const t = await sequelize.transaction();
+  try {
+    const schoolPeriodId = parseInt(req.params.schoolPeriodId, 10);
+    if (!schoolPeriodId) {
+      return res.status(400).json({ message: 'schoolPeriodId es obligatorio' });
+    }
+
+    const revisionPeriod = await RevisionPeriodService.reopenRevisionPeriod(schoolPeriodId, t);
+    await t.commit();
+    return res.json({
+      message: 'Período de reparación reabierto correctamente',
+      revisionPeriod,
+    });
+  } catch (error: any) {
+    await t.rollback();
+    console.error('[reopenRevisionPeriod] Error:', error);
+    return res.status(500).json({ message: error.message || 'Error al reabrir período de reparación' });
+  }
+};
+
+export const updateMaxOpportunities = async (req: Request, res: Response) => {
+  const t = await sequelize.transaction();
+  try {
+    const schoolPeriodId = parseInt(req.params.schoolPeriodId, 10);
+    const { maxOpportunities } = req.body;
+    if (!schoolPeriodId) {
+      await t.rollback();
+      return res.status(400).json({ message: 'schoolPeriodId es obligatorio' });
+    }
+    if (maxOpportunities == null) {
+      await t.rollback();
+      return res.status(400).json({ message: 'maxOpportunities es obligatorio' });
+    }
+
+    const revisionPeriod = await RevisionPeriodService.updateMaxOpportunities(
+      schoolPeriodId,
+      Number(maxOpportunities),
+      t
+    );
+    await t.commit();
+    return res.json({
+      message: 'Número de intentos actualizado',
+      revisionPeriod,
+    });
+  } catch (error: any) {
+    await t.rollback();
+    console.error('[updateMaxOpportunities] Error:', error);
+    return res.status(500).json({ message: error.message || 'Error al actualizar intentos' });
   }
 };

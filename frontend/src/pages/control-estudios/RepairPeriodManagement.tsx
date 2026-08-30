@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Card, Button, Tag, Space, Typography, Spin, message, Alert, Statistic, Row, Col, Popconfirm, Collapse } from 'antd';
-import { PlayCircleOutlined, StopOutlined, ReloadOutlined, CheckCircleOutlined, ClockCircleOutlined, CloseCircleOutlined, PrinterOutlined, RetweetOutlined, UndoOutlined } from '@ant-design/icons';
+import { Card, Button, Tag, Space, Typography, Spin, message, Alert, Statistic, Row, Col, Popconfirm, Collapse, InputNumber } from 'antd';
+import { PlayCircleOutlined, StopOutlined, ReloadOutlined, CheckCircleOutlined, ClockCircleOutlined, CloseCircleOutlined, PrinterOutlined, RetweetOutlined, UndoOutlined, LockOutlined, UnlockOutlined } from '@ant-design/icons';
 import api from '@/services/api';
 import { compareStudents } from '@/utils/studentSort';
 import { useAuth } from '@/context/AuthContext';
@@ -85,6 +85,8 @@ const RepairPeriodManagement: React.FC = () => {
   const [students, setStudents] = useState<StudentRevision[]>([]);
   const [isPreview, setIsPreview] = useState(false);
   const [activePeriodId, setActivePeriodId] = useState<number | null>(null);
+  const [maxOppInput, setMaxOppInput] = useState<number>(3);
+  const [maxOppSaving, setMaxOppSaving] = useState(false);
 
   const fetchData = async () => {
     setLoading(true);
@@ -105,6 +107,7 @@ const RepairPeriodManagement: React.FC = () => {
       setSummary(summaryRes.data);
       setStudents(studentsRes.data.students || []);
       setIsPreview(studentsRes.data.isPreview || false);
+      setMaxOppInput(summaryRes.data.revisionPeriod?.maxOpportunities ?? 3);
     } catch (error: any) {
       console.error('[RepairPeriodManagement] Error:', error);
       message.error(error?.response?.data?.message || 'Error al cargar datos');
@@ -185,6 +188,36 @@ const RepairPeriodManagement: React.FC = () => {
     }
   };
 
+  const handleReopen = async () => {
+    if (!activePeriodId) return;
+    setActing(true);
+    try {
+      const res = await api.post(`/revision-periods/${activePeriodId}/reopen`);
+      message.success(res.data.message || 'Período de reparación reabierto');
+      await fetchData();
+    } catch (error: any) {
+      message.error(error?.response?.data?.message || 'Error al reabrir');
+    } finally {
+      setActing(false);
+    }
+  };
+
+  const handleSaveMaxOpp = async () => {
+    if (!activePeriodId) return;
+    setMaxOppSaving(true);
+    try {
+      const res = await api.put(`/revision-periods/${activePeriodId}/max-opportunities`, {
+        maxOpportunities: maxOppInput,
+      });
+      message.success(res.data.message || 'Número de intentos actualizado');
+      await fetchData();
+    } catch (error: any) {
+      message.error(error?.response?.data?.message || 'Error al actualizar intentos');
+    } finally {
+      setMaxOppSaving(false);
+    }
+  };
+
   const statusColor: Record<string, string> = {
     pending: 'default',
     open: 'processing',
@@ -202,7 +235,7 @@ const RepairPeriodManagement: React.FC = () => {
   const gradeGroups = useMemo(() => {
     const groups = new Map<string, { grade: string; students: StudentRevision[]; subjects: StudentSubject[] }>();
     for (const s of students) {
-      const gradeKey = s.grade;
+      const gradeKey = s.grade || 'Sin grado';
       if (!groups.has(gradeKey)) {
         groups.set(gradeKey, { grade: gradeKey, students: [], subjects: [] });
       }
@@ -270,6 +303,33 @@ const RepairPeriodManagement: React.FC = () => {
               </Col>
             </Row>
 
+            {summary.revisionPeriod && summary.revisionPeriod.status !== 'pending' && summary.revisionPeriod.status !== 'closed' && (
+              <Card size="small" style={{ marginBottom: 16 }}>
+                <Space>
+                  <Text strong>Número de intentos:</Text>
+                  <InputNumber
+                    min={1}
+                    max={10}
+                    value={maxOppInput}
+                    onChange={(v) => setMaxOppInput(v ?? 3)}
+                    style={{ width: 80 }}
+                  />
+                  <Button
+                    type="primary"
+                    icon={<CheckCircleOutlined />}
+                    onClick={handleSaveMaxOpp}
+                    loading={maxOppSaving}
+                    size="small"
+                  >
+                    Guardar
+                  </Button>
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    (Aplica a todas las materias en reparación)
+                  </Text>
+                </Space>
+              </Card>
+            )}
+
             {(!summary.revisionPeriod || summary.revisionPeriod.status === 'pending') && (
               <Alert
                 type="info"
@@ -297,6 +357,15 @@ const RepairPeriodManagement: React.FC = () => {
                     <Button type="primary" icon={<ReloadOutlined />} onClick={fetchData}>Actualizar</Button>
                     <Button icon={<RetweetOutlined />} onClick={handleRecalculate} loading={acting}>Recalcular</Button>
                     <Button type="primary" icon={<CheckCircleOutlined />} onClick={handleComplete} loading={acting}>Completar período</Button>
+                    <Popconfirm
+                      title="¿Bloquear el período de reparación?"
+                      description="El período se bloqueará y no se podrán editar las notas. Podrá reabrirlo posteriormente."
+                      okText="Sí, bloquear"
+                      cancelText="Cancelar"
+                      onConfirm={handleLock}
+                    >
+                      <Button danger icon={<LockOutlined />} loading={acting}>Bloquear</Button>
+                    </Popconfirm>
                     {isMaster && (
                       <Popconfirm
                         title="¿Reiniciar el período de reparación?"
@@ -324,6 +393,7 @@ const RepairPeriodManagement: React.FC = () => {
                 action={
                   <Space wrap>
                     <Button danger icon={<StopOutlined />} onClick={handleLock} loading={acting}>Bloquear período</Button>
+                    <Button type="primary" icon={<UnlockOutlined />} onClick={handleReopen} loading={acting}>Reabrir</Button>
                     {isMaster && (
                       <Popconfirm
                         title="¿Reiniciar el período de reparación?"
@@ -349,7 +419,9 @@ const RepairPeriodManagement: React.FC = () => {
                 description={`Bloqueado el ${summary.revisionPeriod.closedAt ? new Date(summary.revisionPeriod.closedAt).toLocaleDateString() : '—'}. El período de reparación está bloqueado y no admite más ediciones.`}
                 showIcon
                 action={
-                  isMaster ? (
+                  <Space wrap>
+                    <Button type="primary" icon={<UnlockOutlined />} onClick={handleReopen} loading={acting}>Reabrir</Button>
+                    {isMaster ? (
                     <Popconfirm
                       title="¿Reiniciar el período de reparación?"
                       description="Se eliminarán TODOS los registros de reparación y el período volverá a estado pendiente. Esta acción no se puede deshacer."
@@ -361,6 +433,8 @@ const RepairPeriodManagement: React.FC = () => {
                       <Button danger type="dashed" icon={<UndoOutlined />} loading={acting}>Reiniciar (Master)</Button>
                     </Popconfirm>
                   ) : undefined
+                }
+                  </Space>
                 }
                 style={{ marginBottom: 16 }}
               />
@@ -436,7 +510,7 @@ const RepairPeriodManagement: React.FC = () => {
                                           <span className="repair-score-list">
                                             {studentSubj.revisions.map((r) => (
                                               <span key={r.id} className={`repair-score-tag ${r.status}`}>
-                                                {r.score != null ? r.score.toFixed(1) : '—'}
+                                                {r.score != null ? Number(r.score).toFixed(1) : '—'}
                                               </span>
                                             ))}
                                           </span>

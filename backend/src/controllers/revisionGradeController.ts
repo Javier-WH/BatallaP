@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import { Op } from 'sequelize';
 import {
   Grade,
   Inscription,
@@ -7,10 +8,13 @@ import {
   PeriodGrade,
   PeriodGradeSubject,
   RevisionPeriod,
+  RevisionThematicSelection,
   SchoolPeriod,
   Section,
   Subject,
   TeacherAssignment,
+  Term,
+  ThematicComponent,
 } from '@/models/index';
 
 export const getMyRevisionAssignments = async (req: Request, res: Response) => {
@@ -60,7 +64,10 @@ export const getMyRevisionAssignments = async (req: Request, res: Response) => {
 
       // Find revision entries for this subject via InscriptionSubjectRevision
       const revisionEntries = await InscriptionSubjectRevision.findAll({
-        where: { revisionPeriodId: revisionPeriod.id },
+        where: {
+          revisionPeriodId: revisionPeriod.id,
+          opportunity: { [Op.lte]: revisionPeriod.maxOpportunities },
+        },
         include: [
           {
             model: InscriptionSubject,
@@ -170,7 +177,10 @@ export const getMyRevisionAssignmentDetail = async (req: Request, res: Response)
     const pgsGradeId = (pgs as any).periodGrade?.gradeId;
 
     const revisionEntries = await InscriptionSubjectRevision.findAll({
-      where: { revisionPeriodId: revisionPeriod.id },
+      where: {
+        revisionPeriodId: revisionPeriod.id,
+        opportunity: { [Op.lte]: revisionPeriod.maxOpportunities },
+      },
       include: [
         {
           model: InscriptionSubject,
@@ -241,10 +251,125 @@ export const getMyRevisionAssignmentDetail = async (req: Request, res: Response)
       periodGradeSubjectId,
       subjectName: (pgs as any).subject?.name || '',
       passingGrade: revisionPeriod.passingGrade,
+      maxOpportunities: revisionPeriod.maxOpportunities,
       students,
     });
   } catch (error: any) {
     console.error('[getMyRevisionAssignmentDetail] Error:', error);
     return res.status(500).json({ message: error.message || 'Error al obtener detalle' });
+  }
+};
+
+// ── Thematic selection for repair (per subject+section) ──────────
+
+/**
+ * Get the thematic components available for a PeriodGradeSubject (across all
+ * terms of the active school period) plus any saved selection for the given
+ * section.
+ */
+export const getRevisionThematicSelection = async (req: Request, res: Response) => {
+  try {
+    const periodGradeSubjectId = parseInt(req.query.pgsId as string, 10);
+    const sectionId = parseInt(req.query.sectionId as string, 10);
+    if (!periodGradeSubjectId || !sectionId) {
+      return res.status(400).json({ message: 'pgsId y sectionId son requeridos' });
+    }
+
+    const activePeriod = await SchoolPeriod.findOne({ where: { status: 'activo' } });
+    if (!activePeriod) {
+      return res.status(404).json({ message: 'No hay un período activo' });
+    }
+
+    const revisionPeriod = await RevisionPeriod.findOne({
+      where: { schoolPeriodId: activePeriod.id },
+    });
+
+    // Load all thematic components for this pgs across all terms of the period
+    const terms = await Term.findAll({ where: { schoolPeriodId: activePeriod.id } });
+    const termIds = terms.map(t => t.id);
+
+    const components = await ThematicComponent.findAll({
+      where: {
+        periodGradeSubjectId,
+        termId: { [Op.in]: termIds },
+      },
+      include: [{ association: 'contents' }],
+      order: [['termId', 'ASC'], ['order', 'ASC'], ['id', 'ASC']],
+    });
+
+    // Load saved selection
+    let savedSelection: number[] | null = null;
+    if (revisionPeriod) {
+      const sel = await RevisionThematicSelection.findOne({
+        where: {
+          revisionPeriodId: revisionPeriod.id,
+          periodGradeSubjectId,
+          sectionId,
+        },
+      });
+      savedSelection = sel?.thematicComponentIds ?? null;
+    }
+
+    return res.json({
+      components: components.map((c: any) => ({
+        id: c.id,
+        title: c.title,
+        termId: c.termId,
+        order: c.order,
+        contents: (c.contents || []).map((ct: any) => ({ id: ct.id, title: ct.title })),
+      })),
+      selectedComponentIds: savedSelection,
+    });
+  } catch (error: any) {
+    console.error('[getRevisionThematicSelection] Error:', error);
+    return res.status(500).json({ message: error.message || 'Error al obtener selección temática' });
+  }
+};
+
+/**
+ * Save the thematic component selection for a subject+section within the
+ * active revision period.
+ */
+export const saveRevisionThematicSelection = async (req: Request, res: Response) => {
+  try {
+    const { periodGradeSubjectId, sectionId, thematicComponentIds } = req.body;
+    if (!periodGradeSubjectId || !sectionId) {
+      return res.status(400).json({ message: 'periodGradeSubjectId y sectionId son requeridos' });
+    }
+
+    const activePeriod = await SchoolPeriod.findOne({ where: { status: 'activo' } });
+    if (!activePeriod) {
+      return res.status(404).json({ message: 'No hay un período activo' });
+    }
+
+    const revisionPeriod = await RevisionPeriod.findOne({
+      where: { schoolPeriodId: activePeriod.id },
+    });
+    if (!revisionPeriod) {
+      return res.status(404).json({ message: 'No hay período de reparación' });
+    }
+
+    const [selection, created] = await RevisionThematicSelection.findOrCreate({
+      where: {
+        revisionPeriodId: revisionPeriod.id,
+        periodGradeSubjectId,
+        sectionId,
+      },
+      defaults: {
+        revisionPeriodId: revisionPeriod.id,
+        periodGradeSubjectId,
+        sectionId,
+        thematicComponentIds: thematicComponentIds || null,
+      },
+    });
+
+    if (!created) {
+      await selection.update({ thematicComponentIds: thematicComponentIds || null });
+    }
+
+    return res.json({ message: 'Selección guardada', selection });
+  } catch (error: any) {
+    console.error('[saveRevisionThematicSelection] Error:', error);
+    return res.status(500).json({ message: error.message || 'Error al guardar selección temática' });
   }
 };

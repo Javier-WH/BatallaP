@@ -129,6 +129,7 @@ import DashboardContent from './DashboardContent';
 import QualificationAudit from './QualificationAudit';
 import RevisionPeriod from './RevisionPeriod';
 import InscriptionSubjectRevision from './InscriptionSubjectRevision';
+import RevisionThematicSelection from './RevisionThematicSelection';
 import InscriptionGroupTermChoice from './InscriptionGroupTermChoice';
 import ThematicComponent from './ThematicComponent';
 import ThematicContent from './ThematicContent';
@@ -436,6 +437,14 @@ InscriptionSubjectRevision.belongsTo(InscriptionSubject, { foreignKey: 'inscript
 Person.hasMany(InscriptionSubjectRevision, { foreignKey: 'gradedBy', as: 'gradedRevisions' });
 InscriptionSubjectRevision.belongsTo(Person, { foreignKey: 'gradedBy', as: 'grader' });
 
+// Revision thematic selections (per subject+section within a revision period)
+RevisionPeriod.hasMany(RevisionThematicSelection, { foreignKey: 'revisionPeriodId', as: 'thematicSelections' });
+RevisionThematicSelection.belongsTo(RevisionPeriod, { foreignKey: 'revisionPeriodId', as: 'revisionPeriod' });
+PeriodGradeSubject.hasMany(RevisionThematicSelection, { foreignKey: 'periodGradeSubjectId', as: 'revisionThematicSelections' });
+RevisionThematicSelection.belongsTo(PeriodGradeSubject, { foreignKey: 'periodGradeSubjectId', as: 'periodGradeSubject' });
+Section.hasMany(RevisionThematicSelection, { foreignKey: 'sectionId', as: 'revisionThematicSelections' });
+RevisionThematicSelection.belongsTo(Section, { foreignKey: 'sectionId', as: 'section' });
+
 // InscriptionGroupTermChoice — per-term subject choice within a SubjectGroup.
 Inscription.hasMany(InscriptionGroupTermChoice, { foreignKey: 'inscriptionId', as: 'groupTermChoices' });
 InscriptionGroupTermChoice.belongsTo(Inscription, { foreignKey: 'inscriptionId', as: 'inscription' });
@@ -612,6 +621,7 @@ export {
   QualificationAudit,
   RevisionPeriod,
   InscriptionSubjectRevision,
+  RevisionThematicSelection,
   InscriptionGroupTermChoice,
   ThematicComponent,
   ThematicContent,

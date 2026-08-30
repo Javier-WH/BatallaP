@@ -1,4 +1,4 @@
-import { Transaction } from 'sequelize';
+import { Op, Transaction } from 'sequelize';
 import {
   CouncilChecklist,
   CouncilPoint,
@@ -328,6 +328,9 @@ export class RevisionPeriodService {
    * This is set by periodClosureExecutor after the school year closure, or
    * can be called manually to prevent further edits. It does NOT trigger
    * grade calculation — that happens at 'completed'.
+   *
+   * Can be called from any non-pending status (open or completed) to allow
+   * Control de Estudios to block the period at will.
    */
   static async lockRevisionPeriod(
     schoolPeriodId: number,
@@ -342,14 +345,87 @@ export class RevisionPeriodService {
     if (revisionPeriod.status === 'closed') {
       return revisionPeriod; // already locked, idempotent
     }
-    if (revisionPeriod.status !== 'completed') {
-      throw new Error('El período de reparación debe estar completado antes de bloquearlo');
+    if (revisionPeriod.status === 'pending') {
+      throw new Error('El período de reparación no ha sido abierto');
     }
 
     await revisionPeriod.update({
       status: 'closed',
       closedAt: new Date(),
     }, { transaction });
+
+    return revisionPeriod;
+  }
+
+  /**
+   * Reopen a completed or closed revision period back to 'open' so that
+   * professors can continue editing grades. Does NOT recreate revisions.
+   */
+  static async reopenRevisionPeriod(
+    schoolPeriodId: number,
+    transaction?: Transaction
+  ): Promise<RevisionPeriod> {
+    const revisionPeriod = await RevisionPeriod.findOne({
+      where: { schoolPeriodId },
+      transaction,
+    });
+
+    if (!revisionPeriod) throw new Error('No existe un período de reparación para este período escolar');
+    if (revisionPeriod.status === 'open') {
+      return revisionPeriod; // already open, idempotent
+    }
+    if (revisionPeriod.status === 'pending') {
+      throw new Error('El período de reparación no ha sido abierto todavía');
+    }
+
+    await revisionPeriod.update({
+      status: 'open',
+      closedAt: null,
+    }, { transaction });
+
+    return revisionPeriod;
+  }
+
+  /**
+   * Update the maxOpportunities of a revision period. Allowed from any
+   * non-pending status except 'closed' (locked).
+   */
+  static async updateMaxOpportunities(
+    schoolPeriodId: number,
+    maxOpportunities: number,
+    transaction?: Transaction
+  ): Promise<RevisionPeriod> {
+    const revisionPeriod = await RevisionPeriod.findOne({
+      where: { schoolPeriodId },
+      transaction,
+    });
+
+    if (!revisionPeriod) throw new Error('No existe un período de reparación para este período escolar');
+    if (revisionPeriod.status === 'closed') {
+      throw new Error('El período de reparación está bloqueado y no puede modificarse');
+    }
+    if (revisionPeriod.status === 'pending') {
+      throw new Error('El período de reparación no ha sido abierto');
+    }
+    if (!Number.isInteger(maxOpportunities) || maxOpportunities < 1) {
+      throw new Error('El número de intentos debe ser un entero mayor o igual a 1');
+    }
+
+    const oldMax = revisionPeriod.maxOpportunities;
+
+    await revisionPeriod.update({ maxOpportunities }, { transaction });
+
+    // If the new max is lower than the old max, delete revisions with
+    // opportunity > new maxOpportunities (excess opportunities).
+    if (maxOpportunities < oldMax) {
+      await InscriptionSubjectRevision.destroy({
+        where: {
+          revisionPeriodId: revisionPeriod.id,
+          opportunity: { [Op.gt]: maxOpportunities },
+        },
+        transaction,
+      });
+    }
 
     return revisionPeriod;
   }
