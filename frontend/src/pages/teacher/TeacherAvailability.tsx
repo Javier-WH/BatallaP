@@ -35,7 +35,6 @@ function dayjsToDayName(d: dayjs.Dayjs): string | null {
 }
 
 const STATUSES = [
-  { key: 'available', label: 'Disponible', swatch: 'bg-emerald-400', ring: 'ring-emerald-500' },
   { key: 'busy', label: 'Ocupado', swatch: 'bg-rose-400', ring: 'ring-rose-500' },
   { key: 'preferred', label: 'Preferido', swatch: 'bg-sky-400', ring: 'ring-sky-500' },
 ];
@@ -143,7 +142,7 @@ export default function TeacherAvailability() {
   const { user } = useAuth();
   const { activePeriod } = useSchool();
   const [cellStatus, setCellStatus] = useState<Record<string, string>>({});
-  const [activeKey, setActiveKey] = useState<string | null>('available');
+  const [activeKey, setActiveKey] = useState<string | null | undefined>(undefined);
   const [showJson, setShowJson] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -498,6 +497,7 @@ export default function TeacherAvailability() {
   }, []);
 
   const handleDown = (day: string, periodId: string) => {
+    if (activeKey === undefined) return; // no tool selected
     const current = cellStatus[keyFor(day, periodId)] ?? null;
     const value = current === activeKey ? null : activeKey;
     painting.current = true;
@@ -517,7 +517,12 @@ export default function TeacherAvailability() {
   const handleSave = async () => {
     setSaving(true);
     try {
-      await api.post('/teacher-availability', { availability: cellStatus });
+      // Only save busy and preferred — available/blank cells don't need to be stored
+      const filtered: Record<string, string> = {};
+      for (const [k, v] of Object.entries(cellStatus)) {
+        if (v === 'busy' || v === 'preferred') filtered[k] = v;
+      }
+      await api.post('/teacher-availability', { availability: filtered });
       message.success('Disponibilidad guardada correctamente');
     } catch (error) {
       console.error('Error saving availability:', error);
@@ -549,10 +554,15 @@ export default function TeacherAvailability() {
 
         {/* Toolbar */}
         <div className="flex flex-wrap items-center gap-2 mb-4">
+          {/* Legend: Disponible (green) is shown as info only, not a button */}
+          <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border border-slate-200 bg-white text-xs font-medium text-slate-500">
+            <span className="w-3 h-3 rounded-sm bg-emerald-400" />
+            Disponible
+          </div>
           {STATUSES.map(s => (
             <button
               key={s.key}
-              onClick={() => setActiveKey(s.key)}
+              onClick={() => setActiveKey(activeKey === s.key ? undefined : s.key)}
               className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border text-xs font-medium transition-all ${
                 activeKey === s.key
                   ? `border-slate-800 ring-2 ring-offset-1 ${s.ring} bg-slate-50`
@@ -564,7 +574,7 @@ export default function TeacherAvailability() {
             </button>
           ))}
           <button
-            onClick={() => setActiveKey(null)}
+            onClick={() => setActiveKey(activeKey === null ? undefined : null)}
             className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border text-xs font-medium transition-all ${
               activeKey === null
                 ? 'border-slate-800 ring-2 ring-offset-1 ring-slate-400 bg-slate-50'
@@ -644,7 +654,7 @@ export default function TeacherAvailability() {
                               onMouseDown={() => handleDown(day, period.id)}
                               onMouseEnter={() => handleEnter(day, period.id)}
                               className={`border border-slate-300 h-9 cursor-pointer select-none transition-colors ${
-                                status ? status.swatch : 'bg-white hover:bg-slate-100'
+                                status ? status.swatch : 'bg-emerald-400 hover:bg-emerald-500'
                               }`}
                             />
                           );

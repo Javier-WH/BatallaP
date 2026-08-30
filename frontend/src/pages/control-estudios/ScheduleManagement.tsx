@@ -488,7 +488,6 @@ const CellEditorModal: React.FC<CellEditorModalProps> = ({ open, day, period, ce
 
 // ── Teacher Availability Panel (for Control de Estudios) ──
 const AVAIL_STATUSES = [
-  { key: 'available', label: 'Disponible', swatch: 'bg-emerald-400', ring: 'ring-emerald-500' },
   { key: 'busy', label: 'Ocupado', swatch: 'bg-rose-400', ring: 'ring-rose-500' },
   { key: 'preferred', label: 'Preferido', swatch: 'bg-sky-400', ring: 'ring-sky-500' },
 ];
@@ -501,7 +500,7 @@ interface TeacherAvailabilityPanelProps {
 const TeacherAvailabilityPanel: React.FC<TeacherAvailabilityPanelProps> = ({ teachers, sections }) => {
   const [selectedTeacherId, setSelectedTeacherId] = useState<number | undefined>();
   const [cellStatus, setCellStatus] = useState<Record<string, string>>({});
-  const [activeKey, setActiveKey] = useState<string | null>('busy');
+  const [activeKey, setActiveKey] = useState<string | null | undefined>(undefined);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const painting = useRef(false);
@@ -544,7 +543,7 @@ const TeacherAvailabilityPanel: React.FC<TeacherAvailabilityPanelProps> = ({ tea
   }, []);
 
   const handleDown = (day: string, periodId: string) => {
-    if (!selectedTeacherId) return;
+    if (!selectedTeacherId || activeKey === undefined) return;
     const current = cellStatus[keyFor(day, periodId)] ?? null;
     const value = current === activeKey ? null : activeKey;
     painting.current = true;
@@ -563,7 +562,12 @@ const TeacherAvailabilityPanel: React.FC<TeacherAvailabilityPanelProps> = ({ tea
     if (!selectedTeacherId) return;
     setSaving(true);
     try {
-      await api.post(`/teacher-availability/${selectedTeacherId}`, { availability: cellStatus });
+      // Only save busy and preferred — available/blank cells don't need to be stored
+      const filtered: Record<string, string> = {};
+      for (const [k, v] of Object.entries(cellStatus)) {
+        if (v === 'busy' || v === 'preferred') filtered[k] = v;
+      }
+      await api.post(`/teacher-availability/${selectedTeacherId}`, { availability: filtered });
       message.success('Disponibilidad guardada');
     } catch (e) {
       console.error('Error saving availability:', e);
@@ -600,10 +604,15 @@ const TeacherAvailabilityPanel: React.FC<TeacherAvailabilityPanelProps> = ({ tea
         <Card title={`Disponibilidad: ${teachers.find(t => t.id === selectedTeacherId)?.label ?? ''}`}>
           {/* Toolbar */}
           <div className="flex flex-wrap items-center gap-2 mb-4">
+            {/* Legend: Disponible (green) is shown as info only, not a button */}
+            <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border border-slate-200 bg-white text-xs font-medium text-slate-500">
+              <span className="w-3 h-3 rounded-sm bg-emerald-400" />
+              Disponible
+            </div>
             {AVAIL_STATUSES.map(s => (
               <button
                 key={s.key}
-                onClick={() => setActiveKey(s.key)}
+                onClick={() => setActiveKey(activeKey === s.key ? undefined : s.key)}
                 className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border text-xs font-medium transition-all ${
                   activeKey === s.key
                     ? `border-slate-800 ring-2 ring-offset-1 ${s.ring} bg-slate-50`
@@ -615,7 +624,7 @@ const TeacherAvailabilityPanel: React.FC<TeacherAvailabilityPanelProps> = ({ tea
               </button>
             ))}
             <button
-              onClick={() => setActiveKey(null)}
+              onClick={() => setActiveKey(activeKey === null ? undefined : null)}
               className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border text-xs font-medium transition-all ${
                 activeKey === null
                   ? 'border-slate-800 ring-2 ring-offset-1 ring-slate-400 bg-slate-50'
@@ -687,7 +696,7 @@ const TeacherAvailabilityPanel: React.FC<TeacherAvailabilityPanelProps> = ({ tea
                                 onMouseDown={() => handleDown(day, period.id)}
                                 onMouseEnter={() => handleEnter(day, period.id)}
                                 className={`border border-slate-300 h-9 cursor-pointer select-none transition-colors ${
-                                  status ? status.swatch : 'bg-white hover:bg-slate-100'
+                                  status ? status.swatch : 'bg-emerald-400 hover:bg-emerald-500'
                                 }`}
                               />
                             );
