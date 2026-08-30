@@ -9,5 +9,6 @@ router.get('/thematic-selection', revisionGradeController.getRevisionThematicSel
 router.put('/thematic-selection', revisionGradeController.saveRevisionThematicSelection);
 router.get('/opportunity-dates', revisionGradeController.getRevisionOpportunityDates);
 router.put('/opportunity-dates', revisionGradeController.saveRevisionOpportunityDates);
+router.get('/export/:periodGradeSubjectId', revisionGradeController.exportRepairExcel);
 
 export default router;

@@ -1894,6 +1894,31 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                   Guardar notas
                 </Button>
               )}
+              {repairMode && activeTab === 'repair-grades' && selectedRevisionAssignment && (
+                <Button
+                  icon={<DownloadOutlined />}
+                  onClick={async () => {
+                    try {
+                      const res = await api.get(`/revision-grades/export/${selectedRevisionAssignment.periodGradeSubjectId}`, {
+                        params: { sectionId: selectedRevisionAssignment.sectionId },
+                        responseType: 'blob',
+                      });
+                      const url = window.URL.createObjectURL(new Blob([res.data]));
+                      const link = document.createElement('a');
+                      link.href = url;
+                      link.setAttribute('download', `reparacion-${selectedRevisionAssignment.periodGradeSubjectId}-${selectedRevisionAssignment.sectionId}.xlsx`);
+                      document.body.appendChild(link);
+                      link.click();
+                      link.remove();
+                      window.URL.revokeObjectURL(url);
+                    } catch {
+                      message.error('Error al generar Excel de reparación');
+                    }
+                  }}
+                >
+                  Crear Excel de reparación
+                </Button>
+              )}
               {repairMode && activeTab === 'repair-dates' && revisionDetail && (
                 <Button
                   type="primary"
