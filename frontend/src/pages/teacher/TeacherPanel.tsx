@@ -1983,19 +1983,54 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                         </span>
                       </div>
                       <div className="flex flex-col gap-4">
-                        {Array.from({ length: revisionDetail.maxOpportunities }, (_, i) => i + 1).map(opp => (
+                        {Array.from({ length: revisionDetail.maxOpportunities }, (_, i) => i + 1).map(opp => {
+                          const minDate = (() => {
+                            for (let p = opp - 1; p >= 1; p--) {
+                              if (opportunityDates[p]) return dayjs(opportunityDates[p]);
+                            }
+                            return null;
+                          })();
+                          const maxDate = (() => {
+                            for (let p = opp + 1; p <= revisionDetail.maxOpportunities; p++) {
+                              if (opportunityDates[p]) return dayjs(opportunityDates[p]);
+                            }
+                            return null;
+                          })();
+                          return (
                           <div key={opp} className="flex items-center gap-4">
                             <span className="font-bold text-sm w-40" style={{ color: 'var(--color-text-main)' }}>Oportunidad {opp}:</span>
                             <DatePicker
                               format="DD/MM/YYYY"
                               value={opportunityDates[opp] ? dayjs(opportunityDates[opp]) : null}
                               onChange={(date) => {
-                                setOpportunityDates(prev => ({ ...prev, [opp]: date ? date.format('YYYY-MM-DD') : null }));
+                                const newDate = date ? date.format('YYYY-MM-DD') : null;
+                                if (newDate) {
+                                  for (let p = 1; p < opp; p++) {
+                                    if (opportunityDates[p] && dayjs(newDate).isBefore(dayjs(opportunityDates[p]))) {
+                                      message.warning(`La Oportunidad ${opp} no puede ser anterior a la Oportunidad ${p}`);
+                                      return;
+                                    }
+                                  }
+                                  for (let p = opp + 1; p <= revisionDetail.maxOpportunities; p++) {
+                                    if (opportunityDates[p] && dayjs(newDate).isAfter(dayjs(opportunityDates[p]))) {
+                                      message.warning(`La Oportunidad ${opp} no puede ser posterior a la Oportunidad ${p}`);
+                                      return;
+                                    }
+                                  }
+                                }
+                                setOpportunityDates(prev => ({ ...prev, [opp]: newDate }));
+                              }}
+                              disabledDate={(current) => {
+                                if (!current) return false;
+                                if (minDate && current.isBefore(minDate, 'day')) return true;
+                                if (maxDate && current.isAfter(maxDate, 'day')) return true;
+                                return false;
                               }}
                               style={{ width: 200 }}
                             />
                           </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </Card>
                   )}

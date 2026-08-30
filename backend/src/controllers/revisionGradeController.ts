@@ -446,6 +446,17 @@ export const saveRevisionOpportunityDates = async (req: Request, res: Response) 
       return res.status(400).json({ message: 'dates debe ser un arreglo' });
     }
 
+    // Validate chronological order: a higher opportunity cannot have a date
+    // earlier than a lower opportunity.
+    const sorted = [...dates].filter(d => d.date).sort((a, b) => a.opportunity - b.opportunity);
+    for (let i = 1; i < sorted.length; i++) {
+      if (sorted[i].date! < sorted[i - 1].date!) {
+        return res.status(400).json({
+          message: `La Oportunidad ${sorted[i].opportunity} (${sorted[i].date}) no puede ser anterior a la Oportunidad ${sorted[i - 1].opportunity} (${sorted[i - 1].date})`,
+        });
+      }
+    }
+
     const activePeriod = await SchoolPeriod.findOne({ where: { status: 'activo' } });
     if (!activePeriod) {
       return res.status(404).json({ message: 'No hay un período activo' });
