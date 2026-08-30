@@ -365,7 +365,7 @@ const CellEditorModal: React.FC<CellEditorModalProps> = ({ open, day, period, ce
                 <div key={i} className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded px-2 py-1.5" style={{ borderLeft: `3px solid ${colorForSubject(e.subjectId)}` }}>
                   <div className="flex flex-col">
                     <span className="font-semibold text-xs text-slate-800">{e.subject?.name ?? '—'}</span>
-                    <span className="text-[10px] text-slate-500">
+                    <span className="text-[10px] text-slate-500 uppercase tracking-wide">
                       {e.teacher ? `${e.teacher.firstName} ${e.teacher.lastName}` : 'Sin profesor'}
                       {e.isGroupSubject && <span className="ml-1 text-purple-600">👥 Grupo</span>}
                     </span>
@@ -1445,7 +1445,7 @@ const ScheduleManagement: React.FC = () => {
                             <div className="flex flex-col gap-0.5">
                               <span className="font-semibold text-slate-800">{e.subject?.name ?? '—'}</span>
                               {e.teacher && (
-                                <span className="text-slate-500 text-[10px]">
+                                <span className="text-slate-500 text-[10px] uppercase tracking-wide">
                                   {e.teacher.firstName} {e.teacher.lastName}
                                 </span>
                               )}
@@ -1459,7 +1459,7 @@ const ScheduleManagement: React.FC = () => {
                             {cellEntries.map((e, i) => (
                               <div key={i} className="rounded px-1 py-0.5 text-left" style={{ background: colorForSubject(e.subjectId), borderLeft: '2px solid rgba(0,0,0,0.15)' }}>
                                 <div className="font-semibold text-slate-800 leading-tight" style={{ fontSize: 10 }}>{e.subject?.name ?? '—'}</div>
-                                <div className="text-slate-500 leading-tight" style={{ fontSize: 9 }}>
+                                <div className="text-slate-500 leading-tight uppercase tracking-wide" style={{ fontSize: 9 }}>
                                   {e.teacher ? `${e.teacher.firstName} ${e.teacher.lastName}` : 'Sin profesor'}
                                 </div>
                               </div>
