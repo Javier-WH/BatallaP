@@ -32,12 +32,14 @@ interface ScheduleEntryData {
 }
 
 export interface HorarioInput {
-  sectionLabel: string;       // e.g. "1° A"
+  sectionLabel: string;       // e.g. "1° A" (already formatted)
   teacherName?: string;       // optional, for teacher schedule export
   room?: string;              // e.g. "AULA 1"
   schoolPeriodName: string;   // e.g. "2025 - 2026"
   sections: ScheduleSection[];
   entries: Record<string, ScheduleEntryData[]>;
+  gradeOrder?: number;        // e.g. 1 for "Primer año"
+  sectionName?: string;       // e.g. "SECCIÓN A" or "A"
 }
 
 // Build a signature to detect mergeable consecutive cells
@@ -127,7 +129,15 @@ const rightAlign: Partial<ExcelJS.Alignment> = {
  * Generate a horario Excel file matching the UECBV mockup format.
  */
 export async function generateHorario(input: HorarioInput) {
-  const { sectionLabel, teacherName, room, schoolPeriodName, sections, entries } = input;
+  const { sectionLabel, teacherName, room, schoolPeriodName, sections, entries, gradeOrder, sectionName } = input;
+
+  // Build formatted section label: "1° "A"" from gradeOrder + sectionName
+  let formattedSectionLabel = sectionLabel;
+  if (gradeOrder != null && sectionName) {
+    // Remove the word "SECCIÓN" or "SECCION" (case-insensitive) and trim
+    const letter = sectionName.replace(/secci[oó]n/i, '').trim().toUpperCase();
+    formattedSectionLabel = letter ? `${gradeOrder}° "${letter}"` : sectionLabel;
+  }
 
   // Extract just the year range from the period name (e.g. "Año Escolar 2025 - 2026" -> "2025 - 2026")
   const yearRange = schoolPeriodName.replace(/.*?(\d{4}\s*-\s*\d{4}).*/, '$1') || schoolPeriodName;
@@ -187,7 +197,7 @@ export async function generateHorario(input: HorarioInput) {
   r7.getCell(1).value = 'Año/Secc:  ';
   r7.getCell(1).font = { name: 'Cambria', size: 11, bold: true };
   r7.getCell(1).alignment = rightAlign;
-  r7.getCell(2).value = sectionLabel;
+  r7.getCell(2).value = formattedSectionLabel;
   r7.getCell(2).font = { name: 'Cambria', size: 11 };
   r7.getCell(2).alignment = { horizontal: 'left', vertical: 'middle' };
   if (room) {
@@ -339,6 +349,6 @@ export async function generateHorario(input: HorarioInput) {
 
   // ── Generate and download ──
   const buffer = await workbook.xlsx.writeBuffer();
-  const fileName = `horario_${sectionLabel.replace(/[^\w]/g, '_')}_${dayjs().format('YYYY-MM-DD')}.xlsx`;
+  const fileName = `horario_${formattedSectionLabel.replace(/[^\w]/g, '_')}_${dayjs().format('YYYY-MM-DD')}.xlsx`;
   saveAs(new Blob([buffer]), fileName);
 }

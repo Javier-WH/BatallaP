@@ -1409,6 +1409,8 @@ const ScheduleManagement: React.FC = () => {
                               schoolPeriodName: viewPeriod?.name ?? '',
                               sections: scheduleSections,
                               entries: sectionEntriesMap,
+                              gradeOrder: sec?.gradeOrder,
+                              sectionName: sec?.sectionName,
                             });
                           } catch (e) {
                             message.error('Error al exportar horario');
