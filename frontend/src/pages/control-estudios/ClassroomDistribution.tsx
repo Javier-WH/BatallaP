@@ -240,6 +240,9 @@ const ClassroomDistribution: React.FC<ClassroomDistributionProps> = ({
   // Selected date for viewing extraordinary bookings
   const [viewDate, setViewDate] = useState<dayjs.Dayjs | null>(null);
 
+  // Day filters (which days to show in the grid) — empty = show all
+  const [activeDay, setActiveDay] = useState<string | null>(null);
+
   // Pending requests modal (Control de Estudios)
   const [requestsModalOpen, setRequestsModalOpen] = useState(false);
   const [pendingRequests, setPendingRequests] = useState<any[]>([]);
@@ -770,7 +773,7 @@ const ClassroomDistribution: React.FC<ClassroomDistributionProps> = ({
       )}
 
       {/* Date picker for viewing extraordinary bookings (visible in all modes) */}
-      <div className="flex items-center gap-2 mb-3">
+      <div className="flex items-center gap-2 mb-3 flex-wrap">
         <span className="text-xs text-slate-500 font-semibold">Ver asignaciones para fecha:</span>
         <DatePicker
           size="small"
@@ -783,6 +786,21 @@ const ClassroomDistribution: React.FC<ClassroomDistributionProps> = ({
         {viewDate && bookings.length > 0 && (
           <Tag color="orange">{bookings.length} asignación{bookings.length > 1 ? 'es' : ''} extraordinaria{bookings.length > 1 ? 's' : ''}</Tag>
         )}
+        <span className="flex-1" />
+        <span className="text-xs text-slate-500 font-semibold">Días:</span>
+        {DAYS.map(d => (
+          <button
+            key={d}
+            onClick={() => setActiveDay(activeDay === d ? null : d)}
+            className={`px-2 py-0.5 rounded text-[11px] font-medium border transition-colors ${
+              activeDay === d
+                ? 'bg-slate-800 text-white border-slate-800'
+                : 'bg-white text-slate-400 border-slate-200 hover:bg-slate-50'
+            }`}
+          >
+            {d.slice(0, 3).toUpperCase()}
+          </button>
+        ))}
       </div>
 
       {/* Grid */}
@@ -794,7 +812,7 @@ const ClassroomDistribution: React.FC<ClassroomDistributionProps> = ({
             {rooms.map(r => <col key={r} />)}
           </colgroup>
           <tbody>
-            {DAYS.map(day => (
+            {DAYS.filter(day => !activeDay || day === activeDay).map(day => (
               <React.Fragment key={day}>
                 {/* Column header with vertical day label */}
                 <tr>
