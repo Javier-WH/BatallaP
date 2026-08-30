@@ -217,6 +217,7 @@ interface RevisionItem {
   opportunity: number;
   score: number | null;
   status: string;
+  isAbsent?: boolean;
 }
 
 interface StudentRevisionData {
@@ -298,6 +299,7 @@ const TeacherPanel: React.FC = () => {
   const [selectedRevisionKey, setSelectedRevisionKey] = useState<string | null>(null);
   const [revisionDetail, setRevisionDetail] = useState<RevisionAssignmentDetail | null>(null);
   const [revisionGrades, setRevisionGrades] = useState<Record<number, number | null>>({});
+  const [revisionAbsent, setRevisionAbsent] = useState<Record<number, boolean>>({});
   const [opportunityDates, setOpportunityDates] = useState<Record<number, string | null>>({});
   const [revisionSaving, setRevisionSaving] = useState(false);
   const [datesSaving, setDatesSaving] = useState(false);
@@ -736,6 +738,7 @@ const TeacherPanel: React.FC = () => {
     if (!repairMode || !selectedRevisionKey) {
       setRevisionDetail(null);
       setRevisionGrades({});
+      setRevisionAbsent({});
       setOpportunityDates({});
       return;
     }
@@ -754,12 +757,15 @@ const TeacherPanel: React.FC = () => {
         if (cancelled) return;
         setRevisionDetail(detailRes.data);
         const initialGrades: Record<number, number | null> = {};
+        const initialAbsent: Record<number, boolean> = {};
         (detailRes.data.students || []).forEach((s: StudentRevisionData) => {
           (s.revisions || []).forEach((r: RevisionItem) => {
             initialGrades[r.id] = r.score;
+            initialAbsent[r.id] = !!r.isAbsent;
           });
         });
         setRevisionGrades(initialGrades);
+        setRevisionAbsent(initialAbsent);
         const datesMap: Record<number, string | null> = {};
         (datesRes.data.dates || []).forEach((d: { opportunity: number; date: string | null }) => {
           datesMap[d.opportunity] = d.date;
@@ -786,9 +792,14 @@ const TeacherPanel: React.FC = () => {
             .map(revision => revision.id)
         )
       );
+      // Include entries that have either a score or an absent flag
       const gradesList = Object.entries(revisionGrades)
-        .filter(([id, score]) => score != null && allowedRevisionIds.has(Number(id)))
-        .map(([id, score]) => ({ revisionId: Number(id), score }));
+        .filter(([id, score]) => allowedRevisionIds.has(Number(id)) && (score != null || !!revisionAbsent[Number(id)]))
+        .map(([id, score]) => ({
+          revisionId: Number(id),
+          score: revisionAbsent[Number(id)] ? 0 : score,
+          isAbsent: !!revisionAbsent[Number(id)],
+        }));
 
       if (gradesList.length === 0) {
         message.warning('No hay notas para guardar');
@@ -809,12 +820,15 @@ const TeacherPanel: React.FC = () => {
         const detailRes = await api.get(`/revision-grades/my-assignments/${pgsId}`, { params: { sectionId } });
         setRevisionDetail(detailRes.data);
         const updated: Record<number, number | null> = {};
+        const updatedAbsent: Record<number, boolean> = {};
         (detailRes.data.students || []).forEach((s: StudentRevisionData) => {
           (s.revisions || []).forEach((r: RevisionItem) => {
             updated[r.id] = r.score;
+            updatedAbsent[r.id] = !!r.isAbsent;
           });
         });
         setRevisionGrades(updated);
+        setRevisionAbsent(updatedAbsent);
       }
     } catch (error: any) {
       message.error(error?.response?.data?.message || 'Error al guardar notas');
@@ -857,6 +871,7 @@ const TeacherPanel: React.FC = () => {
     setRepairMode(false);
     setRevisionDetail(null);
     setRevisionGrades({});
+    setRevisionAbsent({});
     setOpportunityDates({});
     setRevisionAssignments([]);
     setSelectedRevisionKey(null);
@@ -2127,14 +2142,33 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                                   'Venezolano': 'V', 'Extranjero': 'E', 'Pasaporte': 'P', 'Cedula Escolar': 'CE'
                                 };
                                 const natPrefix = nationalityMap[student.documentType] || 'V';
+                                // Overlay the teacher's unsaved edits on top of the stored data.
+                                const localRevisions = student.revisions.map(r => {
+                                  const hasLocalScore = Object.prototype.hasOwnProperty.call(revisionGrades, r.id);
+                                  const hasLocalAbsent = Object.prototype.hasOwnProperty.call(revisionAbsent, r.id);
+                                  const isAbsent = hasLocalAbsent ? !!revisionAbsent[r.id] : !!r.isAbsent;
+                                  const score = isAbsent ? 0 : hasLocalScore ? revisionGrades[r.id] : r.score;
+                                  const serverScore = r.score == null ? null : Number(r.score);
+                                  const localScore = score == null ? null : Number(score);
+                                  const isDirty = localScore !== serverScore || isAbsent !== !!r.isAbsent;
+                                  return { ...r, score, isAbsent, status: isAbsent ? 'failed' : r.status, isDirty };
+                                });
+                                // Saving an opportunity clears every later attempt, so preview that here.
+                                const editedOpps = localRevisions.filter(r => r.isDirty).map(r => r.opportunity);
+                                const firstEditedOpp = editedOpps.length > 0 ? Math.min(...editedOpps) : null;
+                                const displayRevisions = localRevisions.map(r => (
+                                  firstEditedOpp != null && r.opportunity > firstEditedOpp
+                                    ? { ...r, score: null, isAbsent: false, status: 'pending' }
+                                    : r
+                                ));
                                 const revisionsByOpp = new Map<number, RevisionItem>();
-                                student.revisions.forEach(r => revisionsByOpp.set(r.opportunity, r));
-                                const hasApproved = student.revisions.some(r => r.status === 'approved');
-                                const allFailed = student.revisions.length > 0 && student.revisions.every(r => r.status === 'failed' || (r.score === null && r.status === 'pending'));
+                                displayRevisions.forEach(r => revisionsByOpp.set(r.opportunity, r));
+                                const hasApproved = displayRevisions.some(r => r.status === 'approved');
+                                const allFailed = displayRevisions.length > 0 && displayRevisions.every(r => r.status === 'failed' || (r.score === null && r.status === 'pending'));
                                 const resultStatus = hasApproved ? 'approved' : allFailed ? 'failed' : 'pending';
                                 // Final grade: approved score if any, otherwise the last non-null score
-                                const approvedRev = student.revisions.find(r => r.status === 'approved');
-                                const scoredRevs = student.revisions.filter(r => r.score != null).sort((a, b) => a.opportunity - b.opportunity);
+                                const approvedRev = displayRevisions.find(r => r.status === 'approved');
+                                const scoredRevs = displayRevisions.filter(r => r.score != null).sort((a, b) => a.opportunity - b.opportunity);
                                 const finalGrade = approvedRev ? approvedRev.score : (scoredRevs.length > 0 ? scoredRevs[scoredRevs.length - 1].score : null);
                                 return (
                                   <tr key={student.inscriptionSubjectId} className="grading-row">
@@ -2152,6 +2186,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                                       const currentOpp = revisionDetail.currentOpportunity ?? 1;
                                       const earlierApproved = student.revisions.some(r => r.opportunity < opp && r.status === 'approved');
                                       const isLocked = !rev || rev.opportunity !== currentOpp || earlierApproved;
+                                      const isCellAbsent = !!revisionAbsent[rev?.id];
                                       if (!rev || opp > currentOpp) {
                                         return <td key={opp} style={{ padding: '2px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-content-bg)' : 'color-mix(in srgb, var(--color-text-main) 2%, var(--color-content-bg))', width: '60px' }}>—</td>;
                                       }
@@ -2161,7 +2196,27 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                                         </td>;
                                       }
                                       return (
-                                        <td key={opp} className="grading-cell" style={{ padding: '2px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-content-bg)' : 'color-mix(in srgb, var(--color-text-main) 2%, var(--color-content-bg))', width: '60px' }}>
+                                        <td key={opp} className={`grading-cell${isCellAbsent ? ' grading-absent' : ''}`}
+                                          style={{ padding: '2px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-content-bg)' : 'color-mix(in srgb, var(--color-text-main) 2%, var(--color-content-bg))', width: '60px', cursor: isLocked ? 'default' : 'context-menu' }}
+                                          title={isLocked ? undefined : 'Click derecho: marcar/desmarcar inasistente. Click izquierdo: quitar NP'}
+                                          onContextMenu={(e) => {
+                                            if (isLocked) return;
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            const newAbsent = !isCellAbsent;
+                                            setRevisionAbsent(prev => ({ ...prev, [rev.id]: newAbsent }));
+                                            if (newAbsent) {
+                                              setRevisionGrades(prev => ({ ...prev, [rev.id]: 0 }));
+                                            }
+                                          }}
+                                          onClick={() => {
+                                            if (isLocked) return;
+                                            if (isCellAbsent) {
+                                              setRevisionAbsent(prev => ({ ...prev, [rev.id]: false }));
+                                              setRevisionGrades(prev => ({ ...prev, [rev.id]: null }));
+                                            }
+                                          }}
+                                        >
                                           <input
                                             type="text"
                                             inputMode="numeric"
@@ -2172,6 +2227,9 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                                               const raw = e.target.value;
                                               if (raw === '' || /^\d*$/.test(raw)) {
                                                 setRevisionGrades(prev => ({ ...prev, [rev.id]: raw === '' ? null : Number(raw) }));
+                                                if (revisionAbsent[rev.id]) {
+                                                  setRevisionAbsent(prev => ({ ...prev, [rev.id]: false }));
+                                                }
                                               }
                                             }}
                                             onBlur={(e) => {

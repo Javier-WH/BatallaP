@@ -193,6 +193,8 @@ function fillSheetByNamedRanges(
   letterGradesConfig?: { letter: string; max: number }[],
   lastCouncilDate?: string | null,
   isMpSection?: boolean,
+  isRevisionSection?: boolean,
+  isAbsentFn?: (insSub: any) => boolean,
 ): void {
   // Only writes when value is non-empty. Empty/undefined values leave the
   // cell untouched, preserving the template's decorative content (e.g. "***"
@@ -360,7 +362,9 @@ function fillSheetByNamedRanges(
         const lastScored = [...encs].reverse().find((e: any) => e.score !== null || e.isAbsent);
         return lastScored ? !!lastScored.isAbsent : false;
       })() : false;
-      if (isMpSection && mpIsAbsent) {
+      // For revision sections, check if the last scored revision was an absence
+      const revIsAbsent = isRevisionSection && insSub && isAbsentFn ? isAbsentFn(insSub) : false;
+      if ((isMpSection && mpIsAbsent) || (isRevisionSection && revIsAbsent)) {
         sheet.getRow(row).getCell(col).value = 'I';
       } else if (isLiteral) {
         if (score != null) {
@@ -1505,7 +1509,8 @@ export const exportRevisionSummary = async (req: Request, res: Response) => {
     }
 
     // Calculate revision score: if approved in any opportunity → approval score,
-    // otherwise the last recorded score, otherwise null
+    // otherwise the last recorded score, otherwise null.
+    // Returns { score, isAbsent } so the Excel can show "I" for absent students.
     const calculateRevisionScore = (insSub: any): number | null => {
       const revs = revisionsByInsSub.get(insSub.id) || [];
       if (revs.length === 0) return null;
@@ -1514,6 +1519,16 @@ export const exportRevisionSummary = async (req: Request, res: Response) => {
       if (approved) return Number(approved.score);
       const lastScored = [...sorted].reverse().find((r: any) => r.score != null);
       return lastScored ? Number(lastScored.score) : null;
+    };
+    // Check if the last scored revision for this insSub was an absence.
+    const isRevisionAbsent = (insSub: any): boolean => {
+      const revs = revisionsByInsSub.get(insSub.id) || [];
+      if (revs.length === 0) return false;
+      const sorted = revs.sort((a: any, b: any) => a.opportunity - b.opportunity);
+      const approved = sorted.find((r: any) => r.status === 'approved' && r.score != null);
+      if (approved) return false;
+      const lastScored = [...sorted].reverse().find((r: any) => r.score != null);
+      return lastScored ? !!lastScored.isAbsent : false;
     };
 
     const settings = await getInstitutionSettings();
@@ -1820,6 +1835,8 @@ export const exportRevisionSummary = async (req: Request, res: Response) => {
         letterGradesConfig,
         null, // lastCouncilDate — not applicable for revision
         false, // isMpSection
+        true,  // isRevisionSection
+        isRevisionAbsent,
       );
 
       const evalRef = findRef('inst_eval_type');

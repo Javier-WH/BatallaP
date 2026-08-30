@@ -135,6 +135,7 @@ export const getMyRevisionAssignments = async (req: Request, res: Response) => {
             opportunity: r.opportunity,
             score: r.score,
             status: r.status,
+            isAbsent: (r as any).isAbsent || false,
           })),
         });
       }
@@ -256,6 +257,7 @@ export const getMyRevisionAssignmentDetail = async (req: Request, res: Response)
           opportunity: r.opportunity,
           score: r.score,
           status: r.status,
+          isAbsent: r.isAbsent || false,
         })),
       });
     }
@@ -574,7 +576,7 @@ export const exportRepairExcel = async (req: Request, res: Response) => {
     const studentMap = new Map<number, {
       studentName: string;
       document: string;
-      revisions: Map<number, { id: number; score: number | null; status: string }>;
+      revisions: Map<number, { id: number; score: number | null; status: string; isAbsent: boolean }>;
     }>();
 
     for (const rev of revisionEntries) {
@@ -594,6 +596,7 @@ export const exportRepairExcel = async (req: Request, res: Response) => {
         id: rev.id,
         score: rev.score,
         status: rev.status,
+        isAbsent: (rev as any).isAbsent || false,
       });
     }
 
@@ -768,12 +771,17 @@ export const exportRepairExcel = async (req: Request, res: Response) => {
         const col = fixedCols.length + opp;
         const rev = data.revisions.get(opp);
         const cell = row.getCell(col);
-        cell.value = rev && rev.score != null ? Number(rev.score) : '';
-        cell.alignment = { horizontal: 'center', vertical: 'middle' };
-        cell.font = { size: 10 };
-        if (rev && rev.score != null && Number(rev.score) < revisionPeriod.passingGrade) {
+        if (rev && rev.isAbsent) {
+          cell.value = 'I';
           cell.font = { size: 10, color: { argb: 'FFDC2626' }, bold: true };
+        } else {
+          cell.value = rev && rev.score != null ? Number(rev.score) : '';
+          cell.font = { size: 10 };
+          if (rev && rev.score != null && Number(rev.score) < revisionPeriod.passingGrade) {
+            cell.font = { size: 10, color: { argb: 'FFDC2626' }, bold: true };
+          }
         }
+        cell.alignment = { horizontal: 'center', vertical: 'middle' };
       }
 
       // Result

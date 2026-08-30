@@ -149,6 +149,7 @@ export const getRevisionStudents = async (req: Request, res: Response) => {
           opportunity: rev.opportunity,
           score: rev.score,
           status: rev.status,
+          isAbsent: (rev as any).isAbsent || false,
         });
       }
 
@@ -342,6 +343,7 @@ export const getRevisionGrades = async (req: Request, res: Response) => {
         opportunity: rev.opportunity,
         score: rev.score,
         status: rev.status,
+        isAbsent: (rev as any).isAbsent || false,
         gradedBy: rev.gradedBy,
         graderName: (rev as any).grader
           ? `${(rev as any).grader.firstName || ''} ${(rev as any).grader.lastName || ''}`.trim()
@@ -362,7 +364,7 @@ export const saveRevisionGrade = async (req: Request, res: Response) => {
   try {
     const revisionId = parseInt(req.params.revisionId, 10);
     const schoolPeriodId = parseInt(req.params.schoolPeriodId, 10);
-    const { score } = req.body;
+    const { score, isAbsent } = req.body as { score?: number | null; isAbsent?: boolean };
 
     const revisionPeriod = await RevisionPeriod.findOne({
       where: { schoolPeriodId },
@@ -413,20 +415,24 @@ export const saveRevisionGrade = async (req: Request, res: Response) => {
     }
 
     const userId = (req.session as any)?.user?.personId;
-    const numericScore = score != null ? Number(score) : null;
+    const absentFlag = !!isAbsent;
+    // When absent: score = 0, status = failed (matches evaluation plan logic)
+    const numericScore = absentFlag ? 0 : (score != null ? Number(score) : null);
     const isApproved = numericScore != null && numericScore >= revisionPeriod.passingGrade;
 
     await revision.update({
       score: numericScore,
       status: numericScore != null ? (isApproved ? 'approved' : 'failed') : 'pending',
+      isAbsent: absentFlag,
       gradedBy: userId,
       gradedAt: new Date(),
     }, { transaction: t });
 
-    // If approved, clear all subsequent opportunities for this student+subject
-    if (numericScore != null && isApproved) {
+    // Re-grading an opportunity invalidates every later attempt, so all
+    // subsequent opportunities are cleared back to pending.
+    if (numericScore != null) {
       await InscriptionSubjectRevision.update(
-        { score: null, status: 'pending', gradedBy: null, gradedAt: null },
+        { score: null, status: 'pending', isAbsent: false, gradedBy: null, gradedAt: null },
         {
           where: {
             revisionPeriodId: revisionPeriod.id,
@@ -484,7 +490,7 @@ export const bulkSaveRevisionGrades = async (req: Request, res: Response) => {
   const t = await sequelize.transaction();
   try {
     const schoolPeriodId = parseInt(req.params.schoolPeriodId, 10);
-    const { grades } = req.body as { grades: Array<{ revisionId: number; score: number | null }> };
+    const { grades } = req.body as { grades: Array<{ revisionId: number; score: number | null; isAbsent?: boolean }> };
 
     if (!schoolPeriodId || !grades || !Array.isArray(grades)) {
       await t.rollback();
@@ -505,7 +511,7 @@ export const bulkSaveRevisionGrades = async (req: Request, res: Response) => {
     let saved = 0;
     const skipped: Array<{ revisionId: number; reason: string }> = [];
 
-    for (const { revisionId, score } of grades) {
+    for (const { revisionId, score, isAbsent } of grades) {
       const revision = await InscriptionSubjectRevision.findByPk(revisionId, { transaction: t });
       if (!revision || revision.revisionPeriodId !== revisionPeriod.id) continue;
 
@@ -544,20 +550,24 @@ export const bulkSaveRevisionGrades = async (req: Request, res: Response) => {
         continue;
       }
 
-      const numericScore = score != null ? Number(score) : null;
+      const absentFlag = !!isAbsent;
+      // When absent: score = 0, status = failed (matches evaluation plan logic)
+      const numericScore = absentFlag ? 0 : (score != null ? Number(score) : null);
       const isApproved = numericScore != null && numericScore >= revisionPeriod.passingGrade;
 
       await revision.update({
         score: numericScore,
         status: numericScore != null ? (isApproved ? 'approved' : 'failed') : 'pending',
+        isAbsent: absentFlag,
         gradedBy: userId,
         gradedAt: new Date(),
       }, { transaction: t });
 
-      // If approved, clear all subsequent opportunities for this student+subject
-      if (numericScore != null && isApproved) {
+      // Re-grading an opportunity invalidates every later attempt, so all
+      // subsequent opportunities are cleared back to pending.
+      if (numericScore != null) {
         await InscriptionSubjectRevision.update(
-          { score: null, status: 'pending', gradedBy: null, gradedAt: null },
+          { score: null, status: 'pending', isAbsent: false, gradedBy: null, gradedAt: null },
           {
             where: {
               revisionPeriodId: revisionPeriod.id,

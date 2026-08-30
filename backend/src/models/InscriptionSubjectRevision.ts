@@ -13,6 +13,7 @@ interface InscriptionSubjectRevisionAttributes {
   opportunity: number;
   score?: number | null;
   status: RevisionStatus;
+  isAbsent?: boolean;
   gradedBy?: number | null;
   gradedAt?: Date | null;
   createdAt?: Date;
@@ -21,7 +22,7 @@ interface InscriptionSubjectRevisionAttributes {
 
 type InscriptionSubjectRevisionCreationAttributes = Optional<
   InscriptionSubjectRevisionAttributes,
-  'id' | 'score' | 'status' | 'gradedBy' | 'gradedAt'
+  'id' | 'score' | 'status' | 'isAbsent' | 'gradedBy' | 'gradedAt'
 >;
 
 class InscriptionSubjectRevision
@@ -34,6 +35,7 @@ class InscriptionSubjectRevision
   public opportunity!: number;
   public score!: number | null;
   public status!: RevisionStatus;
+  public isAbsent!: boolean;
   public gradedBy!: number | null;
   public gradedAt!: Date | null;
 
@@ -77,6 +79,11 @@ InscriptionSubjectRevision.init(
       type: DataTypes.ENUM('pending', 'approved', 'failed'),
       allowNull: false,
       defaultValue: 'pending',
+    },
+    isAbsent: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
     },
     gradedBy: {
       type: DataTypes.INTEGER,
