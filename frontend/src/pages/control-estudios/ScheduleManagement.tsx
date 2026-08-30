@@ -83,6 +83,16 @@ function colorForSubject(subjectId: number | null): string {
   return SUBJECT_COLORS[subjectId % SUBJECT_COLORS.length];
 }
 
+/** Lightens a hex color by mixing with white. amount: 0=original, 1=white */
+function lightenColor(hex: string, amount: number): string {
+  const clean = (hex || '').replace('#', '');
+  if (clean.length !== 6) return hex;
+  const r = Math.round(parseInt(clean.slice(0, 2), 16) + (255 - parseInt(clean.slice(0, 2), 16)) * amount);
+  const g = Math.round(parseInt(clean.slice(2, 4), 16) + (255 - parseInt(clean.slice(2, 4), 16)) * amount);
+  const b = Math.round(parseInt(clean.slice(4, 6), 16) + (255 - parseInt(clean.slice(4, 6), 16)) * amount);
+  return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+}
+
 // ── Entry type ──
 interface ScheduleEntryData {
   id?: number;
@@ -111,17 +121,21 @@ interface SectionOption {
 function cellSignature(cellEntries: ScheduleEntryData[] | undefined): string {
   if (!cellEntries || cellEntries.length === 0) return '';
   return cellEntries
-    .map(e => `${e.subjectId}:${e.teacherId}:${e.isGroupSubject ? 1 : 0}`)
+    .map(e => {
+      const sec = (e as any).sectionSignature ?? '';
+      return `${e.subjectId}:${e.teacherId}:${sec}:${e.isGroupSubject ? 1 : 0}`;
+    })
     .sort()
     .join('|');
 }
 
-function ScheduleGrid({ sections, entries, onCellClick, editable, getCellLabel }: {
+function ScheduleGrid({ sections, entries, onCellClick, editable, getCellLabel, colorBySection }: {
   sections: ScheduleSection[];
   entries: Record<string, ScheduleEntryData[]>;
   onCellClick?: (day: string, period: Period) => void;
   editable: boolean;
   getCellLabel: (day: string, period: Period, cellEntries: ScheduleEntryData[]) => React.ReactNode;
+  colorBySection?: boolean;
 }) {
   // Build an ordered list of non-break periods (row order)
   const orderedPeriods: Period[] = [];
@@ -220,12 +234,23 @@ function ScheduleGrid({ sections, entries, onCellClick, editable, getCellLabel }
                         }
                       }
                       const isMerged = span > 1 && cellEntries.length > 0;
+                      let cellStyle: React.CSSProperties;
+                      if (colorBySection && cellEntries.length > 0) {
+                        const entry: any = cellEntries[0];
+                        const sectionColor = entry?.sectionColor ?? '#cccccc';
+                        cellStyle = { background: sectionColor + '33', borderLeft: `3px solid ${sectionColor}` };
+                      } else if (cellEntries.length > 0) {
+                        const subjColor = (cellEntries[0] as any)?.subject?.color;
+                        cellStyle = { background: subjColor ? subjColor + '33' : colorForSubject(cellEntries[0].subjectId) };
+                      } else {
+                        cellStyle = {};
+                      }
                       return (
                         <td
                           key={day}
                           rowSpan={span}
                           className={`border border-slate-300 text-center text-xs px-1 align-middle ${editable ? 'cursor-pointer hover:bg-blue-50 hover:border-blue-400 transition-colors' : ''} ${isMerged ? 'h-auto py-2' : 'h-12'}`}
-                          style={{ background: cellEntries.length === 1 ? colorForSubject(cellEntries[0].subjectId) : '#ffffff' }}
+                          style={cellStyle}
                           onClick={() => editable && onCellClick?.(day, period)}
                         >
                           {getCellLabel(day, period, cellEntries)}
@@ -868,16 +893,46 @@ const ScheduleManagement: React.FC = () => {
 
   // Build entries map for teacher schedule — wrap in array for ScheduleGrid compatibility
   const teacherEntriesMap = useMemo<Record<string, any[]>>(() => {
+    // Build section index map: gradeId -> sorted sectionIds -> index
+    const gradeSectionsMap = new Map<number, Map<number, string>>();
+    teacherEntries.forEach((e: any) => {
+      const sec = e.schedule?.section;
+      const gradeId = sec?.periodGrade?.grade?.id;
+      const sectionId = sec?.section?.id;
+      const sectionName = sec?.section?.name ?? '';
+      if (gradeId != null && sectionId != null) {
+        if (!gradeSectionsMap.has(gradeId)) gradeSectionsMap.set(gradeId, new Map());
+        const sections = gradeSectionsMap.get(gradeId)!;
+        if (!sections.has(sectionId)) sections.set(sectionId, sectionName);
+      }
+    });
+    // Sort sections by name within each grade and assign index
+    const sectionIndexMap = new Map<string, number>(); // key: `${gradeId}:${sectionId}` -> index
+    gradeSectionsMap.forEach((sections, gradeId) => {
+      const sorted = Array.from(sections.entries()).sort((a, b) => a[1].localeCompare(b[1]));
+      sorted.forEach(([sectionId], idx) => {
+        sectionIndexMap.set(`${gradeId}:${sectionId}`, idx);
+      });
+    });
+
     const map: Record<string, any[]> = {};
     teacherEntries.forEach((e: any) => {
       const key = `${e.day}|${e.periodId}`;
       const sec = e.schedule?.section;
       const gradeName = sec?.periodGrade?.grade?.name ?? '';
       const sectionName = sec?.section?.name ?? '';
+      const gradeId = sec?.periodGrade?.grade?.id;
+      const sectionId = sec?.section?.id;
+      const gradeColor = sec?.periodGrade?.color ?? '#cccccc';
+      const sectionIdx = (gradeId != null && sectionId != null) ? (sectionIndexMap.get(`${gradeId}:${sectionId}`) ?? 0) : 0;
+      const sectionColor = lightenColor(gradeColor, 0.25 + sectionIdx * 0.25);
       if (!map[key]) map[key] = [];
       map[key].push({
         subjectName: e.subject?.name,
+        subjectId: e.subjectId,
         sectionLabel: `${gradeName} ${sectionName}`.trim(),
+        sectionSignature: `${gradeId ?? ''}:${sectionId ?? ''}`,
+        sectionColor,
         isGroup: e.isGroupSubject,
       });
     });
@@ -1270,13 +1325,14 @@ const ScheduleManagement: React.FC = () => {
                       sections={scheduleSections}
                       entries={teacherEntriesMap as any}
                       editable={false}
+                      colorBySection
                       getCellLabel={(_day, _period, cellEntries: any) => {
                         const entry = Array.isArray(cellEntries) ? cellEntries[0] : cellEntries;
                         if (!entry?.subjectName) return <span className="text-slate-300">—</span>;
                         return (
-                          <div className="flex flex-col gap-0.5">
-                            <span className="font-semibold text-slate-800">{entry.subjectName}</span>
-                            {entry.sectionLabel && <span className="text-slate-500 text-[10px]">{entry.sectionLabel}</span>}
+                          <div className="flex flex-col gap-0.5 text-left">
+                            <span className="font-bold text-slate-800">{entry.subjectName}</span>
+                            {entry.sectionLabel && <span className="text-slate-600 text-[10px] font-semibold">{entry.sectionLabel}</span>}
                             {entry.isGroup && <Tag color="purple" style={{ fontSize: 9, margin: 0 }}>Grupo</Tag>}
                           </div>
                         );

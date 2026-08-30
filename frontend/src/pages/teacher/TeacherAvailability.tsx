@@ -1,7 +1,9 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Button, message, Spin } from 'antd';
-import { SaveOutlined, DeleteOutlined } from '@ant-design/icons';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { Button, message, Spin, Tabs, Tag, Empty } from 'antd';
+import { SaveOutlined, DeleteOutlined, ScheduleOutlined } from '@ant-design/icons';
 import api from '@/services/api';
+import { useAuth } from '@/context/AuthContext';
+import { useSchool } from '@/context/SchoolContext';
 import dayjs from 'dayjs';
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -29,6 +31,16 @@ const STATUSES = [
   { key: 'busy', label: 'Ocupado', swatch: 'bg-rose-400', ring: 'ring-rose-500' },
   { key: 'preferred', label: 'Preferido', swatch: 'bg-sky-400', ring: 'ring-sky-500' },
 ];
+
+/** Lightens a hex color by mixing with white. amount: 0=original, 1=white */
+function lightenColor(hex: string, amount: number): string {
+  const clean = (hex || '').replace('#', '');
+  if (clean.length !== 6) return hex;
+  const r = Math.round(parseInt(clean.slice(0, 2), 16) + (255 - parseInt(clean.slice(0, 2), 16)) * amount);
+  const g = Math.round(parseInt(clean.slice(2, 4), 16) + (255 - parseInt(clean.slice(2, 4), 16)) * amount);
+  const b = Math.round(parseInt(clean.slice(4, 6), 16) + (255 - parseInt(clean.slice(4, 6), 16)) * amount);
+  return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+}
 
 // ─────────────────────────────────────────────────────────────────────────
 // Build sections dynamically from schedule settings
@@ -120,12 +132,19 @@ function buildSections(settings: Record<string, string>): Section[] {
 // Component
 // ─────────────────────────────────────────────────────────────────────────
 export default function TeacherAvailability() {
+  const { user } = useAuth();
+  const { activePeriod } = useSchool();
   const [cellStatus, setCellStatus] = useState<Record<string, string>>({});
   const [activeKey, setActiveKey] = useState<string | null>('available');
   const [showJson, setShowJson] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [sections, setSections] = useState<Section[]>([]);
+
+  // Schedule state
+  const [activeTab, setActiveTab] = useState('availability');
+  const [scheduleEntries, setScheduleEntries] = useState<any[]>([]);
+  const [scheduleLoading, setScheduleLoading] = useState(false);
 
   const painting = useRef(false);
   const paintValue = useRef<string | null>(null);
@@ -161,6 +180,114 @@ export default function TeacherAvailability() {
     };
     load();
   }, []);
+
+  // Load teacher schedule
+  const loadSchedule = useCallback(async () => {
+    const personId = (user as any)?.personId;
+    if (!personId || !activePeriod) return;
+    setScheduleLoading(true);
+    try {
+      const res = await api.get(`/schedules/teacher/${personId}`, { params: { schoolPeriodId: activePeriod.id } });
+      setScheduleEntries(res.data || []);
+    } catch (e) {
+      console.error('Error loading teacher schedule:', e);
+      setScheduleEntries([]);
+    } finally {
+      setScheduleLoading(false);
+    }
+  }, [user, activePeriod]);
+
+  useEffect(() => {
+    if (activeTab === 'schedule') loadSchedule();
+  }, [activeTab, loadSchedule]);
+
+  // Build schedule entries map for the grid
+  const scheduleEntriesMap = useMemo<Record<string, any[]>>(() => {
+    // Build section index map: gradeId -> sorted sectionIds -> index
+    const gradeSectionsMap = new Map<number, Map<number, string>>();
+    scheduleEntries.forEach((e: any) => {
+      const sec = e.schedule?.section;
+      const gradeId = sec?.periodGrade?.grade?.id;
+      const sectionId = sec?.section?.id;
+      const sectionName = sec?.section?.name ?? '';
+      if (gradeId != null && sectionId != null) {
+        if (!gradeSectionsMap.has(gradeId)) gradeSectionsMap.set(gradeId, new Map());
+        const sections = gradeSectionsMap.get(gradeId)!;
+        if (!sections.has(sectionId)) sections.set(sectionId, sectionName);
+      }
+    });
+    const sectionIndexMap = new Map<string, number>();
+    gradeSectionsMap.forEach((sections, gradeId) => {
+      const sorted = Array.from(sections.entries()).sort((a, b) => a[1].localeCompare(b[1]));
+      sorted.forEach(([sectionId], idx) => {
+        sectionIndexMap.set(`${gradeId}:${sectionId}`, idx);
+      });
+    });
+
+    const map: Record<string, any[]> = {};
+    scheduleEntries.forEach((e: any) => {
+      const key = `${e.day}|${e.periodId}`;
+      const sec = e.schedule?.section;
+      const gradeName = sec?.periodGrade?.grade?.name ?? '';
+      const sectionName = sec?.section?.name ?? '';
+      const gradeId = sec?.periodGrade?.grade?.id;
+      const sectionId = sec?.section?.id;
+      const gradeColor = sec?.periodGrade?.color ?? '#cccccc';
+      const sectionIdx = (gradeId != null && sectionId != null) ? (sectionIndexMap.get(`${gradeId}:${sectionId}`) ?? 0) : 0;
+      const sectionColor = lightenColor(gradeColor, 0.25 + sectionIdx * 0.25);
+      if (!map[key]) map[key] = [];
+      map[key].push({
+        subjectName: e.subject?.name,
+        subjectId: e.subjectId,
+        sectionLabel: `${gradeName} ${sectionName}`.trim(),
+        sectionSignature: `${gradeId ?? ''}:${sectionId ?? ''}`,
+        sectionColor,
+        isGroup: e.isGroupSubject,
+      });
+    });
+    return map;
+  }, [scheduleEntries]);
+
+  // Cell signature for merging consecutive cells with same subject+section
+  const cellSig = (entries: any[] | undefined): string => {
+    if (!entries || entries.length === 0) return '';
+    return entries
+      .map(e => `${e.subjectId}:${e.sectionSignature}:${e.isGroup ? 1 : 0}`)
+      .sort()
+      .join('|');
+  };
+
+  // Build rowspan map: key `${day}|${period.id}` -> span (0 if covered by a merge above)
+  const rowspanMap = useMemo<Record<string, number>>(() => {
+    const result: Record<string, number> = {};
+    DAYS.forEach(day => {
+      sections.forEach(sec => {
+        const nonBreakPeriods = sec.periods.filter(p => !p.break);
+        for (let i = 0; i < nonBreakPeriods.length; i++) {
+          const p = nonBreakPeriods[i];
+          const key = `${day}|${p.id}`;
+          const sig = cellSig(scheduleEntriesMap[key]);
+          if (!sig) { result[key] = 1; continue; }
+          let span = 1;
+          for (let j = i + 1; j < nonBreakPeriods.length; j++) {
+            const nextKey = `${day}|${nonBreakPeriods[j].id}`;
+            if (sig === cellSig(scheduleEntriesMap[nextKey])) {
+              span++;
+            } else {
+              break;
+            }
+          }
+          result[key] = span;
+          // Mark covered cells
+          for (let j = i + 1; j < i + span; j++) {
+            result[`${day}|${nonBreakPeriods[j].id}`] = 0;
+          }
+          i += span - 1;
+        }
+      });
+    });
+    return result;
+  }, [scheduleEntriesMap, sections]);
 
   const keyFor = (day: string, periodId: string) => `${day}|${periodId}`;
 
@@ -213,7 +340,8 @@ export default function TeacherAvailability() {
     );
   }
 
-  return (
+  // ── Availability Tab Content ──
+  const availabilityTab = (
     <div className="w-full bg-slate-100 p-4 sm:p-6 flex justify-center">
       <div className="w-full max-w-4xl bg-white rounded-lg shadow-sm border border-slate-200 p-4 sm:p-6">
         <div className="mb-4">
@@ -302,7 +430,7 @@ export default function TeacherAvailability() {
                       <tr key={period.id}>
                         <td
                           colSpan={DAYS.length + 1}
-                          className="bg-amber-50 border-t-2 border-b-2 border-amber-400 text-amber-700 text-center text-[11px] py-1 font-medium"
+                          className="bg-amber-50 border-t border-b border-amber-300 text-amber-700 text-center text-[10px] py-0.5 font-medium"
                         >
                           ⏸ {period.label} · {period.start}–{period.end}
                         </td>
@@ -354,6 +482,154 @@ export default function TeacherAvailability() {
           </pre>
         )}
       </div>
+    </div>
+  );
+
+  // ── Schedule Tab Content ──
+  const scheduleTab = (
+    <div className="w-full bg-slate-100 p-4 sm:p-6 flex justify-center">
+      <div className="w-full max-w-4xl bg-white rounded-lg shadow-sm border border-slate-200 p-4 sm:p-6">
+        <div className="mb-4 flex items-center justify-between">
+          <div>
+            <h1 className="text-lg font-bold text-slate-800">Mi Horario</h1>
+            <p className="text-xs text-slate-500 mt-0.5">
+              {activePeriod ? `Período: ${activePeriod.name}` : 'Sin período activo'}
+            </p>
+          </div>
+          <Button icon={<ScheduleOutlined />} onClick={loadSchedule} loading={scheduleLoading}>Recargar</Button>
+        </div>
+
+        {scheduleLoading ? (
+          <div className="flex justify-center p-12"><Spin size="large" /></div>
+        ) : scheduleEntries.length === 0 ? (
+          <Empty description="No hay horario asignado para este período" />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse text-sm" style={{ minWidth: '640px', tableLayout: 'fixed' }}>
+              <thead>
+                <tr>
+                  <th className="border border-slate-300 bg-slate-800 text-white py-2 text-xs" style={{ width: `${100 / (DAYS.length + 1)}%` }}>
+                    Hora
+                  </th>
+                  {DAYS.map(d => (
+                    <th
+                      key={d}
+                      className="border border-slate-300 bg-slate-800 text-white py-2 text-xs uppercase tracking-wide"
+                      style={{ width: `${100 / (DAYS.length + 1)}%` }}
+                    >
+                      {d}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {sections.map(section => (
+                  <React.Fragment key={section.id}>
+                    <tr>
+                      <td
+                        colSpan={DAYS.length + 1}
+                        className={`${section.headerColor} text-white text-center font-bold tracking-widest py-1.5 text-xs`}
+                      >
+                        {section.label}
+                      </td>
+                    </tr>
+                    {section.periods.map(period =>
+                      period.break ? (
+                        <tr key={period.id}>
+                          <td
+                            colSpan={DAYS.length + 1}
+                            className="bg-amber-50 border-t border-b border-amber-300 text-amber-700 text-center text-[10px] py-0.5 font-medium"
+                          >
+                            ⏸ {period.label} · {period.start}–{period.end}
+                          </td>
+                        </tr>
+                      ) : (
+                        <tr key={period.id}>
+                          <td className="border border-slate-300 bg-slate-50 text-slate-600 text-xs text-center py-2 font-medium whitespace-nowrap">
+                            {period.start} - {period.end}
+                          </td>
+                          {DAYS.map(day => {
+                            const key = `${day}|${period.id}`;
+                            const cellEntries = scheduleEntriesMap[key] ?? [];
+                            const span = rowspanMap[key] ?? 1;
+                            if (span === 0) return null; // covered by a merge above
+                            if (cellEntries.length === 0) {
+                              return (
+                                <td key={day} rowSpan={span} className="border border-slate-300 bg-white">
+                                  <span className="text-slate-300 text-center block">—</span>
+                                </td>
+                              );
+                            }
+                            // Compute end time for merged cells
+                            let endTime = period.end;
+                            if (span > 1) {
+                              const sec = sections.find(s => s.id === period.section);
+                              if (sec) {
+                                const nonBreak = sec.periods.filter(p => !p.break);
+                                const idx = nonBreak.findIndex(p => p.id === period.id);
+                                if (idx >= 0 && idx + span - 1 < nonBreak.length) {
+                                  endTime = nonBreak[idx + span - 1].end;
+                                }
+                              }
+                            }
+                            const sectionColor = cellEntries.length > 0 ? (cellEntries[0].sectionColor ?? '#cccccc') : '#cccccc';
+                            return (
+                              <td key={day} rowSpan={span} className="border border-slate-300 p-1 align-top" style={{
+                                background: cellEntries.length > 0 ? sectionColor + '33' : '#ffffff',
+                                borderLeft: cellEntries.length > 0 ? `3px solid ${sectionColor}` : '1px solid #cbd5e1',
+                              }}>
+                                {cellEntries.map((e: any, i: number) => (
+                                  <div key={i} className="flex flex-col gap-0.5">
+                                    <span className="font-bold text-slate-800 leading-tight" style={{ fontSize: 11 }}>
+                                      {e.subjectName ?? '—'}
+                                    </span>
+                                    {e.sectionLabel && (
+                                      <span className="text-slate-600 leading-tight font-semibold" style={{ fontSize: 9 }}>
+                                        {e.sectionLabel}
+                                      </span>
+                                    )}
+                                    {span > 1 && (
+                                      <span className="text-slate-400 leading-tight" style={{ fontSize: 8 }}>
+                                        hasta {endTime}
+                                      </span>
+                                    )}
+                                    {e.isGroup && <Tag color="purple" style={{ fontSize: 8, margin: 0, alignSelf: 'flex-start' }}>Grupo</Tag>}
+                                  </div>
+                                ))}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      )
+                    )}
+                  </React.Fragment>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="p-6">
+      <Tabs
+        activeKey={activeTab}
+        onChange={setActiveTab}
+        items={[
+          {
+            key: 'availability',
+            label: <span><ScheduleOutlined /> Disponibilidad</span>,
+            children: availabilityTab,
+          },
+          {
+            key: 'schedule',
+            label: <span><ScheduleOutlined /> Mi Horario</span>,
+            children: scheduleTab,
+          },
+        ]}
+      />
     </div>
   );
 }
