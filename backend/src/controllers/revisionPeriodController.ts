@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import { Op } from 'sequelize';
 import sequelize from '@/config/database';
 import { RevisionPeriodService } from '@/services/revisionPeriodService';
 import { sortInscriptions } from '@/services/studentSortService';
@@ -404,6 +405,21 @@ export const saveRevisionGrade = async (req: Request, res: Response) => {
       gradedAt: new Date(),
     }, { transaction: t });
 
+    // If approved, clear all subsequent opportunities for this student+subject
+    if (numericScore != null && isApproved) {
+      await InscriptionSubjectRevision.update(
+        { score: null, status: 'pending', gradedBy: null, gradedAt: null },
+        {
+          where: {
+            revisionPeriodId: revisionPeriod.id,
+            inscriptionSubjectId: revision.inscriptionSubjectId,
+            opportunity: { [Op.gt]: revision.opportunity },
+          },
+          transaction: t,
+        }
+      );
+    }
+
     // If failed and more opportunities available, create the next one
     if (numericScore != null && !isApproved) {
       const failedCount = await InscriptionSubjectRevision.count({
@@ -491,6 +507,21 @@ export const bulkSaveRevisionGrades = async (req: Request, res: Response) => {
         gradedBy: userId,
         gradedAt: new Date(),
       }, { transaction: t });
+
+      // If approved, clear all subsequent opportunities for this student+subject
+      if (numericScore != null && isApproved) {
+        await InscriptionSubjectRevision.update(
+          { score: null, status: 'pending', gradedBy: null, gradedAt: null },
+          {
+            where: {
+              revisionPeriodId: revisionPeriod.id,
+              inscriptionSubjectId: revision.inscriptionSubjectId,
+              opportunity: { [Op.gt]: revision.opportunity },
+            },
+            transaction: t,
+          }
+        );
+      }
 
       if (numericScore != null && !isApproved) {
         const failedCount = await InscriptionSubjectRevision.count({
