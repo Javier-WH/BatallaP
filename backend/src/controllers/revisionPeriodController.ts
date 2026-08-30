@@ -394,6 +394,24 @@ export const saveRevisionGrade = async (req: Request, res: Response) => {
       });
     }
 
+    // If the student already approved in a previous opportunity, do not allow
+    // saving grades in this or any subsequent opportunity.
+    const earlierApproval = await InscriptionSubjectRevision.findOne({
+      where: {
+        revisionPeriodId: revisionPeriod.id,
+        inscriptionSubjectId: revision.inscriptionSubjectId,
+        opportunity: { [Op.lt]: revision.opportunity },
+        status: 'approved',
+      },
+      transaction: t,
+    });
+    if (earlierApproval) {
+      await t.rollback();
+      return res.status(400).json({
+        message: `El estudiante ya aprobó en la Oportunidad ${earlierApproval.opportunity}. No se pueden registrar notas en oportunidades posteriores.`,
+      });
+    }
+
     const userId = (req.session as any)?.user?.personId;
     const numericScore = score != null ? Number(score) : null;
     const isApproved = numericScore != null && numericScore >= revisionPeriod.passingGrade;
@@ -485,6 +503,7 @@ export const bulkSaveRevisionGrades = async (req: Request, res: Response) => {
 
     const userId = (req.session as any)?.user?.personId;
     let saved = 0;
+    const skipped: Array<{ revisionId: number; reason: string }> = [];
 
     for (const { revisionId, score } of grades) {
       const revision = await InscriptionSubjectRevision.findByPk(revisionId, { transaction: t });
@@ -496,6 +515,33 @@ export const bulkSaveRevisionGrades = async (req: Request, res: Response) => {
         return res.status(400).json({
           message: `Solo se puede editar la Oportunidad ${revisionPeriod.currentOpportunity}. La Oportunidad ${revision.opportunity} no está activa.`,
         });
+      }
+
+      // If the student already approved in a previous opportunity, skip this
+      // student instead of blocking the entire save.
+      const earlierApproval = await InscriptionSubjectRevision.findOne({
+        where: {
+          revisionPeriodId: revisionPeriod.id,
+          inscriptionSubjectId: revision.inscriptionSubjectId,
+          opportunity: { [Op.lt]: revision.opportunity },
+          status: 'approved',
+        },
+        transaction: t,
+      });
+      if (earlierApproval) {
+        // Get student name for the warning message
+        const insSub = await InscriptionSubject.findByPk(revision.inscriptionSubjectId, {
+          include: [{ association: 'inscription', include: [{ association: 'student' }] }],
+          transaction: t,
+        });
+        const studentName = (insSub as any)?.inscription?.student
+          ? `${(insSub as any).inscription.student.lastName || ''} ${(insSub as any).inscription.student.firstName || ''}`.trim()
+          : `Inscripción ${revision.inscriptionSubjectId}`;
+        skipped.push({
+          revisionId,
+          reason: `${studentName} ya aprobó en la Oportunidad ${earlierApproval.opportunity}`,
+        });
+        continue;
       }
 
       const numericScore = score != null ? Number(score) : null;
@@ -559,6 +605,13 @@ export const bulkSaveRevisionGrades = async (req: Request, res: Response) => {
     }
 
     await t.commit();
+    if (skipped.length > 0) {
+      return res.json({
+        message: `${saved} notas guardadas. ${skipped.length} estudiante(s) omitido(s) por tener aprobación previa.`,
+        saved,
+        skipped,
+      });
+    }
     return res.json({ message: `${saved} notas guardadas correctamente`, saved });
   } catch (error: any) {
     await t.rollback();

@@ -797,7 +797,11 @@ const TeacherPanel: React.FC = () => {
       }
 
       const res = await api.put(`/revision-periods/${viewPeriod.id}/revisions/bulk`, { grades: gradesList });
-      message.success(res.data.message || 'Notas guardadas');
+      if (res.data.skipped && res.data.skipped.length > 0) {
+        message.warning(res.data.message || 'Notas guardadas con advertencias');
+      } else {
+        message.success(res.data.message || 'Notas guardadas');
+      }
       // Reload detail
       const pgsId = selectedRevisionAssignment?.periodGradeSubjectId;
       const sectionId = selectedRevisionAssignment?.sectionId;
@@ -2146,9 +2150,15 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                                     {Array.from({ length: revisionDetail.maxOpportunities }, (_, i) => i + 1).map(opp => {
                                       const rev = revisionsByOpp.get(opp);
                                       const currentOpp = revisionDetail.currentOpportunity ?? 1;
-                                      const isLocked = !rev || rev.opportunity !== currentOpp;
+                                      const earlierApproved = student.revisions.some(r => r.opportunity < opp && r.status === 'approved');
+                                      const isLocked = !rev || rev.opportunity !== currentOpp || earlierApproved;
                                       if (!rev || opp > currentOpp) {
                                         return <td key={opp} style={{ padding: '2px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-content-bg)' : 'color-mix(in srgb, var(--color-text-main) 2%, var(--color-content-bg))', width: '60px' }}>—</td>;
+                                      }
+                                      if (earlierApproved) {
+                                        return <td key={opp} style={{ padding: '2px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-content-bg)' : 'color-mix(in srgb, var(--color-text-main) 2%, var(--color-content-bg))', width: '60px', color: '#999' }}>
+                                          <LockOutlined style={{ fontSize: 10 }} />
+                                        </td>;
                                       }
                                       return (
                                         <td key={opp} className="grading-cell" style={{ padding: '2px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-content-bg)' : 'color-mix(in srgb, var(--color-text-main) 2%, var(--color-content-bg))', width: '60px' }}>
