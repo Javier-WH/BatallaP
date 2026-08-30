@@ -2079,7 +2079,10 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                                 <th style={{ padding: '4px 6px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'left', backgroundColor: 'color-mix(in srgb, var(--color-text-main) 6%, var(--color-content-bg))', fontWeight: 700, fontSize: 11, whiteSpace: 'nowrap', color: 'var(--color-text-main)' }}>Estudiante</th>
                                 {Array.from({ length: revisionDetail.maxOpportunities }, (_, i) => i + 1).map(opp => (
                                   <th key={opp} style={{ padding: '4px 6px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', backgroundColor: 'color-mix(in srgb, var(--color-text-main) 6%, var(--color-content-bg))', fontWeight: 700, fontSize: 11, whiteSpace: 'nowrap', color: 'var(--color-text-main)' }}>
-                                    Oport. {opp}
+                                    <div>Oport. {opp}</div>
+                                    <div style={{ fontSize: 9, marginTop: 2, fontWeight: 600 }}>
+                                      {opportunityDates[opp] ? dayjs(opportunityDates[opp]).format('DD/MM/YYYY') : '\u00A0'}
+                                    </div>
                                   </th>
                                 ))}
                                 <th style={{ padding: '4px 6px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', backgroundColor: 'color-mix(in srgb, var(--color-text-main) 6%, var(--color-content-bg))', fontWeight: 700, fontSize: 11, whiteSpace: 'nowrap', color: 'var(--color-text-main)' }}>Resultado</th>
