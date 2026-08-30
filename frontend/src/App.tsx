@@ -31,7 +31,6 @@ import EnrollmentQuestions from '@/pages/admin/EnrollmentQuestions';
 import PaymentsConfig from '@/pages/admin/PaymentsConfig';
 import PaymentLedger from '@/pages/admin/PaymentLedger';
 import TeacherPanel from '@/pages/teacher/TeacherPanel';
-import RepairGradesPanel from '@/pages/teacher/RepairGradesPanel';
 import PendingSubjectTeacherPanel from '@/pages/teacher/PendingSubjectTeacherPanel';
 import Observations from '@/pages/teacher/Observations';
 import TeacherAvailability from '@/pages/teacher/TeacherAvailability';
@@ -282,7 +281,6 @@ function AppRoutes() {
         <Route path="profesor" element={<RequireAuth allowedRoles={['Profesor']}><TeacherPanel /></RequireAuth>}>
           <Route index element={<h1>Panel del Profesor</h1>} />
         </Route>
-        <Route path="profesor/reparacion" element={<RequireAuth allowedRoles={['Profesor']}><RepairGradesPanel /></RequireAuth>} />
         <Route path="profesor/materia-pendiente" element={<RequireAuth allowedRoles={['Profesor']}><PendingSubjectTeacherPanel /></RequireAuth>} />
         <Route path="profesor/observaciones" element={<RequireAuth allowedRoles={['Profesor']}><Observations /></RequireAuth>} />
         <Route path="profesor/disponibilidad" element={<RequireAuth allowedRoles={['Profesor']}><TeacherAvailability /></RequireAuth>} />

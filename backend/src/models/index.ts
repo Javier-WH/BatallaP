@@ -130,6 +130,7 @@ import QualificationAudit from './QualificationAudit';
 import RevisionPeriod from './RevisionPeriod';
 import InscriptionSubjectRevision from './InscriptionSubjectRevision';
 import RevisionThematicSelection from './RevisionThematicSelection';
+import RevisionOpportunityDate from './RevisionOpportunityDate';
 import InscriptionGroupTermChoice from './InscriptionGroupTermChoice';
 import ThematicComponent from './ThematicComponent';
 import ThematicContent from './ThematicContent';
@@ -445,6 +446,14 @@ RevisionThematicSelection.belongsTo(PeriodGradeSubject, { foreignKey: 'periodGra
 Section.hasMany(RevisionThematicSelection, { foreignKey: 'sectionId', as: 'revisionThematicSelections' });
 RevisionThematicSelection.belongsTo(Section, { foreignKey: 'sectionId', as: 'section' });
 
+// Revision opportunity dates (per subject+section+opportunity within a revision period)
+RevisionPeriod.hasMany(RevisionOpportunityDate, { foreignKey: 'revisionPeriodId', as: 'opportunityDates' });
+RevisionOpportunityDate.belongsTo(RevisionPeriod, { foreignKey: 'revisionPeriodId', as: 'revisionPeriod' });
+PeriodGradeSubject.hasMany(RevisionOpportunityDate, { foreignKey: 'periodGradeSubjectId', as: 'revisionOpportunityDates' });
+RevisionOpportunityDate.belongsTo(PeriodGradeSubject, { foreignKey: 'periodGradeSubjectId', as: 'periodGradeSubject' });
+Section.hasMany(RevisionOpportunityDate, { foreignKey: 'sectionId', as: 'revisionOpportunityDates' });
+RevisionOpportunityDate.belongsTo(Section, { foreignKey: 'sectionId', as: 'section' });
+
 // InscriptionGroupTermChoice — per-term subject choice within a SubjectGroup.
 Inscription.hasMany(InscriptionGroupTermChoice, { foreignKey: 'inscriptionId', as: 'groupTermChoices' });
 InscriptionGroupTermChoice.belongsTo(Inscription, { foreignKey: 'inscriptionId', as: 'inscription' });
@@ -622,6 +631,7 @@ export {
   RevisionPeriod,
   InscriptionSubjectRevision,
   RevisionThematicSelection,
+  RevisionOpportunityDate,
   InscriptionGroupTermChoice,
   ThematicComponent,
   ThematicContent,

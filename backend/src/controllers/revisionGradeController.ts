@@ -7,6 +7,7 @@ import {
   InscriptionSubjectRevision,
   PeriodGrade,
   PeriodGradeSubject,
+  RevisionOpportunityDate,
   RevisionPeriod,
   RevisionThematicSelection,
   SchoolPeriod,
@@ -380,5 +381,107 @@ export const saveRevisionThematicSelection = async (req: Request, res: Response)
   } catch (error: any) {
     console.error('[saveRevisionThematicSelection] Error:', error);
     return res.status(500).json({ message: error.message || 'Error al guardar selección temática' });
+  }
+};
+
+// ── Opportunity dates (per subject+section within a revision period) ──────
+
+/**
+ * Get the scheduled dates for each opportunity of a subject+section within
+ * the active revision period.
+ */
+export const getRevisionOpportunityDates = async (req: Request, res: Response) => {
+  try {
+    const periodGradeSubjectId = parseInt(req.query.pgsId as string, 10);
+    const sectionId = parseInt(req.query.sectionId as string, 10);
+    if (!periodGradeSubjectId || !sectionId) {
+      return res.status(400).json({ message: 'pgsId y sectionId son requeridos' });
+    }
+
+    const activePeriod = await SchoolPeriod.findOne({ where: { status: 'activo' } });
+    if (!activePeriod) {
+      return res.status(404).json({ message: 'No hay un período activo' });
+    }
+
+    const revisionPeriod = await RevisionPeriod.findOne({
+      where: { schoolPeriodId: activePeriod.id },
+    });
+    if (!revisionPeriod) {
+      return res.json({ dates: [] });
+    }
+
+    const rows = await RevisionOpportunityDate.findAll({
+      where: {
+        revisionPeriodId: revisionPeriod.id,
+        periodGradeSubjectId,
+        sectionId,
+      },
+      order: [['opportunity', 'ASC']],
+    });
+
+    return res.json({
+      dates: rows.map((r: any) => ({ opportunity: r.opportunity, date: r.date })),
+    });
+  } catch (error: any) {
+    console.error('[getRevisionOpportunityDates] Error:', error);
+    return res.status(500).json({ message: error.message || 'Error al obtener fechas' });
+  }
+};
+
+/**
+ * Save (upsert) the scheduled dates for each opportunity of a subject+section
+ * within the active revision period.
+ */
+export const saveRevisionOpportunityDates = async (req: Request, res: Response) => {
+  try {
+    const { periodGradeSubjectId, sectionId, dates } = req.body as {
+      periodGradeSubjectId: number;
+      sectionId: number;
+      dates: Array<{ opportunity: number; date: string | null }>;
+    };
+    if (!periodGradeSubjectId || !sectionId) {
+      return res.status(400).json({ message: 'periodGradeSubjectId y sectionId son requeridos' });
+    }
+    if (!Array.isArray(dates)) {
+      return res.status(400).json({ message: 'dates debe ser un arreglo' });
+    }
+
+    const activePeriod = await SchoolPeriod.findOne({ where: { status: 'activo' } });
+    if (!activePeriod) {
+      return res.status(404).json({ message: 'No hay un período activo' });
+    }
+
+    const revisionPeriod = await RevisionPeriod.findOne({
+      where: { schoolPeriodId: activePeriod.id },
+    });
+    if (!revisionPeriod) {
+      return res.status(404).json({ message: 'No hay período de reparación' });
+    }
+
+    for (const { opportunity, date } of dates) {
+      const [row, created] = await RevisionOpportunityDate.findOrCreate({
+        where: {
+          revisionPeriodId: revisionPeriod.id,
+          periodGradeSubjectId,
+          sectionId,
+          opportunity,
+        },
+        defaults: {
+          revisionPeriodId: revisionPeriod.id,
+          periodGradeSubjectId,
+          sectionId,
+          opportunity,
+          date: date || null,
+        },
+      });
+      if (!created) {
+        await row.update({ date: date || null });
+      }
+    }
+
+    return res.json({ message: 'Fechas guardadas' });
+  } catch (error: any) {
+    console.error('[saveRevisionOpportunityDates] Error:', error);
+    return res.status(500).json({ message: error.message || 'Error al guardar fechas' });
   }
 };

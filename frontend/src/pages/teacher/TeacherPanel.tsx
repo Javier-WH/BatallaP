@@ -1,16 +1,13 @@
 import React, { useState, useEffect, useCallback, Component, useMemo } from 'react';
 import type { ReactNode, ErrorInfo } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Tabs, Card, Table, Button, message, Space, Tag, Alert, Empty, Tooltip, Modal, Checkbox } from 'antd';
-import { BookOutlined, PlusOutlined, DeleteOutlined, EditOutlined, LockOutlined, FilePdfOutlined, DownloadOutlined, ToolOutlined, CopyOutlined, PrinterOutlined } from '@ant-design/icons';
+import { Tabs, Card, Table, Button, message, Space, Tag, Alert, Empty, Tooltip, Modal, Checkbox, DatePicker, Spin } from 'antd';
+import { BookOutlined, PlusOutlined, DeleteOutlined, EditOutlined, LockOutlined, FilePdfOutlined, DownloadOutlined, ToolOutlined, CopyOutlined, PrinterOutlined, CalendarOutlined, SaveOutlined, FormOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { isAxiosError } from 'axios';
 import api from '@/services/api';
 import dayjs from 'dayjs';
-import { sortNominaStudents, compareNominaStudents } from '@/utils/studentSort';
-import { useGradeRounding } from '@/context/GradeRoundingContext';
+import { compareNominaStudents } from '@/utils/studentSort';
 import { useSchool } from '@/context/SchoolContext';
-import { formatGrade } from '@/utils/gradeFormat';
 import { generateSingleNomina } from '@/utils/generateNomina';
 import EvaluationPlanPDFModal from '@/components/pdf/EvaluationPlanPDFModal';
 import type { EvaluationPlanHeaderData, EvaluationPlanRowData } from '@/components/pdf/EvaluationPlanPDF';
@@ -215,6 +212,40 @@ interface Assignment {
   };
 }
 
+interface RevisionItem {
+  id: number;
+  opportunity: number;
+  score: number | null;
+  status: string;
+}
+
+interface StudentRevisionData {
+  inscriptionSubjectId: number;
+  studentId: number;
+  studentName: string;
+  document: string;
+  documentType: string;
+  originalScore: number | null;
+  maxOpportunities: number;
+  revisions: RevisionItem[];
+}
+
+interface RevisionAssignmentDetail {
+  periodGradeSubjectId: number;
+  subjectName: string;
+  passingGrade: number;
+  maxOpportunities: number;
+  students: StudentRevisionData[];
+}
+
+interface RevisionAssignment {
+  periodGradeSubjectId: number;
+  subjectName: string;
+  gradeName: string;
+  sectionName: string;
+  sectionId: number;
+}
+
 interface ThematicComponentData {
   id: number;
   title: string;
@@ -236,7 +267,6 @@ interface ExpectedLearningData {
 }
 
 const TeacherPanel: React.FC = () => {
-  const navigate = useNavigate();
   const { viewPeriod, isReadOnly } = useSchool();
   const [loading, setLoading] = useState(false);
   const [assignments, setAssignments] = useState<Assignment[]>([]);
@@ -261,11 +291,20 @@ const TeacherPanel: React.FC = () => {
   const [instrumentoOptions, setInstrumentoOptions] = useState<CatalogOption[]>([]);
   const [estrategiaOptions, setEstrategiaOptions] = useState<CatalogOption[]>([]);
   const [revisionOpen, setRevisionOpen] = useState(false);
+  // Repair mode state
+  const [repairMode, setRepairMode] = useState(false);
+  const [revisionAssignments, setRevisionAssignments] = useState<RevisionAssignment[]>([]);
+  const [selectedRevisionKey, setSelectedRevisionKey] = useState<string | null>(null);
+  const [revisionDetail, setRevisionDetail] = useState<RevisionAssignmentDetail | null>(null);
+  const [revisionGrades, setRevisionGrades] = useState<Record<number, number | null>>({});
+  const [opportunityDates, setOpportunityDates] = useState<Record<number, string | null>>({});
+  const [revisionSaving, setRevisionSaving] = useState(false);
+  const [datesSaving, setDatesSaving] = useState(false);
+  const [revisionLoading, setRevisionLoading] = useState(false);
   const [copyModalOpen, setCopyModalOpen] = useState(false);
   const [copyTargetSectionIds, setCopyTargetSectionIds] = useState<number[]>([]);
   const [copySubmitting, setCopySubmitting] = useState(false);
   const [nominaGenerating, setNominaGenerating] = useState(false);
-  const { enableRounding } = useGradeRounding();
   const dragScroll = useDragScroll<HTMLDivElement>();
   // null = all closed (term globally blocked), array = specific { sectionId, gradeId } closed
   const [closedSections, setClosedSections] = useState<{ sectionId: number; gradeId: number }[] | null>(null);
@@ -640,6 +679,181 @@ const TeacherPanel: React.FC = () => {
     };
     fetchRevisionStatus();
   }, [viewPeriod]);
+
+  // ── Repair mode: load revision assignments + detail ──────────────
+  const loadRevisionAssignments = useCallback(async () => {
+    setRevisionLoading(true);
+    try {
+      const res = await api.get('/revision-grades/my-assignments');
+      const loaded: RevisionAssignment[] = res.data.assignments || [];
+      setRevisionAssignments(loaded);
+      if (loaded.length > 0) {
+        setSelectedRevisionKey(`${loaded[0].periodGradeSubjectId}-${loaded[0].sectionId}`);
+      } else {
+        setSelectedRevisionKey(null);
+      }
+    } catch (error: any) {
+      message.error(error?.response?.data?.message || 'Error al cargar asignaciones de reparación');
+      setRevisionAssignments([]);
+    } finally {
+      setRevisionLoading(false);
+    }
+  }, []);
+
+  const selectedRevisionAssignment = useMemo(() => {
+    return revisionAssignments.find(
+      a => `${a.periodGradeSubjectId}-${a.sectionId}` === selectedRevisionKey
+    ) || null;
+  }, [revisionAssignments, selectedRevisionKey]);
+
+  const revisionSubjects = useMemo(() => {
+    return Array.from(new Set(revisionAssignments.map(a => a.subjectName)))
+      .sort((a, b) => a.localeCompare(b, 'es'));
+  }, [revisionAssignments]);
+
+  const revisionGradesBySubject = useMemo(() => {
+    const subjectName = selectedRevisionAssignment?.subjectName;
+    if (!subjectName) return [];
+    return Array.from(new Set(
+      revisionAssignments
+        .filter(a => a.subjectName === subjectName)
+        .map(a => a.gradeName)
+    )).sort((a, b) => gradeOrder(a) - gradeOrder(b));
+  }, [revisionAssignments, selectedRevisionAssignment]);
+
+  const revisionSections = useMemo(() => {
+    const subjectName = selectedRevisionAssignment?.subjectName;
+    const gradeName = selectedRevisionAssignment?.gradeName;
+    if (!subjectName || !gradeName) return [];
+    return revisionAssignments
+      .filter(a => a.subjectName === subjectName && a.gradeName === gradeName)
+      .sort((a, b) => a.sectionName.localeCompare(b.sectionName, 'es'));
+  }, [revisionAssignments, selectedRevisionAssignment]);
+
+  useEffect(() => {
+    if (!repairMode || !selectedRevisionKey) {
+      setRevisionDetail(null);
+      setRevisionGrades({});
+      setOpportunityDates({});
+      return;
+    }
+    const pgsId = selectedRevisionAssignment?.periodGradeSubjectId;
+    const sectionId = selectedRevisionAssignment?.sectionId;
+    if (!pgsId || !sectionId) return;
+
+    let cancelled = false;
+    const loadDetail = async () => {
+      setRevisionLoading(true);
+      try {
+        const [detailRes, datesRes] = await Promise.all([
+          api.get(`/revision-grades/my-assignments/${pgsId}`, { params: { sectionId } }),
+          api.get('/revision-grades/opportunity-dates', { params: { pgsId, sectionId } }),
+        ]);
+        if (cancelled) return;
+        setRevisionDetail(detailRes.data);
+        const initialGrades: Record<number, number | null> = {};
+        (detailRes.data.students || []).forEach((s: StudentRevisionData) => {
+          (s.revisions || []).forEach((r: RevisionItem) => {
+            initialGrades[r.id] = r.score;
+          });
+        });
+        setRevisionGrades(initialGrades);
+        const datesMap: Record<number, string | null> = {};
+        (datesRes.data.dates || []).forEach((d: { opportunity: number; date: string | null }) => {
+          datesMap[d.opportunity] = d.date;
+        });
+        setOpportunityDates(datesMap);
+      } catch (error: any) {
+        if (!cancelled) message.error(error?.response?.data?.message || 'Error al cargar detalle de reparación');
+      } finally {
+        if (!cancelled) setRevisionLoading(false);
+      }
+    };
+    loadDetail();
+    return () => { cancelled = true; };
+  }, [repairMode, selectedRevisionKey, selectedRevisionAssignment]);
+
+  const handleSaveRevisionGrades = async () => {
+    if (!revisionDetail || !viewPeriod) return;
+    setRevisionSaving(true);
+    try {
+      const allowedRevisionIds = new Set(
+        (revisionDetail.students || []).flatMap(student =>
+          student.revisions
+            .filter(revision => revision.opportunity <= (revisionDetail.maxOpportunities ?? Infinity))
+            .map(revision => revision.id)
+        )
+      );
+      const gradesList = Object.entries(revisionGrades)
+        .filter(([id, score]) => score != null && allowedRevisionIds.has(Number(id)))
+        .map(([id, score]) => ({ revisionId: Number(id), score }));
+
+      if (gradesList.length === 0) {
+        message.warning('No hay notas para guardar');
+        setRevisionSaving(false);
+        return;
+      }
+
+      const res = await api.put(`/revision-periods/${viewPeriod.id}/revisions/bulk`, { grades: gradesList });
+      message.success(res.data.message || 'Notas guardadas');
+      // Reload detail
+      const pgsId = selectedRevisionAssignment?.periodGradeSubjectId;
+      const sectionId = selectedRevisionAssignment?.sectionId;
+      if (pgsId && sectionId) {
+        const detailRes = await api.get(`/revision-grades/my-assignments/${pgsId}`, { params: { sectionId } });
+        setRevisionDetail(detailRes.data);
+        const updated: Record<number, number | null> = {};
+        (detailRes.data.students || []).forEach((s: StudentRevisionData) => {
+          (s.revisions || []).forEach((r: RevisionItem) => {
+            updated[r.id] = r.score;
+          });
+        });
+        setRevisionGrades(updated);
+      }
+    } catch (error: any) {
+      message.error(error?.response?.data?.message || 'Error al guardar notas');
+    } finally {
+      setRevisionSaving(false);
+    }
+  };
+
+  const handleSaveOpportunityDates = async () => {
+    const pgsId = selectedRevisionAssignment?.periodGradeSubjectId;
+    const sectionId = selectedRevisionAssignment?.sectionId;
+    if (!pgsId || !sectionId || !revisionDetail) return;
+    setDatesSaving(true);
+    try {
+      const dates = Array.from({ length: revisionDetail.maxOpportunities }, (_, i) => ({
+        opportunity: i + 1,
+        date: opportunityDates[i + 1] || null,
+      }));
+      await api.put('/revision-grades/opportunity-dates', {
+        periodGradeSubjectId: pgsId,
+        sectionId,
+        dates,
+      });
+      message.success('Fechas guardadas');
+    } catch (error: any) {
+      message.error(error?.response?.data?.message || 'Error al guardar fechas');
+    } finally {
+      setDatesSaving(false);
+    }
+  };
+
+  const enterRepairMode = () => {
+    setRepairMode(true);
+    setActiveTab('1');
+    loadRevisionAssignments();
+  };
+
+  const exitRepairMode = () => {
+    setRepairMode(false);
+    setRevisionDetail(null);
+    setRevisionGrades({});
+    setOpportunityDates({});
+    setRevisionAssignments([]);
+    setSelectedRevisionKey(null);
+  };
 
   // Derive unique subjects from all assignments (sorted by PeriodGradeSubject.order)
   const availableSubjects = useMemo(() => {
@@ -1274,6 +1488,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
   };
 
   const handleReorderContents = async (componentId: number, contentIds: number[]) => {
+    void componentId;
     try {
       await api.patch('/thematic-components/contents/reorder', { contentIds });
       fetchThematicComponents();
@@ -1402,6 +1617,69 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
           <div className="app-card app-card-hover p-5 flex flex-col">
             <span className="text-[10px] font-bold uppercase tracking-widest mb-2" style={{ color: 'var(--color-text-muted)' }}>Seleccionar Asignatura</span>
 
+            {repairMode ? (
+              <Spin spinning={revisionLoading}>
+                {revisionAssignments.length === 0 ? (
+                  <Empty description="No tienes materias con estudiantes pendientes de reparación" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                ) : (
+                  <>
+                    <div className="flex gap-2.5 overflow-x-auto pb-2 shrink-0" style={{ minHeight: 64, scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+                      {revisionSubjects.map(subjectName => {
+                        const isSelected = selectedRevisionAssignment?.subjectName === subjectName;
+                        const { Icon, color } = getSubjectVisual({ name: subjectName });
+                        const firstAssignment = revisionAssignments.find(a => a.subjectName === subjectName);
+                        return (
+                          <div
+                            key={subjectName}
+                            onClick={() => firstAssignment && setSelectedRevisionKey(`${firstAssignment.periodGradeSubjectId}-${firstAssignment.sectionId}`)}
+                            className="cursor-pointer min-w-[180px] rounded-xl p-3 transition-all flex items-center gap-3 border-none"
+                            style={{ backgroundColor: isSelected ? 'var(--color-accent)' : 'var(--color-inactive)', color: isSelected ? 'var(--color-header-text)' : 'var(--color-text-main)' }}
+                          >
+                            <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: isSelected ? 'rgba(255,255,255,0.2)' : withAlpha(color, 0.12) }}>
+                              <Icon style={{ color: isSelected ? '#fff' : color, fontSize: 18 }} />
+                            </div>
+                            <div className="font-bold text-sm leading-tight" style={{ color: 'inherit' }}>{subjectName}</div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div className="flex gap-2 mt-3 w-full" style={{ minHeight: 40 }}>
+                      {revisionGradesBySubject.map(gradeName => {
+                        const isSelected = selectedRevisionAssignment?.gradeName === gradeName;
+                        const firstAssignment = revisionAssignments.find(a => a.subjectName === selectedRevisionAssignment?.subjectName && a.gradeName === gradeName);
+                        return (
+                          <button
+                            key={gradeName}
+                            onClick={() => firstAssignment && setSelectedRevisionKey(`${firstAssignment.periodGradeSubjectId}-${firstAssignment.sectionId}`)}
+                            className="flex-1 py-2.5 text-sm font-bold rounded-lg transition-all border-none cursor-pointer"
+                            style={{ backgroundColor: isSelected ? 'var(--color-accent)' : 'var(--color-inactive)', color: isSelected ? 'var(--color-header-text)' : 'var(--color-text-main)' }}
+                          >
+                            {gradeName}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div className="flex gap-2 mt-2 w-full" style={{ minHeight: 40 }}>
+                      {revisionSections.map(assignment => {
+                        const isSelected = `${assignment.periodGradeSubjectId}-${assignment.sectionId}` === selectedRevisionKey;
+                        return (
+                          <button
+                            key={`${assignment.periodGradeSubjectId}-${assignment.sectionId}`}
+                            onClick={() => setSelectedRevisionKey(`${assignment.periodGradeSubjectId}-${assignment.sectionId}`)}
+                            className="flex-1 py-2.5 text-sm font-bold rounded-lg transition-all border-none cursor-pointer"
+                            style={{ backgroundColor: isSelected ? 'var(--color-accent)' : 'var(--color-inactive)', color: isSelected ? 'var(--color-header-text)' : 'var(--color-text-main)' }}
+                          >
+                            {assignment.sectionName}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
+              </Spin>
+            ) : (
+            <>
+
             {/* Nivel 1: Materia (scroll horizontal con drag, sin repetir, con icono+color) */}
             <div
               ref={dragScroll.ref}
@@ -1493,6 +1771,8 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                 );
               })}
             </div>
+            </>
+            )}
           </div>
 
           {/* Lazos */}
@@ -1513,7 +1793,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                 return (
                   <button
                     key={term.id}
-                    onClick={() => !isFuture && setSelectedTerm(term.id)}
+                    onClick={() => { if (!isFuture) { if (repairMode) exitRepairMode(); setSelectedTerm(term.id); } }}
                     disabled={isFuture}
                     className="flex-1 py-2 text-sm font-bold rounded-lg transition-all flex justify-center items-center gap-2 border-none"
                     style={{
@@ -1528,19 +1808,23 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                   </button>
                 );
               })}
-              {availableTerms.length === 0 && <div className="text-[var(--color-text-muted)] text-sm text-center w-full py-2">Sin lapsos</div>}
+              {revisionOpen && (
+                <button
+                  key="repair-period"
+                  onClick={enterRepairMode}
+                  className="flex-1 py-2 text-sm font-bold rounded-lg transition-all flex justify-center items-center gap-2 border-none"
+                  style={{
+                    backgroundColor: repairMode ? 'var(--color-accent)' : 'var(--color-inactive)',
+                    color: repairMode ? 'var(--color-header-text)' : 'var(--color-text-main)',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <ToolOutlined />
+                  Reparación
+                </button>
+              )}
+              {availableTerms.length === 0 && !revisionOpen && <div className="text-[var(--color-text-muted)] text-sm text-center w-full py-2">Sin lapsos</div>}
             </div>
-            {revisionOpen && (
-              <Button
-                icon={<ToolOutlined />}
-                onClick={() => navigate('/profesor/reparacion')}
-                style={{ marginTop: 12, width: '100%' }}
-                type="primary"
-                danger
-              >
-                Reparación de Materias
-              </Button>
-            )}
           </div>
         </div>
 
@@ -1598,6 +1882,28 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
           activeKey={activeTab}
           tabBarExtraContent={(
             <div className="flex items-center gap-4">
+              {repairMode && activeTab === 'repair-grades' && revisionDetail && (
+                <Button
+                  type="primary"
+                  icon={<SaveOutlined />}
+                  onClick={handleSaveRevisionGrades}
+                  loading={revisionSaving}
+                >
+                  Guardar notas
+                </Button>
+              )}
+              {repairMode && activeTab === 'repair-dates' && revisionDetail && (
+                <Button
+                  type="primary"
+                  icon={<SaveOutlined />}
+                  onClick={handleSaveOpportunityDates}
+                  loading={datesSaving}
+                >
+                  Guardar fechas
+                </Button>
+              )}
+              {!repairMode && (
+                <>
               {false && (
                 <Button
                   icon={<FilePdfOutlined />}
@@ -1624,11 +1930,13 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
               >
                 Imprimir Nómina
               </Button>
+                </>
+              )}
             </div>
           )}
           onChange={(key) => {
             setActiveTab(key);
-            if (key === '2' || key === '3') {
+            if (!repairMode && (key === '2' || key === '3')) {
               fetchPlanAndStudents();
             }
           }}
@@ -1656,6 +1964,158 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                 </div>
               )
             },
+            ...(repairMode ? [
+            {
+              key: 'repair-dates',
+              label: <span className="font-bold text-[15px] px-4 py-1"><CalendarOutlined /> Fechas de Oportunidades</span>,
+              children: (
+                <div className="pt-4">
+                  {!revisionDetail ? (
+                    <Empty description="Seleccione una materia y sección con estudiantes pendientes" />
+                  ) : (
+                    <Card bodyStyle={{ padding: 16 }} style={{ backgroundColor: 'var(--color-content-bg)', border: '1px solid rgba(15, 23, 42, 0.08)' }}>
+                      <div className="flex items-center justify-between mb-4">
+                        <h3 className="font-bold text-base m-0" style={{ color: 'var(--color-text-main)' }}>Fechas de cada oportunidad</h3>
+                        <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                          {selectedRevisionAssignment?.gradeName} — {selectedRevisionAssignment?.sectionName} — {selectedRevisionAssignment?.subjectName}
+                        </span>
+                      </div>
+                      <div className="flex flex-col gap-4">
+                        {Array.from({ length: revisionDetail.maxOpportunities }, (_, i) => i + 1).map(opp => (
+                          <div key={opp} className="flex items-center gap-4">
+                            <span className="font-bold text-sm w-40" style={{ color: 'var(--color-text-main)' }}>Oportunidad {opp}:</span>
+                            <DatePicker
+                              format="DD/MM/YYYY"
+                              value={opportunityDates[opp] ? dayjs(opportunityDates[opp]) : null}
+                              onChange={(date) => {
+                                setOpportunityDates(prev => ({ ...prev, [opp]: date ? date.format('YYYY-MM-DD') : null }));
+                              }}
+                              style={{ width: 200 }}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    </Card>
+                  )}
+                </div>
+              )
+            },
+            {
+              key: 'repair-grades',
+              label: <span className="font-bold text-[15px] px-4 py-1"><FormOutlined /> Notas</span>,
+              children: (
+                <div className="pt-4">
+                  {!revisionDetail ? (
+                    <Empty description="Seleccione una materia y sección con estudiantes pendientes" />
+                  ) : revisionDetail.students.length === 0 ? (
+                    <Empty description="No hay estudiantes pendientes de reparación en esta materia" />
+                  ) : (
+                    <>
+                      <Alert
+                        type="info"
+                        message={
+                          <Space>
+                            <span>Nota de aprobación: <strong>{revisionDetail.passingGrade}</strong></span>
+                            <span>·</span>
+                            <span>Intentos: <strong>{revisionDetail.maxOpportunities}</strong></span>
+                          </Space>
+                        }
+                        style={{ marginBottom: 16 }}
+                      />
+                      <Card bodyStyle={{ padding: 0 }} style={{ overflow: 'hidden', backgroundColor: 'var(--color-content-bg)', border: '1px solid rgba(15, 23, 42, 0.08)' }}>
+                        <div style={{ overflowX: 'auto', maxHeight: 'calc(100vh - 350px)' }}>
+                          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, border: '1px solid rgba(15, 23, 42, 0.08)' }}>
+                            <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
+                              <tr>
+                                <th style={{ padding: '4px 6px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', backgroundColor: 'color-mix(in srgb, var(--color-text-main) 6%, var(--color-content-bg))', fontWeight: 700, fontSize: 11, whiteSpace: 'nowrap', color: 'var(--color-text-main)', width: 36 }}>#</th>
+                                <th style={{ padding: '4px 6px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', backgroundColor: 'color-mix(in srgb, var(--color-text-main) 6%, var(--color-content-bg))', fontWeight: 700, fontSize: 11, whiteSpace: 'nowrap', color: 'var(--color-text-main)' }}>Cédula</th>
+                                <th style={{ padding: '4px 6px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'left', backgroundColor: 'color-mix(in srgb, var(--color-text-main) 6%, var(--color-content-bg))', fontWeight: 700, fontSize: 11, whiteSpace: 'nowrap', color: 'var(--color-text-main)' }}>Estudiante</th>
+                                {Array.from({ length: revisionDetail.maxOpportunities }, (_, i) => i + 1).map(opp => (
+                                  <th key={opp} style={{ padding: '4px 6px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', backgroundColor: 'color-mix(in srgb, var(--color-text-main) 6%, var(--color-content-bg))', fontWeight: 700, fontSize: 11, whiteSpace: 'nowrap', color: 'var(--color-text-main)' }}>
+                                    Oport. {opp}
+                                  </th>
+                                ))}
+                                <th style={{ padding: '4px 6px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', backgroundColor: 'color-mix(in srgb, var(--color-text-main) 6%, var(--color-content-bg))', fontWeight: 700, fontSize: 11, whiteSpace: 'nowrap', color: 'var(--color-text-main)' }}>Resultado</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {revisionDetail.students.map((student, rowIndex) => {
+                                const nationalityMap: Record<string, string> = {
+                                  'Venezolano': 'V', 'Extranjero': 'E', 'Pasaporte': 'P', 'Cedula Escolar': 'CE'
+                                };
+                                const natPrefix = nationalityMap[student.documentType] || 'V';
+                                const revisionsByOpp = new Map<number, RevisionItem>();
+                                student.revisions.forEach(r => revisionsByOpp.set(r.opportunity, r));
+                                const hasApproved = student.revisions.some(r => r.status === 'approved');
+                                const allFailed = student.revisions.length > 0 && student.revisions.every(r => r.status === 'failed' || (r.score === null && r.status === 'pending'));
+                                const resultStatus = hasApproved ? 'approved' : allFailed ? 'failed' : 'pending';
+                                return (
+                                  <tr key={student.inscriptionSubjectId} className="grading-row">
+                                    <td style={{ padding: '2px 4px', border: '1px solid var(--color-text-muted)', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-content-bg)' : 'color-mix(in srgb, var(--color-text-main) 2%, var(--color-content-bg))', fontSize: 11, fontWeight: 600, color: 'var(--color-text-muted)' }}>
+                                      {rowIndex + 1}
+                                    </td>
+                                    <td style={{ padding: '2px 4px', border: '1px solid var(--color-text-muted)', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-content-bg)' : 'color-mix(in srgb, var(--color-text-main) 2%, var(--color-content-bg))', fontSize: 11, fontWeight: 500 }}>
+                                      {natPrefix}-{student.document || '-'}
+                                    </td>
+                                    <td style={{ padding: '2px 6px', border: '1px solid var(--color-text-muted)', textAlign: 'left', background: rowIndex % 2 === 0 ? 'var(--color-content-bg)' : 'color-mix(in srgb, var(--color-text-main) 2%, var(--color-content-bg))', fontSize: 12 }}>
+                                      {student.studentName}
+                                    </td>
+                                    {Array.from({ length: revisionDetail.maxOpportunities }, (_, i) => i + 1).map(opp => {
+                                      const rev = revisionsByOpp.get(opp);
+                                      const isLocked = rev?.status === 'approved' || rev?.status === 'failed';
+                                      if (!rev) {
+                                        return <td key={opp} style={{ padding: '2px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-content-bg)' : 'color-mix(in srgb, var(--color-text-main) 2%, var(--color-content-bg))', width: '60px' }}>—</td>;
+                                      }
+                                      return (
+                                        <td key={opp} className="grading-cell" style={{ padding: '2px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-content-bg)' : 'color-mix(in srgb, var(--color-text-main) 2%, var(--color-content-bg))', width: '60px' }}>
+                                          <input
+                                            type="number"
+                                            min={0}
+                                            max={revisionDetail.passingGrade > 0 ? revisionDetail.passingGrade * 2 : 20}
+                                            step={1}
+                                            inputMode="numeric"
+                                            pattern="[0-9]*"
+                                            defaultValue={revisionGrades[rev.id] != null ? padGrade(Number(revisionGrades[rev.id])) : ''}
+                                            key={`${rev.id}-${revisionGrades[rev.id]}`}
+                                            disabled={isLocked}
+                                            onChange={(e) => {
+                                              const raw = e.target.value;
+                                              setRevisionGrades(prev => ({ ...prev, [rev.id]: raw === '' ? null : Number(raw) }));
+                                            }}
+                                            style={{
+                                              width: '48px',
+                                              textAlign: 'center',
+                                              border: 'none',
+                                              outline: 'none',
+                                              background: 'transparent',
+                                              fontSize: 12,
+                                              padding: 0,
+                                              color: revisionGrades[rev.id] != null && Number(revisionGrades[rev.id]) > 0 && Number(revisionGrades[rev.id]) < revisionDetail.passingGrade ? '#dc2626' : undefined,
+                                              fontWeight: revisionGrades[rev.id] != null && Number(revisionGrades[rev.id]) > 0 && Number(revisionGrades[rev.id]) < revisionDetail.passingGrade ? 700 : undefined,
+                                            }}
+                                          />
+                                          {isLocked && <LockOutlined style={{ fontSize: 9, color: '#999', marginLeft: 2 }} />}
+                                        </td>
+                                      );
+                                    })}
+                                    <td style={{ padding: '2px 4px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-content-bg)' : 'color-mix(in srgb, var(--color-text-main) 2%, var(--color-content-bg))', fontWeight: 700, fontSize: 12 }}>
+                                      <Tag color={resultStatus === 'approved' ? 'green' : resultStatus === 'failed' ? 'red' : 'default'} style={{ margin: 0 }}>
+                                        {resultStatus === 'approved' ? 'Aprobado' : resultStatus === 'failed' ? 'Reprobado' : 'Pendiente'}
+                                      </Tag>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </Card>
+                    </>
+                  )}
+                </div>
+              )
+            },
+            ] : [
             {
               key: '2',
               label: <span className="font-bold text-[15px] px-4 py-1">Evaluaciones Programadas</span>,
@@ -2093,8 +2553,8 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
               </>
             )
           }
-        ]}
-      />
+        ])]}
+        />
       </div>
 
       {selectedAssignmentId && selectedTerm && (() => {

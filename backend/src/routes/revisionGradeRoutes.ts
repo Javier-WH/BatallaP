@@ -7,5 +7,7 @@ router.get('/my-assignments', revisionGradeController.getMyRevisionAssignments);
 router.get('/my-assignments/:periodGradeSubjectId', revisionGradeController.getMyRevisionAssignmentDetail);
 router.get('/thematic-selection', revisionGradeController.getRevisionThematicSelection);
 router.put('/thematic-selection', revisionGradeController.saveRevisionThematicSelection);
+router.get('/opportunity-dates', revisionGradeController.getRevisionOpportunityDates);
+router.put('/opportunity-dates', revisionGradeController.saveRevisionOpportunityDates);
 
 export default router;
