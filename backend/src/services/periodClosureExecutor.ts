@@ -120,7 +120,7 @@ export class PeriodClosureExecutor {
     // 'open' means revisions are still in progress and cannot be used for closure.
     const revisionPeriod = await RevisionPeriod.findOne({ where: { schoolPeriodId } });
     if (revisionPeriod && revisionPeriod.status === 'open') {
-      errors.push('El período de reparación debe estar completado antes de ejecutar el cierre de período');
+      errors.push('El período de revisión debe estar completado antes de ejecutar el cierre de período');
     }
 
     const inscriptions = await Inscription.findAll({

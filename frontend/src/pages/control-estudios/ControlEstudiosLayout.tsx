@@ -45,7 +45,7 @@ const ControlEstudiosLayout: React.FC = () => {
     { path: '/control-estudios/horarios', icon: <CalendarOutlined />, label: 'Horarios', tooltip: 'Gestión de Horarios' },
     { path: '/control-estudios/resumen-rendimiento', icon: <FileExcelOutlined />, label: 'Resumen', tooltip: 'Resumen de Rendimiento Estudiantil' },
     { path: '/control-estudios/promedios-generales', icon: <TrophyOutlined />, label: 'Promedios', tooltip: 'Promedios Generales y Posiciones' },
-    { path: '/control-estudios/reparacion', icon: <ToolOutlined />, label: 'Reparación', tooltip: 'Período de Reparación de Materias' },
+    { path: '/control-estudios/reparacion', icon: <ToolOutlined />, label: 'Revisión', tooltip: 'Período de Revisión de Materias' },
     { path: '/control-estudios/materia-pendiente', icon: <AlertOutlined />, label: 'Materia Pendiente', tooltip: 'Gestión de Materias Pendientes' },
   ];
 

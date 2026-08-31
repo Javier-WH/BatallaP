@@ -1626,7 +1626,7 @@ const PerformanceSummary: React.FC = () => {
                   <h2 className="rb-info-title">Qué incluye cada reporte</h2>
                   <ul className="rb-info-list">
                     <li><IconCheck size={15} /><span><b>Resumen Final</b>: Excel con el promedio final de notas por estudiante, usando plantilla configurada. Columnas: Nro, Apellidos, Nombres, Lugar de Nacimiento, EF, Día, Mes, Año, y materias con encabezados abreviados.</span></li>
-                    <li><IconCheck size={15} /><span><b>Resumen de Revisión</b>: Igual al Resumen Final pero solo incluye estudiantes con reparación y las materias que tienen notas de reparación registradas.</span></li>
+                    <li><IconCheck size={15} /><span><b>Resumen de Revisión</b>: Igual al Resumen Final pero solo incluye estudiantes con revisión y las materias que tienen notas de revisión registradas.</span></li>
                     <li><IconCheck size={15} /><span><b>Resumen de Materia Pendiente</b>: Igual al Resumen Final pero para la sección de Materia Pendiente del año seleccionado. Solo disponible del 1ro al penúltimo año.</span></li>
                     <li><IconCheck size={15} /><span><b>Resumen del Rendimiento Anual</b>: Planilla tipo consejo de curso con columnas L1, L2, L3 y NF por materia. Muestra las notas finales de cada lapso y la definitiva.</span></li>
                   </ul>

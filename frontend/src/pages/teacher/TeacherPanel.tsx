@@ -697,7 +697,7 @@ const TeacherPanel: React.FC = () => {
         setSelectedRevisionKey(null);
       }
     } catch (error: any) {
-      message.error(error?.response?.data?.message || 'Error al cargar asignaciones de reparación');
+      message.error(error?.response?.data?.message || 'Error al cargar asignaciones de revisión');
       setRevisionAssignments([]);
     } finally {
       setRevisionLoading(false);
@@ -772,7 +772,7 @@ const TeacherPanel: React.FC = () => {
         });
         setOpportunityDates(datesMap);
       } catch (error: any) {
-        if (!cancelled) message.error(error?.response?.data?.message || 'Error al cargar detalle de reparación');
+        if (!cancelled) message.error(error?.response?.data?.message || 'Error al cargar detalle de revisión');
       } finally {
         if (!cancelled) setRevisionLoading(false);
       }
@@ -1642,7 +1642,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
             {repairMode ? (
               <Spin spinning={revisionLoading}>
                 {revisionAssignments.length === 0 ? (
-                  <Empty description="No tienes materias con estudiantes pendientes de reparación" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                  <Empty description="No tienes materias con estudiantes pendientes de revisión" image={Empty.PRESENTED_IMAGE_SIMPLE} />
                 ) : (
                   <>
                     <div className="flex gap-2.5 overflow-x-auto pb-2 shrink-0" style={{ minHeight: 64, scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
@@ -1842,7 +1842,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                   }}
                 >
                   <ToolOutlined />
-                  Reparación
+                  Revisión
                 </button>
               )}
               {availableTerms.length === 0 && !revisionOpen && <div className="text-[var(--color-text-muted)] text-sm text-center w-full py-2">Sin lapsos</div>}
@@ -1932,11 +1932,11 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                       link.remove();
                       window.URL.revokeObjectURL(url);
                     } catch {
-                      message.error('Error al generar Excel de reparación');
+                      message.error('Error al generar Excel de revisión');
                     }
                   }}
                 >
-                  Crear Excel de reparación
+                  Crear Excel de revisión
                 </Button>
               )}
               {repairMode && activeTab === 'repair-dates' && revisionDetail && (
@@ -2100,7 +2100,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                   {!revisionDetail ? (
                     <Empty description="Seleccione una materia y sección con estudiantes pendientes" />
                   ) : revisionDetail.students.length === 0 ? (
-                    <Empty description="No hay estudiantes pendientes de reparación en esta materia" />
+                    <Empty description="No hay estudiantes pendientes de revisión en esta materia" />
                   ) : (
                     <>
                       <Alert

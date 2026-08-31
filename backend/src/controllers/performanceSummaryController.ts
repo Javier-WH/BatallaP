@@ -1333,7 +1333,7 @@ export const exportRevisionSummary = async (req: Request, res: Response) => {
       where: { schoolPeriodId: Number(schoolPeriodId) },
     });
     if (!revisionPeriod) {
-      return res.status(404).json({ message: 'No hay período de reparación para este año escolar' });
+      return res.status(404).json({ message: 'No hay período de revisión para este año escolar' });
     }
 
     const gradeOrder = grade.order || 1;
@@ -1374,7 +1374,7 @@ export const exportRevisionSummary = async (req: Request, res: Response) => {
     });
 
     if (revisionEntries.length === 0) {
-      return res.status(404).json({ message: 'No hay estudiantes con reparación en esta sección' });
+      return res.status(404).json({ message: 'No hay estudiantes con revisión en esta sección' });
     }
 
     // A revision row is created for every enrolled subject when the repair
@@ -1395,7 +1395,7 @@ export const exportRevisionSummary = async (req: Request, res: Response) => {
     }
 
     if (revisionSubjectIds.size === 0) {
-      return res.status(404).json({ message: 'No hay notas de reparación registradas en esta sección' });
+      return res.status(404).json({ message: 'No hay notas de revisión registradas en esta sección' });
     }
 
     // Build a set of personIds (students) that have at least one graded revision
@@ -1446,7 +1446,7 @@ export const exportRevisionSummary = async (req: Request, res: Response) => {
     });
 
     if (inscriptions.length === 0) {
-      return res.status(404).json({ message: 'No hay estudiantes con reparación en esta sección' });
+      return res.status(404).json({ message: 'No hay estudiantes con revisión en esta sección' });
     }
 
     sortInscriptions(inscriptions as any[]);
@@ -1915,7 +1915,7 @@ export const exportRevisionSummary = async (req: Request, res: Response) => {
       for (let pageIdx = 0; pageIdx < pages; pageIdx++) {
         const studentOffset = pageIdx * MAX_STUDENTS_PER_SHEET;
         const pageCount = Math.min(group.length - studentOffset, MAX_STUDENTS_PER_SHEET);
-        fillGroupPage(pageSheets[pageIdx], group, studentOffset, 'Reparación', totalStudents, pageCount);
+        fillGroupPage(pageSheets[pageIdx], group, studentOffset, 'Revisión', totalStudents, pageCount);
       }
 
       return pageNames;
@@ -1925,13 +1925,13 @@ export const exportRevisionSummary = async (req: Request, res: Response) => {
     const allSheetNames: string[] = [];
     for (const dtg of docTypeGroups) {
       if (dtg.students.length === 0) continue;
-      const names = renderGroup(dtg.students, 'Reparación', dtg.label, isFirst);
+      const names = renderGroup(dtg.students, 'Revisión', dtg.label, isFirst);
       allSheetNames.push(...names);
       isFirst = false;
     }
 
     if (allSheetNames.length === 0) {
-      return res.status(404).json({ message: 'No hay estudiantes con reparación en esta sección' });
+      return res.status(404).json({ message: 'No hay estudiantes con revisión en esta sección' });
     }
 
     const keepNames = new Set<string>(allSheetNames);

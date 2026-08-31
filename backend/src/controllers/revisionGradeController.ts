@@ -173,7 +173,7 @@ export const getMyRevisionAssignmentDetail = async (req: Request, res: Response)
       where: { schoolPeriodId: activePeriod.id },
     });
     if (!revisionPeriod) {
-      return res.status(404).json({ message: 'No hay período de reparación' });
+      return res.status(404).json({ message: 'No hay período de revisión' });
     }
 
     const pgs = await PeriodGradeSubject.findByPk(periodGradeSubjectId, {
@@ -362,7 +362,7 @@ export const saveRevisionThematicSelection = async (req: Request, res: Response)
       where: { schoolPeriodId: activePeriod.id },
     });
     if (!revisionPeriod) {
-      return res.status(404).json({ message: 'No hay período de reparación' });
+      return res.status(404).json({ message: 'No hay período de revisión' });
     }
 
     const [selection, created] = await RevisionThematicSelection.findOrCreate({
@@ -478,7 +478,7 @@ export const saveRevisionOpportunityDates = async (req: Request, res: Response) 
       where: { schoolPeriodId: activePeriod.id },
     });
     if (!revisionPeriod) {
-      return res.status(404).json({ message: 'No hay período de reparación' });
+      return res.status(404).json({ message: 'No hay período de revisión' });
     }
 
     for (const { opportunity, date } of dates) {
@@ -523,7 +523,7 @@ export const exportRepairExcel = async (req: Request, res: Response) => {
     if (!activePeriod) return res.status(404).json({ message: 'No hay un período activo' });
 
     const revisionPeriod = await RevisionPeriod.findOne({ where: { schoolPeriodId: activePeriod.id } });
-    if (!revisionPeriod) return res.status(404).json({ message: 'No hay período de reparación' });
+    if (!revisionPeriod) return res.status(404).json({ message: 'No hay período de revisión' });
 
     const pgs = await PeriodGradeSubject.findByPk(periodGradeSubjectId, {
       include: [
@@ -621,7 +621,7 @@ export const exportRepairExcel = async (req: Request, res: Response) => {
 
     // Build workbook
     const workbook = new ExcelJS.Workbook();
-    const sheet = workbook.addWorksheet('Reparación');
+    const sheet = workbook.addWorksheet('Revisión');
 
     const logoPath = path.resolve(process.cwd(), 'public', 'uploads', 'images', 'Logo_ME_Batalla_H.png');
     const logoId = fs.existsSync(logoPath)
@@ -677,7 +677,7 @@ export const exportRepairExcel = async (req: Request, res: Response) => {
     // Period info
     sheet.mergeCells('A4:C4');
     sheet.mergeCells(`D4:${lastColLetter}4`);
-    sheet.getCell('A4').value = 'Período de Reparación';
+    sheet.getCell('A4').value = 'Período de Revisión';
     sheet.getCell('A4').font = { bold: true, size: 14 };
     sheet.getCell('A4').alignment = { horizontal: 'left', vertical: 'middle' };
     const periodName = String((pgs as any).periodGrade?.schoolPeriod?.name || '');
@@ -838,6 +838,6 @@ export const exportRepairExcel = async (req: Request, res: Response) => {
     res.send(buffer);
   } catch (error: any) {
     console.error('[exportRepairExcel] Error:', error);
-    return res.status(500).json({ message: error.message || 'Error al generar Excel de reparación' });
+    return res.status(500).json({ message: error.message || 'Error al generar Excel de revisión' });
   }
 };

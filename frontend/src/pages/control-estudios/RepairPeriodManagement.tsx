@@ -168,7 +168,7 @@ const RepairPeriodManagement: React.FC = () => {
     setActing(true);
     try {
       const res = await api.post(`/revision-periods/${activePeriodId}/open`);
-      message.success(res.data.message || 'Período de reparación abierto');
+      message.success(res.data.message || 'Período de revisión abierto');
       await fetchData();
     } catch (error: any) {
       message.error(error?.response?.data?.message || 'Error al abrir');
@@ -182,7 +182,7 @@ const RepairPeriodManagement: React.FC = () => {
     setActing(true);
     try {
       const res = await api.post(`/revision-periods/${activePeriodId}/complete`);
-      message.success(res.data.message || 'Período de reparación completado');
+      message.success(res.data.message || 'Período de revisión completado');
       await fetchData();
     } catch (error: any) {
       message.error(error?.response?.data?.message || 'Error al completar');
@@ -196,7 +196,7 @@ const RepairPeriodManagement: React.FC = () => {
     setActing(true);
     try {
       const res = await api.post(`/revision-periods/${activePeriodId}/lock`);
-      message.success(res.data.message || 'Período de reparación bloqueado');
+      message.success(res.data.message || 'Período de revisión bloqueado');
       await fetchData();
     } catch (error: any) {
       message.error(error?.response?.data?.message || 'Error al bloquear');
@@ -238,7 +238,7 @@ const RepairPeriodManagement: React.FC = () => {
     setActing(true);
     try {
       const res = await api.post(`/revision-periods/${activePeriodId}/reopen`);
-      message.success(res.data.message || 'Período de reparación reabierto');
+      message.success(res.data.message || 'Período de revisión reabierto');
       await fetchData();
     } catch (error: any) {
       message.error(error?.response?.data?.message || 'Error al reabrir');
@@ -370,7 +370,7 @@ const RepairPeriodManagement: React.FC = () => {
   return (
     <div style={{ padding: 24, maxWidth: 1200, margin: '0 auto' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-        <Title level={3} style={{ margin: 0 }}>Período de Reparación</Title>
+        <Title level={3} style={{ margin: 0 }}>Período de Revisión</Title>
         <Button icon={<ReloadOutlined />} onClick={fetchData} loading={loading}>Actualizar</Button>
       </div>
 
@@ -402,7 +402,7 @@ const RepairPeriodManagement: React.FC = () => {
               </Col>
               <Col span={6}>
                 <Card>
-                  <Statistic title="Estudiantes en reparación" value={summary.stats?.totalStudents || 0} />
+                  <Statistic title="Estudiantes en revisión" value={summary.stats?.totalStudents || 0} />
                 </Card>
               </Col>
             </Row>
@@ -428,7 +428,7 @@ const RepairPeriodManagement: React.FC = () => {
                     Guardar
                   </Button>
                   <Text type="secondary" style={{ fontSize: 12 }}>
-                    (Aplica a todas las materias en reparación)
+                    (Aplica a todas las materias en revisión)
                   </Text>
                 </Space>
               </Card>
@@ -437,13 +437,13 @@ const RepairPeriodManagement: React.FC = () => {
             {(!summary.revisionPeriod || summary.revisionPeriod.status === 'pending') && (
               <Alert
                 type="info"
-                message="El período de reparación aún no ha sido abierto"
+                message="El período de revisión aún no ha sido abierto"
                 description="Asegúrese de que todos los lapsos estén bloqueados y todos los consejos de curso estén completos antes de abrirlo."
                 showIcon
                 action={
                   <Button type="primary" icon={<PlayCircleOutlined />} onClick={handleOpen} loading={acting}
                     disabled={!summary.councilStatus.allDone || !summary.termsStatus?.allBlocked}>
-                    Abrir período de reparación
+                    Abrir período de revisión
                   </Button>
                 }
                 style={{ marginBottom: 16 }}
@@ -454,7 +454,7 @@ const RepairPeriodManagement: React.FC = () => {
               <>
               <Alert
                 type="success"
-                message="Período de reparación abierto"
+                message="Período de revisión abierto"
                 description="Los profesores pueden calificar las reparaciones. Cuando todos los estudiantes estén calificados, marque el período como completado para que las notas estén disponibles."
                 showIcon
                 action={
@@ -463,7 +463,7 @@ const RepairPeriodManagement: React.FC = () => {
                     <Button icon={<RetweetOutlined />} onClick={handleRecalculate} loading={acting}>Recalcular</Button>
                     <Button type="primary" icon={<CheckCircleOutlined />} onClick={handleComplete} loading={acting}>Completar período</Button>
                     <Popconfirm
-                      title="¿Bloquear el período de reparación?"
+                      title="¿Bloquear el período de revisión?"
                       description="El período se bloqueará y no se podrán editar las notas. Podrá reabrirlo posteriormente."
                       okText="Sí, bloquear"
                       cancelText="Cancelar"
@@ -473,8 +473,8 @@ const RepairPeriodManagement: React.FC = () => {
                     </Popconfirm>
                     {isMaster && (
                       <Popconfirm
-                        title="¿Reiniciar el período de reparación?"
-                        description="Se eliminarán TODOS los registros de reparación y el período volverá a estado pendiente. Esta acción no se puede deshacer."
+                        title="¿Reiniciar el período de revisión?"
+                        description="Se eliminarán TODOS los registros de revisión y el período volverá a estado pendiente. Esta acción no se puede deshacer."
                         okText="Sí, reiniciar"
                         cancelText="Cancelar"
                         okButtonProps={{ danger: true }}
@@ -494,8 +494,8 @@ const RepairPeriodManagement: React.FC = () => {
             {summary.revisionPeriod?.status === 'completed' && (
               <Alert
                 type="success"
-                message="Período de reparación completado"
-                description={`Completado el ${summary.revisionPeriod.completedAt ? new Date(summary.revisionPeriod.completedAt).toLocaleDateString() : '—'}. Las notas de reparación están disponibles para boletines y cálculos. Puede bloquear el período para evitar ediciones.`}
+                message="Período de revisión completado"
+                description={`Completado el ${summary.revisionPeriod.completedAt ? new Date(summary.revisionPeriod.completedAt).toLocaleDateString() : '—'}. Las notas de revisión están disponibles para boletines y cálculos. Puede bloquear el período para evitar ediciones.`}
                 showIcon
                 action={
                   <Space wrap>
@@ -503,8 +503,8 @@ const RepairPeriodManagement: React.FC = () => {
                     <Button type="primary" icon={<UnlockOutlined />} onClick={handleReopen} loading={acting}>Reabrir</Button>
                     {isMaster && (
                       <Popconfirm
-                        title="¿Reiniciar el período de reparación?"
-                        description="Se eliminarán TODOS los registros de reparación y el período volverá a estado pendiente. Esta acción no se puede deshacer."
+                        title="¿Reiniciar el período de revisión?"
+                        description="Se eliminarán TODOS los registros de revisión y el período volverá a estado pendiente. Esta acción no se puede deshacer."
                         okText="Sí, reiniciar"
                         cancelText="Cancelar"
                         okButtonProps={{ danger: true }}
@@ -522,16 +522,16 @@ const RepairPeriodManagement: React.FC = () => {
             {summary.revisionPeriod?.status === 'closed' && (
               <Alert
                 type="error"
-                message="Período de reparación bloqueado"
-                description={`Bloqueado el ${summary.revisionPeriod.closedAt ? new Date(summary.revisionPeriod.closedAt).toLocaleDateString() : '—'}. El período de reparación está bloqueado y no admite más ediciones.`}
+                message="Período de revisión bloqueado"
+                description={`Bloqueado el ${summary.revisionPeriod.closedAt ? new Date(summary.revisionPeriod.closedAt).toLocaleDateString() : '—'}. El período de revisión está bloqueado y no admite más ediciones.`}
                 showIcon
                 action={
                   <Space wrap>
                     <Button type="primary" icon={<UnlockOutlined />} onClick={handleReopen} loading={acting}>Reabrir</Button>
                     {isMaster ? (
                     <Popconfirm
-                      title="¿Reiniciar el período de reparación?"
-                      description="Se eliminarán TODOS los registros de reparación y el período volverá a estado pendiente. Esta acción no se puede deshacer."
+                      title="¿Reiniciar el período de revisión?"
+                      description="Se eliminarán TODOS los registros de revisión y el período volverá a estado pendiente. Esta acción no se puede deshacer."
                       okText="Sí, reiniciar"
                       cancelText="Cancelar"
                       okButtonProps={{ danger: true }}
@@ -551,7 +551,7 @@ const RepairPeriodManagement: React.FC = () => {
               <Space direction="vertical" size={8} style={{ width: '100%' }}>
                 <Space style={{ justifyContent: 'space-between', width: '100%' }}>
                   <Space>
-                    <span>Estudiantes en reparación</span>
+                    <span>Estudiantes en revisión</span>
                     {isPreview && <Tag color="orange">Vista previa</Tag>}
                     {canOverride && !isPreview && periodEditable && nominaView === 'opportunity' && selectedOpp <= currentOpp && (
                       <Tag color="gold" icon={<EditOutlined />}>Editable</Tag>
@@ -633,7 +633,7 @@ const RepairPeriodManagement: React.FC = () => {
               <div className="repair-sheet-container">
                 {gradeGroups.length === 0 ? (
                   <div style={{ padding: 24, textAlign: 'center', color: '#999' }}>
-                    No hay estudiantes en reparación
+                    No hay estudiantes en revisión
                   </div>
                 ) : (
                   <Tabs

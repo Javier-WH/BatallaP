@@ -119,7 +119,7 @@ export class RevisionPeriodService {
     });
     const allFullyClosed = await TermSectionClosureService.areAllTermsFullyClosed(schoolPeriodId, transaction);
     if (!allFullyClosed) {
-      throw new Error('Todos los lapsos deben tener todas sus secciones cerradas antes de abrir el período de reparación');
+      throw new Error('Todos los lapsos deben tener todas sus secciones cerradas antes de abrir el período de revisión');
     }
 
     const councilChecklists = await CouncilChecklist.findAll({
@@ -153,10 +153,10 @@ export class RevisionPeriodService {
     });
 
     if (revisionPeriod.status === 'open') {
-      throw new Error('El período de reparación ya está abierto');
+      throw new Error('El período de revisión ya está abierto');
     }
     if (revisionPeriod.status === 'closed') {
-      throw new Error('El período de reparación ya fue cerrado');
+      throw new Error('El período de revisión ya fue cerrado');
     }
 
     await revisionPeriod.update({
@@ -268,9 +268,9 @@ export class RevisionPeriodService {
       transaction,
     });
 
-    if (!revisionPeriod) throw new Error('No existe un período de reparación para este período escolar');
+    if (!revisionPeriod) throw new Error('No existe un período de revisión para este período escolar');
     if (revisionPeriod.status !== 'open') {
-      throw new Error('El período de reparación no está abierto');
+      throw new Error('El período de revisión no está abierto');
     }
 
     // Auto-fail pending revisions that belong to opportunities already
@@ -358,12 +358,12 @@ export class RevisionPeriodService {
       transaction,
     });
 
-    if (!revisionPeriod) throw new Error('No existe un período de reparación para este período escolar');
+    if (!revisionPeriod) throw new Error('No existe un período de revisión para este período escolar');
     if (revisionPeriod.status === 'closed') {
       return revisionPeriod; // already locked, idempotent
     }
     if (revisionPeriod.status === 'pending') {
-      throw new Error('El período de reparación no ha sido abierto');
+      throw new Error('El período de revisión no ha sido abierto');
     }
 
     await revisionPeriod.update({
@@ -387,12 +387,12 @@ export class RevisionPeriodService {
       transaction,
     });
 
-    if (!revisionPeriod) throw new Error('No existe un período de reparación para este período escolar');
+    if (!revisionPeriod) throw new Error('No existe un período de revisión para este período escolar');
     if (revisionPeriod.status === 'open') {
       return revisionPeriod; // already open, idempotent
     }
     if (revisionPeriod.status === 'pending') {
-      throw new Error('El período de reparación no ha sido abierto todavía');
+      throw new Error('El período de revisión no ha sido abierto todavía');
     }
 
     await revisionPeriod.update({
@@ -436,12 +436,12 @@ export class RevisionPeriodService {
       transaction,
     });
 
-    if (!revisionPeriod) throw new Error('No existe un período de reparación para este período escolar');
+    if (!revisionPeriod) throw new Error('No existe un período de revisión para este período escolar');
     if (revisionPeriod.status === 'closed') {
-      throw new Error('El período de reparación está bloqueado y no puede modificarse');
+      throw new Error('El período de revisión está bloqueado y no puede modificarse');
     }
     if (revisionPeriod.status === 'pending') {
-      throw new Error('El período de reparación no ha sido abierto');
+      throw new Error('El período de revisión no ha sido abierto');
     }
     if (!Number.isInteger(maxOpportunities) || maxOpportunities < 1) {
       throw new Error('El número de intentos debe ser un entero mayor o igual a 1');
@@ -481,9 +481,9 @@ export class RevisionPeriodService {
       where: { schoolPeriodId },
       transaction,
     });
-    if (!revisionPeriod) throw new Error('No existe un período de reparación para este período escolar');
+    if (!revisionPeriod) throw new Error('No existe un período de revisión para este período escolar');
     if (revisionPeriod.status !== 'open') {
-      throw new Error('El período de reparación debe estar abierto para recalcular');
+      throw new Error('El período de revisión debe estar abierto para recalcular');
     }
 
     const terms = await Term.findAll({ where: { schoolPeriodId }, transaction });
@@ -606,7 +606,7 @@ export class RevisionPeriodService {
       where: { schoolPeriodId },
       transaction,
     });
-    if (!revisionPeriod) throw new Error('No existe un período de reparación para este período escolar');
+    if (!revisionPeriod) throw new Error('No existe un período de revisión para este período escolar');
 
     // Delete all revision records
     const deleted = await InscriptionSubjectRevision.destroy({
@@ -639,9 +639,9 @@ export class RevisionPeriodService {
       where: { schoolPeriodId },
       transaction,
     });
-    if (!revisionPeriod) throw new Error('No existe un período de reparación para este período escolar');
+    if (!revisionPeriod) throw new Error('No existe un período de revisión para este período escolar');
     if (revisionPeriod.status !== 'open') {
-      throw new Error('El período de reparación no está abierto');
+      throw new Error('El período de revisión no está abierto');
     }
     if (revisionPeriod.currentOpportunity >= revisionPeriod.maxOpportunities) {
       throw new Error('Ya está en la última oportunidad, no se puede avanzar más');
@@ -681,9 +681,9 @@ export class RevisionPeriodService {
       where: { schoolPeriodId },
       transaction,
     });
-    if (!revisionPeriod) throw new Error('No existe un período de reparación para este período escolar');
+    if (!revisionPeriod) throw new Error('No existe un período de revisión para este período escolar');
     if (revisionPeriod.status !== 'open') {
-      throw new Error('El período de reparación no está abierto');
+      throw new Error('El período de revisión no está abierto');
     }
     if (!Number.isInteger(opportunity) || opportunity < 1 || opportunity > revisionPeriod.maxOpportunities) {
       throw new Error(`La oportunidad debe estar entre 1 y ${revisionPeriod.maxOpportunities}`);

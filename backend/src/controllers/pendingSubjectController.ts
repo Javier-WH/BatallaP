@@ -403,7 +403,7 @@ export const removeStudentFromMp = async (req: Request, res: Response) => {
 
 /* ------------------------------------------------------------------ */
 /* GET /pending-subjects/nomina/:gradeId                               */
-/* Nómina estilo reparación: students × subjects matrix               */
+/* Nómina estilo revisión: students × subjects matrix               */
 /* ------------------------------------------------------------------ */
 export const getMpNomina = async (req: Request, res: Response) => {
   try {

@@ -29,7 +29,7 @@ export const getRevisionPeriod = async (req: Request, res: Response) => {
     return res.json(summary);
   } catch (error: any) {
     console.error('[getRevisionPeriod] Error:', error);
-    return res.status(500).json({ message: error.message || 'Error al obtener período de reparación' });
+    return res.status(500).json({ message: error.message || 'Error al obtener período de revisión' });
   }
 };
 
@@ -44,14 +44,14 @@ export const openRevisionPeriod = async (req: Request, res: Response) => {
     const result = await RevisionPeriodService.openRevisionPeriod(schoolPeriodId, t);
     await t.commit();
     return res.json({
-      message: 'Período de reparación abierto correctamente',
+      message: 'Período de revisión abierto correctamente',
       revisionPeriod: result.revisionPeriod,
       revisionsCreated: result.revisionsCreated,
     });
   } catch (error: any) {
     await t.rollback();
     console.error('[openRevisionPeriod] Error:', error);
-    return res.status(500).json({ message: error.message || 'Error al abrir período de reparación' });
+    return res.status(500).json({ message: error.message || 'Error al abrir período de revisión' });
   }
 };
 
@@ -71,13 +71,13 @@ export const completeRevisionPeriod = async (req: Request, res: Response) => {
     const revisionPeriod = await RevisionPeriodService.completeRevisionPeriod(schoolPeriodId, userId, t);
     await t.commit();
     return res.json({
-      message: 'Período de reparación completado correctamente',
+      message: 'Período de revisión completado correctamente',
       revisionPeriod,
     });
   } catch (error: any) {
     await t.rollback();
     console.error('[completeRevisionPeriod] Error:', error);
-    return res.status(500).json({ message: error.message || 'Error al completar período de reparación' });
+    return res.status(500).json({ message: error.message || 'Error al completar período de revisión' });
   }
 };
 
@@ -92,13 +92,13 @@ export const lockRevisionPeriod = async (req: Request, res: Response) => {
     const revisionPeriod = await RevisionPeriodService.lockRevisionPeriod(schoolPeriodId, t);
     await t.commit();
     return res.json({
-      message: 'Período de reparación bloqueado correctamente',
+      message: 'Período de revisión bloqueado correctamente',
       revisionPeriod,
     });
   } catch (error: any) {
     await t.rollback();
     console.error('[lockRevisionPeriod] Error:', error);
-    return res.status(500).json({ message: error.message || 'Error al bloquear período de reparación' });
+    return res.status(500).json({ message: error.message || 'Error al bloquear período de revisión' });
   }
 };
 
@@ -380,12 +380,12 @@ export const saveRevisionGrade = async (req: Request, res: Response) => {
 
     if (!revisionPeriod) {
       await t.rollback();
-      return res.status(404).json({ message: 'Período de reparación no encontrado' });
+      return res.status(404).json({ message: 'Período de revisión no encontrado' });
     }
 
     if (revisionPeriod.status !== 'open') {
       await t.rollback();
-      return res.status(400).json({ message: 'El período de reparación no está abierto' });
+      return res.status(400).json({ message: 'El período de revisión no está abierto' });
     }
 
     const revision = await InscriptionSubjectRevision.findByPk(revisionId, { transaction: t });
@@ -517,7 +517,7 @@ export const bulkSaveRevisionGrades = async (req: Request, res: Response) => {
 
     if (!revisionPeriod || revisionPeriod.status !== 'open') {
       await t.rollback();
-      return res.status(400).json({ message: 'El período de reparación no está abierto' });
+      return res.status(400).json({ message: 'El período de revisión no está abierto' });
     }
 
     const userId = (req.session as any)?.user?.personId;
@@ -668,7 +668,7 @@ export const recalculateRevisionPeriod = async (req: Request, res: Response) => 
   } catch (error: any) {
     await t.rollback();
     console.error('[recalculateRevisionPeriod] Error:', error);
-    return res.status(500).json({ message: error.message || 'Error al recalcular período de reparación' });
+    return res.status(500).json({ message: error.message || 'Error al recalcular período de revisión' });
   }
 };
 
@@ -684,20 +684,20 @@ export const resetRevisionPeriod = async (req: Request, res: Response) => {
     const userRoles = (req.session as any)?.user?.roles || [];
     if (!userRoles.includes('Master')) {
       await t.rollback();
-      return res.status(403).json({ message: 'Solo el rol Master puede reiniciar el período de reparación' });
+      return res.status(403).json({ message: 'Solo el rol Master puede reiniciar el período de revisión' });
     }
 
     const result = await RevisionPeriodService.resetRevisionPeriod(schoolPeriodId, t);
     await t.commit();
     return res.json({
-      message: `Período de reparación reiniciado. ${result.deleted} registros eliminados.`,
+      message: `Período de revisión reiniciado. ${result.deleted} registros eliminados.`,
       revisionPeriod: result.revisionPeriod,
       deleted: result.deleted,
     });
   } catch (error: any) {
     await t.rollback();
     console.error('[resetRevisionPeriod] Error:', error);
-    return res.status(500).json({ message: error.message || 'Error al reiniciar período de reparación' });
+    return res.status(500).json({ message: error.message || 'Error al reiniciar período de revisión' });
   }
 };
 
@@ -738,13 +738,13 @@ export const reopenRevisionPeriod = async (req: Request, res: Response) => {
     const revisionPeriod = await RevisionPeriodService.reopenRevisionPeriod(schoolPeriodId, t);
     await t.commit();
     return res.json({
-      message: 'Período de reparación reabierto correctamente',
+      message: 'Período de revisión reabierto correctamente',
       revisionPeriod,
     });
   } catch (error: any) {
     await t.rollback();
     console.error('[reopenRevisionPeriod] Error:', error);
-    return res.status(500).json({ message: error.message || 'Error al reabrir período de reparación' });
+    return res.status(500).json({ message: error.message || 'Error al reabrir período de revisión' });
   }
 };
 
@@ -797,7 +797,7 @@ export const overrideRevisionGrade = async (req: Request, res: Response) => {
     const userRoles: string[] = (req.session as any)?.user?.roles || [];
     if (!userRoles.includes('Control de Estudios') && !userRoles.includes('Master')) {
       await t.rollback();
-      return res.status(403).json({ message: 'Solo Control de Estudios o Master pueden modificar notas de reparación extraordinariamente' });
+      return res.status(403).json({ message: 'Solo Control de Estudios o Master pueden modificar notas de revisión extraordinariamente' });
     }
 
     const userId = (req.session as any)?.user?.personId;
@@ -813,13 +813,13 @@ export const overrideRevisionGrade = async (req: Request, res: Response) => {
 
     if (!revisionPeriod) {
       await t.rollback();
-      return res.status(404).json({ message: 'Período de reparación no encontrado' });
+      return res.status(404).json({ message: 'Período de revisión no encontrado' });
     }
 
     // Allow override when open or completed (not closed/pending)
     if (revisionPeriod.status === 'pending' || revisionPeriod.status === 'closed') {
       await t.rollback();
-      return res.status(400).json({ message: 'El período de reparación no permite ediciones en su estado actual' });
+      return res.status(400).json({ message: 'El período de revisión no permite ediciones en su estado actual' });
     }
 
     const revision = await InscriptionSubjectRevision.findByPk(revisionId, { transaction: t });

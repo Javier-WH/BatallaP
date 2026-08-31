@@ -1004,7 +1004,7 @@ const PendingSubjectManagement: React.FC = () => {
         </Card>
       )}
 
-      {/* Nómina — estilo reparación */}
+      {/* Nómina — estilo revisión */}
       {expandedGradeId && (
         <Card
           title={
