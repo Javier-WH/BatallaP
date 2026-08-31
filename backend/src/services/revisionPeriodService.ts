@@ -249,97 +249,6 @@ export class RevisionPeriodService {
   }
 
   /**
-   * Mark the revision period as completed (the "check").
-   *
-   * This auto-fails all pending revisions (no grade entered = failed) and
-   * sets status='completed'. From this point, FinalGradeCalculator will
-   * use revision grades when computing final scores.
-   *
-   * This is independent from the school year closure — it only signals that
-   * revision grades are final and ready for calculation.
-   */
-  static async completeRevisionPeriod(
-    schoolPeriodId: number,
-    completedByUserId: number,
-    transaction?: Transaction
-  ): Promise<RevisionPeriod> {
-    const revisionPeriod = await RevisionPeriod.findOne({
-      where: { schoolPeriodId },
-      transaction,
-    });
-
-    if (!revisionPeriod) throw new Error('No existe un período de revisión para este período escolar');
-    if (revisionPeriod.status !== 'open') {
-      throw new Error('El período de revisión no está abierto');
-    }
-
-    // Auto-fail pending revisions that belong to opportunities already
-    // reached (opportunity <= currentOpportunity).  Future opportunities
-    // (opportunity > currentOpportunity) that were auto-created as
-    // placeholders when a student failed earlier must NOT be marked as
-    // absent — they were never offered to the student.
-    const pendingRevisions = await InscriptionSubjectRevision.findAll({
-      where: {
-        revisionPeriodId: revisionPeriod.id,
-        status: 'pending',
-        opportunity: { [Op.lte]: revisionPeriod.currentOpportunity },
-      },
-      transaction,
-    });
-
-    for (const rev of pendingRevisions) {
-      await rev.update({ score: 0, status: 'failed', isAbsent: true }, { transaction });
-      const failedCount = await InscriptionSubjectRevision.count({
-        where: {
-          revisionPeriodId: revisionPeriod.id,
-          inscriptionSubjectId: rev.inscriptionSubjectId,
-          status: 'failed',
-        },
-        transaction,
-      });
-
-      // If this was the last opportunity, no more are created
-      if (failedCount < revisionPeriod.maxOpportunities) {
-        const exists = await InscriptionSubjectRevision.findOne({
-          where: {
-            revisionPeriodId: revisionPeriod.id,
-            inscriptionSubjectId: rev.inscriptionSubjectId,
-            opportunity: failedCount + 1,
-          },
-          transaction,
-        });
-        if (!exists) {
-          await InscriptionSubjectRevision.create({
-            revisionPeriodId: revisionPeriod.id,
-            inscriptionSubjectId: rev.inscriptionSubjectId,
-            opportunity: failedCount + 1,
-            status: 'pending',
-          }, { transaction });
-        }
-      }
-    }
-
-    // Remove placeholder revisions for opportunities that were never
-    // reached — they carry no meaningful grade and should display as '—'.
-    await InscriptionSubjectRevision.destroy({
-      where: {
-        revisionPeriodId: revisionPeriod.id,
-        status: 'pending',
-        opportunity: { [Op.gt]: revisionPeriod.currentOpportunity },
-      },
-      transaction,
-    });
-
-    await revisionPeriod.update({
-      status: 'completed',
-      completedAt: new Date(),
-      completedBy: completedByUserId,
-    }, { transaction });
-
-    return revisionPeriod;
-  }
-
-  /**
    * Lock the revision period (status='closed').
    *
    * This is set by periodClosureExecutor after the school year closure, or
@@ -401,8 +310,8 @@ export class RevisionPeriodService {
     }, { transaction });
 
     // When reopening, reset auto-marked NP entries (gradedBy=null, isAbsent=true)
-    // at the current opportunity back to pending — they were auto-failed by
-    // completeRevisionPeriod but the opportunity hasn't been formally passed.
+    // at the current opportunity back to pending — they were auto-failed
+    // but the opportunity hasn't been formally passed.
     // Only reset entries at the current opportunity; entries from earlier
     // opportunities (opportunity < currentOpportunity) were genuinely passed
     // and should remain as NP.

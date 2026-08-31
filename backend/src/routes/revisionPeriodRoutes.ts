@@ -5,7 +5,6 @@ const router = Router();
 
 router.get('/:schoolPeriodId', revisionPeriodController.getRevisionPeriod);
 router.post('/:schoolPeriodId/open', revisionPeriodController.openRevisionPeriod);
-router.post('/:schoolPeriodId/complete', revisionPeriodController.completeRevisionPeriod);
 router.post('/:schoolPeriodId/lock', revisionPeriodController.lockRevisionPeriod);
 router.post('/:schoolPeriodId/reopen', revisionPeriodController.reopenRevisionPeriod);
 router.post('/:schoolPeriodId/recalculate', revisionPeriodController.recalculateRevisionPeriod);

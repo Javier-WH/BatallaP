@@ -293,6 +293,7 @@ const TeacherPanel: React.FC = () => {
   const [instrumentoOptions, setInstrumentoOptions] = useState<CatalogOption[]>([]);
   const [estrategiaOptions, setEstrategiaOptions] = useState<CatalogOption[]>([]);
   const [revisionOpen, setRevisionOpen] = useState(false);
+  const [revisionGradesFinalized, setRevisionGradesFinalized] = useState(false);
   // Repair mode state
   const [repairMode, setRepairMode] = useState(false);
   const [revisionAssignments, setRevisionAssignments] = useState<RevisionAssignment[]>([]);
@@ -677,8 +678,10 @@ const TeacherPanel: React.FC = () => {
       try {
         const revRes = await api.get(`/revision-periods/${viewPeriod.id}`);
         setRevisionOpen(revRes.data?.revisionPeriod?.status === 'open');
+        setRevisionGradesFinalized(revRes.data?.revisionPeriod?.gradesFinalized === true);
       } catch {
         setRevisionOpen(false);
+        setRevisionGradesFinalized(false);
       }
     };
     fetchRevisionStatus();
@@ -1910,6 +1913,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                   icon={<SaveOutlined />}
                   onClick={handleSaveRevisionGrades}
                   loading={revisionSaving}
+                  disabled={revisionGradesFinalized}
                 >
                   Guardar notas
                 </Button>
@@ -1945,6 +1949,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                   icon={<SaveOutlined />}
                   onClick={handleSaveOpportunityDates}
                   loading={datesSaving}
+                  disabled={revisionGradesFinalized}
                 >
                   Guardar fechas
                 </Button>
@@ -2047,6 +2052,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                             <DatePicker
                               format="DD/MM/YYYY"
                               value={opportunityDates[opp] ? dayjs(opportunityDates[opp]) : null}
+                              disabled={revisionGradesFinalized}
                               onChange={(date) => {
                                 const newDate = date ? date.format('YYYY-MM-DD') : null;
                                 if (newDate) {
@@ -2185,7 +2191,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                                       const rev = revisionsByOpp.get(opp);
                                       const currentOpp = revisionDetail.currentOpportunity ?? 1;
                                       const earlierApproved = student.revisions.some(r => r.opportunity < opp && r.status === 'approved');
-                                      const isLocked = !rev || rev.opportunity !== currentOpp || earlierApproved;
+                                      const isLocked = !rev || rev.opportunity !== currentOpp || earlierApproved || revisionGradesFinalized;
                                       const isCellAbsent = !!revisionAbsent[rev?.id];
                                       if (!rev || opp > currentOpp) {
                                         return <td key={opp} style={{ padding: '2px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-content-bg)' : 'color-mix(in srgb, var(--color-text-main) 2%, var(--color-content-bg))', width: '60px' }}>—</td>;

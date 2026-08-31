@@ -68,32 +68,6 @@ export const openRevisionPeriod = async (req: Request, res: Response) => {
   }
 };
 
-export const completeRevisionPeriod = async (req: Request, res: Response) => {
-  const t = await sequelize.transaction();
-  try {
-    const schoolPeriodId = parseInt(req.params.schoolPeriodId, 10);
-    if (!schoolPeriodId) {
-      return res.status(400).json({ message: 'schoolPeriodId es obligatorio' });
-    }
-
-    const userId = (req.session as any)?.user?.id;
-    if (!userId) {
-      return res.status(401).json({ message: 'No autorizado' });
-    }
-
-    const revisionPeriod = await RevisionPeriodService.completeRevisionPeriod(schoolPeriodId, userId, t);
-    await t.commit();
-    return res.json({
-      message: 'Período de revisión completado correctamente',
-      revisionPeriod,
-    });
-  } catch (error: any) {
-    await t.rollback();
-    console.error('[completeRevisionPeriod] Error:', error);
-    return res.status(500).json({ message: error.message || 'Error al completar período de revisión' });
-  }
-};
-
 export const lockRevisionPeriod = async (req: Request, res: Response) => {
   const t = await sequelize.transaction();
   try {

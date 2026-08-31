@@ -191,20 +191,6 @@ const RepairPeriodManagement: React.FC = () => {
     }
   };
 
-  const handleComplete = async () => {
-    if (!activePeriodId) return;
-    setActing(true);
-    try {
-      const res = await api.post(`/revision-periods/${activePeriodId}/complete`);
-      message.success(res.data.message || 'Período de revisión completado');
-      await fetchData();
-    } catch (error: any) {
-      message.error(error?.response?.data?.message || 'Error al completar');
-    } finally {
-      setActing(false);
-    }
-  };
-
   const handleLock = async () => {
     if (!activePeriodId) return;
     setActing(true);
@@ -429,7 +415,8 @@ const RepairPeriodManagement: React.FC = () => {
   };
 
   const currentOpp = summary?.revisionPeriod?.currentOpportunity ?? 1;
-  const periodEditable = summary?.revisionPeriod && (summary.revisionPeriod.status === 'open' || summary.revisionPeriod.status === 'completed');
+  const gradesFinalized = summary?.revisionPeriod?.gradesFinalized === true;
+  const periodEditable = summary?.revisionPeriod && (summary.revisionPeriod.status === 'open' || summary.revisionPeriod.status === 'completed') && !gradesFinalized;
 
   return (
     <div style={{ padding: 24, maxWidth: 1200, margin: '0 auto' }}>
@@ -481,6 +468,7 @@ const RepairPeriodManagement: React.FC = () => {
                     value={maxOppInput}
                     onChange={(v) => setMaxOppInput(v ?? 3)}
                     style={{ width: 80 }}
+                    disabled={gradesFinalized}
                   />
                   <Button
                     type="primary"
@@ -488,6 +476,7 @@ const RepairPeriodManagement: React.FC = () => {
                     onClick={handleSaveMaxOpp}
                     loading={maxOppSaving}
                     size="small"
+                    disabled={gradesFinalized}
                   >
                     Guardar
                   </Button>
@@ -519,13 +508,12 @@ const RepairPeriodManagement: React.FC = () => {
               <Alert
                 type="success"
                 message="Período de revisión abierto"
-                description="Los profesores pueden calificar las reparaciones. Cuando todos los estudiantes estén calificados, marque el período como completado para que las notas estén disponibles."
+                description="Los profesores pueden calificar las reparaciones. Cuando todos los estudiantes estén calificados, marque el checkbox 'Revisión Completada' para finalizar las notas."
                 showIcon
                 action={
                   <Space wrap>
                     <Button type="primary" icon={<ReloadOutlined />} onClick={fetchData}>Actualizar</Button>
-                    <Button icon={<RetweetOutlined />} onClick={handleRecalculate} loading={acting}>Recalcular</Button>
-                    <Button type="primary" icon={<CheckCircleOutlined />} onClick={handleComplete} loading={acting}>Completar período</Button>
+                    <Button icon={<RetweetOutlined />} onClick={handleRecalculate} loading={acting} disabled={gradesFinalized}>Recalcular</Button>
                     <Popconfirm
                       title="¿Bloquear el período de revisión?"
                       description="El período se bloqueará y no se podrán editar las notas. Podrá reabrirlo posteriormente."
@@ -563,8 +551,8 @@ const RepairPeriodManagement: React.FC = () => {
                 showIcon
                 action={
                   <Space wrap>
-                    <Button danger icon={<StopOutlined />} onClick={handleLock} loading={acting}>Bloquear período</Button>
-                    <Button type="primary" icon={<UnlockOutlined />} onClick={handleReopen} loading={acting}>Reabrir</Button>
+                    <Button danger icon={<StopOutlined />} onClick={handleLock} loading={acting} disabled={gradesFinalized}>Bloquear período</Button>
+                    <Button type="primary" icon={<UnlockOutlined />} onClick={handleReopen} loading={acting} disabled={gradesFinalized}>Reabrir</Button>
                     {isMaster && (
                       <Popconfirm
                         title="¿Reiniciar el período de revisión?"
@@ -670,7 +658,7 @@ const RepairPeriodManagement: React.FC = () => {
                         const isSelected = selectedOpp === opp;
                         const isActive = currentOpp === opp;
                         const isFuture = opp > currentOpp;
-                        const canActivate = summary.revisionPeriod?.status === 'open' && !isActive;
+                        const canActivate = summary.revisionPeriod?.status === 'open' && !isActive && !gradesFinalized;
                         return (
                           <div
                             key={opp}
