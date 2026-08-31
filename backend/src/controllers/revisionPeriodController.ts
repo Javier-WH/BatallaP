@@ -1177,6 +1177,9 @@ export const exportRevisionNominaExcel = async (req: Request, res: Response) => 
       return res.status(404).json({ message: 'Período escolar no encontrado' });
     }
 
+    const institutionNameSetting = await Setting.findOne({ where: { key: 'institution_name' } });
+    const institutionName = institutionNameSetting?.getDataValue('value') || 'Institución Educativa';
+
     const revisionPeriod = await RevisionPeriod.findOne({ where: { schoolPeriodId } });
 
     // Load all revisions for this period (if it exists)
@@ -1408,7 +1411,7 @@ export const exportRevisionNominaExcel = async (req: Request, res: Response) => 
     // Row 1: Header — school name | REVISIÓN | school year
     sheet.getRow(1).height = 21;
     sheet.mergeCells('A1:D1');
-    sheet.getCell('A1').value = 'U.E.C. BATALLA DE LA VICTORIA';
+    sheet.getCell('A1').value = institutionName;
     sheet.getCell('A1').font = { bold: true, size: 14, name: 'Calibri' };
     sheet.getCell('A1').alignment = { horizontal: 'left', vertical: 'middle' };
 
