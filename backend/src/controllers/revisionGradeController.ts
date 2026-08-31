@@ -399,9 +399,8 @@ export const saveRevisionThematicSelection = async (req: Request, res: Response)
 export const getRevisionOpportunityDates = async (req: Request, res: Response) => {
   try {
     const periodGradeSubjectId = parseInt(req.query.pgsId as string, 10);
-    const sectionId = parseInt(req.query.sectionId as string, 10);
-    if (!periodGradeSubjectId || !sectionId) {
-      return res.status(400).json({ message: 'pgsId y sectionId son requeridos' });
+    if (!periodGradeSubjectId) {
+      return res.status(400).json({ message: 'pgsId es requerido' });
     }
 
     const activePeriod = await SchoolPeriod.findOne({ where: { status: 'activo' } });
@@ -420,7 +419,6 @@ export const getRevisionOpportunityDates = async (req: Request, res: Response) =
       where: {
         revisionPeriodId: revisionPeriod.id,
         periodGradeSubjectId,
-        sectionId,
       },
       order: [['opportunity', 'ASC']],
     });
@@ -440,13 +438,12 @@ export const getRevisionOpportunityDates = async (req: Request, res: Response) =
  */
 export const saveRevisionOpportunityDates = async (req: Request, res: Response) => {
   try {
-    const { periodGradeSubjectId, sectionId, dates } = req.body as {
+    const { periodGradeSubjectId, dates } = req.body as {
       periodGradeSubjectId: number;
-      sectionId: number;
       dates: Array<{ opportunity: number; date: string | null }>;
     };
-    if (!periodGradeSubjectId || !sectionId) {
-      return res.status(400).json({ message: 'periodGradeSubjectId y sectionId son requeridos' });
+    if (!periodGradeSubjectId) {
+      return res.status(400).json({ message: 'periodGradeSubjectId es requerido' });
     }
     if (!Array.isArray(dates)) {
       return res.status(400).json({ message: 'dates debe ser un arreglo' });
@@ -486,13 +483,11 @@ export const saveRevisionOpportunityDates = async (req: Request, res: Response) 
         where: {
           revisionPeriodId: revisionPeriod.id,
           periodGradeSubjectId,
-          sectionId,
           opportunity,
         },
         defaults: {
           revisionPeriodId: revisionPeriod.id,
           periodGradeSubjectId,
-          sectionId,
           opportunity,
           date: date || null,
         },
@@ -602,7 +597,7 @@ export const exportRepairExcel = async (req: Request, res: Response) => {
 
     // Get opportunity dates
     const oppDates = await RevisionOpportunityDate.findAll({
-      where: { revisionPeriodId: revisionPeriod.id, periodGradeSubjectId, sectionId },
+      where: { revisionPeriodId: revisionPeriod.id, periodGradeSubjectId },
       order: [['opportunity', 'ASC']],
     });
     const dateMap = new Map<number, string | null>();

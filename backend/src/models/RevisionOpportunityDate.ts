@@ -8,7 +8,7 @@ interface RevisionOpportunityDateAttributes {
   id: number;
   revisionPeriodId: number;
   periodGradeSubjectId: number;
-  sectionId: number;
+  sectionId?: number | null;
   opportunity: number;
   date?: string | null; // DATEONLY (YYYY-MM-DD)
   createdAt?: Date;
@@ -17,7 +17,7 @@ interface RevisionOpportunityDateAttributes {
 
 type RevisionOpportunityDateCreationAttributes = Optional<
   RevisionOpportunityDateAttributes,
-  'id' | 'date'
+  'id' | 'date' | 'sectionId'
 >;
 
 class RevisionOpportunityDate
@@ -27,7 +27,7 @@ class RevisionOpportunityDate
   public id!: number;
   public revisionPeriodId!: number;
   public periodGradeSubjectId!: number;
-  public sectionId!: number;
+  public sectionId!: number | null;
   public opportunity!: number;
   public date!: string | null;
 
@@ -54,7 +54,7 @@ RevisionOpportunityDate.init(
     },
     sectionId: {
       type: DataTypes.INTEGER,
-      allowNull: false,
+      allowNull: true,
       references: { model: Section, key: 'id' },
     },
     opportunity: {
@@ -72,7 +72,7 @@ RevisionOpportunityDate.init(
     indexes: [
       {
         unique: true,
-        fields: ['revisionPeriodId', 'periodGradeSubjectId', 'sectionId', 'opportunity'],
+        fields: ['revisionPeriodId', 'periodGradeSubjectId', 'opportunity'],
         name: 'uq_revision_opportunity_date',
       },
     ],

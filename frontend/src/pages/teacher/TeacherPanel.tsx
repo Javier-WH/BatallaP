@@ -755,7 +755,7 @@ const TeacherPanel: React.FC = () => {
       try {
         const [detailRes, datesRes] = await Promise.all([
           api.get(`/revision-grades/my-assignments/${pgsId}`, { params: { sectionId } }),
-          api.get('/revision-grades/opportunity-dates', { params: { pgsId, sectionId } }),
+          api.get('/revision-grades/opportunity-dates', { params: { pgsId } }),
         ]);
         if (cancelled) return;
         setRevisionDetail(detailRes.data);
@@ -852,7 +852,6 @@ const TeacherPanel: React.FC = () => {
       }));
       await api.put('/revision-grades/opportunity-dates', {
         periodGradeSubjectId: pgsId,
-        sectionId,
         dates,
       });
       message.success('Fechas guardadas');
