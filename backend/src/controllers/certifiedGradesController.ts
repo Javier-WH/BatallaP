@@ -162,7 +162,7 @@ export const exportCertifiedGrades = async (req: Request, res: Response) => {
           as: 'inscriptionSubjects',
           include: [
             { model: Subject, as: 'subject', include: [{ model: SubjectGroup, as: 'subjectGroup' }] },
-            { model: SubjectFinalGrade, as: 'finalGrade', include: [{ model: Plantel, as: 'plantel' }] },
+            { model: SubjectFinalGrade, as: 'finalGrade', where: { gradeType: 'regular' }, required: false, include: [{ model: Plantel, as: 'plantel' }] },
             { model: SubjectTermGrade, as: 'termGrades' },
             {
               model: Qualification,
@@ -438,7 +438,7 @@ export const getCertifiedGradesData = async (req: Request, res: Response) => {
           as: 'inscriptionSubjects',
           include: [
             { model: Subject, as: 'subject', include: [{ model: SubjectGroup, as: 'subjectGroup' }] },
-            { model: SubjectFinalGrade, as: 'finalGrade', include: [{ model: Plantel, as: 'plantel' }] },
+            { model: SubjectFinalGrade, as: 'finalGrade', where: { gradeType: 'regular' }, required: false, include: [{ model: Plantel, as: 'plantel' }] },
             { model: SubjectTermGrade, as: 'termGrades' },
             {
               model: Qualification,

@@ -508,7 +508,7 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
           as: 'inscriptionSubjects',
           include: [
             { model: Subject, as: 'subject', include: [{ model: SubjectGroup, as: 'subjectGroup' }] },
-            { model: SubjectFinalGrade, as: 'finalGrade', required: false },
+            { model: SubjectFinalGrade, as: 'finalGrade', where: { gradeType: 'regular' }, required: false },
             { model: SubjectTermGrade, as: 'termGrades', required: false },
             { model: Qualification, as: 'qualifications', include: [{ model: EvaluationPlan, as: 'evaluationPlan' }], required: false },
             { model: CouncilPoint, as: 'councilPoints', required: false },
@@ -2106,7 +2106,7 @@ export const getBoletinData = async (req: Request, res: Response) => {
           as: 'inscriptionSubjects',
           include: [
             { model: Subject, as: 'subject', include: [{ model: SubjectGroup, as: 'subjectGroup' }] },
-            { model: SubjectFinalGrade, as: 'finalGrade' },
+            { model: SubjectFinalGrade, as: 'finalGrade', where: { gradeType: 'regular' }, required: false },
             { model: SubjectTermGrade, as: 'termGrades' },
             {
               model: Qualification,
@@ -2380,7 +2380,7 @@ export const getGeneralAverages = async (req: Request, res: Response) => {
           include: [
             { model: SubjectTermGrade, as: 'termGrades', attributes: ['termId', 'score'] },
             { model: Subject, as: 'subject', attributes: ['id', 'usesLiteralGrades'] },
-            { model: SubjectFinalGrade, as: 'finalGrade', required: false, attributes: ['finalScore', 'gradeType'] },
+            { model: SubjectFinalGrade, as: 'finalGrade', where: { gradeType: 'regular' }, required: false, attributes: ['finalScore', 'gradeType'] },
             {
               model: Qualification,
               as: 'qualifications',

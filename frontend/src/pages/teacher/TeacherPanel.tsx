@@ -763,7 +763,7 @@ const TeacherPanel: React.FC = () => {
         const initialAbsent: Record<number, boolean> = {};
         (detailRes.data.students || []).forEach((s: StudentRevisionData) => {
           (s.revisions || []).forEach((r: RevisionItem) => {
-            initialGrades[r.id] = r.score;
+            initialGrades[r.id] = r.score != null ? Math.round(Number(r.score)) : null;
             initialAbsent[r.id] = !!r.isAbsent || Number(r.score) === 0;
           });
         });
@@ -2232,7 +2232,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                                             inputMode="numeric"
                                             pattern="[0-9]*"
                                             id={`rev-${rowIndex}-${opp}`}
-                                            value={revisionGrades[rev.id] != null ? String(revisionGrades[rev.id]) : ''}
+                                            value={revisionGrades[rev.id] != null ? padGrade(Number(revisionGrades[rev.id])) : ''}
                                             disabled={isLocked}
                                             onChange={(e) => {
                                               const raw = e.target.value;
