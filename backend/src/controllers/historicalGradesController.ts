@@ -262,6 +262,21 @@ export const getHistoricalGradesBySection = async (req: Request, res: Response) 
     const allInsIds = allInscriptionsForStudents.map(i => i.id);
 
     // 6. Get InscriptionSubjects + SubjectFinalGrades + SubjectTermGrades
+    // Map typeFilter to the gradeType(s) we want to load from SubjectFinalGrade
+    const gradeTypeForFilter: string | null = isConsolidated
+      ? null  // load all grade types in consolidated mode
+      : (typeFilter === 'final' ? 'regular' : typeFilter === 'revision' ? 'revision' : 'materia_pendiente');
+
+    const finalGradeInclude: any = {
+      model: SubjectFinalGrade,
+      as: 'finalGrade',
+      include: [{ model: Plantel, as: 'plantel', attributes: ['id', 'code', 'name'] }],
+    };
+    if (gradeTypeForFilter) {
+      finalGradeInclude.where = { gradeType: gradeTypeForFilter };
+      finalGradeInclude.required = false;
+    }
+
     const insSubjects = await InscriptionSubject.findAll({
       where: { inscriptionId: allInsIds as any },
       include: [
@@ -271,11 +286,7 @@ export const getHistoricalGradesBySection = async (req: Request, res: Response) 
           as: 'inscription',
           attributes: ['id', 'personId', 'schoolPeriodId', 'gradeId'],
         },
-        {
-          model: SubjectFinalGrade,
-          as: 'finalGrade',
-          include: [{ model: Plantel, as: 'plantel', attributes: ['id', 'code', 'name'] }],
-        },
+        finalGradeInclude,
         { model: SubjectTermGrade, as: 'termGrades', include: [{ model: Term, as: 'term' }] },
       ],
     });
@@ -658,15 +669,16 @@ export const saveHistoricalGrades = async (req: Request, res: Response) => {
             transaction: t,
           });
           const ctxIns = (ctxInsSub as any)?.inscription;
+          const effectiveGradeType = gradeType || 'regular';
           const existing = await SubjectFinalGrade.findOne({
-            where: { inscriptionSubjectId },
+            where: { inscriptionSubjectId, gradeType: effectiveGradeType },
             transaction: t,
           });
           if (existing) {
             await SubjectFinalGrade.update({
               finalScore: normalizedScore,
               status,
-              gradeType: gradeType || 'regular',
+              gradeType: effectiveGradeType,
               plantelId: plantelId || null,
               calculatedAt: parsedDate,
               schoolPeriodId: ctxIns?.schoolPeriodId ?? null,
@@ -681,7 +693,7 @@ export const saveHistoricalGrades = async (req: Request, res: Response) => {
               inscriptionSubjectId,
               finalScore: normalizedScore,
               status,
-              gradeType: gradeType || 'regular',
+              gradeType: effectiveGradeType,
               plantelId: plantelId || null,
               calculatedAt: parsedDate,
               schoolPeriodId: ctxIns?.schoolPeriodId ?? null,
@@ -716,15 +728,16 @@ export const saveHistoricalGrades = async (req: Request, res: Response) => {
                 sectionId: inscription.sectionId,
               }, { transaction: t });
             }
+            const effectiveGradeType = gradeType || 'regular';
             const existing = await SubjectFinalGrade.findOne({
-              where: { inscriptionSubjectId: insSub.id },
+              where: { inscriptionSubjectId: insSub.id, gradeType: effectiveGradeType },
               transaction: t,
             });
             if (existing) {
               await SubjectFinalGrade.update({
                 finalScore: normalizedScore,
                 status,
-                gradeType: gradeType || 'regular',
+                gradeType: effectiveGradeType,
                 plantelId: plantelId || null,
                 calculatedAt: parsedDate,
                 schoolPeriodId: inscription.schoolPeriodId,
@@ -739,7 +752,7 @@ export const saveHistoricalGrades = async (req: Request, res: Response) => {
                 inscriptionSubjectId: insSub.id,
                 finalScore: normalizedScore,
                 status,
-                gradeType: gradeType || 'regular',
+                gradeType: effectiveGradeType,
                 plantelId: plantelId || null,
                 calculatedAt: parsedDate,
                 schoolPeriodId: inscription.schoolPeriodId,

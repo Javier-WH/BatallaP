@@ -832,9 +832,9 @@ export const updateFinalGrade = async (req: Request, res: Response) => {
         return res.status(400).json({ message: 'Se requiere inscriptionSubjectId para crear nota final' });
       }
 
-      // Check if SubjectFinalGrade already exists for this inscriptionSubject
+      // Check if SubjectFinalGrade already exists for this inscriptionSubject (regular grade)
       const existingGrade = await SubjectFinalGrade.findOne({
-        where: { inscriptionSubjectId: Number(inscriptionSubjectId) }
+        where: { inscriptionSubjectId: Number(inscriptionSubjectId), gradeType: 'regular' }
       });
 
       if (existingGrade) {
@@ -944,6 +944,7 @@ export const updateFinalGrade = async (req: Request, res: Response) => {
         inscriptionSubjectId: Number(inscriptionSubjectId),
         finalScore,
         status: status || resolveGradeStatus(finalScore, passingGrade),
+        gradeType: 'regular',
         plantelId: normalizedPlantelId ?? null,
         schoolPeriodId: insRecord?.schoolPeriodId ?? null,
         subjectId: inscriptionSubject.subjectId ?? null,

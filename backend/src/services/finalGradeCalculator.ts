@@ -213,7 +213,7 @@ export class FinalGradeCalculator {
       // During closure, isClosedPeriod=true so it uses SubjectFinalGrade if available
       // or averages all lapsos (which are all done)
       const existingFinalGrade = await SubjectFinalGrade.findOne({
-        where: { inscriptionSubjectId: insSub.id },
+        where: { inscriptionSubjectId: insSub.id, gradeType: 'regular' },
         transaction: options.transaction,
       });
 
@@ -298,7 +298,7 @@ export class FinalGradeCalculator {
       subjectResults.push(summary);
 
       const existingGrade = await SubjectFinalGrade.findOne({
-        where: { inscriptionSubjectId: insSub.id },
+        where: { inscriptionSubjectId: insSub.id, gradeType },
         transaction: options.transaction
       });
 
@@ -307,24 +307,46 @@ export class FinalGradeCalculator {
         continue;
       }
 
-      await SubjectFinalGrade.upsert(
-        {
-          inscriptionSubjectId: insSub.id,
-          rawScore: summary.rawScore,
-          councilPoints: summary.councilPoints,
-          finalScore: summary.finalScore,
-          status: summary.status,
-          calculatedAt: new Date(),
-          plantelId: existingGrade?.plantelId ?? institutionPlantelId,
-          gradeType,
-          originalScore: hasRepair ? originalScore : (existingGrade?.originalScore ?? null),
-          originalStatus: hasRepair ? originalStatus : (existingGrade?.originalStatus ?? null),
-          schoolPeriodId: inscriptionSimple.schoolPeriodId,
-          subjectId: insSub.subjectId,
-          gradeId: inscriptionSimple.gradeId,
-        },
-        { transaction: options.transaction }
-      );
+      // Use findOne + update/create instead of upsert, since the unique index is now
+      // (inscriptionSubjectId, gradeType) and we want to preserve other gradeType records.
+      if (existingGrade) {
+        await existingGrade.update(
+          {
+            rawScore: summary.rawScore,
+            councilPoints: summary.councilPoints,
+            finalScore: summary.finalScore,
+            status: summary.status,
+            calculatedAt: new Date(),
+            plantelId: existingGrade.plantelId ?? institutionPlantelId,
+            gradeType,
+            originalScore: hasRepair ? originalScore : (existingGrade.originalScore ?? null),
+            originalStatus: hasRepair ? originalStatus : (existingGrade.originalStatus ?? null),
+            schoolPeriodId: inscriptionSimple.schoolPeriodId,
+            subjectId: insSub.subjectId,
+            gradeId: inscriptionSimple.gradeId,
+          },
+          { transaction: options.transaction }
+        );
+      } else {
+        await SubjectFinalGrade.create(
+          {
+            inscriptionSubjectId: insSub.id,
+            rawScore: summary.rawScore,
+            councilPoints: summary.councilPoints,
+            finalScore: summary.finalScore,
+            status: summary.status,
+            calculatedAt: new Date(),
+            plantelId: institutionPlantelId,
+            gradeType,
+            originalScore: hasRepair ? originalScore : null,
+            originalStatus: hasRepair ? originalStatus : null,
+            schoolPeriodId: inscriptionSimple.schoolPeriodId,
+            subjectId: insSub.subjectId,
+            gradeId: inscriptionSimple.gradeId,
+          },
+          { transaction: options.transaction }
+        );
+      }
     }
 
     const finalAverage =

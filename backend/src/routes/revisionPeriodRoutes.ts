@@ -15,6 +15,7 @@ router.post('/:schoolPeriodId/advance-opportunity', revisionPeriodController.adv
 router.get('/:schoolPeriodId/students', revisionPeriodController.getRevisionStudents);
 router.get('/:schoolPeriodId/grades', revisionPeriodController.getRevisionGrades);
 router.get('/:schoolPeriodId/export-nomina', revisionPeriodController.exportRevisionNominaExcel);
+router.post('/:schoolPeriodId/finalize-revision-grades', revisionPeriodController.finalizeRevisionGrades);
 router.put('/:schoolPeriodId/revisions/bulk', revisionPeriodController.bulkSaveRevisionGrades);
 router.put('/:schoolPeriodId/revisions/:revisionId', revisionPeriodController.saveRevisionGrade);
 router.put('/:schoolPeriodId/revisions/:revisionId/override', revisionPeriodController.overrideRevisionGrade);

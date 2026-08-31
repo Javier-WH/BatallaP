@@ -371,9 +371,9 @@ export const removeStudentFromMp = async (req: Request, res: Response) => {
       transaction: t,
     });
 
-    // Delete SubjectFinalGrade if exists
+    // Delete SubjectFinalGrade if exists (only the materia_pendiente record)
     await SubjectFinalGrade.destroy({
-      where: { inscriptionSubjectId: insSubj.id },
+      where: { inscriptionSubjectId: insSubj.id, gradeType: 'materia_pendiente' },
       transaction: t,
     });
 
@@ -790,17 +790,34 @@ export const saveMpFinalGrade = async (req: Request, res: Response) => {
     const calculatedDate = date ? new Date(`${date}T12:00:00`) : new Date();
 
     // Upsert SubjectFinalGrade with gradeType='materia_pendiente'
-    await SubjectFinalGrade.upsert({
-      inscriptionSubjectId,
-      finalScore: isAbsent ? 0 : roundedScore,
-      rawScore: finalScore,
-      status,
-      calculatedAt: calculatedDate,
-      gradeType: 'materia_pendiente',
-      schoolPeriodId: academicContext.schoolPeriodId,
-      subjectId: academicContext.subjectId,
-      gradeId: academicContext.gradeId,
-    }, { transaction: t });
+    // Use findOne + update/create instead of upsert (composite unique index on inscriptionSubjectId + gradeType)
+    const existingMPGrade = await SubjectFinalGrade.findOne({
+      where: { inscriptionSubjectId, gradeType: 'materia_pendiente' },
+      transaction: t,
+    });
+    if (existingMPGrade) {
+      await existingMPGrade.update({
+        finalScore: isAbsent ? 0 : roundedScore,
+        rawScore: finalScore,
+        status,
+        calculatedAt: calculatedDate,
+        schoolPeriodId: academicContext.schoolPeriodId,
+        subjectId: academicContext.subjectId,
+        gradeId: academicContext.gradeId,
+      }, { transaction: t });
+    } else {
+      await SubjectFinalGrade.create({
+        inscriptionSubjectId,
+        finalScore: isAbsent ? 0 : roundedScore,
+        rawScore: finalScore,
+        status,
+        calculatedAt: calculatedDate,
+        gradeType: 'materia_pendiente',
+        schoolPeriodId: academicContext.schoolPeriodId,
+        subjectId: academicContext.subjectId,
+        gradeId: academicContext.gradeId,
+      }, { transaction: t });
+    }
 
     // Update PendingSubject status
     const pending = await PendingSubject.findOne({
@@ -996,17 +1013,33 @@ export const saveMpQualification = async (req: Request, res: Response) => {
     if (insSubj) {
       // Always upsert the final grade — allow overwriting even if previously approved
       // This lets both teachers and Control de Estudios correct grades
-      await SubjectFinalGrade.upsert({
-        inscriptionSubjectId,
-        finalScore: finalIsAbsent ? 0 : roundedScore,
-        rawScore,
-        status,
-        calculatedAt: evaluationDate,
-        gradeType: 'materia_pendiente',
-        schoolPeriodId: academicContext.schoolPeriodId,
-        subjectId: academicContext.subjectId,
-        gradeId: academicContext.gradeId,
-      }, { transaction: t });
+      const existingMPGrade = await SubjectFinalGrade.findOne({
+        where: { inscriptionSubjectId, gradeType: 'materia_pendiente' },
+        transaction: t,
+      });
+      if (existingMPGrade) {
+        await existingMPGrade.update({
+          finalScore: finalIsAbsent ? 0 : roundedScore,
+          rawScore,
+          status,
+          calculatedAt: evaluationDate,
+          schoolPeriodId: academicContext.schoolPeriodId,
+          subjectId: academicContext.subjectId,
+          gradeId: academicContext.gradeId,
+        }, { transaction: t });
+      } else {
+        await SubjectFinalGrade.create({
+          inscriptionSubjectId,
+          finalScore: finalIsAbsent ? 0 : roundedScore,
+          rawScore,
+          status,
+          calculatedAt: evaluationDate,
+          gradeType: 'materia_pendiente',
+          schoolPeriodId: academicContext.schoolPeriodId,
+          subjectId: academicContext.subjectId,
+          gradeId: academicContext.gradeId,
+        }, { transaction: t });
+      }
 
       // Update PendingSubject status
       const pending = await PendingSubject.findOne({
@@ -1500,10 +1533,10 @@ export const saveMpEncounterScore = async (req: Request, res: Response) => {
             status: 'pendiente',
             resolvedAt: null,
           }, { transaction: t });
-          // Remove the SubjectFinalGrade if it exists
+          // Remove the SubjectFinalGrade if it exists (only the materia_pendiente record)
           if (insSubj) {
             await SubjectFinalGrade.destroy({
-              where: { inscriptionSubjectId: insSubj.id },
+              where: { inscriptionSubjectId: insSubj.id, gradeType: 'materia_pendiente' },
               transaction: t,
             });
           }
@@ -1557,14 +1590,27 @@ export const saveMpEncounterScore = async (req: Request, res: Response) => {
       }
 
       if (insSubj) {
-        await SubjectFinalGrade.upsert({
-          inscriptionSubjectId: insSubj.id,
-          finalScore: roundedScore,
-          rawScore: score,
-          status: 'aprobada',
-          calculatedAt: evaluationDate,
-          gradeType: 'materia_pendiente',
-        }, { transaction: t });
+        const existingMPGrade = await SubjectFinalGrade.findOne({
+          where: { inscriptionSubjectId: insSubj.id, gradeType: 'materia_pendiente' },
+          transaction: t,
+        });
+        if (existingMPGrade) {
+          await existingMPGrade.update({
+            finalScore: roundedScore,
+            rawScore: score,
+            status: 'aprobada',
+            calculatedAt: evaluationDate,
+          }, { transaction: t });
+        } else {
+          await SubjectFinalGrade.create({
+            inscriptionSubjectId: insSubj.id,
+            finalScore: roundedScore,
+            rawScore: score,
+            status: 'aprobada',
+            calculatedAt: evaluationDate,
+            gradeType: 'materia_pendiente',
+          }, { transaction: t });
+        }
       }
     } else {
       // Not approved — if the pending subject was previously approved (editing a score down),
@@ -1579,14 +1625,27 @@ export const saveMpEncounterScore = async (req: Request, res: Response) => {
       if (encounterNumber === maxEnc) {
         // Last encounter and still failing → mark as reprobada in SubjectFinalGrade
         if (insSubj) {
-          await SubjectFinalGrade.upsert({
-            inscriptionSubjectId: insSubj.id,
-            finalScore: finalIsAbsent ? 0 : roundedScore,
-            rawScore: score,
-            status: 'reprobada',
-            calculatedAt: evaluationDate,
-            gradeType: 'materia_pendiente',
-          }, { transaction: t });
+          const existingMPGrade = await SubjectFinalGrade.findOne({
+            where: { inscriptionSubjectId: insSubj.id, gradeType: 'materia_pendiente' },
+            transaction: t,
+          });
+          if (existingMPGrade) {
+            await existingMPGrade.update({
+              finalScore: finalIsAbsent ? 0 : roundedScore,
+              rawScore: score,
+              status: 'reprobada',
+              calculatedAt: evaluationDate,
+            }, { transaction: t });
+          } else {
+            await SubjectFinalGrade.create({
+              inscriptionSubjectId: insSubj.id,
+              finalScore: finalIsAbsent ? 0 : roundedScore,
+              rawScore: score,
+              status: 'reprobada',
+              calculatedAt: evaluationDate,
+              gradeType: 'materia_pendiente',
+            }, { transaction: t });
+          }
         }
       }
     }

@@ -1635,3 +1635,193 @@ export const exportRevisionNominaExcel = async (req: Request, res: Response) => 
     return res.status(500).json({ message: error.message || 'Error al generar Excel de revisión' });
   }
 };
+
+/**
+ * POST /revision-periods/:schoolPeriodId/finalize-revision-grades
+ *
+ * Reads all InscriptionSubjectRevision for the active revision period,
+ * applies the "Nota Final" logic (findFinalRevision), and creates/updates
+ * SubjectFinalGrade records with gradeType='revision'.
+ *
+ * This makes revision grades available in the historical grades view
+ * (/notas-historicas) before the school period is closed.
+ *
+ * Can be re-run safely: if revision grades change after finalizing,
+ * pressing the button again will update the SubjectFinalGrade records.
+ */
+export const finalizeRevisionGrades = async (req: Request, res: Response) => {
+  const t = await sequelize.transaction();
+  try {
+    const schoolPeriodId = parseInt(req.params.schoolPeriodId, 10);
+    if (!schoolPeriodId) {
+      await t.rollback();
+      return res.status(400).json({ message: 'schoolPeriodId es obligatorio' });
+    }
+
+    const revisionPeriod = await RevisionPeriod.findOne({
+      where: { schoolPeriodId },
+      transaction: t,
+    });
+    if (!revisionPeriod) {
+      await t.rollback();
+      return res.status(404).json({ message: 'No hay período de revisión' });
+    }
+
+    // Load all revisions for this period
+    const revisions = await InscriptionSubjectRevision.findAll({
+      where: { revisionPeriodId: revisionPeriod.id },
+      include: [
+        {
+          model: InscriptionSubject,
+          as: 'inscriptionSubject',
+          required: true,
+          include: [
+            {
+              model: Inscription,
+              as: 'inscription',
+              required: true,
+              include: [{ association: 'student' }, { association: 'grade' }],
+            },
+            { association: 'subject' },
+            {
+              model: SubjectFinalGrade,
+              as: 'finalGrade',
+              required: false,
+              where: { gradeType: 'revision' },
+            },
+          ],
+        },
+      ],
+      transaction: t,
+      order: [['inscriptionSubjectId', 'ASC'], ['opportunity', 'ASC']],
+    });
+
+    // Group revisions by inscriptionSubjectId
+    const revisionsByInsSubId = new Map<number, any[]>();
+    for (const rev of revisions) {
+      const insSubId = rev.inscriptionSubjectId;
+      if (!revisionsByInsSubId.has(insSubId)) revisionsByInsSubId.set(insSubId, []);
+      revisionsByInsSubId.get(insSubId)!.push({
+        opportunity: rev.opportunity,
+        score: rev.score,
+        status: rev.status,
+        isAbsent: (rev as any).isAbsent || false,
+        gradedBy: rev.gradedBy,
+      });
+    }
+
+    const currentOpp = revisionPeriod.currentOpportunity ?? 1;
+    const passingGrade = revisionPeriod.passingGrade ?? 10;
+    let created = 0;
+    let updated = 0;
+    let skipped = 0;
+
+    for (const [insSubId, revs] of revisionsByInsSubId) {
+      // Apply findFinalRevision logic:
+      // last revision (highest opportunity) with score != null OR
+      // auto-NP (isAbsent=true, gradedBy=null, opportunity < currentOpp)
+      let finalRev: any = null;
+      const sortedRevs = [...revs].sort((a, b) => a.opportunity - b.opportunity);
+      for (let i = sortedRevs.length - 1; i >= 0; i--) {
+        const rev = sortedRevs[i];
+        if (rev.score !== null && rev.score !== undefined) {
+          finalRev = rev;
+          break;
+        }
+        if (rev.isAbsent === true && rev.gradedBy == null && rev.opportunity < currentOpp) {
+          finalRev = rev;
+          break;
+        }
+      }
+
+      if (!finalRev) {
+        skipped++;
+        continue;
+      }
+
+      // Determine final score and status
+      const isExplicitZero = finalRev.score !== null && finalRev.score !== undefined && Number(finalRev.score) === 0 && finalRev.gradedBy != null;
+      const isAutoAbsent = finalRev.isAbsent === true && finalRev.gradedBy == null && finalRev.opportunity < currentOpp;
+      const isAbsent = isExplicitZero || isAutoAbsent;
+
+      const finalScore = isAbsent ? 0 : (finalRev.score != null ? Number(finalRev.score) : null);
+      if (finalScore == null) {
+        skipped++;
+        continue;
+      }
+
+      const isApproved = finalScore >= passingGrade;
+      const status: 'aprobada' | 'reprobada' = isApproved ? 'aprobada' : 'reprobada';
+
+      // Find the InscriptionSubject to get denormalized fields
+      const rev0 = revisions.find(r => r.inscriptionSubjectId === insSubId);
+      const insSub = (rev0 as any)?.inscriptionSubject;
+      if (!insSub) {
+        skipped++;
+        continue;
+      }
+
+      const ins = insSub.inscription;
+      const existingRevisionGrade = insSub.finalGrade;
+
+      // Get the regular grade to preserve original score/status
+      const regularGrade = await SubjectFinalGrade.findOne({
+        where: { inscriptionSubjectId: insSubId, gradeType: 'regular' },
+        transaction: t,
+      });
+      const originalScore = regularGrade?.finalScore != null
+        ? Number(regularGrade.finalScore)
+        : null;
+      const originalStatus = regularGrade?.status ?? null;
+      const plantelId = regularGrade?.plantelId ?? existingRevisionGrade?.plantelId ?? null;
+
+      if (existingRevisionGrade) {
+        // Update existing revision record
+        await SubjectFinalGrade.update(
+          {
+            finalScore,
+            status,
+            gradeType: 'revision',
+            originalScore: originalScore != null ? originalScore : (existingRevisionGrade?.originalScore ?? null),
+            originalStatus: originalStatus ?? (existingRevisionGrade?.originalStatus ?? null),
+            calculatedAt: new Date(),
+            schoolPeriodId: ins?.schoolPeriodId ?? null,
+            subjectId: insSub.subjectId,
+            gradeId: ins?.gradeId ?? null,
+          },
+          { where: { id: existingRevisionGrade.id }, transaction: t }
+        );
+        updated++;
+      } else {
+        // Create new revision record
+        await SubjectFinalGrade.create(
+          {
+            inscriptionSubjectId: insSubId,
+            finalScore,
+            status,
+            gradeType: 'revision',
+            originalScore,
+            originalStatus,
+            calculatedAt: new Date(),
+            plantelId,
+            schoolPeriodId: ins?.schoolPeriodId ?? null,
+            subjectId: insSub.subjectId,
+            gradeId: ins?.gradeId ?? null,
+          },
+          { transaction: t }
+        );
+        created++;
+      }
+    }
+
+    await t.commit();
+    return res.json({
+      message: `Notas de revisión finalizadas: ${created} creadas, ${updated} actualizadas, ${skipped} omitidas`,
+      summary: { created, updated, skipped, total: revisionsByInsSubId.size },
+    });
+  } catch (error: any) {
+    await t.rollback();
+    console.error('[finalizeRevisionGrades] Error:', error);
+    return res.status(500).json({ message: error.message || 'Error al finalizar notas de revisión' });
+  }
+};

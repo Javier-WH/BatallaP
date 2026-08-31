@@ -210,7 +210,7 @@ export const upsertExternalGrade = async (
   }
 
   const existing = await SubjectFinalGrade.findOne({
-    where: { inscriptionSubjectId: insSub.id },
+    where: { inscriptionSubjectId: insSub.id, gradeType: input.gradeType },
     transaction,
   });
 

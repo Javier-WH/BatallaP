@@ -309,6 +309,21 @@ const RepairPeriodManagement: React.FC = () => {
     }
   };
 
+  const [finalizing, setFinalizing] = useState(false);
+  const handleFinalizeRevisionGrades = async () => {
+    if (!activePeriodId) return;
+    setFinalizing(true);
+    try {
+      const res = await api.post(`/revision-periods/${activePeriodId}/finalize-revision-grades`);
+      message.success(res.data.message || 'Notas de revisión finalizadas');
+      await fetchData();
+    } catch (error: any) {
+      message.error(error?.response?.data?.message || 'Error al finalizar notas de revisión');
+    } finally {
+      setFinalizing(false);
+    }
+  };
+
   // Inline save for a revision grade (used by Control de Estudios)
   const handleSaveInline = async (revisionId: number, score: number | null, isAbsent: boolean) => {
     if (!activePeriodId) return;
@@ -598,9 +613,29 @@ const RepairPeriodManagement: React.FC = () => {
                       <Tag color="gold" icon={<EditOutlined />}>Editable</Tag>
                     )}
                   </Space>
-                  <Button icon={<PrinterOutlined />} onClick={handleExportExcel} loading={loading} style={{ marginTop: 15 }}>
-                    Imprimir
-                  </Button>
+                  <Space>
+                    <Button icon={<PrinterOutlined />} onClick={handleExportExcel} loading={loading} style={{ marginTop: 15 }}>
+                      Imprimir
+                    </Button>
+                    <Popconfirm
+                      title="¿Finalizar notas de revisión?"
+                      description="Se crearán/actualizarán las notas finales de revisión. Estas notas serán visibles en Notas Históricas."
+                      okText="Sí, finalizar"
+                      cancelText="Cancelar"
+                      onConfirm={handleFinalizeRevisionGrades}
+                      disabled={isPreview || !canOverride}
+                    >
+                      <Button
+                        type="primary"
+                        icon={<CheckCircleOutlined />}
+                        loading={finalizing}
+                        disabled={isPreview || !canOverride}
+                        style={{ marginTop: 15 }}
+                      >
+                        Finalizar Notas
+                      </Button>
+                    </Popconfirm>
+                  </Space>
                 </Space>
                 <Space direction="vertical" size={8} style={{ width: '100%' }}>
                   <Segmented

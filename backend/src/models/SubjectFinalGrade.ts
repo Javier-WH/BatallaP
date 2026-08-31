@@ -144,7 +144,8 @@ SubjectFinalGrade.init(
     indexes: [
       {
         unique: true,
-        fields: ['inscriptionSubjectId']
+        fields: ['inscriptionSubjectId', 'gradeType'],
+        name: 'idx_subject_final_grades_inssub_gradetype',
       },
       {
         fields: ['schoolPeriodId', 'gradeId', 'subjectId'],
