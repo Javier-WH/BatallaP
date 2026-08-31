@@ -582,7 +582,7 @@ const RepairPeriodManagement: React.FC = () => {
                         return (
                           <div
                             key={opp}
-                            className={`repair-opportunity-chip${isSelected ? ' selected' : ''}${isFuture ? ' future' : ''}`}
+                            className={`repair-opportunity-chip${isSelected ? ' selected' : ''}${isActive ? ' active' : ''}${isFuture ? ' future' : ''}`}
                             onClick={() => setSelectedOpp(opp)}
                             role="button"
                             tabIndex={0}
@@ -592,9 +592,10 @@ const RepairPeriodManagement: React.FC = () => {
                                 setSelectedOpp(opp);
                               }
                             }}
-                            aria-label={`Ver Oportunidad ${opp}`}
+                            aria-label={`Ver Oportunidad ${opp}${isActive ? ' (activa)' : ''}`}
                           >
                             <span className="repair-opportunity-number">{opp}°</span>
+                            {isActive && <span className="repair-opportunity-active-dot" />}
                             <Popconfirm
                               title={`¿Desea habilitar la Oportunidad ${opp}?`}
                               description={opp < currentOpp
@@ -620,7 +621,11 @@ const RepairPeriodManagement: React.FC = () => {
                         );
                       })}
                       <Text type="secondary" style={{ fontSize: 11 }}>
-                        Seleccione el número para ver una oportunidad; use el candado para activar otra.
+                        Activa: <Text strong style={{ fontSize: 11, color: '#52c41a' }}>Oportunidad {currentOpp}</Text>
+                        {selectedOpp !== currentOpp && (
+                          <> — Viendo: <Text strong style={{ fontSize: 11 }}>Oportunidad {selectedOpp}</Text></>
+                        )}
+                        <span style={{ marginLeft: 8, color: '#999' }}>Candado: activar oportunidad</span>
                       </Text>
                     </Space>
                   )}
@@ -944,6 +949,7 @@ const RepairPeriodManagement: React.FC = () => {
           background: #fff;
           cursor: pointer;
           transition: all 0.15s;
+          position: relative;
         }
         .repair-opportunity-chip:hover {
           border-color: #1677ff;
@@ -954,8 +960,29 @@ const RepairPeriodManagement: React.FC = () => {
           background: #1677ff;
           color: #fff;
         }
+        .repair-opportunity-chip.active {
+          border-color: #52c41a;
+          border-width: 2px;
+          box-shadow: 0 0 0 2px rgba(82, 196, 26, 0.2);
+        }
+        .repair-opportunity-chip.active.selected {
+          border-color: #52c41a;
+          background: #1677ff;
+        }
         .repair-opportunity-chip.future {
           opacity: 0.6;
+        }
+        .repair-opportunity-active-dot {
+          width: 6px;
+          height: 6px;
+          border-radius: 50%;
+          background: #52c41a;
+          display: inline-block;
+          box-shadow: 0 0 4px rgba(82, 196, 26, 0.6);
+        }
+        .repair-opportunity-chip.selected .repair-opportunity-active-dot {
+          background: #b7eb8f;
+          box-shadow: 0 0 4px rgba(255, 255, 255, 0.6);
         }
         .repair-opportunity-number {
           min-width: 22px;
