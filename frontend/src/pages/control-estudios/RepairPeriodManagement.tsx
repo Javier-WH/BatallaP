@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Card, Button, Tag, Space, Typography, Spin, message, Alert, Statistic, Row, Col, Popconfirm, Collapse, InputNumber } from 'antd';
+import { Card, Button, Tag, Space, Typography, Spin, message, Alert, Statistic, Row, Col, Popconfirm, Tabs, InputNumber } from 'antd';
 import { PlayCircleOutlined, StopOutlined, ReloadOutlined, CheckCircleOutlined, ClockCircleOutlined, CloseCircleOutlined, PrinterOutlined, RetweetOutlined, UndoOutlined, LockOutlined, UnlockOutlined } from '@ant-design/icons';
 import api from '@/services/api';
 import { compareStudents } from '@/utils/studentSort';
@@ -52,6 +52,7 @@ interface RevisionItem {
   opportunity: number;
   score: number | null;
   status: string;
+  isAbsent?: boolean;
 }
 
 interface StudentSubject {
@@ -89,6 +90,7 @@ const RepairPeriodManagement: React.FC = () => {
   const [maxOppInput, setMaxOppInput] = useState<number>(3);
   const [maxOppSaving, setMaxOppSaving] = useState(false);
   const [pendingOpp, setPendingOpp] = useState<number | null>(null);
+  const [selectedView, setSelectedView] = useState<number | 'final'>(1);
 
   const fetchData = async () => {
     setLoading(true);
@@ -107,6 +109,9 @@ const RepairPeriodManagement: React.FC = () => {
         api.get(`/revision-periods/${activePeriod.id}/students`),
       ]);
       setSummary(summaryRes.data);
+      setSelectedView((previous) => previous === 1
+        ? (summaryRes.data.revisionPeriod?.currentOpportunity ?? 1)
+        : previous);
       setStudents(studentsRes.data.students || []);
       setIsPreview(studentsRes.data.isPreview || false);
       setMaxOppInput(summaryRes.data.revisionPeriod?.maxOpportunities ?? 3);
@@ -404,6 +409,20 @@ const RepairPeriodManagement: React.FC = () => {
 
               {/* Opportunity selector — radio buttons styled as buttons */}
               <Card size="small" style={{ marginBottom: 16 }}>
+                <Tabs
+                  activeKey={String(selectedView)}
+                  onChange={(key) => setSelectedView(key === 'final' ? 'final' : Number(key))}
+                  size="small"
+                  tabBarGutter={0}
+                  items={[
+                    ...Array.from({ length: summary.revisionPeriod?.maxOpportunities || 1 }, (_, i) => ({
+                      key: String(i + 1),
+                      label: `Oport. ${i + 1}`,
+                    })),
+                    { key: 'final', label: 'Nota definitiva' },
+                  ]}
+                  style={{ marginBottom: 8 }}
+                />
                 <Space direction="vertical" size={8} style={{ width: '100%' }}>
                   <Space>
                     <Text strong style={{ fontSize: 14 }}>Habilitar oportunidad:</Text>
@@ -528,13 +547,16 @@ const RepairPeriodManagement: React.FC = () => {
                     No hay estudiantes en reparación
                   </div>
                 ) : (
-                  <Collapse
-                    defaultActiveKey={gradeGroups.map(g => g.grade)}
+                  <Tabs
+                    defaultActiveKey={gradeGroups[0]?.grade}
+                    tabPosition="top"
+                    size="small"
+                    tabBarGutter={0}
                     items={gradeGroups.map((group) => ({
                       key: group.grade,
                       label: (
                         <Space>
-                          <span style={{ fontWeight: 700 }}>{group.grade}</span>
+                          <span style={{ fontWeight: 700, fontSize: 12 }}>{group.grade}</span>
                           <Tag>{group.students.length} estudiantes</Tag>
                         </Space>
                       ),
@@ -546,6 +568,7 @@ const RepairPeriodManagement: React.FC = () => {
                                 <th className="repair-col-idx">#</th>
                                 <th className="repair-col-doc">Cédula</th>
                                 <th className="repair-col-name">Apellidos y Nombres</th>
+                                <th className="repair-col-section">Sección</th>
                                 {group.subjects.map((subj) => (
                                   <th key={subj.abbreviation} className="repair-col-subj" title={subj.subjectName}>
                                     {subj.abbreviation}
@@ -559,34 +582,40 @@ const RepairPeriodManagement: React.FC = () => {
                                   <td className="repair-cell-idx">{idx + 1}</td>
                                   <td className="repair-cell-doc">{student.document}</td>
                                   <td className="repair-cell-name">{student.studentName}</td>
+                                  <td className="repair-cell-section">{student.section || '—'}</td>
                                   {group.subjects.map((subj) => {
                                     const studentSubj = student.subjects.find(
                                       (sub) => sub.abbreviation === subj.abbreviation
                                     );
-                                    // No revision in this subject → filled cell
-                                    if (!studentSubj) {
+                                    if (!studentSubj || isPreview) {
                                       return <td key={subj.abbreviation} className="repair-cell-filled" />;
                                     }
-                                    // Has revision → blank cell (for writing or showing score)
-                                    if (isPreview) {
-                                      return <td key={subj.abbreviation} className="repair-cell-blank" />;
+
+                                    const revisions = [...studentSubj.revisions].sort((a, b) => a.opportunity - b.opportunity);
+                                    const approvedBefore = selectedView !== 'final' && revisions.some(
+                                      (revision) => revision.opportunity < selectedView && revision.status === 'approved'
+                                    );
+                                    const selectedRevision = selectedView === 'final'
+                                      ? [...revisions].reverse().find((revision) =>
+                                        revision.isAbsent === true || (revision.score !== null && revision.score !== undefined)
+                                      )
+                                      : revisions.find((revision) => revision.opportunity === selectedView);
+                                    const isAbsent = selectedRevision?.isAbsent === true || (
+                                      selectedRevision?.score !== null &&
+                                      selectedRevision?.score !== undefined &&
+                                      Number(selectedRevision.score) === 0
+                                    );
+
+                                    if (approvedBefore) {
+                                      return <td key={subj.abbreviation} className="repair-cell-closed" />;
                                     }
-                                    const approved = studentSubj.revisions.some((r) => r.status === 'approved');
-                                    const pending = studentSubj.revisions.some((r) => r.status === 'pending');
-                                    const hasFailed = studentSubj.revisions.some((r) => r.status === 'failed');
                                     return (
                                       <td key={subj.abbreviation} className="repair-cell-blank">
-                                        {approved && <span className="repair-pass">✓</span>}
-                                        {pending && (
-                                          <span className="repair-score-list">
-                                            {studentSubj.revisions.map((r) => (
-                                              <span key={r.id} className={`repair-score-tag ${r.status}`}>
-                                                {r.score != null ? Number(r.score).toFixed(1) : '—'}
-                                              </span>
-                                            ))}
-                                          </span>
-                                        )}
-                                        {hasFailed && !pending && <span className="repair-fail">✕</span>}
+                                        {selectedRevision && (isAbsent
+                                          ? 'NP'
+                                          : selectedRevision.score !== null && selectedRevision.score !== undefined
+                                            ? String(Number(selectedRevision.score))
+                                            : '—')}
                                       </td>
                                     );
                                   })}
@@ -642,17 +671,21 @@ const RepairPeriodManagement: React.FC = () => {
         .repair-col-idx { width: 32px; min-width: 32px; }
         .repair-col-name { width: 200px; min-width: 160px; text-align: left !important; padding: 4px 8px 4px 25px !important; }
         .repair-col-doc { width: 80px; min-width: 70px; }
+        .repair-col-section { width: 64px; min-width: 56px; }
         .repair-col-subj { width: 42px; min-width: 38px; max-width: 50px; }
-        .repair-cell-idx { font-weight: 600; color: #666; height: 28px; }
-        .repair-cell-name { text-align: left !important; padding: 4px 8px 4px 25px !important; font-weight: 500; }
+        .repair-cell-idx { font-weight: 600; color: #666; height: 22px; }
+        .repair-cell-name { text-align: left !important; padding: 2px 8px 2px 25px !important; font-weight: 500; }
         .repair-cell-doc { font-size: 10px; color: #666; }
-        .repair-cell-filled {
+        .repair-cell-section { width: 64px; min-width: 56px; font-size: 10px; color: #666; }
+        .repair-cell-filled,
+        .repair-cell-closed {
           background: #e8e8e8;
-          height: 28px;
+          height: 22px;
         }
         .repair-cell-blank {
           background: #fff;
-          height: 28px;
+          height: 22px;
+          font-weight: 600;
         }
         .repair-pass {
           color: #52c41a;

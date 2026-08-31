@@ -415,9 +415,15 @@ export const saveRevisionGrade = async (req: Request, res: Response) => {
     }
 
     const userId = (req.session as any)?.user?.personId;
-    const absentFlag = !!isAbsent;
+    const submittedScore = score != null ? Number(score) : null;
+    if (submittedScore !== null && (!Number.isFinite(submittedScore) || !Number.isInteger(submittedScore))) {
+      await t.rollback();
+      return res.status(400).json({ message: 'La nota de revisión debe ser un número entero' });
+    }
+    // A score of zero is always an absence, regardless of the input method.
+    const absentFlag = !!isAbsent || submittedScore === 0;
     // When absent: score = 0, status = failed (matches evaluation plan logic)
-    const numericScore = absentFlag ? 0 : (score != null ? Number(score) : null);
+    const numericScore = absentFlag ? 0 : submittedScore;
     const isApproved = numericScore != null && numericScore >= revisionPeriod.passingGrade;
 
     await revision.update({
@@ -550,9 +556,15 @@ export const bulkSaveRevisionGrades = async (req: Request, res: Response) => {
         continue;
       }
 
-      const absentFlag = !!isAbsent;
+      const submittedScore = score != null ? Number(score) : null;
+      if (submittedScore !== null && (!Number.isFinite(submittedScore) || !Number.isInteger(submittedScore))) {
+        await t.rollback();
+        return res.status(400).json({ message: 'La nota de revisión debe ser un número entero' });
+      }
+      // A score of zero is always an absence, regardless of the input method.
+      const absentFlag = !!isAbsent || submittedScore === 0;
       // When absent: score = 0, status = failed (matches evaluation plan logic)
-      const numericScore = absentFlag ? 0 : (score != null ? Number(score) : null);
+      const numericScore = absentFlag ? 0 : submittedScore;
       const isApproved = numericScore != null && numericScore >= revisionPeriod.passingGrade;
 
       await revision.update({

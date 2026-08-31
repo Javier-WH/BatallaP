@@ -1844,7 +1844,7 @@ export const exportRevisionSummary = async (req: Request, res: Response) => {
       );
 
       const evalRef = findRef('inst_eval_type');
-      if (evalRef) ws.getCell(evalRef.cell).value = 'REPARACIÓN';
+      if (evalRef) ws.getCell(evalRef.cell).value = 'REVISIÓN';
 
       const setLocal = (name: string, value: any) => {
         if (value === undefined || value === null || value === '') return;

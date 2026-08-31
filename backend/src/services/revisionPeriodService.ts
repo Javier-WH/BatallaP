@@ -283,7 +283,7 @@ export class RevisionPeriodService {
     });
 
     for (const rev of pendingRevisions) {
-      await rev.update({ status: 'failed' }, { transaction });
+      await rev.update({ score: 0, status: 'failed', isAbsent: true }, { transaction });
       const failedCount = await InscriptionSubjectRevision.count({
         where: {
           revisionPeriodId: revisionPeriod.id,
@@ -612,6 +612,20 @@ export class RevisionPeriodService {
       throw new Error('Ya está en la última oportunidad, no se puede avanzar más');
     }
 
+    // Closing an opportunity without a grade means the student was absent.
+    await InscriptionSubjectRevision.update(
+      { score: 0, status: 'failed', isAbsent: true },
+      {
+        where: {
+          revisionPeriodId: revisionPeriod.id,
+          opportunity: revisionPeriod.currentOpportunity,
+          status: 'pending',
+          score: null,
+        },
+        transaction,
+      }
+    );
+
     await revisionPeriod.update({
       currentOpportunity: revisionPeriod.currentOpportunity + 1,
     }, { transaction });
@@ -639,6 +653,21 @@ export class RevisionPeriodService {
     if (!Number.isInteger(opportunity) || opportunity < 1 || opportunity > revisionPeriod.maxOpportunities) {
       throw new Error(`La oportunidad debe estar entre 1 y ${revisionPeriod.maxOpportunities}`);
     }
+
+    // Any skipped opportunity is closed. Pending entries without a grade are
+    // recorded as absences; the selected opportunity remains editable.
+    await InscriptionSubjectRevision.update(
+      { score: 0, status: 'failed', isAbsent: true },
+      {
+        where: {
+          revisionPeriodId: revisionPeriod.id,
+          opportunity: { [Op.lt]: opportunity },
+          status: 'pending',
+          score: null,
+        },
+        transaction,
+      }
+    );
 
     await revisionPeriod.update({
       currentOpportunity: opportunity,

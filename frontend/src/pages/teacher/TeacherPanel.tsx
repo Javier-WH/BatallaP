@@ -761,7 +761,7 @@ const TeacherPanel: React.FC = () => {
         (detailRes.data.students || []).forEach((s: StudentRevisionData) => {
           (s.revisions || []).forEach((r: RevisionItem) => {
             initialGrades[r.id] = r.score;
-            initialAbsent[r.id] = !!r.isAbsent;
+            initialAbsent[r.id] = !!r.isAbsent || Number(r.score) === 0;
           });
         });
         setRevisionGrades(initialGrades);
@@ -824,7 +824,7 @@ const TeacherPanel: React.FC = () => {
         (detailRes.data.students || []).forEach((s: StudentRevisionData) => {
           (s.revisions || []).forEach((r: RevisionItem) => {
             updated[r.id] = r.score;
-            updatedAbsent[r.id] = !!r.isAbsent;
+            updatedAbsent[r.id] = !!r.isAbsent || Number(r.score) === 0;
           });
         });
         setRevisionGrades(updated);
@@ -2226,10 +2226,9 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                                             onChange={(e) => {
                                               const raw = e.target.value;
                                               if (raw === '' || /^\d*$/.test(raw)) {
-                                                setRevisionGrades(prev => ({ ...prev, [rev.id]: raw === '' ? null : Number(raw) }));
-                                                if (revisionAbsent[rev.id]) {
-                                                  setRevisionAbsent(prev => ({ ...prev, [rev.id]: false }));
-                                                }
+                                                const numericValue = raw === '' ? null : Number(raw);
+                                                setRevisionGrades(prev => ({ ...prev, [rev.id]: numericValue }));
+                                                setRevisionAbsent(prev => ({ ...prev, [rev.id]: numericValue === 0 }));
                                               }
                                             }}
                                             onBlur={(e) => {
