@@ -2214,6 +2214,10 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                                             if (isCellAbsent) {
                                               setRevisionAbsent(prev => ({ ...prev, [rev.id]: false }));
                                               setRevisionGrades(prev => ({ ...prev, [rev.id]: null }));
+                                              setTimeout(() => {
+                                                const input = document.getElementById(`rev-${rowIndex}-${opp}`);
+                                                if (input) (input as HTMLInputElement).focus();
+                                              }, 0);
                                             }
                                           }}
                                         >
@@ -2221,6 +2225,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                                             type="text"
                                             inputMode="numeric"
                                             pattern="[0-9]*"
+                                            id={`rev-${rowIndex}-${opp}`}
                                             value={revisionGrades[rev.id] != null ? String(revisionGrades[rev.id]) : ''}
                                             disabled={isLocked}
                                             onChange={(e) => {
@@ -2231,17 +2236,66 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                                                 setRevisionAbsent(prev => ({ ...prev, [rev.id]: numericValue === 0 }));
                                               }
                                             }}
-                                            onBlur={(e) => {
-                                              const raw = e.target.value;
-                                              if (raw !== '') {
-                                                e.target.value = padGrade(Number(raw));
+                                            onInput={(e) => {
+                                              (e.target as HTMLInputElement).value = (e.target as HTMLInputElement).value.replace(/[^0-9]/g, '');
+                                            }}
+                                            onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
+                                              if (e.key === '.' || e.key === ',' || e.key === 'e' || e.key === 'E' || e.key === '-' || e.key === '+') {
+                                                e.preventDefault();
+                                                return;
                                               }
+                                              if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter'].includes(e.key)) {
+                                                if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+                                                  e.preventDefault();
+                                                }
+
+                                                let nextRow = rowIndex;
+                                                let nextOpp = opp;
+
+                                                if (e.key === 'ArrowUp') nextRow--;
+                                                if (e.key === 'ArrowDown' || e.key === 'Enter') {
+                                                  if (e.key === 'Enter') e.preventDefault();
+                                                  nextRow++;
+                                                }
+                                                if (e.key === 'ArrowLeft') {
+                                                  nextOpp = opp - 1;
+                                                }
+                                                if (e.key === 'ArrowRight') {
+                                                  nextOpp = opp + 1;
+                                                }
+
+                                                const nextInputId = `rev-${nextRow}-${nextOpp}`;
+                                                setTimeout(() => {
+                                                  const nextInput = document.getElementById(nextInputId);
+                                                  if (nextInput && !(nextInput as HTMLInputElement).disabled) {
+                                                    nextInput.focus();
+                                                  }
+                                                }, 0);
+                                              }
+                                            }}
+                                            onBlur={(e) => {
+                                              const raw = e.target.value.replace(/[^0-9]/g, '');
+                                              if (raw === '') return;
+                                              const val = parseInt(raw, 10);
+                                              if (val < 0 || val > maxGrade) {
+                                                playBeep();
+                                                const wrapper = e.target.closest('.grading-cell');
+                                                if (wrapper) {
+                                                  e.target.value = '';
+                                                  wrapper.classList.add('grade-invalid');
+                                                  setTimeout(() => wrapper.classList.remove('grade-invalid'), 1500);
+                                                }
+                                                setRevisionGrades(prev => ({ ...prev, [rev.id]: null }));
+                                                return;
+                                              }
+                                              e.target.value = padGrade(val);
                                             }}
                                             onFocus={(e) => {
                                               const raw = e.target.value;
                                               if (raw !== '') {
                                                 e.target.value = String(Number(raw));
                                               }
+                                              e.target.select();
                                             }}
                                             style={{
                                               width: '48px',

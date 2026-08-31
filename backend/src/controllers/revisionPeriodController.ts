@@ -1709,18 +1709,12 @@ export const finalizeRevisionGrades = async (req: Request, res: Response) => {
     let skipped = 0;
 
     for (const [insSubId, revs] of revisionsByInsSubId) {
-      // Apply findFinalRevision logic:
-      // last revision (highest opportunity) with score != null OR
-      // auto-NP (isAbsent=true, gradedBy=null, opportunity < currentOpp)
+      // findFinalRevision: last revision (highest opportunity) with score != null
       let finalRev: any = null;
       const sortedRevs = [...revs].sort((a, b) => a.opportunity - b.opportunity);
       for (let i = sortedRevs.length - 1; i >= 0; i--) {
         const rev = sortedRevs[i];
         if (rev.score !== null && rev.score !== undefined) {
-          finalRev = rev;
-          break;
-        }
-        if (rev.isAbsent === true && rev.gradedBy == null && rev.opportunity < currentOpp) {
           finalRev = rev;
           break;
         }
@@ -1731,17 +1725,8 @@ export const finalizeRevisionGrades = async (req: Request, res: Response) => {
         continue;
       }
 
-      // Determine final score and status
-      const isExplicitZero = finalRev.score !== null && finalRev.score !== undefined && Number(finalRev.score) === 0 && finalRev.gradedBy != null;
-      const isAutoAbsent = finalRev.isAbsent === true && finalRev.gradedBy == null && finalRev.opportunity < currentOpp;
-      const isAbsent = isExplicitZero || isAutoAbsent;
-
-      const finalScore = isAbsent ? 0 : (finalRev.score != null ? Number(finalRev.score) : null);
-      if (finalScore == null) {
-        skipped++;
-        continue;
-      }
-
+      // Score 0 = inasistente (NP). Any other score = the actual grade.
+      const finalScore = Number(finalRev.score);
       const isApproved = finalScore >= passingGrade;
       const status: 'aprobada' | 'reprobada' = isApproved ? 'aprobada' : 'reprobada';
 
