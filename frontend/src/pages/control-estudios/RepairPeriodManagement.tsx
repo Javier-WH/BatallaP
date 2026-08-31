@@ -590,12 +590,17 @@ const RepairPeriodManagement: React.FC = () => {
 
             <Card title={
               <Space direction="vertical" size={8} style={{ width: '100%' }}>
-                <Space>
-                  <span>Estudiantes en revisión</span>
-                  {isPreview && <Tag color="orange">Vista previa</Tag>}
-                  {canOverride && !isPreview && periodEditable && nominaView === 'opportunity' && selectedOpp <= currentOpp && (
-                    <Tag color="gold" icon={<EditOutlined />}>Editable</Tag>
-                  )}
+                <Space style={{ justifyContent: 'space-between', width: '100%' }}>
+                  <Space>
+                    <span>Estudiantes en revisión</span>
+                    {isPreview && <Tag color="orange">Vista previa</Tag>}
+                    {canOverride && !isPreview && periodEditable && nominaView === 'opportunity' && selectedOpp <= currentOpp && (
+                      <Tag color="gold" icon={<EditOutlined />}>Editable</Tag>
+                    )}
+                  </Space>
+                  <Button icon={<PrinterOutlined />} onClick={handleExportExcel} loading={loading} style={{ marginTop: 15 }}>
+                    Imprimir
+                  </Button>
                 </Space>
                 <Space direction="vertical" size={8} style={{ width: '100%' }}>
                   <Segmented
@@ -668,11 +673,6 @@ const RepairPeriodManagement: React.FC = () => {
                   {nominaView === 'final' && (
                     <div className="repair-opportunity-row repair-opportunity-row-placeholder" />
                   )}
-                  <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                    <Button icon={<PrinterOutlined />} onClick={handleExportExcel} loading={loading}>
-                      Imprimir
-                    </Button>
-                  </div>
                 </Space>
               </Space>
             } style={{ marginTop: 16 }} styles={{ body: { padding: 0 } }}>
