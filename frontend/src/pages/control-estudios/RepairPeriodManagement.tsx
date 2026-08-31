@@ -68,6 +68,7 @@ interface StudentSubject {
   maxOpportunities: number;
   revisions: RevisionItem[];
   passed: boolean;
+  subjectOrder?: number;
 }
 
 interface StudentRevision {
@@ -77,9 +78,17 @@ interface StudentRevision {
   document: string;
   documentType?: string;
   grade: string;
+  gradeId?: number;
   gradeOrder?: number;
   section: string;
   subjects: StudentSubject[];
+}
+
+interface GradeSubjectColumn {
+  subjectId: number;
+  subjectName: string;
+  abbreviation: string;
+  subjectOrder: number;
 }
 
 const RepairPeriodManagement: React.FC = () => {
@@ -90,6 +99,7 @@ const RepairPeriodManagement: React.FC = () => {
   const [summary, setSummary] = useState<Summary | null>(null);
   const [students, setStudents] = useState<StudentRevision[]>([]);
   const [isPreview, setIsPreview] = useState(false);
+  const [gradeSubjects, setGradeSubjects] = useState<Record<number, GradeSubjectColumn[]>>({});
   const [activePeriodId, setActivePeriodId] = useState<number | null>(null);
   const [maxOppInput, setMaxOppInput] = useState<number>(3);
   const [maxOppSaving, setMaxOppSaving] = useState(false);
@@ -132,6 +142,7 @@ const RepairPeriodManagement: React.FC = () => {
       });
       setStudents(studentsRes.data.students || []);
       setIsPreview(studentsRes.data.isPreview || false);
+      setGradeSubjects(studentsRes.data.gradeSubjects || {});
       setMaxOppInput(summaryRes.data.revisionPeriod?.maxOpportunities ?? 3);
     } catch (error: any) {
       console.error('[RepairPeriodManagement] Error:', error);
@@ -315,22 +326,33 @@ const RepairPeriodManagement: React.FC = () => {
     closed: 'Bloqueado',
   };
 
-  // Group students by grade and build subject list per grade (in configured order)
+  // Group students by grade and build subject columns per grade from the
+  // full grade subject list returned by the backend (all active subjects of
+  // the grade in canonical order). Each student only has data in the
+  // subjects they need to review; the rest are rendered as disabled cells.
   const gradeGroups = useMemo(() => {
     const groups = new Map<string, { grade: string; students: StudentRevision[]; subjects: StudentSubject[] }>();
     for (const s of students) {
       const gradeKey = s.grade || 'Sin grado';
       if (!groups.has(gradeKey)) {
-        groups.set(gradeKey, { grade: gradeKey, students: [], subjects: [] });
+        // Use the full grade subject list as columns
+        const gid = s.gradeId ?? 0;
+        const gradeCols = gradeSubjects[gid] || [];
+        const subjects: StudentSubject[] = gradeCols.map((col) => ({
+          inscriptionSubjectId: 0,
+          subjectName: col.subjectName,
+          abbreviation: col.abbreviation,
+          originalScore: null,
+          originalStatus: null,
+          maxOpportunities: s.subjects[0]?.maxOpportunities ?? 3,
+          revisions: [],
+          passed: true,
+          subjectOrder: col.subjectOrder,
+        }));
+        groups.set(gradeKey, { grade: gradeKey, students: [], subjects });
       }
       const g = groups.get(gradeKey)!;
       g.students.push(s);
-      // Collect unique subjects by abbreviation (preserve first-seen order)
-      for (const subj of s.subjects) {
-        if (!g.subjects.find(x => x.abbreviation === subj.abbreviation)) {
-          g.subjects.push(subj);
-        }
-      }
     }
     // Sort students within each grade canonically (document type → document number → lastName → firstName)
     for (const g of groups.values()) {
@@ -345,7 +367,7 @@ const RepairPeriodManagement: React.FC = () => {
       if (orderA !== orderB) return orderA - orderB;
       return a.grade.localeCompare(b.grade, 'es', { numeric: true });
     });
-  }, [students]);
+  }, [students, gradeSubjects]);
 
   // Helper: determine if a revision's NP is "real" (should display NP)
   const isRealAbsent = (rev: RevisionItem | undefined, currentOpp: number): boolean => {
@@ -684,7 +706,7 @@ const RepairPeriodManagement: React.FC = () => {
                                   <td className="repair-cell-section">{student.section || '—'}</td>
                                   {group.subjects.map((subj) => {
                                     const studentSubj = student.subjects.find(
-                                      (sub) => sub.abbreviation === subj.abbreviation
+                                      (sub) => sub.subjectName === subj.subjectName
                                     );
                                     if (!studentSubj || isPreview) {
                                       return <td key={subj.abbreviation} className="repair-cell-filled" />;

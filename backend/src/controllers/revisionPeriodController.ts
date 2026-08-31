@@ -4,16 +4,23 @@ import sequelize from '@/config/database';
 import { RevisionPeriodService } from '@/services/revisionPeriodService';
 import { sortInscriptions } from '@/services/studentSortService';
 import {
+  getSubjectOrderMapByGradeAndPeriod,
+  sortSubjectsByOrder,
+} from '@/services/subjectOrderService';
+import {
   CouncilPoint,
   EvaluationPlan,
   Inscription,
   InscriptionSubject,
   InscriptionSubjectRevision,
+  PeriodGrade,
+  PeriodGradeSubject,
   Person,
   Qualification,
   RevisionGradeEditAudit,
   RevisionPeriod,
   Setting,
+  Subject,
   SubjectFinalGrade,
   Term,
 } from '@/models/index';
@@ -141,6 +148,44 @@ export const getRevisionStudents = async (req: Request, res: Response) => {
 
       const studentMap = new Map<number, any>();
       const subjectRevisionsMap = new Map<number, any[]>();
+      // Cache subject order maps by gradeId for canonical subject ordering
+      const orderMapCache = new Map<number, Map<number, number>>();
+      const resolveOrderMap = async (gradeId: number | null | undefined) => {
+        if (!gradeId) return new Map<number, number>();
+        if (orderMapCache.has(gradeId)) return orderMapCache.get(gradeId)!;
+        const m = await getSubjectOrderMapByGradeAndPeriod(gradeId, schoolPeriodId);
+        orderMapCache.set(gradeId, m);
+        return m;
+      };
+      // Cache full subject lists by gradeId (all active subjects of the grade)
+      const gradeSubjectsCache = new Map<number, any[]>();
+      const resolveGradeSubjects = async (gradeId: number | null | undefined) => {
+        if (!gradeId) return [];
+        if (gradeSubjectsCache.has(gradeId)) return gradeSubjectsCache.get(gradeId)!;
+        const pg = await PeriodGrade.findOne({
+          where: { gradeId, schoolPeriodId },
+          include: [{
+            model: Subject,
+            as: 'subjects',
+            through: { where: { active: true } } as any,
+          }],
+        });
+        const orderMap = await resolveOrderMap(gradeId);
+        const rawSubjects = (pg as any)?.subjects || [];
+        const sorted = sortSubjectsByOrder(
+          rawSubjects,
+          (s: any) => s.id,
+          (s: any) => s.name,
+          orderMap
+        ).map((s: any) => ({
+          subjectId: s.id,
+          subjectName: s.name || '',
+          abbreviation: s.abbreviation || s.name || '',
+          subjectOrder: orderMap.get(s.id) ?? 999,
+        }));
+        gradeSubjectsCache.set(gradeId, sorted);
+        return sorted;
+      };
 
       for (const rev of revisions) {
         if (!subjectRevisionsMap.has(rev.inscriptionSubjectId)) {
@@ -173,7 +218,9 @@ export const getRevisionStudents = async (req: Request, res: Response) => {
             inscriptionId: ins.id,
             studentName: `${ins.student?.lastName || ''} ${ins.student?.firstName || ''}`.trim(),
             document: ins.student?.document || '',
+            documentType: ins.student?.documentType || '',
             grade: ins.grade?.name || '',
+            gradeId: ins.gradeId,
             gradeOrder: (ins.grade as any)?.order ?? 999,
             section: ins.section?.name || '',
             subjects: [],
@@ -186,6 +233,7 @@ export const getRevisionStudents = async (req: Request, res: Response) => {
 
         entry.subjects.push({
           inscriptionSubjectId: insSub.id,
+          subjectId: insSub.subjectId,
           subjectName: insSub.subject?.name || '',
           abbreviation: insSub.subject?.abbreviation || insSub.subject?.name || '',
           originalScore: null,
@@ -196,7 +244,30 @@ export const getRevisionStudents = async (req: Request, res: Response) => {
         });
       }
 
-      return res.json({ students: Array.from(studentMap.values()), isPreview: false });
+      // Apply canonical subject order per student
+      const studentsList = Array.from(studentMap.values());
+      const gradeSubjectsMap: Record<number, any[]> = {};
+      for (const student of studentsList) {
+        const orderMap = await resolveOrderMap(student.gradeId);
+        student.subjects = sortSubjectsByOrder(
+          student.subjects,
+          (s: any) => s.subjectId,
+          (s: any) => s.subjectName,
+          orderMap
+        );
+        // Attach subjectOrder for frontend, remove internal subjectId
+        for (const subj of student.subjects) {
+          const sid = subj.subjectId;
+          subj.subjectOrder = (sid != null && orderMap.has(sid)) ? orderMap.get(sid)! : 999;
+          delete subj.subjectId;
+        }
+        // Build gradeSubjects map
+        if (student.gradeId && !gradeSubjectsMap[student.gradeId]) {
+          gradeSubjectsMap[student.gradeId] = await resolveGradeSubjects(student.gradeId);
+        }
+      }
+
+      return res.json({ students: studentsList, isPreview: false, gradeSubjects: gradeSubjectsMap });
     }
 
     // Preview mode: calculate failed subjects from qualifications & council points
@@ -234,9 +305,48 @@ export const getRevisionStudents = async (req: Request, res: Response) => {
 
     const studentMap = new Map<number, any>();
     const processedSubjects = new Set<number>();
+    // Cache subject order maps by gradeId for canonical subject ordering
+    const orderMapCache = new Map<number, Map<number, number>>();
+    const resolveOrderMap = async (gradeId: number | null | undefined) => {
+      if (!gradeId) return new Map<number, number>();
+      if (orderMapCache.has(gradeId)) return orderMapCache.get(gradeId)!;
+      const m = await getSubjectOrderMapByGradeAndPeriod(gradeId, schoolPeriodId);
+      orderMapCache.set(gradeId, m);
+      return m;
+    };
+    // Cache full subject lists by gradeId (all active subjects of the grade)
+    const gradeSubjectsCache = new Map<number, any[]>();
+    const resolveGradeSubjects = async (gradeId: number | null | undefined) => {
+      if (!gradeId) return [];
+      if (gradeSubjectsCache.has(gradeId)) return gradeSubjectsCache.get(gradeId)!;
+      const pg = await PeriodGrade.findOne({
+        where: { gradeId, schoolPeriodId },
+        include: [{
+          model: Subject,
+          as: 'subjects',
+          through: { where: { active: true } } as any,
+        }],
+      });
+      const orderMap = await resolveOrderMap(gradeId);
+      const rawSubjects = (pg as any)?.subjects || [];
+      const sorted = sortSubjectsByOrder(
+        rawSubjects,
+        (s: any) => s.id,
+        (s: any) => s.name,
+        orderMap
+      ).map((s: any) => ({
+        subjectId: s.id,
+        subjectName: s.name || '',
+        abbreviation: s.abbreviation || s.name || '',
+        subjectOrder: orderMap.get(s.id) ?? 999,
+      }));
+      gradeSubjectsCache.set(gradeId, sorted);
+      return sorted;
+    };
 
     for (const ins of allInscriptions) {
-      const insSubjects = (ins as any).inscriptionSubjects || [];
+      const insAny = ins as any;
+      const insSubjects = insAny.inscriptionSubjects || [];
       const subjects: any[] = [];
 
       for (const insSub of insSubjects) {
@@ -271,6 +381,7 @@ export const getRevisionStudents = async (req: Request, res: Response) => {
         if (finalScore < passingGrade) {
           subjects.push({
             inscriptionSubjectId: insSub.id,
+            subjectId: insSub.subjectId,
             subjectName: insSub.subject?.name || '',
             abbreviation: insSub.subject?.abbreviation || insSub.subject?.name || '',
             originalScore: finalScore,
@@ -283,7 +394,6 @@ export const getRevisionStudents = async (req: Request, res: Response) => {
       }
 
       if (subjects.length > 0) {
-        const insAny = ins as any;
         studentMap.set(insAny.personId, {
           studentId: insAny.personId,
           inscriptionId: insAny.id,
@@ -291,6 +401,7 @@ export const getRevisionStudents = async (req: Request, res: Response) => {
           document: insAny.student?.document || '',
           documentType: insAny.student?.documentType || '',
           grade: insAny.grade?.name || '',
+          gradeId: insAny.gradeId,
           gradeOrder: insAny.grade?.order ?? 999,
           section: insAny.section?.name || '',
           subjects,
@@ -298,7 +409,30 @@ export const getRevisionStudents = async (req: Request, res: Response) => {
       }
     }
 
-    return res.json({ students: Array.from(studentMap.values()), isPreview: true });
+    // Apply canonical subject order per student
+    const studentsList = Array.from(studentMap.values());
+    const gradeSubjectsMap: Record<number, any[]> = {};
+    for (const student of studentsList) {
+      const orderMap = await resolveOrderMap(student.gradeId);
+      student.subjects = sortSubjectsByOrder(
+        student.subjects,
+        (s: any) => s.subjectId,
+        (s: any) => s.subjectName,
+        orderMap
+      );
+      // Attach subjectOrder for frontend, remove internal subjectId
+      for (const subj of student.subjects) {
+        const sid = subj.subjectId;
+        subj.subjectOrder = (sid != null && orderMap.has(sid)) ? orderMap.get(sid)! : 999;
+        delete subj.subjectId;
+      }
+      // Build gradeSubjects map
+      if (student.gradeId && !gradeSubjectsMap[student.gradeId]) {
+        gradeSubjectsMap[student.gradeId] = await resolveGradeSubjects(student.gradeId);
+      }
+    }
+
+    return res.json({ students: studentsList, isPreview: true, gradeSubjects: gradeSubjectsMap });
   } catch (error: any) {
     console.error('[getRevisionStudents] Error:', error);
     return res.status(500).json({ message: error.message || 'Error al listar estudiantes' });
