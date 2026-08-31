@@ -290,6 +290,25 @@ const RepairPeriodManagement: React.FC = () => {
     }
   };
 
+  const handleExportExcel = async () => {
+    if (!activePeriodId) return;
+    try {
+      const res = await api.get(`/revision-periods/${activePeriodId}/export-nomina`, { responseType: 'blob' });
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      const disposition = res.headers['content-disposition'] || '';
+      const filenameMatch = disposition.match(/filename="?(.+?)"?$/);
+      link.setAttribute('download', filenameMatch ? filenameMatch[1] : 'revision-nomina.xlsx');
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (error: any) {
+      message.error(error?.response?.data?.message || 'Error al generar Excel de revisión');
+    }
+  };
+
   // Inline save for a revision grade (used by Control de Estudios)
   const handleSaveInline = async (revisionId: number, score: number | null, isAbsent: boolean) => {
     if (!activePeriodId) return;
@@ -579,7 +598,7 @@ const RepairPeriodManagement: React.FC = () => {
                       <Tag color="gold" icon={<EditOutlined />}>Editable</Tag>
                     )}
                   </Space>
-                  <Button icon={<PrinterOutlined />} onClick={() => window.print()}>
+                  <Button icon={<PrinterOutlined />} onClick={handleExportExcel} loading={loading}>
                     Imprimir
                   </Button>
                 </Space>

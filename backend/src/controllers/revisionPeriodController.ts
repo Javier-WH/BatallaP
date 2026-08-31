@@ -1,5 +1,8 @@
 import { Request, Response } from 'express';
 import { Op } from 'sequelize';
+import ExcelJS from 'exceljs';
+import fs from 'fs';
+import path from 'path';
 import sequelize from '@/config/database';
 import { RevisionPeriodService } from '@/services/revisionPeriodService';
 import { sortInscriptions } from '@/services/studentSortService';
@@ -10,15 +13,18 @@ import {
 import {
   CouncilPoint,
   EvaluationPlan,
+  Grade,
   Inscription,
   InscriptionSubject,
   InscriptionSubjectRevision,
+  PendingSubject,
   PeriodGrade,
   PeriodGradeSubject,
   Person,
   Qualification,
   RevisionGradeEditAudit,
   RevisionPeriod,
+  SchoolPeriod,
   Setting,
   Subject,
   SubjectFinalGrade,
@@ -1147,5 +1153,484 @@ export const getRevisionGradeAudits = async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('[getRevisionGradeAudits] Error:', error);
     return res.status(500).json({ message: error.message || 'Error al obtener auditoría' });
+  }
+};
+
+/**
+ * Export a printable Excel nomina for the revision period.
+ * Format matches RevisiónMockup.xlsx:
+ *  - Single sheet with all grades stacked vertically
+ *  - Header: school name | "REVISIÓN" | school year
+ *  - Per grade: GRADO (merged) | # | CÉDULA | APELLIDOS Y NOMBRES | Sec | subject abbreviations
+ *  - Subject cells filled with revision grades (score or 'I' for absent)
+ *  - Non-revision subjects shown as solid gray cells
+ */
+export const exportRevisionNominaExcel = async (req: Request, res: Response) => {
+  try {
+    const schoolPeriodId = parseInt(req.params.schoolPeriodId, 10);
+    if (!schoolPeriodId) {
+      return res.status(400).json({ message: 'schoolPeriodId es obligatorio' });
+    }
+
+    const schoolPeriod = await SchoolPeriod.findByPk(schoolPeriodId);
+    if (!schoolPeriod) {
+      return res.status(404).json({ message: 'Período escolar no encontrado' });
+    }
+
+    const revisionPeriod = await RevisionPeriod.findOne({ where: { schoolPeriodId } });
+
+    // Load all revisions for this period (if it exists)
+    const revisionMap = new Map<number, Map<number, any>>(); // inscriptionSubjectId -> opportunity -> revision
+    if (revisionPeriod) {
+      const revisions = await InscriptionSubjectRevision.findAll({
+        where: { revisionPeriodId: revisionPeriod.id },
+        include: [
+          {
+            model: InscriptionSubject,
+            as: 'inscriptionSubject',
+            required: true,
+            include: [
+              {
+                model: Inscription,
+                as: 'inscription',
+                where: { schoolPeriodId },
+                include: [{ association: 'student' }, { association: 'grade' }, { association: 'section' }],
+              },
+              { association: 'subject' },
+            ],
+          },
+        ],
+        order: [['inscriptionSubjectId', 'ASC'], ['opportunity', 'ASC']],
+      });
+
+      for (const rev of revisions) {
+        const insSubId = rev.inscriptionSubjectId;
+        if (!revisionMap.has(insSubId)) revisionMap.set(insSubId, new Map());
+        revisionMap.get(insSubId)!.set(rev.opportunity, {
+          score: rev.score,
+          status: rev.status,
+          isAbsent: (rev as any).isAbsent || false,
+          gradedBy: rev.gradedBy,
+          opportunity: rev.opportunity,
+        });
+      }
+    }
+
+    // Load all inscriptions with their subjects for this period
+    const allInscriptions = await Inscription.findAll({
+      where: { schoolPeriodId },
+      include: [
+        { association: 'student' },
+        { association: 'grade' },
+        { association: 'section' },
+        {
+          model: InscriptionSubject,
+          as: 'inscriptionSubjects',
+          include: [{ association: 'subject' }],
+        },
+      ],
+    });
+
+    // Sort students canonically
+    sortInscriptions(allInscriptions as any[]);
+
+    // Load pending subjects for this period's inscriptions so we can exclude
+    // them from the revision nomina. PendingSubject links a subject from a
+    // previous period to the current inscription (newInscriptionId).
+    const inscriptionIds = allInscriptions.map((ins: any) => ins.id);
+    const pendingSubjects = inscriptionIds.length > 0
+      ? await PendingSubject.findAll({
+          where: { newInscriptionId: { [Op.in]: inscriptionIds } },
+          transaction: undefined as any,
+        })
+      : [];
+    // Build a set of "inscriptionId-subjectId" pairs that are pending subjects
+    const pendingSet = new Set<string>();
+    for (const ps of pendingSubjects) {
+      pendingSet.add(`${ps.newInscriptionId}-${ps.subjectId}`);
+    }
+    // Also collect InscriptionSubject IDs that correspond to pending subjects
+    // so we can exclude their revisions from the revisionMap.
+    const pendingInsSubIds = new Set<number>();
+    for (const ins of allInscriptions as any[]) {
+      for (const insSub of (ins.inscriptionSubjects || [])) {
+        if (pendingSet.has(`${ins.id}-${insSub.subjectId}`)) {
+          pendingInsSubIds.add(insSub.id);
+        }
+      }
+    }
+    // Remove pending subject revisions from the revisionMap
+    for (const insSubId of pendingInsSubIds) {
+      revisionMap.delete(insSubId);
+    }
+
+    // Build grade groups: gradeId -> { gradeName, gradeOrder, subjects (canonical), students }
+    const gradeGroupsMap = new Map<number, {
+      gradeName: string;
+      gradeOrder: number;
+      subjects: Array<{ subjectId: number; name: string; abbreviation: string; order: number }>;
+      students: Array<{
+        studentId: number;
+        studentName: string;
+        document: string;
+        section: string;
+        subjectsBySubjectId: Map<number, { inscriptionSubjectId: number }>;
+      }>;
+    }>();
+
+    // Cache for grade subject lists
+    const gradeSubjectsCache = new Map<number, Array<{ subjectId: number; name: string; abbreviation: string; order: number }>>();
+    const resolveGradeSubjects = async (gradeId: number) => {
+      if (gradeSubjectsCache.has(gradeId)) return gradeSubjectsCache.get(gradeId)!;
+      const pg = await PeriodGrade.findOne({
+        where: { gradeId, schoolPeriodId },
+        include: [{
+          model: Subject,
+          as: 'subjects',
+          through: { where: { active: true } } as any,
+        }],
+      });
+      const orderMap = await getSubjectOrderMapByGradeAndPeriod(gradeId, schoolPeriodId);
+      const rawSubjects = (pg as any)?.subjects || [];
+      const sorted = sortSubjectsByOrder(
+        rawSubjects,
+        (s: any) => s.id,
+        (s: any) => s.name,
+        orderMap
+      ).map((s: any) => ({
+        subjectId: s.id,
+        name: s.name || '',
+        abbreviation: s.abbreviation || s.name || '',
+        order: orderMap.get(s.id) ?? 999,
+      }));
+      gradeSubjectsCache.set(gradeId, sorted);
+      return sorted;
+    };
+
+    for (const ins of allInscriptions) {
+      const insAny = ins as any;
+      const gradeId = insAny.gradeId;
+      if (!gradeId) continue;
+      const gradeName = insAny.grade?.name || '';
+      const gradeOrder = insAny.grade?.order ?? 999;
+
+      if (!gradeGroupsMap.has(gradeId)) {
+        const subjects = await resolveGradeSubjects(gradeId);
+        gradeGroupsMap.set(gradeId, {
+          gradeName,
+          gradeOrder,
+          subjects,
+          students: [],
+        });
+      }
+
+      const group = gradeGroupsMap.get(gradeId)!;
+      const subjectsBySubjectId = new Map<number, { inscriptionSubjectId: number }>();
+      for (const insSub of (insAny.inscriptionSubjects || [])) {
+        // Skip pending subjects (from previous periods)
+        if (pendingSet.has(`${ins.id}-${insSub.subjectId}`)) continue;
+        if (insSub.subjectId) {
+          subjectsBySubjectId.set(insSub.subjectId, { inscriptionSubjectId: insSub.id });
+        }
+      }
+
+      group.students.push({
+        studentId: insAny.personId,
+        studentName: `${insAny.student?.lastName || ''} ${insAny.student?.firstName || ''}`.trim(),
+        document: insAny.student?.document || '',
+        section: insAny.section?.name || '',
+        subjectsBySubjectId,
+      });
+    }
+
+    // Only include students that have at least one subject in revision,
+    // and only grades that have at least one such student.
+    const gradeGroups = Array.from(gradeGroupsMap.values())
+      .map(g => ({
+        ...g,
+        students: g.students.filter(s =>
+          Array.from(s.subjectsBySubjectId.values()).some(subj =>
+            revisionMap.has(subj.inscriptionSubjectId)
+          )
+        ),
+      }))
+      .filter(g => g.students.length > 0)
+      .sort((a, b) => {
+        if (a.gradeOrder !== b.gradeOrder) return a.gradeOrder - b.gradeOrder;
+        return a.gradeName.localeCompare(b.gradeName, 'es', { numeric: true });
+      });
+
+    if (gradeGroups.length === 0) {
+      return res.status(404).json({ message: 'No hay estudiantes en revisión' });
+    }
+
+    // Determine the max number of subjects across all grades (for column count)
+    const maxSubjects = Math.max(...gradeGroups.map(g => g.subjects.length));
+
+    // Build workbook
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet('Revisión');
+
+    // Logo
+    const logoPath = path.resolve(process.cwd(), 'public', 'uploads', 'images', 'Logo_ME_Batalla_H.png');
+    const logoId = fs.existsSync(logoPath)
+      ? workbook.addImage({ filename: logoPath, extension: 'png' })
+      : null;
+
+    const thinBorder = { style: 'thin' as const, color: { argb: 'FF000000' } };
+    const mediumBorder = { style: 'medium' as const, color: { argb: 'FF000000' } };
+    const cellFillGray: ExcelJS.FillPattern = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFAFAFA' } };
+    const cellFillDisabled: ExcelJS.FillPattern = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8E8E8' } };
+
+    // Column widths (matching mockup)
+    sheet.getColumn(1).width = 6.86;   // GRADO
+    sheet.getColumn(2).width = 3.43;   // #
+    sheet.getColumn(3).width = 18;     // CÉDULA
+    sheet.getColumn(4).width = 45;     // APELLIDOS Y NOMBRES
+    sheet.getColumn(5).width = 5.71;   // Sec
+    for (let i = 6; i < 6 + maxSubjects; i++) {
+      sheet.getColumn(i).width = 5.71; // Subject columns
+    }
+
+    const totalCols = 5 + maxSubjects;
+    // Compute column letter
+    const colLetter = (col: number) => {
+      let result = '';
+      while (col > 0) {
+        const rem = (col - 1) % 26;
+        result = String.fromCharCode(65 + rem) + result;
+        col = Math.floor((col - 1) / 26);
+      }
+      return result;
+    };
+    const lastCol = colLetter(totalCols);
+
+    // Row 1: Header — school name | REVISIÓN | school year
+    sheet.getRow(1).height = 21;
+    sheet.mergeCells('A1:D1');
+    sheet.getCell('A1').value = 'U.E.C. BATALLA DE LA VICTORIA';
+    sheet.getCell('A1').font = { bold: true, size: 12, name: 'Calibri' };
+    sheet.getCell('A1').alignment = { horizontal: 'left', vertical: 'middle' };
+
+    const revisionTitleEnd = Math.min(5 + Math.floor(maxSubjects / 2), totalCols);
+    sheet.mergeCells(`E1:${colLetter(revisionTitleEnd)}1`);
+    sheet.getCell('E1').value = 'REVISIÓN';
+    sheet.getCell('E1').font = { bold: true, size: 14, name: 'Calibri' };
+    sheet.getCell('E1').alignment = { horizontal: 'center', vertical: 'middle' };
+
+    sheet.mergeCells(`${colLetter(revisionTitleEnd + 1)}1:${lastCol}1`);
+    const periodName = String(schoolPeriod.name || '');
+    const schoolYear = periodName.match(/\d{4}\s*-\s*\d{4}/)?.[0] || periodName;
+    sheet.getCell(`${colLetter(revisionTitleEnd + 1)}1`).value = `Año Escolar ${schoolYear}`;
+    sheet.getCell(`${colLetter(revisionTitleEnd + 1)}1`).font = { bold: true, size: 12, name: 'Calibri' };
+    sheet.getCell(`${colLetter(revisionTitleEnd + 1)}1`).alignment = { horizontal: 'right', vertical: 'middle' };
+
+    // Row 2: spacer
+    sheet.getRow(2).height = 15.75;
+
+    // Data starts at row 3
+    let currentRow = 3;
+
+    for (const group of gradeGroups) {
+      const gradeName = group.gradeName.toUpperCase();
+      const numStudents = group.students.length;
+      const numSubjects = group.subjects.length;
+
+      // Header row
+      const headerRow = sheet.getRow(currentRow);
+      headerRow.height = 18;
+
+      // Col 1: GRADO (will be merged vertically including header row, text vertical)
+      headerRow.getCell(1).value = gradeName;
+      headerRow.getCell(1).font = { bold: true, size: 11, name: 'Calibri' };
+      headerRow.getCell(1).alignment = { horizontal: 'center', vertical: 'middle', textRotation: 90 };
+
+      // Col 2-5: #, CÉDULA, APELLIDOS Y NOMBRES, Sec
+      const fixedHeaders = ['#', 'CÉDULA', 'APELLIDOS Y NOMBRES', 'Sec'];
+      for (let i = 0; i < fixedHeaders.length; i++) {
+        const cell = headerRow.getCell(2 + i);
+        cell.value = fixedHeaders[i];
+        cell.font = { bold: true, size: 11, name: 'Calibri' };
+        cell.alignment = { horizontal: 'center', vertical: 'middle' };
+      }
+
+      // Subject columns
+      for (let i = 0; i < numSubjects; i++) {
+        const cell = headerRow.getCell(6 + i);
+        cell.value = group.subjects[i].abbreviation;
+        cell.font = { bold: true, size: 8, name: 'Arial' };
+        cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+      }
+
+      // Apply borders to header row
+      for (let c = 1; c <= 5 + numSubjects; c++) {
+        const cell = headerRow.getCell(c);
+        cell.border = {
+          top: mediumBorder,
+          bottom: thinBorder,
+          left: c === 1 ? mediumBorder : thinBorder,
+          right: c === 5 + numSubjects ? mediumBorder : thinBorder,
+        };
+      }
+
+      currentRow++;
+
+      // Data rows
+      for (let si = 0; si < numStudents; si++) {
+        const student = group.students[si];
+        const row = sheet.getRow(currentRow);
+        row.height = 18;
+
+        // Col 1: Grade name (merged with header, no need to repeat value)
+        row.getCell(1).font = { bold: true, size: 11, name: 'Calibri' };
+        row.getCell(1).alignment = { horizontal: 'center', vertical: 'middle', textRotation: 90 };
+
+        // Col 2: #
+        row.getCell(2).value = si + 1;
+        row.getCell(2).font = { bold: true, size: 10, name: 'Calibri' };
+        row.getCell(2).alignment = { horizontal: 'center', vertical: 'middle' };
+
+        // Col 3: CÉDULA
+        row.getCell(3).value = student.document;
+        row.getCell(3).font = { size: 10, name: 'Calibri' };
+        row.getCell(3).alignment = { horizontal: 'center', vertical: 'middle' };
+
+        // Col 4: APELLIDOS Y NOMBRES
+        row.getCell(4).value = student.studentName;
+        row.getCell(4).font = { size: 10, name: 'Calibri' };
+        row.getCell(4).alignment = { horizontal: 'left', vertical: 'middle' };
+
+        // Col 5: Sec
+        const sectionName = student.section.replace(/^Secci[oó]n\s*/i, '');
+        row.getCell(5).value = sectionName;
+        row.getCell(5).font = { size: 10, name: 'Calibri' };
+        row.getCell(5).alignment = { horizontal: 'center', vertical: 'middle' };
+
+        // Subject columns
+        for (let i = 0; i < numSubjects; i++) {
+          const subj = group.subjects[i];
+          const cell = row.getCell(6 + i);
+          const studentSubj = student.subjectsBySubjectId.get(subj.subjectId);
+
+          if (!studentSubj) {
+            // Student doesn't have this subject — disabled cell
+            cell.fill = cellFillDisabled;
+          } else {
+            const revMap = revisionMap.get(studentSubj.inscriptionSubjectId);
+            if (revMap && revMap.size > 0) {
+              // Replicate the "Nota Final" view logic from the frontend:
+              // findFinalRevision = last revision (highest opportunity) that has
+              //   a score OR is an auto-NP (isAbsent, no grader, opp < currentOpp)
+              const currentOpp = revisionPeriod?.currentOpportunity ?? 1;
+              const allRevs = Array.from(revMap.entries()).sort((a, b) => a[0] - b[0]);
+              let finalRev: any = null;
+              for (let r = allRevs.length - 1; r >= 0; r--) {
+                const rev = allRevs[r][1];
+                if (rev.score !== null && rev.score !== undefined) {
+                  finalRev = rev;
+                  break;
+                }
+                if (rev.isAbsent === true && rev.gradedBy == null && allRevs[r][0] < currentOpp) {
+                  finalRev = rev;
+                  break;
+                }
+              }
+
+              if (finalRev) {
+                // isRealAbsent: score=0 with grader (explicit zero) OR auto-NP
+                const isExplicitZero = finalRev.score !== null && finalRev.score !== undefined && Number(finalRev.score) === 0 && finalRev.gradedBy != null;
+                const isAutoAbsent = finalRev.isAbsent === true && finalRev.gradedBy == null && finalRev.opportunity < currentOpp;
+                const isAbsent = isExplicitZero || isAutoAbsent;
+
+                if (isAbsent) {
+                  cell.value = 'NP';
+                  cell.font = { bold: true, size: 8, color: { argb: 'FFDC2626' }, name: 'Arial' };
+                } else if (finalRev.score != null) {
+                  cell.value = Number(finalRev.score);
+                  const isApproved = finalRev.status === 'approved';
+                  cell.font = isApproved
+                    ? { bold: true, size: 8, color: { argb: 'FF22A547' }, name: 'Arial' }
+                    : { bold: true, size: 8, color: { argb: 'FFDC2626' }, name: 'Arial' };
+                } else {
+                  cell.value = '';
+                  cell.font = { bold: true, size: 8, name: 'Arial' };
+                }
+              } else {
+                // No meaningful revision yet — empty cell
+                cell.value = '';
+                cell.font = { bold: true, size: 8, name: 'Arial' };
+              }
+              cell.fill = cellFillGray;
+            } else {
+              // Student has this subject but no revisions (not in revision for this subject)
+              cell.fill = cellFillDisabled;
+            }
+          }
+          cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+        }
+
+        // Borders: outer perimeter = medium, inner = thin
+        const isLastRow = si === numStudents - 1;
+        for (let c = 1; c <= 5 + numSubjects; c++) {
+          const cell = row.getCell(c);
+          cell.border = {
+            top: thinBorder,
+            bottom: isLastRow ? mediumBorder : thinBorder,
+            left: c === 1 ? mediumBorder : thinBorder,
+            right: c === 5 + numSubjects ? mediumBorder : thinBorder,
+          };
+        }
+
+        currentRow++;
+      }
+
+      // Merge grade name column vertically (from header row to last student row)
+      if (numStudents > 0) {
+        const startMerge = currentRow - numStudents - 1; // include header row
+        const endMerge = currentRow - 1;
+        sheet.mergeCells(startMerge, 1, endMerge, 1);
+        // Re-apply border + vertical text after merge.
+        // For merged cells, ExcelJS needs the border set on every individual
+        // cell within the merge — the outer perimeter must be mediumBorder.
+        for (let r = startMerge; r <= endMerge; r++) {
+          const cell = sheet.getCell(r, 1);
+          cell.border = {
+            top: r === startMerge ? mediumBorder : thinBorder,
+            bottom: r === endMerge ? mediumBorder : thinBorder,
+            left: mediumBorder,
+            right: mediumBorder,
+          };
+          cell.alignment = { horizontal: 'center', vertical: 'middle', textRotation: 90 };
+        }
+        // Ensure the top border of the first row of the merge is medium
+        // (sometimes overwritten by the header border loop above)
+        sheet.getCell(startMerge, 1).border = {
+          ...sheet.getCell(startMerge, 1).border,
+          top: mediumBorder,
+        };
+      }
+
+      // Add a blank spacer row between grade blocks
+      currentRow += 1;
+    }
+
+    // Page setup
+    sheet.pageSetup = {
+      orientation: 'portrait',
+      fitToPage: true,
+      fitToWidth: 1,
+      fitToHeight: 0,
+    };
+    sheet.pageSetup.margins = {
+      left: 0.7, right: 0.7, top: 0.75, bottom: 0.75, header: 0.3, footer: 0.3,
+    };
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="revision-nomina-${schoolYear}.xlsx"`);
+    res.send(buffer);
+  } catch (error: any) {
+    console.error('[exportRevisionNominaExcel] Error:', error);
+    return res.status(500).json({ message: error.message || 'Error al generar Excel de revisión' });
   }
 };
