@@ -15,13 +15,16 @@ interface RevisionPeriodAttributes {
   completedAt?: Date | null;
   completedBy?: number | null;
   closedAt?: Date | null;
+  gradesFinalized?: boolean;
+  gradesFinalizedAt?: Date | null;
+  gradesFinalizedBy?: number | null;
   createdAt?: Date;
   updatedAt?: Date;
 }
 
 type RevisionPeriodCreationAttributes = Optional<
   RevisionPeriodAttributes,
-  'id' | 'status' | 'maxOpportunities' | 'passingGrade' | 'currentOpportunity' | 'openedAt' | 'completedAt' | 'completedBy' | 'closedAt'
+  'id' | 'status' | 'maxOpportunities' | 'passingGrade' | 'currentOpportunity' | 'openedAt' | 'completedAt' | 'completedBy' | 'closedAt' | 'gradesFinalized' | 'gradesFinalizedAt' | 'gradesFinalizedBy'
 >;
 
 class RevisionPeriod
@@ -38,6 +41,9 @@ class RevisionPeriod
   public completedAt!: Date | null;
   public completedBy!: number | null;
   public closedAt!: Date | null;
+  public gradesFinalized!: boolean;
+  public gradesFinalizedAt!: Date | null;
+  public gradesFinalizedBy!: number | null;
 
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
@@ -95,6 +101,21 @@ RevisionPeriod.init(
     closedAt: {
       type: DataTypes.DATE,
       allowNull: true,
+    },
+    gradesFinalized: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+    },
+    gradesFinalizedAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
+    gradesFinalizedBy: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      references: { model: 'users', key: 'id' },
+      onDelete: 'SET NULL',
     },
   },
   {

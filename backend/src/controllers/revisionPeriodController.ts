@@ -1522,10 +1522,12 @@ export const exportRevisionNominaExcel = async (req: Request, res: Response) => 
             const revMap = revisionMap.get(studentSubj.inscriptionSubjectId);
             if (revMap && revMap.size > 0) {
               // Replicate the "Nota Final" view logic from the frontend:
-              // findFinalRevision = last revision (highest opportunity) that has
+              // findFinalRevision = last revision (highest opportunity <= currentOpp) that has
               //   a score OR is an auto-NP (isAbsent, no grader, opp < currentOpp)
               const currentOpp = revisionPeriod?.currentOpportunity ?? 1;
-              const allRevs = Array.from(revMap.entries()).sort((a, b) => a[0] - b[0]);
+              const allRevs = Array.from(revMap.entries())
+                .filter(([opp]) => opp <= currentOpp)
+                .sort((a, b) => a[0] - b[0]);
               let finalRev: any = null;
               for (let r = allRevs.length - 1; r >= 0; r--) {
                 const rev = allRevs[r][1];
@@ -1540,14 +1542,22 @@ export const exportRevisionNominaExcel = async (req: Request, res: Response) => 
               }
 
               if (finalRev) {
+                // When grades are not finalized, show empty cells for 0s (ungraded).
+                // When finalized, show NP for absences.
+                const gradesFinalized = revisionPeriod?.gradesFinalized === true;
+
                 // isRealAbsent: score=0 with grader (explicit zero) OR auto-NP
                 const isExplicitZero = finalRev.score !== null && finalRev.score !== undefined && Number(finalRev.score) === 0 && finalRev.gradedBy != null;
                 const isAutoAbsent = finalRev.isAbsent === true && finalRev.gradedBy == null && finalRev.opportunity < currentOpp;
                 const isAbsent = isExplicitZero || isAutoAbsent;
 
-                if (isAbsent) {
+                if (isAbsent && gradesFinalized) {
                   cell.value = 'NP';
                   cell.font = { bold: true, size: 8, color: { argb: 'FFDC2626' }, name: 'Arial' };
+                } else if (finalRev.score != null && Number(finalRev.score) === 0) {
+                  // Score is 0 but not finalized, or auto-NP from a past opportunity — leave empty
+                  cell.value = '';
+                  cell.font = { bold: true, size: 8, name: 'Arial' };
                 } else if (finalRev.score != null) {
                   cell.value = Number(finalRev.score);
                   const isApproved = finalRev.status === 'approved';
@@ -1814,14 +1824,53 @@ export const finalizeRevisionGrades = async (req: Request, res: Response) => {
       }
     }
 
+    // Mark grades as finalized
+    const userId = (req.session as any)?.user?.id;
+    await revisionPeriod.update({
+      gradesFinalized: true,
+      gradesFinalizedAt: new Date(),
+      gradesFinalizedBy: userId ?? null,
+    }, { transaction: t });
+
     await t.commit();
     return res.json({
       message: `Notas de revisión finalizadas: ${created} creadas, ${updated} actualizadas, ${skipped} omitidas`,
       summary: { created, updated, skipped, total: revisionsByInsSubId.size },
+      gradesFinalized: true,
     });
   } catch (error: any) {
     await t.rollback();
     console.error('[finalizeRevisionGrades] Error:', error);
     return res.status(500).json({ message: error.message || 'Error al finalizar notas de revisión' });
+  }
+};
+
+/**
+ * Unmark grades as finalized (toggle off the "Revisión Completada" checkbox).
+ * Does NOT delete the SubjectFinalGrade records — only flips the flag so the
+ * Excel export shows empty cells instead of NP for ungraded revisions.
+ */
+export const unfinalizeRevisionGrades = async (req: Request, res: Response) => {
+  try {
+    const schoolPeriodId = parseInt(req.params.schoolPeriodId, 10);
+    if (!schoolPeriodId) {
+      return res.status(400).json({ message: 'schoolPeriodId es requerido' });
+    }
+
+    const revisionPeriod = await RevisionPeriod.findOne({ where: { schoolPeriodId } });
+    if (!revisionPeriod) {
+      return res.status(404).json({ message: 'Período de revisión no encontrado' });
+    }
+
+    await revisionPeriod.update({
+      gradesFinalized: false,
+      gradesFinalizedAt: null,
+      gradesFinalizedBy: null,
+    });
+
+    return res.json({ message: 'Revisión marcada como no completada', gradesFinalized: false });
+  } catch (error: any) {
+    console.error('[unfinalizeRevisionGrades] Error:', error);
+    return res.status(500).json({ message: error.message || 'Error al desmarcar revisión' });
   }
 };

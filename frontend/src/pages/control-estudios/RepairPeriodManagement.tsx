@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Card, Button, Tag, Space, Typography, Spin, message, Alert, Statistic, Row, Col, Popconfirm, Tabs, InputNumber, Segmented } from 'antd';
+import { Card, Button, Tag, Space, Typography, Spin, message, Alert, Statistic, Row, Col, Popconfirm, Checkbox, Tabs, InputNumber, Segmented } from 'antd';
 import { PlayCircleOutlined, StopOutlined, ReloadOutlined, CheckCircleOutlined, ClockCircleOutlined, CloseCircleOutlined, PrinterOutlined, RetweetOutlined, UndoOutlined, LockOutlined, UnlockOutlined, EditOutlined, CalendarOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import api from '@/services/api';
@@ -39,6 +39,9 @@ interface RevisionPeriodData {
   completedAt: string | null;
   completedBy: number | null;
   closedAt: string | null;
+  gradesFinalized?: boolean;
+  gradesFinalizedAt?: string | null;
+  gradesFinalizedBy?: number | null;
 }
 
 interface Summary {
@@ -310,15 +313,20 @@ const RepairPeriodManagement: React.FC = () => {
   };
 
   const [finalizing, setFinalizing] = useState(false);
-  const handleFinalizeRevisionGrades = async () => {
+  const handleFinalizeRevisionGrades = async (checked: boolean) => {
     if (!activePeriodId) return;
     setFinalizing(true);
     try {
-      const res = await api.post(`/revision-periods/${activePeriodId}/finalize-revision-grades`);
-      message.success(res.data.message || 'Notas de revisión finalizadas');
+      if (checked) {
+        const res = await api.post(`/revision-periods/${activePeriodId}/finalize-revision-grades`);
+        message.success(res.data.message || 'Notas de revisión finalizadas');
+      } else {
+        const res = await api.post(`/revision-periods/${activePeriodId}/unfinalize-revision-grades`);
+        message.success(res.data.message || 'Revisión marcada como no completada');
+      }
       await fetchData();
     } catch (error: any) {
-      message.error(error?.response?.data?.message || 'Error al finalizar notas de revisión');
+      message.error(error?.response?.data?.message || 'Error al actualizar estado de revisión');
     } finally {
       setFinalizing(false);
     }
@@ -617,24 +625,32 @@ const RepairPeriodManagement: React.FC = () => {
                     <Button icon={<PrinterOutlined />} onClick={handleExportExcel} loading={loading} style={{ marginTop: 15 }}>
                       Imprimir
                     </Button>
-                    <Popconfirm
-                      title="¿Finalizar notas de revisión?"
-                      description="Se crearán/actualizarán las notas finales de revisión. Estas notas serán visibles en Notas Históricas."
-                      okText="Sí, finalizar"
-                      cancelText="Cancelar"
-                      onConfirm={handleFinalizeRevisionGrades}
-                      disabled={isPreview || !canOverride}
+                    <Checkbox
+                      checked={summary?.revisionPeriod?.gradesFinalized === true}
+                      disabled={isPreview || !canOverride || finalizing}
+                      onChange={(e) => handleFinalizeRevisionGrades(e.target.checked)}
+                      style={{
+                        marginTop: 15,
+                        fontWeight: 800,
+                        fontSize: 13,
+                        padding: '6px 14px',
+                        borderRadius: 10,
+                        height: 36,
+                        display: 'flex',
+                        alignItems: 'center',
+                        background: summary?.revisionPeriod?.gradesFinalized ? '#f6ffed' : '#fff',
+                        border: `2px solid ${summary?.revisionPeriod?.gradesFinalized ? '#52c41a' : '#d9d9d9'}`,
+                        transition: 'all 0.3s ease',
+                      }}
                     >
-                      <Button
-                        type="primary"
-                        icon={<CheckCircleOutlined />}
-                        loading={finalizing}
-                        disabled={isPreview || !canOverride}
-                        style={{ marginTop: 15 }}
-                      >
-                        Finalizar Notas
-                      </Button>
-                    </Popconfirm>
+                      {summary?.revisionPeriod?.gradesFinalized ? (
+                        <span style={{ color: '#389e0d', display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <CheckCircleOutlined /> Revisión completada
+                        </span>
+                      ) : (
+                        'Marcar como completada'
+                      )}
+                    </Checkbox>
                   </Space>
                 </Space>
                 <Space direction="vertical" size={8} style={{ width: '100%' }}>
