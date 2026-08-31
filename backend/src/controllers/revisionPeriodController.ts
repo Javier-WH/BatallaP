@@ -1356,8 +1356,8 @@ export const exportRevisionNominaExcel = async (req: Request, res: Response) => 
       }))
       .filter(g => g.students.length > 0)
       .sort((a, b) => {
-        if (a.gradeOrder !== b.gradeOrder) return a.gradeOrder - b.gradeOrder;
-        return a.gradeName.localeCompare(b.gradeName, 'es', { numeric: true });
+        if (a.gradeOrder !== b.gradeOrder) return b.gradeOrder - a.gradeOrder;
+        return b.gradeName.localeCompare(a.gradeName, 'es', { numeric: true });
       });
 
     if (gradeGroups.length === 0) {
@@ -1442,7 +1442,7 @@ export const exportRevisionNominaExcel = async (req: Request, res: Response) => 
 
       // Col 1: GRADO (will be merged vertically including header row, text vertical)
       headerRow.getCell(1).value = gradeName;
-      headerRow.getCell(1).font = { bold: true, size: 11, name: 'Calibri' };
+      headerRow.getCell(1).font = { bold: true, size: 18, name: 'Calibri' };
       headerRow.getCell(1).alignment = { horizontal: 'center', vertical: 'middle', textRotation: 90 };
 
       // Col 2-5: #, CÉDULA, APELLIDOS Y NOMBRES, Sec
@@ -1482,7 +1482,7 @@ export const exportRevisionNominaExcel = async (req: Request, res: Response) => 
         row.height = 18;
 
         // Col 1: Grade name (merged with header, no need to repeat value)
-        row.getCell(1).font = { bold: true, size: 11, name: 'Calibri' };
+        row.getCell(1).font = { bold: true, size: 18, name: 'Calibri' };
         row.getCell(1).alignment = { horizontal: 'center', vertical: 'middle', textRotation: 90 };
 
         // Col 2: #
@@ -1610,8 +1610,6 @@ export const exportRevisionNominaExcel = async (req: Request, res: Response) => 
         };
       }
 
-      // Add a blank spacer row between grade blocks
-      currentRow += 1;
     }
 
     // Page setup
