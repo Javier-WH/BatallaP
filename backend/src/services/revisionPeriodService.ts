@@ -1,16 +1,14 @@
 import { Op, Transaction } from 'sequelize';
 import {
   CouncilChecklist,
-  CouncilPoint,
-  EvaluationPlan,
   Inscription,
   InscriptionSubject,
   InscriptionSubjectRevision,
-  Qualification,
   RevisionPeriod,
   SchoolPeriod,
   Setting,
   SubjectFinalGrade,
+  SubjectTermGrade,
   Term,
 } from '@/models/index';
 import { isPassingGrade } from './gradeEvaluationService';
@@ -167,9 +165,8 @@ export class RevisionPeriodService {
       openedAt: new Date(),
     }, { transaction });
 
-    // Calculate failed subjects directly from qualifications & council points.
-    // SubjectFinalGrade records don't exist until period closure, so we
-    // compute the final score per subject manually here.
+    // Calculate failed subjects from SubjectTermGrade (single source of truth,
+    // already rounded and synced by TermGradeSyncService).
     const allInscriptions = await Inscription.findAll({
       where: { schoolPeriodId },
       include: [
@@ -177,12 +174,7 @@ export class RevisionPeriodService {
           model: InscriptionSubject,
           as: 'inscriptionSubjects',
           include: [
-            {
-              model: Qualification,
-              as: 'qualifications',
-              include: [{ model: EvaluationPlan, as: 'evaluationPlan' }],
-            },
-            { model: CouncilPoint, as: 'councilPoints' },
+            { model: SubjectTermGrade, as: 'termGrades' },
           ],
         },
       ],
@@ -201,31 +193,21 @@ export class RevisionPeriodService {
         if (uniqueSet.has(insSub.id)) continue;
         uniqueSet.add(insSub.id);
 
-        // Same calculation as FinalGradeCalculator
-        const termScores: Record<number, number> = {};
-        termIds.forEach(tid => { termScores[tid] = 0; });
-
-        (insSub.qualifications || []).forEach((q: any) => {
-          if (q.isAbsent) return;
-          const score = q.remedialScore != null && Number(q.remedialScore) > 0
-            ? Number(q.remedialScore)
-            : Number(q.score) || 0;
-          const percentage = Number(q.evaluationPlan?.percentage) || 0;
-          const termId = q.evaluationPlan?.termId;
-          if (termId && termScores[termId] !== undefined) {
-            termScores[termId] += score * (percentage / 100);
+        // Use SubjectTermGrade (already rounded per-lapso) and average them
+        const termGrades: any[] = insSub.termGrades || [];
+        const scoresByTerm: Record<number, number> = {};
+        termIds.forEach(tid => { scoresByTerm[tid] = 0; });
+        let foundAny = false;
+        for (const tg of termGrades) {
+          if (termIds.includes(tg.termId)) {
+            scoresByTerm[tg.termId] = Number(tg.score) || 0;
+            foundAny = true;
           }
-        });
-
-        (insSub.councilPoints || []).forEach((cp: any) => {
-          const pVal = Number(cp.points) || 0;
-          if (cp.termId && termScores[cp.termId] !== undefined) {
-            termScores[cp.termId] += pVal;
-          }
-        });
+        }
+        if (!foundAny) continue;
 
         let totalAccumulated = 0;
-        Object.values(termScores).forEach(v => { totalAccumulated += v; });
+        Object.values(scoresByTerm).forEach(v => { totalAccumulated += v; });
         const finalScore = totalAccumulated / termCount;
 
         if (!isPassingGrade(finalScore, passingGrade)) {
@@ -401,7 +383,7 @@ export class RevisionPeriodService {
 
     const passingGrade = revisionPeriod.passingGrade || 10;
 
-    // Recalculate final scores for all inscriptions
+    // Recalculate final scores from SubjectTermGrade (single source of truth)
     const allInscriptions = await Inscription.findAll({
       where: { schoolPeriodId },
       include: [
@@ -409,12 +391,7 @@ export class RevisionPeriodService {
           model: InscriptionSubject,
           as: 'inscriptionSubjects',
           include: [
-            {
-              model: Qualification,
-              as: 'qualifications',
-              include: [{ model: EvaluationPlan, as: 'evaluationPlan' }],
-            },
-            { model: CouncilPoint, as: 'councilPoints' },
+            { model: SubjectTermGrade, as: 'termGrades' },
           ],
         },
       ],
@@ -426,30 +403,20 @@ export class RevisionPeriodService {
     for (const ins of allInscriptions) {
       const insSubjects = (ins as any).inscriptionSubjects || [];
       for (const insSub of insSubjects) {
-        const termScores: Record<number, number> = {};
-        termIds.forEach(tid => { termScores[tid] = 0; });
-
-        (insSub.qualifications || []).forEach((q: any) => {
-          if (q.isAbsent) return;
-          const score = q.remedialScore != null && Number(q.remedialScore) > 0
-            ? Number(q.remedialScore)
-            : Number(q.score) || 0;
-          const percentage = Number(q.evaluationPlan?.percentage) || 0;
-          const termId = q.evaluationPlan?.termId;
-          if (termId && termScores[termId] !== undefined) {
-            termScores[termId] += score * (percentage / 100);
+        const termGrades: any[] = insSub.termGrades || [];
+        const scoresByTerm: Record<number, number> = {};
+        termIds.forEach(tid => { scoresByTerm[tid] = 0; });
+        let foundAny = false;
+        for (const tg of termGrades) {
+          if (termIds.includes(tg.termId)) {
+            scoresByTerm[tg.termId] = Number(tg.score) || 0;
+            foundAny = true;
           }
-        });
-
-        (insSub.councilPoints || []).forEach((cp: any) => {
-          const pVal = Number(cp.points) || 0;
-          if (cp.termId && termScores[cp.termId] !== undefined) {
-            termScores[cp.termId] += pVal;
-          }
-        });
+        }
+        if (!foundAny) continue;
 
         let totalAccumulated = 0;
-        Object.values(termScores).forEach(v => { totalAccumulated += v; });
+        Object.values(scoresByTerm).forEach(v => { totalAccumulated += v; });
         const finalScore = totalAccumulated / termCount;
 
         if (!isPassingGrade(finalScore, passingGrade)) {
