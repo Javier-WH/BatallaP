@@ -129,6 +129,7 @@ import DashboardContent from './DashboardContent';
 import QualificationAudit from './QualificationAudit';
 import RevisionPeriod from './RevisionPeriod';
 import InscriptionSubjectRevision from './InscriptionSubjectRevision';
+import RevisionGradeEditAudit from './RevisionGradeEditAudit';
 import RevisionThematicSelection from './RevisionThematicSelection';
 import RevisionOpportunityDate from './RevisionOpportunityDate';
 import InscriptionGroupTermChoice from './InscriptionGroupTermChoice';
@@ -438,6 +439,11 @@ InscriptionSubjectRevision.belongsTo(InscriptionSubject, { foreignKey: 'inscript
 Person.hasMany(InscriptionSubjectRevision, { foreignKey: 'gradedBy', as: 'gradedRevisions' });
 InscriptionSubjectRevision.belongsTo(Person, { foreignKey: 'gradedBy', as: 'grader' });
 
+// Revision grade edit audits (extraordinary edits by Control de Estudios)
+InscriptionSubjectRevision.hasMany(RevisionGradeEditAudit, { foreignKey: 'revisionId', as: 'editAudits' });
+RevisionGradeEditAudit.belongsTo(InscriptionSubjectRevision, { foreignKey: 'revisionId', as: 'revision' });
+RevisionGradeEditAudit.belongsTo(Person, { foreignKey: 'editedBy', as: 'editor' });
+
 // Revision thematic selections (per subject+section within a revision period)
 RevisionPeriod.hasMany(RevisionThematicSelection, { foreignKey: 'revisionPeriodId', as: 'thematicSelections' });
 RevisionThematicSelection.belongsTo(RevisionPeriod, { foreignKey: 'revisionPeriodId', as: 'revisionPeriod' });
@@ -630,6 +636,7 @@ export {
   QualificationAudit,
   RevisionPeriod,
   InscriptionSubjectRevision,
+  RevisionGradeEditAudit,
   RevisionThematicSelection,
   RevisionOpportunityDate,
   InscriptionGroupTermChoice,

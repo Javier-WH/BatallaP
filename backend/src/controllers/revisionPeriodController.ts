@@ -11,6 +11,7 @@ import {
   InscriptionSubjectRevision,
   Person,
   Qualification,
+  RevisionGradeEditAudit,
   RevisionPeriod,
   Setting,
   SubjectFinalGrade,
@@ -133,6 +134,7 @@ export const getRevisionStudents = async (req: Request, res: Response) => {
               { association: 'subject' },
             ],
           },
+          { model: Person, as: 'grader' },
         ],
         order: [['inscriptionSubjectId', 'ASC'], ['opportunity', 'ASC']],
       });
@@ -150,6 +152,11 @@ export const getRevisionStudents = async (req: Request, res: Response) => {
           score: rev.score,
           status: rev.status,
           isAbsent: (rev as any).isAbsent || false,
+          gradedBy: rev.gradedBy,
+          graderName: (rev as any).grader
+            ? `${(rev as any).grader.firstName || ''} ${(rev as any).grader.lastName || ''}`.trim()
+            : null,
+          gradedAt: rev.gradedAt,
         });
       }
 
@@ -769,5 +776,242 @@ export const updateMaxOpportunities = async (req: Request, res: Response) => {
     await t.rollback();
     console.error('[updateMaxOpportunities] Error:', error);
     return res.status(500).json({ message: error.message || 'Error al actualizar intentos' });
+  }
+};
+
+// Extraordinary grade override by Control de Estudios (or Master).
+// Allows editing any opportunity (not just the active one) and records
+// a full audit trail in revision_grade_edit_audits.
+export const overrideRevisionGrade = async (req: Request, res: Response) => {
+  const t = await sequelize.transaction();
+  try {
+    const revisionId = parseInt(req.params.revisionId, 10);
+    const schoolPeriodId = parseInt(req.params.schoolPeriodId, 10);
+    const { score, isAbsent, reason } = req.body as {
+      score?: number | null;
+      isAbsent?: boolean;
+      reason?: string;
+    };
+
+    // Only Control de Estudios and Master can override revision grades
+    const userRoles: string[] = (req.session as any)?.user?.roles || [];
+    if (!userRoles.includes('Control de Estudios') && !userRoles.includes('Master')) {
+      await t.rollback();
+      return res.status(403).json({ message: 'Solo Control de Estudios o Master pueden modificar notas de reparación extraordinariamente' });
+    }
+
+    const userId = (req.session as any)?.user?.personId;
+    if (!userId) {
+      await t.rollback();
+      return res.status(401).json({ message: 'No autorizado' });
+    }
+
+    const revisionPeriod = await RevisionPeriod.findOne({
+      where: { schoolPeriodId },
+      transaction: t,
+    });
+
+    if (!revisionPeriod) {
+      await t.rollback();
+      return res.status(404).json({ message: 'Período de reparación no encontrado' });
+    }
+
+    // Allow override when open or completed (not closed/pending)
+    if (revisionPeriod.status === 'pending' || revisionPeriod.status === 'closed') {
+      await t.rollback();
+      return res.status(400).json({ message: 'El período de reparación no permite ediciones en su estado actual' });
+    }
+
+    const revision = await InscriptionSubjectRevision.findByPk(revisionId, { transaction: t });
+    if (!revision || revision.revisionPeriodId !== revisionPeriod.id) {
+      await t.rollback();
+      return res.status(404).json({ message: 'Revisión no encontrada' });
+    }
+
+    // Prevent editing future opportunities (opportunity > currentOpportunity)
+    if (revision.opportunity > revisionPeriod.currentOpportunity) {
+      await t.rollback();
+      return res.status(400).json({
+        message: `No se puede editar la Oportunidad ${revision.opportunity} porque aún no ha sido alcanzada (oportunidad activa: ${revisionPeriod.currentOpportunity}).`,
+      });
+    }
+
+    // Validate integer score
+    const submittedScore = score != null ? Number(score) : null;
+    if (submittedScore !== null && (!Number.isFinite(submittedScore) || !Number.isInteger(submittedScore))) {
+      await t.rollback();
+      return res.status(400).json({ message: 'La nota de revisión debe ser un número entero' });
+    }
+
+    const absentFlag = !!isAbsent || submittedScore === 0;
+    const numericScore = absentFlag ? 0 : submittedScore;
+    const isApproved = numericScore != null && numericScore >= revisionPeriod.passingGrade;
+    const newStatus = numericScore != null ? (isApproved ? 'approved' : 'failed') : 'pending';
+
+    // Snapshot previous values for audit
+    const previousScore = revision.score;
+    const previousStatus = revision.status;
+    const previousIsAbsent = revision.isAbsent;
+
+    // Update the revision
+    await revision.update({
+      score: numericScore,
+      status: newStatus,
+      isAbsent: absentFlag,
+      gradedBy: userId,
+      gradedAt: new Date(),
+    }, { transaction: t });
+
+    // Re-grading an opportunity invalidates every later attempt, so all
+    // subsequent opportunities are cleared back to pending (same as saveRevisionGrade).
+    if (numericScore != null) {
+      await InscriptionSubjectRevision.update(
+        { score: null, status: 'pending', isAbsent: false, gradedBy: null, gradedAt: null },
+        {
+          where: {
+            revisionPeriodId: revisionPeriod.id,
+            inscriptionSubjectId: revision.inscriptionSubjectId,
+            opportunity: { [Op.gt]: revision.opportunity },
+          },
+          transaction: t,
+        }
+      );
+    }
+
+    // If failed and more opportunities available, create the next one
+    if (numericScore != null && !isApproved) {
+      const failedCount = await InscriptionSubjectRevision.count({
+        where: {
+          revisionPeriodId: revisionPeriod.id,
+          inscriptionSubjectId: revision.inscriptionSubjectId,
+          status: 'failed',
+        },
+        transaction: t,
+      });
+
+      if (failedCount < revisionPeriod.maxOpportunities) {
+        const nextOpp = revision.opportunity + 1;
+        const exists = await InscriptionSubjectRevision.findOne({
+          where: {
+            revisionPeriodId: revisionPeriod.id,
+            inscriptionSubjectId: revision.inscriptionSubjectId,
+            opportunity: nextOpp,
+          },
+          transaction: t,
+        });
+
+        if (!exists) {
+          await InscriptionSubjectRevision.create({
+            revisionPeriodId: revisionPeriod.id,
+            inscriptionSubjectId: revision.inscriptionSubjectId,
+            opportunity: nextOpp,
+            status: 'pending',
+          }, { transaction: t });
+        }
+      }
+    }
+
+    // Record the audit trail
+    await RevisionGradeEditAudit.create({
+      revisionId: revision.id,
+      editedBy: userId,
+      previousScore: previousScore != null ? Number(previousScore) : null,
+      newScore: numericScore,
+      previousStatus: previousStatus as 'pending' | 'approved' | 'failed',
+      newStatus: newStatus as 'pending' | 'approved' | 'failed',
+      previousIsAbsent: !!previousIsAbsent,
+      newIsAbsent: absentFlag,
+      reason: reason?.trim() || null,
+    }, { transaction: t });
+
+    await t.commit();
+    return res.json({ message: 'Nota modificada correctamente', revision });
+  } catch (error: any) {
+    await t.rollback();
+    console.error('[overrideRevisionGrade] Error:', error);
+    return res.status(500).json({ message: error.message || 'Error al modificar nota' });
+  }
+};
+
+// Get audit history for a specific revision (or all revisions in a period)
+export const getRevisionGradeAudits = async (req: Request, res: Response) => {
+  try {
+    const schoolPeriodId = parseInt(req.params.schoolPeriodId, 10);
+    if (!schoolPeriodId) {
+      return res.status(400).json({ message: 'schoolPeriodId es obligatorio' });
+    }
+
+    const revisionPeriod = await RevisionPeriod.findOne({
+      where: { schoolPeriodId },
+    });
+    if (!revisionPeriod) {
+      return res.json({ audits: [] });
+    }
+
+    const revisionId = req.params.revisionId ? parseInt(req.params.revisionId, 10) : null;
+
+    const where: any = {};
+    if (revisionId) {
+      where.revisionId = revisionId;
+    }
+
+    const audits = await RevisionGradeEditAudit.findAll({
+      where,
+      include: [
+        {
+          model: InscriptionSubjectRevision,
+          as: 'revision',
+          where: { revisionPeriodId: revisionPeriod.id },
+          include: [
+            {
+              model: InscriptionSubject,
+              as: 'inscriptionSubject',
+              include: [
+                { association: 'subject' },
+                {
+                  model: Inscription,
+                  as: 'inscription',
+                  include: [{ association: 'student' }],
+                },
+              ],
+            },
+          ],
+        },
+        { model: Person, as: 'editor' },
+      ],
+      order: [['editedAt', 'DESC']],
+    });
+
+    const result = audits.map((audit: any) => {
+      const rev = audit.revision;
+      const insSub = rev?.inscriptionSubject;
+      return {
+        id: audit.id,
+        revisionId: audit.revisionId,
+        opportunity: rev?.opportunity,
+        studentName: insSub?.inscription?.student
+          ? `${insSub.inscription.student.lastName || ''} ${insSub.inscription.student.firstName || ''}`.trim()
+          : '',
+        subjectName: insSub?.subject?.name || '',
+        subjectAbbreviation: insSub?.subject?.abbreviation || '',
+        editedBy: audit.editedBy,
+        editorName: audit.editor
+          ? `${audit.editor.firstName || ''} ${audit.editor.lastName || ''}`.trim()
+          : '',
+        previousScore: audit.previousScore != null ? Number(audit.previousScore) : null,
+        newScore: audit.newScore != null ? Number(audit.newScore) : null,
+        previousStatus: audit.previousStatus,
+        newStatus: audit.newStatus,
+        previousIsAbsent: audit.previousIsAbsent,
+        newIsAbsent: audit.newIsAbsent,
+        reason: audit.reason,
+        editedAt: audit.editedAt,
+      };
+    });
+
+    return res.json({ audits: result });
+  } catch (error: any) {
+    console.error('[getRevisionGradeAudits] Error:', error);
+    return res.status(500).json({ message: error.message || 'Error al obtener auditoría' });
   }
 };

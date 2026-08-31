@@ -273,11 +273,16 @@ export class RevisionPeriodService {
       throw new Error('El período de reparación no está abierto');
     }
 
-    // Auto-fail all pending revisions (no grade entered = failed)
+    // Auto-fail pending revisions that belong to opportunities already
+    // reached (opportunity <= currentOpportunity).  Future opportunities
+    // (opportunity > currentOpportunity) that were auto-created as
+    // placeholders when a student failed earlier must NOT be marked as
+    // absent — they were never offered to the student.
     const pendingRevisions = await InscriptionSubjectRevision.findAll({
       where: {
         revisionPeriodId: revisionPeriod.id,
         status: 'pending',
+        opportunity: { [Op.lte]: revisionPeriod.currentOpportunity },
       },
       transaction,
     });
@@ -313,6 +318,17 @@ export class RevisionPeriodService {
         }
       }
     }
+
+    // Remove placeholder revisions for opportunities that were never
+    // reached — they carry no meaningful grade and should display as '—'.
+    await InscriptionSubjectRevision.destroy({
+      where: {
+        revisionPeriodId: revisionPeriod.id,
+        status: 'pending',
+        opportunity: { [Op.gt]: revisionPeriod.currentOpportunity },
+      },
+      transaction,
+    });
 
     await revisionPeriod.update({
       status: 'completed',
@@ -383,6 +399,25 @@ export class RevisionPeriodService {
       status: 'open',
       closedAt: null,
     }, { transaction });
+
+    // When reopening, reset auto-marked NP entries (gradedBy=null, isAbsent=true)
+    // at the current opportunity back to pending — they were auto-failed by
+    // completeRevisionPeriod but the opportunity hasn't been formally passed.
+    // Only reset entries at the current opportunity; entries from earlier
+    // opportunities (opportunity < currentOpportunity) were genuinely passed
+    // and should remain as NP.
+    await InscriptionSubjectRevision.update(
+      { score: null, status: 'pending', isAbsent: false, gradedAt: null },
+      {
+        where: {
+          revisionPeriodId: revisionPeriod.id,
+          opportunity: revisionPeriod.currentOpportunity,
+          isAbsent: true,
+          gradedBy: null,
+        },
+        transaction,
+      }
+    );
 
     return revisionPeriod;
   }

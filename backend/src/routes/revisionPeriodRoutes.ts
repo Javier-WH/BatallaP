@@ -16,5 +16,8 @@ router.get('/:schoolPeriodId/students', revisionPeriodController.getRevisionStud
 router.get('/:schoolPeriodId/grades', revisionPeriodController.getRevisionGrades);
 router.put('/:schoolPeriodId/revisions/bulk', revisionPeriodController.bulkSaveRevisionGrades);
 router.put('/:schoolPeriodId/revisions/:revisionId', revisionPeriodController.saveRevisionGrade);
+router.put('/:schoolPeriodId/revisions/:revisionId/override', revisionPeriodController.overrideRevisionGrade);
+router.get('/:schoolPeriodId/revision-audits', revisionPeriodController.getRevisionGradeAudits);
+router.get('/:schoolPeriodId/revisions/:revisionId/audits', revisionPeriodController.getRevisionGradeAudits);
 
 export default router;

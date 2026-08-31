@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { Card, Button, Tag, Space, Typography, Spin, message, Alert, Statistic, Row, Col, Popconfirm, Tabs, InputNumber } from 'antd';
-import { PlayCircleOutlined, StopOutlined, ReloadOutlined, CheckCircleOutlined, ClockCircleOutlined, CloseCircleOutlined, PrinterOutlined, RetweetOutlined, UndoOutlined, LockOutlined, UnlockOutlined } from '@ant-design/icons';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { Card, Button, Tag, Space, Typography, Spin, message, Alert, Statistic, Row, Col, Popconfirm, Tabs, InputNumber, Segmented } from 'antd';
+import { PlayCircleOutlined, StopOutlined, ReloadOutlined, CheckCircleOutlined, ClockCircleOutlined, CloseCircleOutlined, PrinterOutlined, RetweetOutlined, UndoOutlined, LockOutlined, UnlockOutlined, EditOutlined, CalendarOutlined } from '@ant-design/icons';
+import dayjs from 'dayjs';
 import api from '@/services/api';
 import { compareStudents } from '@/utils/studentSort';
 import { useAuth } from '@/context/AuthContext';
@@ -53,6 +54,9 @@ interface RevisionItem {
   score: number | null;
   status: string;
   isAbsent?: boolean;
+  gradedBy?: number | null;
+  graderName?: string | null;
+  gradedAt?: string | null;
 }
 
 interface StudentSubject {
@@ -90,7 +94,20 @@ const RepairPeriodManagement: React.FC = () => {
   const [maxOppInput, setMaxOppInput] = useState<number>(3);
   const [maxOppSaving, setMaxOppSaving] = useState(false);
   const [pendingOpp, setPendingOpp] = useState<number | null>(null);
-  const [selectedView, setSelectedView] = useState<number | 'final'>(1);
+
+  // View state: 'opportunity' shows a single opportunity, 'final' shows definitive
+  const [nominaView, setNominaView] = useState<'opportunity' | 'final'>('opportunity');
+  const [selectedOpp, setSelectedOpp] = useState<number>(1);
+
+  // Inline edit state: keyed by revisionId
+  const [editValues, setEditValues] = useState<Record<number, number | null>>({});
+  const [editAbsent, setEditAbsent] = useState<Record<number, boolean>>({});
+  const [savingIds, setSavingIds] = useState<Set<number>>(new Set());
+
+  // Opportunity dates map: keyed by `${periodGradeSubjectId}-${sectionId}` → [{opportunity, date}]
+  const [oppDatesMap, setOppDatesMap] = useState<Record<string, { opportunity: number; date: string | null }[]>>({});
+
+  const canOverride = user?.roles.includes('Control de Estudios') || isMaster;
 
   const fetchData = async () => {
     setLoading(true);
@@ -109,9 +126,10 @@ const RepairPeriodManagement: React.FC = () => {
         api.get(`/revision-periods/${activePeriod.id}/students`),
       ]);
       setSummary(summaryRes.data);
-      setSelectedView((previous) => previous === 1
-        ? (summaryRes.data.revisionPeriod?.currentOpportunity ?? 1)
-        : previous);
+      setSelectedOpp((previous) => {
+        const current = summaryRes.data.revisionPeriod?.currentOpportunity ?? 1;
+        return previous <= current ? previous : current;
+      });
       setStudents(studentsRes.data.students || []);
       setIsPreview(studentsRes.data.isPreview || false);
       setMaxOppInput(summaryRes.data.revisionPeriod?.maxOpportunities ?? 3);
@@ -124,6 +142,26 @@ const RepairPeriodManagement: React.FC = () => {
   };
 
   useEffect(() => { fetchData(); }, []);
+
+  // Fetch opportunity dates for all subjects+sections in the current view
+  const fetchOppDates = useCallback(async () => {
+    if (!students.length || !summary?.revisionPeriod) return;
+    const pgsSectionPairs = new Set<string>();
+    // We need periodGradeSubjectId for each subject. The students endpoint
+    // doesn't return it, so we fetch from the revision-grades endpoint
+    // which returns opportunity dates per pgsId+sectionId.
+    // For simplicity, fetch all opportunity dates for the active period
+    // by querying per unique grade+section combination.
+    // Actually, the API needs pgsId + sectionId. We don't have pgsId here.
+    // Let's fetch from the revision-grades opportunity-dates endpoint
+    // which accepts pgsId + sectionId as query params.
+    // Since we don't have pgsId in the student data, we'll skip dates
+    // for now and rely on gradedAt from the revision items.
+    // TODO: if opportunity dates are needed in headers, the students
+    // endpoint should include them.
+  }, [students, summary]);
+
+  useEffect(() => { fetchOppDates(); }, [fetchOppDates]);
 
   const handleOpen = async () => {
     if (!activePeriodId) return;
@@ -241,6 +279,29 @@ const RepairPeriodManagement: React.FC = () => {
     }
   };
 
+  // Inline save for a revision grade (used by Control de Estudios)
+  const handleSaveInline = async (revisionId: number, score: number | null, isAbsent: boolean) => {
+    if (!activePeriodId) return;
+    setSavingIds(prev => new Set(prev).add(revisionId));
+    try {
+      await api.put(
+        `/revision-periods/${activePeriodId}/revisions/${revisionId}/override`,
+        {
+          score: isAbsent ? 0 : score,
+          isAbsent,
+        }
+      );
+      message.success('Nota guardada');
+      setEditValues(prev => { const n = { ...prev }; delete n[revisionId]; return n; });
+      setEditAbsent(prev => { const n = { ...prev }; delete n[revisionId]; return n; });
+      await fetchData();
+    } catch (error: any) {
+      message.error(error?.response?.data?.message || 'Error al guardar nota');
+    } finally {
+      setSavingIds(prev => { const n = new Set(prev); n.delete(revisionId); return n; });
+    }
+  };
+
   const statusColor: Record<string, string> = {
     pending: 'default',
     open: 'processing',
@@ -285,6 +346,26 @@ const RepairPeriodManagement: React.FC = () => {
       return a.grade.localeCompare(b.grade, 'es', { numeric: true });
     });
   }, [students]);
+
+  // Helper: determine if a revision's NP is "real" (should display NP)
+  const isRealAbsent = (rev: RevisionItem | undefined, currentOpp: number): boolean => {
+    if (!rev) return false;
+    const isExplicitlyGradedZero = rev.score !== null && rev.score !== undefined && Number(rev.score) === 0 && rev.gradedBy != null;
+    const isAutoAbsentPassed = rev.isAbsent === true && rev.gradedBy == null && rev.opportunity < currentOpp;
+    return isExplicitlyGradedZero || isAutoAbsentPassed;
+  };
+
+  // Helper: find the "meaningful" revision for the final view
+  const findFinalRevision = (revisions: RevisionItem[], currentOpp: number): RevisionItem | undefined => {
+    return [...revisions].reverse().find((rev) => {
+      if (rev.score !== null && rev.score !== undefined) return true;
+      if (rev.isAbsent === true && rev.gradedBy == null && rev.opportunity < currentOpp) return true;
+      return false;
+    });
+  };
+
+  const currentOpp = summary?.revisionPeriod?.currentOpportunity ?? 1;
+  const periodEditable = summary?.revisionPeriod && (summary.revisionPeriod.status === 'open' || summary.revisionPeriod.status === 'completed');
 
   return (
     <div style={{ padding: 24, maxWidth: 1200, margin: '0 auto' }}>
@@ -407,70 +488,6 @@ const RepairPeriodManagement: React.FC = () => {
                 style={{ marginBottom: 16 }}
               />
 
-              {/* Opportunity selector — radio buttons styled as buttons */}
-              <Card size="small" style={{ marginBottom: 16 }}>
-                <Tabs
-                  activeKey={String(selectedView)}
-                  onChange={(key) => setSelectedView(key === 'final' ? 'final' : Number(key))}
-                  size="small"
-                  tabBarGutter={0}
-                  items={[
-                    ...Array.from({ length: summary.revisionPeriod?.maxOpportunities || 1 }, (_, i) => ({
-                      key: String(i + 1),
-                      label: `Oport. ${i + 1}`,
-                    })),
-                    { key: 'final', label: 'Nota definitiva' },
-                  ]}
-                  style={{ marginBottom: 8 }}
-                />
-                <Space direction="vertical" size={8} style={{ width: '100%' }}>
-                  <Space>
-                    <Text strong style={{ fontSize: 14 }}>Habilitar oportunidad:</Text>
-                    <Tag color="blue" style={{ fontSize: 13, padding: '2px 10px' }}>
-                      Activa: {summary.revisionPeriod.currentOpportunity} de {summary.revisionPeriod.maxOpportunities}
-                    </Tag>
-                  </Space>
-                  <Space wrap>
-                    {Array.from({ length: summary.revisionPeriod?.maxOpportunities || 1 }, (_, i) => i + 1).map(opp => {
-                      const current = summary.revisionPeriod?.currentOpportunity ?? 1;
-                      const isActive = opp === current;
-                      const isPast = opp < current;
-                      const isFuture = opp > current;
-                      return (
-                        <Popconfirm
-                          key={opp}
-                          title={`¿Desea habilitar la Oportunidad ${opp}?`}
-                          description={isPast
-                            ? 'Esta oportunidad ya pasó. Los profesores ya no podrán editar las oportunidades anteriores.'
-                            : isFuture
-                              ? 'Los profesores no podrán editar las oportunidades anteriores. Solo podrán calificar la nueva oportunidad activa.'
-                              : 'Esta oportunidad ya está activa.'}
-                          okText="Sí, habilitar"
-                          cancelText="Cancelar"
-                          onConfirm={() => handleSetOpportunity(opp)}
-                          disabled={isActive}
-                        >
-                          <Button
-                            type={isActive ? 'primary' : isPast ? 'default' : 'dashed'}
-                            disabled={isActive}
-                            loading={acting && pendingOpp === opp}
-                            style={{
-                              fontWeight: 700,
-                              minWidth: 120,
-                              ...(isActive ? {} : isPast ? { opacity: 0.6 } : {}),
-                            }}
-                            icon={isActive ? <CheckCircleOutlined /> : isPast ? <LockOutlined /> : <UnlockOutlined />}
-                          >
-                            Oportunidad {opp}
-                            {isActive && ' (Activa)'}
-                            {isPast && ' (Pasada)'}
-                          </Button>
-                        </Popconfirm>
-                      );
-                    })}
-                  </Space>
-                </Space>
-              </Card>
               </>
             )}
 
@@ -531,14 +548,86 @@ const RepairPeriodManagement: React.FC = () => {
             )}
 
             <Card title={
-              <Space style={{ justifyContent: 'space-between', width: '100%' }}>
-                <Space>
-                  <span>Estudiantes en reparación</span>
-                  {isPreview && <Tag color="orange">Vista previa</Tag>}
+              <Space direction="vertical" size={8} style={{ width: '100%' }}>
+                <Space style={{ justifyContent: 'space-between', width: '100%' }}>
+                  <Space>
+                    <span>Estudiantes en reparación</span>
+                    {isPreview && <Tag color="orange">Vista previa</Tag>}
+                    {canOverride && !isPreview && periodEditable && nominaView === 'opportunity' && selectedOpp <= currentOpp && (
+                      <Tag color="gold" icon={<EditOutlined />}>Editable</Tag>
+                    )}
+                  </Space>
+                  <Button icon={<PrinterOutlined />} onClick={() => window.print()}>
+                    Imprimir
+                  </Button>
                 </Space>
-                <Button icon={<PrinterOutlined />} onClick={() => window.print()}>
-                  Imprimir
-                </Button>
+                <Space direction="vertical" size={8} style={{ width: '100%' }}>
+                  <Segmented
+                    value={nominaView}
+                    onChange={(v) => setNominaView(v as 'opportunity' | 'final')}
+                    options={[
+                      { label: 'Por Oportunidad', value: 'opportunity' },
+                      { label: 'Nota Final', value: 'final' },
+                    ]}
+                    size="small"
+                  />
+                  {nominaView === 'opportunity' && (
+                    <Space wrap size={[4, 4]} className="repair-opportunity-row">
+                      <Text strong style={{ fontSize: 12 }}>Oportunidad:</Text>
+                      {Array.from({ length: summary.revisionPeriod?.maxOpportunities || 1 }, (_, i) => i + 1).map(opp => {
+                        const isSelected = selectedOpp === opp;
+                        const isActive = currentOpp === opp;
+                        const isFuture = opp > currentOpp;
+                        const canActivate = summary.revisionPeriod?.status === 'open' && !isActive;
+                        return (
+                          <div
+                            key={opp}
+                            className={`repair-opportunity-chip${isSelected ? ' selected' : ''}${isFuture ? ' future' : ''}`}
+                            onClick={() => setSelectedOpp(opp)}
+                            role="button"
+                            tabIndex={0}
+                            onKeyDown={(event) => {
+                              if (event.key === 'Enter' || event.key === ' ') {
+                                event.preventDefault();
+                                setSelectedOpp(opp);
+                              }
+                            }}
+                            aria-label={`Ver Oportunidad ${opp}`}
+                          >
+                            <span className="repair-opportunity-number">{opp}°</span>
+                            <Popconfirm
+                              title={`¿Desea habilitar la Oportunidad ${opp}?`}
+                              description={opp < currentOpp
+                                ? 'Esta oportunidad ya pasó. Los profesores ya no podrán editar las oportunidades anteriores.'
+                                : 'Solo los profesores podrán calificar la nueva oportunidad activa.'}
+                              okText="Sí, habilitar"
+                              cancelText="Cancelar"
+                              onConfirm={() => handleSetOpportunity(opp)}
+                              disabled={!canActivate}
+                            >
+                              <Button
+                                type="text"
+                                size="small"
+                                className="repair-opportunity-lock"
+                                icon={isActive ? <UnlockOutlined /> : <LockOutlined />}
+                                loading={acting && pendingOpp === opp}
+                                disabled={!canActivate}
+                                onClick={(event) => event.stopPropagation()}
+                                aria-label={isActive ? `Oportunidad ${opp} activa` : `Activar Oportunidad ${opp}`}
+                              />
+                            </Popconfirm>
+                          </div>
+                        );
+                      })}
+                      <Text type="secondary" style={{ fontSize: 11 }}>
+                        Seleccione el número para ver una oportunidad; use el candado para activar otra.
+                      </Text>
+                    </Space>
+                  )}
+                  {nominaView === 'final' && (
+                    <div className="repair-opportunity-row repair-opportunity-row-placeholder" />
+                  )}
+                </Space>
               </Space>
             } style={{ marginTop: 16 }} styles={{ body: { padding: 0 } }}>
               <div className="repair-sheet-container">
@@ -571,7 +660,12 @@ const RepairPeriodManagement: React.FC = () => {
                                 <th className="repair-col-section">Sección</th>
                                 {group.subjects.map((subj) => (
                                   <th key={subj.abbreviation} className="repair-col-subj" title={subj.subjectName}>
-                                    {subj.abbreviation}
+                                    <div>{subj.abbreviation}</div>
+                                    {/* Reserve space for date + opportunity line */}
+                                    <div className="repair-col-meta">
+                                      <span className="repair-col-date">&nbsp;</span>
+                                      {nominaView === 'final' && <span className="repair-col-opp">&nbsp;</span>}
+                                    </div>
                                   </th>
                                 ))}
                               </tr>
@@ -592,30 +686,137 @@ const RepairPeriodManagement: React.FC = () => {
                                     }
 
                                     const revisions = [...studentSubj.revisions].sort((a, b) => a.opportunity - b.opportunity);
-                                    const approvedBefore = selectedView !== 'final' && revisions.some(
-                                      (revision) => revision.opportunity < selectedView && revision.status === 'approved'
+                                    const approvedBefore = nominaView === 'opportunity' && revisions.some(
+                                      (rev) => rev.opportunity < selectedOpp && rev.status === 'approved'
                                     );
-                                    const selectedRevision = selectedView === 'final'
-                                      ? [...revisions].reverse().find((revision) =>
-                                        revision.isAbsent === true || (revision.score !== null && revision.score !== undefined)
-                                      )
-                                      : revisions.find((revision) => revision.opportunity === selectedView);
-                                    const isAbsent = selectedRevision?.isAbsent === true || (
-                                      selectedRevision?.score !== null &&
-                                      selectedRevision?.score !== undefined &&
-                                      Number(selectedRevision.score) === 0
-                                    );
+
+                                    // Find the revision to display
+                                    const selectedRevision = nominaView === 'final'
+                                      ? findFinalRevision(revisions, currentOpp)
+                                      : revisions.find((rev) => rev.opportunity === selectedOpp);
+
+                                    const absent = isRealAbsent(selectedRevision, currentOpp);
 
                                     if (approvedBefore) {
                                       return <td key={subj.abbreviation} className="repair-cell-closed" />;
                                     }
+
+                                    // Determine if this cell is editable
+                                    const cellEditable = canOverride
+                                      && !isPreview
+                                      && periodEditable
+                                      && nominaView === 'opportunity'
+                                      && selectedOpp <= currentOpp
+                                      && !!selectedRevision;
+
+                                    // Display value
+                                    const editKey = selectedRevision?.id;
+                                    const editValue = editKey != null ? editValues[editKey] : undefined;
+                                    const editAbs = editKey != null ? editAbsent[editKey] : undefined;
+                                    const displayScore = editValue !== undefined ? editValue : (selectedRevision?.score != null ? Number(selectedRevision.score) : null);
+                                    const displayAbsent = editAbs !== undefined ? editAbs : absent;
+                                    const isSaving = editKey != null && savingIds.has(editKey);
+
+                                    // Date and opportunity for the meta line
+                                    const gradedDate = selectedRevision?.gradedAt
+                                      ? dayjs(selectedRevision.gradedAt).format('DD/MM/YY')
+                                      : '';
+                                    const gradedOpp = selectedRevision?.opportunity;
+
+                                    const graderTooltip = selectedRevision?.graderName
+                                      ? `Calificado por: ${selectedRevision.graderName}${selectedRevision.gradedAt ? ` — ${new Date(selectedRevision.gradedAt).toLocaleString()}` : ''}`
+                                      : null;
+
+                                    if (cellEditable && editKey != null) {
+                                      // Editable cell with inline input
+                                      return (
+                                        <td
+                                          key={subj.abbreviation}
+                                          className="repair-cell-editable"
+                                          title={graderTooltip || 'Editable'}
+                                        >
+                                          <div className="repair-cell-content">
+                                            {displayAbsent ? (
+                                              <span
+                                                className="repair-np"
+                                                onClick={() => {
+                                                  // Click NP to clear it
+                                                  setEditAbsent(prev => ({ ...prev, [editKey]: false }));
+                                                  setEditValues(prev => ({ ...prev, [editKey]: null }));
+                                                }}
+                                                title="Click para quitar NP"
+                                              >
+                                                NP
+                                              </span>
+                                            ) : (
+                                              <input
+                                                type="number"
+                                                min={0}
+                                                max={20}
+                                                step={1}
+                                                inputMode="numeric"
+                                                className="repair-input"
+                                                value={displayScore ?? ''}
+                                                disabled={isSaving}
+                                                onChange={e => {
+                                                  const v = e.target.value === '' ? null : Number(e.target.value);
+                                                  setEditValues(prev => ({ ...prev, [editKey]: v }));
+                                                  if (v === 0) {
+                                                    setEditAbsent(prev => ({ ...prev, [editKey]: true }));
+                                                  } else if (v !== null) {
+                                                    setEditAbsent(prev => ({ ...prev, [editKey]: false }));
+                                                  }
+                                                }}
+                                                onBlur={() => {
+                                                  if (editValue !== undefined) {
+                                                    if (editValue === null && !displayAbsent) {
+                                                      // Clearing — skip
+                                                    } else if (editValue !== null || displayAbsent) {
+                                                      handleSaveInline(editKey, editValue, displayAbsent);
+                                                    }
+                                                  }
+                                                }}
+                                                onKeyDown={e => {
+                                                  if (e.key === 'Enter') {
+                                                    e.preventDefault();
+                                                    (e.target as HTMLInputElement).blur();
+                                                  }
+                                                }}
+                                              />
+                                            )}
+                                          </div>
+                                          <div className="repair-cell-meta">
+                                            <span className="repair-col-date">{gradedDate}</span>
+                                            {nominaView === 'final' && <span className="repair-col-opp">{gradedOpp ? `O${gradedOpp}` : ''}</span>}
+                                          </div>
+                                        </td>
+                                      );
+                                    }
+
+                                    // Read-only cell
+                                    const displayText = !selectedRevision
+                                      ? ''
+                                      : (displayAbsent
+                                        ? 'NP'
+                                        : selectedRevision.score !== null && selectedRevision.score !== undefined
+                                          ? String(Number(selectedRevision.score))
+                                          : '—');
+
                                     return (
-                                      <td key={subj.abbreviation} className="repair-cell-blank">
-                                        {selectedRevision && (isAbsent
-                                          ? 'NP'
-                                          : selectedRevision.score !== null && selectedRevision.score !== undefined
-                                            ? String(Number(selectedRevision.score))
-                                            : '—')}
+                                      <td
+                                        key={subj.abbreviation}
+                                        className="repair-cell-blank"
+                                        title={graderTooltip || undefined}
+                                      >
+                                        <div className="repair-cell-content">
+                                          <span className={displayAbsent ? 'repair-fail' : (selectedRevision && selectedRevision.score != null && Number(selectedRevision.score) >= (summary.revisionPeriod?.passingGrade ?? 10) ? 'repair-pass' : '')}>
+                                            {displayText}
+                                          </span>
+                                        </div>
+                                        <div className="repair-cell-meta">
+                                          <span className="repair-col-date">{gradedDate}</span>
+                                          {nominaView === 'final' && <span className="repair-col-opp">{gradedOpp ? `O${gradedOpp}` : ''}</span>}
+                                        </div>
                                       </td>
                                     );
                                   })}
@@ -628,6 +829,7 @@ const RepairPeriodManagement: React.FC = () => {
                     }))}
                   />
                 )}
+
               </div>
             </Card>
           </>
@@ -640,14 +842,6 @@ const RepairPeriodManagement: React.FC = () => {
         }
         .repair-grade-section {
           margin-bottom: 24px;
-        }
-        .repair-grade-title {
-          font-size: 14px;
-          font-weight: 700;
-          padding: 8px 12px;
-          background: #f0f5ff;
-          border: 1px solid #d6e4ff;
-          border-bottom: none;
         }
         .repair-sheet {
           border-collapse: collapse;
@@ -672,7 +866,26 @@ const RepairPeriodManagement: React.FC = () => {
         .repair-col-name { width: 200px; min-width: 160px; text-align: left !important; padding: 4px 8px 4px 25px !important; }
         .repair-col-doc { width: 80px; min-width: 70px; }
         .repair-col-section { width: 64px; min-width: 56px; }
-        .repair-col-subj { width: 42px; min-width: 38px; max-width: 50px; }
+        .repair-col-subj { width: 52px; min-width: 48px; max-width: 60px; }
+        .repair-col-meta {
+          display: flex;
+          flex-direction: column;
+          gap: 0;
+          align-items: center;
+          min-height: 22px;
+        }
+        .repair-col-date {
+          font-size: 8px;
+          font-weight: 400;
+          color: #999;
+          line-height: 1.2;
+        }
+        .repair-col-opp {
+          font-size: 8px;
+          font-weight: 600;
+          color: #1677ff;
+          line-height: 1.2;
+        }
         .repair-cell-idx { font-weight: 600; color: #666; height: 22px; }
         .repair-cell-name { text-align: left !important; padding: 2px 8px 2px 25px !important; font-weight: 500; }
         .repair-cell-doc { font-size: 10px; color: #666; }
@@ -684,35 +897,130 @@ const RepairPeriodManagement: React.FC = () => {
         }
         .repair-cell-blank {
           background: #fff;
-          height: 22px;
           font-weight: 600;
+        }
+        .repair-cell-content {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          height: 22px;
+        }
+        .repair-cell-meta {
+          display: flex;
+          flex-direction: column;
+          gap: 0;
+          align-items: center;
+          min-height: 22px;
+          padding-bottom: 1px;
+        }
+        .repair-cell-meta .repair-col-date {
+          font-size: 8px;
+          font-weight: 400;
+          color: #999;
+          line-height: 1.2;
+        }
+        .repair-cell-meta .repair-col-opp {
+          font-size: 8px;
+          font-weight: 600;
+          color: #1677ff;
+          line-height: 1.2;
+        }
+        .repair-opportunity-row {
+          width: 100%;
+          padding: 2px 0;
+          min-height: 32px;
+        }
+        .repair-opportunity-row-placeholder {
+          visibility: hidden;
+        }
+        .repair-opportunity-chip {
+          display: inline-flex;
+          align-items: center;
+          gap: 2px;
+          min-height: 28px;
+          padding: 1px 3px 1px 9px;
+          border: 1px solid #d9d9d9;
+          border-radius: 6px;
+          background: #fff;
+          cursor: pointer;
+          transition: all 0.15s;
+        }
+        .repair-opportunity-chip:hover {
+          border-color: #1677ff;
+          background: #f0f7ff;
+        }
+        .repair-opportunity-chip.selected {
+          border-color: #1677ff;
+          background: #1677ff;
+          color: #fff;
+        }
+        .repair-opportunity-chip.future {
+          opacity: 0.6;
+        }
+        .repair-opportunity-number {
+          min-width: 22px;
+          text-align: center;
+          font-size: 12px;
+          font-weight: 700;
+        }
+        .repair-opportunity-lock {
+          width: 22px;
+          height: 22px;
+          padding: 0 !important;
+          color: #ff4d4f !important;
+        }
+        .repair-opportunity-chip.selected .repair-opportunity-lock {
+          color: #fff !important;
+        }
+        .repair-opportunity-chip:not(.selected) .repair-opportunity-lock:disabled {
+          color: #bfbfbf !important;
+        }
+        .repair-cell-editable {
+          background: #fffbe6;
+          font-weight: 600;
+          transition: background 0.15s;
+        }
+        .repair-cell-editable:hover {
+          background: #ffe58f;
+        }
+        .repair-input {
+          width: 100%;
+          height: 22px;
+          border: none;
+          text-align: center;
+          font-size: 12px;
+          font-weight: 700;
+          background: transparent;
+          outline: none;
+          padding: 0;
+          -moz-appearance: textfield;
+        }
+        .repair-input::-webkit-outer-spin-button,
+        .repair-input::-webkit-inner-spin-button {
+          -webkit-appearance: none;
+          margin: 0;
+        }
+        .repair-input:focus {
+          background: #fff;
+          box-shadow: inset 0 0 0 1px #1677ff;
+        }
+        .repair-np {
+          color: #ff4d4f;
+          font-weight: 900;
+          font-size: 12px;
+          cursor: pointer;
+          padding: 0 4px;
         }
         .repair-pass {
           color: #52c41a;
           font-weight: 900;
-          font-size: 14px;
+          font-size: 12px;
         }
         .repair-fail {
           color: #ff4d4f;
           font-weight: 900;
-          font-size: 14px;
+          font-size: 12px;
         }
-        .repair-score-list {
-          display: flex;
-          flex-direction: column;
-          gap: 1px;
-          align-items: center;
-        }
-        .repair-score-tag {
-          font-size: 9px;
-          font-weight: 600;
-          padding: 0 3px;
-          border-radius: 2px;
-          line-height: 1.4;
-        }
-        .repair-score-tag.approved { color: #389e0d; background: #f6ffed; }
-        .repair-score-tag.failed { color: #cf1322; background: #fff1f0; }
-        .repair-score-tag.pending { color: #666; background: #f5f5f5; }
 
         @media print {
           .repair-sheet-container { overflow: visible; }
@@ -720,8 +1028,8 @@ const RepairPeriodManagement: React.FC = () => {
           .repair-grade-section:last-child { page-break-after: auto; }
           .repair-sheet { font-size: 10px; }
           .repair-sheet th, .repair-sheet td { border: 1px solid #999; }
-          .repair-cell-filled { background: #e0e0e0 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-          .repair-grade-title { background: #f0f5ff !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          .repair-cell-filled, .repair-cell-closed { background: #e0e0e0 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          .repair-input { border: none !important; }
         }
       `}</style>
     </div>
