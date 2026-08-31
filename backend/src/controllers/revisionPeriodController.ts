@@ -1409,7 +1409,7 @@ export const exportRevisionNominaExcel = async (req: Request, res: Response) => 
     sheet.getRow(1).height = 21;
     sheet.mergeCells('A1:D1');
     sheet.getCell('A1').value = 'U.E.C. BATALLA DE LA VICTORIA';
-    sheet.getCell('A1').font = { bold: true, size: 12, name: 'Calibri' };
+    sheet.getCell('A1').font = { bold: true, size: 14, name: 'Calibri' };
     sheet.getCell('A1').alignment = { horizontal: 'left', vertical: 'middle' };
 
     const revisionTitleEnd = Math.min(5 + Math.floor(maxSubjects / 2), totalCols);
@@ -1469,7 +1469,7 @@ export const exportRevisionNominaExcel = async (req: Request, res: Response) => 
           top: mediumBorder,
           bottom: thinBorder,
           left: c === 1 ? mediumBorder : thinBorder,
-          right: c === 5 + numSubjects ? mediumBorder : thinBorder,
+          right: (c === 5 || c === 5 + numSubjects) ? mediumBorder : thinBorder,
         };
       }
 
@@ -1577,7 +1577,7 @@ export const exportRevisionNominaExcel = async (req: Request, res: Response) => 
             top: thinBorder,
             bottom: isLastRow ? mediumBorder : thinBorder,
             left: c === 1 ? mediumBorder : thinBorder,
-            right: c === 5 + numSubjects ? mediumBorder : thinBorder,
+            right: (c === 5 || c === 5 + numSubjects) ? mediumBorder : thinBorder,
           };
         }
 
