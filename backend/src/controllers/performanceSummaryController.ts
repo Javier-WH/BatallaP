@@ -312,10 +312,14 @@ function fillSheetByNamedRanges(
 
     setByRange('std_num_' + n, String(studentIdx + 1).padStart(2, '0'));
 
-    const docType = student?.documentType === 'Venezolano' ? 'V' :
-                    student?.documentType === 'Extranjero' ? 'E' :
-                    student?.documentType === 'Pasaporte' ? 'P' : 'V';
-    setByRange('std_doc_' + n, docType + ' ' + (student?.document || ''));
+    const documentType = student?.documentType;
+    // Stored documents may already contain a type prefix (e.g. V777777).
+    // Remove it before applying the canonical export format.
+    const document = String(student?.document || '').replace(/^(V|E|P|CE)\s*[-.]?\s*/i, '');
+    const docType = documentType === 'Venezolano' ? 'V' :
+                    documentType === 'Extranjero' ? 'E' :
+                    documentType === 'Pasaporte' ? 'P' : '';
+    setByRange('std_doc_' + n, docType ? `${docType} ${document}` : document);
     setByRange('std_ln_' + n, student?.lastName);
     setByRange('std_fn_' + n, student?.firstName);
     setByRange('std_bp_' + n, residence?.birthMunicipality);
