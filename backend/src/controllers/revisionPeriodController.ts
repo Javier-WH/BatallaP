@@ -1521,10 +1521,8 @@ export const exportRevisionNominaExcel = async (req: Request, res: Response) => 
           } else {
             const revMap = revisionMap.get(studentSubj.inscriptionSubjectId);
             if (revMap && revMap.size > 0) {
-              // Replicate the "Nota Final" view logic from the frontend:
-              // findFinalRevision = last revision (highest opportunity <= currentOpp) that has
-              //   a score OR is an auto-NP (isAbsent, no grader, opp < currentOpp)
               const currentOpp = revisionPeriod?.currentOpportunity ?? 1;
+              const gradesFinalized = revisionPeriod?.gradesFinalized === true;
               const allRevs = Array.from(revMap.entries())
                 .filter(([opp]) => opp <= currentOpp)
                 .sort((a, b) => a[0] - b[0]);
@@ -1541,35 +1539,19 @@ export const exportRevisionNominaExcel = async (req: Request, res: Response) => 
                 }
               }
 
-              if (finalRev) {
-                // When grades are not finalized, show empty cells for 0s (ungraded).
-                // When finalized, show NP for absences.
-                const gradesFinalized = revisionPeriod?.gradesFinalized === true;
-
-                // isRealAbsent: score=0 with grader (explicit zero) OR auto-NP
-                const isExplicitZero = finalRev.score !== null && finalRev.score !== undefined && Number(finalRev.score) === 0 && finalRev.gradedBy != null;
-                const isAutoAbsent = finalRev.isAbsent === true && finalRev.gradedBy == null && finalRev.opportunity < currentOpp;
-                const isAbsent = isExplicitZero || isAutoAbsent;
-
-                if (isAbsent && gradesFinalized) {
-                  cell.value = 'NP';
-                  cell.font = { bold: true, size: 8, color: { argb: 'FFDC2626' }, name: 'Arial' };
-                } else if (finalRev.score != null && Number(finalRev.score) === 0) {
-                  // Score is 0 but not finalized, or auto-NP from a past opportunity — leave empty
-                  cell.value = '';
-                  cell.font = { bold: true, size: 8, name: 'Arial' };
-                } else if (finalRev.score != null) {
-                  cell.value = Number(finalRev.score);
-                  const isApproved = finalRev.status === 'approved';
-                  cell.font = isApproved
-                    ? { bold: true, size: 8, color: { argb: 'FF22A547' }, name: 'Arial' }
-                    : { bold: true, size: 8, color: { argb: 'FFDC2626' }, name: 'Arial' };
-                } else {
-                  cell.value = '';
-                  cell.font = { bold: true, size: 8, name: 'Arial' };
-                }
+              if (finalRev && finalRev.score != null && Number(finalRev.score) > 0) {
+                // Has a real score (>0) — show it
+                cell.value = Number(finalRev.score);
+                const isApproved = finalRev.status === 'approved';
+                cell.font = isApproved
+                  ? { bold: true, size: 8, color: { argb: 'FF22A547' }, name: 'Arial' }
+                  : { bold: true, size: 8, color: { argb: 'FFDC2626' }, name: 'Arial' };
+              } else if (gradesFinalized) {
+                // No real score and grades are finalized → NP
+                cell.value = 'NP';
+                cell.font = { bold: true, size: 8, color: { argb: 'FFDC2626' }, name: 'Arial' };
               } else {
-                // No meaningful revision yet — empty cell
+                // Not finalized → empty cell
                 cell.value = '';
                 cell.font = { bold: true, size: 8, name: 'Arial' };
               }
