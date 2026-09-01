@@ -591,9 +591,7 @@ const NewStudentEnrollmentForm: React.FC<NewStudentEnrollmentFormProps> = ({
     }
 
     let url = file.url || (file.preview as string);
-    if (url && url.startsWith('/uploads')) {
-      url = `http://localhost:3000${url}`;
-    }
+    // url is already relative or base64, no need to prefix with backend host
 
     setPreviewImage(url);
     setPreviewOpen(true);
@@ -1536,7 +1534,7 @@ const NewStudentEnrollmentForm: React.FC<NewStudentEnrollmentFormProps> = ({
             <Col span={8}>
               <Form.Item name={['documents', 'pathCedulaRepresentante']} label="Cédula Representante" getValueFromEvent={normFile}>
                 <Upload
-                  action="http://localhost:3000/api/upload/documents"
+                  action="/api/upload/documents"
                   maxCount={1}
                   listType="picture-card"
                   accept="image/*"
@@ -1553,7 +1551,7 @@ const NewStudentEnrollmentForm: React.FC<NewStudentEnrollmentFormProps> = ({
             <Col span={8}>
               <Form.Item name={['documents', 'pathFotoRepresentante']} label="Foto Representante" getValueFromEvent={normFile}>
                 <Upload
-                  action="http://localhost:3000/api/upload/documents"
+                  action="/api/upload/documents"
                   maxCount={1}
                   listType="picture-card"
                   accept="image/*"
@@ -1570,7 +1568,7 @@ const NewStudentEnrollmentForm: React.FC<NewStudentEnrollmentFormProps> = ({
             <Col span={8}>
               <Form.Item name={['documents', 'pathFotoEstudiante']} label="Foto Estudiante" getValueFromEvent={normFile}>
                 <Upload
-                  action="http://localhost:3000/api/upload/documents"
+                  action="/api/upload/documents"
                   maxCount={1}
                   listType="picture-card"
                   accept="image/*"
@@ -1591,7 +1589,7 @@ const NewStudentEnrollmentForm: React.FC<NewStudentEnrollmentFormProps> = ({
               <Col span={24}>
                 <Form.Item name={['documents', 'pathInformesMedicos']} label="Informes Médicos (Imágenes)" getValueFromEvent={normFile}>
                   <Upload
-                    action="http://localhost:3000/api/upload/documents"
+                    action="/api/upload/documents"
                     listType="picture-card"
                     accept="image/*"
                     multiple

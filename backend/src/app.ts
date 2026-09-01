@@ -150,13 +150,17 @@ app.use('/api/schedule-exceptions', scheduleExceptionRoutes);
 app.use('/api/classroom-assignments', classroomAssignmentRoutes);
 app.use('/api/room-bookings', roomBookingRoutes);
 
+// Serve uploaded files (logo, documents, dashboard images)
+const uploadsDir = path.join(__dirname, '..', 'public');
+app.use('/uploads', express.static(path.join(uploadsDir, 'uploads')));
+
 // Serve frontend static files (production build)
 const frontendDist = path.join(__dirname, '..', '..', 'frontend', 'dist');
 app.use(express.static(frontendDist));
 
 // SPA fallback: serve index.html for any non-API route (React Router)
 app.use((req, res, next) => {
-  if (req.method === 'GET' && !req.path.startsWith('/api/')) {
+  if (req.method === 'GET' && !req.path.startsWith('/api/') && !req.path.startsWith('/uploads/')) {
     return res.sendFile(path.join(frontendDist, 'index.html'));
   }
   next();

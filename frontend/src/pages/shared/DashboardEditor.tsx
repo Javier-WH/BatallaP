@@ -173,7 +173,7 @@ const DashboardEditor: React.FC<DashboardEditorProps> = ({ onSaved }) => {
           
           imgTags.forEach(img => {
             const src = img.getAttribute('src');
-            if (src && src.startsWith('http://localhost:3000/uploads/dashboard-images/')) {
+            if (src && src.includes('/uploads/dashboard-images/')) {
               const filename = src.split('/').pop();
               if (filename) {
                 images.add(filename);

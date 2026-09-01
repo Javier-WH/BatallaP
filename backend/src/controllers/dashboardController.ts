@@ -787,11 +787,10 @@ export const getMasterDashboardMetrics = async (req: Request, res: Response) => 
       return acc;
     }, {});
 
-    const baseUrl = process.env.APP_BASE_URL || 'http://localhost:3000';
     const institution = {
       name: settingsMap.institution_name || 'Institución Educativa',
       logoShape: (settingsMap.institution_logo_shape as 'circle' | 'square') || 'square',
-      logoUrl: `${baseUrl}/api/upload/logo?t=${Date.now()}`,
+      logoUrl: `/api/upload/logo?t=${Date.now()}`,
       motto: settingsMap.institution_motto || '',
       code: settingsMap.institution_code || ''
     };

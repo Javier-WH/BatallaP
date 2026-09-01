@@ -28,7 +28,7 @@ export const uploadImage = async (file: File): Promise<{ url: string; filename: 
   });
   
   // Construct full URL using backend baseURL
-  const fullUrl = `http://localhost:3000${response.data.url}`;
+  const fullUrl = response.data.url;
   
   return {
     url: fullUrl,

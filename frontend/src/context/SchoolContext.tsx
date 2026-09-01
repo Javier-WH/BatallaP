@@ -108,7 +108,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
       const d = settingsRes.data;
       const schoolName = d.institution_name;
-      const schoolLogo = `http://localhost:3000/api/upload/logo?t=${Date.now()}`;
+      const schoolLogo = `/api/upload/logo?t=${Date.now()}`;
       const schoolLogoShape = d.institution_logo_shape || 'square';
 
       const resolved: SchoolSettings = {
