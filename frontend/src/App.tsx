@@ -55,6 +55,7 @@ import GeneralAverages from '@/pages/control-estudios/GeneralAverages';
 import RepairPeriodManagement from '@/pages/control-estudios/RepairPeriodManagement';
 import PendingSubjectManagement from '@/pages/control-estudios/PendingSubjectManagement';
 import ExternalGrades from '@/pages/control-estudios/ExternalGrades';
+import TituloImpresion from '@/pages/control-estudios/TituloImpresion';
 import RegisterRepresentative from '@/pages/admin/RegisterRepresentative';
 
 
@@ -253,6 +254,7 @@ function AppRoutes() {
           <Route path="promedios-generales" element={<GeneralAverages />} />
           <Route path="reparacion" element={<RepairPeriodManagement />} />
           <Route path="materia-pendiente" element={<PendingSubjectManagement />} />
+          <Route path="titulos" element={<TituloImpresion />} />
           <Route path="edit/:id" element={<EditUser />} />
           <Route path="search" element={<SearchUsers />} />
         </Route>

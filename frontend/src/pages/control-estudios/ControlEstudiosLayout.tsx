@@ -2,7 +2,7 @@ import React from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { Button, Tooltip, Dropdown } from 'antd';
 import type { MenuProps } from 'antd';
-import { DashboardOutlined, SettingOutlined, UserAddOutlined, CheckCircleFilled, LockOutlined, ProjectOutlined, EditOutlined, DownOutlined, FileExcelOutlined, ToolOutlined, SwapOutlined, TrophyOutlined, AlertOutlined, HistoryOutlined, CalendarOutlined } from '@ant-design/icons';
+import { DashboardOutlined, SettingOutlined, UserAddOutlined, CheckCircleFilled, LockOutlined, ProjectOutlined, EditOutlined, DownOutlined, FileExcelOutlined, ToolOutlined, SwapOutlined, TrophyOutlined, AlertOutlined, HistoryOutlined, CalendarOutlined, FlagOutlined, FileProtectOutlined } from '@ant-design/icons';
 
 const NavButton: React.FC<{
   icon: React.ReactNode;
@@ -56,10 +56,18 @@ const ControlEstudiosLayout: React.FC = () => {
     { key: '/control-estudios/notas-externas', icon: <SwapOutlined />, label: 'Notas Externas' },
   ];
 
+  const cierreAnualItems: MenuProps['items'] = [
+    { key: '/control-estudios/titulos', icon: <FileProtectOutlined />, label: 'Impresión de Títulos' },
+    { key: '/control-estudios/cierre-anual', icon: <FlagOutlined />, label: 'Prosecución del Cierre Anual', disabled: true },
+  ];
+
   const isNotasActive = location.pathname === '/control-estudios/calificaciones'
     || location.pathname === '/control-estudios/editar-notas'
     || location.pathname === '/control-estudios/notas-historicas'
     || location.pathname.startsWith('/control-estudios/notas-externas');
+
+  const isCierreAnualActive = location.pathname.startsWith('/control-estudios/titulos')
+    || location.pathname.startsWith('/control-estudios/cierre-anual');
 
   return (
     <div className="flex flex-col h-full min-h-0 min-w-0 overflow-x-hidden">
@@ -97,6 +105,29 @@ const ControlEstudiosLayout: React.FC = () => {
             >
               <EditOutlined />
               <span className="text-sm">Notas</span>
+              <DownOutlined style={{ fontSize: 10 }} />
+            </Button>
+          </Dropdown>
+          <Dropdown
+            menu={{
+              items: cierreAnualItems,
+              onClick: ({ key }) => navigate(key),
+            }}
+            trigger={['click']}
+          >
+            <Button
+              type="text"
+              style={{ border: 'none', boxShadow: 'none' }}
+              className={`
+                h-10 px-4 flex items-center gap-2 rounded-xl transition-all font-semibold
+                ${isCierreAnualActive
+                  ? 'bg-brand-primary text-white shadow-lg shadow-blue-500/30'
+                  : 'text-slate-500 hover:bg-slate-100'
+                }
+              `}
+            >
+              <FlagOutlined />
+              <span className="text-sm">Procesos Finales</span>
               <DownOutlined style={{ fontSize: 10 }} />
             </Button>
           </Dropdown>

@@ -31,6 +31,7 @@ import {
   StudentObservation,
   PendingSubject,
   PendingSubjectEncounter,
+  StudentPeriodOutcome,
 } from '@/models/index';
 import {
   getSubjectOrderMap,
@@ -2532,3 +2533,128 @@ export const getGeneralAverages = async (req: Request, res: Response) => {
     res.status(500).json({ message: error.message || 'Error al obtener promedios generales' });
   }
 };
+
+/**
+ * GET /api/performance-summary/titulo-data
+ * Returns students who graduated (approved 5th year) for a given school period,
+ * with all data needed to print titles (diplomas).
+ *
+ * Query params:
+ * - schoolPeriodId: number (required)
+ */
+export const getTituloData = async (req: Request, res: Response) => {
+  try {
+    const schoolPeriodId = parseInt(req.query.schoolPeriodId as string, 10);
+    if (!schoolPeriodId) {
+      return res.status(400).json({ message: 'schoolPeriodId es obligatorio' });
+    }
+
+    const [period, settingsRows] = await Promise.all([
+      SchoolPeriod.findByPk(schoolPeriodId),
+      Setting.findAll(),
+    ]);
+    if (!period) return res.status(404).json({ message: 'Período no encontrado' });
+
+    const settings: Record<string, string> = {};
+    settingsRows.forEach((s: any) => { settings[s.key] = s.value; });
+
+    // Find 5th grade (order = 5) — the graduating grade
+    const fifthGrade = await Grade.findOne({ where: { order: 5 } });
+    if (!fifthGrade) {
+      return res.status(404).json({ message: 'No se encontró el 5to año (grado con order=5)' });
+    }
+
+    // Find inscriptions for 5th grade in this period
+    // Include periodOutcome optionally (may not exist if closure hasn't run)
+    const inscriptions = await Inscription.findAll({
+      where: { schoolPeriodId, gradeId: fifthGrade.id },
+      include: [
+        {
+          model: Person,
+          as: 'student',
+          include: [{ model: PersonResidence, as: 'residence' }],
+        },
+        { model: Section, as: 'section' },
+        {
+          model: StudentPeriodOutcome,
+          as: 'periodOutcome',
+          required: false,
+        },
+      ],
+      order: [
+        [{ model: Person, as: 'student' }, 'lastName', 'ASC'],
+        [{ model: Person, as: 'student' }, 'firstName', 'ASC'],
+      ],
+    });
+
+    const students = inscriptions.map((ins: any) => {
+      const person = ins.student;
+      const residence = person?.residence;
+      const outcome = ins.periodOutcome;
+
+      // Format birthplace: "PAÍS, ESTADO, MUNICIPIO" (Venezuela is assumed)
+      const birthState = residence?.birthState || '';
+      const birthMunicipality = residence?.birthMunicipality || '';
+      const birthplace = ['VENEZUELA', birthState, birthMunicipality]
+        .filter(Boolean)
+        .join(', ');
+
+      // Format birthdate: "04 DE ABRIL DE 2005"
+      const birthdate = person?.birthdate ? formatDateLong(person.birthdate) : '';
+
+      // Format document: "V 30.781.275"
+      const docPrefix = person?.documentType === 'Venezolano' ? 'V'
+        : person?.documentType === 'Extranjero' ? 'E'
+        : person?.documentType === 'Pasaporte' ? 'P' : 'CE';
+      const docFormatted = person?.document ? `${docPrefix} ${person.document}` : '';
+
+      // Full name in uppercase
+      const fullName = `${person?.lastName || ''} ${person?.firstName || ''}`.trim().toUpperCase();
+
+      return {
+        inscriptionId: ins.id,
+        personId: person?.id,
+        fullName,
+        document: docFormatted,
+        birthplace,
+        birthdate,
+        finalAverage: outcome?.finalAverage != null ? Number(outcome.finalAverage).toFixed(2) : '',
+        graduatedAt: outcome?.graduatedAt,
+        outcomeStatus: outcome?.status || null,
+        sectionName: ins.section?.name || '',
+      };
+    });
+
+    // Institution data
+    const institution = {
+      name: settings.institution_name || '',
+      code: settings.institution_code || '',
+      level: 'BACHILLER',
+      program: settings.institution_program || 'EDUCACIÓN MEDIA GENERAL, 31059',
+      directorName: settings.director_name || '',
+      directorDocument: settings.director_document || '',
+      // sig2 (Control de Estudios) — from settings if available
+      sig2Name: settings.titulo_sig2_name || '',
+      sig2Id: settings.titulo_sig2_id || '',
+      // Issue place: "ESTADO, MUNICIPIO, FECHA"
+      issueState: settings.institution_state || '',
+      issueMunicipality: settings.institution_municipality || '',
+    };
+
+    return res.json({ students, institution, schoolPeriodName: period.name });
+  } catch (error: any) {
+    console.error('[getTituloData] Error:', error);
+    res.status(500).json({ message: error.message || 'Error al obtener datos de títulos' });
+  }
+};
+
+// Format a date as "DD DE MES DE YYYY" in Spanish
+function formatDateLong(date: Date | string): string {
+  const d = typeof date === 'string' ? new Date(date + 'T00:00:00') : new Date(date);
+  const months = ['ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO',
+    'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE'];
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = months[d.getMonth()];
+  const yyyy = d.getFullYear();
+  return `${dd} DE ${mm} DE ${yyyy}`;
+}
