@@ -354,9 +354,11 @@ async function buildCertifiedWorkbook(personId: number, templateName: string): P
     const activePeriodId = activePeriod?.id || null;
 
     // 2c. Load subjects in canonical order for each grade.
-    //     Filter out group subjects (subjectGroupId != null) and literal subjects (usesLiteralGrades).
+    //     Non-literal, non-group subjects go into subjectsByGrade.
+    //     Literal, non-group subjects go into literalSubjectsByGrade.
     //     Try active period first; if no PeriodGrade, try any period.
     const subjectsByGrade: Map<number, Array<{ id: number; name: string }>> = new Map();
+    const literalSubjectsByGrade: Map<number, Array<{ id: number; name: string }>> = new Map();
     for (const gr of allGrades) {
       let pg = activePeriodId
         ? await PeriodGrade.findOne({ where: { schoolPeriodId: activePeriodId, gradeId: gr.id }, attributes: ['id'] })
@@ -364,7 +366,7 @@ async function buildCertifiedWorkbook(personId: number, templateName: string): P
       if (!pg) {
         pg = await PeriodGrade.findOne({ where: { gradeId: gr.id }, attributes: ['id'], order: [['id', 'DESC']] });
       }
-      if (!pg) { subjectsByGrade.set(gr.id, []); continue; }
+      if (!pg) { subjectsByGrade.set(gr.id, []); literalSubjectsByGrade.set(gr.id, []); continue; }
 
       const pgs = await PeriodGradeSubject.findAll({
         where: { periodGradeId: pg.id },
@@ -377,15 +379,20 @@ async function buildCertifiedWorkbook(personId: number, templateName: string): P
       });
 
       const subjects: Array<{ id: number; name: string }> = [];
+      const literalSubjects: Array<{ id: number; name: string }> = [];
       for (const p of pgs) {
         const subj = (p as any).subject;
         if (!subj) continue;
-        // Skip group subjects and literal subjects
+        // Skip group subjects
         if (subj.subjectGroupId != null) continue;
-        if (subj.usesLiteralGrades) continue;
-        subjects.push({ id: subj.id, name: subj.name });
+        if (subj.usesLiteralGrades) {
+          literalSubjects.push({ id: subj.id, name: subj.name });
+        } else {
+          subjects.push({ id: subj.id, name: subj.name });
+        }
       }
       subjectsByGrade.set(gr.id, subjects);
+      literalSubjectsByGrade.set(gr.id, literalSubjects);
     }
 
     // 3. Get all inscriptions for this student (across all periods, including MP)
@@ -673,6 +680,16 @@ async function buildCertifiedWorkbook(personId: number, templateName: string): P
     // Helper: round grade and enforce minimum of 1 (minimum allowed grade)
     const roundGradeMin1 = (score: number): number => Math.max(1, Math.round(score));
 
+    // Letter grades config (for literal subjects)
+    const letterGradesConfig: { letter: string; max: number }[] = (() => {
+      try {
+        const raw = settings.letter_grades;
+        if (!raw) return [];
+        const parsed = JSON.parse(raw);
+        return parsed.scale || parsed || [];
+      } catch { return []; }
+    })();
+
     // ── Year 1 grades (rows 21-27, 7 subjects) ──
     const year1Grade = allGrades.find((g: any) => g.order === 1);
     if (year1Grade) {
@@ -711,6 +728,23 @@ async function buildCertifiedWorkbook(personId: number, templateName: string): P
 
         // J21-J27 = plantel index (1-based)
         setter(`y1_s${subjNum}_inst`, resolvePlantelIndex(g));
+      }
+    }
+
+    // ── Literal subjects (8th per year) → P42-P46 (letter grades) ──
+    // Year 1 → P42, Year 2 → P43, Year 3 → P44, Year 4 → P45, Year 5 → P46
+    const literalCells = ['y1_s8_num', 'y2_s8_num', 'y3_s9_num', 'y4_s10_num', 'y5_s11_num'];
+    for (let y = 1; y <= 5; y++) {
+      const yearGrade = allGrades.find((g: any) => g.order === y);
+      if (!yearGrade) continue;
+      const literalSubjects = literalSubjectsByGrade.get(yearGrade.id) || [];
+      if (literalSubjects.length > 0) {
+        const subj = literalSubjects[0];
+        const lookupKey = `${yearGrade.id}__${subj.id}`;
+        const g = gradeLookup.get(lookupKey);
+        if (g && g.finalScore != null) {
+          setter(literalCells[y - 1], numericToLetter(roundGradeMin1(g.finalScore), letterGradesConfig).toUpperCase());
+        }
       }
     }
 
