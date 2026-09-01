@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { Select, Button, Spin, message, Alert, Input, Popover } from 'antd';
+import { Select, Button, Spin, message, Alert, Input, Popover, AutoComplete } from 'antd';
 import { PrinterOutlined } from '@ant-design/icons';
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
@@ -1926,23 +1926,20 @@ const PerformanceSummary: React.FC = () => {
                 <section className="rb-card">
                   <h2 className="rb-card-label">2. Por estudiante (individual)</h2>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                    <Input
-                      placeholder="Buscar por nombre o cédula..."
-                      value={certSearchQuery}
-                      onChange={(e) => certSearch(e.target.value)}
-                      prefix={<IconSearch size={16} />}
-                      style={{ borderRadius: 10, paddingLeft: 36 }}
-                    />
-                    <Select
-                      placeholder="Resultados de búsqueda..."
+                    <AutoComplete
+                      placeholder="Buscar por nombre o cédula... (mín. 3 caracteres)"
                       style={{ width: '100%' }}
-                      value={certPersonId ?? undefined}
-                      onChange={(v: number) => setCertPersonId(v)}
+                      value={certSearchQuery}
+                      onChange={(val) => certSearch(val)}
+                      onSelect={(val: number) => setCertPersonId(val)}
                       options={certSearchResults}
-                      showSearch
                       filterOption={false}
                       notFoundContent={certSearchQuery.length < 3 ? 'Escriba al menos 3 caracteres' : 'Sin resultados'}
-                    />
+                      allowClear
+                      onClear={() => { setCertSearchQuery(''); setCertSearchResults([]); setCertPersonId(null); }}
+                    >
+                      <Input prefix={<IconSearch size={16} />} style={{ borderRadius: 10, paddingLeft: 36 }} />
+                    </AutoComplete>
                   </div>
                 </section>
 
