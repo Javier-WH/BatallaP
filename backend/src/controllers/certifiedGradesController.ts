@@ -35,6 +35,7 @@ import { roundGrade, roundFinalGrade, isPassingGrade } from '@/services/gradeEva
 import { GradeCalculationService } from '@/services/gradeCalculationService';
 import { readTemplateNamedRanges } from '@/services/templateNamedRanges';
 import { resolveGradeDate } from '@/services/gradeDateResolver';
+import { sortInscriptions } from '@/services/studentSortService';
 
 function getStateAbbrev(stateName: string): string {
   if (!stateName) return '';
@@ -193,15 +194,16 @@ export const exportCertifiedGradesBySection = async (req: Request, res: Response
       return res.status(400).json({ message: 'template es obligatorio' });
     }
 
-    // Find all students inscribed in this grade+section+period, sorted by name
+    // Find all students inscribed in this grade+section+period, sorted by canonical list order
     const inscriptions = await Inscription.findAll({
       where: { schoolPeriodId, gradeId, sectionId },
-      include: [{ model: Person, as: 'student' }],
-      order: [
-        [{ model: Person, as: 'student' }, 'lastName', 'ASC'],
-        [{ model: Person, as: 'student' }, 'firstName', 'ASC'],
+      include: [
+        { model: Person, as: 'student' },
+        { model: Grade, as: 'grade' },
+        { model: Section, as: 'section' },
       ],
     });
+    sortInscriptions(inscriptions as any);
 
     if (inscriptions.length === 0) {
       return res.status(404).json({ message: 'No hay estudiantes inscritos en esta sección' });
