@@ -142,7 +142,7 @@ export class MigrationRunner {
       } catch (error: any) {
         // Check if the error is about duplicate keys/tables/columns (already exists)
         const errorCode = error.code || error.parent?.code;
-        if (errorCode === 'ER_DUP_KEYNAME' || errorCode === 'ER_TABLE_EXISTS_ERROR' || errorCode === 'ER_DUP_FIELDNAME') {
+        if (errorCode === 'ER_DUP_KEYNAME' || errorCode === 'ER_TABLE_EXISTS_ERROR' || errorCode === 'ER_DUP_FIELDNAME' || errorCode === 'ER_DUP_ENTRY' || errorCode === 'ER_BAD_FIELD_ERROR' || errorCode === 'ER_CANT_DROP_FIELD_OR_KEY' || errorCode === 'ER_BAD_NULL_ERROR') {
           console.log(`⚠️ Migration skipped (already exists): ${filename}`);
           // Still record the migration as executed
           try {

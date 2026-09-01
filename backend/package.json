@@ -9,7 +9,7 @@
     "test:coverage": "jest --coverage",
     "dev": "nodemon -r tsconfig-paths/register src/server.ts",
     "build": "tsc",
-    "start": "node dist/src/server.js",
+    "start": "cross-env TS_NODE_PROJECT=tsconfig.prod.json node -r tsconfig-paths/register dist/server.js",
     "seed": "npx ts-node -r tsconfig-paths/register src/seed.ts",
     "db:sync-only": "npx ts-node -r tsconfig-paths/register -e \"(async () => { const sequelize = (await import('./src/config/database')).default; await import('./src/models/index'); await sequelize.authenticate(); await sequelize.sync({ force: true }); console.log('All models were synchronized successfully (force: true).'); })().catch((e) => { console.error(e); process.exit(1); });\"",
     "db:sync": "npm run db:sync-only && npm run seed",
@@ -32,6 +32,7 @@
     "connect-session-sequelize": "^8.0.4",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
+    "cross-env": "^10.1.0",
     "dayjs": "^1.11.20",
     "dotenv": "^17.2.3",
     "exceljs": "^4.4.0",
@@ -42,6 +43,7 @@
     "node-cron": "^4.6.0",
     "puppeteer": "^24.40.0",
     "sequelize": "^6.37.7",
+    "tsconfig-paths": "^4.2.0",
     "uuid": "^13.0.0",
     "xlsx": "^0.18.5"
   },
@@ -65,7 +67,6 @@
     "supertest": "^7.1.4",
     "ts-jest": "^29.4.6",
     "ts-node": "^10.9.2",
-    "tsconfig-paths": "^4.2.0",
     "typescript": "^5.9.3"
   }
 }
