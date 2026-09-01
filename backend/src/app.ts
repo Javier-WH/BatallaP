@@ -1,6 +1,7 @@
 import express, { Application } from 'express';
 import cors from 'cors';
 import session from 'express-session';
+import path from 'path';
 import cookieParser from 'cookie-parser';
 import dotenv from 'dotenv';
 import sequelize from '@/config/database';
@@ -94,7 +95,7 @@ import scheduleExceptionRoutes from '@/routes/scheduleExceptionRoutes';
 import classroomAssignmentRoutes from '@/routes/classroomAssignmentRoutes';
 import roomBookingRoutes from '@/routes/roomBookingRoutes';
 
-app.get('/', (req, res) => {
+app.get('/health', (req, res) => {
   res.send('API is running...');
 });
 
@@ -148,6 +149,18 @@ app.use('/api/schedules', scheduleRoutes);
 app.use('/api/schedule-exceptions', scheduleExceptionRoutes);
 app.use('/api/classroom-assignments', classroomAssignmentRoutes);
 app.use('/api/room-bookings', roomBookingRoutes);
+
+// Serve frontend static files (production build)
+const frontendDist = path.join(__dirname, '..', '..', 'frontend', 'dist');
+app.use(express.static(frontendDist));
+
+// SPA fallback: serve index.html for any non-API route (React Router)
+app.use((req, res, next) => {
+  if (req.method === 'GET' && !req.path.startsWith('/api/')) {
+    return res.sendFile(path.join(frontendDist, 'index.html'));
+  }
+  next();
+});
 
 export { sessionStore };
 export default app;
