@@ -356,9 +356,11 @@ async function buildCertifiedWorkbook(personId: number, templateName: string): P
     // 2c. Load subjects in canonical order for each grade.
     //     Non-literal, non-group subjects go into subjectsByGrade.
     //     Literal, non-group subjects go into literalSubjectsByGrade.
+    //     Group subjects (collapsed by subjectGroupId) go into groupSubjectsByGrade.
     //     Try active period first; if no PeriodGrade, try any period.
     const subjectsByGrade: Map<number, Array<{ id: number; name: string }>> = new Map();
     const literalSubjectsByGrade: Map<number, Array<{ id: number; name: string }>> = new Map();
+    const groupSubjectsByGrade: Map<number, Array<{ name: string; memberIds: number[] }>> = new Map();
     for (const gr of allGrades) {
       let pg = activePeriodId
         ? await PeriodGrade.findOne({ where: { schoolPeriodId: activePeriodId, gradeId: gr.id }, attributes: ['id'] })
@@ -366,7 +368,12 @@ async function buildCertifiedWorkbook(personId: number, templateName: string): P
       if (!pg) {
         pg = await PeriodGrade.findOne({ where: { gradeId: gr.id }, attributes: ['id'], order: [['id', 'DESC']] });
       }
-      if (!pg) { subjectsByGrade.set(gr.id, []); literalSubjectsByGrade.set(gr.id, []); continue; }
+      if (!pg) {
+        subjectsByGrade.set(gr.id, []);
+        literalSubjectsByGrade.set(gr.id, []);
+        groupSubjectsByGrade.set(gr.id, []);
+        continue;
+      }
 
       const pgs = await PeriodGradeSubject.findAll({
         where: { periodGradeId: pg.id },
@@ -374,18 +381,32 @@ async function buildCertifiedWorkbook(personId: number, templateName: string): P
           model: Subject,
           as: 'subject',
           attributes: ['id', 'name', 'subjectGroupId', 'usesLiteralGrades'],
+          include: [{ model: SubjectGroup, as: 'subjectGroup', attributes: ['id', 'name'] }],
         }],
         order: [['order', 'ASC']],
       });
 
       const subjects: Array<{ id: number; name: string }> = [];
       const literalSubjects: Array<{ id: number; name: string }> = [];
+      const groupSubjects: Array<{ name: string; memberIds: number[] }> = [];
+      const groupIndexByGroupId = new Map<number, number>();
       for (const p of pgs) {
         const subj = (p as any).subject;
         if (!subj) continue;
-        // Skip group subjects
-        if (subj.subjectGroupId != null) continue;
-        if (subj.usesLiteralGrades) {
+        const groupId = subj.subjectGroupId ?? null;
+        if (groupId !== null) {
+          // Collapse group subjects by subjectGroupId
+          if (groupIndexByGroupId.has(groupId)) {
+            const idx = groupIndexByGroupId.get(groupId)!;
+            groupSubjects[idx].memberIds.push(subj.id);
+          } else {
+            groupIndexByGroupId.set(groupId, groupSubjects.length);
+            groupSubjects.push({
+              name: subj.subjectGroup?.name || subj.name,
+              memberIds: [subj.id],
+            });
+          }
+        } else if (subj.usesLiteralGrades) {
           literalSubjects.push({ id: subj.id, name: subj.name });
         } else {
           subjects.push({ id: subj.id, name: subj.name });
@@ -393,6 +414,7 @@ async function buildCertifiedWorkbook(personId: number, templateName: string): P
       }
       subjectsByGrade.set(gr.id, subjects);
       literalSubjectsByGrade.set(gr.id, literalSubjects);
+      groupSubjectsByGrade.set(gr.id, groupSubjects);
     }
 
     // 3. Get all inscriptions for this student (across all periods, including MP)
@@ -748,6 +770,30 @@ async function buildCertifiedWorkbook(personId: number, templateName: string): P
       }
     }
 
+    // ── Group subjects → P48-P52 (name), S48 + B49-B52 (letter grade) ──
+    // Year 1 → P48/S48, Year 2 → P49/B49, Year 3 → P50/B50, Year 4 → P51/B51, Year 5 → P52/B52
+    const groupNameCells = ['y1_group_name', 'y2_group_name', 'y3_group_name', 'y4_group_name', 'y5_group_name'];
+    const groupNumCells  = ['y1_group_num',  'y2_group_num',  'y3_group_num',  'y4_group_num',  'y5_group_num'];
+    for (let y = 1; y <= 5; y++) {
+      const yearGrade = allGrades.find((g: any) => g.order === y);
+      if (!yearGrade) continue;
+      const groupSubjects = groupSubjectsByGrade.get(yearGrade.id) || [];
+      if (groupSubjects.length > 0) {
+        const grp = groupSubjects[0];
+        // Find the grade by trying each member subjectId; use the member that has a grade
+        for (const memberId of grp.memberIds) {
+          const lookupKey = `${yearGrade.id}__${memberId}`;
+          const g = gradeLookup.get(lookupKey);
+          if (g && g.finalScore != null) {
+            // P-cell = name of the specific subject the student took (not the group name)
+            setter(groupNameCells[y - 1], toTitleCaseES(g.subjectName || grp.name));
+            setter(groupNumCells[y - 1], numericToLetter(roundGradeMin1(g.finalScore), letterGradesConfig).toUpperCase());
+            break;
+          }
+        }
+      }
+    }
+
     // ── Year 2 grades (rows 21-27, 7 subjects) ──
     // L=name, O=num, P=letters, Q=te, R=month, S=year, U=inst
     const year2Grade = allGrades.find((g: any) => g.order === 2);
@@ -914,6 +960,26 @@ async function buildCertifiedWorkbook(personId: number, templateName: string): P
         // J43-J52 = plantel index (1-based)
         setter(`y5_s${subjNum}_inst`, resolvePlantelIndex(g));
       }
+    }
+
+    // ── Overall average (S53) ──
+    // Average of all numeric (non-literal) grades across all 5 years.
+    const allNumericScores: number[] = [];
+    for (let y = 1; y <= 5; y++) {
+      const yearGrade = allGrades.find((g: any) => g.order === y);
+      if (!yearGrade) continue;
+      const subjects = subjectsByGrade.get(yearGrade.id) || [];
+      for (const subj of subjects) {
+        const lookupKey = `${yearGrade.id}__${subj.id}`;
+        const g = gradeLookup.get(lookupKey);
+        if (g && g.finalScore != null) {
+          allNumericScores.push(roundGradeMin1(g.finalScore));
+        }
+      }
+    }
+    if (allNumericScores.length > 0) {
+      const avg = allNumericScores.reduce((a, b) => a + b, 0) / allNumericScores.length;
+      setter('overall_average', avg.toFixed(2));
     }
 
     return { workbook, person };
