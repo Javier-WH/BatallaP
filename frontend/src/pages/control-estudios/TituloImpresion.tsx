@@ -262,7 +262,7 @@ const TituloImpresion: React.FC = () => {
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       if (!selectedId || editingId) return;
-      const tag = e.target.tagName;
+      const tag = (e.target as HTMLElement)?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as any).isContentEditable) return;
       const step = e.shiftKey ? 5 : 1;
       if (e.key === 'ArrowUp') { e.preventDefault(); moveSelected(0, -step); }

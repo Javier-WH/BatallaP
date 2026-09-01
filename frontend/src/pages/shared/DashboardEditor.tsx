@@ -6,7 +6,7 @@ import TextAlign from '@tiptap/extension-text-align';
 import { TextStyle } from '@tiptap/extension-text-style';
 import Color from '@tiptap/extension-color';
 import { Button, Space, message, Upload, Select } from 'antd';
-import { UploadOutlined, BoldOutlined, ItalicOutlined, UnderlineOutlined, OrderedListOutlined, UnorderedListOutlined, AlignLeftOutlined, AlignCenterOutlined, AlignRightOutlined, LinkOutlined, PictureOutlined, UndoOutlined, RedoOutlined } from '@ant-design/icons';
+import { BoldOutlined, ItalicOutlined, UnderlineOutlined, OrderedListOutlined, UnorderedListOutlined, AlignLeftOutlined, AlignCenterOutlined, AlignRightOutlined, LinkOutlined, PictureOutlined, UndoOutlined, RedoOutlined } from '@ant-design/icons';
 import { getContent, updateContent, uploadImage, deleteImage } from '@/services/dashboardContentService';
 import './DashboardEditor.css';
 

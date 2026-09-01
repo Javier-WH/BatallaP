@@ -2191,7 +2191,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                                       const currentOpp = revisionDetail.currentOpportunity ?? 1;
                                       const earlierApproved = student.revisions.some(r => r.opportunity < opp && r.status === 'approved');
                                       const isLocked = !rev || rev.opportunity !== currentOpp || earlierApproved || revisionGradesFinalized;
-                                      const isCellAbsent = !!revisionAbsent[rev?.id];
+                                      const isCellAbsent = !!revisionAbsent[rev?.id ?? 0];
                                       if (!rev || opp > currentOpp) {
                                         return <td key={opp} style={{ padding: '2px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-content-bg)' : 'color-mix(in srgb, var(--color-text-main) 2%, var(--color-content-bg))', width: '60px' }}>—</td>;
                                       }

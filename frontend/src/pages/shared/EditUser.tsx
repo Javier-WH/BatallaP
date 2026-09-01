@@ -3,7 +3,7 @@ import { Form, Input, Button, DatePicker, Select, Radio, message, Card, Spin, Ta
 import { BookOutlined, UserOutlined, SwapOutlined } from '@ant-design/icons';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import api from '@/services/api';
-import dayjs, { Dayjs } from 'dayjs';
+import { Dayjs } from 'dayjs';
 import { parseDateLocal } from '@/utils/dateHelpers';
 import { useAuth } from '@/context/AuthContext';
 import type { AxiosError } from 'axios';

@@ -1,18 +1,19 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Card, Form, Input, InputNumber, Button, Typography, Space, message, Spin,
-  DatePicker, Table, Modal, Popconfirm, Tooltip, Alert, Tag, Row, Col, Empty,
+  DatePicker, Table, Modal, Popconfirm, Alert, Tag, Empty,
   AutoComplete, Select, Tabs, Upload,
 } from 'antd';
 import {
-  PlusOutlined, DeleteOutlined, EditOutlined, SwapOutlined, SearchOutlined,
-  SaveOutlined, BankOutlined, DownloadOutlined, UploadOutlined, FileExcelOutlined,
+  PlusOutlined, DeleteOutlined, SwapOutlined,
+  SaveOutlined, BankOutlined, DownloadOutlined, FileExcelOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import api from '@/services/api';
 import {
   getExternalGradesForPerson,
   listExternalSubjects,
+  listExternalGrades,
   resolvePlantel,
   createExternalInscription,
   upsertExternalGrade,
@@ -24,7 +25,6 @@ import {
   type ExternalInscription,
   type ExternalGradeType,
   type ExternalGradeStatus,
-  type BulkEntry,
 } from '@/services/externalGrades';
 
 const { Text, Title } = Typography;
@@ -289,7 +289,6 @@ const ExternalGrades: React.FC = () => {
   }, [selectedPersonId, selectedPersonLabel, onSelectStudent, loadAllGrades]);
 
   // Bulk state
-  const [bulkEntries, setBulkEntries] = useState<BulkEntry[]>([]);
   const [bulkProcessing, setBulkProcessing] = useState(false);
   const [bulkResult, setBulkResult] = useState<{ created: number; skipped: number } | null>(null);
   const [bulkErrors, setBulkErrors] = useState<Array<{ row: number; message: string }> | null>(null);
@@ -522,11 +521,11 @@ const ExternalGrades: React.FC = () => {
                   options={studentResults}
                   value={studentQuery}
                   onSearch={searchStudent}
-                  onSelect={(v, opt) => onSelectStudent(v as number, opt)}
+                  onSelect={(v, opt) => onSelectStudent(Number(v), opt)}
                   placeholder="Buscar por cédula o nombre (mín. 3 caracteres)"
                   notFoundContent={null}
                 />
-                {selectedPersonId > 0 && (
+                {selectedPersonId != null && selectedPersonId > 0 && (
                   <div style={{ marginTop: 8 }}>
                     <Tag color="blue">Seleccionado: {selectedPersonLabel}</Tag>
                   </div>

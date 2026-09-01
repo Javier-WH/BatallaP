@@ -223,15 +223,6 @@ const LegendRow: React.FC<{ name: string; desc: string }> = ({ name, desc }) => 
   </div>
 );
 
-function PreviewRow({ label, value, muted }: { label: string; value: React.ReactNode; muted?: boolean }) {
-  return (
-    <div className="rb-preview-row">
-      <span className="rb-preview-label">{label}</span>
-      <span className={`rb-preview-value${muted ? ' rb-muted' : ''}`}>{value}</span>
-    </div>
-  );
-}
-
 /* ------------------------------------------------------------------ */
 /* Interfaces                                                          */
 /* ------------------------------------------------------------------ */
@@ -252,12 +243,11 @@ const PerformanceSummary: React.FC = () => {
   const [selectedPeriodId, setSelectedPeriodId] = useState<number | null>(null);
   const [selectedGradeIds, setSelectedGradeIds] = useState<number[]>([]);
   const [selectedSectionIds, setSelectedSectionIds] = useState<number[]>([]);
-  const [studentGroup, setStudentGroup] = useState<'regulares' | 'revision'>('regulares');
+  const [studentGroup] = useState<'regulares' | 'revision'>('regulares');
   const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
   const [certTemplateModalOpen, setCertTemplateModalOpen] = useState(false);
   const [certSelectedTemplate, setCertSelectedTemplate] = useState<string | null>(null);
-  const [userOverrodeTemplate, setUserOverrodeTemplate] = useState(false);
   const [reportType, setReportType] = useState<ReportType>('resumen');
   const [mpExporting, setMpExporting] = useState(false);
   const [revisionExporting, setRevisionExporting] = useState(false);
@@ -392,12 +382,9 @@ const PerformanceSummary: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    setUserOverrodeTemplate(false);
     setSelectedGradeIds([]);
     setSelectedSectionIds([]);
   }, [selectedPeriodId]);
-
-  useEffect(() => { setUserOverrodeTemplate(false); }, [selectedGradeIds, selectedSectionIds]);
 
   // Drop sections that no longer belong to any selected grade.
   useEffect(() => {
@@ -835,7 +822,7 @@ const PerformanceSummary: React.FC = () => {
       const profesorNameCell = worksheet.getCell(4, 3);
       const guideTeacher = data.students[0]?.guideTeacher || '';
       profesorNameCell.value = guideTeacher
-        ? guideTeacher.toLowerCase().replace(/\b\w/g, c => c.toUpperCase())
+        ? guideTeacher.toLowerCase().replace(/\b\w/g, (c: string) => c.toUpperCase())
         : '';
       profesorNameCell.alignment = { horizontal: 'left', vertical: 'middle' };
       profesorNameCell.font = { bold: true, size: 14, color: { argb: '17324D' } };
@@ -1031,7 +1018,7 @@ const PerformanceSummary: React.FC = () => {
 
         // Apply grade number format to L and NF columns (skip groupNames columns)
         let colIdx = 7;
-        columnDefinitions.forEach((colDef, idx) => {
+        columnDefinitions.forEach((colDef, _idx) => {
           if (colDef.kind === 'groupNames') {
             // Text columns — no number format, smaller font for names
             for (let i = 0; i < termCount; i++) {
@@ -1911,8 +1898,8 @@ const PerformanceSummary: React.FC = () => {
                       style={{ width: '100%' }}
                       value={certSearchQuery}
                       onChange={(val) => { certSearch(val); setCertGradeId(null); setCertSectionId(null); }}
-                      onSelect={(val: number, option: any) => {
-                        setCertPersonId(val);
+                      onSelect={(val: string, option: any) => {
+                        setCertPersonId(Number(val));
                         setCertSearchQuery(option.label || '');
                         setCertGradeId(null);
                         setCertSectionId(null);
@@ -1981,7 +1968,7 @@ const PerformanceSummary: React.FC = () => {
         onClose={() => setTemplateModalOpen(false)}
         selectedTemplate={selectedTemplate}
         defaultGradeId={selectedGradeIds[0] ?? null}
-        onSelect={(name) => { setSelectedTemplate(name || null); setUserOverrodeTemplate(true); }}
+        onSelect={(name) => { setSelectedTemplate(name || null); }}
         mode="resumen"
       />
 

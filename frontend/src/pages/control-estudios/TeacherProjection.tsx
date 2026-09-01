@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Table, Card, Button, Space, Tag, Modal, Form, Select, message, Alert, Tabs, Row, Col, Spin, Empty, Typography, Popover } from 'antd';
+import { Table, Card, Button, Space, Tag, Modal, Form, Select, message, Alert, Tabs, Spin, Empty, Typography, Popover } from 'antd';
 import { UserOutlined, BookOutlined, PlusOutlined, TeamOutlined, CheckCircleOutlined, WarningOutlined } from '@ant-design/icons';
 import api from '@/services/api';
 
@@ -9,9 +9,6 @@ const { Text } = Typography;
 const normalizeText = (s?: string) => (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 const isMpSection = (name?: string) => normalizeText(name) === 'materia pendiente';
 
-interface Grade { id: number; name: string; isDiversified: boolean; order: number; }
-interface Section { id: number; name: string; }
-interface PeriodGradeStructure { id: number; grade: Grade; sections: Section[]; }
 interface SchoolPeriod { id: number; period: string; name: string; status: 'preinscripcion' | 'activo' | 'historico' | 'externo'; isActive: boolean; }
 
 const TeacherProjection: React.FC = () => {

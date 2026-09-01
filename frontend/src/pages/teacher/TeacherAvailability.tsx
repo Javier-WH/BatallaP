@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { Button, message, Spin, Tabs, Tag, Empty, DatePicker, Input, Alert, Modal, List } from 'antd';
-import { SaveOutlined, DeleteOutlined, ScheduleOutlined, HomeOutlined, PlusOutlined, CheckOutlined, CloseOutlined } from '@ant-design/icons';
+import { Button, message, Spin, Tabs, Tag, Empty, DatePicker, Input, Alert, List } from 'antd';
+import { SaveOutlined, DeleteOutlined, ScheduleOutlined, HomeOutlined, PlusOutlined } from '@ant-design/icons';
 import api from '@/services/api';
 import { useAuth } from '@/context/AuthContext';
 import { useSchool } from '@/context/SchoolContext';
@@ -26,13 +26,6 @@ interface Section {
 }
 
 const DAYS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'];
-
-// Map dayjs day() (0=Sun, 1=Mon..5=Fri, 6=Sat) to our day names
-function dayjsToDayName(d: dayjs.Dayjs): string | null {
-  const idx = d.day();
-  if (idx >= 1 && idx <= 5) return DAYS[idx - 1];
-  return null;
-}
 
 const STATUSES = [
   { key: 'busy', label: 'Ocupado', swatch: 'bg-rose-400', ring: 'ring-rose-500' },
@@ -160,14 +153,12 @@ export default function TeacherAvailability() {
   const [classroomLoading, setClassroomLoading] = useState(false);
 
   // Teacher room requests state
-  const [requestTab, setRequestTab] = useState('new'); // 'new' | 'myRequests'
   const [requestDate, setRequestDate] = useState<dayjs.Dayjs | null>(null);
   const [requestReason, setRequestReason] = useState('');
   const [requestSubject, setRequestSubject] = useState('');
   const [myRequests, setMyRequests] = useState<any[]>([]);
   const [myRequestsLoading, setMyRequestsLoading] = useState(false);
   const [selectedRequestCells, setSelectedRequestCells] = useState<Set<string>>(new Set());
-  const [requestSelectionMode, setRequestSelectionMode] = useState(false);
   const requestSelecting = useRef(false);
 
   const painting = useRef(false);
@@ -769,7 +760,7 @@ export default function TeacherAvailability() {
                             // Compute end time for merged cells
                             let endTime = period.end;
                             if (span > 1) {
-                              const sec = sections.find(s => s.id === period.section);
+                              const sec = sections.find(s => s.id === (period as any).section);
                               if (sec) {
                                 const nonBreak = sec.periods.filter(p => !p.break);
                                 const idx = nonBreak.findIndex(p => p.id === period.id);

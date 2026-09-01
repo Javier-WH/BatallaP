@@ -27,7 +27,7 @@ const AutoOpenSelectEditor = React.forwardRef<any, ICellEditorParams<any, any>>(
 
   const onChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     setValue(e.target.value);
-    props.onValueChange?.(e.target.value);
+    (props as any).onValueChange?.(e.target.value);
   };
 
   // Expose getValue to AG-Grid
@@ -69,7 +69,7 @@ const DatePickerEditor = React.forwardRef<any, ICellEditorParams<any, any>>((pro
     valueRef.current = val;
     const formatted = val ? val.format('YYYY-MM-DD') : '';
     // Notify AG-Grid of the new value directly
-    if (props.onValueChange) props.onValueChange(formatted);
+    if ((props as any).onValueChange) (props as any).onValueChange(formatted);
     setOpen(false);
     setTimeout(() => {
       if (props.stopEditing) props.stopEditing();
@@ -186,7 +186,7 @@ export interface MatriculationRow {
   gradeId: number;
   schoolPeriodId: number;
   sectionId?: number | null;
-  status: 'pending' | 'completed';
+  status: 'pending' | 'completed' | 'withdrawn';
   inscriptionId?: number | null;
   student: {
     id: number;
@@ -212,7 +212,6 @@ export interface MatriculationRow {
   };
   tempData: TempData;
   hiddenFromControlEstudios?: boolean;
-  status?: string;
   documents?: EnrollmentDocumentInfo | null;
   matriculation?: { documents?: EnrollmentDocumentInfo | null } | null;
 }
@@ -920,7 +919,7 @@ export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<Matricul
       }),
       valueGetter: (p) => {
         if (!p.data) return '';
-        return structure.find(s => s.gradeId === p.data.tempData.gradeId)?.grade?.name ?? '';
+        return structure.find(s => s.gradeId === p.data!.tempData.gradeId)?.grade?.name ?? '';
       },
       valueSetter: (p) => {
         if (p.newValue !== p.oldValue && p.data) {
@@ -962,8 +961,8 @@ export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<Matricul
       },
       valueGetter: (p) => {
         if (!p.data) return '';
-        const gradeStruct = structure.find(s => s.gradeId === p.data.tempData.gradeId);
-        return gradeStruct?.sections?.find(s => s.id === p.data.tempData.sectionId)?.name ?? '';
+        const gradeStruct = structure.find(s => s.gradeId === p.data!.tempData.gradeId);
+        return gradeStruct?.sections?.find(s => s.id === p.data!.tempData.sectionId)?.name ?? '';
       },
       valueSetter: (p) => {
         if (p.newValue !== p.oldValue && p.data) {
@@ -1000,7 +999,7 @@ export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<Matricul
       },
       valueGetter: (p) => {
         if (!p.data) return '';
-        const gradeStruct = structure.find(s => s.gradeId === p.data.tempData.gradeId);
+        const gradeStruct = structure.find(s => s.gradeId === p.data!.tempData.gradeId);
         const groupSubjects = gradeStruct?.subjects?.filter(s => s.subjectGroupId) ?? [];
         const currentId = p.data.tempData.subjectIds?.[0];
         return groupSubjects.find(s => s.id === currentId)?.name ?? '';

@@ -10,7 +10,6 @@ import {
   ExclamationCircleOutlined,
   CalendarOutlined,
 } from '@ant-design/icons';
-import { useNavigate } from 'react-router-dom';
 import api from '@/services/api';
 import { getSubjectVisual } from '@/utils/subjectVisuals';
 
@@ -398,12 +397,12 @@ const GradeProgressCard: React.FC<{
                 >
                   Materia
                 </th>
-                {sectionColumns.map((c, i) => {
+                {sectionColumns.map((c) => {
                   const colValues = activeGradeData.subjects.map(s => {
                     const sec = s.sections.find(x => x.sectionId === c.sectionId);
                     if (!sec || sec.disabled) return null;
                     return (mode === 'plan' ? sec.hasPlan : sec.hasGrades) ? 100 : 0;
-                  }).filter((v): v is number => v !== null);
+                  }).filter((v: number | null): v is number => v !== null) as number[];
                   const colAvg = avgOf(colValues);
                   return (
                     <th
@@ -660,8 +659,6 @@ const ContentProgressCard: React.FC<{
 const ControlEstudiosDashboard: React.FC = () => {
   const [data, setData] = useState<ControlPanelData | null>(null);
   const [loading, setLoading] = useState(false);
-  const navigate = useNavigate();
-
   const checklistProgress = useMemo(() => {
     if (!data) return 0;
     const { total, done } = data.council.checklist;

@@ -10,7 +10,7 @@
  * @param enableRounding - Whether rounding is enabled
  * @returns Formatted grade string
  */
-export function formatGrade(grade: number | null | undefined, enableRounding: boolean): string {
+export function formatGrade(grade: number | null | undefined, _enableRounding: boolean): string {
   if (grade === null || grade === undefined) {
     return '-';
   }
@@ -50,7 +50,7 @@ export function formatGradePadded(grade: number | null | undefined, maxGrade: nu
  * @param enableRounding - Whether rounding is enabled
  * @returns Formatted grade number
  */
-export function formatGradeValue(grade: number | null | undefined, enableRounding: boolean): number {
+export function formatGradeValue(grade: number | null | undefined, _enableRounding: boolean): number {
   if (grade === null || grade === undefined) {
     return 0;
   }

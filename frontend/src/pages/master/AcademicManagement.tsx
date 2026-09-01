@@ -21,8 +21,7 @@ import {
   Tooltip,
   Empty,
   ColorPicker,
-  Switch,
-  InputNumber
+  Switch
 } from 'antd';
 import {
   PlusOutlined,
@@ -171,6 +170,7 @@ interface PeriodGradeStructureItem {
   specialization?: Specialization | null;
   sections?: Section[];
   subjects?: Subject[];
+  color?: string;
 }
 
 type CatalogType = 'grade' | 'section' | 'subject' | 'specialization';
@@ -452,7 +452,7 @@ const AcademicManagement: React.FC = () => {
   const fetchAll = async () => {
     setLoading(true);
     try {
-      const [pRes, gRes, sRes, subRes, specRes, sgRes, settingsRes] = await Promise.all([
+      const [pRes, gRes, sRes, subRes, specRes, sgRes, _settingsRes] = await Promise.all([
         api.get<Period[]>('/academic/periods'),
         api.get<Grade[]>('/academic/grades'),
         api.get<Section[]>('/academic/sections'),
@@ -704,16 +704,6 @@ const AcademicManagement: React.FC = () => {
     } catch (error) {
       console.error(error);
       message.error('Error eliminando sección');
-    }
-  };
-
-  const handleSectionColorChange = async (periodGradeId: number, sectionId: number, color: string) => {
-    try {
-      await api.put(`/academic/structure/section/${periodGradeId}/${sectionId}/color`, { color });
-      fetchStructure();
-    } catch (error) {
-      console.error(error);
-      message.error('Error al cambiar color');
     }
   };
 

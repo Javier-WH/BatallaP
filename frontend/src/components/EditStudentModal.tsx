@@ -379,7 +379,7 @@ const EditStudentModal: React.FC<EditStudentModalProps> = ({
                       </Form.Item>
                     </Col>
                   </Row>
-                  <Divider orientation="left" plain>Residencia</Divider>
+                  <Divider titlePlacement="left" plain>Residencia</Divider>
                   <Row gutter={12}>
                     <Col span={8}>
                       <Form.Item name="residenceState" label="Estado">
@@ -425,13 +425,13 @@ const EditStudentModal: React.FC<EditStudentModalProps> = ({
                       {REP_TYPES.map(r => <Radio.Button key={r.value} value={r.value}>{r.label}</Radio.Button>)}
                     </Radio.Group>
                   </Form.Item>
-                  <Divider orientation="left" plain>Datos de la Madre {motherRequired ? '(Obligatorio)' : '(Opcional)'}</Divider>
+                  <Divider titlePlacement="left" plain>Datos de la Madre {motherRequired ? '(Obligatorio)' : '(Opcional)'}</Divider>
                   <GuardianFields prefix="mother" required={motherRequired} locations={locations} />
-                  <Divider orientation="left" plain>Datos del Padre {fatherRequired ? '(Obligatorio)' : '(Opcional)'}</Divider>
+                  <Divider titlePlacement="left" plain>Datos del Padre {fatherRequired ? '(Obligatorio)' : '(Opcional)'}</Divider>
                   <GuardianFields prefix="father" required={fatherRequired} locations={locations} />
                   {representativeRequired && (
                     <>
-                      <Divider orientation="left" plain>Datos del Representante (Obligatorio)</Divider>
+                      <Divider titlePlacement="left" plain>Datos del Representante (Obligatorio)</Divider>
                       <GuardianFields prefix="representative" required={true} locations={locations} />
                     </>
                   )}

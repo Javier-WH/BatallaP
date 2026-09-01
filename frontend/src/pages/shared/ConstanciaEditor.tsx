@@ -141,7 +141,7 @@ const ConstanciaEditor: React.FC<ConstanciaEditorProps> = ({ content, onChange, 
   });
 
   // Insert variable at cursor position
-  const insertVariable = useCallback((varKey: string, varLabel: string) => {
+  const insertVariable = useCallback((varKey: string, _varLabel: string) => {
     if (!editor) return;
     // Insert as a styled span so it's visually distinct
     const html = `<span style="background-color: #e6f4ff; color: #1677ff; padding: 1px 4px; border-radius: 3px; font-weight: 600;" data-variable="${varKey}">{{${varKey}}}</span>`;

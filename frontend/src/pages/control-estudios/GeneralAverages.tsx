@@ -387,7 +387,7 @@ export default function GeneralAverages() {
   }), [groupBy]);
 
   const onGridReady = useCallback((event: GridReadyEvent) => {
-    event.api.setGridOption('datasource', null);
+    event.api.setGridOption('datasource', undefined);
   }, []);
 
   const onSortChanged = useCallback(() => {

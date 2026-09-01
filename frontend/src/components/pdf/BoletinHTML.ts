@@ -159,7 +159,7 @@ const buildStudentSheet = (
   }).join('');
 
   // Term headers
-  const termShortHeaders = terms.map((t, i) => {
+  const termShortHeaders = terms.map((_t, i) => {
     return `<th>Lapso ${i + 1}</th>`;
   }).join('');
 

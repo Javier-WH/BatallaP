@@ -293,7 +293,7 @@ const MatriculationAgGrid = React.forwardRef<MatriculationAgGridHandle, Matricul
   const handleCellMouseDown = useCallback((event: CellMouseDownEvent<MatriculationRow>) => {
     if (!event.node) return;
     // Capture selection state before AG-Grid's internal Ctrl+click handling
-    wasSelectedBeforeClickRef.current = event.node.isSelected();
+    wasSelectedBeforeClickRef.current = event.node.isSelected() ?? false;
     longPressTriggeredRef.current = false;
     isDragSelectingRef.current = false;
     if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
@@ -352,16 +352,6 @@ const MatriculationAgGrid = React.forwardRef<MatriculationAgGridHandle, Matricul
         lastSelectedIndexRef.current = node.rowIndex ?? null;
       }
     }
-  }, []);
-
-  // Cancel long-press if the pointer releases quickly.  If we're already
-  // drag-selecting, end the drag instead.
-  const handleCellMouseUp = useCallback(() => {
-    if (longPressTimerRef.current) {
-      clearTimeout(longPressTimerRef.current);
-      longPressTimerRef.current = null;
-    }
-    isDragSelectingRef.current = false;
   }, []);
 
   // Global mouseup/touchend listener — acts as a safety net so that
@@ -604,7 +594,6 @@ const MatriculationAgGrid = React.forwardRef<MatriculationAgGridHandle, Matricul
           onRowClicked={handleRowClicked}
           onCellClicked={handleCellClicked}
           onCellMouseDown={handleCellMouseDown}
-          onCellMouseUp={handleCellMouseUp}
           onCellMouseOver={handleCellMouseOver}
           onCellContextMenu={handleCellContextMenu}
           onColumnResized={handleColumnResized}

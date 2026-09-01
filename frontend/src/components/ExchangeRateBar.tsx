@@ -17,7 +17,7 @@ const ExchangeRateBar: React.FC<ExchangeRateBarProps> = ({ usdRate, eurRate, rat
   const [calcOpen, setCalcOpen] = useState(false);
   const [calcDate, setCalcDate] = useState<dayjs.Dayjs>(dayjs());
   const [calcRates, setCalcRates] = useState<RateAtDate[]>([]);
-  const [calcLoading, setCalcLoading] = useState(false);
+  const [, setCalcLoading] = useState(false);
   const [calcAmount, setCalcAmount] = useState<number>(10000);
   const [calcDirection, setCalcDirection] = useState<'from_ves' | 'to_ves'>('from_ves');
   const [calcCurrencies, setCalcCurrencies] = useState<string[]>(['USD', 'EUR']);
@@ -131,7 +131,6 @@ const ExchangeRateBar: React.FC<ExchangeRateBarProps> = ({ usdRate, eurRate, rat
               format="DD/MM/YYYY"
               style={{ width: '100%' }}
               allowClear={false}
-              loading={calcLoading}
             />
             {calcRates.length > 0 && (
               <div className="mt-1 text-xs text-slate-400">

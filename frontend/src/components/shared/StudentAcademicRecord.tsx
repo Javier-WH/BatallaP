@@ -14,8 +14,7 @@ import {
   BookOutlined,
 } from '@ant-design/icons';
 import api from '@/services/api';
-import { useGradeRounding } from '@/context/GradeRoundingContext';
-import { formatGrade, formatGradePadded } from '@/utils/gradeFormat';
+import { formatGradePadded } from '@/utils/gradeFormat';
 import { fetchLetterGrades, numericToLetter } from '@/utils/letterGradeFormat';
 import type { LetterGrade } from '@/utils/letterGradeFormat';
 
@@ -76,7 +75,6 @@ const StudentAcademicRecord: React.FC<StudentAcademicRecordProps> = ({ personId 
   const [records, setRecords] = useState<AcademicRecord[]>([]);
   const [maxGrade, setMaxGrade] = useState<number>(20);
   const [letterGrades, setLetterGrades] = useState<LetterGrade[]>([]);
-  const { enableRounding } = useGradeRounding();
 
   useEffect(() => {
     const fetchSettings = async () => {

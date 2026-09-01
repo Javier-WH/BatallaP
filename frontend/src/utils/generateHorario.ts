@@ -64,13 +64,6 @@ function cellLabel(cellEntries: ScheduleEntryData[] | undefined): string {
   return cellEntries.map(e => (e.subjectName || e.subject?.name || '').toUpperCase()).join(' / ');
 }
 
-const thinBorder: Partial<ExcelJS.Borders> = {
-  left: { style: 'thin', color: { argb: 'FF000000' } },
-  right: { style: 'thin', color: { argb: 'FF000000' } },
-  top: { style: 'thin', color: { argb: 'FF000000' } },
-  bottom: { style: 'thin', color: { argb: 'FF000000' } },
-};
-
 const mediumBorder: Partial<ExcelJS.Borders> = {
   left: { style: 'medium', color: { argb: 'FF000000' } },
   right: { style: 'medium', color: { argb: 'FF000000' } },
@@ -89,13 +82,6 @@ const titleFont: Partial<ExcelJS.Font> = {
   size: 10,
   bold: true,
   color: { argb: 'FF000000' },
-};
-
-const sectionFont: Partial<ExcelJS.Font> = {
-  name: 'Cambria',
-  size: 10,
-  bold: true,
-  color: { argb: 'FFFFFFFF' },
 };
 
 const dayHeaderFont: Partial<ExcelJS.Font> = {

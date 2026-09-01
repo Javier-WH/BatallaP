@@ -6,7 +6,7 @@ import {
 import { useSchool } from '@/context/SchoolContext';
 import {
   getLedgerSections, getLedgerBySection,
-  createPayment, createCharge, deletePayment, deleteCharge,
+  createPayment, createCharge, deletePayment,
   type LedgerStudent, type LedgerSection,
 } from '@/services/paymentsService';
 
@@ -60,11 +60,6 @@ function statusFor(paid: number, charged: number, month: string): keyof typeof S
   const idx = MONTHS.indexOf(month);
   const curIdx = MONTHS.indexOf(CURRENT_MONTH);
   return idx < curIdx ? 'overdue' : 'none';
-}
-
-function todayStr() {
-  const d = new Date();
-  return `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}/${String(d.getFullYear()).slice(2)}`;
 }
 
 function initials(name: string): string {

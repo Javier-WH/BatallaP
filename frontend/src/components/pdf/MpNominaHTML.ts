@@ -79,12 +79,6 @@ const buildGradeSheet = (section: MpNominaGradeSection): string => {
 
   if (students.length === 0) return '';
 
-  // Subject headers
-  const subjectHeaders = subjects.map(subj => {
-    const shortName = subj.name.length > 14 ? subj.name.substring(0, 12) + '…' : subj.name;
-    return `<th class="subj-col" title="${escapeHtml(subj.name)}">${escapeHtml(shortName)}</th>`;
-  }).join('');
-
   // Student rows
   const studentRows = students.map((student, idx) => {
     const isEven = idx % 2 === 1;
@@ -111,7 +105,7 @@ const buildGradeSheet = (section: MpNominaGradeSection): string => {
         if (!hasScore) {
           return `<span class="enc-blank">—</span>`;
         }
-        const isPass = enc.score >= 10 && !enc.isAbsent;
+        const isPass = (enc.score ?? 0) >= 10 && !enc.isAbsent;
         const scoreText = enc.isAbsent ? 'NP' : String(enc.score);
         const dateText = formatDate(enc.date);
         const cls = isPass ? 'enc-pass' : 'enc-fail';

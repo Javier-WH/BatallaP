@@ -6,7 +6,6 @@ import { getPersonReports, type EnrollmentReportSummary } from '@/services/enrol
 import EnrollmentReportModal from '@/components/pdf/EnrollmentReportModal';
 import StudentAcademicRecord from '@/components/shared/StudentAcademicRecord';
 import api from '@/services/api';
-import dayjs from 'dayjs';
 import { parseDateLocal } from '@/utils/dateHelpers';
 import { getEnrollmentQuestionsForPerson, type EnrollmentQuestionResponse } from '@/services/enrollmentQuestions';
 import { useAuth } from '@/context/AuthContext';

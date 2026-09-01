@@ -33,7 +33,6 @@ import {
   EditOutlined,
   FileExcelOutlined,
   UserSwitchOutlined,
-  EyeInvisibleOutlined,
   PrinterOutlined,
   VerticalRightOutlined,
   VerticalLeftOutlined,
@@ -61,6 +60,7 @@ import {
   COLUMN_GROUPS,
   getQuestionColumnKey as agGetQuestionColumnKey,
   type VenezuelaState,
+  type MatriculationRow as AgGridMatriculationRow,
 } from './matriculationColumns';
 
 const { Text, Title } = Typography;
@@ -185,11 +185,13 @@ interface MatriculationRow {
   gradeId: number;
   schoolPeriodId: number;
   sectionId?: number | null;
-  status: 'pending' | 'completed';
+  status: 'pending' | 'completed' | 'withdrawn';
   inscriptionId?: number | null;
   student: StudentData;
   tempData: TempData;
   hiddenFromControlEstudios?: boolean;
+  documents?: EnrollmentDocumentInfo | null;
+  matriculation?: { documents?: EnrollmentDocumentInfo | null } | null;
 }
 
 interface EnrollmentDocumentInfo {
@@ -225,56 +227,6 @@ interface EnrollStructureEntry {
   sections?: { id: number; name: string }[];
   subjects?: { id: number; name: string; subjectGroupId?: number | null; subjectGroup?: { name: string } }[];
 }
-
-const contextMenuItems: MenuProps['items'] = [
-  {
-    type: 'group',
-    label: <span className="text-[11px] text-slate-400 uppercase tracking-wide">Acciones de fila</span>,
-    children: [
-      {
-        key: 'edit',
-        icon: <EditOutlined />,
-        label: 'Editar celda'
-      },
-      {
-        key: 'cancel',
-        icon: <CloseOutlined />,
-        label: 'Cancelar'
-      },
-      {
-        key: 'change-representative',
-        icon: <UserSwitchOutlined />,
-        label: 'Cambiar Representante'
-      },
-      {
-        key: 'edit-student',
-        icon: <EditOutlined />,
-        label: 'Editar estudiante'
-      }
-    ]
-  },
-  {
-    type: 'group',
-    label: <span className="text-[11px] text-slate-400 uppercase tracking-wide">Acciones de columna</span>,
-    children: [
-      {
-        key: 'pin-left',
-        icon: <VerticalRightOutlined />,
-        label: 'Fijar a la izquierda'
-      },
-      {
-        key: 'pin-right',
-        icon: <VerticalLeftOutlined />,
-        label: 'Fijar a la derecha'
-      },
-      {
-        key: 'unpin',
-        icon: <ColumnWidthOutlined />,
-        label: 'Quitar fijación'
-      }
-    ]
-  }
-];
 
 // Fixed height reserved for the bulk action bar. The space is always taken up
 // so the grid below never jumps when the bar appears/disappears.
@@ -467,7 +419,7 @@ const MatriculationEnrollment: React.FC = () => {
             gradeId: item.gradeId,
             sectionId: item.sectionId,
             schoolPeriodId: item.schoolPeriodId,
-            status: isWithdrawnView ? 'withdrawn' as const : (item.matriculation?.status || 'completed') as const,
+            status: (isWithdrawnView ? 'withdrawn' : (item.matriculation?.status || 'completed')) as 'pending' | 'completed' | 'withdrawn',
             inscriptionId: item.id,
             escolaridad: item.escolaridad
           } : item;
@@ -2162,7 +2114,7 @@ const MatriculationEnrollment: React.FC = () => {
       <div className="flex-1 overflow-hidden min-h-0">
         <MatriculationAgGrid
           ref={agGridRef}
-          rowData={filteredData}
+          rowData={filteredData as unknown as AgGridMatriculationRow[]}
           structure={structure}
           questions={questions}
           canManageVisibility={canManageVisibility}

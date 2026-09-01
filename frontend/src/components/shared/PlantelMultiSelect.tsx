@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 
 interface Plantel {
@@ -182,7 +182,7 @@ const PlantelMultiSelect: React.FC<PlantelMultiSelectProps> = ({
             {/* Remove button — only for non-system planteles */}
             {!p.isSystem && (
               <span
-                onClick={(e) => remove(p.id, e)}
+                onClick={(e) => remove(p.id ?? 0, e)}
                 style={{ cursor: 'pointer', fontWeight: 700, marginLeft: 1, flexShrink: 0 }}
                 title="Quitar"
               >×</span>

@@ -4,8 +4,6 @@ import { BookOutlined, ArrowLeftOutlined, DownloadOutlined, FilePdfOutlined, Edi
 import api from '@/services/api';
 import dayjs from 'dayjs';
 import { compareNominaStudents } from '@/utils/studentSort';
-import { useGradeRounding } from '@/context/GradeRoundingContext';
-import { formatGrade } from '@/utils/gradeFormat';
 import EvaluationPlanPDFModal from '@/components/pdf/EvaluationPlanPDFModal';
 import type { EvaluationPlanHeaderData } from '@/components/pdf/EvaluationPlanPDF';
 import EvaluationPlanItemModal, { type CatalogOption } from '@/components/EvaluationPlanItemModal';
@@ -197,7 +195,6 @@ const ManageGrades: React.FC = () => {
   const [tecnicaOptions, setTecnicaOptions] = useState<CatalogOption[]>([]);
   const [instrumentoOptions, setInstrumentoOptions] = useState<CatalogOption[]>([]);
   const [estrategiaOptions, setEstrategiaOptions] = useState<CatalogOption[]>([]);
-  const { enableRounding } = useGradeRounding();
 
   const isSelectedTermBlocked = useMemo(() => {
     if (!selectedTerm) return false;

@@ -301,7 +301,7 @@ const TemplateManagerModal: React.FC<TemplateManagerModalProps> = ({
     { key: 'actual', label: 'Actual' },
   ];
 
-  const renderPeriodPopover = (periodKey: string, periodLabel: string) => {
+  const renderPeriodPopover = (periodKey: string, _periodLabel: string) => {
     const currentTemplateName = certifiedAssignments[periodKey] || null;
     const isAssigned = !!currentTemplateName;
     const content = (

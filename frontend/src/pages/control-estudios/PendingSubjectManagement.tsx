@@ -1,19 +1,18 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Card, Button, Tag, Space, Typography, Row, Col, Spin, message, Modal,
-  Empty, Tooltip, Input, Checkbox, Table, InputNumber, Divider, Alert, DatePicker,
-  Segmented, List,
+  Empty, Input, Checkbox, Table, InputNumber, Divider, Alert, DatePicker,
+  Segmented,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import {
-  ReloadOutlined, UserAddOutlined, UserOutlined, DeleteOutlined,
-  CheckCircleOutlined, ExclamationCircleOutlined, BookOutlined,
-  LockOutlined, UnlockOutlined, EditOutlined, SaveOutlined, CalendarOutlined,
+  ReloadOutlined, UserAddOutlined, DeleteOutlined,
+  CheckCircleOutlined, BookOutlined,
+  LockOutlined, UnlockOutlined, SaveOutlined, CalendarOutlined,
   PrinterOutlined, PlusOutlined, FileTextOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import api from '@/services/api';
-import { compareStudents } from '@/utils/studentSort';
 import { generateMpNominaHTML } from '@/components/pdf/MpNominaHTML';
 import type { MpNominaPrintData } from '@/components/pdf/MpNominaHTML';
 
@@ -126,13 +125,6 @@ interface MpEncounter {
   isAbsent: boolean;
 }
 
-interface MpEncounterResponse {
-  pendingSubjectId: number;
-  maxEncounters: number;
-  status: string;
-  encounters: MpEncounter[];
-}
-
 interface NominaEncounterStudent {
   inscriptionId: number;
   personId: number;
@@ -193,8 +185,7 @@ const PendingSubjectManagement: React.FC = () => {
   const [acting, setActing] = useState(false);
   const [structure, setStructure] = useState<MpStructureResponse | null>(null);
   const [expandedGradeId, setExpandedGradeId] = useState<number | null>(null);
-  const [nomina, setNomina] = useState<{ grade: Grade; subjects: NominaSubject[]; students: NominaStudent[] } | null>(null);
-  const [nominaLoading, setNominaLoading] = useState(false);
+
 
   // Registration modal
   const [regModalOpen, setRegModalOpen] = useState(false);
@@ -207,8 +198,8 @@ const PendingSubjectManagement: React.FC = () => {
 
   // Grade editing modal
   const [gradeModalOpen, setGradeModalOpen] = useState(false);
-  const [gradeModalStudent, setGradeModalStudent] = useState<NominaStudent | null>(null);
-  const [gradeModalSubject, setGradeModalSubject] = useState<NominaSubject | null>(null);
+  const [gradeModalStudent] = useState<NominaStudent | null>(null);
+  const [gradeModalSubject] = useState<NominaSubject | null>(null);
   const [gradeValue, setGradeValue] = useState<number | null>(null);
   const [gradeDate, setGradeDate] = useState<dayjs.Dayjs>(dayjs());
   const [gradeSaving, setGradeSaving] = useState(false);
@@ -218,7 +209,7 @@ const PendingSubjectManagement: React.FC = () => {
     students: MpAssignmentStudent[];
     evaluationPlans: MpPlanItem[];
   } | null>(null);
-  const [assignmentLoading, setAssignmentLoading] = useState(false);
+  const [assignmentLoading] = useState(false);
   const [qualEdits, setQualEdits] = useState<Record<string, number | null>>({});
 
   // ---- Encounter system state ----
@@ -260,7 +251,7 @@ const PendingSubjectManagement: React.FC = () => {
   // Content modal
   const [contentModalOpen, setContentModalOpen] = useState(false);
   const [contentSubject, setContentSubject] = useState<NominaSubject | null>(null);
-  const [contentData, setContentData] = useState<MpContent | null>(null);
+  const [, setContentData] = useState<MpContent | null>(null);
   const [contentLoading, setContentLoading] = useState(false);
   const [contentSaving, setContentSaving] = useState(false);
   const [contentTheme, setContentTheme] = useState('');
@@ -282,20 +273,6 @@ const PendingSubjectManagement: React.FC = () => {
       setLoading(false);
     }
   }, [expandedGradeId]);
-
-  /* ------------------- Fetch nomina for a grade ------------------- */
-  const fetchNomina = useCallback(async (gradeId: number) => {
-    setNominaLoading(true);
-    try {
-      const res = await api.get(`/pending-subjects/nomina/${gradeId}`);
-      setNomina(res.data);
-    } catch (error: any) {
-      console.error('[PendingSubject] Error nomina:', error);
-      message.error(error?.response?.data?.message || 'Error al cargar nómina');
-    } finally {
-      setNominaLoading(false);
-    }
-  }, []);
 
   useEffect(() => { fetchStructure(); }, [fetchStructure]);
 
@@ -594,7 +571,7 @@ const PendingSubjectManagement: React.FC = () => {
       // Find pendingSubjectId
       const encRes = await api.get(`/pending-subjects/nomina/${expandedGradeId}/encounter`, { params: { encounter: 1 } });
       const encStudent = encRes.data.students.find((s: NominaEncounterStudent) => s.subjects.find(sb => sb.subjectId === subject.id));
-      const pendingSubj = encStudent?.subjects.find(sb => sb.subjectId === subject.id);
+      const pendingSubj = encStudent?.subjects.find((sb: any) => sb.subjectId === subject.id);
       if (!pendingSubj) {
         setContentLoading(false);
         return;
@@ -616,7 +593,7 @@ const PendingSubjectManagement: React.FC = () => {
     try {
       const encRes = await api.get(`/pending-subjects/nomina/${expandedGradeId}/encounter`, { params: { encounter: 1 } });
       const encStudent = encRes.data.students.find((s: NominaEncounterStudent) => s.subjects.find(sb => sb.subjectId === contentSubject.id));
-      const pendingSubj = encStudent?.subjects.find(sb => sb.subjectId === contentSubject.id);
+      const pendingSubj = encStudent?.subjects.find((sb: any) => sb.subjectId === contentSubject.id);
       if (!pendingSubj) {
         message.error('No se encontró la materia pendiente');
         setContentSaving(false);
@@ -639,7 +616,7 @@ const PendingSubjectManagement: React.FC = () => {
     const printWin = window.open('', '_blank', 'width=800,height=600');
     if (!printWin) return;
     const subjName = contentSubject?.name || '';
-    const itemsHtml = contentItems.map((it, i) => `<li>${it.text}</li>`).join('');
+    const itemsHtml = contentItems.map((it) => `<li>${it.text}</li>`).join('');
     printWin.document.write(`
       <html><head><title>Contenido - ${subjName}</title>
       <style>body{font-family:Arial,sans-serif;padding:40px;}h1{font-size:18px;}h2{font-size:14px;border-bottom:1px solid #ccc;padding-bottom:4px;}ol{font-size:13px;line-height:1.8;}</style>
@@ -690,7 +667,7 @@ const PendingSubjectManagement: React.FC = () => {
       setRegModalOpen(false);
       await fetchStructure();
       if (expandedGradeId) {
-        if (nominaView === 'encounter') await fetchNominaEncounter(expandedGradeId);
+        if (nominaView === 'encounter') await fetchNominaEncounter(expandedGradeId, selectedEncounter);
         if (nominaView === 'final') await fetchNominaFinal(expandedGradeId);
       }
     } catch (error: any) {
@@ -714,7 +691,7 @@ const PendingSubjectManagement: React.FC = () => {
           message.success('Estudiante removido');
           await fetchStructure();
           if (expandedGradeId) {
-            if (nominaView === 'encounter') await fetchNominaEncounter(expandedGradeId);
+            if (nominaView === 'encounter') await fetchNominaEncounter(expandedGradeId, selectedEncounter);
             if (nominaView === 'final') await fetchNominaFinal(expandedGradeId);
           }
         } catch (error: any) {
@@ -722,30 +699,6 @@ const PendingSubjectManagement: React.FC = () => {
         }
       },
     });
-  };
-
-  /* ------------------- Open grade modal — fetch assignment detail ------------------- */
-  const openGradeModal = async (student: NominaStudent, subject: NominaSubject) => {
-    setGradeModalStudent(student);
-    setGradeModalSubject(subject);
-    const fg = student.subjects.find(s => s.subjectId === subject.id)?.finalGrade;
-    setGradeValue(fg?.finalScore ?? null);
-    setGradeDate(fg?.calculatedAt ? dayjs(fg.calculatedAt) : dayjs());
-    setGradeModalOpen(true);
-    setAssignmentDetail(null);
-    setQualEdits({});
-    setAssignmentLoading(true);
-    try {
-      const res = await api.get(`/pending-subjects/assignment/${subject.periodGradeSubjectId}`);
-      setAssignmentDetail({
-        students: res.data.students || [],
-        evaluationPlans: res.data.evaluationPlans || [],
-      });
-    } catch (error: any) {
-      console.error('[PendingSubject] Error assignment:', error);
-    } finally {
-      setAssignmentLoading(false);
-    }
   };
 
   /* ------------------- Save qualification for a plan item (from CE) ------------------- */
@@ -770,7 +723,7 @@ const PendingSubjectManagement: React.FC = () => {
         });
       }
       if (expandedGradeId) {
-        if (nominaView === 'encounter') await fetchNominaEncounter(expandedGradeId);
+        if (nominaView === 'encounter') await fetchNominaEncounter(expandedGradeId, selectedEncounter);
         if (nominaView === 'final') await fetchNominaFinal(expandedGradeId);
       }
     } catch (error: any) {
@@ -798,7 +751,7 @@ const PendingSubjectManagement: React.FC = () => {
       message.success('Nota guardada');
       setGradeModalOpen(false);
       if (expandedGradeId) {
-        if (nominaView === 'encounter') await fetchNominaEncounter(expandedGradeId);
+        if (nominaView === 'encounter') await fetchNominaEncounter(expandedGradeId, selectedEncounter);
         if (nominaView === 'final') await fetchNominaFinal(expandedGradeId);
       }
     } catch (error: any) {
@@ -1551,7 +1504,7 @@ const PendingSubjectManagement: React.FC = () => {
             showIcon
             style={{ marginBottom: 16 }}
           />
-          {encDatesData.map((enc, idx) => (
+          {encDatesData.map((enc, _idx) => (
             <div key={enc.id} style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 12 }}>
               <Tag color="blue" style={{ minWidth: 80, textAlign: 'center' }}>Encuentro {enc.encounterNumber}</Tag>
               <DatePicker

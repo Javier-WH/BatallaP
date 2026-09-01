@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Card, Button, Tag, Space, Typography, Spin, message, Alert, Statistic, Row, Col, Popconfirm, Checkbox, Tabs, InputNumber, Segmented } from 'antd';
-import { PlayCircleOutlined, StopOutlined, ReloadOutlined, CheckCircleOutlined, ClockCircleOutlined, CloseCircleOutlined, PrinterOutlined, RetweetOutlined, UndoOutlined, LockOutlined, UnlockOutlined, EditOutlined, CalendarOutlined } from '@ant-design/icons';
+import { PlayCircleOutlined, StopOutlined, ReloadOutlined, CheckCircleOutlined, ClockCircleOutlined, CloseCircleOutlined, PrinterOutlined, RetweetOutlined, UndoOutlined, LockOutlined, UnlockOutlined, EditOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import api from '@/services/api';
 import { compareStudents } from '@/utils/studentSort';
@@ -117,9 +117,6 @@ const RepairPeriodManagement: React.FC = () => {
   const [editAbsent, setEditAbsent] = useState<Record<number, boolean>>({});
   const [savingIds, setSavingIds] = useState<Set<number>>(new Set());
 
-  // Opportunity dates map: keyed by `${periodGradeSubjectId}-${sectionId}` → [{opportunity, date}]
-  const [oppDatesMap, setOppDatesMap] = useState<Record<string, { opportunity: number; date: string | null }[]>>({});
-
   const canOverride = user?.roles.includes('Control de Estudios') || isMaster;
 
   const fetchData = async () => {
@@ -160,7 +157,6 @@ const RepairPeriodManagement: React.FC = () => {
   // Fetch opportunity dates for all subjects+sections in the current view
   const fetchOppDates = useCallback(async () => {
     if (!students.length || !summary?.revisionPeriod) return;
-    const pgsSectionPairs = new Set<string>();
     // We need periodGradeSubjectId for each subject. The students endpoint
     // doesn't return it, so we fetch from the revision-grades endpoint
     // which returns opportunity dates per pgsId+sectionId.
@@ -341,12 +337,6 @@ const RepairPeriodManagement: React.FC = () => {
     }
   };
 
-  const statusColor: Record<string, string> = {
-    pending: 'default',
-    open: 'processing',
-    completed: 'success',
-    closed: 'error',
-  };
   const statusLabel: Record<string, string> = {
     pending: 'Pendiente',
     open: 'Abierto',
@@ -872,7 +862,7 @@ const RepairPeriodManagement: React.FC = () => {
                                           </div>
                                           <div className="repair-cell-meta">
                                             <span className="repair-col-date">{gradedDate}</span>
-                                            {nominaView === 'final' && <span className="repair-col-opp">{gradedOpp ? `O${gradedOpp}` : ''}</span>}
+                                            {(nominaView as string) === 'final' && <span className="repair-col-opp">{gradedOpp ? `O${gradedOpp}` : ''}</span>}
                                           </div>
                                         </td>
                                       );

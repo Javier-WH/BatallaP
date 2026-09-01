@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Tabs, Select, Card, Spin, message, Button, Tag, Empty, Tooltip, Modal, Switch, InputNumber, Alert, Popconfirm } from 'antd';
+import { Tabs, Select, Card, Spin, message, Button, Tag, Empty, Modal, Switch, InputNumber, Alert, Popconfirm } from 'antd';
 import { TableOutlined, UserOutlined, ReloadOutlined, EditOutlined, SaveOutlined, CloseOutlined, DeleteOutlined, WarningOutlined, ThunderboltOutlined, ScheduleOutlined, SettingOutlined, PlusOutlined, HomeOutlined, FileExcelOutlined } from '@ant-design/icons';
 import api from '@/services/api';
 import { useSchool } from '@/context/SchoolContext';
@@ -41,7 +41,7 @@ function buildSections(settings: Record<string, string>): ScheduleSection[] {
   const use12h = settings.time_format === '12';
   const sections: ScheduleSection[] = [];
 
-  const buildPeriods = (prefix: string, sectionId: string, sectionLabel: string, startTime: string, blocksBefore: number, minBefore: number, recess: number, blocksAfter: number, minAfter: number): Period[] => {
+  const buildPeriods = (prefix: string, sectionId: string, _sectionLabel: string, startTime: string, blocksBefore: number, minBefore: number, recess: number, blocksAfter: number, minAfter: number): Period[] => {
     const periods: Period[] = [];
     let cursor = dayjs(startTime, 'HH:mm');
     let idx = 1;
@@ -104,6 +104,7 @@ interface ScheduleEntryData {
   subjectId: number | null;
   teacherId: number | null;
   isGroupSubject: boolean;
+  subjectName?: string;
   subject?: { id: number; name: string; allowConsecutiveBlocks?: boolean; subjectGroupId?: number | null };
   teacher?: { id: number; firstName: string; lastName: string };
 }
@@ -854,7 +855,7 @@ const ScheduleManagement: React.FC = () => {
         id: t.teacherId ?? t.personId ?? t.id,
         label: `${t.firstName ?? ''} ${t.lastName ?? ''}`.trim(),
       }));
-      flat.sort((a, b) => a.label.localeCompare(b.label));
+      flat.sort((a: { label: string }, b: { label: string }) => a.label.localeCompare(b.label));
       setTeachersList(flat);
     } catch (e) {
       console.error('Error loading teachers:', e);
@@ -1048,7 +1049,6 @@ const ScheduleManagement: React.FC = () => {
           subjectId: e.subjectId,
           teacherId: e.teacherId,
           isGroupSubject: e.isGroupSubject,
-          subjectName: e.subject?.name,
           subject: e.subject,
           teacher: e.teacher,
         });
@@ -1537,7 +1537,7 @@ const ScheduleManagement: React.FC = () => {
                               room: roomName,
                               schoolPeriodName: viewPeriod?.name ?? '',
                               sections: scheduleSections,
-                              entries: sectionEntriesMap,
+                              entries: sectionEntriesMap as any,
                               gradeOrder: sec?.gradeOrder,
                               sectionName: sec?.sectionName,
                               institutionName: settings.institution_name,
@@ -1639,7 +1639,7 @@ const ScheduleManagement: React.FC = () => {
                             institutionName: settings.institution_name,
                             institutionParish: settings.institution_parish,
                             institutionState: settings.institution_state,
-                          }).catch(e => message.error('Error al exportar horario'));
+                          }).catch(() => message.error('Error al exportar horario'));
                         }}
                       >
                         Exportar Excel

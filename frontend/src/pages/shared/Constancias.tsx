@@ -1,5 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useSchool } from '@/context/SchoolContext';
 import api from '@/services/api';
@@ -47,7 +46,6 @@ const STAFF_ROLES = ['Master', 'Administrador', 'Control de Estudios', 'Profesor
 const Constancias: React.FC = () => {
   const { user } = useAuth();
   const { activePeriod } = useSchool();
-  const navigate = useNavigate();
 
   const [activeTab, setActiveTab] = useState<'generate' | 'templates'>('generate');
   const [templates, setTemplates] = useState<Template[]>([]);
@@ -57,7 +55,6 @@ const Constancias: React.FC = () => {
   // Generate tab state
   const [selectedTemplateId, setSelectedTemplateId] = useState<number | null>(null);
   const [templateAnalysis, setTemplateAnalysis] = useState<{ needsStudent: boolean; needsWorker: boolean; customVars: string[] } | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<Student[]>([]);
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
   const [workerResults, setWorkerResults] = useState<Student[]>([]);

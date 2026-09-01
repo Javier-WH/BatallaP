@@ -4,7 +4,7 @@ import {
   Space, Tag, Typography, Row, Col, Tabs, Popconfirm, Switch, Divider, Statistic, Tooltip,
 } from 'antd';
 import {
-  DollarOutlined, PlusOutlined, EditOutlined, DeleteOutlined, SaveOutlined,
+  DollarOutlined, PlusOutlined, EditOutlined, DeleteOutlined,
   CalculatorOutlined, ShoppingOutlined, BankOutlined, ReloadOutlined,
 } from '@ant-design/icons';
 import { useSchool } from '@/context/SchoolContext';
@@ -20,7 +20,7 @@ import {
   calculateEnrollmentPlan,
 } from '@/services/paymentsService';
 
-const { Title, Text } = Typography;
+const { Title } = Typography;
 
 const PaymentsConfig: React.FC = () => {
   const { activePeriod, allPeriods, refreshExchangeRates } = useSchool();

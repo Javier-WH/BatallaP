@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Card, Select, Table, Input, Button, message, Space, Tag, Spin, Empty, Typography, Alert } from 'antd';
 import { ArrowUpOutlined, ArrowDownOutlined, MinusOutlined, SaveOutlined, CommentOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
@@ -39,7 +39,7 @@ export default function Observations() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState<number | null>(null);
   const [sections, setSections] = useState<GuideSection[]>([]);
-  const [terms, setTerms] = useState<{ id: number; name: string; order: number }[]>([]);
+  const [, setTerms] = useState<{ id: number; name: string; order: number }[]>([]);
   const [selectedSectionIdx, setSelectedSectionIdx] = useState<number | null>(null);
   const [selectedTermId, setSelectedTermId] = useState<number | null>(null);
   const [students, setStudents] = useState<ObservationStudent[]>([]);

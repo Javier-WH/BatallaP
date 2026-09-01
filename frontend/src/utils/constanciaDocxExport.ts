@@ -137,7 +137,7 @@ const tiptapMarks: MarkSerializer = {
   underline() {
     return { underline: {} };
   },
-  textStyle(state, node, mark): IRunOptions {
+  textStyle(_state, _node, mark): IRunOptions {
     const opts: Writable<IRunOptions> = {};
     const color = mark.attrs?.color;
     if (color) {

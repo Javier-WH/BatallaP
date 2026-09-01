@@ -158,7 +158,7 @@ const SettingsManagement: React.FC = () => {
         setVenezuelaData(data);
         // Build state options
         const states = data.map((s: any) => ({ value: s.estado, label: s.estado }));
-        states.sort((a, b) => a.label.localeCompare(b.label));
+        states.sort((a: { label: string }, b: { label: string }) => a.label.localeCompare(b.label));
         setStateOptions(states);
         // Load municipalities for the currently selected state
         const currentState = form.getFieldValue('institution_state');
@@ -178,7 +178,7 @@ const SettingsManagement: React.FC = () => {
     }
     const state = venezuelaData.find((s: any) => s.estado === stateName);
     const munis = (state?.municipios || []).map((m: any) => ({ value: m.municipio, label: m.municipio }));
-    munis.sort((a, b) => a.label.localeCompare(b.label));
+    munis.sort((a: { label: string }, b: { label: string }) => a.label.localeCompare(b.label));
     setMunicipalityOptions(munis);
   };
 
@@ -528,8 +528,7 @@ const SettingsManagement: React.FC = () => {
 
             <div className="space-y-4">
               <span className="text-[var(--color-text-main)] font-bold block mb-2">Escudo / Logo Oficial</span>
-              <Upload
-                dragger
+              <Upload.Dragger
                 name="logo"
                 showUploadList={false}
                 beforeUpload={(file) => {
@@ -581,7 +580,7 @@ const SettingsManagement: React.FC = () => {
                   </div>
                   </div>
                 )}
-              </Upload>
+              </Upload.Dragger>
             </div>
           </div>
 

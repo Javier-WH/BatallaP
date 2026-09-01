@@ -14,7 +14,7 @@ import { gradeEditPermissionService } from '@/services/gradeEditPermissionServic
 import StudentPlantelesModal from '@/components/shared/StudentPlantelesModal';
 import PlantelAsyncSelect from '@/components/shared/PlantelAsyncSelect';
 import { useGradeRounding } from '@/context/GradeRoundingContext';
-import { formatGrade, formatGradePadded } from '@/utils/gradeFormat';
+import { formatGradePadded } from '@/utils/gradeFormat';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;

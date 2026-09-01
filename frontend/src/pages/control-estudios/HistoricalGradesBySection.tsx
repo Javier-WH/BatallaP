@@ -23,19 +23,6 @@ const T = {
   greenBg: '#E3ECE4',
 };
 
-/* ── Pick black or white text based on background brightness ── */
-function readableTextOn(bgHex: string | null | undefined): string {
-  if (!bgHex) return T.inkSoft;
-  const hex = bgHex.replace('#', '');
-  if (hex.length !== 6) return T.inkSoft;
-  const r = parseInt(hex.substring(0, 2), 16);
-  const g = parseInt(hex.substring(2, 4), 16);
-  const b = parseInt(hex.substring(4, 6), 16);
-  // Relative luminance (per WCAG)
-  const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-  return lum > 0.55 ? '#1E2A44' : '#FFFFFF';
-}
-
 // Letter codes matching the reference grid
 const STATUS_META: Record<string, { label: string; color: string; bg: string; gradeType: string }> = {
   F:  { label: 'Regular',            color: '#3F6C4E', bg: '#E3ECE4', gradeType: 'regular' },
@@ -379,7 +366,7 @@ const HistoricalGradesBySection: React.FC = () => {
   const [selectedSectionId, setSelectedSectionId] = useState<number | null>(null);
   const [selectedGradeId, setSelectedGradeId] = useState<number | null>(null);
   const [activePeriodId, setActivePeriodId] = useState<number | null>(null);
-  const [activeGradeOrder, setActiveGradeOrder] = useState<number>(999);
+  const [, setActiveGradeOrder] = useState<number>(999);
   const [students, setStudents] = useState<Student[]>([]);
   const [years, setYears] = useState<YearCol[]>([]);
   const [planteles, setPlanteles] = useState<PlantelItem[]>([]);
@@ -403,7 +390,7 @@ const HistoricalGradesBySection: React.FC = () => {
 
   // Mode: section or individual student
   const [mode, setMode] = useState<'section' | 'individual'>('section');
-  const [studentSearch, setStudentSearch] = useState<string>('');
+  const [, setStudentSearch] = useState<string>('');
   const [studentSearchResults, setStudentSearchResults] = useState<Student[]>([]);
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
   // Grade type filter: 'final' | 'revision' | 'materia_pendiente'
@@ -630,23 +617,6 @@ const HistoricalGradesBySection: React.FC = () => {
     if (mode === 'section' && selectedSectionId) loadGrades();
     if (mode === 'individual' && selectedStudent) loadGrades();
   }, [selectedSectionId, selectedGradeId, selectedStudent, mode, gradeTypeFilter, consolidated, loadGrades]);
-
-  /* ── Field accessors ── */
-  const getField = (row: RowData, key: string): string => {
-    if (key === 'cedula') return row.cedula;
-    if (key === 'apellidos') return row.apellidos;
-    if (key === 'nombres') return row.nombres;
-    if (key === 'plantelIds') return row.plantelIds.join(',');
-    // cell key format: g__${gradeId}__${subjId}__${field}
-    const m = key.match(/^g__(\d+)__(\d+)__(\w+)$/);
-    if (m) {
-      const cellKey = `g__${m[1]}__${m[2]}`;
-      const cell = row.cells[cellKey];
-      if (!cell) return '';
-      return (cell as any)[m[3]] ?? '';
-    }
-    return '';
-  };
 
   const setField = (row: RowData, key: string, value: string): RowData => {
     if (key === 'cedula') return { ...row, cedula: value };
@@ -1294,9 +1264,6 @@ const HistoricalGradesBySection: React.FC = () => {
                             const dateKey = `${cellKey}__date`;
                             const instKey = `${cellKey}__inst`;
                             const perKey = `${cellKey}__per`;
-
-                            // For system cells, cell.per already contains the periodShort
-                            const perShort = cell.per;
 
                             return (
                               <React.Fragment key={cellKey}>

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Card, Button, Space, Typography, Spin, message, Tag, Empty,
-  InputNumber, Alert, Tabs, Input, Modal, DatePicker,
+  Alert, Tabs, Input, Modal, DatePicker,
 } from 'antd';
 import {
   SaveOutlined, ReloadOutlined,
@@ -66,7 +66,7 @@ interface AssignmentEncounters {
 const PendingSubjectTeacherPanel: React.FC = () => {
   const dragScroll = useDragScroll<HTMLDivElement>();
   const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [, setSaving] = useState(false);
   const [lockedEncounters, setLockedEncounters] = useState<number[]>([]);
   const [assignments, setAssignments] = useState<MpAssignment[]>([]);
   const [selectedPgsId, setSelectedPgsId] = useState<number | null>(null);

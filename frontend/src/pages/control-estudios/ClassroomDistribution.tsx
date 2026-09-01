@@ -30,7 +30,7 @@ function buildSections(settings: Record<string, string>): ScheduleSection[] {
   const use12h = settings.time_format === '12';
   const sections: ScheduleSection[] = [];
 
-  const buildPeriods = (prefix: string, sectionId: string, sectionLabel: string, startTime: string, blocksBefore: number, minBefore: number, recess: number, blocksAfter: number, minAfter: number): Period[] => {
+  const buildPeriods = (prefix: string, sectionId: string, _sectionLabel: string, startTime: string, blocksBefore: number, minBefore: number, recess: number, blocksAfter: number, minAfter: number): Period[] => {
     const periods: Period[] = [];
     let cursor = dayjs(startTime, 'HH:mm');
     let idx = 1;
@@ -88,21 +88,6 @@ function colorForClass(key: string): typeof SECTION_COLORS[0] {
   let hash = 0;
   for (let i = 0; i < key.length; i++) hash = (hash * 31 + key.charCodeAt(i)) | 0;
   return SECTION_COLORS[Math.abs(hash) % SECTION_COLORS.length];
-}
-
-// Group subject colors — distinct from section colors (warm tones)
-const GROUP_COLORS = [
-  { bg: '#fff3e0', border: '#ff9800', text: '#e65100' },
-  { bg: '#fbe9e7', border: '#ff5722', text: '#bf360c' },
-  { bg: '#fff8e1', border: '#ffc107', text: '#ff6f00' },
-  { bg: '#f3e5f5', border: '#9c27b0', text: '#4a148c' },
-  { bg: '#e0f2f1', border: '#009688', text: '#004d40' },
-];
-
-function colorForGroup(key: string): typeof GROUP_COLORS[0] {
-  let hash = 0;
-  for (let i = 0; i < key.length; i++) hash = (hash * 31 + key.charCodeAt(i)) | 0;
-  return GROUP_COLORS[Math.abs(hash) % GROUP_COLORS.length];
 }
 
 // Distinct colors per grade (used when section has no custom color)
@@ -233,7 +218,7 @@ const ClassroomDistribution: React.FC<ClassroomDistributionProps> = ({
   const [bookingSubject, setBookingSubject] = useState<string>('');
   const [bookingReason, setBookingReason] = useState<string>('');
   const [bookings, setBookings] = useState<any[]>([]);
-  const [bookingsLoading, setBookingsLoading] = useState(false);
+  const [, setBookingsLoading] = useState(false);
   // Map: "day|periodId" -> array of sectionKeys that the teacher is normally in (to clear when they have a booking)
   const [teacherSlots, setTeacherSlots] = useState<Record<string, string[]>>({});
 
@@ -474,28 +459,6 @@ const ClassroomDistribution: React.FC<ClassroomDistributionProps> = ({
   };
 
   // ── Block selection (for extraordinary assignments) ──
-  const handleSelectDown = (day: string, periodId: string, room: string) => {
-    selecting.current = true;
-    const k = cellKey(day, periodId, room);
-    setSelectedCells(prev => {
-      const next = new Set(prev);
-      if (next.has(k)) next.delete(k);
-      else next.add(k);
-      return next;
-    });
-  };
-
-  const handleSelectEnter = (day: string, periodId: string, room: string) => {
-    if (!selecting.current) return;
-    const k = cellKey(day, periodId, room);
-    setSelectedCells(prev => {
-      if (prev.has(k)) return prev;
-      const next = new Set(prev);
-      next.add(k);
-      return next;
-    });
-  };
-
   const clearSelection = () => setSelectedCells(new Set());
 
   useEffect(() => {
