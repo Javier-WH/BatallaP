@@ -273,7 +273,7 @@ const startServer = async () => {
     app.listen(PORT, () => {
       console.log(`🚀 Backend iniciado en http://localhost:${PORT}`);
 
-      // Cron: scraping BCV a medianoche todos los días
+      // Cron: scraping BCV a medianoche (hora de Venezuela, UTC-4)
       cron.schedule('0 0 * * *', async () => {
         console.log('[Cron] Ejecutando scraping BCV...');
         try {
@@ -286,8 +286,23 @@ const startServer = async () => {
         } catch (error) {
           console.error('[Cron] Error scraping BCV:', error);
         }
-      });
-      console.log('⏰ Cron de scraping BCV programado (00:00 diario)');
+      }, { timezone: 'America/Caracas' });
+      console.log('⏰ Cron de scraping BCV programado (00:00 Venezuela)');
+
+      // Scrape al iniciar: por si el servidor estuvo apagado a medianoche
+      setTimeout(async () => {
+        console.log('[Startup] Scraping BCV inicial...');
+        try {
+          const result = await scrapeBcvRates();
+          if (result.success) {
+            console.log('[Startup] BCV OK:', result.message);
+          } else {
+            console.warn('[Startup] BCV falló:', result.message);
+          }
+        } catch (error) {
+          console.error('[Startup] Error scraping BCV:', error);
+        }
+      }, 5000);
     });
   } catch (error: unknown) {
     const startupError = error as StartupError;
