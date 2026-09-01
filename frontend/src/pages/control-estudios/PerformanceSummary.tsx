@@ -287,9 +287,9 @@ const PerformanceSummary: React.FC = () => {
   const [certSectionId, setCertSectionId] = useState<number | null>(null);
 
   const boletinSelectedGrade = structure.find(s => s.grade.id === boletinGradeId);
-  const boletinAvailableSections = [...(boletinSelectedGrade?.sections || [])].sort((a, b) =>
-    (a.name || '').localeCompare(b.name || '', 'es')
-  );
+  const boletinAvailableSections = [...(boletinSelectedGrade?.sections || [])]
+    .filter(sec => sec.name.toUpperCase() !== 'MATERIA PENDIENTE')
+    .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'es'));
 
   // --- Derived selection state (declared before any handler that depends on it) ---
   // Sections are global records shared across grades (Section.name is UNIQUE and the
