@@ -1,5 +1,6 @@
 import app, { sessionStore } from './app';
 import express from 'express';
+import os from 'os';
 import sequelize from '@/config/database';
 import '@/models/index'; // Register models
 import { EvaluationCatalog, SubjectPreset, StructurePreset } from '@/models/index';
@@ -11,7 +12,7 @@ import { scrapeBcvRates } from '@/services/bcvScraperService';
 
 dotenv.config();
 
-const PORT = process.env.PORT || 3000;
+const PORT = Number(process.env.PORT) || 3000;
 
 const DEFAULT_CATALOGS: { type: 'tecnica' | 'instrumento' | 'estrategia'; name: string }[] = [
   // Técnicas
@@ -270,8 +271,19 @@ const startServer = async () => {
     await seedDefaultSubjectPresets();
     await seedDefaultStructurePresets();
 
-    app.listen(PORT, () => {
-      console.log(`🚀 Backend iniciado en http://localhost:${PORT}`);
+    app.listen(PORT, '0.0.0.0', () => {
+      const nets = os.networkInterfaces();
+      const urls = [`http://localhost:${PORT}`];
+      for (const iface of Object.values(nets)) {
+        if (!iface) continue;
+        for (const addr of iface) {
+          if (addr.family === 'IPv4' && !addr.internal) {
+            urls.push(`http://${addr.address}:${PORT}`);
+          }
+        }
+      }
+      console.log(`🚀 Backend iniciado en:`);
+      urls.forEach(u => console.log(`   → ${u}`));
 
       // Cron: scraping BCV a medianoche (hora de Venezuela, UTC-4)
       cron.schedule('0 0 * * *', async () => {
