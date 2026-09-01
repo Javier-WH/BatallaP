@@ -255,6 +255,7 @@ const PerformanceSummary: React.FC = () => {
   const [studentGroup, setStudentGroup] = useState<'regulares' | 'revision'>('regulares');
   const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
+  const [certTemplateModalOpen, setCertTemplateModalOpen] = useState(false);
   const [userOverrodeTemplate, setUserOverrodeTemplate] = useState(false);
   const [reportType, setReportType] = useState<ReportType>('resumen');
   const [mpExporting, setMpExporting] = useState(false);
@@ -276,12 +277,11 @@ const PerformanceSummary: React.FC = () => {
   const boletinHtmlIframeRef = useRef<HTMLIFrameElement>(null);
 
   // certified tab state
-  const [certPersonId, setCertPersonId] = useState<number | null>(null);
-  const [certTemplate, setCertTemplate] = useState<string | null>(null);
-  const [certTemplateList, setCertTemplateList] = useState<string[]>([]);
+  const [certLoading, setCertLoading] = useState(false);
+  const [certSectionLoading, setCertSectionLoading] = useState(false);
   const [certSearchQuery, setCertSearchQuery] = useState('');
   const [certSearchResults, setCertSearchResults] = useState<{ label: string; value: number }[]>([]);
-  const [certLoading, setCertLoading] = useState(false);
+  const [certPersonId, setCertPersonId] = useState<number | null>(null);
 
   const boletinSelectedGrade = structure.find(s => s.grade.id === boletinGradeId);
   const boletinAvailableSections = [...(boletinSelectedGrade?.sections || [])].sort((a, b) =>
@@ -463,17 +463,6 @@ const PerformanceSummary: React.FC = () => {
     }).catch(() => { if (!cancelled) setBoletinStudents([]); });
     return () => { cancelled = true; };
   }, [boletinPeriodId, boletinGradeId, boletinSectionId]);
-
-  // Load templates for certified tab
-  useEffect(() => {
-    let cancelled = false;
-    api.get('/templates').then((res) => {
-      if (cancelled) return;
-      const names = (res.data || []).map((t: any) => t.name || t.filename || t).filter(Boolean);
-      setCertTemplateList(names);
-    }).catch(() => { if (!cancelled) setCertTemplateList([]); });
-    return () => { cancelled = true; };
-  }, []);
 
   const handleExport = async () => {
     if (!selectedPeriodId || validCombinations.length === 0) {
@@ -1278,6 +1267,7 @@ const PerformanceSummary: React.FC = () => {
   }, []);
 
   // --- certified handlers ---
+  // --- certified handlers ---
   const certSearch = useCallback(async (query: string) => {
     setCertSearchQuery(query);
     if (query.trim().length < 3) { setCertSearchResults([]); return; }
@@ -1291,12 +1281,61 @@ const PerformanceSummary: React.FC = () => {
   }, []);
 
   const exportCertified = useCallback(async () => {
+    if (!selectedPeriodId || validCombinations.length === 0) {
+      message.warning('Seleccione periodo, grado y sección');
+      return;
+    }
+    if (!selectedTemplate) { setCertTemplateModalOpen(true); return; }
+    setCertSectionLoading(true);
+    try {
+      for (let i = 0; i < validCombinations.length; i++) {
+        const combo = validCombinations[i];
+        const response = await api.get('/certified-grades/export-section', {
+          params: {
+            schoolPeriodId: selectedPeriodId,
+            gradeId: combo.gradeId,
+            sectionId: combo.sectionId,
+            template: selectedTemplate || undefined,
+          },
+          responseType: 'blob',
+        });
+        const url = window.URL.createObjectURL(new Blob([response.data]));
+        const link = document.createElement('a');
+        link.href = url;
+        const fileName = response.headers['content-disposition']
+          ?.split('filename="')[1]?.split('"')[0] || 'notas-certificadas.xlsx';
+        link.setAttribute('download', fileName);
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.URL.revokeObjectURL(url);
+        if (i < validCombinations.length - 1) {
+          await new Promise(r => setTimeout(r, 400));
+        }
+      }
+      message.success('Notas certificadas exportadas correctamente');
+    } catch (error: any) {
+      console.error('[Certified Section] Error:', error);
+      if (error.response?.data) {
+        const reader = new FileReader();
+        reader.onload = () => {
+          try {
+            const err = JSON.parse(reader.result as string);
+            message.error(err.message || 'Error al exportar');
+          } catch { message.error('Error al exportar las notas certificadas'); }
+        };
+        reader.readAsText(error.response.data);
+      } else { message.error('Error al exportar las notas certificadas'); }
+    } finally { setCertSectionLoading(false); }
+  }, [selectedPeriodId, validCombinations, selectedTemplate]);
+
+  const exportCertifiedByStudent = useCallback(async () => {
     if (!certPersonId) { message.warning('Seleccione un estudiante'); return; }
-    if (!certTemplate) { message.warning('Seleccione una plantilla'); return; }
+    if (!selectedTemplate) { setCertTemplateModalOpen(true); return; }
     setCertLoading(true);
     try {
       const response = await api.get('/certified-grades/export', {
-        params: { personId: certPersonId, template: certTemplate },
+        params: { personId: certPersonId, template: selectedTemplate },
         responseType: 'blob',
       });
       const url = window.URL.createObjectURL(new Blob([response.data]));
@@ -1311,7 +1350,7 @@ const PerformanceSummary: React.FC = () => {
       window.URL.revokeObjectURL(url);
       message.success('Notas certificadas exportadas correctamente');
     } catch (error: any) {
-      console.error('[Certified] Error:', error);
+      console.error('[Certified Student] Error:', error);
       if (error.response?.data) {
         const reader = new FileReader();
         reader.onload = () => {
@@ -1323,7 +1362,7 @@ const PerformanceSummary: React.FC = () => {
         reader.readAsText(error.response.data);
       } else { message.error('Error al exportar las notas certificadas'); }
     } finally { setCertLoading(false); }
-  }, [certPersonId, certTemplate]);
+  }, [certPersonId, selectedTemplate]);
 
   // --- Legend popover contents ---
   const resumenLegendContent = (
@@ -1434,10 +1473,9 @@ const PerformanceSummary: React.FC = () => {
   }
 
   const current = REPORT_TYPES.find(rt => rt.id === reportType) || REPORT_TYPES[0];
-  const showTemplateBtn = reportType === 'resumen';
+  const showTemplateBtn = reportType === 'resumen' || reportType === 'certified';
   const showLegendBtn = reportType === 'resumen' || reportType === 'certified';
   const readyToExport = validCombinations.length > 0;
-  const certStudentLabel = certSearchResults.find(r => r.value === certPersonId)?.label || '';
 
   return (
     <div className="rb-root">
@@ -1470,7 +1508,7 @@ const PerformanceSummary: React.FC = () => {
           </div>
           <div className="rb-utility-btns">
             {showTemplateBtn && (
-              <button className="rb-btn-ghost" onClick={() => setTemplateModalOpen(true)}>
+              <button className="rb-btn-ghost" onClick={() => reportType === 'certified' ? setCertTemplateModalOpen(true) : setTemplateModalOpen(true)}>
                 <IconSettings size={14} /> Plantillas
               </button>
             )}
@@ -1794,13 +1832,91 @@ const PerformanceSummary: React.FC = () => {
 
         {/* ── Notas Certificadas ── */}
         {reportType === 'certified' && (
-          <div className="rb-columns">
-            {/* Config column */}
-            <div className="rb-config">
-              <section className="rb-card">
-                <h2 className="rb-card-label">1. Estudiante</h2>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                  <div style={{ position: 'relative' }}>
+          <div className="rb-config" style={{ flex: '1 1 100%' }}>
+            {structure.length === 0 ? (
+              <div className="rb-empty-state">No hay estructura académica configurada para el período activo</div>
+            ) : (
+              <>
+                {/* ── Por sección ── */}
+                <section className="rb-card">
+                  <h2 className="rb-card-label">1. Por sección (planilla por grado + sección)</h2>
+                  <div className="rb-scope">
+                    <div className="rb-scope-row">
+                      <span className="rb-scope-label"><IconCalendar size={13} /> Año escolar</span>
+                      <Select
+                        className="rb-period-select"
+                        value={selectedPeriodId ?? undefined}
+                        onChange={(val) => setSelectedPeriodId(val)}
+                        options={allPeriods.map(p => ({ label: `${p.name}${p.status === 'activo' ? ' (activo)' : ''}`, value: p.id }))}
+                        placeholder="Seleccione…"
+                      />
+                    </div>
+
+                    <div className="rb-scope-row">
+                      <span className="rb-scope-label"><IconGrad size={13} /> Grados</span>
+                      <div className="rb-chips">
+                        {structure.map(s => {
+                          const on = selectedGradeIds.includes(s.grade.id);
+                          return (
+                            <button
+                              key={s.grade.id}
+                              type="button"
+                              aria-pressed={on}
+                              className={`rb-chip${on ? ' active' : ''}`}
+                              onClick={() => setSelectedGradeIds(prev =>
+                                prev.includes(s.grade.id) ? prev.filter(id => id !== s.grade.id) : [...prev, s.grade.id]
+                              )}
+                            >
+                              {s.grade.name}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div className="rb-scope-row">
+                      <span className="rb-scope-label"><IconUsers size={13} /> Secciones</span>
+                      {selectedGradeIds.length === 0 ? (
+                        <span className="rb-field-empty">Elija uno o más grados primero</span>
+                      ) : (
+                        <div className="rb-chips">
+                          {availableSections.map(sec => {
+                            const on = selectedSectionIds.includes(sec.id);
+                            return (
+                              <button
+                                key={sec.id}
+                                type="button"
+                                aria-pressed={on}
+                                className={`rb-chip${on ? ' active' : ''}`}
+                                onClick={() => setSelectedSectionIds(prev =>
+                                  prev.includes(sec.id) ? prev.filter(id => id !== sec.id) : [...prev, sec.id]
+                                )}
+                              >
+                                {sec.name}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+
+                    {validCombinations.length > 0 && (
+                      <div className="rb-scope-summary">
+                        <IconCheck size={14} />
+                        <span>
+                          <strong>{validCombinations.length}</strong>{' '}
+                          {validCombinations.length === 1 ? 'planilla' : 'planillas'}:{' '}
+                          {validCombinations.map(c => `${c.gradeName} ${c.sectionName}`).join(' · ')}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </section>
+
+                {/* ── Por estudiante ── */}
+                <section className="rb-card">
+                  <h2 className="rb-card-label">2. Por estudiante (individual)</h2>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                     <Input
                       placeholder="Buscar por nombre o cédula..."
                       value={certSearchQuery}
@@ -1808,72 +1924,63 @@ const PerformanceSummary: React.FC = () => {
                       prefix={<IconSearch size={16} />}
                       style={{ borderRadius: 10, paddingLeft: 36 }}
                     />
+                    <Select
+                      placeholder="Resultados de búsqueda..."
+                      style={{ width: '100%' }}
+                      value={certPersonId ?? undefined}
+                      onChange={(v: number) => setCertPersonId(v)}
+                      options={certSearchResults}
+                      showSearch
+                      filterOption={false}
+                      notFoundContent={certSearchQuery.length < 3 ? 'Escriba al menos 3 caracteres' : 'Sin resultados'}
+                    />
                   </div>
-                  <Select
-                    placeholder="Resultados de búsqueda..."
-                    style={{ width: '100%' }}
-                    value={certPersonId}
-                    onChange={(v: number) => setCertPersonId(v)}
-                    options={certSearchResults}
-                    showSearch
-                    filterOption={false}
-                    notFoundContent={certSearchQuery.length < 3 ? 'Escriba al menos 3 caracteres' : 'Sin resultados'}
-                  />
-                </div>
-              </section>
+                </section>
 
-              <section className="rb-card">
-                <h2 className="rb-card-label">2. Plantilla de Excel</h2>
-                <Select
-                  placeholder="Seleccione una plantilla"
-                  style={{ width: '100%' }}
-                  value={certTemplate}
-                  onChange={(v: string) => setCertTemplate(v)}
-                  options={certTemplateList.map(t => ({ label: t, value: t }))}
-                  notFoundContent="Suba una plantilla a /templates"
-                />
-              </section>
+                {/* ── Exportar ── */}
+                <section className="rb-card">
+                  <h2 className="rb-card-label">3. Exportar</h2>
+                  {!selectedTemplate && (readyToExport || certPersonId) && (
+                    <div className="rb-warning" style={{ marginBottom: 12 }}>
+                      <IconAlert size={15} />
+                      <div className="rb-warning-text">
+                        Sin plantilla asignada para Notas Certificadas.
+                        <button className="rb-warning-link" onClick={() => setCertTemplateModalOpen(true)}>Elegir plantilla</button>
+                      </div>
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                    <button
+                      className="rb-export-btn"
+                      style={{ width: 'auto', flex: '1 1 260px', minHeight: 48 }}
+                      disabled={!readyToExport || certSectionLoading}
+                      onClick={exportCertified}
+                    >
+                      {certSectionLoading ? <Spin size="small" /> : <IconDownload size={16} />}
+                      {certSectionLoading ? 'Generando…' : 'Exportar por sección'}
+                    </button>
+                    <button
+                      className="rb-export-btn"
+                      style={{ width: 'auto', flex: '1 1 260px', minHeight: 48 }}
+                      disabled={!certPersonId || certLoading}
+                      onClick={exportCertifiedByStudent}
+                    >
+                      {certLoading ? <Spin size="small" /> : <IconDownload size={16} />}
+                      {certLoading ? 'Generando…' : 'Exportar por estudiante'}
+                    </button>
+                  </div>
+                  {(!readyToExport && !certPersonId) && <p className="rb-export-hint">Seleccione una sección o un estudiante para continuar</p>}
+                </section>
 
-              <section className="rb-info-card">
-                <h2 className="rb-info-title">Qué incluye este reporte</h2>
-                <ul className="rb-info-list">
-                  <li><IconCheck size={15} /><span>Seleccione un estudiante y una plantilla de Excel. El sistema rellenará los nombres de celda (named ranges) con los datos del estudiante y todas sus notas de todos los períodos cursados.</span></li>
-                </ul>
-              </section>
-            </div>
-
-            {/* Preview column */}
-            <div className="rb-preview-col">
-              <div className="rb-preview-card">
-                <div className="rb-preview-head">
-                  <div className="rb-preview-head-title">Vista previa del reporte</div>
-                  <div className="rb-preview-head-sub">Confirme antes de exportar</div>
-                </div>
-
-                <div className="rb-preview-body">
-                  <PreviewRow label="Estudiante" value={certStudentLabel || '—'} muted={!certStudentLabel} />
-                  <PreviewRow label="Plantilla" value={certTemplate || '—'} muted={!certTemplate} />
-                </div>
-
-                <div className="rb-perforation">
-                  <div className="rb-notch rb-notch-left" />
-                  <div className="rb-notch rb-notch-right" />
-                </div>
-                <div className="rb-dashed-divider" />
-
-                <div className="rb-preview-footer">
-                  <button
-                    className="rb-export-btn"
-                    disabled={!certPersonId || !certTemplate || certLoading}
-                    onClick={exportCertified}
-                  >
-                    {certLoading ? <Spin size="small" /> : <IconDownload size={16} />}
-                    {certLoading ? 'Generando…' : 'Exportar Notas Certificadas'}
-                  </button>
-                  {(!certPersonId || !certTemplate) && <p className="rb-export-hint">Seleccione estudiante y plantilla para continuar</p>}
-                </div>
-              </div>
-            </div>
+                <section className="rb-info-card">
+                  <h2 className="rb-info-title">Qué incluye este reporte</h2>
+                  <ul className="rb-info-list">
+                    <li><IconCheck size={15} /><span><b>Por sección</b>: genera un solo Excel con una hoja por estudiante (para imprimir corridos). Una planilla por cada combinación de grado + sección seleccionada.</span></li>
+                    <li><IconCheck size={15} /><span><b>Por estudiante</b>: genera un Excel individual con las notas certificadas del estudiante seleccionado, rellenando los named ranges de la plantilla con todos los períodos cursados.</span></li>
+                  </ul>
+                </section>
+              </>
+            )}
           </div>
         )}
       </main>
@@ -1884,6 +1991,15 @@ const PerformanceSummary: React.FC = () => {
         selectedTemplate={selectedTemplate}
         defaultGradeId={selectedGradeIds[0] ?? null}
         onSelect={(name) => { setSelectedTemplate(name || null); setUserOverrodeTemplate(true); }}
+        mode="resumen"
+      />
+
+      <TemplateManagerModal
+        open={certTemplateModalOpen}
+        onClose={() => setCertTemplateModalOpen(false)}
+        selectedTemplate={selectedTemplate}
+        onSelect={(name) => { setSelectedTemplate(name || null); }}
+        mode="certified"
       />
     </div>
   );

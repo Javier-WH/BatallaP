@@ -120,9 +120,155 @@ export const exportCertifiedGrades = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'template es obligatorio' });
     }
 
+    const { buffer, fileName } = await generateCertifiedExcel(personId, templateName);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    res.send(buffer);
+  } catch (error: any) {
+    console.error('[exportCertifiedGrades] Error:', error);
+    res.status(500).json({ message: error.message || 'Error al exportar notas certificadas' });
+  }
+};
+
+/**
+ * Export certified grades for all students in a grade+section as a single
+ * Excel file with one worksheet per student (so they can be printed in a
+ * batch). Each worksheet is a copy of the template filled with that
+ * student's data.
+ */
+export const exportCertifiedGradesBySection = async (req: Request, res: Response) => {
+  try {
+    const schoolPeriodId = parseInt(req.query.schoolPeriodId as string, 10);
+    const gradeId = parseInt(req.query.gradeId as string, 10);
+    const sectionId = parseInt(req.query.sectionId as string, 10);
+    const templateName = req.query.template as string;
+
+    if (!schoolPeriodId || !gradeId || !sectionId) {
+      return res.status(400).json({ message: 'schoolPeriodId, gradeId y sectionId son obligatorios' });
+    }
+    if (!templateName) {
+      return res.status(400).json({ message: 'template es obligatorio' });
+    }
+
+    // Find all students inscribed in this grade+section+period, sorted by name
+    const inscriptions = await Inscription.findAll({
+      where: { schoolPeriodId, gradeId, sectionId },
+      include: [{ model: Person, as: 'student' }],
+      order: [
+        [{ model: Person, as: 'student' }, 'lastName', 'ASC'],
+        [{ model: Person, as: 'student' }, 'firstName', 'ASC'],
+      ],
+    });
+
+    if (inscriptions.length === 0) {
+      return res.status(404).json({ message: 'No hay estudiantes inscritos en esta sección' });
+    }
+
+    const sectionName = (await Section.findByPk(sectionId))?.name || 'seccion';
+    const gradeName = (await Grade.findByPk(gradeId))?.name || 'grado';
+
+    // If only one student, send a single-student Excel directly
+    if (inscriptions.length === 1) {
+      const person = (inscriptions[0] as any).student;
+      const { buffer, fileName } = await generateCertifiedExcel(person.id, templateName);
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+      res.send(buffer);
+      return;
+    }
+
+    // Multiple students: build a single workbook with one worksheet per student.
+    // We build each student's workbook separately, then copy the filled
+    // worksheet into a combined workbook.
+    const combinedWorkbook = new ExcelJS.Workbook();
+    let addedCount = 0;
+    const usedNames = new Set<string>();
+
+    for (const ins of inscriptions) {
+      const person = (ins as any).student;
+      if (!person) continue;
+      try {
+        const { workbook: studentWb } = await buildCertifiedWorkbook(person.id, templateName);
+        const srcSheet = studentWb.worksheets[0];
+        if (!srcSheet) continue;
+
+        // Build a unique worksheet name (Excel limits to 31 chars)
+        let baseName = `${person.lastName || ''} ${person.firstName || ''}`.trim();
+        if (!baseName) baseName = `Estudiante ${person.id}`;
+        let sheetName = baseName.substring(0, 31);
+        let suffix = 2;
+        while (usedNames.has(sheetName)) {
+          const s = String(suffix);
+          sheetName = `${baseName.substring(0, 31 - s.length)} ${s}`;
+          suffix++;
+        }
+        usedNames.add(sheetName);
+
+        // Copy the worksheet into the combined workbook
+        const newSheet = combinedWorkbook.addWorksheet(sheetName);
+        // Copy column widths
+        srcSheet.columns.forEach((col: any, i: number) => {
+          if (col.width) {
+            const targetCol = newSheet.getColumn(i + 1);
+            targetCol.width = col.width;
+          }
+        });
+        // Copy row-by-row (values + styles)
+        srcSheet.eachRow({ includeEmpty: true }, (row: ExcelJS.Row, rowNumber: number) => {
+          const newRow = newSheet.getRow(rowNumber);
+          row.eachCell({ includeEmpty: true }, (cell: ExcelJS.Cell, colNumber: number) => {
+            const newCell = newRow.getCell(colNumber);
+            newCell.value = cell.value;
+            if (cell.style) {
+              try {
+                newCell.style = JSON.parse(JSON.stringify(cell.style));
+              } catch { /* ignore style copy errors */ }
+            }
+          });
+          // Copy row dimensions
+          if (row.height) newRow.height = row.height;
+        });
+        // Copy merged cells
+        const merges = (srcSheet as any)._merges;
+        if (merges) {
+          for (const key of Object.keys(merges)) {
+            const merge = merges[key];
+            if (merge && merge.model && merge.model.top && merge.model.left && merge.model.bottom && merge.model.right) {
+              newSheet.mergeCells(merge.model.top, merge.model.left, merge.model.bottom, merge.model.right);
+            }
+          }
+        }
+        addedCount++;
+      } catch (err: any) {
+        console.error(`[exportCertifiedGradesBySection] Skip student ${person.id}:`, err.message);
+      }
+    }
+
+    if (addedCount === 0) {
+      return res.status(500).json({ message: 'No se pudo generar ningún archivo' });
+    }
+
+    const buffer = await combinedWorkbook.xlsx.writeBuffer();
+    const fileName = `notas-certificadas-${gradeName}-${sectionName}.xlsx`.replace(/\s+/g, '_');
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    res.send(buffer);
+  } catch (error: any) {
+    console.error('[exportCertifiedGradesBySection] Error:', error);
+    res.status(500).json({ message: error.message || 'Error al exportar notas certificadas por sección' });
+  }
+};
+
+/**
+ * Core logic: build a certified grades workbook for a single student.
+ * Returns the configured ExcelJS workbook (not yet serialized) and the
+ * student's person record so callers can rename worksheets or combine
+ * multiple students into a single workbook.
+ */
+async function buildCertifiedWorkbook(personId: number, templateName: string): Promise<{ workbook: ExcelJS.Workbook; person: any }> {
     const templatePath = path.join(__dirname, '../../templates', templateName);
     if (!fs.existsSync(templatePath)) {
-      return res.status(400).json({ message: `Plantilla no encontrada: ${templateName}` });
+      throw new Error(`Plantilla no encontrada: ${templateName}`);
     }
 
     const person = await Person.findByPk(personId, {
@@ -130,7 +276,7 @@ export const exportCertifiedGrades = async (req: Request, res: Response) => {
     });
 
     if (!person) {
-      return res.status(404).json({ message: 'Estudiante no encontrado' });
+      throw new Error('Estudiante no encontrado');
     }
 
     const settingsRows = await Setting.findAll();
@@ -295,7 +441,7 @@ export const exportCertifiedGrades = async (req: Request, res: Response) => {
 
     const sheet = workbook.worksheets[0];
     if (!sheet) {
-      return res.status(400).json({ message: 'La plantilla no tiene hojas' });
+      throw new Error('La plantilla no tiene hojas');
     }
 
     const sheetName = sheet.name;
@@ -393,16 +539,18 @@ export const exportCertifiedGrades = async (req: Request, res: Response) => {
       yearIdx++;
     }
 
+    return { workbook, person };
+}
+
+/**
+ * Generate a certified grades Excel buffer for a single student.
+ */
+async function generateCertifiedExcel(personId: number, templateName: string): Promise<{ buffer: Buffer; fileName: string }> {
+    const { workbook, person } = await buildCertifiedWorkbook(personId, templateName);
     const buffer = await workbook.xlsx.writeBuffer();
     const fileName = `notas-certificadas-${person.lastName}-${person.firstName}.xlsx`.replace(/\s+/g, '_');
-    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
-    res.send(buffer);
-  } catch (error: any) {
-    console.error('[exportCertifiedGrades] Error:', error);
-    res.status(500).json({ message: error.message || 'Error al exportar notas certificadas' });
-  }
-};
+    return { buffer: Buffer.from(buffer), fileName };
+}
 
 export const getCertifiedGradesData = async (req: Request, res: Response) => {
   try {

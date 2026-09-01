@@ -27,6 +27,9 @@ export interface TemplateManagerModalProps {
   // grade. Templates are assigned per-grade (all sections share the same
   // template).
   defaultGradeId?: number | null;
+  // 'resumen' = Resumen de Rendimiento (assign by grade, only "Asignar por Año" tab)
+  // 'certified' = Notas Certificadas (assign by period: "Pre 2018" / "Actual")
+  mode?: 'resumen' | 'certified';
 }
 
 const TemplateManagerModal: React.FC<TemplateManagerModalProps> = ({
@@ -35,26 +38,31 @@ const TemplateManagerModal: React.FC<TemplateManagerModalProps> = ({
   selectedTemplate,
   onSelect,
   defaultGradeId,
+  mode = 'resumen',
 }) => {
   const [templates, setTemplates] = useState<TemplateInfo[]>([]);
   const [assignments, setAssignments] = useState<Record<string, string>>({});
+  const [certifiedAssignments, setCertifiedAssignments] = useState<Record<string, string>>({});
   const [grades, setGrades] = useState<GradeOption[]>([]);
   const [selectedGradeId, setSelectedGradeId] = useState<number | null>(defaultGradeId ?? null);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [openPopoverGradeId, setOpenPopoverGradeId] = useState<number | null>(null);
+  const [openPopoverPeriod, setOpenPopoverPeriod] = useState<string | null>(null);
 
   const fetchTemplates = useCallback(async () => {
     setLoading(true);
     try {
-      const [tplRes, asgRes, activeRes, periodsRes] = await Promise.all([
+      const [tplRes, asgRes, activeRes, periodsRes, certAsgRes] = await Promise.all([
         api.get<TemplateInfo[]>('/templates'),
         api.get<Record<string, string>>('/templates/assignments'),
         api.get('/academic/active'),
         api.get('/academic/periods'),
+        api.get<Record<string, string>>('/templates/certified-assignments'),
       ]);
       setTemplates(tplRes.data);
       setAssignments(asgRes.data);
+      setCertifiedAssignments(certAsgRes.data || {});
       const period = activeRes.data;
 
       // Load grade list for the active period (or first period).
@@ -124,6 +132,23 @@ const TemplateManagerModal: React.FC<TemplateManagerModalProps> = ({
       setOpenPopoverGradeId(null);
     } catch (error: any) {
       console.error('Error assigning template', error);
+      message.error(error?.response?.data?.message || 'Error al asignar la plantilla');
+    }
+  };
+
+  const assignCertified = async (periodKey: string, templateName: string) => {
+    try {
+      if (templateName) {
+        await api.post('/templates/certified-assignment', { periodKey, templateName });
+      } else {
+        await api.delete(`/templates/certified-assignment/${periodKey}`);
+      }
+      message.success(templateName ? 'Plantilla asignada' : 'Asignación eliminada');
+      const certAsgRes = await api.get<Record<string, string>>('/templates/certified-assignments');
+      setCertifiedAssignments(certAsgRes.data || {});
+      setOpenPopoverPeriod(null);
+    } catch (error: any) {
+      console.error('Error assigning certified template', error);
       message.error(error?.response?.data?.message || 'Error al asignar la plantilla');
     }
   };
@@ -270,9 +295,78 @@ const TemplateManagerModal: React.FC<TemplateManagerModalProps> = ({
     templateName: assignments[String(g.id)] || null,
   }));
 
+  // Certified period options
+  const certifiedPeriods = [
+    { key: 'pre2018', label: 'Pre 2018' },
+    { key: 'actual', label: 'Actual' },
+  ];
+
+  const renderPeriodPopover = (periodKey: string, periodLabel: string) => {
+    const currentTemplateName = certifiedAssignments[periodKey] || null;
+    const isAssigned = !!currentTemplateName;
+    const content = (
+      <div style={{ width: 280 }}>
+        <List
+          size="small"
+          dataSource={templates}
+          locale={{ emptyText: 'No hay plantillas subidas' }}
+          renderItem={(tpl) => (
+            <List.Item
+              actions={[
+                <Button
+                  key="pick"
+                  size="small"
+                  type={currentTemplateName === tpl.name ? 'primary' : 'default'}
+                  onClick={async () => { await assignCertified(periodKey, tpl.name); }}
+                >
+                  {currentTemplateName === tpl.name ? 'Asignada' : 'Asignar'}
+                </Button>,
+              ]}
+            >
+              <List.Item.Meta
+                avatar={<FileExcelOutlined style={{ color: '#059669' }} />}
+                title={<Text style={{ fontSize: 13 }}>{tpl.name}</Text>}
+              />
+            </List.Item>
+          )}
+        />
+        {isAssigned && (
+          <div style={{ marginTop: 8, textAlign: 'right' }}>
+            <Button
+              size="small"
+              danger
+              icon={<DisconnectOutlined />}
+              onClick={async () => { await assignCertified(periodKey, ''); }}
+            >
+              Quitar asignación
+            </Button>
+          </div>
+        )}
+      </div>
+    );
+    return (
+      <Popover
+        content={content}
+        trigger="click"
+        placement="left"
+        title="Seleccionar plantilla"
+        open={openPopoverPeriod === periodKey}
+        onOpenChange={(visible) => setOpenPopoverPeriod(visible ? periodKey : null)}
+      >
+        <Button size="small" icon={<SwapOutlined />}>
+          Cambiar
+        </Button>
+      </Popover>
+    );
+  };
+
+  const modalTitle = mode === 'certified'
+    ? 'Gestión de plantillas (Notas Certificadas)'
+    : 'Gestión de plantillas (Resumen de Rendimiento)';
+
   return (
     <Modal
-      title="Gestión de plantillas (Resumen de Rendimiento)"
+      title={modalTitle}
       open={open}
       onCancel={onClose}
       footer={[
@@ -281,7 +375,7 @@ const TemplateManagerModal: React.FC<TemplateManagerModalProps> = ({
       width={860}
     >
       <Tabs
-        defaultActiveKey="files"
+        defaultActiveKey={mode === 'certified' ? 'files' : 'assignments'}
         items={[
           {
             key: 'files',
@@ -301,7 +395,7 @@ const TemplateManagerModal: React.FC<TemplateManagerModalProps> = ({
                   {uploading && <div style={{ marginTop: 8 }}><Text type="secondary">Subiendo…</Text></div>}
                 </div>
 
-                {grades.length > 0 && (
+                {mode === 'resumen' && grades.length > 0 && (
                   <div style={{ marginBottom: 12, display: 'flex', gap: 12, alignItems: 'center' }}>
                     <Text strong>Asignar a:</Text>
                     <Select
@@ -339,7 +433,7 @@ const TemplateManagerModal: React.FC<TemplateManagerModalProps> = ({
               </>
             ),
           },
-          {
+          ...(mode === 'resumen' ? [{
             key: 'assignments',
             label: 'Asignar por Año',
             children: (
@@ -372,8 +466,6 @@ const TemplateManagerModal: React.FC<TemplateManagerModalProps> = ({
                         width: 120,
                         render: (_: any, row: any) => {
                           const gradeKey = String(row.gradeId);
-                          // Read the current assignment from state so the popover
-                          // content updates live after an assign/unassign action.
                           const currentTemplateName = assignments[gradeKey] || null;
                           const isAssigned = !!currentTemplateName;
                           const content = (
@@ -439,7 +531,45 @@ const TemplateManagerModal: React.FC<TemplateManagerModalProps> = ({
                 )}
               </>
             ),
-          },
+          }] : []),
+          ...(mode === 'certified' ? [{
+            key: 'certified-assignments',
+            label: 'Asignar por Periodo',
+            children: (
+              <Table
+                rowKey="key"
+                loading={loading}
+                dataSource={certifiedPeriods.map(p => ({
+                  key: p.key,
+                  periodKey: p.key,
+                  scope: p.label,
+                  templateName: certifiedAssignments[p.key] || null,
+                }))}
+                pagination={false}
+                size="small"
+                columns={[
+                  {
+                    title: 'Periodo',
+                    dataIndex: 'scope',
+                    key: 'scope',
+                  },
+                  {
+                    title: 'Plantilla asignada',
+                    dataIndex: 'templateName',
+                    key: 'templateName',
+                    render: (name: string | null) =>
+                      name ? <Tag color="green">{name}</Tag> : <Text type="secondary">Sin plantilla</Text>,
+                  },
+                  {
+                    title: '',
+                    key: 'actions',
+                    width: 120,
+                    render: (_: any, row: any) => renderPeriodPopover(row.periodKey, row.scope),
+                  },
+                ]}
+              />
+            ),
+          }] : []),
         ]}
       />
 
@@ -451,7 +581,9 @@ const TemplateManagerModal: React.FC<TemplateManagerModalProps> = ({
           • Ejemplos de nombres esperados: <code>inst_name</code>, <code>std_doc_1</code>, <code>grade_2_1</code>, <code>subj_3</code>.
         </Text><br />
         <Text style={{ color: '#166534', fontSize: 12 }}>
-          • La plantilla se asigna por <strong>año</strong> y aplica a todas las secciones.
+          {mode === 'certified'
+            ? '• La plantilla se asigna por periodo (Pre 2018 o Actual).'
+            : '• La plantilla se asigna por año y aplica a todas las secciones.'}
         </Text>
       </div>
     </Modal>

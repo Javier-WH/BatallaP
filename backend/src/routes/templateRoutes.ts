@@ -8,6 +8,9 @@ import {
   listTemplateAssignments,
   assignTemplateToGrade,
   unassignTemplateFromGrade,
+  listCertifiedTemplateAssignments,
+  assignCertifiedTemplate,
+  unassignCertifiedTemplate,
 } from '@/controllers/templateController';
 
 const router = Router();
@@ -21,5 +24,10 @@ router.get('/assignments', listTemplateAssignments);
 router.get('/assignment/:gradeId', getTemplateForGrade);
 router.post('/assignment', assignTemplateToGrade);
 router.delete('/assignment/:gradeId', unassignTemplateFromGrade);
+
+// Certified grades template assignments (per period category)
+router.get('/certified-assignments', listCertifiedTemplateAssignments);
+router.post('/certified-assignment', assignCertifiedTemplate);
+router.delete('/certified-assignment/:periodKey', unassignCertifiedTemplate);
 
 export default router;

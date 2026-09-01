@@ -13,6 +13,14 @@ function templateAssignmentKey(gradeId: number | string): string {
   return `template_assignment:grade:${gradeId}`;
 }
 
+// Certified grades templates are assigned per "period" category.
+// Two options: "pre2018" (students who started before 2018) and "actual".
+function certifiedTemplateKey(periodKey: string): string {
+  return `certified_template_assignment:period:${periodKey}`;
+}
+
+const CERTIFIED_PERIOD_KEYS = ['pre2018', 'actual'];
+
 function ensureTemplatesDir() {
   if (!fs.existsSync(templatesDir)) {
     fs.mkdirSync(templatesDir, { recursive: true });
@@ -168,5 +176,68 @@ export const unassignTemplateFromGrade = async (req: Request, res: Response) => 
   } catch (error) {
     console.error('[unassignTemplateFromGrade] Error:', error);
     res.status(500).json({ message: 'Error al desasignar la plantilla' });
+  }
+};
+
+// ── Certified grades template assignments (per period category) ────────
+
+// Returns all certified template assignments keyed by period key.
+export const listCertifiedTemplateAssignments = async (_req: Request, res: Response) => {
+  try {
+    const settings = await Setting.findAll({
+      where: { key: { [Op.like]: 'certified_template_assignment:period:%' } },
+    });
+    const assignments: Record<string, string> = {};
+    for (const s of settings) {
+      const key = s.key.replace('certified_template_assignment:period:', '');
+      const targetPath = safeTemplatePath(s.value);
+      if (targetPath && fs.existsSync(targetPath)) {
+        assignments[key] = s.value;
+      }
+    }
+    res.json(assignments);
+  } catch (error) {
+    console.error('[listCertifiedTemplateAssignments] Error:', error);
+    res.status(500).json({ message: 'Error al listar las asignaciones de plantillas certificadas' });
+  }
+};
+
+// Assigns a template to a certified period category. Body: { periodKey, templateName }.
+export const assignCertifiedTemplate = async (req: Request, res: Response) => {
+  try {
+    const { periodKey, templateName } = req.body;
+    if (!periodKey || !CERTIFIED_PERIOD_KEYS.includes(periodKey)) {
+      return res.status(400).json({ message: 'periodKey debe ser "pre2018" o "actual"' });
+    }
+    if (!templateName) {
+      return res.status(400).json({ message: 'templateName es requerido' });
+    }
+    const targetPath = safeTemplatePath(templateName);
+    if (!targetPath || !fs.existsSync(targetPath)) {
+      return res.status(404).json({ message: 'La plantilla no existe' });
+    }
+    await Setting.upsert({
+      key: certifiedTemplateKey(periodKey),
+      value: templateName,
+    });
+    res.json({ periodKey, templateName });
+  } catch (error) {
+    console.error('[assignCertifiedTemplate] Error:', error);
+    res.status(500).json({ message: 'Error al asignar la plantilla certificada' });
+  }
+};
+
+// Removes a certified template assignment for a period category.
+export const unassignCertifiedTemplate = async (req: Request, res: Response) => {
+  try {
+    const { periodKey } = req.params;
+    if (!periodKey || !CERTIFIED_PERIOD_KEYS.includes(periodKey)) {
+      return res.status(400).json({ message: 'periodKey debe ser "pre2018" o "actual"' });
+    }
+    await Setting.destroy({ where: { key: certifiedTemplateKey(periodKey) } });
+    res.json({ periodKey, templateName: null });
+  } catch (error) {
+    console.error('[unassignCertifiedTemplate] Error:', error);
+    res.status(500).json({ message: 'Error al desasignar la plantilla certificada' });
   }
 };
