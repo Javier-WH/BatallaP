@@ -51,6 +51,15 @@ function getStateAbbrev(stateName: string): string {
 
 function formatDateES(date: Date | string | null): string {
   if (!date) return '';
+  // Parse "YYYY-MM-DD" strings without timezone shifts
+  if (typeof date === 'string' && /^\d{4}-\d{2}-\d{2}/.test(date)) {
+    const parts = date.split('T')[0].split('-');
+    const y = parseInt(parts[0], 10);
+    const m = parseInt(parts[1], 10);
+    const d = parseInt(parts[2], 10);
+    const months = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+    return `${d} de ${months[m - 1]} de ${y}`;
+  }
   const d = new Date(date);
   if (isNaN(d.getTime())) return '';
   const months = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
@@ -690,15 +699,99 @@ async function buildCertifiedWorkbook(personId: number, templateName: string): P
 
         // H21-H27 = month (00), I21-I27 = year (0000)
         if (g.date) {
-          const d = new Date(g.date);
-          if (!isNaN(d.getTime())) {
-            setter(`y1_s${subjNum}_month`, padNumber(d.getMonth() + 1));
-            setter(`y1_s${subjNum}_year`, String(d.getFullYear()));
+          const parts = g.date.split('-');
+          if (parts.length === 3) {
+            setter(`y1_s${subjNum}_month`, padNumber(parseInt(parts[1], 10)));
+            setter(`y1_s${subjNum}_year`, parts[0]);
           }
         }
 
         // J21-J27 = plantel index (1-based)
         setter(`y1_s${subjNum}_inst`, resolvePlantelIndex(g));
+      }
+    }
+
+    // ── Year 2 grades (rows 21-27, 7 subjects) ──
+    // L=name, O=num, P=letters, Q=te, R=month, S=year, U=inst
+    const year2Grade = allGrades.find((g: any) => g.order === 2);
+    if (year2Grade) {
+      const subjects = subjectsByGrade.get(year2Grade.id) || [];
+      const maxSubjects = Math.min(subjects.length, 7);
+      for (let s = 0; s < maxSubjects; s++) {
+        const subj = subjects[s];
+        const lookupKey = `${year2Grade.id}__${subj.id}`;
+        const g = gradeLookup.get(lookupKey);
+        const subjNum = s + 1;
+
+        // L21-L27 = subject name (title case)
+        setter(`y2_s${subjNum}_name`, toTitleCaseES(subj.name));
+
+        if (!g) continue;
+
+        // O21-O27 = grade in numbers (rounded, zero-padded)
+        if (g.finalScore != null) {
+          setter(`y2_s${subjNum}_num`, String(Math.round(g.finalScore)).padStart(padDigits, '0'));
+          // P21-P27 = grade in letters
+          setter(`y2_s${subjNum}_letters`, numberToSpanishWords(g.finalScore).toUpperCase());
+        }
+
+        // Q21-Q27 = evaluation type letter
+        const teCode = g.gradeType ? (GRADE_TYPE_TO_CODE[g.gradeType] || 'F') : 'F';
+        setter(`y2_s${subjNum}_te`, teCode);
+
+        // R21-R27 = month (00), S21-S27 = year (0000)
+        if (g.date) {
+          const parts = g.date.split('-');
+          if (parts.length === 3) {
+            setter(`y2_s${subjNum}_month`, padNumber(parseInt(parts[1], 10)));
+            setter(`y2_s${subjNum}_year`, parts[0]);
+          }
+        }
+
+        // U21-U27 = plantel index (1-based)
+        setter(`y2_s${subjNum}_inst`, resolvePlantelIndex(g));
+      }
+    }
+
+    // ── Year 3 grades (rows 31-38, 8 subjects) ──
+    // A=name, D=num, E=letters, G=te, H=month, I=year, J=inst
+    const year3Grade = allGrades.find((g: any) => g.order === 3);
+    if (year3Grade) {
+      const subjects = subjectsByGrade.get(year3Grade.id) || [];
+      const maxSubjects = Math.min(subjects.length, 8);
+      for (let s = 0; s < maxSubjects; s++) {
+        const subj = subjects[s];
+        const lookupKey = `${year3Grade.id}__${subj.id}`;
+        const g = gradeLookup.get(lookupKey);
+        const subjNum = s + 1;
+
+        // A31-A38 = subject name (title case)
+        setter(`y3_s${subjNum}_name`, toTitleCaseES(subj.name));
+
+        if (!g) continue;
+
+        // D31-D38 = grade in numbers (rounded, zero-padded)
+        if (g.finalScore != null) {
+          setter(`y3_s${subjNum}_num`, String(Math.round(g.finalScore)).padStart(padDigits, '0'));
+          // E31-E38 = grade in letters
+          setter(`y3_s${subjNum}_letters`, numberToSpanishWords(g.finalScore).toUpperCase());
+        }
+
+        // G31-G38 = evaluation type letter
+        const teCode = g.gradeType ? (GRADE_TYPE_TO_CODE[g.gradeType] || 'F') : 'F';
+        setter(`y3_s${subjNum}_te`, teCode);
+
+        // H31-H38 = month (00), I31-I38 = year (0000)
+        if (g.date) {
+          const parts = g.date.split('-');
+          if (parts.length === 3) {
+            setter(`y3_s${subjNum}_month`, padNumber(parseInt(parts[1], 10)));
+            setter(`y3_s${subjNum}_year`, parts[0]);
+          }
+        }
+
+        // J31-J38 = plantel index (1-based)
+        setter(`y3_s${subjNum}_inst`, resolvePlantelIndex(g));
       }
     }
 
