@@ -22,6 +22,8 @@ import {
   Setting,
   Plantel,
   SubjectTermGrade,
+  HistoricalGrade,
+  PersonPlantel,
   CouncilChecklist,
 } from '@/models/index';
 import {
@@ -29,7 +31,7 @@ import {
   sortSubjectsByOrder,
 } from '@/services/subjectOrderService';
 import { filterActiveGroupSubjects } from '@/services/subjectGroupService';
-import { resolveGradeStatus } from '@/services/gradeEvaluationService';
+import { roundGrade, roundFinalGrade, isPassingGrade } from '@/services/gradeEvaluationService';
 import { GradeCalculationService } from '@/services/gradeCalculationService';
 import { readTemplateNamedRanges } from '@/services/templateNamedRanges';
 
@@ -60,6 +62,10 @@ function formatScore(score: number | null): string {
   const n = Number(score);
   if (isNaN(n) || n === 0) return '';
   return n.toFixed(1);
+}
+
+function padNumber(n: number): string {
+  return String(n).padStart(2, '0');
 }
 
 const monthsES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
@@ -288,153 +294,172 @@ async function buildCertifiedWorkbook(personId: number, templateName: string): P
       plantel = await Plantel.findOne({ where: { code: settings.institution_dea_code } });
     }
 
-    const letterGradesConfig: { letter: string; max: number }[] = (() => {
-      try {
-        const raw = settings.letter_grades;
-        if (!raw) return [];
-        const parsed = JSON.parse(raw);
-        return parsed.scale || parsed || [];
-      } catch { return []; }
-    })();
-
-    const inscriptions = await Inscription.findAll({
-      where: { personId },
-      include: [
-        { model: SchoolPeriod, as: 'period' },
-        { model: Grade, as: 'grade' },
-        { model: Section, as: 'section' },
-        {
-          model: InscriptionSubject,
-          as: 'inscriptionSubjects',
-          include: [
-            { model: Subject, as: 'subject', include: [{ model: SubjectGroup, as: 'subjectGroup' }] },
-            { model: SubjectFinalGrade, as: 'finalGrade', where: { gradeType: 'regular' }, required: false, include: [{ model: Plantel, as: 'plantel' }] },
-            { model: SubjectTermGrade, as: 'termGrades' },
-            {
-              model: Qualification,
-              as: 'qualifications',
-              include: [{ model: EvaluationPlan, as: 'evaluationPlan' }],
-            },
-            { model: CouncilPoint, as: 'councilPoints' },
-          ],
-        },
-      ],
-      order: [
-        [{ model: SchoolPeriod, as: 'period' }, 'period', 'ASC'],
-        [{ model: Grade, as: 'grade' }, 'order', 'ASC'],
-      ],
+    // ── Load consolidated grades (same logic as historicalGradesController) ──
+    // 1. Get all grade records (years 1-5)
+    const allGrades = await Grade.findAll({
+      attributes: ['id', 'name', 'order'],
+      order: [['order', 'ASC']],
     });
 
-    const allPeriodIds = [...new Set(inscriptions.map((ins: any) => ins.schoolPeriodId))];
-    const termsByPeriod: Record<number, any[]> = {};
-    const subjectOrderByPeriod: Record<number, Map<number, number>> = {};
-    const councilDoneByPeriod: Record<number, (termId: number, sectionId: number) => boolean> = {};
-
-    for (const periodId of allPeriodIds) {
-      const terms = await Term.findAll({
-        where: { schoolPeriodId: periodId },
-        order: [['order', 'ASC']],
-      });
-      termsByPeriod[periodId] = terms;
-
-      const firstIns = inscriptions.find((ins: any) => ins.schoolPeriodId === periodId);
-      if (firstIns) {
-        const pg = await PeriodGrade.findOne({
-          where: { schoolPeriodId: periodId, gradeId: firstIns.gradeId },
-        });
-        subjectOrderByPeriod[periodId] = pg ? await getSubjectOrderMap(pg.id) : new Map();
-      }
-
-      // Query CouncilChecklist for this period
-      const councilChecklists = await CouncilChecklist.findAll({
-        where: {
-          schoolPeriodId: periodId,
-          status: 'done',
-          termId: terms.map((t: any) => t.id),
-        },
-        attributes: ['termId', 'sectionId', 'status'],
-      });
-      councilDoneByPeriod[periodId] = GradeCalculationService.buildCouncilDoneChecker(
-        councilChecklists.map((c: any) => ({ termId: c.termId, sectionId: c.sectionId, status: c.status })),
-      );
+    // 2. Get all school periods (for period labels)
+    const allPeriods = await SchoolPeriod.findAll({
+      attributes: ['id', 'startYear', 'endYear', 'period', 'name', 'status'],
+      order: [['startYear', 'ASC']],
+    });
+    const periodShortMap = new Map<number, string>();
+    for (const p of allPeriods) {
+      const s = String(p.startYear).slice(-2);
+      const e = String(p.endYear).slice(-2);
+      periodShortMap.set(p.id, `${s}/${e}`);
     }
 
-    const years = inscriptions.map((ins: any) => {
-      const terms = termsByPeriod[ins.schoolPeriodId] || [];
-      const termCount = terms.length || 1;
-      const orderMap = subjectOrderByPeriod[ins.schoolPeriodId] || new Map();
-
-      const activeInscriptionSubjects = filterActiveGroupSubjects(ins.inscriptionSubjects || []);
-
-      const insSubs = sortSubjectsByOrder(
-        activeInscriptionSubjects.filter((is: any) => !is.subject?.subjectGroupId),
-        (is: any) => is.subjectId,
-        (is: any) => is.subject?.name || '',
-        orderMap,
-      );
-
-      const groupSubjects = activeInscriptionSubjects
-        .filter((is: any) => is.subject?.subjectGroupId)
-        .map((is: any) => is.subject?.name || '')
-        .filter(Boolean);
-
-      const subjects = insSubs.map((is: any) => {
-        const studentSectionId = ins.section?.id || 0;
-        const isCouncilDone = councilDoneByPeriod[ins.schoolPeriodId] || (() => false);
-
-        // Build term grades with fallback to qualifications + councilPoints
-        const termGradesArr = GradeCalculationService.buildTermGradesWithFallback(
-          (is.termGrades || []).map((tg: any) => ({ termId: tg.termId, score: Number(tg.score) })),
-          is.qualifications || [],
-          is.councilPoints || [],
-          terms.map((t: any) => t.id),
-        );
-
-        // Build lapsos using the service
-        const lapsos = terms.map((t: any) => {
-          const councilDone = isCouncilDone(t.id, studentSectionId);
-          const finalScore = GradeCalculationService.calculateFinalTermScore(t.id, termGradesArr, councilDone);
-          return { termId: t.id, termName: t.name, score: finalScore };
-        });
-
-        // Calculate finalScore using the service
-        const finalScore = GradeCalculationService.calculateFinalScore(
-          lapsos.map((l: any) => ({ termId: l.termId, finalScore: l.score })),
-          is.finalGrade ? { finalScore: is.finalGrade.finalScore, gradeType: is.finalGrade.gradeType } : null,
-        );
-
-        const status = is.finalGrade?.status || GradeCalculationService.resolveStatus(finalScore, Number(settings.passing_grade || 10));
-        const approvedDate = is.finalGrade?.calculatedAt ? new Date(is.finalGrade.calculatedAt) : null;
-
-        return {
-          id: is.subjectId,
-          name: is.subject?.name || '',
-          usesLiteralGrades: is.subject?.usesLiteralGrades || false,
-          lapsos,
-          finalScore,
-          status,
-          approvedMonth: approvedDate ? approvedDate.getMonth() + 1 : null,
-          approvedYear: approvedDate ? approvedDate.getFullYear() : null,
-          originInstitution: is.finalGrade?.plantel?.name ?? null,
-          originInstitutionCode: is.finalGrade?.plantel?.code ?? null,
-          originInstitutionState: is.finalGrade?.plantel?.state ?? null,
-          gradeType: is.finalGrade?.gradeType ?? null,
-        };
-      });
-
-      return {
-        periodName: ins.period?.name || ins.period?.period || '',
-        gradeName: ins.grade?.name || '',
-        sectionName: ins.section?.name || '',
-        isExternal: ins.period?.isExternal === true,
-        terms: terms.map((t: any) => ({ id: t.id, name: t.name, order: t.order })),
-        groupSubjects,
-        subjects,
-      };
+    // 3. Get all inscriptions for this student (across all periods, including MP)
+    const allInscriptions = await Inscription.findAll({
+      where: { personId },
+      include: [
+        { model: SchoolPeriod, as: 'period', attributes: ['id', 'period', 'name', 'startYear', 'endYear', 'status'] },
+        { model: Grade, as: 'grade', attributes: ['id', 'name', 'order'] },
+        { model: Section, as: 'section', attributes: ['id', 'name'] },
+      ],
     });
 
-    const templatesDir = path.join(__dirname, '../../templates');
-    const namedRanges = await readTemplateNamedRanges(templatePath);
+    const allInsIds = allInscriptions.map(i => i.id);
+
+    // 4. Get InscriptionSubjects + SubjectFinalGrades (all grade types) + SubjectTermGrades
+    const insSubjects = await InscriptionSubject.findAll({
+      where: { inscriptionId: allInsIds as any },
+      include: [
+        { model: Subject, as: 'subject', attributes: ['id', 'name', 'abbreviation', 'subjectGroupId'] },
+        {
+          model: Inscription,
+          as: 'inscription',
+          attributes: ['id', 'personId', 'schoolPeriodId', 'gradeId'],
+        },
+        {
+          model: SubjectFinalGrade,
+          as: 'finalGrade',
+          include: [{ model: Plantel, as: 'plantel', attributes: ['id', 'code', 'name', 'state'] }],
+        },
+        { model: SubjectTermGrade, as: 'termGrades' },
+      ],
+    });
+
+    // 5. Build grades list from InscriptionSubjects
+    const gradesMap: any[] = [];
+    for (const is of insSubjects) {
+      const ins = (is as any).inscription;
+      const subj = (is as any).subject;
+      const fg = (is as any).finalGrade;
+      const termGrades: any[] = (is as any).termGrades || [];
+      if (!ins || !subj) continue;
+
+      let finalScore: number | null = fg?.finalScore != null ? roundGrade(Number(fg.finalScore)) : null;
+      let status: string | null = fg?.status ?? null;
+      let gradeType: string | null = fg?.gradeType ?? null;
+      let date: string | null = fg?.calculatedAt ? new Date(fg.calculatedAt).toISOString().split('T')[0] : null;
+      let plantelId: number | null = fg?.plantelId ?? null;
+      let plantelName: string | null = fg?.plantel?.name ?? null;
+      let plantelState: string | null = fg?.plantel?.state ?? null;
+
+      // Fallback: compute from term grades if no SubjectFinalGrade exists
+      if (!fg && termGrades.length > 0) {
+        const sum = termGrades.reduce((acc, tg) => acc + Number(tg.score || 0), 0);
+        const avg = sum / termGrades.length;
+        finalScore = roundFinalGrade(avg);
+        status = isPassingGrade(avg, 10) ? 'aprobada' : 'reprobada';
+        gradeType = 'regular';
+        const latestCalculated = termGrades
+          .map(tg => tg.calculatedAt)
+          .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0];
+        date = latestCalculated ? new Date(latestCalculated).toISOString().split('T')[0] : null;
+      }
+
+      gradesMap.push({
+        personId: ins.personId,
+        schoolPeriodId: ins.schoolPeriodId,
+        gradeId: ins.gradeId ?? null,
+        subjectId: subj.id,
+        subjectGroupId: subj.subjectGroupId ?? null,
+        subjectName: subj.name ?? null,
+        finalScore,
+        status,
+        gradeType,
+        plantelId,
+        plantelName,
+        plantelState,
+        date,
+        source: 'system',
+      });
+    }
+
+    // 6. Get HistoricalGrade records (legacy data entered manually)
+    const historicalGrades = await HistoricalGrade.findAll({
+      where: { personId },
+      include: [
+        { model: Subject, as: 'subject', attributes: ['id', 'name', 'abbreviation', 'subjectGroupId'] },
+        { model: Plantel, as: 'plantel', attributes: ['id', 'code', 'name', 'state'] },
+      ],
+    });
+
+    for (const hg of historicalGrades) {
+      const subj = (hg as any).subject;
+      gradesMap.push({
+        personId: hg.personId,
+        schoolPeriodId: hg.schoolPeriodId ?? null,
+        gradeId: hg.gradeId,
+        subjectId: hg.subjectId,
+        subjectGroupId: subj?.subjectGroupId ?? null,
+        subjectName: hg.subjectName || (subj?.name ?? null),
+        finalScore: hg.finalScore != null ? roundGrade(Number(hg.finalScore)) : null,
+        status: hg.status,
+        gradeType: hg.gradeType,
+        plantelId: hg.plantelId ?? null,
+        plantelName: (hg as any).plantel?.name ?? null,
+        plantelState: (hg as any).plantel?.state ?? null,
+        date: hg.date ? new Date(hg.date).toISOString().split('T')[0] : null,
+        source: 'historical',
+      });
+    }
+
+    // 7. Consolidated dedup: priority MP > revision > regular
+    const priority = (gt: string | null): number => {
+      if (!gt) return 3;
+      if (gt === 'materia_pendiente' || gt === 'revision_materia_pendiente') return 1;
+      if (gt === 'revision') return 2;
+      return 3;
+    };
+    const gradeByKey = new Map<string, any>();
+    for (const g of gradesMap) {
+      const key = `${g.personId}__${g.gradeId}__${g.subjectId}`;
+      const existing = gradeByKey.get(key);
+      if (!existing) {
+        gradeByKey.set(key, g);
+      } else {
+        const existingPri = priority(existing.gradeType);
+        const newPri = priority(g.gradeType);
+        if (newPri < existingPri) {
+          gradeByKey.set(key, g);
+        }
+      }
+    }
+    const consolidatedGrades = Array.from(gradeByKey.values());
+
+    // 8. Get person-planteles (ordered list)
+    const personPlanteles = await PersonPlantel.findAll({
+      where: { personId },
+      order: [['order', 'ASC']],
+      include: [{ model: Plantel, as: 'plantel', attributes: ['id', 'code', 'name', 'state'] }],
+    });
+
+    // Build a lookup: gradeId + subjectName (normalized) -> grade data
+    const gradeLookup = new Map<string, any>();
+    for (const g of consolidatedGrades) {
+      const key = `${g.gradeId}__${(g.subjectName || '').trim().toLowerCase()}`;
+      gradeLookup.set(key, g);
+    }
+
+    // ── Read template and fill ──
+    const namedRanges = readTemplateNamedRanges(templatePath);
 
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.readFile(templatePath);
@@ -445,99 +470,61 @@ async function buildCertifiedWorkbook(personId: number, templateName: string): P
     }
 
     const sheetName = sheet.name;
-    const existingNames = new Set<string>();
-    const namedRangeModel = (workbook as any).definedNames?.model;
-    if (namedRangeModel) {
-      for (const d of namedRangeModel) {
-        if (d.name) existingNames.add(d.name);
-      }
-    }
-    let overflowRow = 1;
 
     const setter = (name: string, value: string | number) => {
-      if (!value || value === '' || value === 0) return;
+      if (value === undefined || value === null || value === '') return;
       const ref = namedRanges.getCell(sheetName, name);
       if (ref) {
         sheet.getCell(ref.cell).value = value;
-        return;
-      }
-      try {
-        const dns = (workbook as any).definedNames?.model;
-        if (dns) {
-          const dn = dns.find((d: any) => d.name === name);
-          if (dn && dn.ranges && dn.ranges.length > 0) {
-            const rangeRef = dn.ranges[0];
-            const match = rangeRef.match(/\$([A-Z]+)\$(\d+)$/);
-            if (match) {
-              sheet.getCell(match[1] + match[2]).value = value;
-              return;
-            }
-          }
-        }
-      } catch { /* ignore if named range not found */ }
-      // Named range not found in template — register dynamically
-      if (!existingNames.has(name)) {
-        existingNames.add(name);
-        const cellAddr = `$B$${30 + overflowRow}`;
-        overflowRow++;
-        try {
-          (workbook as any).definedNames.add(name, `'${sheetName}'!${cellAddr}`);
-          sheet.getCell(cellAddr.replace(/\$/g, '')).value = value;
-        } catch { /* ignore */ }
       }
     };
 
     const residence = (person as any).residence;
 
-    setter('plantel_code', settings.institution_dea_code || plantel?.code || '');
-    setter('plantel_name', settings.institution_name || plantel?.name || '');
-    setter('education_code', settings.institution_code || '');
-    setter('education_type', settings.institution_level || '');
-    setter('plantel_address', settings.institution_address || '');
-    setter('plantel_municipality', settings.institution_municipality || plantel?.municipality || '');
-    setter('plantel_phone', settings.institution_phone || '');
-    setter('plantel_state', plantel?.state || '');
-    setter('cdcee', settings.institution_cdcee || '');
-    setter('expedition_place_date', formatDateES(new Date()));
+    // ── Cells (only fill what is confirmed by the user) ──
+    // T2 = Código de modalidad de estudios (mayúsculas)
+    setter('inst_modality_code', (settings.institution_code || '').toUpperCase());
 
-    setter('student_doc', person.document || '');
-    setter('student_birthdate', person.birthdate ? formatDateES(person.birthdate) : '');
-    setter('student_lastname', person.lastName || '');
-    setter('student_firstname', person.firstName || '');
-    setter('student_birth_country', 'Venezuela');
-    setter('student_birth_state', residence?.birthState || '');
-    setter('student_birth_municipality', residence?.birthMunicipality || '');
+    // B6 = Código de la institución (DEA) (mayúsculas)
+    setter('inst_code', (settings.institution_dea_code || plantel?.code || '').toUpperCase());
 
-    let yearIdx = 1;
-    for (const year of years) {
-      const allApproved = year.subjects.length > 0 && year.subjects.every((s: any) => s.status === 'aprobada');
-      if (!allApproved) continue;
+    // N3 = Parroquia de la institución + ", " + fecha actual (ej: "ALTAGRACIA DE ORITUCO, 30 DE DICIEMBRE DE 2023")
+    const parish = (settings.institution_parish || '').toUpperCase();
+    const dateStr = formatDateES(new Date()).toUpperCase();
+    setter('expedition_place_date', parish ? `${parish}, ${dateStr}` : dateStr);
 
-      setter(`year_${yearIdx}_name`, year.gradeName);
-      setter(`year_${yearIdx}_period`, year.periodName);
-      setter(`std_part_${yearIdx}`, year.groupSubjects.join(', '));
+    // ── Institution ──
+    // I6 = Nombre de la institución
+    setter('inst_name', (settings.institution_name || plantel?.name || '').toUpperCase());
+    // C7 = Dirección de la institución
+    setter('inst_address', (settings.institution_address || '').toUpperCase());
+    // Q7 = Teléfono
+    setter('inst_phone', (settings.institution_phone || '').toUpperCase());
+    // C8 = Municipio
+    setter('inst_municipality', (settings.institution_municipality || plantel?.municipality || '').toUpperCase());
+    // M8 = Estado
+    setter('inst_state', (settings.institution_state || plantel?.state || '').toUpperCase());
+    // Q8 = CDCEE
+    setter('inst_cdcee', (settings.institution_cdcee || '').toUpperCase());
 
-      let subjIdx = 1;
-      for (const subj of year.subjects) {
-        setter(`y${yearIdx}_s${subjIdx}_name`, subj.name);
-        let lapsoIdx = 1;
-        for (const lapse of subj.lapsos) {
-          setter(`y${yearIdx}_s${subjIdx}_l${lapsoIdx}`, formatScore(lapse.score));
-          lapsoIdx++;
-        }
-        setter(`y${yearIdx}_s${subjIdx}_num`, subj.usesLiteralGrades && subj.finalScore !== null ? numericToLetter(subj.finalScore, letterGradesConfig) : formatScore(subj.finalScore));
-        setter(`y${yearIdx}_s${subjIdx}_letters`, subj.finalScore !== null ? numberToSpanishWords(subj.finalScore) : '');
-        setter(`y${yearIdx}_s${subjIdx}_month`, subj.approvedMonth ? monthNameES(subj.approvedMonth) : '');
-        setter(`y${yearIdx}_s${subjIdx}_year`, subj.approvedYear ? String(subj.approvedYear) : '');
-        subjIdx++;
-      }
-      let termIdx = 1;
-      for (const term of year.terms) {
-        setter(`y${yearIdx}_lapso_${termIdx}`, term.name);
-        termIdx++;
-      }
-      yearIdx++;
-    }
+    // ── Student ──
+    // C10 = Cédula en formato "V 00000000"
+    const docType = (person as any).documentType === 'Extranjero' ? 'E' :
+                    (person as any).documentType === 'Pasaporte' ? 'P' : 'V';
+    const docNum = String(person.document || '').replace(/^(V|E|P|CE)\s*[-.]?\s*/i, '');
+    setter('student_doc', docNum ? `${docType} ${docNum}` : '');
+    // M10 = Fecha de nacimiento del estudiante
+    setter('student_birthdate', person.birthdate ? formatDateES(person.birthdate).toUpperCase() : '');
+    // B11 = Apellidos del estudiante
+    setter('student_lastname', (person.lastName || '').toUpperCase());
+    // M11 = Nombres del estudiante
+    setter('student_firstname', (person.firstName || '').toUpperCase());
+    // D12 = País de nacimiento del estudiante
+    setter('student_birth_country', 'VENEZUELA');
+    // J12 = Estado de nacimiento del estudiante
+    setter('student_birth_state', (residence?.birthState || '').toUpperCase());
+    // O12 = Municipio de nacimiento del estudiante
+    setter('student_birth_municipality', (residence?.birthMunicipality || '').toUpperCase());
 
     return { workbook, person };
 }

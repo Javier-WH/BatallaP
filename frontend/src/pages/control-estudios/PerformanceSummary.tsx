@@ -256,6 +256,7 @@ const PerformanceSummary: React.FC = () => {
   const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
   const [certTemplateModalOpen, setCertTemplateModalOpen] = useState(false);
+  const [certSelectedTemplate, setCertSelectedTemplate] = useState<string | null>(null);
   const [userOverrodeTemplate, setUserOverrodeTemplate] = useState(false);
   const [reportType, setReportType] = useState<ReportType>('resumen');
   const [mpExporting, setMpExporting] = useState(false);
@@ -379,6 +380,14 @@ const PerformanceSummary: React.FC = () => {
       .then((res) => { setSelectedTemplate(res.data?.templateName || null); })
       .catch(() => setSelectedTemplate(null));
   }, [selectedGradeIds]);
+
+  // Load certified template assignment (by period: 'pre2018' or 'actual').
+  // Uses the 'actual' assignment by default.
+  useEffect(() => {
+    api.get<Record<string, string>>('/templates/certified-assignments')
+      .then((res) => { setCertSelectedTemplate(res.data?.actual || res.data?.pre2018 || null); })
+      .catch(() => setCertSelectedTemplate(null));
+  }, []);
 
   useEffect(() => {
     setUserOverrodeTemplate(false);
@@ -1285,7 +1294,7 @@ const PerformanceSummary: React.FC = () => {
       message.warning('Seleccione periodo, grado y sección');
       return;
     }
-    if (!selectedTemplate) { setCertTemplateModalOpen(true); return; }
+    if (!certSelectedTemplate) { setCertTemplateModalOpen(true); return; }
     setCertSectionLoading(true);
     try {
       for (let i = 0; i < validCombinations.length; i++) {
@@ -1295,7 +1304,7 @@ const PerformanceSummary: React.FC = () => {
             schoolPeriodId: selectedPeriodId,
             gradeId: combo.gradeId,
             sectionId: combo.sectionId,
-            template: selectedTemplate || undefined,
+            template: certSelectedTemplate || undefined,
           },
           responseType: 'blob',
         });
@@ -1327,15 +1336,15 @@ const PerformanceSummary: React.FC = () => {
         reader.readAsText(error.response.data);
       } else { message.error('Error al exportar las notas certificadas'); }
     } finally { setCertSectionLoading(false); }
-  }, [selectedPeriodId, validCombinations, selectedTemplate]);
+  }, [selectedPeriodId, validCombinations, certSelectedTemplate]);
 
   const exportCertifiedByStudent = useCallback(async () => {
     if (!certPersonId) { message.warning('Seleccione un estudiante'); return; }
-    if (!selectedTemplate) { setCertTemplateModalOpen(true); return; }
+    if (!certSelectedTemplate) { setCertTemplateModalOpen(true); return; }
     setCertLoading(true);
     try {
       const response = await api.get('/certified-grades/export', {
-        params: { personId: certPersonId, template: selectedTemplate },
+        params: { personId: certPersonId, template: certSelectedTemplate },
         responseType: 'blob',
       });
       const url = window.URL.createObjectURL(new Blob([response.data]));
@@ -1362,7 +1371,7 @@ const PerformanceSummary: React.FC = () => {
         reader.readAsText(error.response.data);
       } else { message.error('Error al exportar las notas certificadas'); }
     } finally { setCertLoading(false); }
-  }, [certPersonId, selectedTemplate]);
+  }, [certPersonId, certSelectedTemplate]);
 
   // --- Legend popover contents ---
   const resumenLegendContent = (
@@ -1940,7 +1949,7 @@ const PerformanceSummary: React.FC = () => {
                 {/* ── Exportar ── */}
                 <section className="rb-card">
                   <h2 className="rb-card-label">3. Exportar</h2>
-                  {!selectedTemplate && (readyToExport || certPersonId) && (
+                  {!certSelectedTemplate && (readyToExport || certPersonId) && (
                     <div className="rb-warning" style={{ marginBottom: 12 }}>
                       <IconAlert size={15} />
                       <div className="rb-warning-text">
@@ -1997,8 +2006,8 @@ const PerformanceSummary: React.FC = () => {
       <TemplateManagerModal
         open={certTemplateModalOpen}
         onClose={() => setCertTemplateModalOpen(false)}
-        selectedTemplate={selectedTemplate}
-        onSelect={(name) => { setSelectedTemplate(name || null); }}
+        selectedTemplate={certSelectedTemplate}
+        onSelect={(name) => { setCertSelectedTemplate(name || null); }}
         mode="certified"
       />
     </div>
