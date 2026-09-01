@@ -448,7 +448,7 @@ async function buildCertifiedWorkbook(personId: number, templateName: string): P
     const personPlanteles = await PersonPlantel.findAll({
       where: { personId },
       order: [['order', 'ASC']],
-      include: [{ model: Plantel, as: 'plantel', attributes: ['id', 'code', 'name', 'state'] }],
+      include: [{ model: Plantel, as: 'plantel', attributes: ['id', 'code', 'name', 'state', 'stateCode', 'parish'] }],
     });
 
     // Build a lookup: gradeId + subjectName (normalized) -> grade data
@@ -525,6 +525,39 @@ async function buildCertifiedWorkbook(personId: number, templateName: string): P
     setter('student_birth_state', (residence?.birthState || '').toUpperCase());
     // O12 = Municipio de nacimiento del estudiante
     setter('student_birth_municipality', (residence?.birthMunicipality || '').toUpperCase());
+
+    // ── Planteles (up to 5) ──
+    // Build the list from PersonPlantel (ordered). Each plantel has name, parish, stateCode.
+    // For the system's own institution (if not in the plantel list), use
+    // settings.institution_parish and first 2 letters of the state.
+    const plantelesList: Array<{ name: string; parish: string; stateCode: string }> = [];
+    for (const pp of personPlanteles) {
+      const p = (pp as any).plantel;
+      if (!p) continue;
+      plantelesList.push({
+        name: p.name || '',
+        parish: p.parish || '',
+        stateCode: p.stateCode || (p.state ? p.state.substring(0, 2).toUpperCase() : ''),
+      });
+    }
+    // If the system's own institution is not already in the list, add it
+    const ownInstName = (settings.institution_name || plantel?.name || '').toUpperCase();
+    const ownInstInList = plantelesList.some(p => p.name.toUpperCase() === ownInstName);
+    if (!ownInstInList && ownInstName) {
+      const ownState = (settings.institution_state || plantel?.state || '').toUpperCase();
+      plantelesList.push({
+        name: ownInstName,
+        parish: (settings.institution_parish || '').toUpperCase(),
+        stateCode: ownState ? ownState.substring(0, 2) : '',
+      });
+    }
+    // Write up to 5 planteles
+    for (let i = 0; i < Math.min(plantelesList.length, 5); i++) {
+      const p = plantelesList[i];
+      setter(`plantel_${i + 1}_name`, p.name.toUpperCase());
+      setter(`plantel_${i + 1}_parish`, p.parish.toUpperCase());
+      setter(`plantel_${i + 1}_state`, p.stateCode.toUpperCase());
+    }
 
     return { workbook, person };
 }
