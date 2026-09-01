@@ -982,6 +982,23 @@ async function buildCertifiedWorkbook(personId: number, templateName: string): P
       setter('overall_average', avg.toFixed(2));
     }
 
+    // ── Director (A58 = name, A60 = cédula) ──
+    // If director_first_names and director_last_names are set, use "APELLIDOS, Nombres" format.
+    // Otherwise fall back to director_name.
+    const directorFirstNames = (settings.director_first_names || '').trim();
+    const directorLastNames = (settings.director_last_names || '').trim();
+    let directorDisplay = '';
+    if (directorLastNames && directorFirstNames) {
+      directorDisplay = `${directorLastNames}, ${directorFirstNames}`;
+    } else {
+      directorDisplay = settings.director_name || '';
+    }
+    setter('director_name', directorDisplay.toUpperCase());
+    const directorDocRaw = settings.director_document || '';
+    const directorDocNum = directorDocRaw.replace(/^(V|E|P|CE)\s*[-.]?\s*/i, '');
+    const directorDocType = /^e/i.test(directorDocRaw) ? 'E' : /^p/i.test(directorDocRaw) ? 'P' : 'V';
+    setter('director_doc', directorDocNum ? `${directorDocType} ${directorDocNum}` : '');
+
     return { workbook, person };
 }
 

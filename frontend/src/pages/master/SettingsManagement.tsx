@@ -23,6 +23,8 @@ interface SettingsFormValues {
   institution_logo_shape?: 'circle' | 'square';
   time_format?: '12' | '24';
   director_name?: string;
+  director_first_names?: string;
+  director_last_names?: string;
   director_document?: string;
   institution_address?: string;
   institution_state?: string;
@@ -54,6 +56,8 @@ const SettingsManagement: React.FC = () => {
   const [inputBgColor, setInputBgColor] = useState('#ffffff');
   const [mutedTextColor, setMutedTextColor] = useState('#94a3b8');
   const [directorName, setDirectorName] = useState('');
+  const [directorFirstNames, setDirectorFirstNames] = useState('');
+  const [directorLastNames, setDirectorLastNames] = useState('');
   const [directorDocument, setDirectorDocument] = useState('');
   const [venezuelaData, setVenezuelaData] = useState<any[]>([]);
   const [stateOptions, setStateOptions] = useState<{ value: string; label: string }[]>([]);
@@ -92,6 +96,8 @@ const SettingsManagement: React.FC = () => {
         setInputBgColor(ibc);
         setMutedTextColor(mtc);
         setDirectorName(res.data.director_name || '');
+        setDirectorFirstNames(res.data.director_first_names || '');
+        setDirectorLastNames(res.data.director_last_names || '');
         setDirectorDocument(res.data.director_document || '');
 
         form.setFieldsValue({
@@ -102,6 +108,8 @@ const SettingsManagement: React.FC = () => {
           institution_logo_shape: res.data.institution_logo_shape || 'square',
           time_format: res.data.time_format || '24',
           director_name: res.data.director_name || '',
+          director_first_names: res.data.director_first_names || '',
+          director_last_names: res.data.director_last_names || '',
           director_document: res.data.director_document || '',
           institution_address: res.data.institution_address || '',
           institution_state: res.data.institution_state || '',
@@ -213,6 +221,8 @@ const SettingsManagement: React.FC = () => {
       const finalPayload = {
         ...payload,
         director_name: directorName,
+        director_first_names: directorFirstNames,
+        director_last_names: directorLastNames,
         director_document: directorDocument,
         theme_primary_color: primaryColor,
         theme_secondary_color: secondaryColor,
@@ -312,11 +322,36 @@ const SettingsManagement: React.FC = () => {
               <Form.Item
                 label={<span className="text-[var(--color-text-main)] font-bold">Nombre del Director</span>}
                 name="director_name"
+                tooltip="Nombre corto del director (se usa en Resumen de Rendimiento y Constancias)"
               >
                 <Input
                   placeholder="Nombre completo del director"
                   className="h-12 border-slate-200 focus:border-brand-primary focus:ring-4 focus:ring-brand-primary/10 rounded-xl transition-all"
                   onChange={(e) => setDirectorName(e.target.value)}
+                />
+              </Form.Item>
+
+              <Form.Item
+                label={<span className="text-[var(--color-text-main)] font-bold">Nombres del Director (formato largo)</span>}
+                name="director_first_names"
+                tooltip="Nombres del director para Notas Certificadas (formato: Apellidos, Nombres)"
+              >
+                <Input
+                  placeholder="Ej: Magdalena Coromoto"
+                  className="h-12 border-slate-200 focus:border-brand-primary focus:ring-4 focus:ring-brand-primary/10 rounded-xl transition-all"
+                  onChange={(e) => setDirectorFirstNames(e.target.value)}
+                />
+              </Form.Item>
+
+              <Form.Item
+                label={<span className="text-[var(--color-text-main)] font-bold">Apellidos del Director (formato largo)</span>}
+                name="director_last_names"
+                tooltip="Apellidos del director para Notas Certificadas (formato: Apellidos, Nombres)"
+              >
+                <Input
+                  placeholder="Ej: Torres de Herrera"
+                  className="h-12 border-slate-200 focus:border-brand-primary focus:ring-4 focus:ring-brand-primary/10 rounded-xl transition-all"
+                  onChange={(e) => setDirectorLastNames(e.target.value)}
                 />
               </Form.Item>
 
