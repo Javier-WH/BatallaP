@@ -777,6 +777,25 @@ const ScheduleManagement: React.FC = () => {
   const [batchSelectedSectionIds, setBatchSelectedSectionIds] = useState<number[]>([]);
   const [batchExporting, setBatchExporting] = useState(false);
 
+  // Unique grades sorted by order
+  const batchGradeOptions = useMemo(() => {
+    const map = new Map<number, { value: number; label: string; order: number }>();
+    sectionsList.forEach(s => {
+      if (!map.has(s.gradeId)) {
+        map.set(s.gradeId, { value: s.gradeId, label: s.gradeName ?? `Grado ${s.gradeId}`, order: s.gradeOrder ?? 99 });
+      }
+    });
+    return Array.from(map.values()).sort((a, b) => a.order - b.order);
+  }, [sectionsList]);
+
+  // Sections filtered by selected grades
+  const batchSectionOptions = useMemo(() => {
+    return sectionsList
+      .filter(s => batchSelectedGradeIds.length === 0 || batchSelectedGradeIds.includes(s.gradeId))
+      .map(s => ({ value: s.id, label: s.label, order: s.gradeOrder ?? 99, sectionName: s.sectionName ?? '' }))
+      .sort((a, b) => a.order !== b.order ? a.order - b.order : (a.sectionName).localeCompare(b.sectionName, 'es'));
+  }, [sectionsList, batchSelectedGradeIds]);
+
   const scheduleSections = useMemo(() => buildSections(settings), [settings]);
 
   // Load settings
@@ -1856,36 +1875,60 @@ const ScheduleManagement: React.FC = () => {
             message="Cada grado se exportará en una hoja separada. Las secciones del mismo grado se apilarán (2 por página)."
           />
           <div>
-            <label className="block text-sm font-medium mb-1">Grados</label>
-            <Select
-              mode="multiple"
-              placeholder="Seleccionar grados (exporta todas sus secciones)"
-              style={{ width: '100%' }}
-              value={batchSelectedGradeIds}
-              onChange={(v) => { setBatchSelectedGradeIds(v); setBatchSelectedSectionIds([]); }}
-              options={Array.from(new Set(sectionsList.map(s => s.gradeId))).map(gid => {
-                const s = sectionsList.find(x => x.gradeId === gid);
-                return { value: gid, label: s?.gradeName ?? `Grado ${gid}` };
-              }).sort((a, b) => (sectionsList.find(x => x.gradeId === a.value)?.gradeOrder ?? 99) - (sectionsList.find(x => x.gradeId === b.value)?.gradeOrder ?? 99))}
-              allowClear
-            />
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-sm font-medium">Grados</label>
+              <Button type="link" size="small" onClick={() => { setBatchSelectedGradeIds(batchGradeOptions.map(g => g.value)); setBatchSelectedSectionIds([]); }}>Todos</Button>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {batchGradeOptions.map(g => {
+                const selected = batchSelectedGradeIds.includes(g.value);
+                return (
+                  <Button
+                    key={g.value}
+                    size="small"
+                    type={selected ? 'primary' : 'default'}
+                    onClick={() => {
+                      const next = selected
+                        ? batchSelectedGradeIds.filter(id => id !== g.value)
+                        : [...batchSelectedGradeIds, g.value];
+                      setBatchSelectedGradeIds(next);
+                      setBatchSelectedSectionIds([]);
+                    }}
+                  >
+                    {g.label}
+                  </Button>
+                );
+              })}
+            </div>
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">Secciones específicas (opcional)</label>
-            <Select
-              mode="multiple"
-              placeholder="Seleccionar secciones específicas (sobrescribe la selección de grados)"
-              style={{ width: '100%' }}
-              value={batchSelectedSectionIds}
-              onChange={setBatchSelectedSectionIds}
-              options={sectionsList
-                .filter(s => batchSelectedGradeIds.length === 0 || batchSelectedGradeIds.includes(s.gradeId))
-                .map(s => ({ value: s.id, label: s.label }))}
-              allowClear
-              showSearch
-              optionFilterProp="label"
-            />
-            <p className="text-xs text-slate-400 mt-1">
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-sm font-medium">Secciones específicas <span className="text-slate-400 font-normal">(opcional)</span></label>
+              {batchSectionOptions.length > 0 && (
+                <Button type="link" size="small" onClick={() => setBatchSelectedSectionIds(batchSectionOptions.map(s => s.value))}>Todas</Button>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {batchSectionOptions.map(s => {
+                const selected = batchSelectedSectionIds.includes(s.value);
+                return (
+                  <Button
+                    key={s.value}
+                    size="small"
+                    type={selected ? 'primary' : 'default'}
+                    onClick={() => {
+                      const next = selected
+                        ? batchSelectedSectionIds.filter(id => id !== s.value)
+                        : [...batchSelectedSectionIds, s.value];
+                      setBatchSelectedSectionIds(next);
+                    }}
+                  >
+                    {s.label}
+                  </Button>
+                );
+              })}
+            </div>
+            <p className="text-xs text-slate-400 mt-2">
               Si selecciona secciones específicas, se exportarán solo esas. Si no, se exportarán todas las secciones de los grados seleccionados.
             </p>
           </div>

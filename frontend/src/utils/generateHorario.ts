@@ -391,6 +391,17 @@ export async function generateHorario(input: HorarioInput) {
   });
   ws.columns = Array(6).fill(0).map(() => ({ width: 15.71 }));
 
+  // Page setup: A4, fit to 1 page wide
+  ws.pageSetup = {
+    paperSize: 9, // A4
+    fitToWidth: 1,
+    fitToHeight: 0,
+    orientation: 'portrait',
+    fitToPage: true,
+    scale: 100,
+  } as any;
+  ws.autoFilter = undefined;
+
   const afterHeader = renderHeaderBlock(ws, 1, {
     teacherName, room, yearRange, formattedSectionLabel, institutionName, institutionParish, institutionState,
   });
@@ -505,6 +516,8 @@ export async function generateHorarioBatch(
       fitToWidth: 1,
       fitToHeight: 0,
       orientation: 'portrait',
+      fitToPage: true,
+      scale: 100,
     } as any;
   }
 
