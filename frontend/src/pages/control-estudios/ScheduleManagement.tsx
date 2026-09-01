@@ -4,7 +4,8 @@ import { TableOutlined, UserOutlined, ReloadOutlined, EditOutlined, SaveOutlined
 import api from '@/services/api';
 import { useSchool } from '@/context/SchoolContext';
 import dayjs from 'dayjs';
-import { generateHorario } from '@/utils/generateHorario';
+import { generateHorario, generateHorarioBatch } from '@/utils/generateHorario';
+import type { HorarioBatchItem } from '@/utils/generateHorario';
 import ClassroomDistribution from './ClassroomDistribution';
 
 const DAYS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'];
@@ -770,6 +771,12 @@ const ScheduleManagement: React.FC = () => {
   const [newExcWeekly, setNewExcWeekly] = useState<number | null>(null);
   const [newExcMaxHours, setNewExcMaxHours] = useState<number | null>(null);
 
+  // Batch export state
+  const [batchExportOpen, setBatchExportOpen] = useState(false);
+  const [batchSelectedGradeIds, setBatchSelectedGradeIds] = useState<number[]>([]);
+  const [batchSelectedSectionIds, setBatchSelectedSectionIds] = useState<number[]>([]);
+  const [batchExporting, setBatchExporting] = useState(false);
+
   const scheduleSections = useMemo(() => buildSections(settings), [settings]);
 
   // Load settings
@@ -881,6 +888,102 @@ const ScheduleManagement: React.FC = () => {
       setSectionLoading(false);
     }
   }, [viewPeriod]);
+
+  // Load a section schedule and return entries map (for batch export, no state changes)
+  const fetchSectionEntriesMap = useCallback(async (sectionId: number): Promise<Record<string, any[]>> => {
+    if (!viewPeriod) return {};
+    const createRes = await api.post('/schedules', { schoolPeriodId: viewPeriod.id, periodGradeSectionId: sectionId });
+    const scheduleId = createRes.data.id;
+    const res = await api.get(`/schedules/${scheduleId}`);
+    const map: Record<string, any[]> = {};
+    (res.data?.entries || []).forEach((e: any) => {
+      const key = `${e.day}|${e.periodId}`;
+      if (!map[key]) map[key] = [];
+      map[key].push({
+        id: e.id, day: e.day, periodId: e.periodId,
+        subjectId: e.subjectId, teacherId: e.teacherId, isGroupSubject: e.isGroupSubject,
+        subjectName: e.subject?.name, subject: e.subject, teacher: e.teacher,
+      });
+    });
+    return map;
+  }, [viewPeriod]);
+
+  // Fetch guide teacher name for a section
+  const fetchGuideTeacherName = useCallback(async (gradeId: number, sectionId: number): Promise<string> => {
+    if (!viewPeriod) return '';
+    try {
+      const guideRes = await api.get('/section-guides', { params: { schoolPeriodId: viewPeriod.id, gradeId, sectionId } });
+      const t = guideRes.data?.guideTeacher;
+      return t ? `${t.firstName || ''} ${t.lastName || ''}`.trim() : '';
+    } catch { return ''; }
+  }, [viewPeriod]);
+
+  // Fetch classroom assignment for a section
+  const fetchRoomName = useCallback(async (gradeId: number, sectionId: number): Promise<string> => {
+    if (!viewPeriod) return '';
+    try {
+      const gridRes = await api.get(`/classroom-assignments/grid/${viewPeriod.id}`);
+      const grid = gridRes.data || {};
+      const sectionKey = `${gradeId}-${sectionId}`;
+      for (const [cellKey, value] of Object.entries(grid)) {
+        if (value === sectionKey) {
+          const parts = cellKey.split('|');
+          return (parts[2] || '').toUpperCase();
+        }
+      }
+    } catch { /* ignore */ }
+    return '';
+  }, [viewPeriod]);
+
+  // Batch export handler
+  const handleBatchExport = useCallback(async () => {
+    if (!viewPeriod) return;
+    // Determine which sections to export
+    let sectionsToExport = sectionsList;
+    if (batchSelectedSectionIds.length > 0) {
+      sectionsToExport = sectionsList.filter(s => batchSelectedSectionIds.includes(s.id));
+    } else if (batchSelectedGradeIds.length > 0) {
+      sectionsToExport = sectionsList.filter(s => batchSelectedGradeIds.includes(s.gradeId));
+    } else {
+      message.warning('Seleccione al menos un grado o sección');
+      return;
+    }
+
+    setBatchExporting(true);
+    try {
+      const items: HorarioBatchItem[] = [];
+      for (const sec of sectionsToExport) {
+        const entries = await fetchSectionEntriesMap(sec.id);
+        const teacherName = await fetchGuideTeacherName(sec.gradeId, sec.sectionId);
+        const room = await fetchRoomName(sec.gradeId, sec.sectionId);
+        items.push({
+          gradeId: sec.gradeId,
+          gradeName: sec.gradeName ?? '',
+          gradeOrder: sec.gradeOrder ?? 99,
+          sectionId: sec.id,
+          sectionName: sec.sectionName ?? '',
+          sectionLabel: sec.label ?? '',
+          teacherName,
+          room,
+          entries,
+        });
+      }
+      await generateHorarioBatch(items, {
+        schoolPeriodName: viewPeriod.name,
+        sections: scheduleSections,
+        institutionName: settings.institution_name,
+        institutionParish: settings.institution_parish,
+        institutionState: settings.institution_state,
+      });
+      message.success(`Exportados ${items.length} horarios`);
+      setBatchExportOpen(false);
+    } catch (e) {
+      console.error('Error in batch export:', e);
+      message.error('Error al exportar horarios');
+    } finally {
+      setBatchExporting(false);
+    }
+  }, [viewPeriod, sectionsList, batchSelectedGradeIds, batchSelectedSectionIds, fetchSectionEntriesMap, fetchGuideTeacherName, fetchRoomName, scheduleSections, settings]);
 
   // Load teacher schedule
   const loadTeacherSchedule = useCallback(async (personId: number) => {
@@ -1364,6 +1467,13 @@ const ScheduleManagement: React.FC = () => {
                       </Popconfirm>
                     </>
                   )}
+                  <Button
+                    icon={<FileExcelOutlined />}
+                    onClick={() => setBatchExportOpen(true)}
+                    disabled={sectionsList.length === 0}
+                  >
+                    Exportar por Grado/Sección
+                  </Button>
                   {selectedSectionId && !editMode && (
                     <>
                       <Button icon={<ReloadOutlined />} onClick={() => loadSectionSchedule(selectedSectionId)}>Recargar</Button>
@@ -1725,6 +1835,61 @@ const ScheduleManagement: React.FC = () => {
             </div>
           </div>
         )}
+      </Modal>
+
+      {/* Batch Export Modal */}
+      <Modal
+        title="Exportar horarios por Grado/Sección"
+        open={batchExportOpen}
+        onCancel={() => setBatchExportOpen(false)}
+        onOk={handleBatchExport}
+        okText="Exportar"
+        cancelText="Cancelar"
+        confirmLoading={batchExporting}
+        okButtonProps={{ disabled: batchSelectedGradeIds.length === 0 && batchSelectedSectionIds.length === 0 }}
+        width={600}
+      >
+        <div className="space-y-4">
+          <Alert
+            type="info"
+            showIcon
+            message="Cada grado se exportará en una hoja separada. Las secciones del mismo grado se apilarán (2 por página)."
+          />
+          <div>
+            <label className="block text-sm font-medium mb-1">Grados</label>
+            <Select
+              mode="multiple"
+              placeholder="Seleccionar grados (exporta todas sus secciones)"
+              style={{ width: '100%' }}
+              value={batchSelectedGradeIds}
+              onChange={(v) => { setBatchSelectedGradeIds(v); setBatchSelectedSectionIds([]); }}
+              options={Array.from(new Set(sectionsList.map(s => s.gradeId))).map(gid => {
+                const s = sectionsList.find(x => x.gradeId === gid);
+                return { value: gid, label: s?.gradeName ?? `Grado ${gid}` };
+              }).sort((a, b) => (sectionsList.find(x => x.gradeId === a.value)?.gradeOrder ?? 99) - (sectionsList.find(x => x.gradeId === b.value)?.gradeOrder ?? 99))}
+              allowClear
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1">Secciones específicas (opcional)</label>
+            <Select
+              mode="multiple"
+              placeholder="Seleccionar secciones específicas (sobrescribe la selección de grados)"
+              style={{ width: '100%' }}
+              value={batchSelectedSectionIds}
+              onChange={setBatchSelectedSectionIds}
+              options={sectionsList
+                .filter(s => batchSelectedGradeIds.length === 0 || batchSelectedGradeIds.includes(s.gradeId))
+                .map(s => ({ value: s.id, label: s.label }))}
+              allowClear
+              showSearch
+              optionFilterProp="label"
+            />
+            <p className="text-xs text-slate-400 mt-1">
+              Si selecciona secciones específicas, se exportarán solo esas. Si no, se exportarán todas las secciones de los grados seleccionados.
+            </p>
+          </div>
+        </div>
       </Modal>
     </div>
   );
