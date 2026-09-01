@@ -391,9 +391,9 @@ export async function generateHorario(input: HorarioInput) {
   });
   ws.columns = Array(6).fill(0).map(() => ({ width: 15.71 }));
 
-  // Page setup: A4, fit to 1 page wide
+  // Page setup: Letter, fit to 1 page wide
   ws.pageSetup = {
-    paperSize: 9, // A4
+    paperSize: 1, // Letter (8.5 x 11 in)
     fitToWidth: 1,
     fitToHeight: 0,
     orientation: 'portrait',
@@ -510,9 +510,9 @@ export async function generateHorarioBatch(
       }
     }
 
-    // Page setup: A4, fit to width
+    // Page setup: Letter, fit to width
     ws.pageSetup = {
-      paperSize: 9, // A4
+      paperSize: 1, // Letter (8.5 x 11 in)
       fitToWidth: 1,
       fitToHeight: 0,
       orientation: 'portrait',
