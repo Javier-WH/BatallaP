@@ -10,6 +10,7 @@ import {
   upsertExchangeRate,
   getRatesAtDate,
   bulkImportExchangeRates,
+  fetchBcvRates,
   // Fees
   listFees,
   upsertFee,
@@ -41,6 +42,7 @@ router.get('/exchange-rates', listExchangeRates);
 router.get('/exchange-rates/at-date', getRatesAtDate);
 router.post('/exchange-rates', upsertExchangeRate);
 router.post('/exchange-rates/bulk', bulkImportExchangeRates);
+router.post('/exchange-rates/fetch-bcv', fetchBcvRates);
 
 // ── Fees ──
 router.get('/fees', listFees);

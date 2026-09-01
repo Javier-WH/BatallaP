@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import api from '@/services/api';
+import { getRatesAtDate } from '@/services/paymentsService';
 
 interface SchoolSettings {
   name: string;
@@ -24,9 +25,13 @@ interface SchoolContextType {
   activePeriod: any;
   viewPeriod: any;
   allPeriods: any[];
+  usdRate: number | null;
+  eurRate: number | null;
+  rateDate: string | null;
   isReadOnly: boolean;
   loading: boolean;
   refreshSettings: () => Promise<void>;
+  refreshExchangeRates: () => Promise<void>;
   setViewPeriod: (period: any) => void;
   resetViewPeriod: () => void;
 }
@@ -74,7 +79,23 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [activePeriod, setActivePeriod] = useState<any>(null);
   const [viewPeriod, setViewPeriodState] = useState<any>(null);
   const [allPeriods, setAllPeriods] = useState<any[]>([]);
+  const [usdRate, setUsdRate] = useState<number | null>(null);
+  const [eurRate, setEurRate] = useState<number | null>(null);
+  const [rateDate, setRateDate] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+
+  const refreshExchangeRates = async () => {
+    try {
+      const result = await getRatesAtDate();
+      const usd = result.rates.find(rate => rate.currency === 'USD');
+      const eur = result.rates.find(rate => rate.currency === 'EUR');
+      setUsdRate(usd?.rate ?? null);
+      setEurRate(eur?.rate ?? null);
+      setRateDate(usd?.date ?? eur?.date ?? null);
+    } catch {
+      // Exchange rates are optional and must not block the school application.
+    }
+  };
 
   const fetchData = async () => {
     try {
@@ -122,6 +143,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   useEffect(() => {
     fetchData();
+    refreshExchangeRates();
   }, []);
 
   const isReadOnly = viewPeriod?.id !== activePeriod?.id;
@@ -130,7 +152,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const resetViewPeriod = () => setViewPeriodState(activePeriod);
 
   return (
-    <SchoolContext.Provider value={{ settings, activePeriod, viewPeriod, allPeriods, isReadOnly, loading, refreshSettings: fetchData, setViewPeriod, resetViewPeriod }}>
+    <SchoolContext.Provider value={{ settings, activePeriod, viewPeriod, allPeriods, usdRate, eurRate, rateDate, isReadOnly, loading, refreshSettings: fetchData, refreshExchangeRates, setViewPeriod, resetViewPeriod }}>
       {children}
     </SchoolContext.Provider>
   );

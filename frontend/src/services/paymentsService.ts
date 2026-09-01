@@ -147,6 +147,11 @@ export async function bulkImportExchangeRates(rates: Array<{ exchangeRateTypeId:
   return data;
 }
 
+export async function fetchBcvRates(): Promise<{ success: boolean; message: string; rates: { usd?: number; eur?: number; date: string } }> {
+  const { data } = await api.post('/payments/exchange-rates/fetch-bcv');
+  return data;
+}
+
 // ── Fees ──
 
 export async function listFees(params?: { schoolPeriodId?: number }): Promise<Fee[]> {

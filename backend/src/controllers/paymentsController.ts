@@ -10,6 +10,7 @@ import {
   EnrollmentPlanItem,
   SchoolPeriod,
 } from '@/models/index';
+import { scrapeBcvRates } from '@/services/bcvScraperService';
 
 // ─────────────────────────────────────────────────────────────
 // Exchange Rate Types
@@ -228,6 +229,20 @@ export const bulkImportExchangeRates = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('[bulkImportExchangeRates] Error:', error);
     return res.status(500).json({ message: 'Error al importar tipos de cambio' });
+  }
+};
+
+// Scrape BCV rates (USD + EUR) and upsert them for today
+export const fetchBcvRates = async (_req: Request, res: Response) => {
+  try {
+    const result = await scrapeBcvRates();
+    if (result.success) {
+      return res.json(result);
+    }
+    return res.status(502).json(result);
+  } catch (error: any) {
+    console.error('[fetchBcvRates] Error:', error);
+    return res.status(500).json({ message: 'Error al obtener tasas del BCV' });
   }
 };
 

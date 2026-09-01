@@ -6,6 +6,8 @@ import { EvaluationCatalog, SubjectPreset, StructurePreset } from '@/models/inde
 import dotenv from 'dotenv';
 import path from 'path';
 import MigrationRunner from '@/config/migrationRunner';
+import cron from 'node-cron';
+import { scrapeBcvRates } from '@/services/bcvScraperService';
 
 dotenv.config();
 
@@ -270,6 +272,22 @@ const startServer = async () => {
 
     app.listen(PORT, () => {
       console.log(`🚀 Backend iniciado en http://localhost:${PORT}`);
+
+      // Cron: scraping BCV a medianoche todos los días
+      cron.schedule('0 0 * * *', async () => {
+        console.log('[Cron] Ejecutando scraping BCV...');
+        try {
+          const result = await scrapeBcvRates();
+          if (result.success) {
+            console.log('[Cron] BCV OK:', result.message);
+          } else {
+            console.warn('[Cron] BCV falló:', result.message);
+          }
+        } catch (error) {
+          console.error('[Cron] Error scraping BCV:', error);
+        }
+      });
+      console.log('⏰ Cron de scraping BCV programado (00:00 diario)');
     });
   } catch (error: unknown) {
     const startupError = error as StartupError;

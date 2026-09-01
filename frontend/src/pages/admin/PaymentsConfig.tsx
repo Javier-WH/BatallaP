@@ -13,7 +13,7 @@ import type {
 } from '@/services/paymentsService';
 import {
   listExchangeRateTypes, createExchangeRateType, updateExchangeRateType, deleteExchangeRateType,
-  listExchangeRates, upsertExchangeRate,
+  listExchangeRates, upsertExchangeRate, fetchBcvRates,
   listFees, upsertFee, updateFee,
   listSellableItems, createSellableItem, updateSellableItem, deleteSellableItem,
   listEnrollmentPlans, createEnrollmentPlan, updateEnrollmentPlan, deleteEnrollmentPlan,
@@ -23,7 +23,7 @@ import {
 const { Title, Text } = Typography;
 
 const PaymentsConfig: React.FC = () => {
-  const { activePeriod, allPeriods } = useSchool();
+  const { activePeriod, allPeriods, refreshExchangeRates } = useSchool();
   const [activeTab, setActiveTab] = useState('exchangeRates');
 
   // ── Exchange Rate Types ──
@@ -38,6 +38,7 @@ const PaymentsConfig: React.FC = () => {
   const [ratesLoading, setRatesLoading] = useState(false);
   const [rateModalOpen, setRateModalOpen] = useState(false);
   const [rateForm] = Form.useForm();
+  const [bcvLoading, setBcvLoading] = useState(false);
 
   // ── Fees ──
   const [fees, setFees] = useState<Fee[]>([]);
@@ -83,6 +84,27 @@ const PaymentsConfig: React.FC = () => {
     } catch { message.error('Error al cargar tipos de cambio'); }
     finally { setRatesLoading(false); }
   }, []);
+
+  const handleFetchBcv = useCallback(async () => {
+    setBcvLoading(true);
+    try {
+      const result = await fetchBcvRates();
+      if (result.success) {
+        const parts: string[] = [];
+        if (result.rates.usd != null) parts.push(`USD: ${result.rates.usd}`);
+        if (result.rates.eur != null) parts.push(`EUR: ${result.rates.eur}`);
+        message.success(`Tasas actualizadas del BCV — ${parts.join(' · ')}`);
+        await Promise.all([loadRates(), refreshExchangeRates()]);
+      } else {
+        message.warning(result.message || 'No se pudieron obtener las tasas del BCV');
+      }
+    } catch (error: any) {
+      const msg = error?.response?.data?.message || 'Error al consultar el BCV';
+      message.error(msg);
+    } finally {
+      setBcvLoading(false);
+    }
+  }, [loadRates, refreshExchangeRates]);
 
   const loadFees = useCallback(async () => {
     setFeesLoading(true);
@@ -463,6 +485,13 @@ const PaymentsConfig: React.FC = () => {
               <Space direction="vertical" style={{ width: '100%' }} size="large">
                 <Card title="Tipos de Cambio" extra={
                   <Space>
+                    <Button
+                      icon={<BankOutlined />}
+                      loading={bcvLoading}
+                      onClick={handleFetchBcv}
+                    >
+                      Actualizar desde BCV
+                    </Button>
                     <Button icon={<ReloadOutlined />} onClick={() => { loadRateTypes(); loadRates(); }}>Recargar</Button>
                     <Button type="primary" icon={<PlusOutlined />} onClick={() => openRateTypeModal()}>Nuevo Tipo</Button>
                   </Space>
