@@ -837,6 +837,48 @@ async function buildCertifiedWorkbook(personId: number, templateName: string): P
       }
     }
 
+    // ── Year 5 grades (rows 43-52, 10 subjects) ──
+    // A=name, D=num, E=letters, G=te, H=month, I=year, J=inst
+    const year5Grade = allGrades.find((g: any) => g.order === 5);
+    if (year5Grade) {
+      const subjects = subjectsByGrade.get(year5Grade.id) || [];
+      const maxSubjects = Math.min(subjects.length, 10);
+      for (let s = 0; s < maxSubjects; s++) {
+        const subj = subjects[s];
+        const lookupKey = `${year5Grade.id}__${subj.id}`;
+        const g = gradeLookup.get(lookupKey);
+        const subjNum = s + 1;
+
+        // A43-A52 = subject name (title case)
+        setter(`y5_s${subjNum}_name`, toTitleCaseES(subj.name));
+
+        if (!g) continue;
+
+        // D43-D52 = grade in numbers (rounded, zero-padded)
+        if (g.finalScore != null) {
+          setter(`y5_s${subjNum}_num`, String(Math.round(g.finalScore)).padStart(padDigits, '0'));
+          // E43-E52 = grade in letters
+          setter(`y5_s${subjNum}_letters`, numberToSpanishWords(g.finalScore).toUpperCase());
+        }
+
+        // G43-G52 = evaluation type letter
+        const teCode = g.gradeType ? (GRADE_TYPE_TO_CODE[g.gradeType] || 'F') : 'F';
+        setter(`y5_s${subjNum}_te`, teCode);
+
+        // H43-H52 = month (00), I43-I52 = year (0000)
+        if (g.date) {
+          const parts = g.date.split('-');
+          if (parts.length === 3) {
+            setter(`y5_s${subjNum}_month`, padNumber(parseInt(parts[1], 10)));
+            setter(`y5_s${subjNum}_year`, parts[0]);
+          }
+        }
+
+        // J43-J52 = plantel index (1-based)
+        setter(`y5_s${subjNum}_inst`, resolvePlantelIndex(g));
+      }
+    }
+
     return { workbook, person };
 }
 
