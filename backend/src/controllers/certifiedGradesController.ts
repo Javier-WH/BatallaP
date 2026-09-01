@@ -670,6 +670,9 @@ async function buildCertifiedWorkbook(personId: number, templateName: string): P
     const maxGrade = Number(settings.max_grade || 20);
     const padDigits = Math.max(2, String(maxGrade).length);
 
+    // Helper: round grade and enforce minimum of 1 (minimum allowed grade)
+    const roundGradeMin1 = (score: number): number => Math.max(1, Math.round(score));
+
     // ── Year 1 grades (rows 21-27, 7 subjects) ──
     const year1Grade = allGrades.find((g: any) => g.order === 1);
     if (year1Grade) {
@@ -688,9 +691,9 @@ async function buildCertifiedWorkbook(personId: number, templateName: string): P
 
         // D21-D27 = grade in numbers (rounded, zero-padded)
         if (g.finalScore != null) {
-          setter(`y1_s${subjNum}_num`, String(Math.round(g.finalScore)).padStart(padDigits, '0'));
+          setter(`y1_s${subjNum}_num`, String(roundGradeMin1(g.finalScore)).padStart(padDigits, '0'));
           // E21-E27 = grade in letters
-          setter(`y1_s${subjNum}_letters`, numberToSpanishWords(g.finalScore).toUpperCase());
+          setter(`y1_s${subjNum}_letters`, numberToSpanishWords(roundGradeMin1(g.finalScore)).toUpperCase());
         }
 
         // G21-G27 = evaluation type letter
@@ -730,9 +733,9 @@ async function buildCertifiedWorkbook(personId: number, templateName: string): P
 
         // O21-O27 = grade in numbers (rounded, zero-padded)
         if (g.finalScore != null) {
-          setter(`y2_s${subjNum}_num`, String(Math.round(g.finalScore)).padStart(padDigits, '0'));
+          setter(`y2_s${subjNum}_num`, String(roundGradeMin1(g.finalScore)).padStart(padDigits, '0'));
           // P21-P27 = grade in letters
-          setter(`y2_s${subjNum}_letters`, numberToSpanishWords(g.finalScore).toUpperCase());
+          setter(`y2_s${subjNum}_letters`, numberToSpanishWords(roundGradeMin1(g.finalScore)).toUpperCase());
         }
 
         // Q21-Q27 = evaluation type letter
@@ -772,9 +775,9 @@ async function buildCertifiedWorkbook(personId: number, templateName: string): P
 
         // D31-D38 = grade in numbers (rounded, zero-padded)
         if (g.finalScore != null) {
-          setter(`y3_s${subjNum}_num`, String(Math.round(g.finalScore)).padStart(padDigits, '0'));
+          setter(`y3_s${subjNum}_num`, String(roundGradeMin1(g.finalScore)).padStart(padDigits, '0'));
           // E31-E38 = grade in letters
-          setter(`y3_s${subjNum}_letters`, numberToSpanishWords(g.finalScore).toUpperCase());
+          setter(`y3_s${subjNum}_letters`, numberToSpanishWords(roundGradeMin1(g.finalScore)).toUpperCase());
         }
 
         // G31-G38 = evaluation type letter
@@ -814,9 +817,9 @@ async function buildCertifiedWorkbook(personId: number, templateName: string): P
 
         // O31-O39 = grade in numbers (rounded, zero-padded)
         if (g.finalScore != null) {
-          setter(`y4_s${subjNum}_num`, String(Math.round(g.finalScore)).padStart(padDigits, '0'));
+          setter(`y4_s${subjNum}_num`, String(roundGradeMin1(g.finalScore)).padStart(padDigits, '0'));
           // P31-P39 = grade in letters
-          setter(`y4_s${subjNum}_letters`, numberToSpanishWords(g.finalScore).toUpperCase());
+          setter(`y4_s${subjNum}_letters`, numberToSpanishWords(roundGradeMin1(g.finalScore)).toUpperCase());
         }
 
         // Q31-Q39 = evaluation type letter
@@ -856,9 +859,9 @@ async function buildCertifiedWorkbook(personId: number, templateName: string): P
 
         // D43-D52 = grade in numbers (rounded, zero-padded)
         if (g.finalScore != null) {
-          setter(`y5_s${subjNum}_num`, String(Math.round(g.finalScore)).padStart(padDigits, '0'));
+          setter(`y5_s${subjNum}_num`, String(roundGradeMin1(g.finalScore)).padStart(padDigits, '0'));
           // E43-E52 = grade in letters
-          setter(`y5_s${subjNum}_letters`, numberToSpanishWords(g.finalScore).toUpperCase());
+          setter(`y5_s${subjNum}_letters`, numberToSpanishWords(roundGradeMin1(g.finalScore)).toUpperCase());
         }
 
         // G43-G52 = evaluation type letter
