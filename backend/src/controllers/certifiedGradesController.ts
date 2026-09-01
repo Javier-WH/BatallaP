@@ -229,6 +229,48 @@ export const exportCertifiedGradesBySection = async (req: Request, res: Response
     let addedCount = 0;
     const usedNames = new Set<string>();
 
+    // Pre-extract images from the template (same for all students).
+    // We read the template once to get image buffers + anchors, then register
+    // them in the combined workbook so they can be re-inserted on each sheet.
+    let templateImages: Array<{ buffer: any; extension: string; range: any }> = [];
+    let templatePageSetup: any = null;
+    try {
+      const templatePath = path.join(__dirname, '../../templates', templateName);
+      const tmpWb = new ExcelJS.Workbook();
+      await tmpWb.xlsx.readFile(templatePath);
+      const tmpSheet = tmpWb.worksheets[0];
+      if (tmpSheet) {
+        const imgs = tmpSheet.getImages();
+        const media: any[] = (tmpWb as any).model?.media || [];
+        for (const img of imgs) {
+          const m = media[(img as any).imageId];
+          if (m && m.buffer) {
+            templateImages.push({
+              buffer: m.buffer,
+              extension: m.extension || 'png',
+              range: (img as any).range,
+            });
+          }
+        }
+        if (tmpSheet.pageSetup) {
+          templatePageSetup = JSON.parse(JSON.stringify(tmpSheet.pageSetup));
+        }
+      }
+    } catch (e) {
+      console.warn('[exportCertifiedGradesBySection] Could not extract template images/pageSetup:', (e as any).message);
+    }
+
+    // Pre-register images in the combined workbook (once)
+    const combinedImageIds: number[] = [];
+    for (const ti of templateImages) {
+      try {
+        const id = combinedWorkbook.addImage({ buffer: ti.buffer, extension: ti.extension as any }) as number;
+        combinedImageIds.push(id);
+      } catch {
+        combinedImageIds.push(-1);
+      }
+    }
+
     for (const ins of inscriptions) {
       const person = (ins as any).student;
       if (!person) continue;
@@ -282,6 +324,26 @@ export const exportCertifiedGradesBySection = async (req: Request, res: Response
               newSheet.mergeCells(merge.model.top, merge.model.left, merge.model.bottom, merge.model.right);
             }
           }
+        }
+        // Copy page setup from template
+        if (templatePageSetup) {
+          newSheet.pageSetup = JSON.parse(JSON.stringify(templatePageSetup));
+        }
+        // Re-insert images (logo) with the template's anchors
+        const makeAnchor = (a: any) => ({
+          nativeCol: a.nativeCol,
+          nativeColOff: a.nativeColOff,
+          nativeRow: a.nativeRow,
+          nativeRowOff: a.nativeRowOff,
+        });
+        for (let i = 0; i < templateImages.length; i++) {
+          if (combinedImageIds[i] < 0) continue;
+          const ti = templateImages[i];
+          (newSheet as any).addImage(combinedImageIds[i], {
+            tl: makeAnchor(ti.range.tl),
+            br: makeAnchor(ti.range.br),
+            editAs: ti.range.editAs,
+          });
         }
         addedCount++;
       } catch (err: any) {
