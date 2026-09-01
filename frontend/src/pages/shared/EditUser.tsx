@@ -4,6 +4,7 @@ import { BookOutlined, UserOutlined, SwapOutlined } from '@ant-design/icons';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import api from '@/services/api';
 import dayjs, { Dayjs } from 'dayjs';
+import { parseDateLocal } from '@/utils/dateHelpers';
 import { useAuth } from '@/context/AuthContext';
 import type { AxiosError } from 'axios';
 
@@ -191,8 +192,8 @@ const EditUser: React.FC = () => {
           documentType: data.documentType,
           document: data.document,
           gender: data.gender,
-          birthdate: data.birthdate ? dayjs(data.birthdate) : null,
-          hireDate: data.hireDate ? dayjs(data.hireDate) : null,
+          birthdate: parseDateLocal(data.birthdate),
+          hireDate: parseDateLocal(data.hireDate),
           username: data.user?.username,
           address: data.contact?.address,
           phone1: data.contact?.phone1,

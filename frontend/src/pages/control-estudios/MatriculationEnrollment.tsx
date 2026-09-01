@@ -44,6 +44,7 @@ import {
   LoginOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
+import { parseDateLocal } from '@/utils/dateHelpers';
 import { useNavigate } from 'react-router-dom';
 import api from '@/services/api';
 import type { EnrollmentQuestionResponse } from '@/services/enrollmentQuestions';
@@ -557,7 +558,7 @@ const MatriculationEnrollment: React.FC = () => {
               escolaridad: m.escolaridad ?? 'regular',
               phone1: student.contact?.phone1,
               whatsapp: student.contact?.whatsapp,
-              birthdate: student.birthdate ? dayjs(student.birthdate) : null,
+              birthdate: parseDateLocal(student.birthdate),
               mother: findGuardianProfile('mother'),
               father: findGuardianProfile('father'),
               representative: findRepresentativeProfile(),
@@ -1360,7 +1361,7 @@ const MatriculationEnrollment: React.FC = () => {
         firstName: { header: 'Nombres', getValue: (r) => r.tempData.firstName || '' },
         lastName: { header: 'Apellidos', getValue: (r) => r.tempData.lastName || '' },
         gender: { header: 'Género', getValue: (r) => r.tempData.gender === 'M' ? 'Masculino' : r.tempData.gender === 'F' ? 'Femenino' : '' },
-        birthdate: { header: 'Fecha Nacimiento', getValue: (r) => r.tempData.birthdate ? dayjs(r.tempData.birthdate).format('DD/MM/YYYY') : '' },
+        birthdate: { header: 'Fecha Nacimiento', getValue: (r) => r.tempData.birthdate ? r.tempData.birthdate.format('DD/MM/YYYY') : '' },
         pathology: { header: 'Patología', getValue: (r) => r.tempData.pathology || 'N/A' },
         livingWith: { header: 'Vive Con', getValue: (r) => r.tempData.livingWith || 'N/A' },
         birthState: { header: 'Estado Nacimiento', getValue: (r) => r.tempData.birthState || '' },

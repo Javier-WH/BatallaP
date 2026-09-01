@@ -20,6 +20,7 @@ import {
 } from '@/models/index';
 import { sortInscriptions } from '@/services/studentSortService';
 import { roundFinalGrade, roundGrade, isPassingGrade } from '@/services/gradeEvaluationService';
+import { resolveGradeDate } from '@/services/gradeDateResolver';
 
 /**
  * GET /api/historical-grades/by-section?schoolPeriodId=X&sectionId=Y&gradeId=Z
@@ -304,6 +305,19 @@ export const getHistoricalGradesBySection = async (req: Request, res: Response) 
       let status: string | null = fg?.status ?? null;
       let gradeType: string | null = fg?.gradeType ?? null;
       let date: string | null = fg?.calculatedAt ? new Date(fg.calculatedAt).toISOString().split('T')[0] : null;
+
+      // For revision / materia_pendiente, resolve date from opportunity dates / encounter dates
+      if (fg && gradeType && (gradeType === 'revision' || gradeType === 'materia_pendiente' || gradeType === 'revision_materia_pendiente')) {
+        const resolvedDate = await resolveGradeDate(
+          is.id,
+          gradeType,
+          is.sectionId ?? null,
+          subj.id,
+          ins.gradeId ?? null,
+          ins.schoolPeriodId ?? null,
+        );
+        if (resolvedDate) date = resolvedDate;
+      }
 
       // Fallback: compute from term grades if no SubjectFinalGrade exists
       if (!fg && termGrades.length > 0) {

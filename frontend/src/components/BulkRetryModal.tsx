@@ -5,6 +5,7 @@ import {
 } from 'antd';
 import { ExclamationCircleOutlined, CheckCircleOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
+import { parseDateLocal } from '@/utils/dateHelpers';
 import { retrySingleRow } from '@/services/bulkEnrollment';
 import type { RetrySingleResponse } from '@/services/bulkEnrollment';
 
@@ -173,7 +174,7 @@ const BulkRetryModal: React.FC<BulkRetryModalProps> = ({
     if (open && payload) {
       const values: Record<string, unknown> = { ...payload };
       if (typeof payload.birthdate === 'string' && payload.birthdate) {
-        values.birthdate = dayjs(payload.birthdate as string);
+        values.birthdate = parseDateLocal(payload.birthdate as string);
       }
       if (!values.schoolPeriodId && activePeriod) {
         values.schoolPeriodId = activePeriod.id;

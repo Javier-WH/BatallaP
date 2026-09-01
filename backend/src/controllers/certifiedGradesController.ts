@@ -34,6 +34,7 @@ import { filterActiveGroupSubjects } from '@/services/subjectGroupService';
 import { roundGrade, roundFinalGrade, isPassingGrade } from '@/services/gradeEvaluationService';
 import { GradeCalculationService } from '@/services/gradeCalculationService';
 import { readTemplateNamedRanges } from '@/services/templateNamedRanges';
+import { resolveGradeDate } from '@/services/gradeDateResolver';
 
 function getStateAbbrev(stateName: string): string {
   if (!stateName) return '';
@@ -464,6 +465,19 @@ async function buildCertifiedWorkbook(personId: number, templateName: string): P
       let plantelId: number | null = fg?.plantelId ?? null;
       let plantelName: string | null = fg?.plantel?.name ?? null;
       let plantelState: string | null = fg?.plantel?.state ?? null;
+
+      // For revision / materia_pendiente, resolve date from opportunity dates / encounter dates
+      if (fg && gradeType && (gradeType === 'revision' || gradeType === 'materia_pendiente' || gradeType === 'revision_materia_pendiente')) {
+        const resolvedDate = await resolveGradeDate(
+          is.id,
+          gradeType,
+          is.sectionId ?? null,
+          subj.id,
+          ins.gradeId ?? null,
+          ins.schoolPeriodId ?? null,
+        );
+        if (resolvedDate) date = resolvedDate;
+      }
 
       // Fallback: compute from term grades if no SubjectFinalGrade exists
       if (!fg && termGrades.length > 0) {

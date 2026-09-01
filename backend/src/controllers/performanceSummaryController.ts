@@ -270,7 +270,13 @@ function fillSheetByNamedRanges(
   setByRange('inst_cdcee', settings.institution_cdcee);
   setByRange('inst_director', settings.director_name);
   setByRange('inst_director_doc', settings.director_document);
-  setByRange('inst_director_2', settings.director_name);
+  // inst_director_2 uses "Apellidos, Nombres" format if available, else falls back to director_name
+  const directorFirstNames = (settings.director_first_names || '').trim();
+  const directorLastNames = (settings.director_last_names || '').trim();
+  const directorLong = (directorLastNames && directorFirstNames)
+    ? `${directorLastNames}, ${directorFirstNames}`
+    : settings.director_name;
+  setByRange('inst_director_2', directorLong);
   setByRange('inst_director_doc_2', settings.director_document);
   setByRange('inst_grade', gradeName);
   setByRange('inst_section', sectionName);

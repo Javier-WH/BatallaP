@@ -7,6 +7,7 @@ import EnrollmentReportModal from '@/components/pdf/EnrollmentReportModal';
 import StudentAcademicRecord from '@/components/shared/StudentAcademicRecord';
 import api from '@/services/api';
 import dayjs from 'dayjs';
+import { parseDateLocal } from '@/utils/dateHelpers';
 import { getEnrollmentQuestionsForPerson, type EnrollmentQuestionResponse } from '@/services/enrollmentQuestions';
 import { useAuth } from '@/context/AuthContext';
 
@@ -215,7 +216,7 @@ const StudentDetail: React.FC<StudentDetailProps> = ({ personId: propId }) => {
               <Descriptions column={2} size="small" layout="vertical" className="dossier-descriptions">
                 <Descriptions.Item label="Nombre">{studentData.firstName} {studentData.lastName}</Descriptions.Item>
                 <Descriptions.Item label="Cédula">{docTypeAbbr(studentData.documentType)} {studentData.document || 'N/A'}</Descriptions.Item>
-                <Descriptions.Item label="Nacimiento">{studentData.birthdate ? dayjs(studentData.birthdate).format('DD MMMM, YYYY') : 'N/A'}</Descriptions.Item>
+                <Descriptions.Item label="Nacimiento">{studentData.birthdate ? (parseDateLocal(studentData.birthdate)?.format('DD MMMM, YYYY') ?? 'N/A') : 'N/A'}</Descriptions.Item>
                 <Descriptions.Item label="Género">{studentData.gender === 'M' ? 'Masculino' : 'Femenino'}</Descriptions.Item>
                 <Descriptions.Item label="Lugar de Nacimiento" span={2}>
                   <Text style={{ fontSize: 13, color: '#0f172a' }}>{studentData.residence?.birthMunicipality}, {studentData.residence?.birthState}</Text>

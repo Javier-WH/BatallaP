@@ -3,6 +3,7 @@ import { Form, message, Select, Row, Col, Input, DatePicker, Radio, Alert, Check
 import type { UploadFile, RcFile, UploadChangeParam } from 'antd/es/upload/interface';
 import { UserAddOutlined, LoadingOutlined, UploadOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
+import { parseDateLocal } from '@/utils/dateHelpers';
 import api from '@/services/api';
 import { ensurePreinscriptionPeriod } from '@/services/academic';
 import EnrollmentQuestionFields from '@/components/EnrollmentQuestionFields';
@@ -109,7 +110,7 @@ const mapProfileToGuardianForm = (profile: GuardianProfileResponse): GuardianDat
   residenceMunicipality: profile.residenceMunicipality,
   residenceParish: profile.residenceParish,
   address: profile.address,
-  birthdate: profile.birthdate ? dayjs(profile.birthdate) : undefined
+  birthdate: profile.birthdate ? parseDateLocal(profile.birthdate) ?? undefined : undefined
 });
 
 const buildGuardianCacheKey = (documentType?: GuardianDocumentType, document?: string) => {
