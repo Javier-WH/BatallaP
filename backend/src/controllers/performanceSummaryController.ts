@@ -2187,7 +2187,7 @@ export const getBoletinData = async (req: Request, res: Response) => {
           includeInAverage: includeInAverageMap.get(is.subjectId) !== false,
           lapsos,
           finalScore,
-          status: is.finalGrade?.status || GradeCalculationService.resolveStatus(finalScore, Number(settings.passing_grade || 10)),
+          status: GradeCalculationService.resolveStatus(finalScore, Number(settings.passing_grade || 10)),
         };
       });
 

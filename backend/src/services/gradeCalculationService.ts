@@ -84,25 +84,25 @@ export class GradeCalculationService {
     subjectFinalGrade: { finalScore: number | null; gradeType?: string | null } | null,
     options: { isClosedPeriod?: boolean } = {},
   ): number | null {
-    // External grades: use SubjectFinalGrade directly
+    // External grades: use SubjectFinalGrade directly (always rounded)
     if (subjectFinalGrade?.gradeType === 'transferencia' || subjectFinalGrade?.gradeType === 'equivalencia') {
       if (subjectFinalGrade.finalScore != null) {
-        return Math.max(MIN_FINAL_GRADE, Number(subjectFinalGrade.finalScore));
+        return roundFinalGrade(Math.max(MIN_FINAL_GRADE, Number(subjectFinalGrade.finalScore)));
       }
       return null;
     }
 
-    // Closed period: use SubjectFinalGrade directly (no need to check council)
+    // Closed period: use SubjectFinalGrade directly (always rounded)
     if (options.isClosedPeriod && subjectFinalGrade?.finalScore != null) {
-      return Math.max(MIN_FINAL_GRADE, Number(subjectFinalGrade.finalScore));
+      return roundFinalGrade(Math.max(MIN_FINAL_GRADE, Number(subjectFinalGrade.finalScore)));
     }
 
     const completedLapsos = lapsos.filter((l) => l.finalScore !== null);
     const allDone = completedLapsos.length === lapsos.length && lapsos.length > 0;
 
-    // All lapsos done → use stored SubjectFinalGrade if available
+    // All lapsos done → use stored SubjectFinalGrade if available (always rounded)
     if (allDone && subjectFinalGrade?.finalScore != null) {
-      return Math.max(MIN_FINAL_GRADE, Number(subjectFinalGrade.finalScore));
+      return roundFinalGrade(Math.max(MIN_FINAL_GRADE, Number(subjectFinalGrade.finalScore)));
     }
 
     // Some lapsos done → average of completed lapsos
