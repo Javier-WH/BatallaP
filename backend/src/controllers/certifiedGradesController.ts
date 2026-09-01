@@ -87,12 +87,39 @@ function numericToLetter(numericGrade: number, letterGrades: { letter: string; m
   return String(numericGrade);
 }
 
+/**
+ * Convert a subject name to Spanish title case: capitalize the first letter of
+ * each word except articles, prepositions and conjunctions (y, de, del, la, el,
+ * las, los, en, a, al, o, u, para, con, por). The first word is always capitalized.
+ */
+function toTitleCaseES(text: string): string {
+  if (!text) return '';
+  const lowercaseWords = new Set(['y', 'de', 'del', 'la', 'el', 'las', 'los', 'en', 'a', 'al', 'o', 'u', 'para', 'con', 'por']);
+  return text
+    .trim()
+    .split(/\s+/)
+    .map((word, i) => {
+      // Keep punctuation prefixes (like commas) intact
+      const match = word.match(/^([^a-zA-ZÁÉÍÓÚáéíóú]*)([a-zA-ZÁÉÍÓÚáéíóú]+)(.*)$/);
+      if (!match) return word;
+      const prefix = match[1];
+      const core = match[2];
+      const suffix = match[3];
+      const lower = core.toLowerCase();
+      if (i > 0 && lowercaseWords.has(lower)) {
+        return prefix + lower + suffix;
+      }
+      return prefix + lower.charAt(0).toUpperCase() + lower.slice(1) + suffix;
+    })
+    .join(' ');
+}
+
 function numberToSpanishWords(n: number): string {
   const integerPart = Math.floor(n);
   const decimalPart = Math.round((n - integerPart) * 10);
 
   const units = ['cero', 'uno', 'dos', 'tres', 'cuatro', 'cinco', 'seis', 'siete', 'ocho', 'nueve',
-    'diez', 'once', 'doce', 'trece', 'catorce', 'quince', 'dieciseis', 'diecisiete', 'dieciocho', 'diecinueve', 'veinte'];
+    'diez', 'once', 'doce', 'trece', 'catorce', 'quince', 'dieciséis', 'diecisiete', 'dieciocho', 'diecinueve', 'veinte'];
   const tens = ['', '', 'veinti', 'treinta', 'cuarenta', 'cincuenta', 'sesenta', 'setenta', 'ochenta', 'noventa'];
 
   function convertInt(num: number): string {
@@ -313,6 +340,45 @@ async function buildCertifiedWorkbook(personId: number, templateName: string): P
       periodShortMap.set(p.id, `${s}/${e}`);
     }
 
+    // 2b. Find the active period (for subject lookup)
+    const activePeriod = allPeriods.find((p: any) => p.status === 'activo');
+    const activePeriodId = activePeriod?.id || null;
+
+    // 2c. Load subjects in canonical order for each grade.
+    //     Filter out group subjects (subjectGroupId != null) and literal subjects (usesLiteralGrades).
+    //     Try active period first; if no PeriodGrade, try any period.
+    const subjectsByGrade: Map<number, Array<{ id: number; name: string }>> = new Map();
+    for (const gr of allGrades) {
+      let pg = activePeriodId
+        ? await PeriodGrade.findOne({ where: { schoolPeriodId: activePeriodId, gradeId: gr.id }, attributes: ['id'] })
+        : null;
+      if (!pg) {
+        pg = await PeriodGrade.findOne({ where: { gradeId: gr.id }, attributes: ['id'], order: [['id', 'DESC']] });
+      }
+      if (!pg) { subjectsByGrade.set(gr.id, []); continue; }
+
+      const pgs = await PeriodGradeSubject.findAll({
+        where: { periodGradeId: pg.id },
+        include: [{
+          model: Subject,
+          as: 'subject',
+          attributes: ['id', 'name', 'subjectGroupId', 'usesLiteralGrades'],
+        }],
+        order: [['order', 'ASC']],
+      });
+
+      const subjects: Array<{ id: number; name: string }> = [];
+      for (const p of pgs) {
+        const subj = (p as any).subject;
+        if (!subj) continue;
+        // Skip group subjects and literal subjects
+        if (subj.subjectGroupId != null) continue;
+        if (subj.usesLiteralGrades) continue;
+        subjects.push({ id: subj.id, name: subj.name });
+      }
+      subjectsByGrade.set(gr.id, subjects);
+    }
+
     // 3. Get all inscriptions for this student (across all periods, including MP)
     const allInscriptions = await Inscription.findAll({
       where: { personId },
@@ -329,7 +395,7 @@ async function buildCertifiedWorkbook(personId: number, templateName: string): P
     const insSubjects = await InscriptionSubject.findAll({
       where: { inscriptionId: allInsIds as any },
       include: [
-        { model: Subject, as: 'subject', attributes: ['id', 'name', 'abbreviation', 'subjectGroupId'] },
+        { model: Subject, as: 'subject', attributes: ['id', 'name', 'abbreviation', 'subjectGroupId', 'usesLiteralGrades'] },
         {
           model: Inscription,
           as: 'inscription',
@@ -451,10 +517,10 @@ async function buildCertifiedWorkbook(personId: number, templateName: string): P
       include: [{ model: Plantel, as: 'plantel', attributes: ['id', 'code', 'name', 'state', 'stateCode', 'parish'] }],
     });
 
-    // Build a lookup: gradeId + subjectName (normalized) -> grade data
+    // Build a lookup: gradeId + subjectId -> grade data
     const gradeLookup = new Map<string, any>();
     for (const g of consolidatedGrades) {
-      const key = `${g.gradeId}__${(g.subjectName || '').trim().toLowerCase()}`;
+      const key = `${g.gradeId}__${g.subjectId}`;
       gradeLookup.set(key, g);
     }
 
@@ -530,11 +596,14 @@ async function buildCertifiedWorkbook(personId: number, templateName: string): P
     // Build the list from PersonPlantel (ordered). Each plantel has name, parish, stateCode.
     // For the system's own institution (if not in the plantel list), use
     // settings.institution_parish and first 2 letters of the state.
-    const plantelesList: Array<{ name: string; parish: string; stateCode: string }> = [];
+    // plantelId: null = system institution, otherwise the Plantel.id
+    const SYSTEM_PLANTEL_ID = -1;
+    const plantelesList: Array<{ plantelId: number; name: string; parish: string; stateCode: string }> = [];
     for (const pp of personPlanteles) {
       const p = (pp as any).plantel;
       if (!p) continue;
       plantelesList.push({
+        plantelId: p.id,
         name: p.name || '',
         parish: p.parish || '',
         stateCode: p.stateCode || (p.state ? p.state.substring(0, 2).toUpperCase() : ''),
@@ -546,6 +615,7 @@ async function buildCertifiedWorkbook(personId: number, templateName: string): P
     if (!ownInstInList && ownInstName) {
       const ownState = (settings.institution_state || plantel?.state || '').toUpperCase();
       plantelesList.push({
+        plantelId: SYSTEM_PLANTEL_ID,
         name: ownInstName,
         parish: (settings.institution_parish || '').toUpperCase(),
         stateCode: ownState ? ownState.substring(0, 2) : '',
@@ -557,6 +627,79 @@ async function buildCertifiedWorkbook(personId: number, templateName: string): P
       setter(`plantel_${i + 1}_name`, p.name.toUpperCase());
       setter(`plantel_${i + 1}_parish`, p.parish.toUpperCase());
       setter(`plantel_${i + 1}_state`, p.stateCode.toUpperCase());
+    }
+
+    // Helper: resolve plantel index (1-based) for a grade
+    const resolvePlantelIndex = (g: any): number => {
+      // System grades or null plantelId → system institution
+      if (g.source === 'system' || g.plantelId == null) {
+        const idx = plantelesList.findIndex(p => p.plantelId === SYSTEM_PLANTEL_ID);
+        return idx >= 0 ? idx + 1 : 1;
+      }
+      // Match by plantelId
+      const idx = plantelesList.findIndex(p => p.plantelId === g.plantelId);
+      if (idx >= 0) return idx + 1;
+      // Fallback: match by name
+      if (g.plantelName) {
+        const idxByName = plantelesList.findIndex(p => p.name.toUpperCase() === g.plantelName.toUpperCase());
+        if (idxByName >= 0) return idxByName + 1;
+      }
+      return 1;
+    };
+
+    // gradeType → letter code (same as Notas Históricas)
+    const GRADE_TYPE_TO_CODE: Record<string, string> = {
+      regular: 'F',
+      revision: 'R',
+      materia_pendiente: 'P',
+      revision_materia_pendiente: 'M',
+      transferencia: 'T',
+      equivalencia: 'E',
+    };
+
+    // Max grade for padding (default 20)
+    const maxGrade = Number(settings.max_grade || 20);
+    const padDigits = Math.max(2, String(maxGrade).length);
+
+    // ── Year 1 grades (rows 21-27, 7 subjects) ──
+    const year1Grade = allGrades.find((g: any) => g.order === 1);
+    if (year1Grade) {
+      const subjects = subjectsByGrade.get(year1Grade.id) || [];
+      const maxSubjects = Math.min(subjects.length, 7);
+      for (let s = 0; s < maxSubjects; s++) {
+        const subj = subjects[s];
+        const lookupKey = `${year1Grade.id}__${subj.id}`;
+        const g = gradeLookup.get(lookupKey);
+        const subjNum = s + 1;
+
+        // A21-A27 = subject name (title case)
+        setter(`y1_s${subjNum}_name`, toTitleCaseES(subj.name));
+
+        if (!g) continue;
+
+        // D21-D27 = grade in numbers (rounded, zero-padded)
+        if (g.finalScore != null) {
+          setter(`y1_s${subjNum}_num`, String(Math.round(g.finalScore)).padStart(padDigits, '0'));
+          // E21-E27 = grade in letters
+          setter(`y1_s${subjNum}_letters`, numberToSpanishWords(g.finalScore).toUpperCase());
+        }
+
+        // G21-G27 = evaluation type letter
+        const teCode = g.gradeType ? (GRADE_TYPE_TO_CODE[g.gradeType] || 'F') : 'F';
+        setter(`y1_s${subjNum}_te`, teCode);
+
+        // H21-H27 = month (00), I21-I27 = year (0000)
+        if (g.date) {
+          const d = new Date(g.date);
+          if (!isNaN(d.getTime())) {
+            setter(`y1_s${subjNum}_month`, padNumber(d.getMonth() + 1));
+            setter(`y1_s${subjNum}_year`, String(d.getFullYear()));
+          }
+        }
+
+        // J21-J27 = plantel index (1-based)
+        setter(`y1_s${subjNum}_inst`, resolvePlantelIndex(g));
+      }
     }
 
     return { workbook, person };
