@@ -795,6 +795,48 @@ async function buildCertifiedWorkbook(personId: number, templateName: string): P
       }
     }
 
+    // ── Year 4 grades (rows 31-39, 9 subjects) ──
+    // L=name, O=num, P=letters, Q=te, R=month, S=year, U=inst
+    const year4Grade = allGrades.find((g: any) => g.order === 4);
+    if (year4Grade) {
+      const subjects = subjectsByGrade.get(year4Grade.id) || [];
+      const maxSubjects = Math.min(subjects.length, 9);
+      for (let s = 0; s < maxSubjects; s++) {
+        const subj = subjects[s];
+        const lookupKey = `${year4Grade.id}__${subj.id}`;
+        const g = gradeLookup.get(lookupKey);
+        const subjNum = s + 1;
+
+        // L31-L39 = subject name (title case)
+        setter(`y4_s${subjNum}_name`, toTitleCaseES(subj.name));
+
+        if (!g) continue;
+
+        // O31-O39 = grade in numbers (rounded, zero-padded)
+        if (g.finalScore != null) {
+          setter(`y4_s${subjNum}_num`, String(Math.round(g.finalScore)).padStart(padDigits, '0'));
+          // P31-P39 = grade in letters
+          setter(`y4_s${subjNum}_letters`, numberToSpanishWords(g.finalScore).toUpperCase());
+        }
+
+        // Q31-Q39 = evaluation type letter
+        const teCode = g.gradeType ? (GRADE_TYPE_TO_CODE[g.gradeType] || 'F') : 'F';
+        setter(`y4_s${subjNum}_te`, teCode);
+
+        // R31-R39 = month (00), S31-S39 = year (0000)
+        if (g.date) {
+          const parts = g.date.split('-');
+          if (parts.length === 3) {
+            setter(`y4_s${subjNum}_month`, padNumber(parseInt(parts[1], 10)));
+            setter(`y4_s${subjNum}_year`, parts[0]);
+          }
+        }
+
+        // U31-U39 = plantel index (1-based)
+        setter(`y4_s${subjNum}_inst`, resolvePlantelIndex(g));
+      }
+    }
+
     return { workbook, person };
 }
 
