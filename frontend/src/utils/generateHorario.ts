@@ -60,8 +60,19 @@ function cellLabel(cellEntries: ScheduleEntryData[] | undefined): string {
     const e = cellEntries[0];
     return (e.subjectName || e.subject?.name || '').toUpperCase();
   }
-  // Multiple group subjects — join names
-  return cellEntries.map(e => (e.subjectName || e.subject?.name || '').toUpperCase()).join(' / ');
+  // Multiple entries — deduplicate by subject name so a teacher who teaches
+  // the same subject to several sections at the same time doesn't see the
+  // name repeated once per section.
+  const seen = new Set<string>();
+  const labels: string[] = [];
+  for (const e of cellEntries) {
+    const name = (e.subjectName || e.subject?.name || '').toUpperCase();
+    if (name && !seen.has(name)) {
+      seen.add(name);
+      labels.push(name);
+    }
+  }
+  return labels.join(' / ');
 }
 
 const mediumBorder: Partial<ExcelJS.Borders> = {
