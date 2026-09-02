@@ -114,6 +114,41 @@ const rightAlign: Partial<ExcelJS.Alignment> = {
   vertical: 'middle',
 };
 
+/** Logo file served from /uploads/images/. */
+const LOGO_URL = '/uploads/images/Batalla_Logo_lowRes.png';
+
+/** Loads the institution logo as an ArrayBuffer. Returns null if unavailable.
+ *  Uses fetch directly because the shared axios client prepends /api. */
+async function loadLogoBuffer(): Promise<ArrayBuffer | null> {
+  try {
+    const res = await fetch(LOGO_URL);
+    if (!res.ok) return null;
+    const buf = await res.arrayBuffer();
+    console.log('[generateHorario] Logo loaded, size:', buf.byteLength);
+    return buf;
+  } catch (e) {
+    console.error('[generateHorario] Failed to load logo:', e);
+    return null;
+  }
+}
+
+/** Adds the logo to a worksheet at the top-left corner.
+ *  Diameter 0.73". Positioned so the right edge aligns with the start of
+ *  column 2, using native cell coordinates (col index + EMU offset). */
+function addLogoToSheet(ws: ExcelJS.Worksheet, workbook: ExcelJS.Workbook, buffer: ArrayBuffer) {
+  const sizePx = Math.round(0.73 * 96);
+  const PX_TO_EMU = 9525; // 1px = 9525 EMU
+  const logoId = workbook.addImage({ buffer, extension: 'png' });
+  // nativeCol=1 = column 2 (0-indexed). nativeColOff = negative offset in EMU
+  // to push the left edge back by the logo width so the right edge lands on
+  // the column boundary.
+  const offsetEmu = -sizePx * PX_TO_EMU;
+  ws.addImage(logoId, {
+    tl: { nativeCol: 1, nativeColOff: offsetEmu, nativeRow: 0, nativeRowOff: 0 },
+    ext: { width: sizePx, height: sizePx },
+  });
+}
+
 /**
  * Render a single horario block (header + grid) onto a worksheet starting at a given row.
  * Returns the next available row (after the block + optional gap).
@@ -377,6 +412,10 @@ export async function generateHorario(input: HorarioInput) {
   });
   ws.columns = Array(6).fill(0).map(() => ({ width: 15.71 }));
 
+  // Logo (top-left, 0.73" diameter, 37px from left edge)
+  const logoBuffer = await loadLogoBuffer();
+  if (logoBuffer) addLogoToSheet(ws, workbook, logoBuffer);
+
   // Page setup: Letter, fit to 1 page wide
   ws.pageSetup = {
     paperSize: 1, // Letter (8.5 x 11 in)
@@ -446,6 +485,9 @@ export async function generateHorarioBatch(
 
   const workbook = new ExcelJS.Workbook();
 
+  // Logo (loaded once, reused across sheets)
+  const logoBuffer = await loadLogoBuffer();
+
   for (const gradeId of sortedGradeIds) {
     const gradeItems = byGrade.get(gradeId)!;
     // Sort sections within grade by sectionName
@@ -457,6 +499,9 @@ export async function generateHorarioBatch(
       properties: { defaultRowHeight: 15 },
     });
     ws.columns = Array(6).fill(0).map(() => ({ width: 15.71 }));
+
+    // Logo (top-left, 0.73" diameter, 37px from left edge)
+    if (logoBuffer) addLogoToSheet(ws, workbook, logoBuffer);
 
     let currentRow = 1;
     let sectionCountInSheet = 0;

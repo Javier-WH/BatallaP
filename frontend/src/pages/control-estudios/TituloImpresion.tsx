@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Select, Button, Spin, Empty, message, Card } from 'antd';
-import { PrinterOutlined, EditOutlined, EyeOutlined, SaveOutlined, PlusOutlined, DeleteOutlined, UploadOutlined } from '@ant-design/icons';
+import { Select, Button, Spin, Empty, message, Card, Modal } from 'antd';
+import { PrinterOutlined, EditOutlined, EyeOutlined, SaveOutlined, PlusOutlined, DeleteOutlined, UploadOutlined, CodeOutlined } from '@ant-design/icons';
 import api from '@/services/api';
 import { useSchool } from '@/context/SchoolContext';
 import dayjs from 'dayjs';
@@ -162,22 +162,22 @@ const mk = (e: Omit<TemplateElement, 'fontFamily' | 'bold' | 'letterSpacing' | '
 });
 
 const DEFAULT_ELEMENTS: TemplateElement[] = [
-  mk({ id: 'title', type: 'variable', variable: 'institution.name', text: 'UNIDAD EDUCATIVA COLEGIO BATALLA DE LA VICTORIA', x: 439.5, y: 181.5, size: 10 }),
-  mk({ id: 'code', type: 'variable', variable: 'institution.code', text: 'PD00801209', x: 186.75, y: 196.5, size: 10 }),
-  mk({ id: 'level', type: 'variable', variable: 'institution.level', text: 'BACHILLER', x: 186.75, y: 213, size: 10 }),
-  mk({ id: 'program', type: 'variable', variable: 'institution.program', text: 'EDUCACIÓN MEDIA GENERAL, 31059', x: 310.5, y: 230.25, size: 10 }),
-  mk({ id: 'studentName', type: 'variable', variable: 'student.fullName', text: 'JENNY ABIGAIL MARÍN ABACHE', x: 245.25, y: 245.25, size: 10 }),
-  mk({ id: 'studentId', type: 'variable', variable: 'student.document', text: 'V 30.781.275', x: 283.5, y: 261, size: 10, docFormat: DEFAULT_DOC_FORMAT }),
-  mk({ id: 'birthplace', type: 'variable', variable: 'student.birthplace', text: 'VENEZUELA, GUÁRICO, MUNICIPIO JOSÉ TADEO MONAGAS', x: 198, y: 279, size: 10 }),
-  mk({ id: 'birthdate', type: 'variable', variable: 'student.birthdate', text: '04 DE ABRIL DE 2005', x: 186.75, y: 295.5, size: 10 }),
-  mk({ id: 'issuePlace', type: 'variable', variable: 'derived.issuePlace', text: 'GUÁRICO, ALTAGRACIA DE ORITUCO, 20 DE JULIO DE 2026', x: 310.5, y: 326.25, size: 10 }),
-  mk({ id: 'year', type: 'variable', variable: 'derived.year', text: '2026', x: 225, y: 342.75, size: 10 }),
-  mk({ id: 'sig1Name', type: 'variable', variable: 'institution.directorName', text: 'MAGDALENA C. TORRES DE HERRERA', x: 166.5, y: 422.25, size: 8 }),
-  mk({ id: 'sig1Id', type: 'variable', variable: 'institution.directorDocument', text: 'V 8.417.321', x: 166.5, y: 437.25, size: 8, docFormat: DEFAULT_DOC_FORMAT }),
-  mk({ id: 'sig2Name', type: 'variable', variable: 'institution.sig2Name', text: 'GABRIELA DE LOS ÁNGELES ÁVILA PEREIRA', x: 381, y: 438.75, size: 8 }),
-  mk({ id: 'sig2Id', type: 'variable', variable: 'institution.sig2Id', text: 'V 11.366.959', x: 381, y: 453.75, size: 8, docFormat: DEFAULT_DOC_FORMAT }),
-  mk({ id: 'sig3Name', type: 'fixed', text: 'MARÍA I. BARÓN HERNÁNDEZ', x: 648.75, y: 440.25, size: 8 }),
-  mk({ id: 'sig3Id', type: 'fixed', text: 'V 12.811.357', x: 648.75, y: 454.5, size: 8 }),
+  mk({ id: 'title', type: 'variable', variable: 'institution.name', text: 'UNIDAD EDUCATIVA COLEGIO BATALLA DE LA VICTORIA', x: 290.5, y: 189.5, size: 10 }),
+  mk({ id: 'code', type: 'variable', variable: 'institution.code', text: 'PD00801209', x: 200.75, y: 201.5, size: 10 }),
+  mk({ id: 'level', type: 'variable', variable: 'institution.level', text: 'BACHILLER', x: 200.75, y: 216, size: 10 }),
+  mk({ id: 'program', type: 'variable', variable: 'institution.program', text: 'EDUCACIÓN MEDIA GENERAL, 31059', x: 318.5, y: 231.25, size: 10 }),
+  mk({ id: 'studentName', type: 'variable', variable: 'student.fullName', text: 'JENNY ABIGAIL MARÍN ABACHE', x: 249.25, y: 245.25, size: 10 }),
+  mk({ id: 'studentId', type: 'variable', variable: 'student.document', text: 'V 30.781.275', x: 306.5, y: 259, size: 10, docFormat: DEFAULT_DOC_FORMAT }),
+  mk({ id: 'birthplace', type: 'variable', variable: 'student.birthplace', text: 'VENEZUELA, GUÁRICO, MUNICIPIO JOSÉ TADEO MONAGAS', x: 232, y: 274, size: 10 }),
+  mk({ id: 'birthdate', type: 'variable', variable: 'student.birthdate', text: '04 DE ABRIL DE 2005', x: 205.75, y: 288.5, size: 10 }),
+  mk({ id: 'issuePlace', type: 'variable', variable: 'derived.issuePlace', text: 'GUÁRICO, ALTAGRACIA DE ORITUCO, 20 DE JULIO DE 2026', x: 316.5, y: 315.25, size: 10 }),
+  mk({ id: 'year', type: 'variable', variable: 'derived.year', text: '2026', x: 239, y: 328.75, size: 10 }),
+  mk({ id: 'sig1Name', type: 'fixed', text: 'MAGDALENA C. TORRES DE HERRERA', x: 178.5, y: 400.25, size: 8 }),
+  mk({ id: 'sig1Id', type: 'fixed', text: 'V 8.417.321', x: 178.5, y: 413.25, size: 8 }),
+  mk({ id: 'sig2Name', type: 'fixed', text: 'GABRIELA DE LOS ÁNGELES ÁVILA PEREIRA', x: 387, y: 413.75, size: 8 }),
+  mk({ id: 'sig2Id', type: 'fixed', text: 'V 11.366.959', x: 387, y: 427.75, size: 8 }),
+  mk({ id: 'sig3Name', type: 'fixed', text: 'MARÍA I. BARÓN HERNÁNDEZ', x: 630.75, y: 415.25, size: 8 }),
+  mk({ id: 'sig3Id', type: 'fixed', text: 'V 12.811.357', x: 631.75, y: 427.5, size: 8 }),
 ];
 
 // Migration: old layouts stored elements without type/variable/fontFamily/bold.
@@ -556,6 +556,9 @@ const TituloImpresion: React.FC = () => {
   const [images, setImages] = useState<{ name: string; url: string }[]>([]);
   const bgFileRef = useRef<HTMLInputElement>(null);
 
+  // "Export as default" code modal
+  const [exportCode, setExportCode] = useState('');
+
   // Selected students for printing
   const [selectedStudentIds, setSelectedStudentIds] = useState<Set<number>>(new Set());
 
@@ -640,6 +643,31 @@ const TituloImpresion: React.FC = () => {
       console.error('[saveLayout] Error:', e);
       message.error(e?.response?.data?.message || e?.message || 'Error al guardar el diseño');
     }
+  };
+
+  // Generate TypeScript source code for DEFAULT_ELEMENTS from the current
+  // layout, so it can be baked into the source as the factory default.
+  const exportAsDefaultCode = () => {
+    const lines = elements.map(el => {
+      const parts: string[] = [
+        `id: '${el.id}'`,
+        `type: '${el.type}'`,
+      ];
+      if (el.variable) parts.push(`variable: '${el.variable}'`);
+      parts.push(`text: ${JSON.stringify(el.text)}`);
+      parts.push(`x: ${el.x}`);
+      parts.push(`y: ${el.y}`);
+      parts.push(`size: ${el.size}`);
+      if (el.docFormat) parts.push(`docFormat: '${el.docFormat}'`);
+      if (el.textCase) parts.push(`textCase: '${el.textCase}'`);
+      if (el.bold === false) parts.push(`bold: false`);
+      if (el.letterSpacing !== 0) parts.push(`letterSpacing: ${el.letterSpacing}`);
+      if (el.scaleX !== 100) parts.push(`scaleX: ${el.scaleX}`);
+      if (el.fontFamily !== TIMES) parts.push(`fontFamily: '${el.fontFamily}'`);
+      return `  mk({ ${parts.join(', ')} }),`;
+    });
+    const code = `const DEFAULT_ELEMENTS: TemplateElement[] = [\n${lines.join('\n')}\n];`;
+    setExportCode(code);
   };
 
   // Build elements with real data for a student
@@ -802,10 +830,34 @@ const TituloImpresion: React.FC = () => {
           <div className="mb-4 flex items-center gap-3 flex-wrap">
             <Button icon={<SaveOutlined />} onClick={saveLayout}>Guardar diseño</Button>
             <Button onClick={() => { setElements(DEFAULT_ELEMENTS.map(el => ({ ...el }))); setSelectedId(null); }}>Restablecer</Button>
+            <Button icon={<CodeOutlined />} onClick={exportAsDefaultCode}>Exportar como código</Button>
             <span className="text-xs text-slate-400">
               Click en un campo para seleccionarlo. Use flechas para mover (Shift = 5pt). Doble-click para editar texto.
             </span>
           </div>
+
+          <Modal
+            title="Código de DEFAULT_ELEMENTS"
+            open={!!exportCode}
+            onCancel={() => setExportCode('')}
+            width={800}
+            footer={[
+              <Button key="copy" onClick={() => {
+                navigator.clipboard.writeText(exportCode);
+                message.success('Código copiado al portapapeles');
+              }}>Copiar</Button>,
+              <Button key="close" onClick={() => setExportCode('')}>Cerrar</Button>,
+            ]}
+          >
+            <p style={{ fontSize: 12, color: '#888', marginBottom: 8 }}>
+              Pegue este código en <code>TituloImpresion.tsx</code> reemplazando el array <code>DEFAULT_ELEMENTS</code> actual para que estas posiciones sean el diseño de fábrica.
+            </p>
+            <textarea
+              readOnly
+              value={exportCode}
+              style={{ width: '100%', height: 400, fontFamily: 'monospace', fontSize: 12, padding: 8, border: '1px solid #ccc', borderRadius: 4, resize: 'vertical' }}
+            />
+          </Modal>
 
           <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', overflowX: 'auto' }}>
             {/* Page — the visible content is the SAME iframe document that gets
