@@ -978,7 +978,7 @@ const TeacherPanel: React.FC = () => {
 
   if (!loading && assignments.length === 0) {
     return (
-      <div className="h-full overflow-y-auto theme-page-bg p-4 md:p-8">
+      <div className="teacher-panel h-full overflow-y-auto theme-page-bg p-4 md:p-8">
         <div className="app-page-header">
           <h1 className="font-headline">Panel Académico</h1>
           <p>Gestión de planificación, contenidos y calificaciones</p>
@@ -1578,7 +1578,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
   };
 
   return (
-    <div className="h-full overflow-y-auto theme-page-bg p-4 md:p-8">
+    <div className="teacher-panel h-full overflow-y-auto theme-page-bg p-4 md:p-8">
       <style>{`
         .grading-row:hover td { background-color: color-mix(in srgb, var(--color-accent) 8%, transparent) !important; }
         .grading-row td { transition: background-color 0.2s; }
