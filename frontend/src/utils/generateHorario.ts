@@ -312,9 +312,11 @@ function renderHeaderBlock(
     institutionName?: string;
     institutionParish?: string;
     institutionState?: string;
+    /** When true, R7 shows "Guiatura:" instead of "Año/Secc:" and no room. */
+    isTeacher?: boolean;
   },
 ): number {
-  const { teacherName, room, yearRange, formattedSectionLabel, institutionName, institutionParish, institutionState } = opts;
+  const { teacherName, room, yearRange, formattedSectionLabel, institutionName, institutionParish, institutionState, isTeacher } = opts;
   let currentRow = startRow;
 
   // R1-R4: School info
@@ -352,7 +354,7 @@ function renderHeaderBlock(
   r6.getCell(1).value = 'Profesor:  ';
   r6.getCell(1).font = { name: 'Cambria', size: 11, bold: true };
   r6.getCell(1).alignment = rightAlign;
-  ws.mergeCells(`B${currentRow}:C${currentRow}`);
+  ws.mergeCells(`B${currentRow}:D${currentRow}`);
   r6.getCell(2).value = (teacherName || '').toUpperCase();
   r6.getCell(2).font = { name: 'Cambria', size: 11 };
   r6.getCell(2).alignment = { horizontal: 'left', vertical: 'middle' };
@@ -364,16 +366,16 @@ function renderHeaderBlock(
   r6.getCell(6).alignment = { horizontal: 'left', vertical: 'middle' };
   currentRow++;
 
-  // R7: Año/Secc + Aula
+  // R7: Año/Secc + Aula  (or Guiatura for teacher mode)
   const r7 = ws.getRow(currentRow);
   r7.height = 12.95;
-  r7.getCell(1).value = 'Año/Secc:  ';
+  r7.getCell(1).value = isTeacher ? 'Guiatura:  ' : 'Año/Secc:  ';
   r7.getCell(1).font = { name: 'Cambria', size: 11, bold: true };
   r7.getCell(1).alignment = rightAlign;
   r7.getCell(2).value = formattedSectionLabel;
   r7.getCell(2).font = { name: 'Cambria', size: 11, bold: true };
   r7.getCell(2).alignment = { horizontal: 'left', vertical: 'middle' };
-  if (room) {
+  if (!isTeacher && room) {
     r7.getCell(5).value = room.toUpperCase();
     r7.getCell(5).font = { name: 'Cambria', size: 11, bold: true };
     r7.getCell(5).alignment = centerAlign;
@@ -422,11 +424,13 @@ export async function generateHorario(input: HorarioInput) {
     orientation: 'portrait',
     fitToPage: true,
     scale: 100,
+    margins: { top: 0.5, bottom: 0.5, left: 0.7, right: 0.7, header: 0.3, footer: 0.3 },
   } as any;
   ws.autoFilter = undefined;
 
   const afterHeader = renderHeaderBlock(ws, 1, {
     teacherName, room, yearRange, formattedSectionLabel, institutionName, institutionParish, institutionState,
+    isTeacher: sectionLabel === 'Profesor',
   });
 
   renderHorarioBlock(ws, afterHeader, { sections, entries });
@@ -528,15 +532,13 @@ export async function generateHorarioBatch(
 
       // Page break after every 2 sections (so 2 sections per printed page)
       if (sectionCountInSheet % 2 === 0 && sectionCountInSheet < gradeItems.length) {
-        ws.addRow([]); // spacer row
-        // Add page break: ExcelJS uses rowBreaks
+        // 4 spacer rows before page break
+        for (let i = 0; i < 4; i++) { ws.addRow([]); currentRow++; }
         (ws as any).rowBreaks = (ws as any).rowBreaks || [];
         (ws as any).rowBreaks.push({ id: currentRow - 1, max: 16383, min: 1 });
-        currentRow++;
       } else if (sectionCountInSheet < gradeItems.length) {
-        // Small gap between sections on same page
-        ws.addRow([]);
-        currentRow++;
+        // 4 spacer rows between sections on same page
+        for (let i = 0; i < 4; i++) { ws.addRow([]); currentRow++; }
       }
     }
 
@@ -548,10 +550,117 @@ export async function generateHorarioBatch(
       orientation: 'portrait',
       fitToPage: true,
       scale: 100,
+      margins: { top: 0.5, bottom: 0.5, left: 0.7, right: 0.7, header: 0.3, footer: 0.3 },
     } as any;
   }
 
   const buffer = await workbook.xlsx.writeBuffer();
   const fileName = `horarios_batch_${dayjs().format('YYYY-MM-DD')}.xlsx`;
+  saveAs(new Blob([buffer]), fileName);
+}
+
+// ── Teacher batch export ──
+
+export interface HorarioTeacherBatchItem {
+  teacherId: number;
+  teacherName: string;
+  /** Guide section label, e.g. "1° A", or empty/dash if none. */
+  guideSectionLabel: string;
+  entries: Record<string, ScheduleEntryData[]>;
+}
+
+/**
+ * Generate a batch horario Excel for teachers: one sheet per teacher (or
+ * stacked 2-per-page), using the teacher header layout (Guiatura, no room).
+ */
+export async function generateHorarioBatchTeachers(
+  items: HorarioTeacherBatchItem[],
+  common: {
+    schoolPeriodName: string;
+    sections: ScheduleSection[];
+    institutionName?: string;
+    institutionParish?: string;
+    institutionState?: string;
+  },
+) {
+  const { schoolPeriodName, sections, institutionName, institutionParish, institutionState } = common;
+  const yearRange = extractYearRange(schoolPeriodName);
+
+  // Sort teachers alphabetically by name
+  items.sort((a, b) => (a.teacherName || '').localeCompare(b.teacherName || '', 'es'));
+
+  const workbook = new ExcelJS.Workbook();
+  const logoBuffer = await loadLogoBuffer();
+
+  let sheetIndex = 0;
+  let ws = workbook.addWorksheet(`Profesores ${sheetIndex + 1}`, {
+    properties: { defaultRowHeight: 15 },
+  });
+  ws.columns = Array(6).fill(0).map(() => ({ width: 15.71 }));
+
+  let currentRow = 1;
+  let countInSheet = 0;
+
+  for (const item of items) {
+    // Logo at the start of this teacher's header block
+    if (logoBuffer) addLogoToSheet(ws, workbook, logoBuffer, currentRow - 1);
+
+    const afterHeader = renderHeaderBlock(ws, currentRow, {
+      teacherName: item.teacherName,
+      yearRange,
+      formattedSectionLabel: item.guideSectionLabel || '—',
+      institutionName,
+      institutionParish,
+      institutionState,
+      isTeacher: true,
+    });
+
+    const afterBlock = renderHorarioBlock(ws, afterHeader, {
+      sections,
+      entries: item.entries,
+    });
+
+    currentRow = afterBlock;
+    countInSheet++;
+
+    if (countInSheet < items.length) {
+      if (countInSheet % 2 === 0) {
+        // 4 spacer rows then page break — and start a new worksheet (cap 2 per sheet)
+        for (let i = 0; i < 4; i++) { ws.addRow([]); currentRow++; }
+        (ws as any).rowBreaks = (ws as any).rowBreaks || [];
+        (ws as any).rowBreaks.push({ id: currentRow - 1, max: 16383, min: 1 });
+        // Page setup for the sheet we just finished
+        ws.pageSetup = {
+          paperSize: 1, fitToWidth: 1, fitToHeight: 0, orientation: 'portrait',
+          fitToPage: true, scale: 100,
+          margins: { top: 0.5, bottom: 0.5, left: 0.7, right: 0.7, header: 0.3, footer: 0.3 },
+        } as any;
+        // New sheet for the next pair
+        sheetIndex++;
+        ws = workbook.addWorksheet(`Profesores ${sheetIndex + 1}`, {
+          properties: { defaultRowHeight: 15 },
+        });
+        ws.columns = Array(6).fill(0).map(() => ({ width: 15.71 }));
+        currentRow = 1;
+      } else {
+        // 4 spacer rows between the 2 teachers on the same sheet
+        for (let i = 0; i < 4; i++) { ws.addRow([]); currentRow++; }
+      }
+    }
+  }
+
+  // Page setup for the last sheet
+  ws.pageSetup = {
+    paperSize: 1,
+    fitToWidth: 1,
+    fitToHeight: 0,
+    orientation: 'portrait',
+    fitToPage: true,
+    scale: 100,
+    margins: { top: 0.5, bottom: 0.5, left: 0.7, right: 0.7, header: 0.3, footer: 0.3 },
+  } as any;
+
+  const buffer = await workbook.xlsx.writeBuffer();
+  const fileName = `horarios_profesores_${dayjs().format('YYYY-MM-DD')}.xlsx`;
   saveAs(new Blob([buffer]), fileName);
 }

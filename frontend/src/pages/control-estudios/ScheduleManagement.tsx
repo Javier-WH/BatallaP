@@ -4,8 +4,8 @@ import { TableOutlined, UserOutlined, ReloadOutlined, EditOutlined, SaveOutlined
 import api from '@/services/api';
 import { useSchool } from '@/context/SchoolContext';
 import dayjs from 'dayjs';
-import { generateHorario, generateHorarioBatch } from '@/utils/generateHorario';
-import type { HorarioBatchItem } from '@/utils/generateHorario';
+import { generateHorario, generateHorarioBatch, generateHorarioBatchTeachers } from '@/utils/generateHorario';
+import type { HorarioBatchItem, HorarioTeacherBatchItem } from '@/utils/generateHorario';
 import ClassroomDistribution from './ClassroomDistribution';
 
 const DAYS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'];
@@ -778,6 +778,9 @@ const ScheduleManagement: React.FC = () => {
   const [batchSelectedSectionIds, setBatchSelectedSectionIds] = useState<number[]>([]);
   const [batchExporting, setBatchExporting] = useState(false);
 
+  // Teacher batch export state
+  const [teacherBatchExporting, setTeacherBatchExporting] = useState(false);
+
   // Unique grades sorted by order
   const batchGradeOptions = useMemo(() => {
     const map = new Map<number, { value: number; label: string; order: number }>();
@@ -1004,6 +1007,79 @@ const ScheduleManagement: React.FC = () => {
       setBatchExporting(false);
     }
   }, [viewPeriod, sectionsList, batchSelectedGradeIds, batchSelectedSectionIds, fetchSectionEntriesMap, fetchGuideTeacherName, fetchRoomName, scheduleSections, settings]);
+
+  // Build a teacher entries map from raw teacher schedule entries (same logic
+  // as teacherEntriesMap but standalone, for batch export).
+  const buildTeacherEntriesMap = useCallback((rawEntries: any[]): Record<string, any[]> => {
+    const map: Record<string, any[]> = {};
+    rawEntries.forEach((e: any) => {
+      const key = `${e.day}|${e.periodId}`;
+      const sec = e.schedule?.section;
+      const gradeName = sec?.periodGrade?.grade?.name ?? '';
+      const sectionName = sec?.section?.name ?? '';
+      if (!map[key]) map[key] = [];
+      map[key].push({
+        subjectName: e.subject?.name,
+        subjectId: e.subjectId,
+        sectionLabel: `${gradeName} ${sectionName}`.trim(),
+        isGroup: e.isGroupSubject,
+      });
+    });
+    return map;
+  }, []);
+
+  // Fetch guide sections for all teachers in the period (returns map teacherId -> "1° A")
+  const fetchAllGuideSections = useCallback(async (): Promise<Map<number, string>> => {
+    if (!viewPeriod) return new Map();
+    try {
+      const res = await api.get('/section-guides/all', { params: { schoolPeriodId: viewPeriod.id } });
+      const guideMap = new Map<number, string>();
+      for (const grade of (res.data || [])) {
+        for (const sec of (grade.sections || [])) {
+          if (sec.guideTeacherId != null) {
+            const gradeOrder = grade.gradeName?.match(/\d+/)?.[0] ? Number(grade.gradeName.match(/\d+/)![0]) : null;
+            const letter = (sec.sectionName || '').replace(/secci[oó]n/i, '').trim();
+            const label = gradeOrder != null && letter ? `${gradeOrder}° ${letter}` : `${grade.gradeName} ${sec.sectionName}`.trim();
+            guideMap.set(sec.guideTeacherId, label);
+          }
+        }
+      }
+      return guideMap;
+    } catch { return new Map(); }
+  }, [viewPeriod]);
+
+  // Teacher batch export handler
+  const handleTeacherBatchExport = useCallback(async () => {
+    if (!viewPeriod || teachersList.length === 0) return;
+    setTeacherBatchExporting(true);
+    try {
+      const guideMap = await fetchAllGuideSections();
+      const items: HorarioTeacherBatchItem[] = [];
+      for (const t of teachersList) {
+        const res = await api.get(`/schedules/teacher/${t.id}`, { params: { schoolPeriodId: viewPeriod.id } });
+        const entries = buildTeacherEntriesMap(res.data || []);
+        items.push({
+          teacherId: t.id,
+          teacherName: t.label,
+          guideSectionLabel: guideMap.get(t.id) || '—',
+          entries,
+        });
+      }
+      await generateHorarioBatchTeachers(items, {
+        schoolPeriodName: viewPeriod.name,
+        sections: scheduleSections,
+        institutionName: settings.institution_name,
+        institutionParish: settings.institution_parish,
+        institutionState: settings.institution_state,
+      });
+      message.success(`Exportados ${items.length} horarios de profesores`);
+    } catch (e) {
+      console.error('Error in teacher batch export:', e);
+      message.error('Error al exportar horarios de profesores');
+    } finally {
+      setTeacherBatchExporting(false);
+    }
+  }, [viewPeriod, teachersList, fetchAllGuideSections, buildTeacherEntriesMap, scheduleSections, settings]);
 
   // Load teacher schedule
   const loadTeacherSchedule = useCallback(async (personId: number) => {
@@ -1611,7 +1687,7 @@ const ScheduleManagement: React.FC = () => {
             label: <span><UserOutlined /> Horarios por Profesor</span>,
             children: (
               <div>
-                <div className="mb-4 flex items-center gap-4">
+                <div className="mb-4 flex items-center gap-4 flex-wrap">
                   <Select
                     placeholder="Seleccionar profesor"
                     style={{ width: 300 }}
@@ -1646,6 +1722,14 @@ const ScheduleManagement: React.FC = () => {
                       </Button>
                     </>
                   )}
+                  <Button
+                    icon={<FileExcelOutlined />}
+                    onClick={handleTeacherBatchExport}
+                    loading={teacherBatchExporting}
+                    disabled={teachersList.length === 0}
+                  >
+                    Exportar todos
+                  </Button>
                 </div>
                 {!selectedTeacherId ? (
                   <Empty description="Seleccione un profesor para ver su horario" />
