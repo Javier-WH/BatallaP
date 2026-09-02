@@ -586,6 +586,22 @@ input[type=number] {
     min-width: 140px !important;
   }
 
+  /* Lapso Académico: horizontal scroll on mobile (like subject selector) */
+  .teacher-panel .term-selector {
+    overflow-x: auto !important;
+    scrollbar-width: none !important;
+    -ms-overflow-style: none !important;
+    flex-wrap: nowrap !important;
+  }
+  .teacher-panel .term-selector::-webkit-scrollbar {
+    display: none !important;
+  }
+  .teacher-panel .term-selector > button {
+    flex: 0 0 auto !important;
+    min-width: 90px !important;
+    white-space: nowrap !important;
+  }
+
   /* Tab labels: smaller font and less padding on mobile */
   .teacher-panel .ant-tabs-tab {
     padding: 6px 4px !important;

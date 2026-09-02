@@ -1806,7 +1806,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
               <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--color-text-muted)' }}>Lapso Académico</span>
               {isSelectedTermBlocked && <Tag color="error">Cerrado</Tag>}
             </div>
-            <div className="flex p-1 gap-2 rounded-xl w-full" style={{ backgroundColor: 'var(--color-input-bg)' }}>
+            <div className="term-selector flex p-1 gap-2 rounded-xl w-full" style={{ backgroundColor: 'var(--color-input-bg)' }}>
               {availableTerms.map(term => {
                 const isSelected = !repairMode && selectedTerm === term.id;
                 const activeTerm = availableTerms.find(t => t.isActive);
