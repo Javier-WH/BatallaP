@@ -877,6 +877,9 @@ input[type=number] {
   }
 
   /* Teacher panel: compact top grid and header in landscape */
+  .teacher-panel .teacher-top-grid {
+    grid-template-columns: 1fr !important;
+  }
   .teacher-panel .app-page-header {
     margin-bottom: 8px !important;
   }

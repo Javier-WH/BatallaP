@@ -1637,7 +1637,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
       {/* Top Grid Panels */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 mb-8">
         {/* Subjects & Terms combined in a single card-like block or flex */}
-        <div className="xl:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="teacher-top-grid xl:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Asignaturas Seleccionables — 3 niveles: materia → año → sección */}
           <div className="app-card app-card-hover p-5 flex flex-col">
             <span className="text-[10px] font-bold uppercase tracking-widest mb-2" style={{ color: 'var(--color-text-muted)' }}>Seleccionar Asignatura</span>
