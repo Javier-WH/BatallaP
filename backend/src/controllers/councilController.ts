@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import sequelize from '@/config/database';
 import {
   Inscription,
   Person,
@@ -198,11 +199,15 @@ export const getCouncilData = async (req: Request, res: Response) => {
 };
 
 export const saveCouncilPoint = async (req: Request, res: Response) => {
+  const t = await sequelize.transaction();
   try {
     const { inscriptionSubjectId, termId, points } = req.body;
 
     const term = await Term.findByPk(termId);
-    if (!term) return res.status(404).json({ message: 'Lapso no encontrado' });
+    if (!term) {
+      await t.rollback();
+      return res.status(404).json({ message: 'Lapso no encontrado' });
+    }
 
     // Derive sectionId + gradeId from InscriptionSubject → Inscription for section-aware check
     const insSub = await InscriptionSubject.findByPk(inscriptionSubjectId, {
@@ -214,7 +219,10 @@ export const saveCouncilPoint = async (req: Request, res: Response) => {
     const sectionClosed = sectionId && gradeId
       ? await TermSectionClosureService.isSectionClosed(termId, sectionId, gradeId)
       : term.isBlocked;
-    if (sectionClosed) return res.status(403).json({ message: 'El lapso está cerrado para esta sección' });
+    if (sectionClosed) {
+      await t.rollback();
+      return res.status(403).json({ message: 'El lapso está cerrado para esta sección' });
+    }
 
     // Check if the council is marked as done for this section+term
     if (sectionId && gradeId) {
@@ -228,30 +236,35 @@ export const saveCouncilPoint = async (req: Request, res: Response) => {
         },
       });
       if (checklist) {
+        await t.rollback();
         return res.status(403).json({ message: 'El consejo de curso está marcado como completado. Desmárcalo primero para editar.' });
       }
     }
 
     const [point, created] = await CouncilPoint.findOrCreate({
       where: { inscriptionSubjectId, termId },
-      defaults: { inscriptionSubjectId, termId, points }
+      defaults: { inscriptionSubjectId, termId, points },
+      transaction: t,
     });
 
     if (!created) {
-      await point.update({ points });
+      await point.update({ points }, { transaction: t });
     }
 
     // Sync term grades so that boletines and planillas stay consistent
-    await TermGradeSyncService.syncForInscriptionSubject(inscriptionSubjectId);
+    await TermGradeSyncService.syncForInscriptionSubject(inscriptionSubjectId, { transaction: t });
 
+    await t.commit();
     res.json(point);
   } catch (error) {
+    await t.rollback();
     console.error(error);
     res.status(500).json({ message: 'Error al guardar puntos de consejo' });
   }
 };
 
 export const bulkSaveCouncilPoints = async (req: Request, res: Response) => {
+  const t = await sequelize.transaction();
   try {
     const { updates } = req.body; // Array of { inscriptionSubjectId, termId, points }
 
@@ -266,6 +279,7 @@ export const bulkSaveCouncilPoints = async (req: Request, res: Response) => {
     // Validate per-subject limit
     for (const update of updates) {
       if (Number(update.points) > perSubjectLimit) {
+        await t.rollback();
         return res.status(400).json({
           message: `El límite de puntos por materia es de ${perSubjectLimit}. Se intentó asignar ${update.points}.`
         });
@@ -285,6 +299,7 @@ export const bulkSaveCouncilPoints = async (req: Request, res: Response) => {
     if (activePeriod) {
       const outOfPeriod = insSubs.filter((s: any) => s.schoolPeriodId && s.schoolPeriodId !== activePeriod.id);
       if (outOfPeriod.length > 0) {
+        await t.rollback();
         return res.status(400).json({
           message: 'Algunas materias no pertenecen al período escolar activo',
           count: outOfPeriod.length,
@@ -336,6 +351,7 @@ export const bulkSaveCouncilPoints = async (req: Request, res: Response) => {
       await Promise.all(checkLookups);
     } catch (err: any) {
       if (err.message === 'COUNCIL_DONE') {
+        await t.rollback();
         return res.status(403).json({ message: 'El consejo de curso está marcado como completado. Desmárcalo primero para editar.' });
       }
       throw err;
@@ -348,6 +364,7 @@ export const bulkSaveCouncilPoints = async (req: Request, res: Response) => {
         .reduce((sum: number, u: any) => sum + Number(u.points || 0), 0);
 
       if (totalFromUpdates > totalLimit) {
+        await t.rollback();
         return res.status(400).json({
           message: `El límite total de puntos por alumno es de ${totalLimit}. Se intentó asignar ${totalFromUpdates}.`
         });
@@ -364,11 +381,12 @@ export const bulkSaveCouncilPoints = async (req: Request, res: Response) => {
           inscriptionSubjectId: update.inscriptionSubjectId,
           termId: update.termId,
           points: update.points
-        }
+        },
+        transaction: t,
       });
 
       if (!created) {
-        await point.update({ points: update.points });
+        await point.update({ points: update.points }, { transaction: t });
       }
     }
 
@@ -376,11 +394,13 @@ export const bulkSaveCouncilPoints = async (req: Request, res: Response) => {
     const affectedSubjectIds = updates.map((u: any) => Number(u.inscriptionSubjectId)) as number[];
     const uniqueSubjectIds = Array.from(new Set(affectedSubjectIds));
     for (const subjectId of uniqueSubjectIds) {
-      await TermGradeSyncService.syncForInscriptionSubject(subjectId);
+      await TermGradeSyncService.syncForInscriptionSubject(subjectId, { transaction: t });
     }
 
+    await t.commit();
     res.json({ message: 'Puntos actualizados correctamente' });
   } catch (error) {
+    await t.rollback();
     console.error(error);
     res.status(500).json({ message: 'Error al guardar puntos en lote' });
   }

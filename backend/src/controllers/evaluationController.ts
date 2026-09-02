@@ -524,6 +524,7 @@ export const getQualifications = async (req: Request, res: Response) => {
 };
 
 export const saveQualification = async (req: Request, res: Response) => {
+  const t = await sequelize.transaction();
   try {
     const {
       evaluationPlanId,
@@ -545,10 +546,12 @@ export const saveQualification = async (req: Request, res: Response) => {
     // Validate term state: if the associated term is blocked, forbid changes
     const evalPlan = await EvaluationPlan.findByPk(evaluationPlanId);
     if (!evalPlan) {
+      await t.rollback();
       return res.status(404).json({ message: 'Plan de evaluación no encontrado' });
     }
     const term = await Term.findByPk(evalPlan.termId);
     if (!term) {
+      await t.rollback();
       return res.status(404).json({ message: 'Lapso no encontrado' });
     }
     let sectionClosed = term.isBlocked;
@@ -562,19 +565,21 @@ export const saveQualification = async (req: Request, res: Response) => {
       }
     }
     if (sectionClosed) {
+      await t.rollback();
       return res.status(403).json({ message: 'Lapso bloqueado para esta sección; no se pueden modificar calificaciones' });
     }
 
     // Robust handling: If inscriptionSubjectId is missing but we have inscriptionId, we can resolve it
     if (!finalInscriptionSubjectId && inscriptionId) {
       const ep = await EvaluationPlan.findByPk(evaluationPlanId, {
-        include: [{ model: PeriodGradeSubject, as: 'periodGradeSubject' }]
+        include: [{ model: PeriodGradeSubject, as: 'periodGradeSubject' }],
+        transaction: t,
       });
 
       const evalPlanWithSubject = ep as any;
       if (evalPlanWithSubject && evalPlanWithSubject.periodGradeSubject) {
         // Fetch inscription to denormalize context into InscriptionSubject
-        const ctxInscription = await Inscription.findByPk(inscriptionId, { attributes: ['id', 'schoolPeriodId', 'gradeId', 'sectionId'] });
+        const ctxInscription = await Inscription.findByPk(inscriptionId, { attributes: ['id', 'schoolPeriodId', 'gradeId', 'sectionId'], transaction: t });
         const [insSub] = await InscriptionSubject.findOrCreate({
           where: {
             inscriptionId,
@@ -586,19 +591,22 @@ export const saveQualification = async (req: Request, res: Response) => {
             schoolPeriodId: ctxInscription?.schoolPeriodId ?? null,
             gradeId: ctxInscription?.gradeId ?? null,
             sectionId: ctxInscription?.sectionId ?? null,
-          }
+          },
+          transaction: t,
         });
         finalInscriptionSubjectId = insSub.id;
       }
     }
 
     if (!finalInscriptionSubjectId) {
+      await t.rollback();
       return res.status(400).json({ message: 'No se pudo determinar el enlace del estudiante con la materia' });
     }
 
     const academicContext = await resolveAcademicContext(
       Number(evaluationPlanId),
       Number(finalInscriptionSubjectId),
+      t,
     );
     if (inscriptionId && academicContext.inscriptionId !== Number(inscriptionId)) {
       throw new AcademicContextError('La inscripción no coincide con la materia del estudiante');
@@ -627,7 +635,8 @@ export const saveQualification = async (req: Request, res: Response) => {
         gradeId: academicContext.gradeId,
         sectionId: academicContext.sectionId,
         date: academicContext.date,
-      }
+      },
+      transaction: t,
     });
 
     if (!created) {
@@ -646,7 +655,7 @@ export const saveQualification = async (req: Request, res: Response) => {
       if (remedialScore !== undefined) updateData.remedialScore = remedialScore;
       if (isAbsent !== undefined) updateData.isAbsent = isAbsent;
 
-      await qualification.update(updateData);
+      await qualification.update(updateData, { transaction: t });
 
       // Record audit if score changed
       const sessionUser = (req.session as any).user;
@@ -661,15 +670,17 @@ export const saveQualification = async (req: Request, res: Response) => {
           comment: typeof req.body.comment === 'string' && req.body.comment.trim() !== '' ? req.body.comment.trim() : null,
           editedAt: new Date(),
           editorContext,
-        });
+        }, { transaction: t });
       }
     }
 
     // Sync term grades so that boletines and planillas stay consistent
-    await TermGradeSyncService.syncForInscriptionSubject(finalInscriptionSubjectId);
+    await TermGradeSyncService.syncForInscriptionSubject(finalInscriptionSubjectId, { transaction: t });
 
+    await t.commit();
     res.json(qualification);
   } catch (error) {
+    await t.rollback();
     if (error instanceof AcademicContextError) {
       return res.status(error.statusCode).json({ message: error.message });
     }
