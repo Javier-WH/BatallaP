@@ -175,15 +175,50 @@ function spanStyleObj(el: TemplateElement, extra: React.CSSProperties = {}): Rea
   };
 }
 
+interface GridConfig {
+  enabled: boolean;
+  cols: number;
+  rows: number;
+}
+
+const DEFAULT_GRID: GridConfig = { enabled: false, cols: 8, rows: 6 };
+
+// Build grid overlay HTML for the iframe (used in test prints)
+function buildGridHtml(grid: GridConfig): string {
+  if (!grid.enabled || grid.cols < 1 || grid.rows < 1) return '';
+  const colW = PAGE_WIDTH_PT / grid.cols;
+  const rowH = PAGE_HEIGHT_PT / grid.rows;
+  const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  const lines: string[] = [];
+  // Vertical lines + column letters at top
+  for (let i = 0; i <= grid.cols; i++) {
+    const x = i * colW;
+    lines.push(`<div style="position:absolute;left:${x}pt;top:0;width:0;height:100%;border-left:1px dashed #999"></div>`);
+    if (i < grid.cols) {
+      lines.push(`<div style="position:absolute;left:${x}pt;top:0;width:${colW}pt;text-align:center;font-size:7pt;color:#999;font-family:Arial,sans-serif">${letters[i] || ''}</div>`);
+    }
+  }
+  // Horizontal lines + row numbers at left
+  for (let j = 0; j <= grid.rows; j++) {
+    const y = j * rowH;
+    lines.push(`<div style="position:absolute;left:0;top:${y}pt;height:0;width:100%;border-top:1px dashed #999"></div>`);
+    if (j < grid.rows) {
+      lines.push(`<div style="position:absolute;left:0;top:${y}pt;height:${rowH}pt;display:flex;align-items:center;font-size:7pt;color:#999;font-family:Arial,sans-serif;padding-left:2pt">${j + 1}</div>`);
+    }
+  }
+  return `<div class="grid-overlay" style="position:absolute;inset:0;pointer-events:none;z-index:9999">${lines.join('')}</div>`;
+}
+
 /**
  * Builds a self-contained HTML document with one page per element set.
  * Rendered inside an iframe so the preview is byte-for-byte what gets printed:
  * no app CSS can leak in, and the print output needs no visibility hacks.
  */
-const buildTituloHTML = (pages: TemplateElement[][]): string => {
+const buildTituloHTML = (pages: TemplateElement[][], grid?: GridConfig): string => {
+  const gridHtml = grid ? buildGridHtml(grid) : '';
   const pagesHtml = pages.map((els) => {
     const spans = els.map((el) => `<span style="${spanStyleStr(el)}">${escapeHtml(el.text)}</span>`).join('');
-    return `<div class="page">${spans}</div>`;
+    return `<div class="page">${spans}${gridHtml}</div>`;
   }).join('');
 
   return `<!DOCTYPE html>
@@ -272,6 +307,30 @@ const labelStyle: React.CSSProperties = { fontSize: 12, width: 56, color: '#555'
 const numInputStyle: React.CSSProperties = { flex: 1, padding: '4px 6px', fontSize: 13, border: '1px solid #ccc', borderRadius: 4 };
 const sectionLabelStyle: React.CSSProperties = { fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5, color: '#888', marginTop: 10, marginBottom: 4 };
 
+// Grid overlay rendered in the editor DOM (mirrors the iframe grid for test prints)
+const EditorGridOverlay: React.FC<{ grid: GridConfig }> = ({ grid }) => {
+  if (!grid.enabled || grid.cols < 1 || grid.rows < 1) return null;
+  const colW = PAGE_WIDTH_PT / grid.cols;
+  const rowH = PAGE_HEIGHT_PT / grid.rows;
+  const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  const items: React.ReactNode[] = [];
+  for (let i = 0; i <= grid.cols; i++) {
+    const x = i * colW;
+    items.push(<div key={`v${i}`} style={{ position: 'absolute', left: `${x}pt`, top: 0, width: 0, height: '100%', borderLeft: '1px dashed #999' }} />);
+    if (i < grid.cols) {
+      items.push(<div key={`vl${i}`} style={{ position: 'absolute', left: `${x}pt`, top: 0, width: `${colW}pt`, textAlign: 'center', fontSize: '7pt', color: '#999', fontFamily: 'Arial, sans-serif' }}>{letters[i] || ''}</div>);
+    }
+  }
+  for (let j = 0; j <= grid.rows; j++) {
+    const y = j * rowH;
+    items.push(<div key={`h${j}`} style={{ position: 'absolute', left: 0, top: `${y}pt`, height: 0, width: '100%', borderTop: '1px dashed #999' }} />);
+    if (j < grid.rows) {
+      items.push(<div key={`hn${j}`} style={{ position: 'absolute', left: 0, top: `${y}pt`, height: `${rowH}pt`, display: 'flex', alignItems: 'center', fontSize: '7pt', color: '#999', fontFamily: 'Arial, sans-serif', paddingLeft: '2pt' }}>{j + 1}</div>);
+    }
+  }
+  return <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 9999 }}>{items}</div>;
+};
+
 const TituloImpresion: React.FC = () => {
   const { allPeriods } = useSchool();
   const [mode, setMode] = useState<'print' | 'edit'>('print');
@@ -288,6 +347,9 @@ const TituloImpresion: React.FC = () => {
 
   // Issue date — shared by both modes, shown in toolbar
   const [issueDate, setIssueDate] = useState(dayjs());
+
+  // Grid overlay (editor + test prints)
+  const [grid, setGrid] = useState<GridConfig>(DEFAULT_GRID);
 
   // Selected students for printing
   const [selectedStudentIds, setSelectedStudentIds] = useState<Set<number>>(new Set());
@@ -421,10 +483,10 @@ const TituloImpresion: React.FC = () => {
   // you see is exactly what comes out of the printer.
   // In edit mode it renders a single page with the raw template (sample text).
   const previewHtml = useMemo(() => {
-    if (mode === 'edit') return buildTituloHTML([elements]);
+    if (mode === 'edit') return buildTituloHTML([elements], grid);
     if (studentsToPrint.length === 0) return '';
     return buildTituloHTML(studentsToPrint.map(buildElementsForStudent));
-  }, [mode, elements, studentsToPrint, buildElementsForStudent]);
+  }, [mode, elements, studentsToPrint, buildElementsForStudent, grid]);
 
   const handlePrint = useCallback(() => {
     const iframe = iframeRef.current;
@@ -459,20 +521,7 @@ const TituloImpresion: React.FC = () => {
         </div>
 
         <div className="flex gap-2 ml-auto">
-          {mode === 'edit' ? (
-            <>
-              <Button icon={<PrinterOutlined />} onClick={handlePrint}>
-                Imprimir prueba
-              </Button>
-              <Button
-                type="primary"
-                icon={<EyeOutlined />}
-                onClick={() => setMode('print')}
-              >
-                Volver a Impresión
-              </Button>
-            </>
-          ) : (
+          {mode !== 'edit' && (
             <Button icon={<EditOutlined />} onClick={() => setMode('edit')}>
               Editor de diseño
             </Button>
@@ -483,7 +532,7 @@ const TituloImpresion: React.FC = () => {
       {mode === 'edit' ? (
         /* ── EDITOR MODE ── */
         <div>
-          <div className="mb-4 flex items-center gap-3">
+          <div className="mb-4 flex items-center gap-3 flex-wrap">
             <Button icon={<SaveOutlined />} onClick={saveLayout}>Guardar diseño</Button>
             <Button onClick={() => { setElements(DEFAULT_ELEMENTS.map(el => ({ ...el }))); setSelectedId(null); }}>Restablecer</Button>
             <span className="text-xs text-slate-400">
@@ -531,10 +580,59 @@ const TituloImpresion: React.FC = () => {
                   {el.text}
                 </span>
               ))}
+
+              {/* Grid overlay in editor DOM — mirrors what appears in test prints */}
+              {grid.enabled && <EditorGridOverlay grid={grid} />}
             </div>
 
-            {/* Sidebar */}
-            <div style={{ width: 300, flexShrink: 0, border: '1px solid #ddd', borderRadius: 6, padding: 12, background: '#fafafa' }}>
+            {/* Sidebar + action buttons stacked above it, aligned to its width */}
+            <div style={{ width: 300, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {/* Action buttons + grid controls — fixed width to match sidebar */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div className="flex gap-2">
+                  <Button icon={<PrinterOutlined />} onClick={handlePrint} style={{ flex: 1 }}>
+                    Imprimir prueba
+                  </Button>
+                  <Button
+                    type="primary"
+                    icon={<EyeOutlined />}
+                    onClick={() => setMode('print')}
+                    style={{ flex: 1 }}
+                  >
+                    Volver a Impresión
+                  </Button>
+                </div>
+
+                {/* Grid controls — fixed height container so checkbox doesn't shift */}
+                <div style={{ border: '1px solid #ddd', borderRadius: 6, padding: '6px 10px', background: '#f5f5f5', display: 'flex', alignItems: 'center', gap: 8, height: 38, boxSizing: 'border-box' }}>
+                  <label className="flex items-center gap-1.5 text-xs text-slate-600 cursor-pointer" style={{ flexShrink: 0 }}>
+                    <input
+                      type="checkbox"
+                      checked={grid.enabled}
+                      onChange={e => setGrid(g => ({ ...g, enabled: e.target.checked }))}
+                    />
+                    Rejilla
+                  </label>
+                  {/* Reserve space for cols/rows inputs always, just hide when disabled */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, visibility: grid.enabled ? 'visible' : 'hidden' }}>
+                    <label className="text-xs text-slate-500">Cols</label>
+                    <input
+                      type="number" min={1} max={26} value={grid.cols}
+                      style={{ width: 48, padding: '2px 4px', fontSize: 12, border: '1px solid #ccc', borderRadius: 4 }}
+                      onChange={e => setGrid(g => ({ ...g, cols: Math.max(1, Math.min(26, parseInt(e.target.value) || 1)) }))}
+                    />
+                    <label className="text-xs text-slate-500">Fils</label>
+                    <input
+                      type="number" min={1} max={50} value={grid.rows}
+                      style={{ width: 48, padding: '2px 4px', fontSize: 12, border: '1px solid #ccc', borderRadius: 4 }}
+                      onChange={e => setGrid(g => ({ ...g, rows: Math.max(1, Math.min(50, parseInt(e.target.value) || 1)) }))}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Sidebar panel */}
+              <div style={{ border: '1px solid #ddd', borderRadius: 6, padding: 12, background: '#fafafa' }}>
               {selected ? (
                 <div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
@@ -676,6 +774,7 @@ const TituloImpresion: React.FC = () => {
                     {el.id} <span style={{ color: '#aaa', fontSize: 10 }}>({el.type === 'variable' ? el.variable : 'fijo'})</span>
                   </button>
                 ))}
+              </div>
               </div>
             </div>
           </div>
