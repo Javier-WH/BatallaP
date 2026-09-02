@@ -1581,25 +1581,6 @@ const ScheduleManagement: React.FC = () => {
                       {dirty && <Tag color="orange">Sin guardar</Tag>}
                     </>
                   )}
-                  {viewPeriod && !isReadOnly && (
-                    <>
-                      <Button icon={<SettingOutlined />} onClick={handleOpenExceptions}>
-                        Excepciones
-                      </Button>
-                      <Popconfirm
-                        title="¿Generar horarios automáticamente?"
-                        description="Se generarán los horarios de TODAS las secciones de TODOS los grados del período. Esto reemplazará cualquier horario existente."
-                        okText="Sí, generar"
-                        cancelText="Cancelar"
-                        onConfirm={handleGenerate}
-                        disabled={generating}
-                      >
-                        <Button type="primary" loading={generating} icon={<ThunderboltOutlined />}>
-                          Generar automáticamente
-                        </Button>
-                      </Popconfirm>
-                    </>
-                  )}
                   <Button
                     icon={<FileExcelOutlined />}
                     onClick={() => setBatchExportOpen(true)}
@@ -1666,6 +1647,26 @@ const ScheduleManagement: React.FC = () => {
                         Exportar Excel
                       </Button>
                     </>
+                  )}
+                  {viewPeriod && !isReadOnly && (
+                    <div className="ml-auto flex items-center gap-3 pl-4 border-l border-slate-200">
+                      <Button icon={<SettingOutlined />} onClick={handleOpenExceptions}>
+                        Excepciones
+                      </Button>
+                      <Popconfirm
+                        title="¿Generar horarios automáticamente?"
+                        description="Se generarán los horarios de TODAS las secciones de TODOS los grados del período. Esto reemplazará cualquier horario existente."
+                        okText="Sí, generar"
+                        cancelText="Cancelar"
+                        okButtonProps={{ danger: true }}
+                        onConfirm={handleGenerate}
+                        disabled={generating}
+                      >
+                        <Button danger loading={generating} icon={<ThunderboltOutlined />}>
+                          Generar automáticamente
+                        </Button>
+                      </Popconfirm>
+                    </div>
                   )}
                 </div>
                 {!selectedSectionId ? (
