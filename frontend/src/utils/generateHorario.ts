@@ -132,19 +132,17 @@ async function loadLogoBuffer(): Promise<ArrayBuffer | null> {
   }
 }
 
-/** Adds the logo to a worksheet at the top-left corner.
- *  Diameter 0.73". Positioned so the right edge aligns with the start of
- *  column 2, using native cell coordinates (col index + EMU offset). */
-function addLogoToSheet(ws: ExcelJS.Worksheet, workbook: ExcelJS.Workbook, buffer: ArrayBuffer) {
+/** Adds the logo to a worksheet.
+ *  Diameter 0.73". Right edge aligns with start of column 2.
+ *  @param startRow 0-indexed row where the header block begins (logo top
+ *                  aligns with this row). */
+function addLogoToSheet(ws: ExcelJS.Worksheet, workbook: ExcelJS.Workbook, buffer: ArrayBuffer, startRow: number = 0) {
   const sizePx = Math.round(0.73 * 96);
   const PX_TO_EMU = 9525; // 1px = 9525 EMU
   const logoId = workbook.addImage({ buffer, extension: 'png' });
-  // nativeCol=1 = column 2 (0-indexed). nativeColOff = negative offset in EMU
-  // to push the left edge back by the logo width so the right edge lands on
-  // the column boundary.
   const offsetEmu = -sizePx * PX_TO_EMU;
   ws.addImage(logoId, {
-    tl: { nativeCol: 1, nativeColOff: offsetEmu, nativeRow: 0, nativeRowOff: 0 },
+    tl: { nativeCol: 1, nativeColOff: offsetEmu, nativeRow: startRow, nativeRowOff: 0 },
     ext: { width: sizePx, height: sizePx },
   });
 }
@@ -500,14 +498,15 @@ export async function generateHorarioBatch(
     });
     ws.columns = Array(6).fill(0).map(() => ({ width: 15.71 }));
 
-    // Logo (top-left, 0.73" diameter, 37px from left edge)
-    if (logoBuffer) addLogoToSheet(ws, workbook, logoBuffer);
-
     let currentRow = 1;
     let sectionCountInSheet = 0;
 
     for (const item of gradeItems) {
       const formattedLabel = formatSectionLabel(item.gradeOrder, item.sectionName, item.sectionLabel);
+
+      // Logo at the start of this section's header (row is 1-indexed,
+      // nativeRow is 0-indexed)
+      if (logoBuffer) addLogoToSheet(ws, workbook, logoBuffer, currentRow - 1);
 
       const afterHeader = renderHeaderBlock(ws, currentRow, {
         teacherName: item.teacherName,
