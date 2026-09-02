@@ -28,6 +28,7 @@ const { Header, Sider, Content } = Layout;
 
 const MainLayout: React.FC = () => {
   const [collapsed, setCollapsed] = useState(false);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const { logout, user } = useAuth();
   const { settings, viewPeriod, allPeriods, isReadOnly, setViewPeriod, resetViewPeriod, usdRate, eurRate, rateDate } = useSchool();
   const navigate = useNavigate();
@@ -147,16 +148,26 @@ const MainLayout: React.FC = () => {
 
   return (
     <Layout className="h-screen overflow-hidden theme-page-bg">
+      {/* Mobile overlay backdrop */}
+      {mobileSidebarOpen && (
+        <div
+          className="mobile-sidebar-overlay"
+          onClick={() => setMobileSidebarOpen(false)}
+        />
+      )}
       <Sider
         trigger={null}
         collapsible
         collapsed={collapsed}
         width={260}
-        className="premium-sidebar relative"
+        className={`premium-sidebar relative ${mobileSidebarOpen ? 'mobile-sidebar-open' : ''}`}
       >
         <div className="flex flex-col h-full overflow-hidden relative">
           {/* Institution Header */}
-          <div className="p-6 flex items-start gap-4 border-b border-white/5 overflow-hidden">
+          <div
+            className="p-6 flex items-start gap-4 border-b border-white/5 overflow-hidden cursor-pointer"
+            onClick={() => setMobileSidebarOpen(false)}
+          >
             <div
               className="shrink-0 w-14 h-14 bg-white/90 p-2 shadow-2xl shadow-blue-500/20 flex items-center justify-center overflow-hidden border border-white/20"
               style={{ borderRadius: settings.logoShape === 'circle' ? '50%' : '0.75rem' }}
@@ -191,7 +202,7 @@ const MainLayout: React.FC = () => {
               return (
                 <div
                   key={item.key}
-                  onClick={() => navigate(item.path)}
+                  onClick={() => { navigate(item.path); setMobileSidebarOpen(false); }}
                   className={isActive ? 'nav-item-active' : 'nav-item'}
                 >
                   <span className="text-lg flex shrink-0 items-center justify-center">{item.icon}</span>
@@ -242,6 +253,26 @@ const MainLayout: React.FC = () => {
           }}
         >
           <div className="flex items-center gap-4">
+            {/* Mobile logo button — toggles sidebar (left side) */}
+            <div
+              className="mobile-logo-btn"
+              onClick={() => setMobileSidebarOpen(!mobileSidebarOpen)}
+            >
+              <div
+                className="w-10 h-10 bg-white/90 p-1.5 shadow-lg flex items-center justify-center overflow-hidden border border-slate-200"
+                style={{ borderRadius: settings.logoShape === 'circle' ? '50%' : '0.5rem' }}
+              >
+                <img
+                  src={settings.logo}
+                  alt="Logo"
+                  className="w-full h-full object-contain"
+                  style={{ borderRadius: settings.logoShape === 'circle' ? '50%' : '0' }}
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).src = 'https://cdn-icons-png.flaticon.com/512/2940/2940651.png';
+                  }}
+                />
+              </div>
+            </div>
             {/* Global Context Indicator: Active Period (clickable dropdown) */}
             {viewPeriod && (
               <Dropdown

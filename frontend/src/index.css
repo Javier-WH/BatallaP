@@ -475,3 +475,77 @@ input[type=number] {
 .fimg-handle-ne { top: -6px; right: -6px; cursor: ne-resize; }
 .fimg-handle-sw { bottom: -6px; left: -6px; cursor: sw-resize; }
 .fimg-handle-se { bottom: -6px; right: -6px; cursor: se-resize; }
+
+/* === RESPONSIVE: Mobile sidebar === */
+/* Mobile logo button — hidden on desktop, visible on mobile */
+.mobile-logo-btn {
+  display: none;
+  cursor: pointer;
+  transition: transform 0.2s ease;
+}
+.mobile-logo-btn:active {
+  transform: scale(0.92);
+}
+
+/* Overlay backdrop for mobile sidebar */
+.mobile-sidebar-overlay {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  /* Show mobile logo button */
+  .mobile-logo-btn {
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* Hide sidebar by default on mobile */
+  .premium-sidebar {
+    position: fixed !important;
+    z-index: 1001 !important;
+    left: -260px;
+    top: 0;
+    height: 100vh !important;
+    transition: left 0.3s ease, transform 0.3s ease !important;
+    box-shadow: none;
+  }
+
+  /* Slide in when open */
+  .premium-sidebar.mobile-sidebar-open {
+    left: 0 !important;
+    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.3) !important;
+  }
+
+  /* Show overlay when sidebar is open */
+  .mobile-sidebar-overlay {
+    display: block !important;
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    background-color: rgba(0, 0, 0, 0.45);
+    animation: fadeIn 0.2s ease;
+  }
+
+  /* Hide the floating collapse trigger on mobile (not needed) */
+  .premium-sidebar .absolute.top-1\/2 {
+    display: none !important;
+  }
+
+  /* Hide "Cerrar Sesión" text on mobile, show only icon */
+  .ant-btn-dangerous .ant-btn-icon + span {
+    display: none !important;
+  }
+
+  /* Hide the period selector on mobile (already hidden via md:flex) */
+  /* Header padding adjustment */
+  .ant-layout-header {
+    padding-left: 12px !important;
+    padding-right: 12px !important;
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
