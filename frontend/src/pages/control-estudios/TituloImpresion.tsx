@@ -55,6 +55,60 @@ function formatCedula(raw: string, format: DocFormat): string {
   return sep ? `${prefix}${sep}${grouped}` : `${prefix}${grouped}`;
 }
 
+/** Letter-case transformations applied to a field's text. */
+type TextCase = 'upper' | 'lower' | 'title-each' | 'title-smart';
+
+const TEXT_CASE_OPTIONS: { value: TextCase; label: string }[] = [
+  { value: 'upper', label: 'MAYÚSCULAS SOSTENIDAS' },
+  { value: 'lower', label: 'minúsculas' },
+  { value: 'title-each', label: 'Primera Letra De Cada Palabra' },
+  { value: 'title-smart', label: 'Primera Letra de Nombres y Adjetivos' },
+];
+
+const DEFAULT_TEXT_CASE: TextCase = 'upper';
+
+// Spanish articles / prepositions / conjunctions kept lowercase in
+// "title-smart" mode (unless they are the first word of the string).
+const TITLE_SMART_LOWERCASE = new Set([
+  'de', 'del', 'da', 'do', 'dos', 'las', 'la', 'el', 'los', 'y', 'o', 'u',
+  'a', 'en', 'por', 'para', 'con', 'sin', 'sobre', 'entre', 'hasta', 'desde',
+  'hacia', 'ni', 'que', 'se', 'su', 'sus', 'un', 'una', 'unos', 'unas',
+  'al', 'le', 'les', 'lo', 'me', 'te', 'nos', 'os', 'mi', 'mis', 'tu', 'tus',
+  'the', 'of', 'and', 'or', 'in', 'on', 'at', 'to', 'for', 'with',
+]);
+
+/** Applies a letter-case transformation to a string. */
+function transformTextCase(raw: string, mode: TextCase): string {
+  if (!raw) return '';
+  switch (mode) {
+    case 'upper': return raw.toUpperCase();
+    case 'lower': return raw.toLowerCase();
+    case 'title-each':
+      return raw.replace(/\S+/g, w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
+    case 'title-smart': {
+      const words = raw.split(/(\s+)/); // keep separators
+      let firstWordSeen = false;
+      return words.map(w => {
+        if (/^\s+$/.test(w) || w === '') return w;
+        const lower = w.toLowerCase();
+        // Strip trailing punctuation for the stop-word check so "DE," still
+        // counts as "de".
+        const bare = lower.replace(/[^\p{L}]+$/u, '');
+        const isStop = TITLE_SMART_LOWERCASE.has(bare);
+        let out: string;
+        if (isStop && firstWordSeen) {
+          out = lower;
+        } else {
+          out = w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
+        }
+        firstWordSeen = true;
+        return out;
+      }).join('');
+    }
+    default: return raw;
+  }
+}
+
 interface TemplateElement {
   id: string;
   type: ElementType;
@@ -71,6 +125,8 @@ interface TemplateElement {
   scaleX: number;
   /** Cédula display format. Only meaningful when variable is a document field. */
   docFormat?: DocFormat;
+  /** Letter-case transformation applied to the rendered text. */
+  textCase?: TextCase;
 }
 
 const FONT_OPTIONS: { value: FontFamily; label: string }[] = [
@@ -100,9 +156,9 @@ const VARIABLE_OPTIONS: { value: string; label: string; group: string }[] = [
 const TIMES: FontFamily = '"Times New Roman", Times, serif';
 
 /** Fills the styling defaults so the template list below stays readable. */
-const mk = (e: Omit<TemplateElement, 'fontFamily' | 'bold' | 'letterSpacing' | 'scaleX' | 'docFormat'>
-  & Partial<Pick<TemplateElement, 'fontFamily' | 'bold' | 'letterSpacing' | 'scaleX' | 'docFormat'>>): TemplateElement => ({
-  fontFamily: TIMES, bold: true, letterSpacing: 0, scaleX: 100, ...e,
+const mk = (e: Omit<TemplateElement, 'fontFamily' | 'bold' | 'letterSpacing' | 'scaleX' | 'docFormat' | 'textCase'>
+  & Partial<Pick<TemplateElement, 'fontFamily' | 'bold' | 'letterSpacing' | 'scaleX' | 'docFormat' | 'textCase'>>): TemplateElement => ({
+  fontFamily: TIMES, bold: true, letterSpacing: 0, scaleX: 100, textCase: DEFAULT_TEXT_CASE, ...e,
 });
 
 const DEFAULT_ELEMENTS: TemplateElement[] = [
@@ -154,6 +210,7 @@ function migrateElement(raw: any): TemplateElement {
     letterSpacing: Number(raw.letterSpacing) || 0,
     scaleX: Number(raw.scaleX) || 100,
     docFormat: (raw.docFormat as DocFormat) || DEFAULT_DOC_FORMAT,
+    textCase: (raw.textCase as TextCase) || DEFAULT_TEXT_CASE,
   };
   // Already new format
   if (raw && typeof raw.type === 'string') {
@@ -205,7 +262,7 @@ interface TituloInstitution {
   sig2Name: string;
   sig2Id: string;
   issueState: string;
-  issueMunicipality: string;
+  issueParish: string;
 }
 
 function round2(n: number): number {
@@ -368,13 +425,13 @@ const buildTituloHTML = (pages: TemplateElement[][], opts: BuildOptions = {}): s
 </html>`;
 };
 
-function formatIssueDate(date: dayjs.Dayjs, state: string, municipality: string): string {
+function formatIssueDate(date: dayjs.Dayjs, state: string, parish: string): string {
   const months = ['ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO',
     'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE'];
   const dd = String(date.date()).padStart(2, '0');
   const mm = months[date.month()];
   const yyyy = date.year();
-  const place = [state, municipality].filter(Boolean).join(', ');
+  const place = [state, parish].filter(Boolean).join(', ');
   return `${place}, ${dd} DE ${mm} DE ${yyyy}`;
 }
 
@@ -404,7 +461,7 @@ function resolveVariable(
       return m ? m[1] : String(dayjs().year());
     }
     case 'derived.issuePlace':
-      return formatIssueDate(issueDate, institution?.issueState || '', institution?.issueMunicipality || '');
+      return formatIssueDate(issueDate, institution?.issueState || '', institution?.issueParish || '');
     default: return '';
   }
 }
@@ -587,15 +644,20 @@ const TituloImpresion: React.FC = () => {
   // Build elements with real data for a student
   const buildElementsForStudent = useCallback((student: TituloStudent): TemplateElement[] => {
     return elements.map(el => {
+      let text = el.text;
       if (el.type === 'variable' && el.variable) {
         let resolved = resolveVariable(el.variable, student, institution, schoolPeriodName, issueDate);
         // Apply cédula formatting for document variables
         if (DOCUMENT_VARIABLES.has(el.variable) && el.docFormat) {
           resolved = formatCedula(resolved, el.docFormat);
         }
-        return { ...el, text: resolved };
+        text = resolved;
       }
-      return el;
+      // Apply letter-case transformation to all fields (fixed + variable)
+      if (el.textCase) {
+        text = transformTextCase(text, el.textCase);
+      }
+      return { ...el, text };
     });
   }, [elements, institution, schoolPeriodName, issueDate]);
 
@@ -678,12 +740,17 @@ const TituloImpresion: React.FC = () => {
     const doc = iframeRef.current?.contentDocument;
     if (!doc?.body) return;
     // Format document-variable sample text so the editor reflects the chosen
-    // cédula format, matching what preview/print will show.
-    const displayEls = elements.map(el =>
-      el.type === 'variable' && el.variable && DOCUMENT_VARIABLES.has(el.variable) && el.docFormat
-        ? { ...el, text: formatCedula(el.text, el.docFormat) }
-        : el
-    );
+    // cédula format, and apply letter-case so the editor matches preview/print.
+    const displayEls = elements.map(el => {
+      let text = el.text;
+      if (el.type === 'variable' && el.variable && DOCUMENT_VARIABLES.has(el.variable) && el.docFormat) {
+        text = formatCedula(text, el.docFormat);
+      }
+      if (el.textCase) {
+        text = transformTextCase(text, el.textCase);
+      }
+      return { ...el, text };
+    });
     doc.body.innerHTML = buildPageHtml(displayEls, grid, bgEnabled ? bgUrl : undefined);
   }, [mode, editorFrameReady, elements, grid, bgEnabled, bgUrl]);
 
@@ -965,6 +1032,20 @@ const TituloImpresion: React.FC = () => {
                       </select>
                     </div>
                   )}
+
+                  {/* Letter-case transformation — applies to every field */}
+                  <div style={{ marginBottom: 8 }}>
+                    <div style={sectionLabelStyle}>Mayúsculas / minúsculas</div>
+                    <select
+                      style={{ width: '100%', padding: '4px 6px', fontSize: 13, border: '1px solid #ccc', borderRadius: 4 }}
+                      value={selected.textCase || DEFAULT_TEXT_CASE}
+                      onChange={e => updateSelected({ textCase: e.target.value as TextCase })}
+                    >
+                      {TEXT_CASE_OPTIONS.map(o => (
+                        <option key={o.value} value={o.value}>{o.label}</option>
+                      ))}
+                    </select>
+                  </div>
 
                   {/* Text / sample text */}
                   <div style={sectionLabelStyle}>

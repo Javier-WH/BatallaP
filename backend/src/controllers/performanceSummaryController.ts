@@ -2592,10 +2592,10 @@ export const getTituloData = async (req: Request, res: Response) => {
       const residence = person?.residence;
       const outcome = ins.periodOutcome;
 
-      // Format birthplace: "PAÍS, ESTADO, MUNICIPIO" (Venezuela is assumed)
+      // Format birthplace: "PAÍS, ESTADO, MUNICIPIO XXX" (Venezuela is assumed)
       const birthState = residence?.birthState || '';
       const birthMunicipality = residence?.birthMunicipality || '';
-      const birthplace = ['VENEZUELA', birthState, birthMunicipality]
+      const birthplace = ['VENEZUELA', birthState, birthMunicipality ? `MUNICIPIO ${birthMunicipality}` : '']
         .filter(Boolean)
         .join(', ');
 
@@ -2628,7 +2628,9 @@ export const getTituloData = async (req: Request, res: Response) => {
     // Institution data
     const institution = {
       name: settings.institution_name || '',
-      code: settings.institution_code || '',
+      // Plantel code = Código DEA (institution_code is the modalidad code,
+      // already included in the program field).
+      code: settings.institution_dea_code || '',
       level: 'BACHILLER',
       program: settings.institution_program || 'EDUCACIÓN MEDIA GENERAL, 31059',
       directorName: settings.director_name || '',
@@ -2636,9 +2638,9 @@ export const getTituloData = async (req: Request, res: Response) => {
       // sig2 (Control de Estudios) — from settings if available
       sig2Name: settings.titulo_sig2_name || '',
       sig2Id: settings.titulo_sig2_id || '',
-      // Issue place: "ESTADO, MUNICIPIO, FECHA"
+      // Issue place: "ESTADO, PARROQUIA, FECHA"
       issueState: settings.institution_state || '',
-      issueMunicipality: settings.institution_municipality || '',
+      issueParish: settings.institution_parish || '',
     };
 
     return res.json({ students, institution, schoolPeriodName: period.name });
