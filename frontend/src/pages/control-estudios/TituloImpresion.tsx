@@ -690,43 +690,45 @@ const TituloImpresion: React.FC = () => {
           ) : students.length === 0 ? (
             <Empty description="No hay estudiantes de 5to año en este período" />
           ) : (
-            <div className="space-y-4">
-              {/* Student selection */}
+            <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+              {/* Student selection — narrow left column */}
               <Card
-                title={`Estudiantes de 5to año (${students.length})`}
+                title={`Estudiantes (${students.length})`}
                 size="small"
+                style={{ width: 320, flexShrink: 0 }}
                 extra={
-                  <div className="flex gap-2">
+                  <div className="flex gap-1">
                     <Button size="small" onClick={() => setSelectedStudentIds(new Set(students.map(s => s.inscriptionId)))}>Todos</Button>
                     <Button size="small" onClick={() => setSelectedStudentIds(new Set())}>Ninguno</Button>
                   </div>
                 }
               >
-                <div className="space-y-1">
+                <div className="space-y-1" style={{ maxHeight: '70vh', overflowY: 'auto' }}>
                   {students.map(student => (
                     <label
                       key={student.inscriptionId}
-                      className="flex items-center gap-3 p-2 rounded hover:bg-slate-50 cursor-pointer"
+                      className="flex items-center gap-2 p-1.5 rounded hover:bg-slate-50 cursor-pointer"
+                      style={{ fontSize: 12 }}
                     >
                       <input
                         type="checkbox"
                         checked={selectedStudentIds.has(student.inscriptionId)}
                         onChange={() => toggleStudent(student.inscriptionId)}
                       />
-                      <span className="font-medium">{student.fullName}</span>
-                      <span className="text-slate-500 text-sm">{student.document}</span>
-                      <span className="text-slate-400 text-sm">Prom: {student.finalAverage || '—'}</span>
-                      <span className="text-slate-400 text-sm">Sección: {student.sectionName}</span>
+                      <span className="font-medium" style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {student.fullName}
+                      </span>
                       {student.outcomeStatus && (
                         <span
-                          className="text-xs px-2 py-0.5 rounded"
+                          className="text-xs px-1.5 py-0.5 rounded"
                           style={{
                             background: student.outcomeStatus === 'aprobado' ? '#e9f1ea' : '#fef3e2',
                             color: student.outcomeStatus === 'aprobado' ? '#3e6e52' : '#b08d2b',
+                            flexShrink: 0,
                           }}
                         >
                           {student.outcomeStatus === 'aprobado' ? 'Aprobado' :
-                           student.outcomeStatus === 'materias_pendientes' ? 'Materias pendientes' :
+                           student.outcomeStatus === 'materias_pendientes' ? 'Pendiente' :
                            student.outcomeStatus === 'reprobado' ? 'Reprobado' : student.outcomeStatus}
                         </span>
                       )}
@@ -745,6 +747,7 @@ const TituloImpresion: React.FC = () => {
                     </span>
                   }
                   size="small"
+                  style={{ flex: 1, minWidth: 0 }}
                   extra={
                     <Button
                       type="primary"
