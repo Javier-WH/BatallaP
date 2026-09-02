@@ -183,6 +183,13 @@ interface GridConfig {
 
 const DEFAULT_GRID: GridConfig = { enabled: false, cols: 8, rows: 6 };
 
+// Background image URL — relative path so it works in deploy
+const BG_IMAGE_URL = '/uploads/images/title_Background.jpg';
+
+// The image is 3300x2550 px = exactly the 11x8.5in page ratio, so it maps 1:1 to
+// the page box. `fill` is used (not `contain`) to avoid any letterbox rounding.
+const BG_IMG_STYLE_STR = `position:absolute;left:0;top:0;width:${PAGE_WIDTH_PT}pt;height:${PAGE_HEIGHT_PT}pt;object-fit:fill;pointer-events:none;z-index:0`;
+
 // Build grid overlay HTML for the iframe (used in test prints)
 function buildGridHtml(grid: GridConfig): string {
   if (!grid.enabled || grid.cols < 1 || grid.rows < 1) return '';
@@ -214,12 +221,27 @@ function buildGridHtml(grid: GridConfig): string {
  * Rendered inside an iframe so the preview is byte-for-byte what gets printed:
  * no app CSS can leak in, and the print output needs no visibility hacks.
  */
-const buildTituloHTML = (pages: TemplateElement[][], grid?: GridConfig): string => {
+interface BuildOptions {
+  grid?: GridConfig;
+  bgEnabled?: boolean;
+  /** Editor mode: single page flush to the iframe box (no gray gutter/margins). */
+  tight?: boolean;
+}
+
+// Builds the markup of a single page. Shared by the full-document builder and by
+// the editor's imperative iframe sync, so both produce byte-identical pages.
+function buildPageHtml(els: TemplateElement[], grid?: GridConfig, bgEnabled?: boolean): string {
+  // A CSS background is avoided because browsers may drop it when "background
+  // graphics" is off in the print dialog.
+  const bgHtml = bgEnabled ? `<img src="${BG_IMAGE_URL}" alt="" style="${BG_IMG_STYLE_STR}">` : '';
+  const spans = els.map((el) => `<span style="${spanStyleStr(el)}">${escapeHtml(el.text)}</span>`).join('');
   const gridHtml = grid ? buildGridHtml(grid) : '';
-  const pagesHtml = pages.map((els) => {
-    const spans = els.map((el) => `<span style="${spanStyleStr(el)}">${escapeHtml(el.text)}</span>`).join('');
-    return `<div class="page">${spans}${gridHtml}</div>`;
-  }).join('');
+  return `<div class="page">${bgHtml}${spans}${gridHtml}</div>`;
+}
+
+const buildTituloHTML = (pages: TemplateElement[][], opts: BuildOptions = {}): string => {
+  const { grid, bgEnabled, tight } = opts;
+  const pagesHtml = pages.map((els) => buildPageHtml(els, grid, bgEnabled)).join('');
 
   return `<!DOCTYPE html>
 <html lang="es">
@@ -230,9 +252,10 @@ const buildTituloHTML = (pages: TemplateElement[][], grid?: GridConfig): string 
   @page { size: 11in 8.5in; margin: 0; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body {
-    background: #d9d9d9;
+    background: ${tight ? '#fff' : '#d9d9d9'};
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
+    overflow: ${tight ? 'hidden' : 'auto'};
   }
   .page {
     position: relative;
@@ -240,7 +263,7 @@ const buildTituloHTML = (pages: TemplateElement[][], grid?: GridConfig): string 
     height: ${PAGE_HEIGHT_PT}pt;
     background: #fff;
     overflow: hidden;
-    margin: 0 auto 12pt;
+    margin: ${tight ? '0' : '0 auto 12pt'};
   }
   .page span {
     position: absolute;
@@ -307,30 +330,6 @@ const labelStyle: React.CSSProperties = { fontSize: 12, width: 56, color: '#555'
 const numInputStyle: React.CSSProperties = { flex: 1, padding: '4px 6px', fontSize: 13, border: '1px solid #ccc', borderRadius: 4 };
 const sectionLabelStyle: React.CSSProperties = { fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5, color: '#888', marginTop: 10, marginBottom: 4 };
 
-// Grid overlay rendered in the editor DOM (mirrors the iframe grid for test prints)
-const EditorGridOverlay: React.FC<{ grid: GridConfig }> = ({ grid }) => {
-  if (!grid.enabled || grid.cols < 1 || grid.rows < 1) return null;
-  const colW = PAGE_WIDTH_PT / grid.cols;
-  const rowH = PAGE_HEIGHT_PT / grid.rows;
-  const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-  const items: React.ReactNode[] = [];
-  for (let i = 0; i <= grid.cols; i++) {
-    const x = i * colW;
-    items.push(<div key={`v${i}`} style={{ position: 'absolute', left: `${x}pt`, top: 0, width: 0, height: '100%', borderLeft: '1px dashed #999' }} />);
-    if (i < grid.cols) {
-      items.push(<div key={`vl${i}`} style={{ position: 'absolute', left: `${x}pt`, top: 0, width: `${colW}pt`, textAlign: 'center', fontSize: '7pt', color: '#999', fontFamily: 'Arial, sans-serif' }}>{letters[i] || ''}</div>);
-    }
-  }
-  for (let j = 0; j <= grid.rows; j++) {
-    const y = j * rowH;
-    items.push(<div key={`h${j}`} style={{ position: 'absolute', left: 0, top: `${y}pt`, height: 0, width: '100%', borderTop: '1px dashed #999' }} />);
-    if (j < grid.rows) {
-      items.push(<div key={`hn${j}`} style={{ position: 'absolute', left: 0, top: `${y}pt`, height: `${rowH}pt`, display: 'flex', alignItems: 'center', fontSize: '7pt', color: '#999', fontFamily: 'Arial, sans-serif', paddingLeft: '2pt' }}>{j + 1}</div>);
-    }
-  }
-  return <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 9999 }}>{items}</div>;
-};
-
 const TituloImpresion: React.FC = () => {
   const { allPeriods } = useSchool();
   const [mode, setMode] = useState<'print' | 'edit'>('print');
@@ -350,6 +349,9 @@ const TituloImpresion: React.FC = () => {
 
   // Grid overlay (editor + test prints)
   const [grid, setGrid] = useState<GridConfig>(DEFAULT_GRID);
+
+  // Background image (editor + test prints)
+  const [bgEnabled, setBgEnabled] = useState(false);
 
   // Selected students for printing
   const [selectedStudentIds, setSelectedStudentIds] = useState<Set<number>>(new Set());
@@ -483,10 +485,27 @@ const TituloImpresion: React.FC = () => {
   // you see is exactly what comes out of the printer.
   // In edit mode it renders a single page with the raw template (sample text).
   const previewHtml = useMemo(() => {
-    if (mode === 'edit') return buildTituloHTML([elements], grid);
+    if (mode === 'edit') return '';
     if (studentsToPrint.length === 0) return '';
     return buildTituloHTML(studentsToPrint.map(buildElementsForStudent));
-  }, [mode, elements, studentsToPrint, buildElementsForStudent, grid]);
+  }, [mode, studentsToPrint, buildElementsForStudent]);
+
+  // Editor canvas: the iframe is mounted once with an empty shell, then its page
+  // is patched in place. This keeps the rendering identical to the printed
+  // document without reloading (and flickering) the iframe on every keystroke.
+  const editorShellHtml = useMemo(() => buildTituloHTML([], { tight: true }), []);
+  const [editorFrameReady, setEditorFrameReady] = useState(false);
+
+  useEffect(() => {
+    if (mode !== 'edit') { setEditorFrameReady(false); }
+  }, [mode]);
+
+  useEffect(() => {
+    if (mode !== 'edit' || !editorFrameReady) return;
+    const doc = iframeRef.current?.contentDocument;
+    if (!doc?.body) return;
+    doc.body.innerHTML = buildPageHtml(elements, grid, bgEnabled);
+  }, [mode, editorFrameReady, elements, grid, bgEnabled]);
 
   const handlePrint = useCallback(() => {
     const iframe = iframeRef.current;
@@ -541,7 +560,10 @@ const TituloImpresion: React.FC = () => {
           </div>
 
           <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', overflowX: 'auto' }}>
-            {/* Page */}
+            {/* Page — the visible content is the SAME iframe document that gets
+                printed, so editor, preview and print cannot drift apart.
+                Interaction (select / move / inline edit) happens in a transparent
+                overlay of spans placed on top of it. */}
             <div
               style={{
                 position: 'relative',
@@ -552,37 +574,62 @@ const TituloImpresion: React.FC = () => {
                 boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
                 flexShrink: 0,
               }}
-              onMouseDown={(e) => { if (e.target === e.currentTarget) setSelectedId(null); }}
             >
-              {elements.map(el => (
-                <span
-                  key={el.id}
-                  contentEditable={editingId === el.id}
-                  suppressContentEditableWarning
-                  onMouseDown={(e) => { e.stopPropagation(); if (editingId !== el.id) setSelectedId(el.id); }}
-                  onDoubleClick={(e) => { e.stopPropagation(); setSelectedId(el.id); setEditingId(el.id); }}
-                  onBlur={(e) => {
-                    if (editingId === el.id) {
-                      setElements(prev => prev.map(x => x.id === el.id ? { ...x, text: e.target.innerText.trim() } : x));
-                      setEditingId(null);
-                    }
-                  }}
-                  onKeyDown={(e) => {
-                    if (editingId === el.id && e.key === 'Enter') { e.preventDefault(); (e.target as any).blur(); }
-                  }}
-                  style={spanStyleObj(el, {
-                    cursor: editingId === el.id ? 'text' : 'pointer',
-                    outline: selectedId === el.id ? '1px dashed #4f8cff' : 'none',
-                    outlineOffset: '2px',
-                    userSelect: editingId === el.id ? 'text' : 'none',
-                  })}
-                >
-                  {el.text}
-                </span>
-              ))}
+              <iframe
+                ref={iframeRef}
+                srcDoc={editorShellHtml}
+                onLoad={() => setEditorFrameReady(true)}
+                title="Lienzo del título"
+                scrolling="no"
+                style={{
+                  position: 'absolute',
+                  left: 0,
+                  top: 0,
+                  width: `${PAGE_WIDTH_PT}pt`,
+                  height: `${PAGE_HEIGHT_PT}pt`,
+                  border: 0,
+                  display: 'block',
+                  pointerEvents: 'none',
+                }}
+              />
 
-              {/* Grid overlay in editor DOM — mirrors what appears in test prints */}
-              {grid.enabled && <EditorGridOverlay grid={grid} />}
+              {/* Transparent hit / selection layer: the iframe underneath already
+                  draws the text, so these spans stay invisible. */}
+              <div
+                style={{ position: 'absolute', left: 0, top: 0, width: '100%', height: '100%' }}
+                onMouseDown={(e) => { if (e.target === e.currentTarget) setSelectedId(null); }}
+              >
+                {elements.map(el => (
+                  <span
+                    key={el.id}
+                    contentEditable={editingId === el.id}
+                    suppressContentEditableWarning
+                    onMouseDown={(e) => { e.stopPropagation(); if (editingId !== el.id) setSelectedId(el.id); }}
+                    onDoubleClick={(e) => { e.stopPropagation(); setSelectedId(el.id); setEditingId(el.id); }}
+                    onBlur={(e) => {
+                      if (editingId === el.id) {
+                        setElements(prev => prev.map(x => x.id === el.id ? { ...x, text: e.target.innerText.trim() } : x));
+                        setEditingId(null);
+                      }
+                    }}
+                    onKeyDown={(e) => {
+                      if (editingId === el.id && e.key === 'Enter') { e.preventDefault(); (e.target as any).blur(); }
+                    }}
+                    style={spanStyleObj(el, {
+                      cursor: editingId === el.id ? 'text' : 'pointer',
+                      outline: selectedId === el.id ? '1px dashed #4f8cff' : 'none',
+                      outlineOffset: '2px',
+                      userSelect: editingId === el.id ? 'text' : 'none',
+                      // Visible only while inline-editing so the user can see what
+                      // they type; otherwise transparent over the iframe rendering.
+                      color: editingId === el.id ? '#000' : 'transparent',
+                      background: editingId === el.id ? '#fff' : 'transparent',
+                    })}
+                  >
+                    {el.text}
+                  </span>
+                ))}
+              </div>
             </div>
 
             {/* Sidebar + action buttons stacked above it, aligned to its width */}
@@ -603,8 +650,16 @@ const TituloImpresion: React.FC = () => {
                   </Button>
                 </div>
 
-                {/* Grid controls — fixed height container so checkbox doesn't shift */}
-                <div style={{ border: '1px solid #ddd', borderRadius: 6, padding: '6px 10px', background: '#f5f5f5', display: 'flex', alignItems: 'center', gap: 8, height: 38, boxSizing: 'border-box' }}>
+                {/* Grid + background controls — fixed height container so checkboxes don't shift */}
+                <div style={{ border: '1px solid #ddd', borderRadius: 6, padding: '6px 10px', background: '#f5f5f5', display: 'flex', alignItems: 'center', gap: 10, height: 38, boxSizing: 'border-box' }}>
+                  <label className="flex items-center gap-1.5 text-xs text-slate-600 cursor-pointer" style={{ flexShrink: 0 }}>
+                    <input
+                      type="checkbox"
+                      checked={bgEnabled}
+                      onChange={e => setBgEnabled(e.target.checked)}
+                    />
+                    Fondo
+                  </label>
                   <label className="flex items-center gap-1.5 text-xs text-slate-600 cursor-pointer" style={{ flexShrink: 0 }}>
                     <input
                       type="checkbox"
@@ -868,16 +923,6 @@ const TituloImpresion: React.FC = () => {
             </div>
           )}
         </div>
-      )}
-
-      {/* Hidden iframe used to print the editor layout ("Imprimir prueba") */}
-      {mode === 'edit' && (
-        <iframe
-          ref={iframeRef}
-          srcDoc={previewHtml}
-          title="Impresión de prueba"
-          style={{ display: 'none' }}
-        />
       )}
     </div>
   );
