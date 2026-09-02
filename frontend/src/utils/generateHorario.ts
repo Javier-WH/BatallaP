@@ -27,10 +27,12 @@ interface ScheduleEntryData {
   teacherId: number;
   isGroupSubject: boolean;
   subjectName: string;
-  subject?: { name: string };
+  subject?: { name: string; abbreviation?: string };
   teacher?: { firstName: string; lastName: string };
   /** Classroom name (teacher schedule only). */
   room?: string;
+  /** Subject abbreviation from the system (if available). */
+  subjectAbbreviation?: string;
 }
 
 export interface HorarioInput {
@@ -47,39 +49,51 @@ export interface HorarioInput {
   institutionState?: string;  // e.g. "Guárico"
 }
 
-// Build a signature to detect mergeable consecutive cells
-// Use the display label (subject name) as the signature — if two consecutive cells
-// show the same subject name, they should be merged
-function cellSignature(cellEntries: ScheduleEntryData[] | undefined): string {
-  if (!cellEntries || cellEntries.length === 0) return '';
-  return cellLabel(cellEntries);
+// Get the subject display name (abbreviation if available, else name) uppercased
+function subjectDisplay(e: ScheduleEntryData): string {
+  const abbr = (e as any).subjectAbbreviation || (e as any).abbreviation;
+  const name = e.subjectName || e.subject?.name || '';
+  return (abbr || name).toUpperCase();
 }
 
-// Get the display label for a cell
-function cellLabel(cellEntries: ScheduleEntryData[] | undefined): string {
+// Get the subject name (abbreviated if available, uppercased) for a cell
+function cellSubjectName(cellEntries: ScheduleEntryData[] | undefined): string {
   if (!cellEntries || cellEntries.length === 0) return '';
-  if (cellEntries.length === 1) {
-    const e = cellEntries[0];
-    const name = (e.subjectName || e.subject?.name || '').toUpperCase();
-    return e.room ? `${name}\n${e.room.toUpperCase()}` : name;
-  }
-  // Multiple entries — deduplicate by subject name so a teacher who teaches
-  // the same subject to several sections at the same time doesn't see the
-  // name repeated once per section.
   const seen = new Set<string>();
   const labels: string[] = [];
-  let room = '';
   for (const e of cellEntries) {
-    const name = (e.subjectName || e.subject?.name || '').toUpperCase();
+    const name = subjectDisplay(e);
     if (name && !seen.has(name)) {
       seen.add(name);
       labels.push(name);
     }
-    // All entries in a group subject share the same room; take the first one.
-    if (!room && e.room) room = e.room.toUpperCase();
   }
-  const text = labels.join(' / ');
-  return room ? `${text}\n${room}` : text;
+  return labels.join(' / ');
+}
+
+// Get the room for a cell (first non-empty room from entries)
+function cellRoom(cellEntries: ScheduleEntryData[] | undefined): string {
+  if (!cellEntries || cellEntries.length === 0) return '';
+  for (const e of cellEntries) {
+    if (e.room) return e.room.toUpperCase();
+  }
+  return '';
+}
+
+// Build a signature to detect mergeable consecutive cells
+// Use the subject name + room as the signature — if two consecutive cells
+// show the same subject and room, they should be merged
+function cellSignature(cellEntries: ScheduleEntryData[] | undefined): string {
+  if (!cellEntries || cellEntries.length === 0) return '';
+  return `${cellSubjectName(cellEntries)}|${cellRoom(cellEntries)}`;
+}
+
+// Get the display label for a cell (plain text, for backwards compat)
+function cellLabel(cellEntries: ScheduleEntryData[] | undefined): string {
+  if (!cellEntries || cellEntries.length === 0) return '';
+  const name = cellSubjectName(cellEntries);
+  const room = cellRoom(cellEntries);
+  return room ? `${name}\n${room}` : name;
 }
 
 const mediumBorder: Partial<ExcelJS.Borders> = {
@@ -113,6 +127,20 @@ const cellFont: Partial<ExcelJS.Font> = {
   name: 'Cambria',
   size: 7,
   color: { argb: 'FF000000' },
+};
+
+// Rich text fonts for schedule cells (teacher mode with room)
+const cellSubjectFont: Partial<ExcelJS.Font> = {
+  name: 'Cambria',
+  size: 8,
+  bold: true,
+  color: { argb: 'FF000000' },
+};
+
+const cellRoomFont: Partial<ExcelJS.Font> = {
+  name: 'Cambria',
+  size: 7,
+  color: { argb: 'FF808080' }, // gray
 };
 
 const timeFont: Partial<ExcelJS.Font> = {
@@ -236,9 +264,26 @@ function renderHorarioBlock(
         const cellSpan = info?.span ?? 1;
         if (!info?.start) return;
         const cell = row.getCell(col);
-        const label = cellLabel(entries[key]);
-        if (label) cell.value = label;
-        cell.font = cellFont;
+        const subj = cellSubjectName(entries[key]);
+        const room = cellRoom(entries[key]);
+        if (subj) {
+          if (room) {
+            // Rich text: subject in bold+larger, room in gray+smaller
+            cell.value = {
+              richText: [
+                { text: subj, font: cellSubjectFont as any },
+                { text: '\n' + room, font: cellRoomFont as any },
+              ],
+            } as any;
+          } else {
+            // No room: subject in bold+larger only
+            cell.value = {
+              richText: [
+                { text: subj, font: cellSubjectFont as any },
+              ],
+            } as any;
+          }
+        }
         cell.alignment = centerAlign;
         if (cellSpan > 1) {
           ws.mergeCells(currentRow, col, currentRow + cellSpan - 1, col);

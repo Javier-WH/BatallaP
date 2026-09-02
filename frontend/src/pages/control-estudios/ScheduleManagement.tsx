@@ -1030,6 +1030,7 @@ const ScheduleManagement: React.FC = () => {
       if (!map[key]) map[key] = [];
       map[key].push({
         subjectName: e.subject?.name,
+        subjectAbbreviation: e.subject?.abbreviation,
         subjectId: e.subjectId,
         sectionLabel: `${gradeName} ${sectionName}`.trim(),
         isGroup: e.isGroupSubject,
@@ -1206,6 +1207,7 @@ const ScheduleManagement: React.FC = () => {
       if (!map[key]) map[key] = [];
       map[key].push({
         subjectName: e.subject?.name,
+        subjectAbbreviation: e.subject?.abbreviation,
         subjectId: e.subjectId,
         sectionLabel: `${gradeName} ${sectionName}`.trim(),
         sectionSignature: `${gradeId ?? ''}:${sectionId ?? ''}`,
