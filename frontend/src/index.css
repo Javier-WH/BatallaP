@@ -856,9 +856,11 @@ input[type=number] {
     padding-top: 4px !important;
   }
 
-  /* Grading table: shorter max height but still usable in landscape */
+  /* Grading table: no max-height in landscape — let the page scroll naturally */
   .teacher-panel .grading-table-container {
-    max-height: calc(100vh - 160px) !important;
+    max-height: none !important;
+    overflow-x: auto !important;
+    overflow-y: visible !important;
   }
 
   /* Dashboard canvas: shorter in landscape */
