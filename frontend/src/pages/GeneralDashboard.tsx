@@ -19,8 +19,8 @@ const GeneralDashboard: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
+    <div className="space-y-6 general-dashboard">
+      <div className="flex justify-between items-center general-dashboard-header">
         <div>
           <h1 className="text-3xl font-bold text-slate-900">Dashboard General</h1>
           <p className="text-slate-500 mt-1">Bienvenido al sistema de gestión educativa</p>

@@ -2123,7 +2123,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                         style={{ marginBottom: 16 }}
                       />
                       <Card bodyStyle={{ padding: 0 }} style={{ overflow: 'hidden', backgroundColor: 'var(--color-content-bg)', border: '1px solid rgba(15, 23, 42, 0.08)' }}>
-                        <div style={{ overflowX: 'auto', maxHeight: 'calc(100vh - 350px)' }}>
+                        <div className="grading-table-container" style={{ overflowX: 'auto', maxHeight: 'calc(100vh - 350px)' }}>
                           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, border: '1px solid rgba(15, 23, 42, 0.08)' }}>
                             <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
                               <tr>
@@ -2435,7 +2435,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                   </div>
                 </div>
                 <Card bodyStyle={{ padding: 0 }} style={{ overflow: 'hidden', backgroundColor: 'var(--color-content-bg)', border: '1px solid rgba(15, 23, 42, 0.08)' }}>
-                <div style={{ overflowX: 'auto', maxHeight: 'calc(100vh - 350px)' }}>
+                <div className="grading-table-container" style={{ overflowX: 'auto', maxHeight: 'calc(100vh - 350px)' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, border: '1px solid rgba(15, 23, 42, 0.08)' }}>
                     <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
                       <tr>

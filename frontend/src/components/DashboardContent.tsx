@@ -91,48 +91,53 @@ const DashboardContent: React.FC<DashboardContentProps> = ({ reloadKey }) => {
   }
 
   return (
-    <Card className="rounded-3xl border border-slate-100 shadow-xl shadow-slate-100/60">
-      <div className="relative" style={{ minHeight: 'calc(100vh - 200px)', backgroundColor }}>
-        {elements.map((element) => (
-          <div
-            key={element.id}
-            className="absolute"
-            style={{
-              left: element.x,
-              top: element.y,
-              width: element.width,
-              height: element.height,
-            }}
-          >
-            {element.type === 'text' ? (
-              <div
-                className="p-2 prose prose-slate max-w-none"
-                style={{
-                  fontWeight: element.styles?.fontWeight,
-                  fontStyle: element.styles?.fontStyle,
-                  textDecoration: element.styles?.textDecoration,
-                  color: element.styles?.color,
-                  backgroundColor: element.styles?.backgroundColor,
-                  fontSize: element.styles?.fontSize,
-                }}
-                dangerouslySetInnerHTML={{ __html: element.content || '' }}
-              />
-            ) : (
-              <img
-                src={element.imageUrl}
-                alt="Dashboard element"
-                className="w-full h-full object-fill"
-                draggable={false}
-                style={{
-                  filter: element.styles?.filter,
-                  border: element.styles?.border,
-                  borderRadius: element.styles?.borderRadius,
-                  opacity: element.styles?.opacity,
-                }}
-              />
-            )}
-          </div>
-        ))}
+    <Card className="rounded-3xl border border-slate-100 shadow-xl shadow-slate-100/60 dashboard-card">
+      <div className="dashboard-canvas-wrapper">
+        <div
+          className="dashboard-canvas relative"
+          style={{ minHeight: 'calc(100vh - 200px)', backgroundColor }}
+        >
+          {elements.map((element) => (
+            <div
+              key={element.id}
+              className="absolute"
+              style={{
+                left: element.x,
+                top: element.y,
+                width: element.width,
+                height: element.height,
+              }}
+            >
+              {element.type === 'text' ? (
+                <div
+                  className="p-2 prose prose-slate max-w-none"
+                  style={{
+                    fontWeight: element.styles?.fontWeight,
+                    fontStyle: element.styles?.fontStyle,
+                    textDecoration: element.styles?.textDecoration,
+                    color: element.styles?.color,
+                    backgroundColor: element.styles?.backgroundColor,
+                    fontSize: element.styles?.fontSize,
+                  }}
+                  dangerouslySetInnerHTML={{ __html: element.content || '' }}
+                />
+              ) : (
+                <img
+                  src={element.imageUrl}
+                  alt="Dashboard element"
+                  className="w-full h-full object-fill"
+                  draggable={false}
+                  style={{
+                    filter: element.styles?.filter,
+                    border: element.styles?.border,
+                    borderRadius: element.styles?.borderRadius,
+                    opacity: element.styles?.opacity,
+                  }}
+                />
+              )}
+            </div>
+          ))}
+        </div>
       </div>
     </Card>
   );

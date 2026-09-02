@@ -774,3 +774,183 @@ input[type=number] {
     flex-wrap: wrap !important;
   }
 }
+
+/* === RESPONSIVE: Landscape mobile (phone sideways) === */
+/* Targets phones in landscape: wide but short screens */
+@media (max-height: 500px) and (orientation: landscape) {
+  /* Tab bar: move extra content (buttons) below the tab nav */
+  .teacher-panel .ant-tabs-nav {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    margin-bottom: 4px !important;
+  }
+  .teacher-panel .ant-tabs-nav-wrap {
+    overflow: visible !important;
+    width: 100% !important;
+  }
+  .teacher-panel .ant-tabs-nav-list {
+    width: 100% !important;
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    transform: none !important;
+  }
+  .teacher-panel .ant-tabs-tab {
+    flex: 1 1 0 !important;
+    margin: 0 !important;
+    justify-content: center !important;
+    white-space: nowrap !important;
+    padding: 4px 8px !important;
+  }
+  .teacher-panel .ant-tabs-tab-btn {
+    font-size: 12px !important;
+  }
+  .teacher-panel .ant-tabs-ink-bar {
+    display: none !important;
+  }
+  .teacher-panel .ant-tabs-nav-operations {
+    display: none !important;
+  }
+  .teacher-panel .ant-tabs-extra-content {
+    width: 100% !important;
+    margin-top: 4px !important;
+    order: 2 !important;
+  }
+  .teacher-panel .ant-tabs-extra-content .flex {
+    flex-wrap: wrap !important;
+    gap: 4px !important;
+    justify-content: flex-start !important;
+  }
+  .teacher-panel .ant-tabs-extra-content .ant-btn {
+    font-size: 11px !important;
+    padding: 2px 6px !important;
+    height: 26px !important;
+  }
+  .teacher-panel .ant-tabs-extra-content .ant-btn .ant-btn-icon + span {
+    display: inline !important;
+  }
+
+  /* Reduce page padding in landscape */
+  .teacher-panel {
+    padding: 8px !important;
+  }
+
+  /* Reduce card padding — especially the card wrapping the tabs */
+  .teacher-panel .app-card {
+    padding: 8px !important;
+  }
+  .teacher-panel .app-card.p-6 {
+    padding: 8px !important;
+    margin-bottom: 8px !important;
+  }
+
+  /* Tab content: no extra padding */
+  .teacher-panel .ant-tabs-content {
+    padding: 0 !important;
+  }
+  .teacher-panel .ant-tabs-tabpane {
+    padding: 0 !important;
+  }
+
+  /* Tab content inner divs: reduce top padding */
+  .teacher-panel .ant-tabs-tabpane > div {
+    padding-top: 4px !important;
+  }
+
+  /* Grading table: shorter max height but still usable in landscape */
+  .teacher-panel .grading-table-container {
+    max-height: calc(100vh - 160px) !important;
+  }
+
+  /* Dashboard canvas: shorter in landscape */
+  .dashboard-canvas {
+    min-height: calc(100vh - 120px) !important;
+  }
+
+  /* General dashboard header: more compact */
+  .general-dashboard-header h1 {
+    font-size: 1.25rem !important;
+  }
+  .general-dashboard-header p {
+    font-size: 0.75rem !important;
+  }
+
+  /* Teacher panel: compact top grid and header in landscape */
+  .teacher-panel .app-page-header {
+    margin-bottom: 8px !important;
+  }
+  .teacher-panel .app-page-header h1 {
+    font-size: 1.1rem !important;
+  }
+  .teacher-panel .app-page-header p {
+    font-size: 0.7rem !important;
+    margin: 0 !important;
+  }
+  .teacher-panel .grid {
+    gap: 8px !important;
+    margin-bottom: 8px !important;
+  }
+  .teacher-panel .mb-8 {
+    margin-bottom: 8px !important;
+  }
+  .teacher-panel .mb-4 {
+    margin-bottom: 8px !important;
+  }
+  .teacher-panel .py-16 {
+    padding-top: 1rem !important;
+    padding-bottom: 1rem !important;
+  }
+}
+
+/* === RESPONSIVE: Dashboard canvas (absolute-positioned elements) === */
+/* On desktop: canvas is fluid, elements use absolute px positions */
+/* On mobile: fix canvas width to 1024px and scale down to fit screen */
+.dashboard-canvas-wrapper {
+  width: 100%;
+  overflow: hidden;
+}
+
+@media (max-width: 768px) {
+  .dashboard-canvas-wrapper {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .dashboard-canvas {
+    /* Fixed reference width matching typical desktop canvas */
+    width: 1024px !important;
+    transform-origin: top left;
+    /* Scale to fit container width — 1024px reference */
+    transform: scale(calc(100vw / 1024));
+  }
+
+  /* Card padding adjustment on mobile */
+  .dashboard-card .ant-card-body {
+    padding: 8px !important;
+  }
+
+  /* Dashboard editor toolbar: wrap on mobile */
+  .dashboard-editor-toolbar {
+    flex-wrap: wrap !important;
+    gap: 8px !important;
+    justify-content: flex-start !important;
+  }
+
+  /* Dashboard editor canvas: horizontal scroll on mobile (can't scale — breaks drag coords) */
+  .dashboard-editor > .relative {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* General dashboard header: stack vertically on mobile */
+  .general-dashboard-header {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 12px !important;
+  }
+  .general-dashboard-header h1 {
+    font-size: 1.5rem !important;
+  }
+  .general-dashboard-header p {
+    font-size: 0.8rem !important;
+  }
+}

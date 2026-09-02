@@ -274,9 +274,9 @@ const DashboardEditorManual: React.FC<DashboardEditorManualProps> = ({ onSaved }
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between bg-gray-100 p-4 rounded">
-        <Space>
+    <div className="space-y-4 dashboard-editor">
+      <div className="flex items-center justify-between bg-gray-100 p-4 rounded dashboard-editor-toolbar">
+        <Space wrap>
           <Button icon={<PlusOutlined />} onClick={handleAddText}>
             Agregar Texto
           </Button>
