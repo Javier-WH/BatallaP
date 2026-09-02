@@ -29,6 +29,8 @@ interface ScheduleEntryData {
   subjectName: string;
   subject?: { name: string };
   teacher?: { firstName: string; lastName: string };
+  /** Classroom name (teacher schedule only). */
+  room?: string;
 }
 
 export interface HorarioInput {
@@ -58,21 +60,26 @@ function cellLabel(cellEntries: ScheduleEntryData[] | undefined): string {
   if (!cellEntries || cellEntries.length === 0) return '';
   if (cellEntries.length === 1) {
     const e = cellEntries[0];
-    return (e.subjectName || e.subject?.name || '').toUpperCase();
+    const name = (e.subjectName || e.subject?.name || '').toUpperCase();
+    return e.room ? `${name}\n${e.room.toUpperCase()}` : name;
   }
   // Multiple entries — deduplicate by subject name so a teacher who teaches
   // the same subject to several sections at the same time doesn't see the
   // name repeated once per section.
   const seen = new Set<string>();
   const labels: string[] = [];
+  let room = '';
   for (const e of cellEntries) {
     const name = (e.subjectName || e.subject?.name || '').toUpperCase();
     if (name && !seen.has(name)) {
       seen.add(name);
       labels.push(name);
     }
+    // All entries in a group subject share the same room; take the first one.
+    if (!room && e.room) room = e.room.toUpperCase();
   }
-  return labels.join(' / ');
+  const text = labels.join(' / ');
+  return room ? `${text}\n${room}` : text;
 }
 
 const mediumBorder: Partial<ExcelJS.Borders> = {

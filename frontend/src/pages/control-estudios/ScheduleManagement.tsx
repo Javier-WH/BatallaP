@@ -761,6 +761,7 @@ const ScheduleManagement: React.FC = () => {
   const [selectedTeacherId, setSelectedTeacherId] = useState<number | undefined>();
   const [teacherEntries, setTeacherEntries] = useState<any[]>([]);
   const [teacherLoading, setTeacherLoading] = useState(false);
+  const [teacherRoomLookup, setTeacherRoomLookup] = useState<(day: string, periodId: string, sectionKey: string) => string>(() => () => '');
 
   // Exceptions modal state
   const [exceptionsModalOpen, setExceptionsModalOpen] = useState(false);
@@ -1010,23 +1011,53 @@ const ScheduleManagement: React.FC = () => {
 
   // Build a teacher entries map from raw teacher schedule entries (same logic
   // as teacherEntriesMap but standalone, for batch export).
-  const buildTeacherEntriesMap = useCallback((rawEntries: any[]): Record<string, any[]> => {
+  // roomLookup: (day, periodId, "gradeId-sectionId") -> room name
+  const buildTeacherEntriesMap = useCallback((
+    rawEntries: any[],
+    roomLookup?: (day: string, periodId: string, sectionKey: string) => string,
+  ): Record<string, any[]> => {
     const map: Record<string, any[]> = {};
     rawEntries.forEach((e: any) => {
       const key = `${e.day}|${e.periodId}`;
       const sec = e.schedule?.section;
       const gradeName = sec?.periodGrade?.grade?.name ?? '';
       const sectionName = sec?.section?.name ?? '';
+      const gradeId = sec?.periodGrade?.grade?.id;
+      const sectionId = sec?.section?.id;
+      const room = roomLookup && gradeId != null && sectionId != null
+        ? roomLookup(e.day, String(e.periodId), `${gradeId}-${sectionId}`)
+        : '';
       if (!map[key]) map[key] = [];
       map[key].push({
         subjectName: e.subject?.name,
         subjectId: e.subjectId,
         sectionLabel: `${gradeName} ${sectionName}`.trim(),
         isGroup: e.isGroupSubject,
+        room,
       });
     });
     return map;
   }, []);
+
+  // Fetch classroom grid as a lookup function: (day, period, "gradeId-sectionId") -> room name
+  const fetchRoomLookup = useCallback(async (): Promise<(day: string, periodId: string, sectionKey: string) => string> => {
+    if (!viewPeriod) return () => '';
+    try {
+      const gridRes = await api.get(`/classroom-assignments/grid/${viewPeriod.id}`);
+      const grid = gridRes.data || {};
+      // grid format: { "day|period|roomName": "gradeId-sectionId", ... }
+      return (day: string, periodId: string, sectionKey: string): string => {
+        for (const [cellKey, value] of Object.entries(grid)) {
+          if (value !== sectionKey) continue;
+          const parts = cellKey.split('|');
+          if (parts[0] === day && parts[1] === periodId) {
+            return (parts[2] || '').toUpperCase();
+          }
+        }
+        return '';
+      };
+    } catch { return () => ''; }
+  }, [viewPeriod]);
 
   // Fetch guide sections for all teachers in the period (returns map teacherId -> "1° A")
   const fetchAllGuideSections = useCallback(async (): Promise<Map<number, string>> => {
@@ -1053,11 +1084,11 @@ const ScheduleManagement: React.FC = () => {
     if (!viewPeriod || teachersList.length === 0) return;
     setTeacherBatchExporting(true);
     try {
-      const guideMap = await fetchAllGuideSections();
+      const [guideMap, roomLookup] = await Promise.all([fetchAllGuideSections(), fetchRoomLookup()]);
       const items: HorarioTeacherBatchItem[] = [];
       for (const t of teachersList) {
         const res = await api.get(`/schedules/teacher/${t.id}`, { params: { schoolPeriodId: viewPeriod.id } });
-        const entries = buildTeacherEntriesMap(res.data || []);
+        const entries = buildTeacherEntriesMap(res.data || [], roomLookup);
         items.push({
           teacherId: t.id,
           teacherName: t.label,
@@ -1079,22 +1110,26 @@ const ScheduleManagement: React.FC = () => {
     } finally {
       setTeacherBatchExporting(false);
     }
-  }, [viewPeriod, teachersList, fetchAllGuideSections, buildTeacherEntriesMap, scheduleSections, settings]);
+  }, [viewPeriod, teachersList, fetchAllGuideSections, fetchRoomLookup, buildTeacherEntriesMap, scheduleSections, settings]);
 
   // Load teacher schedule
   const loadTeacherSchedule = useCallback(async (personId: number) => {
     if (!viewPeriod) return;
     setTeacherLoading(true);
     try {
-      const res = await api.get(`/schedules/teacher/${personId}`, { params: { schoolPeriodId: viewPeriod.id } });
+      const [res, roomLookup] = await Promise.all([
+        api.get(`/schedules/teacher/${personId}`, { params: { schoolPeriodId: viewPeriod.id } }),
+        fetchRoomLookup(),
+      ]);
       setTeacherEntries(res.data || []);
+      setTeacherRoomLookup(() => roomLookup);
     } catch (e) {
       console.error('Error loading teacher schedule:', e);
       message.error('Error al cargar el horario del profesor');
     } finally {
       setTeacherLoading(false);
     }
-  }, [viewPeriod]);
+  }, [viewPeriod, fetchRoomLookup]);
 
   useEffect(() => {
     if (selectedSectionId) loadSectionSchedule(selectedSectionId);
@@ -1176,10 +1211,11 @@ const ScheduleManagement: React.FC = () => {
         sectionSignature: `${gradeId ?? ''}:${sectionId ?? ''}`,
         sectionColor,
         isGroup: e.isGroupSubject,
+        room: (gradeId != null && sectionId != null) ? teacherRoomLookup(e.day, String(e.periodId), `${gradeId}-${sectionId}`) : '',
       });
     });
     return map;
-  }, [teacherEntries]);
+  }, [teacherEntries, teacherRoomLookup]);
 
   // Enter edit mode
   const enterEditMode = () => {
