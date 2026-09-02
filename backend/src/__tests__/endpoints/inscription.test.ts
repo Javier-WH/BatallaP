@@ -44,7 +44,8 @@ describe('Inscription Endpoints', () => {
       gradeId,
       sectionId,
       personId,
-      status: 'pending',
+      inscriptionId: inscription.id,
+      status: 'completed',
       escolaridad: 'regular',
       hiddenFromControlEstudios: false,
     });
