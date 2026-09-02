@@ -1749,7 +1749,7 @@ const MatriculationEnrollment: React.FC = () => {
                   <Select
                     placeholder="Sección"
                     size="small"
-                    style={{ width: 100 }}
+                    style={{ width: 120 }}
                     allowClear
                     value={filterSection}
                     disabled={!filterGrade}
