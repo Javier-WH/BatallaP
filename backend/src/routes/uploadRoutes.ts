@@ -1,6 +1,7 @@
 import { Router } from 'express';
-import { getPlanningLogo, uploadLogo } from '../controllers/uploadController';
+import { getPlanningLogo, uploadLogo, listImages, uploadTitleBackground } from '../controllers/uploadController';
 import upload from '../middlewares/uploadMiddleware';
+import titleBackgroundUpload from '../middlewares/titleBackgroundUploadMiddleware';
 import { Request, Response } from 'express';
 import path from 'path';
 import fs from 'fs';
@@ -10,6 +11,10 @@ const router = Router();
 // Ruta para subir el logo de la institución
 router.post('/logo', upload.single('logo'), uploadLogo);
 router.get('/planning-logo', getPlanningLogo);
+
+// Imágenes disponibles + subida de fondos para títulos
+router.get('/images', listImages);
+router.post('/title-background', titleBackgroundUpload.single('image'), uploadTitleBackground);
 
 // Ruta para obtener el logo de la institución
 router.get('/logo', (req: Request, res: Response) => {

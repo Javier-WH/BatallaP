@@ -56,3 +56,43 @@ export const uploadDocument = async (req: Request, res: Response) => {
     res.status(500).json({ message: 'Error al subir documento' });
   }
 };
+
+const IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'];
+
+/**
+ * Lists the images available under public/uploads/images so the UI can offer
+ * them (e.g. as a title background). URLs are relative on purpose so they keep
+ * working behind any host/port in deploy.
+ */
+export const listImages = async (_req: Request, res: Response) => {
+  try {
+    const uploadDir = path.join(__dirname, '../../public/uploads/images');
+    if (!fs.existsSync(uploadDir)) return res.json([]);
+
+    const images = fs.readdirSync(uploadDir)
+      .filter(f => IMAGE_EXTENSIONS.includes(path.extname(f).toLowerCase()))
+      .sort((a, b) => a.localeCompare(b))
+      .map(f => ({ name: f, url: `/uploads/images/${f}` }));
+
+    return res.json(images);
+  } catch (error) {
+    console.error('[listImages] Error:', error);
+    return res.status(500).json({ message: 'Error al listar imágenes' });
+  }
+};
+
+export const uploadTitleBackground = async (req: Request, res: Response) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: 'No se ha enviado ninguna imagen' });
+    }
+    return res.json({
+      message: 'Imagen subida exitosamente',
+      name: req.file.filename,
+      url: `/uploads/images/${req.file.filename}`,
+    });
+  } catch (error) {
+    console.error('[uploadTitleBackground] Error:', error);
+    return res.status(500).json({ message: 'Error al subir la imagen' });
+  }
+};

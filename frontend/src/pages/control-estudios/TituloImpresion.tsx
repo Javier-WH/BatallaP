@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Select, Button, Spin, Empty, message, Card } from 'antd';
-import { PrinterOutlined, EditOutlined, EyeOutlined, SaveOutlined, PlusOutlined, DeleteOutlined } from '@ant-design/icons';
+import { PrinterOutlined, EditOutlined, EyeOutlined, SaveOutlined, PlusOutlined, DeleteOutlined, UploadOutlined } from '@ant-design/icons';
 import api from '@/services/api';
 import { useSchool } from '@/context/SchoolContext';
 import dayjs from 'dayjs';
@@ -21,6 +21,10 @@ interface TemplateElement {
   size: number;
   fontFamily: FontFamily;
   bold: boolean;
+  /** Tracking between characters, in pt. Can be negative to tighten. */
+  letterSpacing: number;
+  /** Horizontal stretch, in percent. 100 = natural width. */
+  scaleX: number;
 }
 
 const FONT_OPTIONS: { value: FontFamily; label: string }[] = [
@@ -47,23 +51,31 @@ const VARIABLE_OPTIONS: { value: string; label: string; group: string }[] = [
   { value: 'derived.issuePlace', label: 'Lugar y fecha de emisión', group: 'Derivados' },
 ];
 
+const TIMES: FontFamily = '"Times New Roman", Times, serif';
+
+/** Fills the styling defaults so the template list below stays readable. */
+const mk = (e: Omit<TemplateElement, 'fontFamily' | 'bold' | 'letterSpacing' | 'scaleX'>
+  & Partial<Pick<TemplateElement, 'fontFamily' | 'bold' | 'letterSpacing' | 'scaleX'>>): TemplateElement => ({
+  fontFamily: TIMES, bold: true, letterSpacing: 0, scaleX: 100, ...e,
+});
+
 const DEFAULT_ELEMENTS: TemplateElement[] = [
-  { id: 'title', type: 'variable', variable: 'institution.name', text: 'UNIDAD EDUCATIVA COLEGIO BATALLA DE LA VICTORIA', x: 439.5, y: 181.5, size: 10, fontFamily: '"Times New Roman", Times, serif', bold: true },
-  { id: 'code', type: 'variable', variable: 'institution.code', text: 'PD00801209', x: 186.75, y: 196.5, size: 10, fontFamily: '"Times New Roman", Times, serif', bold: true },
-  { id: 'level', type: 'variable', variable: 'institution.level', text: 'BACHILLER', x: 186.75, y: 213, size: 10, fontFamily: '"Times New Roman", Times, serif', bold: true },
-  { id: 'program', type: 'variable', variable: 'institution.program', text: 'EDUCACIÓN MEDIA GENERAL, 31059', x: 310.5, y: 230.25, size: 10, fontFamily: '"Times New Roman", Times, serif', bold: true },
-  { id: 'studentName', type: 'variable', variable: 'student.fullName', text: 'JENNY ABIGAIL MARÍN ABACHE', x: 245.25, y: 245.25, size: 10, fontFamily: '"Times New Roman", Times, serif', bold: true },
-  { id: 'studentId', type: 'variable', variable: 'student.document', text: 'V 30.781.275', x: 283.5, y: 261, size: 10, fontFamily: '"Times New Roman", Times, serif', bold: true },
-  { id: 'birthplace', type: 'variable', variable: 'student.birthplace', text: 'VENEZUELA, GUÁRICO, MUNICIPIO JOSÉ TADEO MONAGAS', x: 198, y: 279, size: 10, fontFamily: '"Times New Roman", Times, serif', bold: true },
-  { id: 'birthdate', type: 'variable', variable: 'student.birthdate', text: '04 DE ABRIL DE 2005', x: 186.75, y: 295.5, size: 10, fontFamily: '"Times New Roman", Times, serif', bold: true },
-  { id: 'issuePlace', type: 'variable', variable: 'derived.issuePlace', text: 'GUÁRICO, ALTAGRACIA DE ORITUCO, 20 DE JULIO DE 2026', x: 310.5, y: 326.25, size: 10, fontFamily: '"Times New Roman", Times, serif', bold: true },
-  { id: 'year', type: 'variable', variable: 'derived.year', text: '2026', x: 225, y: 342.75, size: 10, fontFamily: '"Times New Roman", Times, serif', bold: true },
-  { id: 'sig1Name', type: 'variable', variable: 'institution.directorName', text: 'MAGDALENA C. TORRES DE HERRERA', x: 166.5, y: 422.25, size: 8, fontFamily: '"Times New Roman", Times, serif', bold: true },
-  { id: 'sig1Id', type: 'variable', variable: 'institution.directorDocument', text: 'V 8.417.321', x: 166.5, y: 437.25, size: 8, fontFamily: '"Times New Roman", Times, serif', bold: true },
-  { id: 'sig2Name', type: 'variable', variable: 'institution.sig2Name', text: 'GABRIELA DE LOS ÁNGELES ÁVILA PEREIRA', x: 381, y: 438.75, size: 8, fontFamily: '"Times New Roman", Times, serif', bold: true },
-  { id: 'sig2Id', type: 'variable', variable: 'institution.sig2Id', text: 'V 11.366.959', x: 381, y: 453.75, size: 8, fontFamily: '"Times New Roman", Times, serif', bold: true },
-  { id: 'sig3Name', type: 'fixed', text: 'MARÍA I. BARÓN HERNÁNDEZ', x: 648.75, y: 440.25, size: 8, fontFamily: '"Times New Roman", Times, serif', bold: true },
-  { id: 'sig3Id', type: 'fixed', text: 'V 12.811.357', x: 648.75, y: 454.5, size: 8, fontFamily: '"Times New Roman", Times, serif', bold: true },
+  mk({ id: 'title', type: 'variable', variable: 'institution.name', text: 'UNIDAD EDUCATIVA COLEGIO BATALLA DE LA VICTORIA', x: 439.5, y: 181.5, size: 10 }),
+  mk({ id: 'code', type: 'variable', variable: 'institution.code', text: 'PD00801209', x: 186.75, y: 196.5, size: 10 }),
+  mk({ id: 'level', type: 'variable', variable: 'institution.level', text: 'BACHILLER', x: 186.75, y: 213, size: 10 }),
+  mk({ id: 'program', type: 'variable', variable: 'institution.program', text: 'EDUCACIÓN MEDIA GENERAL, 31059', x: 310.5, y: 230.25, size: 10 }),
+  mk({ id: 'studentName', type: 'variable', variable: 'student.fullName', text: 'JENNY ABIGAIL MARÍN ABACHE', x: 245.25, y: 245.25, size: 10 }),
+  mk({ id: 'studentId', type: 'variable', variable: 'student.document', text: 'V 30.781.275', x: 283.5, y: 261, size: 10 }),
+  mk({ id: 'birthplace', type: 'variable', variable: 'student.birthplace', text: 'VENEZUELA, GUÁRICO, MUNICIPIO JOSÉ TADEO MONAGAS', x: 198, y: 279, size: 10 }),
+  mk({ id: 'birthdate', type: 'variable', variable: 'student.birthdate', text: '04 DE ABRIL DE 2005', x: 186.75, y: 295.5, size: 10 }),
+  mk({ id: 'issuePlace', type: 'variable', variable: 'derived.issuePlace', text: 'GUÁRICO, ALTAGRACIA DE ORITUCO, 20 DE JULIO DE 2026', x: 310.5, y: 326.25, size: 10 }),
+  mk({ id: 'year', type: 'variable', variable: 'derived.year', text: '2026', x: 225, y: 342.75, size: 10 }),
+  mk({ id: 'sig1Name', type: 'variable', variable: 'institution.directorName', text: 'MAGDALENA C. TORRES DE HERRERA', x: 166.5, y: 422.25, size: 8 }),
+  mk({ id: 'sig1Id', type: 'variable', variable: 'institution.directorDocument', text: 'V 8.417.321', x: 166.5, y: 437.25, size: 8 }),
+  mk({ id: 'sig2Name', type: 'variable', variable: 'institution.sig2Name', text: 'GABRIELA DE LOS ÁNGELES ÁVILA PEREIRA', x: 381, y: 438.75, size: 8 }),
+  mk({ id: 'sig2Id', type: 'variable', variable: 'institution.sig2Id', text: 'V 11.366.959', x: 381, y: 453.75, size: 8 }),
+  mk({ id: 'sig3Name', type: 'fixed', text: 'MARÍA I. BARÓN HERNÁNDEZ', x: 648.75, y: 440.25, size: 8 }),
+  mk({ id: 'sig3Id', type: 'fixed', text: 'V 12.811.357', x: 648.75, y: 454.5, size: 8 }),
 ];
 
 // Migration: old layouts stored elements without type/variable/fontFamily/bold.
@@ -88,35 +100,38 @@ const OLD_ID_TO_VARIABLE: Record<string, string> = {
 const OLD_MANUAL_IDS = new Set(['sig3Name', 'sig3Id']);
 
 function migrateElement(raw: any): TemplateElement {
+  const common = {
+    text: raw.text ?? '',
+    x: Number(raw.x) || 0,
+    y: Number(raw.y) || 0,
+    size: Number(raw.size) || 10,
+    letterSpacing: Number(raw.letterSpacing) || 0,
+    scaleX: Number(raw.scaleX) || 100,
+  };
   // Already new format
   if (raw && typeof raw.type === 'string') {
     return {
+      ...common,
       id: raw.id,
       type: raw.type,
       variable: raw.variable,
-      text: raw.text ?? '',
-      x: Number(raw.x) || 0,
-      y: Number(raw.y) || 0,
-      size: Number(raw.size) || 10,
-      fontFamily: raw.fontFamily || '"Times New Roman", Times, serif',
+      fontFamily: raw.fontFamily || TIMES,
       bold: raw.bold !== false, // default true
     };
   }
   // Old format: infer type from id
   const id = raw.id as string;
   if (OLD_MANUAL_IDS.has(id)) {
-    return {
-      id, type: 'fixed', text: raw.text ?? '',
-      x: Number(raw.x) || 0, y: Number(raw.y) || 0, size: Number(raw.size) || 10,
-      fontFamily: '"Times New Roman", Times, serif', bold: true,
-    };
+    return { ...common, id, type: 'fixed', fontFamily: TIMES, bold: true };
   }
   const variable = OLD_ID_TO_VARIABLE[id];
   return {
-    id, type: variable ? 'variable' : 'fixed', variable,
-    text: raw.text ?? '',
-    x: Number(raw.x) || 0, y: Number(raw.y) || 0, size: Number(raw.size) || 10,
-    fontFamily: '"Times New Roman", Times, serif', bold: true,
+    ...common,
+    id,
+    type: variable ? 'variable' : 'fixed',
+    variable,
+    fontFamily: TIMES,
+    bold: true,
   };
 }
 
@@ -157,7 +172,20 @@ const escapeHtml = (s: string): string =>
 // so they render identically.
 function spanStyleStr(el: TemplateElement): string {
   const fontWeight = el.bold ? 'bold' : 'normal';
-  return `left:${el.x}pt;top:${el.y}pt;font-size:${el.size}pt;font-family:${el.fontFamily};font-weight:${fontWeight};line-height:1`;
+  const parts = [
+    `left:${el.x}pt`,
+    `top:${el.y}pt`,
+    `font-size:${el.size}pt`,
+    `font-family:${el.fontFamily}`,
+    `font-weight:${fontWeight}`,
+    'line-height:1',
+    `letter-spacing:${el.letterSpacing}pt`,
+  ];
+  if (el.scaleX !== 100) {
+    // Anchored at the left edge so x stays the reference point.
+    parts.push(`transform:scaleX(${el.scaleX / 100})`, 'transform-origin:left top');
+  }
+  return parts.join(';');
 }
 
 function spanStyleObj(el: TemplateElement, extra: React.CSSProperties = {}): React.CSSProperties {
@@ -169,6 +197,10 @@ function spanStyleObj(el: TemplateElement, extra: React.CSSProperties = {}): Rea
     fontWeight: el.bold ? 'bold' : 'normal',
     fontSize: `${el.size}pt`,
     lineHeight: 1,
+    letterSpacing: `${el.letterSpacing}pt`,
+    ...(el.scaleX !== 100
+      ? { transform: `scaleX(${el.scaleX / 100})`, transformOrigin: 'left top' }
+      : {}),
     whiteSpace: 'nowrap',
     color: '#000',
     ...extra,
@@ -183,10 +215,10 @@ interface GridConfig {
 
 const DEFAULT_GRID: GridConfig = { enabled: false, cols: 8, rows: 6 };
 
-// Background image URL — relative path so it works in deploy
-const BG_IMAGE_URL = '/uploads/images/title_Background.jpg';
+// Default background image — relative path so it works in deploy
+const DEFAULT_BG_IMAGE_URL = '/uploads/images/title_Background.jpg';
 
-// The image is 3300x2550 px = exactly the 11x8.5in page ratio, so it maps 1:1 to
+// Backgrounds are expected to have the 11x8.5in page ratio, so they map 1:1 to
 // the page box. `fill` is used (not `contain`) to avoid any letterbox rounding.
 const BG_IMG_STYLE_STR = `position:absolute;left:0;top:0;width:${PAGE_WIDTH_PT}pt;height:${PAGE_HEIGHT_PT}pt;object-fit:fill;pointer-events:none;z-index:0`;
 
@@ -223,25 +255,29 @@ function buildGridHtml(grid: GridConfig): string {
  */
 interface BuildOptions {
   grid?: GridConfig;
-  bgEnabled?: boolean;
+  /** Background image URL, or undefined/empty for no background. */
+  bgUrl?: string;
   /** Editor mode: single page flush to the iframe box (no gray gutter/margins). */
   tight?: boolean;
 }
 
 // Builds the markup of a single page. Shared by the full-document builder and by
 // the editor's imperative iframe sync, so both produce byte-identical pages.
-function buildPageHtml(els: TemplateElement[], grid?: GridConfig, bgEnabled?: boolean): string {
+function buildPageHtml(els: TemplateElement[], grid?: GridConfig, bgUrl?: string): string {
   // A CSS background is avoided because browsers may drop it when "background
   // graphics" is off in the print dialog.
-  const bgHtml = bgEnabled ? `<img src="${BG_IMAGE_URL}" alt="" style="${BG_IMG_STYLE_STR}">` : '';
-  const spans = els.map((el) => `<span style="${spanStyleStr(el)}">${escapeHtml(el.text)}</span>`).join('');
+  const bgHtml = bgUrl ? `<img src="${escapeHtml(bgUrl)}" alt="" style="${BG_IMG_STYLE_STR}">` : '';
+  // The style string carries font stacks with double quotes (e.g. "Times New
+  // Roman"), which would close the attribute and silently drop every
+  // declaration after it, so it must be escaped like any other attribute value.
+  const spans = els.map((el) => `<span style="${escapeHtml(spanStyleStr(el))}">${escapeHtml(el.text)}</span>`).join('');
   const gridHtml = grid ? buildGridHtml(grid) : '';
   return `<div class="page">${bgHtml}${spans}${gridHtml}</div>`;
 }
 
 const buildTituloHTML = (pages: TemplateElement[][], opts: BuildOptions = {}): string => {
-  const { grid, bgEnabled, tight } = opts;
-  const pagesHtml = pages.map((els) => buildPageHtml(els, grid, bgEnabled)).join('');
+  const { grid, bgUrl, tight } = opts;
+  const pagesHtml = pages.map((els) => buildPageHtml(els, grid, bgUrl)).join('');
 
   return `<!DOCTYPE html>
 <html lang="es">
@@ -330,6 +366,65 @@ const labelStyle: React.CSSProperties = { fontSize: 12, width: 56, color: '#555'
 const numInputStyle: React.CSSProperties = { flex: 1, padding: '4px 6px', fontSize: 13, border: '1px solid #ccc', borderRadius: 4 };
 const sectionLabelStyle: React.CSSProperties = { fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5, color: '#888', marginTop: 10, marginBottom: 4 };
 
+/**
+ * Numeric input that keeps what the user is typing intact.
+ * Clamping a controlled input on every keystroke makes intermediate values
+ * impossible to type (typing "150" with min=10 collapses to "10"), so the raw
+ * draft is kept while focused, propagated only when already in range, and
+ * clamped once on blur.
+ */
+const NumberField: React.FC<{
+  value: number;
+  onChange: (n: number) => void;
+  min?: number;
+  max?: number;
+  step?: number;
+  style?: React.CSSProperties;
+  title?: string;
+}> = ({ value, onChange, min, max, step, style, title }) => {
+  const [draft, setDraft] = useState(String(value));
+  const [focused, setFocused] = useState(false);
+
+  useEffect(() => {
+    if (!focused) setDraft(String(value));
+  }, [value, focused]);
+
+  const clamp = (n: number) => {
+    let r = n;
+    if (min !== undefined) r = Math.max(min, r);
+    if (max !== undefined) r = Math.min(max, r);
+    return r;
+  };
+
+  return (
+    <input
+      type="number"
+      step={step}
+      min={min}
+      max={max}
+      title={title}
+      style={style}
+      value={draft}
+      onFocus={() => setFocused(true)}
+      onChange={e => {
+        const raw = e.target.value;
+        setDraft(raw);
+        const n = parseFloat(raw);
+        // Only push valid, in-range values so the preview updates live without
+        // fighting what is being typed.
+        if (!isNaN(n) && n === clamp(n)) onChange(n);
+      }}
+      onBlur={() => {
+        setFocused(false);
+        const n = parseFloat(draft);
+        const next = isNaN(n) ? value : clamp(n);
+        onChange(next);
+        setDraft(String(next));
+      }}
+    />
+  );
+};
+
 const TituloImpresion: React.FC = () => {
   const { allPeriods } = useSchool();
   const [mode, setMode] = useState<'print' | 'edit'>('print');
@@ -352,6 +447,9 @@ const TituloImpresion: React.FC = () => {
 
   // Background image (editor + test prints)
   const [bgEnabled, setBgEnabled] = useState(false);
+  const [bgUrl, setBgUrl] = useState(DEFAULT_BG_IMAGE_URL);
+  const [images, setImages] = useState<{ name: string; url: string }[]>([]);
+  const bgFileRef = useRef<HTMLInputElement>(null);
 
   // Selected students for printing
   const [selectedStudentIds, setSelectedStudentIds] = useState<Set<number>>(new Set());
@@ -370,10 +468,37 @@ const TituloImpresion: React.FC = () => {
             setElements(parsed.map(migrateElement));
           }
         }
+        if (res.data?.titulo_bg_url) setBgUrl(res.data.titulo_bg_url);
       } catch { /* use defaults */ }
     };
     loadLayout();
   }, []);
+
+  // Available background images (uploads/images)
+  const loadImages = useCallback(async () => {
+    try {
+      const res = await api.get<{ name: string; url: string }[]>('/upload/images');
+      setImages(res.data || []);
+    } catch { /* keep whatever we have */ }
+  }, []);
+
+  useEffect(() => {
+    if (mode === 'edit') loadImages();
+  }, [mode, loadImages]);
+
+  const handleUploadBackground = async (file: File) => {
+    const form = new FormData();
+    form.append('image', file);
+    try {
+      const res = await api.post<{ url: string }>('/upload/title-background', form);
+      await loadImages();
+      setBgUrl(res.data.url);
+      setBgEnabled(true);
+      message.success('Imagen subida');
+    } catch (e: any) {
+      message.error(e?.response?.data?.message || 'Error al subir la imagen');
+    }
+  };
 
   // Fetch titulo data
   const fetchData = useCallback(async () => {
@@ -402,7 +527,9 @@ const TituloImpresion: React.FC = () => {
   // Save layout to settings
   const saveLayout = async () => {
     try {
-      await api.post('/settings', { settings: { titulo_layout: JSON.stringify(elements) } });
+      await api.post('/settings', {
+        settings: { titulo_layout: JSON.stringify(elements), titulo_bg_url: bgUrl },
+      });
       message.success('Diseño guardado');
     } catch (e: any) {
       console.error('[saveLayout] Error:', e);
@@ -467,12 +594,7 @@ const TituloImpresion: React.FC = () => {
 
   const addField = () => {
     const id = `field_${Date.now()}`;
-    const newEl: TemplateElement = {
-      id, type: 'fixed', text: 'NUEVO CAMPO',
-      x: 200, y: 200, size: 10,
-      fontFamily: '"Times New Roman", Times, serif', bold: true,
-    };
-    setElements(prev => [...prev, newEl]);
+    setElements(prev => [...prev, mk({ id, type: 'fixed', text: 'NUEVO CAMPO', x: 200, y: 200, size: 10 })]);
     setSelectedId(id);
   };
 
@@ -504,8 +626,8 @@ const TituloImpresion: React.FC = () => {
     if (mode !== 'edit' || !editorFrameReady) return;
     const doc = iframeRef.current?.contentDocument;
     if (!doc?.body) return;
-    doc.body.innerHTML = buildPageHtml(elements, grid, bgEnabled);
-  }, [mode, editorFrameReady, elements, grid, bgEnabled]);
+    doc.body.innerHTML = buildPageHtml(elements, grid, bgEnabled ? bgUrl : undefined);
+  }, [mode, editorFrameReady, elements, grid, bgEnabled, bgUrl]);
 
   const handlePrint = useCallback(() => {
     const iframe = iframeRef.current;
@@ -671,18 +793,49 @@ const TituloImpresion: React.FC = () => {
                   {/* Reserve space for cols/rows inputs always, just hide when disabled */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, visibility: grid.enabled ? 'visible' : 'hidden' }}>
                     <label className="text-xs text-slate-500">Cols</label>
-                    <input
-                      type="number" min={1} max={26} value={grid.cols}
+                    <NumberField
+                      min={1} max={26} value={grid.cols}
                       style={{ width: 48, padding: '2px 4px', fontSize: 12, border: '1px solid #ccc', borderRadius: 4 }}
-                      onChange={e => setGrid(g => ({ ...g, cols: Math.max(1, Math.min(26, parseInt(e.target.value) || 1)) }))}
+                      onChange={n => setGrid(g => ({ ...g, cols: n }))}
                     />
                     <label className="text-xs text-slate-500">Fils</label>
-                    <input
-                      type="number" min={1} max={50} value={grid.rows}
+                    <NumberField
+                      min={1} max={50} value={grid.rows}
                       style={{ width: 48, padding: '2px 4px', fontSize: 12, border: '1px solid #ccc', borderRadius: 4 }}
-                      onChange={e => setGrid(g => ({ ...g, rows: Math.max(1, Math.min(50, parseInt(e.target.value) || 1)) }))}
+                      onChange={n => setGrid(g => ({ ...g, rows: n }))}
                     />
                   </div>
+                </div>
+
+                {/* Background image picker + upload */}
+                <div style={{ border: '1px solid #ddd', borderRadius: 6, padding: '6px 10px', background: '#f5f5f5', display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <select
+                    value={bgUrl}
+                    onChange={e => setBgUrl(e.target.value)}
+                    disabled={!bgEnabled}
+                    title={bgUrl}
+                    style={{ flex: 1, minWidth: 0, padding: '2px 4px', fontSize: 12, border: '1px solid #ccc', borderRadius: 4 }}
+                  >
+                    {/* Keep the current value selectable even if the listing hasn't loaded */}
+                    {!images.some(i => i.url === bgUrl) && <option value={bgUrl}>{bgUrl.split('/').pop()}</option>}
+                    {images.map(img => (
+                      <option key={img.url} value={img.url}>{img.name}</option>
+                    ))}
+                  </select>
+                  <input
+                    ref={bgFileRef}
+                    type="file"
+                    accept="image/*"
+                    style={{ display: 'none' }}
+                    onChange={e => {
+                      const file = e.target.files?.[0];
+                      if (file) handleUploadBackground(file);
+                      e.target.value = '';
+                    }}
+                  />
+                  <Button size="small" icon={<UploadOutlined />} onClick={() => bgFileRef.current?.click()}>
+                    Subir
+                  </Button>
                 </div>
               </div>
 
@@ -758,18 +911,18 @@ const TituloImpresion: React.FC = () => {
                   <div style={sectionLabelStyle}>Posición</div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                     <label style={labelStyle}>X (pt)</label>
-                    <input
+                    <NumberField
                       style={numInputStyle}
-                      type="number" step="0.25" value={selected.x}
-                      onChange={e => updateSelected({ x: parseFloat(e.target.value) || 0 })}
+                      step={0.25} value={selected.x}
+                      onChange={n => updateSelected({ x: n })}
                     />
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                     <label style={labelStyle}>Y (pt)</label>
-                    <input
+                    <NumberField
                       style={numInputStyle}
-                      type="number" step="0.25" value={selected.y}
-                      onChange={e => updateSelected({ y: parseFloat(e.target.value) || 0 })}
+                      step={0.25} value={selected.y}
+                      onChange={n => updateSelected({ y: n })}
                     />
                   </div>
 
@@ -777,10 +930,10 @@ const TituloImpresion: React.FC = () => {
                   <div style={sectionLabelStyle}>Tipografía</div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                     <label style={labelStyle}>Tamaño</label>
-                    <input
+                    <NumberField
                       style={numInputStyle}
-                      type="number" step="0.5" value={selected.size}
-                      onChange={e => updateSelected({ size: parseFloat(e.target.value) || 8 })}
+                      step={0.5} min={1} value={selected.size}
+                      onChange={n => updateSelected({ size: n })}
                     />
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
@@ -802,6 +955,28 @@ const TituloImpresion: React.FC = () => {
                       checked={selected.bold}
                       onChange={e => updateSelected({ bold: e.target.checked })}
                     />
+                  </div>
+
+                  {/* Horizontal metrics — useful to match pre-printed forms */}
+                  <div style={sectionLabelStyle}>Ancho del texto</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                    <label style={labelStyle} title="Espacio entre caracteres (pt). Puede ser negativo.">Espaciado</label>
+                    <NumberField
+                      style={numInputStyle}
+                      step={0.05} value={selected.letterSpacing}
+                      onChange={n => updateSelected({ letterSpacing: n })}
+                    />
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                    <label style={labelStyle} title="Estiramiento horizontal. 100 = ancho natural.">Escala %</label>
+                    <NumberField
+                      style={numInputStyle}
+                      step={1} min={10} max={300} value={selected.scaleX}
+                      onChange={n => updateSelected({ scaleX: n })}
+                    />
+                  </div>
+                  <div style={{ fontSize: 11, color: '#999', marginBottom: 4 }}>
+                    Ambos se aplican igual en editor, vista previa e impresión.
                   </div>
                 </div>
               ) : (
