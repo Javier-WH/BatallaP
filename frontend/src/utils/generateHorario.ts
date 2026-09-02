@@ -103,6 +103,13 @@ const mediumBorder: Partial<ExcelJS.Borders> = {
   bottom: { style: 'medium', color: { argb: 'FF000000' } },
 };
 
+const thinBorder: Partial<ExcelJS.Borders> = {
+  left: { style: 'thin', color: { argb: 'FF000000' } },
+  right: { style: 'thin', color: { argb: 'FF000000' } },
+  top: { style: 'thin', color: { argb: 'FF000000' } },
+  bottom: { style: 'thin', color: { argb: 'FF000000' } },
+};
+
 const headerFont: Partial<ExcelJS.Font> = {
   name: 'Cambria',
   size: 9,
@@ -725,5 +732,218 @@ export async function generateHorarioBatchTeachers(
 
   const buffer = await workbook.xlsx.writeBuffer();
   const fileName = `horarios_profesores_${dayjs().format('YYYY-MM-DD')}.xlsx`;
+  saveAs(new Blob([buffer]), fileName);
+}
+
+// ── Classroom distribution export ──
+
+export interface ClassroomDistributionInput {
+  schoolPeriodName: string;
+  sections: ScheduleSection[];
+  /** Room names in order, e.g. ["Aula 1", "Aula 2", ..., "Cancha"] */
+  rooms: string[];
+  /** assignments: "Lunes|m1|Aula 3" -> "gradeId-sectionId" (or "group:...") */
+  assignments: Record<string, string>;
+  /** Map "gradeId-sectionId" -> label like "1° A" */
+  sectionLabels: Record<string, string>;
+}
+
+/**
+ * Generate a classroom distribution Excel: one block per day, with periods
+ * as rows and rooms as columns. Each cell shows which section is in that
+ * room at that time. Simplified header: "DISTRIBUCIÓN DE AULAS" + school year.
+ */
+export async function generateClassroomDistribution(input: ClassroomDistributionInput) {
+  const { schoolPeriodName, sections, rooms, assignments, sectionLabels } = input;
+  const yearRange = extractYearRange(schoolPeriodName);
+
+  const workbook = new ExcelJS.Workbook();
+  const ws = workbook.addWorksheet('Distribución', {
+    properties: { defaultRowHeight: 15 },
+  });
+
+  // Columns: A = day name (vertical), B = time, C..N = rooms
+  const numCols = 2 + rooms.length;
+  ws.columns = Array(numCols).fill(0).map((_, i) => ({ width: i === 0 ? 5 : i === 1 ? 16 : 14 }));
+  const lastColLetter = String.fromCharCode(64 + numCols);
+
+  // Helper: get cell value for a day/period/room
+  const cellValue = (day: string, periodId: string, room: string): string => {
+    const key = `${day}|${periodId}|${room}`;
+    const value = assignments[key];
+    if (!value) return '';
+    if (value.startsWith('group:')) return 'GRUPO';
+    return (sectionLabels[value] || value).toUpperCase();
+  };
+
+  let currentRow = 1;
+
+  // R1: "DISTRIBUCIÓN DE AULAS"
+  ws.mergeCells(`A${currentRow}:${lastColLetter}${currentRow}`);
+  const titleCell = ws.getRow(currentRow).getCell(1);
+  titleCell.value = 'DISTRIBUCIÓN DE AULAS';
+  titleCell.font = { name: 'Cambria', size: 12, bold: true, color: { argb: 'FF000000' } };
+  titleCell.alignment = centerAlign;
+  ws.getRow(currentRow).height = 18;
+  currentRow++;
+
+  // R2: Año Escolar
+  const r2 = ws.getRow(currentRow);
+  r2.getCell(1).value = '';
+  ws.mergeCells(`B${currentRow}:D${currentRow}`);
+  r2.getCell(2).value = `Año Escolar: ${yearRange}`;
+  r2.getCell(2).font = { name: 'Cambria', size: 10, bold: true };
+  r2.getCell(2).alignment = { horizontal: 'left', vertical: 'middle' };
+  currentRow++;
+
+  // Spacer row
+  currentRow++;
+
+  // Section label font (Mañana/Tarde): height 15, no bg, size 10, bold
+  const sectionLabelFont: Partial<ExcelJS.Font> = {
+    name: 'Cambria', size: 10, bold: true, color: { argb: 'FF000000' },
+  };
+
+  // One block per day
+  for (const day of DAYS) {
+    const dayStartRow = currentRow;
+
+    // ── Morning section header ("MAÑANA") ──
+    ws.mergeCells(`B${currentRow}:${lastColLetter}${currentRow}`);
+    const mananaCell = ws.getRow(currentRow).getCell(2);
+    mananaCell.value = 'MAÑANA';
+    mananaCell.font = sectionLabelFont;
+    mananaCell.alignment = centerAlign;
+    ws.getRow(currentRow).height = 15;
+    currentRow++;
+
+    // ── Room header row ──
+    const headerRow = ws.getRow(currentRow);
+    headerRow.getCell(2).value = 'HORA';
+    headerRow.getCell(2).font = dayHeaderFont;
+    headerRow.getCell(2).alignment = centerAlign;
+    headerRow.getCell(2).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } };
+    headerRow.getCell(2).border = thinBorder;
+    rooms.forEach((room, i) => {
+      const cell = headerRow.getCell(i + 3);
+      cell.value = room.toUpperCase();
+      cell.font = dayHeaderFont;
+      cell.alignment = centerAlign;
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } };
+      cell.border = thinBorder;
+    });
+    ws.getRow(currentRow).height = 14;
+    currentRow++;
+
+    // ── Period rows per section (Mañana / Tarde) ──
+    let secIdx = 0;
+    for (const sec of sections) {
+      const periods = sec.periods.filter(p => !p.break);
+
+      // If this is the second section (afternoon), insert "TARDE" divider
+      if (secIdx > 0) {
+        ws.mergeCells(`B${currentRow}:${lastColLetter}${currentRow}`);
+        const tardeCell = ws.getRow(currentRow).getCell(2);
+        tardeCell.value = 'TARDE';
+        tardeCell.font = sectionLabelFont;
+        tardeCell.alignment = centerAlign;
+        ws.getRow(currentRow).height = 15;
+        currentRow++;
+      }
+
+      // Build period rows and track values for merging
+      const periodRows: { row: number; values: string[] }[] = [];
+      for (const period of periods) {
+        const row = ws.getRow(currentRow);
+        row.height = 15;
+
+        // Time column (B)
+        const timeCell = row.getCell(2);
+        timeCell.value = `${period.start} - ${period.end}`;
+        timeCell.font = timeFont;
+        timeCell.alignment = centerAlign;
+        timeCell.border = thinBorder;
+
+        // Room columns (C..N)
+        const values: string[] = [];
+        rooms.forEach((room, i) => {
+          const val = cellValue(day, period.id, room);
+          values.push(val);
+          const cell = row.getCell(i + 3);
+          if (val) {
+            if (val === 'GRUPO') {
+              cell.value = 'GRUPO';
+              cell.font = { name: 'Cambria', size: 8, bold: true, color: { argb: 'FF722ED1' } };
+            } else {
+              cell.value = val;
+              cell.font = { name: 'Cambria', size: 7, bold: true, color: { argb: 'FF000000' } };
+            }
+            // Gray fill for occupied blocks
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFBFBFBF' } };
+          } else {
+            cell.value = '';
+          }
+          cell.alignment = centerAlign;
+          cell.border = thinBorder;
+        });
+        periodRows.push({ row: currentRow, values });
+        currentRow++;
+      }
+
+      // Merge consecutive identical cells per room column
+      for (let roomIdx = 0; roomIdx < rooms.length; roomIdx++) {
+        let mergeStart = 0;
+        for (let i = 1; i <= periodRows.length; i++) {
+          const prevVal = periodRows[mergeStart].values[roomIdx];
+          const currVal = i < periodRows.length ? periodRows[i].values[roomIdx] : null;
+          if (currVal === null || currVal !== prevVal || prevVal === '') {
+            if (i - mergeStart > 1 && prevVal !== '') {
+              const startRow = periodRows[mergeStart].row;
+              const endRow = periodRows[i - 1].row;
+              const col = roomIdx + 3;
+              ws.mergeCells(startRow, col, endRow, col);
+            }
+            mergeStart = i;
+          }
+        }
+      }
+
+      secIdx++;
+    }
+
+    // ── Day name column (A): merged vertically with vertical text ──
+    // Starts after the "MAÑANA" label row (dayStartRow + 1)
+    const dayEndRow = currentRow - 1;
+    const dayColStartRow = dayStartRow + 1; // skip the MAÑANA row
+    if (dayEndRow >= dayColStartRow) {
+      ws.mergeCells(dayColStartRow, 1, dayEndRow, 1);
+      const dayCell = ws.getRow(dayColStartRow).getCell(1);
+      dayCell.value = day.toUpperCase();
+      dayCell.font = { name: 'Cambria', size: 11, bold: true, color: { argb: 'FF000000' } };
+      dayCell.alignment = {
+        horizontal: 'center',
+        vertical: 'middle',
+        textRotation: 90,
+      } as any;
+      dayCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } };
+      dayCell.border = thinBorder;
+    }
+
+    // No gap between days
+  }
+
+  // Page setup: Letter, fit to 1 page wide, margins 0.25" all sides
+  ws.pageSetup = {
+    paperSize: 1,
+    fitToWidth: 1,
+    fitToHeight: 0,
+    orientation: 'portrait',
+    fitToPage: true,
+    scale: 100,
+    margins: { top: 0.25, bottom: 0.25, left: 0.25, right: 0.25, header: 0.25, footer: 0.25 },
+  } as any;
+
+  const buffer = await workbook.xlsx.writeBuffer();
+  const fileName = `distribucion_aulas_${dayjs().format('YYYY-MM-DD')}.xlsx`;
   saveAs(new Blob([buffer]), fileName);
 }

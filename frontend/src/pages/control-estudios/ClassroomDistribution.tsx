@@ -1,8 +1,9 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Button, Empty, Spin, Tag, Tooltip, Modal, Select, message, Alert, DatePicker, Input, List } from 'antd';
-import { DeleteOutlined, ClearOutlined, ThunderboltOutlined, HighlightOutlined, PlusOutlined, InboxOutlined } from '@ant-design/icons';
+import { DeleteOutlined, ClearOutlined, ThunderboltOutlined, HighlightOutlined, PlusOutlined, InboxOutlined, FileExcelOutlined } from '@ant-design/icons';
 import api from '@/services/api';
 import dayjs from 'dayjs';
+import { generateClassroomDistribution } from '@/utils/generateHorario';
 
 const DAYS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'];
 
@@ -155,6 +156,7 @@ interface ClassroomDistributionProps {
   sectionsList: { id: number; label: string; gradeName: string; sectionName: string; gradeId: number; sectionId: number; color?: string | null; periodGradeColor?: string | null }[];
   subjectsList: { id: number; name: string; subjectGroupId?: number | null; color?: string | null }[];
   schoolPeriodId?: number;
+  schoolPeriodName?: string;
   gradesList: { id: number; name: string }[];
   readOnly?: boolean;
   // External selection (for teacher requests)
@@ -167,7 +169,7 @@ interface ClassroomDistributionProps {
 }
 
 const ClassroomDistribution: React.FC<ClassroomDistributionProps> = ({
-  settings, sectionsList, subjectsList, schoolPeriodId, gradesList, readOnly = false,
+  settings, sectionsList, subjectsList, schoolPeriodId, schoolPeriodName, gradesList, readOnly = false,
   externalSelectedCells, onExternalSelectDown, onExternalSelectEnter, externalSelectionMode = false,
   allowedSelectionDay = null,
 }) => {
@@ -732,6 +734,25 @@ const ClassroomDistribution: React.FC<ClassroomDistributionProps> = ({
               {pendingRequests.length > 0 && <Tag color="orange" style={{ marginLeft: 4 }}>{pendingRequests.length}</Tag>}
             </Button>
           )}
+          <Button
+            size="small"
+            icon={<FileExcelOutlined />}
+            onClick={() => {
+              const sectionLabels: Record<string, string> = {};
+              sectionsList.forEach(s => {
+                sectionLabels[`${s.gradeId}-${s.sectionId}`] = s.label;
+              });
+              generateClassroomDistribution({
+                schoolPeriodName: schoolPeriodName || '',
+                sections: scheduleSections,
+                rooms,
+                assignments,
+                sectionLabels,
+              }).catch(() => message.error('Error al exportar distribución de aulas'));
+            }}
+          >
+            Exportar Excel
+          </Button>
         </div>
       )}
 
