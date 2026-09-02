@@ -11,6 +11,50 @@ const PAGE_HEIGHT_PT = 612; // 8.5in
 type ElementType = 'fixed' | 'variable';
 type FontFamily = '"Times New Roman", Times, serif' | 'Arial, Helvetica, sans-serif' | '"Courier New", Courier, monospace';
 
+/** Cédula display formats. The format string itself encodes the separators:
+ *  space, hyphen, or none between the prefix and the number, and dots for
+ *  thousands grouping. */
+type DocFormat = 'V 00000000' | 'V-00000000' | 'V00000000' | 'V 00.000.000' | 'V-00.000.000';
+
+const DOC_FORMAT_OPTIONS: { value: DocFormat; label: string }[] = [
+  { value: 'V 00000000', label: 'V 00000000' },
+  { value: 'V-00000000', label: 'V-00000000' },
+  { value: 'V00000000', label: 'V00000000' },
+  { value: 'V 00.000.000', label: 'V 00.000.000' },
+  { value: 'V-00.000.000', label: 'V-00.000.000' },
+];
+
+const DEFAULT_DOC_FORMAT: DocFormat = 'V 00.000.000';
+
+/** Variables whose value is a cédula and therefore subject to docFormat. */
+const DOCUMENT_VARIABLES = new Set([
+  'student.document',
+  'institution.directorDocument',
+  'institution.sig2Id',
+]);
+
+/** Extracts the prefix (V/E/P/CE) and raw digits from any cédula string,
+ *  regardless of how it was originally formatted. */
+function parseCedula(raw: string): { prefix: string; digits: string } {
+  if (!raw) return { prefix: '', digits: '' };
+  const s = raw.trim();
+  const m = s.match(/^([A-Za-z]{1,2})\s*[-\s.]?\s*([\d.\s]+)/);
+  if (m) return { prefix: m[1].toUpperCase(), digits: m[2].replace(/[^\d]/g, '') };
+  return { prefix: 'V', digits: s.replace(/[^\d]/g, '') };
+}
+
+/** Reformats a cédula string into the chosen display format. */
+function formatCedula(raw: string, format: DocFormat): string {
+  const { prefix, digits } = parseCedula(raw);
+  if (!digits) return '';
+  const hasThousands = format.includes('.');
+  const sep = format[1] === '-' ? '-' : (format[1] === ' ' ? ' ' : '');
+  const grouped = hasThousands
+    ? digits.replace(/\B(?=(\d{3})+(?!\d))/g, '.')
+    : digits;
+  return sep ? `${prefix}${sep}${grouped}` : `${prefix}${grouped}`;
+}
+
 interface TemplateElement {
   id: string;
   type: ElementType;
@@ -25,6 +69,8 @@ interface TemplateElement {
   letterSpacing: number;
   /** Horizontal stretch, in percent. 100 = natural width. */
   scaleX: number;
+  /** Cédula display format. Only meaningful when variable is a document field. */
+  docFormat?: DocFormat;
 }
 
 const FONT_OPTIONS: { value: FontFamily; label: string }[] = [
@@ -54,8 +100,8 @@ const VARIABLE_OPTIONS: { value: string; label: string; group: string }[] = [
 const TIMES: FontFamily = '"Times New Roman", Times, serif';
 
 /** Fills the styling defaults so the template list below stays readable. */
-const mk = (e: Omit<TemplateElement, 'fontFamily' | 'bold' | 'letterSpacing' | 'scaleX'>
-  & Partial<Pick<TemplateElement, 'fontFamily' | 'bold' | 'letterSpacing' | 'scaleX'>>): TemplateElement => ({
+const mk = (e: Omit<TemplateElement, 'fontFamily' | 'bold' | 'letterSpacing' | 'scaleX' | 'docFormat'>
+  & Partial<Pick<TemplateElement, 'fontFamily' | 'bold' | 'letterSpacing' | 'scaleX' | 'docFormat'>>): TemplateElement => ({
   fontFamily: TIMES, bold: true, letterSpacing: 0, scaleX: 100, ...e,
 });
 
@@ -65,15 +111,15 @@ const DEFAULT_ELEMENTS: TemplateElement[] = [
   mk({ id: 'level', type: 'variable', variable: 'institution.level', text: 'BACHILLER', x: 186.75, y: 213, size: 10 }),
   mk({ id: 'program', type: 'variable', variable: 'institution.program', text: 'EDUCACIÓN MEDIA GENERAL, 31059', x: 310.5, y: 230.25, size: 10 }),
   mk({ id: 'studentName', type: 'variable', variable: 'student.fullName', text: 'JENNY ABIGAIL MARÍN ABACHE', x: 245.25, y: 245.25, size: 10 }),
-  mk({ id: 'studentId', type: 'variable', variable: 'student.document', text: 'V 30.781.275', x: 283.5, y: 261, size: 10 }),
+  mk({ id: 'studentId', type: 'variable', variable: 'student.document', text: 'V 30.781.275', x: 283.5, y: 261, size: 10, docFormat: DEFAULT_DOC_FORMAT }),
   mk({ id: 'birthplace', type: 'variable', variable: 'student.birthplace', text: 'VENEZUELA, GUÁRICO, MUNICIPIO JOSÉ TADEO MONAGAS', x: 198, y: 279, size: 10 }),
   mk({ id: 'birthdate', type: 'variable', variable: 'student.birthdate', text: '04 DE ABRIL DE 2005', x: 186.75, y: 295.5, size: 10 }),
   mk({ id: 'issuePlace', type: 'variable', variable: 'derived.issuePlace', text: 'GUÁRICO, ALTAGRACIA DE ORITUCO, 20 DE JULIO DE 2026', x: 310.5, y: 326.25, size: 10 }),
   mk({ id: 'year', type: 'variable', variable: 'derived.year', text: '2026', x: 225, y: 342.75, size: 10 }),
   mk({ id: 'sig1Name', type: 'variable', variable: 'institution.directorName', text: 'MAGDALENA C. TORRES DE HERRERA', x: 166.5, y: 422.25, size: 8 }),
-  mk({ id: 'sig1Id', type: 'variable', variable: 'institution.directorDocument', text: 'V 8.417.321', x: 166.5, y: 437.25, size: 8 }),
+  mk({ id: 'sig1Id', type: 'variable', variable: 'institution.directorDocument', text: 'V 8.417.321', x: 166.5, y: 437.25, size: 8, docFormat: DEFAULT_DOC_FORMAT }),
   mk({ id: 'sig2Name', type: 'variable', variable: 'institution.sig2Name', text: 'GABRIELA DE LOS ÁNGELES ÁVILA PEREIRA', x: 381, y: 438.75, size: 8 }),
-  mk({ id: 'sig2Id', type: 'variable', variable: 'institution.sig2Id', text: 'V 11.366.959', x: 381, y: 453.75, size: 8 }),
+  mk({ id: 'sig2Id', type: 'variable', variable: 'institution.sig2Id', text: 'V 11.366.959', x: 381, y: 453.75, size: 8, docFormat: DEFAULT_DOC_FORMAT }),
   mk({ id: 'sig3Name', type: 'fixed', text: 'MARÍA I. BARÓN HERNÁNDEZ', x: 648.75, y: 440.25, size: 8 }),
   mk({ id: 'sig3Id', type: 'fixed', text: 'V 12.811.357', x: 648.75, y: 454.5, size: 8 }),
 ];
@@ -107,6 +153,7 @@ function migrateElement(raw: any): TemplateElement {
     size: Number(raw.size) || 10,
     letterSpacing: Number(raw.letterSpacing) || 0,
     scaleX: Number(raw.scaleX) || 100,
+    docFormat: (raw.docFormat as DocFormat) || DEFAULT_DOC_FORMAT,
   };
   // Already new format
   if (raw && typeof raw.type === 'string') {
@@ -541,7 +588,11 @@ const TituloImpresion: React.FC = () => {
   const buildElementsForStudent = useCallback((student: TituloStudent): TemplateElement[] => {
     return elements.map(el => {
       if (el.type === 'variable' && el.variable) {
-        const resolved = resolveVariable(el.variable, student, institution, schoolPeriodName, issueDate);
+        let resolved = resolveVariable(el.variable, student, institution, schoolPeriodName, issueDate);
+        // Apply cédula formatting for document variables
+        if (DOCUMENT_VARIABLES.has(el.variable) && el.docFormat) {
+          resolved = formatCedula(resolved, el.docFormat);
+        }
         return { ...el, text: resolved };
       }
       return el;
@@ -626,7 +677,14 @@ const TituloImpresion: React.FC = () => {
     if (mode !== 'edit' || !editorFrameReady) return;
     const doc = iframeRef.current?.contentDocument;
     if (!doc?.body) return;
-    doc.body.innerHTML = buildPageHtml(elements, grid, bgEnabled ? bgUrl : undefined);
+    // Format document-variable sample text so the editor reflects the chosen
+    // cédula format, matching what preview/print will show.
+    const displayEls = elements.map(el =>
+      el.type === 'variable' && el.variable && DOCUMENT_VARIABLES.has(el.variable) && el.docFormat
+        ? { ...el, text: formatCedula(el.text, el.docFormat) }
+        : el
+    );
+    doc.body.innerHTML = buildPageHtml(displayEls, grid, bgEnabled ? bgUrl : undefined);
   }, [mode, editorFrameReady, elements, grid, bgEnabled, bgUrl]);
 
   const handlePrint = useCallback(() => {
@@ -887,6 +945,22 @@ const TituloImpresion: React.FC = () => {
                               <option key={v.value} value={v.value}>{v.label}</option>
                             ))}
                           </optgroup>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  {/* Cédula format selector — only for document variables */}
+                  {selected.type === 'variable' && selected.variable && DOCUMENT_VARIABLES.has(selected.variable) && (
+                    <div style={{ marginBottom: 8 }}>
+                      <div style={sectionLabelStyle}>Formato de cédula</div>
+                      <select
+                        style={{ width: '100%', padding: '4px 6px', fontSize: 13, border: '1px solid #ccc', borderRadius: 4 }}
+                        value={selected.docFormat || DEFAULT_DOC_FORMAT}
+                        onChange={e => updateSelected({ docFormat: e.target.value as DocFormat })}
+                      >
+                        {DOC_FORMAT_OPTIONS.map(f => (
+                          <option key={f.value} value={f.value}>{f.label}</option>
                         ))}
                       </select>
                     </div>
