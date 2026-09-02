@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Select, Button, Spin, Empty, message, Input, Card } from 'antd';
-import { PrinterOutlined, EditOutlined, EyeOutlined, SaveOutlined } from '@ant-design/icons';
+import { Select, Button, Spin, Empty, message, Card } from 'antd';
+import { PrinterOutlined, EditOutlined, EyeOutlined, SaveOutlined, PlusOutlined, DeleteOutlined } from '@ant-design/icons';
 import api from '@/services/api';
 import { useSchool } from '@/context/SchoolContext';
 import dayjs from 'dayjs';
@@ -8,41 +8,117 @@ import dayjs from 'dayjs';
 const PAGE_WIDTH_PT = 792; // 11in
 const PAGE_HEIGHT_PT = 612; // 8.5in
 
+type ElementType = 'fixed' | 'variable';
+type FontFamily = '"Times New Roman", Times, serif' | 'Arial, Helvetica, sans-serif' | '"Courier New", Courier, monospace';
+
 interface TemplateElement {
   id: string;
-  text: string;
+  type: ElementType;
+  variable?: string;
+  text: string;           // fixed: real text; variable: sample text for editor/preview
   x: number;
   y: number;
   size: number;
+  fontFamily: FontFamily;
+  bold: boolean;
 }
 
-const DEFAULT_ELEMENTS: TemplateElement[] = [
-  { id: 'title', text: 'UNIDAD EDUCATIVA COLEGIO BATALLA DE LA VICTORIA', x: 439.5, y: 181.5, size: 10 },
-  { id: 'code', text: 'PD00801209', x: 186.75, y: 196.5, size: 10 },
-  { id: 'level', text: 'BACHILLER', x: 186.75, y: 213, size: 10 },
-  { id: 'program', text: 'EDUCACIÓN MEDIA GENERAL, 31059', x: 310.5, y: 230.25, size: 10 },
-  { id: 'studentName', text: 'JENNY ABIGAIL MARÍN ABACHE', x: 245.25, y: 245.25, size: 10 },
-  { id: 'studentId', text: 'V 30.781.275', x: 283.5, y: 261, size: 10 },
-  { id: 'birthplace', text: 'VENEZUELA, GUÁRICO, MUNICIPIO JOSÉ TADEO MONAGAS', x: 198, y: 279, size: 10 },
-  { id: 'birthdate', text: '04 DE ABRIL DE 2005', x: 186.75, y: 295.5, size: 10 },
-  { id: 'issuePlace', text: 'GUÁRICO, ALTAGRACIA DE ORITUCO, 20 DE JULIO DE 2026', x: 310.5, y: 326.25, size: 10 },
-  { id: 'year', text: '2026', x: 225, y: 342.75, size: 10 },
-  { id: 'sig1Name', text: 'MAGDALENA C. TORRES DE HERRERA', x: 166.5, y: 422.25, size: 8 },
-  { id: 'sig1Id', text: 'V 8.417.321', x: 166.5, y: 437.25, size: 8 },
-  { id: 'sig2Name', text: 'GABRIELA DE LOS ÁNGELES ÁVILA PEREIRA', x: 381, y: 438.75, size: 8 },
-  { id: 'sig2Id', text: 'V 11.366.959', x: 381, y: 453.75, size: 8 },
-  { id: 'sig3Name', text: 'MARÍA I. BARÓN HERNÁNDEZ', x: 648.75, y: 440.25, size: 8 },
-  { id: 'sig3Id', text: 'V 12.811.357', x: 648.75, y: 454.5, size: 8 },
+const FONT_OPTIONS: { value: FontFamily; label: string }[] = [
+  { value: '"Times New Roman", Times, serif', label: 'Times New Roman' },
+  { value: 'Arial, Helvetica, sans-serif', label: 'Arial' },
+  { value: '"Courier New", Courier, monospace', label: 'Courier New' },
 ];
 
-// Fields that are per-student (replaced during print)
-const STUDENT_FIELDS = new Set(['studentName', 'studentId', 'birthplace', 'birthdate']);
+// Available variables for type='variable' fields
+const VARIABLE_OPTIONS: { value: string; label: string; group: string }[] = [
+  { value: 'student.fullName', label: 'Nombre completo', group: 'Estudiante' },
+  { value: 'student.document', label: 'Cédula', group: 'Estudiante' },
+  { value: 'student.birthplace', label: 'Lugar de nacimiento', group: 'Estudiante' },
+  { value: 'student.birthdate', label: 'Fecha de nacimiento', group: 'Estudiante' },
+  { value: 'institution.name', label: 'Nombre del plantel', group: 'Institución' },
+  { value: 'institution.code', label: 'Código del plantel', group: 'Institución' },
+  { value: 'institution.level', label: 'Nivel (BACHILLER)', group: 'Institución' },
+  { value: 'institution.program', label: 'Programa', group: 'Institución' },
+  { value: 'institution.directorName', label: 'Director - Nombre', group: 'Institución' },
+  { value: 'institution.directorDocument', label: 'Director - Cédula', group: 'Institución' },
+  { value: 'institution.sig2Name', label: 'Control de Estudios - Nombre', group: 'Institución' },
+  { value: 'institution.sig2Id', label: 'Control de Estudios - Cédula', group: 'Institución' },
+  { value: 'derived.year', label: 'Año escolar', group: 'Derivados' },
+  { value: 'derived.issuePlace', label: 'Lugar y fecha de emisión', group: 'Derivados' },
+];
 
-// Fields that come from institution/settings
-const INSTITUTION_FIELDS = new Set(['title', 'code', 'level', 'program', 'year', 'issuePlace', 'sig1Name', 'sig1Id', 'sig2Name', 'sig2Id']);
+const DEFAULT_ELEMENTS: TemplateElement[] = [
+  { id: 'title', type: 'variable', variable: 'institution.name', text: 'UNIDAD EDUCATIVA COLEGIO BATALLA DE LA VICTORIA', x: 439.5, y: 181.5, size: 10, fontFamily: '"Times New Roman", Times, serif', bold: true },
+  { id: 'code', type: 'variable', variable: 'institution.code', text: 'PD00801209', x: 186.75, y: 196.5, size: 10, fontFamily: '"Times New Roman", Times, serif', bold: true },
+  { id: 'level', type: 'variable', variable: 'institution.level', text: 'BACHILLER', x: 186.75, y: 213, size: 10, fontFamily: '"Times New Roman", Times, serif', bold: true },
+  { id: 'program', type: 'variable', variable: 'institution.program', text: 'EDUCACIÓN MEDIA GENERAL, 31059', x: 310.5, y: 230.25, size: 10, fontFamily: '"Times New Roman", Times, serif', bold: true },
+  { id: 'studentName', type: 'variable', variable: 'student.fullName', text: 'JENNY ABIGAIL MARÍN ABACHE', x: 245.25, y: 245.25, size: 10, fontFamily: '"Times New Roman", Times, serif', bold: true },
+  { id: 'studentId', type: 'variable', variable: 'student.document', text: 'V 30.781.275', x: 283.5, y: 261, size: 10, fontFamily: '"Times New Roman", Times, serif', bold: true },
+  { id: 'birthplace', type: 'variable', variable: 'student.birthplace', text: 'VENEZUELA, GUÁRICO, MUNICIPIO JOSÉ TADEO MONAGAS', x: 198, y: 279, size: 10, fontFamily: '"Times New Roman", Times, serif', bold: true },
+  { id: 'birthdate', type: 'variable', variable: 'student.birthdate', text: '04 DE ABRIL DE 2005', x: 186.75, y: 295.5, size: 10, fontFamily: '"Times New Roman", Times, serif', bold: true },
+  { id: 'issuePlace', type: 'variable', variable: 'derived.issuePlace', text: 'GUÁRICO, ALTAGRACIA DE ORITUCO, 20 DE JULIO DE 2026', x: 310.5, y: 326.25, size: 10, fontFamily: '"Times New Roman", Times, serif', bold: true },
+  { id: 'year', type: 'variable', variable: 'derived.year', text: '2026', x: 225, y: 342.75, size: 10, fontFamily: '"Times New Roman", Times, serif', bold: true },
+  { id: 'sig1Name', type: 'variable', variable: 'institution.directorName', text: 'MAGDALENA C. TORRES DE HERRERA', x: 166.5, y: 422.25, size: 8, fontFamily: '"Times New Roman", Times, serif', bold: true },
+  { id: 'sig1Id', type: 'variable', variable: 'institution.directorDocument', text: 'V 8.417.321', x: 166.5, y: 437.25, size: 8, fontFamily: '"Times New Roman", Times, serif', bold: true },
+  { id: 'sig2Name', type: 'variable', variable: 'institution.sig2Name', text: 'GABRIELA DE LOS ÁNGELES ÁVILA PEREIRA', x: 381, y: 438.75, size: 8, fontFamily: '"Times New Roman", Times, serif', bold: true },
+  { id: 'sig2Id', type: 'variable', variable: 'institution.sig2Id', text: 'V 11.366.959', x: 381, y: 453.75, size: 8, fontFamily: '"Times New Roman", Times, serif', bold: true },
+  { id: 'sig3Name', type: 'fixed', text: 'MARÍA I. BARÓN HERNÁNDEZ', x: 648.75, y: 440.25, size: 8, fontFamily: '"Times New Roman", Times, serif', bold: true },
+  { id: 'sig3Id', type: 'fixed', text: 'V 12.811.357', x: 648.75, y: 454.5, size: 8, fontFamily: '"Times New Roman", Times, serif', bold: true },
+];
 
-// Fields that are manually entered (sig3)
-const MANUAL_FIELDS = new Set(['sig3Name', 'sig3Id']);
+// Migration: old layouts stored elements without type/variable/fontFamily/bold.
+// Map old ids to their variable so saved layouts upgrade transparently.
+const OLD_ID_TO_VARIABLE: Record<string, string> = {
+  title: 'institution.name',
+  code: 'institution.code',
+  level: 'institution.level',
+  program: 'institution.program',
+  studentName: 'student.fullName',
+  studentId: 'student.document',
+  birthplace: 'student.birthplace',
+  birthdate: 'student.birthdate',
+  issuePlace: 'derived.issuePlace',
+  year: 'derived.year',
+  sig1Name: 'institution.directorName',
+  sig1Id: 'institution.directorDocument',
+  sig2Name: 'institution.sig2Name',
+  sig2Id: 'institution.sig2Id',
+};
+// Old ids that were manual fields become fixed text
+const OLD_MANUAL_IDS = new Set(['sig3Name', 'sig3Id']);
+
+function migrateElement(raw: any): TemplateElement {
+  // Already new format
+  if (raw && typeof raw.type === 'string') {
+    return {
+      id: raw.id,
+      type: raw.type,
+      variable: raw.variable,
+      text: raw.text ?? '',
+      x: Number(raw.x) || 0,
+      y: Number(raw.y) || 0,
+      size: Number(raw.size) || 10,
+      fontFamily: raw.fontFamily || '"Times New Roman", Times, serif',
+      bold: raw.bold !== false, // default true
+    };
+  }
+  // Old format: infer type from id
+  const id = raw.id as string;
+  if (OLD_MANUAL_IDS.has(id)) {
+    return {
+      id, type: 'fixed', text: raw.text ?? '',
+      x: Number(raw.x) || 0, y: Number(raw.y) || 0, size: Number(raw.size) || 10,
+      fontFamily: '"Times New Roman", Times, serif', bold: true,
+    };
+  }
+  const variable = OLD_ID_TO_VARIABLE[id];
+  return {
+    id, type: variable ? 'variable' : 'fixed', variable,
+    text: raw.text ?? '',
+    x: Number(raw.x) || 0, y: Number(raw.y) || 0, size: Number(raw.size) || 10,
+    fontFamily: '"Times New Roman", Times, serif', bold: true,
+  };
+}
 
 interface TituloStudent {
   inscriptionId: number;
@@ -77,6 +153,28 @@ function round2(n: number): number {
 const escapeHtml = (s: string): string =>
   (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
+// Shared span style builder — used by both the editor DOM spans and the iframe HTML
+// so they render identically.
+function spanStyleStr(el: TemplateElement): string {
+  const fontWeight = el.bold ? 'bold' : 'normal';
+  return `left:${el.x}pt;top:${el.y}pt;font-size:${el.size}pt;font-family:${el.fontFamily};font-weight:${fontWeight};line-height:1`;
+}
+
+function spanStyleObj(el: TemplateElement, extra: React.CSSProperties = {}): React.CSSProperties {
+  return {
+    position: 'absolute',
+    left: `${el.x}pt`,
+    top: `${el.y}pt`,
+    fontFamily: el.fontFamily,
+    fontWeight: el.bold ? 'bold' : 'normal',
+    fontSize: `${el.size}pt`,
+    lineHeight: 1,
+    whiteSpace: 'nowrap',
+    color: '#000',
+    ...extra,
+  };
+}
+
 /**
  * Builds a self-contained HTML document with one page per element set.
  * Rendered inside an iframe so the preview is byte-for-byte what gets printed:
@@ -84,7 +182,7 @@ const escapeHtml = (s: string): string =>
  */
 const buildTituloHTML = (pages: TemplateElement[][]): string => {
   const pagesHtml = pages.map((els) => {
-    const spans = els.map((el) => `<span style="left:${el.x}pt;top:${el.y}pt;font-size:${el.size}pt">${escapeHtml(el.text)}</span>`).join('');
+    const spans = els.map((el) => `<span style="${spanStyleStr(el)}">${escapeHtml(el.text)}</span>`).join('');
     return `<div class="page">${spans}</div>`;
   }).join('');
 
@@ -111,11 +209,8 @@ const buildTituloHTML = (pages: TemplateElement[][]): string => {
   }
   .page span {
     position: absolute;
-    font-family: "Times New Roman", Times, serif;
-    font-weight: bold;
     white-space: nowrap;
     color: #000;
-    line-height: 1;
   }
   @media print {
     html, body { background: #fff; }
@@ -142,6 +237,41 @@ function formatIssueDate(date: dayjs.Dayjs, state: string, municipality: string)
   return `${place}, ${dd} DE ${mm} DE ${yyyy}`;
 }
 
+// Resolve a variable name to its real value for a given student/institution.
+function resolveVariable(
+  variable: string,
+  student: TituloStudent,
+  institution: TituloInstitution | null,
+  schoolPeriodName: string,
+  issueDate: dayjs.Dayjs,
+): string {
+  switch (variable) {
+    case 'student.fullName': return student.fullName;
+    case 'student.document': return student.document;
+    case 'student.birthplace': return student.birthplace;
+    case 'student.birthdate': return student.birthdate;
+    case 'institution.name': return institution?.name || '';
+    case 'institution.code': return institution?.code || '';
+    case 'institution.level': return institution?.level || '';
+    case 'institution.program': return institution?.program || '';
+    case 'institution.directorName': return institution?.directorName || '';
+    case 'institution.directorDocument': return institution?.directorDocument || '';
+    case 'institution.sig2Name': return institution?.sig2Name || '';
+    case 'institution.sig2Id': return institution?.sig2Id || '';
+    case 'derived.year': {
+      const m = schoolPeriodName.match(/(\d{4})/);
+      return m ? m[1] : String(dayjs().year());
+    }
+    case 'derived.issuePlace':
+      return formatIssueDate(issueDate, institution?.issueState || '', institution?.issueMunicipality || '');
+    default: return '';
+  }
+}
+
+const labelStyle: React.CSSProperties = { fontSize: 12, width: 56, color: '#555', flexShrink: 0 };
+const numInputStyle: React.CSSProperties = { flex: 1, padding: '4px 6px', fontSize: 13, border: '1px solid #ccc', borderRadius: 4 };
+const sectionLabelStyle: React.CSSProperties = { fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5, color: '#888', marginTop: 10, marginBottom: 4 };
+
 const TituloImpresion: React.FC = () => {
   const { allPeriods } = useSchool();
   const [mode, setMode] = useState<'print' | 'edit'>('print');
@@ -156,11 +286,7 @@ const TituloImpresion: React.FC = () => {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
 
-
-  // Manual signature input (sig3)
-  const [sig3Name, setSig3Name] = useState('');
-  const [sig3Id, setSig3Id] = useState('');
-  // Manual override for issue date
+  // Issue date — shared by both modes, shown in toolbar
   const [issueDate, setIssueDate] = useState(dayjs());
 
   // Selected students for printing
@@ -177,7 +303,7 @@ const TituloImpresion: React.FC = () => {
         if (layoutJson) {
           const parsed = JSON.parse(layoutJson);
           if (Array.isArray(parsed) && parsed.length > 0) {
-            setElements(parsed);
+            setElements(parsed.map(migrateElement));
           }
         }
       } catch { /* use defaults */ }
@@ -212,44 +338,24 @@ const TituloImpresion: React.FC = () => {
   // Save layout to settings
   const saveLayout = async () => {
     try {
-      await api.put('/settings', { titulo_layout: JSON.stringify(elements) });
+      await api.post('/settings', { settings: { titulo_layout: JSON.stringify(elements) } });
       message.success('Diseño guardado');
-    } catch {
-      message.error('Error al guardar el diseño');
+    } catch (e: any) {
+      console.error('[saveLayout] Error:', e);
+      message.error(e?.response?.data?.message || e?.message || 'Error al guardar el diseño');
     }
   };
 
   // Build elements with real data for a student
   const buildElementsForStudent = useCallback((student: TituloStudent): TemplateElement[] => {
-    const yearMatch = schoolPeriodName.match(/(\d{4})/);
-    const year = yearMatch ? yearMatch[1] : String(dayjs().year());
-
     return elements.map(el => {
-      if (STUDENT_FIELDS.has(el.id)) {
-        if (el.id === 'studentName') return { ...el, text: student.fullName };
-        if (el.id === 'studentId') return { ...el, text: student.document };
-        if (el.id === 'birthplace') return { ...el, text: student.birthplace };
-        if (el.id === 'birthdate') return { ...el, text: student.birthdate };
-      }
-      if (INSTITUTION_FIELDS.has(el.id) && institution) {
-        if (el.id === 'title') return { ...el, text: institution.name };
-        if (el.id === 'code') return { ...el, text: institution.code };
-        if (el.id === 'level') return { ...el, text: institution.level };
-        if (el.id === 'program') return { ...el, text: institution.program };
-        if (el.id === 'year') return { ...el, text: year };
-        if (el.id === 'issuePlace') return { ...el, text: formatIssueDate(issueDate, institution.issueState, institution.issueMunicipality) };
-        if (el.id === 'sig1Name') return { ...el, text: institution.directorName };
-        if (el.id === 'sig1Id') return { ...el, text: institution.directorDocument };
-        if (el.id === 'sig2Name') return { ...el, text: institution.sig2Name };
-        if (el.id === 'sig2Id') return { ...el, text: institution.sig2Id };
-      }
-      if (MANUAL_FIELDS.has(el.id)) {
-        if (el.id === 'sig3Name') return { ...el, text: sig3Name.toUpperCase() };
-        if (el.id === 'sig3Id') return { ...el, text: sig3Id.toUpperCase() };
+      if (el.type === 'variable' && el.variable) {
+        const resolved = resolveVariable(el.variable, student, institution, schoolPeriodName, issueDate);
+        return { ...el, text: resolved };
       }
       return el;
     });
-  }, [elements, institution, schoolPeriodName, issueDate, sig3Name, sig3Id]);
+  }, [elements, institution, schoolPeriodName, issueDate]);
 
   // Editor: move selected element
   const moveSelected = useCallback((dx: number, dy: number) => {
@@ -290,6 +396,27 @@ const TituloImpresion: React.FC = () => {
     });
   };
 
+  const updateSelected = (patch: Partial<TemplateElement>) => {
+    if (!selectedId) return;
+    setElements(prev => prev.map(el => el.id === selectedId ? { ...el, ...patch } : el));
+  };
+
+  const addField = () => {
+    const id = `field_${Date.now()}`;
+    const newEl: TemplateElement = {
+      id, type: 'fixed', text: 'NUEVO CAMPO',
+      x: 200, y: 200, size: 10,
+      fontFamily: '"Times New Roman", Times, serif', bold: true,
+    };
+    setElements(prev => [...prev, newEl]);
+    setSelectedId(id);
+  };
+
+  const deleteField = (id: string) => {
+    setElements(prev => prev.filter(el => el.id !== id));
+    if (selectedId === id) setSelectedId(null);
+  };
+
   // The very same HTML is used for the preview iframe and for printing, so what
   // you see is exactly what comes out of the printer.
   // In edit mode it renders a single page with the raw template (sample text).
@@ -320,6 +447,16 @@ const TituloImpresion: React.FC = () => {
           onChange={setSelectedPeriodId}
           options={allPeriods.map(p => ({ value: p.id, label: p.name }))}
         />
+
+        <div className="flex items-center gap-2">
+          <label className="text-xs text-slate-500">Fecha de emisión</label>
+          <input
+            type="date"
+            style={{ padding: '4px 8px', border: '1px solid #d9d9d9', borderRadius: 6, height: 32 }}
+            value={issueDate.format('YYYY-MM-DD')}
+            onChange={e => setIssueDate(dayjs(e.target.value))}
+          />
+        </div>
 
         <div className="flex gap-2 ml-auto">
           {mode === 'edit' ? (
@@ -384,20 +521,12 @@ const TituloImpresion: React.FC = () => {
                   onKeyDown={(e) => {
                     if (editingId === el.id && e.key === 'Enter') { e.preventDefault(); (e.target as any).blur(); }
                   }}
-                  style={{
-                    position: 'absolute',
-                    left: `${el.x}pt`,
-                    top: `${el.y}pt`,
-                    fontFamily: '"Times New Roman", Times, serif',
-                    fontWeight: 'bold',
-                    fontSize: `${el.size}pt`,
-                    whiteSpace: 'nowrap',
-                    color: '#000',
+                  style={spanStyleObj(el, {
                     cursor: editingId === el.id ? 'text' : 'pointer',
                     outline: selectedId === el.id ? '1px dashed #4f8cff' : 'none',
                     outlineOffset: '2px',
                     userSelect: editingId === el.id ? 'text' : 'none',
-                  }}
+                  })}
                 >
                   {el.text}
                 </span>
@@ -405,50 +534,134 @@ const TituloImpresion: React.FC = () => {
             </div>
 
             {/* Sidebar */}
-            <div style={{ width: 280, flexShrink: 0, border: '1px solid #ddd', borderRadius: 6, padding: 12, background: '#fafafa' }}>
+            <div style={{ width: 300, flexShrink: 0, border: '1px solid #ddd', borderRadius: 6, padding: 12, background: '#fafafa' }}>
               {selected ? (
                 <div>
-                  <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5, color: '#888', marginBottom: 4 }}>Campo seleccionado</div>
-                  <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>{selected.id}</div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                    <div>
+                      <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5, color: '#888', marginBottom: 2 }}>Campo seleccionado</div>
+                      <div style={{ fontSize: 14, fontWeight: 600 }}>{selected.id}</div>
+                    </div>
+                    <Button
+                      size="small"
+                      danger
+                      icon={<DeleteOutlined />}
+                      onClick={() => deleteField(selected.id)}
+                    />
+                  </div>
+
+                  {/* Type selector */}
+                  <div style={{ marginBottom: 8 }}>
+                    <div style={sectionLabelStyle}>Tipo</div>
+                    <select
+                      style={{ width: '100%', padding: '4px 6px', fontSize: 13, border: '1px solid #ccc', borderRadius: 4 }}
+                      value={selected.type}
+                      onChange={e => {
+                        const newType = e.target.value as ElementType;
+                        updateSelected({ type: newType, variable: newType === 'variable' ? (selected.variable || 'student.fullName') : undefined });
+                      }}
+                    >
+                      <option value="fixed">Texto fijo</option>
+                      <option value="variable">Variable (dato dinámico)</option>
+                    </select>
+                  </div>
+
+                  {/* Variable selector (only if type=variable) */}
+                  {selected.type === 'variable' && (
+                    <div style={{ marginBottom: 8 }}>
+                      <div style={sectionLabelStyle}>Variable</div>
+                      <select
+                        style={{ width: '100%', padding: '4px 6px', fontSize: 13, border: '1px solid #ccc', borderRadius: 4 }}
+                        value={selected.variable || ''}
+                        onChange={e => updateSelected({ variable: e.target.value })}
+                      >
+                        {['Estudiante', 'Institución', 'Derivados'].map(group => (
+                          <optgroup key={group} label={group}>
+                            {VARIABLE_OPTIONS.filter(v => v.group === group).map(v => (
+                              <option key={v.value} value={v.value}>{v.label}</option>
+                            ))}
+                          </optgroup>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  {/* Text / sample text */}
+                  <div style={sectionLabelStyle}>
+                    {selected.type === 'variable' ? 'Texto de ejemplo (vista previa)' : 'Texto'}
+                  </div>
+                  <textarea
+                    style={{ width: '100%', minHeight: 50, fontFamily: selected.fontFamily, fontSize: 13, padding: 6, border: '1px solid #ccc', borderRadius: 4, boxSizing: 'border-box', resize: 'vertical', fontWeight: selected.bold ? 'bold' : 'normal' }}
+                    value={selected.text}
+                    onChange={e => updateSelected({ text: e.target.value })}
+                  />
+                  {selected.type === 'variable' && (
+                    <div style={{ fontSize: 11, color: '#999', marginTop: 2 }}>
+                      Este texto es sólo para visualización. Al imprimir se usa el dato real.
+                    </div>
+                  )}
+
+                  {/* Position */}
+                  <div style={sectionLabelStyle}>Posición</div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                    <label style={{ fontSize: 12, width: 46, color: '#555' }}>X (pt)</label>
+                    <label style={labelStyle}>X (pt)</label>
                     <input
-                      style={{ flex: 1, padding: '4px 6px', fontSize: 13, border: '1px solid #ccc', borderRadius: 4 }}
+                      style={numInputStyle}
                       type="number" step="0.25" value={selected.x}
-                      onChange={e => setElements(prev => prev.map(el => el.id === selected.id ? { ...el, x: parseFloat(e.target.value) || 0 } : el))}
+                      onChange={e => updateSelected({ x: parseFloat(e.target.value) || 0 })}
                     />
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                    <label style={{ fontSize: 12, width: 46, color: '#555' }}>Y (pt)</label>
+                    <label style={labelStyle}>Y (pt)</label>
                     <input
-                      style={{ flex: 1, padding: '4px 6px', fontSize: 13, border: '1px solid #ccc', borderRadius: 4 }}
+                      style={numInputStyle}
                       type="number" step="0.25" value={selected.y}
-                      onChange={e => setElements(prev => prev.map(el => el.id === selected.id ? { ...el, y: parseFloat(e.target.value) || 0 } : el))}
+                      onChange={e => updateSelected({ y: parseFloat(e.target.value) || 0 })}
                     />
+                  </div>
+
+                  {/* Typography */}
+                  <div style={sectionLabelStyle}>Tipografía</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                    <label style={labelStyle}>Tamaño</label>
+                    <input
+                      style={numInputStyle}
+                      type="number" step="0.5" value={selected.size}
+                      onChange={e => updateSelected({ size: parseFloat(e.target.value) || 8 })}
+                    />
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                    <label style={labelStyle}>Fuente</label>
+                    <select
+                      style={numInputStyle}
+                      value={selected.fontFamily}
+                      onChange={e => updateSelected({ fontFamily: e.target.value as FontFamily })}
+                    >
+                      {FONT_OPTIONS.map(f => (
+                        <option key={f.value} value={f.value}>{f.label}</option>
+                      ))}
+                    </select>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                    <label style={{ fontSize: 12, width: 46, color: '#555' }}>Size</label>
+                    <label style={labelStyle}>Negrita</label>
                     <input
-                      style={{ flex: 1, padding: '4px 6px', fontSize: 13, border: '1px solid #ccc', borderRadius: 4 }}
-                      type="number" step="0.5" value={selected.size}
-                      onChange={e => setElements(prev => prev.map(el => el.id === selected.id ? { ...el, size: parseFloat(e.target.value) || 8 } : el))}
+                      type="checkbox"
+                      checked={selected.bold}
+                      onChange={e => updateSelected({ bold: e.target.checked })}
                     />
                   </div>
-                  <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5, color: '#888', marginTop: 10, marginBottom: 4 }}>Texto</div>
-                  <textarea
-                    style={{ width: '100%', minHeight: 50, fontFamily: '"Times New Roman", Times, serif', fontSize: 13, padding: 6, border: '1px solid #ccc', borderRadius: 4, boxSizing: 'border-box', resize: 'vertical' }}
-                    value={selected.text}
-                    onChange={e => setElements(prev => prev.map(el => el.id === selected.id ? { ...el, text: e.target.value } : el))}
-                  />
                 </div>
               ) : (
                 <div style={{ fontSize: 13, color: '#888', lineHeight: 1.4 }}>
-                  Seleccione un campo en la página para ver y editar su posición.
+                  Seleccione un campo en la página para ver y editar sus propiedades.
                 </div>
               )}
 
               <div style={{ marginTop: 16 }}>
-                <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5, color: '#888', marginBottom: 4 }}>Todos los campos</div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                  <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5, color: '#888' }}>Todos los campos</div>
+                  <Button size="small" icon={<PlusOutlined />} onClick={addField}>Agregar</Button>
+                </div>
                 {elements.map(el => (
                   <button
                     key={el.id}
@@ -460,7 +673,7 @@ const TituloImpresion: React.FC = () => {
                       fontWeight: el.id === selectedId ? 600 : 400,
                     }}
                   >
-                    {el.id}
+                    {el.id} <span style={{ color: '#aaa', fontSize: 10 }}>({el.type === 'variable' ? el.variable : 'fijo'})</span>
                   </button>
                 ))}
               </div>
@@ -478,39 +691,6 @@ const TituloImpresion: React.FC = () => {
             <Empty description="No hay estudiantes de 5to año en este período" />
           ) : (
             <div className="space-y-4">
-              {/* Manual inputs */}
-              <Card title="Datos manuales" size="small" className="mb-4">
-                <div className="flex gap-4 flex-wrap">
-                  <div>
-                    <label className="block text-xs text-slate-500 mb-1">Tercera firma - Nombre</label>
-                    <Input
-                      style={{ width: 300 }}
-                      placeholder="Nombre completo"
-                      value={sig3Name}
-                      onChange={e => setSig3Name(e.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-slate-500 mb-1">Tercera firma - Cédula</label>
-                    <Input
-                      style={{ width: 180 }}
-                      placeholder="V 00.000.000"
-                      value={sig3Id}
-                      onChange={e => setSig3Id(e.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-slate-500 mb-1">Fecha de emisión</label>
-                    <input
-                      type="date"
-                      style={{ padding: '4px 8px', border: '1px solid #d9d9d9', borderRadius: 6, height: 32 }}
-                      value={issueDate.format('YYYY-MM-DD')}
-                      onChange={e => setIssueDate(dayjs(e.target.value))}
-                    />
-                  </div>
-                </div>
-              </Card>
-
               {/* Student selection */}
               <Card
                 title={`Estudiantes de 5to año (${students.length})`}
@@ -555,12 +735,6 @@ const TituloImpresion: React.FC = () => {
                 </div>
               </Card>
 
-              {!sig3Name.trim() && (
-                <div style={{ color: '#cf1322', fontSize: 13, fontWeight: 500 }}>
-                  Debe ingresar el nombre de la tercera firma para poder imprimir.
-                </div>
-              )}
-
               {/* Preview — same document that gets printed */}
               {studentsToPrint.length > 0 && (
                 <Card
@@ -576,7 +750,6 @@ const TituloImpresion: React.FC = () => {
                       type="primary"
                       icon={<PrinterOutlined />}
                       onClick={handlePrint}
-                      disabled={!sig3Name.trim()}
                     >
                       Imprimir
                     </Button>
