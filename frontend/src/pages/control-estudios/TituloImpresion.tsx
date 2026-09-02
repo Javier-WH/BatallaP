@@ -457,8 +457,9 @@ function resolveVariable(
     case 'institution.sig2Name': return institution?.sig2Name || '';
     case 'institution.sig2Id': return institution?.sig2Id || '';
     case 'derived.year': {
-      const m = schoolPeriodName.match(/(\d{4})/);
-      return m ? m[1] : String(dayjs().year());
+      // "2025-2026" → 2026 (año de egreso). Take the last 4-digit year found.
+      const matches = schoolPeriodName.match(/\d{4}/g);
+      return matches ? matches[matches.length - 1] : String(dayjs().year());
     }
     case 'derived.issuePlace':
       return formatIssueDate(issueDate, institution?.issueState || '', institution?.issueParish || '');
