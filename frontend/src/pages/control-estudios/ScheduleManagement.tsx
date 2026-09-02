@@ -1787,6 +1787,7 @@ const ScheduleManagement: React.FC = () => {
                           <div className="flex flex-col gap-0.5 text-left">
                             <span className="font-bold text-slate-800">{entry.subjectName}</span>
                             {entry.sectionLabel && <span className="text-slate-600 text-[10px] font-semibold">{entry.sectionLabel}</span>}
+                            {entry.room && <span className="text-slate-400 text-[10px]">{entry.room}</span>}
                             {entry.isGroup && <Tag color="purple" style={{ fontSize: 9, margin: 0 }}>Grupo</Tag>}
                           </div>
                         );
