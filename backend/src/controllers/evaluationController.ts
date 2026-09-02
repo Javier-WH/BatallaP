@@ -44,7 +44,7 @@ import {
   sortSubjectsByOrder,
 } from '@/services/subjectOrderService';
 import { filterActiveGroupSubjects, filterActiveGroupSubjectsForTerm } from '@/services/subjectGroupService';
-import { resolveGradeStatus, MIN_FINAL_GRADE } from '@/services/gradeEvaluationService';
+import { resolveGradeStatus, MIN_FINAL_GRADE, roundFinalGrade } from '@/services/gradeEvaluationService';
 import { TermSectionClosureService } from '@/services/termSectionClosureService';
 import { TermGradeSyncService } from '@/services/termGradeSyncService';
 import { sortInscriptions, fieldExpr, quoteQualified } from '@/services/studentSortService';
@@ -2175,7 +2175,7 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
       // DEF column (light green)
       const defCell = row.getCell(defCol);
       if (isFilled && inscription) {
-        const finalGrade = Math.round(rowTotal);
+        const finalGrade = roundFinalGrade(rowTotal);
         defCell.value = finalGrade;
         defCell.numFmt = '00';
         const hasAnyQualification = studentQuals.some((q: any) => evaluationPlans.some((plan: any) => q.evaluationPlanId === plan.id));
@@ -2896,5 +2896,49 @@ export const copyEvaluationPlan = async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('[copyEvaluationPlan] Error:', error);
     res.status(500).json({ message: error.message || 'Error al copiar el plan de evaluación' });
+  }
+};
+
+/**
+ * Recalculate all term grades and final grades for a school period.
+ * This is needed after fixing rounding bugs so that stored values match
+ * the corrected calculation.
+ *
+ * POST /api/evaluation/recalculate/:schoolPeriodId
+ * Roles: Master, Administrador, Control de Estudios
+ */
+export const recalculatePeriodGrades = async (req: Request, res: Response) => {
+  try {
+    const schoolPeriodId = Number(req.params.schoolPeriodId);
+    if (!schoolPeriodId) {
+      return res.status(400).json({ message: 'schoolPeriodId es requerido' });
+    }
+
+    // Find all inscription subjects for this period
+    const inscriptions = await Inscription.findAll({
+      where: { schoolPeriodId },
+      attributes: ['id'],
+    });
+
+    let synced = 0;
+    for (const insc of inscriptions) {
+      const insSubs = await InscriptionSubject.findAll({
+        where: { inscriptionId: insc.id },
+        attributes: ['id'],
+      });
+      for (const is of insSubs) {
+        await TermGradeSyncService.syncForInscriptionSubject(is.id);
+        synced++;
+      }
+    }
+
+    res.json({
+      message: 'Notas recalculadas correctamente',
+      inscriptions: inscriptions.length,
+      inscriptionSubjects: synced,
+    });
+  } catch (error: any) {
+    console.error('[recalculatePeriodGrades] Error:', error);
+    res.status(500).json({ message: error.message || 'Error al recalcular notas' });
   }
 };

@@ -2,7 +2,22 @@
  * Utility functions for formatting grades with optional rounding.
  * When rounding is enabled: 10.5 → 11, 10.24 → 10.2 (1 decimal)
  * When rounding is disabled: format to 2 decimals (current behavior)
+ *
+ * IMPORTANT: All rounding goes through roundGrade() to fix floating-point
+ * precision errors (e.g. 15.499999999999998 → 15.5 → 16).
+ * Mirrors the backend helper in services/gradeEvaluationService.ts.
  */
+
+/**
+ * Round a raw score fixing floating-point precision errors first.
+ * e.g. 15.499999999999998 → toFixed(2) → "15.50" → 15.5 → Math.round → 16
+ */
+export function roundGrade(score: number | string | null | undefined): number {
+  if (score === null || score === undefined) return 0;
+  const n = Number(score);
+  if (isNaN(n)) return 0;
+  return Math.round(Number(n.toFixed(2)));
+}
 
 /**
  * Format a grade as a string with optional rounding.
@@ -21,7 +36,7 @@ export function formatGrade(grade: number | null | undefined, _enableRounding: b
     return '-';
   }
 
-  return String(Math.round(numGrade));
+  return String(roundGrade(numGrade));
 }
 
 /**
@@ -41,7 +56,7 @@ export function formatGradePadded(grade: number | null | undefined, maxGrade: nu
   }
 
   const digits = Math.max(2, String(maxGrade).length);
-  return String(Math.round(numGrade)).padStart(digits, '0');
+  return String(roundGrade(numGrade)).padStart(digits, '0');
 }
 
 /**
@@ -61,7 +76,7 @@ export function formatGradeValue(grade: number | null | undefined, _enableRoundi
     return 0;
   }
 
-  return Math.round(numGrade);
+  return roundGrade(numGrade);
 }
 
 /**
@@ -83,5 +98,5 @@ export function isPassingGrade(grade: number | null | undefined, passingGrade: n
     return false;
   }
 
-  return Math.round(numGrade) >= passingGrade;
+  return roundGrade(numGrade) >= passingGrade;
 }

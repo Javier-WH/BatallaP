@@ -15,7 +15,7 @@ import { saveAs } from 'file-saver';
 import api from '@/services/api';
 import { useGradeRounding } from '@/context/GradeRoundingContext';
 import { useSchool } from '@/context/SchoolContext';
-import { formatGrade, isPassingGrade } from '@/utils/gradeFormat';
+import { formatGrade, isPassingGrade, roundGrade } from '@/utils/gradeFormat';
 import { compareStudents } from '@/utils/studentSort';
 
 const { Title, Text } = Typography;
@@ -269,7 +269,7 @@ async function buildCouncilWorkbook(p: CouncilExcelParams): Promise<ArrayBuffer>
   );
   const averageOf = (student: CouncilStudent) => {
     const avg = student.subjects.filter(s => s.includeInAverage !== false);
-    const total = avg.reduce((sum, s) => sum + Math.max(1, Math.round((s.grade || 0) + (p.isPreliminary ? 0 : (s.points || 0)))), 0);
+    const total = avg.reduce((sum, s) => sum + Math.max(1, roundGrade((s.grade || 0) + (p.isPreliminary ? 0 : (s.points || 0)))), 0);
     return avg.length > 0 ? Number((total / avg.length).toFixed(2)) : 0;
   };
   const sortedByAvg = [...p.students].sort((a, b) => averageOf(b) - averageOf(a));
@@ -301,7 +301,7 @@ async function buildCouncilWorkbook(p: CouncilExcelParams): Promise<ArrayBuffer>
       row.push(
         subject ? Number(formatGrade(baseGrade, p.rounding)) : '-',
         p.isPreliminary ? '' : points,
-        p.isPreliminary ? '' : (subject ? Number(formatGrade(Math.round((baseGrade + points) * 100) / 100, p.rounding)) : '-'),
+        p.isPreliminary ? '' : (subject ? Number(formatGrade(roundGrade((baseGrade + points) * 100) / 100, p.rounding)) : '-'),
       );
     });
     const dataRow = worksheet.addRow(row);
@@ -1429,7 +1429,7 @@ const CourseCouncil: React.FC = () => {
         render: (_: any, record: CouncilStudent) => {
           const avgSubjects = record.subjects.filter(s => s.includeInAverage !== false);
           const totalGrades = avgSubjects.reduce((sum, s) => {
-            const finalGrade = Math.max(1, Math.round((s.grade || 0) + (s.points || 0)));
+            const finalGrade = Math.max(1, roundGrade((s.grade || 0) + (s.points || 0)));
             return sum + finalGrade;
           }, 0);
           const average = avgSubjects.length > 0 ? Number((totalGrades / avgSubjects.length).toFixed(2)) : 0;
@@ -1597,7 +1597,7 @@ const CourseCouncil: React.FC = () => {
               if (!subjectData) return <Text type="secondary">-</Text>;
               const baseGrade = subjectData.grade || 0;
               const currentPoints = subjectData.points || 0;
-              const totalGrade = Math.round((baseGrade + currentPoints) * 100) / 100;
+              const totalGrade = roundGrade((baseGrade + currentPoints) * 100) / 100;
               return (
                 <Tooltip title="Nota Final del lapso">
                   <div style={{

@@ -12,7 +12,8 @@ export type GradeStatus = 'aprobada' | 'reprobada';
 
 /** Rounds a raw score to the value shown in the UI and stored reports. */
 export function roundGrade(score: number): number {
-  return Math.round(score);
+  // Fix floating-point precision errors (e.g. 15.499999999999998 → 15.5 → 16)
+  return Math.round(Number(score.toFixed(2)));
 }
 
 /** Minimum allowed final grade. Even if all evaluations are 0, the definitive is at least 1. */

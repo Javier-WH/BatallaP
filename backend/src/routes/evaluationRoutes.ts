@@ -17,7 +17,8 @@ import {
   getQualificationAudits,
   getAllQualificationAudits,
   exportPlanningExcel,
-  copyEvaluationPlan
+  copyEvaluationPlan,
+  recalculatePeriodGrades
 } from '@/controllers/evaluationController';
 
 const router = Router();
@@ -40,5 +41,6 @@ router.get('/export-grades-oficial/:assignmentId', exportGradesExcelOficial);
 router.get('/all-assignments', getAllAssignments);
 router.get('/qualification-audits/:assignmentId', getQualificationAudits);
 router.get('/all-qualification-audits', getAllQualificationAudits);
+router.post('/recalculate/:schoolPeriodId', recalculatePeriodGrades);
 
 export default router;

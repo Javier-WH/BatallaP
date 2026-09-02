@@ -778,7 +778,7 @@ async function buildCertifiedWorkbook(personId: number, templateName: string): P
     const padDigits = Math.max(2, String(maxGrade).length);
 
     // Helper: round grade and enforce minimum of 1 (minimum allowed grade)
-    const roundGradeMin1 = (score: number): number => Math.max(1, Math.round(score));
+    const roundGradeMin1 = (score: number): number => roundFinalGrade(score);
 
     // Letter grades config (for literal subjects)
     const letterGradesConfig: { letter: string; max: number }[] = (() => {

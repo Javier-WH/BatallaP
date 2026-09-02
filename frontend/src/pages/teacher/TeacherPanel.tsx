@@ -13,6 +13,7 @@ import EvaluationPlanPDFModal from '@/components/pdf/EvaluationPlanPDFModal';
 import type { EvaluationPlanHeaderData, EvaluationPlanRowData } from '@/components/pdf/EvaluationPlanPDF';
 import EvaluationPlanItemModal, { type CatalogOption } from '@/components/EvaluationPlanItemModal';
 import { getSubjectVisual, withAlpha } from '@/utils/subjectVisuals';
+import { roundGrade } from '@/utils/gradeFormat';
 import { useDragScroll } from '@/utils/useDragScroll';
 import ContentTab from './ContentTab';
 
@@ -317,7 +318,7 @@ const TeacherPanel: React.FC = () => {
   const gradeDigits = Math.max(2, String(maxGrade).length);
   const padGrade = (val: number | null | undefined): string => {
     if (val === null || val === undefined) return '';
-    return String(Math.round(val)).padStart(gradeDigits, '0');
+    return String(roundGrade(val)).padStart(gradeDigits, '0');
   };
 
   const isSelectedTermBlocked = useMemo(() => {
@@ -763,7 +764,7 @@ const TeacherPanel: React.FC = () => {
         const initialAbsent: Record<number, boolean> = {};
         (detailRes.data.students || []).forEach((s: StudentRevisionData) => {
           (s.revisions || []).forEach((r: RevisionItem) => {
-            initialGrades[r.id] = r.score != null ? Math.round(Number(r.score)) : null;
+            initialGrades[r.id] = r.score != null ? roundGrade(Number(r.score)) : null;
             initialAbsent[r.id] = !!r.isAbsent || Number(r.score) === 0;
           });
         });
@@ -2757,7 +2758,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                                 );
                               })}
                               <td style={{ padding: '2px 4px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-content-bg)' : 'color-mix(in srgb, var(--color-text-main) 2%, var(--color-content-bg))', fontWeight: 700, fontSize: 12 }}>
-                                <Tag color={Math.round(rowTotal) >= passingGrade ? 'green' : 'red'} style={{ margin: 0 }}>
+                                <Tag color={roundGrade(rowTotal) >= passingGrade ? 'green' : 'red'} style={{ margin: 0 }}>
                                   {padGrade(rowTotal)}
                                 </Tag>
                               </td>
