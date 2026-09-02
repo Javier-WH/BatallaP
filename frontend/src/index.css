@@ -684,9 +684,14 @@ input[type=number] {
     gap: 8px !important;
   }
 
-  /* Grading table container: allow horizontal scroll with smaller max-height */
+  /* Grading table: no max-height on mobile — let the page scroll naturally */
   .teacher-panel .ant-card-body {
     padding: 0 !important;
+  }
+  .teacher-panel .grading-table-container {
+    max-height: none !important;
+    overflow-x: auto !important;
+    overflow-y: visible !important;
   }
 
   /* Progress card: smaller text */
