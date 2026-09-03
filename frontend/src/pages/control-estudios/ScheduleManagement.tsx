@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Tabs, Select, Card, Spin, message, Button, Tag, Empty, Modal, Switch, InputNumber, Alert, Popconfirm } from 'antd';
-import { TableOutlined, UserOutlined, ReloadOutlined, EditOutlined, SaveOutlined, CloseOutlined, DeleteOutlined, WarningOutlined, ThunderboltOutlined, ScheduleOutlined, SettingOutlined, PlusOutlined, HomeOutlined, FileExcelOutlined } from '@ant-design/icons';
+import { TableOutlined, UserOutlined, ReloadOutlined, EditOutlined, SaveOutlined, CloseOutlined, DeleteOutlined, WarningOutlined, ThunderboltOutlined, ScheduleOutlined, SettingOutlined, PlusOutlined, HomeOutlined, FileExcelOutlined, PrinterOutlined } from '@ant-design/icons';
 import {
   DndContext,
   PointerSensor,
@@ -903,8 +903,8 @@ const ScheduleManagement: React.FC = () => {
 
   // Diarios state
   const [diarioSelectedGradeIds, setDiarioSelectedGradeIds] = useState<number[]>([]);
-  const [diarioSelectedSectionIds, setDiarioSelectedSectionIds] = useState<number[]>([]);
   const [diarioExporting, setDiarioExporting] = useState(false);
+  const [diarioPreviewUrl, setDiarioPreviewUrl] = useState<string | null>(null);
   const [newExcSubjectId, setNewExcSubjectId] = useState<number | null>(null);
   const [newExcConsecutive, setNewExcConsecutive] = useState<number | null>(null);
   const [newExcWeekly, setNewExcWeekly] = useState<number | null>(null);
@@ -940,7 +940,7 @@ const ScheduleManagement: React.FC = () => {
 
   const scheduleSections = useMemo(() => buildSections(settings), [settings]);
 
-  // Diarios: unique grades and filtered sections (must be before any early return)
+  // Diarios: unique grades (must be before any early return)
   const diarioGrades = useMemo(() => {
     const map = new Map<number, { id: number; name: string; order: number }>();
     sectionsList.forEach((s: any) => {
@@ -950,18 +950,6 @@ const ScheduleManagement: React.FC = () => {
     });
     return Array.from(map.values()).sort((a, b) => a.order - b.order);
   }, [sectionsList]);
-
-  const diarioAvailableSections = useMemo(() => {
-    return sectionsList
-      .filter((s: any) => diarioSelectedGradeIds.length === 0 || diarioSelectedGradeIds.includes(s.gradeId))
-      .map((s: any) => ({ id: s.id, label: s.label, gradeId: s.gradeId, gradeName: s.gradeName, sectionName: s.sectionName }))
-      .sort((a: any, b: any) => {
-        const ga = diarioGrades.find(g => g.id === a.gradeId)?.order ?? 99;
-        const gb = diarioGrades.find(g => g.id === b.gradeId)?.order ?? 99;
-        if (ga !== gb) return ga - gb;
-        return (a.sectionName || '').localeCompare(b.sectionName || '', 'es');
-      });
-  }, [sectionsList, diarioSelectedGradeIds, diarioGrades]);
 
   // Load settings
   useEffect(() => {
@@ -1847,47 +1835,46 @@ const ScheduleManagement: React.FC = () => {
     );
   }
 
-  // ── Diarios export handler ──
+  // ── Diarios export handler (HTML) ──
   const handleExportDiarios = async () => {
     if (!viewPeriod) {
       message.warning('Seleccione un año escolar');
       return;
     }
-    if (diarioSelectedSectionIds.length === 0) {
-      message.warning('Seleccione al menos una sección');
+    if (diarioSelectedGradeIds.length === 0) {
+      message.warning('Seleccione al menos un año');
+      return;
+    }
+    // Compute section IDs from selected grades (all sections of those grades)
+    const sectionIds = sectionsList
+      .filter((s: any) => diarioSelectedGradeIds.includes(s.gradeId))
+      .map((s: any) => s.id);
+    if (sectionIds.length === 0) {
+      message.warning('No hay secciones para los años seleccionados');
       return;
     }
     setDiarioExporting(true);
     try {
-      const response = await api.get('/diarios/export', {
+      const response = await api.get('/diarios/html', {
         params: {
           schoolPeriodId: viewPeriod.id,
-          sectionIds: diarioSelectedSectionIds.join(','),
+          sectionIds: sectionIds.join(','),
         },
-        responseType: 'blob',
+        responseType: 'text',
       });
-      const url = window.URL.createObjectURL(new Blob([response.data]));
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', 'diarios-de-clases.xlsx');
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(url);
-      message.success('Diarios exportados correctamente');
+      const html = response.data as string;
+      // Revoke previous URL if any
+      if (diarioPreviewUrl) {
+        window.URL.revokeObjectURL(diarioPreviewUrl);
+      }
+      const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+      const url = window.URL.createObjectURL(blob);
+      setDiarioPreviewUrl(url);
+      message.success('Diarios generados. Use los botones dentro de la vista previa para imprimir.');
     } catch (error: any) {
       console.error('Error exporting diarios', error);
-      if (error.response?.data instanceof Blob) {
-        const text = await error.response.data.text();
-        try {
-          const err = JSON.parse(text);
-          message.error(err.message || 'Error al exportar los diarios');
-        } catch {
-          message.error('Error al exportar los diarios');
-        }
-      } else {
-        message.error('Error al exportar los diarios');
-      }
+      const msg = error.response?.data?.message || 'Error al exportar los diarios';
+      message.error(msg);
     } finally {
       setDiarioExporting(false);
     }
@@ -2178,7 +2165,7 @@ const ScheduleManagement: React.FC = () => {
           },
           {
             key: 'diarios',
-            label: <span><FileExcelOutlined /> Diarios</span>,
+            label: <span><PrinterOutlined /> Diarios</span>,
             children: (
               <div>
                 <div className="mb-4 flex items-center gap-4 flex-wrap">
@@ -2217,62 +2204,56 @@ const ScheduleManagement: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="mb-4 flex items-center gap-4 flex-wrap">
-                  <span className="font-semibold text-slate-700">Secciones:</span>
-                  <div className="flex flex-wrap gap-2">
-                    {diarioAvailableSections.map((s: any) => {
-                      const selected = diarioSelectedSectionIds.includes(s.id);
-                      return (
-                        <Button
-                          key={s.id}
-                          size="small"
-                          type={selected ? 'primary' : 'default'}
-                          onClick={() => {
-                            setDiarioSelectedSectionIds(prev =>
-                              selected ? prev.filter(id => id !== s.id) : [...prev, s.id]
-                            );
-                          }}
-                        >
-                          {s.label}
-                        </Button>
-                      );
-                    })}
-                    {diarioAvailableSections.length > 0 && (
-                      <Button
-                        size="small"
-                        type={diarioSelectedSectionIds.length === diarioAvailableSections.length ? 'primary' : 'default'}
-                        onClick={() => {
-                          if (diarioSelectedSectionIds.length === diarioAvailableSections.length) {
-                            setDiarioSelectedSectionIds([]);
-                          } else {
-                            setDiarioSelectedSectionIds(diarioAvailableSections.map((s: any) => s.id));
-                          }
-                        }}
-                      >
-                        {diarioSelectedSectionIds.length === diarioAvailableSections.length ? 'Quitar todas' : 'Seleccionar todas'}
-                      </Button>
-                    )}
-                  </div>
-                </div>
-
                 <div className="mb-4">
                   <Alert
                     type="info"
                     showIcon
                     message="Instrucciones de impresión"
-                    description="El archivo Excel contiene 2 hojas: 'Odd' (frente) y 'Even' (dorso). Imprima primero toda la hoja 'Odd', luego dé vuelta a las hojas e imprima la hoja 'Even' por el reverso. Cada sección ocupa una página por lado."
+                    description="Se generará una vista previa debajo con los diarios de todas las secciones de los años seleccionados. Use los botones 'Imprimir Lado 1 (Frente)' y 'Imprimir Lado 2 (Reverso)' dentro de la vista previa para imprimir. El Frente empieza con Lunes (Lunes, Martes y Miércoles mañana); el Reverso empieza con Miércoles (Miércoles tarde, Jueves y Viernes). Cada sección ocupa una página por lado."
                   />
                 </div>
 
                 <Button
                   type="primary"
-                  icon={<FileExcelOutlined />}
+                  icon={<PrinterOutlined />}
                   loading={diarioExporting}
-                  disabled={diarioSelectedSectionIds.length === 0}
+                  disabled={diarioSelectedGradeIds.length === 0}
                   onClick={handleExportDiarios}
                 >
-                  Imprimir Diarios ({diarioSelectedSectionIds.length} {diarioSelectedSectionIds.length === 1 ? 'sección' : 'secciones'})
+                  Generar Diarios ({diarioSelectedGradeIds.length} {diarioSelectedGradeIds.length === 1 ? 'año' : 'años'})
                 </Button>
+
+                {diarioPreviewUrl && (
+                  <div className="mt-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="font-semibold text-slate-700">Vista previa</span>
+                      <Button
+                        size="small"
+                        type="link"
+                        danger
+                        onClick={() => {
+                          if (diarioPreviewUrl) {
+                            window.URL.revokeObjectURL(diarioPreviewUrl);
+                          }
+                          setDiarioPreviewUrl(null);
+                        }}
+                      >
+                        Cerrar vista previa
+                      </Button>
+                    </div>
+                    <iframe
+                      src={diarioPreviewUrl}
+                      title="Diarios preview"
+                      style={{
+                        width: '100%',
+                        height: '80vh',
+                        border: '1px solid #d1d5db',
+                        borderRadius: 8,
+                        background: '#ddd',
+                      }}
+                    />
+                  </div>
+                )}
               </div>
             ),
           },
