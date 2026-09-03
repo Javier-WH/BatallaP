@@ -274,9 +274,13 @@ function copyBlock(
     const srcRow = srcWs.getRow(r);
     const dstRow = dstWs.getRow(dstRowNum);
 
-    // Copy row height
-    if (srcRow.height !== undefined && srcRow.height !== null) {
-      dstRow.height = srcRow.height;
+    // Copy row height — always set it, even if undefined, to match template exactly.
+    // ExcelJS stores height in the row model; we read it from there to get the
+    // effective height (including defaults set on the worksheet).
+    const srcRowModel = (srcRow as any).model || {};
+    const effectiveHeight = srcRow.height ?? srcRowModel.height ?? srcWs.properties?.defaultRowHeight;
+    if (effectiveHeight !== undefined && effectiveHeight !== null) {
+      dstRow.height = effectiveHeight;
     }
 
     for (let c = 1; c <= numCols; c++) {
@@ -441,7 +445,10 @@ export async function generateDiarios(
 
   // Create Odd and Even sheets by copying page setup from template
   const outOdd = outWb.addWorksheet('Odd', {
-    properties: { defaultRowHeight: 15 },
+    properties: {
+      defaultRowHeight: templateOdd.properties?.defaultRowHeight ?? 15,
+      dyDescent: templateOdd.properties?.dyDescent,
+    },
     pageSetup: templateOdd.pageSetup ? {
       paperSize: templateOdd.pageSetup.paperSize,
       orientation: templateOdd.pageSetup.orientation,
@@ -454,7 +461,10 @@ export async function generateDiarios(
   });
 
   const outEven = outWb.addWorksheet('Even', {
-    properties: { defaultRowHeight: 15 },
+    properties: {
+      defaultRowHeight: templateEven.properties?.defaultRowHeight ?? 15,
+      dyDescent: templateEven.properties?.dyDescent,
+    },
     pageSetup: templateEven.pageSetup ? {
       paperSize: templateEven.pageSetup.paperSize,
       orientation: templateEven.pageSetup.orientation,
@@ -547,17 +557,56 @@ function fillBlockData(
   // Find day blocks within this copied block
   const days = findDayBlocksInWorksheet(ws, blockStart, blockEnd, periods, sheetType);
 
-  // Fill subject names
+  // Fill subject names and merge consecutive cells with the same subject
   for (const day of days) {
+    // First, fill all subject cells
+    const filledSubjects: { row: number; subject: string }[] = [];
     for (const tr of day.timeRows) {
       const entryKey = `${day.dayName}|${tr.periodId}`;
       const cellEntries = sec.entries[entryKey];
+      const subjCell = ws.getCell(tr.row, 2);
       if (cellEntries && cellEntries.length > 0) {
-        const subjCell = ws.getCell(tr.row, 2);
-        subjCell.value = cellEntries.map(e => e.subjectName).join(' / ');
+        const subjName = cellEntries.map(e => e.subjectName).join(' / ');
+        subjCell.value = subjName;
+        filledSubjects.push({ row: tr.row, subject: subjName });
       } else {
         // Clear the subject cell (it was copied from template, may have old data)
-        ws.getCell(tr.row, 2).value = null;
+        subjCell.value = null;
+      }
+    }
+
+    // Now merge consecutive cells with the same subject name
+    // Group consecutive time rows that have the same subject
+    let mergeStart = -1;
+    let mergeSubject = '';
+    for (let idx = 0; idx < day.timeRows.length; idx++) {
+      const tr = day.timeRows[idx];
+      const entryKey = `${day.dayName}|${tr.periodId}`;
+      const cellEntries = sec.entries[entryKey];
+      const currentSubject = cellEntries && cellEntries.length > 0
+        ? cellEntries.map(e => e.subjectName).join(' / ')
+        : '';
+
+      if (currentSubject && currentSubject === mergeSubject) {
+        // Same subject as previous — extend the merge range (do nothing yet)
+      } else {
+        // Subject changed — merge the previous group if it had 2+ rows
+        if (mergeStart >= 0 && idx > 0) {
+          const prevRow = day.timeRows[idx - 1].row;
+          if (prevRow > mergeStart) {
+            ws.mergeCells(`B${mergeStart}:B${prevRow}`);
+          }
+        }
+        // Start a new group
+        mergeStart = currentSubject ? tr.row : -1;
+        mergeSubject = currentSubject;
+      }
+    }
+    // Merge the last group
+    if (mergeStart >= 0 && day.timeRows.length > 0) {
+      const lastRow = day.timeRows[day.timeRows.length - 1].row;
+      if (lastRow > mergeStart) {
+        ws.mergeCells(`B${mergeStart}:B${lastRow}`);
       }
     }
   }
