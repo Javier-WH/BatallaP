@@ -1529,13 +1529,15 @@ const ScheduleManagement: React.FC = () => {
       } else break;
     }
 
-    // Collect source entries from all source block periods
-    const srcEntries: ScheduleEntryData[] = [];
-    for (const p of srcBlockPds) {
+    // Collect source entries grouped by block period index.
+    // This preserves group subjects (multiple entries in the same cell)
+    // so they stay together when moved.
+    const srcEntriesByPeriod: ScheduleEntryData[][] = srcBlockPds.map(p => {
       const key = `${srcDay}|${p.id}`;
       const arr = editableEntries[key];
-      if (arr) srcEntries.push(...arr.map(e => ({ ...e })));
-    }
+      return arr ? arr.map(e => ({ ...e })) : [];
+    });
+    const srcEntries: ScheduleEntryData[] = srcEntriesByPeriod.flat();
     if (srcEntries.length === 0) return;
 
     // Detect target block span: check if target has entries
@@ -1583,15 +1585,15 @@ const ScheduleManagement: React.FC = () => {
       }
     }
 
-    // Collect target entries (for swap)
-    const tgtEntries: ScheduleEntryData[] = [];
-    if (tgtIsOccupied) {
-      for (const p of tgtBlockPds) {
-        const key = `${tgtDay}|${p.id}`;
-        const arr = editableEntries[key];
-        if (arr) tgtEntries.push(...arr.map(e => ({ ...e })));
-      }
-    }
+    // Collect target entries grouped by block period index (for swap).
+    // Preserves group subjects so they stay together when swapped.
+    const tgtEntriesByPeriod: ScheduleEntryData[][] = tgtIsOccupied
+      ? tgtBlockPds.map(p => {
+          const key = `${tgtDay}|${p.id}`;
+          const arr = editableEntries[key];
+          return arr ? arr.map(e => ({ ...e })) : [];
+        })
+      : [];
 
     // Perform the move or swap
     setEditableEntries(prev => {
@@ -1612,21 +1614,21 @@ const ScheduleManagement: React.FC = () => {
           const key = `${tgtDay}|${p.id}`;
           delete copy[key];
         }
-        // Place target entries into source block periods
-        tgtEntries.forEach((e, idx) => {
-          const targetPeriod = srcBlockPds[idx % srcBlockPds.length];
+        // Place target entries into source block periods (preserving grouping)
+        tgtEntriesByPeriod.forEach((entries, periodIdx) => {
+          if (entries.length === 0) return;
+          const targetPeriod = srcBlockPds[periodIdx];
           const key = `${srcDay}|${targetPeriod.id}`;
-          if (!copy[key]) copy[key] = [];
-          copy[key].push({ ...e, day: srcDay, periodId: targetPeriod.id });
+          copy[key] = entries.map(e => ({ ...e, day: srcDay, periodId: targetPeriod.id }));
         });
       }
 
-      // Place source entries into target block periods
-      srcEntries.forEach((e, idx) => {
-        const targetPeriod = tgtBlockPds[idx % tgtBlockPds.length];
+      // Place source entries into target block periods (preserving grouping)
+      srcEntriesByPeriod.forEach((entries, periodIdx) => {
+        if (entries.length === 0) return;
+        const targetPeriod = tgtBlockPds[periodIdx];
         const key = `${tgtDay}|${targetPeriod.id}`;
-        if (!copy[key]) copy[key] = [];
-        copy[key].push({ ...e, day: tgtDay, periodId: targetPeriod.id });
+        copy[key] = entries.map(e => ({ ...e, day: tgtDay, periodId: targetPeriod.id }));
       });
 
       return copy;
