@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Modal, Upload, Button, Table, Typography, Space, Popconfirm, message, Empty, Select, Tag, Tabs, Popover, List } from 'antd';
-import { DeleteOutlined, FileExcelOutlined, InboxOutlined, LinkOutlined, DisconnectOutlined, SwapOutlined } from '@ant-design/icons';
+import { Modal, Upload, Button, Table, Typography, Space, Popconfirm, message, Empty, Select, Tag, Tabs, Popover, List, Collapse } from 'antd';
+import { DeleteOutlined, FileExcelOutlined, DisconnectOutlined, SwapOutlined, UploadOutlined } from '@ant-design/icons';
 import type { UploadProps } from 'antd';
 import api from '@/services/api';
 
@@ -30,6 +30,8 @@ export interface TemplateManagerModalProps {
   // 'resumen' = Resumen de Rendimiento (assign by grade, only "Asignar por Año" tab)
   // 'certified' = Notas Certificadas (assign by period: "Pre 2018" / "Actual")
   mode?: 'resumen' | 'certified';
+  // Required for the "Profesores Firmantes" tab (group signer selection).
+  schoolPeriodId?: number | null;
 }
 
 const TemplateManagerModal: React.FC<TemplateManagerModalProps> = ({
@@ -37,18 +39,19 @@ const TemplateManagerModal: React.FC<TemplateManagerModalProps> = ({
   onClose,
   selectedTemplate,
   onSelect,
-  defaultGradeId,
   mode = 'resumen',
+  schoolPeriodId,
 }) => {
   const [templates, setTemplates] = useState<TemplateInfo[]>([]);
   const [assignments, setAssignments] = useState<Record<string, string>>({});
   const [certifiedAssignments, setCertifiedAssignments] = useState<Record<string, string>>({});
   const [grades, setGrades] = useState<GradeOption[]>([]);
-  const [selectedGradeId, setSelectedGradeId] = useState<number | null>(defaultGradeId ?? null);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [openPopoverGradeId, setOpenPopoverGradeId] = useState<number | null>(null);
   const [openPopoverPeriod, setOpenPopoverPeriod] = useState<string | null>(null);
+  const [groupTeachers, setGroupTeachers] = useState<any[]>([]);
+  const [groupSignerSaving, setGroupSignerSaving] = useState(false);
 
   const fetchTemplates = useCallback(async () => {
     setLoading(true);
@@ -95,12 +98,34 @@ const TemplateManagerModal: React.FC<TemplateManagerModalProps> = ({
     }
   }, [open, fetchTemplates]);
 
-  // When a grade is provided from the parent, pre-select it on open.
-  useEffect(() => {
-    if (open) {
-      if (defaultGradeId) setSelectedGradeId(defaultGradeId);
+  // Fetch group teachers for the "Profesores Firmantes" tab.
+  // Loads data for all grades of the active period.
+  const fetchGroupTeachers = useCallback(async () => {
+    if (!schoolPeriodId || grades.length === 0) {
+      setGroupTeachers([]);
+      return;
     }
-  }, [open, defaultGradeId]);
+    try {
+      const results = await Promise.all(
+        grades.map(async (g) => {
+          const res = await api.get('/performance-summary/group-teachers', {
+            params: { schoolPeriodId, gradeId: g.id },
+          });
+          return { gradeId: g.id, gradeName: g.name, groups: res.data || [] };
+        })
+      );
+      setGroupTeachers(results.filter((r: any) => r.groups.length > 0));
+    } catch (error) {
+      console.error('Error fetching group teachers', error);
+      setGroupTeachers([]);
+    }
+  }, [schoolPeriodId, grades]);
+
+  useEffect(() => {
+    if (open && mode === 'resumen' && schoolPeriodId) {
+      fetchGroupTeachers();
+    }
+  }, [open, mode, schoolPeriodId, fetchGroupTeachers]);
 
   const handleDelete = async (name: string) => {
     try {
@@ -133,6 +158,37 @@ const TemplateManagerModal: React.FC<TemplateManagerModalProps> = ({
     } catch (error: any) {
       console.error('Error assigning template', error);
       message.error(error?.response?.data?.message || 'Error al asignar la plantilla');
+    }
+  };
+
+  const saveGroupSigner = async (gradeId: number, subjectGroupId: number, personId: number | null) => {
+    if (!schoolPeriodId) return;
+    setGroupSignerSaving(true);
+    try {
+      await api.post('/performance-summary/group-signer', {
+        schoolPeriodId,
+        gradeId,
+        subjectGroupId,
+        personId,
+      });
+      // Update local state to reflect the change immediately
+      setGroupTeachers(prev => prev.map((gt: any) => {
+        if (gt.gradeId !== gradeId) return gt;
+        return {
+          ...gt,
+          groups: gt.groups.map((g: any) =>
+            g.subjectGroupId === subjectGroupId
+              ? { ...g, currentSignerPersonId: personId }
+              : g
+          ),
+        };
+      }));
+      message.success(personId ? 'Profesor firmante guardado' : 'Asignación eliminada');
+    } catch (error: any) {
+      console.error('Error saving group signer', error);
+      message.error(error?.response?.data?.message || 'Error al guardar el profesor firmante');
+    } finally {
+      setGroupSignerSaving(false);
     }
   };
 
@@ -207,12 +263,10 @@ const TemplateManagerModal: React.FC<TemplateManagerModalProps> = ({
     }
   };
 
-  const selectedGrade = grades.find(g => g.id === selectedGradeId);
-
   // Templates list (filtered to the selected grade, if any).
   const templatesColumns = [
     {
-      title: 'Plantilla',
+      title: 'Plantillas',
       dataIndex: 'name',
       key: 'name',
       render: (name: string) => (
@@ -239,51 +293,19 @@ const TemplateManagerModal: React.FC<TemplateManagerModalProps> = ({
     {
       title: 'Acciones',
       key: 'actions',
-      width: 240,
-      render: (_: any, record: TemplateInfo) => {
-        const assignedToGrade = selectedGradeId
-          ? assignments[String(selectedGradeId)] === record.name
-          : false;
-        return (
-          <Space wrap>
-            <Button
-              size="small"
-              type={selectedTemplate === record.name ? 'primary' : 'default'}
-              onClick={() => onSelect(selectedTemplate === record.name ? '' : record.name)}
-            >
-              {selectedTemplate === record.name ? 'Seleccionada' : 'Seleccionar'}
-            </Button>
-            {selectedGradeId && (
-              <Button
-                size="small"
-                type={assignedToGrade ? 'primary' : 'dashed'}
-                icon={assignedToGrade ? <DisconnectOutlined /> : <LinkOutlined />}
-                onClick={async () => {
-                  const key = String(selectedGradeId);
-                  if (assignedToGrade) {
-                    await assignToKey(key, '');
-                  } else {
-                    await assignToKey(key, record.name);
-                  }
-                }}
-                title={`Asignar a todo el grado ${selectedGrade?.name}`}
-              >
-                {assignedToGrade ? 'Quitar asignación' : 'Asignar a grado'}
-              </Button>
-            )}
-            <Popconfirm
-              title="¿Eliminar esta plantilla?"
-              description="No se puede deshacer."
-              onConfirm={() => handleDelete(record.name)}
-              okText="Sí, eliminar"
-              cancelText="Cancelar"
-              okButtonProps={{ danger: true }}
-            >
-              <Button size="small" danger icon={<DeleteOutlined />} />
-            </Popconfirm>
-          </Space>
-        );
-      },
+      width: 100,
+      render: (_: any, record: TemplateInfo) => (
+        <Popconfirm
+          title="¿Eliminar esta plantilla?"
+          description="No se puede deshacer."
+          onConfirm={() => handleDelete(record.name)}
+          okText="Sí, eliminar"
+          cancelText="Cancelar"
+          okButtonProps={{ danger: true }}
+        >
+          <Button size="small" danger icon={<DeleteOutlined />} />
+        </Popconfirm>
+      ),
     },
   ];
 
@@ -361,8 +383,8 @@ const TemplateManagerModal: React.FC<TemplateManagerModalProps> = ({
   };
 
   const modalTitle = mode === 'certified'
-    ? 'Gestión de plantillas (Notas Certificadas)'
-    : 'Gestión de plantillas (Resumen de Rendimiento)';
+    ? 'Configuración (Notas Certificadas)'
+    : 'Configuración';
 
   return (
     <Modal
@@ -375,72 +397,81 @@ const TemplateManagerModal: React.FC<TemplateManagerModalProps> = ({
       width={860}
     >
       <Tabs
-        defaultActiveKey={mode === 'certified' ? 'files' : 'assignments'}
+        defaultActiveKey={mode === 'certified' ? 'files' : 'signers'}
         items={[
-          {
-            key: 'files',
-            label: 'Archivos',
+          // ─── Profesores Firmantes tab (resumen mode only) ───
+          ...(mode === 'resumen' ? [{
+            key: 'signers',
+            label: 'Profesores Firmantes',
             children: (
               <>
-                <div style={{ marginBottom: 16 }}>
-                  <Upload.Dragger {...uploadProps}>
-                    <p className="ant-upload-drag-icon">
-                      <InboxOutlined style={{ color: '#059669' }} />
-                    </p>
-                    <p className="ant-upload-text">Haz click o arrastra un archivo Excel aquí</p>
-                    <p className="ant-upload-hint">
-                      Solo se aceptan archivos .xlsx o .xls (máx 10MB). El nombre se sanitiza automáticamente.
-                    </p>
-                  </Upload.Dragger>
-                  {uploading && <div style={{ marginTop: 8 }}><Text type="secondary">Subiendo…</Text></div>}
-                </div>
-
-                {mode === 'resumen' && grades.length > 0 && (
-                  <div style={{ marginBottom: 12, display: 'flex', gap: 12, alignItems: 'center' }}>
-                    <Text strong>Asignar a:</Text>
-                    <Select
-                      placeholder="Seleccione un año"
-                      style={{ minWidth: 180 }}
-                      value={selectedGradeId}
-                      onChange={(v) => setSelectedGradeId(v ?? null)}
-                      options={grades.map(g => ({ label: g.name, value: g.id }))}
-                      allowClear
-                    />
-                    {selectedGradeId && (
-                      <Tag color="blue">
-                        Asignando a todo {selectedGrade?.name}
-                      </Tag>
-                    )}
-                  </div>
-                )}
-
-                {templates.length === 0 && !loading ? (
+                {groupTeachers.length === 0 ? (
                   <Empty
                     image={Empty.PRESENTED_IMAGE_SIMPLE}
-                    description="No hay plantillas. Sube la primera con el cuadro de arriba."
+                    description="No hay grupos de materias que requieran selección de profesor firmante."
                   />
                 ) : (
-                  <Table
-                    rowKey="name"
-                    loading={loading}
-                    dataSource={templates}
-                    columns={templatesColumns}
-                    pagination={false}
-                    size="small"
-                    locale={{ emptyText: 'No hay plantillas' }}
-                  />
+                  <div>
+                    <Text type="secondary" style={{ display: 'block', marginBottom: 12, fontSize: 12 }}>
+                      Seleccione qué profesor firmará por cada grupo de materias en el resumen de rendimiento.
+                      Esta asignación es por grado y se mantiene para todas las exportaciones.
+                    </Text>
+                    {groupTeachers.map((gt: any) => (
+                      <div key={gt.gradeId} style={{ marginBottom: 20 }}>
+                        <Text strong style={{ display: 'block', marginBottom: 8, fontSize: 14 }}>
+                          {gt.gradeName}
+                        </Text>
+                        {gt.groups.map((g: any) => {
+                          // Collect all unique teachers across subjects in the group
+                          const allTeachers: { personId: number; fullName: string }[] = [];
+                          for (const subj of g.subjects) {
+                            for (const t of subj.teachers) {
+                              if (!allTeachers.some((at: any) => at.personId === t.personId)) {
+                                allTeachers.push(t);
+                              }
+                            }
+                          }
+                          return (
+                            <div key={g.subjectGroupId} style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                              <Text style={{ minWidth: 200, fontSize: 13 }}>
+                                {g.subjectGroupName}:
+                              </Text>
+                              <Select
+                                style={{ minWidth: 240 }}
+                                placeholder="Seleccione un profesor"
+                                value={g.currentSignerPersonId ?? undefined}
+                                loading={groupSignerSaving}
+                                onChange={(personId: number | null) => saveGroupSigner(gt.gradeId, g.subjectGroupId, personId)}
+                                options={allTeachers.map((t: any) => ({
+                                  label: t.fullName,
+                                  value: t.personId,
+                                }))}
+                                allowClear
+                                showSearch
+                                optionFilterProp="label"
+                              />
+                              <Text type="secondary" style={{ fontSize: 11 }}>
+                                ({g.subjects.length} materias)
+                              </Text>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ))}
+                  </div>
                 )}
               </>
             ),
-          },
-          ...(mode === 'resumen' ? [{
-            key: 'assignments',
-            label: 'Asignar por Año',
+          }] : []),
+          // ─── Plantillas tab (resumen mode) / Archivos tab (certified mode) ───
+          {
+            key: 'files',
+            label: mode === 'certified' ? 'Archivos' : 'Plantillas',
             children: (
               <>
-                {assignmentRows.length === 0 ? (
-                  <Empty description="No hay años configurados" />
-                ) : (
+                {/* Resumen mode: "Asignación por año" always visible first,
+                    then templates list + upload in a collapsible panel below. */}
+                {mode === 'resumen' && assignmentRows.length > 0 && (
                   <Table
                     rowKey="key"
                     loading={loading}
@@ -529,9 +560,79 @@ const TemplateManagerModal: React.FC<TemplateManagerModalProps> = ({
                     ]}
                   />
                 )}
+
+                {/* Templates list + upload button.
+                    In resumen mode: inside a Collapse (closed by default).
+                    In certified mode: always visible. */}
+                {mode === 'resumen' ? (
+                  <Collapse
+                    style={{ marginTop: 16 }}
+                    items={[{
+                      key: 'templates',
+                      label: 'Plantillas subidas',
+                      children: (
+                        <>
+                          <div style={{ marginBottom: 12, display: 'flex', gap: 8, alignItems: 'center' }}>
+                            <Upload {...uploadProps} accept=".xlsx,.xls" showUploadList={false}>
+                              <Button icon={<UploadOutlined />} loading={uploading}>
+                                Subir plantilla
+                              </Button>
+                            </Upload>
+                            {uploading && <Text type="secondary">Subiendo…</Text>}
+                          </div>
+
+                          {templates.length === 0 && !loading ? (
+                            <Empty
+                              image={Empty.PRESENTED_IMAGE_SIMPLE}
+                              description="No hay plantillas. Sube la primera con el botón de arriba."
+                            />
+                          ) : (
+                            <Table
+                              rowKey="name"
+                              loading={loading}
+                              dataSource={templates}
+                              columns={templatesColumns}
+                              pagination={false}
+                              size="small"
+                              locale={{ emptyText: 'No hay plantillas' }}
+                            />
+                          )}
+                        </>
+                      ),
+                    }]}
+                  />
+                ) : (
+                  <>
+                    <div style={{ marginBottom: 12, display: 'flex', gap: 8, alignItems: 'center' }}>
+                      <Upload {...uploadProps} accept=".xlsx,.xls" showUploadList={false}>
+                        <Button icon={<UploadOutlined />} loading={uploading}>
+                          Subir plantilla
+                        </Button>
+                      </Upload>
+                      {uploading && <Text type="secondary">Subiendo…</Text>}
+                    </div>
+
+                    {templates.length === 0 && !loading ? (
+                      <Empty
+                        image={Empty.PRESENTED_IMAGE_SIMPLE}
+                        description="No hay plantillas. Sube la primera con el botón de arriba."
+                      />
+                    ) : (
+                      <Table
+                        rowKey="name"
+                        loading={loading}
+                        dataSource={templates}
+                        columns={templatesColumns}
+                        pagination={false}
+                        size="small"
+                        locale={{ emptyText: 'No hay plantillas' }}
+                      />
+                    )}
+                  </>
+                )}
               </>
             ),
-          }] : []),
+          },
           ...(mode === 'certified' ? [{
             key: 'certified-assignments',
             label: 'Asignar por Periodo',

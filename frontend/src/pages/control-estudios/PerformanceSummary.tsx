@@ -1518,7 +1518,7 @@ const PerformanceSummary: React.FC = () => {
           <div className="rb-utility-btns">
             {showTemplateBtn && (
               <button className="rb-btn-ghost" onClick={() => reportType === 'certified' ? setCertTemplateModalOpen(true) : setTemplateModalOpen(true)}>
-                <IconSettings size={14} /> Plantillas
+                <IconSettings size={14} /> Configuración
               </button>
             )}
             {showLegendBtn && (
@@ -1970,6 +1970,7 @@ const PerformanceSummary: React.FC = () => {
         defaultGradeId={selectedGradeIds[0] ?? null}
         onSelect={(name) => { setSelectedTemplate(name || null); }}
         mode="resumen"
+        schoolPeriodId={selectedPeriodId}
       />
 
       <TemplateManagerModal

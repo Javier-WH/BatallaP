@@ -708,6 +708,71 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
       }
     }
 
+    // Apply manual group signers from Setting. For each subject group that has
+    // a saved signer, override the teacherMap so that every subject in the group
+    // maps to the chosen signer's data. This ensures the collapsed group column
+    // shows the manually-selected teacher instead of the first-by-iteration one.
+    const groupSubjectMap = new Map<number, number[]>(); // subjectGroupId → [subjectId...]
+    for (const pgs of pgSubjects) {
+      const subj = (pgs as any).subject;
+      if (subj && subj.subjectGroupId) {
+        const arr = groupSubjectMap.get(subj.subjectGroupId) || [];
+        arr.push(subj.id);
+        groupSubjectMap.set(subj.subjectGroupId, arr);
+      }
+    }
+    if (groupSubjectMap.size > 0) {
+      const signerKeys = Array.from(groupSubjectMap.keys()).map(
+        (gid) => `group_signer_${Number(schoolPeriodId)}_${Number(gradeId)}_${gid}`
+      );
+      const signerSettings = await Setting.findAll({ where: { key: signerKeys } });
+      for (const s of signerSettings) {
+        const signerPersonId = Number(s.value);
+        if (!signerPersonId) continue;
+        // Extract subjectGroupId from key: group_signer_{periodId}_{gradeId}_{subjectGroupId}
+        const parts = s.key.split('_');
+        const subjectGroupId = Number(parts[parts.length - 1]);
+        const subjectIds = groupSubjectMap.get(subjectGroupId);
+        if (!subjectIds) continue;
+        // Find the signer's data from the teacherAssignments we already have.
+        // The signer might be assigned to any subject in the group (any section).
+        // We look for a TeacherAssignment whose teacherId matches signerPersonId.
+        let signerData: { fullName: string; docWithType: string } | null = null;
+        for (const ta of teacherAssignments) {
+          const teacher = (ta as any).teacher;
+          if (teacher && teacher.id === signerPersonId) {
+            const docType = teacher.documentType === 'Venezolano' ? 'V' :
+                            teacher.documentType === 'Extranjero' ? 'E' : 'V';
+            signerData = {
+              fullName: `${teacher.lastName || ''} ${teacher.firstName || ''}`.trim(),
+              docWithType: docType + ' ' + (teacher.document || ''),
+            };
+            break;
+          }
+        }
+        if (!signerData) {
+          // The signer is not in this section's TeacherAssignments. Fetch from Person.
+          const signerPerson = await Person.findByPk(signerPersonId, {
+            attributes: ['firstName', 'lastName', 'documentType', 'document'],
+          });
+          if (signerPerson) {
+            const docType = signerPerson.documentType === 'Venezolano' ? 'V' :
+                            signerPerson.documentType === 'Extranjero' ? 'E' : 'V';
+            signerData = {
+              fullName: `${signerPerson.lastName || ''} ${signerPerson.firstName || ''}`.trim(),
+              docWithType: docType + ' ' + (signerPerson.document || ''),
+            };
+          }
+        }
+        if (signerData) {
+          // Override all subjects in the group to use the signer
+          for (const subjId of subjectIds) {
+            teacherMap.set(subjId, signerData);
+          }
+        }
+      }
+    }
+
     // For MP sections, calculate score from PendingSubject encounters.
     // For regular sections, use the standard term-grade calculation.
     const calculateMpScore = (pendingSubj: any): number | null => {
@@ -1516,6 +1581,62 @@ export const exportRevisionSummary = async (req: Request, res: Response) => {
           fullName: `${teacher.lastName || ''} ${teacher.firstName || ''}`.trim(),
           docWithType: docType + ' ' + (teacher.document || ''),
         });
+      }
+    }
+
+    // Apply manual group signers from Setting (same logic as exportPerformanceSummary)
+    const groupSubjectMap = new Map<number, number[]>();
+    for (const pgs of pgSubjects) {
+      const subj = (pgs as any).subject;
+      if (subj && subj.subjectGroupId) {
+        const arr = groupSubjectMap.get(subj.subjectGroupId) || [];
+        arr.push(subj.id);
+        groupSubjectMap.set(subj.subjectGroupId, arr);
+      }
+    }
+    if (groupSubjectMap.size > 0) {
+      const signerKeys = Array.from(groupSubjectMap.keys()).map(
+        (gid) => `group_signer_${Number(schoolPeriodId)}_${Number(gradeId)}_${gid}`
+      );
+      const signerSettings = await Setting.findAll({ where: { key: signerKeys } });
+      for (const s of signerSettings) {
+        const signerPersonId = Number(s.value);
+        if (!signerPersonId) continue;
+        const parts = s.key.split('_');
+        const subjectGroupId = Number(parts[parts.length - 1]);
+        const subjectIds = groupSubjectMap.get(subjectGroupId);
+        if (!subjectIds) continue;
+        let signerData: { fullName: string; docWithType: string } | null = null;
+        for (const ta of teacherAssignments) {
+          const teacher = (ta as any).teacher;
+          if (teacher && teacher.id === signerPersonId) {
+            const docType = teacher.documentType === 'Venezolano' ? 'V' :
+                            teacher.documentType === 'Extranjero' ? 'E' : 'V';
+            signerData = {
+              fullName: `${teacher.lastName || ''} ${teacher.firstName || ''}`.trim(),
+              docWithType: docType + ' ' + (teacher.document || ''),
+            };
+            break;
+          }
+        }
+        if (!signerData) {
+          const signerPerson = await Person.findByPk(signerPersonId, {
+            attributes: ['firstName', 'lastName', 'documentType', 'document'],
+          });
+          if (signerPerson) {
+            const docType = signerPerson.documentType === 'Venezolano' ? 'V' :
+                            signerPerson.documentType === 'Extranjero' ? 'E' : 'V';
+            signerData = {
+              fullName: `${signerPerson.lastName || ''} ${signerPerson.firstName || ''}`.trim(),
+              docWithType: docType + ' ' + (signerPerson.document || ''),
+            };
+          }
+        }
+        if (signerData) {
+          for (const subjId of subjectIds) {
+            teacherMap.set(subjId, signerData);
+          }
+        }
       }
     }
 
@@ -2660,3 +2781,150 @@ function formatDateLong(date: Date | string): string {
   const yyyy = d.getFullYear();
   return `${dd} DE ${mm} DE ${yyyy}`;
 }
+
+/* ------------------------------------------------------------------ */
+/* Group signer — manual selection of which teacher signs for a       */
+/* subject group in the performance summary Excel.                    */
+/* ------------------------------------------------------------------ */
+
+/**
+ * GET /api/performance-summary/group-teachers?schoolPeriodId=X&gradeId=Y
+ *
+ * Returns the subject groups that have more than one subject (i.e. groups
+ * where a manual signer choice is needed) along with the teachers assigned
+ * to each subject across all sections of the grade.
+ *
+ * Response:
+ * [
+ *   {
+ *     subjectGroupId: 5,
+ *     subjectGroupName: "Grupos de Creación",
+ *     subjects: [
+ *       { subjectId: 12, subjectName: "Música", teacherPersonId: 3, teacherName: "Pérez Juan" },
+ *       { subjectId: 13, subjectName: "Teatro", teacherPersonId: 7, teacherName: "Gómez Ana" }
+ *     ],
+ *     currentSignerPersonId: 3   // from Setting, null if not set
+ *   }
+ * ]
+ */
+export const getGroupTeachers = async (req: Request, res: Response) => {
+  try {
+    const schoolPeriodId = Number(req.query.schoolPeriodId);
+    const gradeId = Number(req.query.gradeId);
+    if (!schoolPeriodId || !gradeId) {
+      return res.status(400).json({ message: 'schoolPeriodId y gradeId son requeridos' });
+    }
+
+    const pg = await PeriodGrade.findOne({ where: { schoolPeriodId, gradeId } });
+    if (!pg) return res.status(404).json({ message: 'Estructura académica no encontrada' });
+
+    // Get all PeriodGradeSubject for this grade, with subject + subjectGroup
+    const pgSubjects = await PeriodGradeSubject.findAll({
+      where: { periodGradeId: pg.id },
+      include: [{ model: Subject, as: 'subject', include: [{ model: SubjectGroup, as: 'subjectGroup' }] }],
+    });
+
+    // Get all TeacherAssignments for any section of this grade's PeriodGradeSubjects.
+    // We want every teacher that teaches any subject of the group, regardless of section.
+    const pgsIds = pgSubjects.map((p: any) => p.id);
+    const teacherAssignments = pgsIds.length > 0
+      ? await TeacherAssignment.findAll({
+          where: { periodGradeSubjectId: pgsIds },
+          include: [
+            { model: PeriodGradeSubject, as: 'periodGradeSubject' },
+            { model: Person, as: 'teacher', attributes: ['id', 'firstName', 'lastName'] },
+          ],
+        })
+      : [];
+
+    // Build subjectId → list of { personId, fullName } (dedup by personId)
+    const subjectTeachersMap = new Map<number, { personId: number; fullName: string }[]>();
+    for (const ta of teacherAssignments) {
+      const pgs = (ta as any).periodGradeSubject;
+      const teacher = (ta as any).teacher;
+      if (!pgs || !teacher) continue;
+      const list = subjectTeachersMap.get(pgs.subjectId) || [];
+      const fullName = `${teacher.lastName || ''} ${teacher.firstName || ''}`.trim();
+      if (!list.some((t: any) => t.personId === teacher.id)) {
+        list.push({ personId: teacher.id, fullName });
+      }
+      subjectTeachersMap.set(pgs.subjectId, list);
+    }
+
+    // Group subjects by subjectGroupId (only groups with >1 subject need a manual choice)
+    interface GroupEntry { subjectGroupId: number; subjectGroupName: string; subjects: any[] }
+    const groupMap = new Map<number, GroupEntry>();
+    for (const pgs of pgSubjects) {
+      const subj = (pgs as any).subject;
+      if (!subj || subj.subjectGroupId === null) continue;
+      const groupId = subj.subjectGroupId;
+      const groupName = subj.subjectGroup?.name || `Grupo ${groupId}`;
+      const teachers = subjectTeachersMap.get(subj.id) || [];
+      const entry: GroupEntry = groupMap.get(groupId) || { subjectGroupId: groupId, subjectGroupName: groupName, subjects: [] };
+      entry.subjects.push({
+        subjectId: subj.id,
+        subjectName: subj.name,
+        teachers,
+      });
+      groupMap.set(groupId, entry);
+    }
+
+    // Only return groups that have at least 2 subjects (otherwise no choice to make)
+    const groups = Array.from(groupMap.values()).filter((g: any) => g.subjects.length >= 2);
+
+    // Load current signers from Setting
+    const settingKeys = groups.map((g: any) => `group_signer_${schoolPeriodId}_${gradeId}_${g.subjectGroupId}`);
+    const settings = settingKeys.length > 0
+      ? await Setting.findAll({ where: { key: settingKeys } })
+      : [];
+    const signerMap = new Map<string, number>();
+    for (const s of settings) {
+      signerMap.set(s.key, Number(s.value));
+    }
+
+    const result = groups.map((g: any) => ({
+      ...g,
+      currentSignerPersonId: signerMap.get(`group_signer_${schoolPeriodId}_${gradeId}_${g.subjectGroupId}`) || null,
+    }));
+
+    return res.json(result);
+  } catch (error: any) {
+    console.error('[getGroupTeachers] Error:', error);
+    return res.status(500).json({ message: error.message || 'Error al obtener profesores de grupos' });
+  }
+};
+
+/**
+ * POST /api/performance-summary/group-signer
+ * Body: { schoolPeriodId, gradeId, subjectGroupId, personId }
+ *
+ * Persists the chosen signer for a subject group in the Setting table.
+ * If personId is null, removes the setting (revert to default behavior).
+ */
+export const setGroupSigner = async (req: Request, res: Response) => {
+  try {
+    const { schoolPeriodId, gradeId, subjectGroupId, personId } = req.body;
+    if (!schoolPeriodId || !gradeId || !subjectGroupId) {
+      return res.status(400).json({ message: 'schoolPeriodId, gradeId y subjectGroupId son requeridos' });
+    }
+    const key = `group_signer_${schoolPeriodId}_${gradeId}_${subjectGroupId}`;
+
+    if (personId === null || personId === undefined) {
+      await Setting.destroy({ where: { key } });
+      return res.json({ message: 'Signer eliminado' });
+    }
+
+    // upsert
+    const [setting, created] = await Setting.findOrCreate({
+      where: { key },
+      defaults: { key, value: String(personId) },
+    });
+    if (!created) {
+      await setting.update({ value: String(personId) });
+    }
+    return res.json({ message: 'Signer guardado', key, value: String(personId) });
+  } catch (error: any) {
+    console.error('[setGroupSigner] Error:', error);
+    return res.status(500).json({ message: error.message || 'Error al guardar signer' });
+  }
+};
