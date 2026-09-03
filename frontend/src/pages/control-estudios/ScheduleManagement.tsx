@@ -1930,6 +1930,7 @@ const ScheduleManagement: React.FC = () => {
                     </>
                   )}
                   <Button
+                    type="primary"
                     icon={<FileExcelOutlined />}
                     onClick={() => setBatchExportOpen(true)}
                     disabled={sectionsList.length === 0}
@@ -1940,6 +1941,7 @@ const ScheduleManagement: React.FC = () => {
                     <>
                       <Button icon={<ReloadOutlined />} onClick={() => loadSectionSchedule(selectedSectionId)}>Recargar</Button>
                       <Button
+                        type="primary"
                         icon={<FileExcelOutlined />}
                         onClick={async () => {
                           const sec = sectionsList.find(s => s.id === selectedSectionId);
@@ -2092,6 +2094,7 @@ const ScheduleManagement: React.FC = () => {
                     <>
                       <Button icon={<ReloadOutlined />} onClick={() => loadTeacherSchedule(selectedTeacherId)}>Recargar</Button>
                       <Button
+                        type="primary"
                         icon={<FileExcelOutlined />}
                         onClick={() => {
                           const t = teachersList.find(t => t.id === selectedTeacherId);
@@ -2112,6 +2115,7 @@ const ScheduleManagement: React.FC = () => {
                     </>
                   )}
                   <Button
+                    type="primary"
                     icon={<FileExcelOutlined />}
                     onClick={handleTeacherBatchExport}
                     loading={teacherBatchExporting}

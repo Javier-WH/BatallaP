@@ -736,6 +736,7 @@ const ClassroomDistribution: React.FC<ClassroomDistributionProps> = ({
           )}
           <Button
             size="small"
+            type="primary"
             icon={<FileExcelOutlined />}
             onClick={() => {
               const sectionLabels: Record<string, string> = {};
