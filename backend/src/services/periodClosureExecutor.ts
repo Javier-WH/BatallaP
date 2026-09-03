@@ -124,7 +124,11 @@ export class PeriodClosureExecutor {
     }
 
     const inscriptions = await Inscription.findAll({
-      where: { schoolPeriodId, escolaridad: { [Op.ne]: 'transferencia' } },
+      where: {
+        schoolPeriodId,
+        escolaridad: { [Op.ne]: 'transferencia' },
+        withdrawnAt: null
+      },
       include: [
         {
           model: InscriptionSubject,
@@ -193,7 +197,11 @@ export class PeriodClosureExecutor {
       }
 
       const inscriptions = await Inscription.findAll({
-        where: { schoolPeriodId, escolaridad: { [Op.ne]: 'transferencia' } },
+        where: {
+          schoolPeriodId,
+          escolaridad: { [Op.ne]: 'transferencia' },
+          withdrawnAt: null
+        },
         include: [
           { model: Person, as: 'student' },
           { model: Grade, as: 'grade' },
@@ -232,7 +240,35 @@ export class PeriodClosureExecutor {
             { transaction, now: startedAt }
           );
 
-          const { outcome, pendingSubjects, promotionGrade } = evaluation;
+          const { outcome, pendingSubjects, promotionGrade, approvedPendingSubjectIds } = evaluation;
+
+          // R6/R7: Mark previously-pending subjects that were approved as resolved
+          if (approvedPendingSubjectIds.length > 0) {
+            await PendingSubject.update(
+              { status: 'aprobada', resolvedAt: startedAt },
+              {
+                where: {
+                  newInscriptionId: inscription.id,
+                  subjectId: { [Op.in]: approvedPendingSubjectIds },
+                  status: 'pendiente'
+                },
+                transaction
+              }
+            );
+          }
+
+          // R8: Skip graduates — no new inscription needed
+          if (outcome.graduatedAt) {
+            stats.approved++;
+            processLog.push({
+              inscriptionId: inscription.id,
+              studentId: inscription.personId,
+              status: 'egresado',
+              graduatedAt: outcome.graduatedAt,
+              approvedPendingSubjects: approvedPendingSubjectIds.length
+            });
+            continue;
+          }
 
           if (outcome.status === 'aprobado') {
             stats.approved++;

@@ -21,6 +21,12 @@ interface EvaluateResult {
   outcome: StudentPeriodOutcome;
   pendingSubjects: SubjectResultSummary[];
   promotionGrade?: Grade | null;
+  /** Subject IDs of previously-pending subjects that were approved this period. */
+  approvedPendingSubjectIds: number[];
+  /** Subject IDs of previously-pending subjects that were re-approved (still failed). */
+  failedPendingSubjectIds: number[];
+  /** True when the student is repeating because they failed a pending subject (rezagado). */
+  isRezagado: boolean;
 }
 
 export class StudentPromotionEngine {
@@ -54,8 +60,8 @@ export class StudentPromotionEngine {
       options
     );
 
-    // Logic: If a student fails a pending subject, they must repeat the year of that pending subject.
-    const { PendingSubject, PeriodGrade, Subject } = await import('@/models/index');
+    // --- Pending subjects evaluation (R5, R6, R7) ---
+    const { PendingSubject } = await import('@/models/index');
 
     // Find active pending subjects for this inscription
     const pendingSubjectsRecords = await PendingSubject.findAll({
@@ -66,40 +72,33 @@ export class StudentPromotionEngine {
       transaction: options.transaction
     });
 
-    if (pendingSubjectsRecords.length > 0) {
-      // Check if any of the failed subjects is a pending subject
-      let failedPendingSubjectRecord = null;
+    const pendingSubjectIds = new Set(pendingSubjectsRecords.map(ps => ps.subjectId));
 
-      for (const result of summary.subjectResults) {
-        if (result.status === 'reprobada') {
-          const match = pendingSubjectsRecords.find(ps => ps.subjectId === result.subjectId);
-          if (match) {
-            failedPendingSubjectRecord = match;
-            break;
-          }
-        }
+    // Collect approved and failed pending subject IDs
+    const approvedPendingSubjectIds: number[] = [];
+    const failedPendingSubjectIds: number[] = [];
+
+    for (const result of summary.subjectResults) {
+      if (!pendingSubjectIds.has(result.subjectId)) continue;
+      if (result.status === 'aprobada') {
+        approvedPendingSubjectIds.push(result.subjectId);
+      } else if (result.status === 'reprobada') {
+        failedPendingSubjectIds.push(result.subjectId);
       }
+    }
 
-      if (failedPendingSubjectRecord) {
-        // Change status to reprobado immediately
-        status = 'reprobado';
+    // R5: If the student fails any pending subject → rezagado (repeats current grade)
+    let isRezagado = false;
+    if (failedPendingSubjectIds.length > 0) {
+      status = 'reprobado';
+      promotionGradeId = inscription.gradeId; // repeat CURRENT grade, not the origin grade
+      isRezagado = true;
+    }
 
-        // Find the grade of the pending subject to set as promotionGradeId (Repeat that grade)
-        const periodGrade = await PeriodGrade.findOne({
-          where: { schoolPeriodId: failedPendingSubjectRecord.originPeriodId },
-          include: [{
-            model: Subject,
-            as: 'subjects',
-            where: { id: failedPendingSubjectRecord.subjectId },
-            required: true
-          }],
-          transaction: options.transaction
-        });
-
-        if (periodGrade) {
-          promotionGradeId = periodGrade.gradeId;
-        }
-      }
+    // R9: Last grade — if no promotion grade exists and student failed anything → repeat
+    if (promotionGradeId === null && summary.failedSubjects > 0) {
+      status = 'reprobado';
+      promotionGradeId = inscription.gradeId;
     }
 
     const graduatedAt =
@@ -117,7 +116,8 @@ export class StudentPromotionEngine {
       metadata: {
         ruleId: rule?.id ?? null,
         maxPendingSubjects: rule?.maxPendingSubjects ?? null,
-        evaluatedAt: (options.now ?? new Date()).toISOString()
+        evaluatedAt: (options.now ?? new Date()).toISOString(),
+        isRezagado
       }
     };
 
@@ -141,7 +141,10 @@ export class StudentPromotionEngine {
     return {
       outcome,
       pendingSubjects,
-      promotionGrade
+      promotionGrade,
+      approvedPendingSubjectIds,
+      failedPendingSubjectIds,
+      isRezagado
     };
   }
 

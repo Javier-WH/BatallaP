@@ -1,3 +1,4 @@
+import { Op } from 'sequelize';
 import {
   Grade,
   Inscription,
@@ -20,6 +21,10 @@ interface PreviewOutcome {
   finalAverage: number | null;
   failedSubjects: number;
   status: 'aprobado' | 'materias_pendientes' | 'reprobado';
+  isRezagado: boolean;
+  graduatedAt: Date | null;
+  approvedPendingSubjects: number;
+  failedPendingSubjects: number;
   promotionGrade?: {
     id: number;
     name: string;
@@ -38,7 +43,11 @@ export class PeriodClosurePreview {
     const minApproval = minApprovalSetting ? Number(minApprovalSetting.value) : 10;
 
     const inscriptions = (await Inscription.findAll({
-      where: { schoolPeriodId },
+      where: {
+        schoolPeriodId,
+        escolaridad: { [Op.ne]: 'transferencia' },
+        withdrawnAt: null
+      },
       include: [
         { model: Person, as: 'student' },
         { model: Grade, as: 'grade' },
@@ -65,13 +74,17 @@ export class PeriodClosurePreview {
           summary
         );
 
-        const { outcome, promotionGrade } = evaluation;
+        const { outcome, promotionGrade, approvedPendingSubjectIds, failedPendingSubjectIds, isRezagado } = evaluation;
 
         previews.push({
           inscriptionId: inscription.id,
           finalAverage: outcome.finalAverage,
           failedSubjects: outcome.failedSubjects,
           status: outcome.status,
+          isRezagado,
+          graduatedAt: outcome.graduatedAt,
+          approvedPendingSubjects: approvedPendingSubjectIds.length,
+          failedPendingSubjects: failedPendingSubjectIds.length,
           promotionGrade: promotionGrade ? {
             id: promotionGrade.id,
             name: promotionGrade.name
