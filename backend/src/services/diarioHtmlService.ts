@@ -6,10 +6,15 @@ import {
   Grade,
   Section,
   SchoolPeriod,
+  Schedule,
+  ScheduleEntry,
+  Subject,
+  Person,
 } from '@/models';
 
 // ── Types ──
 interface PeriodInfo {
+  id: string;
   start: string;
   end: string;
 }
@@ -17,6 +22,14 @@ interface PeriodInfo {
 interface ScheduleSlots {
   manana: PeriodInfo[];
   tarde: PeriodInfo[];
+}
+
+interface ClassData {
+  level: string;
+  section: string;
+  gradeOrder: number;
+  // entries: key = `${day}|${periodId}` → subject name
+  entries: Record<string, string>;
 }
 
 // ── Build time slots from settings (same logic as diarioService) ──
@@ -43,11 +56,13 @@ function buildSlotsFromSettings(settings: Record<string, string>): ScheduleSlots
   const mBlocksAfter = Number(settings.morning_blocks_after_recess) || 0;
   const mMinAfter = Number(settings.morning_block_minutes_after) || 40;
 
+  let mIdx = 1;
   for (let i = 0; i < mBlocksBefore; i++) {
     const start = fmt(mh, mm);
     mm += mMinBefore;
     while (mm >= 60) { mm -= 60; mh++; }
-    manana.push({ start, end: fmt(mh, mm) });
+    manana.push({ id: `m${mIdx}`, start, end: fmt(mh, mm) });
+    mIdx++;
   }
   if (mRecess > 0) {
     mm += mRecess;
@@ -57,7 +72,8 @@ function buildSlotsFromSettings(settings: Record<string, string>): ScheduleSlots
     const start = fmt(mh, mm);
     mm += mMinAfter;
     while (mm >= 60) { mm -= 60; mh++; }
-    manana.push({ start, end: fmt(mh, mm) });
+    manana.push({ id: `m${mIdx}`, start, end: fmt(mh, mm) });
+    mIdx++;
   }
 
   // Afternoon
@@ -69,11 +85,13 @@ function buildSlotsFromSettings(settings: Record<string, string>): ScheduleSlots
   const aBlocksAfter = Number(settings.afternoon_blocks_after_recess) || 0;
   const aMinAfter = Number(settings.afternoon_block_minutes_after) || 40;
 
+  let aIdx = 1;
   for (let i = 0; i < aBlocksBefore; i++) {
     const start = fmt(ah, am);
     am += aMinBefore;
     while (am >= 60) { am -= 60; ah++; }
-    tarde.push({ start, end: fmt(ah, am) });
+    tarde.push({ id: `t${aIdx}`, start, end: fmt(ah, am) });
+    aIdx++;
   }
   if (aRecess > 0) {
     am += aRecess;
@@ -83,7 +101,8 @@ function buildSlotsFromSettings(settings: Record<string, string>): ScheduleSlots
     const start = fmt(ah, am);
     am += aMinAfter;
     while (am >= 60) { am -= 60; ah++; }
-    tarde.push({ start, end: fmt(ah, am) });
+    tarde.push({ id: `t${aIdx}`, start, end: fmt(ah, am) });
+    aIdx++;
   }
 
   return { manana, tarde };
@@ -97,47 +116,89 @@ function formatGradeName(name: string): string {
   return name.toUpperCase();
 }
 
-// ── Fetch section info (grade name + section name) for selected sections ──
-async function fetchSectionInfo(
+// Spanish title case: capitalize nouns/adjectives, lowercase articles/prepositions/conjunctions
+const LOWER_WORDS = new Set([
+  'el', 'la', 'los', 'las', 'un', 'una', 'unos', 'unas',
+  'de', 'del', 'a', 'al', 'en', 'para', 'por', 'con', 'sin',
+  'sobre', 'entre', 'hasta', 'desde', 'hacia', 'según',
+  'y', 'o', 'e', 'u', 'ni', 'pero', 'sino', 'que',
+]);
+
+function titleCaseSpanish(text: string): string {
+  return text
+    .trim()
+    .split(/\s+/)
+    .map((word, i) => {
+      const lower = word.toLowerCase();
+      // Always capitalize first word; lowercase articles/prepositions/conjunctions otherwise
+      if (i > 0 && LOWER_WORDS.has(lower)) {
+        return lower;
+      }
+      return lower.charAt(0).toUpperCase() + lower.slice(1);
+    })
+    .join(' ');
+}
+
+// ── Fetch section info + schedule entries for selected sections ──
+async function fetchSectionData(
   schoolPeriodId: number,
   sectionIds: number[],
-): Promise<{ level: string; section: string }[]> {
-  // Find the SchoolPeriod to get its PeriodGrade ids
-  const schoolPeriod = await SchoolPeriod.findByPk(schoolPeriodId);
-  if (!schoolPeriod) {
-    throw new Error('Año escolar no encontrado');
-  }
-
-  const sections = await PeriodGradeSection.findAll({
+): Promise<ClassData[]> {
+  const schedules = await Schedule.findAll({
     where: {
-      id: sectionIds,
+      schoolPeriodId,
+      periodGradeSectionId: sectionIds,
     },
     include: [
       {
-        model: PeriodGrade,
-        as: 'periodGrade',
-        where: { schoolPeriodId },
-        include: [{ model: Grade, as: 'grade' }],
+        model: PeriodGradeSection,
+        as: 'section',
+        include: [
+          {
+            model: PeriodGrade,
+            as: 'periodGrade',
+            include: [{ model: Grade, as: 'grade' }],
+          },
+          { model: Section, as: 'section' },
+        ],
       },
-      { model: Section, as: 'section' },
+      {
+        model: ScheduleEntry,
+        as: 'entries',
+        include: [
+          { model: Subject, as: 'subject' },
+          { model: Person, as: 'teacher' },
+        ],
+      },
     ],
   });
 
-  const result = sections.map((pgs: any) => {
-    const grade = pgs.periodGrade?.grade;
-    const section = pgs.section;
+  const result: ClassData[] = schedules.map((s: any) => {
+    const grade = s.section?.periodGrade?.grade;
+    const section = s.section?.section;
+    const entries: Record<string, string> = {};
+    for (const e of s.entries || []) {
+      const dayUpper = (e.day || '').toUpperCase();
+      const key = `${dayUpper}|${e.periodId}`;
+      // If multiple entries for same slot, join with " / "
+      const subjName = titleCaseSpanish(e.subject?.name ?? '');
+      if (entries[key]) {
+        entries[key] = entries[key] + ' / ' + subjName;
+      } else {
+        entries[key] = subjName;
+      }
+    }
     return {
       level: grade ? formatGradeName(grade.name) : '',
       section: section?.name ?? '',
+      gradeOrder: grade?.order ?? 99,
+      entries,
     };
   });
 
-  // Sort by grade order then section name
   result.sort((a, b) => {
-    const ga = parseInt(a.level) || 99;
-    const gb = parseInt(b.level) || 99;
-    if (ga !== gb) return ga - gb;
-    return a.section.localeCompare(b.section, 'es');
+    if (a.gradeOrder !== b.gradeOrder) return a.gradeOrder - b.gradeOrder;
+    return (a.section || '').localeCompare(b.section || '', 'es');
   });
 
   return result;
@@ -149,15 +210,16 @@ export async function generateDiariosHtml(
   sectionIds: number[],
   settings: Record<string, string>,
 ): Promise<string> {
-  const classes = await fetchSectionInfo(schoolPeriodId, sectionIds);
+  const classes = await fetchSectionData(schoolPeriodId, sectionIds);
 
   if (classes.length === 0) {
     throw new Error('No se encontraron secciones para los filtros seleccionados');
   }
 
   const slots = buildSlotsFromSettings(settings);
-  const morningSlots = slots.manana.map(s => `${s.start} - ${s.end}`);
-  const afternoonSlots = slots.tarde.map(s => `${s.start} - ${s.end}`);
+  // Slots with period IDs for lookups: [{ id, label }, ...]
+  const morningSlots = slots.manana.map(s => ({ id: s.id, label: `${s.start} - ${s.end}` }));
+  const afternoonSlots = slots.tarde.map(s => ({ id: s.id, label: `${s.start} - ${s.end}` }));
 
   // Read template
   const templatePath = path.join(__dirname, '..', '..', 'templates', 'diario_template.html');
