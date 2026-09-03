@@ -467,55 +467,56 @@ const PerformanceSummary: React.FC = () => {
       message.warning('Seleccione periodo, grado y sección');
       return;
     }
-    if (!selectedTemplate) {
-      setTemplateModalOpen(true);
-      return;
-    }
     setExporting(true);
     try {
       // One file per (grade, section) course.
-      // A small delay between downloads avoids the browser blocking
-      // consecutive programmatic clicks as "multiple downloads".
+      // The template is resolved per-grade by the backend (from Setting
+      // key `template_assignment:grade:{gradeId}`). We do NOT pass a
+      // global template override so each grade uses its own assignment.
+      const errors: string[] = [];
+      let successCount = 0;
       for (let i = 0; i < validCombinations.length; i++) {
         const combo = validCombinations[i];
-        const response = await api.get('/performance-summary/export', {
-          params: {
-            schoolPeriodId: selectedPeriodId,
-            gradeId: combo.gradeId,
-            sectionId: combo.sectionId,
-            template: selectedTemplate || undefined,
-            group: studentGroup,
-          },
-          responseType: 'blob',
-        });
-        const url = window.URL.createObjectURL(new Blob([response.data]));
-        const link = document.createElement('a');
-        link.href = url;
-        const fileName = response.headers['content-disposition']
-          ?.split('filename="')[1]?.split('"')[0] || 'resumen-rendimiento.xlsx';
-        link.setAttribute('download', fileName);
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        window.URL.revokeObjectURL(url);
-        if (i < validCombinations.length - 1) {
-          await new Promise(r => setTimeout(r, 300));
+        try {
+          const response = await api.get('/performance-summary/export', {
+            params: {
+              schoolPeriodId: selectedPeriodId,
+              gradeId: combo.gradeId,
+              sectionId: combo.sectionId,
+              group: studentGroup,
+            },
+            responseType: 'blob',
+          });
+          const url = window.URL.createObjectURL(new Blob([response.data]));
+          const link = document.createElement('a');
+          link.href = url;
+          const fileName = response.headers['content-disposition']
+            ?.split('filename="')[1]?.split('"')[0] || 'resumen-rendimiento.xlsx';
+          link.setAttribute('download', fileName);
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+          window.URL.revokeObjectURL(url);
+          successCount++;
+          if (i < validCombinations.length - 1) {
+            await new Promise(r => setTimeout(r, 300));
+          }
+        } catch (error: any) {
+          const errMsg = error.response?.data instanceof Blob
+            ? await error.response.data.text().then(t => { try { return JSON.parse(t).message; } catch { return t; } }).catch(() => 'Error desconocido')
+            : error?.response?.data?.message || 'Error desconocido';
+          errors.push(`${combo.gradeName} ${combo.sectionName}: ${errMsg}`);
         }
       }
-      const n = validCombinations.length;
-      message.success(`${n} ${n === 1 ? 'planilla exportada' : 'planillas exportadas'} correctamente`);
+      if (successCount > 0) {
+        message.success(`${successCount} ${successCount === 1 ? 'planilla exportada' : 'planillas exportadas'} correctamente`);
+      }
+      if (errors.length > 0) {
+        message.error(`No se pudieron exportar: ${errors.join(' · ')}`, 10);
+      }
     } catch (error: any) {
       console.error('Error exporting', error);
-      if (error.response?.data) {
-        const reader = new FileReader();
-        reader.onload = () => {
-          try {
-            const err = JSON.parse(reader.result as string);
-            message.error(err.message || 'Error al exportar');
-          } catch { message.error('Error al exportar el resumen'); }
-        };
-        reader.readAsText(error.response.data);
-      } else { message.error('Error al exportar el resumen'); }
+      message.error('Error al exportar el resumen');
     } finally { setExporting(false); }
   };
 
@@ -527,51 +528,51 @@ const PerformanceSummary: React.FC = () => {
       message.warning('Seleccione periodo, grado y sección');
       return;
     }
-    if (!selectedTemplate) {
-      setTemplateModalOpen(true);
-      return;
-    }
     setRevisionExporting(true);
     try {
+      const errors: string[] = [];
+      let successCount = 0;
       for (let i = 0; i < validCombinations.length; i++) {
         const combo = validCombinations[i];
-        const response = await api.get('/performance-summary/export-revision', {
-          params: {
-            schoolPeriodId: selectedPeriodId,
-            gradeId: combo.gradeId,
-            sectionId: combo.sectionId,
-            template: selectedTemplate || undefined,
-          },
-          responseType: 'blob',
-        });
-        const url = window.URL.createObjectURL(new Blob([response.data]));
-        const link = document.createElement('a');
-        link.href = url;
-        const fileName = response.headers['content-disposition']
-          ?.split('filename="')[1]?.split('"')[0] || 'resumen-revision.xlsx';
-        link.setAttribute('download', fileName);
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        window.URL.revokeObjectURL(url);
-        if (i < validCombinations.length - 1) {
-          await new Promise(r => setTimeout(r, 300));
+        try {
+          const response = await api.get('/performance-summary/export-revision', {
+            params: {
+              schoolPeriodId: selectedPeriodId,
+              gradeId: combo.gradeId,
+              sectionId: combo.sectionId,
+            },
+            responseType: 'blob',
+          });
+          const url = window.URL.createObjectURL(new Blob([response.data]));
+          const link = document.createElement('a');
+          link.href = url;
+          const fileName = response.headers['content-disposition']
+            ?.split('filename="')[1]?.split('"')[0] || 'resumen-revision.xlsx';
+          link.setAttribute('download', fileName);
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+          window.URL.revokeObjectURL(url);
+          successCount++;
+          if (i < validCombinations.length - 1) {
+            await new Promise(r => setTimeout(r, 300));
+          }
+        } catch (error: any) {
+          const errMsg = error.response?.data instanceof Blob
+            ? await error.response.data.text().then(t => { try { return JSON.parse(t).message; } catch { return t; } }).catch(() => 'Error desconocido')
+            : error?.response?.data?.message || 'Error desconocido';
+          errors.push(`${combo.gradeName} ${combo.sectionName}: ${errMsg}`);
         }
       }
-      const n = validCombinations.length;
-      message.success(`${n} ${n === 1 ? 'planilla de revisión exportada' : 'planillas de revisión exportadas'} correctamente`);
+      if (successCount > 0) {
+        message.success(`${successCount} ${successCount === 1 ? 'planilla de revisión exportada' : 'planillas de revisión exportadas'} correctamente`);
+      }
+      if (errors.length > 0) {
+        message.error(`No se pudieron exportar: ${errors.join(' · ')}`, 10);
+      }
     } catch (error: any) {
       console.error('Error exporting revision', error);
-      if (error.response?.data) {
-        const reader = new FileReader();
-        reader.onload = () => {
-          try {
-            const err = JSON.parse(reader.result as string);
-            message.error(err.message || 'Error al exportar');
-          } catch { message.error('Error al exportar el resumen de revisión'); }
-        };
-        reader.readAsText(error.response.data);
-      } else { message.error('Error al exportar el resumen de revisión'); }
+      message.error('Error al exportar el resumen de revisión');
     } finally { setRevisionExporting(false); }
   };
 
@@ -606,7 +607,6 @@ const PerformanceSummary: React.FC = () => {
           schoolPeriodId: selectedPeriodId,
           gradeId: eligibleGrade.id,
           sectionId: mpSection.id,
-          template: selectedTemplate || undefined,
           group: studentGroup,
         },
         responseType: 'blob',
@@ -1658,12 +1658,12 @@ const PerformanceSummary: React.FC = () => {
                   </div>
 
                   {!readyToExport && <p className="rb-export-hint">Seleccione al menos un grado y una sección para continuar</p>}
-                  {!selectedTemplate && readyToExport && (
+                  {readyToExport && (
                     <div className="rb-warning" style={{ marginTop: 12 }}>
                       <IconAlert size={15} />
                       <div className="rb-warning-text">
-                        Sin plantilla asignada para el Resumen Final. El reporte usará el diseño predeterminado.
-                        <button className="rb-warning-link" onClick={() => setTemplateModalOpen(true)}>Elegir plantilla</button>
+                        Cada año usa su propia plantilla. Si un año no tiene plantilla asignada, la exportación fallará para ese año.
+                        <button className="rb-warning-link" onClick={() => setTemplateModalOpen(true)}>Configurar plantillas</button>
                       </div>
                     </div>
                   )}

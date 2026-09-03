@@ -635,7 +635,7 @@ const TemplateManagerModal: React.FC<TemplateManagerModalProps> = ({
           },
           ...(mode === 'certified' ? [{
             key: 'certified-assignments',
-            label: 'Asignar por Periodo',
+            label: 'Plantillas por Periodo',
             children: (
               <Table
                 rowKey="key"
