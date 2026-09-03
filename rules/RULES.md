@@ -190,6 +190,45 @@ datos de desarrollo o producción (`bp` en MySQL) **DEBE** seguir este protocolo
 **no** activan esta regla, ya que la base de datos es efímera y se recrea en
 cada ejecución.
 
+### R18: Cobertura de pruebas para todo cambio
+Todo cambio de código (nueva funcionalidad, corrección de bug, refactorización)
+**DEBE** estar respaldado por pruebas. El protocolo es:
+
+1. **Identificar pruebas relacionadas**: Antes de modificar código, localizar los
+   archivos de test que cubren la funcionalidad afectada.
+   - Tests en `backend/src/__tests__/` (servicios, endpoints, helpers).
+   - Si el cambio toca lógica de negocio, buscar el test correspondiente en
+     `__tests__/services/` o `__tests__/endpoints/`.
+
+2. **Ejecutar pruebas antes del cambio**: Correr los tests relacionados para
+   confirmar que pasan en el estado actual.
+   ```bash
+   npx jest --testNamePattern="patron_relacionado" --verbose
+   ```
+
+3. **Hacer el cambio**: Implementar la modificación.
+
+4. **Ejecutar pruebas después del cambio**:
+   - **Si los tests pasan**: el cambio es compatible. Listo.
+   - **Si los tests fallan**:
+     - **Opción A (preferida)**: Ajustar el cambio para que sea compatible con
+       los tests existentes, manteniendo el comportamiento esperado.
+     - **Opción B**: Si el cambio altera intencionalmente el comportamiento
+       esperado, modificar los tests para reflejar el nuevo comportamiento
+       correcto. **Justificar** por qué el test cambia.
+   - **Si no existen tests para la funcionalidad afectada**: Crear nuevos tests
+     que cubran el cambio antes de considerarlo completo.
+
+5. **Ejecutar la suite completa** antes de entregar:
+   ```bash
+   cd backend && npm test
+   ```
+   Todos los tests deben pasar. Si un test ajeno al cambio falla, investigar si
+   el cambio tuvo un efecto secundario no previsto.
+
+**Principio**: Un cambio sin pruebas que lo respalden es un cambio incompleto.
+Las pruebas son la fuente de verdad del comportamiento esperado del sistema.
+
 ---
 
 ## 🟡 Archivos críticos (requieren Safety Commit antes de modificar)
