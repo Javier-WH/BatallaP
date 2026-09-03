@@ -1,6 +1,15 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Tabs, Select, Card, Spin, message, Button, Tag, Empty, Modal, Switch, InputNumber, Alert, Popconfirm } from 'antd';
 import { TableOutlined, UserOutlined, ReloadOutlined, EditOutlined, SaveOutlined, CloseOutlined, DeleteOutlined, WarningOutlined, ThunderboltOutlined, ScheduleOutlined, SettingOutlined, PlusOutlined, HomeOutlined, FileExcelOutlined } from '@ant-design/icons';
+import {
+  DndContext,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  useDraggable,
+  useDroppable,
+} from '@dnd-kit/core';
+import type { DragEndEvent } from '@dnd-kit/core';
 import api from '@/services/api';
 import { useSchool } from '@/context/SchoolContext';
 import dayjs from 'dayjs';
@@ -133,6 +142,85 @@ function cellSignature(cellEntries: ScheduleEntryData[] | undefined): string {
     .join('|');
 }
 
+// ── Draggable + Droppable cell wrapper (dnd-kit) ──
+// Wraps a <td> so its content can be dragged AND can receive a swap drop.
+// The drag id encodes the source day + periodId so the drop handler
+// knows which entries to move.
+function DraggableCell({
+  id,
+  span,
+  cellStyle,
+  className,
+  children,
+  onClick,
+}: {
+  id: string;
+  span: number;
+  cellStyle: React.CSSProperties;
+  className: string;
+  children: React.ReactNode;
+  onClick?: () => void;
+}) {
+  const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({ id });
+  const { setNodeRef: setDropRef, isOver } = useDroppable({ id });
+  return (
+    <td
+      ref={(node) => { setDragRef(node); setDropRef(node); }}
+      rowSpan={span}
+      className={className}
+      style={{
+        ...cellStyle,
+        opacity: isDragging ? 0.4 : undefined,
+        cursor: 'grab',
+        touchAction: 'none',
+        outline: isOver ? '2px dashed #f59e0b' : undefined,
+        outlineOffset: '-2px',
+      }}
+      onClick={onClick}
+      {...attributes}
+      {...listeners}
+    >
+      {children}
+    </td>
+  );
+}
+
+// ── Droppable cell wrapper (dnd-kit) ──
+// Wraps a <td> so it can accept dropped blocks. Highlights on hover.
+function DroppableCell({
+  id,
+  span,
+  cellStyle,
+  className,
+  children,
+  onClick,
+}: {
+  id: string;
+  span: number;
+  cellStyle: React.CSSProperties;
+  className: string;
+  children: React.ReactNode;
+  onClick?: () => void;
+}) {
+  const { setNodeRef, isOver } = useDroppable({ id });
+  return (
+    <td
+      ref={setNodeRef}
+      rowSpan={span}
+      className={className}
+      style={{
+        ...cellStyle,
+        outline: isOver ? '2px dashed #3b82f6' : undefined,
+        outlineOffset: '-2px',
+        background: isOver ? '#dbeafe' : cellStyle.background,
+      }}
+      onClick={onClick}
+    >
+      {children}
+    </td>
+  );
+}
+
 function ScheduleGrid({ sections, entries, onCellClick, editable, getCellLabel, colorBySection }: {
   sections: ScheduleSection[];
   entries: Record<string, ScheduleEntryData[]>;
@@ -249,20 +337,58 @@ function ScheduleGrid({ sections, entries, onCellClick, editable, getCellLabel, 
                       } else {
                         cellStyle = {};
                       }
-                      return (
-                        <td
-                          key={day}
-                          rowSpan={span}
-                          className={`border border-slate-300 text-center text-xs px-1 align-middle ${editable ? 'cursor-pointer hover:bg-blue-50 hover:border-blue-400 transition-colors' : ''} ${isMerged ? 'h-auto py-2' : 'h-12'}`}
-                          style={cellStyle}
-                          onClick={() => editable && onCellClick?.(day, period)}
-                        >
+                      const cellContent = (
+                        <>
                           {getCellLabel(day, period, cellEntries)}
                           {isMerged && (
                             <div className="text-[9px] text-slate-400 mt-1 border-t border-slate-200 pt-0.5">
                               {period.start}–{blockEndTime}
                             </div>
                           )}
+                        </>
+                      );
+                      const cellClassName = `border border-slate-300 text-center text-xs px-1 align-middle ${editable ? 'cursor-pointer hover:bg-blue-50 hover:border-blue-400 transition-colors' : ''} ${isMerged ? 'h-auto py-2' : 'h-12'}`;
+
+                      // In editable mode, use draggable/droppable wrappers
+                      if (editable && cellEntries.length > 0) {
+                        // Cell with content → draggable (and also droppable for swap)
+                        return (
+                          <DraggableCell
+                            key={day}
+                            id={key}
+                            span={span}
+                            cellStyle={cellStyle}
+                            className={cellClassName}
+                            onClick={() => onCellClick?.(day, period)}
+                          >
+                            {cellContent}
+                          </DraggableCell>
+                        );
+                      }
+                      if (editable && cellEntries.length === 0 && span > 0) {
+                        // Empty cell → droppable
+                        return (
+                          <DroppableCell
+                            key={day}
+                            id={key}
+                            span={span}
+                            cellStyle={cellStyle}
+                            className={cellClassName}
+                            onClick={() => onCellClick?.(day, period)}
+                          >
+                            {cellContent}
+                          </DroppableCell>
+                        );
+                      }
+                      return (
+                        <td
+                          key={day}
+                          rowSpan={span}
+                          className={cellClassName}
+                          style={cellStyle}
+                          onClick={() => editable && onCellClick?.(day, period)}
+                        >
+                          {cellContent}
                         </td>
                       );
                     })}
@@ -755,6 +881,12 @@ const ScheduleManagement: React.FC = () => {
   const [sectionOptions, setSectionOptions] = useState<SectionOption[]>([]);
   const [teacherConflict, setTeacherConflict] = useState<{ hasConflict: boolean; conflicts: any[] } | null>(null);
   const [saving, setSaving] = useState(false);
+
+  // DnD sensors — use PointerSensor with a small activation distance
+  // so that regular clicks on cells still work (for the cell editor modal).
+  const dndSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
+  );
 
   // Teacher view state
   const [teachersList, setTeachersList] = useState<any[]>([]);
@@ -1349,6 +1481,159 @@ const ScheduleManagement: React.FC = () => {
     setEditingCell(null);
   };
 
+  // ── Drag and Drop handler ──
+  // Moves a block from source cell to target cell.
+  // If target is occupied with the same block size → swap.
+  // If target is occupied with a different block size → reject (no-op).
+  // If target is empty but doesn't have enough consecutive free periods
+  // for the source block size → reject.
+  //
+  // The actual block span is detected from the entries map (consecutive
+  // periods with the same signature), NOT from settings.min_academic_hours_per_block,
+  // because the visual rowspan may differ from the configured block size.
+  const handleScheduleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    const sourceKey = String(active.id);
+    const targetKey = String(over.id);
+
+    // Parse keys: "day|periodId"
+    const [srcDay, srcPeriodId] = sourceKey.split('|');
+    const [tgtDay, tgtPeriodId] = targetKey.split('|');
+    if (!srcDay || !srcPeriodId || !tgtDay || !tgtPeriodId) return;
+
+    // Find the source and target period objects
+    const allPeriods = scheduleSections.flatMap(s => s.periods).filter(p => !p.break);
+    const srcPeriod = allPeriods.find(p => p.id === srcPeriodId);
+    const tgtPeriod = allPeriods.find(p => p.id === tgtPeriodId);
+    if (!srcPeriod || !tgtPeriod) return;
+
+    // Detect the actual source block span: count consecutive periods
+    // (within the same section, not crossing breaks) that have entries
+    // with the same cell signature as the source.
+    const srcSig = cellSignature(editableEntries[sourceKey]);
+    if (!srcSig) return;
+
+    const srcSection = scheduleSections.find(s => s.id === srcPeriod.section);
+    if (!srcSection) return;
+    const srcRawPeriods = srcSection.periods.filter(p => !p.break);
+    const srcStartIdx = srcRawPeriods.findIndex(p => p.id === srcPeriodId);
+    if (srcStartIdx < 0) return;
+
+    const srcBlockPds: Period[] = [srcPeriod];
+    for (let i = srcStartIdx + 1; i < srcRawPeriods.length; i++) {
+      const nextKey = `${srcDay}|${srcRawPeriods[i].id}`;
+      if (cellSignature(editableEntries[nextKey]) === srcSig) {
+        srcBlockPds.push(srcRawPeriods[i]);
+      } else break;
+    }
+
+    // Collect source entries from all source block periods
+    const srcEntries: ScheduleEntryData[] = [];
+    for (const p of srcBlockPds) {
+      const key = `${srcDay}|${p.id}`;
+      const arr = editableEntries[key];
+      if (arr) srcEntries.push(...arr.map(e => ({ ...e })));
+    }
+    if (srcEntries.length === 0) return;
+
+    // Detect target block span: check if target has entries
+    const tgtKey0 = `${tgtDay}|${tgtPeriodId}`;
+    const tgtSig = cellSignature(editableEntries[tgtKey0]);
+    const tgtIsOccupied = !!tgtSig;
+
+    // Compute target block periods (same span as source)
+    const tgtSection = scheduleSections.find(s => s.id === tgtPeriod.section);
+    if (!tgtSection) return;
+    const tgtRawPeriods = tgtSection.periods.filter(p => !p.break);
+    const tgtStartIdx = tgtRawPeriods.findIndex(p => p.id === tgtPeriodId);
+    if (tgtStartIdx < 0) return;
+
+    // Target block must fit in the same section without crossing breaks
+    const tgtBlockPds: Period[] = [];
+    for (let i = tgtStartIdx; i < tgtRawPeriods.length && tgtBlockPds.length < srcBlockPds.length; i++) {
+      tgtBlockPds.push(tgtRawPeriods[i]);
+    }
+    if (tgtBlockPds.length < srcBlockPds.length) {
+      message.warning('No hay espacio suficiente en el destino para este bloque');
+      return;
+    }
+
+    if (tgtIsOccupied) {
+      // Count how many target block periods have entries with the same signature
+      let tgtOccupiedCount = 0;
+      for (const p of tgtBlockPds) {
+        const key = `${tgtDay}|${p.id}`;
+        if (cellSignature(editableEntries[key]) === tgtSig) tgtOccupiedCount++;
+        else break;
+      }
+      if (tgtOccupiedCount !== srcBlockPds.length) {
+        message.warning('No se puede intercambiar: los bloques tienen tamaños diferentes');
+        return;
+      }
+    } else {
+      // Target is empty — verify all target block periods are free
+      for (const p of tgtBlockPds) {
+        const key = `${tgtDay}|${p.id}`;
+        if (editableEntries[key] && editableEntries[key].length > 0) {
+          message.warning('No hay espacio suficiente en el destino para este bloque');
+          return;
+        }
+      }
+    }
+
+    // Collect target entries (for swap)
+    const tgtEntries: ScheduleEntryData[] = [];
+    if (tgtIsOccupied) {
+      for (const p of tgtBlockPds) {
+        const key = `${tgtDay}|${p.id}`;
+        const arr = editableEntries[key];
+        if (arr) tgtEntries.push(...arr.map(e => ({ ...e })));
+      }
+    }
+
+    // Perform the move or swap
+    setEditableEntries(prev => {
+      const copy: Record<string, ScheduleEntryData[]> = {};
+      for (const [k, v] of Object.entries(prev)) {
+        copy[k] = v.map(e => ({ ...e }));
+      }
+
+      // Remove source entries from source block periods
+      for (const p of srcBlockPds) {
+        const key = `${srcDay}|${p.id}`;
+        delete copy[key];
+      }
+
+      if (tgtIsOccupied) {
+        // Remove target entries from target block periods
+        for (const p of tgtBlockPds) {
+          const key = `${tgtDay}|${p.id}`;
+          delete copy[key];
+        }
+        // Place target entries into source block periods
+        tgtEntries.forEach((e, idx) => {
+          const targetPeriod = srcBlockPds[idx % srcBlockPds.length];
+          const key = `${srcDay}|${targetPeriod.id}`;
+          if (!copy[key]) copy[key] = [];
+          copy[key].push({ ...e, day: srcDay, periodId: targetPeriod.id });
+        });
+      }
+
+      // Place source entries into target block periods
+      srcEntries.forEach((e, idx) => {
+        const targetPeriod = tgtBlockPds[idx % tgtBlockPds.length];
+        const key = `${tgtDay}|${targetPeriod.id}`;
+        if (!copy[key]) copy[key] = [];
+        copy[key].push({ ...e, day: tgtDay, periodId: targetPeriod.id });
+      });
+
+      return copy;
+    });
+    setDirty(true);
+  };
+
   // Check conflict when teacher changes in modal — check across all block periods
   const handleModalTeacherChange = async (teacherId: number | null) => {
     if (!editingCell || !teacherId) {
@@ -1675,6 +1960,7 @@ const ScheduleManagement: React.FC = () => {
                   <div className="flex justify-center p-12"><Spin size="large" /></div>
                 ) : (
                   <Card title={`Horario: ${sectionsList.find(s => s.id === selectedSectionId)?.label ?? ''}`}>
+                    <DndContext sensors={dndSensors} onDragEnd={handleScheduleDragEnd}>
                     <ScheduleGrid
                       sections={scheduleSections}
                       entries={sectionEntriesMap}
@@ -1716,6 +2002,7 @@ const ScheduleManagement: React.FC = () => {
                         );
                       }}
                     />
+                    </DndContext>
                   </Card>
                 )}
               </div>
