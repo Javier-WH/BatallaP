@@ -2204,15 +2204,6 @@ const ScheduleManagement: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="mb-4">
-                  <Alert
-                    type="info"
-                    showIcon
-                    message="Instrucciones de impresión"
-                    description="Se generará una vista previa debajo con los diarios de todas las secciones de los años seleccionados. Use los botones 'Imprimir Lado 1 (Frente)' y 'Imprimir Lado 2 (Reverso)' dentro de la vista previa para imprimir. El Frente empieza con Lunes (Lunes, Martes y Miércoles mañana); el Reverso empieza con Miércoles (Miércoles tarde, Jueves y Viernes). Cada sección ocupa una página por lado."
-                  />
-                </div>
-
                 <Button
                   type="primary"
                   icon={<PrinterOutlined />}

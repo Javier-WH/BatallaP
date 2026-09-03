@@ -49,11 +49,14 @@
   /* ---------- Page ---------- */
   .sheet {
     width: 8.5in;
-    min-height: 11in;
+    height: 11in;
     margin: 20px auto;
     background: #fff;
     padding: 0.5in 0.7in 0.3in 0.7in;
     box-shadow: 0 0 8px rgba(0,0,0,0.3);
+    break-inside: avoid;
+    break-after: page;
+    overflow: hidden;
   }
 
   .side-container.hidden-side { display: none; }
@@ -64,26 +67,26 @@
     text-align: center;
     font-size: 10pt;
     font-weight: bold;
-    height: 15.75pt;
-    line-height: 15.75pt;
+    height: 13.54pt;
+    line-height: 13.54pt;
     margin-bottom: 0;
   }
   .logo-img {
     position: absolute;
     left: 0;
     top: 0;
-    width: 0.69in;
-    height: 0.69in;
+    width: 0.6in;
+    height: 0.6in;
   }
 
   /* ---------- Class info / Día-Fecha row ---------- */
-  .info-block { padding-left: 15.647%; }
+  .info-block { padding-left: 15.647%; break-inside: avoid; }
   .info-row {
     display: flex;
     justify-content: space-between;
-    font-size: 11pt;
-    height: 15.75pt;
-    line-height: 15.75pt;
+    font-size: 10.5pt;
+    height: 13.54pt;
+    line-height: 13.54pt;
   }
   .info-left { font-weight: bold; }
   .info-right { }
@@ -95,10 +98,10 @@
   .banner {
     text-align: center;
     font-weight: bold;
-    font-size: 10pt;
-    letter-spacing: 4px;
-    height: 15.75pt;
-    line-height: 15.75pt;
+    font-size: 9.5pt;
+    letter-spacing: 3px;
+    height: 13.54pt;
+    line-height: 13.54pt;
   }
 
   /* ---------- Day table ---------- */
@@ -107,14 +110,15 @@
     border-collapse: collapse;
     table-layout: fixed;
     margin-bottom: 0;
+    break-inside: avoid;
   }
   table.day-table th {
     background: var(--header-fill);
-    font-size: 8pt;
+    font-size: 7.5pt;
     font-weight: bold;
     text-align: center;
-    padding: 3px 1px;
-    line-height: 1.15;
+    padding: 2px 1px;
+    line-height: 1.05;
     overflow-wrap: break-word;
     border-top: var(--border-medium);
     border-bottom: var(--border-thin);
@@ -125,8 +129,8 @@
   table.day-table th:last-child { border-right: var(--border-medium); }
 
   table.day-table td {
-    font-size: 8pt;
-    height: 15pt;
+    font-size: 7.5pt;
+    height: 12.9pt;
     border-top: var(--border-thin);
     border-bottom: var(--border-thin);
     border-left: var(--border-thin);
@@ -145,7 +149,7 @@
   table.day-table col.col-E { width: 13.087%; }
   table.day-table col.col-F { width: 20.342%; }
 
-  .gap-8 { height: 8.1pt; }
+  .gap-8 { height: 6.97pt; }
 
   /* ---------- Print rules ---------- */
   @media print {
@@ -154,14 +158,13 @@
     .sheet {
       margin: 0;
       box-shadow: none;
-      width: auto;
-      min-height: auto;
+      break-after: page;
       page-break-after: always;
     }
-    .sheet:last-child { page-break-after: auto; }
+    .sheet:last-child { break-after: auto; page-break-after: auto; }
     @page {
       size: letter portrait;
-      margin: 0.5in 0.7in 0.3in 0.7in;
+      margin: 0;
     }
   }
 </style>
