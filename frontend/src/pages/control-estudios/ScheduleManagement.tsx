@@ -1841,16 +1841,14 @@ const ScheduleManagement: React.FC = () => {
       message.warning('Seleccione un año escolar');
       return;
     }
-    if (diarioSelectedGradeIds.length === 0) {
-      message.warning('Seleccione al menos un año');
-      return;
-    }
-    // Compute section IDs from selected grades (all sections of those grades)
-    const sectionIds = sectionsList
-      .filter((s: any) => diarioSelectedGradeIds.includes(s.gradeId))
-      .map((s: any) => s.id);
+    // If no grades selected, use all sections; otherwise filter by selected grades
+    const sectionIds = diarioSelectedGradeIds.length === 0
+      ? sectionsList.map((s: any) => s.id)
+      : sectionsList
+          .filter((s: any) => diarioSelectedGradeIds.includes(s.gradeId))
+          .map((s: any) => s.id);
     if (sectionIds.length === 0) {
-      message.warning('No hay secciones para los años seleccionados');
+      message.warning('No hay secciones disponibles');
       return;
     }
     setDiarioExporting(true);
@@ -2188,19 +2186,14 @@ const ScheduleManagement: React.FC = () => {
                         </Button>
                       );
                     })}
-                    <Button
-                      size="small"
-                      type={diarioSelectedGradeIds.length === diarioGrades.length ? 'primary' : 'default'}
-                      onClick={() => {
-                        if (diarioSelectedGradeIds.length === diarioGrades.length) {
-                          setDiarioSelectedGradeIds([]);
-                        } else {
-                          setDiarioSelectedGradeIds(diarioGrades.map(g => g.id));
-                        }
-                      }}
-                    >
-                      {diarioSelectedGradeIds.length === diarioGrades.length ? 'Quitar todos' : 'Seleccionar todos'}
-                    </Button>
+                    {diarioSelectedGradeIds.length > 0 && (
+                      <Button
+                        size="small"
+                        onClick={() => setDiarioSelectedGradeIds([])}
+                      >
+                        Quitar selección
+                      </Button>
+                    )}
                   </div>
                 </div>
 
@@ -2208,10 +2201,10 @@ const ScheduleManagement: React.FC = () => {
                   type="primary"
                   icon={<PrinterOutlined />}
                   loading={diarioExporting}
-                  disabled={diarioSelectedGradeIds.length === 0}
+                  disabled={sectionsList.length === 0}
                   onClick={handleExportDiarios}
                 >
-                  Generar Diarios ({diarioSelectedGradeIds.length} {diarioSelectedGradeIds.length === 1 ? 'año' : 'años'})
+                  Generar Diarios ({diarioSelectedGradeIds.length === 0 ? 'todos' : diarioSelectedGradeIds.length} {diarioSelectedGradeIds.length === 1 ? 'año' : 'años'})
                 </Button>
 
                 {diarioPreviewUrl && (
