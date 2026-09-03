@@ -273,7 +273,7 @@ function renderHeader(level, section, dia) {
         <div class="info-right"><span class="label">DÍA:</span><span class="value">${dia}</span></div>
       </div>
       <div class="info-row">
-        <div class="info-left">SECCIÓN &quot;${section}&quot;</div>
+        <div class="info-left">${section.toUpperCase().includes('SECCIÓN') || section.toUpperCase().includes('SECCION') ? section.toUpperCase() : 'SECCIÓN &quot;' + section + '&quot;'}</div>
         <div class="info-right"><span class="label">FECHA:</span><span class="date-value">${fecha}</span></div>
       </div>
     </div>`;
