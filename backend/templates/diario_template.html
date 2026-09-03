@@ -5,8 +5,8 @@
 <title>Diario de Clases</title>
 <style>
   :root {
-    --border-medium: 1.6pt solid #000;
-    --border-thin: 0.6pt solid #000;
+    --border-medium: 1pt solid #000;
+    --border-thin: 1pt solid #000;
     --header-fill: #E2E8F0;
     --font-main: Cambria, Georgia, 'Times New Roman', serif;
   }
@@ -107,10 +107,18 @@
   /* ---------- Day table ---------- */
   table.day-table {
     width: 100%;
-    border-collapse: collapse;
+    border-collapse: separate;
+    border-spacing: 0;
     table-layout: fixed;
     margin-bottom: 0;
     break-inside: avoid;
+  }
+  table.day-table th,
+  table.day-table td {
+    border-right: var(--border-thin);
+    border-bottom: var(--border-thin);
+    border-top: none;
+    border-left: none;
   }
   table.day-table th {
     background: var(--header-fill);
@@ -120,27 +128,32 @@
     padding: 2px 1px;
     line-height: 1.05;
     overflow-wrap: break-word;
-    border-top: var(--border-medium);
-    border-bottom: var(--border-thin);
-    border-left: var(--border-thin);
-    border-right: var(--border-thin);
   }
-  table.day-table th:first-child { border-left: var(--border-medium); }
-  table.day-table th:last-child { border-right: var(--border-medium); }
-
   table.day-table td {
     font-size: 7.5pt;
     height: 12.9pt;
-    border-top: var(--border-thin);
-    border-bottom: var(--border-thin);
-    border-left: var(--border-thin);
-    border-right: var(--border-thin);
     text-align: center;
     padding: 0 3px;
   }
-  table.day-table td:first-child { border-left: var(--border-medium); white-space: nowrap; }
-  table.day-table td:last-child { border-right: var(--border-medium); }
-  table.day-table tr:last-child td { border-bottom: var(--border-medium); }
+  /* Top edge */
+  table.day-table thead tr:first-child th {
+    border-top: var(--border-medium);
+  }
+  /* Left edge */
+  table.day-table th:first-child,
+  table.day-table td:first-child {
+    border-left: var(--border-medium);
+    white-space: nowrap;
+  }
+  /* Right edge */
+  table.day-table th:last-child,
+  table.day-table td:last-child {
+    border-right: var(--border-medium);
+  }
+  /* Bottom edge */
+  table.day-table tr:last-child td {
+    border-bottom: var(--border-medium);
+  }
 
   table.day-table col.col-A { width: 15.647%; }
   table.day-table col.col-B { width: 15.647%; }
