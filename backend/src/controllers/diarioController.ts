@@ -43,11 +43,12 @@ export const exportDiarios = async (req: Request, res: Response) => {
   }
 };
 
-// GET /api/diarios/html?schoolPeriodId=X&sectionIds=1,2,3
+// GET /api/diarios/html?schoolPeriodId=X&sectionIds=1,2,3&weekDate=YYYY-MM-DD
 export const exportDiariosHtml = async (req: Request, res: Response) => {
   try {
     const schoolPeriodId = Number(req.query.schoolPeriodId);
     const sectionIdsRaw = req.query.sectionIds as string | undefined;
+    const weekDate = req.query.weekDate as string | undefined;
 
     if (!schoolPeriodId) {
       return res.status(400).json({ message: 'schoolPeriodId es requerido' });
@@ -72,7 +73,7 @@ export const exportDiariosHtml = async (req: Request, res: Response) => {
       settings[s.key] = s.value;
     }
 
-    const html = await generateDiariosHtml(schoolPeriodId, sectionIds, settings);
+    const html = await generateDiariosHtml(schoolPeriodId, sectionIds, settings, weekDate);
 
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.send(html);

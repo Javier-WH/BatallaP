@@ -204,11 +204,36 @@ async function fetchSectionData(
   return result;
 }
 
+// ── Compute week dates (Monday–Friday) from a given date string (YYYY-MM-DD) ──
+function computeWeekDates(weekDate: string | undefined): Record<string, string> | null {
+  if (!weekDate) return null;
+  const date = new Date(weekDate + 'T00:00:00');
+  if (isNaN(date.getTime())) return null;
+
+  // Find Monday of that week (0=Sun, 1=Mon, ...)
+  const dayOfWeek = date.getDay();
+  const monday = new Date(date);
+  monday.setDate(date.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
+
+  const days = ['LUNES', 'MARTES', 'MIÉRCOLES', 'JUEVES', 'VIERNES'];
+  const result: Record<string, string> = {};
+  for (let i = 0; i < 5; i++) {
+    const d = new Date(monday);
+    d.setDate(monday.getDate() + i);
+    const dd = d.getDate().toString().padStart(2, '0');
+    const mm = (d.getMonth() + 1).toString().padStart(2, '0');
+    const yyyy = d.getFullYear();
+    result[days[i]] = `${dd}/${mm}/${yyyy}`;
+  }
+  return result;
+}
+
 // ── Main: generate HTML with populated data ──
 export async function generateDiariosHtml(
   schoolPeriodId: number,
   sectionIds: number[],
   settings: Record<string, string>,
+  weekDate?: string,
 ): Promise<string> {
   const classes = await fetchSectionData(schoolPeriodId, sectionIds);
 
@@ -221,6 +246,8 @@ export async function generateDiariosHtml(
   const morningSlots = slots.manana.map(s => ({ id: s.id, label: `${s.start} - ${s.end}` }));
   const afternoonSlots = slots.tarde.map(s => ({ id: s.id, label: `${s.start} - ${s.end}` }));
 
+  const weekDates = computeWeekDates(weekDate);
+
   // Read template
   const templatePath = path.join(__dirname, '..', '..', 'templates', 'diario_template.html');
   let html = fs.readFileSync(templatePath, 'utf-8');
@@ -229,10 +256,12 @@ export async function generateDiariosHtml(
   const classesJson = JSON.stringify(classes);
   const morningJson = JSON.stringify(morningSlots);
   const afternoonJson = JSON.stringify(afternoonSlots);
+  const weekDatesJson = JSON.stringify(weekDates);
 
   html = html.replace('/*__CLASSES__*/[]', classesJson);
   html = html.replace('/*__MORNING_SLOTS__*/[]', morningJson);
   html = html.replace('/*__AFTERNOON_SLOTS__*/[]', afternoonJson);
+  html = html.replace('/*__WEEK_DATES__*/null', weekDatesJson);
 
   return html;
 }

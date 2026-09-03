@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Tabs, Select, Card, Spin, message, Button, Tag, Empty, Modal, Switch, InputNumber, Alert, Popconfirm } from 'antd';
+import { Tabs, Select, Card, Spin, message, Button, Tag, Empty, Modal, Switch, InputNumber, Alert, Popconfirm, DatePicker } from 'antd';
 import { TableOutlined, UserOutlined, ReloadOutlined, EditOutlined, SaveOutlined, CloseOutlined, DeleteOutlined, WarningOutlined, ThunderboltOutlined, ScheduleOutlined, SettingOutlined, PlusOutlined, HomeOutlined, FileExcelOutlined, PrinterOutlined } from '@ant-design/icons';
 import {
   DndContext,
@@ -905,6 +905,7 @@ const ScheduleManagement: React.FC = () => {
   const [diarioSelectedGradeIds, setDiarioSelectedGradeIds] = useState<number[]>([]);
   const [diarioExporting, setDiarioExporting] = useState(false);
   const [diarioPreviewUrl, setDiarioPreviewUrl] = useState<string | null>(null);
+  const [diarioWeekDate, setDiarioWeekDate] = useState<dayjs.Dayjs | null>(null);
   const [newExcSubjectId, setNewExcSubjectId] = useState<number | null>(null);
   const [newExcConsecutive, setNewExcConsecutive] = useState<number | null>(null);
   const [newExcWeekly, setNewExcWeekly] = useState<number | null>(null);
@@ -1857,6 +1858,7 @@ const ScheduleManagement: React.FC = () => {
         params: {
           schoolPeriodId: viewPeriod.id,
           sectionIds: sectionIds.join(','),
+          weekDate: diarioWeekDate ? diarioWeekDate.format('YYYY-MM-DD') : undefined,
         },
         responseType: 'text',
       });
@@ -2195,6 +2197,25 @@ const ScheduleManagement: React.FC = () => {
                       </Button>
                     )}
                   </div>
+                </div>
+
+                <div className="mb-4 flex items-center gap-4 flex-wrap">
+                  <span className="font-semibold text-slate-700">Semana (opcional):</span>
+                  <DatePicker
+                    value={diarioWeekDate}
+                    onChange={(d) => setDiarioWeekDate(d)}
+                    placeholder="Sin fecha (en blanco)"
+                    format="DD/MM/YYYY"
+                    disabledDate={(current) => {
+                      if (!current) return false;
+                      const day = current.day();
+                      return day === 0 || day === 6;
+                    }}
+                    allowClear
+                  />
+                  {diarioWeekDate && (
+                    <Button size="small" onClick={() => setDiarioWeekDate(null)}>Quitar fecha</Button>
+                  )}
                 </div>
 
                 <Button
