@@ -900,6 +900,11 @@ const ScheduleManagement: React.FC = () => {
   const [exceptions, setExceptions] = useState<any[]>([]);
   const [exceptionsLoading, setExceptionsLoading] = useState(false);
   const [structureSubjects, setStructureSubjects] = useState<any[]>([]);
+
+  // Diarios state
+  const [diarioSelectedGradeIds, setDiarioSelectedGradeIds] = useState<number[]>([]);
+  const [diarioSelectedSectionIds, setDiarioSelectedSectionIds] = useState<number[]>([]);
+  const [diarioExporting, setDiarioExporting] = useState(false);
   const [newExcSubjectId, setNewExcSubjectId] = useState<number | null>(null);
   const [newExcConsecutive, setNewExcConsecutive] = useState<number | null>(null);
   const [newExcWeekly, setNewExcWeekly] = useState<number | null>(null);
@@ -934,6 +939,29 @@ const ScheduleManagement: React.FC = () => {
   }, [sectionsList, batchSelectedGradeIds]);
 
   const scheduleSections = useMemo(() => buildSections(settings), [settings]);
+
+  // Diarios: unique grades and filtered sections (must be before any early return)
+  const diarioGrades = useMemo(() => {
+    const map = new Map<number, { id: number; name: string; order: number }>();
+    sectionsList.forEach((s: any) => {
+      if (s.gradeId && !map.has(s.gradeId)) {
+        map.set(s.gradeId, { id: s.gradeId, name: s.gradeName, order: s.gradeOrder ?? 99 });
+      }
+    });
+    return Array.from(map.values()).sort((a, b) => a.order - b.order);
+  }, [sectionsList]);
+
+  const diarioAvailableSections = useMemo(() => {
+    return sectionsList
+      .filter((s: any) => diarioSelectedGradeIds.length === 0 || diarioSelectedGradeIds.includes(s.gradeId))
+      .map((s: any) => ({ id: s.id, label: s.label, gradeId: s.gradeId, gradeName: s.gradeName, sectionName: s.sectionName }))
+      .sort((a: any, b: any) => {
+        const ga = diarioGrades.find(g => g.id === a.gradeId)?.order ?? 99;
+        const gb = diarioGrades.find(g => g.id === b.gradeId)?.order ?? 99;
+        if (ga !== gb) return ga - gb;
+        return (a.sectionName || '').localeCompare(b.sectionName || '', 'es');
+      });
+  }, [sectionsList, diarioSelectedGradeIds, diarioGrades]);
 
   // Load settings
   useEffect(() => {
@@ -1819,6 +1847,52 @@ const ScheduleManagement: React.FC = () => {
     );
   }
 
+  // ── Diarios export handler ──
+  const handleExportDiarios = async () => {
+    if (!viewPeriod) {
+      message.warning('Seleccione un año escolar');
+      return;
+    }
+    if (diarioSelectedSectionIds.length === 0) {
+      message.warning('Seleccione al menos una sección');
+      return;
+    }
+    setDiarioExporting(true);
+    try {
+      const response = await api.get('/diarios/export', {
+        params: {
+          schoolPeriodId: viewPeriod.id,
+          sectionIds: diarioSelectedSectionIds.join(','),
+        },
+        responseType: 'blob',
+      });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', 'diarios-de-clases.xlsx');
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      message.success('Diarios exportados correctamente');
+    } catch (error: any) {
+      console.error('Error exporting diarios', error);
+      if (error.response?.data instanceof Blob) {
+        const text = await error.response.data.text();
+        try {
+          const err = JSON.parse(text);
+          message.error(err.message || 'Error al exportar los diarios');
+        } catch {
+          message.error('Error al exportar los diarios');
+        }
+      } else {
+        message.error('Error al exportar los diarios');
+      }
+    } finally {
+      setDiarioExporting(false);
+    }
+  };
+
   return (
     <div className="p-6">
       {isReadOnly && (
@@ -2100,6 +2174,106 @@ const ScheduleManagement: React.FC = () => {
             label: <span><HomeOutlined /> Distribución de Aulas</span>,
             children: (
               <ClassroomDistribution settings={settings} sectionsList={sectionsList} subjectsList={structureSubjects} schoolPeriodId={viewPeriod?.id} schoolPeriodName={viewPeriod?.name} gradesList={sectionsList.filter((s: any, i: number, arr: any[]) => arr.findIndex(x => x.gradeId === s.gradeId) === i).map((s: any) => ({ id: s.gradeId, name: s.gradeName }))} />
+            ),
+          },
+          {
+            key: 'diarios',
+            label: <span><FileExcelOutlined /> Diarios</span>,
+            children: (
+              <div>
+                <div className="mb-4 flex items-center gap-4 flex-wrap">
+                  <span className="font-semibold text-slate-700">Años:</span>
+                  <div className="flex flex-wrap gap-2">
+                    {diarioGrades.map(g => {
+                      const selected = diarioSelectedGradeIds.includes(g.id);
+                      return (
+                        <Button
+                          key={g.id}
+                          size="small"
+                          type={selected ? 'primary' : 'default'}
+                          onClick={() => {
+                            setDiarioSelectedGradeIds(prev =>
+                              selected ? prev.filter(id => id !== g.id) : [...prev, g.id]
+                            );
+                          }}
+                        >
+                          {g.name}
+                        </Button>
+                      );
+                    })}
+                    <Button
+                      size="small"
+                      type={diarioSelectedGradeIds.length === diarioGrades.length ? 'primary' : 'default'}
+                      onClick={() => {
+                        if (diarioSelectedGradeIds.length === diarioGrades.length) {
+                          setDiarioSelectedGradeIds([]);
+                        } else {
+                          setDiarioSelectedGradeIds(diarioGrades.map(g => g.id));
+                        }
+                      }}
+                    >
+                      {diarioSelectedGradeIds.length === diarioGrades.length ? 'Quitar todos' : 'Seleccionar todos'}
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="mb-4 flex items-center gap-4 flex-wrap">
+                  <span className="font-semibold text-slate-700">Secciones:</span>
+                  <div className="flex flex-wrap gap-2">
+                    {diarioAvailableSections.map((s: any) => {
+                      const selected = diarioSelectedSectionIds.includes(s.id);
+                      return (
+                        <Button
+                          key={s.id}
+                          size="small"
+                          type={selected ? 'primary' : 'default'}
+                          onClick={() => {
+                            setDiarioSelectedSectionIds(prev =>
+                              selected ? prev.filter(id => id !== s.id) : [...prev, s.id]
+                            );
+                          }}
+                        >
+                          {s.label}
+                        </Button>
+                      );
+                    })}
+                    {diarioAvailableSections.length > 0 && (
+                      <Button
+                        size="small"
+                        type={diarioSelectedSectionIds.length === diarioAvailableSections.length ? 'primary' : 'default'}
+                        onClick={() => {
+                          if (diarioSelectedSectionIds.length === diarioAvailableSections.length) {
+                            setDiarioSelectedSectionIds([]);
+                          } else {
+                            setDiarioSelectedSectionIds(diarioAvailableSections.map((s: any) => s.id));
+                          }
+                        }}
+                      >
+                        {diarioSelectedSectionIds.length === diarioAvailableSections.length ? 'Quitar todas' : 'Seleccionar todas'}
+                      </Button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="mb-4">
+                  <Alert
+                    type="info"
+                    showIcon
+                    message="Instrucciones de impresión"
+                    description="El archivo Excel contiene 2 hojas: 'Odd' (frente) y 'Even' (dorso). Imprima primero toda la hoja 'Odd', luego dé vuelta a las hojas e imprima la hoja 'Even' por el reverso. Cada sección ocupa una página por lado."
+                  />
+                </div>
+
+                <Button
+                  type="primary"
+                  icon={<FileExcelOutlined />}
+                  loading={diarioExporting}
+                  disabled={diarioSelectedSectionIds.length === 0}
+                  onClick={handleExportDiarios}
+                >
+                  Imprimir Diarios ({diarioSelectedSectionIds.length} {diarioSelectedSectionIds.length === 1 ? 'sección' : 'secciones'})
+                </Button>
+              </div>
             ),
           },
         ]}
