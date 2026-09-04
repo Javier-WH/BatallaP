@@ -17,6 +17,7 @@ import {
   Person,
   Subject,
   RevisionPeriod,
+  Matriculation,
 } from '@/models/index';
 import { FinalGradeCalculator } from './finalGradeCalculator';
 import { StudentPromotionEngine } from './studentPromotionEngine';
@@ -324,6 +325,23 @@ export class PeriodClosureExecutor {
             },
             { transaction }
           );
+
+          // Create the Matriculation record so the promoted student appears
+          // in the matriculation list. The unique constraint on
+          // (schoolPeriodId, personId) means we use findOrCreate to be safe.
+          await Matriculation.findOrCreate({
+            where: { schoolPeriodId: nextPeriod.id, personId: inscription.personId },
+            defaults: {
+              schoolPeriodId: nextPeriod.id,
+              gradeId: targetGradeId,
+              sectionId: finalSectionId ?? null,
+              personId: inscription.personId,
+              status: 'completed',
+              escolaridad: escolaridadStatus,
+              inscriptionId: newInscription.id,
+            },
+            transaction,
+          });
 
           stats.newInscriptions++;
 
