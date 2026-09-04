@@ -21,7 +21,9 @@
     "dev:sqlite": "cross-env ENV_FILE=.env.sqlite nodemon -r tsconfig-paths/register src/server.ts",
     "db:sync:sqlite": "cross-env ENV_FILE=.env.sqlite npx ts-node -r tsconfig-paths/register src/syncSqlite.ts",
     "seed:sqlite": "cross-env ENV_FILE=.env.sqlite npx ts-node -r tsconfig-paths/register src/seed.ts",
-    "setup:sqlite": "npm run db:sync:sqlite && npm run seed:sqlite && cross-env ENV_FILE=.env.sqlite npx ts-node -r tsconfig-paths/register src/seeders/academicStructureSeeder.ts && cross-env ENV_FILE=.env.sqlite npx ts-node -r tsconfig-paths/register src/seeders/subjectGroupsSeeder.ts"
+    "setup:sqlite": "npm run db:sync:sqlite && npm run seed:sqlite && cross-env ENV_FILE=.env.sqlite npx ts-node -r tsconfig-paths/register src/seeders/academicStructureSeeder.ts && cross-env ENV_FILE=.env.sqlite npx ts-node -r tsconfig-paths/register src/seeders/subjectGroupsSeeder.ts",
+    "seed:closure-test:sqlite": "cross-env ENV_FILE=.env.sqlite npx ts-node -r tsconfig-paths/register src/seeders/closureManualTestSeeder.ts",
+    "setup:sqlite:full": "npm run setup:sqlite && npm run seed:closure-test:sqlite"
   },
   "keywords": [],
   "author": "",
