@@ -1375,7 +1375,7 @@ export const exportReverso = async (req: Request, res: Response) => {
 
     // Column widths (matching mockup: col1=12, col2=46.57)
     ws.getColumn(1).width = 12;
-    ws.getColumn(2).width = 46.5703125;
+    ws.getColumn(2).width = 43.43;
 
     // ── Border styles ──
     const BLACK = { argb: 'FF000000' };
@@ -1563,7 +1563,7 @@ export const exportReverso = async (req: Request, res: Response) => {
       // Row 13: Nombres y Apellidos (merged)
       ws.mergeCells(row, 1, row, 2);
       ws.getRow(row).height = 15;
-      ws.getCell(row, 1).value = `Nombres y Apellidos:  ${funcionarioName}`;
+      ws.getCell(row, 1).value = `Nombres y Apellidos:  ${funcionarioName.toUpperCase()}`;
       setFont(row, 1, { black: true });
       ws.getCell(row, 1).alignment = { horizontal: 'justify', vertical: 'middle' };
       applyBorders(row, false, false, true);
