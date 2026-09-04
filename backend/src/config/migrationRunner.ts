@@ -87,9 +87,14 @@ export class MigrationRunner {
     const migrationFiles = this.getMigrationFiles();
 
     // Check if database already has tables (from sync())
-    const [tables] = await sequelize.query(
-      "SHOW TABLES"
-    );
+    // Use dialect-appropriate query: MySQL uses "SHOW TABLES",
+    // SQLite uses sqlite_master
+    const isSqlite = sequelize.getDialect() === 'sqlite';
+    const [tables] = isSqlite
+      ? await sequelize.query(
+          "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+        )
+      : await sequelize.query("SHOW TABLES");
     const existingTables = tables.map((t: any) => Object.values(t)[0] as string);
 
     // If tables already exist and no migrations have been recorded,
@@ -101,8 +106,8 @@ export class MigrationRunner {
         try {
           await this.queryInterface.bulkInsert('SequelizeMeta', [{ name: filename }]);
         } catch (insertError: any) {
-          // Ignore duplicate entry errors
-          if (insertError.code !== 'ER_DUP_ENTRY') {
+          // Ignore duplicate entry errors (MySQL: ER_DUP_ENTRY, SQLite: SQLITE_CONSTRAINT)
+          if (insertError.code !== 'ER_DUP_ENTRY' && insertError.code !== 'SQLITE_CONSTRAINT') {
             console.error(`⚠️ Could not record migration: ${filename}`, insertError);
           }
         }
@@ -141,15 +146,25 @@ export class MigrationRunner {
         console.log(`✅ Migration completed: ${filename}`);
       } catch (error: any) {
         // Check if the error is about duplicate keys/tables/columns (already exists)
+        // Support both MySQL error codes (ER_*) and SQLite error codes (SQLITE_*)
         const errorCode = error.code || error.parent?.code;
-        if (errorCode === 'ER_DUP_KEYNAME' || errorCode === 'ER_TABLE_EXISTS_ERROR' || errorCode === 'ER_DUP_FIELDNAME' || errorCode === 'ER_DUP_ENTRY' || errorCode === 'ER_BAD_FIELD_ERROR' || errorCode === 'ER_CANT_DROP_FIELD_OR_KEY' || errorCode === 'ER_BAD_NULL_ERROR') {
+        const isDuplicateError =
+          errorCode === 'ER_DUP_KEYNAME' ||
+          errorCode === 'ER_TABLE_EXISTS_ERROR' ||
+          errorCode === 'ER_DUP_FIELDNAME' ||
+          errorCode === 'ER_DUP_ENTRY' ||
+          errorCode === 'ER_BAD_FIELD_ERROR' ||
+          errorCode === 'ER_CANT_DROP_FIELD_OR_KEY' ||
+          errorCode === 'ER_BAD_NULL_ERROR' ||
+          errorCode === 'SQLITE_CONSTRAINT';
+        if (isDuplicateError) {
           console.log(`⚠️ Migration skipped (already exists): ${filename}`);
           // Still record the migration as executed
           try {
             await this.queryInterface.bulkInsert('SequelizeMeta', [{ name: filename }]);
           } catch (insertError: any) {
-            // Ignore if already recorded
-            if (insertError.code !== 'ER_DUP_ENTRY') {
+            // Ignore if already recorded (MySQL: ER_DUP_ENTRY, SQLite: SQLITE_CONSTRAINT)
+            if (insertError.code !== 'ER_DUP_ENTRY' && insertError.code !== 'SQLITE_CONSTRAINT') {
               console.error(`⚠️ Could not record migration: ${filename}`, insertError);
             }
           }

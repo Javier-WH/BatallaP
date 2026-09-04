@@ -17,7 +17,11 @@
     "seed:bulk-inscriptions": "ts-node -r tsconfig-paths/register src/seeders/bulkMatriculationsSeeder.ts",
     "seed:subject-groups": "ts-node -r tsconfig-paths/register src/seeders/subjectGroupsSeeder.ts",
     "seed:unregistered": "ts-node -r tsconfig-paths/register src/seeders/unregisteredStudentsSeeder.ts --count=100",
-    "seed:full-reset": "npm run db:sync-only && npm run seed && npm run seed:academic-structure && npm run seed:subject-groups && ts-node -r tsconfig-paths/register src/seeders/bulkMatriculationsSeeder.ts --count=300 && npm run seed:unregistered"
+    "seed:full-reset": "npm run db:sync-only && npm run seed && npm run seed:academic-structure && npm run seed:subject-groups && ts-node -r tsconfig-paths/register src/seeders/bulkMatriculationsSeeder.ts --count=300 && npm run seed:unregistered",
+    "dev:sqlite": "cross-env ENV_FILE=.env.sqlite nodemon -r tsconfig-paths/register src/server.ts",
+    "db:sync:sqlite": "cross-env ENV_FILE=.env.sqlite npx ts-node -r tsconfig-paths/register src/syncSqlite.ts",
+    "seed:sqlite": "cross-env ENV_FILE=.env.sqlite npx ts-node -r tsconfig-paths/register src/seed.ts",
+    "setup:sqlite": "npm run db:sync:sqlite && npm run seed:sqlite && cross-env ENV_FILE=.env.sqlite npx ts-node -r tsconfig-paths/register src/seeders/academicStructureSeeder.ts && cross-env ENV_FILE=.env.sqlite npx ts-node -r tsconfig-paths/register src/seeders/subjectGroupsSeeder.ts"
   },
   "keywords": [],
   "author": "",

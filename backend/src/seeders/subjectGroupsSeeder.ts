@@ -7,16 +7,18 @@ const SUBJECTS_IN_GROUP = ['Artes Gráficas', 'Ortografía', 'Agrupación de Des
 const seedSubjectGroups = async () => {
   const transaction = await sequelize.transaction();
   try {
+    const normalizedName = GROUP_NAME.toUpperCase().trim();
     const [group] = await SubjectGroup.findOrCreate({
-      where: { name: GROUP_NAME },
-      defaults: { name: GROUP_NAME },
+      where: { name: normalizedName },
+      defaults: { name: normalizedName },
       transaction
     });
 
     for (const subjectName of SUBJECTS_IN_GROUP) {
+      const normalizedSubject = subjectName.toUpperCase().trim();
       const [subject] = await Subject.findOrCreate({
-        where: { name: subjectName },
-        defaults: { name: subjectName },
+        where: { name: normalizedSubject },
+        defaults: { name: normalizedSubject },
         transaction
       });
 

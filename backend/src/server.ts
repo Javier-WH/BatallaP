@@ -10,7 +10,7 @@ import MigrationRunner from '@/config/migrationRunner';
 import cron from 'node-cron';
 import { scrapeBcvRates } from '@/services/bcvScraperService';
 
-dotenv.config();
+dotenv.config({ path: process.env.ENV_FILE || '.env' });
 
 const PORT = Number(process.env.PORT) || 3000;
 

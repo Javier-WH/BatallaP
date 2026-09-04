@@ -85,7 +85,7 @@ const GRADE_SUBJECTS: Record<number, string[]> = {
 const ensureSectionsForGrade = async (grade: Grade, transaction: Transaction) => {
   const sectionRecords: Section[] = [];
   for (const suffix of SECTION_SUFFIXES) {
-    const name = `Sección ${suffix}`;
+    const name = `Sección ${suffix}`.toUpperCase().trim();
     const [section] = await Section.findOrCreate({
       where: { name },
       defaults: { name },
@@ -144,9 +144,13 @@ const ensurePensumSubjects = async (transaction: Transaction) => {
   const subjectsMap = new Map<string, Subject>();
 
   for (const name of uniqueNames) {
+    // Normalize to uppercase to match the model's beforeSave hook,
+    // which converts names to uppercase. This ensures findOrCreate works
+    // correctly on case-sensitive databases like SQLite.
+    const normalizedName = name.toUpperCase().trim();
     const [subject] = await Subject.findOrCreate({
-      where: { name },
-      defaults: { name },
+      where: { name: normalizedName },
+      defaults: { name: normalizedName },
       transaction
     });
     subjectsMap.set(name, subject);

@@ -7,7 +7,7 @@ import dotenv from 'dotenv';
 import sequelize from '@/config/database';
 import connectSessionSequelize from 'connect-session-sequelize';
 
-dotenv.config();
+dotenv.config({ path: process.env.ENV_FILE || '.env' });
 
 const SequelizeStore = connectSessionSequelize(session.Store);
 
