@@ -60,7 +60,7 @@ import RegisterRepresentative from '@/pages/admin/RegisterRepresentative';
 
 // Director Module Imports
 import DirectorLayout from '@/pages/director/DirectorLayout';
-import DirectorDashboard from '@/pages/director/Dashboard';
+import DirectorEncargado from '@/pages/director/DirectorEncargado';
 import DirectorSettings from '@/pages/director/DirectorSettings';
 
 
@@ -264,7 +264,7 @@ function AppRoutes() {
           <Route path="search" element={<SearchUsers />} />
         </Route>
 
-        {/* Nested Director Module — same as Control de Estudios + coordinator settings */}
+        {/* Nested Director Module — only director-specific pages */}
         <Route
           path="director"
           element={
@@ -273,24 +273,9 @@ function AppRoutes() {
             </RequireAuth>
           }
         >
-          <Route index element={<DirectorDashboard />} />
-          <Route path="matricular-estudiante" element={<MatriculationEnrollment />} />
-          <Route path="configuracion" element={<AcademicSettings />} />
-          <Route path="consejos-curso" element={<CourseCouncil />} />
-          <Route path="proyeccion" element={<TeacherProjection />} />
-          <Route path="horarios" element={<ScheduleManagement />} />
-          <Route path="editar-notas" element={<FinalGradesEdit />} />
-          <Route path="notas-historicas" element={<HistoricalGradesBySection />} />
-          <Route path="calificaciones" element={<ManageGrades />} />
-          <Route path="notas-externas" element={<ExternalGrades />} />
-          <Route path="resumen-rendimiento" element={<PerformanceSummary />} />
-          <Route path="promedios-generales" element={<GeneralAverages />} />
-          <Route path="reparacion" element={<RepairPeriodManagement />} />
-          <Route path="materia-pendiente" element={<PendingSubjectManagement />} />
-          <Route path="titulos" element={<TituloImpresion />} />
-          <Route path="ajustes" element={<DirectorSettings />} />
-          <Route path="edit/:id" element={<EditUser />} />
-          <Route path="search" element={<SearchUsers />} />
+          <Route index element={<DirectorEncargado />} />
+          <Route path="encargado" element={<DirectorEncargado />} />
+          <Route path="coordinador" element={<DirectorSettings />} />
         </Route>
 
 
