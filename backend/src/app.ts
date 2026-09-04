@@ -20,6 +20,11 @@ const sessionStore = new SequelizeStore({
 
 const app: Application = express();
 
+// Disable ETag generation to prevent browsers (especially Opera) from caching
+// API responses — the ETag header was causing stale 401 responses to be served
+// from cache without hitting the backend.
+app.set('etag', false);
+
 // Aumentar el límite de tamaño para permitir cargar imágenes más grandes
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));

@@ -1,14 +1,25 @@
 import { Request, Response } from 'express';
+import { Op } from 'sequelize';
+import sequelize from '@/config/database';
 import { User, Person, Role, PersonRole, Contact } from '@/models/index'; // Import from index to ensure associations
 
 export const login = async (req: Request, res: Response): Promise<void> => {
+  // Prevent browser from caching the login response (Opera/Chrome cache POST 401s)
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
   try {
     const { username, password } = req.body;
 
     // Fetch user with associated Person and Roles
-    // Note: We need to ensure associations are loaded.
+    // Use case-insensitive username match so "javier" matches "Javier".
+    // SQLite uses LIKE (case-insensitive for ASCII by default), MySQL uses LOWER() for
+    // case-insensitive comparison.
+    const isSqlite = sequelize.getDialect() === 'sqlite';
     const user = await User.findOne({
-      where: { username },
+      where: isSqlite
+        ? { username: { [Op.like]: username } }
+        : sequelize.where(sequelize.fn('LOWER', sequelize.col('username')), username.toLowerCase()),
       include: [
         {
           model: Person,
