@@ -64,7 +64,7 @@ export class PeriodClosurePreview {
 
     for (const inscription of inscriptions) {
       try {
-        const summary = await FinalGradeCalculator.calculateForInscription(
+        const summary = await FinalGradeCalculator.calculateForInscriptionFast(
           inscription.id,
           { minApproval }
         );

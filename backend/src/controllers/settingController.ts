@@ -46,6 +46,10 @@ export const getSettingByKey = async (req: Request, res: Response) => {
       if (key === 'max_grade') {
         return res.json({ key: 'max_grade', value: '20' });
       }
+      // Return default value for enable_grade_rounding if not found
+      if (key === 'enable_grade_rounding') {
+        return res.json({ key: 'enable_grade_rounding', value: 'false' });
+      }
       return res.status(404).json({ message: 'Configuración no encontrada' });
     }
     res.json(setting);

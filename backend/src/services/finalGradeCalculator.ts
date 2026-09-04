@@ -1,4 +1,4 @@
-import { Transaction } from 'sequelize';
+import { Op, Transaction } from 'sequelize';
 import {
   CouncilPoint,
   EvaluationPlan,
@@ -356,6 +356,156 @@ export class FinalGradeCalculator {
       finalAverage,
       failedSubjects,
       subjectResults
+    };
+  }
+
+  /**
+   * Fast read-only calculation that uses pre-existing SubjectFinalGrade records
+   * directly, without syncing term grades or recalculating/updating anything.
+   *
+   * Use this for previews where SubjectFinalGrade records already exist (closed
+   * period or pre-seeded). The full `calculateForInscription` is still used by
+   * the executor to recalculate and persist final grades.
+   */
+  static async calculateForInscriptionFast(
+    inscriptionId: number,
+    options: CalculateOptions = {}
+  ): Promise<FinalGradeSummary> {
+    const inscription = await Inscription.findByPk(inscriptionId, {
+      attributes: ['id', 'schoolPeriodId', 'gradeId'],
+      transaction: options.transaction,
+    });
+    if (!inscription) throw new Error('Inscripción no encontrada');
+
+    // Fetch all InscriptionSubjects for this inscription in one query
+    const inscriptionSubjects = await InscriptionSubject.findAll({
+      where: { inscriptionId },
+      include: [{ model: Subject, as: 'subject' }],
+      transaction: options.transaction,
+    });
+
+    if (inscriptionSubjects.length === 0) {
+      return { finalAverage: null, failedSubjects: 0, subjectResults: [] };
+    }
+
+    // Fetch all SubjectFinalGrade records for these InscriptionSubjects in one query
+    const insSubIds = inscriptionSubjects.map(is => is.id);
+    const finalGrades = await SubjectFinalGrade.findAll({
+      where: {
+        inscriptionSubjectId: { [Op.in]: insSubIds },
+        gradeType: 'regular',
+      },
+      transaction: options.transaction,
+    });
+
+    // Build a map: inscriptionSubjectId -> SubjectFinalGrade
+    const fgMap = new Map<number, SubjectFinalGrade>();
+    for (const fg of finalGrades) {
+      fgMap.set(fg.inscriptionSubjectId, fg);
+    }
+
+    // Fetch includeInAverage map once
+    const includeInAverageMap = await getSubjectIncludeInAverageMapByGradeAndPeriod(
+      inscription.gradeId,
+      inscription.schoolPeriodId,
+      options.transaction,
+    );
+
+    // Fetch revision period + repair grades in bulk (if revision is completed/closed)
+    const revisionPeriod = await RevisionPeriod.findOne({
+      where: { schoolPeriodId: inscription.schoolPeriodId },
+      transaction: options.transaction,
+    });
+    let repairScoresBySubject = new Map<number, number>();
+    let repairPassingGrade: number | null = null;
+    if (revisionPeriod && (revisionPeriod.status === 'completed' || revisionPeriod.status === 'closed')) {
+      repairPassingGrade = revisionPeriod.passingGrade;
+      const revisions = await InscriptionSubjectRevision.findAll({
+        where: {
+          revisionPeriodId: revisionPeriod.id,
+          inscriptionSubjectId: { [Op.in]: insSubIds },
+        },
+        transaction: options.transaction,
+      });
+      for (const rev of revisions) {
+        if (rev.score == null) continue;
+        const current = repairScoresBySubject.get(rev.inscriptionSubjectId);
+        if (current == null || rev.score > current) {
+          repairScoresBySubject.set(rev.inscriptionSubjectId, Number(rev.score));
+        }
+      }
+    }
+
+    // Apply canonical subject order
+    const orderMap = await getSubjectOrderMapByGradeAndPeriod(
+      inscription.gradeId,
+      inscription.schoolPeriodId,
+      options.transaction,
+    );
+    const orderedSubjects = filterActiveGroupSubjects(
+      sortSubjectsByOrder(
+        inscriptionSubjects,
+        (is) => is.subjectId,
+        (is) => is.subject?.name,
+        orderMap,
+      ),
+    );
+
+    const minApproval = options.minApproval ?? 10;
+    const subjectResults: SubjectResultSummary[] = [];
+    let failedSubjects = 0;
+    let sumFinalScores = 0;
+    let subjectCount = 0;
+
+    for (const insSub of orderedSubjects) {
+      const fg = fgMap.get(insSub.id);
+      if (!fg) {
+        // No pre-existing final grade — skip (shouldn't happen in closed period)
+        continue;
+      }
+
+      const repairScore = repairScoresBySubject.get(insSub.id);
+      const hasRepair = repairScore != null;
+
+      let effectiveFinalScore: number;
+      let effectiveStatus: 'aprobada' | 'reprobada';
+
+      if (hasRepair) {
+        effectiveFinalScore = roundFinalGrade(repairScore!);
+        effectiveStatus = resolveGradeStatus(repairScore!, repairPassingGrade ?? minApproval);
+      } else {
+        effectiveFinalScore = Number(fg.finalScore) || 0;
+        effectiveStatus = fg.status as 'aprobada' | 'reprobada';
+      }
+
+      if (effectiveStatus === 'reprobada') {
+        failedSubjects += 1;
+      }
+
+      const countsForAverage = includeInAverageMap.get(insSub.subjectId) !== false;
+      if (countsForAverage) {
+        subjectCount += 1;
+        sumFinalScores += effectiveFinalScore;
+      }
+
+      subjectResults.push({
+        inscriptionSubjectId: insSub.id,
+        subjectId: insSub.subjectId,
+        subjectName: insSub.subject?.name,
+        rawScore: Number(fg.rawScore) || 0,
+        councilPoints: Number(fg.councilPoints) || 0,
+        finalScore: effectiveFinalScore,
+        status: effectiveStatus,
+      });
+    }
+
+    const finalAverage =
+      subjectCount > 0 ? Number((sumFinalScores / subjectCount).toFixed(2)) : null;
+
+    return {
+      finalAverage,
+      failedSubjects,
+      subjectResults,
     };
   }
 }

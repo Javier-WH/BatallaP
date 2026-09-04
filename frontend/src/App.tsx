@@ -56,6 +56,7 @@ import RepairPeriodManagement from '@/pages/control-estudios/RepairPeriodManagem
 import PendingSubjectManagement from '@/pages/control-estudios/PendingSubjectManagement';
 import ExternalGrades from '@/pages/control-estudios/ExternalGrades';
 import TituloImpresion from '@/pages/control-estudios/TituloImpresion';
+import PeriodClosureManagement from '@/pages/control-estudios/PeriodClosureManagement';
 import RegisterRepresentative from '@/pages/admin/RegisterRepresentative';
 
 // Director Module Imports
@@ -260,6 +261,7 @@ function AppRoutes() {
           <Route path="reparacion" element={<RepairPeriodManagement />} />
           <Route path="materia-pendiente" element={<PendingSubjectManagement />} />
           <Route path="titulos" element={<TituloImpresion />} />
+          <Route path="cierre-anual" element={<PeriodClosureManagement />} />
           <Route path="edit/:id" element={<EditUser />} />
           <Route path="search" element={<SearchUsers />} />
         </Route>

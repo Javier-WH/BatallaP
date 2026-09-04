@@ -58,7 +58,7 @@ const ControlEstudiosLayout: React.FC = () => {
 
   const cierreAnualItems: MenuProps['items'] = [
     { key: '/control-estudios/titulos', icon: <FileProtectOutlined />, label: 'Impresión de Títulos' },
-    { key: '/control-estudios/cierre-anual', icon: <FlagOutlined />, label: 'Prosecución del Cierre Anual', disabled: true },
+    { key: '/control-estudios/cierre-anual', icon: <FlagOutlined />, label: 'Prosecución del Cierre Anual' },
   ];
 
   const isNotasActive = location.pathname === '/control-estudios/calificaciones'
