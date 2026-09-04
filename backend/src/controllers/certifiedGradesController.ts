@@ -1276,3 +1276,340 @@ export const getCertifiedGradesData = async (req: Request, res: Response) => {
     res.status(500).json({ message: error.message || 'Error al obtener datos de notas certificadas' });
   }
 };
+
+/**
+ * Format a document number to include the "V" / "E" / "P" prefix.
+ * e.g. "8417321" → "V 8417321", "V-8417321" → "V 8417321", "V 8417321" → "V 8417321"
+ */
+function formatDocument(raw: string): string {
+  if (!raw) return '';
+  const trimmed = raw.trim();
+  // If already has a letter prefix, normalize spacing
+  const match = trimmed.match(/^([VEPvep])\s*[-.]?\s*(.+)$/);
+  if (match) {
+    return `${match[1].toUpperCase()} ${match[2].trim()}`;
+  }
+  // No prefix — assume "V" (Venezolano) by default
+  return `V ${trimmed}`;
+}
+
+/**
+ * Export the "reverso" (back side) of certified grades as an Excel file.
+ * This is a generic document — same for everyone — with optional sections
+ * controlled by boolean flags:
+ *   - includeDirector: show Director signature block (from settings)
+ *   - includeCoordinator: show Coordinador de Control de Estudios block (from settings)
+ *   - includeFuncionario: show Funcionario designado block (from query params)
+ *   - includeDeclaracion: show "COPIA FIEL Y EXACTA DEL ORIGINAL" declaration
+ *
+ * Query params:
+ *   includeDirector=true/false
+ *   includeCoordinator=true/false
+ *   includeFuncionario=true/false
+ *   funcionarioName=string
+ *   funcionarioDocument=string
+ *   includeDeclaracion=true/false
+ */
+export const exportReverso = async (req: Request, res: Response) => {
+  try {
+    const includeDirector = req.query.includeDirector === 'true';
+    const includeCoordinator = req.query.includeCoordinator === 'true';
+    const includeFuncionario = req.query.includeFuncionario === 'true';
+    const includeDeclaracion = req.query.includeDeclaracion === 'true';
+    const funcionarioName = (req.query.funcionarioName as string) || '';
+    const funcionarioDocument = (req.query.funcionarioDocument as string) || '';
+
+    // Load all settings
+    const settingsRows = await Setting.findAll();
+    const settings: Record<string, string> = {};
+    for (const s of settingsRows) {
+      settings[s.key] = s.value;
+    }
+
+    // Build director display name (natural order: "Nombres APELLIDOS", matching mockup)
+    const directorFirstNames = (settings.director_first_names || '').trim();
+    const directorLastNames = (settings.director_last_names || '').trim();
+    let directorDisplay = '';
+    if (directorFirstNames && directorLastNames) {
+      directorDisplay = `${directorFirstNames} ${directorLastNames}`;
+    } else {
+      directorDisplay = settings.director_name || '';
+    }
+    const directorGender = settings.director_gender === 'F' ? 'F' : 'M';
+    const directorLabel = directorGender === 'F' ? 'Directora' : 'Director';
+    const directorDoc = formatDocument(settings.director_document || '');
+
+    // Build coordinator display name (natural order: "Nombres APELLIDOS", matching mockup)
+    const coordFirstNames = (settings.control_estudios_first_names || '').trim();
+    const coordLastNames = (settings.control_estudios_last_names || '').trim();
+    let coordinatorDisplay = '';
+    if (coordFirstNames && coordLastNames) {
+      coordinatorDisplay = `${coordFirstNames} ${coordLastNames}`;
+    } else {
+      coordinatorDisplay = settings.control_estudios_name || '';
+    }
+    const coordinatorDoc = formatDocument(settings.control_estudios_document || '');
+
+    // Active school period (for "Año Escolar YYYY-YYYY" in funcionario text)
+    const activePeriod = await SchoolPeriod.findOne({ where: { status: 'activo' } } as any);
+    const schoolYearLabel = activePeriod
+      ? `${activePeriod.startYear}-${activePeriod.endYear}`
+      : '______-______';
+
+    // Institution info
+    const institutionName = settings.institution_name || '';
+    const institutionMunicipality = settings.institution_municipality || '';
+
+    // Build the workbook — matching the mockup exactly
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet('Reverso', {
+      properties: { defaultRowHeight: 15 },
+      pageSetup: {
+        paperSize: 9, // A4
+        orientation: 'portrait',
+        fitToWidth: 1,
+        fitToHeight: 1,
+        margins: { left: 0.7, right: 0.7, top: 0.75, bottom: 0.75, header: 0.3, footer: 0.3 },
+      },
+    });
+
+    // Column widths (matching mockup: col1=12, col2=46.57)
+    ws.getColumn(1).width = 12;
+    ws.getColumn(2).width = 46.5703125;
+
+    // ── Border styles ──
+    const BLACK = { argb: 'FF000000' };
+    const mediumBorder = { style: 'medium' as const, color: BLACK };
+    const thinBorder = { style: 'thin' as const, color: BLACK };
+
+    // Helper to apply borders to a 2-column row
+    // isFirstRowOfBlock: top border is medium (top of the block)
+    // isLastRowOfBlock: bottom border is medium (bottom of the block)
+    // isMerged: if true, the row is a merged A:B row — only set outer borders
+    const applyBorders = (rowNum: number, isFirst: boolean, isLast: boolean, isMerged = false) => {
+      const c1 = ws.getCell(rowNum, 1);
+      const c2 = ws.getCell(rowNum, 2);
+      const topB = isFirst ? mediumBorder : thinBorder;
+      const bottomB = isLast ? mediumBorder : thinBorder;
+      if (isMerged) {
+        // For merged cells, set outer borders on each side cell
+        // C1 gets left + top + bottom, C2 gets right + top + bottom
+        c1.border = { left: mediumBorder, top: topB, bottom: bottomB, right: thinBorder };
+        c2.border = { right: mediumBorder, top: topB, bottom: bottomB, left: thinBorder };
+        // Re-assert C1 left border after merge (ExcelJS can overwrite it)
+        c1.border = { ...c1.border, left: mediumBorder };
+      } else {
+        c1.border = {
+          left: mediumBorder,
+          right: thinBorder,
+          top: topB,
+          bottom: bottomB,
+        };
+        c2.border = {
+          left: thinBorder,
+          right: mediumBorder,
+          top: topB,
+          bottom: bottomB,
+        };
+      }
+    };
+
+    // Helper to set cell font (Times New Roman, size 9)
+    const setFont = (rowNum: number, col: number, opts?: { bold?: boolean; size?: number; black?: boolean }) => {
+      const cell = ws.getCell(rowNum, col);
+      cell.font = {
+        name: 'Times New Roman',
+        family: 1,
+        size: opts?.size || 9,
+        bold: opts?.bold || false,
+        color: opts?.black ? { argb: 'FF000000' } : { theme: 1 },
+      };
+    };
+
+    // Helper to set alignment (justify, like the mockup)
+    const setAlign = (rowNum: number, col: number, vertical: 'top' | 'middle' = 'middle', wrapText = true) => {
+      const cell = ws.getCell(rowNum, col);
+      cell.alignment = { horizontal: 'justify', vertical, wrapText };
+    };
+
+    let row = 1;
+
+    // ── Director block ──
+    if (includeDirector) {
+      // Row 1: Certification text (merged A1:B1) with rich text
+      ws.mergeCells(row, 1, row, 2);
+      ws.getRow(row).height = 51.75;
+      const certCell = ws.getCell(row, 1);
+      certCell.value = {
+        richText: [
+          { text: 'Quien suscribe, ' },
+          { font: { bold: true, size: 9, color: { argb: 'FF000000' }, name: 'Times New Roman', family: 1 }, text: directorDisplay },
+          { font: { size: 9, color: { argb: 'FF000000' }, name: 'Times New Roman', family: 1 }, text: ', titular de la cédula de identidad N° ' },
+          { font: { bold: true, size: 9, color: { argb: 'FF000000' }, name: 'Times New Roman', family: 1 }, text: directorDoc },
+          { font: { size: 9, color: { argb: 'FF000000' }, name: 'Times New Roman', family: 1 }, text: ', ' },
+          { font: { bold: true, size: 9, color: { argb: 'FF000000' }, name: 'Times New Roman', family: 1 }, text: `${directorLabel} de la ${institutionName}` },
+          { font: { size: 9, color: { argb: 'FF000000' }, name: 'Times New Roman', family: 1 }, text: ', Certifica la Veracidad de los Datos y Calificaciones emitidas en el presente documento.' },
+        ],
+      };
+      setFont(row, 1);
+      setAlign(row, 1, 'top');
+      applyBorders(row, true, false, true);
+      row++;
+
+      // Row 2: Location text (merged A2:B2)
+      ws.mergeCells(row, 1, row, 2);
+      ws.getRow(row).height = 15;
+      ws.getCell(row, 1).value = ` Verificado en ${institutionMunicipality} a la fecha de emision de este documento`;
+      setFont(row, 1);
+      setAlign(row, 1, 'middle');
+      applyBorders(row, false, false, true);
+      row++;
+
+      // Row 3: Director label + name
+      ws.getRow(row).height = 15;
+      ws.getCell(row, 1).value = `${directorLabel}:`;
+      ws.getCell(row, 2).value = directorDisplay.toUpperCase();
+      setFont(row, 1, { bold: true });
+      setFont(row, 2);
+      setAlign(row, 1); setAlign(row, 2);
+      applyBorders(row, false, false);
+      row++;
+
+      // Row 4: Cédula
+      ws.getRow(row).height = 15;
+      ws.getCell(row, 1).value = 'C. I. N°:';
+      ws.getCell(row, 2).value = directorDoc;
+      setFont(row, 1, { bold: true });
+      setFont(row, 2);
+      setAlign(row, 1); setAlign(row, 2);
+      applyBorders(row, false, false);
+      row++;
+
+      // Row 5: Firma (last row of director block)
+      ws.getRow(row).height = 15;
+      ws.getCell(row, 1).value = 'Firma:';
+      setFont(row, 1, { bold: true });
+      setAlign(row, 1);
+      applyBorders(row, false, true);
+      row++;
+
+      // Row 6: blank separator (no borders)
+      ws.getRow(row).height = 15;
+      row++;
+    }
+
+    // ── Coordinator block ──
+    if (includeCoordinator) {
+      // Row 7: Elaborado por
+      ws.getRow(row).height = 15;
+      ws.getCell(row, 1).value = 'Elaborado por:';
+      ws.getCell(row, 2).value = 'Coordinador de Control de Estudios';
+      setFont(row, 1, { bold: true });
+      setFont(row, 2);
+      setAlign(row, 1, 'middle', false); setAlign(row, 2, 'middle', false);
+      applyBorders(row, true, false);
+      row++;
+
+      // Row 8: Responsable
+      ws.getRow(row).height = 15;
+      ws.getCell(row, 1).value = 'Responsable: ';
+      ws.getCell(row, 2).value = coordinatorDisplay.toUpperCase();
+      setFont(row, 1, { bold: true });
+      setFont(row, 2, { black: true });
+      setAlign(row, 1, 'middle', false); setAlign(row, 2, 'middle', false);
+      applyBorders(row, false, false);
+      row++;
+
+      // Row 9: Cédula
+      ws.getRow(row).height = 15;
+      ws.getCell(row, 1).value = 'C. I. N°: ';
+      ws.getCell(row, 2).value = coordinatorDoc;
+      setFont(row, 1, { bold: true });
+      setFont(row, 2);
+      setAlign(row, 1, 'middle', false); setAlign(row, 2, 'middle', false);
+      applyBorders(row, false, false);
+      row++;
+
+      // Row 10: Firma (last row of coordinator block)
+      ws.getRow(row).height = 15;
+      ws.getCell(row, 1).value = 'Firma: ';
+      setFont(row, 1, { bold: true });
+      setAlign(row, 1, 'middle', false);
+      applyBorders(row, false, true);
+      row++;
+
+      // Row 11: blank separator (no borders)
+      ws.getRow(row).height = 15;
+      row++;
+    }
+
+    // ── Funcionario block ──
+    if (includeFuncionario) {
+      // Row 12: Funcionario text (merged, with rich text — school year in bold)
+      ws.mergeCells(row, 1, row, 2);
+      ws.getRow(row).height = 39.95;
+      const funcCell = ws.getCell(row, 1);
+      funcCell.value = {
+        richText: [
+          { text: 'Funcionario designado por el Ministerio del Poder Popular para la Educación,para la Revision de Expediente, Credenciales y firma de Título de Bachiller Año Escolar ' },
+          { font: { bold: true, size: 9, color: { argb: 'FF000000' }, name: 'Times New Roman', family: 1 }, text: schoolYearLabel },
+        ],
+      };
+      setFont(row, 1);
+      setAlign(row, 1, 'top');
+      applyBorders(row, true, false, true);
+      row++;
+
+      // Row 13: Nombres y Apellidos (merged)
+      ws.mergeCells(row, 1, row, 2);
+      ws.getRow(row).height = 15;
+      ws.getCell(row, 1).value = `Nombres y Apellidos:  ${funcionarioName}`;
+      setFont(row, 1, { black: true });
+      ws.getCell(row, 1).alignment = { horizontal: 'justify', vertical: 'middle' };
+      applyBorders(row, false, false, true);
+      row++;
+
+      // Row 14: Cédula
+      ws.getRow(row).height = 15;
+      ws.getCell(row, 1).value = 'C. I. N° ';
+      ws.getCell(row, 2).value = formatDocument(funcionarioDocument);
+      setFont(row, 1, { bold: true });
+      setFont(row, 2);
+      setAlign(row, 1, 'middle', false); setAlign(row, 2, 'middle', false);
+      applyBorders(row, false, false);
+      row++;
+
+      // Row 15: Firma (last row of funcionario block)
+      ws.getRow(row).height = 15;
+      ws.getCell(row, 1).value = 'Firma: ';
+      setFont(row, 1, { bold: true });
+      setAlign(row, 1, 'middle', false);
+      applyBorders(row, false, true);
+      row++;
+
+      // Row 16: blank separator (no borders)
+      ws.getRow(row).height = 15;
+      row++;
+    }
+
+    // ── Declaración block ──
+    if (includeDeclaracion) {
+      // Row 17: Declaration text (merged, centered, no borders, size 11)
+      ws.mergeCells(row, 1, row, 2);
+      ws.getRow(row).height = 29.25;
+      const declCell = ws.getCell(row, 1);
+      declCell.value = 'ESTE DOCUMENTO ES COPIA\nFIEL Y EXACTA DEL ORIGINAL';
+      declCell.font = { name: 'Times New Roman', family: 1, size: 11, color: { theme: 1 } };
+      declCell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+      row++;
+    }
+
+    const buffer = await wb.xlsx.writeBuffer();
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename="reverso-notas-certificadas.xlsx"');
+    res.send(buffer);
+  } catch (error: any) {
+    console.error('[exportReverso] Error:', error);
+    res.status(500).json({ message: error.message || 'Error al exportar el reverso' });
+  }
+};

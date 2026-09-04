@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { Select, Button, Spin, message, Alert, Input, Popover, AutoComplete } from 'antd';
+import { Select, Button, Spin, message, Alert, Input, Popover, AutoComplete, Modal, Checkbox } from 'antd';
 import { PrinterOutlined } from '@ant-design/icons';
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
@@ -275,6 +275,16 @@ const PerformanceSummary: React.FC = () => {
   const [certPersonId, setCertPersonId] = useState<number | null>(null);
   const [certGradeId, setCertGradeId] = useState<number | null>(null);
   const [certSectionId, setCertSectionId] = useState<number | null>(null);
+
+  // reverso modal state
+  const [reversoModalOpen, setReversoModalOpen] = useState(false);
+  const [reversoExporting, setReversoExporting] = useState(false);
+  const [reversoIncludeDirector, setReversoIncludeDirector] = useState(true);
+  const [reversoIncludeCoordinator, setReversoIncludeCoordinator] = useState(true);
+  const [reversoIncludeFuncionario, setReversoIncludeFuncionario] = useState(false);
+  const [reversoIncludeDeclaracion, setReversoIncludeDeclaracion] = useState(false);
+  const [reversoFuncionarioName, setReversoFuncionarioName] = useState('');
+  const [reversoFuncionarioDocument, setReversoFuncionarioDocument] = useState('');
 
   const boletinSelectedGrade = structure.find(s => s.grade.id === boletinGradeId);
   const boletinAvailableSections = [...(boletinSelectedGrade?.sections || [])]
@@ -1373,6 +1383,40 @@ const PerformanceSummary: React.FC = () => {
     }
   }, [certGradeId, certSectionId, certPersonId, exportCertified, exportCertifiedByStudent]);
 
+  // --- Reverso export handler ---
+  const handleExportReverso = useCallback(async () => {
+    if (reversoIncludeFuncionario && !reversoFuncionarioName.trim()) {
+      message.warning('Ingrese el nombre del funcionario designado');
+      return;
+    }
+    setReversoExporting(true);
+    try {
+      const params = new URLSearchParams();
+      params.set('includeDirector', String(reversoIncludeDirector));
+      params.set('includeCoordinator', String(reversoIncludeCoordinator));
+      params.set('includeFuncionario', String(reversoIncludeFuncionario));
+      params.set('includeDeclaracion', String(reversoIncludeDeclaracion));
+      if (reversoIncludeFuncionario) {
+        params.set('funcionarioName', reversoFuncionarioName);
+        params.set('funcionarioDocument', reversoFuncionarioDocument);
+      }
+      const response = await api.get(`/certified-grades/export-reverso?${params.toString()}`, {
+        responseType: 'blob',
+      });
+      const fileName = response.headers['content-disposition']
+        ?.split('filename="')[1]?.split('"')[0] || 'reverso-notas-certificadas.xlsx';
+      saveAs(new Blob([response.data]), fileName);
+      message.success('Reverso exportado correctamente');
+      setReversoModalOpen(false);
+    } catch (error: any) {
+      console.error('[Export Reverso] Error:', error);
+      const msg = error.response?.data?.message || 'Error al exportar el reverso';
+      message.error(msg);
+    } finally {
+      setReversoExporting(false);
+    }
+  }, [reversoIncludeDirector, reversoIncludeCoordinator, reversoIncludeFuncionario, reversoIncludeDeclaracion, reversoFuncionarioName, reversoFuncionarioDocument]);
+
   // --- Legend popover contents ---
   const resumenLegendContent = (
     <div style={{ maxWidth: 520, fontSize: 12.5, lineHeight: 1.5 }}>
@@ -1946,6 +1990,14 @@ const PerformanceSummary: React.FC = () => {
                       {certLoading || certSectionLoading ? <Spin size="small" /> : <IconDownload size={16} />}
                       {certLoading || certSectionLoading ? 'Generando…' : (certGradeId && certSectionId ? 'Exportar sección' : 'Exportar estudiante')}
                     </button>
+                    <button
+                      className="rb-export-btn"
+                      style={{ width: 'auto', flex: '1 1 260px', minHeight: 48 }}
+                      onClick={() => setReversoModalOpen(true)}
+                    >
+                      <IconDownload size={16} />
+                      Exportar Reverso
+                    </button>
                   </div>
                   {(!certGradeId || !certSectionId) && !certPersonId && <p className="rb-export-hint">Seleccione un grado y sección, o un estudiante individual para continuar</p>}
                 </section>
@@ -1980,6 +2032,69 @@ const PerformanceSummary: React.FC = () => {
         onSelect={(name) => { setCertSelectedTemplate(name || null); }}
         mode="certified"
       />
+
+      {/* ── Reverso Modal ── */}
+      <Modal
+        open={reversoModalOpen}
+        title="Exportar Reverso de Notas Certificadas"
+        onCancel={() => setReversoModalOpen(false)}
+        width={520}
+        footer={[
+          <Button key="cancel" onClick={() => setReversoModalOpen(false)}>Cancelar</Button>,
+          <Button key="export" type="primary" loading={reversoExporting} onClick={handleExportReverso}>
+            Exportar Excel
+          </Button>,
+        ]}
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '8px 0' }}>
+          <p style={{ color: '#64748b', fontSize: 13, margin: 0 }}>
+            Seleccione las secciones que desea incluir en el reverso. Los datos del Director y del Coordinador se obtienen automáticamente del sistema.
+          </p>
+
+          <Checkbox
+            checked={reversoIncludeDirector}
+            onChange={(e) => setReversoIncludeDirector(e.target.checked)}
+          >
+            Incluir Director (datos del sistema)
+          </Checkbox>
+
+          <Checkbox
+            checked={reversoIncludeCoordinator}
+            onChange={(e) => setReversoIncludeCoordinator(e.target.checked)}
+          >
+            Incluir Coordinador de Control de Estudios (datos del sistema)
+          </Checkbox>
+
+          <Checkbox
+            checked={reversoIncludeFuncionario}
+            onChange={(e) => setReversoIncludeFuncionario(e.target.checked)}
+          >
+            Incluir Funcionario designado por el MPPE
+          </Checkbox>
+
+          {reversoIncludeFuncionario && (
+            <div style={{ marginLeft: 24, display: 'flex', flexDirection: 'column', gap: 8, padding: '8px 12px', background: '#f8fafc', borderRadius: 8 }}>
+              <Input
+                placeholder="Nombres y Apellidos del funcionario"
+                value={reversoFuncionarioName}
+                onChange={(e) => setReversoFuncionarioName(e.target.value)}
+              />
+              <Input
+                placeholder="Cédula (ej: V-12345678)"
+                value={reversoFuncionarioDocument}
+                onChange={(e) => setReversoFuncionarioDocument(e.target.value)}
+              />
+            </div>
+          )}
+
+          <Checkbox
+            checked={reversoIncludeDeclaracion}
+            onChange={(e) => setReversoIncludeDeclaracion(e.target.checked)}
+          >
+            Incluir declaración "Copia fiel y exacta del original"
+          </Checkbox>
+        </div>
+      </Modal>
     </div>
   );
 };
