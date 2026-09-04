@@ -2754,11 +2754,16 @@ export const getTituloData = async (req: Request, res: Response) => {
       code: settings.institution_dea_code || '',
       level: 'BACHILLER',
       program: settings.institution_program || 'EDUCACIÓN MEDIA GENERAL, 31059',
-      directorName: settings.director_name || '',
+      directorName: settings.director_first_names && settings.director_last_names
+        ? `${settings.director_first_names} ${settings.director_last_names}`
+        : (settings.director_name || ''),
       directorDocument: settings.director_document || '',
-      // sig2 (Control de Estudios) — from settings if available
-      sig2Name: settings.titulo_sig2_name || '',
-      sig2Id: settings.titulo_sig2_id || '',
+      // sig2 (Control de Estudios) — from coordinator settings if available,
+      // fall back to legacy titulo_sig2_* settings
+      sig2Name: settings.control_estudios_first_names && settings.control_estudios_last_names
+        ? `${settings.control_estudios_first_names} ${settings.control_estudios_last_names}`
+        : (settings.control_estudios_name || settings.titulo_sig2_name || ''),
+      sig2Id: settings.control_estudios_document || settings.titulo_sig2_id || '',
       // Issue place: "ESTADO, PARROQUIA, FECHA"
       issueState: settings.institution_state || '',
       issueParish: settings.institution_parish || '',

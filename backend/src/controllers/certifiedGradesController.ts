@@ -1358,7 +1358,7 @@ export const exportReverso = async (req: Request, res: Response) => {
 
     // Institution info
     const institutionName = settings.institution_name || '';
-    const institutionMunicipality = settings.institution_municipality || '';
+    const institutionParish = settings.institution_parish || '';
 
     // Build the workbook — matching the mockup exactly
     const wb = new ExcelJS.Workbook();
@@ -1459,7 +1459,7 @@ export const exportReverso = async (req: Request, res: Response) => {
       // Row 2: Location text (merged A2:B2)
       ws.mergeCells(row, 1, row, 2);
       ws.getRow(row).height = 15;
-      ws.getCell(row, 1).value = ` Verificado en ${institutionMunicipality} a la fecha de emision de este documento`;
+      ws.getCell(row, 1).value = ` Verificado en ${institutionParish} a la fecha de emision de este documento`;
       setFont(row, 1);
       setAlign(row, 1, 'middle');
       applyBorders(row, false, false, true);

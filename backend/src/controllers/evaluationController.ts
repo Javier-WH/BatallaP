@@ -90,7 +90,12 @@ export const getMyAssignments = async (req: Request, res: Response) => {
             }
           ]
         },
-        { model: Section, as: 'section' },
+        {
+          model: Section,
+          as: 'section',
+          required: true,
+          where: { name: { [Op.ne]: 'Materia Pendiente' } },
+        },
         { model: Person, as: 'teacher' }
       ],
     });
@@ -2628,7 +2633,7 @@ export const getAllAssignments = async (req: Request, res: Response) => {
           }
         ]
       },
-      { model: Section, as: 'section' },
+      { model: Section, as: 'section', required: true, where: { name: { [Op.ne]: 'Materia Pendiente' } } },
       { model: Person, as: 'teacher' }
     ];
 

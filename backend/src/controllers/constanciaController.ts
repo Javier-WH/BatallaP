@@ -201,8 +201,14 @@ async function resolveVariables(personId: number, schoolPeriodId: number, custom
     'institution.phone': settingsMap['institution_phone'] || '',
     'institution.municipality': settingsMap['institution_municipality'] || '',
     'institution.state': settingsMap['institution_state'] || '',
-    'institution.director': settingsMap['director_name'] || '',
+    'institution.director': settingsMap['director_first_names'] && settingsMap['director_last_names']
+      ? `${settingsMap['director_first_names']} ${settingsMap['director_last_names']}`
+      : (settingsMap['director_name'] || ''),
     'institution.directorDocument': settingsMap['director_document'] || '',
+    'institution.coordinator': settingsMap['control_estudios_first_names'] && settingsMap['control_estudios_last_names']
+      ? `${settingsMap['control_estudios_first_names']} ${settingsMap['control_estudios_last_names']}`
+      : (settingsMap['control_estudios_name'] || ''),
+    'institution.coordinatorDocument': settingsMap['control_estudios_document'] || '',
     // Academic — grade.name strips the trailing "Año" so the template can compose
     // phrases like "pertenece al Quinto (5to) Año". Use grade.fullName for the full string.
     'grade.name': (inscription?.grade?.name || '').replace(/\s+A[ñn]o\s*$/i, '').trim(),
@@ -437,6 +443,8 @@ export const getVariables = async (_req: Request, res: Response) => {
     { group: 'Institución', key: 'institution.state', label: 'Estado' },
     { group: 'Institución', key: 'institution.director', label: 'Director' },
     { group: 'Institución', key: 'institution.directorDocument', label: 'Cédula del director' },
+    { group: 'Institución', key: 'institution.coordinator', label: 'Coordinador de Control de Estudios' },
+    { group: 'Institución', key: 'institution.coordinatorDocument', label: 'Cédula del coordinador' },
     // Academic
     { group: 'Académico', key: 'grade.name', label: 'Grado (ej: Quinto)' },
     { group: 'Académico', key: 'grade.fullName', label: 'Grado completo (ej: Quinto Año)' },
