@@ -279,8 +279,8 @@ const EditUser: React.FC = () => {
 
 
 
-  const targetHasRestrictedRoles = targetUserRoles.includes('Master') || targetUserRoles.includes('Administrador');
-  const isTargetStaff = targetUserRoles.some(r => ['Master', 'Administrador', 'Control de Estudios', 'Profesor'].includes(r));
+  const targetHasRestrictedRoles = targetUserRoles.includes('Master') || targetUserRoles.includes('Administrador') || targetUserRoles.includes('Director');
+  const isTargetStaff = targetUserRoles.some(r => ['Master', 'Administrador', 'Director', 'Control de Estudios', 'Profesor'].includes(r));
 
   if (loading) return <div style={{ display: 'flex', justifyContent: 'center', padding: 50 }}><Spin size="large" /></div>;
 
@@ -298,7 +298,7 @@ const EditUser: React.FC = () => {
         {!isMaster && targetHasRestrictedRoles && (
           <Alert
             message="Permisos Limitados"
-            description="Este usuario tiene roles administrativos. Los roles Master y Admin no pueden ser modificados."
+            description="Este usuario tiene roles administrativos. Los roles Master, Director y Admin no pueden ser modificados."
             type="warning"
             showIcon
             style={{ marginBottom: 16 }}
@@ -521,6 +521,7 @@ const EditUser: React.FC = () => {
                 <Option value="Representante">Representante</Option>
                 <Option value="Profesor">Profesor</Option>
                 <Option value="Control de Estudios">Control de Estudios</Option>
+                <Option value="Director" disabled={!isMaster}>Director {!isMaster && '(Restringido)'}</Option>
                 <Option value="Administrador" disabled={!isMaster}>Administrador {!isMaster && '(Restringido)'}</Option>
                 <Option value="Master" disabled={!isMaster}>Master {!isMaster && '(Restringido)'}</Option>
               </Select>

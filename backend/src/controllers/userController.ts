@@ -385,7 +385,7 @@ export const updateUser = async (req: Request, res: Response) => {
     const currentUser = (req.session as any).user;
     const isMaster = currentUser?.roles?.includes('Master');
     const currentRoles = (person as any).roles || [];
-    const targetHasRestrictedRoles = currentRoles.some((r: any) => ['Master', 'Administrador'].includes(r.name));
+    const targetHasRestrictedRoles = currentRoles.some((r: any) => ['Master', 'Administrador', 'Director'].includes(r.name));
 
     // Update Person Data (Allowed for all admins)
     await person.update({ firstName, lastName, documentType, document, gender, birthdate, hireDate: hireDate || null });

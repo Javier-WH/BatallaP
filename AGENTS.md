@@ -17,7 +17,7 @@
 - **Backend**: API REST en Node.js + Express 5 + TypeScript + Sequelize 6 + MySQL.
 - **Frontend**: SPA React 19 + TypeScript + Vite 7 + Ant Design 6 + React Router 7.
 
-Administra períodos académicos, matriculación e inscripción de estudiantes, gestión de usuarios con 6 roles, planes de evaluación, calificaciones, consejos de curso, cierre de período con promoción automática, y edición auditada de notas de períodos cerrados.
+Administra períodos académicos, matriculación e inscripción de estudiantes, gestión de usuarios con 7 roles, planes de evaluación, calificaciones, consejos de curso, cierre de período con promoción automática, y edición auditada de notas de períodos cerrados.
 
 ---
 
@@ -157,7 +157,7 @@ BatallaProject/
 
 Nombres **canónicos** (en español, case-sensitive):
 
-`Master` · `Administrador` · `Control de Estudios` · `Profesor` · `Representante` · `Alumno`
+`Master` · `Administrador` · `Director` · `Control de Estudios` · `Profesor` · `Representante` · `Alumno`
 
 ⚠️ **Nunca** usar `Admin`, `Teacher`, `Student` – rompe la protección de rutas. Ver [`docs/roles-permissions.md`](./docs/roles-permissions.md).
 
@@ -177,7 +177,7 @@ React 19 · TypeScript 5.9 · Vite 7 · Ant Design 6 · React Router 7 · Axios 
 
 ### ✅ Implementadas
 1. Autenticación con sesiones persistidas en MySQL.
-2. CRUD completo de usuarios con 6 roles.
+2. CRUD completo de usuarios con 7 roles.
 3. Gestión académica: períodos, grados, secciones, materias, specializations, subject groups.
 4. Matriculación estándar + rápida + masiva (Excel).
 5. Inscripciones con representantes reutilizables (`GuardianProfile`).

@@ -26,6 +26,7 @@ interface SettingsFormValues {
   director_first_names?: string;
   director_last_names?: string;
   director_document?: string;
+  director_gender?: 'M' | 'F';
   institution_address?: string;
   institution_state?: string;
   institution_municipality?: string;
@@ -59,6 +60,7 @@ const SettingsManagement: React.FC = () => {
   const [directorFirstNames, setDirectorFirstNames] = useState('');
   const [directorLastNames, setDirectorLastNames] = useState('');
   const [directorDocument, setDirectorDocument] = useState('');
+  const [directorGender, setDirectorGender] = useState<'M' | 'F'>('M');
   const [venezuelaData, setVenezuelaData] = useState<any[]>([]);
   const [stateOptions, setStateOptions] = useState<{ value: string; label: string }[]>([]);
   const [municipalityOptions, setMunicipalityOptions] = useState<{ value: string; label: string }[]>([]);
@@ -99,6 +101,7 @@ const SettingsManagement: React.FC = () => {
         setDirectorFirstNames(res.data.director_first_names || '');
         setDirectorLastNames(res.data.director_last_names || '');
         setDirectorDocument(res.data.director_document || '');
+        setDirectorGender(res.data.director_gender === 'F' ? 'F' : 'M');
 
         form.setFieldsValue({
           institution_name: res.data.institution_name || '',
@@ -111,6 +114,7 @@ const SettingsManagement: React.FC = () => {
           director_first_names: res.data.director_first_names || '',
           director_last_names: res.data.director_last_names || '',
           director_document: res.data.director_document || '',
+          director_gender: res.data.director_gender === 'F' ? 'F' : 'M',
           institution_address: res.data.institution_address || '',
           institution_state: res.data.institution_state || '',
           institution_municipality: res.data.institution_municipality || '',
@@ -224,6 +228,7 @@ const SettingsManagement: React.FC = () => {
         director_first_names: directorFirstNames,
         director_last_names: directorLastNames,
         director_document: directorDocument,
+        director_gender: directorGender,
         theme_primary_color: primaryColor,
         theme_secondary_color: secondaryColor,
         theme_brand_secondary: brandSecondaryColor,
@@ -363,6 +368,26 @@ const SettingsManagement: React.FC = () => {
                   placeholder="V-12345678"
                   className="h-12 border-slate-200 focus:border-brand-primary focus:ring-4 focus:ring-brand-primary/10 rounded-xl transition-all"
                   onChange={(e) => setDirectorDocument(e.target.value)}
+                />
+              </Form.Item>
+
+              <Form.Item
+                label={<span className="text-[var(--color-text-main)] font-bold">Género del Director</span>}
+                name="director_gender"
+                tooltip="Determina si en los documentos se muestra 'El Director' o 'La Directora'"
+              >
+                <Segmented
+                  block
+                  value={directorGender}
+                  onChange={(val: 'M' | 'F') => {
+                    setDirectorGender(val);
+                    form.setFieldsValue({ director_gender: val });
+                  }}
+                  options={[
+                    { label: 'Masculino (El Director)', value: 'M' },
+                    { label: 'Femenino (La Directora)', value: 'F' },
+                  ]}
+                  className="rounded-xl p-1"
                 />
               </Form.Item>
 

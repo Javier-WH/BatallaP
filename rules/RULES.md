@@ -13,9 +13,9 @@
 - Al crear un modelo nuevo, su asociación va en `index.ts`.
 
 ### R2: Roles del sistema con nombres canónicos en español
-Los 6 roles del sistema son:
+Los 7 roles del sistema son:
 ```
-Master | Administrador | Control de Estudios | Profesor | Representante | Alumno
+Master | Administrador | Director | Control de Estudios | Profesor | Representante | Alumno
 ```
 - **Nunca** usar variantes en inglés (`Admin`, `Teacher`, `Student`).
 - **Nunca** comparar roles con strings literales sin usar una constante/enum compartida.

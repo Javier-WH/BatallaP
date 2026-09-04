@@ -18,6 +18,7 @@ import {
   CommentOutlined,
   AlertOutlined,
   FileProtectOutlined,
+  BankOutlined,
 } from '@ant-design/icons';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
@@ -66,7 +67,7 @@ const MainLayout: React.FC = () => {
       key: 'dashboard',
       icon: <DashboardOutlined />,
       label: 'Dashboard',
-      roles: ['Master', 'Administrador', 'Profesor', 'Control de Estudios', 'Representante', 'Alumno'],
+      roles: ['Master', 'Administrador', 'Director', 'Profesor', 'Control de Estudios', 'Representante', 'Alumno'],
       path: '/dashboard'
     },
     {
@@ -91,10 +92,17 @@ const MainLayout: React.FC = () => {
       path: '/control-estudios'
     },
     {
+      key: 'director-module',
+      icon: <BankOutlined />,
+      label: 'Director',
+      roles: ['Director', 'Master'],
+      path: '/director'
+    },
+    {
       key: 'constancias',
       icon: <FileProtectOutlined />,
       label: 'Constancias',
-      roles: ['Control de Estudios', 'Administrador', 'Master'],
+      roles: ['Control de Estudios', 'Administrador', 'Master', 'Director'],
       path: '/constancias'
     },
 
