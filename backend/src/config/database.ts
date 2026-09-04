@@ -27,6 +27,12 @@ const sequelize =
         host: dbHost,
         dialect: 'mysql',
         logging: dbLogging,
+        pool: {
+          max: 20,
+          min: 2,
+          acquire: 60000,
+          idle: 10000,
+        },
       });
 
 export default sequelize;

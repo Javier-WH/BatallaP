@@ -685,7 +685,12 @@ export const saveQualification = async (req: Request, res: Response) => {
     await t.commit();
     res.json(qualification);
   } catch (error) {
-    await t.rollback();
+    // Safe rollback: ignore errors if transaction was already finished by timeout
+    try {
+      await t.rollback();
+    } catch (rbErr) {
+      // Transaction may have been auto-rolled back by connection timeout
+    }
     if (error instanceof AcademicContextError) {
       return res.status(error.statusCode).json({ message: error.message });
     }

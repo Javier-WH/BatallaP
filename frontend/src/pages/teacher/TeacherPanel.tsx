@@ -1418,27 +1418,45 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
       if (inputEl) inputEl.value = p.score === null ? '' : padGrade(p.score);
     }
 
-    // Save all notes to backend in parallel, then refresh once
+    // Save all notes to backend in sequential batches, then refresh once
     const assignment = assignments.find(a => a.id === selectedAssignmentId);
     if (!assignment || !selectedTerm) return;
-    Promise.all(parsed.map(p => {
+    const BATCH_SIZE = 3;
+    let failedCount = 0;
+    const saveOne = async (p: typeof parsed[number], retries = 2): Promise<boolean> => {
       const inscriptionSubjectId = p.target.enrollment.inscriptionSubjects?.[0]?.id;
-      return api.post('/evaluation/qualifications', {
-        evaluationPlanId: p.target.evalPlanId,
-        inscriptionSubjectId,
-        inscriptionId: p.target.enrollment.id,
-        ...getQualificationContext(assignment),
-        score: p.score === null ? 0 : p.score,
-        isAbsent: false,
-        observations: '',
-      }).catch(() => { /* individual errors swallowed, will be caught by final fetch */ });
-    })).then(() => {
-      // Small delay to ensure React has painted the optimistic update before refetching
+      for (let attempt = 0; attempt <= retries; attempt++) {
+        try {
+          await api.post('/evaluation/qualifications', {
+            evaluationPlanId: p.target.evalPlanId,
+            inscriptionSubjectId,
+            inscriptionId: p.target.enrollment.id,
+            ...getQualificationContext(assignment),
+            score: p.score === null ? 0 : p.score,
+            isAbsent: false,
+            observations: '',
+          });
+          return true;
+        } catch {
+          if (attempt < retries) {
+            await new Promise(r => setTimeout(r, 200 * (attempt + 1)));
+          }
+        }
+      }
+      return false;
+    };
+    const saveBatch = async (items: typeof parsed) => {
+      await Promise.all(items.map(p => saveOne(p).then(ok => { if (!ok) failedCount++; })));
+    };
+    (async () => {
+      for (let i = 0; i < parsed.length; i += BATCH_SIZE) {
+        await saveBatch(parsed.slice(i, i + BATCH_SIZE));
+      }
+      if (failedCount > 0) {
+        message.warning(`${failedCount} nota(s) no se pudieron guardar`);
+      }
       setTimeout(() => fetchPlanAndStudents(), 100);
-    }).catch(() => {
-      message.error('Error al guardar algunas notas pegadas');
-      fetchPlanAndStudents();
-    });
+    })();
 
     // Move focus to the last processed cell
     const lastTarget = parsed[parsed.length - 1].target;
