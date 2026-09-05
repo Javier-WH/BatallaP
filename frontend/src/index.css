@@ -172,6 +172,15 @@
   text-transform: uppercase;
 }
 
+/* Group subject selects: uppercase labels in both input and dropdown options */
+.group-subject-select .ant-select-selection-item,
+.group-subject-select .ant-select-selection-placeholder {
+  text-transform: uppercase;
+}
+.group-subject-select-dropdown .ant-select-item-option-content {
+  text-transform: uppercase;
+}
+
 .ant-input:focus,
 .ant-input-focused,
 .ant-input-number-focused,

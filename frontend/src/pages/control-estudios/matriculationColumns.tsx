@@ -994,7 +994,7 @@ export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<Matricul
         if (!p.data) return { values: [] as string[] };
         const gradeStruct = structure.find(s => s.gradeId === p.data.tempData.gradeId);
         const groupSubjects = gradeStruct?.subjects?.filter(s => s.subjectGroupId) ?? [];
-        const values = groupSubjects.map(s => s.name);
+        const values = groupSubjects.map(s => s.name.toUpperCase());
         return { values };
       },
       valueGetter: (p) => {
@@ -1002,13 +1002,14 @@ export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<Matricul
         const gradeStruct = structure.find(s => s.gradeId === p.data!.tempData.gradeId);
         const groupSubjects = gradeStruct?.subjects?.filter(s => s.subjectGroupId) ?? [];
         const currentId = p.data.tempData.subjectIds?.[0];
-        return groupSubjects.find(s => s.id === currentId)?.name ?? '';
+        const name = groupSubjects.find(s => s.id === currentId)?.name ?? '';
+        return name ? name.toUpperCase() : '';
       },
       valueSetter: (p) => {
         if (p.newValue !== p.oldValue && p.data) {
           const gradeStruct = structure.find(s => s.gradeId === p.data.tempData.gradeId);
           const groupSubjects = gradeStruct?.subjects?.filter(s => s.subjectGroupId) ?? [];
-          const subject = groupSubjects.find(s => s.name === p.newValue);
+          const subject = groupSubjects.find(s => s.name.toUpperCase() === p.newValue);
           const newIds = subject ? [subject.id] : [];
           callbacks.onUpdateField(p.data.id, 'subjectIds', newIds);
           return true;
@@ -1020,7 +1021,8 @@ export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<Matricul
         const gradeStruct = structure.find(s => s.gradeId === p.data.tempData.gradeId);
         const groupSubjects = gradeStruct?.subjects?.filter(s => s.subjectGroupId) ?? [];
         const currentId = p.data.tempData.subjectIds?.[0];
-        return groupSubjects.find(s => s.id === currentId)?.name ?? '';
+        const name = groupSubjects.find(s => s.id === currentId)?.name ?? '';
+        return name ? name.toUpperCase() : '';
       },
     });
   }

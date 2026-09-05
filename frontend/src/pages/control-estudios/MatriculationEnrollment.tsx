@@ -1983,6 +1983,8 @@ const MatriculationEnrollment: React.FC = () => {
                             placeholder="Asignar Materia..."
                             size="small"
                             style={{ width: '100%' }}
+                            className="group-subject-select"
+                            popupClassName="group-subject-select-dropdown"
                             onChange={v => {
                               const newIds = v !== undefined && v !== null ? [Number(v)] : [];
                               handleBulkUpdate('subjectIds', newIds);
@@ -2009,6 +2011,8 @@ const MatriculationEnrollment: React.FC = () => {
                             placeholder="Asignar..."
                             size="small"
                             style={{ width: 160 }}
+                            className="group-subject-select"
+                            popupClassName="group-subject-select-dropdown"
                             onChange={v => {
                               const newIds = v !== undefined && v !== null ? [Number(v)] : [];
                               handleBulkUpdate('subjectIds', newIds);
