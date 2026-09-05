@@ -160,6 +160,7 @@ export const upsertGrade = async (req: Request, res: Response) => {
           issuedAt: new Date(issuedAt),
           gradeType,
           observations: observations ?? null,
+          editedBy: (req.session as any)?.user?.id,
         },
         t
       );

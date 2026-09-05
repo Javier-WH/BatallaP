@@ -21,6 +21,7 @@ import {
 import { sortInscriptions } from '@/services/studentSortService';
 import { roundFinalGrade, roundGrade, isPassingGrade } from '@/services/gradeEvaluationService';
 import { resolveGradeDate } from '@/services/gradeDateResolver';
+import { logGradeChange } from '@/services/gradeChangeLogService';
 
 /**
  * GET /api/historical-grades/by-section?schoolPeriodId=X&sectionId=Y&gradeId=Z
@@ -672,12 +673,25 @@ export const saveHistoricalGrades = async (req: Request, res: Response) => {
             where: { id: historicalGradeId },
             transaction: t,
           });
+          await logGradeChange({
+            entityType: 'historical_grade',
+            entityId: historicalGradeId,
+            previousScore: null,
+            newScore: normalizedScore,
+            previousStatus: null,
+            newStatus: status,
+            gradeType: gradeType || 'regular',
+            editedBy: userId,
+            editorRole: 'control_estudios',
+            metadata: { personId, gradeId, subjectId, schoolPeriodId, subjectName },
+          }, t);
           saved++;
           continue;
         }
 
         // ── Case 2: Update existing SubjectFinalGrade ──
         if (finalGradeId) {
+          const prevFg = await SubjectFinalGrade.findByPk(finalGradeId, { transaction: t });
           await SubjectFinalGrade.update({
             finalScore: normalizedScore,
             status,
@@ -688,6 +702,18 @@ export const saveHistoricalGrades = async (req: Request, res: Response) => {
             where: { id: finalGradeId },
             transaction: t,
           });
+          await logGradeChange({
+            entityType: 'subject_final_grade',
+            entityId: finalGradeId,
+            previousScore: prevFg?.finalScore != null ? Number(prevFg.finalScore) : null,
+            newScore: normalizedScore,
+            previousStatus: prevFg?.status || null,
+            newStatus: status,
+            gradeType: gradeType || 'regular',
+            editedBy: userId,
+            editorRole: 'control_estudios',
+            metadata: { personId, gradeId, subjectId, schoolPeriodId, subjectName, historicalEdit: true },
+          }, t);
           saved++;
           continue;
         }
@@ -719,8 +745,20 @@ export const saveHistoricalGrades = async (req: Request, res: Response) => {
               where: { id: existing.id },
               transaction: t,
             });
+            await logGradeChange({
+              entityType: 'subject_final_grade',
+              entityId: existing.id,
+              previousScore: existing.finalScore != null ? Number(existing.finalScore) : null,
+              newScore: normalizedScore,
+              previousStatus: existing.status || null,
+              newStatus: status,
+              gradeType: effectiveGradeType,
+              editedBy: userId,
+              editorRole: 'control_estudios',
+              metadata: { personId, gradeId, subjectId, schoolPeriodId, subjectName, inscriptionSubjectId, historicalEdit: true },
+            }, t);
           } else {
-            await SubjectFinalGrade.create({
+            const newFg = await SubjectFinalGrade.create({
               inscriptionSubjectId,
               finalScore: normalizedScore,
               status,
@@ -731,6 +769,18 @@ export const saveHistoricalGrades = async (req: Request, res: Response) => {
               subjectId: ctxInsSub?.subjectId ?? null,
               gradeId: ctxIns?.gradeId ?? null,
             }, { transaction: t });
+            await logGradeChange({
+              entityType: 'subject_final_grade',
+              entityId: newFg.id,
+              previousScore: null,
+              newScore: normalizedScore,
+              previousStatus: null,
+              newStatus: status,
+              gradeType: effectiveGradeType,
+              editedBy: userId,
+              editorRole: 'control_estudios',
+              metadata: { personId, gradeId, subjectId, schoolPeriodId, subjectName, inscriptionSubjectId, historicalEdit: true },
+            }, t);
           }
           saved++;
           continue;
@@ -778,8 +828,20 @@ export const saveHistoricalGrades = async (req: Request, res: Response) => {
                 where: { id: existing.id },
                 transaction: t,
               });
+              await logGradeChange({
+                entityType: 'subject_final_grade',
+                entityId: existing.id,
+                previousScore: existing.finalScore != null ? Number(existing.finalScore) : null,
+                newScore: normalizedScore,
+                previousStatus: existing.status || null,
+                newStatus: status,
+                gradeType: effectiveGradeType,
+                editedBy: userId,
+                editorRole: 'control_estudios',
+                metadata: { personId, gradeId, subjectId, schoolPeriodId, subjectName, inscriptionSubjectId: insSub.id, historicalEdit: true },
+              }, t);
             } else {
-              await SubjectFinalGrade.create({
+              const newFg = await SubjectFinalGrade.create({
                 inscriptionSubjectId: insSub.id,
                 finalScore: normalizedScore,
                 status,
@@ -790,6 +852,18 @@ export const saveHistoricalGrades = async (req: Request, res: Response) => {
                 subjectId: insSub.subjectId,
                 gradeId: inscription.gradeId,
               }, { transaction: t });
+              await logGradeChange({
+                entityType: 'subject_final_grade',
+                entityId: newFg.id,
+                previousScore: null,
+                newScore: normalizedScore,
+                previousStatus: null,
+                newStatus: status,
+                gradeType: effectiveGradeType,
+                editedBy: userId,
+                editorRole: 'control_estudios',
+                metadata: { personId, gradeId, subjectId, schoolPeriodId, subjectName, inscriptionSubjectId: insSub.id, historicalEdit: true },
+              }, t);
             }
             saved++;
             continue;
@@ -830,8 +904,20 @@ export const saveHistoricalGrades = async (req: Request, res: Response) => {
             where: { id: existingHist.id },
             transaction: t,
           });
+          await logGradeChange({
+            entityType: 'historical_grade',
+            entityId: existingHist.id,
+            previousScore: existingHist.finalScore != null ? Number(existingHist.finalScore) : null,
+            newScore: normalizedScore,
+            previousStatus: existingHist.status || null,
+            newStatus: status,
+            gradeType: gradeType || 'regular',
+            editedBy: userId,
+            editorRole: 'control_estudios',
+            metadata: { personId, gradeId, subjectId, schoolPeriodId, subjectName },
+          }, t);
         } else {
-          await HistoricalGrade.create({
+          const newHist = await HistoricalGrade.create({
             personId,
             gradeId,
             subjectId,
@@ -844,6 +930,18 @@ export const saveHistoricalGrades = async (req: Request, res: Response) => {
             subjectName: subjectName || null,
             createdBy: userId,
           }, { transaction: t });
+          await logGradeChange({
+            entityType: 'historical_grade',
+            entityId: newHist.id,
+            previousScore: null,
+            newScore: normalizedScore,
+            previousStatus: null,
+            newStatus: status,
+            gradeType: gradeType || 'regular',
+            editedBy: userId,
+            editorRole: 'control_estudios',
+            metadata: { personId, gradeId, subjectId, schoolPeriodId, subjectName },
+          }, t);
         }
         saved++;
       } catch (err: any) {

@@ -4,6 +4,7 @@ import { fieldExpr, quoteQualified } from '@/services/studentSortService';
 import {
   GradeEditPermission,
   GradeEditAudit,
+  GradeChangeLog,
   User,
   Person,
   SchoolPeriod,
@@ -347,5 +348,50 @@ export const getAuditLog = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error fetching audit log:', error);
     res.status(500).json({ message: 'Error al obtener historial de auditoría' });
+  }
+};
+
+/**
+ * GET /api/grade-edit-permissions/unified-audit
+ * Unified audit log from GradeChangeLog — covers all grade types.
+ * Only Master and Administrador can access.
+ * Filters: entityType, gradeType, editedBy, dateFrom, dateTo
+ */
+export const getUnifiedAuditLog = async (req: Request, res: Response) => {
+  try {
+    const sessionUser = (req.session as any).user;
+    if (!sessionUser) {
+      return res.status(401).json({ message: 'No autorizado' });
+    }
+    if (!hasRole(sessionUser, ['Master', 'Administrador'])) {
+      return res.status(403).json({ message: 'Solo Master y Administrador pueden ver el historial de auditoría' });
+    }
+
+    const { entityType, gradeType, editedBy, dateFrom, dateTo, limit = 200, offset = 0 } = req.query;
+
+    const where: any = {};
+    if (entityType && typeof entityType === 'string') where.entityType = entityType;
+    if (gradeType && typeof gradeType === 'string') where.gradeType = gradeType;
+    if (editedBy && !isNaN(Number(editedBy))) where.editedBy = Number(editedBy);
+    if (dateFrom || dateTo) {
+      where.editedAt = {};
+      if (dateFrom) where.editedAt[Op.gte] = new Date(String(dateFrom));
+      if (dateTo) where.editedAt[Op.lte] = new Date(String(dateTo) + 'T23:59:59');
+    }
+
+    const logs = await GradeChangeLog.findAll({
+      where,
+      include: [
+        { model: User, as: 'editor', include: [{ model: Person, as: 'person' }] },
+      ],
+      order: [['editedAt', 'DESC']],
+      limit: Number(limit),
+      offset: Number(offset),
+    });
+
+    res.json(logs);
+  } catch (error) {
+    console.error('[getUnifiedAuditLog] Error:', error);
+    res.status(500).json({ message: 'Error al obtener auditoría unificada' });
   }
 };

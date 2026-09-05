@@ -27,6 +27,7 @@ import { sortInscriptions } from '@/services/studentSortService';
 import { getSubjectOrderMap } from '@/services/subjectOrderService';
 import { roundFinalGrade, MIN_FINAL_GRADE, resolveGradeStatus } from '@/services/gradeEvaluationService';
 import { AcademicContextError, getInscriptionAcademicContext, resolveAcademicContext } from '@/services/academicContextService';
+import { logGradeChange } from '@/services/gradeChangeLogService';
 
 /* ------------------------------------------------------------------ */
 /* Helpers                                                             */
@@ -980,19 +981,40 @@ export const saveMpQualification = async (req: Request, res: Response) => {
     });
 
     if (existing) {
+      const prevQScore = existing.score;
       await existing.update({
         score: rawScore,
         isAbsent: finalIsAbsent,
         ...qualificationContext,
       }, { transaction: t });
+      await logGradeChange({
+        entityType: 'qualification',
+        entityId: existing.id,
+        previousScore: prevQScore != null ? Number(prevQScore) : null,
+        newScore: rawScore,
+        editedBy: (req.session as any)?.user?.id,
+        editorRole: 'teacher',
+        gradeType: 'materia_pendiente',
+        metadata: { inscriptionSubjectId, evaluationPlanId, isAbsent: finalIsAbsent, mpQualification: true },
+      }, t);
     } else {
-      await Qualification.create({
+      const newQ = await Qualification.create({
         evaluationPlanId,
         inscriptionSubjectId,
         score: rawScore,
         isAbsent: finalIsAbsent,
         ...qualificationContext,
       }, { transaction: t });
+      await logGradeChange({
+        entityType: 'qualification',
+        entityId: newQ.id,
+        previousScore: null,
+        newScore: rawScore,
+        editedBy: (req.session as any)?.user?.id,
+        editorRole: 'teacher',
+        gradeType: 'materia_pendiente',
+        metadata: { inscriptionSubjectId, evaluationPlanId, isAbsent: finalIsAbsent, mpQualification: true },
+      }, t);
     }
 
     // For MP: if the student passes (score >= passing grade), mark as approved immediately
@@ -1018,6 +1040,8 @@ export const saveMpQualification = async (req: Request, res: Response) => {
         transaction: t,
       });
       if (existingMPGrade) {
+        const prevMpScore = existingMPGrade.finalScore;
+        const prevMpStatus = existingMPGrade.status;
         await existingMPGrade.update({
           finalScore: finalIsAbsent ? 0 : roundedScore,
           rawScore,
@@ -1027,8 +1051,20 @@ export const saveMpQualification = async (req: Request, res: Response) => {
           subjectId: academicContext.subjectId,
           gradeId: academicContext.gradeId,
         }, { transaction: t });
+        await logGradeChange({
+          entityType: 'subject_final_grade',
+          entityId: existingMPGrade.id,
+          previousScore: prevMpScore != null ? Number(prevMpScore) : null,
+          newScore: finalIsAbsent ? 0 : roundedScore,
+          previousStatus: prevMpStatus || null,
+          newStatus: status,
+          gradeType: 'materia_pendiente',
+          editedBy: (req.session as any)?.user?.id,
+          editorRole: 'teacher',
+          metadata: { inscriptionSubjectId, schoolPeriodId: academicContext.schoolPeriodId, subjectId: academicContext.subjectId, gradeId: academicContext.gradeId, isAbsent: finalIsAbsent, mpFinalGrade: true },
+        }, t);
       } else {
-        await SubjectFinalGrade.create({
+        const newMpGrade = await SubjectFinalGrade.create({
           inscriptionSubjectId,
           finalScore: finalIsAbsent ? 0 : roundedScore,
           rawScore,
@@ -1039,6 +1075,18 @@ export const saveMpQualification = async (req: Request, res: Response) => {
           subjectId: academicContext.subjectId,
           gradeId: academicContext.gradeId,
         }, { transaction: t });
+        await logGradeChange({
+          entityType: 'subject_final_grade',
+          entityId: newMpGrade.id,
+          previousScore: null,
+          newScore: finalIsAbsent ? 0 : roundedScore,
+          previousStatus: null,
+          newStatus: status,
+          gradeType: 'materia_pendiente',
+          editedBy: (req.session as any)?.user?.id,
+          editorRole: 'teacher',
+          metadata: { inscriptionSubjectId, schoolPeriodId: academicContext.schoolPeriodId, subjectId: academicContext.subjectId, gradeId: academicContext.gradeId, isAbsent: finalIsAbsent, mpFinalGrade: true },
+        }, t);
       }
 
       // Update PendingSubject status
@@ -1513,10 +1561,21 @@ export const saveMpEncounterScore = async (req: Request, res: Response) => {
 
     // --- Case: clearing the score (score === null) ---
     if (score === null) {
+      const prevEncScore = encounter.score;
       await encounter.update({
         score: null,
         isAbsent: false,
       }, { transaction: t });
+      await logGradeChange({
+        entityType: 'pending_subject_encounter',
+        entityId: encounter.id,
+        previousScore: prevEncScore != null ? Number(prevEncScore) : null,
+        newScore: null,
+        editedBy: (req.session as any)?.user?.id,
+        editorRole: 'teacher',
+        gradeType: 'materia_pendiente',
+        metadata: { pendingSubjectId, encounterNumber, cleared: true },
+      }, t);
 
       // If the student was approved in THIS encounter, revert to pendiente
       if (pending.status === 'aprobada') {
@@ -1563,10 +1622,21 @@ export const saveMpEncounterScore = async (req: Request, res: Response) => {
       : new Date();
 
     // Save encounter score
+    const prevEncScore = encounter.score;
     await encounter.update({
       score: finalIsAbsent ? 0 : roundedScore,
       isAbsent: finalIsAbsent,
     }, { transaction: t });
+    await logGradeChange({
+      entityType: 'pending_subject_encounter',
+      entityId: encounter.id,
+      previousScore: prevEncScore != null ? Number(prevEncScore) : null,
+      newScore: finalIsAbsent ? 0 : roundedScore,
+      editedBy: (req.session as any)?.user?.id,
+      editorRole: 'teacher',
+      gradeType: 'materia_pendiente',
+      metadata: { pendingSubjectId, encounterNumber, isAbsent: finalIsAbsent, status: newStatus },
+    }, t);
 
     if (newStatus === 'aprobada') {
       // Mark PendingSubject as approved

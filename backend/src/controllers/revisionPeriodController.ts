@@ -6,6 +6,7 @@ import path from 'path';
 import sequelize from '@/config/database';
 import { RevisionPeriodService } from '@/services/revisionPeriodService';
 import { sortInscriptions } from '@/services/studentSortService';
+import { logGradeChange } from '@/services/gradeChangeLogService';
 import {
   getSubjectOrderMapByGradeAndPeriod,
   sortSubjectsByOrder,
@@ -547,6 +548,9 @@ export const saveRevisionGrade = async (req: Request, res: Response) => {
     const numericScore = absentFlag ? 0 : submittedScore;
     const isApproved = numericScore != null && numericScore >= revisionPeriod.passingGrade;
 
+    const previousRevScore = revision.score;
+    const previousRevStatus = revision.status;
+
     await revision.update({
       score: numericScore,
       status: numericScore != null ? (isApproved ? 'approved' : 'failed') : 'pending',
@@ -554,6 +558,19 @@ export const saveRevisionGrade = async (req: Request, res: Response) => {
       gradedBy: userId,
       gradedAt: new Date(),
     }, { transaction: t });
+
+    await logGradeChange({
+      entityType: 'inscription_subject_revision',
+      entityId: revision.id,
+      previousScore: previousRevScore != null ? Number(previousRevScore) : null,
+      newScore: numericScore,
+      previousStatus: previousRevStatus || null,
+      newStatus: revision.status,
+      gradeType: 'revision',
+      editedBy: (req.session as any)?.user?.id,
+      editorRole: 'teacher',
+      metadata: { revisionPeriodId: revisionPeriod.id, inscriptionSubjectId: revision.inscriptionSubjectId, opportunity: revision.opportunity, gradedByPersonId: userId },
+    }, t);
 
     // Re-grading an opportunity invalidates every later attempt, so all
     // subsequent opportunities are cleared back to pending.
@@ -688,6 +705,9 @@ export const bulkSaveRevisionGrades = async (req: Request, res: Response) => {
       const numericScore = absentFlag ? 0 : submittedScore;
       const isApproved = numericScore != null && numericScore >= revisionPeriod.passingGrade;
 
+      const previousBulkScore = revision.score;
+      const previousBulkStatus = revision.status;
+
       await revision.update({
         score: numericScore,
         status: numericScore != null ? (isApproved ? 'approved' : 'failed') : 'pending',
@@ -695,6 +715,19 @@ export const bulkSaveRevisionGrades = async (req: Request, res: Response) => {
         gradedBy: userId,
         gradedAt: new Date(),
       }, { transaction: t });
+
+      await logGradeChange({
+        entityType: 'inscription_subject_revision',
+        entityId: revision.id,
+        previousScore: previousBulkScore != null ? Number(previousBulkScore) : null,
+        newScore: numericScore,
+        previousStatus: previousBulkStatus || null,
+        newStatus: revision.status,
+        gradeType: 'revision',
+        editedBy: (req.session as any)?.user?.id,
+        editorRole: 'teacher',
+        metadata: { revisionPeriodId: revisionPeriod.id, inscriptionSubjectId: revision.inscriptionSubjectId, opportunity: revision.opportunity, gradedByPersonId: userId, bulk: true },
+      }, t);
 
       // Re-grading an opportunity invalidates every later attempt, so all
       // subsequent opportunities are cleared back to pending.
@@ -1026,17 +1059,19 @@ export const overrideRevisionGrade = async (req: Request, res: Response) => {
     }
 
     // Record the audit trail
-    await RevisionGradeEditAudit.create({
-      revisionId: revision.id,
-      editedBy: userId,
+    await logGradeChange({
+      entityType: 'inscription_subject_revision',
+      entityId: revision.id,
       previousScore: previousScore != null ? Number(previousScore) : null,
       newScore: numericScore,
-      previousStatus: previousStatus as 'pending' | 'approved' | 'failed',
-      newStatus: newStatus as 'pending' | 'approved' | 'failed',
-      previousIsAbsent: !!previousIsAbsent,
-      newIsAbsent: absentFlag,
+      previousStatus: previousStatus || null,
+      newStatus: newStatus,
+      gradeType: 'revision',
+      editedBy: (req.session as any)?.user?.id,
+      editorRole: 'control_estudios',
       reason: reason?.trim() || null,
-    }, { transaction: t });
+      metadata: { revisionPeriodId: revisionPeriod.id, inscriptionSubjectId: revision.inscriptionSubjectId, opportunity: revision.opportunity, gradedByPersonId: userId, previousIsAbsent: !!previousIsAbsent, newIsAbsent: absentFlag, extraordinary: true },
+    }, t);
 
     await t.commit();
     return res.json({ message: 'Nota modificada correctamente', revision });

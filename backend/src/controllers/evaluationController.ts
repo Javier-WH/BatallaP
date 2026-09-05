@@ -48,6 +48,7 @@ import { resolveGradeStatus, MIN_FINAL_GRADE, roundFinalGrade } from '@/services
 import { TermSectionClosureService } from '@/services/termSectionClosureService';
 import { TermGradeSyncService } from '@/services/termGradeSyncService';
 import { sortInscriptions, fieldExpr, quoteQualified } from '@/services/studentSortService';
+import { logGradeChange } from '@/services/gradeChangeLogService';
 
 export const getMyAssignments = async (req: Request, res: Response) => {
   try {
@@ -667,15 +668,16 @@ export const saveQualification = async (req: Request, res: Response) => {
       if (sessionUser && score !== undefined && Number(previousScore) !== Number(score)) {
         const userRoles: string[] = sessionUser.roles || [];
         const editorContext = userRoles.includes('Control de Estudios') ? 'control_estudios' : 'teacher';
-        await QualificationAudit.create({
-          qualificationId: qualification.id,
+        await logGradeChange({
+          entityType: 'qualification',
+          entityId: qualification.id,
+          previousScore: previousScore != null ? Number(previousScore) : null,
+          newScore: score != null ? Number(score) : null,
           editedBy: sessionUser.id,
-          previousScore,
-          newScore: score,
-          comment: typeof req.body.comment === 'string' && req.body.comment.trim() !== '' ? req.body.comment.trim() : null,
-          editedAt: new Date(),
-          editorContext,
-        }, { transaction: t });
+          editorRole: editorContext,
+          reason: typeof req.body.comment === 'string' && req.body.comment.trim() !== '' ? req.body.comment.trim() : null,
+          metadata: { inscriptionSubjectId: qualification.inscriptionSubjectId, evaluationPlanId: qualification.evaluationPlanId },
+        }, t);
       }
     }
 
@@ -892,19 +894,19 @@ export const updateFinalGrade = async (req: Request, res: Response) => {
         console.log(`[updateFinalGrade] Grade updated successfully, new value: ${existingGrade.finalScore}`);
 
         // Create audit record
-        await GradeEditAudit.create({
-          subjectFinalGradeId: existingGrade.id,
-          permissionId: permission.id,
-          editedBy: sessionUser.id,
-          previousScore,
-          newScore: finalScore,
-          previousStatus,
+        await logGradeChange({
+          entityType: 'subject_final_grade',
+          entityId: existingGrade.id,
+          previousScore: previousScore != null ? Number(previousScore) : null,
+          newScore: finalScore != null ? Number(finalScore) : null,
+          previousStatus: previousStatus || null,
           newStatus: existingGrade.status,
+          gradeType: existingGrade.gradeType || null,
+          editedBy: sessionUser.id,
+          editorRole: 'control_estudios',
           reason,
-          editedAt: new Date(),
           actCode,
-          previousPlantelId,
-          newPlantelId: existingGrade.plantelId
+          metadata: { permissionId: permission.id, previousPlantelId, newPlantelId: existingGrade.plantelId, inscriptionSubjectId: existingGrade.inscriptionSubjectId },
         });
 
         return res.json({ message: 'Nota final actualizada correctamente', finalGrade: existingGrade });
@@ -973,19 +975,19 @@ export const updateFinalGrade = async (req: Request, res: Response) => {
       });
 
       // Create audit record
-      await GradeEditAudit.create({
-        subjectFinalGradeId: newFinalGrade.id,
-        permissionId: permission.id,
-        editedBy: sessionUser.id,
+      await logGradeChange({
+        entityType: 'subject_final_grade',
+        entityId: newFinalGrade.id,
         previousScore: null,
-        newScore: finalScore,
+        newScore: finalScore != null ? Number(finalScore) : null,
         previousStatus: null,
         newStatus: newFinalGrade.status,
+        gradeType: newFinalGrade.gradeType || null,
+        editedBy: sessionUser.id,
+        editorRole: 'control_estudios',
         reason,
-        editedAt: new Date(),
         actCode,
-        previousPlantelId: null,
-        newPlantelId: newFinalGrade.plantelId
+        metadata: { permissionId: permission.id, newPlantelId: newFinalGrade.plantelId, inscriptionSubjectId: newFinalGrade.inscriptionSubjectId },
       });
 
       return res.json({ message: 'Nota final creada correctamente', finalGrade: newFinalGrade });
@@ -1065,19 +1067,19 @@ export const updateFinalGrade = async (req: Request, res: Response) => {
 
     // Create audit record
     console.log('[updateFinalGrade] Creating audit record');
-    await GradeEditAudit.create({
-      subjectFinalGradeId: finalGrade.id,
-      permissionId: permission.id,
-      editedBy: sessionUser.id,
-      previousScore,
-      newScore: finalGrade.finalScore,
-      previousStatus,
+    await logGradeChange({
+      entityType: 'subject_final_grade',
+      entityId: finalGrade.id,
+      previousScore: previousScore != null ? Number(previousScore) : null,
+      newScore: finalGrade.finalScore != null ? Number(finalGrade.finalScore) : null,
+      previousStatus: previousStatus || null,
       newStatus: finalGrade.status,
+      gradeType: finalGrade.gradeType || null,
+      editedBy: sessionUser.id,
+      editorRole: 'control_estudios',
       reason,
-      editedAt: new Date(),
       actCode,
-      previousPlantelId,
-      newPlantelId: finalGrade.plantelId
+      metadata: { permissionId: permission.id, previousPlantelId, newPlantelId: finalGrade.plantelId, inscriptionSubjectId: finalGrade.inscriptionSubjectId },
     });
 
     console.log('[updateFinalGrade] Audit record created, sending response');

@@ -90,6 +90,31 @@ export interface GradeEditAudit {
   };
 }
 
+export interface GradeChangeLogEntry {
+  id: number;
+  entityType: 'qualification' | 'subject_final_grade' | 'historical_grade' | 'inscription_subject_revision' | 'pending_subject_encounter';
+  entityId: number;
+  previousScore: number | null;
+  newScore: number | null;
+  previousStatus: string | null;
+  newStatus: string | null;
+  gradeType: string | null;
+  editedBy: number;
+  editorRole: string | null;
+  reason: string | null;
+  actCode: string | null;
+  metadata: Record<string, any> | null;
+  editedAt: string;
+  editor?: {
+    id: number;
+    username: string;
+    person?: {
+      firstName: string;
+      lastName: string;
+    };
+  };
+}
+
 export const gradeEditPermissionService = {
   createPermission: async (data: {
     schoolPeriodId?: number;
@@ -136,6 +161,19 @@ export const gradeEditPermissionService = {
 
   getQualificationAudits: async () => {
     const response = await api.get('/evaluation/all-qualification-audits');
+    return response.data;
+  },
+
+  getUnifiedAuditLog: async (params?: {
+    entityType?: string;
+    gradeType?: string;
+    editedBy?: number;
+    dateFrom?: string;
+    dateTo?: string;
+    limit?: number;
+    offset?: number;
+  }) => {
+    const response = await api.get('/grade-edit-permissions/unified-audit', { params });
     return response.data;
   }
 };

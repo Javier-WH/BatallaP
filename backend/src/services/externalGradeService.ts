@@ -10,6 +10,7 @@ import {
   SubjectFinalGrade,
 } from '@/models/index';
 import sequelize from '@/config/database';
+import { logGradeChange } from '@/services/gradeChangeLogService';
 
 export type ExternalGradeType = 'transferencia' | 'equivalencia';
 export type ExternalGradeStatus = 'aprobada' | 'reprobada';
@@ -42,6 +43,7 @@ export interface UpsertExternalGradeInput {
   issuedAt: Date;
   gradeType: ExternalGradeType;
   observations?: string | null;
+  editedBy?: number;
 }
 
 export interface ExternalGradeServiceResult {
@@ -215,6 +217,8 @@ export const upsertExternalGrade = async (
   });
 
   if (existing) {
+    const prevScore = existing.finalScore;
+    const prevStatus = existing.status;
     // Only allow editing external grades; never downgrade a regular grade to external here.
     await existing.update(
       {
@@ -228,10 +232,24 @@ export const upsertExternalGrade = async (
       },
       { transaction }
     );
+    if (input.editedBy) {
+      await logGradeChange({
+        entityType: 'subject_final_grade',
+        entityId: existing.id,
+        previousScore: prevScore != null ? Number(prevScore) : null,
+        newScore: input.finalScore,
+        previousStatus: prevStatus || null,
+        newStatus: input.status,
+        gradeType: input.gradeType,
+        editedBy: input.editedBy,
+        editorRole: 'control_estudios',
+        metadata: { inscriptionSubjectId: insSub.id, personId: inscription.personId, subjectId: input.subjectId, schoolPeriodId: inscription.schoolPeriodId, plantelId: input.plantelId, externalGrade: true },
+      }, transaction);
+    }
     return existing;
   }
 
-  return SubjectFinalGrade.create(
+  const newGrade = await SubjectFinalGrade.create(
     {
       inscriptionSubjectId: insSub.id,
       finalScore: input.finalScore,
@@ -247,6 +265,21 @@ export const upsertExternalGrade = async (
     },
     { transaction }
   );
+  if (input.editedBy) {
+    await logGradeChange({
+      entityType: 'subject_final_grade',
+      entityId: newGrade.id,
+      previousScore: null,
+      newScore: input.finalScore,
+      previousStatus: null,
+      newStatus: input.status,
+      gradeType: input.gradeType,
+      editedBy: input.editedBy,
+      editorRole: 'control_estudios',
+      metadata: { inscriptionSubjectId: insSub.id, personId: inscription.personId, subjectId: input.subjectId, schoolPeriodId: inscription.schoolPeriodId, plantelId: input.plantelId, externalGrade: true },
+    }, transaction);
+  }
+  return newGrade;
 };
 
 /**

@@ -159,6 +159,7 @@ import ScheduleEntry from './ScheduleEntry';
 import ScheduleException from './ScheduleException';
 import ClassroomAssignment from './ClassroomAssignment';
 import RoomBooking from './RoomBooking';
+import GradeChangeLog from './GradeChangeLog';
 
 
 // ... (Existing User/Person/Role/Contact associations) ...
@@ -582,6 +583,10 @@ Charge.belongsTo(SellableItem, { foreignKey: 'sellableItemId', as: 'sellableItem
 SellableItem.hasMany(Payment, { foreignKey: 'sellableItemId', as: 'payments' });
 Payment.belongsTo(SellableItem, { foreignKey: 'sellableItemId', as: 'sellableItem' });
 
+// Grade change log (unified audit trail)
+GradeChangeLog.belongsTo(User, { foreignKey: 'editedBy', as: 'editor' });
+User.hasMany(GradeChangeLog, { foreignKey: 'editedBy', as: 'gradeChanges' });
+
 export {
   User,
   Person,
@@ -665,5 +670,6 @@ export {
   ScheduleEntry,
   ScheduleException,
   ClassroomAssignment,
-  RoomBooking
+  RoomBooking,
+  GradeChangeLog
 };

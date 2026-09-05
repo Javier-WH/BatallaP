@@ -4,7 +4,8 @@ import {
   getPermissions,
   revokePermission,
   checkPermission,
-  getAuditLog
+  getAuditLog,
+  getUnifiedAuditLog
 } from '@/controllers/gradeEditPermissionController';
 
 const router = Router();
@@ -23,7 +24,10 @@ router.delete('/:id', revokePermission);
 // Check if user has permission for a specific period (Control de Estudios)
 router.get('/check/:schoolPeriodId', checkPermission);
 
-// Get audit log (Master/Admin only)
+// Get audit log (Master/Admin only) — legacy, per-final-grade
 router.get('/audit', getAuditLog);
+
+// Unified audit log (Master/Admin only) — all grade types
+router.get('/unified-audit', getUnifiedAuditLog);
 
 export default router;
