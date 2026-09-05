@@ -448,25 +448,35 @@ export default function TeacherAvailability() {
     const result: Record<string, number> = {};
     DAYS.forEach(day => {
       sections.forEach(sec => {
-        const nonBreakPeriods = sec.periods.filter(p => !p.break);
-        for (let i = 0; i < nonBreakPeriods.length; i++) {
-          const p = nonBreakPeriods[i];
+        // Map non-break periods to their indices in the original periods array
+        // so we can detect breaks between consecutive non-break periods.
+        const nonBreakWithIdx = sec.periods
+          .map((p, idx) => ({ p, idx }))
+          .filter(({ p }) => !p.break);
+
+        for (let i = 0; i < nonBreakWithIdx.length; i++) {
+          const p = nonBreakWithIdx[i].p;
           const key = `${day}|${p.id}`;
           const sig = cellSig(scheduleEntriesMap[key]);
           if (!sig) { result[key] = 1; continue; }
           let span = 1;
-          for (let j = i + 1; j < nonBreakPeriods.length; j++) {
-            const nextKey = `${day}|${nonBreakPeriods[j].id}`;
-            if (sig === cellSig(scheduleEntriesMap[nextKey])) {
-              span++;
-            } else {
-              break;
-            }
+          for (let j = i + 1; j < nonBreakWithIdx.length; j++) {
+            const nextKey = `${day}|${nonBreakWithIdx[j].p.id}`;
+            if (sig !== cellSig(scheduleEntriesMap[nextKey])) break;
+            // Don't merge across break rows — a rowSpan that crosses a
+            // colSpan break row corrupts the table layout.
+            const prevIdx = nonBreakWithIdx[j - 1].idx;
+            const currIdx = nonBreakWithIdx[j].idx;
+            const hasBreakBetween = sec.periods
+              .slice(prevIdx + 1, currIdx)
+              .some(p => p.break);
+            if (hasBreakBetween) break;
+            span++;
           }
           result[key] = span;
           // Mark covered cells
           for (let j = i + 1; j < i + span; j++) {
-            result[`${day}|${nonBreakPeriods[j].id}`] = 0;
+            result[`${day}|${nonBreakWithIdx[j].p.id}`] = 0;
           }
           i += span - 1;
         }
