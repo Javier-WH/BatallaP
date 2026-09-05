@@ -1971,7 +1971,7 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
     const leftInfo: Array<[number, string, string, boolean]> = [
       [5, 'Docente:', teacherName || '—', false],
       [6, 'Asignatura:', subject.name, false],
-      [7, 'Sección:', `${grade.name} ${section.name}`, true]
+      [7, 'Sección:', `${grade.name} ${section.name}`.toUpperCase(), true]
     ];
     const thinSide = { style: 'thin' as const };
     const noSide = { style: 'thin' as const, color: { argb: 'FFFFFFFF' } };

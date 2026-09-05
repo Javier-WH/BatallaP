@@ -949,7 +949,6 @@ export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<Matricul
       headerName: 'Sección',
       width: 120,
       editable: true,
-      singleClickEdit: true,
       sortable: true,
       resizable: true,
       cellEditor: AutoOpenSelectEditor,
