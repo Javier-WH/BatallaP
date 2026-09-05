@@ -242,6 +242,37 @@
 /* Grading table: Estudiante column is sticky (left:0) so it stays visible
    when scrolling horizontally. # and Cédula scroll away naturally. */
 
+/* Sticky columns must have opaque backgrounds + high z-index so scrolling
+   cells (with hover/zebra highlights) don't paint over the sticky content. */
+
+/* Native grading table — Estudiante column */
+.grading-col-student {
+  background-color: var(--color-content-bg) !important;
+  z-index: 5 !important;
+  position: sticky !important;
+  left: 0 !important;
+}
+.grading-col-student.grading-col-zebra {
+  background-color: color-mix(in srgb, var(--color-text-main) 2%, var(--color-content-bg)) !important;
+}
+tr.grading-row:hover > .grading-col-student,
+tr.grading-row:focus-within > .grading-col-student {
+  background-color: color-mix(in srgb, var(--color-accent) 8%, var(--color-content-bg)) !important;
+}
+
+/* Ant Design fixed-left column — same treatment */
+.ant-table-cell-fix-left {
+  background-color: var(--color-content-bg) !important;
+  z-index: 3 !important;
+}
+.ant-table-row-zebra .ant-table-cell-fix-left {
+  background-color: color-mix(in srgb, var(--color-text-main) 2.5%, var(--color-content-bg)) !important;
+}
+.ant-table-tbody > tr.ant-table-row:hover > .ant-table-cell-fix-left,
+.ant-table-tbody > tr.ant-table-row-hover > .ant-table-cell-fix-left {
+  background-color: color-mix(in srgb, var(--color-accent) 8%, var(--color-content-bg)) !important;
+}
+
 .grading-cell .ant-input-number-input {
   padding: 0 !important;
 }

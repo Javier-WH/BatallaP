@@ -2491,7 +2491,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                       <tr>
                         <th className="grading-col-num" style={{ padding: '4px 6px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', backgroundColor: 'color-mix(in srgb, var(--color-text-main) 6%, var(--color-content-bg))', fontWeight: 700, fontSize: 11, whiteSpace: 'nowrap', color: 'var(--color-text-main)', width: 36 }}>#</th>
                         <th className="grading-col-doc" style={{ padding: '4px 6px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', backgroundColor: 'color-mix(in srgb, var(--color-text-main) 6%, var(--color-content-bg))', fontWeight: 700, fontSize: 11, whiteSpace: 'nowrap', color: 'var(--color-text-main)' }}>Cédula</th>
-                        <th className="grading-col-student" style={{ padding: '4px 6px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'left', backgroundColor: 'color-mix(in srgb, var(--color-text-main) 6%, var(--color-content-bg))', fontWeight: 700, fontSize: 11, whiteSpace: 'nowrap', color: 'var(--color-text-main)', position: 'sticky', left: 0, zIndex: 11, boxShadow: '2px 0 4px rgba(15,23,42,0.06)' }}>Estudiante</th>
+                        <th className="grading-col-student" style={{ padding: '4px 6px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'left', backgroundColor: 'color-mix(in srgb, var(--color-text-main) 6%, var(--color-content-bg))', fontWeight: 700, fontSize: 11, whiteSpace: 'nowrap', color: 'var(--color-text-main)', position: 'sticky', left: 0, zIndex: 15, boxShadow: '2px 0 4px rgba(15,23,42,0.06)' }}>Estudiante</th>
                         {evaluationPlan.map((item, colIndex) => {
                           const stats = evalStats.get(item.id);
                           const hasRemedial = (stats?.failedPct ?? 0) >= remedialFailurePercentage;
@@ -2552,7 +2552,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                               <td className="grading-col-doc" style={{ padding: '2px 4px', border: '1px solid var(--color-text-muted)', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-content-bg)' : 'color-mix(in srgb, var(--color-text-main) 2%, var(--color-content-bg))', fontSize: 11, fontWeight: 500 }}>
                                 {enrollment.student?.document || '-'}
                               </td>
-                              <td className="grading-col-student" style={{ padding: '2px 6px', border: '1px solid var(--color-text-muted)', textAlign: 'left', background: rowIndex % 2 === 0 ? 'var(--color-content-bg)' : 'color-mix(in srgb, var(--color-text-main) 2%, var(--color-content-bg))', fontSize: 12, position: 'sticky', left: 0, zIndex: 2, boxShadow: '2px 0 4px rgba(15,23,42,0.06)' }}>
+                              <td className={`grading-col-student${rowIndex % 2 !== 0 ? ' grading-col-zebra' : ''}`} style={{ padding: '2px 6px', border: '1px solid var(--color-text-muted)', textAlign: 'left', fontSize: 12, position: 'sticky', left: 0, zIndex: 5, boxShadow: '2px 0 4px rgba(15,23,42,0.06)' }}>
                                 {enrollment.student?.lastName}, {enrollment.student?.firstName}
                               </td>
                               {evaluationPlan.map((item, colIndex) => {
