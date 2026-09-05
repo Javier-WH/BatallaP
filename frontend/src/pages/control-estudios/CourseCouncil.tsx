@@ -1840,7 +1840,7 @@ const CourseCouncil: React.FC = () => {
             .council-table-premium .row-even {
               background-color: #fafbfc;
             }
-            .council-table-premium .ant-table-row:hover > td {
+            .council-table-premium .ant-table-row:hover > td:not(.ant-table-cell-fix) {
               background-color: #f0f7ff !important;
             }
             .council-table-premium .ant-table-cell {
@@ -1855,21 +1855,19 @@ const CourseCouncil: React.FC = () => {
               padding-left: 2px !important;
               padding-right: 2px !important;
             }
-            /* Fixed columns: solid background + high z-index so scrollable
-               columns behind stay hidden when row is hovered.
-               Use !important and high-specificity selectors to override
-               Ant Design's built-in fixed cell background. */
-            .council-table-premium .ant-table-tbody .ant-table-cell-fix {
+            /* Fixed columns: opaque background + z-index so scrollable cells
+               behind stay hidden when row is hovered/zebra.
+               Ant Design v6 uses .ant-table-cell-fix as the base class. */
+            .council-table-premium .ant-table-tbody tr.row-odd > .ant-table-cell-fix {
               z-index: 3 !important;
               background-color: #ffffff !important;
             }
-            .council-table-premium .ant-table-tbody tr.row-even .ant-table-cell-fix {
+            .council-table-premium .ant-table-tbody tr.row-even > .ant-table-cell-fix {
+              z-index: 3 !important;
               background-color: #fafbfc !important;
             }
-            .council-table-premium .ant-table-tbody tr.row-odd .ant-table-cell-fix {
-              background-color: #ffffff !important;
-            }
-            .council-table-premium .ant-table-tbody tr:hover .ant-table-cell-fix {
+            .council-table-premium .ant-table-tbody tr.ant-table-row:hover > .ant-table-cell-fix {
+              z-index: 3 !important;
               background-color: #f0f7ff !important;
             }
             .council-table-premium .ant-table-thead .ant-table-cell-fix {

@@ -203,8 +203,8 @@
   color: var(--color-text-main) !important;
 }
 
-.ant-table-tbody > tr.ant-table-row:hover > td,
-.ant-table-tbody > tr.ant-table-row-hover > td {
+.ant-table-tbody > tr.ant-table-row:hover > td:not(.ant-table-cell-fix),
+.ant-table-tbody > tr.ant-table-row-hover > td:not(.ant-table-cell-fix) {
   background-color: color-mix(in srgb, var(--color-accent) 6%, transparent) !important;
 }
 
@@ -220,7 +220,7 @@
   border-color: rgba(15, 23, 42, 0.08) !important;
 }
 
-.ant-table-bordered .ant-table-tbody > tr.ant-table-row:hover > td {
+.ant-table-bordered .ant-table-tbody > tr.ant-table-row:hover > td:not(.ant-table-cell-fix) {
   background-color: color-mix(in srgb, var(--color-accent) 6%, transparent) !important;
 }
 
@@ -260,16 +260,18 @@ tr.grading-row:focus-within > .grading-col-student {
   background-color: color-mix(in srgb, var(--color-accent) 8%, var(--color-content-bg)) !important;
 }
 
-/* Ant Design fixed-left column — same treatment */
-.ant-table-cell-fix-left {
+/* Ant Design fixed columns: opaque background + z-index so scrolling cells
+   (with hover/zebra) don't paint over the sticky content.
+   Ant Design v6 uses .ant-table-cell-fix as the base class. */
+.ant-table-tbody > tr > .ant-table-cell-fix {
   background-color: var(--color-content-bg) !important;
   z-index: 3 !important;
 }
-.ant-table-row-zebra .ant-table-cell-fix-left {
+.ant-table-tbody > tr.ant-table-row-zebra > .ant-table-cell-fix {
   background-color: color-mix(in srgb, var(--color-text-main) 2.5%, var(--color-content-bg)) !important;
 }
-.ant-table-tbody > tr.ant-table-row:hover > .ant-table-cell-fix-left,
-.ant-table-tbody > tr.ant-table-row-hover > .ant-table-cell-fix-left {
+.ant-table-tbody > tr.ant-table-row:hover > .ant-table-cell-fix,
+.ant-table-tbody > tr.ant-table-row-hover > .ant-table-cell-fix {
   background-color: color-mix(in srgb, var(--color-accent) 8%, var(--color-content-bg)) !important;
 }
 
