@@ -254,6 +254,22 @@ export const getHistoricalGradesBySection = async (req: Request, res: Response) 
       ],
     });
 
+    // 5b. Compute the current grade order for each student based on their
+    //     regular (non-MP) inscription in the active period. This is used by
+    //     the frontend to hide and lock grade columns that are beyond the
+    //     student's current grade.
+    const currentGradeOrderMap = new Map<number, number>();
+    for (const ins of allInscriptionsRaw as any[]) {
+      if (ins.schoolPeriodId !== periodId) continue;
+      const secName = (ins.section?.name || '').toUpperCase();
+      if (secName === 'MATERIA PENDIENTE') continue;
+      const order = ins.grade?.order ?? 0;
+      const pid = ins.personId;
+      if (!currentGradeOrderMap.has(pid) || order > currentGradeOrderMap.get(pid)!) {
+        currentGradeOrderMap.set(pid, order);
+      }
+    }
+
     const allInscriptionsForStudents = (typeFilter === 'materia_pendiente' || isConsolidated)
       ? allInscriptionsRaw  // include MP inscriptions when filtering by materia_pendiente or consolidated
       : allInscriptionsRaw.filter((ins: any) =>
@@ -466,6 +482,7 @@ export const getHistoricalGradesBySection = async (req: Request, res: Response) 
       grades: gradesMap,
       planteles: planteles.map((p: any) => ({ id: p.id, code: p.code, name: p.name })),
       personPlanteles: personPlantelesMap,
+      currentGradeOrder: Object.fromEntries(currentGradeOrderMap),
       allPeriods: allPeriods.map((p: any) => ({
         id: p.id,
         periodShort: periodShortMap.get(p.id) ?? null,

@@ -369,6 +369,7 @@ const HistoricalGradesBySection: React.FC = () => {
   const [, setActiveGradeOrder] = useState<number>(999);
   const [students, setStudents] = useState<Student[]>([]);
   const [years, setYears] = useState<YearCol[]>([]);
+  const [currentGradeOrder, setCurrentGradeOrder] = useState<Record<number, number>>({});
   const [planteles, setPlanteles] = useState<PlantelItem[]>([]);
   const [allPeriods, setAllPeriods] = useState<PeriodOption[]>([]);
   const [rows, setRows] = useState<RowData[]>([]);
@@ -468,6 +469,7 @@ const HistoricalGradesBySection: React.FC = () => {
       const rawPlanteles: PlantelItem[] = data.planteles || [];
       const rawAllPeriods: PeriodOption[] = data.allPeriods || [];
       const rawPersonPlanteles: Record<number, { plantelId: number | null; order: number; isSystem: boolean }[]> = data.personPlanteles || {};
+      const rawCurrentGradeOrder: Record<number, number> = data.currentGradeOrder || {};
 
       // Add the system institution as a virtual plantel (id -1) so it appears in the dropdown
       const plantelesWithSystem = [
@@ -478,6 +480,7 @@ const HistoricalGradesBySection: React.FC = () => {
       setStudents(rawStudents);
       setPlanteles(plantelesWithSystem);
       setAllPeriods(rawAllPeriods);
+      setCurrentGradeOrder(rawCurrentGradeOrder);
 
       // Show all years — the user needs to see and fill all grades (1ro–5to)
       // regardless of which section they're currently viewing.
@@ -1250,12 +1253,18 @@ const HistoricalGradesBySection: React.FC = () => {
                       </td>
 
                       {/* Subject cells + optional group subject name column */}
-                      {years.map(y => (
+                      {years.map(y => {
+                        const studentGradeOrder = currentGradeOrder[String(row.personId)] ?? currentGradeOrder[row.personId] ?? 999;
+                        const isFutureGrade = y.gradeOrder > studentGradeOrder;
+                        const futureBg = isFutureGrade ? '#E8E8E8' : undefined;
+                        const futureOpacity = isFutureGrade ? 0.5 : 1;
+                        return (
                         <React.Fragment key={`body-year-${y.schoolPeriodId}-${y.gradeId}`}>
                           {y.subjects.map((subj, si) => {
                             const cellKey = `g__${y.gradeId}__${subj.id}`;
                             const cell = row.cells[cellKey] || emptyCell();
                             const isSystem = cell.source === 'system';
+                            const isLocked = isSystem || consolidated || isFutureGrade;
                             const failing = cell.score !== '' && Number(cell.score) < maxGrade / 2;
                             const passing = cell.score !== '' && Number(cell.score) >= maxGrade / 2;
                             const statusMeta = STATUS_META[cell.status] || STATUS_META.F;
@@ -1271,7 +1280,7 @@ const HistoricalGradesBySection: React.FC = () => {
                                 <td style={{
                                   ...tdPlain(44),
                                   borderLeft: si === 0 ? `3px solid ${y.gradeColor || T.hairline}` : `2px solid ${y.gradeColor || T.hairline}`,
-                                  background: failing ? T.redBg : passing ? T.greenBg : isSystem ? '#F0F0F0' : 'transparent',
+                                  background: futureBg ?? (failing ? T.redBg : passing ? T.greenBg : isSystem ? '#F0F0F0' : 'transparent'),
                                 }}>
                                   <LocalInput
                                     type="number" min={0} max={maxGrade} step={1}
@@ -1292,12 +1301,12 @@ const HistoricalGradesBySection: React.FC = () => {
                                     onKeyDown={e => handleKeyDown(e, ri, scoreKey)}
                                     onPaste={e => handlePaste(e, ri, scoreKey)}
                                     placeholder="—"
-                                    readOnly={isSystem || consolidated}
-                                    style={{ ...cellInputStyle, textAlign: 'center', color: failing ? T.red : passing ? T.green : T.ink, fontWeight: 700, cursor: (isSystem || consolidated) ? 'default' : 'text' }}
+                                    readOnly={isLocked}
+                                    style={{ ...cellInputStyle, textAlign: 'center', color: failing ? T.red : passing ? T.green : T.ink, fontWeight: 700, cursor: isLocked ? 'default' : 'text', opacity: futureOpacity }}
                                   />
                                 </td>
                                 {/* Est. */}
-                                <td style={{ ...tdPlain(44), padding: 0 }}>
+                                <td style={{ ...tdPlain(44), padding: 0, background: futureBg }}>
                                   <select
                                     data-row={ri} data-field={statusKey}
                                     ref={registerRef(ri, statusKey) as any}
@@ -1305,19 +1314,19 @@ const HistoricalGradesBySection: React.FC = () => {
                                     onChange={e => updateCell(ri, statusKey, e.target.value)}
                                     onFocus={() => setActiveCell({ row: ri, field: statusKey })}
                                     onKeyDown={e => handleKeyDown(e, ri, statusKey)}
-                                    disabled={isSystem || consolidated}
+                                    disabled={isLocked}
                                     style={{
                                       ...cellInputStyle, fontWeight: 700, textAlign: 'center',
                                       color: statusMeta.color,
-                                      background: cell.status !== 'F' ? statusMeta.bg : 'transparent',
-                                      borderRadius: 3, cursor: (isSystem || consolidated) ? 'default' : 'pointer',
+                                      background: cell.status !== 'F' ? statusMeta.bg : (futureBg ?? 'transparent'),
+                                      borderRadius: 3, cursor: isLocked ? 'default' : 'pointer', opacity: futureOpacity,
                                     }}
                                   >
                                     {STATUS_KEYS.map(k => <option key={k} value={k}>{k}</option>)}
                                   </select>
                                 </td>
                                 {/* Fecha */}
-                                <td style={{ ...tdPlain(88) }}>
+                                <td style={{ ...tdPlain(88), background: futureBg }}>
                                   <LocalDatePicker
                                     data-row={ri} data-field={dateKey}
                                     registerRef={registerRef(ri, dateKey)}
@@ -1326,12 +1335,12 @@ const HistoricalGradesBySection: React.FC = () => {
                                     onFocus={() => setActiveCell({ row: ri, field: dateKey })}
                                     onKeyDown={e => handleKeyDown(e, ri, dateKey)}
                                     onPaste={e => handlePaste(e, ri, dateKey)}
-                                    readOnly={isSystem || consolidated}
-                                    style={{ ...cellInputStyle, cursor: (isSystem || consolidated) ? 'default' : 'text', width: '100%' }}
+                                    readOnly={isLocked}
+                                    style={{ ...cellInputStyle, cursor: isLocked ? 'default' : 'text', width: '100%', opacity: futureOpacity }}
                                   />
                                 </td>
                                 {/* Inst */}
-                                <td style={{ ...tdPlain(40) }}>
+                                <td style={{ ...tdPlain(40), background: futureBg }}>
                                   <LocalInput
                                     type="text" maxLength={2}
                                     data-row={ri} data-field={instKey}
@@ -1342,12 +1351,12 @@ const HistoricalGradesBySection: React.FC = () => {
                                     onKeyDown={e => handleKeyDown(e, ri, instKey)}
                                     onPaste={e => handlePaste(e, ri, instKey)}
                                     placeholder="—"
-                                    readOnly={isSystem || consolidated}
-                                    style={{ ...cellInputStyle, textAlign: 'center', color: T.brass, fontWeight: 700, cursor: (isSystem || consolidated) ? 'default' : 'text' }}
+                                    readOnly={isLocked}
+                                    style={{ ...cellInputStyle, textAlign: 'center', color: T.brass, fontWeight: 700, cursor: isLocked ? 'default' : 'text', opacity: futureOpacity }}
                                   />
                                 </td>
                                 {/* Per. (School Period) — input with datalist for existing periods + free text */}
-                                <td style={{ ...tdPlain(53), padding: 0 }}>
+                                <td style={{ ...tdPlain(53), padding: 0, background: futureBg }}>
                                   <LocalInput
                                     type="text"
                                     data-row={ri} data-field={perKey}
@@ -1356,15 +1365,15 @@ const HistoricalGradesBySection: React.FC = () => {
                                     onCommit={val => updateCell(ri, perKey, val)}
                                     onFocus={() => setActiveCell({ row: ri, field: perKey })}
                                     onKeyDown={e => handleKeyDown(e, ri, perKey)}
-                                    readOnly={isSystem || consolidated}
+                                    readOnly={isLocked}
                                     list={`periods-${ri}`}
                                     placeholder="—"
                                     style={{
                                       ...cellInputStyle, fontSize: 10, textAlign: 'center',
-                                      color: T.inkSoft, cursor: isSystem ? 'default' : 'text',
+                                      color: T.inkSoft, cursor: isLocked ? 'default' : 'text', opacity: futureOpacity,
                                     }}
                                   />
-                                  {!isSystem && (
+                                  {!isLocked && (
                                     <datalist id={`periods-${ri}`}>
                                       {editablePeriods.map(p => (
                                         <option key={p.id} value={p.periodShort ?? p.period}>{p.name}</option>
@@ -1381,22 +1390,25 @@ const HistoricalGradesBySection: React.FC = () => {
                               ...tdPlain(GROUP_COL_W),
                               borderLeft: `2px solid ${y.gradeColor || T.hairline}`,
                               padding: 0,
+                              background: futureBg,
                             }}>
                               <LocalGroupInput
                                 value={row.groupSubjectNames[`g__${y.gradeId}`] || ''}
                                 onCommit={val => updateGroupSubjectName(ri, `g__${y.gradeId}`, val)}
                                 onFocus={() => setActiveCell({ row: ri, field: `g__${y.gradeId}__grp` })}
-                                readOnly={consolidated}
+                                readOnly={consolidated || isFutureGrade}
                                 style={{
                                   width: '100%', border: 'none', outline: 'none', background: 'transparent',
                                   fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: T.inkSoft,
                                   padding: '3px 6px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                                  opacity: futureOpacity,
                                 }}
                               />
                             </td>
                           )}
                         </React.Fragment>
-                      ))}
+                        );
+                      })}
                     </tr>
                     );
                   })}
