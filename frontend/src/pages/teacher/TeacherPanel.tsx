@@ -2278,6 +2278,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                                             inputMode="numeric"
                                             pattern="[0-9]*"
                                             id={`rev-${rowIndex}-${opp}`}
+                                            tabIndex={opp * 10000 + rowIndex + 1}
                                             value={revisionGrades[rev.id] != null ? padGrade(Number(revisionGrades[rev.id])) : ''}
                                             disabled={isLocked}
                                             onChange={(e) => {
@@ -2488,9 +2489,9 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, border: '1px solid rgba(15, 23, 42, 0.08)' }}>
                     <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
                       <tr>
-                        <th style={{ padding: '4px 6px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', backgroundColor: 'color-mix(in srgb, var(--color-text-main) 6%, var(--color-content-bg))', fontWeight: 700, fontSize: 11, whiteSpace: 'nowrap', color: 'var(--color-text-main)', width: 36 }}>#</th>
-                        <th style={{ padding: '4px 6px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', backgroundColor: 'color-mix(in srgb, var(--color-text-main) 6%, var(--color-content-bg))', fontWeight: 700, fontSize: 11, whiteSpace: 'nowrap', color: 'var(--color-text-main)' }}>Cédula</th>
-                        <th style={{ padding: '4px 6px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'left', backgroundColor: 'color-mix(in srgb, var(--color-text-main) 6%, var(--color-content-bg))', fontWeight: 700, fontSize: 11, whiteSpace: 'nowrap', color: 'var(--color-text-main)' }}>Estudiante</th>
+                        <th className="grading-col-num" style={{ padding: '4px 6px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', backgroundColor: 'color-mix(in srgb, var(--color-text-main) 6%, var(--color-content-bg))', fontWeight: 700, fontSize: 11, whiteSpace: 'nowrap', color: 'var(--color-text-main)', width: 36 }}>#</th>
+                        <th className="grading-col-doc" style={{ padding: '4px 6px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', backgroundColor: 'color-mix(in srgb, var(--color-text-main) 6%, var(--color-content-bg))', fontWeight: 700, fontSize: 11, whiteSpace: 'nowrap', color: 'var(--color-text-main)' }}>Cédula</th>
+                        <th className="grading-col-student" style={{ padding: '4px 6px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'left', backgroundColor: 'color-mix(in srgb, var(--color-text-main) 6%, var(--color-content-bg))', fontWeight: 700, fontSize: 11, whiteSpace: 'nowrap', color: 'var(--color-text-main)', position: 'sticky', left: 0, zIndex: 11, boxShadow: '2px 0 4px rgba(15,23,42,0.06)' }}>Estudiante</th>
                         {evaluationPlan.map((item, colIndex) => {
                           const stats = evalStats.get(item.id);
                           const hasRemedial = (stats?.failedPct ?? 0) >= remedialFailurePercentage;
@@ -2545,13 +2546,13 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
 
                           return (
                             <tr key={enrollment.id} className="grading-row">
-                              <td style={{ padding: '2px 4px', border: '1px solid var(--color-text-muted)', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-content-bg)' : 'color-mix(in srgb, var(--color-text-main) 2%, var(--color-content-bg))', fontSize: 11, fontWeight: 600, color: 'var(--color-text-muted)' }}>
+                              <td className="grading-col-num" style={{ padding: '2px 4px', border: '1px solid var(--color-text-muted)', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-content-bg)' : 'color-mix(in srgb, var(--color-text-main) 2%, var(--color-content-bg))', fontSize: 11, fontWeight: 600, color: 'var(--color-text-muted)' }}>
                                 {rowIndex + 1}
                               </td>
-                              <td style={{ padding: '2px 4px', border: '1px solid var(--color-text-muted)', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-content-bg)' : 'color-mix(in srgb, var(--color-text-main) 2%, var(--color-content-bg))', fontSize: 11, fontWeight: 500 }}>
+                              <td className="grading-col-doc" style={{ padding: '2px 4px', border: '1px solid var(--color-text-muted)', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-content-bg)' : 'color-mix(in srgb, var(--color-text-main) 2%, var(--color-content-bg))', fontSize: 11, fontWeight: 500 }}>
                                 {enrollment.student?.document || '-'}
                               </td>
-                              <td style={{ padding: '2px 6px', border: '1px solid var(--color-text-muted)', textAlign: 'left', background: rowIndex % 2 === 0 ? 'var(--color-content-bg)' : 'color-mix(in srgb, var(--color-text-main) 2%, var(--color-content-bg))', fontSize: 12 }}>
+                              <td className="grading-col-student" style={{ padding: '2px 6px', border: '1px solid var(--color-text-muted)', textAlign: 'left', background: rowIndex % 2 === 0 ? 'var(--color-content-bg)' : 'color-mix(in srgb, var(--color-text-main) 2%, var(--color-content-bg))', fontSize: 12, position: 'sticky', left: 0, zIndex: 2, boxShadow: '2px 0 4px rgba(15,23,42,0.06)' }}>
                                 {enrollment.student?.lastName}, {enrollment.student?.firstName}
                               </td>
                               {evaluationPlan.map((item, colIndex) => {
@@ -2591,6 +2592,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                                       step={1}
                                       inputMode="numeric"
                                       pattern="[0-9]*"
+                                      tabIndex={colIndex * 10000 + rowIndex * 2 + 1}
                                       onPaste={(e) => handleGradePaste(e, rowIndex, colIndex)}
                                       defaultValue={isAbsent ? '' : (currentScore !== null ? padGrade(currentScore) : '')}
                                       key={`${enrollment.id}-${item.id}${isAbsent ? '-a' : ''}`}
@@ -2715,6 +2717,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                                         step={1}
                                         inputMode="numeric"
                                         pattern="[0-9]*"
+                                        tabIndex={colIndex * 10000 + rowIndex * 2 + 2}
                                         defaultValue={q?.remedialScore != null ? padGrade(q.remedialScore) : ''}
                                         key={`rem-${enrollment.id}-${item.id}-${q?.remedialScore ?? 'n'}`}
                                         style={{

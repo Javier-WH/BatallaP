@@ -239,6 +239,9 @@
   background-color: color-mix(in srgb, var(--color-text-main) 2.5%, var(--color-content-bg)) !important;
 }
 
+/* Grading table: Estudiante column is sticky (left:0) so it stays visible
+   when scrolling horizontally. # and Cédula scroll away naturally. */
+
 .grading-cell .ant-input-number-input {
   padding: 0 !important;
 }
