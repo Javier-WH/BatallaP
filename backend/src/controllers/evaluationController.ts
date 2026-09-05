@@ -755,12 +755,6 @@ export const getStudentFullAcademicRecord = async (req: Request, res: Response) 
     });
 
     // Log to verify usesLiteralGrades is being returned
-    if (records.length > 0) {
-      const firstRecord = records[0];
-      const firstSubject = (firstRecord as any).inscriptionSubjects?.[0]?.subject;
-      console.log('[getStudentFullAcademicRecord] First subject data:', JSON.stringify(firstSubject, null, 2));
-    }
-
     // Apply canonical subject order per inscription (PeriodGradeSubject.order)
     // with pendings appended at the end. See subjectOrderService for rules.
     const recordsWithPendingFlag = await Promise.all(
@@ -803,24 +797,20 @@ export const getStudentFullAcademicRecord = async (req: Request, res: Response) 
 };
 
 export const updateFinalGrade = async (req: Request, res: Response) => {
-  console.log('[updateFinalGrade] FUNCTION CALLED');
   try {
     const sessionUser = (req.session as any).user;
-    console.log('[updateFinalGrade] Session user:', sessionUser?.id, sessionUser?.roles);
     if (!sessionUser) {
       return res.status(401).json({ message: 'No autorizado' });
     }
 
     // Check if user has Control de Estudios role
     const userRoles = sessionUser.roles || [];
-    console.log('[updateFinalGrade] User roles:', userRoles);
     if (!userRoles.includes('Control de Estudios')) {
       return res.status(403).json({ message: 'Solo Control de Estudios puede modificar notas finales' });
     }
 
     const { id } = req.params;
     const { finalScore, status, reason, permissionId, actCode, plantelId, gradeType } = req.body;
-    console.log('[updateFinalGrade] Request params:', { id, finalScore, status, reason, permissionId, actCode, plantelId, gradeType });
 
     let normalizedPlantelId: number | null | undefined = undefined;
     if (plantelId !== undefined) {
@@ -843,11 +833,8 @@ export const updateFinalGrade = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'Se requiere el ID del permiso que autoriza la modificación' });
     }
 
-    console.log('[updateFinalGrade] Validations passed');
-
     // If id is null or 'new-', create a new record instead of updating
     if (!id || id.toString().startsWith('new-')) {
-      console.log('[updateFinalGrade] Creating new grade (id is null or starts with new-)');
       // Extract inscriptionSubjectId from the id
       const inscriptionSubjectId = id?.toString().replace('new-', '') || req.body.inscriptionSubjectId;
 
@@ -861,13 +848,10 @@ export const updateFinalGrade = async (req: Request, res: Response) => {
       });
 
       if (existingGrade) {
-        console.log('[updateFinalGrade] Found existing grade, updating it');
         // Update existing grade instead of creating new one
         // Store previous values for audit
         const previousScore = existingGrade.finalScore;
         const previousStatus = existingGrade.status;
-
-        console.log(`[updateFinalGrade] Updating existing grade ID: ${existingGrade.id}, Previous score: ${previousScore}, New score: ${finalScore}`);
 
         // Verify permission
         const permission = await GradeEditPermission.findOne({
@@ -890,8 +874,6 @@ export const updateFinalGrade = async (req: Request, res: Response) => {
           status: status || existingGrade.status,
           ...(normalizedPlantelId !== undefined ? { plantelId: normalizedPlantelId } : {})
         });
-
-        console.log(`[updateFinalGrade] Grade updated successfully, new value: ${existingGrade.finalScore}`);
 
         // Create audit record
         await logGradeChange({
@@ -993,10 +975,7 @@ export const updateFinalGrade = async (req: Request, res: Response) => {
       return res.json({ message: 'Nota final creada correctamente', finalGrade: newFinalGrade });
     }
 
-    console.log('[updateFinalGrade] Updating by ID (not null/new)');
-
     // Get the final grade record
-    console.log('[updateFinalGrade] Fetching grade with ID:', Number(id));
     const finalGrade = await SubjectFinalGrade.findByPk(Number(id), {
       include: [
         {
@@ -1017,10 +996,8 @@ export const updateFinalGrade = async (req: Request, res: Response) => {
         }
       ]
     });
-    console.log('[updateFinalGrade] Grade fetched:', finalGrade ? finalGrade.id : 'null');
 
     if (!finalGrade) {
-      console.log('[updateFinalGrade] Grade not found');
       return res.status(404).json({ message: 'Nota final no encontrada' });
     }
 
@@ -1053,8 +1030,6 @@ export const updateFinalGrade = async (req: Request, res: Response) => {
     const previousStatus = finalGrade.status;
     const previousPlantelId = finalGrade.plantelId;
 
-    console.log('[updateFinalGrade] Updating grade, previous score:', previousScore, 'new score:', finalScore);
-
     // Update the final grade
     await finalGrade.update({
       finalScore: finalScore !== undefined ? finalScore : finalGrade.finalScore,
@@ -1063,10 +1038,7 @@ export const updateFinalGrade = async (req: Request, res: Response) => {
       ...(gradeType !== undefined ? { gradeType } : {})
     });
 
-    console.log('[updateFinalGrade] Grade updated successfully');
-
     // Create audit record
-    console.log('[updateFinalGrade] Creating audit record');
     await logGradeChange({
       entityType: 'subject_final_grade',
       entityId: finalGrade.id,
@@ -1082,7 +1054,6 @@ export const updateFinalGrade = async (req: Request, res: Response) => {
       metadata: { permissionId: permission.id, previousPlantelId, newPlantelId: finalGrade.plantelId, inscriptionSubjectId: finalGrade.inscriptionSubjectId },
     });
 
-    console.log('[updateFinalGrade] Audit record created, sending response');
     res.json({ message: 'Nota final actualizada correctamente', finalGrade });
   } catch (error: any) {
     console.error('[updateFinalGrade] Error:', error);
@@ -1184,8 +1155,6 @@ export const getFinalGradesByPeriod = async (req: Request, res: Response) => {
     // Sort students canonically: document type → document number → lastName → firstName → grade → section
     sortInscriptions(inscriptions as any[]);
 
-    console.log(`[getFinalGradesByPeriod] Period ID: ${schoolPeriodId}, Total inscriptions found: ${inscriptions.length}`);
-
     // Get all subjects for this period's grades
     const periodGrades = await PeriodGrade.findAll({
       where: { schoolPeriodId: Number(schoolPeriodId) },
@@ -1199,7 +1168,6 @@ export const getFinalGradesByPeriod = async (req: Request, res: Response) => {
 
     // Collect all subjects across all grades
     const allSubjects = periodGrades.flatMap(pg => (pg as any).subjects || []);
-    console.log(`[getFinalGradesByPeriod] Total subjects found: ${allSubjects.length}`);
 
     // Build includeInAverage map from PeriodGradeSubject
     const pgsRecords = periodGrades.length > 0
@@ -1227,8 +1195,6 @@ export const getFinalGradesByPeriod = async (req: Request, res: Response) => {
     };
 
     for (const inscription of inscriptions) {
-      console.log(`[getFinalGradesByPeriod] Processing inscription: ${inscription.id}, Student: ${inscription.student?.firstName} ${inscription.student?.lastName}`);
-
       let inscriptionSubjects = await InscriptionSubject.findAll({
         where: { inscriptionId: inscription.id },
         include: [
@@ -1246,12 +1212,8 @@ export const getFinalGradesByPeriod = async (req: Request, res: Response) => {
         ]
       });
 
-      console.log(`[getFinalGradesByPeriod] Inscription ${inscription.id} has ${inscriptionSubjects.length} subjects`);
-
       // If student has no subjects, create them based on their grade's subjects
       if (inscriptionSubjects.length === 0) {
-        console.log(`[getFinalGradesByPeriod] Creating missing subjects for inscription ${inscription.id}`);
-
         const periodGrade = await PeriodGrade.findOne({
           where: { schoolPeriodId: Number(schoolPeriodId), gradeId: inscription.gradeId },
           include: [
@@ -1290,8 +1252,6 @@ export const getFinalGradesByPeriod = async (req: Request, res: Response) => {
               }
             ]
           });
-
-          console.log(`[getFinalGradesByPeriod] Created ${subjectsToCreate.length} subjects for inscription ${inscription.id}`);
         }
       }
 
@@ -1335,8 +1295,6 @@ export const getFinalGradesByPeriod = async (req: Request, res: Response) => {
         });
       }
     }
-
-    console.log(`[getFinalGradesByPeriod] Total records returned: ${result.length}`);
 
     res.json(result);
   } catch (error: any) {

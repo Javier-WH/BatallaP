@@ -271,8 +271,6 @@ export const checkPermission = async (req: Request, res: Response) => {
 export const getAuditLog = async (req: Request, res: Response) => {
   try {
     const sessionUser = (req.session as any).user;
-    console.log('[getAuditLog] Session user:', sessionUser);
-    console.log('[getAuditLog] Session user roles:', sessionUser?.roles);
 
     if (!sessionUser) {
       return res.status(401).json({ message: 'No autorizado' });

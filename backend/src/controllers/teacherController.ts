@@ -140,7 +140,6 @@ export const getAvailableSubjectsForPeriod = async (req: Request, res: Response)
 
 export const assignTeacherToSubject = async (req: Request, res: Response) => {
   try {
-    console.log('Datos recibidos en assignTeacherToSubject:', req.body);
     const { teacherId, periodGradeSubjectId, sectionId } = req.body;
     
     // Validar datos

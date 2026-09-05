@@ -1246,9 +1246,6 @@ export const updateInscription = async (req: Request, res: Response) => {
       subjectIds,
     } = req.body;
 
-    console.log('[updateInscription] ID:', id);
-    console.log('[updateInscription] Body recibido:', JSON.stringify(req.body, null, 2));
-
     const inscription = await Inscription.findByPk(id, {
       include: [{ model: Person, as: 'student' }],
       transaction: t,
@@ -1626,9 +1623,6 @@ export const updateMatriculation = async (req: Request, res: Response) => {
       documents,
       subjectIds
     } = req.body;
-
-    console.log('[updateMatriculation] ID:', id);
-    console.log('[updateMatriculation] Body recibido:', JSON.stringify(req.body, null, 2));
 
     const matriculation = (await Matriculation.findByPk(id, {
       include: [

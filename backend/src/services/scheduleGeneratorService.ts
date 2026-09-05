@@ -390,7 +390,6 @@ export async function generateSchedulesForPeriod(
     teacherBusy.filter(b => b.teacherId === tid).forEach(b => {
       busyByDay[b.day] = (busyByDay[b.day] || 0) + 1;
     });
-    console.log(`[scheduleGenerator]   busy by day:`, JSON.stringify(busyByDay));
   }
 
   // 11. Call the solver
