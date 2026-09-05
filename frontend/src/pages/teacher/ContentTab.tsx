@@ -353,11 +353,15 @@ const ContentTab: React.FC<ContentTabProps> = ({
     setEditingComponentTitle('');
   };
 
-  const handleAddContent = (componentId: number) => {
+  const handleAddContent = async (componentId: number) => {
     if (!newContentTitle.trim()) return;
-    onCreateContent(componentId, newContentTitle.trim());
-    setNewContentTitle('');
-    setNewContentForComponent(null);
+    try {
+      await onCreateContent(componentId, newContentTitle.trim());
+      setNewContentTitle('');
+      setNewContentForComponent(null);
+    } catch {
+      // Error ya mostrado por handleCreateContent; mantener el input abierto
+    }
   };
 
   const handleSaveContentEdit = () => {

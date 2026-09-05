@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, Component, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, Component, useMemo, useRef } from 'react';
 import type { ReactNode, ErrorInfo } from 'react';
 import { Tabs, Card, Table, Button, message, Space, Tag, Alert, Empty, Tooltip, Modal, Checkbox, DatePicker, Spin } from 'antd';
 import { BookOutlined, PlusOutlined, DeleteOutlined, EditOutlined, LockOutlined, FilePdfOutlined, DownloadOutlined, ToolOutlined, CopyOutlined, PrinterOutlined, CalendarOutlined, SaveOutlined, FormOutlined } from '@ant-design/icons';
@@ -273,16 +273,31 @@ const TeacherPanel: React.FC = () => {
   const { viewPeriod, isReadOnly } = useSchool();
   const [loading, setLoading] = useState(false);
   const [assignments, setAssignments] = useState<Assignment[]>([]);
-  const [selectedAssignmentId, setSelectedAssignmentId] = useState<number | null>(null);
-  const [selectedSubjectId, setSelectedSubjectId] = useState<number | null>(null);
-  const [selectedGradeId, setSelectedGradeId] = useState<number | null>(null);
-  const [selectedTerm, setSelectedTerm] = useState<number | null>(null);
+
+  // Persist key selections so mobile browser suspensions/reloads don't lose context
+  const TP_KEY = 'tp_state';
+  const saved = (() => { try { return JSON.parse(sessionStorage.getItem(TP_KEY) || '{}'); } catch { return {}; } })();
+  const [selectedAssignmentId, setSelectedAssignmentId] = useState<number | null>(saved.assignmentId ?? null);
+  const [selectedSubjectId, setSelectedSubjectId] = useState<number | null>(saved.subjectId ?? null);
+  const [selectedGradeId, setSelectedGradeId] = useState<number | null>(saved.gradeId ?? null);
+  const [selectedTerm, setSelectedTerm] = useState<number | null>(saved.termId ?? null);
+  const [activeTab, setActiveTab] = useState(saved.tab ?? '1');
+
+  useEffect(() => {
+    sessionStorage.setItem(TP_KEY, JSON.stringify({
+      assignmentId: selectedAssignmentId,
+      subjectId: selectedSubjectId,
+      gradeId: selectedGradeId,
+      termId: selectedTerm,
+      tab: activeTab,
+    }));
+  }, [selectedAssignmentId, selectedSubjectId, selectedGradeId, selectedTerm, activeTab]);
+
   const [availableTerms, setAvailableTerms] = useState<Term[]>([]);
   const [evaluationPlan, setEvaluationPlan] = useState<EvaluationPlanItem[]>([]);
   const [students, setStudents] = useState<StudentEnrollment[]>([]);
   const [showPlanModal, setShowPlanModal] = useState(false);
   const [editingItem, setEditingItem] = useState<EvaluationPlanItem | null>(null);
-  const [activeTab, setActiveTab] = useState('1');
   const [maxGrade, setMaxGrade] = useState<number>(20);
   const [passingGrade, setPassingGrade] = useState<number>(10);
   const [remedialFailurePercentage, setRemedialFailurePercentage] = useState<number>(30);
@@ -504,20 +519,18 @@ const TeacherPanel: React.FC = () => {
         const termsRes = await api.get(`/terms?schoolPeriodId=${viewPeriod.id}`);
         console.log('Terms response:', termsRes.data);
         setAvailableTerms(termsRes.data);
-        // Set the active term as default, fall back to the first non-blocked, then the first
-        const activeTerm = termsRes.data.find((t: Term) => t.isActive);
-        if (activeTerm) {
-          setSelectedTerm(activeTerm.id);
-        } else {
-          const firstOpen = termsRes.data.find((t: Term) => !t.isBlocked);
-          if (firstOpen) {
-            setSelectedTerm(firstOpen.id);
-          } else if (termsRes.data.length > 0) {
-            setSelectedTerm(termsRes.data[0].id);
-          } else {
-            setSelectedTerm(null);
+        // Preserve a restored term if it still exists in the fetched list
+        setSelectedTerm(prev => {
+          if (prev != null && termsRes.data.some((t: Term) => t.id === prev)) {
+            return prev;
           }
-        }
+          const activeTerm = termsRes.data.find((t: Term) => t.isActive);
+          if (activeTerm) return activeTerm.id;
+          const firstOpen = termsRes.data.find((t: Term) => !t.isBlocked);
+          if (firstOpen) return firstOpen.id;
+          if (termsRes.data.length > 0) return termsRes.data[0].id;
+          return null;
+        });
       }
     } catch (error) {
       console.error('Error fetching terms', error);
@@ -581,8 +594,19 @@ const TeacherPanel: React.FC = () => {
     }
   }, [selectedAssignmentId, assignments, selectedTerm]);
 
+  const prevViewPeriodId = useRef<number | null>(null);
   useEffect(() => {
-    // Reset selections when the view period changes
+    // Reset selections only when the view period actually changes (not on first mount
+    // or when fetchAssignments identity changes due to an unrelated re-render).
+    // On first mount, restore from sessionStorage instead of clearing.
+    if (prevViewPeriodId.current === viewPeriod?.id) return;
+    if (prevViewPeriodId.current === null && viewPeriod?.id) {
+      // First load with a real period — don't wipe restored selections
+      prevViewPeriodId.current = viewPeriod.id;
+      fetchAssignments();
+      return;
+    }
+    prevViewPeriodId.current = viewPeriod?.id ?? null;
     setSelectedAssignmentId(null);
     setSelectedSubjectId(null);
     setSelectedGradeId(null);
@@ -590,7 +614,7 @@ const TeacherPanel: React.FC = () => {
     setEvaluationPlan([]);
     setStudents([]);
     fetchAssignments();
-  }, [fetchAssignments]);
+  }, [fetchAssignments, viewPeriod]);
 
   useEffect(() => {
     fetchTerms();
@@ -1127,6 +1151,9 @@ const handleToggleAbsent = async (enrollment: StudentEnrollment, evalPlanId: num
   };
 
   const planColumns: ColumnsType<EvaluationPlanItem> = [
+    { title: '#', key: 'rowIndex', width: 40, fixed: 'left' as const, align: 'center' as const,
+      render: (_: unknown, __: EvaluationPlanItem, idx: number) => idx + 1
+    },
     { title: 'Descripción Breve', key: 'shortDescription', width: 180,
       render: (_: unknown, r: EvaluationPlanItem) => r.shortDescription || <span style={{ color: '#999' }}>—</span>
     },
@@ -1507,8 +1534,9 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
     try {
       await api.post(`/thematic-components/${componentId}/contents`, { title });
       fetchThematicComponents();
-    } catch {
-      message.error('Error al crear contenido');
+    } catch (err: any) {
+      message.error(err?.response?.data?.message || 'Error al crear contenido');
+      throw err;
     }
   };
 
@@ -2370,6 +2398,9 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                     rowKey="id"
                     pagination={false}
                     bordered
+                    size="small"
+                    scroll={{ x: 'max-content' }}
+                    rowClassName={(_, idx) => idx % 2 === 0 ? '' : 'ant-table-row-zebra'}
                     className="rounded-xl overflow-hidden"
                     style={{ backgroundColor: 'var(--color-content-bg)', border: '1px solid rgba(15, 23, 42, 0.06)' }}
                   />
