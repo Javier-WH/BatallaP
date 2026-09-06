@@ -4,8 +4,11 @@ import session from 'express-session';
 import path from 'path';
 import cookieParser from 'cookie-parser';
 import dotenv from 'dotenv';
+import morgan from 'morgan';
 import sequelize from '@/config/database';
 import connectSessionSequelize from 'connect-session-sequelize';
+import { stream as loggerStream } from '@/config/logger';
+import { errorHandler, notFoundHandler } from '@/middlewares/errorHandlerMiddleware';
 
 dotenv.config({ path: process.env.ENV_FILE || '.env' });
 
@@ -49,6 +52,9 @@ app.use(session({
     maxAge: 1000 * 60 * 60 * 24 // 1 day
   }
 }));
+
+// HTTP request logging via morgan → winston
+app.use(morgan(':method :url :status :response-time ms - :res[content-length]', { stream: loggerStream }));
 
 // Import routes
 import authRoutes from '@/routes/authRoutes';
@@ -172,6 +178,15 @@ app.use((req, res, next) => {
     return res.sendFile(path.join(frontendDist, 'index.html'));
   }
   next();
+});
+
+// 404 handler for unmatched API routes
+app.use('/api', notFoundHandler);
+
+// Global error handler — must be last middleware (4-arity)
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  errorHandler(err, req, res, next);
 });
 
 export { sessionStore };

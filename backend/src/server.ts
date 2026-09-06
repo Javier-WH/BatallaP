@@ -9,10 +9,31 @@ import path from 'path';
 import MigrationRunner from '@/config/migrationRunner';
 import cron from 'node-cron';
 import { scrapeBcvRates } from '@/services/bcvScraperService';
+import logger from '@/config/logger';
 
 dotenv.config({ path: process.env.ENV_FILE || '.env' });
 
 const PORT = Number(process.env.PORT) || 3000;
+
+// Global process error handlers — capture anything not caught by Express
+process.on('unhandledRejection', (reason: unknown, promise: Promise<unknown>) => {
+  logger.error('Unhandled Promise Rejection', {
+    reason: reason instanceof Error
+      ? { name: reason.name, message: reason.message, stack: reason.stack }
+      : String(reason),
+    promise: String(promise),
+  });
+});
+
+process.on('uncaughtException', (error: Error) => {
+  logger.error('Uncaught Exception — process will exit', {
+    name: error.name,
+    message: error.message,
+    stack: error.stack,
+  });
+  // Give the logger time to flush, then exit
+  setTimeout(() => process.exit(1), 1000);
+});
 
 const DEFAULT_CATALOGS: { type: 'tecnica' | 'instrumento' | 'estrategia'; name: string }[] = [
   // Técnicas
@@ -63,9 +84,9 @@ const seedDefaultCatalogs = async () => {
         defaults: { type: item.type, name: item.name },
       });
     }
-    console.log('✅ Catálogos de evaluación verificados.');
+    logger.info('✅ Catálogos de evaluación verificados.');
   } catch (error) {
-    console.error('⚠️ Error al seedear catálogos de evaluación:', error);
+    logger.error('⚠️ Error al seedear catálogos de evaluación:', { error });
   }
 };
 
@@ -96,9 +117,9 @@ const seedDefaultSubjectPresets = async () => {
         isSystem: true,
       },
     });
-    console.log('✅ Presets de materias verificados.');
+    logger.info('✅ Presets de materias verificados.');
   } catch (error) {
-    console.error('⚠️ Error al seedear presets de materias:', error);
+    logger.error('⚠️ Error al seedear presets de materias:', { error });
   }
 };
 
@@ -187,9 +208,9 @@ const seedDefaultStructurePresets = async () => {
         isSystem: true,
       },
     });
-    console.log('✅ Presets de estructura verificados.');
+    logger.info('✅ Presets de estructura verificados.');
   } catch (error) {
-    console.error('⚠️ Error al seedear presets de estructura:', error);
+    logger.error('⚠️ Error al seedear presets de estructura:', { error });
   }
 };
 
@@ -253,10 +274,10 @@ app.use('/uploads', express.static(path.join(__dirname, '../public/uploads')));
 const startServer = async () => {
   try {
     await sequelize.authenticate();
-    console.log('✅ Conexión a base de datos establecida.');
+    logger.info('✅ Conexión a base de datos establecida.');
 
     await sessionStore.sync();
-    console.log('✅ Tabla de sesiones sincronizada.');
+    logger.info('✅ Tabla de sesiones sincronizada.');
 
     // Run pending migrations
     const migrationRunner = new MigrationRunner();
@@ -265,7 +286,7 @@ const startServer = async () => {
     // Sync models (create tables if not exist)
     // In production, use migrations instead of sync({ force: true/false })
     await sequelize.sync();
-    console.log('✅ Modelos sincronizados correctamente.');
+    logger.info('✅ Modelos sincronizados correctamente.');
 
     await seedDefaultCatalogs();
     await seedDefaultSubjectPresets();
@@ -282,43 +303,43 @@ const startServer = async () => {
           }
         }
       }
-      console.log(`🚀 Backend iniciado en:`);
-      urls.forEach(u => console.log(`   → ${u}`));
+      logger.info(`🚀 Backend iniciado en:`);
+      urls.forEach(u => logger.info(`   → ${u}`));
 
       // Cron: scraping BCV a medianoche (hora de Venezuela, UTC-4)
       cron.schedule('0 0 * * *', async () => {
-        console.log('[Cron] Ejecutando scraping BCV...');
+        logger.info('[Cron] Ejecutando scraping BCV...');
         try {
           const result = await scrapeBcvRates();
           if (result.success) {
-            console.log('[Cron] BCV OK:', result.message);
+            logger.info('[Cron] BCV OK:', { message: result.message });
           } else {
-            console.warn('[Cron] BCV falló:', result.message);
+            logger.warn('[Cron] BCV falló:', { message: result.message });
           }
         } catch (error) {
-          console.error('[Cron] Error scraping BCV:', error);
+          logger.error('[Cron] Error scraping BCV:', { error });
         }
       }, { timezone: 'America/Caracas' });
-      console.log('⏰ Cron de scraping BCV programado (00:00 Venezuela)');
+      logger.info('⏰ Cron de scraping BCV programado (00:00 Venezuela)');
 
       // Scrape al iniciar: por si el servidor estuvo apagado a medianoche
       setTimeout(async () => {
-        console.log('[Startup] Scraping BCV inicial...');
+        logger.info('[Startup] Scraping BCV inicial...');
         try {
           const result = await scrapeBcvRates();
           if (result.success) {
-            console.log('[Startup] BCV OK:', result.message);
+            logger.info('[Startup] BCV OK:', { message: result.message });
           } else {
-            console.warn('[Startup] BCV falló:', result.message);
+            logger.warn('[Startup] BCV falló:', { message: result.message });
           }
         } catch (error) {
-          console.error('[Startup] Error scraping BCV:', error);
+          logger.error('[Startup] Error scraping BCV:', { error });
         }
       }, 5000);
     });
   } catch (error: unknown) {
     const startupError = error as StartupError;
-    console.error('\n' + getDatabaseStartupMessage(startupError));
+    logger.error('\n' + getDatabaseStartupMessage(startupError));
     process.exit(1);
   }
 };
