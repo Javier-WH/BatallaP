@@ -2499,7 +2499,7 @@ export const getGeneralAverages = async (req: Request, res: Response) => {
       where: { schoolPeriodId },
       include: [
         { model: Person, as: 'student', attributes: ['id', 'firstName', 'lastName', 'document', 'gender'] },
-        { model: Grade, as: 'grade', attributes: ['id', 'name'] },
+        { model: Grade, as: 'grade', attributes: ['id', 'name', 'order'] },
         { model: Section, as: 'section', attributes: ['id', 'name'] },
         {
           model: InscriptionSubject,
@@ -2628,6 +2628,7 @@ export const getGeneralAverages = async (req: Request, res: Response) => {
         gender: ins.student?.gender || null,
         gradeId: ins.grade?.id || 0,
         gradeName: ins.grade?.name || '',
+        _gradeOrder: (ins.grade as any)?.order ?? 9999,
         gradeColor: gradeColorMap.get(ins.grade?.id || 0) || null,
         sectionId: ins.section?.id || 0,
         sectionName: ins.section?.name || '',
@@ -2641,8 +2642,8 @@ export const getGeneralAverages = async (req: Request, res: Response) => {
       terms: terms.map((t: any) => ({ id: t.id, name: t.name, order: t.order })),
       grades: [...new Set(students.map((s: any) => s.gradeId))].map((gid: any) => {
         const s = students.find((st: any) => st.gradeId === gid);
-        return { id: gid, name: s?.gradeName || '' };
-      }).sort((a: any, b: any) => a.name.localeCompare(b.name)),
+        return { id: gid, name: s?.gradeName || '', order: (s as any)?._gradeOrder ?? 9999 };
+      }).sort((a: any, b: any) => a.order - b.order),
       sections: [...new Set(students.map((s: any) => s.sectionId))].map((sid: any) => {
         const s = students.find((st: any) => st.sectionId === sid);
         return { id: sid, name: s?.sectionName || '', gradeId: s?.gradeId || 0 };
