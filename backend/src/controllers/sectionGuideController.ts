@@ -333,13 +333,13 @@ export const getMyGuideSections = async (req: Request, res: Response) => {
       order: [['order', 'ASC']],
     });
 
-    // Check council completion for each section+term
+    // Check council completion for each grade+section+term
     const sections = await Promise.all(guides.map(async (g: any) => {
       const gradeId = g.gradeId;
       const sectionId = g.sectionId;
       const termStatuses = await Promise.all(terms.map(async (t: any) => {
         const checklist = await CouncilChecklist.findOne({
-          where: { termId: t.id, sectionId, status: 'done' },
+          where: { schoolPeriodId: activePeriod.id, gradeId, sectionId, termId: t.id, status: 'done' },
         });
         return { termId: t.id, termName: t.name, councilDone: !!checklist };
       }));

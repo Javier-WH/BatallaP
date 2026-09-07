@@ -40,9 +40,9 @@ export const getSectionObservations = async (req: Request, res: Response) => {
       return res.status(403).json({ message: 'Solo el profesor guía puede acceder a las observaciones' });
     }
 
-    // Check if the council for this term+section is done (used to lock editing)
+    // Check if the council for this term+grade+section is done (used to lock editing)
     const councilDoneRecord = await CouncilChecklist.findOne({
-      where: { termId, sectionId, status: 'done' },
+      where: { schoolPeriodId: activePeriod.id, gradeId, sectionId, termId, status: 'done' },
     });
     const isLocked = !!councilDoneRecord;
 
@@ -52,11 +52,11 @@ export const getSectionObservations = async (req: Request, res: Response) => {
       order: [['order', 'ASC']],
     });
 
-    // Determine completed terms (council done for this section)
+    // Determine completed terms (council done for this grade+section)
     const completedTermIds: number[] = [];
     for (const t of terms) {
       const done = await CouncilChecklist.findOne({
-        where: { termId: t.id, sectionId, status: 'done' },
+        where: { schoolPeriodId: activePeriod.id, gradeId, sectionId, termId: t.id, status: 'done' },
       });
       if (done) completedTermIds.push(t.id);
     }
@@ -248,9 +248,9 @@ export const saveObservation = async (req: Request, res: Response) => {
       return res.status(403).json({ message: 'Solo el profesor guía puede guardar observaciones' });
     }
 
-    // If the council is already done for this term+section, the observation is locked
+    // If the council is already done for this term+grade+section, the observation is locked
     const councilDone = await CouncilChecklist.findOne({
-      where: { termId, sectionId: ins.sectionId, status: 'done' },
+      where: { schoolPeriodId: ins.schoolPeriodId, gradeId: ins.gradeId, sectionId: ins.sectionId, termId, status: 'done' },
     });
     if (councilDone) {
       return res.status(400).json({ message: 'El consejo de curso de este lapso ya fue completado. Las observaciones están bloqueadas.' });
