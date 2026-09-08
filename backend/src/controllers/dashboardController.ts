@@ -16,7 +16,9 @@ import Subject from '@/models/Subject';
 import EvaluationPlan from '@/models/EvaluationPlan';
 import Qualification from '@/models/Qualification';
 import ThematicComponent from '@/models/ThematicComponent';
+import ThematicContent from '@/models/ThematicContent';
 import ExpectedLearningContent from '@/models/ExpectedLearningContent';
+import GradeChangeLog from '@/models/GradeChangeLog';
 import Setting from '@/models/Setting';
 import User from '@/models/User';
 import Role from '@/models/Role';
@@ -803,5 +805,330 @@ export const getMasterDashboardMetrics = async (req: Request, res: Response) => 
   } catch (error) {
     console.error('Error fetching master dashboard metrics:', error);
     return res.status(500).json({ message: 'Error obteniendo métricas del panel maestro' });
+  }
+};
+
+/* ============================================================
+ * Activity Log — últimos 50 cambios en planes, notas y contenidos
+ * ============================================================ */
+
+interface ActivityLogEntry {
+  id: string;
+  timestamp: string;
+  action: string;
+  actorName: string;
+  actorRole: string;
+  description: string;
+  subjectName: string | null;
+  gradeName: string | null;
+  sectionName: string | null;
+}
+
+const ACTION_COLORS: Record<string, string> = {
+  plan_created: '#2563eb',
+  plan_updated: '#2563eb',
+  grade_entered: '#16a34a',
+  grade_updated: '#16a34a',
+  content_added: '#f59e0b',
+  content_updated: '#f59e0b',
+  grade_edited_audit: '#9333ea',
+};
+
+const isCreate = (createdAt: Date, updatedAt: Date): boolean => {
+  return Math.abs(new Date(createdAt).getTime() - new Date(updatedAt).getTime()) < 2000;
+};
+
+const shortName = (firstName?: string, lastName?: string): string => {
+  if (!firstName && !lastName) return 'Usuario';
+  return `${firstName || ''} ${lastName || ''}`.trim();
+};
+
+export const getActivityLog = async (req: Request, res: Response) => {
+  try {
+    const activePeriod = await SchoolPeriod.findOne({ where: { status: 'activo' } });
+    if (!activePeriod) {
+      return res.json([]);
+    }
+
+    const periodId = activePeriod.id;
+    const entries: ActivityLogEntry[] = [];
+
+    /* ---------- 1. EvaluationPlan ---------- */
+    const plans = await EvaluationPlan.findAll({
+      where: {},
+      include: [
+        {
+          model: PeriodGradeSubject,
+          as: 'periodGradeSubject',
+          required: true,
+          include: [
+            {
+              model: PeriodGrade,
+              as: 'periodGrade',
+              required: true,
+              where: { schoolPeriodId: periodId },
+              include: [{ model: Grade, as: 'grade', attributes: ['id', 'name'] }],
+            },
+            { model: Subject, as: 'subject', attributes: ['id', 'name'] },
+          ],
+        },
+        { model: Term, as: 'term', attributes: ['id', 'name'] },
+      ],
+      order: [['updatedAt', 'DESC']],
+      limit: 50,
+    });
+
+    /* ---------- 2. Qualification ---------- */
+    const qualifications = await Qualification.findAll({
+      where: { schoolPeriodId: periodId },
+      include: [
+        {
+          model: EvaluationPlan,
+          as: 'evaluationPlan',
+          required: true,
+          include: [
+            {
+              model: PeriodGradeSubject,
+              as: 'periodGradeSubject',
+              include: [
+                {
+                  model: PeriodGrade,
+                  as: 'periodGrade',
+                  include: [{ model: Grade, as: 'grade', attributes: ['id', 'name'] }],
+                },
+                { model: Subject, as: 'subject', attributes: ['id', 'name'] },
+              ],
+            },
+          ],
+        },
+        {
+          model: InscriptionSubject,
+          as: 'inscriptionSubject',
+          required: false,
+          include: [
+            {
+              model: Inscription,
+              as: 'inscription',
+              required: false,
+              include: [{ model: Person, as: 'student', attributes: ['id', 'firstName', 'lastName'] }],
+            },
+          ],
+        },
+      ],
+      order: [['updatedAt', 'DESC']],
+      limit: 50,
+    });
+
+    /* ---------- 3. ThematicContent ---------- */
+    const contents = await ThematicContent.findAll({
+      include: [
+        {
+          model: ThematicComponent,
+          as: 'thematicComponent',
+          required: true,
+          include: [
+            {
+              model: PeriodGradeSubject,
+              as: 'periodGradeSubject',
+              required: true,
+              include: [
+                {
+                  model: PeriodGrade,
+                  as: 'periodGrade',
+                  required: true,
+                  where: { schoolPeriodId: periodId },
+                  include: [{ model: Grade, as: 'grade', attributes: ['id', 'name'] }],
+                },
+                { model: Subject, as: 'subject', attributes: ['id', 'name'] },
+              ],
+            },
+          ],
+        },
+      ],
+      order: [['updatedAt', 'DESC']],
+      limit: 50,
+    });
+
+    /* ---------- 4. GradeChangeLog ---------- */
+    const audits = await GradeChangeLog.findAll({
+      include: [
+        { model: User, as: 'editor', include: [{ model: Person, as: 'person', attributes: ['id', 'firstName', 'lastName'] }] },
+      ],
+      order: [['editedAt', 'DESC']],
+      limit: 50,
+    });
+
+    /* ---------- Batch-resolve teachers ---------- */
+    const pgsIds = new Set<number>();
+    const sectionIds = new Set<number>();
+
+    plans.forEach((p) => {
+      const pgs = (p as any).periodGradeSubject;
+      if (pgs) pgsIds.add(pgs.id);
+      if ((p as any).sectionId) sectionIds.add((p as any).sectionId);
+    });
+    qualifications.forEach((q) => {
+      const pgs = (q as any).evaluationPlan?.periodGradeSubject;
+      if (pgs) pgsIds.add(pgs.id);
+      if ((q as any).sectionId) sectionIds.add((q as any).sectionId);
+      if ((q as any).evaluationPlan?.sectionId) sectionIds.add((q as any).evaluationPlan.sectionId);
+    });
+    contents.forEach((c) => {
+      const pgs = (c as any).thematicComponent?.periodGradeSubject;
+      if (pgs) pgsIds.add(pgs.id);
+    });
+
+    const teacherMap = new Map<string, string>();
+    if (pgsIds.size > 0) {
+      const teachers = await TeacherAssignment.findAll({
+        where: {
+          periodGradeSubjectId: { [Op.in]: [...pgsIds] },
+          ...(sectionIds.size > 0 ? { sectionId: { [Op.in]: [...sectionIds] } } : {}),
+        },
+        include: [{ model: Person, as: 'teacher', attributes: ['id', 'firstName', 'lastName'] }],
+      });
+      teachers.forEach((t) => {
+        teacherMap.set(`${t.periodGradeSubjectId}:${t.sectionId}`, shortName((t as any).teacher?.firstName, (t as any).teacher?.lastName));
+      });
+    }
+
+    /* ---------- Batch-resolve sections ---------- */
+    const sectionMap = new Map<number, string>();
+    if (sectionIds.size > 0) {
+      const sections = await Section.findAll({
+        where: { id: { [Op.in]: [...sectionIds] } },
+        attributes: ['id', 'name'],
+      });
+      sections.forEach((s) => sectionMap.set(s.id, s.name));
+    }
+
+    /* ---------- Build entries: EvaluationPlan ---------- */
+    for (const p of plans) {
+      const pgs = (p as any).periodGradeSubject;
+      const subjectName = pgs?.subject?.name || null;
+      const gradeName = pgs?.periodGrade?.grade?.name || null;
+      const sectionId = (p as any).sectionId;
+      const sectionName = sectionId ? sectionMap.get(sectionId) || null : null;
+      const teacherKey = `${pgs?.id}:${sectionId}`;
+      const actorName = teacherMap.get(teacherKey) || 'Profesor';
+      const created = isCreate(p.createdAt, p.updatedAt);
+      const action = created ? 'plan_created' : 'plan_updated';
+      const verb = created ? 'agregó' : 'actualizó';
+      const desc = pgs?.subject?.name
+        ? `${verb} evaluación "${p.description}" al plan de ${subjectName}${gradeName ? ` (${gradeName}${sectionName ? ' - ' + sectionName : ''})` : ''}`
+        : `${verb} evaluación "${p.description}" al plan`;
+
+      entries.push({
+        id: `plan-${p.id}-${created ? 'c' : 'u'}`,
+        timestamp: p.updatedAt.toISOString(),
+        action,
+        actorName,
+        actorRole: 'Profesor',
+        description: desc,
+        subjectName,
+        gradeName,
+        sectionName,
+      });
+    }
+
+    /* ---------- Build entries: Qualification ---------- */
+    for (const q of qualifications) {
+      const ep = (q as any).evaluationPlan;
+      const pgs = ep?.periodGradeSubject;
+      const subjectName = pgs?.subject?.name || null;
+      const gradeName = pgs?.periodGrade?.grade?.name || null;
+      const sectionId = (q as any).sectionId || ep?.sectionId;
+      const sectionName = sectionId ? sectionMap.get(sectionId) || null : null;
+      const teacherKey = `${pgs?.id}:${sectionId}`;
+      const actorName = teacherMap.get(teacherKey) || 'Profesor';
+      const student = (q as any).inscriptionSubject?.inscription?.student;
+      const studentName = student ? shortName(student.firstName, student.lastName) : null;
+      const created = isCreate(q.createdAt, q.updatedAt);
+      const action = created ? 'grade_entered' : 'grade_updated';
+      const verb = created ? 'registró' : 'actualizó';
+      const score = q.score != null ? Number(q.score) : null;
+      const desc = studentName
+        ? `${verb} nota${score != null ? ` ${score}` : ''} para ${studentName} en ${subjectName || 'materia'}${gradeName ? ` (${gradeName}${sectionName ? ' - ' + sectionName : ''})` : ''}`
+        : `${verb} nota${score != null ? ` ${score}` : ''} en ${subjectName || 'materia'}${gradeName ? ` (${gradeName})` : ''}`;
+
+      entries.push({
+        id: `qual-${q.id}-${created ? 'c' : 'u'}`,
+        timestamp: q.updatedAt.toISOString(),
+        action,
+        actorName,
+        actorRole: 'Profesor',
+        description: desc,
+        subjectName,
+        gradeName,
+        sectionName,
+      });
+    }
+
+    /* ---------- Build entries: ThematicContent ---------- */
+    for (const c of contents) {
+      const tc = (c as any).thematicComponent;
+      const pgs = tc?.periodGradeSubject;
+      const subjectName = pgs?.subject?.name || null;
+      const gradeName = pgs?.periodGrade?.grade?.name || null;
+      // ThematicContent doesn't have sectionId — find teacher by pgsId only
+      let actorName = 'Profesor';
+      for (const [key, name] of teacherMap.entries()) {
+        if (key.startsWith(`${pgs?.id}:`)) {
+          actorName = name;
+          break;
+        }
+      }
+      const created = isCreate(c.createdAt, c.updatedAt);
+      const action = created ? 'content_added' : 'content_updated';
+      const verb = created ? 'agregó' : 'actualizó';
+      const desc = `${verb} contenido "${c.title}" a ${subjectName || 'materia'}${gradeName ? ` (${gradeName})` : ''}`;
+
+      entries.push({
+        id: `content-${c.id}-${created ? 'c' : 'u'}`,
+        timestamp: c.updatedAt.toISOString(),
+        action,
+        actorName,
+        actorRole: 'Profesor',
+        description: desc,
+        subjectName,
+        gradeName,
+        sectionName: null,
+      });
+    }
+
+    /* ---------- Build entries: GradeChangeLog ---------- */
+    for (const a of audits) {
+      const editor = (a as any).editor;
+      const editorPerson = editor?.person;
+      const actorName = editorPerson ? shortName(editorPerson.firstName, editorPerson.lastName) : 'Usuario';
+      const meta = a.metadata || {};
+      const subjectName = meta.subjectName || null;
+      const gradeName = meta.gradeName || null;
+      const sectionName = meta.sectionName || null;
+      const prevScore = a.previousScore != null ? Number(a.previousScore) : null;
+      const newScore = a.newScore != null ? Number(a.newScore) : null;
+      const desc = `editó nota${prevScore != null ? ` de ${prevScore}` : ''}${newScore != null ? ` a ${newScore}` : ''} en ${subjectName || 'materia'}${a.gradeType ? ` (${a.gradeType})` : ''}`;
+
+      entries.push({
+        id: `audit-${a.id}`,
+        timestamp: a.editedAt.toISOString(),
+        action: 'grade_edited_audit',
+        actorName,
+        actorRole: a.editorRole || 'Control de Estudios',
+        description: desc,
+        subjectName,
+        gradeName,
+        sectionName,
+      });
+    }
+
+    /* ---------- Sort + limit 50 ---------- */
+    entries.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    const result = entries.slice(0, 50);
+
+    return res.json(result);
+  } catch (error) {
+    console.error('Error fetching activity log:', error);
+    return res.status(500).json({ message: 'Error obteniendo el log de actividad' });
   }
 };

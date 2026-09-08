@@ -9,9 +9,40 @@ import {
   ClockCircleOutlined,
   ExclamationCircleOutlined,
   CalendarOutlined,
+  HistoryOutlined,
 } from '@ant-design/icons';
 import api from '@/services/api';
 import { getSubjectVisual } from '@/utils/subjectVisuals';
+import { formatRelativeTime } from '@/utils/relativeTime';
+
+interface ActivityLogEntry {
+  id: string;
+  timestamp: string;
+  action: string;
+  actorName: string;
+  actorRole: string;
+  description: string;
+  subjectName: string | null;
+  gradeName: string | null;
+  sectionName: string | null;
+}
+
+const ACTION_META: Record<string, { color: string; icon: string }> = {
+  plan_created: { color: '#2563eb', icon: 'P' },
+  plan_updated: { color: '#2563eb', icon: 'P' },
+  grade_entered: { color: '#16a34a', icon: 'N' },
+  grade_updated: { color: '#16a34a', icon: 'N' },
+  content_added: { color: '#f59e0b', icon: 'C' },
+  content_updated: { color: '#f59e0b', icon: 'C' },
+  grade_edited_audit: { color: '#9333ea', icon: 'A' },
+};
+
+const getInitials = (name: string): string => {
+  const parts = name.trim().split(/\s+/);
+  if (parts.length === 0) return '?';
+  if (parts.length === 1) return parts[0].charAt(0).toUpperCase();
+  return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
+};
 
 interface ControlPanelData {
   period: { id: number; name: string; period: string };
@@ -658,6 +689,7 @@ const ContentProgressCard: React.FC<{
 
 const ControlEstudiosDashboard: React.FC = () => {
   const [data, setData] = useState<ControlPanelData | null>(null);
+  const [activity, setActivity] = useState<ActivityLogEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const checklistProgress = useMemo(() => {
     if (!data) return 0;
@@ -670,8 +702,12 @@ const ControlEstudiosDashboard: React.FC = () => {
     const fetchDashboard = async () => {
       setLoading(true);
       try {
-        const res = await api.get<ControlPanelData>('/dashboard/control');
+        const [res, activityRes] = await Promise.all([
+          api.get<ControlPanelData>('/dashboard/control'),
+          api.get<ActivityLogEntry[]>('/dashboard/activity-log'),
+        ]);
         setData(res.data);
+        setActivity(activityRes.data);
       } catch (error) {
         console.error(error);
         message.error('No se pudo cargar el panel de control.');
@@ -695,7 +731,6 @@ const ControlEstudiosDashboard: React.FC = () => {
   const matriculationRate = data.students.total > 0 ? Math.round((data.students.matriculated / data.students.total) * 100) : 0;
   const plansRate = data.teachers.totalAssignments > 0 ? Math.round(((data.teachers.totalAssignments - data.teachers.withoutPlans) / data.teachers.totalAssignments) * 100) : 100;
   const gradesRate = data.teachers.totalAssignments > 0 ? Math.round(((data.teachers.totalAssignments - data.teachers.withoutGrades) / data.teachers.totalAssignments) * 100) : 100;
-  const lapsesRate = data.lapses.total > 0 ? Math.round((data.lapses.blocked / data.lapses.total) * 100) : 0;
 
   return (
     <div className="h-full overflow-y-auto pr-4">
@@ -819,30 +854,52 @@ const ControlEstudiosDashboard: React.FC = () => {
             </FadeIn>
           </Col>
 
-          {/* Lapses Progress */}
+          {/* Actividad Reciente */}
           <Col xs={24} md={6}>
             <FadeIn delay={350}>
-              <Card className="h-full" bodyStyle={{ padding: 24 }}>
-                <h3 className="text-sm font-bold uppercase tracking-wider mb-6" style={{ color: 'var(--color-text-muted)' }}>Estado de Lapsos</h3>
-                <div className="flex flex-col items-center">
-                  <Progress
-                    type="circle"
-                    percent={lapsesRate}
-                    size={120}
-                    strokeColor={{ '0%': '#1e40af', '100%': '#0ea5e9' }}
-                    format={(pct) => <span style={{ color: 'var(--color-text-main)', fontWeight: 800 }}>{pct}%</span>}
-                  />
-                  <div className="mt-4 space-y-2 w-full">
-                    <div className="flex justify-between text-sm">
-                      <span style={{ color: 'var(--color-text-muted)' }}>Lapsos cerrados</span>
-                      <span className="font-bold" style={{ color: 'var(--color-text-main)' }}>{data.lapses.blocked}/{data.lapses.total}</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span style={{ color: 'var(--color-text-muted)' }}>Checklist</span>
-                      <span className="font-bold" style={{ color: 'var(--color-text-main)' }}>{data.council.checklist.done}/{data.council.checklist.total}</span>
-                    </div>
-                  </div>
+              <Card className="h-full" bodyStyle={{ padding: 16 }}>
+                <div className="flex items-center gap-2 mb-3">
+                  <HistoryOutlined style={{ color: 'var(--color-accent)' }} />
+                  <h3 className="text-sm font-bold uppercase tracking-wider m-0" style={{ color: 'var(--color-text-muted)' }}>Actividad Reciente</h3>
                 </div>
+                {activity.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-8">
+                    <ClockCircleOutlined style={{ fontSize: 28, color: 'rgba(15,23,42,0.2)', marginBottom: 8 }} />
+                    <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Sin actividad reciente</p>
+                  </div>
+                ) : (
+                  <div className="space-y-1.5" style={{ maxHeight: 320, overflowY: 'auto' }}>
+                    {activity.map((entry) => {
+                      const meta = ACTION_META[entry.action] || { color: '#64748b', icon: '?' };
+                      return (
+                        <div
+                          key={entry.id}
+                          className="flex items-start gap-2.5 p-2 rounded-lg"
+                          style={{ backgroundColor: 'rgba(15,23,42,0.02)', border: '1px solid rgba(15,23,42,0.04)', transition: 'all 0.15s ease' }}
+                        >
+                          <div
+                            className="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-black text-white"
+                            style={{ backgroundColor: meta.color }}
+                          >
+                            {getInitials(entry.actorName)}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p
+                              className="text-[12px] font-medium leading-snug"
+                              style={{ color: 'var(--color-text-main)', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}
+                              title={entry.description}
+                            >
+                              {entry.description}
+                            </p>
+                            <p className="text-[10px] mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
+                              {formatRelativeTime(entry.timestamp)}
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </Card>
             </FadeIn>
           </Col>
