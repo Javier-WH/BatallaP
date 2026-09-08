@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState, useRef } from 'react';
-import { Row, Col, Card, Tag, Empty, Progress, message } from 'antd';
+import { useEffect, useMemo, useState, useRef, useCallback } from 'react';
+import { Row, Col, Card, Tag, Empty, Progress, Tooltip, message } from 'antd';
 import {
   TeamOutlined,
   UserOutlined,
@@ -10,6 +10,7 @@ import {
   ExclamationCircleOutlined,
   CalendarOutlined,
   HistoryOutlined,
+  ReloadOutlined,
 } from '@ant-design/icons';
 import api from '@/services/api';
 import { getSubjectVisual } from '@/utils/subjectVisuals';
@@ -691,6 +692,7 @@ const ControlEstudiosDashboard: React.FC = () => {
   const [data, setData] = useState<ControlPanelData | null>(null);
   const [activity, setActivity] = useState<ActivityLogEntry[]>([]);
   const [loading, setLoading] = useState(false);
+  const [refreshingActivity, setRefreshingActivity] = useState(false);
   const checklistProgress = useMemo(() => {
     if (!data) return 0;
     const { total, done } = data.council.checklist;
@@ -698,25 +700,39 @@ const ControlEstudiosDashboard: React.FC = () => {
     return Math.round((done / total) * 100);
   }, [data]);
 
-  useEffect(() => {
-    const fetchDashboard = async () => {
-      setLoading(true);
-      try {
-        const [res, activityRes] = await Promise.all([
-          api.get<ControlPanelData>('/dashboard/control'),
-          api.get<ActivityLogEntry[]>('/dashboard/activity-log'),
-        ]);
-        setData(res.data);
-        setActivity(activityRes.data);
-      } catch (error) {
-        console.error(error);
-        message.error('No se pudo cargar el panel de control.');
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchDashboard();
+  const fetchDashboard = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [res, activityRes] = await Promise.all([
+        api.get<ControlPanelData>('/dashboard/control'),
+        api.get<ActivityLogEntry[]>('/dashboard/activity-log'),
+      ]);
+      setData(res.data);
+      setActivity(activityRes.data);
+    } catch (error) {
+      console.error(error);
+      message.error('No se pudo cargar el panel de control.');
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  const refreshActivity = useCallback(async () => {
+    setRefreshingActivity(true);
+    try {
+      const activityRes = await api.get<ActivityLogEntry[]>('/dashboard/activity-log');
+      setActivity(activityRes.data);
+    } catch (error) {
+      console.error(error);
+      message.error('No se pudo actualizar el log de actividad.');
+    } finally {
+      setRefreshingActivity(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchDashboard();
+  }, [fetchDashboard]);
 
   if (loading && !data) return <Card loading />;
 
@@ -858,9 +874,26 @@ const ControlEstudiosDashboard: React.FC = () => {
           <Col xs={24} md={6}>
             <FadeIn delay={350}>
               <Card className="h-full" bodyStyle={{ padding: 16 }}>
-                <div className="flex items-center gap-2 mb-3">
-                  <HistoryOutlined style={{ color: 'var(--color-accent)' }} />
-                  <h3 className="text-sm font-bold uppercase tracking-wider m-0" style={{ color: 'var(--color-text-muted)' }}>Actividad Reciente</h3>
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <HistoryOutlined style={{ color: 'var(--color-accent)' }} />
+                    <h3 className="text-sm font-bold uppercase tracking-wider m-0" style={{ color: 'var(--color-text-muted)' }}>Actividad Reciente</h3>
+                  </div>
+                  <Tooltip title="Actualizar">
+                    <button
+                      onClick={refreshActivity}
+                      disabled={refreshingActivity}
+                      className="flex items-center justify-center w-7 h-7 rounded-lg border transition-colors"
+                      style={{
+                        borderColor: 'rgba(15,23,42,0.12)',
+                        backgroundColor: 'transparent',
+                        color: 'var(--color-text-muted)',
+                        cursor: refreshingActivity ? 'default' : 'pointer',
+                      }}
+                    >
+                      <ReloadOutlined spin={refreshingActivity} style={{ fontSize: 13 }} />
+                    </button>
+                  </Tooltip>
                 </div>
                 {activity.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-8">
@@ -877,12 +910,14 @@ const ControlEstudiosDashboard: React.FC = () => {
                           className="flex items-start gap-2.5 p-2 rounded-lg"
                           style={{ backgroundColor: 'rgba(15,23,42,0.02)', border: '1px solid rgba(15,23,42,0.04)', transition: 'all 0.15s ease' }}
                         >
-                          <div
-                            className="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-black text-white"
-                            style={{ backgroundColor: meta.color }}
-                          >
-                            {getInitials(entry.actorName)}
-                          </div>
+                          <Tooltip title={entry.actorName} placement="left">
+                            <div
+                              className="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-black text-white cursor-default"
+                              style={{ backgroundColor: meta.color }}
+                            >
+                              {getInitials(entry.actorName)}
+                            </div>
+                          </Tooltip>
                           <div className="min-w-0 flex-1">
                             <p
                               className="text-[12px] font-medium leading-snug"
