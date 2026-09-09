@@ -695,7 +695,6 @@ export const saveQualification = async (req: Request, res: Response) => {
     if (!created) {
       const previousScore = qualification.score;
       const previousIsAbsent = !!qualification.isAbsent;
-      console.log('[saveQualification] UPDATE existing qual id=', qualification.id, 'prevScore=', previousScore, 'newScore=', score, 'isAbsent=', isAbsent, 'prevIsAbsent=', previousIsAbsent);
 
       const updateData: any = {
         observations,
@@ -724,7 +723,6 @@ export const saveQualification = async (req: Request, res: Response) => {
       if (isAbsent !== undefined) updateData.isAbsent = isAbsent;
 
       await qualification.update(updateData, { transaction: t });
-      console.log('[saveQualification] After update: score=', qualification.score, 'isAbsent=', qualification.isAbsent);
 
       // Record audit if score changed (or if isAbsent was toggled)
       const sessionUser = (req.session as any).user;
@@ -736,7 +734,9 @@ export const saveQualification = async (req: Request, res: Response) => {
         await logGradeChange({
           entityType: 'qualification',
           entityId: qualification.id,
-          previousScore: previousScore != null ? Number(previousScore) : null,
+          // NP convention: the previous numeric value is meaningless when the
+          // grade was displayed as NP — log null with previousStatus 'NP'
+          previousScore: wasAbsent ? null : (previousScore != null ? Number(previousScore) : null),
           newScore: score != null ? Number(score) : null,
           previousStatus: wasAbsent ? 'NP' : null,
           editedBy: sessionUser.id,
@@ -3246,8 +3246,6 @@ export const reviewQualificationEditRequest = async (req: Request, res: Response
         const previousScore = wasAbsent ? null : (Number(qualification.score) || 0);
         const newScore = request.requestedScore != null ? Number(request.requestedScore) : (previousScore ?? 0);
 
-        console.log('[reviewQualificationEditRequest] wasAbsent=', wasAbsent, 'previousScore=', previousScore, 'newScore=', newScore, 'requestedScore=', request.requestedScore, 'qualScore=', qualification.score);
-
         // Apply the grade change if a requestedScore was provided and differs from current state
         // (also applies when the qualification was absent/NP, even if the numeric score matches)
         const scoreChanged = request.requestedScore != null && (wasAbsent || newScore !== previousScore);
@@ -3259,7 +3257,6 @@ export const reviewQualificationEditRequest = async (req: Request, res: Response
             score: newScore,
             isAbsent: false,
           });
-          console.log('[reviewQualificationEditRequest] Score updated, calling logGradeChange...');
 
           // Log the change to GradeChangeLog
           try {
@@ -3280,7 +3277,6 @@ export const reviewQualificationEditRequest = async (req: Request, res: Response
                 requesterId: request.requestedBy,
               },
             });
-            console.log('[reviewQualificationEditRequest] logGradeChange completed');
           } catch (logErr) {
             console.error('[reviewQualificationEditRequest] logGradeChange error:', logErr);
           }

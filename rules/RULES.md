@@ -229,6 +229,39 @@ Todo cambio de código (nueva funcionalidad, corrección de bug, refactorizació
 **Principio**: Un cambio sin pruebas que lo respalden es un cambio incompleto.
 Las pruebas son la fuente de verdad del comportamiento esperado del sistema.
 
+### R19: Desarrollo dirigido por pruebas (TDD)
+Toda característica nueva **debe nacer con su test**. Una característica no se
+considera creada ni entregable hasta que exista un test que la cubra y pase.
+El protocolo es:
+
+1. **Rojo**: Antes de implementar, escribir el test que describa el comportamiento
+   esperado de la característica y verificar que **falla** (porque la función
+   aún no existe o no hace lo esperado).
+   ```bash
+   npx jest --testNamePattern="nombre_de_la_caracteristica" --verbose
+   ```
+
+2. **Verde**: Implementar la característica (código mínimo necesario) hasta que
+   el test pase. No se considera implementada mientras el test falle.
+
+3. **Comportamiento observable**: El test debe verificar comportamiento real
+   (respuesta de un endpoint, estado persistido en BD, retorno de un service),
+   no solo que el código "no explote".
+
+4. **Bugs**: Toda corrección de bug empieza con un test que **reproduzca el
+   fallo**; luego se corrige y el test debe pasar. Esto evita regresiones.
+
+5. **Entrega**: Una característica se da por terminada solo cuando:
+   - Su test existe y pasa.
+   - La suite completa sigue en verde (`cd backend && npm test`).
+
+**Alcance**: Toda lógica nueva (endpoints, servicios, modelos, hooks, cálculos)
+requiere test. Cambios de UI puramente visuales sin lógica pueden cubrirse con
+verificación manual documentada en la entrega.
+
+**Relación con R18**: R18 exige pruebas al *modificar* código existente; R19
+exige test-primero al *crear* funcionalidad nueva. Ambas aplican siempre.
+
 ---
 
 ## 🟡 Archivos críticos (requieren Safety Commit antes de modificar)
