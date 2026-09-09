@@ -183,6 +183,7 @@ const ManageGrades: React.FC = () => {
   const isRightClickRef = useRef(false);
   const [commentText, setCommentText] = useState('');
   const [commentSaving, setCommentSaving] = useState(false);
+  const [npEditingCells, setNpEditingCells] = useState<Set<string>>(new Set());
   const [selectedGrades, setSelectedGrades] = useState<number[]>([]);
   const [selectedTeacher, setSelectedTeacher] = useState<number | null>(null);
   const [selectedSubjects, setSelectedSubjects] = useState<number[]>([]);
@@ -389,6 +390,7 @@ const ManageGrades: React.FC = () => {
       return;
     }
     const inscriptionSubjectId = enrollment.inscriptionSubjects?.[0]?.id;
+    console.log('[handleSaveScoreInGrid] evalPlanId=', evalPlanId, 'score=', score, 'comment=', comment, 'inscriptionSubjectId=', inscriptionSubjectId);
     try {
       await api.post('/evaluation/qualifications', {
         evaluationPlanId: evalPlanId,
@@ -590,6 +592,14 @@ const ManageGrades: React.FC = () => {
     setCommentSaving(true);
     try {
       await handleSaveScoreInGrid(enrollment, evalPlanId, value, commentText, remedialClear);
+      // Clear any NP editing state for this enrollment
+      setNpEditingCells(prev => {
+        const next = new Set(prev);
+        for (const key of next) {
+          if (key.startsWith(`${enrollment.id}-`)) next.delete(key);
+        }
+        return next;
+      });
       setCommentModal({ open: false });
       setCommentText('');
     } finally {
@@ -598,10 +608,20 @@ const ManageGrades: React.FC = () => {
   };
 
   const cancelCommentSave = () => {
-    const { inputId, originalValue } = commentModal;
+    const { inputId, originalValue, enrollment } = commentModal;
     if (inputId) {
       const el = document.getElementById(inputId) as HTMLInputElement | null;
       if (el) el.value = originalValue != null ? String(originalValue) : '';
+    }
+    // Revert NP editing state for this enrollment
+    if (enrollment) {
+      setNpEditingCells(prev => {
+        const next = new Set(prev);
+        for (const key of next) {
+          if (key.startsWith(`${enrollment.id}-`)) next.delete(key);
+        }
+        return next;
+      });
     }
     setCommentModal({ open: false });
     setCommentText('');
@@ -1340,17 +1360,22 @@ const ManageGrades: React.FC = () => {
                               const insSub = enrollment.inscriptionSubjects?.[0];
                               const studentQuals = insSub?.qualifications || [];
                               let rowTotal = 0;
+                              let hasAnyScore = false;
                               evaluationPlan.forEach(item => {
                                 const q = studentQuals.find((sq: Qualification) => sq.evaluationPlanId === item.id && matchesSelectedTerm(sq));
                                 if (q) {
                                   if (q.isAbsent) {
                                     // absent counts as 0
+                                    hasAnyScore = true;
                                   } else {
                                     const effectiveScore = q.remedialScore != null && q.remedialScore > 0 ? q.remedialScore : q.score;
                                     rowTotal += (Number(effectiveScore) * Number(item.percentage)) / 100;
+                                    hasAnyScore = true;
                                   }
                                 }
                               });
+                              // Minimum final grade is 01 — even if all evaluations are 0/absent
+                              if (hasAnyScore && rowTotal < 1) rowTotal = 1;
 
                               return (
                                 <tr key={enrollment.id} className="grading-row">
@@ -1364,14 +1389,21 @@ const ManageGrades: React.FC = () => {
                                     const q = studentQuals.find((sq: Qualification) => sq.evaluationPlanId === item.id && matchesSelectedTerm(sq));
                                     const currentScore = q ? q.score : null;
                                     const isAbsent = !!(q?.isAbsent);
+                                    const cellKey = `${enrollment.id}-${item.id}`;
+                                    const isNpEditing = isAbsent && npEditingCells.has(cellKey);
                                     const stats = evalStats.get(item.id);
                                     const hasRemedial = (stats?.failedPct ?? 0) >= remedialFailurePercentage;
                                     const isRemedialEligible = !isAbsent && currentScore !== null && currentScore > 0 && currentScore >= remedialMinGrade && currentScore <= remedialMaxGrade;
 
                                     return (
                                       <React.Fragment key={item.id}>
-                                      <td key={`${item.id}-a`} className={`grading-cell${isAbsent ? ' grading-absent' : ''}`} style={{ padding: '2px', border: '1px solid rgba(15, 23, 42, 0.08)', borderLeft: colIndex > 0 ? '2px solid color-mix(in srgb, var(--color-text-main) 35%, transparent)' : undefined, textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-content-bg)' : 'color-mix(in srgb, var(--color-text-main) 2%, var(--color-content-bg))', width: '50px', cursor: 'context-menu' }}
+                                      <td key={`${item.id}-a`} className={`grading-cell${isAbsent && !isNpEditing ? ' grading-absent' : ''}`} style={{ padding: '2px', border: '1px solid rgba(15, 23, 42, 0.08)', borderLeft: colIndex > 0 ? '2px solid color-mix(in srgb, var(--color-text-main) 35%, transparent)' : undefined, textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-content-bg)' : 'color-mix(in srgb, var(--color-text-main) 2%, var(--color-content-bg))', width: '50px', cursor: 'context-menu' }}
                                         title="Click derecho: opciones de la nota"
+                                        onClick={() => {
+                                          if (isAbsent && !isNpEditing && !isSelectedTermBlocked) {
+                                            setNpEditingCells(prev => new Set(prev).add(cellKey));
+                                          }
+                                        }}
                                       >
                                         <Dropdown
                                           trigger={['contextMenu']}
@@ -1406,8 +1438,9 @@ const ManageGrades: React.FC = () => {
                                           step={1}
                                           inputMode="numeric"
                                           pattern="[0-9]*"
-                                          defaultValue={isAbsent ? '' : (currentScore !== null ? padGrade(currentScore) : '')}
-                                          key={`${enrollment.id}-${item.id}${isAbsent ? '-a' : ''}`}
+                                          defaultValue={isAbsent && !isNpEditing ? '' : (currentScore !== null ? padGrade(currentScore) : '')}
+                                          key={`${enrollment.id}-${item.id}${isAbsent ? '-a' : ''}${isNpEditing ? '-e' : ''}`}
+                                          autoFocus={isNpEditing}
                                           onPaste={(e) => handleGradePaste(e, rowIndex, colIndex)}
                                           style={{
                                             width: '48px',
@@ -1431,7 +1464,13 @@ const ManageGrades: React.FC = () => {
                                               e.preventDefault();
                                               return;
                                             }
-                                            if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter'].includes(e.key)) {
+                                            if (e.key === 'Enter') {
+                                              e.preventDefault();
+                                              // Don't move focus — just blur the current input so the comment modal opens
+                                              (e.target as HTMLInputElement).blur();
+                                              return;
+                                            }
+                                            if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
                                               if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
                                                 e.preventDefault();
                                               }
@@ -1478,7 +1517,17 @@ const ManageGrades: React.FC = () => {
                                               return;
                                             }
                                             const raw = e.target.value.replace(/[^0-9]/g, '');
-                                            if (raw === '') return;
+                                            // If empty and was NP editing, revert to NP
+                                            if (raw === '') {
+                                              if (isNpEditing) {
+                                                setNpEditingCells(prev => {
+                                                  const next = new Set(prev);
+                                                  next.delete(cellKey);
+                                                  return next;
+                                                });
+                                              }
+                                              return;
+                                            }
                                             const val = parseInt(raw, 10);
                                             if (val < 0 || val > maxGrade) {
                                               playBeep();
@@ -1491,7 +1540,8 @@ const ManageGrades: React.FC = () => {
                                               return;
                                             }
                                             (e.target as HTMLInputElement).value = padGrade(val);
-                                            if (val !== currentScore) {
+                                            // If was NP or value changed, open comment modal
+                                            if (isAbsent || val !== currentScore) {
                                               const needsRemedialClear = val < remedialMinGrade || val > remedialMaxGrade;
                                               setCommentModal({
                                                 open: true,

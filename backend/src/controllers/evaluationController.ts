@@ -694,6 +694,8 @@ export const saveQualification = async (req: Request, res: Response) => {
 
     if (!created) {
       const previousScore = qualification.score;
+      const previousIsAbsent = !!qualification.isAbsent;
+      console.log('[saveQualification] UPDATE existing qual id=', qualification.id, 'prevScore=', previousScore, 'newScore=', score, 'isAbsent=', isAbsent, 'prevIsAbsent=', previousIsAbsent);
 
       const updateData: any = {
         observations,
@@ -722,10 +724,13 @@ export const saveQualification = async (req: Request, res: Response) => {
       if (isAbsent !== undefined) updateData.isAbsent = isAbsent;
 
       await qualification.update(updateData, { transaction: t });
+      console.log('[saveQualification] After update: score=', qualification.score, 'isAbsent=', qualification.isAbsent);
 
-      // Record audit if score changed
+      // Record audit if score changed (or if isAbsent was toggled)
       const sessionUser = (req.session as any).user;
-      if (sessionUser && score !== undefined && Number(previousScore) !== Number(score)) {
+      const wasAbsent = previousIsAbsent && isAbsent === false;
+      const scoreChanged = score !== undefined && Number(previousScore) !== Number(score);
+      if (sessionUser && (scoreChanged || wasAbsent)) {
         const userRoles: string[] = sessionUser.roles || [];
         const editorContext = userRoles.includes('Control de Estudios') ? 'control_estudios' : 'teacher';
         await logGradeChange({
@@ -733,6 +738,7 @@ export const saveQualification = async (req: Request, res: Response) => {
           entityId: qualification.id,
           previousScore: previousScore != null ? Number(previousScore) : null,
           newScore: score != null ? Number(score) : null,
+          previousStatus: wasAbsent ? 'NP' : null,
           editedBy: sessionUser.id,
           editorRole: editorContext,
           reason: typeof req.body.comment === 'string' && req.body.comment.trim() !== '' ? req.body.comment.trim() : null,
