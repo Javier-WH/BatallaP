@@ -27,9 +27,11 @@ export async function logGradeChange(
   transaction?: Transaction,
 ): Promise<void> {
   // Skip if score didn't change
-  if (Number(params.previousScore) === Number(params.newScore)) return;
+  if (Number(params.previousScore) === Number(params.newScore) && !params.previousStatus) return;
 
   try {
+    // Truncate editorRole to 50 chars to match column STRING(50)
+    const safeEditorRole = params.editorRole ? params.editorRole.substring(0, 50) : null;
     await GradeChangeLog.create(
       {
         entityType: params.entityType,
@@ -40,7 +42,7 @@ export async function logGradeChange(
         newStatus: params.newStatus ?? null,
         gradeType: params.gradeType ?? null,
         editedBy: params.editedBy,
-        editorRole: params.editorRole ?? null,
+        editorRole: safeEditorRole,
         reason: params.reason ?? null,
         actCode: params.actCode ?? null,
         metadata: params.metadata ?? null,

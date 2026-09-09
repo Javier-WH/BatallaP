@@ -706,11 +706,18 @@ export const saveQualification = async (req: Request, res: Response) => {
       };
       if (score !== undefined) {
         updateData.score = score;
-        updateData.scoreSetAt = now;
+        // Only set the timer when the score is first placed (scoreSetAt is null)
+        // Do NOT reset on subsequent edits — the timer is fixed from the first entry
+        if (!qualification.scoreSetAt) {
+          updateData.scoreSetAt = now;
+        }
       }
       if (remedialScore !== undefined) {
         updateData.remedialScore = remedialScore;
-        updateData.remedialScoreSetAt = now;
+        // Only set the remedial timer when first placed
+        if (!qualification.remedialScoreSetAt) {
+          updateData.remedialScoreSetAt = now;
+        }
       }
       if (isAbsent !== undefined) updateData.isAbsent = isAbsent;
 
@@ -3110,7 +3117,7 @@ export const createQualificationEditRequest = async (req: Request, res: Response
     const user = (req.session as any).user;
     if (!user) return res.status(401).json({ message: 'No autorizado' });
 
-    const { qualificationId, justification } = req.body;
+    const { qualificationId, justification, currentScore, requestedScore } = req.body;
     if (!qualificationId) return res.status(400).json({ message: 'Se requiere qualificationId' });
     if (!justification || !justification.trim()) return res.status(400).json({ message: 'La justificación es obligatoria' });
 
@@ -3127,6 +3134,8 @@ export const createQualificationEditRequest = async (req: Request, res: Response
       qualificationId: Number(qualificationId),
       requestedBy: user.id,
       justification: justification.trim(),
+      currentScore: currentScore != null ? Number(currentScore) : null,
+      requestedScore: requestedScore != null ? Number(requestedScore) : null,
       status: 'pending',
     });
 
@@ -3134,6 +3143,18 @@ export const createQualificationEditRequest = async (req: Request, res: Response
   } catch (error: any) {
     console.error('[createQualificationEditRequest] Error:', error);
     return res.status(500).json({ message: 'Error al crear solicitud' });
+  }
+};
+
+export const getPendingQualificationEditRequestCount = async (_req: Request, res: Response) => {
+  try {
+    const count = await QualificationEditRequest.count({
+      where: { status: 'pending' },
+    });
+    return res.json({ count });
+  } catch (error: any) {
+    console.error('[getPendingQualificationEditRequestCount] Error:', error);
+    return res.status(500).json({ message: 'Error al contar solicitudes' });
   }
 };
 
@@ -3211,15 +3232,59 @@ export const reviewQualificationEditRequest = async (req: Request, res: Response
       grantedAt: action === 'approve' ? now : null,
     });
 
-    // If approved, reset the timer so the teacher can edit the grade again
+    // If approved, apply the requested score change and reset the timer
     if (action === 'approve') {
       const qualification = await Qualification.findByPk(request.qualificationId);
       if (qualification) {
-        // Reset both timers to now so the teacher gets a fresh grace period
-        await qualification.update({
-          scoreSetAt: now,
-          remedialScoreSetAt: now,
-        });
+        const wasAbsent = !!qualification.isAbsent;
+        const previousScore = wasAbsent ? null : (Number(qualification.score) || 0);
+        const newScore = request.requestedScore != null ? Number(request.requestedScore) : (previousScore ?? 0);
+
+        console.log('[reviewQualificationEditRequest] wasAbsent=', wasAbsent, 'previousScore=', previousScore, 'newScore=', newScore, 'requestedScore=', request.requestedScore, 'qualScore=', qualification.score);
+
+        // Apply the grade change if a requestedScore was provided and differs from current state
+        // (also applies when the qualification was absent/NP, even if the numeric score matches)
+        const scoreChanged = request.requestedScore != null && (wasAbsent || newScore !== previousScore);
+        if (scoreChanged) {
+          // Apply the grade change WITHOUT resetting the timer.
+          // The grade was already locked; Control de Estudios approved the change,
+          // so it should remain locked (teacher cannot freely edit again).
+          await qualification.update({
+            score: newScore,
+            isAbsent: false,
+          });
+          console.log('[reviewQualificationEditRequest] Score updated, calling logGradeChange...');
+
+          // Log the change to GradeChangeLog
+          try {
+            await logGradeChange({
+              entityType: 'qualification',
+              entityId: qualification.id,
+              previousScore,
+              newScore,
+              previousStatus: wasAbsent ? 'NP' : null,
+              newStatus: null,
+              editedBy: user.id,
+              editorRole: userRoles.includes('Control de Estudios') ? 'Control de Estudios' : (userRoles[0] || null),
+              reason: `Cambio solicitado por el profesor${request.justification ? `: ${request.justification}` : ''}`,
+              metadata: {
+                editRequestId: request.id,
+                reviewedBy: user.id,
+                reviewNote: reviewNote || null,
+                requesterId: request.requestedBy,
+              },
+            });
+            console.log('[reviewQualificationEditRequest] logGradeChange completed');
+          } catch (logErr) {
+            console.error('[reviewQualificationEditRequest] logGradeChange error:', logErr);
+          }
+        } else {
+          // No score change requested, just reset the timer
+          await qualification.update({
+            scoreSetAt: now,
+            remedialScoreSetAt: now,
+          });
+        }
       }
     }
 

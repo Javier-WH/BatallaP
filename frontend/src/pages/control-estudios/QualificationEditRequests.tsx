@@ -8,6 +8,8 @@ interface EditRequest {
   qualificationId: number;
   requestedBy: number;
   justification: string;
+  currentScore: number | null;
+  requestedScore: number | null;
   status: 'pending' | 'approved' | 'rejected';
   createdAt: string;
   reviewedAt: string | null;
@@ -107,7 +109,26 @@ const QualificationEditRequests = () => {
       key: 'score',
       width: 90,
       align: 'center' as const,
-      render: (_: unknown, r: EditRequest) => r.qualification?.score ?? '—',
+      render: (_: unknown, r: EditRequest) => {
+        const current = r.currentScore != null ? r.currentScore : r.qualification?.score;
+        return current != null ? current : '—';
+      },
+    },
+    {
+      title: 'Nota propuesta',
+      key: 'requestedScore',
+      width: 100,
+      align: 'center' as const,
+      render: (_: unknown, r: EditRequest) => {
+        if (r.requestedScore == null) return '—';
+        const current = r.currentScore != null ? r.currentScore : r.qualification?.score;
+        const isChange = current != null && r.requestedScore !== current;
+        return (
+          <Tag color={isChange ? 'orange' : 'default'}>
+            {r.requestedScore}
+          </Tag>
+        );
+      },
     },
     {
       title: 'Solicitado por',
@@ -211,11 +232,24 @@ const QualificationEditRequests = () => {
               <strong>Materia:</strong> {reviewingRequest.qualification?.inscriptionSubject?.subject?.name || '—'}
             </p>
             <p>
+              <strong>Evaluación:</strong> {reviewingRequest.qualification?.evaluationPlan?.description || '—'}
+            </p>
+            <div style={{ display: 'flex', gap: 24, margin: '12px 0' }}>
+              <div>
+                <strong>Nota actual:</strong>{' '}
+                <Tag>{reviewingRequest.currentScore != null ? reviewingRequest.currentScore : reviewingRequest.qualification?.score ?? '—'}</Tag>
+              </div>
+              <div>
+                <strong>Nota propuesta:</strong>{' '}
+                <Tag color="orange">{reviewingRequest.requestedScore ?? '—'}</Tag>
+              </div>
+            </div>
+            <p>
               <strong>Justificación del profesor:</strong> {reviewingRequest.justification}
             </p>
             {reviewAction === 'approve' && (
               <p style={{ color: '#16a34a' }}>
-                Al aprobar, el timer de la nota se reiniciará y el profesor podrá editarla nuevamente.
+                Al aprobar, la nota se cambiará automáticamente de {reviewingRequest.currentScore ?? reviewingRequest.qualification?.score} a {reviewingRequest.requestedScore} y se registrará en auditoría.
               </p>
             )}
           </div>

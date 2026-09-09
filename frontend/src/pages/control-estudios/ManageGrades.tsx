@@ -619,7 +619,7 @@ const ManageGrades: React.FC = () => {
     try {
       const res = await api.get(`/evaluation/qualification-audits/${selectedAssignment.id}`);
       const all = res.data as any[];
-      const filtered = all.filter((a: any) => a.qualificationId === q.id);
+      const filtered = all.filter((a: any) => a.entityId === q.id);
       console.log('[audit] q.id=', q.id, 'assignmentId=', selectedAssignment.id, 'total=', all.length, 'filtered=', filtered.length);
       setAuditHistory(filtered);
     } catch (e) {
@@ -1768,9 +1768,11 @@ const ManageGrades: React.FC = () => {
               },
               {
                 title: 'Nota anterior',
-                dataIndex: 'previousScore',
                 align: 'center',
-                render: (v: number | null) => (v != null ? v : '—'),
+                render: (_: unknown, r: any) => {
+                  if (r.previousStatus === 'NP') return <Tag color="red">NP</Tag>;
+                  return r.previousScore != null ? r.previousScore : '—';
+                },
               },
               {
                 title: 'Nota nueva',
@@ -1778,9 +1780,18 @@ const ManageGrades: React.FC = () => {
                 align: 'center',
               },
               {
-                title: 'Comentario',
-                dataIndex: 'comment',
-                render: (v: string | null) => (v && v.trim() !== '' ? v : <Text type="secondary" style={{ fontStyle: 'italic' }}>Sin comentario</Text>),
+                title: 'Motivo',
+                dataIndex: 'reason',
+                render: (v: string | null) => (v && v.trim() !== '' ? v : <Text type="secondary" style={{ fontStyle: 'italic' }}>Sin motivo</Text>),
+              },
+              {
+                title: 'Nota de revisión',
+                render: (_: unknown, r: any) => {
+                  const note = r.metadata?.reviewNote;
+                  return note && String(note).trim() !== ''
+                    ? <Text>{String(note)}</Text>
+                    : <Text type="secondary" style={{ fontStyle: 'italic' }}>—</Text>;
+                },
               },
             ]}
           />

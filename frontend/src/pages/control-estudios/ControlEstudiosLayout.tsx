@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { Button, Tooltip, Dropdown } from 'antd';
+import { Button, Tooltip, Dropdown, Badge } from 'antd';
 import type { MenuProps } from 'antd';
 import { DashboardOutlined, SettingOutlined, UserAddOutlined, CheckCircleFilled, LockOutlined, ProjectOutlined, EditOutlined, DownOutlined, FileExcelOutlined, ToolOutlined, SwapOutlined, TrophyOutlined, AlertOutlined, HistoryOutlined, CalendarOutlined, FlagOutlined, FileProtectOutlined, ClockCircleOutlined } from '@ant-design/icons';
+import api from '@/services/api';
 
 const NavButton: React.FC<{
   icon: React.ReactNode;
@@ -32,6 +33,22 @@ const NavButton: React.FC<{
 const ControlEstudiosLayout: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const [pendingEditCount, setPendingEditCount] = useState(0);
+
+  const fetchPendingCount = useCallback(async () => {
+    try {
+      const res = await api.get('/evaluation/grade-edit-requests/pending/count');
+      setPendingEditCount(res.data?.count || 0);
+    } catch {
+      // silent
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchPendingCount();
+    const interval = setInterval(fetchPendingCount, 30000);
+    return () => clearInterval(interval);
+  }, [fetchPendingCount, location.pathname]);
 
   const matchesPath = (path: string) => location.pathname.startsWith(path);
   const isExact = (path: string) => location.pathname === path;
@@ -53,7 +70,16 @@ const ControlEstudiosLayout: React.FC = () => {
     { key: '/control-estudios/calificaciones', icon: <EditOutlined />, label: 'Notas Actuales' },
     { key: '/control-estudios/notas-historicas', icon: <HistoryOutlined />, label: 'Notas Históricas' },
     { key: '/control-estudios/editar-notas', icon: <LockOutlined />, label: 'Notas Históricas (Legacy)' },
-    { key: '/control-estudios/solicitudes-edicion', icon: <ClockCircleOutlined />, label: 'Solicitudes de Edición' },
+    {
+      key: '/control-estudios/solicitudes-edicion',
+      icon: <ClockCircleOutlined />,
+      label: (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span>Solicitudes de Edición</span>
+          {pendingEditCount > 0 && <Badge count={pendingEditCount} size="small" />}
+        </div>
+      ),
+    },
     { key: '/control-estudios/notas-externas', icon: <SwapOutlined />, label: 'Notas Externas' },
   ];
 
@@ -94,21 +120,23 @@ const ControlEstudiosLayout: React.FC = () => {
             }}
             trigger={['click']}
           >
-            <Button
-              type="text"
-              style={{ border: 'none', boxShadow: 'none' }}
-              className={`
-                h-10 px-4 flex items-center gap-2 rounded-xl transition-all font-semibold
-                ${isNotasActive
-                  ? 'bg-brand-primary text-white shadow-lg shadow-blue-500/30'
-                  : 'text-slate-500 hover:bg-slate-100'
-                }
-              `}
-            >
-              <EditOutlined />
-              <span className="text-sm">Notas</span>
-              <DownOutlined style={{ fontSize: 10 }} />
-            </Button>
+            <Badge count={pendingEditCount} size="small" offset={[-4, 4]}>
+              <Button
+                type="text"
+                style={{ border: 'none', boxShadow: 'none' }}
+                className={`
+                  h-10 px-4 flex items-center gap-2 rounded-xl transition-all font-semibold
+                  ${isNotasActive
+                    ? 'bg-brand-primary text-white shadow-lg shadow-blue-500/30'
+                    : 'text-slate-500 hover:bg-slate-100'
+                  }
+                `}
+              >
+                <EditOutlined />
+                <span className="text-sm">Notas</span>
+                <DownOutlined style={{ fontSize: 10 }} />
+              </Button>
+            </Badge>
           </Dropdown>
           <Dropdown
             menu={{

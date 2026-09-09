@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, Component, useMemo, useRef } from 'react';
 import type { ReactNode, ErrorInfo } from 'react';
-import { Tabs, Card, Table, Button, message, Space, Tag, Alert, Empty, Tooltip, Modal, Checkbox, DatePicker, Spin } from 'antd';
+import { Tabs, Card, Table, Button, message, Space, Tag, Alert, Empty, Tooltip, Modal, Checkbox, DatePicker, Spin, InputNumber } from 'antd';
 import { BookOutlined, PlusOutlined, DeleteOutlined, EditOutlined, LockOutlined, FilePdfOutlined, DownloadOutlined, ToolOutlined, CopyOutlined, PrinterOutlined, CalendarOutlined, SaveOutlined, FormOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { isAxiosError } from 'axios';
@@ -332,6 +332,9 @@ const TeacherPanel: React.FC = () => {
   const [editRequestQualificationId, setEditRequestQualificationId] = useState<number | null>(null);
   const [editRequestJustification, setEditRequestJustification] = useState('');
   const [editRequestSubmitting, setEditRequestSubmitting] = useState(false);
+  const [editRequestCurrentScore, setEditRequestCurrentScore] = useState<number | null>(null);
+  const [editRequestRequestedScore, setEditRequestRequestedScore] = useState<number | null>(null);
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [nominaGenerating, setNominaGenerating] = useState(false);
   const dragScroll = useDragScroll<HTMLDivElement>();
   // null = all closed (term globally blocked), array = specific { sectionId, gradeId } closed
@@ -1158,9 +1161,11 @@ const handleToggleAbsent = async (enrollment: StudentEnrollment, evalPlanId: num
     }
   };
 
-  const handleOpenEditRequest = (qualificationId: number) => {
+  const handleOpenEditRequest = (qualificationId: number, currentScore: number | null) => {
     setEditRequestQualificationId(qualificationId);
     setEditRequestJustification('');
+    setEditRequestCurrentScore(currentScore);
+    setEditRequestRequestedScore(null);
     setEditRequestModalOpen(true);
   };
 
@@ -1170,16 +1175,24 @@ const handleToggleAbsent = async (enrollment: StudentEnrollment, evalPlanId: num
       message.warning('La justificación es obligatoria');
       return;
     }
+    if (editRequestRequestedScore == null) {
+      message.warning('Debe indicar la nota que desea colocar');
+      return;
+    }
     setEditRequestSubmitting(true);
     try {
       await api.post('/evaluation/grade-edit-request', {
         qualificationId: editRequestQualificationId,
         justification: editRequestJustification.trim(),
+        currentScore: editRequestCurrentScore,
+        requestedScore: editRequestRequestedScore,
       });
       message.success('Solicitud enviada a Control de Estudios');
       setEditRequestModalOpen(false);
       setEditRequestJustification('');
       setEditRequestQualificationId(null);
+      setEditRequestCurrentScore(null);
+      setEditRequestRequestedScore(null);
     } catch (err: any) {
       const msg = err?.response?.data?.message || 'Error al enviar solicitud';
       message.error(msg);
@@ -2603,8 +2616,8 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
 
                                 return (
                                   <React.Fragment key={item.id}>
-                                  <td key={`${item.id}-a`} className={`grading-cell${isAbsent ? ' grading-absent' : ''}`} style={{ padding: '2px', border: '1px solid rgba(15, 23, 42, 0.08)', borderLeft: colIndex > 0 ? '2px solid color-mix(in srgb, var(--color-text-main) 35%, transparent)' : undefined, textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-content-bg)' : 'color-mix(in srgb, var(--color-text-main) 2%, var(--color-content-bg))', width: '50px', cursor: (isReadOnly || q?.isLockedByTimer) ? 'default' : 'context-menu' }}
-                                    title={(isReadOnly || q?.isLockedByTimer) ? undefined : "Click derecho: marcar/desmarcar inasistente. Click izquierdo: desmarcar NP"}
+                                  <td key={`${item.id}-a`} className={`grading-cell${isAbsent ? ' grading-absent' : ''}`} style={{ padding: '2px', border: '1px solid rgba(15, 23, 42, 0.08)', borderLeft: colIndex > 0 ? '2px solid color-mix(in srgb, var(--color-text-main) 35%, transparent)' : undefined, textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-content-bg)' : 'color-mix(in srgb, var(--color-text-main) 2%, var(--color-content-bg))', width: '50px', cursor: (isReadOnly || q?.isLockedByTimer) ? 'default' : 'context-menu', position: 'relative' }}
+                                    title={(isReadOnly || q?.isLockedByTimer) ? (q?.isLockedByTimer ? 'Mantén presionado para solicitar permiso de edición' : undefined) : "Click derecho: marcar/desmarcar inasistente. Click izquierdo: desmarcar NP"}
                                     onContextMenu={(e) => {
                                       if (isReadOnly || q?.isLockedByTimer) return;
                                       e.preventDefault();
@@ -2622,6 +2635,44 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                                       }
                                     }}
                                   >
+                                    {q?.isLockedByTimer && q?.id && (
+                                      <div
+                                        style={{ position: 'absolute', inset: 0, zIndex: 10, cursor: 'pointer', background: 'transparent' }}
+                                        title="Mantén presionado para solicitar permiso de edición"
+                                        onMouseDown={(e) => {
+                                          e.preventDefault();
+                                          e.stopPropagation();
+                                          longPressTimerRef.current = setTimeout(() => {
+                                            handleOpenEditRequest(q.id, q.score != null ? Number(q.score) : null);
+                                          }, 500);
+                                        }}
+                                        onMouseUp={() => {
+                                          if (longPressTimerRef.current) {
+                                            clearTimeout(longPressTimerRef.current);
+                                            longPressTimerRef.current = null;
+                                          }
+                                        }}
+                                        onMouseLeave={() => {
+                                          if (longPressTimerRef.current) {
+                                            clearTimeout(longPressTimerRef.current);
+                                            longPressTimerRef.current = null;
+                                          }
+                                        }}
+                                        onTouchStart={(e) => {
+                                          e.preventDefault();
+                                          e.stopPropagation();
+                                          longPressTimerRef.current = setTimeout(() => {
+                                            handleOpenEditRequest(q.id, q.score != null ? Number(q.score) : null);
+                                          }, 500);
+                                        }}
+                                        onTouchEnd={() => {
+                                          if (longPressTimerRef.current) {
+                                            clearTimeout(longPressTimerRef.current);
+                                            longPressTimerRef.current = null;
+                                          }
+                                        }}
+                                      />
+                                    )}
                                     <input
                                       type="text"
                                       id={`grade-${rowIndex}-${colIndex}`}
@@ -2647,14 +2698,9 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                                         cursor: q?.isLockedByTimer ? 'not-allowed' : 'text',
                                       }}
                                       title={q?.isLockedByTimer
-                                        ? 'Tiempo de edición expirado. Click para solicitar permiso a Control de Estudios.'
+                                        ? 'Mantén presionado para solicitar permiso de edición'
                                         : undefined}
                                       disabled={isReadOnly || isSelectedTermBlocked || q?.isLockedByTimer || (q?.remedialScore != null && q.remedialScore > 0 && isRemedialEligible)}
-                                      onClick={() => {
-                                        if (q?.isLockedByTimer && q?.id) {
-                                          handleOpenEditRequest(q.id);
-                                        }
-                                      }}
                                       onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
                                         if (e.key === '.' || e.key === ',' || e.key === 'e' || e.key === 'E' || e.key === '-' || e.key === '+') {
                                           e.preventDefault();
@@ -2736,9 +2782,47 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                                     />
                                   </td>
                                   {hasRemedial && (
-                                    <td key={`${item.id}-b`} className="grading-cell remedial-cell" style={{ padding: '2px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-content-bg)' : 'color-mix(in srgb, var(--color-text-main) 2%, var(--color-content-bg))', width: '50px' }}
+                                    <td key={`${item.id}-b`} className="grading-cell remedial-cell" style={{ padding: '2px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-content-bg)' : 'color-mix(in srgb, var(--color-text-main) 2%, var(--color-content-bg))', width: '50px', position: 'relative' }}
                                       onContextMenu={(e) => e.preventDefault()}
                                     >
+                                      {q?.isRemedialLockedByTimer && q?.id && (
+                                        <div
+                                          style={{ position: 'absolute', inset: 0, zIndex: 10, cursor: 'pointer', background: 'transparent' }}
+                                          title="Mantén presionado para solicitar permiso de edición"
+                                          onMouseDown={(e) => {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            longPressTimerRef.current = setTimeout(() => {
+                                              handleOpenEditRequest(q.id, q.remedialScore != null ? Number(q.remedialScore) : null);
+                                            }, 500);
+                                          }}
+                                          onMouseUp={() => {
+                                            if (longPressTimerRef.current) {
+                                              clearTimeout(longPressTimerRef.current);
+                                              longPressTimerRef.current = null;
+                                            }
+                                          }}
+                                          onMouseLeave={() => {
+                                            if (longPressTimerRef.current) {
+                                              clearTimeout(longPressTimerRef.current);
+                                              longPressTimerRef.current = null;
+                                            }
+                                          }}
+                                          onTouchStart={(e) => {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            longPressTimerRef.current = setTimeout(() => {
+                                              handleOpenEditRequest(q.id, q.remedialScore != null ? Number(q.remedialScore) : null);
+                                            }, 500);
+                                          }}
+                                          onTouchEnd={() => {
+                                            if (longPressTimerRef.current) {
+                                              clearTimeout(longPressTimerRef.current);
+                                              longPressTimerRef.current = null;
+                                            }
+                                          }}
+                                        />
+                                      )}
                                       <Tooltip
                                         mouseEnterDelay={0}
                                         title={
@@ -2778,14 +2862,9 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                                           cursor: !isRemedialEligible && currentScore !== null && currentScore > 0 ? 'not-allowed' : undefined,
                                         }}
                                         title={q?.isRemedialLockedByTimer
-                                          ? 'Tiempo de edición expirado. Click para solicitar permiso a Control de Estudios.'
+                                          ? 'Mantén presionado para solicitar permiso de edición'
                                           : undefined}
                                         disabled={isReadOnly || isSelectedTermBlocked || !isRemedialEligible || q?.isRemedialLockedByTimer}
-                                        onClick={() => {
-                                          if (q?.isRemedialLockedByTimer && q?.id) {
-                                            handleOpenEditRequest(q.id);
-                                          }
-                                        }}
                                         onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
                                           if (e.key === '.' || e.key === ',' || e.key === 'e' || e.key === 'E' || e.key === '-' || e.key === '+') {
                                             e.preventDefault();
@@ -2967,15 +3046,36 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
         okText="Enviar solicitud"
         cancelText="Cancelar"
         confirmLoading={editRequestSubmitting}
-        okButtonProps={{ disabled: !editRequestJustification.trim() }}
+        okButtonProps={{ disabled: !editRequestJustification.trim() || editRequestRequestedScore == null }}
       >
         <div style={{ marginBottom: 12 }}>
           <Alert
             type="info"
             showIcon
             message="El tiempo de edición de esta nota ha expirado."
-            description="Escriba una justificación para solicitar permiso de edición a Control de Estudios."
+            description="Indique la nota que desea colocar y una justificación. Control de Estudios revisará la solicitud y, al aprobarla, el cambio se aplicará automáticamente."
           />
+        </div>
+        <div style={{ display: 'flex', gap: 16, marginBottom: 12, alignItems: 'center' }}>
+          <div>
+            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Nota actual</label>
+            <InputNumber
+              value={editRequestCurrentScore}
+              disabled
+              style={{ width: 80 }}
+            />
+          </div>
+          <div>
+            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Nota nueva</label>
+            <InputNumber
+              value={editRequestRequestedScore}
+              onChange={(val) => setEditRequestRequestedScore(val)}
+              min={0}
+              max={maxGrade}
+              style={{ width: 80 }}
+              placeholder="—"
+            />
+          </div>
         </div>
         <textarea
           style={{ width: '100%', minHeight: 100, padding: '8px', borderRadius: 6, border: '1px solid #d9d9d9' }}

@@ -21,6 +21,7 @@ import {
   recalculatePeriodGrades,
   createQualificationEditRequest,
   getPendingQualificationEditRequests,
+  getPendingQualificationEditRequestCount,
   reviewQualificationEditRequest,
   resetQualificationTimer
 } from '@/controllers/evaluationController';
@@ -50,6 +51,7 @@ router.post('/recalculate/:schoolPeriodId', recalculatePeriodGrades);
 // Qualification edit request (timer-locked grade permission flow)
 router.post('/grade-edit-request', createQualificationEditRequest);
 router.get('/grade-edit-requests/pending', getPendingQualificationEditRequests);
+router.get('/grade-edit-requests/pending/count', getPendingQualificationEditRequestCount);
 router.put('/grade-edit-request/:id/review', reviewQualificationEditRequest);
 router.post('/reset-timer', resetQualificationTimer);
 

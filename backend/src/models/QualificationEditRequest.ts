@@ -10,6 +10,8 @@ interface QualificationEditRequestAttributes {
   qualificationId: number;
   requestedBy: number;
   justification: string;
+  currentScore: number | null;
+  requestedScore: number | null;
   status: QualificationEditRequestStatus;
   reviewedBy: number | null;
   reviewedAt: Date | null;
@@ -18,7 +20,7 @@ interface QualificationEditRequestAttributes {
 }
 
 interface QualificationEditRequestCreationAttributes
-  extends Optional<QualificationEditRequestAttributes, 'id' | 'status' | 'reviewedBy' | 'reviewedAt' | 'reviewNote' | 'grantedAt'> {}
+  extends Optional<QualificationEditRequestAttributes, 'id' | 'status' | 'reviewedBy' | 'reviewedAt' | 'reviewNote' | 'grantedAt' | 'currentScore' | 'requestedScore'> {}
 
 class QualificationEditRequest
   extends Model<QualificationEditRequestAttributes, QualificationEditRequestCreationAttributes>
@@ -28,6 +30,8 @@ class QualificationEditRequest
   public qualificationId!: number;
   public requestedBy!: number;
   public justification!: string;
+  public currentScore!: number | null;
+  public requestedScore!: number | null;
   public status!: QualificationEditRequestStatus;
   public reviewedBy!: number | null;
   public reviewedAt!: Date | null;
@@ -61,6 +65,16 @@ QualificationEditRequest.init(
       type: DataTypes.TEXT,
       allowNull: false,
       comment: 'Reason the teacher provides for needing to edit the locked grade',
+    },
+    currentScore: {
+      type: DataTypes.DECIMAL(5, 2),
+      allowNull: true,
+      comment: 'Score at the time of the request',
+    },
+    requestedScore: {
+      type: DataTypes.DECIMAL(5, 2),
+      allowNull: true,
+      comment: 'Score the teacher wants to set',
     },
     status: {
       type: DataTypes.ENUM('pending', 'approved', 'rejected'),
