@@ -1,21 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Card, Form, Input, Button, Typography, message, Spin, Segmented, DatePicker } from 'antd';
+import { Card, Form, Input, Button, Typography, message, Spin, Segmented } from 'antd';
 import { UserSwitchOutlined, SaveOutlined } from '@ant-design/icons';
 import api from '@/services/api';
 import { useSchool } from '@/context/SchoolContext';
 
 const { Text } = Typography;
-
-interface EncargadoFormValues {
-  encargado_name?: string;
-  encargado_first_names?: string;
-  encargado_last_names?: string;
-  encargado_document?: string;
-  encargado_gender?: 'M' | 'F';
-  encargado_reason?: string;
-  encargado_start_date?: any;
-  encargado_end_date?: any;
-}
 
 const DirectorEncargado: React.FC = () => {
   const [form] = Form.useForm();

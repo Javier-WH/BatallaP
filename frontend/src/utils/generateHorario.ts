@@ -88,14 +88,6 @@ function cellSignature(cellEntries: ScheduleEntryData[] | undefined): string {
   return `${cellSubjectName(cellEntries)}|${cellRoom(cellEntries)}`;
 }
 
-// Get the display label for a cell (plain text, for backwards compat)
-function cellLabel(cellEntries: ScheduleEntryData[] | undefined): string {
-  if (!cellEntries || cellEntries.length === 0) return '';
-  const name = cellSubjectName(cellEntries);
-  const room = cellRoom(cellEntries);
-  return room ? `${name}\n${room}` : name;
-}
-
 const mediumBorder: Partial<ExcelJS.Borders> = {
   left: { style: 'medium', color: { argb: 'FF000000' } },
   right: { style: 'medium', color: { argb: 'FF000000' } },
@@ -127,12 +119,6 @@ const dayHeaderFont: Partial<ExcelJS.Font> = {
   name: 'Cambria',
   size: 9,
   bold: true,
-  color: { argb: 'FF000000' },
-};
-
-const cellFont: Partial<ExcelJS.Font> = {
-  name: 'Cambria',
-  size: 7,
   color: { argb: 'FF000000' },
 };
 
@@ -194,8 +180,17 @@ function addLogoToSheet(ws: ExcelJS.Worksheet, workbook: ExcelJS.Workbook, buffe
   const PX_TO_EMU = 9525; // 1px = 9525 EMU
   const logoId = workbook.addImage({ buffer, extension: 'png' });
   const offsetEmu = -sizePx * PX_TO_EMU;
+  // ExcelJS runtime supports native EMU anchors (nativeCol/nativeColOff) for
+  // pixel-precise placement, but the installed type defs only declare col/row.
   ws.addImage(logoId, {
-    tl: { nativeCol: 1, nativeColOff: offsetEmu, nativeRow: startRow, nativeRowOff: 0 },
+    tl: {
+      col: 1,
+      row: startRow,
+      nativeCol: 1,
+      nativeColOff: offsetEmu,
+      nativeRow: startRow,
+      nativeRowOff: 0,
+    } as unknown as { col: number; row: number },
     ext: { width: sizePx, height: sizePx },
   });
 }

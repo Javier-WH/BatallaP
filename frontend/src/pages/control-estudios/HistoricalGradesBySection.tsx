@@ -1254,7 +1254,7 @@ const HistoricalGradesBySection: React.FC = () => {
 
                       {/* Subject cells + optional group subject name column */}
                       {years.map(y => {
-                        const studentGradeOrder = currentGradeOrder[String(row.personId)] ?? currentGradeOrder[row.personId] ?? 999;
+                        const studentGradeOrder = currentGradeOrder[row.personId] ?? 999;
                         const isFutureGrade = y.gradeOrder > studentGradeOrder;
                         const futureBg = isFutureGrade ? '#E8E8E8' : undefined;
                         const futureOpacity = isFutureGrade ? 0.5 : 1;

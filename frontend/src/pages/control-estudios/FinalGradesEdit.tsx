@@ -386,8 +386,8 @@ const FinalGradesEdit: React.FC = () => {
       message.success(`Timer reseteado para ${qualificationIds.length} calificación(es) de ${resetTimerContext.studentName} en ${resetTimerContext.subjectName}`);
       setResetTimerModalOpen(false);
       setResetTimerContext(null);
-      // Refresh data
-      if (selectedPeriod) fetchFinalGrades();
+      // Refresh data for the current selection
+      if (selectedPeriod) reloadGradesForSelection(selectedGrade, selectedSection);
     } catch (err: any) {
       const msg = err?.response?.data?.message || 'Error al resetear timer';
       message.error(msg);
@@ -657,7 +657,17 @@ const FinalGradesEdit: React.FC = () => {
               }}
               onContextMenu={(e) => {
                 e.preventDefault();
-                // Show options: reset timer (always) + audit history (if exists)
+                // Altered grades: right-click shows the audit history
+                if (gradeData.editedByOther && gradeData.auditHistory && gradeData.auditHistory.length > 0) {
+                  setAuditModalContext({
+                    studentName: `${record.firstName} ${record.lastName}`,
+                    subjectName: subjectName,
+                    audits: gradeData.auditHistory,
+                  });
+                  setAuditModalOpen(true);
+                  return;
+                }
+                // Otherwise: reset timer (always) + audit history (if exists)
                 setResetTimerContext({
                   studentName: `${record.firstName} ${record.lastName}`,
                   subjectName: subjectName,

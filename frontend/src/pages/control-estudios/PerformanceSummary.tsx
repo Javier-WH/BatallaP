@@ -513,7 +513,7 @@ const PerformanceSummary: React.FC = () => {
           }
         } catch (error: any) {
           const errMsg = error.response?.data instanceof Blob
-            ? await error.response.data.text().then(t => { try { return JSON.parse(t).message; } catch { return t; } }).catch(() => 'Error desconocido')
+            ? await error.response.data.text().then((t: string) => { try { return JSON.parse(t).message; } catch { return t; } }).catch(() => 'Error desconocido')
             : error?.response?.data?.message || 'Error desconocido';
           errors.push(`${combo.gradeName} ${combo.sectionName}: ${errMsg}`);
         }
@@ -569,7 +569,7 @@ const PerformanceSummary: React.FC = () => {
           }
         } catch (error: any) {
           const errMsg = error.response?.data instanceof Blob
-            ? await error.response.data.text().then(t => { try { return JSON.parse(t).message; } catch { return t; } }).catch(() => 'Error desconocido')
+            ? await error.response.data.text().then((t: string) => { try { return JSON.parse(t).message; } catch { return t; } }).catch(() => 'Error desconocido')
             : error?.response?.data?.message || 'Error desconocido';
           errors.push(`${combo.gradeName} ${combo.sectionName}: ${errMsg}`);
         }

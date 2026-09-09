@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  Card, Button, Table, Space, Typography, Row, Col, Tag, Empty, Spin,
+  Card, Button, Table, Space, Typography, Row, Col, Tag, Empty,
   message, Alert, Steps, Modal, Descriptions, Statistic, Divider, Badge,
 } from 'antd';
 import {
@@ -8,11 +8,9 @@ import {
   CheckCircleOutlined,
   WarningOutlined,
   CloseCircleOutlined,
-  PlayCircleOutlined,
   EyeOutlined,
   ReloadOutlined,
   UserOutlined,
-  BookOutlined,
   SafetyOutlined,
   RocketOutlined,
   FileTextOutlined,
@@ -20,7 +18,6 @@ import {
   CheckOutlined,
   ExclamationCircleOutlined,
 } from '@ant-design/icons';
-import api from '@/services/api';
 import { useSchool } from '@/context/SchoolContext';
 import {
   getClosureStatus,
@@ -34,7 +31,14 @@ import {
 } from '@/services/periodClosure';
 
 const { Title, Text } = Typography;
-const { Step } = Steps;
+
+const CLOSURE_STEPS = [
+  { title: 'Validar', description: 'Verificar requisitos previos', icon: <SafetyOutlined /> },
+  { title: 'Validado', description: 'Requisitos verificados', icon: <CheckCircleOutlined /> },
+  { title: 'Previsualizar', description: 'Ver resultados antes de ejecutar', icon: <EyeOutlined /> },
+  { title: 'Ejecutar', description: 'Procesar el cierre', icon: <RocketOutlined /> },
+  { title: 'Completado', description: 'Período cerrado', icon: <FlagOutlined /> },
+];
 
 const STATUS_LABELS: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
   aprobado: { label: 'Aprobado', color: 'green', icon: <CheckCircleOutlined /> },
@@ -304,33 +308,7 @@ const PeriodClosureManagement: React.FC = () => {
 
       {/* Process Steps */}
       <Card style={{ marginBottom: 24 }}>
-        <Steps current={currentStep} style={{ marginBottom: 24 }}>
-          <Step
-            title="Validar"
-            description="Verificar requisitos previos"
-            icon={<SafetyOutlined />}
-          />
-          <Step
-            title="Validado"
-            description="Requisitos verificados"
-            icon={<CheckCircleOutlined />}
-          />
-          <Step
-            title="Previsualizar"
-            description="Ver resultados antes de ejecutar"
-            icon={<EyeOutlined />}
-          />
-          <Step
-            title="Ejecutar"
-            description="Procesar el cierre"
-            icon={<RocketOutlined />}
-          />
-          <Step
-            title="Completado"
-            description="Período cerrado"
-            icon={<FlagOutlined />}
-          />
-        </Steps>
+        <Steps current={currentStep} style={{ marginBottom: 24 }} items={CLOSURE_STEPS} />
 
         <Divider />
 

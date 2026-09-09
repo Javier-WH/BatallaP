@@ -6,14 +6,6 @@ import { useSchool } from '@/context/SchoolContext';
 
 const { Text } = Typography;
 
-interface CoordinatorFormValues {
-  control_estudios_name?: string;
-  control_estudios_first_names?: string;
-  control_estudios_last_names?: string;
-  control_estudios_document?: string;
-  control_estudios_gender?: 'M' | 'F';
-}
-
 const DirectorSettings: React.FC = () => {
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
