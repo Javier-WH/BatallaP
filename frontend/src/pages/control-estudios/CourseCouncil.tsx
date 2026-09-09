@@ -165,10 +165,9 @@ async function buildCouncilWorkbook(p: CouncilExcelParams): Promise<ArrayBuffer>
 
   for (let r = 1; r <= 5; r++) worksheet.addRow([]);
 
-  worksheet.mergeCells(1, 1, 1, cut1);
-  worksheet.mergeCells(1, cut1 + 1, 1, cut2);
-  worksheet.mergeCells(1, cut2 + 1, 1, lastCol);
-  const nameCell = worksheet.getCell(1, cut1 + 1);
+  // Single merged cell across the full first row for the institution name
+  worksheet.mergeCells(1, 1, 1, lastCol);
+  const nameCell = worksheet.getCell(1, 1);
   nameCell.value = p.institutionName;
   nameCell.alignment = { horizontal: 'center', vertical: 'middle' };
   nameCell.font = { bold: true, size: 20, color: { argb: '17324D' } };
