@@ -1,15 +1,17 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Card, Table, Button, Select, Form, InputNumber, Input, Modal, message, Space, Tag, Typography, Row, Col, Alert, Spin } from 'antd';
+import { Card, Table, Button, Select, Form, InputNumber, Input, Modal, message, Space, Tag, Typography, Row, Col, Alert, Spin, Tooltip, List } from 'antd';
 import {
   SaveOutlined,
   CheckCircleOutlined,
   WarningOutlined,
   LockOutlined,
   ReloadOutlined,
-  BankOutlined
+  BankOutlined,
+  HistoryOutlined,
+  ClockCircleOutlined
 } from '@ant-design/icons';
 import api from '@/services/api';
-import finalGradeEditService, { type FinalGrade, type GradeType } from '@/services/finalGradeEditService';
+import finalGradeEditService, { type FinalGrade, type GradeType, type AuditEntry } from '@/services/finalGradeEditService';
 import { gradeEditPermissionService } from '@/services/gradeEditPermissionService';
 import StudentPlantelesModal from '@/components/shared/StudentPlantelesModal';
 import PlantelAsyncSelect from '@/components/shared/PlantelAsyncSelect';
@@ -39,7 +41,7 @@ interface StudentRow {
   firstName: string;
   lastName: string;
   document: string;
-  grades: { [subjectId: string]: { score: number | null; status: string; id?: number; inscriptionSubjectId: number; plantelId?: number | null; plantelCode?: string; gradeType?: GradeType | null; includeInAverage?: boolean } };
+  grades: { [subjectId: string]: { score: number | null; status: string; id?: number; inscriptionSubjectId: number; plantelId?: number | null; plantelCode?: string; gradeType?: GradeType | null; includeInAverage?: boolean; editedByOther?: boolean; lastEditDate?: string | null; lastEditUser?: string | null; auditHistory?: AuditEntry[] } };
 }
 
 const FinalGradesEdit: React.FC = () => {
@@ -59,6 +61,11 @@ const FinalGradesEdit: React.FC = () => {
   const [pendingFilterChange, setPendingFilterChange] = useState<{ type: string; value: number | string | null } | null>(null);
   const [studentPlantelesModalOpen, setStudentPlantelesModalOpen] = useState(false);
   const [studentPlantelesContext, setStudentPlantelesContext] = useState<{ studentId: number; studentName: string } | null>(null);
+  const [auditModalOpen, setAuditModalOpen] = useState(false);
+  const [auditModalContext, setAuditModalContext] = useState<{ studentName: string; subjectName: string; audits: AuditEntry[] } | null>(null);
+  const [resetTimerModalOpen, setResetTimerModalOpen] = useState(false);
+  const [resetTimerContext, setResetTimerContext] = useState<{ studentName: string; subjectName: string; inscriptionSubjectId: number } | null>(null);
+  const [resetTimerLoading, setResetTimerLoading] = useState(false);
   const { enableRounding } = useGradeRounding();
   const [maxGrade, setMaxGrade] = useState<number>(20);
 
@@ -235,7 +242,11 @@ const FinalGradesEdit: React.FC = () => {
         plantelId: grade.plantelId,
         plantelCode: grade.plantel?.code,
         gradeType: grade.gradeType || 'regular',
-        includeInAverage: grade.includeInAverage !== false
+        includeInAverage: grade.includeInAverage !== false,
+        editedByOther: grade.editedByOther || false,
+        lastEditDate: grade.lastEditDate || null,
+        lastEditUser: grade.lastEditUser || null,
+        auditHistory: grade.auditHistory || [],
       };
     });
 
@@ -358,6 +369,32 @@ const FinalGradesEdit: React.FC = () => {
     setHasUnsavedChanges(true);
     setStudentPlantelesModalOpen(false);
   }, [studentPlantelesContext]);
+
+  // Reset timer for a specific inscription subject's qualifications
+  const handleResetTimer = async () => {
+    if (!resetTimerContext) return;
+    setResetTimerLoading(true);
+    try {
+      // Get all qualification IDs for this inscriptionSubject
+      const qualRes = await api.get(`/evaluation/qualifications/${resetTimerContext.inscriptionSubjectId}`);
+      const qualificationIds = (qualRes.data as any[]).map((q: any) => q.id).filter(Boolean);
+      if (qualificationIds.length === 0) {
+        message.warning('No se encontraron calificaciones para esta materia');
+        return;
+      }
+      await api.post('/evaluation/reset-timer', { qualificationIds, field: 'both' });
+      message.success(`Timer reseteado para ${qualificationIds.length} calificación(es) de ${resetTimerContext.studentName} en ${resetTimerContext.subjectName}`);
+      setResetTimerModalOpen(false);
+      setResetTimerContext(null);
+      // Refresh data
+      if (selectedPeriod) fetchFinalGrades();
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || 'Error al resetear timer';
+      message.error(msg);
+    } finally {
+      setResetTimerLoading(false);
+    }
+  };
 
   // Save all changes
   const handleSaveChanges = async (reason: string, actCode: string) => {
@@ -608,7 +645,28 @@ const FinalGradesEdit: React.FC = () => {
           }
 
           return (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 4,
+                background: gradeData.editedByOther ? '#eff6ff' : 'transparent',
+                border: gradeData.editedByOther ? '1px solid #93c5fd' : 'none',
+                borderRadius: gradeData.editedByOther ? 4 : undefined,
+                padding: gradeData.editedByOther ? '4px' : undefined,
+              }}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                // Show options: reset timer (always) + audit history (if exists)
+                setResetTimerContext({
+                  studentName: `${record.firstName} ${record.lastName}`,
+                  subjectName: subjectName,
+                  inscriptionSubjectId: gradeData.inscriptionSubjectId,
+                });
+                setResetTimerModalOpen(true);
+              }}
+              title={`Click derecho para resetear timer de edición${gradeData.editedByOther ? '. Nota alterada - ver historial con click derecho.' : ''}`}
+            >
               <PlantelAsyncSelect
                 value={gradeData.plantelId}
                 currentLabel={gradeData.plantelCode}
@@ -646,6 +704,11 @@ const FinalGradesEdit: React.FC = () => {
                   <Option value="transferencia">Transferencia</Option>
                   <Option value="equivalencia">Equivalencia</Option>
                 </Select>
+                {gradeData.editedByOther && (
+                  <Tooltip title="Nota alterada - ver historial con click derecho">
+                    <HistoryOutlined style={{ color: '#2563eb', fontSize: 14, cursor: 'context-menu' }} />
+                  </Tooltip>
+                )}
               </div>
             </div>
           );
@@ -920,6 +983,110 @@ const FinalGradesEdit: React.FC = () => {
             )}
           </Space>
         </div>
+      </Modal>
+
+      <Modal
+        title={
+          <Space>
+            <ClockCircleOutlined />
+            <span>Resetear Timer de Edición</span>
+          </Space>
+        }
+        open={resetTimerModalOpen}
+        onCancel={() => { setResetTimerModalOpen(false); setResetTimerContext(null); }}
+        onOk={handleResetTimer}
+        okText="Resetear Timer"
+        cancelText="Cancelar"
+        confirmLoading={resetTimerLoading}
+      >
+        {resetTimerContext && (
+          <div>
+            <p>
+              <Text strong>Estudiante:</Text> {resetTimerContext.studentName}
+            </p>
+            <p>
+              <Text strong>Materia:</Text> {resetTimerContext.subjectName}
+            </p>
+            <Alert
+              type="info"
+              showIcon
+              message="Al resetear el timer, el profesor podrá editar las calificaciones de esta materia nuevamente durante el tiempo de holgura configurado."
+              style={{ marginTop: 12 }}
+            />
+          </div>
+        )}
+      </Modal>
+
+      <Modal
+        title={
+          <Space>
+            <HistoryOutlined />
+            <span>Historial de Auditoría</span>
+          </Space>
+        }
+        open={auditModalOpen}
+        onCancel={() => setAuditModalOpen(false)}
+        footer={<Button onClick={() => setAuditModalOpen(false)}>Cerrar</Button>}
+        width={600}
+      >
+        {auditModalContext && (
+          <div>
+            <div style={{ marginBottom: 16 }}>
+              <Text strong>Estudiante:</Text> {auditModalContext.studentName}
+              <br />
+              <Text strong>Materia:</Text> {auditModalContext.subjectName}
+            </div>
+            {auditModalContext.audits.length === 0 ? (
+              <Text type="secondary">No hay registros de auditoría para esta nota.</Text>
+            ) : (
+              <List
+                dataSource={auditModalContext.audits}
+                renderItem={(audit) => {
+                  const editorName = audit.editor?.person
+                    ? `${audit.editor.person.firstName} ${audit.editor.person.lastName}`.trim()
+                    : audit.editor?.username || 'Desconocido';
+                  return (
+                    <List.Item>
+                      <div style={{ width: '100%' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                          <Text strong style={{ color: '#2563eb' }}>
+                            {editorName}
+                          </Text>
+                          <Text type="secondary" style={{ fontSize: 12 }}>
+                            {new Date(audit.editedAt).toLocaleString('es-VE')}
+                          </Text>
+                        </div>
+                        <div>
+                          <Text>
+                            Nota: {audit.previousScore != null ? audit.previousScore : '—'} → {audit.newScore != null ? audit.newScore : '—'}
+                          </Text>
+                        </div>
+                        {audit.editorRole && (
+                          <div>
+                            <Tag color={audit.editorRole === 'control_estudios' ? 'purple' : 'blue'} style={{ fontSize: 11 }}>
+                              {audit.editorRole === 'control_estudios' ? 'Control de Estudios' : 'Profesor'}
+                            </Tag>
+                          </div>
+                        )}
+                        {audit.reason && (
+                          <div style={{ marginTop: 4 }}>
+                            <Text type="secondary" style={{ fontSize: 12 }}>Razón: </Text>
+                            <Text style={{ fontSize: 12 }}>{audit.reason}</Text>
+                          </div>
+                        )}
+                        {audit.actCode && (
+                          <div>
+                            <Text type="secondary" style={{ fontSize: 12 }}>Acta: {audit.actCode}</Text>
+                          </div>
+                        )}
+                      </div>
+                    </List.Item>
+                  );
+                }}
+              />
+            )}
+          </div>
+        )}
       </Modal>
     </div>
   );

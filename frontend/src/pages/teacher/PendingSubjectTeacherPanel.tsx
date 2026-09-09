@@ -498,7 +498,7 @@ const PendingSubjectTeacherPanel: React.FC = () => {
                                           return (
                                             <td key={n} style={{ padding: '2px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', position: 'relative', width: 50 }}>
                                               <input
-                                                type="number"
+                                                type="text"
                                                 min={0}
                                                 max={20}
                                                 step={1}

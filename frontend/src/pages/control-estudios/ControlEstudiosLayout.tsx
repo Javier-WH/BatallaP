@@ -2,7 +2,7 @@ import React from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { Button, Tooltip, Dropdown } from 'antd';
 import type { MenuProps } from 'antd';
-import { DashboardOutlined, SettingOutlined, UserAddOutlined, CheckCircleFilled, LockOutlined, ProjectOutlined, EditOutlined, DownOutlined, FileExcelOutlined, ToolOutlined, SwapOutlined, TrophyOutlined, AlertOutlined, HistoryOutlined, CalendarOutlined, FlagOutlined, FileProtectOutlined } from '@ant-design/icons';
+import { DashboardOutlined, SettingOutlined, UserAddOutlined, CheckCircleFilled, LockOutlined, ProjectOutlined, EditOutlined, DownOutlined, FileExcelOutlined, ToolOutlined, SwapOutlined, TrophyOutlined, AlertOutlined, HistoryOutlined, CalendarOutlined, FlagOutlined, FileProtectOutlined, ClockCircleOutlined } from '@ant-design/icons';
 
 const NavButton: React.FC<{
   icon: React.ReactNode;
@@ -53,6 +53,7 @@ const ControlEstudiosLayout: React.FC = () => {
     { key: '/control-estudios/calificaciones', icon: <EditOutlined />, label: 'Notas Actuales' },
     { key: '/control-estudios/notas-historicas', icon: <HistoryOutlined />, label: 'Notas Históricas' },
     { key: '/control-estudios/editar-notas', icon: <LockOutlined />, label: 'Notas Históricas (Legacy)' },
+    { key: '/control-estudios/solicitudes-edicion', icon: <ClockCircleOutlined />, label: 'Solicitudes de Edición' },
     { key: '/control-estudios/notas-externas', icon: <SwapOutlined />, label: 'Notas Externas' },
   ];
 
@@ -63,6 +64,7 @@ const ControlEstudiosLayout: React.FC = () => {
 
   const isNotasActive = location.pathname === '/control-estudios/calificaciones'
     || location.pathname === '/control-estudios/editar-notas'
+    || location.pathname === '/control-estudios/solicitudes-edicion'
     || location.pathname === '/control-estudios/notas-historicas'
     || location.pathname.startsWith('/control-estudios/notas-externas');
 

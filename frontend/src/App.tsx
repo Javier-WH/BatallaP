@@ -48,6 +48,7 @@ import AcademicSettings from '@/pages/control-estudios/AcademicSettings';
 import MatriculationEnrollment from '@/pages/control-estudios/MatriculationEnrollment';
 import CourseCouncil from '@/pages/control-estudios/CourseCouncil';
 import FinalGradesEdit from '@/pages/control-estudios/FinalGradesEdit';
+import QualificationEditRequests from '@/pages/control-estudios/QualificationEditRequests';
 import HistoricalGradesBySection from '@/pages/control-estudios/HistoricalGradesBySection';
 import ManageGrades from '@/pages/control-estudios/ManageGrades';
 import PerformanceSummary from '@/pages/control-estudios/PerformanceSummary';
@@ -253,6 +254,7 @@ function AppRoutes() {
           <Route path="proyeccion" element={<TeacherProjection />} />
           <Route path="horarios" element={<ScheduleManagement />} />
           <Route path="editar-notas" element={<FinalGradesEdit />} />
+          <Route path="solicitudes-edicion" element={<QualificationEditRequests />} />
           <Route path="notas-historicas" element={<HistoricalGradesBySection />} />
           <Route path="calificaciones" element={<ManageGrades />} />
           <Route path="notas-externas" element={<ExternalGrades />} />

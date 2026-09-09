@@ -18,7 +18,11 @@ import {
   getAllQualificationAudits,
   exportPlanningExcel,
   copyEvaluationPlan,
-  recalculatePeriodGrades
+  recalculatePeriodGrades,
+  createQualificationEditRequest,
+  getPendingQualificationEditRequests,
+  reviewQualificationEditRequest,
+  resetQualificationTimer
 } from '@/controllers/evaluationController';
 
 const router = Router();
@@ -42,5 +46,11 @@ router.get('/all-assignments', getAllAssignments);
 router.get('/qualification-audits/:assignmentId', getQualificationAudits);
 router.get('/all-qualification-audits', getAllQualificationAudits);
 router.post('/recalculate/:schoolPeriodId', recalculatePeriodGrades);
+
+// Qualification edit request (timer-locked grade permission flow)
+router.post('/grade-edit-request', createQualificationEditRequest);
+router.get('/grade-edit-requests/pending', getPendingQualificationEditRequests);
+router.put('/grade-edit-request/:id/review', reviewQualificationEditRequest);
+router.post('/reset-timer', resetQualificationTimer);
 
 export default router;

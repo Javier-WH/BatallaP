@@ -17,6 +17,8 @@ interface QualificationAttributes {
   gradeId?: number | null;
   sectionId?: number | null;
   date?: Date | null;
+  scoreSetAt?: Date | null;
+  remedialScoreSetAt?: Date | null;
 }
 
 interface QualificationCreationAttributes extends Optional<QualificationAttributes, 'id' | 'observations' | 'remedialScore' | 'isAbsent' | 'schoolPeriodId' | 'termId' | 'subjectId' | 'gradeId' | 'sectionId' | 'date'> { }
@@ -35,6 +37,8 @@ class Qualification extends Model<QualificationAttributes, QualificationCreation
   public gradeId!: number | null;
   public sectionId!: number | null;
   public date!: Date | null;
+  public scoreSetAt!: Date | null;
+  public remedialScoreSetAt!: Date | null;
 
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
@@ -109,6 +113,16 @@ Qualification.init(
       type: DataTypes.DATEONLY,
       allowNull: true,
       comment: 'Denormalizado desde EvaluationPlan.date',
+    },
+    scoreSetAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      comment: 'Timestamp when the score was last set (for grade edit grace timer)',
+    },
+    remedialScoreSetAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      comment: 'Timestamp when the remedial score was last set (for grade edit grace timer)',
     }
   },
   {

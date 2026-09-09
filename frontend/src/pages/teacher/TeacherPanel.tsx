@@ -110,6 +110,10 @@ interface Qualification {
   editedByOther?: boolean;
   lastEditDate?: string | null;
   lastEditUser?: string;
+  isLockedByTimer?: boolean;
+  isRemedialLockedByTimer?: boolean;
+  scoreSetAt?: string | null;
+  remedialScoreSetAt?: string | null;
 }
 
 interface InscriptionSubject {
@@ -324,6 +328,10 @@ const TeacherPanel: React.FC = () => {
   const [copyModalOpen, setCopyModalOpen] = useState(false);
   const [copyTargetSectionIds, setCopyTargetSectionIds] = useState<number[]>([]);
   const [copySubmitting, setCopySubmitting] = useState(false);
+  const [editRequestModalOpen, setEditRequestModalOpen] = useState(false);
+  const [editRequestQualificationId, setEditRequestQualificationId] = useState<number | null>(null);
+  const [editRequestJustification, setEditRequestJustification] = useState('');
+  const [editRequestSubmitting, setEditRequestSubmitting] = useState(false);
   const [nominaGenerating, setNominaGenerating] = useState(false);
   const dragScroll = useDragScroll<HTMLDivElement>();
   // null = all closed (term globally blocked), array = specific { sectionId, gradeId } closed
@@ -1147,6 +1155,36 @@ const handleToggleAbsent = async (enrollment: StudentEnrollment, evalPlanId: num
       fetchPlanAndStudents();
     } catch {
       message.error('Error al guardar nota remedial');
+    }
+  };
+
+  const handleOpenEditRequest = (qualificationId: number) => {
+    setEditRequestQualificationId(qualificationId);
+    setEditRequestJustification('');
+    setEditRequestModalOpen(true);
+  };
+
+  const handleSubmitEditRequest = async () => {
+    if (!editRequestQualificationId) return;
+    if (!editRequestJustification.trim()) {
+      message.warning('La justificación es obligatoria');
+      return;
+    }
+    setEditRequestSubmitting(true);
+    try {
+      await api.post('/evaluation/grade-edit-request', {
+        qualificationId: editRequestQualificationId,
+        justification: editRequestJustification.trim(),
+      });
+      message.success('Solicitud enviada a Control de Estudios');
+      setEditRequestModalOpen(false);
+      setEditRequestJustification('');
+      setEditRequestQualificationId(null);
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || 'Error al enviar solicitud';
+      message.error(msg);
+    } finally {
+      setEditRequestSubmitting(false);
     }
   };
 
@@ -2565,16 +2603,16 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
 
                                 return (
                                   <React.Fragment key={item.id}>
-                                  <td key={`${item.id}-a`} className={`grading-cell${isAbsent ? ' grading-absent' : ''}`} style={{ padding: '2px', border: '1px solid rgba(15, 23, 42, 0.08)', borderLeft: colIndex > 0 ? '2px solid color-mix(in srgb, var(--color-text-main) 35%, transparent)' : undefined, textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-content-bg)' : 'color-mix(in srgb, var(--color-text-main) 2%, var(--color-content-bg))', width: '50px', cursor: isReadOnly ? 'default' : 'context-menu' }}
-                                    title={isReadOnly ? undefined : "Click derecho: marcar/desmarcar inasistente. Click izquierdo: desmarcar NP"}
+                                  <td key={`${item.id}-a`} className={`grading-cell${isAbsent ? ' grading-absent' : ''}`} style={{ padding: '2px', border: '1px solid rgba(15, 23, 42, 0.08)', borderLeft: colIndex > 0 ? '2px solid color-mix(in srgb, var(--color-text-main) 35%, transparent)' : undefined, textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-content-bg)' : 'color-mix(in srgb, var(--color-text-main) 2%, var(--color-content-bg))', width: '50px', cursor: (isReadOnly || q?.isLockedByTimer) ? 'default' : 'context-menu' }}
+                                    title={(isReadOnly || q?.isLockedByTimer) ? undefined : "Click derecho: marcar/desmarcar inasistente. Click izquierdo: desmarcar NP"}
                                     onContextMenu={(e) => {
-                                      if (isReadOnly) return;
+                                      if (isReadOnly || q?.isLockedByTimer) return;
                                       e.preventDefault();
                                       e.stopPropagation();
                                       handleToggleAbsent(enrollment, item.id, q?.isAbsent);
                                     }}
                                     onClick={() => {
-                                      if (isReadOnly) return;
+                                      if (isReadOnly || q?.isLockedByTimer) return;
                                       if (isAbsent) {
                                         handleToggleAbsent(enrollment, item.id, true);
                                         setTimeout(() => {
@@ -2585,7 +2623,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                                     }}
                                   >
                                     <input
-                                      type="number"
+                                      type="text"
                                       id={`grade-${rowIndex}-${colIndex}`}
                                       min={0}
                                       max={maxGrade}
@@ -2599,20 +2637,24 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                                       style={{
                                         width: '48px',
                                         textAlign: 'center',
-                                        border: q?.editedByOther ? '1px solid #93c5fd' : 'none',
+                                        border: 'none',
                                         outline: 'none',
-                                        borderRadius: q?.editedByOther ? 4 : undefined,
-                                        boxShadow: q?.editedByOther ? '0 0 0 1px #bfdbfe inset' : undefined,
-                                        background: q?.editedByOther ? '#eff6ff' : 'transparent',
+                                        background: q?.isLockedByTimer ? '#f5f5f5' : 'transparent',
                                         fontSize: 12,
-                                        padding: q?.editedByOther ? '1px' : 0,
+                                        padding: 0,
                                         color: currentScore !== null && currentScore > 0 && currentScore < passingGrade ? '#dc2626' : undefined,
                                         fontWeight: currentScore !== null && currentScore > 0 && currentScore < passingGrade ? 700 : undefined,
+                                        cursor: q?.isLockedByTimer ? 'not-allowed' : 'text',
                                       }}
-                                      title={q?.editedByOther
-                                        ? `Editada el ${new Date(q.lastEditDate || '').toLocaleString('es-VE')} por ${q.lastEditUser || 'usuario desconocido'}`
+                                      title={q?.isLockedByTimer
+                                        ? 'Tiempo de edición expirado. Click para solicitar permiso a Control de Estudios.'
                                         : undefined}
-                                      disabled={isReadOnly || isSelectedTermBlocked || (q?.remedialScore != null && q.remedialScore > 0 && isRemedialEligible)}
+                                      disabled={isReadOnly || isSelectedTermBlocked || q?.isLockedByTimer || (q?.remedialScore != null && q.remedialScore > 0 && isRemedialEligible)}
+                                      onClick={() => {
+                                        if (q?.isLockedByTimer && q?.id) {
+                                          handleOpenEditRequest(q.id);
+                                        }
+                                      }}
                                       onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
                                         if (e.key === '.' || e.key === ',' || e.key === 'e' || e.key === 'E' || e.key === '-' || e.key === '+') {
                                           e.preventDefault();
@@ -2710,7 +2752,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                                         }
                                       >
                                       <input
-                                        type="number"
+                                        type="text"
                                         id={`remedial-${rowIndex}-${colIndex}`}
                                         min={0}
                                         max={maxGrade}
@@ -2725,7 +2767,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                                           textAlign: 'center',
                                           border: 'none',
                                           outline: 'none',
-                                          background: 'transparent',
+                                          background: q?.isRemedialLockedByTimer ? '#f5f5f5' : 'transparent',
                                           fontSize: 12,
                                           padding: 0,
                                           backgroundColor: !isRemedialEligible && currentScore !== null && currentScore > 0
@@ -2735,7 +2777,15 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                                           fontWeight: q?.remedialScore != null && q.remedialScore > 0 && q.remedialScore < passingGrade ? 700 : undefined,
                                           cursor: !isRemedialEligible && currentScore !== null && currentScore > 0 ? 'not-allowed' : undefined,
                                         }}
-                                        disabled={isReadOnly || isSelectedTermBlocked || !isRemedialEligible}
+                                        title={q?.isRemedialLockedByTimer
+                                          ? 'Tiempo de edición expirado. Click para solicitar permiso a Control de Estudios.'
+                                          : undefined}
+                                        disabled={isReadOnly || isSelectedTermBlocked || !isRemedialEligible || q?.isRemedialLockedByTimer}
+                                        onClick={() => {
+                                          if (q?.isRemedialLockedByTimer && q?.id) {
+                                            handleOpenEditRequest(q.id);
+                                          }
+                                        }}
                                         onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
                                           if (e.key === '.' || e.key === ',' || e.key === 'e' || e.key === 'E' || e.key === '-' || e.key === '+') {
                                             e.preventDefault();
@@ -2907,6 +2957,33 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
         {copyTargetAssignments.length === 0 && (
           <Empty description="No hay otras secciones con esta materia asignada a ti" />
         )}
+      </Modal>
+
+      <Modal
+        title="Solicitar permiso para editar nota"
+        open={editRequestModalOpen}
+        onCancel={() => setEditRequestModalOpen(false)}
+        onOk={handleSubmitEditRequest}
+        okText="Enviar solicitud"
+        cancelText="Cancelar"
+        confirmLoading={editRequestSubmitting}
+        okButtonProps={{ disabled: !editRequestJustification.trim() }}
+      >
+        <div style={{ marginBottom: 12 }}>
+          <Alert
+            type="info"
+            showIcon
+            message="El tiempo de edición de esta nota ha expirado."
+            description="Escriba una justificación para solicitar permiso de edición a Control de Estudios."
+          />
+        </div>
+        <textarea
+          style={{ width: '100%', minHeight: 100, padding: '8px', borderRadius: 6, border: '1px solid #d9d9d9' }}
+          placeholder="Explique por qué necesita modificar esta nota..."
+          value={editRequestJustification}
+          onChange={(e) => setEditRequestJustification(e.target.value)}
+          maxLength={500}
+        />
       </Modal>
     </div>
   );

@@ -30,6 +30,8 @@ import {
   User,
   Plantel,
   QualificationAudit,
+  GradeChangeLog,
+  QualificationEditRequest,
   Setting,
   EvaluationCriteria,
   ThematicComponent,
@@ -459,18 +461,6 @@ export const getStudentsForAssignment = async (req: Request, res: Response) => {
               where: { termId: requestedTermId },
               include: [
                 { model: EvaluationPlan, as: 'evaluationPlan', include: [{ model: EvaluationCriteria, as: 'criteria' }] },
-                {
-                  model: QualificationAudit,
-                  as: 'audits',
-                  include: [
-                    {
-                      model: User,
-                      as: 'editor',
-                      attributes: ['id', 'username'],
-                      include: [{ model: Person, as: 'person', attributes: ['firstName', 'lastName'] }]
-                    }
-                  ]
-                }
               ]
             }
           ]
@@ -478,30 +468,84 @@ export const getStudentsForAssignment = async (req: Request, res: Response) => {
       ]
     });
 
-    // Process audit flags in nested qualifications
+    // Collect all qualification IDs for batch audit lookup from GradeChangeLog
+    const allQualificationIds: number[] = [];
+    for (const ins of inscriptions as any[]) {
+      const j = ins.toJSON();
+      if (j.inscriptionSubjects) {
+        for (const is of j.inscriptionSubjects) {
+          if (is.qualifications) {
+            for (const q of is.qualifications) {
+              if (q.id) allQualificationIds.push(q.id);
+            }
+          }
+        }
+      }
+    }
+
+    // Batch query GradeChangeLog for all qualifications in this assignment
+    const auditMap = new Map<number, any[]>();
+    if (allQualificationIds.length > 0) {
+      const audits = await GradeChangeLog.findAll({
+        where: {
+          entityType: 'qualification',
+          entityId: { [Op.in]: allQualificationIds },
+        },
+        include: [
+          {
+            model: User,
+            as: 'editor',
+            attributes: ['id', 'username'],
+            include: [{ model: Person, as: 'person', attributes: ['firstName', 'lastName'] }],
+          },
+        ],
+        order: [['editedAt', 'DESC']],
+      });
+      for (const a of audits) {
+        const arr = auditMap.get(a.entityId) || [];
+        arr.push(a.toJSON());
+        auditMap.set(a.entityId, arr);
+      }
+    }
+
+    // Read grade edit grace hours setting (default 24h)
+    const graceSetting = await Setting.findOne({ where: { key: 'grade_edit_grace_hours' } });
+    const graceHours = graceSetting ? Number(graceSetting.value) : 24;
+    const graceMs = graceHours * 60 * 60 * 1000;
+    const nowMs = Date.now();
+
+    // Process audit flags and timer locks in nested qualifications using GradeChangeLog data
     const parsed = (inscriptions as any[]).map(ins => {
       const j = ins.toJSON() as any;
       if (j.inscriptionSubjects) {
         j.inscriptionSubjects.forEach((is: any) => {
           if (is.qualifications) {
             is.qualifications.forEach((q: any) => {
-              const foreignAudits = Array.isArray(q.audits)
-                ? q.audits.filter((a: any) =>
-                    a.editedBy !== professorUserId || a.editorContext === 'control_estudios'
-                  )
-                : [];
+              const allAudits = auditMap.get(q.id) || [];
+              const foreignAudits = allAudits.filter(
+                (a: any) => a.editedBy !== professorUserId || a.editorRole === 'control_estudios'
+              );
               q.editedByOther = foreignAudits.length > 0;
               if (q.editedByOther) {
-                const last = [...foreignAudits].sort(
-                  (a: any, b: any) => new Date(b.editedAt).getTime() - new Date(a.editedAt).getTime()
-                )[0];
+                const last = foreignAudits[0]; // already sorted DESC by editedAt
                 const editorPerson = last?.editor?.person;
                 q.lastEditDate = last?.editedAt ?? null;
                 q.lastEditUser = editorPerson
                   ? `${editorPerson.firstName || ''} ${editorPerson.lastName || ''}`.trim()
                   : last?.editor?.username || '';
               }
-              delete q.audits;
+
+              // Compute timer lock for score and remedialScore independently
+              if (q.scoreSetAt) {
+                q.isLockedByTimer = (nowMs - new Date(q.scoreSetAt).getTime()) > graceMs;
+              } else {
+                q.isLockedByTimer = false;
+              }
+              if (q.remedialScoreSetAt) {
+                q.isRemedialLockedByTimer = (nowMs - new Date(q.remedialScoreSetAt).getTime()) > graceMs;
+              } else {
+                q.isRemedialLockedByTimer = false;
+              }
             });
           }
         });
@@ -626,6 +670,7 @@ export const saveQualification = async (req: Request, res: Response) => {
     });
 
     // Check if exists to update, else create
+    const now = new Date();
     const [qualification, created] = await Qualification.findOrCreate({
       where: { evaluationPlanId, inscriptionSubjectId: finalInscriptionSubjectId },
       defaults: {
@@ -641,13 +686,15 @@ export const saveQualification = async (req: Request, res: Response) => {
         gradeId: academicContext.gradeId,
         sectionId: academicContext.sectionId,
         date: academicContext.date,
+        scoreSetAt: score !== undefined ? now : null,
+        remedialScoreSetAt: remedialScore !== undefined ? now : null,
       },
       transaction: t,
     });
 
     if (!created) {
       const previousScore = qualification.score;
-      
+
       const updateData: any = {
         observations,
         schoolPeriodId: academicContext.schoolPeriodId,
@@ -657,8 +704,14 @@ export const saveQualification = async (req: Request, res: Response) => {
         sectionId: academicContext.sectionId,
         date: academicContext.date,
       };
-      if (score !== undefined) updateData.score = score;
-      if (remedialScore !== undefined) updateData.remedialScore = remedialScore;
+      if (score !== undefined) {
+        updateData.score = score;
+        updateData.scoreSetAt = now;
+      }
+      if (remedialScore !== undefined) {
+        updateData.remedialScore = remedialScore;
+        updateData.remedialScoreSetAt = now;
+      }
       if (isAbsent !== undefined) updateData.isAbsent = isAbsent;
 
       await qualification.update(updateData, { transaction: t });
@@ -1293,6 +1346,86 @@ export const getFinalGradesByPeriod = async (req: Request, res: Response) => {
             inscription: inscription
           }
         });
+      }
+    }
+
+    // Enrich result with qualification audit data from GradeChangeLog
+    // so Control de Estudios can see which grades were altered
+    const allInscriptionSubjectIds = result.map((r: any) => r.inscriptionSubjectId);
+    if (allInscriptionSubjectIds.length > 0) {
+      // Get qualification IDs grouped by inscriptionSubjectId
+      const qualifications = await Qualification.findAll({
+        where: { inscriptionSubjectId: { [Op.in]: allInscriptionSubjectIds } },
+        attributes: ['id', 'inscriptionSubjectId'],
+      });
+
+      const qualIdsByInscriptionSubject = new Map<number, number[]>();
+      const allQualIds: number[] = [];
+      for (const q of qualifications) {
+        const arr = qualIdsByInscriptionSubject.get(q.inscriptionSubjectId) || [];
+        arr.push(q.id);
+        qualIdsByInscriptionSubject.set(q.inscriptionSubjectId, arr);
+        allQualIds.push(q.id);
+      }
+
+      if (allQualIds.length > 0) {
+        const audits = await GradeChangeLog.findAll({
+          where: {
+            entityType: 'qualification',
+            entityId: { [Op.in]: allQualIds },
+          },
+          include: [
+            {
+              model: User,
+              as: 'editor',
+              attributes: ['id', 'username'],
+              include: [{ model: Person, as: 'person', attributes: ['firstName', 'lastName'] }],
+            },
+          ],
+          order: [['editedAt', 'DESC']],
+        });
+
+        // Build map: qualificationId → audits[]
+        const auditMap = new Map<number, any[]>();
+        for (const a of audits) {
+          const arr = auditMap.get(a.entityId) || [];
+          arr.push(a.toJSON());
+          auditMap.set(a.entityId, arr);
+        }
+
+        // Enrich each result item with audit metadata
+        for (const r of result) {
+          const qualIds = qualIdsByInscriptionSubject.get(r.inscriptionSubjectId) || [];
+          const itemAudits: any[] = [];
+          for (const qid of qualIds) {
+            const qAudits = auditMap.get(qid) || [];
+            qAudits.forEach(a => itemAudits.push(a));
+          }
+          // Sort all audits by editedAt DESC
+          itemAudits.sort((a, b) => new Date(b.editedAt).getTime() - new Date(a.editedAt).getTime());
+
+          r.editedByOther = itemAudits.length > 0;
+          if (itemAudits.length > 0) {
+            const last = itemAudits[0];
+            const editorPerson = last?.editor?.person;
+            r.lastEditDate = last?.editedAt ?? null;
+            r.lastEditUser = editorPerson
+              ? `${editorPerson.firstName || ''} ${editorPerson.lastName || ''}`.trim()
+              : last?.editor?.username || '';
+          } else {
+            r.lastEditDate = null;
+            r.lastEditUser = null;
+          }
+          r.auditHistory = itemAudits;
+        }
+      } else {
+        // No qualifications found, set defaults
+        for (const r of result) {
+          r.editedByOther = false;
+          r.lastEditDate = null;
+          r.lastEditUser = null;
+          r.auditHistory = [];
+        }
       }
     }
 
@@ -2674,32 +2807,40 @@ export const getQualificationAudits = async (req: Request, res: Response) => {
     const planIds = plans.map(p => p.id);
     if (planIds.length === 0) return res.json([]);
 
-    const audits = await QualificationAudit.findAll({
+    // Get qualifications for these plans to obtain qualification IDs
+    const qualifications = await Qualification.findAll({
+      where: { evaluationPlanId: { [Op.in]: planIds } },
+      attributes: ['id'],
       include: [
+        { model: EvaluationPlan, as: 'evaluationPlan', attributes: ['id', 'description', 'percentage'] },
         {
-          model: Qualification,
-          as: 'qualification',
-          where: { evaluationPlanId: { [Op.in]: planIds } },
-          required: true,
+          model: InscriptionSubject,
+          as: 'inscriptionSubject',
           include: [
-            { model: EvaluationPlan, as: 'evaluationPlan', attributes: ['id', 'description', 'percentage'] },
+            { model: Subject, as: 'subject', attributes: ['id', 'name'] },
             {
-              model: InscriptionSubject,
-              as: 'inscriptionSubject',
+              model: Inscription,
+              as: 'inscription',
+              attributes: ['id'],
               include: [
-                { model: Subject, as: 'subject', attributes: ['id', 'name'] },
-                {
-                  model: Inscription,
-                  as: 'inscription',
-                  attributes: ['id'],
-                  include: [
-                    { model: Person, as: 'student', attributes: ['id', 'firstName', 'lastName', 'document'] }
-                  ]
-                }
+                { model: Person, as: 'student', attributes: ['id', 'firstName', 'lastName', 'document'] }
               ]
             }
           ]
-        },
+        }
+      ]
+    });
+
+    const qualificationIds = qualifications.map(q => q.id);
+    if (qualificationIds.length === 0) return res.json([]);
+
+    // Query GradeChangeLog (unified audit) instead of legacy QualificationAudit
+    const audits = await GradeChangeLog.findAll({
+      where: {
+        entityType: 'qualification',
+        entityId: { [Op.in]: qualificationIds },
+      },
+      include: [
         { model: User, as: 'editor', attributes: ['id', 'username'],
           include: [{ model: Person, as: 'person', attributes: ['id', 'firstName', 'lastName'] }]
         }
@@ -2708,7 +2849,22 @@ export const getQualificationAudits = async (req: Request, res: Response) => {
       limit: 200
     });
 
-    res.json(audits);
+    // Build qualification map for joining
+    const qualMap = new Map<number, any>();
+    for (const q of qualifications) {
+      qualMap.set(q.id, q.toJSON());
+    }
+
+    // Join audit with qualification data
+    const result = audits.map(a => {
+      const aJson = a.toJSON() as any;
+      return {
+        ...aJson,
+        qualification: qualMap.get(aJson.entityId) || null,
+      };
+    });
+
+    res.json(result);
   } catch (error: any) {
     console.error('[getQualificationAudits] Error:', error);
     res.status(500).json({ message: 'Error al obtener auditoría' });
@@ -2717,37 +2873,10 @@ export const getQualificationAudits = async (req: Request, res: Response) => {
 
 export const getAllQualificationAudits = async (_req: Request, res: Response) => {
   try {
-    const audits = await QualificationAudit.findAll({
+    // Query GradeChangeLog (unified audit) instead of legacy QualificationAudit
+    const audits = await GradeChangeLog.findAll({
+      where: { entityType: 'qualification' },
       include: [
-        {
-          model: Qualification,
-          as: 'qualification',
-          required: true,
-          include: [
-            {
-              model: EvaluationPlan,
-              as: 'evaluationPlan',
-              attributes: ['id', 'description', 'percentage'],
-            },
-            {
-              model: InscriptionSubject,
-              as: 'inscriptionSubject',
-              include: [
-                { model: Subject, as: 'subject', attributes: ['id', 'name'] },
-                {
-                  model: Inscription,
-                  as: 'inscription',
-                  attributes: ['id', 'schoolPeriodId', 'gradeId'],
-                  include: [
-                    { model: Person, as: 'student', attributes: ['id', 'firstName', 'lastName', 'document'] },
-                    { model: Grade, as: 'grade', attributes: ['id', 'name'] },
-                    { model: SchoolPeriod, as: 'period', attributes: ['id', 'name'] },
-                  ]
-                }
-              ]
-            }
-          ]
-        },
         { model: User, as: 'editor', attributes: ['id', 'username'],
           include: [{ model: Person, as: 'person', attributes: ['id', 'firstName', 'lastName'] }]
         }
@@ -2756,7 +2885,55 @@ export const getAllQualificationAudits = async (_req: Request, res: Response) =>
       limit: 200
     });
 
-    res.json(audits);
+    // Get all unique qualification IDs from audits
+    const qualificationIds = [...new Set(audits.map(a => (a as any).entityId))];
+    if (qualificationIds.length === 0) return res.json([]);
+
+    // Batch query qualifications with nested data for joining
+    const qualifications = await Qualification.findAll({
+      where: { id: { [Op.in]: qualificationIds } },
+      include: [
+        {
+          model: EvaluationPlan,
+          as: 'evaluationPlan',
+          attributes: ['id', 'description', 'percentage'],
+        },
+        {
+          model: InscriptionSubject,
+          as: 'inscriptionSubject',
+          include: [
+            { model: Subject, as: 'subject', attributes: ['id', 'name'] },
+            {
+              model: Inscription,
+              as: 'inscription',
+              attributes: ['id', 'schoolPeriodId', 'gradeId'],
+              include: [
+                { model: Person, as: 'student', attributes: ['id', 'firstName', 'lastName', 'document'] },
+                { model: Grade, as: 'grade', attributes: ['id', 'name'] },
+                { model: SchoolPeriod, as: 'period', attributes: ['id', 'name'] },
+              ]
+            }
+          ]
+        }
+      ]
+    });
+
+    // Build qualification map for joining
+    const qualMap = new Map<number, any>();
+    for (const q of qualifications) {
+      qualMap.set(q.id, q.toJSON());
+    }
+
+    // Join audit with qualification data
+    const result = audits.map(a => {
+      const aJson = a.toJSON() as any;
+      return {
+        ...aJson,
+        qualification: qualMap.get(aJson.entityId) || null,
+      };
+    });
+
+    res.json(result);
   } catch (error: any) {
     console.error('[getAllQualificationAudits] Error:', error);
     res.status(500).json({ message: 'Error al obtener auditoría' });
@@ -2921,5 +3098,166 @@ export const recalculatePeriodGrades = async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('[recalculatePeriodGrades] Error:', error);
     res.status(500).json({ message: error.message || 'Error al recalcular notas' });
+  }
+};
+
+// ============================================================
+// Qualification edit request (timer-locked grade permission flow)
+// ============================================================
+
+export const createQualificationEditRequest = async (req: Request, res: Response) => {
+  try {
+    const user = (req.session as any).user;
+    if (!user) return res.status(401).json({ message: 'No autorizado' });
+
+    const { qualificationId, justification } = req.body;
+    if (!qualificationId) return res.status(400).json({ message: 'Se requiere qualificationId' });
+    if (!justification || !justification.trim()) return res.status(400).json({ message: 'La justificación es obligatoria' });
+
+    const qualification = await Qualification.findByPk(Number(qualificationId));
+    if (!qualification) return res.status(404).json({ message: 'Calificación no encontrada' });
+
+    // Check there is no pending request already for this qualification
+    const existing = await QualificationEditRequest.findOne({
+      where: { qualificationId: Number(qualificationId), status: 'pending' },
+    });
+    if (existing) return res.status(409).json({ message: 'Ya existe una solicitud pendiente para esta calificación' });
+
+    const request = await QualificationEditRequest.create({
+      qualificationId: Number(qualificationId),
+      requestedBy: user.id,
+      justification: justification.trim(),
+      status: 'pending',
+    });
+
+    return res.status(201).json(request);
+  } catch (error: any) {
+    console.error('[createQualificationEditRequest] Error:', error);
+    return res.status(500).json({ message: 'Error al crear solicitud' });
+  }
+};
+
+export const getPendingQualificationEditRequests = async (_req: Request, res: Response) => {
+  try {
+    const requests = await QualificationEditRequest.findAll({
+      where: { status: 'pending' },
+      include: [
+        {
+          model: Qualification,
+          as: 'qualification',
+          include: [
+            { model: EvaluationPlan, as: 'evaluationPlan', attributes: ['id', 'description', 'percentage'] },
+            {
+              model: InscriptionSubject,
+              as: 'inscriptionSubject',
+              include: [
+                { model: Subject, as: 'subject', attributes: ['id', 'name'] },
+                {
+                  model: Inscription,
+                  as: 'inscription',
+                  attributes: ['id'],
+                  include: [
+                    { model: Person, as: 'student', attributes: ['id', 'firstName', 'lastName', 'document'] },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+        {
+          model: User,
+          as: 'requester',
+          attributes: ['id', 'username'],
+          include: [{ model: Person, as: 'person', attributes: ['id', 'firstName', 'lastName'] }],
+        },
+      ],
+      order: [['createdAt', 'ASC']],
+    });
+
+    return res.json(requests);
+  } catch (error: any) {
+    console.error('[getPendingQualificationEditRequests] Error:', error);
+    return res.status(500).json({ message: 'Error al obtener solicitudes' });
+  }
+};
+
+export const reviewQualificationEditRequest = async (req: Request, res: Response) => {
+  try {
+    const user = (req.session as any).user;
+    if (!user) return res.status(401).json({ message: 'No autorizado' });
+
+    const userRoles: string[] = user.roles || [];
+    if (!userRoles.includes('Control de Estudios') && !userRoles.includes('Master') && !userRoles.includes('Administrador')) {
+      return res.status(403).json({ message: 'No tiene permisos para revisar solicitudes' });
+    }
+
+    const { id } = req.params;
+    const { action, reviewNote } = req.body; // action: 'approve' | 'reject'
+
+    if (action !== 'approve' && action !== 'reject') {
+      return res.status(400).json({ message: 'Acción inválida. Use approve o reject' });
+    }
+
+    const request = await QualificationEditRequest.findByPk(Number(id));
+    if (!request) return res.status(404).json({ message: 'Solicitud no encontrada' });
+    if (request.status !== 'pending') return res.status(400).json({ message: 'La solicitud ya fue revisada' });
+
+    const now = new Date();
+    await request.update({
+      status: action === 'approve' ? 'approved' : 'rejected',
+      reviewedBy: user.id,
+      reviewedAt: now,
+      reviewNote: reviewNote || null,
+      grantedAt: action === 'approve' ? now : null,
+    });
+
+    // If approved, reset the timer so the teacher can edit the grade again
+    if (action === 'approve') {
+      const qualification = await Qualification.findByPk(request.qualificationId);
+      if (qualification) {
+        // Reset both timers to now so the teacher gets a fresh grace period
+        await qualification.update({
+          scoreSetAt: now,
+          remedialScoreSetAt: now,
+        });
+      }
+    }
+
+    return res.json(request);
+  } catch (error: any) {
+    console.error('[reviewQualificationEditRequest] Error:', error);
+    return res.status(500).json({ message: 'Error al revisar solicitud' });
+  }
+};
+
+export const resetQualificationTimer = async (req: Request, res: Response) => {
+  try {
+    const user = (req.session as any).user;
+    if (!user) return res.status(401).json({ message: 'No autorizado' });
+
+    const userRoles: string[] = user.roles || [];
+    if (!userRoles.includes('Control de Estudios') && !userRoles.includes('Master') && !userRoles.includes('Administrador')) {
+      return res.status(403).json({ message: 'No tiene permisos para resetear timers' });
+    }
+
+    const { qualificationIds, field } = req.body; // field: 'score' | 'remedial' | 'both' (default 'both')
+    if (!Array.isArray(qualificationIds) || qualificationIds.length === 0) {
+      return res.status(400).json({ message: 'Se requiere un arreglo de qualificationIds' });
+    }
+
+    const targetField = field || 'both';
+    const now = new Date();
+    const updateData: any = {};
+    if (targetField === 'score' || targetField === 'both') updateData.scoreSetAt = now;
+    if (targetField === 'remedial' || targetField === 'both') updateData.remedialScoreSetAt = now;
+
+    const [updated] = await Qualification.update(updateData, {
+      where: { id: { [Op.in]: qualificationIds.map(Number) } },
+    });
+
+    return res.json({ message: 'Timer reseteado correctamente', updated });
+  } catch (error: any) {
+    console.error('[resetQualificationTimer] Error:', error);
+    return res.status(500).json({ message: 'Error al resetear timer' });
   }
 };

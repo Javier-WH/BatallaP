@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Card, Tabs, Table, Button, message, Tag, Typography, Alert, Empty, Spin, Space, Dropdown, Modal, Descriptions, Input, Select, Tooltip, Checkbox } from 'antd';
-import { BookOutlined, ArrowLeftOutlined, DownloadOutlined, FilePdfOutlined, EditOutlined, DeleteOutlined, PlusOutlined, HistoryOutlined, CopyOutlined } from '@ant-design/icons';
+import { BookOutlined, ArrowLeftOutlined, DownloadOutlined, FilePdfOutlined, EditOutlined, DeleteOutlined, PlusOutlined, HistoryOutlined, CopyOutlined, ClockCircleOutlined } from '@ant-design/icons';
 import api from '@/services/api';
 import dayjs from 'dayjs';
 import { compareNominaStudents } from '@/utils/studentSort';
@@ -630,6 +630,46 @@ const ManageGrades: React.FC = () => {
     }
   };
 
+  // Reset timer for all qualifications of a specific evaluation plan item (all students)
+  const handleResetTimerForEvaluation = async (evalPlanId: number, itemLabel: string) => {
+    if (!selectedAssignment) return;
+    try {
+      // Collect all qualification IDs for this evaluationPlanId across all students
+      const qualIds: number[] = [];
+      for (const s of students) {
+        const insSub = s.inscriptionSubjects?.[0];
+        const q = insSub?.qualifications?.find((sq: Qualification) => sq.evaluationPlanId === evalPlanId && matchesSelectedTerm(sq));
+        if (q?.id) qualIds.push(q.id);
+      }
+      if (qualIds.length === 0) {
+        message.warning('No hay calificaciones registradas para esta evaluación');
+        return;
+      }
+      await api.post('/evaluation/reset-timer', { qualificationIds: qualIds, field: 'both' });
+      message.success(`Timer reseteado para ${qualIds.length} calificación(es) de "${itemLabel}"`);
+      fetchPlanAndStudents();
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || 'Error al resetear timer';
+      message.error(msg);
+    }
+  };
+
+  // Reset timer for a single student's qualification
+  const handleResetTimerForCell = async (q: Qualification | undefined, studentName: string, itemLabel: string) => {
+    if (!q?.id) {
+      message.warning('No hay calificación registrada para resetear');
+      return;
+    }
+    try {
+      await api.post('/evaluation/reset-timer', { qualificationIds: [q.id], field: 'both' });
+      message.success(`Timer reseteado para ${studentName} en "${itemLabel}"`);
+      fetchPlanAndStudents();
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || 'Error al resetear timer';
+      message.error(msg);
+    }
+  };
+
   const handleSelectAssignment = (assignment: Assignment) => {
     setSelectedAssignment(assignment);
     setActiveTab('1');
@@ -1249,8 +1289,26 @@ const ManageGrades: React.FC = () => {
                             {evaluationPlan.map((item, colIndex) => {
                               const stats = evalStats.get(item.id);
                               const hasRemedial = (stats?.failedPct ?? 0) >= remedialFailurePercentage;
+                              const itemLabel = item.shortDescription || item.identificador || item.description || '';
                               return (
-                              <th key={item.id} colSpan={hasRemedial ? 2 : 1} style={{ padding: '3px 4px', border: '1px solid rgba(15, 23, 42, 0.08)', borderLeft: colIndex > 0 ? '2px solid color-mix(in srgb, var(--color-text-main) 35%, transparent)' : undefined, textAlign: 'center', backgroundColor: 'color-mix(in srgb, var(--color-text-main) 6%, var(--color-content-bg))', verticalAlign: 'top', whiteSpace: 'nowrap', color: 'var(--color-text-main)' }}>
+                              <th key={item.id} colSpan={hasRemedial ? 2 : 1} style={{ padding: '3px 4px', border: '1px solid rgba(15, 23, 42, 0.08)', borderLeft: colIndex > 0 ? '2px solid color-mix(in srgb, var(--color-text-main) 35%, transparent)' : undefined, textAlign: 'center', backgroundColor: 'color-mix(in srgb, var(--color-text-main) 6%, var(--color-content-bg))', verticalAlign: 'top', whiteSpace: 'nowrap', color: 'var(--color-text-main)' }}
+                                onContextMenu={(e) => e.preventDefault()}
+                                title="Click derecho: resetear timer de edición"
+                              >
+                                <Dropdown
+                                  trigger={['contextMenu']}
+                                  menu={{
+                                    items: [
+                                      {
+                                        key: 'reset-timer',
+                                        icon: <ClockCircleOutlined />,
+                                        label: 'Resetear Timer de Edición',
+                                        onClick: () => handleResetTimerForEvaluation(item.id, itemLabel),
+                                      },
+                                    ],
+                                  }}
+                                >
+                                  <div style={{ cursor: 'context-menu' }}>
                                 <div style={{ fontSize: 9, color: '#b45309', lineHeight: 1.2 }}>
                                   Apl. {stats?.failed ?? 0} ({stats?.failedPct ?? 0}%)
                                 </div>
@@ -1267,6 +1325,8 @@ const ManageGrades: React.FC = () => {
                                 <div style={{ fontSize: 9, color: 'var(--color-text-muted)', lineHeight: 1.2, marginTop: 1 }}>
                                   {item.percentage}%
                                 </div>
+                                  </div>
+                                </Dropdown>
                               </th>
                               );
                             })}
@@ -1310,7 +1370,7 @@ const ManageGrades: React.FC = () => {
 
                                     return (
                                       <React.Fragment key={item.id}>
-                                      <td key={`${item.id}-a`} className="grading-cell" style={{ padding: '2px', border: '1px solid rgba(15, 23, 42, 0.08)', borderLeft: colIndex > 0 ? '2px solid color-mix(in srgb, var(--color-text-main) 35%, transparent)' : undefined, textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-content-bg)' : 'color-mix(in srgb, var(--color-text-main) 2%, var(--color-content-bg))', width: '50px', cursor: 'context-menu' }}
+                                      <td key={`${item.id}-a`} className={`grading-cell${isAbsent ? ' grading-absent' : ''}`} style={{ padding: '2px', border: '1px solid rgba(15, 23, 42, 0.08)', borderLeft: colIndex > 0 ? '2px solid color-mix(in srgb, var(--color-text-main) 35%, transparent)' : undefined, textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-content-bg)' : 'color-mix(in srgb, var(--color-text-main) 2%, var(--color-content-bg))', width: '50px', cursor: 'context-menu' }}
                                         title="Click derecho: opciones de la nota"
                                       >
                                         <Dropdown
@@ -1322,6 +1382,12 @@ const ManageGrades: React.FC = () => {
                                                 icon: <HistoryOutlined />,
                                                 label: 'Ver detalles',
                                                 onClick: () => openAuditHistory(q, `${enrollment.student?.lastName}, ${enrollment.student?.firstName}`, item.shortDescription || item.identificador || item.description || ''),
+                                              },
+                                              {
+                                                key: 'reset-timer',
+                                                icon: <ClockCircleOutlined />,
+                                                label: 'Resetear Timer de Edición',
+                                                onClick: () => handleResetTimerForCell(q, `${enrollment.student?.lastName}, ${enrollment.student?.firstName}`, item.shortDescription || item.identificador || item.description || ''),
                                               },
                                             ],
                                           }}

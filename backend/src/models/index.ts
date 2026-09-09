@@ -160,6 +160,7 @@ import ScheduleException from './ScheduleException';
 import ClassroomAssignment from './ClassroomAssignment';
 import RoomBooking from './RoomBooking';
 import GradeChangeLog from './GradeChangeLog';
+import QualificationEditRequest from './QualificationEditRequest';
 
 
 // ... (Existing User/Person/Role/Contact associations) ...
@@ -587,6 +588,14 @@ Payment.belongsTo(SellableItem, { foreignKey: 'sellableItemId', as: 'sellableIte
 GradeChangeLog.belongsTo(User, { foreignKey: 'editedBy', as: 'editor' });
 User.hasMany(GradeChangeLog, { foreignKey: 'editedBy', as: 'gradeChanges' });
 
+// Qualification edit request (teacher requests permission to edit timer-locked grade)
+QualificationEditRequest.belongsTo(Qualification, { foreignKey: 'qualificationId', as: 'qualification' });
+Qualification.hasMany(QualificationEditRequest, { foreignKey: 'qualificationId', as: 'editRequests' });
+QualificationEditRequest.belongsTo(User, { foreignKey: 'requestedBy', as: 'requester' });
+User.hasMany(QualificationEditRequest, { foreignKey: 'requestedBy', as: 'editRequestsMade' });
+QualificationEditRequest.belongsTo(User, { foreignKey: 'reviewedBy', as: 'reviewer' });
+User.hasMany(QualificationEditRequest, { foreignKey: 'reviewedBy', as: 'editRequestsReviewed' });
+
 export {
   User,
   Person,
@@ -671,5 +680,6 @@ export {
   ScheduleException,
   ClassroomAssignment,
   RoomBooking,
-  GradeChangeLog
+  GradeChangeLog,
+  QualificationEditRequest
 };

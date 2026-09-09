@@ -52,6 +52,7 @@ interface SettingsFormValues {
   remedial_min_grade?: number;
   remedial_max_grade?: number;
   remedial_failure_percentage?: number;
+  grade_edit_grace_hours?: number;
 }
 
 interface TermFormValues {
@@ -110,6 +111,7 @@ const AcademicSettings: React.FC = () => {
         remedial_min_grade: res.data.remedial_min_grade !== undefined ? Number(res.data.remedial_min_grade) : 1,
         remedial_max_grade: res.data.remedial_max_grade !== undefined ? Number(res.data.remedial_max_grade) : 9,
         remedial_failure_percentage: res.data.remedial_failure_percentage !== undefined ? Number(res.data.remedial_failure_percentage) : 50,
+        grade_edit_grace_hours: res.data.grade_edit_grace_hours !== undefined ? Number(res.data.grade_edit_grace_hours) : 24,
       });
       
       // Load letter grades configuration
@@ -803,6 +805,15 @@ const AcademicSettings: React.FC = () => {
                   rules={[{ required: true, message: 'Requerido' }]}
                 >
                   <InputNumber min={0} max={100} style={{ width: '100%', height: 40 }} addonAfter="%" />
+                </Form.Item>
+
+                <Form.Item
+                  name="grade_edit_grace_hours"
+                  label={<Text style={{ fontWeight: 600, fontSize: 12 }}>Tiempo de holgura para edición de notas (horas)</Text>}
+                  tooltip="Horas que tiene el profesor para modificar libremente una nota después de colocarla. Al expirar, el profesor debe solicitar permiso a Control de Estudios. Ej: 24 = 24 horas, 0.5 = 30 minutos, 0.016 ≈ 1 minuto."
+                  rules={[{ required: true, message: 'Requerido' }]}
+                >
+                  <InputNumber min={0} max={720} step={0.001} precision={3} style={{ width: '100%', height: 40 }} addonAfter="hrs" />
                 </Form.Item>
               </div>
 

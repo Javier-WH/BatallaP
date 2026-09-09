@@ -2,6 +2,27 @@ import api from '@/services/api';
 
 export type GradeType = 'regular' | 'revision' | 'materia_pendiente' | 'revision_materia_pendiente' | 'transferencia' | 'equivalencia';
 
+export interface AuditEntry {
+  id: number;
+  entityType: string;
+  entityId: number;
+  previousScore: number | null;
+  newScore: number | null;
+  editedBy: number;
+  editorRole: string | null;
+  reason: string | null;
+  actCode: string | null;
+  editedAt: string;
+  editor?: {
+    id: number;
+    username: string;
+    person?: {
+      firstName: string;
+      lastName: string;
+    };
+  };
+}
+
 export interface FinalGrade {
   id: number;
   inscriptionSubjectId: number;
@@ -23,6 +44,10 @@ export interface FinalGrade {
   gradeId?: number | null;
   termId?: number | null;
   includeInAverage?: boolean;
+  editedByOther?: boolean;
+  lastEditDate?: string | null;
+  lastEditUser?: string | null;
+  auditHistory?: AuditEntry[];
   inscriptionSubject: {
     id: number;
     subject: {
