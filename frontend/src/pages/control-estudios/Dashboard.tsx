@@ -21,6 +21,8 @@ interface ActivityLogEntry {
   timestamp: string;
   action: string;
   actorName: string;
+  actorFirstName: string;
+  actorLastName: string;
   actorRole: string;
   description: string;
   subjectName: string | null;
@@ -38,11 +40,11 @@ const ACTION_META: Record<string, { color: string; icon: string }> = {
   grade_edited_audit: { color: '#9333ea', icon: 'A' },
 };
 
-const getInitials = (name: string): string => {
-  const parts = name.trim().split(/\s+/);
-  if (parts.length === 0) return '?';
-  if (parts.length === 1) return parts[0].charAt(0).toUpperCase();
-  return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
+const getInitials = (firstName: string, lastName: string): string => {
+  const first = firstName.trim().charAt(0).toUpperCase();
+  const lastParts = lastName.trim().split(/\s+/);
+  const last = lastParts.length > 0 && lastParts[0] ? lastParts[0].charAt(0).toUpperCase() : '';
+  return (first + last) || '?';
 };
 
 interface ControlPanelData {
@@ -901,7 +903,7 @@ const ControlEstudiosDashboard: React.FC = () => {
                     <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Sin actividad reciente</p>
                   </div>
                 ) : (
-                  <div className="space-y-1.5" style={{ maxHeight: 320, overflowY: 'auto' }}>
+                  <div className="space-y-1.5" style={{ maxHeight: 220, overflowY: 'auto' }}>
                     {activity.map((entry) => {
                       const meta = ACTION_META[entry.action] || { color: '#64748b', icon: '?' };
                       return (
@@ -915,7 +917,7 @@ const ControlEstudiosDashboard: React.FC = () => {
                               className="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-black text-white cursor-default"
                               style={{ backgroundColor: meta.color }}
                             >
-                              {getInitials(entry.actorName)}
+                              {getInitials(entry.actorFirstName, entry.actorLastName)}
                             </div>
                           </Tooltip>
                           <div className="min-w-0 flex-1">

@@ -817,6 +817,8 @@ interface ActivityLogEntry {
   timestamp: string;
   action: string;
   actorName: string;
+  actorFirstName: string;
+  actorLastName: string;
   actorRole: string;
   description: string;
   subjectName: string | null;
@@ -978,7 +980,7 @@ export const getActivityLog = async (req: Request, res: Response) => {
       if (pgs) pgsIds.add(pgs.id);
     });
 
-    const teacherMap = new Map<string, string>();
+    const teacherMap = new Map<string, { firstName: string; lastName: string }>();
     if (pgsIds.size > 0) {
       const teachers = await TeacherAssignment.findAll({
         where: {
@@ -988,7 +990,10 @@ export const getActivityLog = async (req: Request, res: Response) => {
         include: [{ model: Person, as: 'teacher', attributes: ['id', 'firstName', 'lastName'] }],
       });
       teachers.forEach((t) => {
-        teacherMap.set(`${t.periodGradeSubjectId}:${t.sectionId}`, shortName((t as any).teacher?.firstName, (t as any).teacher?.lastName));
+        teacherMap.set(`${t.periodGradeSubjectId}:${t.sectionId}`, {
+          firstName: (t as any).teacher?.firstName || '',
+          lastName: (t as any).teacher?.lastName || '',
+        });
       });
     }
 
@@ -1010,7 +1015,10 @@ export const getActivityLog = async (req: Request, res: Response) => {
       const sectionId = (p as any).sectionId;
       const sectionName = sectionId ? sectionMap.get(sectionId) || null : null;
       const teacherKey = `${pgs?.id}:${sectionId}`;
-      const actorName = teacherMap.get(teacherKey) || 'Profesor';
+      const teacher = teacherMap.get(teacherKey);
+      const actorFirstName = teacher?.firstName || '';
+      const actorLastName = teacher?.lastName || '';
+      const actorName = shortName(actorFirstName, actorLastName) || 'Profesor';
       const created = isCreate(p.createdAt, p.updatedAt);
       const action = created ? 'plan_created' : 'plan_updated';
       const verb = created ? 'agregó' : 'actualizó';
@@ -1023,6 +1031,8 @@ export const getActivityLog = async (req: Request, res: Response) => {
         timestamp: p.updatedAt.toISOString(),
         action,
         actorName,
+        actorFirstName,
+        actorLastName,
         actorRole: 'Profesor',
         description: desc,
         subjectName,
@@ -1040,7 +1050,10 @@ export const getActivityLog = async (req: Request, res: Response) => {
       const sectionId = (q as any).sectionId || ep?.sectionId;
       const sectionName = sectionId ? sectionMap.get(sectionId) || null : null;
       const teacherKey = `${pgs?.id}:${sectionId}`;
-      const actorName = teacherMap.get(teacherKey) || 'Profesor';
+      const teacher = teacherMap.get(teacherKey);
+      const actorFirstName = teacher?.firstName || '';
+      const actorLastName = teacher?.lastName || '';
+      const actorName = shortName(actorFirstName, actorLastName) || 'Profesor';
       const student = (q as any).inscriptionSubject?.inscription?.student;
       const studentName = student ? shortName(student.firstName, student.lastName) : null;
       const created = isCreate(q.createdAt, q.updatedAt);
@@ -1056,6 +1069,8 @@ export const getActivityLog = async (req: Request, res: Response) => {
         timestamp: q.updatedAt.toISOString(),
         action,
         actorName,
+        actorFirstName,
+        actorLastName,
         actorRole: 'Profesor',
         description: desc,
         subjectName,
@@ -1071,13 +1086,16 @@ export const getActivityLog = async (req: Request, res: Response) => {
       const subjectName = pgs?.subject?.name || null;
       const gradeName = pgs?.periodGrade?.grade?.name || null;
       // ThematicContent doesn't have sectionId — find teacher by pgsId only
-      let actorName = 'Profesor';
-      for (const [key, name] of teacherMap.entries()) {
+      let actorFirstName = '';
+      let actorLastName = '';
+      for (const [key, t] of teacherMap.entries()) {
         if (key.startsWith(`${pgs?.id}:`)) {
-          actorName = name;
+          actorFirstName = t.firstName;
+          actorLastName = t.lastName;
           break;
         }
       }
+      const actorName = shortName(actorFirstName, actorLastName) || 'Profesor';
       const created = isCreate(c.createdAt, c.updatedAt);
       const action = created ? 'content_added' : 'content_updated';
       const verb = created ? 'agregó' : 'actualizó';
@@ -1088,6 +1106,8 @@ export const getActivityLog = async (req: Request, res: Response) => {
         timestamp: c.updatedAt.toISOString(),
         action,
         actorName,
+        actorFirstName,
+        actorLastName,
         actorRole: 'Profesor',
         description: desc,
         subjectName,
@@ -1100,7 +1120,9 @@ export const getActivityLog = async (req: Request, res: Response) => {
     for (const a of audits) {
       const editor = (a as any).editor;
       const editorPerson = editor?.person;
-      const actorName = editorPerson ? shortName(editorPerson.firstName, editorPerson.lastName) : 'Usuario';
+      const actorFirstName = editorPerson?.firstName || '';
+      const actorLastName = editorPerson?.lastName || '';
+      const actorName = editorPerson ? shortName(actorFirstName, actorLastName) : 'Usuario';
       const meta = a.metadata || {};
       const subjectName = meta.subjectName || null;
       const gradeName = meta.gradeName || null;
@@ -1114,6 +1136,8 @@ export const getActivityLog = async (req: Request, res: Response) => {
         timestamp: a.editedAt.toISOString(),
         action: 'grade_edited_audit',
         actorName,
+        actorFirstName,
+        actorLastName,
         actorRole: a.editorRole || 'Control de Estudios',
         description: desc,
         subjectName,
