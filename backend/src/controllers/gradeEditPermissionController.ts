@@ -225,8 +225,20 @@ export const checkPermission = async (req: Request, res: Response) => {
       return res.json({ hasPermission: false, reason: 'Usuario no tiene rol Control de Estudios' });
     }
 
-    // TEMPORARY BYPASS: permissions disabled during UI overhaul.
-    // TODO: Re-enable permission checks once the new UI is finalized.
+    // BYPASS TEMPORAL DE PERMISOS DE EDICIÓN DE NOTAS
+    // ------------------------------------------------------------
+    // La verificación de permisos individuales está desactivada temporalmente.
+    // Cualquier usuario con rol Control de Estudios, Master o Administrador
+    // puede editar notas de períodos cerrados sin requerir un permiso explícito.
+    //
+    // Esto se mantiene mientras se diseña e implementa un sistema más robusto
+    // para controlar los permisos de edición de notas (a futuro: sistema de
+    // permisos granular por período/usuario/acción con aprobación multi-nivel).
+    //
+    // El código de verificación original (búsqueda de GradeEditPermission
+    // global y específico por período) permanece más abajo como referencia.
+    //
+    // TODO: Re-enable permission checks once the new permission system is implemented.
     return res.json({ hasPermission: true, permission: { id: 0 }, scope: 'bypass' });
 
     // Check for global permission (schoolPeriodId is null)
@@ -361,8 +373,8 @@ export const getUnifiedAuditLog = async (req: Request, res: Response) => {
     if (!sessionUser) {
       return res.status(401).json({ message: 'No autorizado' });
     }
-    if (!hasRole(sessionUser, ['Master', 'Administrador'])) {
-      return res.status(403).json({ message: 'Solo Master y Administrador pueden ver el historial de auditoría' });
+    if (!hasRole(sessionUser, ['Master', 'Administrador', 'Control de Estudios'])) {
+      return res.status(403).json({ message: 'Solo Master, Administrador y Control de Estudios pueden ver el historial de auditoría' });
     }
 
     const { entityType, gradeType, editedBy, dateFrom, dateTo, limit = 200, offset = 0 } = req.query;

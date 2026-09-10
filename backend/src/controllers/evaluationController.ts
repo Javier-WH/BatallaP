@@ -1079,8 +1079,21 @@ export const updateFinalGrade = async (req: Request, res: Response) => {
     //   return res.status(403).json({ message: 'No se pueden modificar notas de períodos activos' });
     // }
 
-    // TEMPORARY BYPASS: permission checks disabled during UI overhaul.
-    // TODO: Re-enable permission checks once the new UI is finalized.
+    // BYPASS TEMPORAL DE PERMISOS DE EDICIÓN DE NOTAS
+    // ------------------------------------------------------------
+    // La verificación de permisos individuales está desactivada temporalmente.
+    // Cualquier usuario con rol Control de Estudios, Master o Administrador
+    // puede editar notas de períodos cerrados sin requerir un permiso explícito.
+    //
+    // Esto se mantiene mientras se diseña e implementa un sistema más robusto
+    // para controlar los permisos de edición de notas (a futuro: sistema de
+    // permisos granular por período/usuario/acción con aprobación multi-nivel).
+    //
+    // El código de verificación original (búsqueda de GradeEditPermission por id,
+    // validación de pertenencia y cobertura de período) permanece comentado abajo
+    // como referencia para la reactivación futura.
+    //
+    // TODO: Re-enable permission checks once the new permission system is implemented.
     // const permission = await GradeEditPermission.findOne({
     //   where: { id: permissionId, isActive: true }
     // });

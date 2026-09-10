@@ -9,7 +9,6 @@ import {
   BookOutlined,
   QuestionCircleOutlined,
   IdcardOutlined,
-  LockOutlined,
   DownOutlined,
   SettingOutlined,
   DollarOutlined,
@@ -51,7 +50,6 @@ const AdminLayout: React.FC = () => {
     { path: '/admin/matricular-estudiante', icon: <UserAddOutlined />, label: 'Matrícula', tooltip: 'Matriculación de Estudiantes' },
     { path: '/admin/ledger', icon: <DollarOutlined />, label: 'Ledger', tooltip: 'Ledger de Pagos' },
     { path: '/admin/directorio', icon: <TeamOutlined />, label: 'Directorio', tooltip: 'Directorio de Usuarios' },
-    { path: '/admin/permisos-edicion-notas', icon: <LockOutlined />, label: 'Permisos Notas', tooltip: 'Permisos de Edición de Notas' },
   ];
 
   const inscribirItems: MenuProps['items'] = [

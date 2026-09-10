@@ -21,7 +21,6 @@ import RegisterUser from '@/pages/master/RegisterUser';
 import AdminLayout from '@/pages/admin/AdminLayout';
 import RegisterStaff from '@/pages/admin/RegisterStaff';
 import EnrollStudent from '@/pages/admin/EnrollStudent';
-import GradeEditPermissions from '@/pages/admin/GradeEditPermissions';
 
 
 import TeacherProjection from '@/pages/control-estudios/TeacherProjection';
@@ -47,9 +46,9 @@ import ControlEstudiosDashboard from '@/pages/control-estudios/Dashboard';
 import AcademicSettings from '@/pages/control-estudios/AcademicSettings';
 import MatriculationEnrollment from '@/pages/control-estudios/MatriculationEnrollment';
 import CourseCouncil from '@/pages/control-estudios/CourseCouncil';
-import FinalGradesEdit from '@/pages/control-estudios/FinalGradesEdit';
 import QualificationEditRequests from '@/pages/control-estudios/QualificationEditRequests';
 import HistoricalGradesBySection from '@/pages/control-estudios/HistoricalGradesBySection';
+import GradeAuditLog from '@/pages/control-estudios/GradeAuditLog';
 import ManageGrades from '@/pages/control-estudios/ManageGrades';
 import PerformanceSummary from '@/pages/control-estudios/PerformanceSummary';
 import GeneralAverages from '@/pages/control-estudios/GeneralAverages';
@@ -235,7 +234,6 @@ function AppRoutes() {
           <Route path="ledger" element={<PaymentLedger />} />
           <Route path="search" element={<SearchUsers />} />
           <Route path="edit/:id" element={<EditUser />} />
-          <Route path="permisos-edicion-notas" element={<GradeEditPermissions />} />
         </Route>
 
         {/* Nested Control de Estudios Module */}
@@ -253,9 +251,9 @@ function AppRoutes() {
           <Route path="consejos-curso" element={<CourseCouncil />} />
           <Route path="proyeccion" element={<TeacherProjection />} />
           <Route path="horarios" element={<ScheduleManagement />} />
-          <Route path="editar-notas" element={<FinalGradesEdit />} />
           <Route path="solicitudes-edicion" element={<QualificationEditRequests />} />
           <Route path="notas-historicas" element={<HistoricalGradesBySection />} />
+          <Route path="auditoria-notas" element={<GradeAuditLog />} />
           <Route path="calificaciones" element={<ManageGrades />} />
           <Route path="notas-externas" element={<ExternalGrades />} />
           <Route path="resumen-rendimiento" element={<PerformanceSummary />} />
