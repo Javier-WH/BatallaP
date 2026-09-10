@@ -1258,7 +1258,7 @@ const CourseCouncil: React.FC = () => {
                               </div>
                               {councilCompleted && (
                                 <Tooltip title="Consejo de curso completado">
-                                  <CheckCircleOutlined style={{ fontSize: 20, color: '#096dd9', flexShrink: 0 }} />
+                                  <CheckCircleOutlined style={{ fontSize: 20, color: '#52c41a', flexShrink: 0 }} />
                                 </Tooltip>
                               )}
                             </div>
