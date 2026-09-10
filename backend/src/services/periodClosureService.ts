@@ -104,6 +104,25 @@ export class PeriodClosureService {
     return entry;
   }
 
+  /**
+   * Returns all council checklist entries for a given school period and term.
+   * Used by the section selector to badge sections whose council is already
+   * marked as completed without issuing one request per section.
+   */
+  static async listChecklistEntries(params: {
+    schoolPeriodId: number;
+    termId: number;
+  }) {
+    const entries = await CouncilChecklist.findAll({
+      where: {
+        schoolPeriodId: params.schoolPeriodId,
+        termId: params.termId,
+      },
+      attributes: ['gradeId', 'sectionId', 'termId', 'status', 'completedAt'],
+    });
+    return entries;
+  }
+
   static async upsertChecklistEntry(params: {
     schoolPeriodId: number;
     gradeId: number;

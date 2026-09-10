@@ -2,6 +2,7 @@ import { Router } from 'express';
 import {
   getClosureStatus,
   getChecklistEntry,
+  listChecklistEntries,
   upsertChecklistEntry,
   validateClosure,
   executeClosure,
@@ -11,6 +12,7 @@ import {
 const router = Router();
 
 router.get('/:periodId/status', getClosureStatus);
+router.get('/:periodId/checklist/all', listChecklistEntries);
 router.get('/:periodId/checklist', getChecklistEntry);
 router.post('/:periodId/checklist', upsertChecklistEntry);
 router.get('/:periodId/validate', validateClosure);

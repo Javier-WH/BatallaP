@@ -489,6 +489,9 @@ const CourseCouncil: React.FC = () => {
   const [markingDone, setMarkingDone] = useState(false);
   const [bulkMarking, setBulkMarking] = useState(false);
   const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number }>({ done: 0, total: 0 });
+  // Map of "gradeId:sectionId" -> { status, completedAt } for the currently selected term.
+  // Used to badge sections whose council is already marked as completed.
+  const [termChecklist, setTermChecklist] = useState<Record<string, { status: string; completedAt: string | null }>>({});
 
   const [filterYear, setFilterYear] = useState<string>('');
   const [showPreviousTerms, setShowPreviousTerms] = useState<boolean>(true);
@@ -582,6 +585,7 @@ const CourseCouncil: React.FC = () => {
     setGuideTeacherName('');
     setClosedSections(null);
     setSelectedBulkSections(new Set());
+    setTermChecklist({});
     fetchData();
   }, [fetchData]);
 
@@ -695,6 +699,13 @@ const CourseCouncil: React.FC = () => {
       });
       setCouncilDone(true);
       setCouncilCompletedAt(new Date());
+      setTermChecklist(prev => ({
+        ...prev,
+        [`${selectedSection.grade.id}:${selectedSection.section.id}`]: {
+          status: 'done',
+          completedAt: new Date().toISOString(),
+        },
+      }));
       message.success('Consejo de curso marcado como completado');
     } catch (error) {
       console.error('Error marking council as done', error);
@@ -718,6 +729,11 @@ const CourseCouncil: React.FC = () => {
         });
         setCouncilDone(false);
         setCouncilCompletedAt(null);
+        setTermChecklist(prev => {
+          const next = { ...prev };
+          delete next[`${selectedSection.grade.id}:${selectedSection.section.id}`];
+          return next;
+        });
         message.success('Consejo de curso reabierto');
       } catch (error) {
         console.error('Error reopening council', error);
@@ -791,6 +807,19 @@ const CourseCouncil: React.FC = () => {
           setBulkProgress({ done: i + 1, total: combinations.length });
         }
         setBulkMarking(false);
+        // Refresh the term checklist map so badges reflect the new state if the
+        // user is currently viewing the section selector for one of the affected terms.
+        setTermChecklist(prev => {
+          const next = { ...prev };
+          combinations.forEach(({ gradeId, sectionId, termId }) => {
+            if (selectedTerm && termId !== selectedTerm.id) return;
+            next[`${gradeId}:${sectionId}`] = {
+              status: 'done',
+              completedAt: new Date().toISOString(),
+            };
+          });
+          return next;
+        });
         if (failCount === 0) {
           message.success(`${successCount} consejos de curso marcados como completados`);
         } else {
@@ -871,10 +900,30 @@ const CourseCouncil: React.FC = () => {
   };
 
   const handleTermClick = async (term: Term) => {
+    // Fetch checklist entries for this term in parallel with closure detection.
+    const checklistPromise = viewPeriod
+      ? api.get(`/period-closure/${viewPeriod.id}/checklist/all?termId=${term.id}`)
+          .then(res => {
+            const map: Record<string, { status: string; completedAt: string | null }> = {};
+            (res.data as any[]).forEach(entry => {
+              map[`${entry.gradeId}:${entry.sectionId}`] = {
+                status: entry.status,
+                completedAt: entry.completedAt,
+              };
+            });
+            setTermChecklist(map);
+          })
+          .catch(err => {
+            console.error('Error fetching term checklist entries', err);
+            setTermChecklist({});
+          })
+      : Promise.resolve();
+
     if (term.isBlocked) {
       // Term globally blocked → all sections are closed
       setClosedSections(null);
       setSelectedTerm(term);
+      await checklistPromise;
       setStep(1);
       return;
     }
@@ -889,6 +938,7 @@ const CourseCouncil: React.FC = () => {
       }
       setClosedSections(closed);
       setSelectedTerm(term);
+      await checklistPromise;
       setStep(1);
     } catch (error) {
       console.error('Error fetching section closures', error);
@@ -1155,6 +1205,7 @@ const CourseCouncil: React.FC = () => {
                   const selected = selectedBulkSections.has(`${group.grade.id}:${sec.id}`);
                   const accentColor = group.grade.isDiversified ? '#fa541c' : '#1890ff';
                   const accentColorDark = group.grade.isDiversified ? '#d4380d' : '#096dd9';
+                  const councilCompleted = termChecklist[`${group.grade.id}:${sec.id}`]?.status === 'done';
                   return (
                   <Col key={sec.id} xs={24} sm={12} md={8} lg={6}>
                     <Tooltip title={sectionClosed ? undefined : 'El lapso para esta sección no se ha cerrado'}>
@@ -1201,10 +1252,17 @@ const CourseCouncil: React.FC = () => {
                             {sec.name.replace(/sección/gi, '').trim().charAt(0)}
                           </div>
                           <div style={{ flex: 1 }}>
-                            <div style={{ fontWeight: 800, fontSize: 16, color: '#1f1f1f', lineHeight: 1.2, marginBottom: 2 }}>
-                              Sección {sec.name.replace(/sección/gi, '').trim()}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+                              <div style={{ fontWeight: 800, fontSize: 16, color: '#1f1f1f', lineHeight: 1.2 }}>
+                                Sección {sec.name.replace(/sección/gi, '').trim()}
+                              </div>
+                              {councilCompleted && (
+                                <Tooltip title="Consejo de curso completado">
+                                  <CheckCircleOutlined style={{ fontSize: 20, color: '#096dd9', flexShrink: 0 }} />
+                                </Tooltip>
+                              )}
                             </div>
-                            <Space size={4}>
+                            <Space size={4} wrap>
                               <Tag color={group.grade.isDiversified ? 'volcano' : 'blue'} style={{ border: 'none', borderRadius: 6, fontSize: 10, fontWeight: 700, margin: 0 }}>
                                 {viewPeriod?.name}
                               </Tag>

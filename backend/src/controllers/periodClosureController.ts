@@ -52,6 +52,31 @@ export const getChecklistEntry = async (req: Request, res: Response) => {
   }
 };
 
+export const listChecklistEntries = async (req: Request, res: Response) => {
+  try {
+    const { periodId } = req.params;
+    const parsedId = Number(periodId);
+    if (!parsedId || Number.isNaN(parsedId)) {
+      return res.status(400).json({ message: 'periodId inválido' });
+    }
+
+    const { termId } = req.query as { termId?: string };
+    if (!termId) {
+      return res.status(400).json({ message: 'termId es requerido' });
+    }
+
+    const entries = await PeriodClosureService.listChecklistEntries({
+      schoolPeriodId: parsedId,
+      termId: Number(termId),
+    });
+
+    return res.json(entries);
+  } catch (error) {
+    console.error('Error listing council checklist entries', error);
+    return res.status(500).json({ message: 'Error al listar checklist del consejo' });
+  }
+};
+
 export const upsertChecklistEntry = async (req: Request, res: Response) => {
   try {
     const { periodId } = req.params;
