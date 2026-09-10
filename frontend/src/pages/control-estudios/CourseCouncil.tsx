@@ -186,7 +186,7 @@ async function buildCouncilWorkbook(p: CouncilExcelParams): Promise<ArrayBuffer>
   profesorLabelCell.font = { size: 14, color: { argb: '17324D' } };
   const profesorNameCell = worksheet.getCell(4, 3);
   profesorNameCell.value = p.guideTeacher
-    ? p.guideTeacher.toLowerCase().replace(/\b\w/g, c => c.toUpperCase())
+    ? p.guideTeacher.toLowerCase().replace(/(?:^|\s)\S/g, c => c.toUpperCase())
     : '';
   profesorNameCell.alignment = { horizontal: 'left', vertical: 'middle' };
   profesorNameCell.font = { bold: true, size: 14, color: { argb: '17324D' } };
