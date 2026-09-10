@@ -4,7 +4,7 @@
     "module": "commonjs",
     "rootDir": "./src",
     "baseUrl": ".",
-    "ignoreDeprecations": "6.0",
+    "ignoreDeprecations": "5.0",
     "paths": {
       "@/*": ["src/*"],
       "@/controllers/*": ["src/controllers/*"],
