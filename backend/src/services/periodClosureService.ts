@@ -5,7 +5,8 @@ import {
   Term,
   Setting,
   PeriodGrade,
-  PeriodGradeSection
+  PeriodGradeSection,
+  Section
 } from '@/models/index';
 import sequelize from '@/config/database';
 import { Op } from 'sequelize';
@@ -170,7 +171,9 @@ export class PeriodClosureService {
     });
     if (!activeTerm || activeTerm.id !== termId) return;
 
-    // Count total grade+section combinations for this school period
+    // Count total grade+section combinations for this school period, excluding
+    // "MATERIA PENDIENTE" sections (they never have council checklists, matching
+    // the frontend behavior in CourseCouncil.tsx).
     const totalSections = await PeriodGradeSection.count({
       include: [
         {
@@ -179,6 +182,15 @@ export class PeriodClosureService {
           attributes: [],
           where: { schoolPeriodId },
           required: true
+        },
+        {
+          model: Section,
+          as: 'section',
+          attributes: [],
+          required: true,
+          where: {
+            name: { [Op.notLike]: '%materia pendiente%' }
+          }
         }
       ]
     });
