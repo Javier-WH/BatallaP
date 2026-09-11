@@ -282,10 +282,16 @@ async function buildCouncilWorkbook(p: CouncilExcelParams): Promise<ArrayBuffer>
     student.subjects.filter(s => !isPassingGrade((s.grade || 0) + (p.isPreliminary ? 0 : (s.points || 0)), p.passingGrade)).length;
 
   const zebraFill = { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: 'F7FAFC' } };
+  // Cédulas escolares show the bare number: they are not official documents,
+  // so no letter prefix is needed (V-/E-/P- keep their prefix).
+  const formatDocumentCell = (student: CouncilStudent) =>
+    student.documentType === 'Cedula Escolar'
+      ? student.studentDni
+      : `${student.documentType === 'Venezolano' ? 'V' : student.documentType === 'Extranjero' ? 'E' : student.documentType === 'Pasaporte' ? 'P' : 'CE'}-${student.studentDni}`;
   p.students.forEach((student, studentIndex) => {
     const row: (string | number)[] = [
       studentIndex + 1,
-      `${student.documentType === 'Venezolano' ? 'V' : student.documentType === 'Extranjero' ? 'E' : student.documentType === 'Pasaporte' ? 'P' : 'CE'}-${student.studentDni}`,
+      formatDocumentCell(student),
       student.studentName,
       positionMap.get(student.id) ?? studentIndex + 1,
       Number(averageOf(student).toFixed(2)),

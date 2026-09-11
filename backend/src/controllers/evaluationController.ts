@@ -20,6 +20,7 @@ import {
   Qualification,
   Inscription,
   InscriptionSubject,
+  InscriptionGroupTermChoice,
   Term,
   CouncilPoint,
   PendingSubject,
@@ -467,6 +468,30 @@ export const getStudentsForAssignment = async (req: Request, res: Response) => {
         }
       ]
     });
+
+    // A group subject is active per student and term. Keep the old
+    // InscriptionSubject rows (they contain historical notes), but exclude the
+    // student from this teacher list when the term choice points to another
+    // subject in the same group.
+    const assignedSubject = await Subject.findByPk(periodGradeSubject.subjectId, {
+      attributes: ['id', 'subjectGroupId'],
+    });
+    if (assignedSubject?.subjectGroupId != null) {
+      const choices = await InscriptionGroupTermChoice.findAll({
+        where: {
+          inscriptionId: inscriptions.map(ins => ins.id),
+          subjectGroupId: assignedSubject.subjectGroupId,
+          termId: requestedTermId,
+        },
+        attributes: ['inscriptionId', 'subjectId'],
+      });
+      const chosenByInscription = new Map(choices.map(choice => [choice.inscriptionId, choice.subjectId]));
+      const filteredInscriptions = (inscriptions as any[]).filter(ins => {
+        const chosenSubjectId = chosenByInscription.get(ins.id);
+        return chosenSubjectId == null || chosenSubjectId === periodGradeSubject.subjectId;
+      });
+      inscriptions.splice(0, inscriptions.length, ...filteredInscriptions);
+    }
 
     // Collect all qualification IDs for batch audit lookup from GradeChangeLog
     const allQualificationIds: number[] = [];

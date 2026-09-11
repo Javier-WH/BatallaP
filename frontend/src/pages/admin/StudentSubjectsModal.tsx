@@ -47,6 +47,8 @@ const StudentSubjectsModal: React.FC<Props> = ({
     choices: { termId: number; subjectGroupId: number; subjectId: number }[];
   } | null>(null);
   const [choiceSaving, setChoiceSaving] = useState(false);
+  const [applyFromTermId, setApplyFromTermId] = useState<number | null>(null);
+  const [applySubjectByGroup, setApplySubjectByGroup] = useState<Record<number, number | undefined>>({});
 
   const fetchData = async () => {
     if (!inscriptionId) return;
@@ -150,6 +152,7 @@ const StudentSubjectsModal: React.FC<Props> = ({
     try {
       const res = await api.get(`/inscriptions/${inscriptionId}/group-choices`);
       setGroupChoices(res.data);
+      setApplyFromTermId((current) => current ?? res.data.terms?.find((term: any) => term.isActive)?.id ?? res.data.terms?.[0]?.id ?? null);
     } catch (e) {
       console.error('Error fetching group choices:', e);
       setGroupChoices(null);
@@ -166,6 +169,33 @@ const StudentSubjectsModal: React.FC<Props> = ({
     } catch (error: any) {
       const errMsg = error?.response?.data?.error || 'Error al guardar la elección';
       message.error(errMsg);
+    } finally {
+      setChoiceSaving(false);
+    }
+  };
+
+  const handleApplyGroupSubjectFromTerm = async (subjectGroupId: number) => {
+    if (!inscriptionId || !applyFromTermId) {
+      message.warning('Seleccione el lapso desde el cual aplicará el cambio');
+      return;
+    }
+    const subjectId = applySubjectByGroup[subjectGroupId];
+    if (!subjectId) {
+      message.warning('Seleccione la nueva materia de grupo');
+      return;
+    }
+
+    setChoiceSaving(true);
+    try {
+      await api.patch(`/inscriptions/${inscriptionId}`, {
+        subjectIds: [subjectId],
+        fromTermId: applyFromTermId,
+      });
+      message.success('Cambio de materia aplicado desde el lapso seleccionado');
+      await fetchData();
+      await fetchGroupChoices();
+    } catch (error: any) {
+      message.error(error?.response?.data?.error || 'Error al aplicar el cambio de materia');
     } finally {
       setChoiceSaving(false);
     }
@@ -293,12 +323,49 @@ const StudentSubjectsModal: React.FC<Props> = ({
                 message="Asigne la materia de grupo que el estudiante cursó en cada lapso. Útil para registrar cambios o completar datos históricos."
               />
               <Spin spinning={choiceSaving}>
+                <Alert
+                  type="warning"
+                  showIcon
+                  style={{ marginBottom: 12 }}
+                  message="Cambiar materia desde un lapso"
+                  description="Los lapsos anteriores conservarán su materia y sus notas. La nueva materia comienza sin copiar notas."
+                />
+                <Space wrap style={{ marginBottom: 16 }}>
+                  <Text strong>Aplicar cambio desde:</Text>
+                  <Select
+                    style={{ minWidth: 180 }}
+                    placeholder="Seleccione lapso"
+                    value={applyFromTermId ?? undefined}
+                    options={groupChoices.terms.map(term => ({
+                      label: `${term.name}${term.isActive ? ' (activo)' : ''}`,
+                      value: term.id,
+                    }))}
+                    onChange={setApplyFromTermId}
+                  />
+                </Space>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                   {groupChoices.groups.map(group => (
                     <div key={group.id}>
                       <Text strong style={{ display: 'block', marginBottom: 6 }}>
                         <Tag color="orange">{group.name}</Tag>
                       </Text>
+                      <Space wrap style={{ marginBottom: 8 }}>
+                        <Select
+                          style={{ minWidth: 220 }}
+                          placeholder="Nueva materia desde el lapso"
+                          value={applySubjectByGroup[group.id]}
+                          options={group.subjects.map(s => ({ label: s.name, value: s.id }))}
+                          onChange={(subjectId) => setApplySubjectByGroup(prev => ({ ...prev, [group.id]: subjectId }))}
+                        />
+                        <Button
+                          type="primary"
+                          size="small"
+                          onClick={() => handleApplyGroupSubjectFromTerm(group.id)}
+                          disabled={!applyFromTermId || !applySubjectByGroup[group.id]}
+                        >
+                          Aplicar cambio
+                        </Button>
+                      </Space>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                         {groupChoices.terms.map(term => {
                           const current = groupChoices.choices.find(

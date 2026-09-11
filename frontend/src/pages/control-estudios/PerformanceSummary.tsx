@@ -947,12 +947,16 @@ const PerformanceSummary: React.FC = () => {
       const gradeNumFmt = '0'.repeat(maxDigits);
 
       data.students.forEach((student: any, studentIndex: number) => {
-        const docPrefix = student.documentType === 'Venezolano' ? 'V'
-          : student.documentType === 'Extranjero' ? 'E'
-          : student.documentType === 'Pasaporte' ? 'P' : 'CE';
+        // Cédulas escolares show the bare number: they are not official
+        // documents, so no letter prefix is needed (V-/E-/P- keep theirs).
+        const documentCell = student.documentType === 'Cedula Escolar'
+          ? (student.document || '—')
+          : `${student.documentType === 'Venezolano' ? 'V'
+            : student.documentType === 'Extranjero' ? 'E'
+            : student.documentType === 'Pasaporte' ? 'P' : 'CE'}-${student.document || '—'}`;
         const row: (string | number)[] = [
           studentIndex + 1,
-          `${docPrefix}-${student.document || '—'}`,
+          documentCell,
           `${student.lastName} ${student.firstName}`.trim(),
           positionMap.get(student.inscriptionId) ?? studentIndex + 1,
           Number(averageOf(student).toFixed(2)),
@@ -990,8 +994,17 @@ const PerformanceSummary: React.FC = () => {
             const subject = getGroupSubject(student, colDef.subjectGroupId);
             if (subject) {
               for (let i = 0; i < termCount; i++) {
-                // Use the individual subject abbreviation (fallback to name)
-                row.push(subject.subjectAbbreviation || subject.subjectName || subject.name || '-');
+                const lapso = subject.lapsos?.find((l: any) => l.termId === terms[i].id);
+                // Use the subject selected in this specific lapso, not the
+                // subject currently active in the last lapso.
+                row.push(
+                  lapso?.subjectAbbreviation
+                  || lapso?.subjectName
+                  || subject.subjectAbbreviation
+                  || subject.subjectName
+                  || subject.name
+                  || '-'
+                );
               }
             } else {
               for (let i = 0; i < termCount; i++) row.push('-');

@@ -899,9 +899,32 @@ export const getInscriptions = async (req: Request, res: Response) => {
       return m;
     };
 
+    const activeTermByPeriod = new Map<number, number>();
+    const activePeriods = [...new Set(inscriptions.map(ins => ins.schoolPeriodId))];
+    if (activePeriods.length > 0) {
+      const activeTerms = await Term.findAll({
+        where: { schoolPeriodId: activePeriods, isActive: true },
+        attributes: ['id', 'schoolPeriodId'],
+      });
+      activeTerms.forEach(term => activeTermByPeriod.set(term.schoolPeriodId, term.id));
+    }
+
     const result = await Promise.all(
       inscriptions.map(async (ins) => {
         const json = ins.toJSON() as any;
+        const activeTermId = activeTermByPeriod.get(ins.schoolPeriodId);
+        if (activeTermId && Array.isArray(json.subjects)) {
+          const choices = await InscriptionGroupTermChoice.findAll({
+            where: { inscriptionId: ins.id, termId: activeTermId },
+            attributes: ['subjectGroupId', 'subjectId'],
+          });
+          const chosenByGroup = new Map(choices.map(choice => [choice.subjectGroupId, choice.subjectId]));
+          if (chosenByGroup.size > 0) {
+            json.subjects = json.subjects.filter((subject: any) =>
+              subject.subjectGroupId == null || chosenByGroup.get(subject.subjectGroupId) === subject.id
+            );
+          }
+        }
         if (json.student) {
           json.student.representativeType = deriveRepresentativeType(json.student.guardians);
         }
@@ -1244,6 +1267,7 @@ export const updateInscription = async (req: Request, res: Response) => {
       enrollmentAnswers,
       escolaridad,
       subjectIds,
+      fromTermId,
     } = req.body;
 
     const inscription = await Inscription.findByPk(id, {
@@ -1466,12 +1490,17 @@ export const updateInscription = async (req: Request, res: Response) => {
           (s: any) => s.subjectGroupId != null
         );
 
-        const activeTerm = await Term.findOne({
-          where: { schoolPeriodId: inscription.schoolPeriodId, isActive: true },
-          transaction: t,
-        });
+        const selectedFromTerm = fromTermId != null
+          ? await Term.findOne({
+              where: { id: Number(fromTermId), schoolPeriodId: inscription.schoolPeriodId },
+              transaction: t,
+            })
+          : await Term.findOne({
+              where: { schoolPeriodId: inscription.schoolPeriodId, isActive: true },
+              transaction: t,
+            });
 
-        if (activeTerm) {
+        if (selectedFromTerm) {
           for (const subjectId of subjectIds) {
             const subj = groupSubjects.find((s: any) => s.id === Number(subjectId));
             if (!subj || subj.subjectGroupId == null) continue;
@@ -1479,7 +1508,7 @@ export const updateInscription = async (req: Request, res: Response) => {
               inscription.id,
               subj.subjectGroupId,
               subj.id,
-              activeTerm.id,
+              selectedFromTerm.id,
               { transaction: t }
             );
           }

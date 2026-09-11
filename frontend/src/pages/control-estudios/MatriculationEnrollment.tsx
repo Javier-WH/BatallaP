@@ -305,6 +305,8 @@ const MatriculationEnrollment: React.FC = () => {
   const [filterEscolaridad, setFilterEscolaridad] = useState<'regular' | 'repitiente' | 'materia_pendiente' | null>(savedFilters.filterEscolaridad ?? null);
   const [filterSchoolPeriod, setFilterSchoolPeriod] = useState<number | null>(savedFilters.filterSchoolPeriod ?? null);
   const [allPeriods, setAllPeriods] = useState<SchoolPeriod[]>([]);
+  const [groupTerms, setGroupTerms] = useState<{ id: number; name: string; order: number; isActive: boolean }[]>([]);
+  const [groupChangeFromTermId, setGroupChangeFromTermId] = useState<number | null>(null);
   const [filterMissing, setFilterMissing] = useState<string | null>(savedFilters.filterMissing ?? null);
   const [filterInscription, setFilterInscription] = useState<'inscrito' | 'no_inscrito' | 'retirado' | null>(savedFilters.filterInscription ?? null);
   const [nominaModalOpen, setNominaModalOpen] = useState(false);
@@ -356,6 +358,22 @@ const MatriculationEnrollment: React.FC = () => {
       clearTimeout(timer);
     };
   }, [selectedRowKeys.length, viewStatus, structure.length]);
+
+  useEffect(() => {
+    const periodId = filterSchoolPeriod || activePeriod?.id;
+    if (!periodId) {
+      setGroupTerms([]);
+      setGroupChangeFromTermId(null);
+      return;
+    }
+    api.get(`/terms?schoolPeriodId=${periodId}`).then(res => {
+      const terms = (res.data || []).sort((a: any, b: any) => a.order - b.order);
+      setGroupTerms(terms);
+      setGroupChangeFromTermId(current => current && terms.some((term: any) => term.id === current)
+        ? current
+        : terms.find((term: any) => term.isActive)?.id ?? terms[0]?.id ?? null);
+    }).catch(() => setGroupTerms([]));
+  }, [filterSchoolPeriod, activePeriod]);
 
   useEffect(() => {
     const fetchInitialData = async () => {
@@ -829,6 +847,10 @@ const MatriculationEnrollment: React.FC = () => {
 
   const handleBulkSubjectSave = useCallback(async (subjectIds: number[]) => {
     const rows = matriculations.filter(r => selectedRowKeys.includes(r.id));
+    if (!groupChangeFromTermId) {
+      message.warning('Seleccione el lapso desde el cual aplicará el cambio');
+      return;
+    }
     if (rows.length === 0) return;
 
     message.loading({ content: `Asignando materia de grupo a ${rows.length} estudiante(s)...`, key: 'bulk-subject' });
@@ -841,7 +863,10 @@ const MatriculationEnrollment: React.FC = () => {
         // The backend applies the change from the active term onwards.
         // Notes for the old subject are preserved — if the student switches
         // back, the old notes reappear automatically.
-        await api.patch(`/inscriptions/${inscriptionId}`, { subjectIds });
+        await api.patch(`/inscriptions/${inscriptionId}`, {
+          subjectIds,
+          fromTermId: groupChangeFromTermId,
+        });
       } catch (error) {
         console.error(`[handleBulkSubjectSave] Error para inscripción ${inscriptionId}:`, error);
         errors++;
@@ -855,7 +880,7 @@ const MatriculationEnrollment: React.FC = () => {
     }
 
     await fetchData();
-  }, [matriculations, selectedRowKeys, fetchData]);
+  }, [matriculations, selectedRowKeys, fetchData, groupChangeFromTermId]);
 
   const handleOpenSubjectModal = () => {
     if (selectedRowKeys.length !== 1) return;
@@ -2006,6 +2031,22 @@ const MatriculationEnrollment: React.FC = () => {
                       )}
                       {!hasMixedGrades && bulkGroupSubjects.length > 0 && (
                         <div className="flex flex-col gap-0.5 ml-auto">
+                          <span className="text-[9px] font-bold uppercase tracking-wider text-slate-500">Aplicar desde lapso</span>
+                          <Select
+                            placeholder="Seleccionar lapso..."
+                            size="small"
+                            style={{ width: 160 }}
+                            value={groupChangeFromTermId ?? undefined}
+                            options={groupTerms.map(term => ({
+                              label: `${term.name}${term.isActive ? ' (activo)' : ''}`,
+                              value: term.id,
+                            }))}
+                            onChange={setGroupChangeFromTermId}
+                          />
+                        </div>
+                      )}
+                      {!hasMixedGrades && bulkGroupSubjects.length > 0 && (
+                        <div className="flex flex-col gap-0.5">
                           <span className="text-[9px] font-bold uppercase tracking-wider text-slate-500">Materia de Grupo</span>
                           <Select
                             placeholder="Asignar..."

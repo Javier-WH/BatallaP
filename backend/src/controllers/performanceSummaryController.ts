@@ -20,6 +20,7 @@ import {
   Qualification,
   EvaluationPlan,
   CouncilPoint,
+  InscriptionGroupTermChoice,
   SchoolPeriod,
   Grade,
   Section,
@@ -344,7 +345,7 @@ function fillSheetByNamedRanges(
     const insSubjects = isMpSection
       ? (ins.pendingSubjects || [])
       : sortSubjectsByOrder(
-          ins.inscriptionSubjects || [],
+          ins.__groupAwareInscriptionSubjects || ins.inscriptionSubjects || [],
           (is: any) => is.subjectId,
           (is: any) => is.subject?.name,
           subjectOrderMap
@@ -539,6 +540,55 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
 
     if (inscriptions.length === 0) {
       return res.status(404).json({ message: 'No hay estudiantes inscritos en esta seccion' });
+    }
+
+    // Load per-term group choices once. Historical InscriptionSubject rows are
+    // intentionally preserved, so the annual report must select the correct row
+    // independently for each term.
+    if (!isMpSection) {
+      const choices = await InscriptionGroupTermChoice.findAll({
+        where: {
+          inscriptionId: inscriptions.map(ins => ins.id),
+          termId: terms.map((t: any) => t.id),
+        },
+        attributes: ['inscriptionId', 'termId', 'subjectGroupId', 'subjectId'],
+      });
+      const choiceMap = new Map<string, number>();
+      choices.forEach(choice => choiceMap.set(`${choice.inscriptionId}:${choice.termId}:${choice.subjectGroupId}`, choice.subjectId));
+      (inscriptions as any[]).forEach(ins => {
+        ins.__groupChoiceMap = choiceMap;
+        const subjects = ins.inscriptionSubjects || [];
+        const grouped = new Map<number, any[]>();
+        const coreSubjects: any[] = [];
+        subjects.forEach((subject: any) => {
+          const groupId = subject.subject?.subjectGroupId;
+          if (groupId == null) coreSubjects.push(subject);
+          else grouped.set(groupId, [...(grouped.get(groupId) || []), subject]);
+        });
+
+        const groupAwareSubjects = [...coreSubjects];
+        for (const [groupId, groupSubjects] of grouped) {
+          const latestTerm = [...terms].sort((a: any, b: any) => b.order - a.order)[0];
+          const latestChoiceId = latestTerm
+            ? choiceMap.get(`${ins.id}:${latestTerm.id}:${groupId}`)
+            : undefined;
+          const proxySource = groupSubjects.find(s => s.subjectId === latestChoiceId)
+            || groupSubjects[0];
+          const proxy = { ...proxySource, qualifications: [], termGrades: [], councilPoints: [] };
+
+          for (const currentTerm of terms) {
+            const selectedSubjectId = choiceMap.get(`${ins.id}:${currentTerm.id}:${groupId}`);
+            const selectedSubject = groupSubjects.find(s => s.subjectId === selectedSubjectId)
+              || groupSubjects.find(s => (s.qualifications || []).some((q: any) => q.evaluationPlan?.termId === currentTerm.id))
+              || proxySource;
+            proxy.qualifications.push(...(selectedSubject.qualifications || []).filter((q: any) => q.evaluationPlan?.termId === currentTerm.id));
+            proxy.termGrades.push(...(selectedSubject.termGrades || []).filter((tg: any) => tg.termId === currentTerm.id));
+            proxy.councilPoints.push(...(selectedSubject.councilPoints || []).filter((cp: any) => cp.termId === currentTerm.id));
+          }
+          groupAwareSubjects.push(proxy);
+        }
+        ins.__groupAwareInscriptionSubjects = groupAwareSubjects;
+      });
     }
 
     // Sort students canonically: document type priority → document number → lastName → firstName
@@ -896,7 +946,9 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
         let zero = 0;
 
         for (const ins of students) {
-          const subjectsList = isMpSection ? (ins as any).pendingSubjects : (ins as any).inscriptionSubjects;
+          const subjectsList = isMpSection
+            ? (ins as any).pendingSubjects
+            : ((ins as any).__groupAwareInscriptionSubjects || (ins as any).inscriptionSubjects);
           const insSub = subjectsList?.find((is: any) =>
             is.subjectId === columnSubject.id || (
               columnSubject.subjectGroupId !== null &&
@@ -2269,28 +2321,46 @@ export const getBoletinData = async (req: Request, res: Response) => {
         subjectOrderMap,
       );
 
-      const subjects = insSubs.map((is: any) => {
+      const subjects = (await Promise.all(insSubs.map(async (is: any) => {
         const studentSectionId = ins.sectionId || 0;
+        const isGroupSubject = is.subject?.subjectGroupId != null;
 
-        // Build term grades array with fallback to qualifications + councilPoints
-        const termGradesArr = GradeCalculationService.buildTermGradesWithFallback(
-          (is.termGrades || []).map((tg: any) => ({ termId: tg.termId, score: Number(tg.score) })),
-          is.qualifications || [],
-          is.councilPoints || [],
-          terms.map((t: any) => t.id),
-        );
-
-        // Build lapsos using the service
-        const lapsos = terms.map((t: any) => {
+        // Resolve qualifications, term grades and council points from the
+        // subject selected for EACH term. Historical InscriptionSubject rows
+        // remain intact but only the per-term choice is active.
+        const lapsos = await Promise.all(terms.map(async (t: any) => {
+          const termSubjects = isGroupSubject
+            ? await filterActiveGroupSubjectsForTerm(ins.inscriptionSubjects || [], t.id)
+            : [is];
+          const termSubject = isGroupSubject
+            ? termSubjects.find((candidate: any) => candidate.subject?.subjectGroupId === is.subject.subjectGroupId) || is
+            : is;
+          const termGradesArr = GradeCalculationService.buildTermGradesWithFallback(
+            (termSubject.termGrades || []).map((tg: any) => ({ termId: tg.termId, score: Number(tg.score) })),
+            termSubject.qualifications || [],
+            termSubject.councilPoints || [],
+            terms.map((term: any) => term.id),
+          );
           const councilDone = isCouncilDone(t.id, studentSectionId);
           const finalScore = GradeCalculationService.calculateFinalTermScore(t.id, termGradesArr, councilDone);
-          return { termId: t.id, termName: t.name, score: finalScore };
-        });
+          return {
+            termId: t.id,
+            termName: t.name,
+            score: finalScore,
+            // Keep the selected group subject visible for this specific lapso.
+            subjectName: termSubject.subject?.name || '',
+            subjectAbbreviation: termSubject.subject?.abbreviation || null,
+          };
+        }));
 
-        // Calculate finalScore using the service
+        // Group-subject annual grades must be calculated from the per-term
+        // choices, not from one stored SubjectFinalGrade belonging to only one
+        // of the historical group subjects.
         const finalScore = GradeCalculationService.calculateFinalScore(
           lapsos.map((l: any) => ({ termId: l.termId, finalScore: l.score })),
-          is.finalGrade ? { finalScore: is.finalGrade.finalScore, gradeType: is.finalGrade.gradeType } : null,
+          !isGroupSubject && is.finalGrade
+            ? { finalScore: is.finalGrade.finalScore, gradeType: is.finalGrade.gradeType }
+            : null,
         );
 
         const subjectName = is.subject?.subjectGroupId
@@ -2311,7 +2381,7 @@ export const getBoletinData = async (req: Request, res: Response) => {
           finalScore,
           status: GradeCalculationService.resolveStatus(finalScore, Number(settings.passing_grade || 10)),
         };
-      });
+      })));
 
       return {
         inscriptionId: ins.id,

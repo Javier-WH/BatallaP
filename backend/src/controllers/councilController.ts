@@ -123,13 +123,14 @@ export const getCouncilData = async (req: Request, res: Response) => {
         (is: any) => is.subjectId,
         (is: any) => is.subject?.name,
         subjectOrderMap
-      ).map((is: any) => {
+      );
+      const subjects = await Promise.all(sortedSubjects.map(async (is: any) => {
         const allQualifications = is.qualifications || [];
         const allCouncilPoints = is.councilPoints || [];
 
-        // Calculate base grade for a specific term from its qualifications
-        const calculateTermBaseGrade = (termId: number): number => {
-          return allQualifications
+        // Calculate a base grade from one specific InscriptionSubject and term.
+        const calculateTermBaseGrade = (subject: any, termId: number): number => {
+          return (subject?.qualifications || [])
             .filter((q: any) => q.evaluationPlan?.termId === termId)
             .reduce((acc: number, q: any) => {
               if (q.isAbsent) return acc;
@@ -141,17 +142,20 @@ export const getCouncilData = async (req: Request, res: Response) => {
             }, 0);
         };
 
-        // Current term grade
-        const currentTermGrade = calculateTermBaseGrade(Number(termId));
-
-        // Current term council points
+        const currentTermGrade = calculateTermBaseGrade(is, Number(termId));
         const currentTermPoints = allCouncilPoints.find((cp: any) => cp.termId === Number(termId));
         const otherTermsPoints = allCouncilPoints.filter((cp: any) => cp.termId !== Number(termId) && cp.points > 0);
 
-        // Build previous terms data: for each previous term, calculate base grade + council points = final grade
-        const previousTermsData = previousTerms.map((pt: any) => {
-          const ptBaseGrade = calculateTermBaseGrade(pt.id);
-          const ptCouncilPoint = allCouncilPoints.find((cp: any) => cp.termId === pt.id);
+        // Resolve the active subject independently for every previous term.
+        // This is essential when a student switches group subjects between lapsos.
+        const previousTermsData = await Promise.all(previousTerms.map(async (pt: any) => {
+          const subjectsForTerm = await filterActiveGroupSubjectsForTerm(insAny.inscriptionSubjects || [], pt.id);
+          const previousSubject = is.subject?.subjectGroupId != null
+            ? subjectsForTerm.find((candidate: any) => candidate.subject?.subjectGroupId === is.subject.subjectGroupId)
+            : subjectsForTerm.find((candidate: any) => candidate.subjectId === is.subjectId);
+          const subjectForTerm = previousSubject || is;
+          const ptBaseGrade = calculateTermBaseGrade(subjectForTerm, pt.id);
+          const ptCouncilPoint = (subjectForTerm.councilPoints || []).find((cp: any) => cp.termId === pt.id);
           const ptPoints = ptCouncilPoint?.points || 0;
           const ptFinalGrade = Math.max(MIN_FINAL_GRADE, Math.round((ptBaseGrade + ptPoints) * 100) / 100);
           return {
@@ -161,7 +165,7 @@ export const getCouncilData = async (req: Request, res: Response) => {
             councilPoints: ptPoints,
             finalGrade: ptFinalGrade
           };
-        });
+        }));
 
         return {
           id: is.subjectId,
@@ -180,14 +184,14 @@ export const getCouncilData = async (req: Request, res: Response) => {
           })),
           previousTermsData
         };
-      });
+      }));
 
       return {
         id: ins.id,
         studentName: `${insAny.student?.lastName} ${insAny.student?.firstName}`,
         studentDni: insAny.student?.document,
         documentType: insAny.student?.documentType,
-        subjects: sortedSubjects
+        subjects
       };
     }));
 
