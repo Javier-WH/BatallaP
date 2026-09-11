@@ -526,13 +526,24 @@ async function buildCertifiedWorkbook(personId: number, templateName: string): P
       attributes: ['inscriptionId', 'subjectGroupId', 'subjectId', 'termId'],
     });
     const latestTermOrderByChoice = new Map<string, number>();
+    const choicesByInscriptionGroup = new Map<string, any[]>();
     for (const choice of latestChoices as any[]) {
       const key = `${choice.inscriptionId}__${choice.subjectGroupId}`;
+      const groupChoices = choicesByInscriptionGroup.get(key) || [];
+      groupChoices.push(choice);
+      choicesByInscriptionGroup.set(key, groupChoices);
       const order = Number(choice.term?.order || 0);
       if (!latestTermOrderByChoice.has(key) || order > latestTermOrderByChoice.get(key)!) {
         latestTermOrderByChoice.set(key, order);
         latestGroupChoiceByInscription.set(key, choice.subjectId);
       }
+    }
+    const termsByPeriodForGroups = new Map<number, any[]>();
+    for (const periodId of [...new Set(allInscriptions.map(ins => ins.schoolPeriodId))]) {
+      termsByPeriodForGroups.set(periodId, await Term.findAll({
+        where: { schoolPeriodId: periodId },
+        order: [['order', 'ASC']],
+      }));
     }
 
     // 5. Build grades list from InscriptionSubjects
@@ -893,21 +904,44 @@ async function buildCertifiedWorkbook(personId: number, templateName: string): P
       if (groupSubjects.length > 0) {
         const grp = groupSubjects[0];
         const studentInscription = allInscriptions.find((ins: any) => ins.grade?.order === y);
-        const selectedMemberId = studentInscription
-          ? latestGroupChoiceByInscription.get(`${studentInscription.id}__${grp.subjectGroupId}`)
-          : undefined;
+        const groupKey = studentInscription
+          ? `${studentInscription.id}__${grp.subjectGroupId}`
+          : null;
+        const selectedMemberId = groupKey ? latestGroupChoiceByInscription.get(groupKey) : undefined;
         const memberIds = selectedMemberId != null
           ? [selectedMemberId, ...grp.memberIds.filter(id => id !== selectedMemberId)]
           : grp.memberIds;
 
-        // Prefer the subject chosen in the last lapso; only fall back to another
-        // member when legacy data has no per-term choice.
         for (const memberId of memberIds) {
           const lookupKey = `${yearGrade.id}__${memberId}`;
           const g = gradeLookup.get(lookupKey);
           if (g && g.finalScore != null) {
+            let groupFinalScore = Number(g.finalScore);
+            if (studentInscription && groupKey) {
+              const groupChoices = choicesByInscriptionGroup.get(groupKey) || [];
+              const periodTerms = termsByPeriodForGroups.get(studentInscription.schoolPeriodId) || [];
+              const inscriptionSubjectsForStudent = insSubjects.filter(
+                (item: any) => item.inscription?.id === studentInscription.id
+                  && item.subject?.subjectGroupId === grp.subjectGroupId
+              );
+              const lapsos = periodTerms.map((periodTerm: any) => {
+                const choice = groupChoices.find((item: any) => item.termId === periodTerm.id);
+                const selectedSubject = inscriptionSubjectsForStudent.find(
+                  (item: any) => item.subjectId === choice?.subjectId
+                );
+                const termGrade = (selectedSubject as any)?.termGrades?.find(
+                  (item: any) => item.termId === periodTerm.id
+                );
+                return {
+                  termId: periodTerm.id,
+                  finalScore: termGrade?.score != null ? Number(termGrade.score) : null,
+                };
+              });
+              const calculatedGroupScore = GradeCalculationService.calculateFinalScore(lapsos, null);
+              if (calculatedGroupScore != null) groupFinalScore = calculatedGroupScore;
+            }
             setter(groupNameCells[y - 1], toTitleCaseES(g.subjectName || grp.name));
-            setter(groupNumCells[y - 1], numericToLetter(roundGradeMin1(g.finalScore), letterGradesConfig).toUpperCase());
+            setter(groupNumCells[y - 1], numericToLetter(roundGradeMin1(groupFinalScore), letterGradesConfig).toUpperCase());
             break;
           }
         }
