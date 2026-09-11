@@ -35,6 +35,7 @@ import { roundGrade, roundFinalGrade, isPassingGrade } from '@/services/gradeEva
 import { GradeCalculationService } from '@/services/gradeCalculationService';
 import { readTemplateNamedRanges } from '@/services/templateNamedRanges';
 import { resolveGradeDate } from '@/services/gradeDateResolver';
+import { resolveCouncilDate } from '@/services/councilDateResolver';
 import { sortInscriptions } from '@/services/studentSortService';
 
 function getStateAbbrev(stateName: string): string {
@@ -502,7 +503,7 @@ async function buildCertifiedWorkbook(personId: number, templateName: string): P
         {
           model: Inscription,
           as: 'inscription',
-          attributes: ['id', 'personId', 'schoolPeriodId', 'gradeId'],
+          attributes: ['id', 'personId', 'schoolPeriodId', 'gradeId', 'sectionId'],
         },
         {
           model: SubjectFinalGrade,
@@ -530,6 +531,16 @@ async function buildCertifiedWorkbook(personId: number, templateName: string): P
       let plantelName: string | null = fg?.plantel?.name ?? null;
       let plantelState: string | null = fg?.plantel?.state ?? null;
 
+      // Regular grades (F) date comes from the last term's council:
+      // Master override -> checklist completedAt. Falls back to calculatedAt.
+      if (!fg || gradeType === 'regular') {
+        const councilDate = await resolveCouncilDate({
+          schoolPeriodId: ins.schoolPeriodId,
+          sectionId: ins.sectionId ?? null,
+        });
+        if (councilDate) date = councilDate;
+      }
+
       // For revision / materia_pendiente, resolve date from opportunity dates / encounter dates
       if (fg && gradeType && (gradeType === 'revision' || gradeType === 'materia_pendiente' || gradeType === 'revision_materia_pendiente')) {
         const resolvedDate = await resolveGradeDate(
@@ -550,10 +561,12 @@ async function buildCertifiedWorkbook(personId: number, templateName: string): P
         finalScore = roundFinalGrade(avg);
         status = isPassingGrade(avg, 10) ? 'aprobada' : 'reprobada';
         gradeType = 'regular';
-        const latestCalculated = termGrades
-          .map(tg => tg.calculatedAt)
-          .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0];
-        date = latestCalculated ? new Date(latestCalculated).toISOString().split('T')[0] : null;
+        if (!date) {
+          const latestCalculated = termGrades
+            .map(tg => tg.calculatedAt)
+            .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0];
+          date = latestCalculated ? new Date(latestCalculated).toISOString().split('T')[0] : null;
+        }
       }
 
       gradesMap.push({
@@ -1175,6 +1188,18 @@ export const getCertifiedGradesData = async (req: Request, res: Response) => {
       );
     }
 
+    // Precompute the official council date (override -> checklist) per inscription
+    const councilDateByIns = new Map<number, string | null>();
+    for (const ins of inscriptions) {
+      councilDateByIns.set(
+        ins.id,
+        await resolveCouncilDate({
+          schoolPeriodId: ins.schoolPeriodId,
+          sectionId: (ins as any).section?.id ?? ins.sectionId ?? null,
+        }),
+      );
+    }
+
     const years = inscriptions.map((ins: any) => {
       const terms = termsByPeriod[ins.schoolPeriodId] || [];
       const termCount = terms.length || 1;
@@ -1229,7 +1254,12 @@ export const getCertifiedGradesData = async (req: Request, res: Response) => {
           originInstitutionCode: is.finalGrade?.plantel?.code ?? null,
           originInstitutionState: is.finalGrade?.plantel?.state ?? null,
           gradeType: is.finalGrade?.gradeType ?? null,
-          issuedAt: is.finalGrade?.calculatedAt ?? null,
+          issuedAt: (() => {
+            const gt = is.finalGrade?.gradeType;
+            // Regular (or missing) final grades take the official council date
+            if (gt && gt !== 'regular') return is.finalGrade?.calculatedAt ?? null;
+            return councilDateByIns.get(ins.id) || (is.finalGrade?.calculatedAt ?? null);
+          })(),
         };
       });
 

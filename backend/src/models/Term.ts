@@ -10,6 +10,7 @@ interface TermAttributes {
   closeDate?: Date;
   schoolPeriodId: number;
   order: number; // Para mantener el orden de los lapsos
+  councilCompletedAtOverride?: string | null;
 }
 
 interface TermCreationAttributes extends Optional<TermAttributes, 'id'> {}
@@ -23,6 +24,7 @@ class Term extends Model<TermAttributes, TermCreationAttributes> implements Term
   public closeDate?: Date;
   public schoolPeriodId!: number;
   public order!: number;
+  public councilCompletedAtOverride?: string | null;
 
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
@@ -69,6 +71,13 @@ Term.init(
       type: DataTypes.INTEGER,
       allowNull: false,
       defaultValue: 1,
+    },
+    councilCompletedAtOverride: {
+      // Calendar date (YYYY-MM-DD) set by Master to override the council
+      // completion date of every section in this term. DATEONLY avoids
+      // timezone conversions: the stored string is the date shown everywhere.
+      type: DataTypes.DATEONLY,
+      allowNull: true,
     },
   },
   {

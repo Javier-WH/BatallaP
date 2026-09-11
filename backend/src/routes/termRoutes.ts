@@ -5,7 +5,8 @@ import {
   createTerm,
   updateTerm,
   deleteTerm,
-  reorderTerms
+  reorderTerms,
+  setCouncilDateOverride
 } from '@/controllers/termController';
 
 const router = Router();
@@ -27,5 +28,8 @@ router.delete('/:id', deleteTerm);
 
 // POST /terms/reorder - Reorder terms
 router.post('/reorder', reorderTerms);
+
+// PUT /terms/:id/council-date-override - Master-only council date override
+router.put('/:id/council-date-override', setCouncilDateOverride);
 
 export default router;

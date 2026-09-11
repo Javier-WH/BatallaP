@@ -193,3 +193,44 @@ export const reorderTerms = async (req: Request, res: Response) => {
     res.status(500).json({ message: 'Error al reordenar los lapsos' });
   }
 };
+
+/**
+ * PUT /terms/:id/council-date-override
+ * Master-only. Sets or clears the council completion date override for a
+ * term. Body: { councilCompletedAt: 'YYYY-MM-DD' | null }
+ */
+export const setCouncilDateOverride = async (req: Request, res: Response) => {
+  try {
+    const roles: string[] = (req.session as any)?.user?.roles || [];
+    if (!roles.includes('Master')) {
+      return res.status(403).json({ message: 'Solo Master puede ajustar la fecha de completado' });
+    }
+
+    const { id } = req.params;
+    const { councilCompletedAt } = req.body as { councilCompletedAt?: string | null };
+
+    if (councilCompletedAt !== null && councilCompletedAt !== undefined && councilCompletedAt !== '') {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(councilCompletedAt)) {
+        return res.status(400).json({ message: 'Formato de fecha inválido. Use YYYY-MM-DD.' });
+      }
+      const parsed = new Date(`${councilCompletedAt}T00:00:00`);
+      if (Number.isNaN(parsed.getTime())) {
+        return res.status(400).json({ message: 'Fecha inválida' });
+      }
+    }
+
+    const term = await Term.findByPk(id);
+    if (!term) {
+      return res.status(404).json({ message: 'Lapso no encontrado' });
+    }
+
+    await term.update({
+      councilCompletedAtOverride: councilCompletedAt ? councilCompletedAt : null,
+    });
+
+    res.json(term);
+  } catch (error) {
+    console.error('Error setting council date override:', error);
+    res.status(500).json({ message: 'Error al ajustar la fecha de completado del lapso' });
+  }
+};

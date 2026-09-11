@@ -431,6 +431,32 @@ const ManageGrades: React.FC = () => {
     }
   };
 
+  // Mark NP (absent) for a qualification cell — same convention as TeacherPanel:
+  // stores score 0 + isAbsent true and clears any remedial score.
+  const handleToggleAbsent = async (enrollment: StudentEnrollment, evalPlanId: number) => {
+    if (isSelectedTermBlocked) {
+      message.warning('Este lapso está bloqueado.');
+      return;
+    }
+    const insSub = enrollment.inscriptionSubjects?.[0];
+
+    try {
+      await api.post('/evaluation/qualifications', {
+        evaluationPlanId: evalPlanId,
+        inscriptionSubjectId: insSub?.id,
+        inscriptionId: enrollment.id,
+        ...getQualificationContext(selectedAssignment!.periodGradeSubject.subject.id),
+        isAbsent: true,
+        score: 0,
+        remedialScore: null,
+        observations: '',
+      });
+      fetchPlanAndStudents();
+    } catch {
+      message.error('Error al cambiar estado de inasistencia');
+    }
+  };
+
   // ── Paste handler: distribute clipboard values across grade cells ──
   const handleGradePaste = (e: React.ClipboardEvent<HTMLInputElement>, startRow: number, startCol: number) => {
     if (isSelectedTermBlocked) return;
@@ -1536,6 +1562,22 @@ const ManageGrades: React.FC = () => {
                                                 e.target.value = '';
                                                 wrapper.classList.add('grade-invalid');
                                                 setTimeout(() => wrapper.classList.remove('grade-invalid'), 1500);
+                                              }
+                                              return;
+                                            }
+                                            if (val === 0) {
+                                              // Score 0 means NP (absent), like TeacherPanel.
+                                              // One-way: typing 0 never unmarks an existing NP —
+                                              // to replace an NP use a grade > 0 (comment modal).
+                                              if (!isAbsent) {
+                                                handleToggleAbsent(enrollment, item.id);
+                                              } else {
+                                                // Already NP: exit edit mode, cell stays NP
+                                                setNpEditingCells(prev => {
+                                                  const next = new Set(prev);
+                                                  next.delete(cellKey);
+                                                  return next;
+                                                });
                                               }
                                               return;
                                             }

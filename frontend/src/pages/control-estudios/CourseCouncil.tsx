@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useLayoutEffect, useCallback, useRef } from 'react';
-import { Card, Button, Table, Space, Typography, Row, Col, Tag, Input, Empty, Spin, message, Tooltip, Alert, Breadcrumb, Checkbox, Modal } from 'antd';
+import { Card, Button, Table, Space, Typography, Row, Col, Tag, Input, Empty, Spin, message, Tooltip, Alert, Breadcrumb, Checkbox, Modal, DatePicker } from 'antd';
 import {
   LeftOutlined,
   SaveOutlined,
@@ -8,11 +8,14 @@ import {
   UserOutlined,
   CheckCircleOutlined,
   WarningOutlined,
-  FileExcelOutlined
+  FileExcelOutlined,
+  EditOutlined
 } from '@ant-design/icons';
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
+import dayjs from 'dayjs';
 import api from '@/services/api';
+import { useAuth } from '@/context/AuthContext';
 import { useGradeRounding } from '@/context/GradeRoundingContext';
 import { useSchool } from '@/context/SchoolContext';
 import { formatGrade, isPassingGrade, roundGrade } from '@/utils/gradeFormat';
@@ -25,6 +28,7 @@ interface Term {
   name: string;
   isBlocked: boolean;
   order: number;
+  councilCompletedAtOverride?: string | null;
 }
 
 interface Section {
@@ -461,6 +465,8 @@ function computeCouncilColumns(students: CouncilStudent[]) {
 
 const CourseCouncil: React.FC = () => {
   const { viewPeriod, isReadOnly } = useSchool();
+  const { user } = useAuth();
+  const isMaster = user?.roles.includes('Master') || false;
   const [step, setStep] = useState(0); // 0: Term, 1: Section, 2: Data
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -498,6 +504,11 @@ const CourseCouncil: React.FC = () => {
   const [showPrevCouncilPoints, setShowPrevCouncilPoints] = useState<boolean>(false);
   const [tableScrollHeight, setTableScrollHeight] = useState(300);
   const tableCardRef = useRef<HTMLDivElement>(null);
+
+  // Master override of the council completion date, per term
+  const [overrideModalTerm, setOverrideModalTerm] = useState<Term | null>(null);
+  const [overrideDateValue, setOverrideDateValue] = useState<dayjs.Dayjs | null>(null);
+  const [savingOverride, setSavingOverride] = useState(false);
   const { enableRounding } = useGradeRounding();
   const { settings } = useSchool();
   // null = all closed (term globally blocked), array = specific { sectionId, gradeId } closed
@@ -899,6 +910,30 @@ const CourseCouncil: React.FC = () => {
     }
   };
 
+  const openOverrideModal = (term: Term) => {
+    setOverrideModalTerm(term);
+    setOverrideDateValue(term.councilCompletedAtOverride ? dayjs(term.councilCompletedAtOverride) : null);
+  };
+
+  const handleSaveOverride = async (dateValue?: dayjs.Dayjs | null) => {
+    if (!overrideModalTerm) return;
+    const value = dateValue === undefined ? overrideDateValue : dateValue;
+    setSavingOverride(true);
+    try {
+      const res = await api.put(`/terms/${overrideModalTerm.id}/council-date-override`, {
+        councilCompletedAt: value ? value.format('YYYY-MM-DD') : null,
+      });
+      setTerms(prev => prev.map(t => (t.id === overrideModalTerm.id ? { ...t, councilCompletedAtOverride: res.data.councilCompletedAtOverride ?? null } : t)));
+      message.success(value ? `Fecha de completado ajustada al ${value.format('DD/MM/YYYY')}` : 'Override de fecha eliminado');
+      setOverrideModalTerm(null);
+    } catch (error: any) {
+      console.error('Error saving council date override', error);
+      message.error(error?.response?.data?.message || 'Error al ajustar la fecha de completado');
+    } finally {
+      setSavingOverride(false);
+    }
+  };
+
   const handleTermClick = async (term: Term) => {
     // Fetch checklist entries for this term in parallel with closure detection.
     const checklistPromise = viewPeriod
@@ -1046,6 +1081,29 @@ const CourseCouncil: React.FC = () => {
                 0{term.order || idx + 1}
               </div>
             </Card>
+            {isMaster && (
+              <div style={{ textAlign: 'center', marginTop: 8 }}>
+                <Button
+                  type="link"
+                  size="small"
+                  icon={<EditOutlined />}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    openOverrideModal(term);
+                  }}
+                  style={{ fontWeight: 700, fontSize: 12, padding: '0 8px', height: 24 }}
+                >
+                  Ajustar fecha
+                </Button>
+                {term.councilCompletedAtOverride && (
+                  <Tooltip title="Override activo: esta fecha se usa en documentos oficiales en lugar de la fecha original">
+                    <Tag color="purple" style={{ borderRadius: 20, fontWeight: 700, fontSize: 10, margin: 0 }}>
+                      OVERRIDE · {dayjs(term.councilCompletedAtOverride).format('DD/MM/YYYY')}
+                    </Tag>
+                  </Tooltip>
+                )}
+              </div>
+            )}
           </Col>
         ))}
         {terms.length === 0 && (
@@ -1054,6 +1112,46 @@ const CourseCouncil: React.FC = () => {
           </Col>
         )}
       </Row>
+
+      <Modal
+        title={`Ajustar fecha de completado · ${overrideModalTerm?.name ?? ''}`}
+        open={overrideModalTerm !== null}
+        onOk={() => handleSaveOverride()}
+        onCancel={() => setOverrideModalTerm(null)}
+        confirmLoading={savingOverride}
+        okText="Guardar"
+        cancelText="Cancelar"
+        okButtonProps={{ disabled: !overrideDateValue }}
+        footer={[
+          overrideModalTerm?.councilCompletedAtOverride ? (
+            <Button
+              key="clear"
+              danger
+              loading={savingOverride}
+              onClick={() => handleSaveOverride(null)}
+            >
+              Quitar override
+            </Button>
+          ) : null,
+          <Button key="cancel" onClick={() => setOverrideModalTerm(null)}>Cancelar</Button>,
+          <Button key="save" type="primary" loading={savingOverride} disabled={!overrideDateValue} onClick={() => handleSaveOverride()}>
+            Guardar
+          </Button>,
+        ]}
+      >
+        <div style={{ padding: '8px 0' }}>
+          <Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
+            Esta fecha reemplaza la fecha de completado de los consejos de este lapso en documentos oficiales (notas certificadas, actas).
+          </Text>
+          <DatePicker
+            style={{ width: '100%' }}
+            value={overrideDateValue}
+            onChange={(d) => setOverrideDateValue(d)}
+            format="DD/MM/YYYY"
+            placeholder="Fecha real del consejo"
+          />
+        </div>
+      </Modal>
     </div>
   );
 
@@ -1830,6 +1928,11 @@ const CourseCouncil: React.FC = () => {
               {councilDone ? (
                 <span style={{ color: '#389e0d', display: 'flex', alignItems: 'center', gap: 6 }}>
                   <CheckCircleOutlined /> Consejo completado
+                  {councilCompletedAt && (
+                    <span style={{ fontWeight: 600, fontSize: 11, color: '#52c41a' }}>
+                      · {councilCompletedAt.toLocaleDateString('es-VE', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                    </span>
+                  )}
                 </span>
               ) : (
                 'Marcar como completado'
