@@ -25,6 +25,7 @@ import {
   HistoricalGrade,
   PersonPlantel,
   CouncilChecklist,
+  InscriptionGroupTermChoice,
 } from '@/models/index';
 import {
   getSubjectOrderMap,
@@ -426,7 +427,7 @@ async function buildCertifiedWorkbook(personId: number, templateName: string): P
     //     Try active period first; if no PeriodGrade, try any period.
     const subjectsByGrade: Map<number, Array<{ id: number; name: string }>> = new Map();
     const literalSubjectsByGrade: Map<number, Array<{ id: number; name: string }>> = new Map();
-    const groupSubjectsByGrade: Map<number, Array<{ name: string; memberIds: number[] }>> = new Map();
+    const groupSubjectsByGrade: Map<number, Array<{ name: string; subjectGroupId: number; memberIds: number[] }>> = new Map();
     for (const gr of allGrades) {
       let pg = activePeriodId
         ? await PeriodGrade.findOne({ where: { schoolPeriodId: activePeriodId, gradeId: gr.id }, attributes: ['id'] })
@@ -454,7 +455,7 @@ async function buildCertifiedWorkbook(personId: number, templateName: string): P
 
       const subjects: Array<{ id: number; name: string }> = [];
       const literalSubjects: Array<{ id: number; name: string }> = [];
-      const groupSubjects: Array<{ name: string; memberIds: number[] }> = [];
+      const groupSubjects: Array<{ name: string; subjectGroupId: number; memberIds: number[] }> = [];
       const groupIndexByGroupId = new Map<number, number>();
       for (const p of pgs) {
         const subj = (p as any).subject;
@@ -469,6 +470,7 @@ async function buildCertifiedWorkbook(personId: number, templateName: string): P
             groupIndexByGroupId.set(groupId, groupSubjects.length);
             groupSubjects.push({
               name: subj.subjectGroup?.name || subj.name,
+              subjectGroupId: groupId,
               memberIds: [subj.id],
             });
           }
@@ -513,6 +515,25 @@ async function buildCertifiedWorkbook(personId: number, templateName: string): P
         { model: SubjectTermGrade, as: 'termGrades' },
       ],
     });
+
+    // Resolve the last-lapso subject choice for each student/group. The
+    // historical InscriptionSubject rows remain present, so selecting the
+    // first memberId is not reliable when a student switched groups.
+    const latestGroupChoiceByInscription = new Map<string, number>();
+    const latestChoices = await InscriptionGroupTermChoice.findAll({
+      where: { inscriptionId: allInsIds as any },
+      include: [{ model: Term, as: 'term', attributes: ['id', 'order'] }],
+      attributes: ['inscriptionId', 'subjectGroupId', 'subjectId', 'termId'],
+    });
+    const latestTermOrderByChoice = new Map<string, number>();
+    for (const choice of latestChoices as any[]) {
+      const key = `${choice.inscriptionId}__${choice.subjectGroupId}`;
+      const order = Number(choice.term?.order || 0);
+      if (!latestTermOrderByChoice.has(key) || order > latestTermOrderByChoice.get(key)!) {
+        latestTermOrderByChoice.set(key, order);
+        latestGroupChoiceByInscription.set(key, choice.subjectId);
+      }
+    }
 
     // 5. Build grades list from InscriptionSubjects
     const gradesMap: any[] = [];
@@ -871,12 +892,20 @@ async function buildCertifiedWorkbook(personId: number, templateName: string): P
       const groupSubjects = groupSubjectsByGrade.get(yearGrade.id) || [];
       if (groupSubjects.length > 0) {
         const grp = groupSubjects[0];
-        // Find the grade by trying each member subjectId; use the member that has a grade
-        for (const memberId of grp.memberIds) {
+        const studentInscription = allInscriptions.find((ins: any) => ins.grade?.order === y);
+        const selectedMemberId = studentInscription
+          ? latestGroupChoiceByInscription.get(`${studentInscription.id}__${grp.subjectGroupId}`)
+          : undefined;
+        const memberIds = selectedMemberId != null
+          ? [selectedMemberId, ...grp.memberIds.filter(id => id !== selectedMemberId)]
+          : grp.memberIds;
+
+        // Prefer the subject chosen in the last lapso; only fall back to another
+        // member when legacy data has no per-term choice.
+        for (const memberId of memberIds) {
           const lookupKey = `${yearGrade.id}__${memberId}`;
           const g = gradeLookup.get(lookupKey);
           if (g && g.finalScore != null) {
-            // P-cell = name of the specific subject the student took (not the group name)
             setter(groupNameCells[y - 1], toTitleCaseES(g.subjectName || grp.name));
             setter(groupNumCells[y - 1], numericToLetter(roundGradeMin1(g.finalScore), letterGradesConfig).toUpperCase());
             break;

@@ -6,6 +6,7 @@ import {
   Subject,
   SubjectFinalGrade,
   SubjectTermGrade,
+  InscriptionGroupTermChoice,
   SchoolPeriod,
   Grade,
   Section,
@@ -21,6 +22,7 @@ import {
 import { sortInscriptions } from '@/services/studentSortService';
 import { roundFinalGrade, roundGrade, isPassingGrade } from '@/services/gradeEvaluationService';
 import { resolveGradeDate } from '@/services/gradeDateResolver';
+import { GradeCalculationService } from '@/services/gradeCalculationService';
 import { logGradeChange } from '@/services/gradeChangeLogService';
 
 /**
@@ -309,6 +311,24 @@ export const getHistoricalGradesBySection = async (req: Request, res: Response) 
       ],
     });
 
+    // Resolve the student's last-lapso group choice so the historical view
+    // does not select an older member subject merely because it appears first.
+    const latestGroupChoiceByInscription = new Map<string, number>();
+    const latestChoices = await InscriptionGroupTermChoice.findAll({
+      where: { inscriptionId: allInsIds as any },
+      include: [{ model: Term, as: 'term', attributes: ['id', 'order'] }],
+      attributes: ['inscriptionId', 'subjectGroupId', 'subjectId', 'termId'],
+    });
+    const latestChoiceOrder = new Map<string, number>();
+    for (const choice of latestChoices as any[]) {
+      const key = `${choice.inscriptionId}__${choice.subjectGroupId}`;
+      const order = Number(choice.term?.order || 0);
+      if (!latestChoiceOrder.has(key) || order > latestChoiceOrder.get(key)!) {
+        latestChoiceOrder.set(key, order);
+        latestGroupChoiceByInscription.set(key, choice.subjectId);
+      }
+    }
+
     // Build grades map from InscriptionSubjects
     const gradesMap: any[] = [];
     for (const is of insSubjects) {
@@ -458,6 +478,81 @@ export const getHistoricalGradesBySection = async (req: Request, res: Response) 
       gradesMap.length = 0;
       gradesMap.push(...gradeByKey.values());
     }
+
+    // Group columns represent one active subject. Keep the final grade for
+    // the subject selected in the last lapso; historical member rows remain in
+    // the database but must not win the UI lookup for the group cell.
+    const inscriptionIdByScope = new Map<string, number>();
+    for (const inscription of allInscriptionsForStudents as any[]) {
+      inscriptionIdByScope.set(
+        `${inscription.personId}__${inscription.schoolPeriodId}__${inscription.gradeId}`,
+        inscription.id,
+      );
+    }
+    // Rebuild each group definitive through the shared calculation service,
+    // feeding it the SubjectTermGrade belonging to the selected subject for
+    // each term. This is selection/orchestration only; the formula remains in
+    // GradeCalculationService.
+    const termsByPeriod = new Map<number, any[]>();
+    const periodIdsForGroups = [...new Set((allInscriptionsForStudents as any[]).map(ins => ins.schoolPeriodId))];
+    for (const groupPeriodId of periodIdsForGroups) {
+      termsByPeriod.set(groupPeriodId, await Term.findAll({
+        where: { schoolPeriodId: groupPeriodId },
+        order: [['order', 'ASC']],
+      }));
+    }
+
+    for (const inscription of allInscriptionsForStudents as any[]) {
+      const subjectsByGroup = new Map<number, any[]>();
+      for (const insSubject of (insSubjects as any[]).filter(item => item.inscriptionId === inscription.id)) {
+        const groupId = insSubject.subject?.subjectGroupId;
+        if (groupId != null) {
+          subjectsByGroup.set(groupId, [...(subjectsByGroup.get(groupId) || []), insSubject]);
+        }
+      }
+      const periodTerms = termsByPeriod.get(inscription.schoolPeriodId) || [];
+      for (const [groupId, groupSubjects] of subjectsByGroup) {
+        const choicesForGroup = (latestChoices as any[])
+          .filter(choice => choice.inscriptionId === inscription.id && choice.subjectGroupId === groupId);
+        if (choicesForGroup.length === 0) continue;
+
+        const lapsos = periodTerms.map(term => {
+          const choice = choicesForGroup.find(item => item.termId === term.id);
+          const selectedSubject = groupSubjects.find(item => item.subjectId === choice?.subjectId);
+          const termGrade = selectedSubject?.termGrades?.find((grade: any) => grade.termId === term.id);
+          return {
+            termId: term.id,
+            finalScore: termGrade?.score != null ? Number(termGrade.score) : null,
+          };
+        });
+        const definitive = GradeCalculationService.calculateFinalScore(lapsos, null);
+        const lastChoice = [...choicesForGroup].sort(
+          (a, b) => Number(b.term?.order || 0) - Number(a.term?.order || 0)
+        )[0];
+        const selectedLatestGrade = gradesMap.find((grade: any) =>
+          grade.personId === inscription.personId
+          && grade.schoolPeriodId === inscription.schoolPeriodId
+          && grade.gradeId === inscription.gradeId
+          && grade.subjectGroupId === groupId
+          && grade.subjectId === lastChoice.subjectId
+        );
+        if (selectedLatestGrade && definitive != null) {
+          selectedLatestGrade.finalScore = definitive;
+          selectedLatestGrade.status = isPassingGrade(definitive, 10) ? 'aprobada' : 'reprobada';
+        }
+      }
+    }
+
+    const visibleGrades = gradesMap.filter((grade: any) => {
+      if (grade.subjectGroupId == null) return true;
+      const inscriptionId = inscriptionIdByScope.get(`${grade.personId}__${grade.schoolPeriodId}__${grade.gradeId}`);
+      const selectedSubjectId = inscriptionId != null
+        ? latestGroupChoiceByInscription.get(`${inscriptionId}__${grade.subjectGroupId}`)
+        : undefined;
+      return selectedSubjectId == null || selectedSubjectId === grade.subjectId;
+    });
+    gradesMap.length = 0;
+    gradesMap.push(...visibleGrades);
 
     // 9. Get all planteles
     const planteles = await Plantel.findAll({

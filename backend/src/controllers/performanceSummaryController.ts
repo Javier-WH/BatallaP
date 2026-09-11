@@ -388,11 +388,13 @@ function fillSheetByNamedRanges(
     }
 
     if (!isMpSection) {
-      const groupedInsSub = insSubjects.find((is: any) =>
-        groupedSubjectIds.has(is.subjectId)
-      );
-      if (groupedInsSub?.subject?.name) {
-        setByRange('std_part_' + n, groupedInsSub.subject.name);
+      // std_part_N represents the group subject taken in the LAST lapso.
+      // The group-aware proxy is built from the per-term choice map above.
+      const latestGroupSubjectName = ins.__latestGroupSubjectName;
+      const groupedInsSub = insSubjects.find((is: any) => groupedSubjectIds.has(is.subjectId));
+      const groupSubjectName = latestGroupSubjectName || groupedInsSub?.subject?.name;
+      if (groupSubjectName) {
+        setByRange('std_part_' + n, groupSubjectName);
       }
     }
   }
@@ -588,6 +590,8 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
           groupAwareSubjects.push(proxy);
         }
         ins.__groupAwareInscriptionSubjects = groupAwareSubjects;
+        const latestGroupSubject = groupAwareSubjects.find((subject: any) => subject.subject?.subjectGroupId != null);
+        ins.__latestGroupSubjectName = latestGroupSubject?.subject?.name || null;
       });
     }
 

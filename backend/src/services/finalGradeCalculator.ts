@@ -19,7 +19,7 @@ import {
   getSubjectIncludeInAverageMapByGradeAndPeriod,
   sortSubjectsByOrder,
 } from './subjectOrderService';
-import { filterActiveGroupSubjects } from './subjectGroupService';
+import { filterActiveGroupSubjects, filterActiveGroupSubjectsForTerm } from './subjectGroupService';
 import { resolveGradeStatus, roundGrade, roundFinalGrade } from './gradeEvaluationService';
 import { TermGradeSyncService } from './termGradeSyncService';
 import { GradeCalculationService } from './gradeCalculationService';
@@ -142,19 +142,71 @@ export class FinalGradeCalculator {
       inscriptionSimple.schoolPeriodId,
       options.transaction
     );
-    // Apply canonical subject order before iterating.
-    // NOTE: finalGradeCalculator operates across all terms (it computes the
-    // period final grade), so we use the legacy filter that picks the subject
-    // with qualifications. The per-term choice is respected by the per-term
-    // callers (council, evaluation) which use filterActiveGroupSubjectsForTerm.
-    inscriptionRecord.inscriptionSubjects = filterActiveGroupSubjects(
-      sortSubjectsByOrder(
-        inscriptionRecord.inscriptionSubjects,
-        (is) => is.subjectId,
-        (is) => is.subject?.name,
-        orderMap
-      )
+    // Resolve group subjects per term before calculating the annual final.
+    // A student may switch subjects inside the same SubjectGroup between
+    // lapsos; using one historical InscriptionSubject for every term would
+    // calculate the wrong final grade.
+    const orderedSubjects = sortSubjectsByOrder(
+      inscriptionRecord.inscriptionSubjects,
+      (is) => is.subjectId,
+      (is) => is.subject?.name,
+      orderMap
     );
+    const latestTerm = [...terms].sort((a, b) => b.order - a.order)[0];
+    const groupAwareSubjects: typeof orderedSubjects = [];
+    const seenGroupIds = new Set<number>();
+
+    for (const subject of orderedSubjects) {
+      const groupId = subject.subject?.subjectGroupId;
+      if (groupId == null) {
+        groupAwareSubjects.push(subject);
+        continue;
+      }
+      if (seenGroupIds.has(groupId)) continue;
+      seenGroupIds.add(groupId);
+
+      const latestForGroup = latestTerm
+        ? (await filterActiveGroupSubjectsForTerm(orderedSubjects as any, latestTerm.id))
+            .find((candidate: any) => candidate.subject?.subjectGroupId === groupId)
+        : subject;
+      const representative: any = latestForGroup || subject;
+      const proxy: any = {
+        ...representative,
+        id: representative.id,
+        inscriptionId: representative.inscriptionId,
+        subjectId: representative.subjectId,
+        schoolPeriodId: representative.schoolPeriodId,
+        gradeId: representative.gradeId,
+        sectionId: representative.sectionId,
+        subject: representative.subject,
+        __groupAware: true,
+        qualifications: [],
+        termGrades: [],
+        councilPoints: [],
+      };
+
+      for (const currentTerm of terms) {
+        const selectedForTerm: any = (await filterActiveGroupSubjectsForTerm(orderedSubjects as any, currentTerm.id))
+          .find((candidate: any) => candidate.subject?.subjectGroupId === groupId);
+        if (!selectedForTerm) continue;
+
+        await TermGradeSyncService.syncForInscriptionSubject(selectedForTerm.id, { transaction: options.transaction });
+        const syncedTermGrades = await SubjectTermGrade.findAll({
+          where: { inscriptionSubjectId: selectedForTerm.id, termId: currentTerm.id },
+          transaction: options.transaction,
+        });
+        proxy.termGrades.push(...syncedTermGrades);
+        proxy.qualifications.push(...(selectedForTerm.qualifications || []).filter(
+          (qualification: any) => qualification.evaluationPlan?.termId === currentTerm.id
+        ));
+        proxy.councilPoints.push(...(selectedForTerm.councilPoints || []).filter(
+          (point: any) => point.termId === currentTerm.id
+        ));
+      }
+      groupAwareSubjects.push(proxy);
+    }
+
+    inscriptionRecord.inscriptionSubjects = groupAwareSubjects;
 
     const minApproval = options.minApproval ?? 10;
     const institutionPlantelId = await resolveInstitutionPlantelId(options.transaction);
@@ -187,16 +239,20 @@ export class FinalGradeCalculator {
     let subjectCount = 0;
 
     for (const insSub of inscriptionRecord.inscriptionSubjects) {
-      // Sync term grades to SubjectTermGrade table (single source of truth for per-lapso grades)
-      await TermGradeSyncService.syncForInscriptionSubject(insSub.id, { transaction: options.transaction });
+      // SubjectTermGrade is the single source of truth. Group proxies already
+      // contain the selected subject's term rows assembled above; regular
+      // subjects continue through the existing sync path.
+      let syncedTermGrades: any[];
+      if ((insSub as any).__groupAware) {
+        syncedTermGrades = (insSub as any).termGrades || [];
+      } else {
+        await TermGradeSyncService.syncForInscriptionSubject(insSub.id, { transaction: options.transaction });
+        syncedTermGrades = await SubjectTermGrade.findAll({
+          where: { inscriptionSubjectId: insSub.id },
+          transaction: options.transaction,
+        });
+      }
 
-      // Re-fetch term grades after sync to get the updated values
-      const syncedTermGrades = await SubjectTermGrade.findAll({
-        where: { inscriptionSubjectId: insSub.id },
-        transaction: options.transaction,
-      });
-
-      // Build term grades array from SubjectTermGrade (single source of truth)
       const termGradesArr = syncedTermGrades.map((tg: any) => ({
         termId: tg.termId,
         score: Number(tg.score),
@@ -216,10 +272,13 @@ export class FinalGradeCalculator {
         where: { inscriptionSubjectId: insSub.id, gradeType: 'regular' },
         transaction: options.transaction,
       });
+      const finalGradeForCalculation = (insSub as any).__groupAware
+        ? null
+        : (existingFinalGrade ? { finalScore: existingFinalGrade.finalScore, gradeType: existingFinalGrade.gradeType } : null);
 
       const finalScore = GradeCalculationService.calculateFinalScore(
         lapsos,
-        existingFinalGrade ? { finalScore: existingFinalGrade.finalScore, gradeType: existingFinalGrade.gradeType } : null,
+        finalGradeForCalculation,
         { isClosedPeriod: true },
       ) || roundFinalGrade(lapsos.reduce((sum, l) => sum + l.finalScore, 0) / (lapsos.length || 1));
 
