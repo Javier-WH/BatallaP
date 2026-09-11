@@ -514,9 +514,15 @@ export const getStudentsForAssignment = async (req: Request, res: Response) => {
     const graceMs = graceHours * 60 * 60 * 1000;
     const nowMs = Date.now();
 
+    // Read-only flag for this assignment's (term, section): blocked term,
+    // per-section closure or completed course council. Frontends use it to
+    // disable editing (including the long-press edit request overlay).
+    const sectionReadOnly = await TermSectionClosureService.isSectionReadOnly(requestedTermId, sectionId, pg.gradeId);
+
     // Process audit flags and timer locks in nested qualifications using GradeChangeLog data
     const parsed = (inscriptions as any[]).map(ins => {
       const j = ins.toJSON() as any;
+      j.sectionReadOnly = sectionReadOnly;
       if (j.inscriptionSubjects) {
         j.inscriptionSubjects.forEach((is: any) => {
           if (is.qualifications) {
@@ -610,13 +616,13 @@ export const saveQualification = async (req: Request, res: Response) => {
       if (pgs) {
         const pg = await PeriodGrade.findByPk(pgs.periodGradeId, { attributes: ['id', 'gradeId'] });
         if (pg) {
-          sectionClosed = await TermSectionClosureService.isSectionClosed(evalPlan.termId, evalPlan.sectionId, pg.gradeId);
+          sectionClosed = await TermSectionClosureService.isSectionReadOnly(evalPlan.termId, evalPlan.sectionId, pg.gradeId);
         }
       }
     }
     if (sectionClosed) {
       await t.rollback();
-      return res.status(403).json({ message: 'Lapso bloqueado para esta sección; no se pueden modificar calificaciones' });
+      return res.status(403).json({ message: 'El lapso está bloqueado o el consejo de curso está completado; no se pueden modificar calificaciones' });
     }
 
     // Robust handling: If inscriptionSubjectId is missing but we have inscriptionId, we can resolve it
@@ -3143,6 +3149,20 @@ export const createQualificationEditRequest = async (req: Request, res: Response
     const qualification = await Qualification.findByPk(Number(qualificationId));
     if (!qualification) return res.status(404).json({ message: 'Calificación no encontrada' });
 
+    // Defense in depth: no edit requests for blocked terms or completed councils.
+    // The longpress UI should already hide the option; this is the server-side guard.
+    // isSectionReadOnly covers: term blocked ∪ section closure ∪ council done.
+    if (qualification.termId && qualification.sectionId) {
+      const sectionReadOnly = await TermSectionClosureService.isSectionReadOnly(
+        qualification.termId,
+        qualification.sectionId,
+        qualification.gradeId ?? undefined,
+      );
+      if (sectionReadOnly) {
+        return res.status(403).json({ message: 'El lapso está bloqueado o el consejo de curso está completado; no se pueden solicitar ediciones' });
+      }
+    }
+
     // Check there is no pending request already for this qualification
     const existing = await QualificationEditRequest.findOne({
       where: { qualificationId: Number(qualificationId), status: 'pending' },
@@ -3242,6 +3262,30 @@ export const reviewQualificationEditRequest = async (req: Request, res: Response
     if (!request) return res.status(404).json({ message: 'Solicitud no encontrada' });
     if (request.status !== 'pending') return res.status(400).json({ message: 'La solicitud ya fue revisada' });
 
+    // Revalidate at review time: the term may have been blocked or the council
+    // completed AFTER the request was created. Read-only sections cannot be
+    // edited even via an approved request.
+    if (action === 'approve') {
+      const targetQualification = await Qualification.findByPk(request.qualificationId);
+      if (targetQualification && targetQualification.termId && targetQualification.sectionId) {
+        const sectionReadOnly = await TermSectionClosureService.isSectionReadOnly(
+          targetQualification.termId,
+          targetQualification.sectionId,
+          targetQualification.gradeId ?? undefined,
+        );
+        if (sectionReadOnly) {
+          const rejectedAt = new Date();
+          await request.update({
+            status: 'rejected',
+            reviewedBy: user.id,
+            reviewedAt: rejectedAt,
+            reviewNote: reviewNote || 'Rechazada automáticamente: el lapso está bloqueado o el consejo de curso está completado',
+          });
+          return res.status(409).json({ message: 'El lapso está bloqueado o el consejo de curso está completado; la solicitud fue rechazada automáticamente' });
+        }
+      }
+    }
+
     const now = new Date();
     await request.update({
       status: action === 'approve' ? 'approved' : 'rejected',
@@ -3326,6 +3370,26 @@ export const resetQualificationTimer = async (req: Request, res: Response) => {
     }
 
     const targetField = field || 'both';
+
+    // Read-only sections (blocked term / section closure / council done) must not
+    // get their timers reset — that would re-enable editing on final grades.
+    const targetQualifications = await Qualification.findAll({
+      where: { id: { [Op.in]: qualificationIds.map(Number) } },
+      attributes: ['id', 'termId', 'sectionId', 'gradeId'],
+    });
+    for (const q of targetQualifications) {
+      if (q.termId && q.sectionId) {
+        const sectionReadOnly = await TermSectionClosureService.isSectionReadOnly(
+          q.termId,
+          q.sectionId,
+          q.gradeId ?? undefined,
+        );
+        if (sectionReadOnly) {
+          return res.status(403).json({ message: 'El lapso está bloqueado o el consejo de curso está completado; no se pueden resetear timers' });
+        }
+      }
+    }
+
     const now = new Date();
     const updateData: any = {};
     if (targetField === 'score' || targetField === 'both') updateData.scoreSetAt = now;

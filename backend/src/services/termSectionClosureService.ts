@@ -1,5 +1,5 @@
 import { Transaction } from 'sequelize';
-import { Term, TermSectionClosure, Section, PeriodGrade, PeriodGradeSection, SchoolPeriod, Grade } from '@/models/index';
+import { Term, TermSectionClosure, Section, PeriodGrade, PeriodGradeSection, SchoolPeriod, Grade, CouncilChecklist } from '@/models/index';
 import sequelize from '@/config/database';
 
 export class TermSectionClosureService {
@@ -20,6 +20,40 @@ export class TermSectionClosureService {
       transaction,
     });
     return !!closure;
+  }
+
+  /**
+   * Returns true if grades for the given (termId, sectionId, gradeId) must be
+   * read-only. A section is read-only if ANY of:
+   *  - the term is globally blocked (term.isBlocked === true), OR
+   *  - a TermSectionClosure record exists for this (termId, sectionId, gradeId), OR
+   *  - the course council checklist for this (termId, sectionId, gradeId) is
+   *    marked as 'done' (the council already took place — grades are final).
+   *
+   * The check is dynamic: unmarking the council (status back to 'open') makes
+   * the grades editable again, unless the term/section is still closed.
+   */
+  static async isSectionReadOnly(termId: number, sectionId: number, gradeId?: number, transaction?: Transaction): Promise<boolean> {
+    const term = await Term.findByPk(termId, { attributes: ['id', 'isBlocked'], transaction });
+    if (!term) return false;
+    if (term.isBlocked) return true;
+    if (!gradeId) return false;
+
+    // The council scope is (term, grade, section): the same section row is
+    // shared across grades, so gradeId MUST be part of the council check —
+    // a done council for Sección B/5to año must not lock Sección B/1er año.
+    const [closure, doneChecklist] = await Promise.all([
+      TermSectionClosure.findOne({
+        where: { termId, sectionId, gradeId },
+        transaction,
+      }),
+      CouncilChecklist.findOne({
+        where: { termId, sectionId, gradeId, status: 'done' },
+        attributes: ['id'],
+        transaction,
+      }),
+    ]);
+    return !!closure || !!doneChecklist;
   }
 
   /**

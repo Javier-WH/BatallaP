@@ -300,6 +300,8 @@ const TeacherPanel: React.FC = () => {
   const [availableTerms, setAvailableTerms] = useState<Term[]>([]);
   const [evaluationPlan, setEvaluationPlan] = useState<EvaluationPlanItem[]>([]);
   const [students, setStudents] = useState<StudentEnrollment[]>([]);
+  // Server-computed: blocked term ∪ section closure ∪ council done → grades read-only
+  const [sectionReadOnly, setSectionReadOnly] = useState(false);
   const [showPlanModal, setShowPlanModal] = useState(false);
   const [editingItem, setEditingItem] = useState<EvaluationPlanItem | null>(null);
   const [maxGrade, setMaxGrade] = useState<number>(20);
@@ -348,6 +350,7 @@ const TeacherPanel: React.FC = () => {
   };
 
   const isSelectedTermBlocked = useMemo(() => {
+    if (sectionReadOnly) return true;
     if (!selectedTerm) return false;
     const term = availableTerms.find(t => t.id === selectedTerm);
     if (term?.isBlocked) return true;
@@ -358,7 +361,7 @@ const TeacherPanel: React.FC = () => {
     if (!gradeId) return false;
     if (closedSections === null) return true; // all closed
     return closedSections.some(c => c.sectionId === assignment.sectionId && c.gradeId === gradeId);
-  }, [availableTerms, selectedTerm, selectedAssignmentId, assignments, closedSections]);
+  }, [availableTerms, selectedTerm, selectedAssignmentId, assignments, closedSections, sectionReadOnly]);
 
   const selectedTermDateRange = useMemo(() => {
     if (!selectedTerm) return { openDate: null as dayjs.Dayjs | null, closeDate: null as dayjs.Dayjs | null };
@@ -578,6 +581,8 @@ const TeacherPanel: React.FC = () => {
 
       setEvaluationPlan(planRes.data || []);
       setStudents(studentsRes.data || []);
+      // Server-computed read-only flag: blocked term ∪ section closure ∪ council done
+      setSectionReadOnly(!!(studentsRes.data as any[])?.[0]?.sectionReadOnly);
     } catch (error: unknown) {
       if (isAxiosError(error)) {
         console.error('fetchPlanAndStudents: API call failed', error);
@@ -2635,7 +2640,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                                       }
                                     }}
                                   >
-                                    {q?.isLockedByTimer && q?.id && (
+                                    {q?.isLockedByTimer && q?.id && !isSelectedTermBlocked && (
                                       <div
                                         style={{ position: 'absolute', inset: 0, zIndex: 10, cursor: 'pointer', background: 'transparent' }}
                                         title="Mantén presionado para solicitar permiso de edición"
@@ -2785,7 +2790,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                                     <td key={`${item.id}-b`} className="grading-cell remedial-cell" style={{ padding: '2px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-content-bg)' : 'color-mix(in srgb, var(--color-text-main) 2%, var(--color-content-bg))', width: '50px', position: 'relative' }}
                                       onContextMenu={(e) => e.preventDefault()}
                                     >
-                                      {q?.isRemedialLockedByTimer && q?.id && (
+                                      {q?.isRemedialLockedByTimer && q?.id && !isSelectedTermBlocked && (
                                         <div
                                           style={{ position: 'absolute', inset: 0, zIndex: 10, cursor: 'pointer', background: 'transparent' }}
                                           title="Mantén presionado para solicitar permiso de edición"

@@ -162,7 +162,7 @@ describe('Evaluation Endpoints — saveQualification', () => {
       })
       .expect(403);
 
-    expect(response.body.message).toContain('Lapso bloqueado');
+    expect(response.body.message).toContain('bloqueado o el consejo de curso está completado');
 
     // No qualification should have been persisted
     const q = await Qualification.findOne({

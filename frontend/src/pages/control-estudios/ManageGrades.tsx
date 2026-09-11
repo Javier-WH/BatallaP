@@ -197,11 +197,16 @@ const ManageGrades: React.FC = () => {
   const [instrumentoOptions, setInstrumentoOptions] = useState<CatalogOption[]>([]);
   const [estrategiaOptions, setEstrategiaOptions] = useState<CatalogOption[]>([]);
 
+  // Server-computed: blocked term ∪ section closure ∪ council done → grades read-only
+  const [sectionReadOnly, setSectionReadOnly] = useState(false);
+
   const isSelectedTermBlocked = useMemo(() => {
+    // sectionReadOnly: server flag for blocked term ∪ section closure ∪ council done
+    if (sectionReadOnly) return true;
     if (!selectedTerm) return false;
     const term = availableTerms.find(t => t.id === selectedTerm);
     return term?.isBlocked ?? false;
-  }, [availableTerms, selectedTerm]);
+  }, [availableTerms, selectedTerm, sectionReadOnly]);
 
   const selectedTermDateRange = useMemo(() => {
     if (!selectedTerm) return { openDate: null as dayjs.Dayjs | null, closeDate: null as dayjs.Dayjs | null };
@@ -358,11 +363,14 @@ const ManageGrades: React.FC = () => {
       ]);
       setEvaluationPlan(planRes.data || []);
       setStudents(studentsRes.data || []);
+      // Server-computed read-only flag: blocked term ∪ section closure ∪ council done
+      setSectionReadOnly(!!(studentsRes.data as any[])?.[0]?.sectionReadOnly);
       setThematicComponents(thematicRes.data || []);
     } catch {
       message.error('Error al cargar datos del lapso');
       setEvaluationPlan([]);
       setStudents([]);
+      setSectionReadOnly(false);
     } finally {
       setLoading(false);
     }
