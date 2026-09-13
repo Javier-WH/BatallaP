@@ -29,6 +29,8 @@ import {
   TeacherAssignment,
   SectionGuide,
   CouncilChecklist,
+  HistoricalGrade,
+  PersonPlantel,
   StudentObservation,
   PendingSubject,
   PendingSubjectEncounter,
@@ -43,6 +45,7 @@ import { isPassingGrade, resolveGradeStatus, roundFinalGrade, MIN_FINAL_GRADE } 
 import { GradeCalculationService } from '@/services/gradeCalculationService';
 import { readTemplateNamedRanges, TemplateNamedRanges } from '@/services/templateNamedRanges';
 import { sortInscriptions } from '@/services/studentSortService';
+import { formatDateInCaracas, formatDateOnly } from '@/services/councilDateResolver';
 
 const gradeOrderToSheetName: Record<number, string> = {
   1: '1er Año',
@@ -104,6 +107,32 @@ function numericToLetter(numericGrade: number, letterGrades: { letter: string; m
     if (numericGrade > next.max && numericGrade <= current.max) return current.letter;
   }
   return String(numericGrade);
+}
+
+async function filterHistoricalGradesByCurrentPlantel(rows: any[]): Promise<any[]> {
+  const personIds = [...new Set(rows.map(row => row.personId).filter(Boolean))];
+  if (personIds.length === 0) return [];
+
+  const personPlanteles = await PersonPlantel.findAll({
+    where: { personId: personIds },
+    order: [['order', 'ASC']],
+  });
+  const latestByPerson = new Map<number, any>();
+  for (const plantel of personPlanteles as any[]) {
+    const current = latestByPerson.get(plantel.personId);
+    if (!current || Number(plantel.order) > Number(current.order)) {
+      latestByPerson.set(plantel.personId, plantel);
+    }
+  }
+
+  // If no plantel mapping exists, preserve legacy historical rows. Once a
+  // mapping exists, the note must belong to that person's current institution.
+  return rows.filter(row => {
+    const current = latestByPerson.get(row.personId);
+    if (!current) return true;
+    if (current.isSystem) return row.plantelId == null;
+    return row.plantelId != null && Number(row.plantelId) === Number(current.plantelId);
+  });
 }
 
 async function getInstitutionSettings(): Promise<Record<string, string>> {
@@ -286,10 +315,11 @@ function fillSheetByNamedRanges(
   // Write the council date to cell Z4 (no named range defined in template).
   // Format: "MES DE AÑO" (e.g. "JULIO DE 2026") in uppercase.
   if (lastCouncilDate) {
-    const d = new Date(lastCouncilDate);
-    if (!isNaN(d.getTime())) {
+    const caracasDate = formatDateInCaracas(lastCouncilDate);
+    if (caracasDate) {
+      const parts = caracasDate.split('-');
       const months = ['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO','JULIO','AGOSTO','SEPTIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE'];
-      const dateStr = `${months[d.getUTCMonth()]} DE ${d.getUTCFullYear()}`;
+      const dateStr = `${months[Number(parts[1]) - 1]} DE ${parts[0]}`;
       // Try named range first, fall back to direct Z4 cell
       let dateRef = namedRanges.getCell(lookupSheetName, 'inst_date');
       if (!dateRef) {
@@ -335,10 +365,13 @@ function fillSheetByNamedRanges(
     setByRange('std_sx_' + n, student?.gender);
 
     if (student?.birthdate) {
-      const birthDate = new Date(student.birthdate);
-      setByRange('std_bd_' + n, padNumber(birthDate.getDate()));
-      setByRange('std_bm_' + n, padNumber(birthDate.getMonth() + 1));
-      setByRange('std_by_' + n, padNumber(birthDate.getFullYear() % 100));
+      const birthDate = formatDateOnly(student.birthdate);
+      if (birthDate) {
+        const [birthYear, birthMonth, birthDay] = birthDate.split('-').map(Number);
+        setByRange('std_bd_' + n, padNumber(birthDay));
+        setByRange('std_bm_' + n, padNumber(birthMonth));
+        setByRange('std_by_' + n, padNumber(birthYear % 100));
+      }
     }
 
     // For MP sections, use pendingSubjects; for regular, use inscriptionSubjects
@@ -441,8 +474,28 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
     const pg = await PeriodGrade.findOne({
       where: { schoolPeriodId: Number(schoolPeriodId), gradeId: Number(gradeId) },
     });
-
-    if (!pg) return res.status(404).json({ message: 'Estructura academica no encontrada' });
+    const historicalMode = !pg;
+    const requestedHistoricalType = String(req.query.historicalGradeType || '');
+    const historicalGradeTypes = requestedHistoricalType === 'revision'
+      ? ['revision']
+      : isMpSection
+        ? ['materia_pendiente', 'revision_materia_pendiente']
+        : ['regular'];
+    let historicalRows = historicalMode
+      ? await HistoricalGrade.findAll({
+          where: {
+            schoolPeriodId: Number(schoolPeriodId),
+            gradeId: Number(gradeId),
+            gradeType: { [Op.in]: historicalGradeTypes },
+          },
+          include: [{ model: Subject, as: 'subject', include: [{ model: SubjectGroup, as: 'subjectGroup' }] }],
+          order: [['subjectId', 'ASC']],
+        })
+      : [];
+    if (historicalMode) {
+      historicalRows = await filterHistoricalGradesByCurrentPlantel(historicalRows as any[]);
+    }
+    if (!pg && !historicalMode) return res.status(404).json({ message: 'Estructura académica no encontrada' });
 
     const terms = await Term.findAll({
       where: { schoolPeriodId: Number(schoolPeriodId) },
@@ -469,7 +522,7 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
 
     // For MP sections, use the date of the last encounter with a score
     // (instead of the council completion date) for inst_date.
-    if (isMpSection) {
+    if (isMpSection && !historicalMode) {
       const lastEncounter: any = await PendingSubjectEncounter.findOne({
         where: { score: { [Op.ne]: null } },
         order: [['date', 'DESC']],
@@ -499,7 +552,7 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
       plantel = await Plantel.findOne({ where: { code: settings.institution_dea_code } });
     }
 
-    const inscriptions = await Inscription.findAll({
+    let inscriptions = await Inscription.findAll({
       where: {
         schoolPeriodId: Number(schoolPeriodId),
         sectionId: Number(sectionId),
@@ -513,7 +566,7 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
             { model: PersonResidence, as: 'residence' },
           ],
         },
-        ...(isMpSection ? [] : [{
+        ...(isMpSection && !historicalMode ? [] : [{
           model: InscriptionSubject,
           as: 'inscriptionSubjects',
           include: [
@@ -524,7 +577,7 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
             { model: CouncilPoint, as: 'councilPoints', required: false },
           ],
         }]),
-        ...(isMpSection ? [{
+        ...(isMpSection && !historicalMode ? [{
           model: PendingSubject,
           as: 'pendingSubjects',
           required: true,
@@ -540,8 +593,50 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
       ],
     });
 
+    if (inscriptions.length === 0 && historicalMode) {
+      const currentPeriod = await SchoolPeriod.findOne({ where: { status: 'activo' } });
+      const historicalPersonIds = [...new Set((historicalRows as any[]).map(row => row.personId))];
+      if (currentPeriod && currentPeriod.id !== Number(schoolPeriodId) && historicalPersonIds.length > 0) {
+        const currentInscriptions = await Inscription.findAll({
+          where: { schoolPeriodId: currentPeriod.id, personId: historicalPersonIds },
+          include: [
+            { model: Person, as: 'student', include: [{ model: PersonResidence, as: 'residence' }] },
+            { model: Section, as: 'section' },
+          ],
+        });
+        const requestedSectionName = section.name.trim().toUpperCase();
+        inscriptions = currentInscriptions.filter((ins: any) =>
+          ins.section?.name?.trim().toUpperCase() === requestedSectionName
+        );
+      }
+    }
     if (inscriptions.length === 0) {
       return res.status(404).json({ message: 'No hay estudiantes inscritos en esta seccion' });
+    }
+
+    if (historicalMode) {
+      const historicalByPerson = new Map<number, any[]>();
+      for (const historical of historicalRows as any[]) {
+        const rows = historicalByPerson.get(historical.personId) || [];
+        rows.push({
+          id: `historical-${historical.id}`,
+          inscriptionId: null,
+          subjectId: historical.subjectId,
+          subject: historical.subject,
+          qualifications: [],
+          termGrades: [],
+          councilPoints: [],
+          finalGrade: {
+            finalScore: historical.finalScore,
+            status: historical.status,
+            gradeType: historical.gradeType,
+          },
+        });
+        historicalByPerson.set(historical.personId, rows);
+      }
+      (inscriptions as any[]).forEach(ins => {
+        ins.inscriptionSubjects = historicalByPerson.get(ins.personId) || [];
+      });
     }
 
     // Load per-term group choices once. Historical InscriptionSubject rows are
@@ -598,11 +693,20 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
     // Sort students canonically: document type priority → document number → lastName → firstName
     sortInscriptions(inscriptions as any[]);
 
-    const subjectOrderMap = await getSubjectOrderMap(pg.id);
+    const fallbackPeriodGrade = !pg
+      ? await SchoolPeriod.findOne({ where: { status: 'activo' } }).then(current => current
+        ? PeriodGrade.findOne({ where: { schoolPeriodId: current.id, gradeId: Number(gradeId) } })
+        : null)
+      : null;
+    const subjectOrderMap = pg
+      ? await getSubjectOrderMap(pg.id)
+      : fallbackPeriodGrade
+        ? await getSubjectOrderMap(fallbackPeriodGrade.id)
+        : new Map<number, number>();
 
     const subjectMap = new Map<number, { id: number; name: string; abbreviation: string | null; subjectGroupId: number | null; subjectGroupName: string | null; subjectGroupShortAbbr: string | null; subjectGroupLongAbbr: string | null; usesLiteralGrades: boolean }>();
 
-    if (isMpSection) {
+    if (isMpSection && !historicalMode) {
       // For MP section, build subjectMap from pendingSubjects (each student's
       // pending subjects with their subject info).
       inscriptions.forEach((ins: any) => {
@@ -652,12 +756,15 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
     // For MP sections, we still query PeriodGradeSubject to know the canonical
     // order and positions, but we do NOT add them to subjectMap — only subjects
     // with actual PendingSubject records get written.
-    const pgSubjects = await PeriodGradeSubject.findAll({
-      where: { periodGradeId: pg.id },
-      include: [
-        { model: Subject, as: 'subject', include: [{ model: SubjectGroup, as: 'subjectGroup' }] },
-      ],
-    });
+    const curriculumPeriodGrade = pg || fallbackPeriodGrade;
+    const pgSubjects = curriculumPeriodGrade
+      ? await PeriodGradeSubject.findAll({
+          where: { periodGradeId: curriculumPeriodGrade.id },
+          include: [
+            { model: Subject, as: 'subject', include: [{ model: SubjectGroup, as: 'subjectGroup' }] },
+          ],
+        })
+      : historicalRows.map((row: any) => ({ subjectId: row.subjectId, subject: row.subject }));
     if (!isMpSection) {
       for (const pgs of pgSubjects) {
         const subj = (pgs as any).subject;
@@ -695,7 +802,7 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
     // keep their template placeholders (asterisks).
     // For regular sections, collapse group subjects into one column.
     let academicSubjects: any[];
-    if (isMpSection) {
+    if (isMpSection && !historicalMode) {
       const mpSubjectIds = new Set(allSubjects.map(s => s.id));
       academicSubjects = pgSubjects
         .map((pgs: any) => {
@@ -732,22 +839,24 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
 
     // Query teacher assignments for this section + periodGrade. Build map:
     // subjectId → { fullName, docWithType }
-    const teacherAssignments = await TeacherAssignment.findAll({
-      where: { sectionId: section.id },
-      include: [
-        {
-          model: PeriodGradeSubject,
-          as: 'periodGradeSubject',
-          required: true,
-          where: { periodGradeId: pg.id },
-        },
-        {
-          model: Person,
-          as: 'teacher',
-          attributes: ['firstName', 'lastName', 'documentType', 'document'],
-        },
-      ],
-    });
+    const teacherAssignments = pg
+      ? await TeacherAssignment.findAll({
+          where: { sectionId: section.id },
+          include: [
+            {
+              model: PeriodGradeSubject,
+              as: 'periodGradeSubject',
+              required: true,
+              where: { periodGradeId: pg.id },
+            },
+            {
+              model: Person,
+              as: 'teacher',
+              attributes: ['firstName', 'lastName', 'documentType', 'document'],
+            },
+          ],
+        })
+      : [];
     const teacherMap = new Map<number, { fullName: string; docWithType: string }>();
     for (const ta of teacherAssignments) {
       const pgs = (ta as any).periodGradeSubject;
@@ -840,9 +949,11 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
       return null;
     };
 
-    const calculateFinalScore = isMpSection
-      ? (insSub: any): number | null => calculateMpScore(insSub)
-      : (insSub: any): number | null => {
+    const calculateFinalScore = historicalMode
+      ? (insSub: any): number | null => insSub.finalGrade?.finalScore != null ? Number(insSub.finalGrade.finalScore) : null
+      : isMpSection
+        ? (insSub: any): number | null => calculateMpScore(insSub)
+        : (insSub: any): number | null => {
         // Build term grades with fallback to qualifications + councilPoints
         const termGradesArr = GradeCalculationService.buildTermGradesWithFallback(
           (insSub.termGrades || []).map((tg: any) => ({ termId: tg.termId, score: Number(tg.score) })),
@@ -1241,7 +1352,7 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
         section?.name,
         letterGradesConfig,
         lastCouncilDate,
-        isMpSection,
+        isMpSection && !historicalMode,
       );
 
       // Override the evaluation type for this group. We do it after the
@@ -1357,7 +1468,8 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
     const allSheetNames: string[] = [];
     for (const dtg of docTypeGroups) {
       if (dtg.students.length === 0) continue;
-      const names = renderGroup(dtg.students, isMpSection ? 'Materia Pendiente' : 'Final', dtg.label, isFirst);
+      const historicalEvalType = requestedHistoricalType === 'revision' ? 'Revisión' : null;
+      const names = renderGroup(dtg.students, historicalEvalType || (isMpSection ? 'Materia Pendiente' : 'Final'), dtg.label, isFirst);
       allSheetNames.push(...names);
       isFirst = false;
     }
@@ -1455,6 +1567,17 @@ export const exportRevisionSummary = async (req: Request, res: Response) => {
 
     const section = await Section.findByPk(Number(sectionId));
     if (!section) return res.status(404).json({ message: 'Seccion no encontrada' });
+
+    // Historical periods without academic structure use the same template/data
+    // pipeline as the final summary, filtered to HistoricalGrade revision rows.
+    const historicalPgCheck = await PeriodGrade.findOne({
+      where: { schoolPeriodId: Number(schoolPeriodId), gradeId: Number(gradeId) },
+      attributes: ['id'],
+    });
+    if (!historicalPgCheck) {
+      req.query.historicalGradeType = 'revision';
+      return exportPerformanceSummary(req, res);
+    }
 
     // Find the revision period for this school period
     const revisionPeriod = await RevisionPeriod.findOne({
@@ -2183,6 +2306,8 @@ export const getBoletinData = async (req: Request, res: Response) => {
 
     if (!period) return res.status(404).json({ message: 'Período no encontrado' });
     if (!grade) return res.status(404).json({ message: 'Grado no encontrado' });
+    const boletinSection = sectionId ? await Section.findByPk(sectionId) : null;
+    const isMpSection = boletinSection?.name?.toUpperCase() === 'MATERIA PENDIENTE';
 
     const settings: Record<string, string> = {};
     settingsRows.forEach((s: any) => { settings[s.key] = s.value; });
@@ -2190,7 +2315,16 @@ export const getBoletinData = async (req: Request, res: Response) => {
     const periodGrade = await PeriodGrade.findOne({
       where: { schoolPeriodId, gradeId },
     });
-    const subjectOrderMap = periodGrade ? await getSubjectOrderMap(periodGrade.id) : new Map<number, number>();
+    const fallbackPeriodGrade = !periodGrade
+      ? await SchoolPeriod.findOne({ where: { status: 'activo' } }).then(current => current
+        ? PeriodGrade.findOne({ where: { schoolPeriodId: current.id, gradeId } })
+        : null)
+      : null;
+    const subjectOrderMap = periodGrade
+      ? await getSubjectOrderMap(periodGrade.id)
+      : fallbackPeriodGrade
+        ? await getSubjectOrderMap(fallbackPeriodGrade.id)
+        : new Map<number, number>();
 
     // Fetch teacher assignments for this period+grade+section
     const periodGradeSubjects = periodGrade
@@ -2276,7 +2410,7 @@ export const getBoletinData = async (req: Request, res: Response) => {
     if (sectionId) inscWhere.sectionId = sectionId;
     // Note: we don't filter by inscriptionId here so we can compute rank within section
 
-    const inscriptions = await Inscription.findAll({
+    let inscriptions = await Inscription.findAll({
       where: inscWhere,
       include: [
         {
@@ -2308,6 +2442,34 @@ export const getBoletinData = async (req: Request, res: Response) => {
       ],
     });
 
+    if (inscriptions.length === 0 && !periodGrade) {
+      const currentPeriod = await SchoolPeriod.findOne({ where: { status: 'activo' } });
+      const historicalPersonIds = await HistoricalGrade.findAll({
+        where: { schoolPeriodId, gradeId, gradeType: 'regular' },
+        attributes: ['personId'],
+      }).then(rows => [...new Set(rows.map(row => row.personId))]);
+      if (currentPeriod && currentPeriod.id !== schoolPeriodId && historicalPersonIds.length > 0) {
+        const currentInscriptions = await Inscription.findAll({
+          where: { schoolPeriodId: currentPeriod.id, personId: historicalPersonIds },
+          include: [
+            { model: Person, as: 'student', include: [{ model: PersonResidence, as: 'residence' }] },
+            { model: Section, as: 'section' },
+          ],
+          order: [
+            [{ model: Section, as: 'section' }, 'name', 'ASC'],
+            [{ model: Person, as: 'student' }, 'lastName', 'ASC'],
+            [{ model: Person, as: 'student' }, 'firstName', 'ASC'],
+          ],
+        });
+        const requestedSectionName = sectionId
+          ? (await Section.findByPk(sectionId))?.name?.trim().toUpperCase()
+          : null;
+        inscriptions = requestedSectionName
+          ? currentInscriptions.filter((ins: any) => ins.section?.name?.trim().toUpperCase() === requestedSectionName)
+          : currentInscriptions;
+      }
+    }
+
     // Sort students canonically: document type → document number → lastName → firstName → grade → section
     sortInscriptions(inscriptions as any[]);
 
@@ -2315,6 +2477,45 @@ export const getBoletinData = async (req: Request, res: Response) => {
     const activeTerm = await Term.findOne({ where: { schoolPeriodId, isActive: true } });
 
     const students = await Promise.all(inscriptions.map(async (ins: any) => {
+      if (!periodGrade) {
+        let historicalGrades = await HistoricalGrade.findAll({
+          where: {
+            personId: ins.personId,
+            gradeId,
+            schoolPeriodId,
+            gradeType: isMpSection ? { [Op.in]: ['materia_pendiente', 'revision_materia_pendiente'] } : 'regular',
+          },
+          include: [{ model: Subject, as: 'subject', include: [{ model: SubjectGroup, as: 'subjectGroup' }] }],
+          order: [['subjectId', 'ASC']],
+        });
+        historicalGrades = await filterHistoricalGradesByCurrentPlantel(historicalGrades as any[]) as any;
+        const subjects = historicalGrades.map((historical: any) => ({
+          id: historical.subjectId,
+          name: historical.subject?.subjectGroup?.name || historical.subject?.name || historical.subjectName || '',
+          subjectName: historical.subject?.name || historical.subjectName || '',
+          subjectAbbreviation: historical.subject?.abbreviation || null,
+          subjectGroupId: historical.subject?.subjectGroupId || null,
+          subjectGroupName: historical.subject?.subjectGroup?.name || null,
+          teacherName: '',
+          usesLiteralGrades: historical.subject?.usesLiteralGrades || false,
+          includeInAverage: true,
+          lapsos: terms.map((term: any) => ({ termId: term.id, termName: term.name, score: null })),
+          finalScore: historical.finalScore != null ? Number(historical.finalScore) : null,
+          status: historical.status || 'reprobada',
+        }));
+        return {
+          inscriptionId: ins.id,
+          firstName: ins.student?.firstName || '',
+          lastName: ins.student?.lastName || '',
+          document: ins.student?.document || '',
+          documentType: ins.student?.documentType || '',
+          sectionName: ins.section?.name || '',
+          sectionId: ins.sectionId,
+          guideTeacher: guideMap.get(ins.sectionId) || '',
+          subjects,
+        };
+      }
+
       const activeInscriptionSubjects = activeTerm
         ? await filterActiveGroupSubjectsForTerm(ins.inscriptionSubjects || [], activeTerm.id)
         : filterActiveGroupSubjects(ins.inscriptionSubjects || []);
@@ -2853,13 +3054,12 @@ export const getTituloData = async (req: Request, res: Response) => {
 
 // Format a date as "DD DE MES DE YYYY" in Spanish
 function formatDateLong(date: Date | string): string {
-  const d = typeof date === 'string' ? new Date(date + 'T00:00:00') : new Date(date);
+  const dateOnly = formatDateOnly(date);
+  if (!dateOnly) return '';
+  const [yyyy, month, day] = dateOnly.split('-').map(Number);
   const months = ['ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO',
     'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE'];
-  const dd = String(d.getDate()).padStart(2, '0');
-  const mm = months[d.getMonth()];
-  const yyyy = d.getFullYear();
-  return `${dd} DE ${mm} DE ${yyyy}`;
+  return `${String(day).padStart(2, '0')} DE ${months[month - 1]} DE ${yyyy}`;
 }
 
 /* ------------------------------------------------------------------ */

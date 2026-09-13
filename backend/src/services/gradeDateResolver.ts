@@ -1,3 +1,4 @@
+import { formatDateInCaracas } from './councilDateResolver';
 import {
   InscriptionSubject,
   InscriptionSubjectRevision,
@@ -118,7 +119,7 @@ async function resolveRevisionDate(
   });
   // Find the one matching targetOpportunity, or the last one
   const match = allDates.find(d => d.opportunity === targetOpportunity) || allDates[0];
-  return match?.date || null;
+  return match?.date ? formatDateInCaracas(match.date as any) : null;
 }
 
 async function resolvePendingSubjectDate(
@@ -148,13 +149,13 @@ async function resolvePendingSubjectDate(
   // Find the encounter where the student approved (score >= 10, not absent)
   const approved = encounters.find(e => e.score !== null && Number(e.score) >= 10 && !e.isAbsent);
   if (approved?.date) {
-    return typeof approved.date === 'string' ? approved.date.split('T')[0] : approved.date.toISOString().split('T')[0];
+    return formatDateInCaracas(approved.date as any);
   }
 
   // Otherwise, use the last encounter's date
   const last = encounters[encounters.length - 1];
   if (last?.date) {
-    return typeof last.date === 'string' ? last.date.split('T')[0] : last.date.toISOString().split('T')[0];
+    return formatDateInCaracas(last.date as any);
   }
 
   return null;

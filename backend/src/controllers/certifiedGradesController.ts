@@ -36,6 +36,7 @@ import { roundGrade, roundFinalGrade, isPassingGrade } from '@/services/gradeEva
 import { GradeCalculationService } from '@/services/gradeCalculationService';
 import { readTemplateNamedRanges } from '@/services/templateNamedRanges';
 import { resolveGradeDate } from '@/services/gradeDateResolver';
+import { formatDateInCaracas, formatDateOnly } from '@/services/councilDateResolver';
 import { resolveCouncilDate } from '@/services/councilDateResolver';
 import { sortInscriptions } from '@/services/studentSortService';
 
@@ -64,10 +65,22 @@ function formatDateES(date: Date | string | null): string {
     const months = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
     return `${d} de ${months[m - 1]} de ${y}`;
   }
-  const d = new Date(date);
-  if (isNaN(d.getTime())) return '';
+  const caracasDate = formatDateInCaracas(date);
+  if (!caracasDate) return '';
+  const parts = caracasDate.split('-');
+  const y = Number(parts[0]);
+  const m = Number(parts[1]);
+  const d = Number(parts[2]);
   const months = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
-  return `${d.getDate()} de ${months[d.getMonth()]} de ${d.getFullYear()}`;
+  return `${d} de ${months[m - 1]} de ${y}`;
+}
+
+function formatBirthdateES(date: Date | string | null): string {
+  const dateOnly = formatDateOnly(date);
+  if (!dateOnly) return '';
+  const [year, month, day] = dateOnly.split('-').map(Number);
+  const months = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+  return `${day} de ${months[month - 1]} de ${year}`;
 }
 
 function formatScore(score: number | null): string {
@@ -558,7 +571,7 @@ async function buildCertifiedWorkbook(personId: number, templateName: string): P
       let finalScore: number | null = fg?.finalScore != null ? roundGrade(Number(fg.finalScore)) : null;
       let status: string | null = fg?.status ?? null;
       let gradeType: string | null = fg?.gradeType ?? null;
-      let date: string | null = fg?.calculatedAt ? new Date(fg.calculatedAt).toISOString().split('T')[0] : null;
+      let date: string | null = fg?.calculatedAt ? formatDateInCaracas(fg.calculatedAt) : null;
       let plantelId: number | null = fg?.plantelId ?? null;
       let plantelName: string | null = fg?.plantel?.name ?? null;
       let plantelState: string | null = fg?.plantel?.state ?? null;
@@ -597,7 +610,7 @@ async function buildCertifiedWorkbook(personId: number, templateName: string): P
           const latestCalculated = termGrades
             .map(tg => tg.calculatedAt)
             .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0];
-          date = latestCalculated ? new Date(latestCalculated).toISOString().split('T')[0] : null;
+          date = latestCalculated ? formatDateInCaracas(latestCalculated) : null;
         }
       }
 
@@ -643,7 +656,7 @@ async function buildCertifiedWorkbook(personId: number, templateName: string): P
         plantelId: hg.plantelId ?? null,
         plantelName: (hg as any).plantel?.name ?? null,
         plantelState: (hg as any).plantel?.state ?? null,
-        date: hg.date ? new Date(hg.date).toISOString().split('T')[0] : null,
+        date: hg.date ? formatDateInCaracas(hg.date) : null,
         source: 'historical',
       });
     }
@@ -741,7 +754,7 @@ async function buildCertifiedWorkbook(personId: number, templateName: string): P
     const docNum = String(person.document || '').replace(/^(V|E|P|CE)\s*[-.]?\s*/i, '');
     setter('student_doc', docNum ? `${docType} ${docNum}` : '');
     // M10 = Fecha de nacimiento del estudiante
-    setter('student_birthdate', person.birthdate ? formatDateES(person.birthdate).toUpperCase() : '');
+    setter('student_birthdate', person.birthdate ? formatBirthdateES(person.birthdate).toUpperCase() : '');
     // B11 = Apellidos del estudiante
     setter('student_lastname', (person.lastName || '').toUpperCase());
     // M11 = Nombres del estudiante
@@ -1356,7 +1369,7 @@ export const getCertifiedGradesData = async (req: Request, res: Response) => {
         firstName: person.firstName || '',
         lastName: person.lastName || '',
         document: person.document || '',
-        birthdate: person.birthdate ? formatDateES(person.birthdate) : '',
+        birthdate: person.birthdate ? formatBirthdateES(person.birthdate) : '',
         birthCountry: 'Venezuela',
         birthState: residence?.birthState || '',
         birthMunicipality: residence?.birthMunicipality || '',

@@ -1594,10 +1594,12 @@ const PerformanceSummary: React.FC = () => {
         {/* ── Resumen de Rendimiento ── */}
         {reportType === 'resumen' && (
           <div className="rb-config" style={{ flex: '1 1 100%' }}>
-            {structure.length === 0 ? (
-              <div className="rb-empty-state">No hay estructura académica configurada para el período activo</div>
-            ) : (
-              <>
+            {structure.length === 0 && (
+              <div className="rb-empty-state" style={{ marginBottom: 16 }}>
+                No hay estructura académica configurada para este período. Puede seleccionar grados y secciones si existen inscripciones históricas; los datos se tomarán de Notas Históricas.
+              </div>
+            )}
+            <>
                 <section className="rb-card">
                   <h2 className="rb-card-label">1. Alcance del reporte</h2>
                   <div className="rb-scope">
@@ -1736,7 +1738,6 @@ const PerformanceSummary: React.FC = () => {
                   </ul>
                 </section>
               </>
-            )}
           </div>
         )}
 
@@ -1899,10 +1900,12 @@ const PerformanceSummary: React.FC = () => {
         {/* ── Notas Certificadas ── */}
         {reportType === 'certified' && (
           <div className="rb-config" style={{ flex: '1 1 100%' }}>
-            {structure.length === 0 ? (
-              <div className="rb-empty-state">No hay estructura académica configurada para el período activo</div>
-            ) : (
-              <>
+            {structure.length === 0 && (
+              <div className="rb-empty-state" style={{ marginBottom: 16 }}>
+                No hay estructura académica configurada para este período. Puede buscar estudiantes y consultar datos históricos.
+              </div>
+            )}
+            <>
                 {/* ── Por sección ── */}
                 <section className="rb-card">
                   <h2 className="rb-card-label">1. Selección</h2>
@@ -2023,7 +2026,6 @@ const PerformanceSummary: React.FC = () => {
                   </ul>
                 </section>
               </>
-            )}
           </div>
         )}
       </main>

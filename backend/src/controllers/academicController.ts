@@ -22,7 +22,8 @@ import {
   EnrollmentDocument,
   EvaluationPlan,
   Qualification,
-  CouncilPoint
+  CouncilPoint,
+  HistoricalGrade
 } from '@/models/index';
 
 import sequelize from '@/config/database';
@@ -616,7 +617,7 @@ export const getPeriodStructure = async (req: Request, res: Response) => {
   try {
     const { periodId } = req.params;
 
-    const structure = await PeriodGrade.findAll({
+    let structure = await PeriodGrade.findAll({
       where: { schoolPeriodId: periodId },
       include: [
         { model: Grade, as: 'grade' },
@@ -638,6 +639,73 @@ export const getPeriodStructure = async (req: Request, res: Response) => {
         [{ model: Subject, as: 'subjects' }, PeriodGradeSubject, 'order', 'ASC'],
       ],
     });
+
+    // Historical periods may not have a PeriodGrade structure. Expose a
+    // read-only virtual structure so report selectors remain usable; the
+    // report endpoints then source definitive values from HistoricalGrade.
+    if (structure.length === 0) {
+      // Prefer the current academic structure for historical periods. This
+      // avoids forcing users to recreate every prior year's sections merely to
+      // generate reports. Specific historical inscriptions can still override
+      // the default roster in the report endpoints.
+      const currentPeriod = await SchoolPeriod.findOne({ where: { status: 'activo' } });
+      if (currentPeriod && currentPeriod.id !== Number(periodId)) {
+        structure = await PeriodGrade.findAll({
+          where: { schoolPeriodId: currentPeriod.id },
+          include: [
+            { model: Grade, as: 'grade' },
+            { model: Specialization, as: 'specialization' },
+            { model: Section, as: 'sections', through: { attributes: ['id', 'color'] } },
+            {
+              model: Subject,
+              as: 'subjects',
+              through: { attributes: ['id', 'order', 'includeInAverage', 'weeklyBlocks'], where: { active: true } },
+              include: [{ model: SubjectGroup, as: 'subjectGroup' }],
+            },
+          ],
+          order: [[{ model: Subject, as: 'subjects' }, PeriodGradeSubject, 'order', 'ASC']],
+        });
+      }
+      if (structure.length > 0) return res.json(structure);
+
+      const [inscriptions, historicalGrades] = await Promise.all([
+        Inscription.findAll({
+          where: { schoolPeriodId: periodId },
+          include: [
+            { model: Grade, as: 'grade' },
+            { model: Section, as: 'section' },
+          ],
+          attributes: ['id', 'gradeId', 'sectionId'],
+        }),
+        HistoricalGrade.findAll({
+          where: { schoolPeriodId: periodId },
+          include: [{ model: Subject, as: 'subject', include: [{ model: SubjectGroup, as: 'subjectGroup' }] }],
+        }),
+      ]);
+      const byGrade = new Map<number, any>();
+      for (const inscription of inscriptions as any[]) {
+        const grade = inscription.grade;
+        const section = inscription.section;
+        if (!grade || !section) continue;
+        const entry = byGrade.get(grade.id) || {
+          id: -Number(grade.id),
+          grade,
+          specialization: null,
+          sections: [],
+          subjects: [],
+        };
+        if (!entry.sections.some((item: any) => item.id === section.id)) entry.sections.push(section);
+        byGrade.set(grade.id, entry);
+      }
+      for (const historical of historicalGrades as any[]) {
+        const gradeEntry = byGrade.get(historical.gradeId);
+        if (!gradeEntry || !historical.subject) continue;
+        if (!gradeEntry.subjects.some((subject: any) => subject.id === historical.subjectId)) {
+          gradeEntry.subjects.push(historical.subject);
+        }
+      }
+      structure = [...byGrade.values()].sort((a, b) => (a.grade.order || 0) - (b.grade.order || 0));
+    }
 
     res.json(structure);
   } catch (error) {

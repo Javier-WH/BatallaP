@@ -22,6 +22,7 @@ import {
 import { sortInscriptions } from '@/services/studentSortService';
 import { roundFinalGrade, roundGrade, isPassingGrade } from '@/services/gradeEvaluationService';
 import { resolveGradeDate } from '@/services/gradeDateResolver';
+import { formatDateInCaracas } from '@/services/councilDateResolver';
 import { GradeCalculationService } from '@/services/gradeCalculationService';
 import { logGradeChange } from '@/services/gradeChangeLogService';
 
@@ -341,7 +342,7 @@ export const getHistoricalGradesBySection = async (req: Request, res: Response) 
       let finalScore: number | null = fg?.finalScore != null ? roundGrade(Number(fg.finalScore)) : null;
       let status: string | null = fg?.status ?? null;
       let gradeType: string | null = fg?.gradeType ?? null;
-      let date: string | null = fg?.calculatedAt ? new Date(fg.calculatedAt).toISOString().split('T')[0] : null;
+      let date: string | null = fg?.calculatedAt ? formatDateInCaracas(fg.calculatedAt) : null;
 
       // For revision / materia_pendiente, resolve date from opportunity dates / encounter dates
       if (fg && gradeType && (gradeType === 'revision' || gradeType === 'materia_pendiente' || gradeType === 'revision_materia_pendiente')) {
@@ -366,7 +367,7 @@ export const getHistoricalGradesBySection = async (req: Request, res: Response) 
         const latestCalculated = termGrades
           .map(tg => tg.calculatedAt)
           .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0];
-        date = latestCalculated ? new Date(latestCalculated).toISOString().split('T')[0] : null;
+        date = latestCalculated ? formatDateInCaracas(latestCalculated) : null;
       }
 
       // Filter by gradeTypeFilter (skip when consolidated — show all types):
@@ -446,7 +447,7 @@ export const getHistoricalGradesBySection = async (req: Request, res: Response) 
         finalGradeId: null,
         inscriptionSubjectId: null,
         historicalGradeId: hg.id,
-        date: hg.date ? new Date(hg.date).toISOString().split('T')[0] : null,
+        date: hg.date ? formatDateInCaracas(hg.date) : null,
         source: 'historical',
       });
     }
@@ -743,7 +744,7 @@ export const saveHistoricalGrades = async (req: Request, res: Response) => {
         const normalizedScore = score === 0 ? null : score;
         const status = normalizedScore !== null ? (isPassingGrade(rawScore!, passingGrade) ? 'aprobada' : 'reprobada') : 'reprobada';
         const parsedDate = date ? new Date(`${date}T12:00:00`) : new Date();
-        const dateOnly = date ? new Date(date).toISOString().split('T')[0] : null;
+        const dateOnly = date ? formatDateInCaracas(date) : null;
 
         // ── Case 1: Update existing HistoricalGrade ──
         if (historicalGradeId) {

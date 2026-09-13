@@ -28,6 +28,13 @@ export function formatDateInCaracas(value: Date | string | null | undefined): st
   return parts || null;
 }
 
+/** Format a DATEONLY value without applying a timezone shift. */
+export function formatDateOnly(value: Date | string | null | undefined): string | null {
+  if (!value) return null;
+  if (typeof value === 'string') return value.split('T')[0].split(' ')[0] || null;
+  return `${value.getUTCFullYear()}-${String(value.getUTCMonth() + 1).padStart(2, '0')}-${String(value.getUTCDate()).padStart(2, '0')}`;
+}
+
 /**
  * Resolve the official council completion date for certified documents.
  *
