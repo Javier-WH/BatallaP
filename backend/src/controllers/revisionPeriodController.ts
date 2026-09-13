@@ -1392,7 +1392,7 @@ export const exportRevisionNominaExcel = async (req: Request, res: Response) => 
     const thinBorder = { style: 'thin' as const, color: { argb: 'FF000000' } };
     const mediumBorder = { style: 'medium' as const, color: { argb: 'FF000000' } };
     const cellFillGray: ExcelJS.FillPattern = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFAFAFA' } };
-    const cellFillDisabled: ExcelJS.FillPattern = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8E8E8' } };
+    const cellFillDisabled: ExcelJS.FillPattern = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFB0B0B0' } };
 
     // Column widths (matching mockup)
     sheet.getColumn(1).width = 6.86;   // GRADO
