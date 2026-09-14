@@ -986,7 +986,7 @@ const ManageGrades: React.FC = () => {
   ];
 
   return (
-    <div className="h-full overflow-y-auto p-4 md:p-6" style={{ backgroundColor: 'var(--color-page-bg)' }}>
+    <div className="ce-page ce-manage-grades-page h-full overflow-y-auto p-4 md:p-6" style={{ backgroundColor: 'var(--color-page-bg)' }}>
       <style>{`
         @keyframes flash-red {
           0%, 100% { outline: 3px solid #ef4444; }
@@ -1334,12 +1334,12 @@ const ManageGrades: React.FC = () => {
                       </div>
                     </div>
                     <Card bodyStyle={{ padding: 0 }} style={{ overflow: 'hidden', backgroundColor: 'var(--color-content-bg)', border: '1px solid rgba(15, 23, 42, 0.08)' }}>
-                    <div style={{ overflowX: 'auto', maxHeight: 'calc(100vh - 350px)' }}>
+                    <div className="grading-table-container ce-matrix-viewport" style={{ overflowX: 'auto', maxHeight: 'calc(100vh - 350px)' }}>
                       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, border: '1px solid rgba(15, 23, 42, 0.08)' }}>
                         <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
                           <tr>
                             <th style={{ padding: '4px 6px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', backgroundColor: 'color-mix(in srgb, var(--color-text-main) 6%, var(--color-content-bg))', fontWeight: 700, fontSize: 11, whiteSpace: 'nowrap', color: 'var(--color-text-main)' }}>Cédula</th>
-                            <th style={{ padding: '4px 6px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'left', backgroundColor: 'color-mix(in srgb, var(--color-text-main) 6%, var(--color-content-bg))', fontWeight: 700, fontSize: 11, whiteSpace: 'nowrap', color: 'var(--color-text-main)' }}>Estudiante</th>
+                            <th className="ce-mobile-sticky-student" style={{ padding: '4px 6px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'left', backgroundColor: 'color-mix(in srgb, var(--color-text-main) 6%, var(--color-content-bg))', fontWeight: 700, fontSize: 11, whiteSpace: 'nowrap', color: 'var(--color-text-main)' }}>Estudiante</th>
                             {evaluationPlan.map((item, colIndex) => {
                               const stats = evalStats.get(item.id);
                               const hasRemedial = (stats?.failedPct ?? 0) >= remedialFailurePercentage;
@@ -1416,7 +1416,7 @@ const ManageGrades: React.FC = () => {
                                   <td style={{ padding: '2px 4px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-content-bg)' : 'color-mix(in srgb, var(--color-text-main) 2%, var(--color-content-bg))', fontSize: 11, fontWeight: 500 }}>
                                     {enrollment.student?.document || '-'}
                                   </td>
-                                  <td style={{ padding: '2px 6px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'left', background: rowIndex % 2 === 0 ? 'var(--color-content-bg)' : 'color-mix(in srgb, var(--color-text-main) 2%, var(--color-content-bg))', fontSize: 12 }}>
+                                  <td className="ce-mobile-sticky-student" style={{ padding: '2px 6px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'left', background: rowIndex % 2 === 0 ? 'var(--color-content-bg)' : 'color-mix(in srgb, var(--color-text-main) 2%, var(--color-content-bg))', fontSize: 12 }}>
                                     {enrollment.student?.lastName}, {enrollment.student?.firstName}
                                   </td>
                                   {evaluationPlan.map((item, colIndex) => {
@@ -1797,6 +1797,7 @@ const ManageGrades: React.FC = () => {
       )}
 
       <Modal
+        rootClassName="ce-responsive-modal"
         title="Copiar plan de evaluación a otras secciones"
         open={copyModalOpen}
         onCancel={() => { setCopyModalOpen(false); setCopyTargetSectionIds([]); }}
@@ -1827,6 +1828,7 @@ const ManageGrades: React.FC = () => {
       </Modal>
 
       <Modal
+        rootClassName="ce-responsive-modal"
         title="Historial de cambios de la nota"
         open={auditModal.open}
         onCancel={() => setAuditModal(prev => ({ ...prev, open: false }))}
@@ -1899,6 +1901,7 @@ const ManageGrades: React.FC = () => {
       </Modal>
 
       <Modal
+        rootClassName="ce-responsive-modal"
         title="Comentario de la nota"
         open={commentModal.open}
         onCancel={cancelCommentSave}

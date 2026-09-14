@@ -943,7 +943,7 @@ const HistoricalGradesBySection: React.FC = () => {
   };
 
   return (
-    <div style={{ background: T.paper, minHeight: '100%', fontFamily: "'Inter', sans-serif" }}>
+    <div className="ce-page ce-historical-grades-page" style={{ background: T.paper, minHeight: '100%', fontFamily: "'Inter', sans-serif" }}>
       <style>{`
         input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
         input[type=number] { -moz-appearance: textfield; }
@@ -953,11 +953,16 @@ const HistoricalGradesBySection: React.FC = () => {
         .hg-row:focus-within td.hg-frozen { background: #FBF1D3 !important; }
         .hg-row:focus-within td:hover { background: #F6E9C4 !important; }
         .hg-row:focus-within .hg-row-num { color: #A9814B !important; font-weight: 700 !important; }
+        @media (max-width: 768px), (max-height: 500px) and (orientation: landscape) {
+          .hg-mobile-scroll { position: static !important; left: auto !important; z-index: auto !important; }
+          .hg-mobile-sticky { position: sticky !important; left: 0 !important; z-index: 5 !important; min-width: 140px !important; max-width: 140px !important; background: #FFFFFF !important; }
+          th.hg-mobile-sticky { z-index: 8 !important; background: #F5F1E8 !important; }
+        }
       `}</style>
 
       <div className="px-5 py-4">
         {/* Header / toolbar */}
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+        <div className="ce-page-header flex flex-wrap items-center justify-between gap-3 mb-3">
           <div>
             <h1 style={{ fontSize: 20, fontWeight: 700, color: T.ink }}>Notas Históricas</h1>
             <p style={{ fontSize: 12, color: T.inkFaint }}>
@@ -1141,11 +1146,11 @@ const HistoricalGradesBySection: React.FC = () => {
                 </colgroup>
                 <thead>
                   <tr>
-                    <th key="h-n" rowSpan={2} style={{ ...thFrozen(leftOf.n, COL.n), zIndex: 5 }}>N°</th>
-                    <th key="h-ced" rowSpan={2} style={{ ...thFrozen(leftOf.cedula, COL.cedula), zIndex: 5 }}>Cédula</th>
-                    <th key="h-ap" rowSpan={2} style={{ ...thFrozen(leftOf.apellidos, COL.apellidos), zIndex: 5 }}>Apellidos</th>
-                    <th key="h-nom" rowSpan={2} style={{ ...thFrozen(leftOf.nombres, COL.nombres), zIndex: 5 }}>Nombres</th>
-                    <th key="h-inst" rowSpan={2} style={{ ...thFrozen(leftOf.inst, COL.inst), zIndex: 5, textAlign: 'left', borderRight: `2px solid ${T.hairline}` }}>Instituciones</th>
+                    <th key="h-n" className="hg-mobile-scroll" rowSpan={2} style={{ ...thFrozen(leftOf.n, COL.n), zIndex: 5 }}>N°</th>
+                    <th key="h-ced" className="hg-mobile-scroll" rowSpan={2} style={{ ...thFrozen(leftOf.cedula, COL.cedula), zIndex: 5 }}>Cédula</th>
+                    <th key="h-ap" className="hg-mobile-sticky" rowSpan={2} style={{ ...thFrozen(leftOf.apellidos, COL.apellidos), zIndex: 5 }}>Apellidos</th>
+                    <th key="h-nom" className="hg-mobile-scroll" rowSpan={2} style={{ ...thFrozen(leftOf.nombres, COL.nombres), zIndex: 5 }}>Nombres</th>
+                    <th key="h-inst" className="hg-mobile-scroll" rowSpan={2} style={{ ...thFrozen(leftOf.inst, COL.inst), zIndex: 5, textAlign: 'left', borderRight: `2px solid ${T.hairline}` }}>Instituciones</th>
                     {years.map(y => {
                       const hasGrp = yearHasGroups(y);
                       const span = y.subjects.length * 5 + (hasGrp ? 1 : 0);
@@ -1224,23 +1229,23 @@ const HistoricalGradesBySection: React.FC = () => {
                         backgroundColor: rowBg,
                       }}>
                       {/* N° */}
-                      <td className="hg-frozen hg-row-num" style={{ ...tdFrozen(leftOf.n, COL.n, rowBg), textAlign: 'center', fontFamily: 'monospace', fontSize: 11, color: T.inkFaint, fontWeight: 400 }}>
+                      <td className="hg-frozen hg-mobile-scroll hg-row-num" style={{ ...tdFrozen(leftOf.n, COL.n, rowBg), textAlign: 'center', fontFamily: 'monospace', fontSize: 11, color: T.inkFaint, fontWeight: 400 }}>
                         {String(ri + 1).padStart(2, '0')}
                       </td>
                       {/* Cédula */}
-                      <td className="hg-frozen" style={{ ...tdFrozen(leftOf.cedula, COL.cedula, rowBg), fontFamily: 'monospace', fontSize: 11, color: T.inkSoft, padding: '3px 6px' }}>
+                      <td className="hg-frozen hg-mobile-scroll" style={{ ...tdFrozen(leftOf.cedula, COL.cedula, rowBg), fontFamily: 'monospace', fontSize: 11, color: T.inkSoft, padding: '3px 6px' }}>
                         {row.cedula}
                       </td>
                       {/* Apellidos */}
-                      <td className="hg-frozen" style={{ ...tdFrozen(leftOf.apellidos, COL.apellidos, rowBg), fontSize: 12, fontWeight: 500, color: T.ink, padding: '3px 8px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      <td className="hg-frozen hg-mobile-sticky" style={{ ...tdFrozen(leftOf.apellidos, COL.apellidos, rowBg), fontSize: 12, fontWeight: 500, color: T.ink, padding: '3px 8px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {row.apellidos}
                       </td>
                       {/* Nombres */}
-                      <td className="hg-frozen" style={{ ...tdFrozen(leftOf.nombres, COL.nombres, rowBg), fontSize: 12, color: T.ink, padding: '3px 8px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      <td className="hg-frozen hg-mobile-scroll" style={{ ...tdFrozen(leftOf.nombres, COL.nombres, rowBg), fontSize: 12, color: T.ink, padding: '3px 8px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {row.nombres}
                       </td>
                       {/* Instituciones (PlantelMultiSelect — one per row) */}
-                      <td className="hg-frozen" style={{ ...tdFrozen(leftOf.inst, COL.inst, rowBg), padding: '2px 4px', borderRight: `2px solid ${T.hairline}` }}>
+                      <td className="hg-frozen hg-mobile-scroll" style={{ ...tdFrozen(leftOf.inst, COL.inst, rowBg), padding: '2px 4px', borderRight: `2px solid ${T.hairline}` }}>
                         <PlantelMultiSelect
                           planteles={planteles}
                           selectedIds={row.plantelIds}

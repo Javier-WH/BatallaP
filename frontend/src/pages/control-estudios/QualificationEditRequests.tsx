@@ -182,7 +182,7 @@ const QualificationEditRequests = () => {
   ];
 
   return (
-    <div style={{ padding: '24px' }}>
+    <div className="ce-page ce-edit-requests-page" style={{ padding: '24px' }}>
       <Card
         title={
           <Space>
@@ -200,6 +200,7 @@ const QualificationEditRequests = () => {
           <Empty description="No hay solicitudes pendientes" />
         ) : (
           <Table
+            scroll={{ x: 'max-content' }}
             dataSource={requests}
             columns={columns}
             rowKey="id"
@@ -211,6 +212,7 @@ const QualificationEditRequests = () => {
       </Card>
 
       <Modal
+        rootClassName="ce-responsive-modal"
         title={reviewAction === 'approve' ? 'Aprobar solicitud' : 'Rechazar solicitud'}
         open={reviewModalOpen}
         onCancel={() => setReviewModalOpen(false)}

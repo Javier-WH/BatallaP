@@ -409,8 +409,8 @@ const RepairPeriodManagement: React.FC = () => {
   const periodEditable = summary?.revisionPeriod && (summary.revisionPeriod.status === 'open' || summary.revisionPeriod.status === 'completed') && !gradesFinalized;
 
   return (
-    <div style={{ padding: 24, maxWidth: 1200, margin: '0 auto' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+    <div className="ce-page ce-repair-page" style={{ padding: 24, maxWidth: 1200, margin: '0 auto' }}>
+      <div className="ce-page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
         <Title level={3} style={{ margin: 0 }}>Período de Revisión</Title>
         <Button icon={<ReloadOutlined />} onClick={fetchData} loading={loading}>Actualizar</Button>
       </div>
@@ -419,7 +419,7 @@ const RepairPeriodManagement: React.FC = () => {
         {summary && (
           <>
             <Row gutter={16} style={{ marginBottom: 24 }}>
-              <Col span={6}>
+              <Col xs={12} lg={6}>
                 <Card>
                   <Statistic
                     title="Estado"
@@ -429,19 +429,19 @@ const RepairPeriodManagement: React.FC = () => {
                   />
                 </Card>
               </Col>
-              <Col span={6}>
+              <Col xs={12} lg={6}>
                 <Card>
                   <Statistic title="Consejos completos" value={`${summary.councilStatus.doneChecklists}/${summary.councilStatus.totalChecklists}`}
                     valueStyle={{ color: summary.councilStatus.allDone ? '#52c41a' : '#faad14' }} />
                 </Card>
               </Col>
-              <Col span={6}>
+              <Col xs={12} lg={6}>
                 <Card>
                   <Statistic title="Lapsos bloqueados" value={`${summary.termsStatus?.blockedTerms ?? 0}/${summary.termsStatus?.totalTerms ?? 0}`}
                     valueStyle={{ color: summary.termsStatus?.allBlocked ? '#52c41a' : '#faad14' }} />
                 </Card>
               </Col>
-              <Col span={6}>
+              <Col xs={12} lg={6}>
                 <Card>
                   <Statistic title="Estudiantes en revisión" value={summary.stats?.totalStudents || 0} />
                 </Card>
@@ -705,7 +705,7 @@ const RepairPeriodManagement: React.FC = () => {
                 </Space>
               </Space>
             } style={{ marginTop: 16 }} styles={{ body: { padding: 0 } }}>
-              <div className="repair-sheet-container">
+              <div className="repair-sheet-container ce-matrix-viewport">
                 {gradeGroups.length === 0 ? (
                   <div style={{ padding: 24, textAlign: 'center', color: '#999' }}>
                     No hay estudiantes en revisión
@@ -939,6 +939,11 @@ const RepairPeriodManagement: React.FC = () => {
         }
         .repair-col-idx { width: 32px; min-width: 32px; }
         .repair-col-name { width: 200px; min-width: 160px; text-align: left !important; padding: 4px 8px 4px 25px !important; }
+        @media (max-width: 768px), (max-height: 500px) and (orientation: landscape) {
+          .repair-col-name, .repair-cell-name { position: sticky; left: 0; z-index: 3; background: #fff; }
+          .repair-col-name { z-index: 5; background: #f5f5f5; min-width: 150px; padding-left: 8px !important; }
+          .repair-cell-name { min-width: 150px; padding-left: 8px !important; }
+        }
         .repair-col-doc { width: 80px; min-width: 70px; }
         .repair-col-section { width: 64px; min-width: 56px; }
         .repair-col-subj { width: 52px; min-width: 48px; max-width: 60px; }

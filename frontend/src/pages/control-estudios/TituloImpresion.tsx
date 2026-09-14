@@ -794,9 +794,9 @@ const TituloImpresion: React.FC = () => {
   }, []);
 
   return (
-    <div className="p-6">
+    <div className="ce-page ce-titles-page p-6">
       {/* Toolbar */}
-      <div className="mb-4 flex items-center gap-4 flex-wrap">
+      <div className="ce-toolbar mb-4 flex items-center gap-4 flex-wrap">
         <Select
           placeholder="Seleccionar período escolar"
           style={{ width: 280 }}
@@ -837,6 +837,7 @@ const TituloImpresion: React.FC = () => {
           </div>
 
           <Modal
+            rootClassName="ce-responsive-modal"
             title="Código de DEFAULT_ELEMENTS"
             open={!!exportCode}
             onCancel={() => setExportCode('')}
@@ -859,7 +860,7 @@ const TituloImpresion: React.FC = () => {
             />
           </Modal>
 
-          <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', overflowX: 'auto' }}>
+          <div className="ce-document-viewport" style={{ display: 'flex', gap: 16, alignItems: 'flex-start', overflowX: 'auto' }}>
             {/* Page — the visible content is the SAME iframe document that gets
                 printed, so editor, preview and print cannot drift apart.
                 Interaction (select / move / inline edit) happens in a transparent
@@ -1227,7 +1228,7 @@ const TituloImpresion: React.FC = () => {
           ) : students.length === 0 ? (
             <Empty description="No hay estudiantes de 5to año en este período" />
           ) : (
-            <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+            <div className="ce-title-print-layout" style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
               {/* Student selection — narrow left column */}
               <Card
                 title={`Estudiantes (${students.length})`}

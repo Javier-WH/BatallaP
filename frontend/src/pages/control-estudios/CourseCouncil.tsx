@@ -1120,6 +1120,7 @@ const CourseCouncil: React.FC = () => {
       </Row>
 
       <Modal
+        rootClassName="ce-responsive-modal"
         title={`Ajustar fecha de completado · ${overrideModalTerm?.name ?? ''}`}
         open={overrideModalTerm !== null}
         onOk={() => handleSaveOverride()}
@@ -1180,7 +1181,7 @@ const CourseCouncil: React.FC = () => {
 
     return (
       <div style={{ padding: '0px 0' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+        <div className="ce-page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
           <Space size="middle" className="animate-card">
             <Button
               icon={<LeftOutlined />}
@@ -1214,7 +1215,7 @@ const CourseCouncil: React.FC = () => {
         </div>
 
         {/* Bulk acta export bar */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, padding: '12px 16px', background: '#fff', borderRadius: 12, border: '1px solid #f0f0f0' }} className="animate-card">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, padding: '12px 16px', background: '#fff', borderRadius: 12, border: '1px solid #f0f0f0' }} className="ce-action-bar animate-card">
           <Space size="middle">
             <Checkbox
               checked={sectionsByGrade.length > 0 && sectionsByGrade.every(g => g.sections.every(s => selectedBulkSections.has(`${g.grade.id}:${s.id}`)))}
@@ -1814,7 +1815,7 @@ const CourseCouncil: React.FC = () => {
 
     return (
       <div style={{ padding: '0px 0' }} className="animate-card">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        <div className="ce-page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
           <Space size="middle">
             <Button
               icon={<LeftOutlined />}
@@ -2067,7 +2068,7 @@ const CourseCouncil: React.FC = () => {
   }
 
   return (
-    <div style={{ width: '100%', minWidth: 0, padding: '0 24px' }}>
+    <div className="ce-page ce-council-page" style={{ width: '100%', minWidth: 0, padding: '0 24px' }}>
       <style>{`
         @keyframes fadeUp {
           from { opacity: 0; transform: translateY(20px) scale(0.98); }
@@ -2136,6 +2137,7 @@ const CourseCouncil: React.FC = () => {
       {step === 2 && renderDataTable()}
 
       <Modal
+        rootClassName="ce-responsive-modal"
         title="Estudiantes sin puntos de consejo"
         open={showMissingModal}
         onCancel={() => setShowMissingModal(false)}

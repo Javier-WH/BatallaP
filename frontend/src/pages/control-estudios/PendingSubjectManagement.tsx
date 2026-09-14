@@ -814,9 +814,9 @@ const PendingSubjectManagement: React.FC = () => {
   }
 
   return (
-    <div style={{ padding: 24, maxWidth: 1400, margin: '0 auto' }}>
+    <div className="ce-page ce-pending-subject-page" style={{ padding: 24, maxWidth: 1400, margin: '0 auto' }}>
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+      <div className="ce-page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
         <div>
           <Title level={3} style={{ margin: 0 }}>Materia Pendiente</Title>
           <Text type="secondary">Período: {structure.period.name}</Text>
@@ -1028,7 +1028,7 @@ const PendingSubjectManagement: React.FC = () => {
               />
             </div>
             {nominaEncounter && nominaEncounter.students.length > 0 ? (
-              <div className="mp-nomina-container">
+              <div className="mp-nomina-container ce-matrix-viewport">
                 <table className="mp-nomina-sheet">
                   <thead>
                     <tr>
@@ -1111,7 +1111,7 @@ const PendingSubjectManagement: React.FC = () => {
           <Spin spinning={nominaFinalLoading}>
             {nominaFinal && nominaFinal.students.length > 0 ? (
               <>
-              <div className="mp-nomina-container">
+              <div className="mp-nomina-container ce-matrix-viewport">
                 <table className="mp-nomina-sheet">
                   <thead>
                     <tr>
@@ -1169,6 +1169,7 @@ const PendingSubjectManagement: React.FC = () => {
 
       {/* Registration Modal */}
       <Modal
+        rootClassName="ce-responsive-modal"
         open={regModalOpen}
         title={
           <Space>
@@ -1221,6 +1222,7 @@ const PendingSubjectManagement: React.FC = () => {
 
       {/* Grade editing modal */}
       <Modal
+        rootClassName="ce-responsive-modal"
         open={gradeModalOpen}
         title="Registrar Nota de Materia Pendiente"
         width={900}
@@ -1397,6 +1399,7 @@ const PendingSubjectManagement: React.FC = () => {
 
       {/* Encounter Score Modal */}
       <Modal
+        rootClassName="ce-responsive-modal"
         open={encScoreModalOpen}
         title={`Registrar Nota — Encuentro ${selectedEncounter}`}
         onCancel={() => setEncScoreModalOpen(false)}
@@ -1481,6 +1484,7 @@ const PendingSubjectManagement: React.FC = () => {
 
       {/* Encounter Dates Modal */}
       <Modal
+        rootClassName="ce-responsive-modal"
         open={encDatesModalOpen}
         title={`Configurar Encuentros — ${encDatesSubject?.name}`}
         onCancel={() => setEncDatesModalOpen(false)}
@@ -1527,6 +1531,7 @@ const PendingSubjectManagement: React.FC = () => {
 
       {/* Content Modal */}
       <Modal
+        rootClassName="ce-responsive-modal"
         open={contentModalOpen}
         title={`Contenido de Estudio — ${contentSubject?.name}`}
         onCancel={() => setContentModalOpen(false)}
@@ -1607,6 +1612,10 @@ const PendingSubjectManagement: React.FC = () => {
         .mp-col-idx { width: 40px; }
         .mp-col-doc { width: 100px; }
         .mp-col-name { text-align: left; min-width: 200px; }
+        @media (max-width: 768px), (max-height: 500px) and (orientation: landscape) {
+          .mp-col-name, .mp-cell-name { position: sticky; left: 0; z-index: 3; background: #fff; min-width: 160px; }
+          .mp-col-name { z-index: 5; background: #f5f7fa; }
+        }
         .mp-col-subj { min-width: 60px; max-width: 100px; }
         .mp-cell-idx { background: #fafbfc; font-weight: 600; color: #8c8c8c; }
         .mp-cell-doc { font-size: 11px; color: #666; }

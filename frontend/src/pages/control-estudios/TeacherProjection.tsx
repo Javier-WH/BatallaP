@@ -456,6 +456,7 @@ const TeacherProjection: React.FC = () => {
         <Alert message="Periodo Inactivo" description="No hay un periodo escolar activo para realizar proyecciones." type="warning" showIcon style={{ margin: 24 }} />
       ) : (
         <Table
+          scroll={{ x: 'max-content' }}
           loading={loading}
           dataSource={teachers}
           columns={columns}
@@ -616,6 +617,7 @@ const TeacherProjection: React.FC = () => {
         <Alert message="Sección MP no encontrada" description="No se pudo obtener la sección de Materia Pendiente." type="error" showIcon style={{ margin: 24 }} />
       ) : (
         <Table
+          scroll={{ x: 'max-content' }}
           loading={loading}
           dataSource={teachers}
           columns={mpColumns}
@@ -627,7 +629,7 @@ const TeacherProjection: React.FC = () => {
   );
 
   return (
-    <div style={{ maxWidth: 1000, margin: '0 auto' }}>
+    <div className="ce-page ce-projection-page" style={{ maxWidth: 1000, margin: '0 auto' }}>
       <Card
         title={
           <Space>
@@ -737,6 +739,7 @@ const TeacherProjection: React.FC = () => {
       </Card>
 
       <Modal
+        rootClassName="ce-responsive-modal"
         title={`Asignar materia a: ${selectedTeacher?.firstName} ${selectedTeacher?.lastName}`}
         open={showModal}
         onCancel={() => setShowModal(false)}
@@ -811,6 +814,7 @@ const TeacherProjection: React.FC = () => {
 
       {/* MP Assignment Modal — one subject + multiple years (no section, single MP section) */}
       <Modal
+        rootClassName="ce-responsive-modal"
         title={`Asignar Materia Pendiente a: ${mpSelectedTeacher?.firstName} ${mpSelectedTeacher?.lastName}`}
         open={mpShowModal}
         onCancel={() => setMpShowModal(false)}

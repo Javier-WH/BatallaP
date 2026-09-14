@@ -756,7 +756,7 @@ export default function GeneralAverages() {
   }
 
   return (
-    <div style={{ padding: 16, height: '100%', display: 'flex', flexDirection: 'column' }}>
+    <div className="ce-page ce-averages-page" style={{ padding: 16, height: '100%', display: 'flex', flexDirection: 'column' }}>
       <style>{`
         .ag-theme-quartz .ag-row.ag-row-grade-colored {
           background-color: var(--grade-row-bg) !important;
@@ -772,7 +772,7 @@ export default function GeneralAverages() {
         }
       `}</style>
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+      <div className="ce-page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
         <Title level={4} style={{ margin: 0 }}>
           <TrophyOutlined style={{ marginRight: 8, color: '#B08D2B' }} />
           Promedios Generales
@@ -798,7 +798,7 @@ export default function GeneralAverages() {
       </div>
 
       {/* Student search bar — selects and scrolls to a student without filtering */}
-      <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+      <div className="ce-search-bar" style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
         <SearchOutlined style={{ color: '#8c8c8c', fontSize: 16 }} />
         <AutoComplete
           style={{ width: 350 }}
@@ -842,7 +842,7 @@ export default function GeneralAverages() {
       </div>
 
       {/* Filters + Group By */}
-      <div style={{ marginBottom: 12, padding: 12, background: '#fafafa', borderRadius: 12, border: '1px solid #f0f0f0', display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+      <div className="ce-averages-filters" style={{ marginBottom: 12, padding: 12, background: '#fafafa', borderRadius: 12, border: '1px solid #f0f0f0', display: 'flex', gap: 16, alignItems: 'flex-start' }}>
         {/* Left: Filters */}
         <div>
           {/* Minimum average + Top N filters (side by side) */}

@@ -217,6 +217,7 @@ const TermSectionClosurePanel: React.FC<TermSectionClosurePanelProps> = ({
 
   return (
     <Modal
+      rootClassName="ce-responsive-modal"
       open={open}
       onCancel={onClose}
       footer={null}
@@ -259,7 +260,7 @@ const TermSectionClosurePanel: React.FC<TermSectionClosurePanelProps> = ({
           columns={columns}
           pagination={false}
           size="small"
-          scroll={{ y: 400 }}
+          scroll={{ x: 'max-content', y: 400 }}
           bordered
         />
       )}

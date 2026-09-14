@@ -244,8 +244,8 @@ const GradeAuditLog: React.FC = () => {
   ];
 
   return (
-    <div style={{ padding: '24px' }}>
-      <Row justify="space-between" align="middle" style={{ marginBottom: '24px' }}>
+    <div className="ce-page ce-grade-audit-page" style={{ padding: '24px' }}>
+      <Row className="ce-page-header" justify="space-between" align="middle" style={{ marginBottom: '24px' }}>
         <Col>
           <Space>
             <div style={{

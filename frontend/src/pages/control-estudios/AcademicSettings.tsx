@@ -559,7 +559,7 @@ const AcademicSettings: React.FC = () => {
   );
 
   return (
-    <div style={{ paddingBottom: 40 }}>
+    <div className="ce-page ce-settings-page" style={{ paddingBottom: 40 }}>
       <style>{`
         @keyframes fadeInScale {
           from { opacity: 0; transform: scale(0.98) translateY(10px); }
@@ -608,7 +608,7 @@ const AcademicSettings: React.FC = () => {
       `}</style>
 
       {/* Hero Section */}
-      <div style={{ marginBottom: 40, marginTop: 12 }} className="animate-card">
+      <div style={{ marginBottom: 40, marginTop: 12 }} className="ce-page-header animate-card">
         <Row justify="space-between" align="middle">
           <Col>
             <Space size="middle" align="center">
@@ -1393,6 +1393,7 @@ const AcademicSettings: React.FC = () => {
 
       {/* Catalog Modal */}
       <Modal
+        rootClassName="ce-responsive-modal"
         title={catalogModal.editing ? 'Editar' : 'Agregar'}
         open={catalogModal.open}
         onCancel={() => setCatalogModal(prev => ({ ...prev, open: false }))}
@@ -1418,6 +1419,7 @@ const AcademicSettings: React.FC = () => {
 
       {/* Merge Modal */}
       <Modal
+        rootClassName="ce-responsive-modal"
         title="Fusionar registros"
         open={mergeModal.open}
         onCancel={() => setMergeModal(prev => ({ ...prev, open: false }))}
@@ -1454,6 +1456,7 @@ const AcademicSettings: React.FC = () => {
 
       {/* Modal Rediseño */}
       <Modal
+        rootClassName="ce-responsive-modal"
         title={null}
         open={showTermModal}
         onCancel={() => setShowTermModal(false)}

@@ -751,7 +751,7 @@ const ControlEstudiosDashboard: React.FC = () => {
   const gradesRate = data.teachers.totalAssignments > 0 ? Math.round(((data.teachers.totalAssignments - data.teachers.withoutGrades) / data.teachers.totalAssignments) * 100) : 100;
 
   return (
-    <div className="h-full overflow-y-auto pr-4">
+    <div className="ce-page ce-dashboard-page h-full overflow-y-auto pr-4">
       <div className="space-y-6 pb-8">
         {/* ===== Hero ===== */}
         <FadeIn>

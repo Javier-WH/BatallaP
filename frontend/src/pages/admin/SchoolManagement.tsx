@@ -265,7 +265,7 @@ const SchoolManagement: React.FC = () => {
   ];
 
   return (
-    <div style={{ padding: '0 20px' }}>
+    <div className="ce-embedded-school" style={{ padding: '0 20px' }}>
       <Card
         title={
           <Space>
@@ -334,6 +334,7 @@ const SchoolManagement: React.FC = () => {
 
       {/* Modal for Create/Edit */}
       <Modal
+        rootClassName="ce-responsive-modal"
         title={editingPlantel ? 'Editar Plantel' : 'Agregar Nuevo Plantel'}
         open={modalVisible}
         onCancel={handleModalClose}

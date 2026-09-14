@@ -600,6 +600,681 @@ input[type=number] {
   to { opacity: 1; }
 }
 
+.control-estudios-responsive,
+.control-estudios-responsive .ce-module-content,
+.control-estudios-responsive .ce-page {
+  min-width: 0;
+  max-width: 100%;
+}
+
+@media (max-width: 768px), (max-height: 500px) and (orientation: landscape) {
+  .control-estudios-responsive .ce-module-nav-shell {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    padding: 0 8px 8px !important;
+    overflow: hidden;
+  }
+
+  .control-estudios-responsive .ce-module-nav {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    padding: 6px !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    border-radius: 12px !important;
+    box-sizing: border-box;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    touch-action: pan-x;
+    overscroll-behavior-inline: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .control-estudios-responsive .ce-module-nav::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+    display: none;
+  }
+
+  .control-estudios-responsive .ce-module-nav-track {
+    display: flex !important;
+    width: max-content;
+    min-width: max-content;
+    flex-wrap: nowrap !important;
+    gap: 4px !important;
+  }
+
+  .control-estudios-responsive .ce-module-nav-label {
+    display: none;
+  }
+
+  .control-estudios-responsive .ce-module-nav-track > .ant-btn,
+  .control-estudios-responsive .ce-module-nav-track > .ant-dropdown-trigger,
+  .control-estudios-responsive .ce-module-nav-track > .ant-badge {
+    flex: 0 0 auto !important;
+  }
+
+  .control-estudios-responsive .ce-module-nav .ant-btn {
+    min-height: 36px;
+    height: 36px;
+    padding-inline: 10px !important;
+    gap: 6px !important;
+  }
+
+  .control-estudios-responsive .ce-module-nav .ant-btn span {
+    font-size: 12px !important;
+  }
+
+  .control-estudios-responsive .ce-module-content > div {
+    overflow-x: hidden !important;
+  }
+
+  .control-estudios-responsive .ce-page {
+    width: 100% !important;
+    max-width: 100% !important;
+    padding: 12px !important;
+    margin: 0 !important;
+    min-height: 0;
+  }
+
+  .control-estudios-responsive .ce-page h1,
+  .control-estudios-responsive .ce-page .ant-typography-h1,
+  .control-estudios-responsive .ce-page .ant-typography-h2,
+  .control-estudios-responsive .ce-page .ant-typography-h3 {
+    font-size: 20px !important;
+    line-height: 1.25 !important;
+  }
+
+  .control-estudios-responsive .ce-page .ant-card {
+    max-width: 100%;
+  }
+
+  .control-estudios-responsive .ce-page .ant-card-head {
+    min-height: 46px !important;
+    padding-inline: 12px !important;
+  }
+
+  .control-estudios-responsive .ce-page .ant-card-head-wrapper {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding-block: 8px;
+  }
+
+  .control-estudios-responsive .ce-page .ant-card-head-title {
+    min-width: 0;
+    white-space: normal;
+  }
+
+  .control-estudios-responsive .ce-page .ant-card-extra {
+    max-width: 100%;
+    margin-inline-start: 0;
+  }
+
+  .control-estudios-responsive .ce-page .ant-card-body {
+    padding: 12px;
+  }
+
+  .control-estudios-responsive .ce-page .ant-tabs-nav {
+    margin-bottom: 12px !important;
+  }
+
+  .control-estudios-responsive .ce-page .ant-tabs-nav-wrap {
+    overflow-x: auto !important;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .control-estudios-responsive .ce-page .ant-tabs-nav-wrap::-webkit-scrollbar {
+    display: none;
+  }
+
+  .control-estudios-responsive .ce-page .ant-tabs-tab {
+    flex: 0 0 auto;
+    margin-left: 0 !important;
+    padding: 8px 10px !important;
+    white-space: nowrap;
+  }
+
+  .control-estudios-responsive .ce-page .ant-tabs-tab-btn {
+    font-size: 12px;
+  }
+
+  .control-estudios-responsive .ce-page .ant-alert-with-description {
+    align-items: flex-start;
+  }
+
+  .control-estudios-responsive .ce-page .ant-alert-action {
+    margin-inline-start: 0;
+    padding-inline-start: 0;
+  }
+
+  .control-estudios-responsive .ce-page .ant-form-inline {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .control-estudios-responsive .ce-page .ant-form-inline .ant-form-item {
+    width: 100%;
+    margin: 0;
+  }
+
+  .control-estudios-responsive .ce-page .ant-form-inline .ant-input,
+  .control-estudios-responsive .ce-page .ant-form-inline .ant-input-number,
+  .control-estudios-responsive .ce-page .ant-form-inline .ant-select,
+  .control-estudios-responsive .ce-page .ant-form-inline .ant-picker {
+    width: 100% !important;
+  }
+
+  .control-estudios-responsive .ce-page .ant-table-wrapper {
+    max-width: 100%;
+  }
+
+  .control-estudios-responsive .ce-page .ant-table-content,
+  .control-estudios-responsive .ce-page .ce-table-scroll {
+    overflow-x: auto !important;
+    overscroll-behavior-inline: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .control-estudios-responsive .ce-page .ant-table-thead > tr > th,
+  .control-estudios-responsive .ce-page .ant-table-tbody > tr > td {
+    padding: 7px 8px !important;
+    font-size: 11px !important;
+  }
+
+  .control-estudios-responsive .ce-page .ant-pagination {
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+
+  .control-estudios-responsive .ce-page .ce-page-header,
+  .control-estudios-responsive .ce-page .ce-toolbar,
+  .control-estudios-responsive .ce-page .ce-filter-bar,
+  .control-estudios-responsive .ce-page .ce-action-bar {
+    display: flex !important;
+    width: 100%;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 10px !important;
+  }
+
+  .control-estudios-responsive .ce-page .ce-mobile-wrap {
+    display: flex !important;
+    max-width: 100%;
+    flex-wrap: wrap !important;
+    gap: 8px !important;
+  }
+
+  .control-estudios-responsive .ce-page .ce-mobile-stack {
+    display: flex !important;
+    width: 100%;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 8px !important;
+  }
+
+  .control-estudios-responsive .ce-page .ce-fluid-control,
+  .control-estudios-responsive .ce-page .ce-fluid-control.ant-select,
+  .control-estudios-responsive .ce-page .ce-fluid-control.ant-picker,
+  .control-estudios-responsive .ce-page .ce-fluid-control.ant-input-affix-wrapper {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .control-estudios-responsive .ce-page .ce-document-viewport,
+  .control-estudios-responsive .ce-page .ce-matrix-viewport {
+    max-width: 100%;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .control-estudios-responsive .ce-page .ant-steps {
+    overflow-x: auto;
+    padding-bottom: 6px;
+  }
+
+  .control-estudios-responsive .ce-page .ant-steps-item {
+    min-width: 130px;
+    flex: 0 0 130px;
+  }
+
+  .control-estudios-responsive .ce-page .ant-descriptions-view {
+    overflow-x: auto;
+  }
+
+  .control-estudios-responsive .ce-dashboard-page {
+    padding: 0 12px 20px !important;
+  }
+
+  .control-estudios-responsive .ce-dashboard-page .theme-panel-header {
+    padding: 20px !important;
+  }
+
+  .control-estudios-responsive .ce-dashboard-page .theme-panel-header h1 {
+    font-size: 26px !important;
+  }
+
+  .control-estudios-responsive .ce-dashboard-page .ant-progress-circle {
+    width: 96px !important;
+    height: 96px !important;
+  }
+
+  .control-estudios-responsive .ce-matriculation-page {
+    height: 100% !important;
+    max-height: none !important;
+    padding: 4px !important;
+  }
+
+  .control-estudios-responsive .ce-matriculation-toolbar .ant-row {
+    justify-content: flex-start !important;
+  }
+
+  .control-estudios-responsive .ce-matriculation-toolbar .ant-row > .ant-col {
+    min-width: 0;
+  }
+
+  .control-estudios-responsive .ce-matriculation-toolbar .ant-row > .ant-col:not(:first-child) {
+    flex: 1 1 140px;
+  }
+
+  .control-estudios-responsive .ce-matriculation-toolbar .ant-select,
+  .control-estudios-responsive .ce-matriculation-toolbar .ant-input-affix-wrapper,
+  .control-estudios-responsive .ce-matriculation-toolbar .ant-btn {
+    width: 100% !important;
+  }
+
+  .control-estudios-responsive .ce-matriculation-page .bulk-action-bar {
+    height: auto !important;
+    min-height: 56px;
+  }
+
+  .control-estudios-responsive .ce-matriculation-page .bulk-action-bar .flex {
+    flex-wrap: wrap;
+  }
+
+  .control-estudios-responsive .ce-settings-page > .animate-card {
+    margin: 8px 0 20px !important;
+  }
+
+  .control-estudios-responsive .ce-settings-page > .animate-card .ant-space,
+  .control-estudios-responsive .ce-embedded-academic > .animate-card .ant-space {
+    max-width: 100%;
+    align-items: flex-start !important;
+    flex-wrap: wrap;
+  }
+
+  .control-estudios-responsive .ce-settings-page .ant-tabs-tabpane > .ant-row > .ant-col,
+  .control-estudios-responsive .ce-embedded-academic .ant-row > .ant-col {
+    flex: 0 0 100% !important;
+    max-width: 100% !important;
+  }
+
+  .control-estudios-responsive .ce-settings-page form,
+  .control-estudios-responsive .ce-embedded-academic form {
+    padding: 16px !important;
+  }
+
+  .control-estudios-responsive .ce-embedded-academic {
+    padding: 0 0 24px !important;
+  }
+
+  .control-estudios-responsive .ce-embedded-school {
+    padding: 0 !important;
+  }
+
+  .control-estudios-responsive .ce-embedded-school .ant-card-body > .ant-space,
+  .control-estudios-responsive .ce-embedded-school .ant-card-head-wrapper {
+    width: 100%;
+    align-items: stretch !important;
+    flex-direction: column;
+  }
+
+  .control-estudios-responsive .ce-embedded-school .ant-input-search,
+  .control-estudios-responsive .ce-embedded-school .ant-select,
+  .control-estudios-responsive .ce-embedded-school .ant-btn {
+    width: 100% !important;
+  }
+
+  .control-estudios-responsive .ce-embedded-school .ant-table-content > table {
+    min-width: 720px;
+  }
+
+  .control-estudios-responsive .ce-embedded-academic .ant-select {
+    max-width: 100%;
+  }
+
+  .control-estudios-responsive .ce-embedded-academic .premium-tabs .ant-table-content > table,
+  .control-estudios-responsive .ce-settings-page .premium-table .ant-table-content > table {
+    min-width: 620px;
+  }
+
+  .control-estudios-responsive .ce-council-page .ce-page-header > .ant-space:last-child {
+    width: 100%;
+    flex-wrap: wrap;
+    gap: 8px !important;
+  }
+
+  .control-estudios-responsive .ce-council-page .ce-page-header > .ant-space:last-child > .ant-space-item {
+    max-width: 100%;
+  }
+
+  .control-estudios-responsive .ce-council-page .ant-table-body {
+    max-height: none !important;
+  }
+
+  .control-estudios-responsive .ce-projection-page {
+    padding: 4px !important;
+  }
+
+  .control-estudios-responsive .ce-projection-page .ant-tabs-extra-content {
+    width: 100%;
+    margin: 0 0 8px !important;
+  }
+
+  .control-estudios-responsive .ce-projection-page .ant-table-content > table {
+    min-width: 720px;
+  }
+
+  .control-estudios-responsive .ce-schedule-page .mb-4.flex,
+  .control-estudios-responsive .ce-classroom-distribution .flex.flex-wrap {
+    align-items: stretch !important;
+    gap: 8px !important;
+  }
+
+  .control-estudios-responsive .ce-schedule-page .ml-auto,
+  .control-estudios-responsive .ce-classroom-distribution .ml-auto {
+    margin-left: 0 !important;
+  }
+
+  .control-estudios-responsive .ce-schedule-page .overflow-x-auto,
+  .control-estudios-responsive .ce-classroom-distribution .overflow-x-auto {
+    max-width: 100%;
+    overscroll-behavior-inline: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .control-estudios-responsive .ce-schedule-page .schedule-time-column {
+    position: sticky;
+    left: 0;
+    z-index: 4;
+    min-width: 104px;
+  }
+
+  .control-estudios-responsive .ce-schedule-page th.schedule-time-column {
+    z-index: 7;
+  }
+
+  .control-estudios-responsive .ce-performance-page {
+    padding: 0 !important;
+  }
+
+  .control-estudios-responsive .ce-performance-page .rb-main {
+    padding: 16px 12px 28px !important;
+  }
+
+  .control-estudios-responsive .ce-performance-page .rb-header,
+  .control-estudios-responsive .ce-performance-page .rb-utility-btns,
+  .control-estudios-responsive .ce-performance-page .rb-scope-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .control-estudios-responsive .ce-performance-page .rb-topbar {
+    overflow-x: auto;
+    justify-content: flex-start;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .control-estudios-responsive .ce-performance-page .rb-nav-item {
+    flex: 0 0 auto;
+  }
+
+  .control-estudios-responsive .ce-performance-page .rb-period-select {
+    width: 100% !important;
+  }
+
+  .control-estudios-responsive .ce-averages-page {
+    height: auto !important;
+    min-height: 100%;
+  }
+
+  .control-estudios-responsive .ce-averages-page .ce-search-bar,
+  .control-estudios-responsive .ce-averages-page .ce-averages-filters,
+  .control-estudios-responsive .ce-averages-page .ce-averages-filters > div:first-child > div {
+    flex-wrap: wrap;
+  }
+
+  .control-estudios-responsive .ce-averages-page .ce-search-bar .ant-select {
+    width: 100% !important;
+  }
+
+  .control-estudios-responsive .ce-averages-page .ce-averages-filters {
+    flex-direction: column;
+    align-items: stretch !important;
+  }
+
+  .control-estudios-responsive .ce-averages-page .ce-averages-filters > div:nth-child(2) {
+    display: none;
+  }
+
+  .control-estudios-responsive .ce-averages-page .ce-averages-filters > div:last-child {
+    margin-left: 0 !important;
+  }
+
+  .control-estudios-responsive .ce-averages-page .ce-averages-filters > div:last-child > div:last-child {
+    flex-direction: row !important;
+    flex-wrap: wrap;
+  }
+
+  .control-estudios-responsive .ce-averages-page .ag-theme-quartz {
+    width: 100%;
+    min-height: 520px !important;
+  }
+
+  .control-estudios-responsive .ce-repair-page > .ant-spin-nested-loading .ant-row:first-child > .ant-col {
+    flex: 0 0 50%;
+    max-width: 50%;
+  }
+
+  .control-estudios-responsive .ce-repair-page .ant-card-head-title > .ant-space,
+  .control-estudios-responsive .ce-pending-subject-page .ant-card-head-title > .ant-space {
+    width: 100%;
+  }
+
+  .control-estudios-responsive .ce-repair-page .repair-sheet-container,
+  .control-estudios-responsive .ce-pending-subject-page .mp-nomina-container {
+    overscroll-behavior-inline: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .control-estudios-responsive .ce-manage-grades-page .ant-select {
+    max-width: 100%;
+  }
+
+  .control-estudios-responsive .ce-manage-grades-page .grading-table-container {
+    max-height: none !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .control-estudios-responsive .ce-manage-grades-page .ce-mobile-sticky-student {
+    position: sticky;
+    left: 0;
+    z-index: 5;
+    min-width: 150px;
+    background: var(--color-content-bg) !important;
+  }
+
+  .control-estudios-responsive .ce-manage-grades-page th.ce-mobile-sticky-student {
+    z-index: 12;
+    background: color-mix(in srgb, var(--color-text-main) 6%, var(--color-content-bg)) !important;
+  }
+
+  .control-estudios-responsive .ce-manage-grades-page .ant-tabs-extra-content {
+    width: 100%;
+    margin: 8px 0 0 !important;
+  }
+
+  .control-estudios-responsive .ce-manage-grades-page .ant-tabs-extra-content .ant-btn {
+    width: 100%;
+  }
+
+  .control-estudios-responsive .ce-manage-grades-page .ant-tabs-tabpane .ant-table-content > table {
+    min-width: 720px;
+  }
+
+  .control-estudios-responsive .ce-manage-grades-page .flex.justify-between,
+  .control-estudios-responsive .ce-manage-grades-page .flex.items-center.gap-3 {
+    flex-wrap: wrap;
+  }
+
+  .control-estudios-responsive .ce-historical-grades-page {
+    padding: 0 !important;
+  }
+
+  .control-estudios-responsive .ce-historical-grades-page > .px-5 {
+    padding: 12px !important;
+  }
+
+  .control-estudios-responsive .ce-historical-grades-page .ce-page-header > div:last-child {
+    width: 100%;
+    align-items: stretch;
+  }
+
+  .control-estudios-responsive .ce-historical-grades-page .ce-page-header .ant-select,
+  .control-estudios-responsive .ce-historical-grades-page .ce-page-header .ant-btn {
+    flex: 1 1 150px;
+    width: auto !important;
+    min-width: 0;
+  }
+
+  .control-estudios-responsive .ce-historical-grades-page .hg-grid {
+    max-height: none !important;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .control-estudios-responsive .ce-external-grades-page .ant-space-horizontal {
+    max-width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .control-estudios-responsive .ce-external-grades-page .ant-space-horizontal .ant-space-item {
+    max-width: 100%;
+    flex: 1 1 180px;
+  }
+
+  .control-estudios-responsive .ce-external-grades-page .ant-space-horizontal .ant-select,
+  .control-estudios-responsive .ce-external-grades-page .ant-space-horizontal .ant-input,
+  .control-estudios-responsive .ce-external-grades-page .ant-space-horizontal .ant-input-affix-wrapper {
+    width: 100% !important;
+  }
+
+  .control-estudios-responsive .ce-grade-audit-page .ant-card:first-of-type .ant-space {
+    width: 100%;
+  }
+
+  .control-estudios-responsive .ce-grade-audit-page .ant-card:first-of-type .ant-select,
+  .control-estudios-responsive .ce-grade-audit-page .ant-card:first-of-type .ant-picker,
+  .control-estudios-responsive .ce-grade-audit-page .ant-card:first-of-type .ant-btn {
+    width: 100% !important;
+  }
+
+  .control-estudios-responsive .ce-titles-page .ce-toolbar > * {
+    width: 100% !important;
+    margin-left: 0 !important;
+  }
+
+  .control-estudios-responsive .ce-titles-page .ce-toolbar .ant-select,
+  .control-estudios-responsive .ce-titles-page .ce-toolbar input,
+  .control-estudios-responsive .ce-titles-page .ce-toolbar .ant-btn {
+    width: 100% !important;
+  }
+
+  .control-estudios-responsive .ce-titles-page .ce-title-print-layout {
+    flex-direction: column;
+  }
+
+  .control-estudios-responsive .ce-titles-page .ce-title-print-layout > .ant-card {
+    width: 100% !important;
+  }
+
+  .control-estudios-responsive .ce-titles-page iframe {
+    min-width: 720px;
+  }
+
+  .control-estudios-responsive .ce-titles-page .ce-title-print-layout > .ant-card:last-child .ant-card-body {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .control-estudios-responsive .ce-period-closure-page .ant-descriptions-view > table {
+    min-width: 620px;
+  }
+}
+
+@media (max-width: 768px), (max-height: 500px) and (orientation: landscape) {
+  .ce-responsive-modal .ant-modal {
+    width: calc(100vw - 24px) !important;
+    max-width: calc(100vw - 24px) !important;
+    margin: 12px auto;
+    padding-bottom: 0;
+  }
+
+  .ce-responsive-modal .ant-modal-content {
+    max-height: calc(100dvh - 24px);
+    display: flex;
+    flex-direction: column;
+    padding: 16px;
+  }
+
+  .ce-responsive-modal .ant-modal-body {
+    min-height: 0;
+    overflow: auto;
+  }
+
+  .ce-responsive-modal .ant-modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .ce-responsive-modal .ant-space-horizontal {
+    max-width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .ce-responsive-modal .ant-space-item,
+  .ce-responsive-modal .ant-select,
+  .ce-responsive-modal .ant-picker,
+  .ce-responsive-modal .ant-input-number,
+  .ce-responsive-modal .ant-input-affix-wrapper {
+    max-width: 100%;
+  }
+
+  .ce-responsive-modal .ant-form-inline {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .ce-responsive-modal .ant-form-inline .ant-form-item {
+    width: 100%;
+    margin: 0;
+  }
+
+  .ce-responsive-modal .ant-table-content {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
 /* === 404 Not Found animations === */
 @keyframes nf-float {
   0%, 100% { transform: translateY(0) rotate(-2deg); }

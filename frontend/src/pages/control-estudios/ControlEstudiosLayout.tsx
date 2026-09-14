@@ -98,14 +98,15 @@ const ControlEstudiosLayout: React.FC = () => {
     || location.pathname.startsWith('/control-estudios/cierre-anual');
 
   return (
-    <div className="flex flex-col h-full min-h-0 min-w-0 overflow-x-hidden">
+    <div className="control-estudios-responsive flex flex-col h-full min-h-0 min-w-0 overflow-x-hidden">
       {/* Control de Estudios Toolbar */}
-      <div className="sticky top-0 z-40 backdrop-blur-md pb-4 pt-0 px-6">
-        <div className="bg-white/70 backdrop-blur-sm p-2 rounded-2xl border border-white/50 flex items-center gap-2 shadow-sm">
-          <div className="px-4 py-1 border-r border-slate-200/50 mr-2 shrink-0">
-            <span className="text-[10px] uppercase font-black text-slate-500 tracking-[0.2em]">Académico</span>
-          </div>
-          {tools.map(tool => (
+      <div className="ce-module-nav-shell sticky top-0 z-40 backdrop-blur-md pb-4 pt-0 px-6">
+        <div className="ce-module-nav bg-white/70 backdrop-blur-sm p-2 rounded-2xl border border-white/50 shadow-sm">
+          <div className="ce-module-nav-track flex items-center gap-2">
+            <div className="ce-module-nav-label px-4 py-1 border-r border-slate-200/50 mr-2 shrink-0">
+              <span className="text-[10px] uppercase font-black text-slate-500 tracking-[0.2em]">Académico</span>
+            </div>
+            {tools.map(tool => (
             <NavButton
               key={tool.path}
               {...tool}
@@ -161,11 +162,12 @@ const ControlEstudiosLayout: React.FC = () => {
               <DownOutlined style={{ fontSize: 10 }} />
             </Button>
           </Dropdown>
+          </div>
         </div>
       </div>
 
       {/* Module Content */}
-      <div className="flex-1 min-h-0 min-w-0 pt-0">
+      <div className="ce-module-content flex-1 min-h-0 min-w-0 pt-0">
         <div className="h-full min-w-0 overflow-x-hidden overflow-y-auto animate-in fade-in slide-in-from-bottom-2 duration-500">
           <Outlet />
         </div>

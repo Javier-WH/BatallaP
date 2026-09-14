@@ -1702,8 +1702,8 @@ const MatriculationEnrollment: React.FC = () => {
   );
 
   return (
-    <div className="flex flex-col gap-2 h-full max-h-screen overflow-hidden p-1">
-      <div ref={headerRef} className="flex flex-col gap-2 shrink-0">
+    <div className="ce-page ce-matriculation-page flex flex-col gap-2 h-full max-h-screen overflow-hidden p-1">
+      <div ref={headerRef} className="ce-matriculation-toolbar flex flex-col gap-2 shrink-0">
         <Card
           size="small"
           styles={{ body: { padding: '2px 12px' } }}
@@ -2414,6 +2414,7 @@ const MatriculationEnrollment: React.FC = () => {
       })()}
 
       <Modal
+        rootClassName="ce-responsive-modal"
         title="Imprimir Nóminas"
         open={nominaModalOpen}
         onCancel={() => setNominaModalOpen(false)}

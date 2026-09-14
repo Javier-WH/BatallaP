@@ -1544,7 +1544,7 @@ const PerformanceSummary: React.FC = () => {
   const readyToExport = validCombinations.length > 0;
 
   return (
-    <div className="rb-root">
+    <div className="ce-page ce-performance-page rb-root">
       <style>{STYLES}</style>
 
       {/* Top bar: switch between report types */}
@@ -2050,6 +2050,7 @@ const PerformanceSummary: React.FC = () => {
 
       {/* ── Reverso Modal ── */}
       <Modal
+        rootClassName="ce-responsive-modal"
         open={reversoModalOpen}
         title="Exportar Reverso de Notas Certificadas"
         onCancel={() => setReversoModalOpen(false)}

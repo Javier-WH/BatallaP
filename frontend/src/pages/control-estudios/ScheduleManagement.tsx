@@ -281,7 +281,7 @@ function ScheduleGrid({ sections, entries, onCellClick, editable, getCellLabel, 
       <table className="w-full border-collapse text-sm" style={{ minWidth: '640px', tableLayout: 'fixed' }}>
         <thead>
           <tr>
-            <th className="border border-slate-300 bg-slate-800 text-white py-2 text-xs" style={{ width: `${100 / (DAYS.length + 1)}%` }}>Hora</th>
+            <th className="schedule-time-column border border-slate-300 bg-slate-800 text-white py-2 text-xs" style={{ width: `${100 / (DAYS.length + 1)}%` }}>Hora</th>
             {DAYS.map(d => (
               <th key={d} className="border border-slate-300 bg-slate-800 text-white py-2 text-xs uppercase tracking-wide" style={{ width: `${100 / (DAYS.length + 1)}%` }}>{d}</th>
             ))}
@@ -304,7 +304,7 @@ function ScheduleGrid({ sections, entries, onCellClick, editable, getCellLabel, 
                   </tr>
                 ) : (
                   <tr key={period.id}>
-                    <td className="border border-slate-300 bg-slate-50 text-slate-600 text-xs text-center py-2 font-medium whitespace-nowrap">
+                    <td className="schedule-time-column border border-slate-300 bg-slate-50 text-slate-600 text-xs text-center py-2 font-medium whitespace-nowrap">
                       {period.start} - {period.end}
                     </td>
                     {DAYS.map(day => {
@@ -457,6 +457,7 @@ const CellEditorModal: React.FC<CellEditorModalProps> = ({ open, day, period, ce
 
   return (
     <Modal
+      rootClassName="ce-responsive-modal"
       title={`${day} · ${period.start} - ${period.end}`}
       open={open}
       onCancel={onClose}
@@ -779,7 +780,7 @@ const TeacherAvailabilityPanel: React.FC<TeacherAvailabilityPanelProps> = ({ tea
             <table className="w-full border-collapse text-sm" style={{ minWidth: '640px', tableLayout: 'fixed' }}>
               <thead>
                 <tr>
-                  <th className="border border-slate-300 bg-slate-800 text-white py-2 text-xs" style={{ width: `${100 / (DAYS.length + 1)}%` }}>
+                  <th className="schedule-time-column border border-slate-300 bg-slate-800 text-white py-2 text-xs" style={{ width: `${100 / (DAYS.length + 1)}%` }}>
                     Hora
                   </th>
                   {DAYS.map(d => (
@@ -816,7 +817,7 @@ const TeacherAvailabilityPanel: React.FC<TeacherAvailabilityPanelProps> = ({ tea
                         </tr>
                       ) : (
                         <tr key={period.id}>
-                          <td className="border border-slate-300 bg-slate-50 text-slate-600 text-xs text-center py-2 font-medium whitespace-nowrap">
+                          <td className="schedule-time-column border border-slate-300 bg-slate-50 text-slate-600 text-xs text-center py-2 font-medium whitespace-nowrap">
                             {period.start} - {period.end}
                           </td>
                           {DAYS.map(day => {
@@ -1881,7 +1882,7 @@ const ScheduleManagement: React.FC = () => {
   };
 
   return (
-    <div className="p-6">
+    <div className="ce-page ce-schedule-page p-6">
       {isReadOnly && (
         <Alert
           message="Período histórico"
@@ -2287,6 +2288,7 @@ const ScheduleManagement: React.FC = () => {
 
       {/* Exceptions Modal */}
       <Modal
+      rootClassName="ce-responsive-modal"
         title="Excepciones de generación de horarios"
         open={exceptionsModalOpen}
         onCancel={() => setExceptionsModalOpen(false)}
@@ -2435,6 +2437,7 @@ const ScheduleManagement: React.FC = () => {
 
       {/* Batch Export Modal */}
       <Modal
+      rootClassName="ce-responsive-modal"
         title="Exportar horarios por Grado/Sección"
         open={batchExportOpen}
         onCancel={() => setBatchExportOpen(false)}

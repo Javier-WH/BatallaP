@@ -1201,7 +1201,7 @@ const AcademicManagement: React.FC = () => {
   });
 
   return (
-    <div style={{ padding: '0 24px 40px' }}>
+    <div className="ce-embedded-academic" style={{ padding: '0 24px 40px' }}>
       <style>{`
         @keyframes fadeUp {
           from { opacity: 0; transform: translateY(20px) scale(0.98); }
@@ -1273,7 +1273,7 @@ const AcademicManagement: React.FC = () => {
       `}</style>
 
       {/* Hero Section */}
-      <div style={{ marginBottom: 40, marginTop: 12 }} className="animate-card">
+      <div style={{ marginBottom: 40, marginTop: 12 }} className="ce-page-header animate-card">
         <Row justify="space-between" align="middle">
           <Col>
             <Space size="middle" align="center">
@@ -1897,6 +1897,7 @@ const AcademicManagement: React.FC = () => {
 
       {/* Create Period Modal */}
       <Modal
+        rootClassName="ce-responsive-modal"
         title={null}
         open={isPeriodModalVisible}
         onCancel={() => setIsPeriodModalVisible(false)}
@@ -1964,6 +1965,7 @@ const AcademicManagement: React.FC = () => {
       </Modal>
 
       <Modal
+        rootClassName="ce-responsive-modal"
         title={null}
         open={editSubjectGroupVisible}
         onCancel={() => {
@@ -2028,6 +2030,7 @@ const AcademicManagement: React.FC = () => {
 
       {/* Edit Catalog Modal */}
       <Modal
+        rootClassName="ce-responsive-modal"
         title={null}
         open={editCatalogVisible}
         onCancel={() => setEditCatalogVisible(false)}
@@ -2114,6 +2117,7 @@ const AcademicManagement: React.FC = () => {
       </Modal>
 
       <Modal
+        rootClassName="ce-responsive-modal"
         title={null}
         open={editPeriodVisible}
         onCancel={() => setEditPeriodVisible(false)}
@@ -2157,6 +2161,7 @@ const AcademicManagement: React.FC = () => {
       </Modal>
 
       <Modal
+        rootClassName="ce-responsive-modal"
         title={null}
         open={deletePeriodVisible}
         onCancel={() => setDeletePeriodVisible(false)}
@@ -2194,6 +2199,7 @@ const AcademicManagement: React.FC = () => {
       </Modal>
 
       <Modal
+        rootClassName="ce-responsive-modal"
         title={null}
         open={specializationModalVisible}
         onCancel={() => {
@@ -2244,6 +2250,7 @@ const AcademicManagement: React.FC = () => {
 
       {/* Modal para asignar profesor */}
       <Modal
+        rootClassName="ce-responsive-modal"
         title={null}
         open={teacherAssignModalVisible}
         onCancel={() => setTeacherAssignModalVisible(false)}
@@ -2316,6 +2323,7 @@ const AcademicManagement: React.FC = () => {
       </Modal>
 
       <Modal
+        rootClassName="ce-responsive-modal"
         title="Presets de Materias"
         open={presetModalOpen}
         onCancel={() => setPresetModalOpen(false)}
@@ -2395,6 +2403,7 @@ const AcademicManagement: React.FC = () => {
       </Modal>
 
       <Modal
+        rootClassName="ce-responsive-modal"
         title="Crear nuevo preset"
         open={createPresetModalOpen}
         onCancel={() => setCreatePresetModalOpen(false)}
@@ -2457,6 +2466,7 @@ const AcademicManagement: React.FC = () => {
       </Modal>
 
       <Modal
+        rootClassName="ce-responsive-modal"
         title="Presets de Estructura"
         open={structurePresetModalOpen}
         onCancel={() => setStructurePresetModalOpen(false)}

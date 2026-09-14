@@ -242,10 +242,10 @@ const PeriodClosureManagement: React.FC = () => {
   ];
 
   return (
-    <div style={{ padding: '24px' }}>
+    <div className="ce-page ce-period-closure-page" style={{ padding: '24px' }}>
       {/* Header */}
       <Card style={{ marginBottom: 24 }}>
-        <Row align="middle" justify="space-between">
+        <Row className="ce-page-header" align="middle" justify="space-between">
           <Col>
             <Space size="large">
               <FlagOutlined style={{ fontSize: 32, color: '#1890ff' }} />
@@ -457,6 +457,7 @@ const PeriodClosureManagement: React.FC = () => {
 
       {/* Preview Modal */}
       <Modal
+        rootClassName="ce-responsive-modal"
         title={
           <Space>
             <EyeOutlined />
@@ -481,12 +482,12 @@ const PeriodClosureManagement: React.FC = () => {
               style={{ marginBottom: 16 }}
             />
             <Table
+              scroll={{ x: 'max-content', y: 500 }}
               dataSource={preview}
               columns={previewColumns}
               rowKey="inscriptionId"
               size="small"
               pagination={false}
-              scroll={{ y: 500 }}
             />
           </>
         )}
@@ -494,6 +495,7 @@ const PeriodClosureManagement: React.FC = () => {
 
       {/* Confirm Execution Modal */}
       <Modal
+        rootClassName="ce-responsive-modal"
         title={
           <Space>
             <ExclamationCircleOutlined style={{ color: '#faad14' }} />

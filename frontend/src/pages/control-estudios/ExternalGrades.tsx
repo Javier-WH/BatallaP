@@ -497,7 +497,7 @@ const ExternalGrades: React.FC = () => {
   ];
 
   return (
-    <div className="p-6">
+    <div className="ce-page ce-external-grades-page p-6">
       <Title level={3}>
         <SwapOutlined /> Notas Externas
       </Title>
@@ -585,6 +585,7 @@ const ExternalGrades: React.FC = () => {
               >
                 <Spin spinning={loadingInscriptions}>
                   <Table
+                    scroll={{ x: 'max-content' }}
                     dataSource={gradeRows}
                     columns={gradeColumns}
                     rowKey="key"
@@ -618,6 +619,7 @@ const ExternalGrades: React.FC = () => {
           children: (
             <Card size="small">
               <Table
+                scroll={{ x: 'max-content' }}
                 dataSource={allGrades}
                 columns={allGradesColumns}
                 rowKey="id"
@@ -682,6 +684,7 @@ const ExternalGrades: React.FC = () => {
               {bulkErrors && bulkErrors.length > 0 && (
                 <Card title={`Errores (${bulkErrors.length})`} size="small">
                   <Table
+                    scroll={{ x: 'max-content' }}
                     dataSource={bulkErrors}
                     columns={[
                       { title: 'Fila', dataIndex: 'row', key: 'row', width: 80 },
@@ -699,6 +702,7 @@ const ExternalGrades: React.FC = () => {
       ]} />
 
       <Modal
+        rootClassName="ce-responsive-modal"
         title="Registrar nuevo plantel"
         open={newPlantelModalOpen}
         onCancel={() => setNewPlantelModalOpen(false)}

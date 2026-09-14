@@ -388,6 +388,7 @@ const TemplateManagerModal: React.FC<TemplateManagerModalProps> = ({
 
   return (
     <Modal
+      rootClassName="ce-responsive-modal"
       title={modalTitle}
       open={open}
       onCancel={onClose}

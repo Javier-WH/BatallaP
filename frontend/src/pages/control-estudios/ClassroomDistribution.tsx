@@ -672,7 +672,7 @@ const ClassroomDistribution: React.FC<ClassroomDistributionProps> = ({
   }
 
   return (
-    <div className="p-4">
+    <div className="ce-classroom-distribution p-4">
       {/* Toolbar (hidden in readOnly mode) */}
       {!readOnly && (
         <div className="flex flex-wrap items-center gap-1.5 mb-4">
@@ -789,7 +789,7 @@ const ClassroomDistribution: React.FC<ClassroomDistributionProps> = ({
       </div>
 
       {/* Grid */}
-      <div className="overflow-x-auto">
+      <div className="ce-matrix-viewport overflow-x-auto">
         <table className="border-collapse text-sm" style={{ width: '100%', tableLayout: 'fixed' }}>
           <colgroup>
             <col style={{ width: '28px' }} />
@@ -955,6 +955,7 @@ const ClassroomDistribution: React.FC<ClassroomDistributionProps> = ({
 
       {/* Pending Requests Modal (Control de Estudios) */}
       <Modal
+        rootClassName="ce-responsive-modal"
         title="Solicitudes de aula pendientes"
         open={requestsModalOpen}
         onCancel={() => setRequestsModalOpen(false)}
@@ -1016,6 +1017,7 @@ const ClassroomDistribution: React.FC<ClassroomDistributionProps> = ({
 
       {/* Extraordinary Booking Modal */}
       <Modal
+        rootClassName="ce-responsive-modal"
         title="Asignación extraordinaria de aula"
         open={bookingModalOpen}
         onCancel={() => setBookingModalOpen(false)}
@@ -1073,6 +1075,7 @@ const ClassroomDistribution: React.FC<ClassroomDistributionProps> = ({
 
       {/* Auto-distribution Modal */}
       <Modal
+        rootClassName="ce-responsive-modal"
         title="Distribución automática de aulas"
         open={autoModalOpen}
         onCancel={() => setAutoModalOpen(false)}
