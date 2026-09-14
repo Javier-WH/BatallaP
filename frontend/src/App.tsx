@@ -72,6 +72,9 @@ import MyStudents from '@/pages/representative/MyStudents';
 import StudentLayout from '@/pages/student/StudentLayout';
 import MyDossier from '@/pages/student/MyDossier';
 
+// Attendance Module
+import AttendanceModule from '@/pages/asistencias/AttendanceModule';
+
 // Protected Route Component
 const RequireAuth = ({ children, allowedRoles }: { children: JSX.Element; allowedRoles?: string[] }) => {
   const { user, loading } = useAuth();
@@ -295,6 +298,16 @@ function AppRoutes() {
           element={
             <RequireAuth allowedRoles={['Control de Estudios', 'Administrador', 'Master']}>
               <Constancias />
+            </RequireAuth>
+          }
+        />
+
+        {/* Attendance Module — all roles access it one way or another */}
+        <Route
+          path="asistencias"
+          element={
+            <RequireAuth allowedRoles={['Profesor', 'Control de Estudios', 'Administrador', 'Master', 'Director']}>
+              <AttendanceModule />
             </RequireAuth>
           }
         />

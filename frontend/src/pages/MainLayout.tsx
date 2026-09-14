@@ -19,6 +19,7 @@ import {
   AlertOutlined,
   FileProtectOutlined,
   BankOutlined,
+  CheckSquareOutlined,
 } from '@ant-design/icons';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
@@ -104,6 +105,13 @@ const MainLayout: React.FC = () => {
       label: 'Constancias',
       roles: ['Control de Estudios', 'Administrador', 'Master', 'Director'],
       path: '/constancias'
+    },
+    {
+      key: 'asistencias',
+      icon: <CheckSquareOutlined />,
+      label: 'Asistencias',
+      roles: ['Profesor', 'Control de Estudios', 'Administrador', 'Master', 'Director'],
+      path: '/asistencias'
     },
 
     {

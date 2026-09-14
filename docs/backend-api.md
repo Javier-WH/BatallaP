@@ -340,6 +340,52 @@ Ver [`flows/grade-edit.md`](./flows/grade-edit.md).
 
 ---
 
+**Notas**:
+- Cada nota externa se guarda en `SubjectFinalGrade` con `gradeType='transferencia'|'equivalencia'`, `plantelId` del plantel emisor y `calculatedAt` = fecha del documento original.
+- El `FinalGradeCalculator` y el `periodClosureExecutor` ignoran estas notas/inscripciones.
+- Los períodos externos (`SchoolPeriod.status='externo'`) no aparecen en los selectores de gestión académica.
+
+---
+
+## ✅ Asistencias – `/api/attendance` (`attendanceRoutes.ts`)
+
+> Módulo de asistencia en aula. Las sesiones se derivan del horario publicado
+> (`Schedule` → `ScheduleEntry`) + fecha calendario, con creación on-demand y
+> backfill de fechas pasadas (asistencia en papel). Roles: `Profesor`,
+> `Control de Estudios`, `Administrador`, `Master`, `Director`.
+
+| Método | Ruta | Descripción |
+|--------|------|-------------|
+| GET | `/my-sessions?date=YYYY-MM-DD` | Sesiones del profesor para la fecha (desde su horario). Fin de semana → vacío. |
+| GET | `/sessions/:id` | Nómina de la sección + registros de asistencia. |
+| PUT | `/sessions/:id/records` | Guardado masivo. Body: `{ records: [{ inscriptionId, status, reason? }] }`. El profesor solo puede guardar en sus sesiones; staff en cualquiera. |
+| POST | `/records/:id/clear` | Desbloquea un registro. Body: `{ reasonCode, reasonNote? }` (nota obligatoria si el motivo lo requiere). |
+| GET | `/records/:id/audits` | Auditoría del registro (solo staff). |
+| GET | `/clearance-reasons` | Motivos de desbloqueo activos (siembra 4 defaults la primera vez). |
+| GET | `/sessions?schoolPeriodId=&dateFrom=&dateTo=` | Vista staff: sesiones con conteos (filtros opcionales `gradeId`, `sectionId`). |
+| GET | `/students/:personId/summary?schoolPeriodId=` | Historial completo de asistencia del estudiante + totales. |
+
+**Reglas de negocio**:
+- `absent` y `kicked` requieren `reason` (validado en service y UI).
+- **Bloqueo cruzado**: un estudiante con `absent`/`kicked` sin desbloquear en una sesión anterior del mismo día aparece `blocked` en las siguientes sesiones. Cualquier desbloqueo exige motivo del catálogo `ClearanceReason` y queda auditado.
+- `AttendanceAuditLog` es append-only (acciones: `marked`, `blocked`, `cleared`, `status_changed`).
+
+## 🚪 Gate check-in (RFID) – `/api/gate` (`gateRoutes.ts`)
+
+> Base para el futuro sistema de RFID en la puerta (hardware no desplegado).
+> El endpoint ya implementa la lógica de debounce/toggle del lector único y
+> acepta `eventType` fijo cuando se instalen dos lectores por puerta.
+
+| Método | Ruta | Descripción |
+|--------|------|-------------|
+| POST | `/checkins` | Body: `{ cardUid, deviceId?, eventType?, timestamp? }`. Resuelve la persona por `IdCard`, infiere entry/exit (o confía en el lector), aplica debounce 5s y marca `flaggedDuplicate` en ventana de 60s. |
+
+**Notas**:
+- Las tarjetas 125kHz emiten un UID estático: usar para asistencia/notificación, no como control de acceso.
+- El worker de notificaciones a representantes es una fase futura; por ahora el check-in solo persiste el evento.
+
+---
+
 ## Patrones generales
 
 - **Autenticación**: implícita por sesión. Revisar `req.session` en los controllers que requieren usuario logueado.

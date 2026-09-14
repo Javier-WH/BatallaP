@@ -161,6 +161,13 @@ import ClassroomAssignment from './ClassroomAssignment';
 import RoomBooking from './RoomBooking';
 import GradeChangeLog from './GradeChangeLog';
 import QualificationEditRequest from './QualificationEditRequest';
+import AttendanceSession from './AttendanceSession';
+import AttendanceRecord from './AttendanceRecord';
+import AttendanceAuditLog from './AttendanceAuditLog';
+import ClearanceReason from './ClearanceReason';
+import IdCard from './IdCard';
+import GateDevice from './GateDevice';
+import GateCheckin from './GateCheckin';
 
 
 // ... (Existing User/Person/Role/Contact associations) ...
@@ -596,6 +603,43 @@ User.hasMany(QualificationEditRequest, { foreignKey: 'requestedBy', as: 'editReq
 QualificationEditRequest.belongsTo(User, { foreignKey: 'reviewedBy', as: 'reviewer' });
 User.hasMany(QualificationEditRequest, { foreignKey: 'reviewedBy', as: 'editRequestsReviewed' });
 
+// ── Attendance module ─────────────────────────────────────────────
+// Sessions derive from ScheduleEntry + calendar date (on-demand, backfill OK)
+ScheduleEntry.hasMany(AttendanceSession, { foreignKey: 'scheduleEntryId', as: 'attendanceSessions' });
+AttendanceSession.belongsTo(ScheduleEntry, { foreignKey: 'scheduleEntryId', as: 'scheduleEntry' });
+
+SchoolPeriod.hasMany(AttendanceSession, { foreignKey: 'schoolPeriodId', as: 'attendanceSessions' });
+AttendanceSession.belongsTo(SchoolPeriod, { foreignKey: 'schoolPeriodId', as: 'schoolPeriod' });
+
+AttendanceSession.hasMany(AttendanceRecord, { foreignKey: 'sessionId', as: 'records' });
+AttendanceRecord.belongsTo(AttendanceSession, { foreignKey: 'sessionId', as: 'session' });
+
+Inscription.hasMany(AttendanceRecord, { foreignKey: 'inscriptionId', as: 'attendanceRecords' });
+AttendanceRecord.belongsTo(Inscription, { foreignKey: 'inscriptionId', as: 'inscription' });
+
+Person.hasMany(AttendanceRecord, { foreignKey: 'teacherId', as: 'markedAttendanceRecords' });
+AttendanceRecord.belongsTo(Person, { foreignKey: 'teacherId', as: 'teacher' });
+
+Person.hasMany(AttendanceRecord, { foreignKey: 'clearedBy', as: 'clearedAttendanceRecords' });
+AttendanceRecord.belongsTo(Person, { foreignKey: 'clearedBy', as: 'clearedByPerson' });
+
+// Append-only audit trail
+AttendanceRecord.hasMany(AttendanceAuditLog, { foreignKey: 'attendanceRecordId', as: 'auditLogs' });
+AttendanceAuditLog.belongsTo(AttendanceRecord, { foreignKey: 'attendanceRecordId', as: 'attendanceRecord' });
+
+Person.hasMany(AttendanceAuditLog, { foreignKey: 'performedBy', as: 'attendanceAuditEntries' });
+AttendanceAuditLog.belongsTo(Person, { foreignKey: 'performedBy', as: 'performer' });
+
+// ── Gate check-in (RFID foundation — hardware not deployed yet) ──
+Person.hasMany(IdCard, { foreignKey: 'personId', as: 'idCards' });
+IdCard.belongsTo(Person, { foreignKey: 'personId', as: 'person' });
+
+GateDevice.hasMany(GateCheckin, { foreignKey: 'deviceId', as: 'checkins' });
+GateCheckin.belongsTo(GateDevice, { foreignKey: 'deviceId', as: 'device' });
+
+Person.hasMany(GateCheckin, { foreignKey: 'personId', as: 'gateCheckins' });
+GateCheckin.belongsTo(Person, { foreignKey: 'personId', as: 'person' });
+
 export {
   User,
   Person,
@@ -681,5 +725,12 @@ export {
   ClassroomAssignment,
   RoomBooking,
   GradeChangeLog,
-  QualificationEditRequest
+  QualificationEditRequest,
+  AttendanceSession,
+  AttendanceRecord,
+  AttendanceAuditLog,
+  ClearanceReason,
+  IdCard,
+  GateDevice,
+  GateCheckin
 };

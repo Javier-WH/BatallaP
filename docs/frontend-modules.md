@@ -124,6 +124,19 @@ Todos los servicios consumen la instancia `api` con `withCredentials: true`.
 |---------|-------------|
 | `teacher/TeacherPanel.tsx` | Panel único del profesor (~30 KB). Tabs: mis asignaciones, plan de evaluación, registro de notas por estudiante. |
 
+### Asistencias (`/asistencias`)
+> Módulo compartido con tabs horizontales según rol. Accesible desde el sidebar
+> para `Profesor`, `Control de Estudios`, `Administrador`, `Master` y `Director`.
+
+| Archivo | Descripción |
+|---------|-------------|
+| `asistencias/AttendanceModule.tsx` | Módulo principal con tabs por rol (Tomar Asistencia / Sesiones / Administración). |
+| `asistencias/TeacherAttendanceTab.tsx` | Vista móvil del profesor (PWA): timeline de sesiones del día con estados (registrada / en curso / sin registrar / próxima), selector de semana y día, roster con botones rápidos (Presente/Ausente/Expulsado), chips de motivo, tarjetas de bloqueo con desbloqueo inline auditado. Basada en el prototipo aprobado (Fraunces/Inter, slate + emerald/ámbar). |
+| `asistencias/StaffSessionsTab.tsx` | Vista de Control de Estudios/Admin: sesiones por rango de fechas con conteos; abre cualquier sesión para ver/editar. |
+| `asistencias/AdminAttendanceTab.tsx` | Vista de administración: resumen de asistencia por estudiante + catálogo de motivos de desbloqueo. |
+| `asistencias/SessionRosterModal.tsx` | Editor de nómina de una sesión: estados (presente/ausente/tarde/expulsado), motivo obligatorio para ausentes/expulsados, desbloqueo auditado de bloqueados. |
+| `asistencias/types.ts` | Tipos compartidos del módulo (espejo de los interfaces del backend). |
+
 ### Representante (`/representante`)
 | Archivo | Descripción |
 |---------|-------------|

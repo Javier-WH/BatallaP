@@ -41,6 +41,8 @@
 | `/api/dashboard-content` | `dashboardContentRoutes.ts` |
 | `/api/health` | `healthRoutes.ts` |
 | `/api/external-grades` | `externalGradeRoutes.ts` |
+| `/api/attendance` | `attendanceRoutes.ts` |
+| `/api/gate` | `gateRoutes.ts` (RFID foundation) |
 
 ## Orden en `app.ts`
 

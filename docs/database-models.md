@@ -90,6 +90,18 @@
 | `Setting` | Config key/value del sistema. |
 | `DashboardContent` | Contenido editable del dashboard principal (bloques, imágenes). |
 
+### ✅ Asistencias
+
+| Modelo | Descripción |
+|--------|-------------|
+| `AttendanceSession` | Sesión concreta de asistencia: `ScheduleEntry` + `sessionDate` (DATEONLY). UNIQUE(`scheduleEntryId`, `sessionDate`). Estado: `pending`/`completed`/`cancelled`. |
+| `AttendanceRecord` | Asistencia de un estudiante en una sesión: `status` ENUM(`present`,`absent`,`late`,`excused`,`kicked`), `reason` (obligatorio para absent/kicked), bloqueo cruzado (`blocked`, `clearedBy`, `clearedAt`, `clearanceReasonCode/Note`), `markedAt`, `clientRecordId` UUID (idempotencia futura offline/RFID). UNIQUE(`sessionId`, `inscriptionId`). |
+| `AttendanceAuditLog` | Auditoría append-only: `action` ENUM(`marked`,`blocked`,`cleared`,`status_changed`), `performedBy`, `previousValue`/`newValue` JSON. Nunca se edita ni borra. |
+| `ClearanceReason` | Catálogo editable de motivos de desbloqueo (`code`, `label`, `requiresNote`, `active`). Se siembra automáticamente con 4 motivos por defecto. |
+| `IdCard` | Tarjeta RFID por persona (`cardUid` UNIQUE, `active`, `revokedAt`). Base para el futuro gate check-in. |
+| `GateDevice` | Lector de puerta (`identifier`, `location`, tipo `gate_reader`/`mobile`). |
+| `GateCheckin` | Evento de puerta (`entry`/`exit`, `flaggedDuplicate` para el debounce de lector único). |
+
 ## Asociaciones clave
 
 ### Usuarios
@@ -146,6 +158,7 @@ SubjectFinalGrade ──1:N──► GradeEditAudit ──N:1──► GradeEdit
 - **`PendingSubject`** vincula la materia fallida en el período origen con la nueva `Inscription` del período destino.
 - **`SubjectFinalGrade`** se puede modificar sólo si existe `GradeEditPermission` activo y se registra en `GradeEditAudit`.
 - **Notas externas (transferencia/equivalencia)**: cuando un estudiante proviene de otra institución, se crea un `SchoolPeriod` con `status='externo'` que representa el año escolar de la institución origen, una `Inscription` con `escolaridad='transferencia'`, y por cada materia un `SubjectFinalGrade` con `gradeType='transferencia'|'equivalencia'`, `plantelId` apuntando al `Plantel` de la institución emisora y `calculatedAt` = fecha del documento original. El `FinalGradeCalculator` y el `periodClosureExecutor` ignoran estas inscripciones/notas. Ver [`docs/flows/grading.md`](./flows/grading.md) sección "Notas externas".
+- **Asistencias**: `AttendanceSession` se deriva de `ScheduleEntry` + fecha (creación on-demand, admite backfill de fechas pasadas). El bloqueo cruzado marca `blocked=true` cuando el estudiante tiene `absent`/`kicked` sin desbloquear (`clearedAt` null) en una sesión anterior del mismo día. `AttendanceAuditLog` es append-only: cada marca, bloqueo, desbloqueo o cambio de estado inserta una fila nueva.
 
 ## Diagrama completo
 

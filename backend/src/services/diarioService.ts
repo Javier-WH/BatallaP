@@ -20,7 +20,7 @@ interface PeriodInfo {
   section: 'manana' | 'tarde';
 }
 
-interface ScheduleSectionsInfo {
+export interface ScheduleSectionsInfo {
   manana: PeriodInfo[];
   tarde: PeriodInfo[];
 }
@@ -33,7 +33,8 @@ interface SectionScheduleData {
 }
 
 // ── Build period list from settings (same logic as frontend buildSections) ──
-function buildPeriodsFromSettings(settings: Record<string, string>): ScheduleSectionsInfo {
+// Exported for reuse by the attendance module (session ordering + times).
+export function buildPeriodsFromSettings(settings: Record<string, string>): ScheduleSectionsInfo {
   const use12h = settings.time_format === '12';
   const manana: PeriodInfo[] = [];
   const tarde: PeriodInfo[] = [];

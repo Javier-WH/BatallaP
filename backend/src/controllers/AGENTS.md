@@ -39,6 +39,7 @@
 | `dashboardContentController` | Contenido editable | Imágenes en `public/uploads/`. |
 | `settingController` / `settingsController` | Key/value | Revisar cuál se usa (hay dos). |
 | `uploadController` | Archivos | Logo + documentos genéricos. |
+| `attendanceController` | Asistencias en aula | Sesiones desde `ScheduleEntry` + fecha (on-demand + backfill). Bloqueo cruzado auditado. Roles: Profesor (propias), CE/Admin/Master (todas). |
 | `healthController` | Liveness | Probe simple. |
 
 ## Al añadir un controller nuevo

@@ -30,6 +30,7 @@ Los seis roles del sistema, exactamente como aparecen en la tabla `roles` y en `
 | `/estudiante` | `Alumno` |
 | `/gestion-usuarios` | `Master`, `Administrador` |
 | `/student/:personId` (expediente) | `Administrador`, `Master`, `Control de Estudios`, `Representante`, `Alumno` |
+| `/asistencias` | `Profesor`, `Control de Estudios`, `Administrador`, `Master`, `Director` |
 
 ### Submódulos principales
 
@@ -53,6 +54,7 @@ Los seis roles del sistema, exactamente como aparecen en la tabla `roles` y en `
 | Editar notas finales | `/control-estudios/editar-notas` | `Control de Estudios` + permiso activo |
 | Notas externas | `/control-estudios/notas-externas` | `Control de Estudios`, `Administrador`, `Master` |
 | Panel profesor | `/profesor` | `Profesor` |
+| Asistencias | `/asistencias` | `Profesor` (tomar), `Control de Estudios`, `Administrador`, `Master`, `Director` (ver/editar todo) |
 | Mis estudiantes (rep.) | `/representante` | `Representante` |
 | Mi expediente | `/estudiante` | `Alumno` |
 

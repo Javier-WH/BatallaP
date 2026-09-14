@@ -107,6 +107,8 @@ import scheduleExceptionRoutes from '@/routes/scheduleExceptionRoutes';
 import classroomAssignmentRoutes from '@/routes/classroomAssignmentRoutes';
 import roomBookingRoutes from '@/routes/roomBookingRoutes';
 import diarioRoutes from '@/routes/diarioRoutes';
+import attendanceRoutes from '@/routes/attendanceRoutes';
+import gateRoutes from '@/routes/gateRoutes';
 
 app.get('/health', (req, res) => {
   res.send('API is running...');
@@ -163,6 +165,8 @@ app.use('/api/schedule-exceptions', scheduleExceptionRoutes);
 app.use('/api/classroom-assignments', classroomAssignmentRoutes);
 app.use('/api/room-bookings', roomBookingRoutes);
 app.use('/api/diarios', diarioRoutes);
+app.use('/api/attendance', attendanceRoutes);
+app.use('/api/gate', gateRoutes);
 
 // Serve uploaded files (logo, documents, dashboard images)
 const uploadsDir = path.join(__dirname, '..', 'public');
