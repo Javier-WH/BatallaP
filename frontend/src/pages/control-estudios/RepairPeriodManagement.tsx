@@ -940,8 +940,8 @@ const RepairPeriodManagement: React.FC = () => {
         .repair-col-idx { width: 32px; min-width: 32px; }
         .repair-col-name { width: 200px; min-width: 160px; text-align: left !important; padding: 4px 8px 4px 25px !important; }
         @media (max-width: 768px), (max-height: 500px) and (orientation: landscape) {
-          .repair-col-name, .repair-cell-name { position: sticky; left: 0; z-index: 3; background: #fff; }
-          .repair-col-name { z-index: 5; background: #f5f5f5; min-width: 150px; padding-left: 8px !important; }
+          .repair-col-name, .repair-cell-name { position: static; left: auto; z-index: auto; }
+          .repair-col-name { min-width: 150px; padding-left: 8px !important; }
           .repair-cell-name { min-width: 150px; padding-left: 8px !important; }
         }
         .repair-col-doc { width: 80px; min-width: 70px; }

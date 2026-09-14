@@ -774,6 +774,21 @@ input[type=number] {
     max-width: 100%;
   }
 
+  .control-estudios-responsive .ce-page .ant-table-cell-fix-left,
+  .control-estudios-responsive .ce-page .ant-table-cell-fix-right {
+    position: static !important;
+    left: auto !important;
+    right: auto !important;
+    z-index: auto !important;
+  }
+
+  .control-estudios-responsive .ce-page .ant-table-cell-fix-left-first::after,
+  .control-estudios-responsive .ce-page .ant-table-cell-fix-left-last::after,
+  .control-estudios-responsive .ce-page .ant-table-cell-fix-right-first::after,
+  .control-estudios-responsive .ce-page .ant-table-cell-fix-right-last::after {
+    display: none !important;
+  }
+
   .control-estudios-responsive .ce-page .ant-table-content,
   .control-estudios-responsive .ce-page .ce-table-scroll {
     overflow-x: auto !important;
@@ -1000,14 +1015,10 @@ input[type=number] {
   }
 
   .control-estudios-responsive .ce-schedule-page .schedule-time-column {
-    position: sticky;
-    left: 0;
-    z-index: 4;
+    position: static;
+    left: auto;
+    z-index: auto;
     min-width: 104px;
-  }
-
-  .control-estudios-responsive .ce-schedule-page th.schedule-time-column {
-    z-index: 7;
   }
 
   .control-estudios-responsive .ce-performance-page {
@@ -1104,16 +1115,10 @@ input[type=number] {
   }
 
   .control-estudios-responsive .ce-manage-grades-page .ce-mobile-sticky-student {
-    position: sticky;
-    left: 0;
-    z-index: 5;
+    position: static;
+    left: auto;
+    z-index: auto;
     min-width: 150px;
-    background: var(--color-content-bg) !important;
-  }
-
-  .control-estudios-responsive .ce-manage-grades-page th.ce-mobile-sticky-student {
-    z-index: 12;
-    background: color-mix(in srgb, var(--color-text-main) 6%, var(--color-content-bg)) !important;
   }
 
   .control-estudios-responsive .ce-manage-grades-page .ant-tabs-extra-content {

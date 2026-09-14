@@ -955,8 +955,7 @@ const HistoricalGradesBySection: React.FC = () => {
         .hg-row:focus-within .hg-row-num { color: #A9814B !important; font-weight: 700 !important; }
         @media (max-width: 768px), (max-height: 500px) and (orientation: landscape) {
           .hg-mobile-scroll { position: static !important; left: auto !important; z-index: auto !important; }
-          .hg-mobile-sticky { position: sticky !important; left: 0 !important; z-index: 5 !important; min-width: 140px !important; max-width: 140px !important; background: #FFFFFF !important; }
-          th.hg-mobile-sticky { z-index: 8 !important; background: #F5F1E8 !important; }
+          .hg-mobile-sticky { position: static !important; left: auto !important; z-index: auto !important; min-width: 140px !important; max-width: 140px !important; }
         }
       `}</style>
 

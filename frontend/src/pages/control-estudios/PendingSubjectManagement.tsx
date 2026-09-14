@@ -1613,8 +1613,7 @@ const PendingSubjectManagement: React.FC = () => {
         .mp-col-doc { width: 100px; }
         .mp-col-name { text-align: left; min-width: 200px; }
         @media (max-width: 768px), (max-height: 500px) and (orientation: landscape) {
-          .mp-col-name, .mp-cell-name { position: sticky; left: 0; z-index: 3; background: #fff; min-width: 160px; }
-          .mp-col-name { z-index: 5; background: #f5f7fa; }
+          .mp-col-name, .mp-cell-name { position: static; left: auto; z-index: auto; min-width: 160px; }
         }
         .mp-col-subj { min-width: 60px; max-width: 100px; }
         .mp-cell-idx { background: #fafbfc; font-weight: 600; color: #8c8c8c; }

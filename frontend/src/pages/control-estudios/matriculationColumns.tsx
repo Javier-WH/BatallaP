@@ -339,6 +339,7 @@ interface BuildColumnDefsParams {
   visibleColumnKeys: string[];
   locations: VenezuelaState[];
   callbacks: ColumnCallbacks;
+  disablePinned?: boolean;
 }
 
 // Text input cell editor params
@@ -678,7 +679,7 @@ function repCol(
 }
 
 export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<MatriculationRow> | ColGroupDef<MatriculationRow>)[] {
-  const { structure, questions, canManageVisibility, visibleColumnKeys, callbacks, locations } = params;
+  const { structure, questions, canManageVisibility, visibleColumnKeys, callbacks, locations, disablePinned = false } = params;
   const isCol = (key: string) => visibleColumnKeys.includes(key);
   const isQ = (id: number) => visibleColumnKeys.includes(getQuestionColumnKey(id));
 
@@ -696,7 +697,7 @@ export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<Matricul
     colId: '__status__',
     headerName: '',
     width: 45,
-    pinned: 'left',
+    pinned: disablePinned ? undefined : 'left',
     sortable: false,
     resizable: false,
     editable: false,
@@ -806,7 +807,7 @@ export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<Matricul
       editable: false,
       sortable: true,
       resizable: true,
-      pinned: 'left',
+      pinned: disablePinned ? undefined : 'left',
       valueGetter: (p) => {
         if (!p.data) return '';
         const dt = p.data.tempData.documentType;
@@ -823,7 +824,7 @@ export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<Matricul
       editable: true,
       sortable: true,
       resizable: true,
-      pinned: 'left',
+      pinned: disablePinned ? undefined : 'left',
       ...textEditorParams(),
       valueGetter: (p) => p.data?.tempData.document ?? '',
       valueSetter: (p) => {
@@ -844,7 +845,7 @@ export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<Matricul
       editable: true,
       sortable: true,
       resizable: true,
-      pinned: 'left',
+      pinned: disablePinned ? undefined : 'left',
       ...textEditorParams(),
       valueGetter: (p) => p.data?.tempData.lastName ?? '',
       valueSetter: (p) => {
@@ -865,7 +866,7 @@ export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<Matricul
       editable: true,
       sortable: true,
       resizable: true,
-      pinned: 'left',
+      pinned: disablePinned ? undefined : 'left',
       ...textEditorParams(),
       valueGetter: (p) => p.data?.tempData.firstName ?? '',
       valueSetter: (p) => {

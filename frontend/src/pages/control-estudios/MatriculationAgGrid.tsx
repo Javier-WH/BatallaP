@@ -28,6 +28,7 @@ interface MatriculationAgGridProps extends ColumnCallbacks {
 }
 
 const STORAGE_KEY = 'matriculation-grid-state-v3';
+const MOBILE_TABLE_QUERY = '(max-width: 768px), (max-height: 500px) and (orientation: landscape)';
 
 interface GridState {
   columnWidths: Record<string, number>;
@@ -51,6 +52,21 @@ function saveGridState(state: GridState) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   } catch { /* ignore */ }
+}
+
+function syncPinnedColumns(api: GridApi<MatriculationRow>, state: GridState, mobile: boolean) {
+  if (mobile) {
+    api.setColumnsPinned(api.getAllGridColumns().map(column => column.getColId()), null);
+    return;
+  }
+
+  const defaultPinned = ['nationality', 'document', 'lastName', 'firstName'];
+  for (const colId of defaultPinned) {
+    if (!(colId in state.pinnedColumns)) api.setColumnsPinned([colId], null);
+  }
+  for (const [colId, pinned] of Object.entries(state.pinnedColumns)) {
+    api.setColumnsPinned([colId], pinned);
+  }
 }
 
 export interface MatriculationAgGridHandle {
@@ -83,6 +99,7 @@ const MatriculationAgGrid = React.forwardRef<MatriculationAgGridHandle, Matricul
   const gridRef = useRef<AgGridReact<MatriculationRow>>(null);
   const gridContainerRef = useRef<HTMLDivElement>(null);
   const [gridApi, setGridApi] = useState<GridApi<MatriculationRow> | null>(null);
+  const [mobileTable, setMobileTable] = useState(() => window.matchMedia(MOBILE_TABLE_QUERY).matches);
   const gridStateRef = useRef<GridState>(loadGridState());
 
   // Keep the latest callbacks in a ref so that `columnDefs` never has to be
@@ -122,8 +139,8 @@ const MatriculationAgGrid = React.forwardRef<MatriculationAgGridHandle, Matricul
   );
 
   const columnDefs = useMemo(
-    () => buildColumnDefs({ structure, questions, canManageVisibility, visibleColumnKeys, callbacks, locations }),
-    [structure, questions, canManageVisibility, visibleColumnKeys, callbacks, locations]
+    () => buildColumnDefs({ structure, questions, canManageVisibility, visibleColumnKeys, callbacks, locations, disablePinned: mobileTable }),
+    [structure, questions, canManageVisibility, visibleColumnKeys, callbacks, locations, mobileTable]
   );
 
   const defaultColDef = useMemo<ColDef>(
@@ -153,6 +170,10 @@ const MatriculationAgGrid = React.forwardRef<MatriculationAgGridHandle, Matricul
         applyOrder: true,
       });
     }
+    if (window.matchMedia(MOBILE_TABLE_QUERY).matches) {
+      syncPinnedColumns(event.api, state, true);
+      return;
+    }
     // Apply saved pinned columns (overrides the default pinned:'left' from ColDef)
     if (state.pinnedColumns) {
       // First, unpin any default-pinned columns that the user unpinned
@@ -168,6 +189,18 @@ const MatriculationAgGrid = React.forwardRef<MatriculationAgGridHandle, Matricul
       }
     }
   }, []);
+
+  useEffect(() => {
+    if (!gridApi) return;
+    const mediaQuery = window.matchMedia(MOBILE_TABLE_QUERY);
+    const updatePinnedColumns = () => {
+      setMobileTable(mediaQuery.matches);
+      syncPinnedColumns(gridApi, gridStateRef.current, mediaQuery.matches);
+    };
+    updatePinnedColumns();
+    mediaQuery.addEventListener('change', updatePinnedColumns);
+    return () => mediaQuery.removeEventListener('change', updatePinnedColumns);
+  }, [gridApi]);
 
   // Selection changed
   const handleSelectionChanged = useCallback(
@@ -451,6 +484,10 @@ const MatriculationAgGrid = React.forwardRef<MatriculationAgGridHandle, Matricul
   // Pin/unpin column via grid API + persist to localStorage
   const handlePinColumn = useCallback((colId: string, pinned: 'left' | 'right' | null) => {
     if (!gridApi) return;
+    if (window.matchMedia(MOBILE_TABLE_QUERY).matches) {
+      gridApi.setColumnsPinned([colId], null);
+      return;
+    }
     gridApi.setColumnsPinned([colId], pinned);
     // Update persisted state
     const state = gridStateRef.current;

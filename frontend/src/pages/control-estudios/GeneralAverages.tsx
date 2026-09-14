@@ -12,6 +12,7 @@ import { useSchool } from '@/context/SchoolContext';
 import api from '@/services/api';
 
 const { Title } = Typography;
+const MOBILE_TABLE_QUERY = '(max-width: 768px), (max-height: 500px) and (orientation: landscape)';
 
 /** Converts hex color to rgba with given alpha */
 const withAlpha = (hex: string, alpha: number): string => {
@@ -284,6 +285,7 @@ export default function GeneralAverages() {
   // Column definitions
   const columnDefs = useMemo<ColDef<any>[]>(() => [
     {
+      colId: 'rowNumber',
       headerName: '#',
       width: 60,
       pinned: 'left',
@@ -388,6 +390,16 @@ export default function GeneralAverages() {
 
   const onGridReady = useCallback((event: GridReadyEvent) => {
     event.api.setGridOption('datasource', undefined);
+    event.api.setColumnsPinned(['rowNumber'], window.matchMedia(MOBILE_TABLE_QUERY).matches ? null : 'left');
+  }, []);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia(MOBILE_TABLE_QUERY);
+    const updatePinnedColumn = () => {
+      gridRef.current?.api.setColumnsPinned(['rowNumber'], mediaQuery.matches ? null : 'left');
+    };
+    mediaQuery.addEventListener('change', updatePinnedColumn);
+    return () => mediaQuery.removeEventListener('change', updatePinnedColumn);
   }, []);
 
   const onSortChanged = useCallback(() => {
