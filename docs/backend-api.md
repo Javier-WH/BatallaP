@@ -67,6 +67,8 @@ Los namespaces están registrados en [`backend/src/app.ts`](../backend/src/app.t
 | POST | `/structure/subject` | Añadir materia. |
 | POST | `/structure/subject/remove` | Retirar materia. |
 | POST | `/structure/subject/reorder` | Reordenar materias del grado. |
+| POST | `/structure/subject/toggle-average` | Alternar `includeInAverage` (cuenta para promedio). |
+| POST | `/structure/subject/toggle-repairable` | Alternar `notRepairable` (excluye de Revisión y Materia Pendiente). |
 | GET | `/structure/subject/:periodGradeId/:subjectId` | Detalle de la relación período-grado-materia. |
 
 ## 📋 Inscripciones – `/api/inscriptions` (`inscriptionRoutes.ts`)

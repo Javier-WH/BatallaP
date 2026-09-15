@@ -9,6 +9,7 @@ import { sortInscriptions } from '@/services/studentSortService';
 import { logGradeChange } from '@/services/gradeChangeLogService';
 import {
   getSubjectOrderMapByGradeAndPeriod,
+  getSubjectNotRepairableMapByGradeAndPeriod,
   sortSubjectsByOrder,
 } from '@/services/subjectOrderService';
 import {
@@ -138,6 +139,20 @@ export const getRevisionStudents = async (req: Request, res: Response) => {
         orderMapCache.set(gradeId, m);
         return m;
       };
+      // Cache of notRepairable subject IDs per gradeId, so we can skip
+      // subjects flagged as "No Reparable" even if revisions already exist.
+      const notRepairableCache = new Map<number, Set<number>>();
+      const resolveNotRepairable = async (gradeId: number | null | undefined) => {
+        if (!gradeId) return new Set<number>();
+        if (notRepairableCache.has(gradeId)) return notRepairableCache.get(gradeId)!;
+        const map = await getSubjectNotRepairableMapByGradeAndPeriod(gradeId, schoolPeriodId);
+        const set = new Set<number>();
+        for (const [subjectId, notRepairable] of map.entries()) {
+          if (notRepairable) set.add(subjectId);
+        }
+        notRepairableCache.set(gradeId, set);
+        return set;
+      };
       // Cache full subject lists by gradeId (all active subjects of the grade)
       const gradeSubjectsCache = new Map<number, any[]>();
       const resolveGradeSubjects = async (gradeId: number | null | undefined) => {
@@ -152,7 +167,8 @@ export const getRevisionStudents = async (req: Request, res: Response) => {
           }],
         });
         const orderMap = await resolveOrderMap(gradeId);
-        const rawSubjects = (pg as any)?.subjects || [];
+        const notRepairableSet = await resolveNotRepairable(gradeId);
+        const rawSubjects = ((pg as any)?.subjects || []).filter((s: any) => !notRepairableSet.has(s.id));
         const sorted = sortSubjectsByOrder(
           rawSubjects,
           (s: any) => s.id,
@@ -191,6 +207,11 @@ export const getRevisionStudents = async (req: Request, res: Response) => {
         if (!insSub) continue;
         const ins = insSub.inscription;
         if (!ins) continue;
+
+        // Skip subjects flagged as "No Reparable" — hide existing revisions
+        // from the UI without deleting them (Opción A: filtrar, no borrar).
+        const notRepairableSet = await resolveNotRepairable(ins.gradeId);
+        if (notRepairableSet.has(insSub.subjectId)) continue;
 
         const studentId = ins.personId;
         if (!studentMap.has(studentId)) {
@@ -284,6 +305,21 @@ export const getRevisionStudents = async (req: Request, res: Response) => {
     // Sort students canonically: document type → document number → lastName → firstName → grade → section
     sortInscriptions(allInscriptions as any[]);
 
+    // Cache of notRepairable subject IDs per gradeId, so we can skip subjects
+    // flagged as "No Reparable" when previewing failed subjects.
+    const notRepairableCache = new Map<number, Set<number>>();
+    const resolveNotRepairable = async (gradeId: number | null | undefined) => {
+      if (!gradeId) return new Set<number>();
+      if (notRepairableCache.has(gradeId)) return notRepairableCache.get(gradeId)!;
+      const map = await getSubjectNotRepairableMapByGradeAndPeriod(gradeId, schoolPeriodId);
+      const set = new Set<number>();
+      for (const [subjectId, notRepairable] of map.entries()) {
+        if (notRepairable) set.add(subjectId);
+      }
+      notRepairableCache.set(gradeId, set);
+      return set;
+    };
+
     const studentMap = new Map<number, any>();
     const processedSubjects = new Set<number>();
     // Cache subject order maps by gradeId for canonical subject ordering
@@ -309,7 +345,8 @@ export const getRevisionStudents = async (req: Request, res: Response) => {
         }],
       });
       const orderMap = await resolveOrderMap(gradeId);
-      const rawSubjects = (pg as any)?.subjects || [];
+      const notRepairableSet = await resolveNotRepairable(gradeId);
+      const rawSubjects = ((pg as any)?.subjects || []).filter((s: any) => !notRepairableSet.has(s.id));
       const sorted = sortSubjectsByOrder(
         rawSubjects,
         (s: any) => s.id,
@@ -329,10 +366,14 @@ export const getRevisionStudents = async (req: Request, res: Response) => {
       const insAny = ins as any;
       const insSubjects = insAny.inscriptionSubjects || [];
       const subjects: any[] = [];
+      const notRepairableSet = await resolveNotRepairable(insAny.gradeId);
 
       for (const insSub of insSubjects) {
         if (processedSubjects.has(insSub.id)) continue;
         processedSubjects.add(insSub.id);
+
+        // Skip subjects flagged as "No Reparable" — they cannot go to revision.
+        if (notRepairableSet.has(insSub.subjectId)) continue;
 
         const termScores: Record<number, number> = {};
         termIds.forEach(tid => { termScores[tid] = 0; });
@@ -1193,6 +1234,20 @@ export const exportRevisionNominaExcel = async (req: Request, res: Response) => 
 
     // Load all revisions for this period (if it exists)
     const revisionMap = new Map<number, Map<number, any>>(); // inscriptionSubjectId -> opportunity -> revision
+    // Cache of notRepairable subject IDs per gradeId, so we can skip
+    // subjects flagged as "No Reparable" even if revisions already exist.
+    const exportNotRepairableCache = new Map<number, Set<number>>();
+    const resolveExportNotRepairable = async (gradeId: number | null | undefined) => {
+      if (!gradeId) return new Set<number>();
+      if (exportNotRepairableCache.has(gradeId)) return exportNotRepairableCache.get(gradeId)!;
+      const map = await getSubjectNotRepairableMapByGradeAndPeriod(gradeId, schoolPeriodId);
+      const set = new Set<number>();
+      for (const [subjectId, notRepairable] of map.entries()) {
+        if (notRepairable) set.add(subjectId);
+      }
+      exportNotRepairableCache.set(gradeId, set);
+      return set;
+    };
     if (revisionPeriod) {
       const revisions = await InscriptionSubjectRevision.findAll({
         where: { revisionPeriodId: revisionPeriod.id },
@@ -1216,6 +1271,12 @@ export const exportRevisionNominaExcel = async (req: Request, res: Response) => 
       });
 
       for (const rev of revisions) {
+        const insSub = (rev as any).inscriptionSubject;
+        // Skip revisions for subjects flagged as "No Reparable" (Opción A: filtrar, no borrar).
+        if (insSub?.subjectId && insSub?.inscription?.gradeId) {
+          const notRepairableSet = await resolveExportNotRepairable(insSub.inscription.gradeId);
+          if (notRepairableSet.has(insSub.subjectId)) continue;
+        }
         const insSubId = rev.inscriptionSubjectId;
         if (!revisionMap.has(insSubId)) revisionMap.set(insSubId, new Map());
         revisionMap.get(insSubId)!.set(rev.opportunity, {
@@ -1292,6 +1353,17 @@ export const exportRevisionNominaExcel = async (req: Request, res: Response) => 
 
     // Cache for grade subject lists
     const gradeSubjectsCache = new Map<number, Array<{ subjectId: number; name: string; abbreviation: string; order: number }>>();
+    const notRepairableCache = new Map<number, Set<number>>();
+    const resolveNotRepairable = async (gradeId: number) => {
+      if (notRepairableCache.has(gradeId)) return notRepairableCache.get(gradeId)!;
+      const map = await getSubjectNotRepairableMapByGradeAndPeriod(gradeId, schoolPeriodId);
+      const set = new Set<number>();
+      for (const [subjectId, notRepairable] of map.entries()) {
+        if (notRepairable) set.add(subjectId);
+      }
+      notRepairableCache.set(gradeId, set);
+      return set;
+    };
     const resolveGradeSubjects = async (gradeId: number) => {
       if (gradeSubjectsCache.has(gradeId)) return gradeSubjectsCache.get(gradeId)!;
       const pg = await PeriodGrade.findOne({
@@ -1303,7 +1375,8 @@ export const exportRevisionNominaExcel = async (req: Request, res: Response) => 
         }],
       });
       const orderMap = await getSubjectOrderMapByGradeAndPeriod(gradeId, schoolPeriodId);
-      const rawSubjects = (pg as any)?.subjects || [];
+      const notRepairableSet = await resolveNotRepairable(gradeId);
+      const rawSubjects = ((pg as any)?.subjects || []).filter((s: any) => !notRepairableSet.has(s.id));
       const sorted = sortSubjectsByOrder(
         rawSubjects,
         (s: any) => s.id,

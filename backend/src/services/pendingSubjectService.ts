@@ -1,9 +1,12 @@
 import { Transaction } from 'sequelize';
 import { PendingSubject } from '@/models/index';
 import { SubjectResultSummary } from './finalGradeCalculator';
+import { getSubjectNotRepairableMapByGradeAndPeriod } from './subjectOrderService';
 
 interface SyncOptions {
   transaction?: Transaction;
+  gradeId?: number | null;
+  schoolPeriodId?: number | null;
 }
 
 export class PendingSubjectService {
@@ -13,7 +16,22 @@ export class PendingSubjectService {
     subjects: SubjectResultSummary[],
     options: SyncOptions = {}
   ) {
-    const pending = subjects.filter((s) => s.status === 'reprobada');
+    // Exclude subjects flagged as "No Reparable" — they cannot go to Materia Pendiente.
+    let notRepairableSubjectIds = new Set<number>();
+    if (options.gradeId && options.schoolPeriodId) {
+      const map = await getSubjectNotRepairableMapByGradeAndPeriod(
+        options.gradeId,
+        options.schoolPeriodId,
+        options.transaction
+      );
+      for (const [subjectId, notRepairable] of map.entries()) {
+        if (notRepairable) notRepairableSubjectIds.add(subjectId);
+      }
+    }
+
+    const pending = subjects.filter(
+      (s) => s.status === 'reprobada' && !notRepairableSubjectIds.has(s.subjectId)
+    );
 
     for (const subject of pending) {
       await PendingSubject.upsert(

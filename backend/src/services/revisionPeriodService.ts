@@ -4,6 +4,8 @@ import {
   Inscription,
   InscriptionSubject,
   InscriptionSubjectRevision,
+  PeriodGrade,
+  PeriodGradeSubject,
   RevisionPeriod,
   SchoolPeriod,
   Setting,
@@ -13,6 +15,7 @@ import {
 } from '@/models/index';
 import { isPassingGrade } from './gradeEvaluationService';
 import { TermSectionClosureService } from './termSectionClosureService';
+import { getSubjectNotRepairableMapByGradeAndPeriod } from './subjectOrderService';
 
 export interface RevisionPeriodSummary {
   revisionPeriod: RevisionPeriod | null;
@@ -181,6 +184,21 @@ export class RevisionPeriodService {
       transaction,
     });
 
+    // Cache of notRepairable subject IDs per gradeId, so we can skip subjects
+    // flagged as "No Reparable" when collecting failed subjects.
+    const notRepairableCache = new Map<number, Set<number>>();
+    const resolveNotRepairable = async (gradeId: number | null | undefined) => {
+      if (!gradeId) return new Set<number>();
+      if (notRepairableCache.has(gradeId)) return notRepairableCache.get(gradeId)!;
+      const map = await getSubjectNotRepairableMapByGradeAndPeriod(gradeId, schoolPeriodId, transaction);
+      const set = new Set<number>();
+      for (const [subjectId, notRepairable] of map.entries()) {
+        if (notRepairable) set.add(subjectId);
+      }
+      notRepairableCache.set(gradeId, set);
+      return set;
+    };
+
     const termIds = terms.map(t => t.id);
     const termCount = terms.length || 1;
 
@@ -189,9 +207,13 @@ export class RevisionPeriodService {
 
     for (const ins of allInscriptions) {
       const insSubjects = (ins as any).inscriptionSubjects || [];
+      const notRepairableSet = await resolveNotRepairable((ins as any).gradeId);
       for (const insSub of insSubjects) {
         if (uniqueSet.has(insSub.id)) continue;
         uniqueSet.add(insSub.id);
+
+        // Skip subjects flagged as "No Reparable" — they cannot go to revision.
+        if (notRepairableSet.has(insSub.subjectId)) continue;
 
         // Use SubjectTermGrade (already rounded per-lapso) and average them
         const termGrades: any[] = insSub.termGrades || [];

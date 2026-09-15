@@ -10,10 +10,11 @@ interface PeriodGradeSubjectAttributes {
   order?: number | null;
   active: boolean;
   includeInAverage: boolean;
+  notRepairable: boolean;
   weeklyBlocks: number;
 }
 
-interface PeriodGradeSubjectCreationAttributes extends Optional<PeriodGradeSubjectAttributes, 'id' | 'active' | 'includeInAverage' | 'weeklyBlocks'> { }
+interface PeriodGradeSubjectCreationAttributes extends Optional<PeriodGradeSubjectAttributes, 'id' | 'active' | 'includeInAverage' | 'notRepairable' | 'weeklyBlocks'> { }
 
 class PeriodGradeSubject extends Model<PeriodGradeSubjectAttributes, PeriodGradeSubjectCreationAttributes> implements PeriodGradeSubjectAttributes {
   public id!: number;
@@ -22,6 +23,7 @@ class PeriodGradeSubject extends Model<PeriodGradeSubjectAttributes, PeriodGrade
   public order?: number | null;
   public active!: boolean;
   public includeInAverage!: boolean;
+  public notRepairable!: boolean;
   public weeklyBlocks!: number;
 
   public readonly createdAt!: Date;
@@ -58,6 +60,11 @@ PeriodGradeSubject.init(
       type: DataTypes.BOOLEAN,
       allowNull: false,
       defaultValue: true,
+    },
+    notRepairable: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
     },
     weeklyBlocks: {
       type: DataTypes.INTEGER,

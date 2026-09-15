@@ -24,7 +24,7 @@ import {
   Setting,
 } from '@/models/index';
 import { sortInscriptions } from '@/services/studentSortService';
-import { getSubjectOrderMap } from '@/services/subjectOrderService';
+import { getSubjectOrderMap, getSubjectNotRepairableMapByGradeAndPeriod } from '@/services/subjectOrderService';
 import { roundFinalGrade, MIN_FINAL_GRADE, resolveGradeStatus } from '@/services/gradeEvaluationService';
 import { AcademicContextError, getInscriptionAcademicContext, resolveAcademicContext } from '@/services/academicContextService';
 import { logGradeChange } from '@/services/gradeChangeLogService';
@@ -92,7 +92,7 @@ export const getMpStructure = async (req: Request, res: Response) => {
           {
             model: Subject,
             as: 'subjects',
-            through: { attributes: ['id', 'order', 'active', 'includeInAverage'], where: { active: true } },
+            through: { attributes: ['id', 'order', 'active', 'includeInAverage', 'notRepairable'], where: { active: true } },
           },
         ],
       });
@@ -111,9 +111,11 @@ export const getMpStructure = async (req: Request, res: Response) => {
       const mpSection = await findOrCreateMpSection();
       await linkMpSection(pg.id, mpSection.id);
 
-      // Get subjects in canonical order
+      // Get subjects in canonical order, excluding "No Reparable" subjects
       const subjectOrderMap = await getSubjectOrderMap(pg.id);
-      const subjects = (pg as any).subjects || [];
+      const subjects = ((pg as any).subjects || []).filter(
+        (s: any) => s.PeriodGradeSubject?.notRepairable !== true
+      );
       const sortedSubjects = subjects.sort((a: any, b: any) => {
         const oa = subjectOrderMap.get(a.id) ?? 99;
         const ob = subjectOrderMap.get(b.id) ?? 99;
@@ -279,6 +281,20 @@ export const registerStudentsInMp = async (req: Request, res: Response) => {
     for (const sourceInscriptionId of inscriptionIds) {
       const sourceInscription = await Inscription.findByPk(sourceInscriptionId, { transaction: t });
       if (!sourceInscription) continue;
+
+      // Reject manual registration if the subject is flagged as "No Reparable"
+      // in the source grade+period (Opción A: filtrar, no borrar).
+      const notRepairableMap = await getSubjectNotRepairableMapByGradeAndPeriod(
+        sourceInscription.gradeId,
+        sourceInscription.schoolPeriodId,
+        t
+      );
+      if (notRepairableMap.get(subjectId) === true) {
+        await t.rollback();
+        return res.status(400).json({
+          message: 'Esta materia está marcada como "No Reparable" y no puede registrarse en Materia Pendiente'
+        });
+      }
 
       // Find or create the MP inscription for this student (same grade, MP section, active period)
       let mpInscription = await Inscription.findOne({

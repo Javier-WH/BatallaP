@@ -7,6 +7,7 @@ import {
   Setting
 } from '@/models/index';
 import { FinalGradeSummary, SubjectResultSummary } from './finalGradeCalculator';
+import { getSubjectNotRepairableMapByGradeAndPeriod } from './subjectOrderService';
 
 type InscriptionWithOutcome = Inscription & {
   periodOutcome?: StudentPeriodOutcome | null;
@@ -130,8 +131,20 @@ export class StudentPromotionEngine {
       });
     }
 
+    // Exclude subjects flagged as "No Reparable" from pending subjects — they
+    // cannot go to Materia Pendiente (Opción A: filtrar, no borrar).
+    const notRepairableMap = await getSubjectNotRepairableMapByGradeAndPeriod(
+      inscription.gradeId,
+      inscription.schoolPeriodId,
+      options.transaction
+    );
+    const notRepairableSubjectIds = new Set<number>();
+    for (const [subjectId, notRepairable] of notRepairableMap.entries()) {
+      if (notRepairable) notRepairableSubjectIds.add(subjectId);
+    }
+
     const pendingSubjects = summary.subjectResults.filter(
-      (subject) => subject.status === 'reprobada'
+      (subject) => subject.status === 'reprobada' && !notRepairableSubjectIds.has(subject.subjectId)
     );
 
     const promotionGrade = promotionGradeId

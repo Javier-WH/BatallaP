@@ -37,7 +37,7 @@
 | `Specialization` | Mención / especialidad (ej. "Ciencias", "Humanidades"). |
 | `PeriodGrade` | Relación `SchoolPeriod` ↔ `Grade` (+ `Specialization` opcional). Unidad base de la estructura anual. |
 | `PeriodGradeSection` | Secciones disponibles para un `PeriodGrade`. |
-| `PeriodGradeSubject` | Materias del grado en el período; tiene orden y usa la `Subject` como plantilla. |
+| `PeriodGradeSubject` | Materias del grado en el período; tiene orden, `includeInAverage` (cuenta para promedio) y `notRepairable` (excluida de Revisión y Materia Pendiente). Usa la `Subject` como plantilla. |
 | `Term` | Lapsos dentro de un período (trimestre, semestre). Ordenado. |
 | `SchoolPeriodTransitionRule` | Regla de promoción de un grado a otro (`gradeFromId` → `gradeToId`). |
 | `Plantel` | Institución educativa (centro). Usado para calificaciones y reportes. |

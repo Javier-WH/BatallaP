@@ -19,6 +19,7 @@ import PeriodGradeSubject from '@/models/PeriodGradeSubject';
 
 export type SubjectOrderMap = Map<number, number>;
 export type SubjectIncludeInAverageMap = Map<number, boolean>;
+export type SubjectNotRepairableMap = Map<number, boolean>;
 
 /**
  * Devuelve un Map<subjectId, order> para un PeriodGrade.
@@ -92,6 +93,30 @@ export async function getSubjectOrderMapByGradeAndPeriod(
 }
 
 /**
+ * Devuelve un Map<subjectId, notRepairable> para un PeriodGrade.
+ * Materias no presentes en el mapa se asumen como notRepairable = false.
+ */
+export async function getSubjectNotRepairableMap(
+  periodGradeId: number | null | undefined,
+  transaction?: Transaction
+): Promise<SubjectNotRepairableMap> {
+  const map: SubjectNotRepairableMap = new Map();
+  if (!periodGradeId) return map;
+
+  const rows = await PeriodGradeSubject.findAll({
+    where: { periodGradeId },
+    attributes: ['subjectId', 'notRepairable'],
+    transaction,
+  });
+
+  rows.forEach((pgs) => {
+    map.set(pgs.subjectId, pgs.notRepairable);
+  });
+
+  return map;
+}
+
+/**
  * Resuelve el PeriodGrade a partir de gradeId + schoolPeriodId y devuelve
  * el mapa de includeInAverage de sus materias.
  */
@@ -110,6 +135,27 @@ export async function getSubjectIncludeInAverageMapByGradeAndPeriod(
 
   if (!pg) return new Map();
   return getSubjectIncludeInAverageMap(pg.id, transaction);
+}
+
+/**
+ * Resuelve el PeriodGrade a partir de gradeId + schoolPeriodId y devuelve
+ * el mapa de notRepairable de sus materias.
+ */
+export async function getSubjectNotRepairableMapByGradeAndPeriod(
+  gradeId: number | null | undefined,
+  schoolPeriodId: number | null | undefined,
+  transaction?: Transaction
+): Promise<SubjectNotRepairableMap> {
+  if (!gradeId || !schoolPeriodId) return new Map();
+
+  const pg = await PeriodGrade.findOne({
+    where: { gradeId, schoolPeriodId },
+    attributes: ['id'],
+    transaction,
+  });
+
+  if (!pg) return new Map();
+  return getSubjectNotRepairableMap(pg.id, transaction);
 }
 
 /**

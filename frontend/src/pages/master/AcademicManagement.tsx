@@ -31,7 +31,6 @@ import {
   AppstoreOutlined,
   CheckCircleOutlined,
   HolderOutlined,
-  UserAddOutlined,
   ProjectOutlined,
   SearchOutlined,
   CalendarOutlined,
@@ -158,6 +157,7 @@ interface Subject extends BaseCatalogItem {
   icon?: string | null;
   color?: string | null;
   includeInAverage?: boolean;
+  notRepairable?: boolean;
   weeklyBlocks?: number;
 }
 
@@ -222,11 +222,11 @@ interface SortableSubjectItemProps {
   subject: Subject;
   periodGradeId: number;
   onRemove: (periodGradeId: number, subjectId: number) => void;
-  onAssignTeacher?: (periodGradeId: number, subjectId: number) => void;
   onToggleAverage?: (periodGradeId: number, subjectId: number, includeInAverage: boolean) => void;
+  onToggleNotRepairable?: (periodGradeId: number, subjectId: number, notRepairable: boolean) => void;
 }
 
-const SortableSubjectItem: React.FC<SortableSubjectItemProps> = ({ subject, periodGradeId, onRemove, onAssignTeacher, onToggleAverage }) => {
+const SortableSubjectItem: React.FC<SortableSubjectItemProps> = ({ subject, periodGradeId, onRemove, onToggleAverage, onToggleNotRepairable }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: `${periodGradeId}-${subject.id}`,
   });
@@ -274,14 +274,20 @@ const SortableSubjectItem: React.FC<SortableSubjectItemProps> = ({ subject, peri
             </Space>
           </Tooltip>
         )}
-        {onAssignTeacher && (
-          <UserAddOutlined
-            style={{ color: '#1890ff', cursor: 'pointer' }}
-            onClick={(e) => {
-              e.stopPropagation();
-              onAssignTeacher(periodGradeId, subject.id);
-            }}
-          />
+        {onToggleNotRepairable && (
+          <Tooltip title={subject.notRepairable === true ? 'No Reparable: excluida de Revisión y Materia Pendiente' : 'Reparable: puede ir a Revisión y Materia Pendiente'}>
+            <Space size={4}>
+              <span style={{ fontSize: 11, fontWeight: 600, color: subject.notRepairable === true ? '#ff4d4f' : '#bfbfbf' }}>No Reparable</span>
+              <Switch
+                size="small"
+                checked={subject.notRepairable === true}
+                onClick={(checked, e) => {
+                  e?.stopPropagation();
+                  onToggleNotRepairable(periodGradeId, subject.id, checked);
+                }}
+              />
+            </Space>
+          </Tooltip>
         )}
         <DeleteOutlined
           style={{ color: '#ff4d4f', cursor: 'pointer' }}
@@ -332,12 +338,6 @@ const AcademicManagement: React.FC = () => {
 
   const [specializationModalVisible, setSpecializationModalVisible] = useState(false);
 
-  // Estados para asignación de profesor
-  const [teacherAssignModalVisible, setTeacherAssignModalVisible] = useState(false);
-  const [selectedSubjectForTeacher, setSelectedSubjectForTeacher] = useState<{ periodGradeId: number, subjectId: number, periodGradeSubjectId?: number } | null>(null);
-  const [availableSections, setAvailableSections] = useState<Section[]>([]);
-  const [availableTeachers, setAvailableTeachers] = useState<{ id: number, name: string }[]>([]);
-  const [teacherAssignForm] = Form.useForm();
   const [selectedGradeForStructure, setSelectedGradeForStructure] = useState<Grade | null>(null);
   const [selectedSpecializationId, setSelectedSpecializationId] = useState<number | null>(null);
 
@@ -578,6 +578,7 @@ const AcademicManagement: React.FC = () => {
         subjects: (item.subjects || []).map((sub: any) => ({
           ...sub,
           includeInAverage: sub.PeriodGradeSubject?.includeInAverage !== false,
+          notRepairable: sub.PeriodGradeSubject?.notRepairable === true,
           weeklyBlocks: sub.PeriodGradeSubject?.weeklyBlocks ?? 2,
         })),
       }));
@@ -717,83 +718,13 @@ const AcademicManagement: React.FC = () => {
     }
   };
 
-  // Función para abrir el modal de asignación de profesor
-  const handleOpenAssignTeacher = async (periodGradeId: number, subjectId: number) => {
+  const handleToggleNotRepairable = async (periodGradeId: number, subjectId: number, notRepairable: boolean) => {
     try {
-      console.log('Obteniendo PeriodGradeSubject para:', { periodGradeId, subjectId });
-
-      // Primero necesitamos obtener el periodGradeSubjectId
-      const { data } = await api.get(`/academic/structure/subject/${periodGradeId}/${subjectId}`);
-      console.log('Respuesta del endpoint:', data);
-
-      const periodGradeSubjectId = data?.id;
-      console.log('periodGradeSubjectId obtenido:', periodGradeSubjectId);
-
-      if (!periodGradeSubjectId) {
-        message.error('No se pudo obtener la información de la materia');
-        return;
-      }
-
-      setSelectedSubjectForTeacher({
-        periodGradeId,
-        subjectId,
-        periodGradeSubjectId
-      });
-
-      // Obtener las secciones disponibles para este grado
-      const periodGrade = structure.find(pg => pg.id === periodGradeId);
-      if (periodGrade && periodGrade.sections) {
-        setAvailableSections(periodGrade.sections);
-      }
-
-      // Obtener profesores disponibles
-      interface Teacher {
-        id: number;
-        firstName: string;
-        lastName: string;
-        roles?: { name: string }[];
-      }
-      const { data: teachers } = await api.get<Teacher[]>('/teachers');
-      setAvailableTeachers(teachers
-        .filter(t => t.roles?.some(r => r.name === 'Teacher'))
-        .map((t) => ({
-          id: t.id,
-          name: `${t.firstName} ${t.lastName}`
-        })));
-
-      teacherAssignForm.resetFields();
-      setTeacherAssignModalVisible(true);
+      await api.post('/academic/structure/subject/toggle-repairable', { periodGradeId, subjectId, notRepairable });
+      fetchStructure();
     } catch (error) {
       console.error(error);
-      message.error('Error al cargar datos para asignar profesor');
-    }
-  };
-
-  // Función para asignar profesor
-  const handleAssignTeacher = async (values: { teacherId: number, sectionId: number }) => {
-    if (!selectedSubjectForTeacher || !selectedSubjectForTeacher.periodGradeSubjectId) return;
-
-    try {
-      console.log('Enviando datos para asignar profesor:', {
-        teacherId: values.teacherId,
-        periodGradeSubjectId: selectedSubjectForTeacher.periodGradeSubjectId,
-        sectionId: values.sectionId
-      });
-
-      await api.post('/teachers/assign', {
-        teacherId: values.teacherId,
-        periodGradeSubjectId: selectedSubjectForTeacher.periodGradeSubjectId,
-        sectionId: values.sectionId
-      });
-
-      message.success('Profesor asignado exitosamente');
-      setTeacherAssignModalVisible(false);
-      fetchStructure();
-    } catch (error: unknown) {
-      console.error(error);
-      const axiosError = error as { response?: { data?: { message?: string } } };
-      const errorMessage = axiosError.response?.data?.message || 'Error al asignar profesor';
-      message.error(errorMessage);
+      message.error('Error al actualizar el estado de reparabilidad');
     }
   };
 
@@ -1554,8 +1485,8 @@ const AcademicManagement: React.FC = () => {
                                         subject={sub}
                                         periodGradeId={item.id}
                                         onRemove={handleRemoveSubjectFromGrade}
-                                        onAssignTeacher={handleOpenAssignTeacher}
                                         onToggleAverage={handleToggleAverage}
+                                        onToggleNotRepairable={handleToggleNotRepairable}
                                       />
                                     ))}
                                   </div>
@@ -2245,80 +2176,6 @@ const AcademicManagement: React.FC = () => {
               Vincular Grado con Mencíon
             </Button>
           </div>
-        </div>
-      </Modal>
-
-      {/* Modal para asignar profesor */}
-      <Modal
-        rootClassName="ce-responsive-modal"
-        title={null}
-        open={teacherAssignModalVisible}
-        onCancel={() => setTeacherAssignModalVisible(false)}
-        footer={null}
-        centered
-        width={480}
-        styles={{ body: { padding: 0 } }}
-      >
-        <div style={{ borderRadius: 24, overflow: 'hidden' }}>
-          <div style={{ padding: '24px 32px', background: 'linear-gradient(135deg, #001529 0%, #003a8c 100%)', color: '#fff' }}>
-            <Space>
-              <UserAddOutlined style={{ fontSize: 22 }} />
-              <div>
-                <Title level={4} style={{ color: '#fff', margin: 0, fontWeight: 800 }}>Asignar Docente</Title>
-                <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: 11, fontWeight: 600, textTransform: 'uppercase' }}>Carga Académica</Text>
-              </div>
-            </Space>
-          </div>
-          <Form
-            form={teacherAssignForm}
-            layout="vertical"
-            onFinish={handleAssignTeacher}
-            style={{ padding: '32px' }}
-            requiredMark={false}
-          >
-            <Form.Item
-              name="teacherId"
-              label={<Text style={{ fontWeight: 700 }}>Profesor Designado</Text>}
-              rules={[{ required: true, message: 'Seleccione un profesor' }]}
-            >
-              <Select
-                placeholder="Buscar profesor..."
-                size="large"
-                showSearch
-                optionFilterProp="children"
-                filterOption={(input, option) =>
-                  option?.children?.toString().toLowerCase().includes(input.toLowerCase()) ?? false
-                }
-              >
-                {availableTeachers.map(teacher => (
-                  <Select.Option key={teacher.id} value={teacher.id}>
-                    {teacher.name}
-                  </Select.Option>
-                ))}
-              </Select>
-            </Form.Item>
-
-            <Form.Item
-              name="sectionId"
-              label={<Text style={{ fontWeight: 700 }}>Sección asignada</Text>}
-              rules={[{ required: true, message: 'Seleccione una sección' }]}
-            >
-              <Select
-                placeholder="Seleccionar sección..."
-                size="large"
-              >
-                {availableSections.map(section => (
-                  <Select.Option key={section.id} value={section.id}>
-                    {section.name}
-                  </Select.Option>
-                ))}
-              </Select>
-            </Form.Item>
-
-            <Button type="primary" htmlType="submit" block size="large" style={{ height: 50, borderRadius: 12, fontWeight: 800, background: '#001529', border: 'none', marginTop: 12 }}>
-              Vincular Docente
-            </Button>
-          </Form>
         </div>
       </Modal>
 
