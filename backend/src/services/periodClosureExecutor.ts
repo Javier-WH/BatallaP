@@ -139,29 +139,35 @@ export class PeriodClosureExecutor {
       ]
     });
 
-    // Detect orphan MP-only students: a person with a materia_pendiente
-    // inscription but NO regular/repitiente inscription in this period.
-    // Per the user, students cannot have only MP — they must have a
-    // regular or repeater inscription. Block closure if found.
-    const personIdsInPeriod = new Set(inscriptions.map(i => i.personId));
-    const mpOnlyPersons = new Set<number>();
-    for (const insc of inscriptions) {
-      if (insc.escolaridad === 'materia_pendiente') {
-        // Check if this person has a regular/repitiente inscription
-        const hasMain = inscriptions.some(
-          i => i.personId === insc.personId &&
-               (i.escolaridad === 'regular' || i.escolaridad === 'repitiente')
+    // Detect orphan MP-only students: a person with an active (non-withdrawn)
+    // materia_pendiente inscription but NO regular/repitiente inscription
+    // (active OR withdrawn) in this period. We include withdrawn regular
+    // inscriptions in the check so that a student who retired from their
+    // regular grade but still has an active MP inscription is NOT flagged
+    // as orphan — their regular inscription exists, just retired.
+    const activeMpInscriptions = inscriptions.filter(
+      i => i.escolaridad === 'materia_pendiente'
+    );
+    if (activeMpInscriptions.length > 0) {
+      const mpPersonIds = [...new Set(activeMpInscriptions.map(i => i.personId))];
+      // Query ALL inscriptions for these persons in this period (including
+      // withdrawn ones) to check if they have a regular/repitiente.
+      const allInscriptionsForMpPersons = await Inscription.findAll({
+        where: {
+          schoolPeriodId,
+          personId: { [Op.in]: mpPersonIds },
+          escolaridad: { [Op.in]: ['regular', 'repitiente'] },
+        },
+        attributes: ['personId', 'escolaridad', 'withdrawnAt'],
+      });
+      const personsWithMain = new Set(allInscriptionsForMpPersons.map(i => i.personId));
+      const mpOnlyPersons = mpPersonIds.filter(pid => !personsWithMain.has(pid));
+      if (mpOnlyPersons.length > 0) {
+        errors.push(
+          `Hay ${mpOnlyPersons.length} estudiante(s) con inscripción de materia_pendiente pero sin inscripción regular/repitiente. ` +
+          `Los estudiantes no pueden tener únicamente materia pendiente. Corrija la inconsistencia antes de cerrar.`
         );
-        if (!hasMain) {
-          mpOnlyPersons.add(insc.personId);
-        }
       }
-    }
-    if (mpOnlyPersons.size > 0) {
-      errors.push(
-        `Hay ${mpOnlyPersons.size} estudiante(s) con inscripción de materia_pendiente pero sin inscripción regular/repitiente. ` +
-        `Los estudiantes no pueden tener únicamente materia pendiente. Corrija la inconsistencia antes de cerrar.`
-      );
     }
 
     return {
