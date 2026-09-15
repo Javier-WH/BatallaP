@@ -258,8 +258,10 @@ describe('Period Closure Rules — Integration Tests', () => {
       setup = await standardSetup(2, 3);
       // Student in grade 1 with 2 pending subjects: subject 0 reprobada (8), subject 1 aprobada (15)
       const student = await createStudentWithGrades(setup, 1, { 0: 8, 1: 15, 2: 14 });
-      await createPendingSubjectForStudent(setup, student, 0, setup.currentPeriod.id);
-      await createPendingSubjectForStudent(setup, student, 1, setup.currentPeriod.id);
+      // Subject 0: MP still pendiente (unresolved → failed at closure)
+      await createPendingSubjectForStudent(setup, student, 0, setup.currentPeriod.id, 'pendiente');
+      // Subject 1: MP already aprobada (student passed the encounter)
+      await createPendingSubjectForStudent(setup, student, 1, setup.currentPeriod.id, 'aprobada');
 
       const result = await executeClosure(setup);
       expect(result.success).toBe(true);
@@ -316,8 +318,9 @@ describe('Period Closure Rules — Integration Tests', () => {
       setup = await standardSetup(3, 3);
       // Student in grade 1 (2do año) with 2 pending subjects, both approved
       const student = await createStudentWithGrades(setup, 1, { 0: 15, 1: 14, 2: 12 });
-      await createPendingSubjectForStudent(setup, student, 0, setup.currentPeriod.id);
-      await createPendingSubjectForStudent(setup, student, 1, setup.currentPeriod.id);
+      // Both MPs already aprobada (student passed the encounters)
+      await createPendingSubjectForStudent(setup, student, 0, setup.currentPeriod.id, 'aprobada');
+      await createPendingSubjectForStudent(setup, student, 1, setup.currentPeriod.id, 'aprobada');
 
       const result = await executeClosure(setup);
       expect(result.success).toBe(true);
@@ -353,8 +356,8 @@ describe('Period Closure Rules — Integration Tests', () => {
       setup = await standardSetup(3, 3);
       // Student in grade 1 with 1 pending subject (approved), 2 regular subjects reprobadas
       const student = await createStudentWithGrades(setup, 1, { 0: 15, 1: 8, 2: 7 });
-      // Pending subject is subject 0 (approved with 15)
-      await createPendingSubjectForStudent(setup, student, 0, setup.currentPeriod.id);
+      // Pending subject is subject 0 (already aprobada — student passed the encounter)
+      await createPendingSubjectForStudent(setup, student, 0, setup.currentPeriod.id, 'aprobada');
 
       const result = await executeClosure(setup);
       expect(result.success).toBe(true);

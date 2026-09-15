@@ -46,12 +46,20 @@ Endpoint: `POST /api/period-closure/:periodId/checklist` – upsert de entradas 
 Endpoint: `GET /api/period-closure/:periodId/preview`
 
 - Service: `periodClosurePreview.ts`.
+- Solo procesa inscripciones principales (`regular` / `repitiente`). Las
+  inscripciones de `materia_pendiente` se evalúan a través del motor de
+  promoción, que descubre las MP en inscripciones separadas del mismo
+  estudiante.
 - Calcula para cada estudiante:
-  - Nota final por materia (`finalGradeCalculator`).
+  - Nota final por materia (`finalGradeCalculator`), aplicando reparaciones
+    (última nota manual) incluso cuando no exista `SubjectFinalGrade` regular
+    (fallback desde `SubjectTermGrade`).
   - Resultado global (aprobado / reprobado / con pendientes / egresado).
   - Grado destino según `SchoolPeriodTransitionRule` + `studentPromotionEngine`.
   - Distinción de rezagado (vía `metadata.isRezagado`).
-- **No persiste nada**. Solo retorna la simulación.
+- **No persiste nada**. Solo retorna la simulación. `StudentPromotionEngine`
+  se invoca con `persist: false` para no crear ni modificar
+  `StudentPeriodOutcome`.
 
 ### 4. Status
 
@@ -120,6 +128,36 @@ Si el estudiante está en el último grado configurado y reprueba una o más mat
 
 ### R10. Exclusión de estudiantes retirados
 Los estudiantes con `Inscription.withdrawnAt != null` (retirados) se excluyen completamente del proceso de cierre: no se les calcula resultado ni se inscriben en el siguiente período.
+
+### R11. Orden de evaluación: MP → Reparaciones → Promoción
+El cierre evalúa cada estudiante en tres fases, en este orden:
+
+1. **Materias Pendientes (MP)**: Se buscan los `PendingSubject` del estudiante
+   en todas sus inscripciones del período (regular/repitiente **y**
+   `materia_pendiente`). El `status` del `PendingSubject` es la fuente de
+   verdad:
+   - `aprobada` o `convalidada` → MP resuelta exitosamente.
+   - `pendiente` → MP **reprobada** (un MP sin resultado definitivo al
+     momento del cierre se considera reprobada, según decisión del usuario).
+   - Si alguna MP queda reprobada → el estudiante es **rezagado** (repite el
+     grado actual, sin importar las notas del grado actual).
+
+2. **Reparaciones / Revisiones del grado actual**: Se aplica la **última nota
+   manual** ingresada (mayor `opportunity` con `gradedBy != null`). Los
+   marcadores automáticos de NP (`gradedBy == null`) **no** reemplazan una
+   nota manual anterior. La reparación se aplica incluso cuando no exista
+   un `SubjectFinalGrade` regular guardado (fallback desde
+   `SubjectTermGrade`).
+
+3. **Promoción**: Con las notas efectivas (base o reparada) y el resultado de
+   las MP, se aplica R2–R9 para determinar aprobado / pendientes / reprobado
+   / egresado.
+
+### R12. Validación de inscripciones huérfanas de MP
+Los estudiantes **no pueden** tener únicamente una inscripción de
+`materia_pendiente`. Obligatoriamente deben tener una inscripción `regular` o
+`repitiente` en el período. Si se detecta un estudiante con solo inscripción
+MP, el cierre se bloquea con un error de inconsistencia.
 
 ## Distinción "rezagado" vs "repitiente"
 

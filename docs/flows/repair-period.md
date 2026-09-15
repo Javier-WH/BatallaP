@@ -84,6 +84,12 @@ Cada intento de reparacion de una materia por un estudiante.
 - UNIQUE(`revisionPeriodId`, `inscriptionSubjectId`, `opportunity`)
 - La nota final de reparacion para una materia es el **maximo** entre todas las
   oportunidades (`MAX(score)`).
+- **Actualización (decisión del usuario)**: En el cierre de período, se usa la
+  **última nota ingresada manualmente** (mayor `opportunity` con
+  `gradedBy != null`), no `MAX(score)`. Los marcadores automáticos de NP
+  (`gradedBy == null`) no reemplazan una nota manual anterior. Esto coincide
+  con el comportamiento del botón "Finalizar notas de revisión"
+  (`finalizeRevisionGrades`).
 - Si `score >= passingGrade`, `status = 'approved'`.
 - Si `score < passingGrade`, `status = 'failed'`.
 - Solo se califica si el `RevisionPeriod.status = 'open'`.

@@ -42,10 +42,14 @@ export class PeriodClosurePreview {
     const minApprovalSetting = await Setting.findByPk('min_approval_grade');
     const minApproval = minApprovalSetting ? Number(minApprovalSetting.value) : 10;
 
+    // Only process MAIN inscriptions (regular / repitiente).
+    // materia_pendiente inscriptions are evaluated via the MP discovery
+    // inside StudentPromotionEngine — they should not get their own preview
+    // entry.
     const inscriptions = (await Inscription.findAll({
       where: {
         schoolPeriodId,
-        escolaridad: { [Op.ne]: 'transferencia' },
+        escolaridad: { [Op.in]: ['regular', 'repitiente'] },
         withdrawnAt: null
       },
       include: [
@@ -69,20 +73,22 @@ export class PeriodClosurePreview {
           { minApproval }
         );
 
+        // Preview mode: persist=false → no StudentPeriodOutcome is created/updated.
         const evaluation = await StudentPromotionEngine.evaluateInscription(
           inscription.id,
-          summary
+          summary,
+          { persist: false }
         );
 
-        const { outcome, promotionGrade, approvedPendingSubjectIds, failedPendingSubjectIds, isRezagado } = evaluation;
+        const { promotionGrade, approvedPendingSubjectIds, failedPendingSubjectIds, isRezagado, status, graduatedAt, finalAverage, failedSubjects } = evaluation;
 
         previews.push({
           inscriptionId: inscription.id,
-          finalAverage: outcome.finalAverage,
-          failedSubjects: outcome.failedSubjects,
-          status: outcome.status,
+          finalAverage,
+          failedSubjects,
+          status,
           isRezagado,
-          graduatedAt: outcome.graduatedAt,
+          graduatedAt,
           approvedPendingSubjects: approvedPendingSubjectIds.length,
           failedPendingSubjects: failedPendingSubjectIds.length,
           promotionGrade: promotionGrade ? {

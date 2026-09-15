@@ -117,7 +117,7 @@ describe('FinalGradeCalculator', () => {
     });
 
     it('repair grade (revision) → reemplaza finalScore y status', async () => {
-      const { structure, term1, term2, inscription, insSub } = await setupInscriptionWithSubject('fgc5');
+      const { structure, term1, term2, person, inscription, insSub } = await setupInscriptionWithSubject('fgc5');
       await createQualification(insSub.id, structure.periodGradeSubject.id, structure.section.id, term1.id, 5, 100);
       await createQualification(insSub.id, structure.periodGradeSubject.id, structure.section.id, term2.id, 5, 100);
 
@@ -135,6 +135,7 @@ describe('FinalGradeCalculator', () => {
         opportunity: 1,
         status: 'approved',
         score: 14,
+        gradedBy: person.id,
       });
 
       const result = await FinalGradeCalculator.calculateForInscription(inscription.id);
@@ -243,7 +244,7 @@ describe('FinalGradeCalculator', () => {
     });
 
     it('repair grade → reemplaza finalScore', async () => {
-      const { structure, inscription, insSub } = await setupInscriptionWithSubject('fgc11');
+      const { structure, person, inscription, insSub } = await setupInscriptionWithSubject('fgc11');
       await SubjectFinalGrade.create({
         inscriptionSubjectId: insSub.id,
         finalScore: 5,
@@ -267,6 +268,7 @@ describe('FinalGradeCalculator', () => {
         opportunity: 1,
         status: 'approved',
         score: 16,
+        gradedBy: person.id,
       });
 
       const result = await FinalGradeCalculator.calculateForInscriptionFast(inscription.id);

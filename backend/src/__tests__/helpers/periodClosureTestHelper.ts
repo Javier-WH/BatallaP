@@ -20,6 +20,7 @@ import {
   CouncilChecklist,
   RevisionPeriod,
   PendingSubject,
+  InscriptionSubjectRevision,
 } from '@/models/index';
 import { PeriodClosureExecutor } from '@/services/periodClosureExecutor';
 
@@ -334,13 +335,14 @@ export async function createPendingSubjectForStudent(
   student: StudentWithGrades,
   subjectIndex: number,
   originPeriodId?: number,
+  status: 'pendiente' | 'aprobada' | 'convalidada' = 'pendiente',
 ): Promise<PendingSubject> {
   const subject = setup.subjects[subjectIndex];
   return await PendingSubject.create({
     newInscriptionId: student.inscription.id,
     subjectId: subject.id,
     originPeriodId: originPeriodId ?? setup.currentPeriod.id,
-    status: 'pendiente',
+    status,
   });
 }
 
@@ -401,4 +403,107 @@ export async function validateClosure(
   setup: ClosureSetup,
 ): Promise<{ valid: boolean; errors: string[]; warnings: string[] }> {
   return await PeriodClosureExecutor.validateClosure(setup.currentPeriod.id);
+}
+
+/**
+ * Creates a separate materia_pendiente inscription for a student in the
+ * current period, with InscriptionSubject + PendingSubject for each subject
+ * index provided. This mirrors the real production flow where MP subjects
+ * live in their own inscription (not the regular/repeater one).
+ */
+export async function createSeparateMPInscription(
+  setup: ClosureSetup,
+  student: StudentWithGrades,
+  subjectIndices: number[],
+  options: { status?: 'pendiente' | 'aprobada' | 'convalidada' } = {},
+): Promise<{ mpInscription: Inscription; pendingSubjects: Map<number, PendingSubject> }> {
+  const suffix = nextId();
+  const status = options.status ?? 'pendiente';
+
+  // Find or create the "Materia Pendiente" section
+  const [mpSection] = await Section.findOrCreate({
+    where: { name: 'Materia Pendiente' },
+    defaults: { name: 'Materia Pendiente' },
+  });
+
+  // The MP inscription is in the same grade as the student's regular inscription
+  const mpInscription = await Inscription.create({
+    personId: student.person.id,
+    schoolPeriodId: setup.currentPeriod.id,
+    gradeId: student.inscription.gradeId,
+    sectionId: mpSection.id,
+    escolaridad: 'materia_pendiente',
+    originPeriodId: setup.currentPeriod.id,
+    isRepeater: false,
+  });
+
+  const pendingSubjects = new Map<number, PendingSubject>();
+  for (const si of subjectIndices) {
+    const subject = setup.subjects[si];
+    const insSub = await InscriptionSubject.create({
+      inscriptionId: mpInscription.id,
+      subjectId: subject.id,
+      schoolPeriodId: setup.currentPeriod.id,
+      gradeId: student.inscription.gradeId,
+      sectionId: mpSection.id,
+    });
+
+    const pending = await PendingSubject.create({
+      newInscriptionId: mpInscription.id,
+      subjectId: subject.id,
+      originPeriodId: setup.currentPeriod.id,
+      status,
+    });
+    pendingSubjects.set(si, pending);
+  }
+
+  return { mpInscription, pendingSubjects };
+}
+
+/**
+ * Creates an InscriptionSubjectRevision (repair attempt) for a given
+ * InscriptionSubject. The `gradedBy` field controls whether this is a
+ * manual grade (Person.id) or an automatic NP marker (null).
+ */
+export async function createRevisionGrade(
+  setup: ClosureSetup,
+  inscriptionSubjectId: number,
+  opportunity: number,
+  score: number | null,
+  options: { gradedBy?: number | null; isAbsent?: boolean } = {},
+): Promise<InscriptionSubjectRevision> {
+  const revisionPeriod = await RevisionPeriod.findOne({
+    where: { schoolPeriodId: setup.currentPeriod.id },
+  });
+  if (!revisionPeriod) {
+    throw new Error('No RevisionPeriod found — call createCompletedRevisionPeriod first');
+  }
+
+  const passingGrade = revisionPeriod.passingGrade ?? 10;
+  const numericScore = score;
+  const isApproved = numericScore != null && numericScore >= passingGrade;
+  const status: 'pending' | 'approved' | 'failed' =
+    numericScore == null ? 'pending' : isApproved ? 'approved' : 'failed';
+
+  return await InscriptionSubjectRevision.create({
+    revisionPeriodId: revisionPeriod.id,
+    inscriptionSubjectId,
+    opportunity,
+    score: numericScore,
+    status,
+    isAbsent: options.isAbsent ?? false,
+    gradedBy: options.gradedBy ?? null,
+    gradedAt: options.gradedBy != null ? new Date() : null,
+  });
+}
+
+/**
+ * Removes the pre-created SubjectFinalGrade (gradeType='regular') for a
+ * given InscriptionSubject, simulating the real pre-closure state where
+ * final grades haven't been persisted yet.
+ */
+export async function removeRegularFinalGrade(inscriptionSubjectId: number): Promise<void> {
+  await SubjectFinalGrade.destroy({
+    where: { inscriptionSubjectId, gradeType: 'regular' },
+  });
 }

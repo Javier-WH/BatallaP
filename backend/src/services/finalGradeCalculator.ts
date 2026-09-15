@@ -217,19 +217,30 @@ export class FinalGradeCalculator {
       transaction: options.transaction,
     });
     let repairPassingGrade: number | null = null;
-    let repairScoresBySubject: Map<number, number> = new Map();
+    let repairScoresBySubject = new Map<number, number>();
     if (revisionPeriod && (revisionPeriod.status === 'completed' || revisionPeriod.status === 'closed')) {
       repairPassingGrade = revisionPeriod.passingGrade;
       const revisions = await InscriptionSubjectRevision.findAll({
         where: { revisionPeriodId: revisionPeriod.id },
         transaction: options.transaction,
       });
+      // Use the LAST MANUALLY ENTERED grade (highest opportunity with
+      // gradedBy != null), not MAX(score). Automatic NP markers
+      // (gradedBy == null) do not replace a manual grade.
+      const lastManualBySubject = new Map<number, { opportunity: number; score: number }>();
       for (const rev of revisions) {
         if (rev.score == null) continue;
-        const current = repairScoresBySubject.get(rev.inscriptionSubjectId);
-        if (current == null || rev.score > current) {
-          repairScoresBySubject.set(rev.inscriptionSubjectId, Number(rev.score));
+        if (rev.gradedBy == null) continue; // skip automatic NP
+        const current = lastManualBySubject.get(rev.inscriptionSubjectId);
+        if (current == null || rev.opportunity > current.opportunity) {
+          lastManualBySubject.set(rev.inscriptionSubjectId, {
+            opportunity: rev.opportunity,
+            score: Number(rev.score),
+          });
         }
+      }
+      for (const [insSubId, entry] of lastManualBySubject) {
+        repairScoresBySubject.set(insSubId, entry.score);
       }
     }
 
@@ -502,12 +513,23 @@ export class FinalGradeCalculator {
         },
         transaction: options.transaction,
       });
+      // Use the LAST MANUALLY ENTERED grade (highest opportunity with
+      // gradedBy != null), not MAX(score). Automatic NP markers
+      // (gradedBy == null) do not replace a manual grade.
+      const lastManualBySubject = new Map<number, { opportunity: number; score: number }>();
       for (const rev of revisions) {
         if (rev.score == null) continue;
-        const current = repairScoresBySubject.get(rev.inscriptionSubjectId);
-        if (current == null || rev.score > current) {
-          repairScoresBySubject.set(rev.inscriptionSubjectId, Number(rev.score));
+        if (rev.gradedBy == null) continue; // skip automatic NP
+        const current = lastManualBySubject.get(rev.inscriptionSubjectId);
+        if (current == null || rev.opportunity > current.opportunity) {
+          lastManualBySubject.set(rev.inscriptionSubjectId, {
+            opportunity: rev.opportunity,
+            score: Number(rev.score),
+          });
         }
+      }
+      for (const [insSubId, entry] of lastManualBySubject) {
+        repairScoresBySubject.set(insSubId, entry.score);
       }
     }
 
@@ -534,29 +556,33 @@ export class FinalGradeCalculator {
 
     for (const insSub of orderedSubjects) {
       const fg = fgMap.get(insSub.id);
+      const repairScore = repairScoresBySubject.get(insSub.id);
+      const hasRepair = repairScore != null;
 
       let effectiveFinalScore: number;
       let effectiveStatus: 'aprobada' | 'reprobada';
       let rawScore = 0;
       let councilPoints = 0;
 
-      if (fg) {
-        const repairScore = repairScoresBySubject.get(insSub.id);
-        const hasRepair = repairScore != null;
-
-        if (hasRepair) {
-          effectiveFinalScore = roundFinalGrade(repairScore!);
-          effectiveStatus = resolveGradeStatus(repairScore!, repairPassingGrade ?? minApproval);
-        } else {
-          effectiveFinalScore = Number(fg.finalScore) || 0;
-          effectiveStatus = fg.status as 'aprobada' | 'reprobada';
+      if (hasRepair) {
+        // Repair grade replaces the original completely — applies whether
+        // or not a regular SubjectFinalGrade exists (term-grade fallback).
+        effectiveFinalScore = roundFinalGrade(repairScore!);
+        effectiveStatus = resolveGradeStatus(repairScore!, repairPassingGrade ?? minApproval);
+        if (fg) {
+          rawScore = Number(fg.rawScore) || 0;
+          councilPoints = Number(fg.councilPoints) || 0;
         }
+      } else if (fg) {
+        effectiveFinalScore = Number(fg.finalScore) || 0;
+        effectiveStatus = fg.status as 'aprobada' | 'reprobada';
         rawScore = Number(fg.rawScore) || 0;
         councilPoints = Number(fg.councilPoints) || 0;
       } else {
-        // No pre-existing final grade — fall back to computing from term grades
-        // (mirrors the certified grades Excel fallback so the closure preview
-        // stays consistent with that report before the closure executes).
+        // No pre-existing final grade and no repair — fall back to computing
+        // from term grades (mirrors the certified grades Excel fallback so
+        // the closure preview stays consistent with that report before the
+        // closure executes).
         const tgList = termGradesByInsSub.get(insSub.id) || [];
         if (tgList.length === 0) {
           continue;

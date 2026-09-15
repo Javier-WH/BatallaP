@@ -1,10 +1,11 @@
-import { Transaction } from 'sequelize';
+import { Transaction, Op } from 'sequelize';
 import {
   Grade,
   Inscription,
   SchoolPeriodTransitionRule,
   StudentPeriodOutcome,
-  Setting
+  Setting,
+  PendingSubject,
 } from '@/models/index';
 import { FinalGradeSummary, SubjectResultSummary } from './finalGradeCalculator';
 import { getSubjectNotRepairableMapByGradeAndPeriod } from './subjectOrderService';
@@ -16,18 +17,30 @@ type InscriptionWithOutcome = Inscription & {
 interface EvaluateOptions {
   transaction?: Transaction;
   now?: Date;
+  /** When false, do NOT persist StudentPeriodOutcome (preview mode). */
+  persist?: boolean;
 }
 
 interface EvaluateResult {
-  outcome: StudentPeriodOutcome;
+  outcome: StudentPeriodOutcome | null;
   pendingSubjects: SubjectResultSummary[];
   promotionGrade?: Grade | null;
   /** Subject IDs of previously-pending subjects that were approved this period. */
   approvedPendingSubjectIds: number[];
-  /** Subject IDs of previously-pending subjects that were re-approved (still failed). */
+  /** Subject IDs of previously-pending subjects that remain unresolved/failed. */
   failedPendingSubjectIds: number[];
   /** True when the student is repeating because they failed a pending subject (rezagado). */
   isRezagado: boolean;
+  /** Computed status (always available, even in preview mode). */
+  status: 'aprobado' | 'materias_pendientes' | 'reprobado';
+  /** Computed promotion grade ID (always available, even in preview mode). */
+  promotionGradeId: number | null;
+  /** Computed graduatedAt (always available, even in preview mode). */
+  graduatedAt: Date | null;
+  /** Computed finalAverage (always available, even in preview mode). */
+  finalAverage: number | null;
+  /** Computed failedSubjects count (always available, even in preview mode). */
+  failedSubjects: number;
 }
 
 export class StudentPromotionEngine {
@@ -36,6 +49,7 @@ export class StudentPromotionEngine {
     summary: FinalGradeSummary,
     options: EvaluateOptions = {}
   ): Promise<EvaluateResult> {
+    const persist = options.persist ?? true;
     const inscription = (await Inscription.findByPk(inscriptionId, {
       include: [{ model: StudentPeriodOutcome, as: 'periodOutcome' }],
       transaction: options.transaction
@@ -62,29 +76,43 @@ export class StudentPromotionEngine {
     );
 
     // --- Pending subjects evaluation (R5, R6, R7) ---
-    const { PendingSubject } = await import('@/models/index');
+    // Discover MP records across the student's inscriptions in this period.
+    // In production, pending subjects live in a SEPARATE materia_pendiente
+    // inscription, not the regular/repeater one being evaluated here.
+    const mpInscriptions = await Inscription.findAll({
+      where: {
+        schoolPeriodId: inscription.schoolPeriodId,
+        personId: inscription.personId,
+        escolaridad: 'materia_pendiente',
+        withdrawnAt: null,
+      },
+      transaction: options.transaction,
+    });
+    const mpInscriptionIds = mpInscriptions.map(i => i.id);
+    // Also include the current inscription ID for legacy compatibility
+    // (tests that attach PendingSubject directly to the regular inscription).
+    const allInscriptionIds = [...mpInscriptionIds, inscription.id];
 
-    // Find active pending subjects for this inscription
     const pendingSubjectsRecords = await PendingSubject.findAll({
       where: {
-        newInscriptionId: inscription.id,
-        status: 'pendiente'
+        newInscriptionId: { [Op.in]: allInscriptionIds },
       },
-      transaction: options.transaction
+      transaction: options.transaction,
     });
 
-    const pendingSubjectIds = new Set(pendingSubjectsRecords.map(ps => ps.subjectId));
-
-    // Collect approved and failed pending subject IDs
+    // Collect approved and failed pending subject IDs.
+    // Per the documented rules:
+    //   - status='aprobada' or 'convalidada' → resolved successfully
+    //   - status='pendiente' at closure → FAILED (user clarification:
+    //     an unresolved MP without a definitive result is considered failed)
     const approvedPendingSubjectIds: number[] = [];
     const failedPendingSubjectIds: number[] = [];
 
-    for (const result of summary.subjectResults) {
-      if (!pendingSubjectIds.has(result.subjectId)) continue;
-      if (result.status === 'aprobada') {
-        approvedPendingSubjectIds.push(result.subjectId);
-      } else if (result.status === 'reprobada') {
-        failedPendingSubjectIds.push(result.subjectId);
+    for (const ps of pendingSubjectsRecords) {
+      if (ps.status === 'aprobada' || ps.status === 'convalidada') {
+        approvedPendingSubjectIds.push(ps.subjectId);
+      } else if (ps.status === 'pendiente') {
+        failedPendingSubjectIds.push(ps.subjectId);
       }
     }
 
@@ -122,13 +150,16 @@ export class StudentPromotionEngine {
       }
     };
 
-    let outcome = inscription.periodOutcome ?? null;
-    if (outcome) {
-      await outcome.update(payload, { transaction: options.transaction });
-    } else {
-      outcome = await StudentPeriodOutcome.create(payload, {
-        transaction: options.transaction
-      });
+    let outcome: StudentPeriodOutcome | null = null;
+    if (persist) {
+      outcome = inscription.periodOutcome ?? null;
+      if (outcome) {
+        await outcome.update(payload, { transaction: options.transaction });
+      } else {
+        outcome = await StudentPeriodOutcome.create(payload, {
+          transaction: options.transaction
+        });
+      }
     }
 
     // Exclude subjects flagged as "No Reparable" from pending subjects — they
@@ -157,7 +188,12 @@ export class StudentPromotionEngine {
       promotionGrade,
       approvedPendingSubjectIds,
       failedPendingSubjectIds,
-      isRezagado
+      isRezagado,
+      status,
+      promotionGradeId,
+      graduatedAt,
+      finalAverage: summary.finalAverage,
+      failedSubjects: summary.failedSubjects,
     };
   }
 

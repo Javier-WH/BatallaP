@@ -139,6 +139,30 @@ export class PeriodClosureExecutor {
       ]
     });
 
+    // Detect orphan MP-only students: a person with a materia_pendiente
+    // inscription but NO regular/repitiente inscription in this period.
+    // Per the user, students cannot have only MP — they must have a
+    // regular or repeater inscription. Block closure if found.
+    const personIdsInPeriod = new Set(inscriptions.map(i => i.personId));
+    const mpOnlyPersons = new Set<number>();
+    for (const insc of inscriptions) {
+      if (insc.escolaridad === 'materia_pendiente') {
+        // Check if this person has a regular/repitiente inscription
+        const hasMain = inscriptions.some(
+          i => i.personId === insc.personId &&
+               (i.escolaridad === 'regular' || i.escolaridad === 'repitiente')
+        );
+        if (!hasMain) {
+          mpOnlyPersons.add(insc.personId);
+        }
+      }
+    }
+    if (mpOnlyPersons.size > 0) {
+      errors.push(
+        `Hay ${mpOnlyPersons.size} estudiante(s) con inscripción de materia_pendiente pero sin inscripción regular/repitiente. ` +
+        `Los estudiantes no pueden tener únicamente materia pendiente. Corrija la inconsistencia antes de cerrar.`
+      );
+    }
 
     return {
       valid: errors.length === 0,
@@ -200,7 +224,7 @@ export class PeriodClosureExecutor {
       const inscriptions = await Inscription.findAll({
         where: {
           schoolPeriodId,
-          escolaridad: { [Op.ne]: 'transferencia' },
+          escolaridad: { [Op.in]: ['regular', 'repitiente'] },
           withdrawnAt: null
         },
         include: [
@@ -241,15 +265,28 @@ export class PeriodClosureExecutor {
             { transaction, now: startedAt }
           );
 
-          const { outcome, pendingSubjects, promotionGrade, approvedPendingSubjectIds } = evaluation;
+          const { pendingSubjects, promotionGrade, approvedPendingSubjectIds, status: evalStatus, promotionGradeId: evalPromotionGradeId, graduatedAt: evalGraduatedAt, finalAverage: evalFinalAverage, failedSubjects: evalFailedSubjects } = evaluation;
 
-          // R6/R7: Mark previously-pending subjects that were approved as resolved
+          // R6/R7: Mark previously-pending subjects that were approved as resolved.
+          // MP subjects may live in a separate materia_pendiente inscription, so
+          // we update across all of the student's inscriptions in this period.
           if (approvedPendingSubjectIds.length > 0) {
+            // Find all inscription IDs for this person in this period (regular + MP)
+            const personInscriptions = await Inscription.findAll({
+              where: {
+                schoolPeriodId,
+                personId: inscription.personId,
+                withdrawnAt: null,
+              },
+              attributes: ['id'],
+              transaction,
+            });
+            const personInscriptionIds = personInscriptions.map(i => i.id);
             await PendingSubject.update(
               { status: 'aprobada', resolvedAt: startedAt },
               {
                 where: {
-                  newInscriptionId: inscription.id,
+                  newInscriptionId: { [Op.in]: personInscriptionIds },
                   subjectId: { [Op.in]: approvedPendingSubjectIds },
                   status: 'pendiente'
                 },
@@ -259,28 +296,28 @@ export class PeriodClosureExecutor {
           }
 
           // R8: Skip graduates — no new inscription needed
-          if (outcome.graduatedAt) {
+          if (evalGraduatedAt) {
             stats.approved++;
             processLog.push({
               inscriptionId: inscription.id,
               studentId: inscription.personId,
               status: 'egresado',
-              graduatedAt: outcome.graduatedAt,
+              graduatedAt: evalGraduatedAt,
               approvedPendingSubjects: approvedPendingSubjectIds.length
             });
             continue;
           }
 
-          if (outcome.status === 'aprobado') {
+          if (evalStatus === 'aprobado') {
             stats.approved++;
-          } else if (outcome.status === 'materias_pendientes') {
+          } else if (evalStatus === 'materias_pendientes') {
             stats.withPendingSubjects++;
-          } else if (outcome.status === 'reprobado') {
+          } else if (evalStatus === 'reprobado') {
             stats.failed++;
           }
 
-          const targetGradeId = outcome.promotionGradeId || inscription.gradeId;
-          const isRepeating = outcome.status === 'reprobado';
+          const targetGradeId = evalPromotionGradeId || inscription.gradeId;
+          const isRepeating = evalStatus === 'reprobado';
 
           const targetPeriodGrade = await PeriodGrade.findOne({
             where: {
@@ -427,9 +464,9 @@ export class PeriodClosureExecutor {
             studentId: inscription.personId,
             oldGrade: inscription.gradeId,
             newGrade: targetGradeId,
-            status: outcome.status,
-            finalAverage: outcome.finalAverage,
-            failedSubjects: outcome.failedSubjects,
+            status: evalStatus,
+            finalAverage: evalFinalAverage,
+            failedSubjects: evalFailedSubjects,
             newInscriptionId: newInscription.id,
             pendingSubjectsCount: pendingSubjects.length
           });
