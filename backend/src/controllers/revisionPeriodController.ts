@@ -33,6 +33,13 @@ import {
   Term,
 } from '@/models/index';
 
+/** Resolve the configured max grade (setting `max_grade`, default 20). */
+async function getMaxGrade(): Promise<number> {
+  const setting = await Setting.findOne({ where: { key: 'max_grade' } });
+  const n = Number(setting?.getDataValue('value'));
+  return Number.isFinite(n) && n > 0 ? n : 20;
+}
+
 export const getRevisionPeriod = async (req: Request, res: Response) => {
   try {
     const schoolPeriodId = parseInt(req.params.schoolPeriodId, 10);
@@ -631,6 +638,12 @@ export const saveRevisionGrade = async (req: Request, res: Response) => {
       await t.rollback();
       return res.status(400).json({ message: 'La nota de revisión debe ser un número entero' });
     }
+    // Validate the score range against the configured max grade
+    const maxGrade = await getMaxGrade();
+    if (submittedScore !== null && (submittedScore < 0 || submittedScore > maxGrade)) {
+      await t.rollback();
+      return res.status(400).json({ message: `La nota de revisión debe estar entre 0 y ${maxGrade}` });
+    }
     // A score of zero is always an absence, regardless of the input method.
     const absentFlag = !!isAbsent || submittedScore === 0;
     // When absent: score = 0, status = failed (matches evaluation plan logic)
@@ -787,6 +800,12 @@ export const bulkSaveRevisionGrades = async (req: Request, res: Response) => {
       if (submittedScore !== null && (!Number.isFinite(submittedScore) || !Number.isInteger(submittedScore))) {
         await t.rollback();
         return res.status(400).json({ message: 'La nota de revisión debe ser un número entero' });
+      }
+      // Validate the score range against the configured max grade
+      const maxGrade = await getMaxGrade();
+      if (submittedScore !== null && (submittedScore < 0 || submittedScore > maxGrade)) {
+        await t.rollback();
+        return res.status(400).json({ message: `La nota de revisión debe estar entre 0 y ${maxGrade}` });
       }
       // A score of zero is always an absence, regardless of the input method.
       const absentFlag = !!isAbsent || submittedScore === 0;
@@ -1077,6 +1096,12 @@ export const overrideRevisionGrade = async (req: Request, res: Response) => {
     if (submittedScore !== null && (!Number.isFinite(submittedScore) || !Number.isInteger(submittedScore))) {
       await t.rollback();
       return res.status(400).json({ message: 'La nota de revisión debe ser un número entero' });
+    }
+    // Validate the score range against the configured max grade
+    const maxGrade = await getMaxGrade();
+    if (submittedScore !== null && (submittedScore < 0 || submittedScore > maxGrade)) {
+      await t.rollback();
+      return res.status(400).json({ message: `La nota de revisión debe estar entre 0 y ${maxGrade}` });
     }
 
     const absentFlag = !!isAbsent || submittedScore === 0;

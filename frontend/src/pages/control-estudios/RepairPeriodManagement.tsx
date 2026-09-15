@@ -3,7 +3,6 @@ import { Card, Button, Tag, Space, Typography, Spin, message, Alert, Statistic, 
 import { PlayCircleOutlined, StopOutlined, ReloadOutlined, CheckCircleOutlined, ClockCircleOutlined, CloseCircleOutlined, PrinterOutlined, RetweetOutlined, UndoOutlined, LockOutlined, UnlockOutlined, EditOutlined, CalendarOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import api from '@/services/api';
-import { compareStudents } from '@/utils/studentSort';
 import { useAuth } from '@/context/AuthContext';
 
 const { Title, Text } = Typography;
@@ -446,12 +445,17 @@ const RepairPeriodManagement: React.FC = () => {
       const g = groups.get(gradeKey)!;
       g.students.push(s);
     }
-    // Sort students within each grade canonically (document type → document number → lastName → firstName)
+    // Sort students within each grade: section first (A, B, ...), then
+    // document number (numeric) — same order as the printable Excel.
     for (const g of groups.values()) {
-      g.students.sort((a, b) => compareStudents(
-        { document: a.document, documentType: a.documentType, lastName: a.studentName, firstName: '' },
-        { document: b.document, documentType: b.documentType, lastName: b.studentName, firstName: '' }
-      ));
+      g.students.sort((a, b) => {
+        const secCmp = (a.section || '').localeCompare(b.section || '', 'es', { numeric: true });
+        if (secCmp !== 0) return secCmp;
+        const docA = parseInt(a.document, 10);
+        const docB = parseInt(b.document, 10);
+        if (Number.isFinite(docA) && Number.isFinite(docB) && docA !== docB) return docA - docB;
+        return (a.document || '').localeCompare(b.document || '', 'es', { numeric: true });
+      });
     }
     return Array.from(groups.values()).sort((a, b) => {
       const orderA = a.students[0]?.gradeOrder ?? 999;
@@ -931,7 +935,8 @@ const RepairPeriodManagement: React.FC = () => {
                                                 disabled={isSaving}
                                                 onChange={e => {
                                                   const raw = e.target.value.replace(/[^0-9]/g, '');
-                                                  const v = raw === '' ? null : Number(raw);
+                                                  // Clamp to the configured max grade (e.g. 20)
+                                                  const v = raw === '' ? null : Math.min(Number(raw), maxGrade);
                                                   setEditValues(prev => ({ ...prev, [editKey]: v }));
                                                   if (v === 0) {
                                                     setEditAbsent(prev => ({ ...prev, [editKey]: true }));
