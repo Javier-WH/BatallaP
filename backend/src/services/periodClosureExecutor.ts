@@ -129,10 +129,22 @@ export class PeriodClosureExecutor {
     const mpOnlyStudents = studentGroups.filter(group =>
       group.inscriptions.every(inscription => inscription.escolaridad === 'materia_pendiente')
     );
-    if (mpOnlyStudents.length > 0) {
+    for (const group of mpOnlyStudents) {
+      const reference = group.referenceInscription as Inscription & {
+        student?: Person;
+      };
+      const studentName = reference.student
+        ? `${reference.student.firstName} ${reference.student.lastName}`.trim()
+        : `Persona #${group.personId}`;
+      const document = reference.student?.document
+        ? `Cédula: ${reference.student.document}. `
+        : '';
+
       warnings.push(
-        `Hay ${mpOnlyStudents.length} estudiante(s) con inscripción de materia_pendiente sin inscripción principal. ` +
-        `Serán procesados usando la inscripción disponible.`
+        `${studentName} — ${document}` +
+        'Tiene una inscripción de materia_pendiente, pero no tiene una inscripción principal ' +
+        '(regular, repitiente u otra escolaridad distinta de materia_pendiente) en el período. ' +
+        'Será procesado usando la inscripción disponible como referencia.'
       );
     }
 

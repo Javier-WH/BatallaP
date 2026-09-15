@@ -221,6 +221,13 @@ describe('Closure MP + Repair Sequence — Integration Tests', () => {
         status: 'pendiente',
       });
 
+      const validation = await validateClosure(setup);
+      expect(validation.warnings).toHaveLength(1);
+      expect(validation.warnings[0]).toContain('ORPHAN TEST');
+      expect(validation.warnings[0]).toContain(`Cédula: ORPH`);
+      expect(validation.warnings[0]).toContain('inscripción de materia_pendiente');
+      expect(validation.warnings[0]).toContain('no tiene una inscripción principal');
+
       const result = await executeClosure(setup);
       // Closure should proceed and process the MP-only student once
       expect(result.success).toBe(true);
