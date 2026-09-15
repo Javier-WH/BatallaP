@@ -17,6 +17,7 @@ import {
 import {
   getSubjectOrderMapByGradeAndPeriod,
   getSubjectIncludeInAverageMapByGradeAndPeriod,
+  getSubjectNotRepairableMapByGradeAndPeriod,
   sortSubjectsByOrder,
 } from './subjectOrderService';
 import { filterActiveGroupSubjects, filterActiveGroupSubjectsForTerm } from './subjectGroupService';
@@ -142,6 +143,14 @@ export class FinalGradeCalculator {
       inscriptionSimple.schoolPeriodId,
       options.transaction
     );
+    // Load notRepairable map so subjects flagged with BOTH notRepairable=true
+    // AND includeInAverage=false can be excluded from the closure entirely
+    // (not counted as failed, not in average, no pending subject).
+    const notRepairableMap = await getSubjectNotRepairableMapByGradeAndPeriod(
+      inscriptionSimple.gradeId,
+      inscriptionSimple.schoolPeriodId,
+      options.transaction
+    );
     // Resolve group subjects per term before calculating the annual final.
     // A student may switch subjects inside the same SubjectGroup between
     // lapsos; using one historical InscriptionSubject for every term would
@@ -250,6 +259,13 @@ export class FinalGradeCalculator {
     let subjectCount = 0;
 
     for (const insSub of inscriptionRecord.inscriptionSubjects) {
+      // Skip subjects excluded from closure: notRepairable=true AND
+      // includeInAverage=false. These subjects don't count as failed, don't
+      // affect the average, and don't generate pending subjects.
+      if (notRepairableMap.get(insSub.subjectId) === true &&
+          includeInAverageMap.get(insSub.subjectId) === false) {
+        continue;
+      }
       // SubjectTermGrade is the single source of truth. Group proxies already
       // contain the selected subject's term rows assembled above; regular
       // subjects continue through the existing sync path.
@@ -496,6 +512,13 @@ export class FinalGradeCalculator {
       inscription.schoolPeriodId,
       options.transaction,
     );
+    // Fetch notRepairable map so subjects flagged with BOTH notRepairable=true
+    // AND includeInAverage=false can be excluded from the closure entirely.
+    const notRepairableMap = await getSubjectNotRepairableMapByGradeAndPeriod(
+      inscription.gradeId,
+      inscription.schoolPeriodId,
+      options.transaction,
+    );
 
     // Fetch revision period + repair grades in bulk (if revision is completed/closed)
     const revisionPeriod = await RevisionPeriod.findOne({
@@ -555,6 +578,13 @@ export class FinalGradeCalculator {
     let subjectCount = 0;
 
     for (const insSub of orderedSubjects) {
+      // Skip subjects excluded from closure: notRepairable=true AND
+      // includeInAverage=false. These subjects don't count as failed, don't
+      // affect the average, and don't generate pending subjects.
+      if (notRepairableMap.get(insSub.subjectId) === true &&
+          includeInAverageMap.get(insSub.subjectId) === false) {
+        continue;
+      }
       const fg = fgMap.get(insSub.id);
       const repairScore = repairScoresBySubject.get(insSub.id);
       const hasRepair = repairScore != null;

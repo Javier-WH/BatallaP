@@ -294,4 +294,74 @@ describe('Closure MP + Repair Sequence — Integration Tests', () => {
       expect(afterPreview!.failedSubjects).toBe(0);
     });
   });
+
+  // ============================================================
+  // Subject with notRepairable + includeInAverage=false → excluded
+  // ============================================================
+  describe('Subject excluded by both flags (notRepairable + !includeInAverage)', () => {
+    it('materia reprobada con ambos flags → no cuenta como reprobada ni genera MP', async () => {
+      setup = await standardSetup(2, 3);
+
+      // Mark subject 0 as notRepairable AND includeInAverage=false
+      const pgs0 = setup.periodGradeSubjectsCurrent.get(
+        `${setup.grades[0].id}:${setup.subjects[0].id}`,
+      );
+      expect(pgs0).toBeDefined();
+      await pgs0!.update({ notRepairable: true, includeInAverage: false });
+
+      // Student in grade 0: subject 0 = 8 (reprobada), subjects 1,2 approved
+      const student = await createStudentWithGrades(setup, 0, { 0: 8, 1: 15, 2: 14 });
+
+      const previews = await PeriodClosurePreview.calculatePreview(setup.currentPeriod.id);
+      const studentPreview = previews.find(p => p.inscriptionId === student.inscription.id);
+      expect(studentPreview).toBeDefined();
+      // Subject 0 is excluded → 0 failed subjects → aprobado
+      expect(studentPreview!.failedSubjects).toBe(0);
+      expect(studentPreview!.status).toBe('aprobado');
+    });
+
+    it('materia reprobada con ambos flags → no genera PendingSubject en el cierre', async () => {
+      setup = await standardSetup(2, 3);
+
+      const pgs0 = setup.periodGradeSubjectsCurrent.get(
+        `${setup.grades[0].id}:${setup.subjects[0].id}`,
+      );
+      await pgs0!.update({ notRepairable: true, includeInAverage: false });
+
+      // Student with subject 0 = 8 (reprobada), subjects 1,2 approved
+      const student = await createStudentWithGrades(setup, 0, { 0: 8, 1: 15, 2: 14 });
+
+      const result = await executeClosure(setup);
+      expect(result.success).toBe(true);
+      expect(result.stats.approved).toBe(1);
+
+      // No MP inscription should be created (subject 0 is excluded)
+      const newInscs = await findNextInscriptions(student.person.id, setup.nextPeriod.id);
+      const mpInsc = newInscs.find(i => i.escolaridad === 'materia_pendiente');
+      expect(mpInsc).toBeUndefined();
+
+      // Outcome: aprobado
+      const outcome = await getOutcome(student.inscription.id);
+      expect(outcome!.status).toBe('aprobado');
+      expect(outcome!.failedSubjects).toBe(0);
+    });
+
+    it('materia reprobada con solo notRepairable (sin !includeInAverage) → SI cuenta como reprobada', async () => {
+      setup = await standardSetup(2, 3);
+
+      // Mark subject 0 as notRepairable only (includeInAverage stays true)
+      const pgs0 = setup.periodGradeSubjectsCurrent.get(
+        `${setup.grades[0].id}:${setup.subjects[0].id}`,
+      );
+      await pgs0!.update({ notRepairable: true, includeInAverage: true });
+
+      const student = await createStudentWithGrades(setup, 0, { 0: 8, 1: 15, 2: 14 });
+
+      const previews = await PeriodClosurePreview.calculatePreview(setup.currentPeriod.id);
+      const studentPreview = previews.find(p => p.inscriptionId === student.inscription.id);
+      // Subject 0 counts as failed (only notRepairable, not excluded from closure)
+      expect(studentPreview!.failedSubjects).toBe(1);
+      expect(studentPreview!.status).toBe('materias_pendientes');
+    });
+  });
 });

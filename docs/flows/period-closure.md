@@ -159,6 +159,20 @@ Los estudiantes **no pueden** tener únicamente una inscripción de
 `repitiente` en el período. Si se detecta un estudiante con solo inscripción
 MP, el cierre se bloquea con un error de inconsistencia.
 
+### R13. Exclusión de materias no reparables y no promediables
+Una materia con **ambos** flags marcados en `PeriodGradeSubject` —
+`notRepairable=true` AND `includeInAverage=false` — se **excluye
+completamente** del cierre de período:
+
+- No cuenta como materia reprobada (no incrementa `failedSubjects`).
+- No se incluye en el promedio final.
+- No genera `PendingSubject` en el siguiente período.
+- No aparece en los resultados de la previsualización.
+
+Esto permite configurar materas evaluativas (ej. conducta, asistencia) que
+se califican pero no afectan la promoción. Si solo uno de los dos flags está
+marcado, la materia sigue participando en el cierre según su flag individual.
+
 ## Distinción "rezagado" vs "repitiente"
 
 A nivel técnico, ambos usan `escolaridad='repitiente'` en la inscripción. La diferencia es el **motivo** de la repitencia:
