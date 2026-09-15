@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Card, Button, Tag, Space, Typography, Spin, message, Alert, Statistic, Row, Col, Popconfirm, Checkbox, Tabs, InputNumber, Segmented } from 'antd';
-import { PlayCircleOutlined, StopOutlined, ReloadOutlined, CheckCircleOutlined, ClockCircleOutlined, CloseCircleOutlined, PrinterOutlined, RetweetOutlined, UndoOutlined, LockOutlined, UnlockOutlined, EditOutlined } from '@ant-design/icons';
+import { Card, Button, Tag, Space, Typography, Spin, message, Alert, Statistic, Row, Col, Popconfirm, Checkbox, Tabs, InputNumber, Segmented, Modal, DatePicker } from 'antd';
+import { PlayCircleOutlined, StopOutlined, ReloadOutlined, CheckCircleOutlined, ClockCircleOutlined, CloseCircleOutlined, PrinterOutlined, RetweetOutlined, UndoOutlined, LockOutlined, UnlockOutlined, EditOutlined, CalendarOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import api from '@/services/api';
 import { compareStudents } from '@/utils/studentSort';
@@ -72,6 +72,7 @@ interface StudentSubject {
   revisions: RevisionItem[];
   passed: boolean;
   subjectOrder?: number;
+  periodGradeSubjectId?: number | null;
 }
 
 interface StudentRevision {
@@ -92,6 +93,7 @@ interface GradeSubjectColumn {
   subjectName: string;
   abbreviation: string;
   subjectOrder: number;
+  periodGradeSubjectId?: number | null;
 }
 
 const RepairPeriodManagement: React.FC = () => {
@@ -116,6 +118,12 @@ const RepairPeriodManagement: React.FC = () => {
   const [editValues, setEditValues] = useState<Record<number, number | null>>({});
   const [editAbsent, setEditAbsent] = useState<Record<number, boolean>>({});
   const [savingIds, setSavingIds] = useState<Set<number>>(new Set());
+
+  // Opportunity dates state: pgsId -> opportunity -> date
+  const [oppDatesByPgs, setOppDatesByPgs] = useState<Record<number, Record<number, string | null>>>({});
+  const [datesModalSubject, setDatesModalSubject] = useState<{ pgsId: number; subjectName: string; abbreviation: string } | null>(null);
+  const [datesModalValues, setDatesModalValues] = useState<Record<number, string | null>>({});
+  const [datesSaving, setDatesSaving] = useState(false);
 
   const canOverride = user?.roles.includes('Control de Estudios') || isMaster;
 
@@ -154,24 +162,77 @@ const RepairPeriodManagement: React.FC = () => {
 
   useEffect(() => { fetchData(); }, []);
 
-  // Fetch opportunity dates for all subjects+sections in the current view
+  // Fetch opportunity dates for all subjects in the current view.
+  // We collect unique periodGradeSubjectIds from gradeSubjects and query
+  // the revision-grades opportunity-dates endpoint for each.
   const fetchOppDates = useCallback(async () => {
-    if (!students.length || !summary?.revisionPeriod) return;
-    // We need periodGradeSubjectId for each subject. The students endpoint
-    // doesn't return it, so we fetch from the revision-grades endpoint
-    // which returns opportunity dates per pgsId+sectionId.
-    // For simplicity, fetch all opportunity dates for the active period
-    // by querying per unique grade+section combination.
-    // Actually, the API needs pgsId + sectionId. We don't have pgsId here.
-    // Let's fetch from the revision-grades opportunity-dates endpoint
-    // which accepts pgsId + sectionId as query params.
-    // Since we don't have pgsId in the student data, we'll skip dates
-    // for now and rely on gradedAt from the revision items.
-    // TODO: if opportunity dates are needed in headers, the students
-    // endpoint should include them.
-  }, [students, summary]);
+    if (!summary?.revisionPeriod || !gradeSubjects) return;
+    const pgsIds = new Set<number>();
+    Object.values(gradeSubjects).forEach((subjects) => {
+      subjects.forEach((s) => {
+        if (s.periodGradeSubjectId) pgsIds.add(s.periodGradeSubjectId);
+      });
+    });
+    if (pgsIds.size === 0) return;
+    try {
+      const results: Record<number, Record<number, string | null>> = {};
+      await Promise.all(
+        Array.from(pgsIds).map(async (pgsId) => {
+          try {
+            const res = await api.get('/revision-grades/opportunity-dates', { params: { pgsId } });
+            const dates: Record<number, string | null> = {};
+            (res.data.dates || []).forEach((d: { opportunity: number; date: string | null }) => {
+              dates[d.opportunity] = d.date;
+            });
+            results[pgsId] = dates;
+          } catch {
+            results[pgsId] = {};
+          }
+        })
+      );
+      setOppDatesByPgs(results);
+    } catch (error) {
+      console.error('[fetchOppDates] Error:', error);
+    }
+  }, [gradeSubjects, summary]);
 
   useEffect(() => { fetchOppDates(); }, [fetchOppDates]);
+
+  // Open the dates modal for a subject
+  const handleOpenDatesModal = (pgsId: number, subjectName: string, abbreviation: string) => {
+    const maxOpp = summary?.revisionPeriod?.maxOpportunities ?? 3;
+    const current = oppDatesByPgs[pgsId] || {};
+    const values: Record<number, string | null> = {};
+    for (let i = 1; i <= maxOpp; i++) {
+      values[i] = current[i] ?? null;
+    }
+    setDatesModalValues(values);
+    setDatesModalSubject({ pgsId, subjectName, abbreviation });
+  };
+
+  // Save opportunity dates from the modal
+  const handleSaveOpportunityDates = async () => {
+    if (!datesModalSubject) return;
+    setDatesSaving(true);
+    try {
+      const maxOpp = summary?.revisionPeriod?.maxOpportunities ?? 3;
+      const dates = Array.from({ length: maxOpp }, (_, i) => ({
+        opportunity: i + 1,
+        date: datesModalValues[i + 1] || null,
+      }));
+      await api.put('/revision-grades/opportunity-dates', {
+        periodGradeSubjectId: datesModalSubject.pgsId,
+        dates,
+      });
+      message.success('Fechas guardadas');
+      setOppDatesByPgs(prev => ({ ...prev, [datesModalSubject.pgsId]: { ...datesModalValues } }));
+      setDatesModalSubject(null);
+    } catch (error: any) {
+      message.error(error?.response?.data?.message || 'Error al guardar fechas');
+    } finally {
+      setDatesSaving(false);
+    }
+  };
 
   const handleOpen = async () => {
     if (!activePeriodId) return;
@@ -366,6 +427,7 @@ const RepairPeriodManagement: React.FC = () => {
           revisions: [],
           passed: true,
           subjectOrder: col.subjectOrder,
+          periodGradeSubjectId: col.periodGradeSubjectId ?? null,
         }));
         groups.set(gradeKey, { grade: gradeKey, students: [], subjects });
       }
@@ -733,16 +795,31 @@ const RepairPeriodManagement: React.FC = () => {
                                 <th className="repair-col-doc">Cédula</th>
                                 <th className="repair-col-name">Apellidos y Nombres</th>
                                 <th className="repair-col-section">Sección</th>
-                                {group.subjects.map((subj) => (
+                                {group.subjects.map((subj) => {
+                                  const pgsId = subj.periodGradeSubjectId;
+                                  const oppDates = pgsId ? (oppDatesByPgs[pgsId] || {}) : {};
+                                  const headerDate = nominaView === 'final'
+                                    ? Object.values(oppDates).filter(Boolean).pop() || null
+                                    : oppDates[selectedOpp] || null;
+                                  return (
                                   <th key={subj.abbreviation} className="repair-col-subj" title={subj.subjectName}>
-                                    <div>{subj.abbreviation}</div>
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2 }}>
+                                      <span>{subj.abbreviation}</span>
+                                      {pgsId && !gradesFinalized && canOverride && (
+                                        <CalendarOutlined
+                                          style={{ fontSize: 10, color: '#1677ff', cursor: 'pointer' }}
+                                          onClick={(e) => { e.stopPropagation(); handleOpenDatesModal(pgsId, subj.subjectName, subj.abbreviation); }}
+                                        />
+                                      )}
+                                    </div>
                                     {/* Reserve space for date + opportunity line */}
                                     <div className="repair-col-meta">
-                                      <span className="repair-col-date">&nbsp;</span>
+                                      <span className="repair-col-date">{headerDate ? dayjs(headerDate).format('DD/MM/YY') : '\u00A0'}</span>
                                       {nominaView === 'final' && <span className="repair-col-opp">&nbsp;</span>}
                                     </div>
                                   </th>
-                                ))}
+                                  );
+                                })}
                               </tr>
                             </thead>
                             <tbody>
@@ -910,6 +987,82 @@ const RepairPeriodManagement: React.FC = () => {
           </>
         )}
       </Spin>
+
+      <Modal
+        title={`Fechas de Revisión — ${datesModalSubject?.abbreviation || ''}`}
+        open={!!datesModalSubject}
+        onCancel={() => setDatesModalSubject(null)}
+        onOk={handleSaveOpportunityDates}
+        okText="Guardar"
+        cancelText="Cancelar"
+        confirmLoading={datesSaving}
+        width={420}
+      >
+        {datesModalSubject && summary?.revisionPeriod && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, paddingTop: 8 }}>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              {datesModalSubject.subjectName} — Asigne una fecha para cada oportunidad de revisión.
+            </Text>
+            {Array.from({ length: summary.revisionPeriod.maxOpportunities || 3 }, (_, i) => i + 1).map(opp => {
+              const minDate = (() => {
+                for (let p = opp - 1; p >= 1; p--) {
+                  if (datesModalValues[p]) return dayjs(datesModalValues[p]);
+                }
+                return null;
+              })();
+              const maxDate = (() => {
+                for (let p = opp + 1; p <= (summary.revisionPeriod?.maxOpportunities || 3); p++) {
+                  if (datesModalValues[p]) return dayjs(datesModalValues[p]);
+                }
+                return null;
+              })();
+              return (
+                <div key={opp} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <span style={{ fontWeight: 700, fontSize: 13, width: 120 }}>Oportunidad {opp}:</span>
+                  <DatePicker
+                    format="DD/MM/YYYY"
+                    value={datesModalValues[opp] ? dayjs(datesModalValues[opp]) : null}
+                    onChange={(date) => {
+                      const newDate = date ? date.format('YYYY-MM-DD') : null;
+                      if (newDate) {
+                        for (let p = 1; p < opp; p++) {
+                          if (datesModalValues[p] && dayjs(newDate).isBefore(dayjs(datesModalValues[p]))) {
+                            message.warning(`La Oportunidad ${opp} no puede ser anterior a la Oportunidad ${p}`);
+                            return;
+                          }
+                        }
+                        for (let p = opp + 1; p <= (summary.revisionPeriod?.maxOpportunities || 3); p++) {
+                          if (datesModalValues[p] && dayjs(newDate).isAfter(dayjs(datesModalValues[p]))) {
+                            message.warning(`La Oportunidad ${opp} no puede ser posterior a la Oportunidad ${p}`);
+                            return;
+                          }
+                        }
+                        for (let p = 1; p <= (summary.revisionPeriod?.maxOpportunities || 3); p++) {
+                          if (p !== opp && datesModalValues[p] && dayjs(newDate).isSame(dayjs(datesModalValues[p]), 'day')) {
+                            message.warning(`La Oportunidad ${opp} no puede tener la misma fecha que la Oportunidad ${p}`);
+                            return;
+                          }
+                        }
+                      }
+                      setDatesModalValues(prev => ({ ...prev, [opp]: newDate }));
+                    }}
+                    disabledDate={(current) => {
+                      if (!current) return false;
+                      if (minDate && current.isBefore(minDate, 'day')) return true;
+                      if (maxDate && current.isAfter(maxDate, 'day')) return true;
+                      for (let p = 1; p <= (summary.revisionPeriod?.maxOpportunities || 3); p++) {
+                        if (p !== opp && datesModalValues[p] && current.isSame(dayjs(datesModalValues[p]), 'day')) return true;
+                      }
+                      return false;
+                    }}
+                    style={{ width: 200 }}
+                  />
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </Modal>
 
       <style>{`
         .repair-sheet-container {

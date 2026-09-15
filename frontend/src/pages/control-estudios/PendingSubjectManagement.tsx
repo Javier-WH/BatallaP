@@ -898,15 +898,14 @@ const PendingSubjectManagement: React.FC = () => {
                     size="small"
                     style={{
                       borderRadius: 10,
-                      opacity: isEnabled ? 1 : 0.6,
                       border: isEnabled ? '1px solid #d9f7be' : '1px solid #f0f0f0',
                       background: isEnabled ? '#f6ffed' : '#fafafa',
                     }}
                     styles={{ body: { padding: 12 } }}
                   >
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <Text strong ellipsis style={{ display: 'block', fontSize: 13 }}>
+                      <div style={{ flex: 1, minWidth: 0, opacity: isEnabled ? 1 : 0.6 }}>
+                        <Text strong ellipsis style={{ display: 'block', fontSize: 13, color: isEnabled ? undefined : '#8c8c8c' }}>
                           {subject.name}
                         </Text>
                         <Space size={4} style={{ marginTop: 4 }}>
@@ -933,7 +932,7 @@ const PendingSubjectManagement: React.FC = () => {
                         Registrar
                       </Button>
                     </div>
-                    <div style={{ display: 'flex', gap: 4, marginTop: 8 }}>
+                    <div style={{ display: 'flex', gap: 4, marginTop: 8, opacity: isEnabled ? 1 : 0.6 }}>
                       <Button
                         size="small"
                         icon={<CalendarOutlined />}
@@ -1611,14 +1610,14 @@ const PendingSubjectManagement: React.FC = () => {
         }
         .mp-col-idx { width: 40px; }
         .mp-col-doc { width: 100px; }
-        .mp-col-name { text-align: left; min-width: 200px; }
+        .mp-nomina-sheet th.mp-col-name { text-align: left; min-width: 200px; }
         @media (max-width: 768px), (max-height: 500px) and (orientation: landscape) {
           .mp-col-name, .mp-cell-name { position: static; left: auto; z-index: auto; min-width: 160px; }
         }
         .mp-col-subj { min-width: 60px; max-width: 100px; }
         .mp-cell-idx { background: #fafbfc; font-weight: 600; color: #8c8c8c; }
         .mp-cell-doc { font-size: 11px; color: #666; }
-        .mp-cell-name { text-align: left; font-weight: 500; }
+        .mp-nomina-sheet td.mp-cell-name { text-align: left; font-weight: 500; }
         .mp-cell-filled {
           background: #e8ecf0;
           border: 1px solid #c4cad3 !important;

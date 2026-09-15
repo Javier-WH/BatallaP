@@ -179,6 +179,7 @@ export const getRevisionStudents = async (req: Request, res: Response) => {
           subjectName: s.name || '',
           abbreviation: s.abbreviation || s.name || '',
           subjectOrder: orderMap.get(s.id) ?? 999,
+          periodGradeSubjectId: s.PeriodGradeSubject?.id ?? null,
         }));
         gradeSubjectsCache.set(gradeId, sorted);
         return sorted;
@@ -357,6 +358,7 @@ export const getRevisionStudents = async (req: Request, res: Response) => {
         subjectName: s.name || '',
         abbreviation: s.abbreviation || s.name || '',
         subjectOrder: orderMap.get(s.id) ?? 999,
+        periodGradeSubjectId: s.PeriodGradeSubject?.id ?? null,
       }));
       gradeSubjectsCache.set(gradeId, sorted);
       return sorted;
