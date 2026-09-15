@@ -141,13 +141,33 @@ describe('Closure MP + Repair Sequence — Integration Tests', () => {
     it('principal + MP inscription producen una sola fila de preview', async () => {
       setup = await standardSetup(3, 3);
       const student = await createStudentWithGrades(setup, 1, { 0: 15, 1: 14, 2: 12 });
-      await createSeparateMPInscription(setup, student, [0], { status: 'aprobada' });
+      const { mpInscription } = await createSeparateMPInscription(setup, student, [0], { status: 'aprobada' });
 
       const previews = await PeriodClosurePreview.calculatePreview(setup.currentPeriod.id);
       const studentRows = previews.filter(row => row.inscription?.student?.id === student.person.id);
 
       expect(studentRows).toHaveLength(1);
       expect(studentRows[0].inscriptionId).toBe(student.inscription.id);
+    });
+
+    it('usa la inscripción del grado superior aunque escolaridad no la identifique como principal', async () => {
+      setup = await standardSetup(3, 3);
+      const student = await createStudentWithGrades(setup, 1, { 0: 15, 1: 14, 2: 12 });
+      const { mpInscription } = await createSeparateMPInscription(setup, student, [0], { status: 'aprobada' });
+
+      // Simulate the real data shape: the lower-grade MP exists and the
+      // higher-grade inscription is the current one, regardless of escolaridad.
+      await mpInscription.update({ gradeId: setup.grades[0].id });
+      await student.inscription.update({ escolaridad: 'materia_pendiente' });
+
+      const validation = await validateClosure(setup);
+      expect(validation.warnings).toHaveLength(0);
+
+      const previews = await PeriodClosurePreview.calculatePreview(setup.currentPeriod.id);
+      const studentPreview = previews.find(row => row.inscription?.student?.id === student.person.id);
+      expect(studentPreview).toBeDefined();
+      expect(studentPreview!.inscriptionId).toBe(student.inscription.id);
+      expect(studentPreview!.inscription.grade?.id).toBe(setup.grades[1].id);
     });
   });
 
@@ -225,8 +245,8 @@ describe('Closure MP + Repair Sequence — Integration Tests', () => {
       expect(validation.warnings).toHaveLength(1);
       expect(validation.warnings[0]).toContain('ORPHAN TEST');
       expect(validation.warnings[0]).toContain(`Cédula: ORPH`);
-      expect(validation.warnings[0]).toContain('inscripción de materia_pendiente');
-      expect(validation.warnings[0]).toContain('no tiene una inscripción principal');
+      expect(validation.warnings[0]).toContain('sección de materia_pendiente');
+      expect(validation.warnings[0]).toContain('no tiene otra inscripción activa');
 
       const result = await executeClosure(setup);
       // Closure should proceed and process the MP-only student once

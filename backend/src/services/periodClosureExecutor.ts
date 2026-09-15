@@ -126,9 +126,7 @@ export class PeriodClosureExecutor {
     }
 
     const studentGroups = await loadClosureStudentGroups(schoolPeriodId);
-    const mpOnlyStudents = studentGroups.filter(group =>
-      group.inscriptions.every(inscription => inscription.escolaridad === 'materia_pendiente')
-    );
+    const mpOnlyStudents = studentGroups.filter(group => group.isPendingOnly);
     for (const group of mpOnlyStudents) {
       const reference = group.referenceInscription as Inscription & {
         student?: Person;
@@ -142,8 +140,8 @@ export class PeriodClosureExecutor {
 
       warnings.push(
         `${studentName} — ${document}` +
-        'Tiene una inscripción de materia_pendiente, pero no tiene una inscripción principal ' +
-        '(regular, repitiente u otra escolaridad distinta de materia_pendiente) en el período. ' +
+        'Solo tiene inscripciones en la sección de materia_pendiente y no tiene otra inscripción ' +
+        'activa en el período para representar su grado actual. ' +
         'Será procesado usando la inscripción disponible como referencia.'
       );
     }

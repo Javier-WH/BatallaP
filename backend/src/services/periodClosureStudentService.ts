@@ -10,8 +10,10 @@ import {
 export interface ClosureStudentGroup {
   personId: number;
   inscriptions: Inscription[];
-  /** Main inscription when available; MP-only falls back to the first inscription. */
+  /** Highest-grade inscription used as the promotion reference. */
   referenceInscription: Inscription;
+  /** True when every active inscription belongs to the Materia Pendiente section. */
+  isPendingOnly: boolean;
 }
 
 type InscriptionWithClosureRelations = Inscription & {
@@ -56,10 +58,25 @@ export async function loadClosureStudentGroups(
     groups.set(inscription.personId, existing);
   }
 
+  const isPendingSection = (inscription: InscriptionWithClosureRelations): boolean => {
+    const sectionName = inscription.section?.name ?? '';
+    return sectionName
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .replace(/\s+/g, ' ')
+      .trim() === 'materia pendiente';
+  };
+
   return Array.from(groups.entries()).map(([personId, groupedInscriptions]) => {
     const referenceInscription = [...groupedInscriptions].sort((a, b) => {
-      const aIsMp = a.escolaridad === 'materia_pendiente' ? 1 : 0;
-      const bIsMp = b.escolaridad === 'materia_pendiente' ? 1 : 0;
+      const aGradeOrder = (a as InscriptionWithClosureRelations).grade?.order ?? Number.MIN_SAFE_INTEGER;
+      const bGradeOrder = (b as InscriptionWithClosureRelations).grade?.order ?? Number.MIN_SAFE_INTEGER;
+      const gradeResult = bGradeOrder - aGradeOrder;
+      if (gradeResult !== 0) return gradeResult;
+
+      const aIsMp = isPendingSection(a as InscriptionWithClosureRelations) ? 1 : 0;
+      const bIsMp = isPendingSection(b as InscriptionWithClosureRelations) ? 1 : 0;
       return aIsMp - bIsMp || a.id - b.id;
     })[0];
 
@@ -67,6 +84,9 @@ export async function loadClosureStudentGroups(
       personId,
       inscriptions: groupedInscriptions,
       referenceInscription,
+      isPendingOnly: groupedInscriptions.every(inscription =>
+        isPendingSection(inscription as InscriptionWithClosureRelations)
+      ),
     };
   });
 }
