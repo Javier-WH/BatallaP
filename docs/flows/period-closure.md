@@ -181,6 +181,22 @@ Esto permite configurar materas evaluativas (ej. conducta, asistencia) que
 se califican pero no afectan la promoción. Si solo uno de los dos flags está
 marcado, la materia sigue participando en el cierre según su flag individual.
 
+### R14. Ciclo de vida de `withdrawnAt` al retirar/reactivar/reinscribir
+El campo `Inscription.withdrawnAt` es la fuente de verdad para excluir
+estudiantes del cierre (R10). Para mantenerlo consistente con el estado de
+la matrícula:
+
+- **`withdrawInscription`** (`POST /api/inscriptions/:id/withdraw`):
+  setea `withdrawnAt = new Date()` al retirar.
+- **`reactivateInscription`** (`POST /api/inscriptions/:id/reactivate`):
+  resetea `withdrawnAt = null` al reactivar un estudiante retirado.
+- **`enrollMatriculatedStudent`** (`POST /api/matriculations/:id/enroll`):
+  resetea `withdrawnAt = null` al reinscribir un estudiante cuya inscripción
+  existente estaba retirada.
+
+Esto evita que un estudiante retirado y luego reactivado quede excluido
+del cierre por un `withdrawnAt` residual.
+
 ## Distinción "rezagado" vs "repitiente"
 
 A nivel técnico, ambos usan `escolaridad='repitiente'` en la inscripción. La diferencia es el **motivo** de la repitencia:

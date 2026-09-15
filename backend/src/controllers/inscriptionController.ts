@@ -616,6 +616,7 @@ export const enrollMatriculatedStudent = async (req: Request, res: Response) => 
       // update the section and clear any withdrawn state.
       existingInscription.sectionId = targetSectionId;
       existingInscription.escolaridad = escolaridadValue;
+      (existingInscription as any).withdrawnAt = null;
       await existingInscription.save({ transaction: t });
 
       matriculation.escolaridad = escolaridadValue;
@@ -2216,6 +2217,7 @@ export const withdrawInscription = async (req: Request, res: Response) => {
     }
 
     (inscription as any).sectionId = null;
+    (inscription as any).withdrawnAt = new Date();
     await inscription.save({ transaction: t });
 
     matriculation.status = 'withdrawn';
@@ -2282,6 +2284,7 @@ export const reactivateInscription = async (req: Request, res: Response) => {
     }
 
     inscription.sectionId = sectionId;
+    (inscription as any).withdrawnAt = null;
     await inscription.save({ transaction: t });
 
     matriculation.status = 'completed';
