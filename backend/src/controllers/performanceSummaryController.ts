@@ -226,6 +226,7 @@ function fillSheetByNamedRanges(
   isMpSection?: boolean,
   isRevisionSection?: boolean,
   isAbsentFn?: (insSub: any) => boolean,
+  pendingExcludedPersonIds?: Set<number>,
 ): void {
   // Only writes when value is non-empty. Empty/undefined values leave the
   // cell untouched, preserving the template's decorative content (e.g. "***"
@@ -398,6 +399,12 @@ function fillSheetByNamedRanges(
       const score = insSub ? calculateFinalScore(insSub) : null;
       const col = subjectColList[i].col;
       const row = 15 + n;
+      // Students with unresolved pending subjects repeat the year — all their
+      // grades are shown as "P" (Pendiente) instead of numeric scores.
+      if (pendingExcludedPersonIds && pendingExcludedPersonIds.has(ins.personId)) {
+        sheet.getRow(row).getCell(col).value = 'P';
+        continue;
+      }
       const isLiteral = insSub?.subject?.usesLiteralGrades ?? columnSubject?.usesLiteralGrades;
       // For MP sections, check if the student was absent (I) instead of showing 00
       const mpIsAbsent = isMpSection && insSub ? (() => {
@@ -613,6 +620,24 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
     if (inscriptions.length === 0) {
       return res.status(404).json({ message: 'No hay estudiantes inscritos en esta seccion' });
     }
+
+    // Students with unresolved pending subjects (PendingSubject.status='pendiente'
+    // in this school period) repeat the year — all their grades are exported
+    // as "P" (Pendiente). PendingSubject links to the MP inscription, so we
+    // match through the inscription association and exclude by personId.
+    const pendingExcludedRows = await PendingSubject.findAll({
+      where: { status: 'pendiente' },
+      attributes: ['id'],
+      include: [{
+        model: Inscription,
+        as: 'inscription',
+        where: { schoolPeriodId: Number(schoolPeriodId) },
+        attributes: ['personId'],
+      }],
+    });
+    const pendingExcludedPersonIds = new Set<number>(
+      pendingExcludedRows.map((p: any) => p.inscription?.personId).filter((id: any) => typeof id === 'number')
+    );
 
     if (historicalMode) {
       const historicalByPerson = new Map<number, any[]>();
@@ -1353,6 +1378,9 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
         letterGradesConfig,
         lastCouncilDate,
         isMpSection && !historicalMode,
+        undefined,
+        undefined,
+        pendingExcludedPersonIds,
       );
 
       // Override the evaluation type for this group. We do it after the

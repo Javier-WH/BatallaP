@@ -4,7 +4,7 @@ import ExcelJS from 'exceljs';
 import fs from 'fs';
 import path from 'path';
 import sequelize from '@/config/database';
-import { RevisionPeriodService } from '@/services/revisionPeriodService';
+import { RevisionPeriodService, getPersonIdsWithUnresolvedPending } from '@/services/revisionPeriodService';
 import { sortInscriptions } from '@/services/studentSortService';
 import { logGradeChange } from '@/services/gradeChangeLogService';
 import {
@@ -203,11 +203,23 @@ export const getRevisionStudents = async (req: Request, res: Response) => {
         });
       }
 
+      // Students with unresolved pending subjects (Materia Pendiente) are
+      // excluded — hide their existing revisions from the UI without
+      // deleting them (Opción A: filtrar, no borrar).
+      const periodInscriptionIds = (await Inscription.findAll({
+        where: { schoolPeriodId },
+        attributes: ['id'],
+      })).map(i => i.id);
+      const excludedPersonIds = await getPersonIdsWithUnresolvedPending(schoolPeriodId, periodInscriptionIds);
+
       for (const rev of revisions) {
         const insSub = (rev as any).inscriptionSubject;
         if (!insSub) continue;
         const ins = insSub.inscription;
         if (!ins) continue;
+
+        // Skip students who still owe pending subjects — they cannot go to revision.
+        if (excludedPersonIds.has(ins.personId)) continue;
 
         // Skip subjects flagged as "No Reparable" — hide existing revisions
         // from the UI without deleting them (Opción A: filtrar, no borrar).
@@ -323,6 +335,12 @@ export const getRevisionStudents = async (req: Request, res: Response) => {
 
     const studentMap = new Map<number, any>();
     const processedSubjects = new Set<number>();
+    // Students with unresolved pending subjects (Materia Pendiente) are
+    // excluded from the revision preview entirely.
+    const excludedPersonIds = await getPersonIdsWithUnresolvedPending(
+      schoolPeriodId,
+      allInscriptions.map(i => i.id)
+    );
     // Cache subject order maps by gradeId for canonical subject ordering
     const orderMapCache = new Map<number, Map<number, number>>();
     const resolveOrderMap = async (gradeId: number | null | undefined) => {
@@ -365,6 +383,8 @@ export const getRevisionStudents = async (req: Request, res: Response) => {
     };
 
     for (const ins of allInscriptions) {
+      // Skip students who still owe pending subjects — they cannot go to revision.
+      if (excludedPersonIds.has((ins as any).personId)) continue;
       const insAny = ins as any;
       const insSubjects = insAny.inscriptionSubjects || [];
       const subjects: any[] = [];
@@ -1339,6 +1359,10 @@ export const exportRevisionNominaExcel = async (req: Request, res: Response) => 
       revisionMap.delete(insSubId);
     }
 
+    // Students with unresolved pending subjects (Materia Pendiente) are
+    // excluded from the revision nomina entirely.
+    const excludedPersonIds = await getPersonIdsWithUnresolvedPending(schoolPeriodId, inscriptionIds);
+
     // Build grade groups: gradeId -> { gradeName, gradeOrder, subjects (canonical), students }
     const gradeGroupsMap = new Map<number, {
       gradeName: string;
@@ -1396,6 +1420,8 @@ export const exportRevisionNominaExcel = async (req: Request, res: Response) => 
 
     for (const ins of allInscriptions) {
       const insAny = ins as any;
+      // Skip students who still owe pending subjects — they cannot go to revision.
+      if (excludedPersonIds.has(insAny.personId)) continue;
       const gradeId = insAny.gradeId;
       if (!gradeId) continue;
       const gradeName = insAny.grade?.name || '';

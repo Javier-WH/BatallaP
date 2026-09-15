@@ -49,6 +49,7 @@
 | CU-01c | El período ya está abierto | Error: "El período de reparación ya está abierto" |
 | CU-01d | El período ya fue cerrado | Error: "El período de reparación ya fue cerrado" |
 | CU-01e | Hay lapsos sin bloquear | Error: "Todos los lapsos deben estar bloqueados" |
+| CU-01f | Estudiante con Materia Pendiente sin resolver (`PendingSubject.status='pendiente'`) | El estudiante se excluye por completo del proceso de revisión: no se crean revisiones para sus materias reprobadas ni de sus materias pendientes. Si luego aprueba todas sus pendientes y se recalcula, vuelve a entrar |
 
 ---
 

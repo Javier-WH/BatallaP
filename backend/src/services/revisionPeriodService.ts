@@ -4,6 +4,7 @@ import {
   Inscription,
   InscriptionSubject,
   InscriptionSubjectRevision,
+  PendingSubject,
   PeriodGrade,
   PeriodGradeSubject,
   RevisionPeriod,
@@ -16,6 +17,33 @@ import {
 import { isPassingGrade } from './gradeEvaluationService';
 import { TermSectionClosureService } from './termSectionClosureService';
 import { getSubjectNotRepairableMapByGradeAndPeriod } from './subjectOrderService';
+
+/**
+ * Collect the personIds of students who still have unresolved pending
+ * subjects (PendingSubject.status='pendiente') in the given school period.
+ * PendingSubject links to the MP inscription, so we match through all
+ * inscriptions of the period and exclude by student (personId).
+ */
+export async function getPersonIdsWithUnresolvedPending(
+  schoolPeriodId: number,
+  inscriptionIds: number[],
+  transaction?: Transaction
+): Promise<Set<number>> {
+  if (inscriptionIds.length === 0) return new Set();
+  const pendingRows = await PendingSubject.findAll({
+    where: { newInscriptionId: { [Op.in]: inscriptionIds }, status: 'pendiente' },
+    attributes: ['newInscriptionId'],
+    transaction,
+  });
+  if (pendingRows.length === 0) return new Set();
+  const pendingInscriptionIds = new Set(pendingRows.map(p => p.newInscriptionId));
+  const inscriptions = await Inscription.findAll({
+    where: { id: { [Op.in]: Array.from(pendingInscriptionIds) } },
+    attributes: ['id', 'personId'],
+    transaction,
+  });
+  return new Set(inscriptions.map(i => i.personId));
+}
 
 export interface RevisionPeriodSummary {
   revisionPeriod: RevisionPeriod | null;
@@ -202,10 +230,19 @@ export class RevisionPeriodService {
     const termIds = terms.map(t => t.id);
     const termCount = terms.length || 1;
 
+    // Students with unresolved pending subjects (Materia Pendiente) are
+    // excluded from the revision process entirely — they will repeat the
+    // grade at closure if they fail their pending subjects, so repairing
+    // regular subjects would be meaningless.
+    const inscriptionIdList = allInscriptions.map(i => i.id);
+    const excludedPersonIds = await getPersonIdsWithUnresolvedPending(schoolPeriodId, inscriptionIdList, transaction);
+
     const failedSubjects: Array<{ inscriptionSubjectId: number }> = [];
     const uniqueSet = new Set<number>();
 
     for (const ins of allInscriptions) {
+      // Skip students who still owe pending subjects — they cannot go to revision.
+      if (excludedPersonIds.has((ins as any).personId)) continue;
       const insSubjects = (ins as any).inscriptionSubjects || [];
       const notRepairableSet = await resolveNotRepairable((ins as any).gradeId);
       for (const insSub of insSubjects) {
@@ -420,9 +457,15 @@ export class RevisionPeriodService {
       transaction,
     });
 
-    // Build set of currently-failed inscriptionSubjectIds
+    // Build set of currently-failed inscriptionSubjectIds.
+    // Students with unresolved pending subjects are excluded — no new
+    // revisions are created for them (existing ones are hidden by the
+    // students endpoint).
+    const inscriptionIdList = allInscriptions.map(i => i.id);
+    const excludedPersonIds = await getPersonIdsWithUnresolvedPending(schoolPeriodId, inscriptionIdList, transaction);
     const failedSubjectIds = new Set<number>();
     for (const ins of allInscriptions) {
+      if (excludedPersonIds.has((ins as any).personId)) continue;
       const insSubjects = (ins as any).inscriptionSubjects || [];
       for (const insSub of insSubjects) {
         const termGrades: any[] = insSub.termGrades || [];
