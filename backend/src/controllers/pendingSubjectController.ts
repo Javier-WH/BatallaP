@@ -388,9 +388,12 @@ export const removeStudentFromMp = async (req: Request, res: Response) => {
       transaction: t,
     });
 
-    // Delete SubjectFinalGrade if exists (only the materia_pendiente record)
+    // Delete SubjectFinalGrade if exists (only the MP records — both P and M types)
     await SubjectFinalGrade.destroy({
-      where: { inscriptionSubjectId: insSubj.id, gradeType: 'materia_pendiente' },
+      where: {
+        inscriptionSubjectId: insSubj.id,
+        gradeType: { [Op.in]: ['materia_pendiente', 'revision_materia_pendiente'] },
+      },
       transaction: t,
     });
 
@@ -806,10 +809,14 @@ export const saveMpFinalGrade = async (req: Request, res: Response) => {
     // Use provided date (local noon to avoid TZ offset) or now
     const calculatedDate = date ? new Date(`${date}T12:00:00`) : new Date();
 
-    // Upsert SubjectFinalGrade with gradeType='materia_pendiente'
+    // Upsert the single MP-type SubjectFinalGrade row (P or M — preserve the
+    // existing type, e.g. Revisión de Materia Pendiente from the last encounter).
     // Use findOne + update/create instead of upsert (composite unique index on inscriptionSubjectId + gradeType)
     const existingMPGrade = await SubjectFinalGrade.findOne({
-      where: { inscriptionSubjectId, gradeType: 'materia_pendiente' },
+      where: {
+        inscriptionSubjectId,
+        gradeType: { [Op.in]: ['materia_pendiente', 'revision_materia_pendiente'] },
+      },
       transaction: t,
     });
     if (existingMPGrade) {
@@ -1050,9 +1057,13 @@ export const saveMpQualification = async (req: Request, res: Response) => {
 
     if (insSubj) {
       // Always upsert the final grade — allow overwriting even if previously approved
-      // This lets both teachers and Control de Estudios correct grades
+      // This lets both teachers and Control de Estudios correct grades.
+      // Single MP-type row per subject: preserve the existing type (P or M).
       const existingMPGrade = await SubjectFinalGrade.findOne({
-        where: { inscriptionSubjectId, gradeType: 'materia_pendiente' },
+        where: {
+          inscriptionSubjectId,
+          gradeType: { [Op.in]: ['materia_pendiente', 'revision_materia_pendiente'] },
+        },
         transaction: t,
       });
       if (existingMPGrade) {
@@ -1608,10 +1619,13 @@ export const saveMpEncounterScore = async (req: Request, res: Response) => {
             status: 'pendiente',
             resolvedAt: null,
           }, { transaction: t });
-          // Remove the SubjectFinalGrade if it exists (only the materia_pendiente record)
+          // Remove the SubjectFinalGrade if it exists (MP records — both P and M types)
           if (insSubj) {
             await SubjectFinalGrade.destroy({
-              where: { inscriptionSubjectId: insSubj.id, gradeType: 'materia_pendiente' },
+              where: {
+                inscriptionSubjectId: insSubj.id,
+                gradeType: { [Op.in]: ['materia_pendiente', 'revision_materia_pendiente'] },
+              },
               transaction: t,
             });
           }
@@ -1676,8 +1690,17 @@ export const saveMpEncounterScore = async (req: Request, res: Response) => {
       }
 
       if (insSubj) {
+        // Grade obtained in the LAST established encounter = Revisión de
+        // Materia Pendiente (M); obtained in an earlier encounter = Materia
+        // Pendiente (P). Single MP-type row per subject, type switches as needed.
+        const finalGradeType = encounterNumber === maxEnc
+          ? 'revision_materia_pendiente'
+          : 'materia_pendiente';
         const existingMPGrade = await SubjectFinalGrade.findOne({
-          where: { inscriptionSubjectId: insSubj.id, gradeType: 'materia_pendiente' },
+          where: {
+            inscriptionSubjectId: insSubj.id,
+            gradeType: { [Op.in]: ['materia_pendiente', 'revision_materia_pendiente'] },
+          },
           transaction: t,
         });
         if (existingMPGrade) {
@@ -1686,6 +1709,7 @@ export const saveMpEncounterScore = async (req: Request, res: Response) => {
             rawScore: score,
             status: 'aprobada',
             calculatedAt: evaluationDate,
+            gradeType: finalGradeType,
           }, { transaction: t });
         } else {
           await SubjectFinalGrade.create({
@@ -1694,7 +1718,7 @@ export const saveMpEncounterScore = async (req: Request, res: Response) => {
             rawScore: score,
             status: 'aprobada',
             calculatedAt: evaluationDate,
-            gradeType: 'materia_pendiente',
+            gradeType: finalGradeType,
           }, { transaction: t });
         }
       }
@@ -1709,10 +1733,15 @@ export const saveMpEncounterScore = async (req: Request, res: Response) => {
       }
 
       if (encounterNumber === maxEnc) {
-        // Last encounter and still failing → mark as reprobada in SubjectFinalGrade
+        // Last encounter and still failing → mark as reprobada in SubjectFinalGrade.
+        // The definitive grade comes from the last encounter = Revisión de
+        // Materia Pendiente (M).
         if (insSubj) {
           const existingMPGrade = await SubjectFinalGrade.findOne({
-            where: { inscriptionSubjectId: insSubj.id, gradeType: 'materia_pendiente' },
+            where: {
+              inscriptionSubjectId: insSubj.id,
+              gradeType: { [Op.in]: ['materia_pendiente', 'revision_materia_pendiente'] },
+            },
             transaction: t,
           });
           if (existingMPGrade) {
@@ -1721,6 +1750,7 @@ export const saveMpEncounterScore = async (req: Request, res: Response) => {
               rawScore: score,
               status: 'reprobada',
               calculatedAt: evaluationDate,
+              gradeType: 'revision_materia_pendiente',
             }, { transaction: t });
           } else {
             await SubjectFinalGrade.create({
@@ -1729,7 +1759,7 @@ export const saveMpEncounterScore = async (req: Request, res: Response) => {
               rawScore: score,
               status: 'reprobada',
               calculatedAt: evaluationDate,
-              gradeType: 'materia_pendiente',
+              gradeType: 'revision_materia_pendiente',
             }, { transaction: t });
           }
         }

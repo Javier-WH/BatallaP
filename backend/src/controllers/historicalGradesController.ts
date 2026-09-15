@@ -284,9 +284,14 @@ export const getHistoricalGradesBySection = async (req: Request, res: Response) 
 
     // 6. Get InscriptionSubjects + SubjectFinalGrades + SubjectTermGrades
     // Map typeFilter to the gradeType(s) we want to load from SubjectFinalGrade
-    const gradeTypeForFilter: string | null = isConsolidated
+    // 'materia_pendiente' loads both MP types (P and M — Revisión de Materia Pendiente).
+    const gradeTypeForFilter: string | string[] | null = isConsolidated
       ? null  // load all grade types in consolidated mode
-      : (typeFilter === 'final' ? 'regular' : typeFilter === 'revision' ? 'revision' : 'materia_pendiente');
+      : (typeFilter === 'final'
+        ? 'regular'
+        : typeFilter === 'revision'
+          ? 'revision'
+          : ['materia_pendiente', 'revision_materia_pendiente']);
 
     const finalGradeInclude: any = {
       model: SubjectFinalGrade,
