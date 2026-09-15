@@ -401,16 +401,17 @@ function fillSheetByNamedRanges(
       const row = 15 + n;
       // Students with unresolved pending subjects repeat the year — all their
       // grades are shown as "P" (Pendiente) instead of numeric scores.
-      if (pendingExcludedPersonIds && pendingExcludedPersonIds.has(ins.personId)) {
+      // Exception: the Materia Pendiente summary shows the real encounter
+      // grades (or "I" for absences), never "P".
+      if (!isMpSection && pendingExcludedPersonIds && pendingExcludedPersonIds.has(ins.personId)) {
         sheet.getRow(row).getCell(col).value = 'P';
         continue;
       }
       const isLiteral = insSub?.subject?.usesLiteralGrades ?? columnSubject?.usesLiteralGrades;
-      // For MP sections, check if the student was absent (I) instead of showing 00
+      // For MP sections, check if the student was absent (I) instead of showing 00.
+      // The LAST encounter with information governs: if it was an absence -> "I".
       const mpIsAbsent = isMpSection && insSub ? (() => {
         const encs = (insSub.encounters || []).sort((a: any, b: any) => a.encounterNumber - b.encounterNumber);
-        const approvedEnc = encs.find((e: any) => e.score !== null && e.score >= 10 && !e.isAbsent);
-        if (approvedEnc) return false;
         const lastScored = [...encs].reverse().find((e: any) => e.score !== null || e.isAbsent);
         return lastScored ? !!lastScored.isAbsent : false;
       })() : false;
@@ -962,13 +963,12 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
     }
 
     // For MP sections, calculate score from PendingSubject encounters.
+    // The grade is the one from the LAST encounter with information —
+    // approval clears subsequent encounters, so this is normally the
+    // approving encounter; a later CE-edited encounter takes precedence.
     // For regular sections, use the standard term-grade calculation.
     const calculateMpScore = (pendingSubj: any): number | null => {
       const encs = (pendingSubj.encounters || []).sort((a: any, b: any) => a.encounterNumber - b.encounterNumber);
-      // Find the encounter where the student approved (score >= 10, not absent)
-      const approvedEnc = encs.find((e: any) => e.score !== null && e.score >= 10 && !e.isAbsent);
-      if (approvedEnc) return Number(approvedEnc.score);
-      // Otherwise, find the last encounter with a non-null score
       const lastScored = [...encs].reverse().find((e: any) => e.score !== null || e.isAbsent);
       if (lastScored) return lastScored.isAbsent ? 0 : Number(lastScored.score);
       return null;
@@ -1099,6 +1099,13 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
           if (!insSub) continue;
 
           enrolled++;
+          // Students with unresolved pending subjects show "P" in every
+          // subject — they count as "No aprobado" (never passed, never
+          // absent-counted) while their grades remain pending.
+          if (!isMpSection && pendingExcludedPersonIds && pendingExcludedPersonIds.has(ins.personId)) {
+            failed++;
+            continue;
+          }
           const score = calculateFinalScore(insSub);
           if (score == null) continue;
           if (score === 0) zero++;
