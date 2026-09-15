@@ -199,7 +199,7 @@ const buildStudentSheet = (
   ].join('');
 
   return `
-  <div class="sheet">
+  <div class="sheet"><div class="sheet-inner">
     <div class="masthead">
       <div class="masthead-left">
         ${logoHtml}
@@ -282,7 +282,7 @@ const buildStudentSheet = (
         <div class="who">${guideTeacher}</div>
       </div>
     </div>
-  </div>`;
+  </div></div>`;
 };
 
 export const generateBoletinHTML = (data: BoletinHTMLData): string => {
@@ -408,7 +408,15 @@ export const generateBoletinHTML = (data: BoletinHTMLData): string => {
   }));
 
   const enrichedData = { ...data, students: studentsWithTrend };
-  const sheets = studentsWithTrend.map((student) => buildStudentSheet(student, enrichedData)).join('\n');
+  const sheetHtmls = studentsWithTrend.map((student) => buildStudentSheet(student, enrichedData));
+
+  // Two boletines per physical page (letter portrait).
+  const pages: string[] = [];
+  for (let i = 0; i < sheetHtmls.length; i += 2) {
+    const pair = sheetHtmls.slice(i, i + 2).join('\n');
+    pages.push(`<div class="page">${pair}</div>`);
+  }
+  const sheets = pages.join('\n');
 
   return `<!DOCTYPE html>
 <html lang="es">
@@ -446,11 +454,26 @@ export const generateBoletinHTML = (data: BoletinHTMLData): string => {
     padding:16px 0;
   }
 
-  .sheet{
+  .page{
+    display:flex;
+    flex-direction:column;
+    gap:14px;
     max-width:8in;
-    margin:0 auto 10px;
+    margin:0 auto;
+  }
+
+  .sheet{
     background:var(--paper);
     box-shadow:0 6px 20px rgba(16,28,51,0.12);
+    display:flex;
+    flex-direction:column;
+    overflow:hidden;
+  }
+
+  .sheet-inner{
+    display:flex;
+    flex-direction:column;
+    min-height:138.9mm;
   }
 
   /* Masthead */
@@ -578,9 +601,11 @@ export const generateBoletinHTML = (data: BoletinHTMLData): string => {
   /* Grades table */
   .grades{
     margin:12px 22px 0;
+    flex:1 1 auto;
   }
   .grades table{
     width:100%;
+    height:100%;
     border-collapse:collapse;
     background:var(--card);
     font-size:11px;
@@ -723,20 +748,87 @@ export const generateBoletinHTML = (data: BoletinHTMLData): string => {
   }
 
   @media print{
+    /* Real, intentional page margins — this is what actually controls
+       whitespace now. Do NOT rely on the browser's "Pages per sheet"
+       option; print with that set to 1 (off) and Margins: Default so
+       this @page rule is respected. */
+    @page{ size:letter portrait; margin:10mm 12mm; }
+
     body{ background:#fff; padding:0; }
+
+    .page{
+      max-width:none;
+      margin:0;
+      gap:6mm;
+      page-break-after:always;
+      break-after:page;
+    }
+    .page:last-child{ page-break-after:auto; break-after:auto; }
+
     .sheet{
       box-shadow:none;
       max-width:none;
       width:100%;
       margin:0;
+      /* Fixed height = (11in page - 2*10mm top/bottom margin - 6mm gap) / 2.
+         Every sheet gets exactly the same slot regardless of how many
+         subjects it lists, or whether it's paired with a second student
+         on the page. This is a mask: .sheet-inner (below) is what actually
+         fills it, and a small script scales that content down to fit
+         whenever a student has enough subjects to overflow the slot. */
+      height:126.7mm;
+      overflow:hidden;
       page-break-inside:avoid;
-      zoom:0.99;
+      break-inside:avoid;
+    }
+
+    .sheet-inner{
+      min-height:100%;
+      height:100%;
     }
   }
 </style>
 </head>
 <body>
 ${sheets}
+<script>
+(function () {
+  // Each .sheet is a fixed-size print slot; .sheet-inner is the real content.
+  // Short reports already fill the slot via flex-grow (no scaling needed).
+  // Reports with enough subjects to overflow the slot get shrunk down here
+  // so nothing gets clipped by the slot's overflow:hidden.
+  function fitSheets(isPrint) {
+    document.querySelectorAll('.sheet').forEach(function (sheet) {
+      var inner = sheet.querySelector('.sheet-inner');
+      if (!inner) return;
+
+      // Reset first so we always measure the untransformed natural size.
+      inner.style.transform = '';
+      inner.style.width = '';
+      if (!isPrint) return;
+
+      var boxHeight = sheet.clientHeight;
+      var naturalHeight = inner.scrollHeight;
+      if (boxHeight > 0 && naturalHeight > boxHeight) {
+        var scale = boxHeight / naturalHeight;
+        inner.style.transformOrigin = 'top left';
+        inner.style.transform = 'scale(' + scale + ')';
+        inner.style.width = (100 / scale) + '%';
+      }
+    });
+  }
+
+  window.addEventListener('beforeprint', function () { fitSheets(true); });
+  window.addEventListener('afterprint', function () { fitSheets(false); });
+
+  if (window.matchMedia) {
+    var mq = window.matchMedia('print');
+    var handler = function (e) { fitSheets(e.matches); };
+    if (mq.addEventListener) mq.addEventListener('change', handler);
+    else if (mq.addListener) mq.addListener(handler);
+  }
+})();
+</script>
 </body>
 </html>`;
 };
