@@ -38,6 +38,7 @@ import {
 } from '@/models/index';
 import {
   getSubjectOrderMap,
+  getSubjectNotRepairableMapByGradeAndPeriod,
   sortSubjectsByOrder,
 } from '@/services/subjectOrderService';
 import { filterActiveGroupSubjects, filterActiveGroupSubjectsForTerm } from '@/services/subjectGroupService';
@@ -734,9 +735,12 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
 
     if (isMpSection && !historicalMode) {
       // For MP section, build subjectMap from pendingSubjects (each student's
-      // pending subjects with their subject info).
+      // pending subjects with their subject info). Subjects flagged as
+      // "No Reparable" are excluded — they cannot be in Materia Pendiente.
+      const mpNotRepairableMap = await getSubjectNotRepairableMapByGradeAndPeriod(Number(gradeId), Number(schoolPeriodId));
       inscriptions.forEach((ins: any) => {
         (ins.pendingSubjects || []).forEach((ps: any) => {
+          if (mpNotRepairableMap.get(ps.subjectId) === true) return;
           if (ps.subject && !subjectMap.has(ps.subjectId)) {
             subjectMap.set(ps.subjectId, {
               id: ps.subject.id,
@@ -1659,7 +1663,20 @@ export const exportRevisionSummary = async (req: Request, res: Response) => {
       ],
     });
 
-    if (revisionEntries.length === 0) {
+    // Exclude subjects flagged as "No Reparable" — they are excluded from
+    // revision, so their revision entries (if any predate the flag) must not
+    // appear in this export.
+    const notRepairableMap = await getSubjectNotRepairableMapByGradeAndPeriod(Number(gradeId), Number(schoolPeriodId));
+    const notRepairableSubjectIds = new Set<number>();
+    for (const [subjectId, notRepairable] of notRepairableMap.entries()) {
+      if (notRepairable) notRepairableSubjectIds.add(subjectId);
+    }
+    const filteredRevisionEntries = revisionEntries.filter((rev: any) => {
+      const insSub = (rev as any).inscriptionSubject;
+      return !insSub?.subjectId || !notRepairableSubjectIds.has(insSub.subjectId);
+    });
+
+    if (filteredRevisionEntries.length === 0) {
       return res.status(404).json({ message: 'No hay estudiantes con revisión en esta sección' });
     }
 
@@ -1672,7 +1689,7 @@ export const exportRevisionSummary = async (req: Request, res: Response) => {
 
     // Build a set of subjectIds that have at least one graded revision
     const revisionSubjectIds = new Set<number>();
-    for (const rev of revisionEntries) {
+    for (const rev of filteredRevisionEntries) {
       if (!isGradedRevision(rev)) continue;
       const insSub = (rev as any).inscriptionSubject;
       if (insSub?.subject) {
@@ -1686,7 +1703,7 @@ export const exportRevisionSummary = async (req: Request, res: Response) => {
 
     // Build a set of personIds (students) that have at least one graded revision
     const revisionStudentIds = new Set<number>();
-    for (const rev of revisionEntries) {
+    for (const rev of filteredRevisionEntries) {
       if (!isGradedRevision(rev)) continue;
       const ins = (rev as any).inscriptionSubject?.inscription;
       if (ins?.personId) {
@@ -1696,7 +1713,7 @@ export const exportRevisionSummary = async (req: Request, res: Response) => {
 
     // Build a map: inscriptionSubjectId → revisions array
     const revisionsByInsSub = new Map<number, any[]>();
-    for (const rev of revisionEntries) {
+    for (const rev of filteredRevisionEntries) {
       if (!revisionsByInsSub.has(rev.inscriptionSubjectId)) {
         revisionsByInsSub.set(rev.inscriptionSubjectId, []);
       }

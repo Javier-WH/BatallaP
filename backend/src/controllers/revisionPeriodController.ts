@@ -1894,12 +1894,15 @@ export const finalizeRevisionGrades = async (req: Request, res: Response) => {
     let skipped = 0;
 
     for (const [insSubId, revs] of revisionsByInsSubId) {
-      // findFinalRevision: last revision (highest opportunity) with score != null
+      // findFinalRevision: last revision (highest opportunity) with a
+      // human-entered score. Auto-NP markers (opportunity closed without a
+      // grade, gradedBy=null) are not real grades and must never be
+      // recorded as final revision grades.
       let finalRev: any = null;
       const sortedRevs = [...revs].sort((a, b) => a.opportunity - b.opportunity);
       for (let i = sortedRevs.length - 1; i >= 0; i--) {
         const rev = sortedRevs[i];
-        if (rev.score !== null && rev.score !== undefined) {
+        if (rev.score !== null && rev.score !== undefined && rev.gradedBy != null) {
           finalRev = rev;
           break;
         }
