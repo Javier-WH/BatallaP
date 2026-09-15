@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Card, Button, Table, Space, Typography, Row, Col, Tag, Empty,
-  message, Alert, Steps, Modal, Descriptions, Statistic, Divider, Badge, Tooltip,
+  message, Alert, Steps, Modal, Descriptions, Statistic, Divider, Badge, Tooltip, Input,
 } from 'antd';
 import {
   FlagOutlined,
@@ -17,6 +17,7 @@ import {
   LockOutlined,
   CheckOutlined,
   ExclamationCircleOutlined,
+  SearchOutlined,
 } from '@ant-design/icons';
 import { useSchool } from '@/context/SchoolContext';
 import {
@@ -65,6 +66,7 @@ const PeriodClosureManagement: React.FC = () => {
   const [currentStep, setCurrentStep] = useState(0);
   const [previewVisible, setPreviewVisible] = useState(false);
   const [confirmVisible, setConfirmVisible] = useState(false);
+  const [previewSearch, setPreviewSearch] = useState('');
 
   const periodId = activePeriod?.id;
 
@@ -121,6 +123,7 @@ const PeriodClosureManagement: React.FC = () => {
       setLoading(true);
       const data = await getPreviewOutcomes(periodId);
       setPreview(data);
+      setPreviewSearch('');
       setPreviewVisible(true);
       setCurrentStep(2);
     } catch (error: any) {
@@ -159,6 +162,19 @@ const PeriodClosureManagement: React.FC = () => {
   const canValidate = !isClosed && !closureStatus?.closure;
   const canPreview = validation?.valid === true;
   const canExecute = preview !== null && validation?.valid === true && !isClosed;
+
+  // Frontend-only filter for the preview modal (name, last name, document)
+  const filteredPreview = useMemo(() => {
+    if (!preview) return null;
+    const q = previewSearch.trim().toLowerCase();
+    if (!q) return preview;
+    return preview.filter((record) => {
+      const s = record.inscription?.student;
+      if (!s) return false;
+      const haystack = `${s.firstName ?? ''} ${s.lastName ?? ''} ${s.document ?? ''}`;
+      return haystack.toLowerCase().includes(q);
+    });
+  }, [preview, previewSearch]);
 
   const previewColumns = [
     {
@@ -498,13 +514,22 @@ const PeriodClosureManagement: React.FC = () => {
               showIcon
               style={{ marginBottom: 16 }}
             />
+            <Input
+              allowClear
+              prefix={<SearchOutlined style={{ color: '#bfbfbf' }} />}
+              placeholder="Buscar por nombre, apellido o cédula..."
+              value={previewSearch}
+              onChange={(e) => setPreviewSearch(e.target.value)}
+              style={{ marginBottom: 16 }}
+            />
             <Table
               scroll={{ x: 'max-content', y: 500 }}
-              dataSource={preview}
+              dataSource={filteredPreview ?? []}
               columns={previewColumns}
               rowKey="inscriptionId"
               size="small"
               pagination={false}
+              locale={{ emptyText: 'Ningún estudiante coincide con la búsqueda' }}
             />
           </>
         )}
