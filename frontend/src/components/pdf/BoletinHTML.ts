@@ -260,21 +260,10 @@ const buildStudentSheet = (
       ${summaryStats}
     </div>
 
-    <div class="observations">
-      <div class="label">Observaciones</div>
-      <div>${escapeHtml(student.observation || '')}</div>
-    </div>
-
-    <div class="signatures">
-      <div class="sig">
-        <div class="line"></div>
-        <div class="role">Director(a)</div>
-        <div class="who">${escapeHtml(institution.principal || '')}</div>
-      </div>
-      <div class="sig">
-        <div class="line"></div>
-        <div class="role">Control de Estudios</div>
-        <div class="who">&nbsp;</div>
+    <div class="footer-row">
+      <div class="observations">
+        <div class="label">Observaciones</div>
+        <div>${escapeHtml(student.observation || '')}</div>
       </div>
       <div class="sig">
         <div class="line"></div>
@@ -605,7 +594,6 @@ export const generateBoletinHTML = (data: BoletinHTMLData): string => {
   }
   .grades table{
     width:100%;
-    height:100%;
     border-collapse:collapse;
     background:var(--card);
     font-size:11px;
@@ -700,14 +688,20 @@ export const generateBoletinHTML = (data: BoletinHTMLData): string => {
     margin-top:1px;
   }
 
-  /* Observations */
+  /* Footer: observations (left) + docente guía signature (right) */
+  .footer-row{
+    margin:12px 22px 16px;
+    display:flex;
+    align-items:flex-end;
+    gap:16px;
+  }
   .observations{
-    margin:12px 22px 0;
+    flex:1;
     padding:10px 12px;
     background:var(--card);
     border:1px solid var(--line);
-    min-height:30px;
-    max-height:48px;
+    min-height:48px;
+    max-height:68px;
     overflow:hidden;
     font-size:9px;
     line-height:1.3;
@@ -721,26 +715,24 @@ export const generateBoletinHTML = (data: BoletinHTMLData): string => {
     margin-bottom:2px;
   }
 
-  /* Signatures */
-  .signatures{
-    margin:14px 22px 16px;
-    display:grid;
-    grid-template-columns:repeat(3,1fr);
-    gap:12px;
+  /* Signature (single: docente guía) */
+  .footer-row .sig{
+    width:200px;
+    flex-shrink:0;
     text-align:center;
   }
-  .signatures .sig .line{
+  .footer-row .sig .line{
     border-top:1px solid var(--ink);
-    margin:20px 7px 3px;
+    margin:0 7px 3px;
   }
-  .signatures .sig .role{
+  .footer-row .sig .role{
     font-size:8px;
     text-transform:uppercase;
     letter-spacing:.05em;
     color:var(--ink-soft);
     font-weight:600;
   }
-  .signatures .sig .who{
+  .footer-row .sig .who{
     font-size:11px;
     font-weight:600;
     color:var(--navy);
@@ -752,14 +744,14 @@ export const generateBoletinHTML = (data: BoletinHTMLData): string => {
        whitespace now. Do NOT rely on the browser's "Pages per sheet"
        option; print with that set to 1 (off) and Margins: Default so
        this @page rule is respected. */
-    @page{ size:letter portrait; margin:10mm 12mm; }
+    @page{ size:letter portrait; margin:5mm 6mm; }
 
     body{ background:#fff; padding:0; }
 
     .page{
       max-width:none;
       margin:0;
-      gap:6mm;
+      gap:2mm;
       page-break-after:always;
       break-after:page;
     }
@@ -770,13 +762,10 @@ export const generateBoletinHTML = (data: BoletinHTMLData): string => {
       max-width:none;
       width:100%;
       margin:0;
-      /* Fixed height = (11in page - 2*10mm top/bottom margin - 6mm gap) / 2.
-         Every sheet gets exactly the same slot regardless of how many
-         subjects it lists, or whether it's paired with a second student
-         on the page. This is a mask: .sheet-inner (below) is what actually
-         fills it, and a small script scales that content down to fit
-         whenever a student has enough subjects to overflow the slot. */
-      height:126.7mm;
+      /* Fixed height = (11in page - 2*5mm top/bottom margin - 2mm gap) / 2.
+         Slightly reduced to leave slack so the second boletín on the page
+         doesn't get clipped by the browser's page boundary. */
+      height:132.7mm;
       overflow:hidden;
       page-break-inside:avoid;
       break-inside:avoid;
@@ -784,7 +773,6 @@ export const generateBoletinHTML = (data: BoletinHTMLData): string => {
 
     .sheet-inner{
       min-height:100%;
-      height:100%;
     }
   }
 </style>
