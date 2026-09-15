@@ -48,6 +48,7 @@ interface SettingsFormValues {
   council_points_limit?: number;
   council_points_per_subject_limit?: number;
   pending_subject_max_encounters?: number;
+  max_failed_subjects?: number;
   letter_grades?: LetterGrade[];
   remedial_min_grade?: number;
   remedial_max_grade?: number;
@@ -108,6 +109,7 @@ const AcademicSettings: React.FC = () => {
         council_points_limit: res.data.council_points_limit !== undefined ? Number(res.data.council_points_limit) : 2,
         council_points_per_subject_limit: res.data.council_points_per_subject_limit !== undefined ? Number(res.data.council_points_per_subject_limit) : 2,
         pending_subject_max_encounters: res.data.pending_subject_max_encounters !== undefined ? Number(res.data.pending_subject_max_encounters) : 4,
+        max_failed_subjects: res.data.max_failed_subjects !== undefined ? Number(res.data.max_failed_subjects) : 3,
         remedial_min_grade: res.data.remedial_min_grade !== undefined ? Number(res.data.remedial_min_grade) : 1,
         remedial_max_grade: res.data.remedial_max_grade !== undefined ? Number(res.data.remedial_max_grade) : 9,
         remedial_failure_percentage: res.data.remedial_failure_percentage !== undefined ? Number(res.data.remedial_failure_percentage) : 50,
@@ -728,6 +730,16 @@ const AcademicSettings: React.FC = () => {
                     rules={[{ required: true }]}
                   >
                     <InputNumber min={1} max={12} style={{ width: '100%', height: 44, display: 'flex', alignItems: 'center' }} />
+                  </Form.Item>
+                </Col>
+                <Col span={12}>
+                  <Form.Item
+                    name="max_failed_subjects"
+                    label={<Text style={{ fontWeight: 700, fontSize: 13 }}>Máximo de Materias Reprobadas</Text>}
+                    tooltip="Cantidad máxima de materias que un estudiante puede reprobar y aún pasar de año con materias pendientes. Si reprueba más, repite el grado."
+                    rules={[{ required: true }]}
+                  >
+                    <InputNumber min={1} max={20} style={{ width: '100%', height: 44, display: 'flex', alignItems: 'center' }} />
                   </Form.Item>
                 </Col>
               </Row>
