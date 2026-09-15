@@ -281,5 +281,31 @@ describe('FinalGradeCalculator', () => {
       expect(result.subjectResults).toEqual([]);
       expect(result.finalAverage).toBeNull();
     });
+
+    it('sin SubjectFinalGrade pero con SubjectTermGrade → calcula desde lapsos (fallback Excel)', async () => {
+      const { term1, term2, inscription, insSub } = await setupInscriptionWithSubject('fgc13');
+      await SubjectTermGrade.create({ inscriptionSubjectId: insSub.id, termId: term1.id, score: 14 });
+      await SubjectTermGrade.create({ inscriptionSubjectId: insSub.id, termId: term2.id, score: 16 });
+
+      const result = await FinalGradeCalculator.calculateForInscriptionFast(inscription.id);
+
+      expect(result.subjectResults).toHaveLength(1);
+      expect(result.subjectResults[0].finalScore).toBe(15);
+      expect(result.subjectResults[0].status).toBe('aprobada');
+      expect(result.finalAverage).toBe(15);
+    });
+
+    it('fallback desde SubjectTermGrade con promedio reprobado → reprobada', async () => {
+      const { term1, term2, inscription, insSub } = await setupInscriptionWithSubject('fgc14');
+      await SubjectTermGrade.create({ inscriptionSubjectId: insSub.id, termId: term1.id, score: 8 });
+      await SubjectTermGrade.create({ inscriptionSubjectId: insSub.id, termId: term2.id, score: 6 });
+
+      const result = await FinalGradeCalculator.calculateForInscriptionFast(inscription.id);
+
+      expect(result.subjectResults).toHaveLength(1);
+      expect(result.subjectResults[0].finalScore).toBe(7);
+      expect(result.subjectResults[0].status).toBe('reprobada');
+      expect(result.failedSubjects).toBe(1);
+    });
   });
 });

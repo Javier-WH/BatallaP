@@ -20,7 +20,7 @@ import {
   sortSubjectsByOrder,
 } from './subjectOrderService';
 import { filterActiveGroupSubjects, filterActiveGroupSubjectsForTerm } from './subjectGroupService';
-import { resolveGradeStatus, roundGrade, roundFinalGrade } from './gradeEvaluationService';
+import { resolveGradeStatus, roundGrade, roundFinalGrade, isPassingGrade } from './gradeEvaluationService';
 import { TermGradeSyncService } from './termGradeSyncService';
 import { GradeCalculationService } from './gradeCalculationService';
 
@@ -419,12 +419,14 @@ export class FinalGradeCalculator {
   }
 
   /**
-   * Fast read-only calculation that uses pre-existing SubjectFinalGrade records
-   * directly, without syncing term grades or recalculating/updating anything.
+   * Fast read-only calculation for previews. Uses pre-existing SubjectFinalGrade
+   * records directly when available; subjects without one fall back to computing
+   * from SubjectTermGrade (same fallback as the certified grades Excel), so the
+   * closure preview stays consistent with that report before the closure runs.
+   * Does not sync term grades or persist anything.
    *
-   * Use this for previews where SubjectFinalGrade records already exist (closed
-   * period or pre-seeded). The full `calculateForInscription` is still used by
-   * the executor to recalculate and persist final grades.
+   * The full `calculateForInscription` is still used by the executor to
+   * recalculate and persist final grades.
    */
   static async calculateForInscriptionFast(
     inscriptionId: number,
@@ -461,6 +463,20 @@ export class FinalGradeCalculator {
     const fgMap = new Map<number, SubjectFinalGrade>();
     for (const fg of finalGrades) {
       fgMap.set(fg.inscriptionSubjectId, fg);
+    }
+
+    // Bulk-load term grades so subjects without a stored SubjectFinalGrade can
+    // fall back to computing from SubjectTermGrade (same fallback the certified
+    // grades Excel uses). Keeps the preview consistent with that report.
+    const termGradeRows = await SubjectTermGrade.findAll({
+      where: { inscriptionSubjectId: { [Op.in]: insSubIds } },
+      transaction: options.transaction,
+    });
+    const termGradesByInsSub = new Map<number, { termId: number; score: number }[]>();
+    for (const tg of termGradeRows) {
+      const list = termGradesByInsSub.get(tg.inscriptionSubjectId) || [];
+      list.push({ termId: tg.termId, score: Number(tg.score) || 0 });
+      termGradesByInsSub.set(tg.inscriptionSubjectId, list);
     }
 
     // Fetch includeInAverage map once
@@ -518,23 +534,37 @@ export class FinalGradeCalculator {
 
     for (const insSub of orderedSubjects) {
       const fg = fgMap.get(insSub.id);
-      if (!fg) {
-        // No pre-existing final grade — skip (shouldn't happen in closed period)
-        continue;
-      }
-
-      const repairScore = repairScoresBySubject.get(insSub.id);
-      const hasRepair = repairScore != null;
 
       let effectiveFinalScore: number;
       let effectiveStatus: 'aprobada' | 'reprobada';
+      let rawScore = 0;
+      let councilPoints = 0;
 
-      if (hasRepair) {
-        effectiveFinalScore = roundFinalGrade(repairScore!);
-        effectiveStatus = resolveGradeStatus(repairScore!, repairPassingGrade ?? minApproval);
+      if (fg) {
+        const repairScore = repairScoresBySubject.get(insSub.id);
+        const hasRepair = repairScore != null;
+
+        if (hasRepair) {
+          effectiveFinalScore = roundFinalGrade(repairScore!);
+          effectiveStatus = resolveGradeStatus(repairScore!, repairPassingGrade ?? minApproval);
+        } else {
+          effectiveFinalScore = Number(fg.finalScore) || 0;
+          effectiveStatus = fg.status as 'aprobada' | 'reprobada';
+        }
+        rawScore = Number(fg.rawScore) || 0;
+        councilPoints = Number(fg.councilPoints) || 0;
       } else {
-        effectiveFinalScore = Number(fg.finalScore) || 0;
-        effectiveStatus = fg.status as 'aprobada' | 'reprobada';
+        // No pre-existing final grade — fall back to computing from term grades
+        // (mirrors the certified grades Excel fallback so the closure preview
+        // stays consistent with that report before the closure executes).
+        const tgList = termGradesByInsSub.get(insSub.id) || [];
+        if (tgList.length === 0) {
+          continue;
+        }
+        const sum = tgList.reduce((acc, tg) => acc + Number(tg.score || 0), 0);
+        const avg = sum / tgList.length;
+        effectiveFinalScore = roundFinalGrade(avg);
+        effectiveStatus = isPassingGrade(avg, minApproval) ? 'aprobada' : 'reprobada';
       }
 
       if (effectiveStatus === 'reprobada') {
@@ -551,8 +581,8 @@ export class FinalGradeCalculator {
         inscriptionSubjectId: insSub.id,
         subjectId: insSub.subjectId,
         subjectName: insSub.subject?.name,
-        rawScore: Number(fg.rawScore) || 0,
-        councilPoints: Number(fg.councilPoints) || 0,
+        rawScore,
+        councilPoints,
         finalScore: effectiveFinalScore,
         status: effectiveStatus,
       });
