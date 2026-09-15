@@ -237,6 +237,17 @@ export class RevisionPeriodService {
     const inscriptionIdList = allInscriptions.map(i => i.id);
     const excludedPersonIds = await getPersonIdsWithUnresolvedPending(schoolPeriodId, inscriptionIdList, transaction);
 
+    // Pending subjects (any status) never go to revision — their grades
+    // live in the Materia Pendiente flow, not the repair nomina.
+    const pendingSubjectRows = await PendingSubject.findAll({
+      where: { newInscriptionId: { [Op.in]: inscriptionIdList } },
+      attributes: ['newInscriptionId', 'subjectId'],
+      transaction,
+    });
+    const pendingSubjectSet = new Set(
+      pendingSubjectRows.map(p => `${p.newInscriptionId}-${p.subjectId}`)
+    );
+
     const failedSubjects: Array<{ inscriptionSubjectId: number }> = [];
     const uniqueSet = new Set<number>();
 
@@ -249,8 +260,8 @@ export class RevisionPeriodService {
         if (uniqueSet.has(insSub.id)) continue;
         uniqueSet.add(insSub.id);
 
-        // Skip subjects flagged as "No Reparable" — they cannot go to revision.
-        if (notRepairableSet.has(insSub.subjectId)) continue;
+        // Skip pending subjects — their grades belong to the MP flow, never to revision.
+        if (pendingSubjectSet.has(`${ins.id}-${insSub.subjectId}`)) continue;
 
         // Use SubjectTermGrade (already rounded per-lapso) and average them
         const termGrades: any[] = insSub.termGrades || [];
@@ -463,11 +474,24 @@ export class RevisionPeriodService {
     // students endpoint).
     const inscriptionIdList = allInscriptions.map(i => i.id);
     const excludedPersonIds = await getPersonIdsWithUnresolvedPending(schoolPeriodId, inscriptionIdList, transaction);
+    // Pending subjects (any status) never go to revision — their grades
+    // live in the Materia Pendiente flow, not the repair nomina.
+    const pendingSubjectRows = await PendingSubject.findAll({
+      where: { newInscriptionId: { [Op.in]: inscriptionIdList } },
+      attributes: ['newInscriptionId', 'subjectId'],
+      transaction,
+    });
+    const pendingSubjectSet = new Set(
+      pendingSubjectRows.map(p => `${p.newInscriptionId}-${p.subjectId}`)
+    );
+
     const failedSubjectIds = new Set<number>();
     for (const ins of allInscriptions) {
       if (excludedPersonIds.has((ins as any).personId)) continue;
       const insSubjects = (ins as any).inscriptionSubjects || [];
       for (const insSub of insSubjects) {
+        // Skip pending subjects — their grades belong to the MP flow, never to revision.
+        if (pendingSubjectSet.has(`${ins.id}-${insSub.subjectId}`)) continue;
         const termGrades: any[] = insSub.termGrades || [];
         const scoresByTerm: Record<number, number> = {};
         termIds.forEach(tid => { scoresByTerm[tid] = 0; });

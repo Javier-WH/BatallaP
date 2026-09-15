@@ -212,11 +212,24 @@ export const getRevisionStudents = async (req: Request, res: Response) => {
       })).map(i => i.id);
       const excludedPersonIds = await getPersonIdsWithUnresolvedPending(schoolPeriodId, periodInscriptionIds);
 
+      // Pending subjects (any status) never go to revision — their grades
+      // live in the Materia Pendiente flow, not the repair nomina.
+      const pendingSubjectRows = await PendingSubject.findAll({
+        where: { newInscriptionId: { [Op.in]: periodInscriptionIds } },
+        attributes: ['newInscriptionId', 'subjectId'],
+      });
+      const pendingSubjectSet = new Set(
+        pendingSubjectRows.map(p => `${p.newInscriptionId}-${p.subjectId}`)
+      );
+
       for (const rev of revisions) {
         const insSub = (rev as any).inscriptionSubject;
         if (!insSub) continue;
         const ins = insSub.inscription;
         if (!ins) continue;
+
+        // Skip pending subjects — their grades belong to the MP flow, never to revision.
+        if (pendingSubjectSet.has(`${ins.id}-${insSub.subjectId}`)) continue;
 
         // Skip students who still owe pending subjects — they cannot go to revision.
         if (excludedPersonIds.has(ins.personId)) continue;
@@ -382,6 +395,16 @@ export const getRevisionStudents = async (req: Request, res: Response) => {
       return sorted;
     };
 
+    // Pending subjects (any status) never go to revision — their grades
+    // live in the Materia Pendiente flow, not the repair nomina.
+    const pendingSubjectRows = await PendingSubject.findAll({
+      where: { newInscriptionId: { [Op.in]: allInscriptions.map(i => i.id) } },
+      attributes: ['newInscriptionId', 'subjectId'],
+    });
+    const pendingSubjectSet = new Set(
+      pendingSubjectRows.map(p => `${p.newInscriptionId}-${p.subjectId}`)
+    );
+
     for (const ins of allInscriptions) {
       // Skip students who still owe pending subjects — they cannot go to revision.
       if (excludedPersonIds.has((ins as any).personId)) continue;
@@ -393,6 +416,9 @@ export const getRevisionStudents = async (req: Request, res: Response) => {
       for (const insSub of insSubjects) {
         if (processedSubjects.has(insSub.id)) continue;
         processedSubjects.add(insSub.id);
+
+        // Skip pending subjects — their grades belong to the MP flow, never to revision.
+        if (pendingSubjectSet.has(`${insAny.id}-${insSub.subjectId}`)) continue;
 
         // Skip subjects flagged as "No Reparable" — they cannot go to revision.
         if (notRepairableSet.has(insSub.subjectId)) continue;
@@ -1252,6 +1278,12 @@ export const exportRevisionNominaExcel = async (req: Request, res: Response) => 
     const institutionNameSetting = await Setting.findOne({ where: { key: 'institution_name' } });
     const institutionName = institutionNameSetting?.getDataValue('value') || 'Institución Educativa';
 
+    // Zero-pad scores to the same digit count as the configured max grade
+    // (e.g. max_grade=20 -> "03", "11").
+    const maxGradeSetting = await Setting.findOne({ where: { key: 'max_grade' } });
+    const maxGrade = Number(maxGradeSetting?.getDataValue('value')) || 20;
+    const gradeDigits = Math.max(2, String(maxGrade).length);
+
     const revisionPeriod = await RevisionPeriod.findOne({ where: { schoolPeriodId } });
 
     // Load all revisions for this period (if it exists)
@@ -1461,11 +1493,22 @@ export const exportRevisionNominaExcel = async (req: Request, res: Response) => 
     const gradeGroups = Array.from(gradeGroupsMap.values())
       .map(g => ({
         ...g,
-        students: g.students.filter(s =>
-          Array.from(s.subjectsBySubjectId.values()).some(subj =>
-            revisionMap.has(subj.inscriptionSubjectId)
+        students: g.students
+          .filter(s =>
+            Array.from(s.subjectsBySubjectId.values()).some(subj =>
+              revisionMap.has(subj.inscriptionSubjectId)
+            )
           )
-        ),
+          // Within each grade: group by section (A first, then B...) and
+          // order by document number inside each section.
+          .sort((a, b) => {
+            const secCmp = (a.section || '').localeCompare(b.section || '', 'es', { numeric: true });
+            if (secCmp !== 0) return secCmp;
+            const docA = parseInt(a.document, 10);
+            const docB = parseInt(b.document, 10);
+            if (Number.isFinite(docA) && Number.isFinite(docB) && docA !== docB) return docA - docB;
+            return (a.document || '').localeCompare(b.document || '', 'es', { numeric: true });
+          }),
       }))
       .filter(g => g.students.length > 0)
       .sort((a, b) => {
@@ -1556,7 +1599,7 @@ export const exportRevisionNominaExcel = async (req: Request, res: Response) => 
       // Col 1: GRADO (will be merged vertically including header row, text vertical)
       headerRow.getCell(1).value = gradeName;
       headerRow.getCell(1).font = { bold: true, size: 18, name: 'Calibri' };
-      headerRow.getCell(1).alignment = { horizontal: 'center', vertical: 'middle', textRotation: 90 };
+      headerRow.getCell(1).alignment = { horizontal: 'center', vertical: 'middle', textRotation: 90, shrinkToFit: true };
 
       // Col 2-5: #, CÉDULA, APELLIDOS Y NOMBRES, Sec
       const fixedHeaders = ['#', 'CÉDULA', 'APELLIDOS Y NOMBRES', 'Sec'];
@@ -1650,8 +1693,8 @@ export const exportRevisionNominaExcel = async (req: Request, res: Response) => 
               }
 
               if (finalRev && finalRev.score != null && Number(finalRev.score) > 0) {
-                // Has a real score (>0) — show it
-                cell.value = Number(finalRev.score);
+                // Has a real score (>0) — show it, zero-padded to the max grade digits
+                cell.value = String(Number(finalRev.score)).padStart(gradeDigits, '0');
                 const isApproved = finalRev.status === 'approved';
                 cell.font = isApproved
                   ? { bold: true, size: 8, color: { argb: 'FF22A547' }, name: 'Arial' }
@@ -1705,7 +1748,7 @@ export const exportRevisionNominaExcel = async (req: Request, res: Response) => 
             left: mediumBorder,
             right: mediumBorder,
           };
-          cell.alignment = { horizontal: 'center', vertical: 'middle', textRotation: 90 };
+          cell.alignment = { horizontal: 'center', vertical: 'middle', textRotation: 90, shrinkToFit: true };
         }
         // Ensure the top border of the first row of the merge is medium
         // (sometimes overwritten by the header border loop above)

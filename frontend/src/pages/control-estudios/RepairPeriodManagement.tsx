@@ -109,6 +109,7 @@ const RepairPeriodManagement: React.FC = () => {
   const [maxOppInput, setMaxOppInput] = useState<number>(3);
   const [maxOppSaving, setMaxOppSaving] = useState(false);
   const [pendingOpp, setPendingOpp] = useState<number | null>(null);
+  const [maxGrade, setMaxGrade] = useState<number>(20);
 
   // View state: 'opportunity' shows a single opportunity, 'final' shows definitive
   const [nominaView, setNominaView] = useState<'opportunity' | 'final'>('opportunity');
@@ -127,8 +128,10 @@ const RepairPeriodManagement: React.FC = () => {
 
   const canOverride = user?.roles.includes('Control de Estudios') || isMaster;
 
-  const fetchData = async () => {
-    setLoading(true);
+  const fetchData = async (opts?: { silent?: boolean }) => {
+    // Silent mode: refresh data in the background without the loading
+    // spinner (used after inline grade saves to avoid screen flicker).
+    if (!opts?.silent) setLoading(true);
     try {
       const periodsRes = await api.get('/academic/periods');
       const activePeriod = (periodsRes.data as any[]).find((p: any) => p.status === 'activo');
@@ -156,11 +159,19 @@ const RepairPeriodManagement: React.FC = () => {
       console.error('[RepairPeriodManagement] Error:', error);
       message.error(error?.response?.data?.message || 'Error al cargar datos');
     } finally {
-      setLoading(false);
+      if (!opts?.silent) setLoading(false);
     }
   };
 
   useEffect(() => { fetchData(); }, []);
+
+  // Load max_grade for zero-padded score display (e.g. 20 -> "03")
+  useEffect(() => {
+    api.get('/settings/max_grade').then(res => {
+      const v = Number(res.data?.value);
+      if (Number.isFinite(v) && v > 0) setMaxGrade(v);
+    }).catch(() => { /* keep default 20 */ });
+  }, []);
 
   // Fetch opportunity dates for all subjects in the current view.
   // We collect unique periodGradeSubjectIds from gradeSubjects and query
@@ -390,7 +401,8 @@ const RepairPeriodManagement: React.FC = () => {
       message.success('Nota guardada');
       setEditValues(prev => { const n = { ...prev }; delete n[revisionId]; return n; });
       setEditAbsent(prev => { const n = { ...prev }; delete n[revisionId]; return n; });
-      await fetchData();
+      // Silent refresh — no loading spinner, avoids screen flicker
+      await fetchData({ silent: true });
     } catch (error: any) {
       message.error(error?.response?.data?.message || 'Error al guardar nota');
     } finally {
@@ -474,7 +486,7 @@ const RepairPeriodManagement: React.FC = () => {
     <div className="ce-page ce-repair-page" style={{ padding: 24, maxWidth: 1200, margin: '0 auto' }}>
       <div className="ce-page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
         <Title level={3} style={{ margin: 0 }}>Período de Revisión</Title>
-        <Button icon={<ReloadOutlined />} onClick={fetchData} loading={loading}>Actualizar</Button>
+        <Button icon={<ReloadOutlined />} onClick={() => fetchData()} loading={loading}>Actualizar</Button>
       </div>
 
       <Spin spinning={loading}>
@@ -564,7 +576,7 @@ const RepairPeriodManagement: React.FC = () => {
                 showIcon
                 action={
                   <Space wrap>
-                    <Button type="primary" icon={<ReloadOutlined />} onClick={fetchData}>Actualizar</Button>
+                    <Button type="primary" icon={<ReloadOutlined />} onClick={() => fetchData()}>Actualizar</Button>
                     <Button icon={<RetweetOutlined />} onClick={handleRecalculate} loading={acting} disabled={gradesFinalized}>Recalcular</Button>
                     <Popconfirm
                       title="¿Bloquear el período de revisión?"
@@ -869,10 +881,20 @@ const RepairPeriodManagement: React.FC = () => {
                                     const displayAbsent = editAbs !== undefined ? editAbs : absent;
                                     const isSaving = editKey != null && savingIds.has(editKey);
 
-                                    // Date and opportunity for the meta line
-                                    const gradedDate = selectedRevision?.gradedAt
-                                      ? dayjs(selectedRevision.gradedAt).format('DD/MM/YY')
-                                      : '';
+                                    // Zero-pad scores to the max grade digits (e.g. 20 -> "03")
+                                    const gradeDigits = Math.max(2, String(maxGrade).length);
+                                    // While editing, show the raw value; otherwise the padded saved score
+                                    const inputValue = editValue !== undefined
+                                      ? (editValue === null ? '' : String(editValue))
+                                      : (displayScore != null ? String(displayScore).padStart(gradeDigits, '0') : '');
+
+                                    // Date and opportunity for the meta line —
+                                    // show the configured opportunity date
+                                    // (not the save timestamp).
+                                    const revOppDate = (selectedRevision && subj.periodGradeSubjectId)
+                                      ? oppDatesByPgs[subj.periodGradeSubjectId]?.[selectedRevision.opportunity]
+                                      : null;
+                                    const gradedDate = revOppDate ? dayjs(revOppDate).format('DD/MM/YY') : '';
                                     const gradedOpp = selectedRevision?.opportunity;
 
                                     const graderTooltip = selectedRevision?.graderName
@@ -888,7 +910,7 @@ const RepairPeriodManagement: React.FC = () => {
                                           title={graderTooltip || 'Editable'}
                                         >
                                           <div className="repair-cell-content">
-                                            {displayAbsent ? (
+                                            {displayAbsent && editValue === undefined ? (
                                               <span
                                                 className="repair-np"
                                                 onClick={() => {
@@ -902,16 +924,14 @@ const RepairPeriodManagement: React.FC = () => {
                                               </span>
                                             ) : (
                                               <input
-                                                type="number"
-                                                min={0}
-                                                max={20}
-                                                step={1}
+                                                type="text"
                                                 inputMode="numeric"
                                                 className="repair-input"
-                                                value={displayScore ?? ''}
+                                                value={inputValue}
                                                 disabled={isSaving}
                                                 onChange={e => {
-                                                  const v = e.target.value === '' ? null : Number(e.target.value);
+                                                  const raw = e.target.value.replace(/[^0-9]/g, '');
+                                                  const v = raw === '' ? null : Number(raw);
                                                   setEditValues(prev => ({ ...prev, [editKey]: v }));
                                                   if (v === 0) {
                                                     setEditAbsent(prev => ({ ...prev, [editKey]: true }));
@@ -951,7 +971,7 @@ const RepairPeriodManagement: React.FC = () => {
                                       : (displayAbsent
                                         ? 'NP'
                                         : selectedRevision.score !== null && selectedRevision.score !== undefined
-                                          ? String(Number(selectedRevision.score))
+                                          ? String(Number(selectedRevision.score)).padStart(gradeDigits, '0')
                                           : '—');
 
                                     return (
