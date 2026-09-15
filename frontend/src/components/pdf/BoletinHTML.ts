@@ -456,13 +456,17 @@ export const generateBoletinHTML = (data: BoletinHTMLData): string => {
     box-shadow:0 6px 20px rgba(16,28,51,0.12);
     display:flex;
     flex-direction:column;
-    overflow:hidden;
+    /* Same slot height for every boletín. Chosen so that two sheets plus
+       the .page gap fit on a letter page in both @page-margin and
+       marginless print scenarios. Content that exceeds it is NOT clipped —
+       the paddings are tuned so the natural height stays under the slot. */
+    min-height:132mm;
   }
 
   .sheet-inner{
     display:flex;
     flex-direction:column;
-    min-height:138.9mm;
+    flex:1 1 auto;
   }
 
   /* Masthead */
@@ -470,7 +474,7 @@ export const generateBoletinHTML = (data: BoletinHTMLData): string => {
     background:var(--navy);
     background-image:linear-gradient(135deg, var(--navy) 0%, var(--navy-deep) 100%);
     color:#fff;
-    padding:15px 22px;
+    padding:13px 22px;
     display:flex;
     align-items:center;
     justify-content:space-between;
@@ -527,8 +531,8 @@ export const generateBoletinHTML = (data: BoletinHTMLData): string => {
 
   /* Student card */
   .student{
-    margin:14px 22px 7px;
-    padding:14px 16px;
+    margin:12px 22px 6px;
+    padding:12px 16px;
     background:var(--card);
     border:1px solid var(--line);
     border-left:4px solid var(--gold);
@@ -594,6 +598,7 @@ export const generateBoletinHTML = (data: BoletinHTMLData): string => {
   }
   .grades table{
     width:100%;
+    height:100%;
     border-collapse:collapse;
     background:var(--card);
     font-size:11px;
@@ -605,7 +610,7 @@ export const generateBoletinHTML = (data: BoletinHTMLData): string => {
     letter-spacing:.07em;
     text-transform:uppercase;
     font-weight:600;
-    padding:5px 6px;
+    padding:4px 6px;
     text-align:center;
     border-right:1px solid rgba(255,255,255,0.14);
   }
@@ -618,14 +623,14 @@ export const generateBoletinHTML = (data: BoletinHTMLData): string => {
     color:var(--navy);
     font-size:9px;
     font-weight:700;
-    padding:5px 6px;
+    padding:4px 6px;
     text-align:center;
     border-bottom:2px solid var(--gold);
     border-right:1px solid var(--line);
   }
   .grades thead tr.cols th.subject{ text-align:left; padding-left:10px; }
   .grades tbody td{
-    padding:5px 6px;
+    padding:4px 6px;
     text-align:center;
     border-bottom:1px solid var(--line);
     border-right:1px solid var(--line);
@@ -762,17 +767,14 @@ export const generateBoletinHTML = (data: BoletinHTMLData): string => {
       max-width:none;
       width:100%;
       margin:0;
-      /* Fixed height = (11in page - 2*5mm top/bottom margin - 2mm gap) / 2.
-         Slightly reduced to leave slack so the second boletín on the page
-         doesn't get clipped by the browser's page boundary. */
-      height:132.7mm;
+      /* Fixed mask height. Must match SLOT_MM in the <script> below —
+         the script scales .sheet-inner down to this slot when the
+         content is taller. No content is ever clipped: the inner is
+         visually scaled so its rendered output fits inside the mask. */
+      height:133mm;
       overflow:hidden;
       page-break-inside:avoid;
       break-inside:avoid;
-    }
-
-    .sheet-inner{
-      min-height:100%;
     }
   }
 </style>
@@ -781,10 +783,17 @@ export const generateBoletinHTML = (data: BoletinHTMLData): string => {
 ${sheets}
 <script>
 (function () {
-  // Each .sheet is a fixed-size print slot; .sheet-inner is the real content.
-  // Short reports already fill the slot via flex-grow (no scaling needed).
-  // Reports with enough subjects to overflow the slot get shrunk down here
-  // so nothing gets clipped by the slot's overflow:hidden.
+  // Each .sheet is a fixed-size print slot (see @media print .sheet height).
+  // .sheet-inner holds the real content at its natural size. Before printing,
+  // content taller than the slot is visually shrunk with transform:scale so
+  // the sheet's overflow:hidden never clips anything.
+  //
+  // IMPORTANT: beforeprint runs BEFORE print styles apply, so the sheet's
+  // clientHeight still reflects screen layout. The slot height is therefore
+  // hardcoded here (SLOT_MM) and must match @media print .sheet { height }.
+  var SLOT_MM = 133;
+  var SLOT_PX = SLOT_MM * 96 / 25.4;
+
   function fitSheets(isPrint) {
     document.querySelectorAll('.sheet').forEach(function (sheet) {
       var inner = sheet.querySelector('.sheet-inner');
@@ -795,10 +804,9 @@ ${sheets}
       inner.style.width = '';
       if (!isPrint) return;
 
-      var boxHeight = sheet.clientHeight;
       var naturalHeight = inner.scrollHeight;
-      if (boxHeight > 0 && naturalHeight > boxHeight) {
-        var scale = boxHeight / naturalHeight;
+      if (naturalHeight > SLOT_PX) {
+        var scale = SLOT_PX / naturalHeight;
         inner.style.transformOrigin = 'top left';
         inner.style.transform = 'scale(' + scale + ')';
         inner.style.width = (100 / scale) + '%';
