@@ -40,6 +40,7 @@ export interface OutcomeRecord {
   inscriptionId: number;
   finalAverage: string | null;
   failedSubjects: number;
+  failedSubjectNames?: string[];
   status: 'aprobado' | 'materias_pendientes' | 'reprobado';
   promotionGrade?: {
     id: number;
@@ -47,7 +48,7 @@ export interface OutcomeRecord {
   } | null;
   inscription: {
     id: number;
-    grade?: { id: number; name: string };
+    grade?: { id: number; name: string; order?: number };
     section?: { id: number; name: string } | null;
     student?: { id: number; firstName: string; lastName: string; document?: string };
     pendingSubjects?: PendingSubjectRecord[];

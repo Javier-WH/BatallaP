@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Card, Button, Table, Space, Typography, Row, Col, Tag, Empty,
-  message, Alert, Steps, Modal, Descriptions, Statistic, Divider, Badge,
+  message, Alert, Steps, Modal, Descriptions, Statistic, Divider, Badge, Tooltip,
 } from 'antd';
 import {
   FlagOutlined,
@@ -202,13 +202,30 @@ const PeriodClosureManagement: React.FC = () => {
     {
       title: 'Materias Reprobadas',
       key: 'failed',
-      render: (_: any, record: OutcomeRecord) => (
-        <Badge
-          count={record.failedSubjects}
-          color={record.failedSubjects > 0 ? 'red' : 'green'}
-          showZero
-        />
-      ),
+      render: (_: any, record: OutcomeRecord) => {
+        const names = record.failedSubjectNames ?? [];
+        return (
+          <Tooltip
+            title={
+              record.failedSubjects > 0 ? (
+                <ul style={{ margin: 0, paddingLeft: 18 }}>
+                  {names.map((name, i) => (
+                    <li key={i}>{name}</li>
+                  ))}
+                </ul>
+              ) : 'Sin materias reprobadas'
+            }
+          >
+            <span style={{ cursor: record.failedSubjects > 0 ? 'help' : 'default' }}>
+              <Badge
+                count={record.failedSubjects}
+                color={record.failedSubjects > 0 ? 'red' : 'green'}
+                showZero
+              />
+            </span>
+          </Tooltip>
+        );
+      },
       width: 120,
       align: 'center' as const,
     },

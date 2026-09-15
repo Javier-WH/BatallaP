@@ -20,6 +20,7 @@ interface PreviewOutcome {
   inscriptionId: number;
   finalAverage: number | null;
   failedSubjects: number;
+  failedSubjectNames: string[];
   status: 'aprobado' | 'materias_pendientes' | 'reprobado';
   isRezagado: boolean;
   graduatedAt: Date | null;
@@ -31,7 +32,7 @@ interface PreviewOutcome {
   } | null;
   inscription: {
     id: number;
-    grade?: { id: number; name: string };
+    grade?: { id: number; name: string; order?: number };
     section?: { id: number; name: string } | null;
     student?: { id: number; firstName: string; lastName: string; document?: string };
   };
@@ -82,10 +83,16 @@ export class PeriodClosurePreview {
 
         const { promotionGrade, approvedPendingSubjectIds, failedPendingSubjectIds, isRezagado, status, graduatedAt, finalAverage, failedSubjects } = evaluation;
 
+        // Collect the names of failed subjects for the tooltip
+        const failedSubjectNames = summary.subjectResults
+          .filter(r => r.status === 'reprobada')
+          .map(r => r.subjectName || `Materia #${r.subjectId}`);
+
         previews.push({
           inscriptionId: inscription.id,
           finalAverage,
           failedSubjects,
+          failedSubjectNames,
           status,
           isRezagado,
           graduatedAt,
@@ -99,7 +106,8 @@ export class PeriodClosurePreview {
             id: inscription.id,
             grade: inscription.grade ? {
               id: inscription.grade.id,
-              name: inscription.grade.name
+              name: inscription.grade.name,
+              order: (inscription.grade as any).order,
             } : undefined,
             section: inscription.section ? {
               id: inscription.section.id,
@@ -118,7 +126,22 @@ export class PeriodClosurePreview {
       }
     }
 
-    previews.sort((a, b) => b.failedSubjects - a.failedSubjects);
+    // Sort by grade order, then section name, then student document (cedula)
+    const naturalCollator = new Intl.Collator('es', { numeric: true, sensitivity: 'base' });
+    previews.sort((a, b) => {
+      const gradeOrderA = a.inscription.grade?.order ?? Number.MAX_SAFE_INTEGER;
+      const gradeOrderB = b.inscription.grade?.order ?? Number.MAX_SAFE_INTEGER;
+      if (gradeOrderA !== gradeOrderB) return gradeOrderA - gradeOrderB;
+
+      const sectionA = a.inscription.section?.name ?? '';
+      const sectionB = b.inscription.section?.name ?? '';
+      const sectionCmp = sectionA.localeCompare(sectionB, 'es', { sensitivity: 'base' });
+      if (sectionCmp !== 0) return sectionCmp;
+
+      const docA = a.inscription.student?.document ?? '';
+      const docB = b.inscription.student?.document ?? '';
+      return docA.localeCompare(docB, 'es', { numeric: true });
+    });
 
     return previews;
   }
