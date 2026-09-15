@@ -53,9 +53,13 @@ export class PeriodClosurePreview {
     for (const group of studentGroups) {
       const inscription = group.referenceInscription as InscriptionWithAssociations;
       try {
-        const summary = await FinalGradeCalculator.calculateForInscriptionFast(
+        // Use the SAME full calculation as the executor (recalculates from
+        // qualifications + council points + repair grades) but with
+        // persist=false so nothing is written. Guarantees the preview shows
+        // exactly what the real closure will compute.
+        const summary = await FinalGradeCalculator.calculateForInscription(
           inscription.id,
-          { minApproval }
+          { minApproval, persist: false }
         );
 
         // Preview mode: persist=false → no StudentPeriodOutcome is created/updated.

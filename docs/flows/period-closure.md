@@ -51,10 +51,15 @@ Endpoint: `GET /api/period-closure/:periodId/preview`
 - Agrupa las inscripciones por estudiante (`personId`), de modo que una
   inscripción principal y una inscripción `materia_pendiente` se muestran en
   una sola fila.
+- **Usa el mismo cálculo que la ejecución**: invoca
+  `FinalGradeCalculator.calculateForInscription` con `persist: false`, por lo
+  que recalcula las notas desde qualifications + council points + reparaciones
+  (computando los term grades en memoria, sin escribir en `subject_term_grades`
+  ni en `subject_final_grades`). Esto garantiza que la previsualización muestra
+  exactamente lo que el cierre real va a computar.
 - Calcula para cada estudiante:
   - Nota final por materia (`finalGradeCalculator`), aplicando reparaciones
-    (última nota manual) incluso cuando no exista `SubjectFinalGrade` regular
-    (fallback desde `SubjectTermGrade`).
+    (última nota manual) incluso cuando no exista `SubjectFinalGrade` regular.
   - Resultado global (aprobado / reprobado / con pendientes / egresado).
   - Grado destino según `SchoolPeriodTransitionRule` + `studentPromotionEngine`.
   - Distinción de rezagado (vía `metadata.isRezagado`).
