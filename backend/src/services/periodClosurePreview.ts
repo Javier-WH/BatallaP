@@ -1,14 +1,13 @@
-import { Op } from 'sequelize';
 import {
   Grade,
   Inscription,
-  InscriptionSubject,
   Person,
   Section,
   Setting
 } from '@/models/index';
 import { FinalGradeCalculator } from './finalGradeCalculator';
 import { StudentPromotionEngine } from './studentPromotionEngine';
+import { loadClosureStudentGroups, sortClosureStudentGroups } from './periodClosureStudentService';
 
 type InscriptionWithAssociations = Inscription & {
   student?: Person;
@@ -43,31 +42,16 @@ export class PeriodClosurePreview {
     const minApprovalSetting = await Setting.findByPk('min_approval_grade');
     const minApproval = minApprovalSetting ? Number(minApprovalSetting.value) : 10;
 
-    // Only process MAIN inscriptions (regular / repitiente).
-    // materia_pendiente inscriptions are evaluated via the MP discovery
-    // inside StudentPromotionEngine — they should not get their own preview
-    // entry.
-    const inscriptions = (await Inscription.findAll({
-      where: {
-        schoolPeriodId,
-        escolaridad: { [Op.in]: ['regular', 'repitiente'] },
-        withdrawnAt: null
-      },
-      include: [
-        { model: Person, as: 'student' },
-        { model: Grade, as: 'grade' },
-        { model: Section, as: 'section' },
-        {
-          model: InscriptionSubject,
-          as: 'inscriptionSubjects',
-          required: false
-        }
-      ]
-    })) as InscriptionWithAssociations[];
+    // Load all active inscriptions and consolidate principal + MP inscriptions
+    // by person. `escolaridad` is descriptive, not a selection filter.
+    const studentGroups = sortClosureStudentGroups(
+      await loadClosureStudentGroups(schoolPeriodId),
+    );
 
     const previews: PreviewOutcome[] = [];
 
-    for (const inscription of inscriptions) {
+    for (const group of studentGroups) {
+      const inscription = group.referenceInscription as InscriptionWithAssociations;
       try {
         const summary = await FinalGradeCalculator.calculateForInscriptionFast(
           inscription.id,

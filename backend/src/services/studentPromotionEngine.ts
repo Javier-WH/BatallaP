@@ -79,19 +79,20 @@ export class StudentPromotionEngine {
     // Discover MP records across the student's inscriptions in this period.
     // In production, pending subjects live in a SEPARATE materia_pendiente
     // inscription, not the regular/repeater one being evaluated here.
-    const mpInscriptions = await Inscription.findAll({
+    const studentInscriptions = await Inscription.findAll({
       where: {
         schoolPeriodId: inscription.schoolPeriodId,
         personId: inscription.personId,
-        escolaridad: 'materia_pendiente',
         withdrawnAt: null,
       },
       transaction: options.transaction,
     });
-    const mpInscriptionIds = mpInscriptions.map(i => i.id);
-    // Also include the current inscription ID for legacy compatibility
-    // (tests that attach PendingSubject directly to the regular inscription).
-    const allInscriptionIds = [...mpInscriptionIds, inscription.id];
+    // Pending subjects may be attached to any inscription for the student;
+    // escolaridad is descriptive and must not restrict this lookup.
+    const allInscriptionIds = Array.from(new Set([
+      ...studentInscriptions.map(i => i.id),
+      inscription.id,
+    ]));
 
     const pendingSubjectsRecords = await PendingSubject.findAll({
       where: {

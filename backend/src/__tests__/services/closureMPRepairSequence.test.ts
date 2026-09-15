@@ -135,6 +135,23 @@ describe('Closure MP + Repair Sequence — Integration Tests', () => {
   });
 
   // ============================================================
+  // Consolidated preview by person
+  // ============================================================
+  describe('Consolidated student preview', () => {
+    it('principal + MP inscription producen una sola fila de preview', async () => {
+      setup = await standardSetup(3, 3);
+      const student = await createStudentWithGrades(setup, 1, { 0: 15, 1: 14, 2: 12 });
+      await createSeparateMPInscription(setup, student, [0], { status: 'aprobada' });
+
+      const previews = await PeriodClosurePreview.calculatePreview(setup.currentPeriod.id);
+      const studentRows = previews.filter(row => row.inscription?.student?.id === student.person.id);
+
+      expect(studentRows).toHaveLength(1);
+      expect(studentRows[0].inscriptionId).toBe(student.inscription.id);
+    });
+  });
+
+  // ============================================================
   // Separate MP inscription: unresolved MP → rezagado
   // ============================================================
   describe('Separate MP inscription — unresolved → rezagado', () => {
@@ -165,20 +182,13 @@ describe('Closure MP + Repair Sequence — Integration Tests', () => {
   });
 
   // ============================================================
-  // Orphan MP-only inscription blocks closure
+  // MP-only inscription is processed as a student fallback
   // ============================================================
-  describe('Orphan MP-only inscription', () => {
-    it('estudiante con solo inscripción MP → bloquea el cierre', async () => {
+  describe('MP-only inscription', () => {
+    it('estudiante con solo inscripción MP → se muestra y se procesa', async () => {
       setup = await standardSetup(2, 3);
 
-      // Create a student with ONLY an MP inscription (no regular/repeater)
-      const student = await createStudentWithGrades(setup, 0, { 0: 15, 1: 14, 2: 12 });
-
-      // Remove the regular inscription, leaving only the MP one
-      // Actually, we can't remove it easily. Instead, create an MP-only
-      // student by creating a separate MP inscription and then deleting
-      // the regular inscription's inscription subjects + the inscription.
-      // Simpler: just create a person with only an MP inscription.
+      // Create a student with ONLY an MP inscription (no regular/repeater).
       const { Person } = await import('@/models/index');
       const orphanPerson = await Person.create({
         firstName: 'Orphan',
@@ -212,11 +222,11 @@ describe('Closure MP + Repair Sequence — Integration Tests', () => {
       });
 
       const result = await executeClosure(setup);
-      // Closure should proceed — MP-only students are skipped, not blocking
+      // Closure should proceed and process the MP-only student once
       expect(result.success).toBe(true);
-      // The orphan MP student should NOT get a new inscription in next period
+      expect(result.stats.totalStudents).toBe(1);
       const newInscs = await findNextInscriptions(orphanPerson.id, setup.nextPeriod.id);
-      expect(newInscs.length).toBe(0);
+      expect(newInscs.length).toBe(1);
     });
   });
 

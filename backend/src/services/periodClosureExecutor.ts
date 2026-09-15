@@ -23,6 +23,7 @@ import { FinalGradeCalculator } from './finalGradeCalculator';
 import { StudentPromotionEngine } from './studentPromotionEngine';
 import * as SchoolPeriodService from './schoolPeriodService';
 import { TermSectionClosureService } from './termSectionClosureService';
+import { loadClosureStudentGroups, sortClosureStudentGroups } from './periodClosureStudentService';
 
 interface ClosureValidationResult {
   valid: boolean;
@@ -124,50 +125,15 @@ export class PeriodClosureExecutor {
       errors.push('El período de revisión debe estar completado antes de ejecutar el cierre de período');
     }
 
-    const inscriptions = await Inscription.findAll({
-      where: {
-        schoolPeriodId,
-        escolaridad: { [Op.ne]: 'transferencia' },
-        withdrawnAt: null
-      },
-      include: [
-        {
-          model: InscriptionSubject,
-          as: 'inscriptionSubjects',
-          required: false
-        }
-      ]
-    });
-
-    // Detect orphan MP-only students: a person with an active (non-withdrawn)
-    // materia_pendiente inscription but NO regular/repitiente inscription
-    // (active OR withdrawn) in this period. We include withdrawn regular
-    // inscriptions in the check so that a student who retired from their
-    // regular grade but still has an active MP inscription is NOT flagged
-    // as orphan — their regular inscription exists, just retired.
-    const activeMpInscriptions = inscriptions.filter(
-      i => i.escolaridad === 'materia_pendiente'
+    const studentGroups = await loadClosureStudentGroups(schoolPeriodId);
+    const mpOnlyStudents = studentGroups.filter(group =>
+      group.inscriptions.every(inscription => inscription.escolaridad === 'materia_pendiente')
     );
-    if (activeMpInscriptions.length > 0) {
-      const mpPersonIds = [...new Set(activeMpInscriptions.map(i => i.personId))];
-      // Query ALL inscriptions for these persons in this period (including
-      // withdrawn ones) to check if they have a regular/repitiente.
-      const allInscriptionsForMpPersons = await Inscription.findAll({
-        where: {
-          schoolPeriodId,
-          personId: { [Op.in]: mpPersonIds },
-          escolaridad: { [Op.in]: ['regular', 'repitiente'] },
-        },
-        attributes: ['personId', 'escolaridad', 'withdrawnAt'],
-      });
-      const personsWithMain = new Set(allInscriptionsForMpPersons.map(i => i.personId));
-      const mpOnlyPersons = mpPersonIds.filter(pid => !personsWithMain.has(pid));
-      if (mpOnlyPersons.length > 0) {
-        warnings.push(
-          `Hay ${mpOnlyPersons.length} estudiante(s) con inscripción de materia_pendiente pero sin inscripción regular/repitiente. ` +
-          `Estos estudiantes serán omitidos del cierre.`
-        );
-      }
+    if (mpOnlyStudents.length > 0) {
+      warnings.push(
+        `Hay ${mpOnlyStudents.length} estudiante(s) con inscripción de materia_pendiente sin inscripción principal. ` +
+        `Serán procesados usando la inscripción disponible.`
+      );
     }
 
     return {
@@ -227,22 +193,12 @@ export class PeriodClosureExecutor {
         throw new Error('No se encontró periodo siguiente');
       }
 
-      const inscriptions = await Inscription.findAll({
-        where: {
-          schoolPeriodId,
-          escolaridad: { [Op.in]: ['regular', 'repitiente'] },
-          withdrawnAt: null
-        },
-        include: [
-          { model: Person, as: 'student' },
-          { model: Grade, as: 'grade' },
-          { model: Section, as: 'section' }
-        ],
-        transaction
-      });
+      const studentGroups = sortClosureStudentGroups(
+        await loadClosureStudentGroups(schoolPeriodId, { transaction }),
+      );
 
       const stats = {
-        totalStudents: inscriptions.length,
+        totalStudents: studentGroups.length,
         approved: 0,
         withPendingSubjects: 0,
         failed: 0,
@@ -258,7 +214,8 @@ export class PeriodClosureExecutor {
       // Repair grades are now applied by FinalGradeCalculator automatically
       // when it detects a completed/closed RevisionPeriod for this school period.
 
-      for (const inscription of inscriptions) {
+      for (const studentGroup of studentGroups) {
+        const inscription = studentGroup.referenceInscription;
         try {
           const summary = await FinalGradeCalculator.calculateForInscription(inscription.id, {
             transaction,
@@ -494,7 +451,8 @@ export class PeriodClosureExecutor {
           snapshot: {
             minApproval,
             nextPeriodId: nextPeriod.id,
-            totalInscriptions: inscriptions.length
+            totalStudents: studentGroups.length,
+            totalInscriptions: studentGroups.reduce((total, group) => total + group.inscriptions.length, 0)
           }
         },
         { transaction }

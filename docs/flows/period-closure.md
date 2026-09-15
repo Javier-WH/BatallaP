@@ -46,10 +46,11 @@ Endpoint: `POST /api/period-closure/:periodId/checklist` – upsert de entradas 
 Endpoint: `GET /api/period-closure/:periodId/preview`
 
 - Service: `periodClosurePreview.ts`.
-- Solo procesa inscripciones principales (`regular` / `repitiente`). Las
-  inscripciones de `materia_pendiente` se evalúan a través del motor de
-  promoción, que descubre las MP en inscripciones separadas del mismo
-  estudiante.
+- Carga todas las inscripciones activas del período (`withdrawnAt = null`),
+  sin usar `escolaridad` como filtro de inclusión.
+- Agrupa las inscripciones por estudiante (`personId`), de modo que una
+  inscripción principal y una inscripción `materia_pendiente` se muestran en
+  una sola fila.
 - Calcula para cada estudiante:
   - Nota final por materia (`finalGradeCalculator`), aplicando reparaciones
     (última nota manual) incluso cuando no exista `SubjectFinalGrade` regular
@@ -153,12 +154,18 @@ El cierre evalúa cada estudiante en tres fases, en este orden:
    las MP, se aplica R2–R9 para determinar aprobado / pendientes / reprobado
    / egresado.
 
-### R12. Estudiantes con solo inscripción MP
-Los estudiantes **no pueden** tener únicamente una inscripción de
-`materia_pendiente`. Si se detecta un estudiante con solo inscripción MP,
-se emite una **advertencia** (no bloquea el cierre) y el estudiante es
-**omitido** del proceso: no se le calcula resultado ni se inscribe en el
-siguiente período.
+### R12. Consolidación por estudiante
+La unidad del cierre es el estudiante (`Person`), no la inscripción. Un
+estudiante puede tener una inscripción principal y otra de
+`materia_pendiente` en el mismo período; ambas se consolidan en una sola
+evaluación, una sola fila de preview y una sola decisión de promoción.
+`escolaridad` es un dato informativo para orientar al usuario, no un filtro
+interno del cierre.
+
+Si excepcionalmente existe un estudiante con solo una inscripción MP, se
+muestra y se procesa usando la inscripción disponible como referencia. No se
+bloquea ni se omite por ser MP-only. Los estudiantes retirados siguen
+excluidos por `withdrawnAt != null`.
 
 ### R13. Exclusión de materias no reparables y no promediables
 Una materia con **ambos** flags marcados en `PeriodGradeSubject` —
