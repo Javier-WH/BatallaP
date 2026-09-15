@@ -482,6 +482,16 @@ const RepairPeriodManagement: React.FC = () => {
     });
   };
 
+  // Format the document: derive the letter prefix from documentType and strip
+  // any prefix baked into the stored value (e.g. "V777777" on a Cedula Escolar).
+  const formatDocument = (docType: string | undefined, doc: string): string => {
+    const bare = String(doc || '').replace(/^(V|E|P|CE)\s*[-.]?\s*/i, '');
+    if (docType === 'Venezolano') return `V-${bare}`;
+    if (docType === 'Extranjero') return `E-${bare}`;
+    if (docType === 'Pasaporte') return `P-${bare}`;
+    return bare;
+  };
+
   const currentOpp = summary?.revisionPeriod?.currentOpportunity ?? 1;
   const gradesFinalized = summary?.revisionPeriod?.gradesFinalized === true;
   const periodEditable = summary?.revisionPeriod && (summary.revisionPeriod.status === 'open' || summary.revisionPeriod.status === 'completed') && !gradesFinalized;
@@ -842,7 +852,7 @@ const RepairPeriodManagement: React.FC = () => {
                               {group.students.map((student, idx) => (
                                 <tr key={student.studentId}>
                                   <td className="repair-cell-idx">{idx + 1}</td>
-                                  <td className="repair-cell-doc">{student.document}</td>
+                                  <td className="repair-cell-doc">{formatDocument(student.documentType, student.document)}</td>
                                   <td className="repair-cell-name">{student.studentName}</td>
                                   <td className="repair-cell-section">{student.section || '—'}</td>
                                   {group.subjects.map((subj) => {

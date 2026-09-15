@@ -1429,6 +1429,7 @@ export const exportRevisionNominaExcel = async (req: Request, res: Response) => 
         studentId: number;
         studentName: string;
         document: string;
+        documentType: string;
         section: string;
         subjectsBySubjectId: Map<number, { inscriptionSubjectId: number }>;
       }>;
@@ -1508,6 +1509,7 @@ export const exportRevisionNominaExcel = async (req: Request, res: Response) => 
         studentId: insAny.personId,
         studentName: `${insAny.student?.lastName || ''} ${insAny.student?.firstName || ''}`.trim(),
         document: insAny.student?.document || '',
+        documentType: insAny.student?.documentType || '',
         section: insAny.section?.name || '',
         subjectsBySubjectId,
       });
@@ -1671,8 +1673,13 @@ export const exportRevisionNominaExcel = async (req: Request, res: Response) => 
         row.getCell(2).font = { bold: true, size: 10, name: 'Calibri' };
         row.getCell(2).alignment = { horizontal: 'center', vertical: 'middle' };
 
-        // Col 3: CÉDULA
-        row.getCell(3).value = student.document;
+        // Col 3: CÉDULA — derive the letter prefix from documentType and
+        // strip any prefix baked into the stored value.
+        const bareDoc = String(student.document || '').replace(/^(V|E|P|CE)\s*[-.]?\s*/i, '');
+        const docPrefix = student.documentType === 'Venezolano' ? 'V'
+          : student.documentType === 'Extranjero' ? 'E'
+          : student.documentType === 'Pasaporte' ? 'P' : '';
+        row.getCell(3).value = docPrefix ? `${docPrefix}-${bareDoc}` : bareDoc;
         row.getCell(3).font = { size: 10, name: 'Calibri' };
         row.getCell(3).alignment = { horizontal: 'center', vertical: 'middle' };
 
