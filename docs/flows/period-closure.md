@@ -153,11 +153,12 @@ El cierre evalúa cada estudiante en tres fases, en este orden:
    las MP, se aplica R2–R9 para determinar aprobado / pendientes / reprobado
    / egresado.
 
-### R12. Validación de inscripciones huérfanas de MP
+### R12. Estudiantes con solo inscripción MP
 Los estudiantes **no pueden** tener únicamente una inscripción de
-`materia_pendiente`. Obligatoriamente deben tener una inscripción `regular` o
-`repitiente` en el período. Si se detecta un estudiante con solo inscripción
-MP, el cierre se bloquea con un error de inconsistencia.
+`materia_pendiente`. Si se detecta un estudiante con solo inscripción MP,
+se emite una **advertencia** (no bloquea el cierre) y el estudiante es
+**omitido** del proceso: no se le calcula resultado ni se inscribe en el
+siguiente período.
 
 ### R13. Exclusión de materias no reparables y no promediables
 Una materia con **ambos** flags marcados en `PeriodGradeSubject` —

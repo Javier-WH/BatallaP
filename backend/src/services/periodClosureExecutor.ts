@@ -163,9 +163,9 @@ export class PeriodClosureExecutor {
       const personsWithMain = new Set(allInscriptionsForMpPersons.map(i => i.personId));
       const mpOnlyPersons = mpPersonIds.filter(pid => !personsWithMain.has(pid));
       if (mpOnlyPersons.length > 0) {
-        errors.push(
+        warnings.push(
           `Hay ${mpOnlyPersons.length} estudiante(s) con inscripción de materia_pendiente pero sin inscripción regular/repitiente. ` +
-          `Los estudiantes no pueden tener únicamente materia pendiente. Corrija la inconsistencia antes de cerrar.`
+          `Estos estudiantes serán omitidos del cierre.`
         );
       }
     }

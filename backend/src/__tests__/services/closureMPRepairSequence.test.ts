@@ -212,9 +212,11 @@ describe('Closure MP + Repair Sequence — Integration Tests', () => {
       });
 
       const result = await executeClosure(setup);
-      // Closure should report the orphan as an error/inconsistency
-      expect(result.success).toBe(false);
-      expect(result.errors.some(e => e.toLowerCase().includes('materia pendiente') || e.toLowerCase().includes('mp'))).toBe(true);
+      // Closure should proceed — MP-only students are skipped, not blocking
+      expect(result.success).toBe(true);
+      // The orphan MP student should NOT get a new inscription in next period
+      const newInscs = await findNextInscriptions(orphanPerson.id, setup.nextPeriod.id);
+      expect(newInscs.length).toBe(0);
     });
   });
 
