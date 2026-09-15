@@ -388,6 +388,28 @@ Ver [`flows/grade-edit.md`](./flows/grade-edit.md).
 
 ---
 
+## 🔗 Vínculos de horarios entre grados – `/api/schedule-links` (`scheduleLinkRoutes.ts`)
+
+Permite vincular manualmente materias de diferentes años/grados para que el generador
+automático de horarios las coloque en el mismo bloque horario.
+
+| Método | Ruta | Descripción |
+|--------|------|-------------|
+| GET | `/api/schedule-links?schoolPeriodId=` | Lista los vínculos del período, con sus items (subject + periodGrade) |
+| POST | `/api/schedule-links` | Crea un vínculo. Body: `{ name?, schoolPeriodId, items: [{ subjectId, periodGradeId }] }` |
+| DELETE | `/api/schedule-links/:id` | Elimina un vínculo (cascadea sus items) |
+
+**Validaciones**:
+- Se requieren al menos 2 items por vínculo.
+- Un par `(subjectId, periodGradeId)` solo puede pertenecer a un vínculo por período.
+
+**Comportamiento del generador**:
+- Las materias vinculadas se fuerzan al mismo bloque+day en el solver CP-SAT.
+- Los profesores pueden ser independientes (no se exige que sean el mismo).
+- Las materias no vinculadas siguen el comportamiento normal.
+
+---
+
 ## Patrones generales
 
 - **Autenticación**: implícita por sesión. Revisar `req.session` en los controllers que requieren usuario logueado.

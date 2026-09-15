@@ -102,6 +102,16 @@
 | `GateDevice` | Lector de puerta (`identifier`, `location`, tipo `gate_reader`/`mobile`). |
 | `GateCheckin` | Evento de puerta (`entry`/`exit`, `flaggedDuplicate` para el debounce de lector único). |
 
+### 🗓️ Horarios
+
+| Modelo | Descripción |
+|--------|-------------|
+| `Schedule` | Horario de una `PeriodGradeSection` en un `SchoolPeriod`. |
+| `ScheduleEntry` | Bloque horario: día + período + materia (+ profesor) dentro de un `Schedule`. `isGroupSubject` marca materias de grupo que varias secciones ven simultáneamente. |
+| `ScheduleException` | Excepción de generación por materia del período: `allowConsecutiveBlocks`, `weeklyBlocks`, `maxHoursPerDay`. Sobrescribe los valores por defecto del generador. |
+| `ScheduleLink` | Vínculo manual entre materias de **diferentes grados** del mismo período para que el generador las coloque en el mismo bloque horario. Tiene `name` opcional y `schoolPeriodId`. |
+| `ScheduleLinkItem` | Item de un vínculo: `linkId` + `subjectId` + `periodGradeId`. UNIQUE(`linkId`, `subjectId`, `periodGradeId`). Un par (materia, grado) solo puede pertenecer a un vínculo por período. |
+
 ## Asociaciones clave
 
 ### Usuarios
@@ -149,6 +159,13 @@ SchoolPeriod ──1:N──► CouncilChecklist
 
 SchoolPeriod ──1:N──► GradeEditPermission ──N:1──► User (granter/recipient/revoker)
 SubjectFinalGrade ──1:N──► GradeEditAudit ──N:1──► GradeEditPermission, User (editor)
+```
+
+### Horarios
+```
+PeriodGradeSection ──1:1──► Schedule ──1:N──► ScheduleEntry ──N:1──► Subject, Person (teacher)
+SchoolPeriod ──1:N──► ScheduleException ──N:1──► PeriodGradeSubject
+SchoolPeriod ──1:N──► ScheduleLink ──1:N──► ScheduleLinkItem ──N:1──► Subject, PeriodGrade
 ```
 
 ## Reglas de integridad importantes

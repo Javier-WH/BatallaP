@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Tabs, Select, Card, Spin, message, Button, Tag, Empty, Modal, Switch, InputNumber, Alert, Popconfirm, DatePicker } from 'antd';
+import { Tabs, Select, Card, Spin, message, Button, Tag, Empty, Modal, Switch, InputNumber, Alert, Popconfirm, DatePicker, Input } from 'antd';
 import { TableOutlined, UserOutlined, ReloadOutlined, EditOutlined, SaveOutlined, CloseOutlined, DeleteOutlined, WarningOutlined, ThunderboltOutlined, ScheduleOutlined, SettingOutlined, PlusOutlined, HomeOutlined, FileExcelOutlined, PrinterOutlined } from '@ant-design/icons';
 import {
   DndContext,
@@ -912,6 +912,12 @@ const ScheduleManagement: React.FC = () => {
   const [newExcWeekly, setNewExcWeekly] = useState<number | null>(null);
   const [newExcMaxHours, setNewExcMaxHours] = useState<number | null>(null);
 
+  // Cross-grade links state
+  const [scheduleLinks, setScheduleLinks] = useState<any[]>([]);
+  const [newLinkName, setNewLinkName] = useState<string>('');
+  const [newLinkRows, setNewLinkRows] = useState<{ subjectId: number | null; periodGradeId: number | null }[]>([{ subjectId: null, periodGradeId: null }]);
+  const [linkStructure, setLinkStructure] = useState<any[]>([]);
+
   // Batch export state
   const [batchExportOpen, setBatchExportOpen] = useState(false);
   const [batchSelectedGradeIds, setBatchSelectedGradeIds] = useState<number[]>([]);
@@ -1776,8 +1782,61 @@ const ScheduleManagement: React.FC = () => {
     setNewExcConsecutive(null);
     setNewExcWeekly(null);
     setNewExcMaxHours(null);
+    setNewLinkName('');
+    setNewLinkRows([{ subjectId: null, periodGradeId: null }]);
     loadExceptions();
+    loadScheduleLinks();
     setExceptionsModalOpen(true);
+  };
+
+  // ── Cross-grade schedule links ──
+  const loadScheduleLinks = useCallback(async () => {
+    if (!viewPeriod) return;
+    try {
+      const [linksRes, structRes] = await Promise.all([
+        api.get('/schedule-links', { params: { schoolPeriodId: viewPeriod.id } }),
+        api.get(`/academic/structure/${viewPeriod.id}`),
+      ]);
+      setScheduleLinks(linksRes.data || []);
+      setLinkStructure(structRes.data || []);
+    } catch (e) {
+      console.error('Error loading schedule links:', e);
+      message.error('Error al cargar vínculos entre grados');
+    }
+  }, [viewPeriod]);
+
+  const handleCreateLink = async () => {
+    if (!viewPeriod) return;
+    const validRows = newLinkRows.filter(r => r.subjectId && r.periodGradeId);
+    if (validRows.length < 2) {
+      message.warning('Seleccione al menos 2 materias de grados diferentes para crear un vínculo');
+      return;
+    }
+    try {
+      await api.post('/schedule-links', {
+        name: newLinkName.trim() || null,
+        schoolPeriodId: viewPeriod.id,
+        items: validRows.map(r => ({ subjectId: r.subjectId, periodGradeId: r.periodGradeId })),
+      });
+      message.success('Vínculo creado');
+      setNewLinkName('');
+      setNewLinkRows([{ subjectId: null, periodGradeId: null }]);
+      loadScheduleLinks();
+    } catch (e: any) {
+      console.error('Error creating link:', e);
+      message.error(e?.response?.data?.message || 'Error al crear vínculo');
+    }
+  };
+
+  const handleDeleteLink = async (id: number) => {
+    try {
+      await api.delete(`/schedule-links/${id}`);
+      message.success('Vínculo eliminado');
+      loadScheduleLinks();
+    } catch (e) {
+      console.error('Error deleting link:', e);
+      message.error('Error al eliminar vínculo');
+    }
   };
 
   const handleAddException = async () => {
@@ -2430,6 +2489,123 @@ const ScheduleManagement: React.FC = () => {
               <p className="text-xs text-slate-400 mt-2">
                 Deje un campo vacío si no quiere sobrescribirlo. Al menos uno debe estar configurado.
               </p>
+            </div>
+
+            {/* Cross-grade links section */}
+            <div className="border-t border-slate-200 pt-4">
+              <h3 className="text-sm font-bold text-slate-700 mb-2">Vínculos entre grados</h3>
+              <Alert
+                type="info"
+                showIcon
+                style={{ marginBottom: 12 }}
+                message="Las materias vinculadas se colocarán en el mismo bloque horario, aunque sean de años y secciones diferentes. La selección es manual y específica."
+              />
+
+              {/* Existing links */}
+              {scheduleLinks.length > 0 && (
+                <div className="space-y-2 mb-4">
+                  {scheduleLinks.map((link: any) => (
+                    <div key={link.id} className="flex items-start gap-3 p-3 border border-slate-200 rounded-lg">
+                      <div className="flex-1">
+                        <div className="font-medium text-slate-800">
+                          {link.name || `Vínculo #${link.id}`}
+                        </div>
+                        <div className="text-xs text-slate-500 mt-1">
+                          {(link.items || []).map((it: any) => {
+                            const gradeName = it.periodGrade?.grade?.name ?? `PG ${it.periodGradeId}`;
+                            const subjName = it.subject?.name ?? `Materia ${it.subjectId}`;
+                            return `${subjName} (${gradeName})`;
+                          }).join(' + ')}
+                        </div>
+                      </div>
+                      <Button
+                        size="small"
+                        type="text"
+                        danger
+                        icon={<DeleteOutlined />}
+                        onClick={() => handleDeleteLink(link.id)}
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Add new link */}
+              <div className="space-y-3">
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs text-slate-500">Nombre del vínculo (opcional)</label>
+                  <Input
+                    style={{ width: '100%' }}
+                    placeholder="Ej: Artes Gráficas 4to-5to"
+                    value={newLinkName}
+                    onChange={(e) => setNewLinkName(e.target.value)}
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs text-slate-500 block mb-2">Materias de grupo a vincular (mínimo 2)</label>
+                  <div className="space-y-2">
+                    {newLinkRows.map((row, idx) => (
+                      <div key={idx} className="flex items-center gap-2 flex-wrap">
+                        <Select
+                          showSearch
+                          style={{ width: 200 }}
+                          placeholder="Grado / Año"
+                          value={row.periodGradeId ?? undefined}
+                          optionFilterProp="label"
+                          onChange={(v) => {
+                            const next = [...newLinkRows];
+                            next[idx] = { ...next[idx], periodGradeId: v, subjectId: null };
+                            setNewLinkRows(next);
+                          }}
+                          options={linkStructure.map((pg: any) => ({
+                            value: pg.id,
+                            label: pg.grade?.name ?? `PG ${pg.id}`,
+                          }))}
+                        />
+                        <Select
+                          showSearch
+                          style={{ width: 220 }}
+                          placeholder="Materia"
+                          value={row.subjectId ?? undefined}
+                          optionFilterProp="label"
+                          disabled={!row.periodGradeId}
+                          onChange={(v) => {
+                            const next = [...newLinkRows];
+                            next[idx] = { ...next[idx], subjectId: v };
+                            setNewLinkRows(next);
+                          }}
+                          options={(linkStructure.find((pg: any) => pg.id === row.periodGradeId)?.subjects || [])
+                            .filter((s: any) => s.subjectGroupId != null)
+                            .map((s: any) => ({ value: s.id, label: s.name }))}
+                        />
+                        {newLinkRows.length > 1 && (
+                          <Button
+                            size="small"
+                            type="text"
+                            danger
+                            icon={<DeleteOutlined />}
+                            onClick={() => setNewLinkRows(newLinkRows.filter((_, i) => i !== idx))}
+                          />
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  <Button
+                    size="small"
+                    type="dashed"
+                    icon={<PlusOutlined />}
+                    style={{ marginTop: 8 }}
+                    onClick={() => setNewLinkRows([...newLinkRows, { subjectId: null, periodGradeId: null }])}
+                  >
+                    Agregar fila
+                  </Button>
+                </div>
+
+                <Button type="primary" icon={<PlusOutlined />} onClick={handleCreateLink}>
+                  Crear vínculo
+                </Button>
+              </div>
             </div>
           </div>
         )}

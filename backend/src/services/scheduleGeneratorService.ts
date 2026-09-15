@@ -23,7 +23,7 @@ import sequelize from '@/config/database';
 import {
   Schedule, ScheduleEntry, PeriodGradeSection, PeriodGrade, PeriodGradeSubject,
   Subject, TeacherAssignment, TeacherAvailability, Setting, Grade, Section, Person,
-  ScheduleException,
+  ScheduleException, ScheduleLink, ScheduleLinkItem,
 } from '@/models';
 
 // ── Types ──
@@ -65,6 +65,11 @@ interface GroupSubjectInput {
   subjectIds: number[];
 }
 
+interface CrossGradeLinkInput {
+  id: number;
+  items: { subjectId: number; periodGradeId: number }[];
+}
+
 interface ProblemJson {
   blockSize: number;
   avoidLastMorningFirstAfternoon: boolean;
@@ -74,6 +79,7 @@ interface ProblemJson {
   teacherBusy: { teacherId: number; day: string; blockId: string }[];
   teacherPreferred: { teacherId: number; day: string; blockId: string }[];
   groupSubjects: GroupSubjectInput[];
+  crossGradeLinks: CrossGradeLinkInput[];
 }
 
 interface SolverResult {
@@ -355,6 +361,21 @@ export async function generateSchedulesForPeriod(
   }
   const groupSubjects = Array.from(groupMap.values());
 
+  // 9b. Load cross-grade schedule links (manually configured synchronization across grades)
+  const linkRows = await ScheduleLink.findAll({
+    where: { schoolPeriodId },
+    include: [{ model: ScheduleLinkItem, as: 'items' }],
+  });
+  const crossGradeLinks: CrossGradeLinkInput[] = linkRows
+    .map(link => ({
+      id: link.id,
+      items: (link as any).items.map((it: any) => ({
+        subjectId: it.subjectId,
+        periodGradeId: it.periodGradeId,
+      })),
+    }))
+    .filter(l => l.items.length >= 2);
+
   // 10. Build the problem JSON
   const problem: ProblemJson = {
     blockSize,
@@ -365,10 +386,11 @@ export async function generateSchedulesForPeriod(
     teacherBusy,
     teacherPreferred,
     groupSubjects,
+    crossGradeLinks,
   };
 
   // Debug: log problem summary
-  console.log(`[scheduleGenerator] Problem: ${sectionInputs.length} sections, ${blocks.length} blocks, ${groupSubjects.length} group subjects, ${teacherBusy.length} busy slots, ${teacherPreferred.length} preferred slots`);
+  console.log(`[scheduleGenerator] Problem: ${sectionInputs.length} sections, ${blocks.length} blocks, ${groupSubjects.length} group subjects, ${crossGradeLinks.length} cross-grade links, ${teacherBusy.length} busy slots, ${teacherPreferred.length} preferred slots`);
   console.log(`[scheduleGenerator] blockSize=${blockSize}, avoidLastMorningFirstAfternoon=${avoidLastMorningFirstAfternoon}`);
   // Log busy slots per teacher for the group subject teachers
   const groupTeacherIds = new Set<number>();

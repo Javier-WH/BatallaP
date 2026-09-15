@@ -70,6 +70,7 @@ def main():
     teacher_busy = problem.get("teacherBusy", [])
     teacher_preferred = problem.get("teacherPreferred", [])
     group_subjects = problem.get("groupSubjects", [])
+    cross_grade_links = problem.get("crossGradeLinks", [])
 
     # ── Index blocks ──
     # blocks: list of { id, day, section(manana/tarde), periodIds, order }
@@ -132,6 +133,14 @@ def main():
     section_pg = {}
     for sec in sections:
         section_pg[sec["id"]] = sec["periodGradeId"]
+
+    # ── Build cross-grade link map ──
+    # Each link groups (subjectId, periodGradeId) pairs that must share the same block+day.
+    # Build a set of (periodGradeId, subjectId) pairs that are part of any link.
+    linked_pairs = set()
+    for link in cross_grade_links:
+        for item in link.get("items", []):
+            linked_pairs.add((item["periodGradeId"], item["subjectId"]))
 
     # ── Build the CP-SAT model ──
     model = cp_model.CpModel()
@@ -229,19 +238,23 @@ def main():
     # EXCEPT for group subjects: a group subject teacher teaches all sections of the grade
     # simultaneously, so the same teacher CAN be in multiple sections at the same time
     # for group subjects.
+    # EXCEPT for cross-grade linked subjects: linked subjects share the same block by
+    # configuration, so the same teacher CAN be in multiple linked subjects at the same time.
     # Group vars by (teacherId, blockId, day)
     teacher_block_vars = {}  # (teacherId, blockId, day) -> list of BoolVars
     for sec in sections:
         sid = sec["id"]
+        pg_id = sec["periodGradeId"]
         for sub in sec["subjects"]:
             subj_id = sub["subjectId"]
             teacher_id = sub.get("teacherId")
             if teacher_id is None:
                 continue
             is_group = sub.get("subjectGroupId") is not None
+            is_linked = (pg_id, subj_id) in linked_pairs
             for (b, v) in subject_vars.get((sid, subj_id), []):
-                if is_group:
-                    continue  # group subjects are exempt from teacher conflict
+                if is_group or is_linked:
+                    continue  # group/linked subjects are exempt from teacher conflict
                 key = (teacher_id, b["id"], b["day"])
                 if key not in teacher_block_vars:
                     teacher_block_vars[key] = []
@@ -354,6 +367,51 @@ def main():
         group_slot_counts[gk] = group_slot_counts.get(gk, 0) + 1
     for gk, count in group_slot_counts.items():
         print(f"[solver] Group slot pg={gk[0]} sg={gk[1]}: {count} block-days available", file=sys.stderr)
+
+    # ── Constraint 6b: Cross-grade links — all linked (subject, grade) pairs must share the SAME block+day ──
+    # Manually configured links allow subjects from different grades/sections to be
+    # scheduled in the same block+day. Each link creates a single "link slot" bool per
+    # (blockId, day); every linked subject var across all sections must equal that slot.
+    link_slot_vars = {}  # (linkId, blockId, day) -> BoolVar
+    for link in cross_grade_links:
+        link_id = link["id"]
+        items = link.get("items", [])
+        for b in blocks:
+            # Check if any section has vars for any linked subject in this block+day
+            has_vars = False
+            for item in items:
+                for sec in sections:
+                    if sec["periodGradeId"] != item["periodGradeId"]:
+                        continue
+                    sid = sec["id"]
+                    if (sid, item["subjectId"], b["id"], b["day"]) in x:
+                        has_vars = True
+                        break
+                if has_vars:
+                    break
+            if not has_vars:
+                continue
+
+            ls_var = model.NewBoolVar(f"lslot_{link_id}_{b['id']}_{b['day']}")
+            link_slot_vars[(link_id, b["id"], b["day"])] = ls_var
+
+            # Each linked subject var across all matching sections must equal the link slot
+            for item in items:
+                for sec in sections:
+                    if sec["periodGradeId"] != item["periodGradeId"]:
+                        continue
+                    sid = sec["id"]
+                    k = (sid, item["subjectId"], b["id"], b["day"])
+                    if k in x:
+                        model.Add(x[k] == ls_var)
+
+    # Debug: log link slot var counts
+    link_slot_counts = {}
+    for key in link_slot_vars:
+        link_id, block_id, day = key
+        link_slot_counts[link_id] = link_slot_counts.get(link_id, 0) + 1
+    for link_id, count in link_slot_counts.items():
+        print(f"[solver] Cross-grade link {link_id}: {count} block-days available", file=sys.stderr)
 
     # ── Constraint 7: allowConsecutiveBlocks (mode 2 = mandatory) ──
     # If mode 2 and weeklyBlocks > 1, all blocks must be consecutive in the same day+section.
@@ -685,11 +743,13 @@ def main():
 
         for sec in sections:
             sid = sec["id"]
+            pg_id = sec["periodGradeId"]
             for sub in sec["subjects"]:
                 subj_id = sub["subjectId"]
                 weekly = sub["weeklyBlocks"]
                 teacher_id = sub.get("teacherId")
                 is_group = sub.get("subjectGroupId") is not None
+                is_linked = (pg_id, subj_id) in linked_pairs
 
                 if weekly <= 0:
                     continue
@@ -707,7 +767,7 @@ def main():
                             "day": b["day"],
                             "blockId": b["id"],
                             "periodIds": b["periodIds"],
-                            "isGroupSubject": is_group,
+                            "isGroupSubject": is_group or is_linked,
                         })
                         placed_count += 1
 

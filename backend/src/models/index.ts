@@ -157,6 +157,8 @@ import TeacherAvailability from './TeacherAvailability';
 import Schedule from './Schedule';
 import ScheduleEntry from './ScheduleEntry';
 import ScheduleException from './ScheduleException';
+import ScheduleLink from './ScheduleLink';
+import ScheduleLinkItem from './ScheduleLinkItem';
 import ClassroomAssignment from './ClassroomAssignment';
 import RoomBooking from './RoomBooking';
 import GradeChangeLog from './GradeChangeLog';
@@ -367,6 +369,14 @@ ScheduleEntry.belongsTo(Person, { foreignKey: 'teacherId', as: 'teacher' });
 // Schedule exceptions (per-subject overrides for the automatic generator)
 ScheduleException.belongsTo(Subject, { foreignKey: 'subjectId', as: 'subject' });
 Subject.hasOne(ScheduleException, { foreignKey: 'subjectId', as: 'scheduleException' });
+
+// Schedule links (cross-grade subject linking for the automatic generator)
+ScheduleLink.belongsTo(SchoolPeriod, { foreignKey: 'schoolPeriodId', as: 'schoolPeriod' });
+SchoolPeriod.hasMany(ScheduleLink, { foreignKey: 'schoolPeriodId', as: 'scheduleLinks' });
+ScheduleLink.hasMany(ScheduleLinkItem, { foreignKey: 'linkId', as: 'items', onDelete: 'CASCADE' });
+ScheduleLinkItem.belongsTo(ScheduleLink, { foreignKey: 'linkId', as: 'link' });
+ScheduleLinkItem.belongsTo(Subject, { foreignKey: 'subjectId', as: 'subject' });
+ScheduleLinkItem.belongsTo(PeriodGrade, { foreignKey: 'periodGradeId', as: 'periodGrade' });
 
 // Classroom assignments (room <-> section/subject)
 ClassroomAssignment.belongsTo(Subject, { foreignKey: 'subjectId', as: 'subject' });
@@ -722,6 +732,8 @@ export {
   Schedule,
   ScheduleEntry,
   ScheduleException,
+  ScheduleLink,
+  ScheduleLinkItem,
   ClassroomAssignment,
   RoomBooking,
   GradeChangeLog,
