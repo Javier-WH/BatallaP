@@ -263,16 +263,17 @@ const buildAcademicSnapshot = async (): Promise<AcademicSnapshot> => {
   // ── Materia Pendiente: check completion via PendingSubject + encounters ──
   // Rules for a MP subject (assignment in the "MATERIA PENDIENTE" section):
   //   1. No students enrolled in MP for that subject+grade → disabled (not counted)
-  //   2. All students approved (status aprobada/convalidada) → 100% complete
-  //   3. All encounters exhausted AND all students presented → 100% complete
+  //   2. Plan progress → the MP encounters already have dates assigned
+  //   3. Grades progress → all students approved (aprobada/convalidada), OR
+  //      all encounters exhausted AND all students presented
   //      (even if nobody approved — they ran out of chances)
   //   4. Otherwise → incomplete (still in progress)
   // Key: must group by subjectId + gradeId, because the same subject (e.g. Inglés)
   // can have pending subjects in different grades (3rd year MP vs 4th year MP).
   const mpSection = await Section.findOne({ where: { name: 'MATERIA PENDIENTE' } });
   const mpSectionId = mpSection?.id ?? null;
-  // Map: `${subjectId}:${gradeId}` → { hasStudents, allApproved, allDone }
-  const mpCompletionMap = new Map<string, { hasStudents: boolean; allApproved: boolean; allDone: boolean }>();
+  // Map: `${subjectId}:${gradeId}` → { hasStudents, allApproved, allDone, hasEncounterDates }
+  const mpCompletionMap = new Map<string, { hasStudents: boolean; allApproved: boolean; allDone: boolean; hasEncounterDates: boolean }>();
   if (mpSectionId) {
     const mpAssignments = assignments.filter(a => a.sectionId === mpSectionId);
     // Collect (subjectId, gradeId) pairs from the assignments
@@ -289,19 +290,28 @@ const buildAcademicSnapshot = async (): Promise<AcademicSnapshot> => {
       const maxEncSetting = await Setting.findOne({ where: { key: 'pending_subject_max_encounters' } });
       const maxEnc = maxEncSetting && Number.isFinite(parseInt(maxEncSetting.value, 10))
         ? Math.max(1, parseInt(maxEncSetting.value, 10)) : 4;
+      // Locked encounter numbers don't require a date
+      const lockedEncSetting = await Setting.findOne({ where: { key: 'pending_subject_locked_encounters' } });
+      const lockedEncounters = (lockedEncSetting?.value || '')
+        .split(',')
+        .map(s => parseInt(s.trim(), 10))
+        .filter(n => Number.isFinite(n));
 
       // Fetch all PendingSubjects for these subjects, with their encounters + inscription (for gradeId)
+      // Only count records whose inscription belongs to the ACTIVE period —
+      // older resolved/pending rows from previous periods must not affect progress.
       const mpRecords = await PendingSubject.findAll({
         where: { subjectId: { [Op.in]: mpSubjectIds } },
         include: [
           { model: PendingSubjectEncounter, as: 'encounters' },
-          { model: Inscription, as: 'inscription', attributes: ['gradeId'] },
+          { model: Inscription, as: 'inscription', attributes: ['gradeId', 'schoolPeriodId'] },
         ],
       }) as any[];
 
       // Group by subjectId + gradeId (from the inscription)
       const byPair = new Map<string, any[]>();
       mpRecords.forEach(ps => {
+        if (ps.inscription?.schoolPeriodId !== activePeriod.id) return;
         const gradeId = ps.inscription?.gradeId;
         if (gradeId == null) return;
         const pairKey = `${ps.subjectId}:${gradeId}`;
@@ -320,7 +330,13 @@ const buildAcademicSnapshot = async (): Promise<AcademicSnapshot> => {
           const lastScored = [...encs].reverse().find((e: any) => e.score !== null || e.isAbsent);
           return lastScored && lastScored.encounterNumber >= maxEnc;
         });
-        mpCompletionMap.set(pairKey, { hasStudents: true, allApproved, allDone });
+        // Plan progress for MP = the encounters have dates assigned.
+        // Every student's non-locked encounters must exist and be dated.
+        const hasEncounterDates = psList.every(ps => {
+          const encs = (ps.encounters || []).filter((e: any) => !lockedEncounters.includes(e.encounterNumber));
+          return encs.length > 0 && encs.every((e: any) => e.date != null);
+        });
+        mpCompletionMap.set(pairKey, { hasStudents: true, allApproved, allDone, hasEncounterDates });
       }
     }
   }
@@ -348,7 +364,7 @@ const buildAcademicSnapshot = async (): Promise<AcademicSnapshot> => {
     const mpDisabled = isMP && !(mpData && mpData.hasStudents);
 
     if (!mpDisabled) {
-      const hasPlan = isMP ? (mpData ? mpData.hasStudents : !!planMap.get(key)) : !!planMap.get(key);
+      const hasPlan = isMP ? (mpData ? mpData.hasEncounterDates : !!planMap.get(key)) : !!planMap.get(key);
       const hasGrades = isMP
         ? (mpData ? (mpData.hasStudents && (mpData.allApproved || mpData.allDone)) : false)
         : !!qualificationMap.get(key);
@@ -425,7 +441,7 @@ const buildAcademicSnapshot = async (): Promise<AcademicSnapshot> => {
       const mpKey = gradeId != null ? `${subject.id}:${gradeId}` : null;
       const mpData = mpKey ? mpCompletionMap.get(mpKey) : null;
       if (mpData && mpData.hasStudents) {
-        hasPlan = true;
+        hasPlan = mpData.hasEncounterDates;
         hasGrades = mpData.allApproved || mpData.allDone;
       } else {
         // No students enrolled in MP for this subject+grade → disabled

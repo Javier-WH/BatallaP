@@ -136,11 +136,15 @@ def main():
 
     # ── Build cross-grade link map ──
     # Each link groups (subjectId, periodGradeId) pairs that must share the same block+day.
-    # Build a set of (periodGradeId, subjectId) pairs that are part of any link.
+    # Build a set of (periodGradeId, subjectId) pairs that are part of any link,
+    # plus a map to the link id for teacher-conflict exemption grouping.
     linked_pairs = set()
+    pair_to_link = {}
     for link in cross_grade_links:
         for item in link.get("items", []):
-            linked_pairs.add((item["periodGradeId"], item["subjectId"]))
+            pair = (item["periodGradeId"], item["subjectId"])
+            linked_pairs.add(pair)
+            pair_to_link[pair] = link["id"]
 
     # ── Build the CP-SAT model ──
     model = cp_model.CpModel()
@@ -234,14 +238,23 @@ def main():
             if len(all_conflicting) > 1:
                 model.Add(sum(all_conflicting) <= 1)
 
-    # ── Constraint 3: Teacher conflicts — no teacher in two sections at same block+day ──
-    # EXCEPT for group subjects: a group subject teacher teaches all sections of the grade
-    # simultaneously, so the same teacher CAN be in multiple sections at the same time
-    # for group subjects.
-    # EXCEPT for cross-grade linked subjects: linked subjects share the same block by
-    # configuration, so the same teacher CAN be in multiple linked subjects at the same time.
-    # Group vars by (teacherId, blockId, day)
-    teacher_block_vars = {}  # (teacherId, blockId, day) -> list of BoolVars
+    # ── Constraint 3: Teacher conflicts — no teacher in two places at same block+day ──
+    # Exemptions (same teacher MAY appear in several sections at once):
+    #   - Group subjects within the SAME grade (periodGradeId): the teacher runs the
+    #     group's parallel sessions across sections of that grade simultaneously.
+    #   - Subjects in the SAME cross-grade link: manually configured to share the
+    #     same block across different grades.
+    # A group subject in grade X and a group subject in grade Y (not linked) MUST
+    # conflict on the same teacher — the teacher cannot be in two grades at once.
+    #
+    # Model: for each (teacher, block, day) build "coexistence components" via
+    # union-find over two kinds of merge keys:
+    #   (periodGradeId, subjectGroupId) — same grade+group share the group slot anyway
+    #   link id                          — linked subjects share the link slot anyway
+    # Each component collapses to a single occupancy var (OR of its vars); the sum of
+    # regular vars + occupancy vars must be <= 1.
+    teacher_slot_regular = {}  # (teacherId, blockId, day) -> [var]
+    teacher_slot_exempt = {}   # (teacherId, blockId, day) -> [(var, pg_id, sg_id, link_id)]
     for sec in sections:
         sid = sec["id"]
         pg_id = sec["periodGradeId"]
@@ -250,17 +263,63 @@ def main():
             teacher_id = sub.get("teacherId")
             if teacher_id is None:
                 continue
-            is_group = sub.get("subjectGroupId") is not None
-            is_linked = (pg_id, subj_id) in linked_pairs
+            sg_id = sub.get("subjectGroupId")
+            link_id = pair_to_link.get((pg_id, subj_id))
             for (b, v) in subject_vars.get((sid, subj_id), []):
-                if is_group or is_linked:
-                    continue  # group/linked subjects are exempt from teacher conflict
                 key = (teacher_id, b["id"], b["day"])
-                if key not in teacher_block_vars:
-                    teacher_block_vars[key] = []
-                teacher_block_vars[key].append(v)
+                if sg_id is None and link_id is None:
+                    teacher_slot_regular.setdefault(key, []).append(v)
+                else:
+                    teacher_slot_exempt.setdefault(key, []).append((v, pg_id, sg_id, link_id))
 
-    for key, vars_list in teacher_block_vars.items():
+    for (tid, bid, day), exempt in teacher_slot_exempt.items():
+        # Union-find over coexistence keys: (pg, sg) for group subjects and
+        # ('link', link_id) for linked subjects. A linked group subject carries both
+        # keys, so it merges with its same-grade group peers and its linked grades.
+        n = len(exempt)
+        parent = list(range(n))
+
+        def find(i):
+            while parent[i] != i:
+                parent[i] = parent[parent[i]]
+                i = parent[i]
+            return i
+
+        def union(i, j):
+            parent[find(i)] = find(j)
+
+        key_to_idx = {}
+        for i, (_v, pg, sg, lk) in enumerate(exempt):
+            merge_keys = []
+            if sg is not None:
+                merge_keys.append(("pg", pg, sg))
+            if lk is not None:
+                merge_keys.append(("link", lk))
+            for k in merge_keys:
+                if k in key_to_idx:
+                    union(i, key_to_idx[k])
+                else:
+                    key_to_idx[k] = i
+
+        comp_vars = {}  # root -> [var]
+        for i, (v, _pg, _sg, _lk) in enumerate(exempt):
+            comp_vars.setdefault(find(i), []).append(v)
+
+        occ_vars = []
+        for root, vlist in comp_vars.items():
+            occ = model.NewBoolVar(f"tocc_{tid}_{bid}_{day}_{root}")
+            model.AddMaxEquality(occ, vlist)
+            occ_vars.append(occ)
+
+        regular = teacher_slot_regular.get((tid, bid, day), [])
+        all_units = regular + occ_vars
+        if len(all_units) > 1:
+            model.Add(sum(all_units) <= 1)
+
+    # Slots where the teacher only has regular (non-exempt) subjects
+    for (tid, bid, day), vars_list in teacher_slot_regular.items():
+        if (tid, bid, day) in teacher_slot_exempt:
+            continue  # already handled above
         if len(vars_list) > 1:
             model.Add(sum(vars_list) <= 1)
 
