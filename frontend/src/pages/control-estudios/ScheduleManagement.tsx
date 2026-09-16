@@ -1982,15 +1982,7 @@ const ScheduleManagement: React.FC = () => {
           className="mb-4"
         />
       )}
-      {scheduleLocked && (
-        <Alert
-          message="Horarios bloqueados"
-          description="Los horarios y la distribución de aulas están en modo sólo lectura. Desmarque «Bloqueado» para editar o regenerar."
-          type="warning"
-          showIcon
-          className="mb-4"
-        />
-      )}
+
       <Tabs
         activeKey={activeTab}
         onChange={setActiveTab}
