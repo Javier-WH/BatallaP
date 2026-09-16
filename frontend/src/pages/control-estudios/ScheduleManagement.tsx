@@ -1225,7 +1225,7 @@ const ScheduleManagement: React.FC = () => {
     if (!viewPeriod) return () => '';
     try {
       const gridRes = await api.get(`/classroom-assignments/grid/${viewPeriod.id}`);
-      const grid = gridRes.data || {};
+      const grid: Record<string, string> = gridRes.data || {};
       // grid format: { "day|period|roomName": "gradeId-sectionId" | "group:subjectId:gradeIds", ... }
       return (day: string, periodId: string, sectionKey: string, subjectId?: number): string => {
         const gradeId = Number(sectionKey.split('-')[0]);
