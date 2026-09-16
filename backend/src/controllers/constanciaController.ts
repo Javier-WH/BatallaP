@@ -177,6 +177,9 @@ async function resolveVariables(personId: number, schoolPeriodId: number, custom
     // Determined articles based on gender (el/la)
     'student.article': gender === 'F' ? 'la' : 'el',
     'student.articleUpper': gender === 'F' ? 'La' : 'El',
+    // Gendered status words for constancias (Inscrito/Inscrita, Aceptado/Aceptada)
+    'student.inscrito': gender === 'F' ? 'Inscrita' : 'Inscrito',
+    'student.aceptado': gender === 'F' ? 'Aceptada' : 'Aceptado',
     // Worker (staff) — same person data, plus hireDate for work certificates.
     // hireDate is only meaningful for staff; for students it will be empty.
     'worker.firstName': firstName,
@@ -419,6 +422,8 @@ export const getVariables = async (_req: Request, res: Response) => {
     { group: 'Estudiante', key: 'student.age', label: 'Edad' },
     { group: 'Estudiante', key: 'student.gender', label: 'Sexo (M/F)' },
     { group: 'Estudiante', key: 'student.article', label: 'Artículo (el/la)' },
+    { group: 'Estudiante', key: 'student.inscrito', label: 'Inscrito/Inscrita (según sexo)' },
+    { group: 'Estudiante', key: 'student.aceptado', label: 'Aceptado/Aceptada (según sexo)' },
     // Worker (staff) — for work certificates (constancias de trabajo)
     { group: 'Trabajador', key: 'worker.firstName', label: 'Nombre' },
     { group: 'Trabajador', key: 'worker.lastName', label: 'Apellido' },
