@@ -41,6 +41,7 @@ interface ClosureExecutionResult {
     failed: number;
     newInscriptions: number;
     pendingSubjectsCreated: number;
+    skipped: number;
   };
   errors: string[];
   log: Record<string, unknown>;
@@ -87,6 +88,30 @@ export class PeriodClosureExecutor {
 
     if (!nextPeriod || nextPeriod.id === schoolPeriodId) {
       errors.push('Debe existir un periodo siguiente creado antes de cerrar el periodo actual');
+    } else {
+      // The executor auto-copies missing structure into the next period, so
+      // this is a warning (not an error) to let the user know it will happen.
+      const [currentGradeIds, nextGradeIds] = await Promise.all([
+        PeriodGrade.findAll({
+          where: { schoolPeriodId },
+          attributes: ['gradeId']
+        }),
+        PeriodGrade.findAll({
+          where: { schoolPeriodId: nextPeriod.id },
+          attributes: ['gradeId']
+        })
+      ]);
+      const nextGradeIdSet = new Set(nextGradeIds.map(pg => pg.gradeId));
+      const missingGrades = currentGradeIds
+        .map(pg => pg.gradeId)
+        .filter(gradeId => !nextGradeIdSet.has(gradeId));
+      if (missingGrades.length > 0) {
+        warnings.push(
+          `El período siguiente (${nextPeriod.name}) no tiene configurados ${missingGrades.length} grado(s) ` +
+          'del período actual. La estructura (grados, secciones, materias, asignaciones de profesores) ' +
+          'se copiará automáticamente al ejecutar el cierre.'
+        );
+      }
     }
 
     const terms = await Term.findAll({
@@ -168,7 +193,8 @@ export class PeriodClosureExecutor {
           withPendingSubjects: 0,
           failed: 0,
           newInscriptions: 0,
-          pendingSubjectsCreated: 0
+          pendingSubjectsCreated: 0,
+          skipped: 0
         },
         errors: validation.errors,
         log: { validation }
@@ -203,6 +229,15 @@ export class PeriodClosureExecutor {
         throw new Error('No se encontró periodo siguiente');
       }
 
+      // Ensure the next period has the same academic structure (grades,
+      // sections, subjects, teacher assignments) before enrolling students.
+      // Merge semantics: fills gaps without duplicating existing config.
+      await SchoolPeriodService.clonePeriodStructure(
+        currentPeriod.id,
+        nextPeriod.id,
+        transaction
+      );
+
       const studentGroups = sortClosureStudentGroups(
         await loadClosureStudentGroups(schoolPeriodId, { transaction }),
       );
@@ -213,7 +248,8 @@ export class PeriodClosureExecutor {
         withPendingSubjects: 0,
         failed: 0,
         newInscriptions: 0,
-        pendingSubjectsCreated: 0
+        pendingSubjectsCreated: 0,
+        skipped: 0
       };
 
       const processLog: Record<string, unknown>[] = [];
@@ -302,6 +338,7 @@ export class PeriodClosureExecutor {
           });
 
           if (!targetPeriodGrade) {
+            stats.skipped++;
             processLog.push({
               inscriptionId: inscription.id,
               studentId: inscription.personId,
@@ -444,6 +481,7 @@ export class PeriodClosureExecutor {
             pendingSubjectsCount: pendingSubjects.length
           });
         } catch (error) {
+          stats.skipped++;
           processLog.push({
             inscriptionId: inscription.id,
             studentId: inscription.personId,
@@ -511,7 +549,8 @@ export class PeriodClosureExecutor {
           withPendingSubjects: 0,
           failed: 0,
           newInscriptions: 0,
-          pendingSubjectsCreated: 0
+          pendingSubjectsCreated: 0,
+          skipped: 0
         },
         errors: [errorMessage],
         log: { error: errorMessage, validation }

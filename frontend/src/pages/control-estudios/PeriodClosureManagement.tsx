@@ -146,7 +146,11 @@ const PeriodClosureManagement: React.FC = () => {
       setExecutionResult(result);
       if (result.success) {
         setCurrentStep(4);
-        message.success('Cierre de período ejecutado exitosamente');
+        if ((result.stats.skipped ?? 0) > 0) {
+          message.warning(`Cierre ejecutado, pero ${result.stats.skipped} estudiante(s) no pudieron inscribirse en el período siguiente`);
+        } else {
+          message.success('Cierre de período ejecutado exitosamente');
+        }
         await fetchStatus();
       } else {
         message.error('El cierre se ejecutó pero con errores');
@@ -556,7 +560,33 @@ const PeriodClosureManagement: React.FC = () => {
             <Descriptions.Item label="Reprobados">
               <Text type="danger">{executionResult.stats.failed}</Text>
             </Descriptions.Item>
+            {(executionResult.stats.skipped ?? 0) > 0 && (
+              <Descriptions.Item label="Omitidos">
+                <Text type="danger">{executionResult.stats.skipped}</Text>
+              </Descriptions.Item>
+            )}
           </Descriptions>
+
+          {(executionResult.stats.skipped ?? 0) > 0 && (
+            <Alert
+              message={`${executionResult.stats.skipped} estudiante(s) no pudieron inscribirse en el período siguiente`}
+              description={
+                <ul style={{ margin: 0, paddingLeft: 20 }}>
+                  {Array.from(new Set(
+                    ((executionResult.log?.processLog as any[]) ?? [])
+                      .filter((e: any) => e?.skipped || e?.failed)
+                      .map((e: any) => e?.error as string)
+                      .filter(Boolean)
+                  )).slice(0, 10).map((err, i) => (
+                    <li key={i}>{err}</li>
+                  ))}
+                </ul>
+              }
+              type="warning"
+              showIcon
+              style={{ marginTop: 16 }}
+            />
+          )}
 
           {executionResult.errors.length > 0 && (
             <Alert

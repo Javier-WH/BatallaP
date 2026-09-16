@@ -115,6 +115,7 @@ export interface ClosureExecutionResult {
     failed: number;
     newInscriptions: number;
     pendingSubjectsCreated: number;
+    skipped: number;
   };
   errors: string[];
   log: Record<string, unknown>;

@@ -41,8 +41,9 @@ export const buildNextPeriodDescriptor = (period: SchoolPeriod): NextPeriodDescr
 
 /**
  * Copy the academic structure (terms, grades, sections, subjects and teacher
- * assignments) from one period into another. The target period is expected to
- * be empty; nothing is deleted here.
+ * assignments) from one period into another. Merge semantics: existing rows in
+ * the target period are reused and only missing pieces are created, so it is
+ * safe to call on a partially configured period. Nothing is deleted here.
  */
 export const clonePeriodStructure = async (
   sourcePeriodId: number,
@@ -83,14 +84,20 @@ export const clonePeriodStructure = async (
   const periodGradeSubjectIdMap = new Map<number, number>();
 
   for (const pg of sourcePeriodGrades) {
-    const newPeriodGrade = await PeriodGrade.create(
-      {
+    const [newPeriodGrade] = await PeriodGrade.findOrCreate({
+      where: {
+        schoolPeriodId: targetPeriodId,
+        gradeId: pg.gradeId,
+        specializationId: pg.specializationId ?? null,
+      },
+      defaults: {
         schoolPeriodId: targetPeriodId,
         gradeId: pg.gradeId,
         specializationId: pg.specializationId,
+        color: pg.color,
       },
-      { transaction }
-    );
+      transaction,
+    });
 
     const sourceSections = await PeriodGradeSection.findAll({
       where: { periodGradeId: pg.id },
@@ -98,13 +105,18 @@ export const clonePeriodStructure = async (
     });
 
     for (const pgs of sourceSections) {
-      await PeriodGradeSection.create(
-        {
+      await PeriodGradeSection.findOrCreate({
+        where: {
           periodGradeId: newPeriodGrade.id,
           sectionId: pgs.sectionId,
         },
-        { transaction }
-      );
+        defaults: {
+          periodGradeId: newPeriodGrade.id,
+          sectionId: pgs.sectionId,
+          color: pgs.color,
+        },
+        transaction,
+      });
     }
 
     const sourceSubjects = await PeriodGradeSubject.findAll({
@@ -113,14 +125,24 @@ export const clonePeriodStructure = async (
     });
 
     for (const pgSubject of sourceSubjects) {
-      const newPeriodGradeSubject = await PeriodGradeSubject.create(
-        {
+      // Unscoped: an inactive link in the target must still be found, otherwise
+      // create() would violate the (periodGradeId, subjectId) unique index.
+      const [newPeriodGradeSubject] = await PeriodGradeSubject.unscoped().findOrCreate({
+        where: {
+          periodGradeId: newPeriodGrade.id,
+          subjectId: pgSubject.subjectId,
+        },
+        defaults: {
           periodGradeId: newPeriodGrade.id,
           subjectId: pgSubject.subjectId,
           order: pgSubject.order,
+          active: pgSubject.active,
+          includeInAverage: pgSubject.includeInAverage,
+          notRepairable: pgSubject.notRepairable,
+          weeklyBlocks: pgSubject.weeklyBlocks,
         },
-        { transaction }
-      );
+        transaction,
+      });
 
       periodGradeSubjectIdMap.set(pgSubject.id, newPeriodGradeSubject.id);
     }
@@ -139,14 +161,18 @@ export const clonePeriodStructure = async (
     const newPeriodGradeSubjectId = periodGradeSubjectIdMap.get(assignment.periodGradeSubjectId);
     if (!newPeriodGradeSubjectId) continue;
 
-    await TeacherAssignment.create(
-      {
+    await TeacherAssignment.findOrCreate({
+      where: {
+        periodGradeSubjectId: newPeriodGradeSubjectId,
+        sectionId: assignment.sectionId,
+      },
+      defaults: {
         teacherId: assignment.teacherId,
         periodGradeSubjectId: newPeriodGradeSubjectId,
         sectionId: assignment.sectionId,
       },
-      { transaction }
-    );
+      transaction,
+    });
   }
 };
 

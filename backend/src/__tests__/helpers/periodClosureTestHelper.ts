@@ -69,6 +69,9 @@ export async function createFullClosureSetup(options: {
   subjectsPerGrade?: number;
   gradeNames?: string[];
   subjectNames?: string[];
+  /** 'full' (default) creates PeriodGrade/Section/Subject structure in the next
+   *  period; 'none' leaves it empty to test structure cloning at closure. */
+  nextPeriodStructure?: 'full' | 'none';
 } = {}): Promise<ClosureSetup> {
   const gradeCount = options.gradeCount ?? 2;
   const subjectsPerGrade = options.subjectsPerGrade ?? 3;
@@ -181,27 +184,29 @@ export async function createFullClosureSetup(options: {
       periodGradeSubjectsCurrent.set(`${grade.id}:${subjects[si].id}`, pgs);
     }
 
-    // Next period
-    const pgNext = await PeriodGrade.create({
-      schoolPeriodId: nextPeriod.id,
-      gradeId: grade.id,
-    });
-    periodGradesNext.set(grade.id, pgNext);
-
-    await PeriodGradeSection.create({
-      periodGradeId: pgNext.id,
-      sectionId: section.id,
-    });
-
-    for (let si = 0; si < subjectsPerGrade; si++) {
-      const pgs = await PeriodGradeSubject.create({
-        periodGradeId: pgNext.id,
-        subjectId: subjects[si].id,
-        active: true,
-        includeInAverage: true,
-        weeklyBlocks: 2,
+    // Next period (skipped when nextPeriodStructure === 'none')
+    if (options.nextPeriodStructure !== 'none') {
+      const pgNext = await PeriodGrade.create({
+        schoolPeriodId: nextPeriod.id,
+        gradeId: grade.id,
       });
-      periodGradeSubjectsNext.set(`${grade.id}:${subjects[si].id}`, pgs);
+      periodGradesNext.set(grade.id, pgNext);
+
+      await PeriodGradeSection.create({
+        periodGradeId: pgNext.id,
+        sectionId: section.id,
+      });
+
+      for (let si = 0; si < subjectsPerGrade; si++) {
+        const pgs = await PeriodGradeSubject.create({
+          periodGradeId: pgNext.id,
+          subjectId: subjects[si].id,
+          active: true,
+          includeInAverage: true,
+          weeklyBlocks: 2,
+        });
+        periodGradeSubjectsNext.set(`${grade.id}:${subjects[si].id}`, pgs);
+      }
     }
   }
 

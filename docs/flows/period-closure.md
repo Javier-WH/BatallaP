@@ -36,6 +36,7 @@ Verifica:
 - Los consejos de curso están firmados (`CouncilChecklist.status='done'`).
 - El período de revisiones no está abierto (`RevisionPeriod.status != 'open'`). Si no se abrió revisiones (`status='pending'`), la validación pasa sin error.
 - No hay notas pendientes ni `CouncilPoint` sin resolver.
+- **Warning (no bloquea)**: si el período siguiente no tiene `PeriodGrade` para algún grado del período actual, se advierte que la estructura se copiará automáticamente al ejecutar.
 
 ### 2. Checklist manual
 
@@ -78,8 +79,16 @@ Endpoint: `POST /api/period-closure/:periodId/execute`
 - Service: `periodClosureExecutor.ts` (transaccional).
 - Acciones:
   1. Crear `PeriodClosure` con `initiatedBy = userId`.
-  2. Excluir estudiantes retirados (`Inscription.withdrawnAt != null`).
-  3. Por cada `Inscription` activa (no retirada, no transferencia):
+  2. **Copiar estructura académica al período siguiente**: se invoca
+     `clonePeriodStructure` (modo merge idempotente), que copia lapsos,
+     grados (`PeriodGrade`), secciones (`PeriodGradeSection`), materias
+     (`PeriodGradeSubject` con sus flags `includeInAverage`, `notRepairable`,
+     `weeklyBlocks`, `color`) y asignaciones de profesores
+     (`TeacherAssignment`). Registros ya existentes en el destino se reusan;
+     los que falten se crean. Contenidos, planes de evaluación y horarios
+     **no** se copian.
+  3. Excluir estudiantes retirados (`Inscription.withdrawnAt != null`).
+  4. Por cada `Inscription` activa (no retirada, no transferencia):
      - Congelar `SubjectFinalGrade` (una por `InscriptionSubject`).
      - Crear/actualizar `StudentPeriodOutcome`.
      - Marcar `PendingSubject` aprobadas como `status='aprobada'`.
@@ -87,9 +96,11 @@ Endpoint: `POST /api/period-closure/:periodId/execute`
      - Si es repitiente/rezagado: crear inscripción `repitiente` en grado destino + inscripción `materia_pendiente` con pendientes reprobadas.
      - Si es regular con pendientes: crear inscripción `regular` en grado siguiente + inscripción `materia_pendiente` con reprobadas.
      - Si es regular sin pendientes: crear inscripción `regular` en grado siguiente.
-  4. Rotar estados: período cerrado → `historico`, siguiente → `activo`, crear nuevo `preinscripcion`.
-  5. Cerrar `RevisionPeriod` (`status='closed'`).
-  6. Dejar `PeriodClosure.status = 'closed'`.
+     - Si no se pudo crear la inscripción (configuración faltante): registrar
+       `skipped: true` en el log e incrementar `stats.skipped`.
+  5. Rotar estados: período cerrado → `historico`, siguiente → `activo`, crear nuevo `preinscripcion`.
+  6. Cerrar `RevisionPeriod` (`status='closed'`).
+  7. Dejar `PeriodClosure.status = 'closed'`.
 
 ### 6. Outcomes y pendientes (post-cierre)
 
