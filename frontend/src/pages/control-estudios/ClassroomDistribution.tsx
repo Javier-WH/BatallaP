@@ -159,6 +159,9 @@ interface ClassroomDistributionProps {
   schoolPeriodName?: string;
   gradesList: { id: number; name: string }[];
   readOnly?: boolean;
+  /** Soft lock (per-period "schedules_locked" flag): hides editing tools but
+   *  keeps view/export available — unlike readOnly which hides the toolbar. */
+  locked?: boolean;
   // External selection (for teacher requests)
   externalSelectedCells?: Set<string>;
   onExternalSelectDown?: (day: string, periodId: string, room: string) => void;
@@ -169,10 +172,11 @@ interface ClassroomDistributionProps {
 }
 
 const ClassroomDistribution: React.FC<ClassroomDistributionProps> = ({
-  settings, sectionsList, subjectsList, schoolPeriodId, schoolPeriodName, gradesList, readOnly = false,
+  settings, sectionsList, subjectsList, schoolPeriodId, schoolPeriodName, gradesList, readOnly = false, locked = false,
   externalSelectedCells, onExternalSelectDown, onExternalSelectEnter, externalSelectionMode = false,
   allowedSelectionDay = null,
 }) => {
+  const editingDisabled = readOnly || locked;
   const scheduleSections = useMemo(() => buildSections(settings), [settings]);
 
   // Build class items from sectionsList
@@ -447,6 +451,7 @@ const ClassroomDistribution: React.FC<ClassroomDistributionProps> = ({
   }, []);
 
   const handleDown = (day: string, periodId: string, room: string) => {
+    if (editingDisabled) return;
     if (activeKey === undefined) return; // no tool selected
     const current = assignments[cellKey(day, periodId, room)] ?? null;
     const value = current === activeKey ? null : activeKey;
@@ -479,16 +484,25 @@ const ClassroomDistribution: React.FC<ClassroomDistributionProps> = ({
       .catch(() => {});
   }, [schoolPeriodId]);
 
-  // Save grid state whenever assignments change (debounced, skipped in readOnly mode)
+  // Save grid state whenever assignments change (debounced, skipped in readOnly/locked mode)
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
-    if (!schoolPeriodId || readOnly) return;
+    if (!schoolPeriodId || editingDisabled) return;
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
       api.put(`/classroom-assignments/grid/${schoolPeriodId}`, assignments).catch(() => {});
     }, 1000);
     return () => { if (saveTimer.current) clearTimeout(saveTimer.current); };
-  }, [assignments, schoolPeriodId, readOnly]);
+  }, [assignments, schoolPeriodId, editingDisabled]);
+
+  // Drop any active paint tool / cell selection when editing becomes disabled
+  useEffect(() => {
+    if (editingDisabled) {
+      setActiveKey(undefined);
+      setSelectedCells(new Set());
+      setSelectionMode(false);
+    }
+  }, [editingDisabled]);
 
   // ── Auto-distribution modal ──
   const loadRoomAssignments = useCallback(async () => {
@@ -724,9 +738,10 @@ const ClassroomDistribution: React.FC<ClassroomDistributionProps> = ({
 
   return (
     <div className="ce-classroom-distribution p-4">
-      {/* Toolbar (hidden in readOnly mode) */}
+      {/* Toolbar (hidden in readOnly mode; only export visible when locked) */}
       {!readOnly && (
         <div className="flex flex-wrap items-center gap-1.5 mb-4">
+          {!locked && (<>
           {classes.map(c => {
             const color = colorForClass(c.key);
             const isActive = activeKey === c.key;
@@ -775,16 +790,16 @@ const ClassroomDistribution: React.FC<ClassroomDistributionProps> = ({
           )}
           <Button size="small" icon={<ThunderboltOutlined />} onClick={handleOpenAutoModal}>Distribución automática</Button>
           <Button size="small" icon={<ClearOutlined />} onClick={clearAll}>Limpiar todo</Button>
-          {!readOnly && (
-            <Button
-              size="small"
-              icon={<InboxOutlined />}
-              onClick={() => { loadPendingRequests(); setRequestsModalOpen(true); }}
-            >
-              Solicitudes
-              {pendingRequests.length > 0 && <Tag color="orange" style={{ marginLeft: 4 }}>{pendingRequests.length}</Tag>}
-            </Button>
-          )}
+          <Button
+            size="small"
+            icon={<InboxOutlined />}
+            onClick={() => { loadPendingRequests(); setRequestsModalOpen(true); }}
+          >
+            Solicitudes
+            {pendingRequests.length > 0 && <Tag color="orange" style={{ marginLeft: 4 }}>{pendingRequests.length}</Tag>}
+          </Button>
+          </>)}
+          <span className="flex-1" />
           <Button
             size="small"
             type="primary"

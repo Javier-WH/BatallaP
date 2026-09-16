@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Tabs, Select, Card, Spin, message, Button, Tag, Empty, Modal, Switch, InputNumber, Alert, Popconfirm, DatePicker, Input } from 'antd';
-import { TableOutlined, UserOutlined, ReloadOutlined, EditOutlined, SaveOutlined, CloseOutlined, DeleteOutlined, WarningOutlined, ThunderboltOutlined, ScheduleOutlined, SettingOutlined, PlusOutlined, HomeOutlined, FileExcelOutlined, PrinterOutlined } from '@ant-design/icons';
+import { Tabs, Select, Card, Spin, message, Button, Tag, Empty, Modal, Switch, InputNumber, Alert, Popconfirm, DatePicker, Input, Checkbox, Tooltip } from 'antd';
+import { TableOutlined, UserOutlined, ReloadOutlined, EditOutlined, SaveOutlined, CloseOutlined, DeleteOutlined, WarningOutlined, ThunderboltOutlined, ScheduleOutlined, SettingOutlined, PlusOutlined, HomeOutlined, FileExcelOutlined, PrinterOutlined, LockOutlined } from '@ant-design/icons';
 import {
   DndContext,
   PointerSensor,
@@ -948,6 +948,27 @@ const ScheduleManagement: React.FC = () => {
 
   const scheduleSections = useMemo(() => buildSections(settings), [settings]);
 
+  // Schedule lock: per-period flag stored in settings ("schedules_locked_<periodId>")
+  // When locked, schedules and classroom distribution become read-only to
+  // prevent accidental edits or regeneration.
+  const lockKey = viewPeriod ? `schedules_locked_${viewPeriod.id}` : null;
+  const scheduleLocked = !isReadOnly && !!lockKey && settings[lockKey] === '1';
+  const [lockToggling, setLockToggling] = useState(false);
+  const toggleScheduleLock = async (checked: boolean) => {
+    if (!lockKey) return;
+    setLockToggling(true);
+    try {
+      await api.post('/settings', { settings: { [lockKey]: checked ? '1' : '0' } });
+      setSettings(prev => ({ ...prev, [lockKey]: checked ? '1' : '0' }));
+      if (checked) setEditMode(false);
+      message.success(checked ? 'Horarios bloqueados (sólo lectura)' : 'Horarios desbloqueados');
+    } catch {
+      message.error('Error al cambiar el bloqueo');
+    } finally {
+      setLockToggling(false);
+    }
+  };
+
   // Diarios: unique grades (must be before any early return)
   const diarioGrades = useMemo(() => {
     const map = new Map<number, { id: number; name: string; order: number }>();
@@ -1727,6 +1748,7 @@ const ScheduleManagement: React.FC = () => {
   const [generating, setGenerating] = useState(false);
   const handleGenerate = async () => {
     if (!viewPeriod) return;
+    if (scheduleLocked) { message.warning('Los horarios están bloqueados (sólo lectura)'); return; }
     try {
       setGenerating(true);
       const res = await api.post('/schedules/generate', null, {
@@ -1960,6 +1982,15 @@ const ScheduleManagement: React.FC = () => {
           className="mb-4"
         />
       )}
+      {scheduleLocked && (
+        <Alert
+          message="Horarios bloqueados"
+          description="Los horarios y la distribución de aulas están en modo sólo lectura. Desmarque «Bloqueado» para editar o regenerar."
+          type="warning"
+          showIcon
+          className="mb-4"
+        />
+      )}
       <Tabs
         activeKey={activeTab}
         onChange={setActiveTab}
@@ -1979,7 +2010,7 @@ const ScheduleManagement: React.FC = () => {
                     showSearch
                     optionFilterProp="label"
                   />
-                  {selectedSectionId && !editMode && !isReadOnly && (
+                  {selectedSectionId && !editMode && !isReadOnly && !scheduleLocked && (
                     <Button icon={<EditOutlined />} onClick={enterEditMode}>Editar</Button>
                   )}
                   {selectedSectionId && editMode && (
@@ -2069,6 +2100,15 @@ const ScheduleManagement: React.FC = () => {
                   )}
                   {viewPeriod && !isReadOnly && (
                     <div className="ml-auto flex items-center gap-3 pl-4 border-l border-slate-200">
+                      <Tooltip title="Impide la edición manual, la distribución de aulas y la generación automática">
+                        <Checkbox
+                          checked={scheduleLocked}
+                          disabled={lockToggling || editMode}
+                          onChange={e => toggleScheduleLock(e.target.checked)}
+                        >
+                          <LockOutlined className={scheduleLocked ? 'text-amber-600' : 'text-slate-400'} /> Bloqueado
+                        </Checkbox>
+                      </Tooltip>
                       <Button icon={<SettingOutlined />} onClick={handleOpenExceptions}>
                         Excepciones
                       </Button>
@@ -2079,9 +2119,9 @@ const ScheduleManagement: React.FC = () => {
                         cancelText="Cancelar"
                         okButtonProps={{ danger: true }}
                         onConfirm={handleGenerate}
-                        disabled={generating}
+                        disabled={generating || scheduleLocked}
                       >
-                        <Button danger loading={generating} icon={<ThunderboltOutlined />}>
+                        <Button danger loading={generating} icon={<ThunderboltOutlined />} disabled={scheduleLocked}>
                           Generar automáticamente
                         </Button>
                       </Popconfirm>
@@ -2233,7 +2273,7 @@ const ScheduleManagement: React.FC = () => {
             key: 'classrooms',
             label: <span><HomeOutlined /> Distribución de Aulas</span>,
             children: (
-              <ClassroomDistribution settings={settings} sectionsList={sectionsList} subjectsList={structureSubjects} schoolPeriodId={viewPeriod?.id} schoolPeriodName={viewPeriod?.name} gradesList={sectionsList.filter((s: any, i: number, arr: any[]) => arr.findIndex(x => x.gradeId === s.gradeId) === i).map((s: any) => ({ id: s.gradeId, name: s.gradeName }))} />
+              <ClassroomDistribution settings={settings} sectionsList={sectionsList} subjectsList={structureSubjects} schoolPeriodId={viewPeriod?.id} schoolPeriodName={viewPeriod?.name} gradesList={sectionsList.filter((s: any, i: number, arr: any[]) => arr.findIndex(x => x.gradeId === s.gradeId) === i).map((s: any) => ({ id: s.gradeId, name: s.gradeName }))} readOnly={isReadOnly} locked={scheduleLocked} />
             ),
           },
           {

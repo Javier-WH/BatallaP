@@ -407,6 +407,14 @@ automático de horarios las coloque en el mismo bloque horario.
 - Las materias vinculadas se fuerzan al mismo bloque+day en el solver CP-SAT.
 - Los profesores pueden ser independientes (no se exige que sean el mismo).
 - Las materias no vinculadas siguen el comportamiento normal.
+- **Conflicto de profesor**: las materias de grupo (`subjectGroupId`) solo comparten bloque entre secciones del **mismo grado**; entre grados distintos solo coexisten si el par `(subjectId, periodGradeId)` está en un vínculo. Un profesor nunca queda en dos unidades no relacionadas a la vez.
+
+**Distribución automática de aulas** (`ClassroomDistribution` → «Aplicar a la grid»):
+- Los pares `(materia, grado)` de un vínculo que comparten profesor se agrupan en un cluster `(linkId, teacherId)` y se asignan a la **misma aula** — basta configurar el aula en uno de los grados del vínculo (la primera asignación `group` configurada entre los miembros define el aula del cluster).
+- La celda de la grid guarda todos los grados vinculados: `group:subjectId:gradeId1,gradeId2,...`.
+- Las materias sin vínculo mantienen su aula por grado configurada.
+
+**Bloqueo de horarios**: el setting `schedules_locked_<schoolPeriodId>` (`'1'`/`'0'`, gestionado desde el checkbox «Bloqueado» en Control de Estudios → Horarios) pone en sólo lectura la edición manual de horarios, la distribución de aulas y la generación automática del período.
 
 ---
 
