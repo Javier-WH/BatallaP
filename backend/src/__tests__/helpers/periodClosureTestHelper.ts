@@ -420,22 +420,28 @@ export async function createSeparateMPInscription(
   setup: ClosureSetup,
   student: StudentWithGrades,
   subjectIndices: number[],
-  options: { status?: 'pendiente' | 'aprobada' | 'convalidada' } = {},
+  options: { status?: 'pendiente' | 'aprobada' | 'convalidada'; gradeIndex?: number } = {},
 ): Promise<{ mpInscription: Inscription; pendingSubjects: Map<number, PendingSubject> }> {
   const suffix = nextId();
   const status = options.status ?? 'pendiente';
+  // The MP inscription lives in the grade where the pending subjects are
+  // coursed (defaults to the student's current grade for backwards compat).
+  const mpGradeId = options.gradeIndex != null
+    ? setup.grades[options.gradeIndex].id
+    : student.inscription.gradeId;
 
-  // Find or create the "Materia Pendiente" section
+  // Find or create the "Materia Pendiente" section (stored uppercase by the
+  // Section beforeCreate hook; look it up in uppercase so the find matches
+  // under case-sensitive collations like SQLite)
   const [mpSection] = await Section.findOrCreate({
-    where: { name: 'Materia Pendiente' },
-    defaults: { name: 'Materia Pendiente' },
+    where: { name: 'MATERIA PENDIENTE' },
+    defaults: { name: 'MATERIA PENDIENTE' },
   });
 
-  // The MP inscription is in the same grade as the student's regular inscription
   const mpInscription = await Inscription.create({
     personId: student.person.id,
     schoolPeriodId: setup.currentPeriod.id,
-    gradeId: student.inscription.gradeId,
+    gradeId: mpGradeId,
     sectionId: mpSection.id,
     escolaridad: 'materia_pendiente',
     originPeriodId: setup.currentPeriod.id,
@@ -449,7 +455,7 @@ export async function createSeparateMPInscription(
       inscriptionId: mpInscription.id,
       subjectId: subject.id,
       schoolPeriodId: setup.currentPeriod.id,
-      gradeId: student.inscription.gradeId,
+      gradeId: mpGradeId,
       sectionId: mpSection.id,
     });
 

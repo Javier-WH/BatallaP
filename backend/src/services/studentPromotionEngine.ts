@@ -29,6 +29,11 @@ interface EvaluateResult {
   approvedPendingSubjectIds: number[];
   /** Subject IDs of previously-pending subjects that remain unresolved/failed. */
   failedPendingSubjectIds: number[];
+  /** Unresolved pending subjects that must carry over to the next period.
+   *  Each one is tagged with the grade where the subject is coursed (the
+   *  grade of the inscription holding the PendingSubject) so the executor
+   *  can recreate the MP inscription in the correct origin grade. */
+  unresolvedPendingSubjects: { subjectId: number; gradeId: number; originPeriodId: number }[];
   /** True when the student is repeating because they failed a pending subject (rezagado). */
   isRezagado: boolean;
   /** Computed status (always available, even in preview mode). */
@@ -94,12 +99,19 @@ export class StudentPromotionEngine {
       inscription.id,
     ]));
 
-    const pendingSubjectsRecords = await PendingSubject.findAll({
+    const pendingSubjectsRecords = (await PendingSubject.findAll({
       where: {
         newInscriptionId: { [Op.in]: allInscriptionIds },
       },
+      include: [
+        {
+          model: Inscription,
+          as: 'inscription',
+          attributes: ['id', 'gradeId'],
+        },
+      ],
       transaction: options.transaction,
-    });
+    })) as (PendingSubject & { inscription?: { id: number; gradeId: number } | null })[];
 
     // Collect approved and failed pending subject IDs.
     // Per the documented rules:
@@ -108,12 +120,18 @@ export class StudentPromotionEngine {
     //     an unresolved MP without a definitive result is considered failed)
     const approvedPendingSubjectIds: number[] = [];
     const failedPendingSubjectIds: number[] = [];
+    const unresolvedPendingSubjects: { subjectId: number; gradeId: number; originPeriodId: number }[] = [];
 
     for (const ps of pendingSubjectsRecords) {
       if (ps.status === 'aprobada' || ps.status === 'convalidada') {
         approvedPendingSubjectIds.push(ps.subjectId);
       } else if (ps.status === 'pendiente') {
         failedPendingSubjectIds.push(ps.subjectId);
+        unresolvedPendingSubjects.push({
+          subjectId: ps.subjectId,
+          gradeId: ps.inscription?.gradeId ?? inscription.gradeId,
+          originPeriodId: ps.originPeriodId,
+        });
       }
     }
 
@@ -189,6 +207,7 @@ export class StudentPromotionEngine {
       promotionGrade,
       approvedPendingSubjectIds,
       failedPendingSubjectIds,
+      unresolvedPendingSubjects,
       isRezagado,
       status,
       promotionGradeId,

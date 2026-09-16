@@ -33,7 +33,9 @@ import { logGradeChange } from '@/services/gradeChangeLogService';
 /* Helpers                                                             */
 /* ------------------------------------------------------------------ */
 
-const MP_SECTION_NAME = 'Materia Pendiente';
+// Stored uppercase by the Section beforeCreate hook — use the canonical
+// stored form so lookups match under case-sensitive collations too.
+const MP_SECTION_NAME = 'MATERIA PENDIENTE';
 
 /** Find or create the "Materia Pendiente" section. */
 async function findOrCreateMpSection(t?: any): Promise<Section> {

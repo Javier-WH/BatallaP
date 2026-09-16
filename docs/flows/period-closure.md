@@ -93,8 +93,8 @@ Endpoint: `POST /api/period-closure/:periodId/execute`
      - Crear/actualizar `StudentPeriodOutcome`.
      - Marcar `PendingSubject` aprobadas como `status='aprobada'`.
      - Si es egresado (`graduatedAt` no nulo): no crear inscripción, registrar en log.
-     - Si es repitiente/rezagado: crear inscripción `repitiente` en grado destino + inscripción `materia_pendiente` con pendientes reprobadas.
-     - Si es regular con pendientes: crear inscripción `regular` en grado siguiente + inscripción `materia_pendiente` con reprobadas.
+     - Si es repitiente/rezagado: crear inscripción `repitiente` en grado destino + inscripción(es) `materia_pendiente` con las pendientes no resueltas, cada una en su grado origen.
+     - Si es regular con pendientes: crear inscripción `regular` en grado siguiente + inscripción `materia_pendiente` con reprobadas en el grado cursado.
      - Si es regular sin pendientes: crear inscripción `regular` en grado siguiente.
      - Si no se pudo crear la inscripción (configuración faltante): registrar
        `skipped: true` en el log e incrementar `stats.skipped`.
@@ -123,13 +123,15 @@ El estudiante que reprueba un número de materias superior al máximo de materia
 El estudiante que reprueba un número de materias igual o inferior al máximo permitido se inscribe en el siguiente grado para el siguiente período con `escolaridad='regular'`, y además se inscriben las materias reprobadas con `escolaridad='materia_pendiente'` (inscripción separada en el grado anterior, sección "Materia Pendiente").
 
 ### R5. Reprueba materia pendiente → REZAGADO
-Si un estudiante reprueba una o varias materias pendientes (del grado anterior), repite el grado actual por completo, sin importar si aprobó o reprobó las materias del grado actual. Técnicamente usa `escolaridad='repitiente'`, pero se distingue mediante `StudentPeriodOutcome.metadata.isRezagado = true`.
+Si un estudiante reprueba una o varias materias pendientes (del grado anterior), repite el grado actual por completo **en las mismas condiciones**, sin importar si aprobó o reprobó las materias del grado actual. Técnicamente usa `escolaridad='repitiente'`, pero se distingue mediante `StudentPeriodOutcome.metadata.isRezagado = true`.
 
 - Se crean DOS inscripciones:
   1. Inscripción `repitiente` en el grado actual con TODAS las materias regulares.
-  2. Inscripción `materia_pendiente` en el grado anterior con SOLO las pendientes reprobadas.
+  2. Inscripción `materia_pendiente` **en el grado origen de cada pendiente** con SOLO las pendientes no resueltas.
 - Las pendientes aprobadas se marcan como `status='aprobada'`.
 - Las pendientes reprobadas se arrastran como nuevos `PendingSubject` al siguiente período.
+
+**Invariante**: un estudiante nunca puede tener `materia_pendiente` del mismo grado que está cursando. Las materias reprobadas del grado que repite NO generan MP (se retoman dentro de la inscripción repitiente); solo las pendientes arrastradas de períodos anteriores se recrean, cada una en su grado origen (`PendingSubject.newInscriptionId → Inscription.gradeId`). Si el grado origen coincide con el grado que repite, el `PendingSubject` se adjunta a la inscripción repitiente en lugar de crear una inscripción MP del mismo grado.
 
 ### R6. Aprueba pendientes + aprueba grado actual → siguiente grado
 Si el estudiante tiene materias pendientes y las aprueba todas, y también aprueba todas las materias del grado actual, se inscribe en el siguiente grado para el siguiente período con `escolaridad='regular'`. Las pendientes aprobadas se marcan como `status='aprobada'`.

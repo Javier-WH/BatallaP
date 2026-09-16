@@ -274,7 +274,7 @@ export class PeriodClosureExecutor {
             { transaction, now: startedAt }
           );
 
-          const { pendingSubjects, promotionGrade, approvedPendingSubjectIds, status: evalStatus, promotionGradeId: evalPromotionGradeId, graduatedAt: evalGraduatedAt, finalAverage: evalFinalAverage, failedSubjects: evalFailedSubjects } = evaluation;
+          const { pendingSubjects, promotionGrade, approvedPendingSubjectIds, unresolvedPendingSubjects, status: evalStatus, promotionGradeId: evalPromotionGradeId, graduatedAt: evalGraduatedAt, finalAverage: evalFinalAverage, failedSubjects: evalFailedSubjects } = evaluation;
 
           // R6/R7: Mark previously-pending subjects that were approved as resolved.
           // MP subjects may live in a separate materia_pendiente inscription, so
@@ -407,64 +407,115 @@ export class PeriodClosureExecutor {
             }
           }
 
-          if (pendingSubjects.length > 0) {
-            // 1. Find/Create "Materia Pendiente" Section
+          // Carry pending subjects into the next period. A pending subject is
+          // always coursed in the grade where it belongs — never in the
+          // student's new enrollment grade:
+          //  - Promoted students (materias_pendientes): subjects failed in the
+          //    just-finished grade get an MP inscription in that grade.
+          //  - Repeaters (repitiente/rezagado): they retake the whole grade, so
+          //    current-grade failures are NOT materia pendiente. Only
+          //    unresolved pending subjects carried from previous periods, each
+          //    into an MP inscription in its origin grade.
+          const carriedByGrade = new Map<number, { subjectId: number; originPeriodId: number }[]>();
+          const carrySubject = (subjectId: number, gradeId: number, originPeriodId: number) => {
+            const list = carriedByGrade.get(gradeId) ?? [];
+            if (!list.some(entry => entry.subjectId === subjectId)) {
+              list.push({ subjectId, originPeriodId });
+            }
+            carriedByGrade.set(gradeId, list);
+          };
+
+          if (isRepeating) {
+            for (const pending of unresolvedPendingSubjects) {
+              carrySubject(pending.subjectId, pending.gradeId, pending.originPeriodId);
+            }
+          } else {
+            for (const subject of pendingSubjects) {
+              carrySubject(subject.subjectId, inscription.gradeId, schoolPeriodId);
+            }
+            for (const pending of unresolvedPendingSubjects) {
+              carrySubject(pending.subjectId, pending.gradeId, pending.originPeriodId);
+            }
+          }
+
+          if (carriedByGrade.size > 0) {
+            // 1. Find/Create "Materia Pendiente" Section (name is stored
+            // uppercase by the Section beforeCreate hook; look it up in
+            // uppercase so the find matches under case-sensitive collations)
             const [mpSection] = await Section.findOrCreate({
-              where: { name: 'Materia Pendiente' },
-              defaults: { name: 'Materia Pendiente' },
+              where: { name: 'MATERIA PENDIENTE' },
+              defaults: { name: 'MATERIA PENDIENTE' },
               transaction
             });
 
-            // 2. Ensure PeriodGrade exists for the OLD grade in the NEW period (to handle MP)
-            // The student failed subjects in 'inscription.gradeId', so they take them in that same grade level
-            // 2. Ensure PeriodGrade exists for the OLD grade in the NEW period (to handle MP)
-            const mpGradeId = inscription.gradeId;
-            const [mpPeriodGrade] = await PeriodGrade.findOrCreate({
-              where: { schoolPeriodId: nextPeriod.id, gradeId: mpGradeId },
-              defaults: { schoolPeriodId: nextPeriod.id, gradeId: mpGradeId },
-              transaction
-            });
+            for (const [mpGradeId, carriedSubjects] of carriedByGrade) {
+              // If the carried subject belongs to the same grade the student
+              // is enrolled in, it is already retaken inside the new
+              // inscription — track the pending there instead of creating a
+              // same-grade MP inscription (a student can never have a pending
+              // subject of the grade he is coursing).
+              if (mpGradeId === targetGradeId) {
+                for (const carried of carriedSubjects) {
+                  await PendingSubject.create({
+                    newInscriptionId: newInscription.id,
+                    subjectId: carried.subjectId,
+                    originPeriodId: carried.originPeriodId,
+                    status: 'pendiente'
+                  }, { transaction });
+                  stats.pendingSubjectsCreated++;
+                }
+                continue;
+              }
 
-            if (mpPeriodGrade) {
-              // Link MP Section to PeriodGrade
-              await PeriodGradeSection.findOrCreate({
-                where: { periodGradeId: mpPeriodGrade.id, sectionId: mpSection.id },
-                defaults: { periodGradeId: mpPeriodGrade.id, sectionId: mpSection.id },
+              // 2. Ensure PeriodGrade exists for the ORIGIN grade in the new
+              // period (the MP subject is coursed in that grade level)
+              const [mpPeriodGrade] = await PeriodGrade.findOrCreate({
+                where: { schoolPeriodId: nextPeriod.id, gradeId: mpGradeId },
+                defaults: { schoolPeriodId: nextPeriod.id, gradeId: mpGradeId },
                 transaction
               });
 
-              // 3. Create Separate Inscription for Materia Pendiente
-              // This inscription is in the OLD grade, in the MP section.
-              const mpInscription = await Inscription.create({
-                schoolPeriodId: nextPeriod.id,
-                gradeId: mpGradeId,
-                sectionId: mpSection.id,
-                personId: inscription.personId,
-                escolaridad: 'materia_pendiente',
-                originPeriodId: schoolPeriodId,
-                isRepeater: false
-              }, { transaction });
+              if (mpPeriodGrade) {
+                // Link MP Section to PeriodGrade
+                await PeriodGradeSection.findOrCreate({
+                  where: { periodGradeId: mpPeriodGrade.id, sectionId: mpSection.id },
+                  defaults: { periodGradeId: mpPeriodGrade.id, sectionId: mpSection.id },
+                  transaction
+                });
 
-              stats.newInscriptions++;
-
-              // 4. Enroll Pending Subjects in the MP Inscription
-              for (const pendingSubj of pendingSubjects) {
-                await PendingSubject.create({
-                  newInscriptionId: mpInscription.id,
-                  subjectId: pendingSubj.subjectId,
-                  originPeriodId: schoolPeriodId,
-                  status: 'pendiente'
-                }, { transaction });
-
-                await InscriptionSubject.create({
-                  inscriptionId: mpInscription.id,
-                  subjectId: pendingSubj.subjectId,
+                // 3. Create Separate Inscription for Materia Pendiente
+                // This inscription is in the ORIGIN grade, in the MP section.
+                const mpInscription = await Inscription.create({
                   schoolPeriodId: nextPeriod.id,
                   gradeId: mpGradeId,
-                  sectionId: mpSection.id
+                  sectionId: mpSection.id,
+                  personId: inscription.personId,
+                  escolaridad: 'materia_pendiente',
+                  originPeriodId: schoolPeriodId,
+                  isRepeater: false
                 }, { transaction });
 
-                stats.pendingSubjectsCreated++;
+                stats.newInscriptions++;
+
+                // 4. Enroll Pending Subjects in the MP Inscription
+                for (const carried of carriedSubjects) {
+                  await PendingSubject.create({
+                    newInscriptionId: mpInscription.id,
+                    subjectId: carried.subjectId,
+                    originPeriodId: carried.originPeriodId,
+                    status: 'pendiente'
+                  }, { transaction });
+
+                  await InscriptionSubject.create({
+                    inscriptionId: mpInscription.id,
+                    subjectId: carried.subjectId,
+                    schoolPeriodId: nextPeriod.id,
+                    gradeId: mpGradeId,
+                    sectionId: mpSection.id
+                  }, { transaction });
+
+                  stats.pendingSubjectsCreated++;
+                }
               }
             }
           }

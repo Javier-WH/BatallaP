@@ -1,6 +1,7 @@
 import '../setup';
 import {
   Inscription,
+  InscriptionSubject,
   StudentPeriodOutcome,
   PendingSubject,
   SubjectFinalGrade,
@@ -14,6 +15,7 @@ import {
   createFullClosureSetup,
   createStudentWithGrades,
   createPendingSubjectForStudent,
+  createSeparateMPInscription,
   markCouncilsDone,
   createCompletedRevisionPeriod,
   executeClosure,
@@ -214,20 +216,11 @@ describe('Period Closure Rules — Integration Tests', () => {
   describe('R5 — Reprueba materia pendiente → REZAGADO', () => {
     it('R5a: estudiante con 1 pendiente reprobada → repitiente en grado actual + MP + isRezagado', async () => {
       setup = await standardSetup(2, 3);
-      // Student in grade 1 (2do año) with a pending subject from grade 0
-      const student = await createStudentWithGrades(setup, 1, { 0: 15, 1: 14, 2: 12 });
-      // Add pending subject (subject 0) from previous period
-      await createPendingSubjectForStudent(setup, student, 0, setup.currentPeriod.id);
-      // The pending subject (subject 0) has finalScore=15 in the inscription...
-      // But wait, the pending subject IS one of the subjects in the inscription.
-      // We need the pending subject to be reprobada. Let's set subject 0 to 8.
-      // Redo: student with subject 0 reprobada (the pending one)
-      // Actually, let's create a fresh student with the pending subject reprobada.
-
-      // Recreate: student in grade 1, subject 0 = 8 (reprobada = the pending one)
-      const suffix = Date.now();
+      // Student in grade 1 (2do año), subject 0 reprobada in his current grade
+      // and an unresolved pending subject coursed in grade 0 (1er año)
       const student2 = await createStudentWithGrades(setup, 1, { 0: 8, 1: 15, 2: 14 });
-      await createPendingSubjectForStudent(setup, student2, 0, setup.currentPeriod.id);
+      // The pending subject lives in a separate MP inscription in its origin grade
+      await createSeparateMPInscription(setup, student2, [0], { gradeIndex: 0 });
 
       const result = await executeClosure(setup);
       expect(result.success).toBe(true);
@@ -244,10 +237,10 @@ describe('Period Closure Rules — Integration Tests', () => {
       expect(repitienteInsc!.gradeId).toBe(setup.grades[1].id); // current grade
       expect(repitienteInsc!.isRepeater).toBe(true);
 
-      // MP inscription with the reprobada pending subject
+      // MP inscription with the reprobada pending subject, in the ORIGIN grade
       const mpInsc = newInscs.find(i => i.escolaridad === 'materia_pendiente');
       expect(mpInsc).toBeDefined();
-      expect(mpInsc!.gradeId).toBe(setup.grades[1].id); // current grade (rezagado repeats current)
+      expect(mpInsc!.gradeId).toBe(setup.grades[0].id); // origin grade of the MP
 
       const pendings = await getPendingSubjectsForInscription(mpInsc!.id);
       expect(pendings.length).toBe(1);
@@ -256,33 +249,30 @@ describe('Period Closure Rules — Integration Tests', () => {
 
     it('R5b: estudiante con 1 pendiente reprobada + 1 aprobada → aprobada se marca, reprobada se arrastra', async () => {
       setup = await standardSetup(2, 3);
-      // Student in grade 1 with 2 pending subjects: subject 0 reprobada (8), subject 1 aprobada (15)
+      // Student in grade 1 with 2 pending subjects coursed in grade 0:
+      // subject 0 pendiente (unresolved → failed at closure),
+      // subject 1 already aprobada (student passed the encounter)
       const student = await createStudentWithGrades(setup, 1, { 0: 8, 1: 15, 2: 14 });
-      // Subject 0: MP still pendiente (unresolved → failed at closure)
-      await createPendingSubjectForStudent(setup, student, 0, setup.currentPeriod.id, 'pendiente');
-      // Subject 1: MP already aprobada (student passed the encounter)
-      await createPendingSubjectForStudent(setup, student, 1, setup.currentPeriod.id, 'aprobada');
+      const { mpInscription: oldMpInsc, pendingSubjects: oldPendingsMap } =
+        await createSeparateMPInscription(setup, student, [0, 1], { gradeIndex: 0 });
+      await oldPendingsMap.get(1)!.update({ status: 'aprobada' });
 
       const result = await executeClosure(setup);
       expect(result.success).toBe(true);
 
-      // The approved pending subject should be marked as 'aprobada'
+      // The approved pending subject should still be 'aprobada'
       const oldPendings = await PendingSubject.findAll({
-        where: { newInscriptionId: student.inscription.id },
+        where: { newInscriptionId: oldMpInsc.id },
       });
       const approvedOld = oldPendings.find(p => p.subjectId === setup.subjects[1].id);
       expect(approvedOld).toBeDefined();
       expect(approvedOld!.status).toBe('aprobada');
 
-      const reprobadaOld = oldPendings.find(p => p.subjectId === setup.subjects[0].id);
-      // The old one might still be 'pendiente' — the new one is in the MP inscription
-      // Actually, the executor marks approved ones, but doesn't change reprobated ones
-      // The reprobated pending gets a NEW PendingSubject in the new MP inscription
-
-      // Check new MP inscription has only the reprobada
+      // Check new MP inscription in the ORIGIN grade (grade 0) has only the reprobada
       const newInscs = await findNextInscriptions(student.person.id, setup.nextPeriod.id);
       const mpInsc = newInscs.find(i => i.escolaridad === 'materia_pendiente');
       expect(mpInsc).toBeDefined();
+      expect(mpInsc!.gradeId).toBe(setup.grades[0].id);
 
       const newPendings = await getPendingSubjectsForInscription(mpInsc!.id);
       expect(newPendings.length).toBe(1);
@@ -291,9 +281,10 @@ describe('Period Closure Rules — Integration Tests', () => {
 
     it('R5c: estudiante con pendiente reprobada pero aprobó todas las del grado actual → aún así repite (rezagado)', async () => {
       setup = await standardSetup(2, 3);
-      // Student in grade 1, all regular subjects approved, but pending subject reprobada
-      const student = await createStudentWithGrades(setup, 1, { 0: 8, 1: 15, 2: 14 });
-      await createPendingSubjectForStudent(setup, student, 0, setup.currentPeriod.id);
+      // Student in grade 1, all regular subjects approved, but the pending
+      // subject coursed in grade 0 remains unresolved
+      const student = await createStudentWithGrades(setup, 1, { 0: 15, 1: 15, 2: 14 });
+      await createSeparateMPInscription(setup, student, [0], { gradeIndex: 0 });
 
       const result = await executeClosure(setup);
       expect(result.success).toBe(true);
@@ -302,17 +293,57 @@ describe('Period Closure Rules — Integration Tests', () => {
       expect(outcome!.status).toBe('reprobado');
       expect(outcome!.metadata).toHaveProperty('isRezagado', true);
 
-      // Still repeats current grade
+      // Still repeats current grade, and the MP carries over in grade 0
       const newInscs = await findNextInscriptions(student.person.id, setup.nextPeriod.id);
       const repitienteInsc = newInscs.find(i => i.escolaridad === 'repitiente');
       expect(repitienteInsc).toBeDefined();
       expect(repitienteInsc!.gradeId).toBe(setup.grades[1].id);
+
+      const mpInsc = newInscs.find(i => i.escolaridad === 'materia_pendiente');
+      expect(mpInsc).toBeDefined();
+      expect(mpInsc!.gradeId).toBe(setup.grades[0].id);
+    });
+    it('R5d: rezagado repite en las mismas condiciones — MP queda en el grado origen, sin MP del grado actual', async () => {
+      setup = await standardSetup(3, 3);
+      // Student in grade 1 (2do año) with an unresolved MP coursed in grade 0
+      // (1er año) AND two failed subjects in his current grade.
+      // He repeats 2do año under the same conditions: repitiente in grade 1
+      // + MP of grade 0 only. The failed current-grade subjects are retaken
+      // inside the repitiente inscription, never as materia pendiente.
+      const student = await createStudentWithGrades(setup, 1, { 0: 8, 1: 7, 2: 15 });
+      await createSeparateMPInscription(setup, student, [1], { gradeIndex: 0 });
+
+      const result = await executeClosure(setup);
+      expect(result.success).toBe(true);
+      expect(result.stats.failed).toBe(1);
+
+      const outcome = await getOutcome(student.inscription.id);
+      expect(outcome!.status).toBe('reprobado');
+      expect(outcome!.metadata).toHaveProperty('isRezagado', true);
+
+      const newInscs = await findNextInscriptions(student.person.id, setup.nextPeriod.id);
+
+      // Repitiente in grade 1 with ALL subjects of the grade
+      const repitienteInsc = newInscs.find(i => i.escolaridad === 'repitiente');
+      expect(repitienteInsc).toBeDefined();
+      expect(repitienteInsc!.gradeId).toBe(setup.grades[1].id);
+      const repitienteSubjects = await InscriptionSubject.findAll({
+        where: { inscriptionId: repitienteInsc!.id },
+      });
+      expect(repitienteSubjects.length).toBe(3);
+
+      // Exactly one MP inscription, in the ORIGIN grade (grade 0)
+      const mpInscs = newInscs.filter(i => i.escolaridad === 'materia_pendiente');
+      expect(mpInscs.length).toBe(1);
+      expect(mpInscs[0].gradeId).toBe(setup.grades[0].id);
+
+      // It carries only the unresolved MP subject — the failed current-grade
+      // subjects (0 and 1 of grade 1) are NOT materia pendiente
+      const pendings = await getPendingSubjectsForInscription(mpInscs[0].id);
+      expect(pendings.length).toBe(1);
+      expect(pendings[0].subjectId).toBe(setup.subjects[1].id);
     });
   });
-
-  // ============================================================
-  // R6 — Aprueba pendientes + aprueba grado actual → siguiente grado
-  // ============================================================
   describe('R6 — Aprueba pendientes + aprueba grado actual → siguiente grado', () => {
     it('estudiante aprueba todas las pendientes y todas las del grado → regular en siguiente grado', async () => {
       setup = await standardSetup(3, 3);
@@ -460,7 +491,7 @@ describe('Period Closure Rules — Integration Tests', () => {
       expect(repitienteInsc!.gradeId).toBe(setup.grades[0].id);
     });
 
-    it('R9c: estudiante en último grado con pendiente reprobada → repitiente + isRezagado + MP', async () => {
+    it('R9c: estudiante en último grado con pendiente reprobada → repitiente + isRezagado + MP arrastrada', async () => {
       setup = await standardSetup(1, 3);
       const student = await createStudentWithGrades(setup, 0, { 0: 8, 1: 15, 2: 14 });
       await createPendingSubjectForStudent(setup, student, 0, setup.currentPeriod.id);
@@ -472,15 +503,18 @@ describe('Period Closure Rules — Integration Tests', () => {
       expect(outcome!.status).toBe('reprobado');
       expect(outcome!.metadata).toHaveProperty('isRezagado', true);
 
-      // Repitiente + MP
+      // Repitiente inscription carries the unresolved pending subject. Since
+      // the pending belongs to the same grade he repeats, it is tracked on the
+      // repitiente inscription — a student can never have a materia_pendiente
+      // inscription of the grade he is coursing.
       const newInscs = await findNextInscriptions(student.person.id, setup.nextPeriod.id);
       const repitienteInsc = newInscs.find(i => i.escolaridad === 'repitiente');
       expect(repitienteInsc).toBeDefined();
 
       const mpInsc = newInscs.find(i => i.escolaridad === 'materia_pendiente');
-      expect(mpInsc).toBeDefined();
+      expect(mpInsc).toBeUndefined();
 
-      const pendings = await getPendingSubjectsForInscription(mpInsc!.id);
+      const pendings = await getPendingSubjectsForInscription(repitienteInsc!.id);
       expect(pendings.length).toBe(1);
       expect(pendings[0].subjectId).toBe(setup.subjects[0].id);
     });

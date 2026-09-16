@@ -181,8 +181,10 @@ describe('Closure MP + Repair Sequence — Integration Tests', () => {
       // Student in grade 1, all regular subjects approved
       const student = await createStudentWithGrades(setup, 1, { 0: 15, 1: 14, 2: 12 });
 
-      // Create a separate MP inscription with subject 0 still pendiente
-      await createSeparateMPInscription(setup, student, [0], { status: 'pendiente' });
+      // Create a separate MP inscription in the ORIGIN grade (grade 0) with
+      // subject 0 still pendiente — mirrors production, where MP subjects
+      // live in the grade where they are coursed.
+      await createSeparateMPInscription(setup, student, [0], { status: 'pendiente', gradeIndex: 0 });
 
       const result = await executeClosure(setup);
       expect(result.success).toBe(true);
@@ -198,6 +200,18 @@ describe('Closure MP + Repair Sequence — Integration Tests', () => {
       const repitienteInsc = newInscs.find(i => i.escolaridad === 'repitiente');
       expect(repitienteInsc).toBeDefined();
       expect(repitienteInsc!.gradeId).toBe(setup.grades[1].id);
+
+      // The carried MP inscription is recreated in the ORIGIN grade (grade 0),
+      // never in the grade the student is enrolled in.
+      const mpInsc = newInscs.find(i => i.escolaridad === 'materia_pendiente');
+      expect(mpInsc).toBeDefined();
+      expect(mpInsc!.gradeId).toBe(setup.grades[0].id);
+
+      const pendings = await PendingSubject.findAll({
+        where: { newInscriptionId: mpInsc!.id },
+      });
+      expect(pendings.length).toBe(1);
+      expect(pendings[0].subjectId).toBe(setup.subjects[0].id);
     });
   });
 
