@@ -14,7 +14,9 @@
     "build:frontend": "cd frontend && npm run build",
     "start": "cd backend && npm start",
     "start:backend": "cd backend && npm start",
-    "start:frontend": "cd frontend && npm run preview"
+    "start:frontend": "cd frontend && npm run preview",
+    "deploy:branch": "node deploy-branch.js",
+    "deploy": "npm run build:prod && npm run deploy:branch"
   },
   "dependencies": {
     "xlsx": "^0.18.5"
