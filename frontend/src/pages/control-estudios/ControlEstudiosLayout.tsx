@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { Button, Tooltip, Dropdown, Badge } from 'antd';
 import type { MenuProps } from 'antd';
-import { DashboardOutlined, SettingOutlined, UserAddOutlined, CheckCircleFilled, ProjectOutlined, EditOutlined, DownOutlined, FileExcelOutlined, ToolOutlined, SwapOutlined, TrophyOutlined, AlertOutlined, HistoryOutlined, CalendarOutlined, FlagOutlined, FileProtectOutlined, ClockCircleOutlined, AuditOutlined } from '@ant-design/icons';
+import { DashboardOutlined, SettingOutlined, UserAddOutlined, CheckCircleFilled, ProjectOutlined, EditOutlined, DownOutlined, FileExcelOutlined, ToolOutlined, TrophyOutlined, AlertOutlined, HistoryOutlined, CalendarOutlined, FlagOutlined, FileProtectOutlined, ClockCircleOutlined, AuditOutlined } from '@ant-design/icons';
 import api from '@/services/api';
 
 const NavButton: React.FC<{
@@ -79,7 +79,6 @@ const ControlEstudiosLayout: React.FC = () => {
         </div>
       ),
     },
-    { key: '/control-estudios/notas-externas', icon: <SwapOutlined />, label: 'Notas Externas' },
     { key: '/control-estudios/auditoria-notas', icon: <AuditOutlined />, label: 'Auditoría de Notas' },
   ];
 
@@ -91,7 +90,6 @@ const ControlEstudiosLayout: React.FC = () => {
   const isNotasActive = location.pathname === '/control-estudios/calificaciones'
     || location.pathname === '/control-estudios/solicitudes-edicion'
     || location.pathname === '/control-estudios/notas-historicas'
-    || location.pathname.startsWith('/control-estudios/notas-externas')
     || location.pathname.startsWith('/control-estudios/auditoria-notas');
 
   const isCierreAnualActive = location.pathname.startsWith('/control-estudios/titulos')

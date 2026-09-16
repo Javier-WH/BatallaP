@@ -18,7 +18,10 @@ import {
   CheckOutlined,
   ExclamationCircleOutlined,
   SearchOutlined,
+  FileExcelOutlined,
 } from '@ant-design/icons';
+import ExcelJS from 'exceljs';
+import { saveAs } from 'file-saver';
 import { useSchool } from '@/context/SchoolContext';
 import {
   getClosureStatus,
@@ -175,6 +178,91 @@ const PeriodClosureManagement: React.FC = () => {
       return haystack.toLowerCase().includes(q);
     });
   }, [preview, previewSearch]);
+
+  const handleExportPreviewExcel = useCallback(async () => {
+    if (!preview || preview.length === 0) {
+      message.warning('No hay datos para exportar');
+      return;
+    }
+    try {
+      const workbook = new ExcelJS.Workbook();
+      workbook.creator = 'BatallaProject';
+      workbook.created = new Date();
+
+      const sheet = workbook.addWorksheet('Previsualización Cierre', {
+        views: [{ state: 'frozen', ySplit: 1 }],
+      });
+
+      sheet.columns = [
+        { header: 'Estudiante', key: 'student', width: 32 },
+        { header: 'Cédula', key: 'document', width: 16 },
+        { header: 'Grado Actual', key: 'grade', width: 18 },
+        { header: 'Sección', key: 'section', width: 10 },
+        { header: 'Promedio', key: 'average', width: 10 },
+        { header: 'Materias Reprobadas', key: 'failed', width: 18 },
+        { header: 'Detalle Reprobadas', key: 'failedNames', width: 40 },
+        { header: 'Estado', key: 'status', width: 22 },
+        { header: 'Grado Destino', key: 'promotion', width: 18 },
+        { header: 'Rezagado', key: 'rezagado', width: 10 },
+      ];
+
+      // Header style
+      sheet.getRow(1).font = { bold: true };
+      sheet.getRow(1).fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FF1890FF' },
+      };
+      sheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+      sheet.getRow(1).alignment = { vertical: 'middle', horizontal: 'center' };
+
+      const statusLabels: Record<string, string> = {
+        aprobado: 'Aprobado',
+        materias_pendientes: 'Con Materias Pendientes',
+        reprobado: 'Reprobado',
+      };
+
+      preview.forEach((record) => {
+        const student = record.inscription?.student;
+        const row = sheet.addRow({
+          student: student ? `${student.firstName ?? ''} ${student.lastName ?? ''}`.trim() : '—',
+          document: student?.document ?? '—',
+          grade: record.inscription?.grade?.name ?? '—',
+          section: record.inscription?.section?.name ?? '—',
+          average: record.finalAverage ?? '—',
+          failed: record.failedSubjects ?? 0,
+          failedNames: (record.failedSubjectNames ?? []).join(', '),
+          status: statusLabels[record.status] ?? record.status,
+          promotion: record.promotionGrade?.name ?? 'Egresado',
+          rezagado: (record as any).isRezagado ? 'Sí' : 'No',
+        });
+
+        // Color the status cell
+        const statusCell = row.getCell('status');
+        if (record.status === 'aprobado') {
+          statusCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD4EDDA' } };
+        } else if (record.status === 'materias_pendientes') {
+          statusCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF3CD' } };
+        } else if (record.status === 'reprobado') {
+          statusCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8D7DA' } };
+        }
+      });
+
+      // Auto-filter on all columns
+      sheet.autoFilter = {
+        from: { row: 1, column: 1 },
+        to: { row: sheet.rowCount, column: sheet.columnCount },
+      };
+
+      const buffer = await workbook.xlsx.writeBuffer();
+      const periodName = activePeriod?.name?.replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ_-]+/g, '_') || 'periodo';
+      saveAs(new Blob([buffer]), `previsualizacion_cierre_${periodName}.xlsx`);
+      message.success('Previsualización exportada a Excel');
+    } catch (error) {
+      console.error('[ExportPreviewExcel] Error:', error);
+      message.error('Error al exportar a Excel');
+    }
+  }, [preview, activePeriod]);
 
   const previewColumns = [
     {
@@ -501,6 +589,15 @@ const PeriodClosureManagement: React.FC = () => {
         onCancel={() => setPreviewVisible(false)}
         width={1200}
         footer={[
+          <Button
+            key="export"
+            icon={<FileExcelOutlined />}
+            onClick={handleExportPreviewExcel}
+            disabled={!preview || preview.length === 0}
+            style={{ borderColor: '#52c41a', color: '#52c41a' }}
+          >
+            Exportar a Excel
+          </Button>,
           <Button key="close" onClick={() => setPreviewVisible(false)}>
             Cerrar
           </Button>,
