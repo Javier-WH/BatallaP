@@ -100,7 +100,7 @@ interface CouncilExcelParams {
 
 async function buildCouncilWorkbook(p: CouncilExcelParams): Promise<ArrayBuffer> {
   const workbook = new ExcelJS.Workbook();
-  workbook.creator = 'BatallaProject';
+  workbook.creator = 'GradeMaster';
   workbook.created = new Date();
   const worksheet = workbook.addWorksheet('Consejo de Curso', {
     pageSetup: {

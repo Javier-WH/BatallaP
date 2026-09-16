@@ -37,7 +37,7 @@ interface SchoolContextType {
 }
 
 const defaultSettings: SchoolSettings = {
-  name: 'U.E. Colegio "Batalla de Carabobo"',
+  name: 'GradeMaster',
   logo: '/logo-placeholder.png',
   logoShape: 'square',
   themePrimaryColor: '#1e40af',

@@ -274,7 +274,7 @@ interface ExpectedLearningData {
 }
 
 const TeacherPanel: React.FC = () => {
-  const { viewPeriod, isReadOnly } = useSchool();
+  const { viewPeriod, isReadOnly, settings } = useSchool();
   const [loading, setLoading] = useState(false);
   const [assignments, setAssignments] = useState<Assignment[]>([]);
 
@@ -1382,6 +1382,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
         gradeName: grade.name,
         sectionName: assignment.section?.name || '',
         periodName: schoolPeriod.name || '',
+        institutionName: settings.name,
       });
       message.success(`Nómina generada (${count} estudiantes)`);
     } catch (error) {

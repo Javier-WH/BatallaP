@@ -190,7 +190,7 @@ const PeriodClosureManagement: React.FC = () => {
     }
     try {
       const workbook = new ExcelJS.Workbook();
-      workbook.creator = 'BatallaProject';
+      workbook.creator = 'GradeMaster';
       workbook.created = new Date();
 
       const sheet = workbook.addWorksheet('Previsualización Cierre', {

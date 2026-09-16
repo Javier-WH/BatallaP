@@ -368,7 +368,7 @@ const EvaluationPlanPDF: React.FC<EvaluationPlanPDFProps> = ({ header, rows, tot
         {/* Footer */}
         <View style={styles.footer} fixed>
           <View style={styles.footerLine}>
-            <Text style={styles.footerText}>BatallaProject - Sistema de Gestión Escolar</Text>
+            <Text style={styles.footerText}>GradeMaster - Sistema de Gestión Escolar</Text>
             <Text style={styles.footerText}>
               Generado: {new Date().toLocaleDateString('es-VE', { day: '2-digit', month: 'long', year: 'numeric' })}
             </Text>

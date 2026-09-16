@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useAuth } from '@/context/AuthContext';
+import { useSchool } from '@/context/SchoolContext';
 import {
   Button,
   Card,
@@ -235,6 +236,7 @@ const BULK_BAR_HEIGHT = 56;
 const MatriculationEnrollment: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { settings } = useSchool();
   const canManageVisibility = !!user?.roles.some(r => r === 'Administrador' || r === 'Master');
   const [activePeriod, setActivePeriod] = useState<SchoolPeriod | null>(null);
   const [viewStatus, setViewStatus] = useState<'pending' | 'completed'>('pending');
@@ -1484,7 +1486,7 @@ const MatriculationEnrollment: React.FC = () => {
         sectionName = structure.find(s => s.gradeId === filterGrade)?.sections?.find(s => s.id === filterSection)?.name || '';
       }
 
-      const headerTitle = "UNIDAD EDUCATIVA COLEGIO BATALLA DE LA VICTORIA";
+      const headerTitle = settings.name;
       const reportTitle = viewStatus === 'completed' ? "NÓMINA DE ESTUDIANTES INSCRITOS" : "NÓMINA DE ESTUDIANTES (PRE-MATRÍCULA)";
       const gradeSectionText = (gradeName || sectionName) ? `${gradeName} ${sectionName}`.trim() : "";
       const periodText = activePeriod ? `PERÍODO ESCOLAR ${activePeriod.name}` : "";
@@ -1585,7 +1587,7 @@ const MatriculationEnrollment: React.FC = () => {
       console.error('Error exportando a Excel:', error);
       message.error('Error al exportar a Excel');
     }
-  }, [filteredData, visibleColumnKeys, structure, questions, viewStatus, activePeriod, filterGrade, filterSection]);
+  }, [filteredData, visibleColumnKeys, structure, questions, viewStatus, activePeriod, filterGrade, filterSection, settings.name]);
 
   const generateNominaExcel = useCallback(async (combinations: { gradeId: number; sectionId: number }[]) => {
     if (combinations.length === 0) {
@@ -1601,7 +1603,7 @@ const MatriculationEnrollment: React.FC = () => {
         const gradeEntry = structure.find(s => s.gradeId === gradeId);
         const gradeName = gradeEntry?.grade?.name || '';
         const sectionName = gradeEntry?.sections?.find(s => s.id === sectionId)?.name || '';
-        return { gradeId, sectionId, schoolPeriodId: periodId!, gradeName, sectionName, periodName };
+        return { gradeId, sectionId, schoolPeriodId: periodId!, gradeName, sectionName, periodName, institutionName: settings.name };
       });
 
       const { sheetsCreated, totalStudents } = await generateMultiNomina(inputs);
@@ -1612,7 +1614,7 @@ const MatriculationEnrollment: React.FC = () => {
     } finally {
       setNominaGenerating(false);
     }
-  }, [activePeriod, allPeriods, filterSchoolPeriod, structure]);
+  }, [activePeriod, allPeriods, filterSchoolPeriod, structure, settings.name]);
 
   const handleOpenNominaModal = () => {
     // Pre-select grade and section if filters are set

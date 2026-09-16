@@ -44,7 +44,7 @@ export interface HorarioInput {
   entries: Record<string, ScheduleEntryData[]>;
   gradeOrder?: number;        // e.g. 1 for "Primer año"
   sectionName?: string;       // e.g. "SECCIÓN A" or "A"
-  institutionName?: string;   // e.g. "Unidad Educativa Colegio \"Batalla de La Altagracia\""
+  institutionName?: string;   // e.g. "Unidad Educativa Colegio ..."
   institutionParish?: string; // e.g. "Altagracia de Orituco"
   institutionState?: string;  // e.g. "Guárico"
 }
@@ -391,7 +391,7 @@ function renderHeaderBlock(
   const schoolInfo = [
     'República Bolivariana de Venezuela',
     'Ministerio del Poder Popular Para La Educación',
-    institutionName || 'Unidad Educativa Colegio "Batalla de La Altagracia"',
+    institutionName || 'GradeMaster',
     locationLine,
   ];
   schoolInfo.forEach((text, i) => {

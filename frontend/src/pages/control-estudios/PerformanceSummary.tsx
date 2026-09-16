@@ -1178,7 +1178,7 @@ const PerformanceSummary: React.FC = () => {
     setAnnualLoading(true);
     try {
       const workbook = new ExcelJS.Workbook();
-      workbook.creator = 'BatallaProject';
+      workbook.creator = 'GradeMaster';
       workbook.created = new Date();
 
       const skipped: string[] = [];

@@ -15,6 +15,7 @@ export interface NominaInput {
   gradeName: string;
   sectionName: string;
   periodName: string;
+  institutionName?: string;
 }
 
 // Cache logo across calls within a single generation pass
@@ -51,7 +52,7 @@ export async function addNominaSheet(
   workbook: ExcelJS.Workbook,
   input: NominaInput
 ): Promise<number> {
-  const { gradeId, sectionId, schoolPeriodId, gradeName: rawGradeName, sectionName: rawSectionName, periodName } = input;
+  const { gradeId, sectionId, schoolPeriodId, gradeName: rawGradeName, sectionName: rawSectionName, periodName, institutionName } = input;
   const gradeName = toTitleCase(rawGradeName);
   const sectionName = toTitleCase(rawSectionName);
 
@@ -95,7 +96,7 @@ export async function addNominaSheet(
   }
 
   // Header rows
-  const titleRow = worksheet.addRow(['', '', 'U.E.C. BATALLA DE LA VICTORIA']);
+  const titleRow = worksheet.addRow(['', '', institutionName || 'GradeMaster']);
   const periodRow = worksheet.addRow(['', '', periodName]);
   worksheet.addRow([]);
   const teacherRow = worksheet.addRow(['', '', `Prof. Guía: ${teacherName}`.trim()]);

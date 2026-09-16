@@ -2083,7 +2083,7 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
     // Left block (institution name + period) spans cols C..D, rows 1-2 / 3
     sheet.mergeCells('C1:D2');
     const instCell = sheet.getCell('C1');
-    instCell.value = instName || 'U.E.C. BATALLA DE LA VICTORIA';
+    instCell.value = instName || 'GradeMaster';
     instCell.font = { bold: true, size: 18 };
     instCell.alignment = { horizontal: 'center', vertical: 'middle' };
 
