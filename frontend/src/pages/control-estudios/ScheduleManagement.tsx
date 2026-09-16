@@ -894,7 +894,7 @@ const ScheduleManagement: React.FC = () => {
   const [selectedTeacherId, setSelectedTeacherId] = useState<number | undefined>();
   const [teacherEntries, setTeacherEntries] = useState<any[]>([]);
   const [teacherLoading, setTeacherLoading] = useState(false);
-  const [teacherRoomLookup, setTeacherRoomLookup] = useState<(day: string, periodId: string, sectionKey: string) => string>(() => () => '');
+  const [teacherRoomLookup, setTeacherRoomLookup] = useState<(day: string, periodId: string, sectionKey: string, subjectId?: number) => string>(() => () => '');
 
   // Exceptions modal state
   const [exceptionsModalOpen, setExceptionsModalOpen] = useState(false);
@@ -1167,10 +1167,10 @@ const ScheduleManagement: React.FC = () => {
 
   // Build a teacher entries map from raw teacher schedule entries (same logic
   // as teacherEntriesMap but standalone, for batch export).
-  // roomLookup: (day, periodId, "gradeId-sectionId") -> room name
+  // roomLookup: (day, periodId, "gradeId-sectionId", subjectId?) -> room name
   const buildTeacherEntriesMap = useCallback((
     rawEntries: any[],
-    roomLookup?: (day: string, periodId: string, sectionKey: string) => string,
+    roomLookup?: (day: string, periodId: string, sectionKey: string, subjectId?: number) => string,
   ): Record<string, any[]> => {
     const map: Record<string, any[]> = {};
     rawEntries.forEach((e: any) => {
@@ -1181,7 +1181,7 @@ const ScheduleManagement: React.FC = () => {
       const gradeId = sec?.periodGrade?.grade?.id;
       const sectionId = sec?.section?.id;
       const room = roomLookup && gradeId != null && sectionId != null
-        ? roomLookup(e.day, String(e.periodId), `${gradeId}-${sectionId}`)
+        ? roomLookup(e.day, String(e.periodId), `${gradeId}-${sectionId}`, e.subjectId)
         : '';
       if (!map[key]) map[key] = [];
       map[key].push({
@@ -1196,19 +1196,28 @@ const ScheduleManagement: React.FC = () => {
     return map;
   }, []);
 
-  // Fetch classroom grid as a lookup function: (day, period, "gradeId-sectionId") -> room name
-  const fetchRoomLookup = useCallback(async (): Promise<(day: string, periodId: string, sectionKey: string) => string> => {
+  // Fetch classroom grid as a lookup function: (day, period, "gradeId-sectionId", subjectId?) -> room name
+  // Group cells ("group:subjectId:gradeId[,gradeId...]") match when the entry's
+  // subjectId and the section's gradeId are included — linked cross-grade pairs
+  // share one room this way.
+  const fetchRoomLookup = useCallback(async (): Promise<(day: string, periodId: string, sectionKey: string, subjectId?: number) => string> => {
     if (!viewPeriod) return () => '';
     try {
       const gridRes = await api.get(`/classroom-assignments/grid/${viewPeriod.id}`);
       const grid = gridRes.data || {};
-      // grid format: { "day|period|roomName": "gradeId-sectionId", ... }
-      return (day: string, periodId: string, sectionKey: string): string => {
+      // grid format: { "day|period|roomName": "gradeId-sectionId" | "group:subjectId:gradeIds", ... }
+      return (day: string, periodId: string, sectionKey: string, subjectId?: number): string => {
+        const gradeId = Number(sectionKey.split('-')[0]);
         for (const [cellKey, value] of Object.entries(grid)) {
-          if (value !== sectionKey) continue;
           const parts = cellKey.split('|');
-          if (parts[0] === day && parts[1] === periodId) {
-            return (parts[2] || '').toUpperCase();
+          if (parts[0] !== day || parts[1] !== periodId) continue;
+          if (value === sectionKey) return (parts[2] || '').toUpperCase();
+          if (value.startsWith('group:') && subjectId != null) {
+            const [, sid, gids] = value.split(':');
+            const gradeIds = (gids || '').split(',').map(Number);
+            if (Number(sid) === subjectId && gradeIds.includes(gradeId)) {
+              return (parts[2] || '').toUpperCase();
+            }
           }
         }
         return '';
@@ -1369,7 +1378,7 @@ const ScheduleManagement: React.FC = () => {
         sectionSignature: `${gradeId ?? ''}:${sectionId ?? ''}`,
         sectionColor,
         isGroup: e.isGroupSubject,
-        room: (gradeId != null && sectionId != null) ? teacherRoomLookup(e.day, String(e.periodId), `${gradeId}-${sectionId}`) : '',
+        room: (gradeId != null && sectionId != null) ? teacherRoomLookup(e.day, String(e.periodId), `${gradeId}-${sectionId}`, e.subjectId) : '',
       });
     });
     return map;

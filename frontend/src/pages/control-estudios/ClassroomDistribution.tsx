@@ -109,14 +109,14 @@ function colorForGrade(gradeId: number): string {
   return GRADE_PALETTE[gradeId % GRADE_PALETTE.length];
 }
 
-// Parse a cell value: "gradeId-sectionId" (section) or "group:subjectId:gradeId" (group)
-function parseCellValue(value: string): { type: 'section'; sectionKey: string } | { type: 'group'; subjectId: number; gradeId: number } | null {
+// Parse a cell value: "gradeId-sectionId" (section) or "group:subjectId:gradeId[,gradeId...]" (group)
+function parseCellValue(value: string): { type: 'section'; sectionKey: string } | { type: 'group'; subjectId: number; gradeIds: number[] } | null {
   if (!value) return null;
   if (value.startsWith('group:')) {
     const parts = value.split(':');
     const subjectId = Number(parts[1]);
-    const gradeId = Number(parts[2]);
-    if (subjectId && gradeId) return { type: 'group', subjectId, gradeId };
+    const gradeIds = (parts[2] || '').split(',').map(Number).filter(n => Number.isFinite(n) && n > 0);
+    if (subjectId && gradeIds.length > 0) return { type: 'group', subjectId, gradeIds };
     return null;
   }
   return { type: 'section', sectionKey: value };
@@ -572,28 +572,79 @@ const ClassroomDistribution: React.FC<ClassroomDistributionProps> = ({
       if (a.subjectId && a.gradeId != null) groupRoomMap.set(`${a.subjectId}:${a.gradeId}`, a.room);
     }
 
+    // Load cross-grade schedule links: linked subject+grade pairs taught by the
+    // same teacher must share one classroom.
+    let links: any[] = [];
     try {
+      const linksRes = await api.get('/schedule-links', { params: { schoolPeriodId } });
+      links = linksRes.data || [];
+    } catch { /* proceed without links */ }
+
+    try {
+      // Pass 1: collect entries per section and map "subjectId:gradeId" -> teacherId
+      const entriesBySection = new Map<number, any[]>();
+      const pairTeacher = new Map<string, number>();
+      for (const s of sectionsList) {
+        const res = await api.get('/schedules', { params: { schoolPeriodId, sectionId: s.id } });
+        const schedules = res.data || [];
+        const entries = schedules[0]?.entries || [];
+        entriesBySection.set(s.id, entries);
+        for (const entry of entries) {
+          if (entry.isGroupSubject && entry.teacherId != null) {
+            pairTeacher.set(`${entry.subjectId}:${s.gradeId}`, entry.teacherId);
+          }
+        }
+      }
+
+      // Build link clusters keyed by (linkId, teacherId)
+      const pairToCluster = new Map<string, string>(); // "subjectId:gradeId" -> clusterKey
+      const clusterSubjects = new Map<string, Map<number, Set<number>>>(); // clusterKey -> subjectId -> gradeIds
+      for (const link of links) {
+        for (const item of link.items || []) {
+          const gradeId = item.periodGrade?.grade?.id;
+          if (gradeId == null) continue;
+          const pairKey = `${item.subjectId}:${gradeId}`;
+          const clusterKey = `${link.id}:${pairTeacher.get(pairKey) ?? 'none'}`;
+          pairToCluster.set(pairKey, clusterKey);
+          if (!clusterSubjects.has(clusterKey)) clusterSubjects.set(clusterKey, new Map());
+          const subjMap = clusterSubjects.get(clusterKey)!;
+          if (!subjMap.has(item.subjectId)) subjMap.set(item.subjectId, new Set());
+          subjMap.get(item.subjectId)!.add(gradeId);
+        }
+      }
+      // Cluster room: first configured group room among member pairs
+      const clusterRoom = new Map<string, string>();
+      for (const [pairKey, clusterKey] of pairToCluster) {
+        if (clusterRoom.has(clusterKey)) continue;
+        const r = groupRoomMap.get(pairKey);
+        if (r) clusterRoom.set(clusterKey, r);
+      }
+
+      // Pass 2: paint cells
       for (const s of sectionsList) {
         const sectionKey = `${s.gradeId}-${s.sectionId}`;
         const homeRoom = sectionRoomMap.get(sectionKey);
-
-        // Load existing schedule (without creating new ones)
-        const res = await api.get('/schedules', { params: { schoolPeriodId, sectionId: s.id } });
-        const schedules = res.data || [];
-        if (schedules.length === 0) continue;
-        const entries = schedules[0].entries || [];
+        const entries = entriesBySection.get(s.id) || [];
 
         for (const entry of entries) {
           // Group subject: check group assignment
           if (entry.isGroupSubject) {
             const groupKey = `${entry.subjectId}:${s.gradeId}`;
-            const groupRoom = groupRoomMap.get(groupKey);
-            if (groupRoom) {
-              next[cellKey(entry.day, entry.periodId, groupRoom)] = `group:${entry.subjectId}:${s.gradeId}`;
-            }
-            // Also keep the section in its home room during group blocks
-            else if (homeRoom) {
-              next[cellKey(entry.day, entry.periodId, homeRoom)] = sectionKey;
+            const clusterKey = pairToCluster.get(groupKey);
+            const linkedRoom = clusterKey ? (clusterRoom.get(clusterKey) || groupRoomMap.get(groupKey)) : undefined;
+            if (clusterKey && linkedRoom) {
+              // Linked pairs share one room; the cell records all linked grades
+              const grades = Array.from(clusterSubjects.get(clusterKey)?.get(entry.subjectId) ?? [s.gradeId]).sort((a, b) => a - b);
+              next[cellKey(entry.day, entry.periodId, linkedRoom)] = `group:${entry.subjectId}:${grades.join(',')}`;
+            } else {
+              const groupRoom = groupRoomMap.get(groupKey);
+              if (groupRoom) {
+                next[cellKey(entry.day, entry.periodId, groupRoom)] = `group:${entry.subjectId}:${s.gradeId}`;
+              }
+              // Also keep the section in its home room during group blocks
+              else if (homeRoom) {
+                next[cellKey(entry.day, entry.periodId, homeRoom)] = sectionKey;
+              }
             }
           }
           // Non-group subject: check subject assignment first, then home room
@@ -892,14 +943,18 @@ const ClassroomDistribution: React.FC<ClassroomDistributionProps> = ({
                               cellBorder = baseColor;
                             } else if (parsed?.type === 'group') {
                               const subj = subjectsList.find(s => s.id === parsed.subjectId);
-                              const grade = gradesList.find(g => g.id === parsed.gradeId);
-                              cellLabel = `${grade?.name ?? ''} ${subj?.name ?? ''}`.trim();
+                              const gradeNames = parsed.gradeIds
+                                .map(id => gradesList.find(g => g.id === id)?.name)
+                                .filter(Boolean)
+                                .join(' + ');
+                              cellLabel = `${gradeNames} ${subj?.name ?? ''}`.trim();
                               // Priority: subject color > periodGrade color (looked up from sectionsList) > grade palette
+                              const primaryGradeId = parsed.gradeIds[0];
                               const subjColor = subj?.color && subj.color !== '#ffffff' ? subj.color : null;
                               // Find periodGradeColor for this gradeId from sectionsList
-                              const refSection = sectionsList.find(s => s.gradeId === parsed.gradeId);
+                              const refSection = sectionsList.find(s => s.gradeId === primaryGradeId);
                               const gradeColor = refSection?.periodGradeColor && refSection.periodGradeColor !== '#ffffff' ? refSection.periodGradeColor : null;
-                              const baseColor = subjColor ?? gradeColor ?? colorForGrade(parsed.gradeId);
+                              const baseColor = subjColor ?? gradeColor ?? colorForGrade(primaryGradeId);
                               cellBg = lightenColor(baseColor, 0.82);
                               cellText = darkenColor(baseColor, 0.45);
                               cellBorder = baseColor;
@@ -1101,6 +1156,7 @@ const ClassroomDistribution: React.FC<ClassroomDistributionProps> = ({
                   <p><strong>1. Asigna cada sección a su aula</strong> — ej: 1° A → Aula 1, 1° B → Aula 2. Esto llena todos los bloques de la semana.</p>
                   <p><strong>2. Asigna materias a aulas específicas</strong> — ej: Educación Física → Cancha. Esto sobrescribe el aula de la sección solo en los bloques donde se dicta esa materia.</p>
                   <p><strong>3. Asigna materias de grupo por grado</strong> — ej: 1° Artes Gráficas → Aula 1, 1° Redacción → Aula 2. En los bloques de materias de grupo, cada materia va a su aula y los estudiantes de ambas secciones se reparten.</p>
+                  <p><strong>4. Vínculos entre grados</strong> — las materias de un vínculo que comparten profesor se colocan automáticamente en la misma aula (basta configurar el aula en uno de los grados del vínculo).</p>
                   <p className="pt-1">Al final, presiona <strong>«Aplicar a la grid»</strong> para generar la distribución.</p>
                 </div>
               }
