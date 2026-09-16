@@ -1,0 +1,17 @@
+const { readTemplateNamedRanges } = require('../dist/services/templateNamedRanges');
+const ranges = readTemplateNamedRanges('resumenFinal_template_.xlsx');
+console.log('bySheet keys:', [...ranges.bySheet.keys()]);
+console.log('---');
+const s1 = ranges.bySheet.get('1er Año');
+console.log('1er Año has', s1 ? s1.size : 0, 'names');
+console.log('has inst_eval_type:', s1 ? s1.has('inst_eval_type') : 'N/A');
+console.log('has inst_period:', s1 ? s1.has('inst_period') : 'N/A');
+console.log('has subj_1:', s1 ? s1.has('subj_1') : 'N/A');
+console.log('has std_num_1:', s1 ? s1.has('std_num_1') : 'N/A');
+console.log('---');
+const s3 = ranges.bySheet.get('3er Año');
+console.log('3er Año has', s3 ? s3.size : 0, 'names');
+console.log('has inst_eval_type:', s3 ? s3.has('inst_eval_type') : 'N/A');
+console.log('---');
+console.log('getCell(1er Año, inst_eval_type):', ranges.getCell('1er Año', 'inst_eval_type')?.cell);
+console.log('getCell(3er Año, inst_eval_type):', ranges.getCell('3er Año', 'inst_eval_type')?.cell);
