@@ -1,0 +1,10 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const structurePresetController_1 = require("../controllers/structurePresetController.js");
+const router = (0, express_1.Router)();
+router.get('/', structurePresetController_1.listStructurePresets);
+router.post('/', structurePresetController_1.createStructurePreset);
+router.delete('/:id', structurePresetController_1.deleteStructurePreset);
+router.post('/:id/apply', structurePresetController_1.applyStructurePreset);
+exports.default = router;

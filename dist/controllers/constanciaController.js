@@ -1,0 +1,487 @@
+"use strict";
+var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
+    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
+    return new (P || (P = Promise))(function (resolve, reject) {
+        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
+        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
+        step((generator = generator.apply(thisArg, _arguments || [])).next());
+    });
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.getVariables = exports.generatePreview = exports.deleteTemplate = exports.updateTemplate = exports.createTemplate = exports.getTemplate = exports.listTemplates = exports.analyzeTemplate = void 0;
+const models_1 = require("../models/index.js");
+const sequelize_1 = require("sequelize");
+// ── Role helpers ──
+const ALLOWED_ROLES = ['Master', 'Administrador', 'Control de Estudios'];
+function hasRole(req, roles) {
+    var _a;
+    const user = (_a = req.session) === null || _a === void 0 ? void 0 : _a.user;
+    if (!(user === null || user === void 0 ? void 0 : user.roles))
+        return false;
+    return user.roles.some((r) => roles.includes(r));
+}
+// ── Variable resolution ──
+// Variables use the {{category.field}} format, e.g. {{student.firstName}}
+// Returns an object with all resolved variables for a given student + period
+// Convert grade order (1-5) to ordinal string: 1→1er, 2→2do, 3→3er, 4→4to, 5→5to
+function gradeToOrdinal(order) {
+    if (order == null)
+        return '';
+    const suffixes = { 1: 'er', 2: 'do', 3: 'er', 4: 'to', 5: 'to', 6: 'to' };
+    const suffix = suffixes[order] || 'to';
+    return `${order}${suffix}`;
+}
+// Convert day number to ordinal: 1→1ero, 2→2do, 15→15, etc.
+function toOrdinal(day) {
+    if (day === 1)
+        return '1ero';
+    if (day === 2)
+        return '2do';
+    if (day === 3)
+        return '3ero';
+    return String(day);
+}
+// Convert day number to Spanish words (apocoped for use before nouns, e.g. "un" not "uno"):
+// 1→un, 15→quince, 21→veintiún, 31→treinta y un, etc.
+function toSpanishWords(n) {
+    const ones = ['', 'un', 'dos', 'tres', 'cuatro', 'cinco', 'seis', 'siete', 'ocho', 'nueve',
+        'diez', 'once', 'doce', 'trece', 'catorce', 'quince', 'dieciséis', 'diecisiete', 'dieciocho', 'diecinueve',
+        'veinte', 'veintiún', 'veintidós', 'veintitrés', 'veinticuatro', 'veinticinco', 'veintiséis', 'veintisiete', 'veintiocho', 'veintinueve'];
+    const tens = ['', '', '', 'treinta', 'cuarenta', 'cincuenta', 'sesenta', 'setenta', 'ochenta', 'noventa'];
+    if (n === 0)
+        return 'cero';
+    if (n < 30)
+        return ones[n];
+    if (n < 100) {
+        const t = Math.floor(n / 10);
+        const o = n % 10;
+        return o === 0 ? tens[t] : `${tens[t]} y ${ones[o]}`;
+    }
+    return String(n);
+}
+// Parse a YYYY-MM-DD string as a local date (not UTC) to avoid timezone shifts.
+// new Date('2025-06-15') treats it as UTC midnight, which in negative-offset zones
+// like Venezuela (UTC-4) shifts getDate() to the 14th.
+function parseLocalDate(s) {
+    const [y, m, d] = s.split('-').map(Number);
+    return new Date(y, m - 1, d);
+}
+// Build only the date.* variables from a given Date — used when there is no person
+// but the user still wants to override the current date.
+function buildDateVars(d) {
+    const formatDate = (date) => {
+        const months = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+        return `${date.getDate()} de ${months[date.getMonth()]} de ${date.getFullYear()}`;
+    };
+    const pad = (n) => String(n).padStart(2, '0');
+    return {
+        'date': `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`,
+        'date.long': formatDate(d),
+        'date.day': String(d.getDate()),
+        'date.dayOrdinal': toOrdinal(d.getDate()),
+        'date.dayWords': toSpanishWords(d.getDate()),
+        'date.month': d.toLocaleString('es-ES', { month: 'long' }),
+        'date.monthUpper': d.toLocaleString('es-ES', { month: 'long' }).toUpperCase(),
+        'date.year': String(d.getFullYear()),
+    };
+}
+function resolveVariables(personId_1, schoolPeriodId_1) {
+    return __awaiter(this, arguments, void 0, function* (personId, schoolPeriodId, customDate = null) {
+        var _a, _b, _c, _d, _e, _f, _g;
+        const person = yield models_1.Person.findByPk(personId);
+        if (!person)
+            throw new Error('Estudiante no encontrado');
+        // Institution settings
+        const settings = yield models_1.Setting.findAll();
+        const settingsMap = {};
+        settings.forEach(s => { settingsMap[s.key] = s.value; });
+        // Find inscription for this period
+        const inscription = yield models_1.Inscription.findOne({
+            where: { personId, schoolPeriodId },
+            include: [
+                { model: models_1.Grade, as: 'grade' },
+                { model: models_1.Section, as: 'section' },
+            ],
+        });
+        const period = yield models_1.SchoolPeriod.findByPk(schoolPeriodId);
+        // Get subject final grades
+        let subjectsData = [];
+        if (inscription) {
+            const inscriptionSubjects = yield models_1.InscriptionSubject.findAll({
+                where: { inscriptionId: inscription.id },
+                include: [
+                    { model: models_1.Subject, as: 'subject' },
+                ],
+            });
+            const subjectIds = inscriptionSubjects.map(is => is.id);
+            if (subjectIds.length > 0) {
+                const finalGrades = yield models_1.SubjectFinalGrade.findAll({
+                    where: { inscriptionSubjectId: { [sequelize_1.Op.in]: subjectIds } },
+                });
+                const gradeMap = new Map();
+                finalGrades.forEach(fg => gradeMap.set(fg.inscriptionSubjectId, fg.finalScore));
+                subjectsData = inscriptionSubjects.map(is => {
+                    var _a, _b;
+                    return ({
+                        name: ((_a = is.subject) === null || _a === void 0 ? void 0 : _a.name) || '',
+                        finalScore: (_b = gradeMap.get(is.id)) !== null && _b !== void 0 ? _b : null,
+                    });
+                });
+            }
+        }
+        // Student data
+        const firstName = person.firstName || '';
+        const lastName = person.lastName || '';
+        const fullName = `${firstName} ${lastName}`.trim();
+        const documentType = person.documentType || '';
+        const document = person.document || '';
+        const documentTypeLabel = {
+            Venezolano: 'Cédula de Identidad',
+            Extranjero: 'Cédula de Identidad',
+            Pasaporte: 'Pasaporte',
+            'Cedula Escolar': 'Cédula Escolar',
+        }[documentType] || documentType;
+        // Build a formatted document string like "V-33.293.938" from the raw values.
+        const docPrefixMap = {
+            Venezolano: 'V',
+            Extranjero: 'E',
+            Pasaporte: 'P',
+            'Cedula Escolar': 'CE',
+        };
+        const docPrefix = docPrefixMap[documentType] || '';
+        // Strip any existing prefix (V-, E-, P-, CE-) and non-digits, then group with dots.
+        const docDigits = document.replace(/^(V|E|P|CE)[-.\s]*/i, '').replace(/[^0-9]/g, '');
+        const docGrouped = docDigits.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+        const fullDocument = `${docPrefix}${docPrefix && docGrouped ? '-' : ''}${docGrouped}`;
+        const birthdate = person.birthdate ? parseLocalDate(String(person.birthdate)) : null;
+        const gender = person.gender || '';
+        // Format date in Spanish
+        const formatDate = (d) => {
+            const months = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+            return `${d.getDate()} de ${months[d.getMonth()]} de ${d.getFullYear()}`;
+        };
+        // Calculate age
+        const age = birthdate
+            ? Math.floor((Date.now() - birthdate.getTime()) / (365.25 * 24 * 60 * 60 * 1000))
+            : null;
+        const now = customDate ? parseLocalDate(customDate) : new Date();
+        const vars = {
+            // Student
+            'student.firstName': firstName,
+            'student.lastName': lastName,
+            'student.fullName': fullName,
+            'student.documentType': documentType,
+            'student.documentTypeLabel': documentTypeLabel,
+            'student.document': document,
+            'student.fullDocument': fullDocument,
+            'student.birthdate': birthdate ? `${birthdate.getFullYear()}-${String(birthdate.getMonth() + 1).padStart(2, '0')}-${String(birthdate.getDate()).padStart(2, '0')}` : '',
+            'student.birthdateLong': birthdate ? formatDate(birthdate) : '',
+            'student.age': age !== null ? String(age) : '',
+            'student.gender': gender,
+            // Determined articles based on gender (el/la)
+            'student.article': gender === 'F' ? 'la' : 'el',
+            'student.articleUpper': gender === 'F' ? 'La' : 'El',
+            // Gendered status words for constancias (Inscrito/Inscrita, Aceptado/Aceptada)
+            'student.inscrito': gender === 'F' ? 'Inscrita' : 'Inscrito',
+            'student.aceptado': gender === 'F' ? 'Aceptada' : 'Aceptado',
+            // Worker (staff) — same person data, plus hireDate for work certificates.
+            // hireDate is only meaningful for staff; for students it will be empty.
+            'worker.firstName': firstName,
+            'worker.lastName': lastName,
+            'worker.fullName': fullName,
+            'worker.documentType': documentType,
+            'worker.documentTypeLabel': documentTypeLabel,
+            'worker.document': document,
+            'worker.fullDocument': fullDocument,
+            'worker.birthdate': birthdate ? `${birthdate.getFullYear()}-${String(birthdate.getMonth() + 1).padStart(2, '0')}-${String(birthdate.getDate()).padStart(2, '0')}` : '',
+            'worker.birthdateLong': birthdate ? formatDate(birthdate) : '',
+            'worker.age': age !== null ? String(age) : '',
+            'worker.gender': gender,
+            'worker.article': gender === 'F' ? 'la' : 'el',
+            'worker.articleUpper': gender === 'F' ? 'La' : 'El',
+            'worker.hireDate': person.hireDate ? (() => { const h = parseLocalDate(String(person.hireDate)); return `${h.getFullYear()}-${String(h.getMonth() + 1).padStart(2, '0')}-${String(h.getDate()).padStart(2, '0')}`; })() : '',
+            'worker.hireDateLong': person.hireDate ? formatDate(parseLocalDate(String(person.hireDate))) : '',
+            // Institution
+            'institution.name': settingsMap['institution_name'] || '',
+            'institution.code': settingsMap['institution_code'] || '',
+            'institution.address': settingsMap['institution_address'] || '',
+            'institution.phone': settingsMap['institution_phone'] || '',
+            'institution.municipality': settingsMap['institution_municipality'] || '',
+            'institution.state': settingsMap['institution_state'] || '',
+            'institution.director': settingsMap['director_first_names'] && settingsMap['director_last_names']
+                ? `${settingsMap['director_first_names']} ${settingsMap['director_last_names']}`
+                : (settingsMap['director_name'] || ''),
+            'institution.directorDocument': settingsMap['director_document'] || '',
+            'institution.coordinator': settingsMap['control_estudios_first_names'] && settingsMap['control_estudios_last_names']
+                ? `${settingsMap['control_estudios_first_names']} ${settingsMap['control_estudios_last_names']}`
+                : (settingsMap['control_estudios_name'] || ''),
+            'institution.coordinatorDocument': settingsMap['control_estudios_document'] || '',
+            // Academic — grade.name strips the trailing "Año" so the template can compose
+            // phrases like "pertenece al Quinto (5to) Año". Use grade.fullName for the full string.
+            'grade.name': (((_a = inscription === null || inscription === void 0 ? void 0 : inscription.grade) === null || _a === void 0 ? void 0 : _a.name) || '').replace(/\s+A[ñn]o\s*$/i, '').trim(),
+            'grade.nameUpper': (((_b = inscription === null || inscription === void 0 ? void 0 : inscription.grade) === null || _b === void 0 ? void 0 : _b.name) || '').replace(/\s+A[ñn]o\s*$/i, '').trim().toUpperCase(),
+            'grade.fullName': ((_c = inscription === null || inscription === void 0 ? void 0 : inscription.grade) === null || _c === void 0 ? void 0 : _c.name) || '',
+            'grade.fullNameUpper': (((_d = inscription === null || inscription === void 0 ? void 0 : inscription.grade) === null || _d === void 0 ? void 0 : _d.name) || '').toUpperCase(),
+            'grade.ordinal': gradeToOrdinal((_e = inscription === null || inscription === void 0 ? void 0 : inscription.grade) === null || _e === void 0 ? void 0 : _e.order),
+            'section.name': ((_f = inscription === null || inscription === void 0 ? void 0 : inscription.section) === null || _f === void 0 ? void 0 : _f.name) || '',
+            'section.nameUpper': (((_g = inscription === null || inscription === void 0 ? void 0 : inscription.section) === null || _g === void 0 ? void 0 : _g.name) || '').toUpperCase(),
+            'period.name': (period === null || period === void 0 ? void 0 : period.name) || '',
+            // Certificate
+            'date': `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`,
+            'date.long': formatDate(now),
+            'date.day': String(now.getDate()),
+            'date.dayOrdinal': toOrdinal(now.getDate()),
+            'date.dayWords': toSpanishWords(now.getDate()),
+            'date.month': now.toLocaleString('es-ES', { month: 'long' }),
+            'date.monthUpper': now.toLocaleString('es-ES', { month: 'long' }).toUpperCase(),
+            'date.year': String(now.getFullYear()),
+        };
+        // Add subject grades as variables: subject.<name> = score
+        subjectsData.forEach(s => {
+            const key = `subject.${s.name.toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
+            vars[key] = s.finalScore !== null ? String(s.finalScore) : '';
+        });
+        return vars;
+    });
+}
+// Replace {{variables}} in HTML content
+function renderTemplate(html, vars) {
+    return html.replace(/\{\{([^}]+)\}\}/g, (match, varName) => {
+        const key = varName.trim();
+        return vars[key] !== undefined ? vars[key] : match;
+    });
+}
+// Extract all {{variables}} from HTML content
+function extractVariables(html) {
+    const matches = html.matchAll(/\{\{([^}]+)\}\}/g);
+    const vars = [];
+    for (const m of matches) {
+        const v = m[1].trim();
+        if (!vars.includes(v))
+            vars.push(v);
+    }
+    return vars;
+}
+// Analyze a template's variables and classify them
+const analyzeTemplate = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const { id } = req.params;
+        const template = yield models_1.ConstanciaTemplate.findByPk(Number(id));
+        if (!template)
+            return res.status(404).json({ message: 'Plantilla no encontrada' });
+        const allVars = extractVariables(template.content);
+        const needsStudent = allVars.some(v => v.startsWith('student.') || v.startsWith('grade.') || v.startsWith('section.') || v.startsWith('subject.'));
+        const needsWorker = allVars.some(v => v.startsWith('worker.'));
+        const customVars = allVars
+            .filter(v => v.startsWith('custom.'))
+            .map(v => v.replace('custom.', ''));
+        return res.json({
+            allVariables: allVars,
+            needsStudent,
+            needsWorker,
+            customVars,
+        });
+    }
+    catch (error) {
+        console.error('[analyzeTemplate] Error:', error);
+        return res.status(500).json({ message: 'Error al analizar plantilla' });
+    }
+});
+exports.analyzeTemplate = analyzeTemplate;
+// ── CRUD ──
+const listTemplates = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const templates = yield models_1.ConstanciaTemplate.findAll({
+            order: [['name', 'ASC']],
+            attributes: ['id', 'name', 'createdAt', 'updatedAt'],
+        });
+        return res.json(templates);
+    }
+    catch (error) {
+        console.error('[listTemplates] Error:', error);
+        return res.status(500).json({ message: 'Error al listar plantillas' });
+    }
+});
+exports.listTemplates = listTemplates;
+const getTemplate = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const template = yield models_1.ConstanciaTemplate.findByPk(req.params.id);
+        if (!template)
+            return res.status(404).json({ message: 'Plantilla no encontrada' });
+        return res.json(template);
+    }
+    catch (error) {
+        console.error('[getTemplate] Error:', error);
+        return res.status(500).json({ message: 'Error al obtener plantilla' });
+    }
+});
+exports.getTemplate = getTemplate;
+const createTemplate = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    if (!hasRole(req, ALLOWED_ROLES)) {
+        return res.status(403).json({ message: 'No tiene permisos para esta acción' });
+    }
+    try {
+        const { name, content } = req.body;
+        if (!name || !name.trim()) {
+            return res.status(400).json({ message: 'El nombre es requerido' });
+        }
+        const template = yield models_1.ConstanciaTemplate.create({
+            name: name.trim(),
+            content: content || '',
+        });
+        return res.status(201).json(template);
+    }
+    catch (error) {
+        console.error('[createTemplate] Error:', error);
+        return res.status(500).json({ message: 'Error al crear plantilla' });
+    }
+});
+exports.createTemplate = createTemplate;
+const updateTemplate = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    if (!hasRole(req, ALLOWED_ROLES)) {
+        return res.status(403).json({ message: 'No tiene permisos para esta acción' });
+    }
+    try {
+        const template = yield models_1.ConstanciaTemplate.findByPk(req.params.id);
+        if (!template)
+            return res.status(404).json({ message: 'Plantilla no encontrada' });
+        const { name, content } = req.body;
+        if (name !== undefined)
+            template.name = name.trim();
+        if (content !== undefined)
+            template.content = content;
+        yield template.save();
+        return res.json(template);
+    }
+    catch (error) {
+        console.error('[updateTemplate] Error:', error);
+        return res.status(500).json({ message: 'Error al actualizar plantilla' });
+    }
+});
+exports.updateTemplate = updateTemplate;
+const deleteTemplate = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    if (!hasRole(req, ALLOWED_ROLES)) {
+        return res.status(403).json({ message: 'No tiene permisos para esta acción' });
+    }
+    try {
+        const template = yield models_1.ConstanciaTemplate.findByPk(req.params.id);
+        if (!template)
+            return res.status(404).json({ message: 'Plantilla no encontrada' });
+        yield template.destroy();
+        return res.json({ message: 'Plantilla eliminada' });
+    }
+    catch (error) {
+        console.error('[deleteTemplate] Error:', error);
+        return res.status(500).json({ message: 'Error al eliminar plantilla' });
+    }
+});
+exports.deleteTemplate = deleteTemplate;
+// ── Generate ──
+// Returns rendered HTML for preview.
+// Body: { templateId, personId?, schoolPeriodId?, customVars?, customDate? }
+// personId is optional — some constancias (e.g. work certificates) may not need a student.
+// customDate (YYYY-MM-DD) overrides the current date used for all date.* variables.
+const generatePreview = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const { templateId, personId, schoolPeriodId, customVars, customDate } = req.body;
+        if (!templateId) {
+            return res.status(400).json({ message: 'templateId es requerido' });
+        }
+        const template = yield models_1.ConstanciaTemplate.findByPk(Number(templateId));
+        if (!template)
+            return res.status(404).json({ message: 'Plantilla no encontrada' });
+        // Resolve system variables if personId is provided
+        let vars = {};
+        if (personId) {
+            const periodId = schoolPeriodId || null;
+            vars = yield resolveVariables(Number(personId), periodId, customDate || null);
+        }
+        else if (customDate) {
+            // No person, but a custom date — still populate date variables.
+            vars = buildDateVars(parseLocalDate(customDate));
+        }
+        // Merge custom variables (user-provided text inputs)
+        if (customVars && typeof customVars === 'object') {
+            for (const [key, value] of Object.entries(customVars)) {
+                vars[`custom.${key}`] = String(value);
+            }
+        }
+        const html = renderTemplate(template.content, vars);
+        return res.json({ html, variables: vars });
+    }
+    catch (error) {
+        console.error('[generatePreview] Error:', error);
+        return res.status(500).json({ message: error.message || 'Error al generar vista previa' });
+    }
+});
+exports.generatePreview = generatePreview;
+// Returns available variables metadata for the editor
+const getVariables = (_req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    const variables = [
+        // Student
+        { group: 'Estudiante', key: 'student.firstName', label: 'Nombre' },
+        { group: 'Estudiante', key: 'student.lastName', label: 'Apellido' },
+        { group: 'Estudiante', key: 'student.fullName', label: 'Nombre completo' },
+        { group: 'Estudiante', key: 'student.documentType', label: 'Tipo de documento (Venezolano, etc.)' },
+        { group: 'Estudiante', key: 'student.documentTypeLabel', label: 'Tipo de documento (texto: Cédula de Identidad, Cédula Escolar...)' },
+        { group: 'Estudiante', key: 'student.document', label: 'Cédula' },
+        { group: 'Estudiante', key: 'student.fullDocument', label: 'Documento completo' },
+        { group: 'Estudiante', key: 'student.birthdate', label: 'Fecha de nacimiento' },
+        { group: 'Estudiante', key: 'student.birthdateLong', label: 'Fecha de nacimiento (texto)' },
+        { group: 'Estudiante', key: 'student.age', label: 'Edad' },
+        { group: 'Estudiante', key: 'student.gender', label: 'Sexo (M/F)' },
+        { group: 'Estudiante', key: 'student.article', label: 'Artículo (el/la)' },
+        { group: 'Estudiante', key: 'student.inscrito', label: 'Inscrito/Inscrita (según sexo)' },
+        { group: 'Estudiante', key: 'student.aceptado', label: 'Aceptado/Aceptada (según sexo)' },
+        // Worker (staff) — for work certificates (constancias de trabajo)
+        { group: 'Trabajador', key: 'worker.firstName', label: 'Nombre' },
+        { group: 'Trabajador', key: 'worker.lastName', label: 'Apellido' },
+        { group: 'Trabajador', key: 'worker.fullName', label: 'Nombre completo' },
+        { group: 'Trabajador', key: 'worker.documentType', label: 'Tipo de documento (Venezolano, etc.)' },
+        { group: 'Trabajador', key: 'worker.documentTypeLabel', label: 'Tipo de documento (texto: Cédula de Identidad...)' },
+        { group: 'Trabajador', key: 'worker.document', label: 'Cédula' },
+        { group: 'Trabajador', key: 'worker.fullDocument', label: 'Documento completo' },
+        { group: 'Trabajador', key: 'worker.birthdate', label: 'Fecha de nacimiento' },
+        { group: 'Trabajador', key: 'worker.birthdateLong', label: 'Fecha de nacimiento (texto)' },
+        { group: 'Trabajador', key: 'worker.age', label: 'Edad' },
+        { group: 'Trabajador', key: 'worker.gender', label: 'Sexo (M/F)' },
+        { group: 'Trabajador', key: 'worker.article', label: 'Artículo (el/la)' },
+        { group: 'Trabajador', key: 'worker.hireDate', label: 'Fecha de inicio (laboral)' },
+        { group: 'Trabajador', key: 'worker.hireDateLong', label: 'Fecha de inicio (texto)' },
+        // Institution
+        { group: 'Institución', key: 'institution.name', label: 'Nombre de la institución' },
+        { group: 'Institución', key: 'institution.code', label: 'Código' },
+        { group: 'Institución', key: 'institution.address', label: 'Dirección' },
+        { group: 'Institución', key: 'institution.phone', label: 'Teléfono' },
+        { group: 'Institución', key: 'institution.municipality', label: 'Municipio' },
+        { group: 'Institución', key: 'institution.state', label: 'Estado' },
+        { group: 'Institución', key: 'institution.director', label: 'Director' },
+        { group: 'Institución', key: 'institution.directorDocument', label: 'Cédula del director' },
+        { group: 'Institución', key: 'institution.coordinator', label: 'Coordinador de Control de Estudios' },
+        { group: 'Institución', key: 'institution.coordinatorDocument', label: 'Cédula del coordinador' },
+        // Academic
+        { group: 'Académico', key: 'grade.name', label: 'Grado (ej: Quinto)' },
+        { group: 'Académico', key: 'grade.fullName', label: 'Grado completo (ej: Quinto Año)' },
+        { group: 'Académico', key: 'grade.ordinal', label: 'Grado ordinal (ej: 5to)' },
+        { group: 'Académico', key: 'section.name', label: 'Sección' },
+        { group: 'Académico', key: 'period.name', label: 'Período escolar' },
+        // Date
+        { group: 'Fecha', key: 'date', label: 'Fecha actual (corta)' },
+        { group: 'Fecha', key: 'date.long', label: 'Fecha actual (texto)' },
+        { group: 'Fecha', key: 'date.day', label: 'Día (número)' },
+        { group: 'Fecha', key: 'date.dayOrdinal', label: 'Día ordinal (ej: 1ero)' },
+        { group: 'Fecha', key: 'date.dayWords', label: 'Día en letras (ej: quince)' },
+        { group: 'Fecha', key: 'date.month', label: 'Mes' },
+        { group: 'Fecha', key: 'date.year', label: 'Año' },
+        // Custom (user fills these when generating)
+        { group: 'Campos personalizados', key: 'custom.title', label: 'Título/Cargo (ej: Docente)' },
+        { group: 'Campos personalizados', key: 'custom.reason', label: 'Motivo/Concepto' },
+        { group: 'Campos personalizados', key: 'custom.recipient', label: 'Dirigido a' },
+        { group: 'Campos personalizados', key: 'custom.extra1', label: 'Campo libre 1' },
+        { group: 'Campos personalizados', key: 'custom.extra2', label: 'Campo libre 2' },
+        { group: 'Campos personalizados', key: 'custom.extra3', label: 'Campo libre 3' },
+    ];
+    return res.json(variables);
+});
+exports.getVariables = getVariables;

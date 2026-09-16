@@ -1,0 +1,12 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const studentPreviousSchoolController_1 = require("../controllers/studentPreviousSchoolController.js");
+const router = (0, express_1.Router)({ mergeParams: true });
+router.get('/', studentPreviousSchoolController_1.listStudentPreviousSchools);
+router.get('/:id', studentPreviousSchoolController_1.getStudentPreviousSchool);
+router.post('/', studentPreviousSchoolController_1.createStudentPreviousSchool);
+router.put('/:id', studentPreviousSchoolController_1.updateStudentPreviousSchool);
+router.delete('/:id', studentPreviousSchoolController_1.deleteStudentPreviousSchool);
+router.put('/', studentPreviousSchoolController_1.replaceStudentPreviousSchools);
+exports.default = router;

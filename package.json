@@ -1,0 +1,37 @@
+{
+  "name": "batalla-project-production",
+  "version": "1.0.0",
+  "description": "BatallaProject Fullstack Standalone Build for Netcup",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "start:dist": "node dist/server.js"
+  },
+  "dependencies": {
+    "@types/cheerio": "^0.22.35",
+    "@types/node-cron": "^3.0.11",
+    "axios": "^1.13.2",
+    "bcrypt": "^6.0.0",
+    "cheerio": "^1.1.2",
+    "connect-session-sequelize": "^8.0.4",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.5",
+    "cross-env": "^10.1.0",
+    "dayjs": "^1.11.20",
+    "dotenv": "^17.2.3",
+    "exceljs": "^4.4.0",
+    "express": "^5.2.1",
+    "express-session": "^1.18.2",
+    "morgan": "^1.12.0",
+    "multer": "^2.0.2",
+    "mysql2": "^3.16.0",
+    "node-cron": "^4.6.0",
+    "puppeteer": "^24.40.0",
+    "sequelize": "^6.37.7",
+    "tsconfig-paths": "^4.2.0",
+    "uuid": "^13.0.0",
+    "winston": "^3.19.0",
+    "winston-daily-rotate-file": "^5.0.0",
+    "xlsx": "^0.18.5"
+  }
+}

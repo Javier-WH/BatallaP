@@ -1,0 +1,11 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const evaluationCatalogController_1 = require("../controllers/evaluationCatalogController.js");
+const router = (0, express_1.Router)();
+router.get('/', evaluationCatalogController_1.getCatalogs);
+router.post('/', evaluationCatalogController_1.createCatalog);
+router.post('/merge', evaluationCatalogController_1.mergeCatalogs);
+router.put('/:id', evaluationCatalogController_1.updateCatalog);
+router.delete('/:id', evaluationCatalogController_1.deleteCatalog);
+exports.default = router;

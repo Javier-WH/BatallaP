@@ -1,0 +1,11 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const sectionGuideController_1 = require("../controllers/sectionGuideController.js");
+const router = (0, express_1.Router)();
+router.get('/my-sections', sectionGuideController_1.getMyGuideSections);
+router.get('/all', sectionGuideController_1.getAllGuidesForPeriod);
+router.get('/teachers', sectionGuideController_1.getTeachersForSection);
+router.get('/', sectionGuideController_1.getSectionGuide);
+router.post('/', sectionGuideController_1.setSectionGuide);
+exports.default = router;

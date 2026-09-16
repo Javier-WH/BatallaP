@@ -1,0 +1,15 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const scheduleController_1 = require("../controllers/scheduleController.js");
+const router = (0, express_1.Router)();
+router.get('/', scheduleController_1.listSchedules);
+router.post('/generate', scheduleController_1.generateSchedules);
+router.get('/conflicts', scheduleController_1.checkTeacherConflict);
+router.get('/section/:sectionId/options', scheduleController_1.getSectionScheduleOptions);
+router.get('/teacher/:personId', scheduleController_1.getTeacherSchedule);
+router.get('/:id', scheduleController_1.getSchedule);
+router.post('/', scheduleController_1.createSchedule);
+router.put('/:id', scheduleController_1.updateSchedule);
+router.put('/:id/entries', scheduleController_1.saveScheduleEntries);
+exports.default = router;

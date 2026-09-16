@@ -1,0 +1,10 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const certifiedGradesController_1 = require("../controllers/certifiedGradesController.js");
+const router = (0, express_1.Router)();
+router.get('/export', certifiedGradesController_1.exportCertifiedGrades);
+router.get('/export-section', certifiedGradesController_1.exportCertifiedGradesBySection);
+router.get('/export-reverso', certifiedGradesController_1.exportReverso);
+router.get('/data', certifiedGradesController_1.getCertifiedGradesData);
+exports.default = router;

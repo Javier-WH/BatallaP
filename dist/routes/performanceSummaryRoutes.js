@@ -1,0 +1,13 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const performanceSummaryController_1 = require("../controllers/performanceSummaryController.js");
+const router = (0, express_1.Router)();
+router.get('/export', performanceSummaryController_1.exportPerformanceSummary);
+router.get('/export-revision', performanceSummaryController_1.exportRevisionSummary);
+router.get('/boletin-data', performanceSummaryController_1.getBoletinData);
+router.get('/general-averages', performanceSummaryController_1.getGeneralAverages);
+router.get('/titulo-data', performanceSummaryController_1.getTituloData);
+router.get('/group-teachers', performanceSummaryController_1.getGroupTeachers);
+router.post('/group-signer', performanceSummaryController_1.setGroupSigner);
+exports.default = router;

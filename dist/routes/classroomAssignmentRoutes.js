@@ -1,0 +1,11 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const classroomAssignmentController_1 = require("../controllers/classroomAssignmentController.js");
+const router = (0, express_1.Router)();
+router.get('/grid/:schoolPeriodId', classroomAssignmentController_1.getGridState);
+router.put('/grid/:schoolPeriodId', classroomAssignmentController_1.saveGridState);
+router.get('/', classroomAssignmentController_1.listAssignments);
+router.post('/', classroomAssignmentController_1.createAssignment);
+router.delete('/:id', classroomAssignmentController_1.deleteAssignment);
+exports.default = router;

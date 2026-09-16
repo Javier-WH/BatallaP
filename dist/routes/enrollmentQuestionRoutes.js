@@ -1,0 +1,12 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const enrollmentQuestionController_1 = require("../controllers/enrollmentQuestionController.js");
+const router = (0, express_1.Router)();
+router.get('/', enrollmentQuestionController_1.listEnrollmentQuestions);
+router.post('/', enrollmentQuestionController_1.createEnrollmentQuestion);
+router.put('/:id', enrollmentQuestionController_1.updateEnrollmentQuestion);
+router.patch('/reorder', enrollmentQuestionController_1.reorderEnrollmentQuestions);
+router.patch('/:id/status', enrollmentQuestionController_1.setEnrollmentQuestionStatus);
+router.patch('/:id/deactivate', enrollmentQuestionController_1.deactivateEnrollmentQuestion);
+exports.default = router;

@@ -1,0 +1,13 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const periodClosureController_1 = require("../controllers/periodClosureController.js");
+const router = (0, express_1.Router)();
+router.get('/:periodId/status', periodClosureController_1.getClosureStatus);
+router.get('/:periodId/checklist/all', periodClosureController_1.listChecklistEntries);
+router.get('/:periodId/checklist', periodClosureController_1.getChecklistEntry);
+router.post('/:periodId/checklist', periodClosureController_1.upsertChecklistEntry);
+router.get('/:periodId/validate', periodClosureController_1.validateClosure);
+router.get('/:periodId/preview', periodClosureController_1.getPreviewOutcomes);
+router.post('/:periodId/execute', periodClosureController_1.executeClosure);
+exports.default = router;

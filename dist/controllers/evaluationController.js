@@ -1,0 +1,3122 @@
+"use strict";
+var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
+    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
+    return new (P || (P = Promise))(function (resolve, reject) {
+        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
+        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
+        step((generator = generator.apply(thisArg, _arguments || [])).next());
+    });
+};
+var __rest = (this && this.__rest) || function (s, e) {
+    var t = {};
+    for (var p in s) if (Object.prototype.hasOwnProperty.call(s, p) && e.indexOf(p) < 0)
+        t[p] = s[p];
+    if (s != null && typeof Object.getOwnPropertySymbols === "function")
+        for (var i = 0, p = Object.getOwnPropertySymbols(s); i < p.length; i++) {
+            if (e.indexOf(p[i]) < 0 && Object.prototype.propertyIsEnumerable.call(s, p[i]))
+                t[p[i]] = s[p[i]];
+        }
+    return t;
+};
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.resetQualificationTimer = exports.reviewQualificationEditRequest = exports.getPendingQualificationEditRequests = exports.getPendingQualificationEditRequestCount = exports.createQualificationEditRequest = exports.recalculatePeriodGrades = exports.copyEvaluationPlan = exports.getAllQualificationAudits = exports.getQualificationAudits = exports.getAllAssignments = exports.exportGradesExcel = exports.exportGradesExcelOficial = exports.exportPlanningExcel = exports.getFinalGradesByPeriod = exports.updateFinalGrade = exports.getStudentFullAcademicRecord = exports.saveQualification = exports.getQualifications = exports.getStudentsForAssignment = exports.deleteEvaluationItem = exports.updateEvaluationItem = exports.createEvaluationItem = exports.getEvaluationPlan = exports.getMyAssignments = void 0;
+const sequelize_1 = require("sequelize");
+const database_1 = __importDefault(require("../config/database.js"));
+const paginationService_1 = require("../services/paginationService.js");
+const academicContextService_1 = require("../services/academicContextService.js");
+const exceljs_1 = __importDefault(require("exceljs"));
+const fs_1 = __importDefault(require("fs"));
+const path_1 = __importDefault(require("path"));
+const index_1 = require("../models/index.js");
+const subjectOrderService_1 = require("../services/subjectOrderService.js");
+const subjectGroupService_1 = require("../services/subjectGroupService.js");
+const gradeEvaluationService_1 = require("../services/gradeEvaluationService.js");
+const termSectionClosureService_1 = require("../services/termSectionClosureService.js");
+const termGradeSyncService_1 = require("../services/termGradeSyncService.js");
+const studentSortService_1 = require("../services/studentSortService.js");
+const gradeChangeLogService_1 = require("../services/gradeChangeLogService.js");
+const getMyAssignments = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const user = req.session.user;
+        if (!user)
+            return res.status(401).json({ message: 'No autorizado' });
+        const person = yield index_1.Person.findOne({ where: { userId: user.id } });
+        if (!person)
+            return res.status(404).json({ message: 'Perfil de profesor no encontrado' });
+        // Allow filtering by a specific schoolPeriodId (for historical read-only views).
+        // When not provided, default to the active period.
+        const schoolPeriodId = req.query.schoolPeriodId
+            ? Number(req.query.schoolPeriodId)
+            : undefined;
+        const assignments = yield index_1.TeacherAssignment.findAll({
+            where: { teacherId: person.id },
+            include: [
+                {
+                    model: index_1.PeriodGradeSubject,
+                    as: 'periodGradeSubject',
+                    required: true, // Force inner join
+                    include: [
+                        { model: index_1.Subject, as: 'subject' },
+                        {
+                            model: index_1.PeriodGrade,
+                            as: 'periodGrade',
+                            required: true, // Force inner join
+                            include: [
+                                { model: index_1.Grade, as: 'grade' },
+                                {
+                                    model: index_1.SchoolPeriod,
+                                    as: 'schoolPeriod',
+                                    required: true, // Force inner join
+                                    where: schoolPeriodId
+                                        ? { id: schoolPeriodId }
+                                        : { status: 'activo' } // Only active period by default
+                                }
+                            ]
+                        }
+                    ]
+                },
+                {
+                    model: index_1.Section,
+                    as: 'section',
+                    required: true,
+                    where: { name: { [sequelize_1.Op.ne]: 'Materia Pendiente' } },
+                },
+                { model: index_1.Person, as: 'teacher' }
+            ],
+        });
+        // Sort by PeriodGradeSubject.order (canonical subject order), then by grade name, then by section name
+        const sorted = assignments.sort((a, b) => {
+            var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m;
+            const orderA = (_b = (_a = a.periodGradeSubject) === null || _a === void 0 ? void 0 : _a.order) !== null && _b !== void 0 ? _b : Number.MAX_SAFE_INTEGER;
+            const orderB = (_d = (_c = b.periodGradeSubject) === null || _c === void 0 ? void 0 : _c.order) !== null && _d !== void 0 ? _d : Number.MAX_SAFE_INTEGER;
+            if (orderA !== orderB)
+                return orderA - orderB;
+            const gradeA = ((_g = (_f = (_e = a.periodGradeSubject) === null || _e === void 0 ? void 0 : _e.periodGrade) === null || _f === void 0 ? void 0 : _f.grade) === null || _g === void 0 ? void 0 : _g.name) || '';
+            const gradeB = ((_k = (_j = (_h = b.periodGradeSubject) === null || _h === void 0 ? void 0 : _h.periodGrade) === null || _j === void 0 ? void 0 : _j.grade) === null || _k === void 0 ? void 0 : _k.name) || '';
+            if (gradeA !== gradeB)
+                return gradeA.localeCompare(gradeB, 'es');
+            const secA = ((_l = a.section) === null || _l === void 0 ? void 0 : _l.name) || '';
+            const secB = ((_m = b.section) === null || _m === void 0 ? void 0 : _m.name) || '';
+            return secA.localeCompare(secB, 'es');
+        });
+        res.json(sorted);
+    }
+    catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'Error al obtener asignaciones' });
+    }
+});
+exports.getMyAssignments = getMyAssignments;
+const getEvaluationPlan = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const { periodGradeSubjectId } = req.params;
+        const { term, sectionId } = req.query;
+        const where = { periodGradeSubjectId };
+        if (term)
+            where.termId = term;
+        if (sectionId)
+            where.sectionId = sectionId;
+        const plan = yield index_1.EvaluationPlan.findAll({
+            where,
+            include: [
+                { model: index_1.EvaluationCriteria, as: 'criteria', include: [
+                        { model: index_1.EvaluationIndicator, as: 'indicators' }
+                    ] },
+                { model: index_1.ThematicComponent, as: 'thematicComponent' },
+                { model: index_1.EvaluationCatalog, as: 'tecnicaCatalog' },
+                { model: index_1.EvaluationCatalog, as: 'instrumentoCatalog' },
+                { model: index_1.EvaluationCatalog, as: 'estrategiaCatalog' },
+            ],
+            order: [['date', 'ASC']]
+        });
+        // Resolve thematicContentIds to content objects
+        const allContentIds = plan.flatMap((p) => Array.isArray(p.thematicContentIds) ? p.thematicContentIds : []);
+        let contentMap = new Map();
+        if (allContentIds.length > 0) {
+            const contents = yield index_1.ThematicContent.findAll({
+                where: { id: allContentIds },
+                include: [{ model: index_1.ThematicComponent, as: 'thematicComponent', attributes: ['id', 'title'] }]
+            });
+            contents.forEach((c) => contentMap.set(c.id, c.toJSON()));
+        }
+        const planWithContents = plan.map((p) => {
+            const j = p.toJSON();
+            j.thematicContents = (Array.isArray(j.thematicContentIds) ? j.thematicContentIds : [])
+                .map((id) => contentMap.get(id))
+                .filter(Boolean);
+            return j;
+        });
+        res.json(planWithContents);
+    }
+    catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'Error al obtener plan de evaluación' });
+    }
+});
+exports.getEvaluationPlan = getEvaluationPlan;
+const createEvaluationItem = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const { termId, periodGradeSubjectId, sectionId, description, percentage, date, thematicComponentId, thematicContentIds, evaluationType, criteria, tecnicaId, instrumentoId, estrategiaId, shortDescription } = req.body;
+        const normalizedThematicContentIds = Array.isArray(thematicContentIds)
+            ? [...new Set(thematicContentIds.map(Number).filter(Number.isInteger))]
+            : null;
+        const validTypes = ['intra', 'inter', 'trans'];
+        const typesArray = Array.isArray(evaluationType)
+            ? evaluationType.filter((t) => validTypes.includes(t))
+            : (typeof evaluationType === 'string' && evaluationType ? evaluationType.split(',').filter((t) => validTypes.includes(t.trim())) : []);
+        if (typesArray.length === 0) {
+            return res.status(400).json({ message: 'Debe seleccionar al menos un tipo de evaluación' });
+        }
+        const evaluationTypeStr = typesArray.join(',');
+        if (termId) {
+            const term = yield index_1.Term.findByPk(termId);
+            if (!term) {
+                return res.status(404).json({ message: 'Lapso no encontrado' });
+            }
+            let sectionClosed = term.isBlocked;
+            if (sectionId && !sectionClosed) {
+                // Derive gradeId from PeriodGradeSubject → PeriodGrade
+                const pgs = yield index_1.PeriodGradeSubject.findByPk(periodGradeSubjectId, { attributes: ['id', 'periodGradeId'] });
+                if (pgs) {
+                    const pg = yield index_1.PeriodGrade.findByPk(pgs.periodGradeId, { attributes: ['id', 'gradeId'] });
+                    if (pg) {
+                        sectionClosed = yield termSectionClosureService_1.TermSectionClosureService.isSectionClosed(termId, sectionId, pg.gradeId);
+                    }
+                }
+            }
+            if (sectionClosed) {
+                return res.status(403).json({ message: 'Lapso bloqueado para esta sección; no se puede modificar el plan de evaluación' });
+            }
+        }
+        // Validate percentage sum does not exceed 100
+        const currentSum = (yield index_1.EvaluationPlan.sum('percentage', {
+            where: { periodGradeSubjectId, sectionId, termId },
+        })) || 0;
+        if (Number(currentSum) + Number(percentage) > 100) {
+            return res.status(400).json({ message: 'La suma de los porcentajes para este lapso no puede superar el 100%' });
+        }
+        const item = yield index_1.EvaluationPlan.create({
+            periodGradeSubjectId,
+            sectionId,
+            termId,
+            description,
+            percentage,
+            date,
+            thematicComponentId: thematicComponentId || null,
+            thematicContentIds: normalizedThematicContentIds,
+            evaluationType: evaluationTypeStr,
+            tecnicaId: tecnicaId || null,
+            instrumentoId: instrumentoId || null,
+            estrategiaId: estrategiaId || null,
+            shortDescription: shortDescription || null,
+        });
+        // Create criteria if provided
+        if (Array.isArray(criteria) && criteria.length > 0) {
+            for (const c of criteria) {
+                const criterion = yield index_1.EvaluationCriteria.create({
+                    evaluationPlanId: item.id,
+                    name: c.name,
+                    points: c.points,
+                });
+                if (Array.isArray(c.indicators) && c.indicators.length > 0) {
+                    yield index_1.EvaluationIndicator.bulkCreate(c.indicators.map((ind) => ({
+                        evaluationCriteriaId: criterion.id,
+                        name: ind.name,
+                        points: ind.points,
+                    })));
+                }
+            }
+        }
+        // Return with criteria included
+        const fullItem = yield index_1.EvaluationPlan.findByPk(item.id, {
+            include: [
+                { model: index_1.EvaluationCriteria, as: 'criteria', include: [
+                        { model: index_1.EvaluationIndicator, as: 'indicators' }
+                    ] },
+                { model: index_1.ThematicComponent, as: 'thematicComponent' },
+                { model: index_1.EvaluationCatalog, as: 'tecnicaCatalog' },
+                { model: index_1.EvaluationCatalog, as: 'instrumentoCatalog' },
+                { model: index_1.EvaluationCatalog, as: 'estrategiaCatalog' },
+            ],
+        });
+        res.json(fullItem);
+    }
+    catch (error) {
+        res.status(400).json({ message: error.message });
+    }
+});
+exports.createEvaluationItem = createEvaluationItem;
+const updateEvaluationItem = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    var _a, _b;
+    try {
+        const { id } = req.params;
+        const item = yield index_1.EvaluationPlan.findByPk(id);
+        if (!item)
+            return res.status(404).json({ message: 'Item no encontrado' });
+        const targetTermId = (_a = req.body.termId) !== null && _a !== void 0 ? _a : item.termId;
+        const targetSectionId = (_b = req.body.sectionId) !== null && _b !== void 0 ? _b : item.sectionId;
+        const term = yield index_1.Term.findByPk(targetTermId);
+        if (!term) {
+            return res.status(404).json({ message: 'Lapso no encontrado' });
+        }
+        let sectionClosed = term.isBlocked;
+        if (targetSectionId && !sectionClosed) {
+            // Derive gradeId from PeriodGradeSubject → PeriodGrade
+            const pgs = yield index_1.PeriodGradeSubject.findByPk(item.periodGradeSubjectId, { attributes: ['id', 'periodGradeId'] });
+            if (pgs) {
+                const pg = yield index_1.PeriodGrade.findByPk(pgs.periodGradeId, { attributes: ['id', 'gradeId'] });
+                if (pg) {
+                    sectionClosed = yield termSectionClosureService_1.TermSectionClosureService.isSectionClosed(targetTermId, targetSectionId, pg.gradeId);
+                }
+            }
+        }
+        if (sectionClosed) {
+            return res.status(403).json({ message: 'Lapso bloqueado para esta sección; no se puede modificar el plan de evaluación' });
+        }
+        // Validate percentage sum if percentage is being updated
+        if (req.body.percentage !== undefined) {
+            const currentSum = (yield index_1.EvaluationPlan.sum('percentage', {
+                where: {
+                    periodGradeSubjectId: item.periodGradeSubjectId,
+                    sectionId: item.sectionId,
+                    termId: item.termId,
+                    id: { [sequelize_1.Op.ne]: Number(id) }
+                }
+            })) || 0;
+            if (Number(currentSum) + Number(req.body.percentage) > 100) {
+                return res.status(400).json({ message: 'La suma de los porcentajes para este lapso no puede superar el 100%' });
+            }
+        }
+        const _c = req.body, { criteria, evaluationType } = _c, updateFields = __rest(_c, ["criteria", "evaluationType"]);
+        if (evaluationType !== undefined) {
+            const validTypes = ['intra', 'inter', 'trans'];
+            const typesArray = Array.isArray(evaluationType)
+                ? evaluationType.filter((t) => validTypes.includes(t))
+                : (typeof evaluationType === 'string' && evaluationType ? evaluationType.split(',').filter((t) => validTypes.includes(t.trim())) : []);
+            if (typesArray.length === 0) {
+                return res.status(400).json({ message: 'Debe seleccionar al menos un tipo de evaluación' });
+            }
+            updateFields.evaluationType = typesArray.join(',');
+        }
+        yield item.update(updateFields);
+        // Replace criteria if provided
+        if (Array.isArray(criteria)) {
+            yield index_1.EvaluationCriteria.destroy({ where: { evaluationPlanId: Number(id) } });
+            if (criteria.length > 0) {
+                for (const c of criteria) {
+                    const criterion = yield index_1.EvaluationCriteria.create({
+                        evaluationPlanId: Number(id),
+                        name: c.name,
+                        points: c.points,
+                    });
+                    if (Array.isArray(c.indicators) && c.indicators.length > 0) {
+                        yield index_1.EvaluationIndicator.bulkCreate(c.indicators.map((ind) => ({
+                            evaluationCriteriaId: criterion.id,
+                            name: ind.name,
+                            points: ind.points,
+                        })));
+                    }
+                }
+            }
+        }
+        const fullItem = yield index_1.EvaluationPlan.findByPk(id, {
+            include: [
+                { model: index_1.EvaluationCriteria, as: 'criteria', include: [
+                        { model: index_1.EvaluationIndicator, as: 'indicators' }
+                    ] },
+                { model: index_1.ThematicComponent, as: 'thematicComponent' },
+                { model: index_1.EvaluationCatalog, as: 'tecnicaCatalog' },
+                { model: index_1.EvaluationCatalog, as: 'instrumentoCatalog' },
+                { model: index_1.EvaluationCatalog, as: 'estrategiaCatalog' },
+            ],
+        });
+        res.json(fullItem);
+    }
+    catch (error) {
+        res.status(400).json({ message: error.message });
+    }
+});
+exports.updateEvaluationItem = updateEvaluationItem;
+const deleteEvaluationItem = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const { id } = req.params;
+        const item = yield index_1.EvaluationPlan.findByPk(id);
+        if (!item) {
+            return res.status(404).json({ message: 'Item no encontrado' });
+        }
+        const term = yield index_1.Term.findByPk(item.termId);
+        if (!term) {
+            return res.status(404).json({ message: 'Lapso no encontrado' });
+        }
+        let sectionClosed = term.isBlocked;
+        if (item.sectionId && !sectionClosed) {
+            const pgs = yield index_1.PeriodGradeSubject.findByPk(item.periodGradeSubjectId, { attributes: ['id', 'periodGradeId'] });
+            if (pgs) {
+                const pg = yield index_1.PeriodGrade.findByPk(pgs.periodGradeId, { attributes: ['id', 'gradeId'] });
+                if (pg) {
+                    sectionClosed = yield termSectionClosureService_1.TermSectionClosureService.isSectionClosed(item.termId, item.sectionId, pg.gradeId);
+                }
+            }
+        }
+        if (sectionClosed) {
+            return res.status(403).json({ message: 'Lapso bloqueado para esta sección; no se puede modificar el plan de evaluación' });
+        }
+        yield index_1.EvaluationPlan.destroy({ where: { id } });
+        res.json({ message: 'Item eliminado' });
+    }
+    catch (error) {
+        res.status(500).json({ message: 'Error al eliminar item' });
+    }
+});
+exports.deleteEvaluationItem = deleteEvaluationItem;
+const getStudentsForAssignment = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    var _a;
+    try {
+        const { assignmentId } = req.params;
+        const requestedTermId = Number(req.query.termId);
+        if (!Number.isInteger(requestedTermId)) {
+            return res.status(400).json({ message: 'termId es requerido y debe ser válido' });
+        }
+        const assignment = yield index_1.TeacherAssignment.findByPk(assignmentId, {
+            include: [
+                {
+                    model: index_1.PeriodGradeSubject,
+                    as: 'periodGradeSubject'
+                }
+            ]
+        });
+        if (!assignment)
+            return res.status(404).json({ message: 'Asignación no encontrada' });
+        const { periodGradeSubject, sectionId, teacherId } = assignment;
+        // Determine the assigned professor's user id to detect edits by other users
+        let professorUserId = null;
+        if (teacherId) {
+            const teacherPerson = yield index_1.Person.findByPk(teacherId, { attributes: ['userId'] });
+            professorUserId = (_a = teacherPerson === null || teacherPerson === void 0 ? void 0 : teacherPerson.userId) !== null && _a !== void 0 ? _a : null;
+        }
+        // Get period and grade from the periodGrade record
+        const pg = yield index_1.PeriodGrade.findByPk(periodGradeSubject.periodGradeId);
+        if (!pg)
+            return res.status(404).json({ message: 'Estructura no encontrada' });
+        const requestedTerm = yield index_1.Term.findByPk(requestedTermId);
+        if (!requestedTerm)
+            return res.status(404).json({ message: 'Lapso no encontrado' });
+        if (Number(requestedTerm.schoolPeriodId) !== Number(pg.schoolPeriodId)) {
+            return res.status(400).json({ message: 'El lapso no pertenece al período de la asignación' });
+        }
+        const inscriptions = yield index_1.Inscription.findAll({
+            where: {
+                schoolPeriodId: pg.schoolPeriodId,
+                sectionId,
+                gradeId: pg.gradeId,
+            },
+            include: [
+                { model: index_1.Person, as: 'student' },
+                {
+                    model: index_1.InscriptionSubject,
+                    as: 'inscriptionSubjects',
+                    where: { subjectId: periodGradeSubject.subjectId },
+                    required: true, // Changed to true to filter only those enrolled in the subject
+                    include: [
+                        {
+                            model: index_1.Qualification,
+                            as: 'qualifications',
+                            required: false,
+                            where: { termId: requestedTermId },
+                            include: [
+                                { model: index_1.EvaluationPlan, as: 'evaluationPlan', include: [{ model: index_1.EvaluationCriteria, as: 'criteria' }] },
+                            ]
+                        }
+                    ]
+                }
+            ]
+        });
+        // A group subject is active per student and term. Keep the old
+        // InscriptionSubject rows (they contain historical notes), but exclude the
+        // student from this teacher list when the term choice points to another
+        // subject in the same group.
+        const assignedSubject = yield index_1.Subject.findByPk(periodGradeSubject.subjectId, {
+            attributes: ['id', 'subjectGroupId'],
+        });
+        if ((assignedSubject === null || assignedSubject === void 0 ? void 0 : assignedSubject.subjectGroupId) != null) {
+            const choices = yield index_1.InscriptionGroupTermChoice.findAll({
+                where: {
+                    inscriptionId: inscriptions.map(ins => ins.id),
+                    subjectGroupId: assignedSubject.subjectGroupId,
+                    termId: requestedTermId,
+                },
+                attributes: ['inscriptionId', 'subjectId'],
+            });
+            const chosenByInscription = new Map(choices.map(choice => [choice.inscriptionId, choice.subjectId]));
+            const filteredInscriptions = inscriptions.filter(ins => {
+                const chosenSubjectId = chosenByInscription.get(ins.id);
+                return chosenSubjectId == null || chosenSubjectId === periodGradeSubject.subjectId;
+            });
+            inscriptions.splice(0, inscriptions.length, ...filteredInscriptions);
+        }
+        // Collect all qualification IDs for batch audit lookup from GradeChangeLog
+        const allQualificationIds = [];
+        for (const ins of inscriptions) {
+            const j = ins.toJSON();
+            if (j.inscriptionSubjects) {
+                for (const is of j.inscriptionSubjects) {
+                    if (is.qualifications) {
+                        for (const q of is.qualifications) {
+                            if (q.id)
+                                allQualificationIds.push(q.id);
+                        }
+                    }
+                }
+            }
+        }
+        // Batch query GradeChangeLog for all qualifications in this assignment
+        const auditMap = new Map();
+        if (allQualificationIds.length > 0) {
+            const audits = yield index_1.GradeChangeLog.findAll({
+                where: {
+                    entityType: 'qualification',
+                    entityId: { [sequelize_1.Op.in]: allQualificationIds },
+                },
+                include: [
+                    {
+                        model: index_1.User,
+                        as: 'editor',
+                        attributes: ['id', 'username'],
+                        include: [{ model: index_1.Person, as: 'person', attributes: ['firstName', 'lastName'] }],
+                    },
+                ],
+                order: [['editedAt', 'DESC']],
+            });
+            for (const a of audits) {
+                const arr = auditMap.get(a.entityId) || [];
+                arr.push(a.toJSON());
+                auditMap.set(a.entityId, arr);
+            }
+        }
+        // Read grade edit grace hours setting (default 24h)
+        const graceSetting = yield index_1.Setting.findOne({ where: { key: 'grade_edit_grace_hours' } });
+        const graceHours = graceSetting ? Number(graceSetting.value) : 24;
+        const graceMs = graceHours * 60 * 60 * 1000;
+        const nowMs = Date.now();
+        // Read-only flag for this assignment's (term, section): blocked term,
+        // per-section closure or completed course council. Frontends use it to
+        // disable editing (including the long-press edit request overlay).
+        const sectionReadOnly = yield termSectionClosureService_1.TermSectionClosureService.isSectionReadOnly(requestedTermId, sectionId, pg.gradeId);
+        // Process audit flags and timer locks in nested qualifications using GradeChangeLog data
+        const parsed = inscriptions.map(ins => {
+            const j = ins.toJSON();
+            j.sectionReadOnly = sectionReadOnly;
+            if (j.inscriptionSubjects) {
+                j.inscriptionSubjects.forEach((is) => {
+                    if (is.qualifications) {
+                        is.qualifications.forEach((q) => {
+                            var _a, _b, _c;
+                            const allAudits = auditMap.get(q.id) || [];
+                            const foreignAudits = allAudits.filter((a) => a.editedBy !== professorUserId || a.editorRole === 'control_estudios');
+                            q.editedByOther = foreignAudits.length > 0;
+                            if (q.editedByOther) {
+                                const last = foreignAudits[0]; // already sorted DESC by editedAt
+                                const editorPerson = (_a = last === null || last === void 0 ? void 0 : last.editor) === null || _a === void 0 ? void 0 : _a.person;
+                                q.lastEditDate = (_b = last === null || last === void 0 ? void 0 : last.editedAt) !== null && _b !== void 0 ? _b : null;
+                                q.lastEditUser = editorPerson
+                                    ? `${editorPerson.firstName || ''} ${editorPerson.lastName || ''}`.trim()
+                                    : ((_c = last === null || last === void 0 ? void 0 : last.editor) === null || _c === void 0 ? void 0 : _c.username) || '';
+                            }
+                            // Compute timer lock for score and remedialScore independently
+                            if (q.scoreSetAt) {
+                                q.isLockedByTimer = (nowMs - new Date(q.scoreSetAt).getTime()) > graceMs;
+                            }
+                            else {
+                                q.isLockedByTimer = false;
+                            }
+                            if (q.remedialScoreSetAt) {
+                                q.isRemedialLockedByTimer = (nowMs - new Date(q.remedialScoreSetAt).getTime()) > graceMs;
+                            }
+                            else {
+                                q.isRemedialLockedByTimer = false;
+                            }
+                        });
+                    }
+                });
+            }
+            return j;
+        });
+        res.json(parsed);
+    }
+    catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'Error al obtener estudiantes' });
+    }
+});
+exports.getStudentsForAssignment = getStudentsForAssignment;
+const getQualifications = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const { inscriptionSubjectId } = req.params;
+        const { termId } = req.query;
+        const where = { inscriptionSubjectId: Number(inscriptionSubjectId) };
+        if (termId)
+            where.termId = Number(termId);
+        const qualifications = yield index_1.Qualification.findAll({ where });
+        res.json(qualifications);
+    }
+    catch (error) {
+        res.status(500).json({ message: 'Error al obtener calificaciones' });
+    }
+});
+exports.getQualifications = getQualifications;
+const saveQualification = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    var _a, _b, _c;
+    const t = yield database_1.default.transaction();
+    try {
+        const { evaluationPlanId, inscriptionSubjectId, score, remedialScore, isAbsent, observations, inscriptionId, schoolPeriodId, gradeId, sectionId, termId, subjectId, } = req.body;
+        let finalInscriptionSubjectId = inscriptionSubjectId;
+        // Validate term state: if the associated term is blocked, forbid changes
+        const evalPlan = yield index_1.EvaluationPlan.findByPk(evaluationPlanId);
+        if (!evalPlan) {
+            yield t.rollback();
+            return res.status(404).json({ message: 'Plan de evaluación no encontrado' });
+        }
+        const term = yield index_1.Term.findByPk(evalPlan.termId);
+        if (!term) {
+            yield t.rollback();
+            return res.status(404).json({ message: 'Lapso no encontrado' });
+        }
+        let sectionClosed = term.isBlocked;
+        if (evalPlan.sectionId && !sectionClosed) {
+            const pgs = yield index_1.PeriodGradeSubject.findByPk(evalPlan.periodGradeSubjectId, { attributes: ['id', 'periodGradeId'] });
+            if (pgs) {
+                const pg = yield index_1.PeriodGrade.findByPk(pgs.periodGradeId, { attributes: ['id', 'gradeId'] });
+                if (pg) {
+                    sectionClosed = yield termSectionClosureService_1.TermSectionClosureService.isSectionReadOnly(evalPlan.termId, evalPlan.sectionId, pg.gradeId);
+                }
+            }
+        }
+        if (sectionClosed) {
+            yield t.rollback();
+            return res.status(403).json({ message: 'El lapso está bloqueado o el consejo de curso está completado; no se pueden modificar calificaciones' });
+        }
+        // Robust handling: If inscriptionSubjectId is missing but we have inscriptionId, we can resolve it
+        if (!finalInscriptionSubjectId && inscriptionId) {
+            const ep = yield index_1.EvaluationPlan.findByPk(evaluationPlanId, {
+                include: [{ model: index_1.PeriodGradeSubject, as: 'periodGradeSubject' }],
+                transaction: t,
+            });
+            const evalPlanWithSubject = ep;
+            if (evalPlanWithSubject && evalPlanWithSubject.periodGradeSubject) {
+                // Fetch inscription to denormalize context into InscriptionSubject
+                const ctxInscription = yield index_1.Inscription.findByPk(inscriptionId, { attributes: ['id', 'schoolPeriodId', 'gradeId', 'sectionId'], transaction: t });
+                const [insSub] = yield index_1.InscriptionSubject.findOrCreate({
+                    where: {
+                        inscriptionId,
+                        subjectId: evalPlanWithSubject.periodGradeSubject.subjectId
+                    },
+                    defaults: {
+                        inscriptionId,
+                        subjectId: evalPlanWithSubject.periodGradeSubject.subjectId,
+                        schoolPeriodId: (_a = ctxInscription === null || ctxInscription === void 0 ? void 0 : ctxInscription.schoolPeriodId) !== null && _a !== void 0 ? _a : null,
+                        gradeId: (_b = ctxInscription === null || ctxInscription === void 0 ? void 0 : ctxInscription.gradeId) !== null && _b !== void 0 ? _b : null,
+                        sectionId: (_c = ctxInscription === null || ctxInscription === void 0 ? void 0 : ctxInscription.sectionId) !== null && _c !== void 0 ? _c : null,
+                    },
+                    transaction: t,
+                });
+                finalInscriptionSubjectId = insSub.id;
+            }
+        }
+        if (!finalInscriptionSubjectId) {
+            yield t.rollback();
+            return res.status(400).json({ message: 'No se pudo determinar el enlace del estudiante con la materia' });
+        }
+        const academicContext = yield (0, academicContextService_1.resolveAcademicContext)(Number(evaluationPlanId), Number(finalInscriptionSubjectId), t);
+        if (inscriptionId && academicContext.inscriptionId !== Number(inscriptionId)) {
+            throw new academicContextService_1.AcademicContextError('La inscripción no coincide con la materia del estudiante');
+        }
+        (0, academicContextService_1.assertRequestedContext)(academicContext, {
+            schoolPeriodId,
+            gradeId,
+            sectionId,
+            termId,
+            subjectId,
+        });
+        // Check if exists to update, else create
+        const now = new Date();
+        const [qualification, created] = yield index_1.Qualification.findOrCreate({
+            where: { evaluationPlanId, inscriptionSubjectId: finalInscriptionSubjectId },
+            defaults: {
+                evaluationPlanId,
+                inscriptionSubjectId: finalInscriptionSubjectId,
+                score: score !== undefined ? score : 0,
+                remedialScore: remedialScore !== undefined ? remedialScore : null,
+                isAbsent: isAbsent || false,
+                observations,
+                schoolPeriodId: academicContext.schoolPeriodId,
+                termId: academicContext.termId,
+                subjectId: academicContext.subjectId,
+                gradeId: academicContext.gradeId,
+                sectionId: academicContext.sectionId,
+                date: academicContext.date,
+                scoreSetAt: score !== undefined ? now : null,
+                remedialScoreSetAt: remedialScore !== undefined ? now : null,
+            },
+            transaction: t,
+        });
+        if (!created) {
+            const previousScore = qualification.score;
+            const previousIsAbsent = !!qualification.isAbsent;
+            const updateData = {
+                observations,
+                schoolPeriodId: academicContext.schoolPeriodId,
+                termId: academicContext.termId,
+                subjectId: academicContext.subjectId,
+                gradeId: academicContext.gradeId,
+                sectionId: academicContext.sectionId,
+                date: academicContext.date,
+            };
+            if (score !== undefined) {
+                updateData.score = score;
+                // Only set the timer when the score is first placed (scoreSetAt is null)
+                // Do NOT reset on subsequent edits — the timer is fixed from the first entry
+                if (!qualification.scoreSetAt) {
+                    updateData.scoreSetAt = now;
+                }
+            }
+            if (remedialScore !== undefined) {
+                updateData.remedialScore = remedialScore;
+                // Only set the remedial timer when first placed
+                if (!qualification.remedialScoreSetAt) {
+                    updateData.remedialScoreSetAt = now;
+                }
+            }
+            if (isAbsent !== undefined)
+                updateData.isAbsent = isAbsent;
+            yield qualification.update(updateData, { transaction: t });
+            // Record audit if score changed (or if isAbsent was toggled)
+            const sessionUser = req.session.user;
+            const wasAbsent = previousIsAbsent && isAbsent === false;
+            const scoreChanged = score !== undefined && Number(previousScore) !== Number(score);
+            if (sessionUser && (scoreChanged || wasAbsent)) {
+                const userRoles = sessionUser.roles || [];
+                const editorContext = userRoles.includes('Control de Estudios') ? 'control_estudios' : 'teacher';
+                yield (0, gradeChangeLogService_1.logGradeChange)({
+                    entityType: 'qualification',
+                    entityId: qualification.id,
+                    // NP convention: the previous numeric value is meaningless when the
+                    // grade was displayed as NP — log null with previousStatus 'NP'
+                    previousScore: wasAbsent ? null : (previousScore != null ? Number(previousScore) : null),
+                    newScore: score != null ? Number(score) : null,
+                    previousStatus: wasAbsent ? 'NP' : null,
+                    editedBy: sessionUser.id,
+                    editorRole: editorContext,
+                    reason: typeof req.body.comment === 'string' && req.body.comment.trim() !== '' ? req.body.comment.trim() : null,
+                    metadata: { inscriptionSubjectId: qualification.inscriptionSubjectId, evaluationPlanId: qualification.evaluationPlanId },
+                }, t);
+            }
+        }
+        // Sync term grades so that boletines and planillas stay consistent
+        yield termGradeSyncService_1.TermGradeSyncService.syncForInscriptionSubject(finalInscriptionSubjectId, { transaction: t });
+        yield t.commit();
+        res.json(qualification);
+    }
+    catch (error) {
+        // Safe rollback: ignore errors if transaction was already finished by timeout
+        try {
+            yield t.rollback();
+        }
+        catch (rbErr) {
+            // Transaction may have been auto-rolled back by connection timeout
+        }
+        if (error instanceof academicContextService_1.AcademicContextError) {
+            return res.status(error.statusCode).json({ message: error.message });
+        }
+        console.error('Error in saveQualification:', error);
+        return res.status(500).json({ message: 'Error al guardar calificación' });
+    }
+});
+exports.saveQualification = saveQualification;
+const getStudentFullAcademicRecord = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const { personId } = req.params;
+        const { termId } = req.query;
+        const records = yield index_1.Inscription.findAll({
+            where: { personId },
+            include: [
+                { model: index_1.SchoolPeriod, as: 'period' },
+                { model: index_1.Grade, as: 'grade' },
+                { model: index_1.Section, as: 'section' },
+                {
+                    model: index_1.InscriptionSubject,
+                    as: 'inscriptionSubjects',
+                    include: [
+                        {
+                            model: index_1.Subject,
+                            as: 'subject',
+                            include: [{ model: index_1.SubjectGroup, as: 'subjectGroup', attributes: ['id', 'name'] }]
+                        },
+                        {
+                            model: index_1.Qualification,
+                            as: 'qualifications',
+                            required: false,
+                            where: termId ? { termId: Number(termId) } : undefined,
+                            include: [{ model: index_1.EvaluationPlan, as: 'evaluationPlan' }]
+                        },
+                        {
+                            model: index_1.CouncilPoint,
+                            as: 'councilPoints'
+                        },
+                        {
+                            model: index_1.SubjectTermGrade,
+                            as: 'termGrades'
+                        },
+                        {
+                            model: index_1.SubjectFinalGrade,
+                            as: 'finalGrade',
+                            required: false
+                        }
+                    ]
+                },
+                {
+                    model: index_1.PendingSubject,
+                    as: 'pendingSubjects',
+                    required: false
+                }
+            ],
+            order: [
+                [{ model: index_1.SchoolPeriod, as: 'period' }, 'id', 'DESC'],
+            ]
+        });
+        // Log to verify usesLiteralGrades is being returned
+        // Apply canonical subject order per inscription (PeriodGradeSubject.order)
+        // with pendings appended at the end. See subjectOrderService for rules.
+        const recordsWithPendingFlag = yield Promise.all(records.map((record) => __awaiter(void 0, void 0, void 0, function* () {
+            var _a, _b;
+            const recordAny = record;
+            const pendingSubjectIds = new Set((_b = (_a = recordAny.pendingSubjects) === null || _a === void 0 ? void 0 : _a.map((ps) => ps.subjectId)) !== null && _b !== void 0 ? _b : []);
+            const recordJson = record.toJSON();
+            if (recordJson.inscriptionSubjects) {
+                const withFlags = (0, subjectGroupService_1.filterActiveGroupSubjects)(recordJson.inscriptionSubjects).map((is) => (Object.assign(Object.assign({}, is), { isPending: pendingSubjectIds.has(is.subjectId) })));
+                const orderMap = yield (0, subjectOrderService_1.getSubjectOrderMapByGradeAndPeriod)(recordJson.gradeId, recordJson.schoolPeriodId);
+                recordJson.inscriptionSubjects = (0, subjectOrderService_1.sortSubjectsWithPendingAtEnd)(withFlags, (is) => is.subjectId, (is) => { var _a; return (_a = is.subject) === null || _a === void 0 ? void 0 : _a.name; }, (is) => !!is.isPending, orderMap);
+            }
+            return recordJson;
+        })));
+        res.json(recordsWithPendingFlag);
+    }
+    catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'Error al obtener historial' });
+    }
+});
+exports.getStudentFullAcademicRecord = getStudentFullAcademicRecord;
+const updateFinalGrade = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    var _a, _b, _c, _d, _e, _f;
+    try {
+        const sessionUser = req.session.user;
+        if (!sessionUser) {
+            return res.status(401).json({ message: 'No autorizado' });
+        }
+        // Check if user has Control de Estudios role
+        const userRoles = sessionUser.roles || [];
+        if (!userRoles.includes('Control de Estudios')) {
+            return res.status(403).json({ message: 'Solo Control de Estudios puede modificar notas finales' });
+        }
+        const { id } = req.params;
+        const { finalScore, status, reason, permissionId, actCode, plantelId, gradeType } = req.body;
+        let normalizedPlantelId = undefined;
+        if (plantelId !== undefined) {
+            if (plantelId === null) {
+                normalizedPlantelId = null;
+            }
+            else {
+                const plantel = yield index_1.Plantel.findByPk(Number(plantelId));
+                if (!plantel) {
+                    return res.status(400).json({ message: 'Plantel no encontrado' });
+                }
+                normalizedPlantelId = plantel.id;
+            }
+        }
+        if (!reason) {
+            return res.status(400).json({ message: 'La razón de la modificación es obligatoria' });
+        }
+        if (!permissionId) {
+            return res.status(400).json({ message: 'Se requiere el ID del permiso que autoriza la modificación' });
+        }
+        // If id is null or 'new-', create a new record instead of updating
+        if (!id || id.toString().startsWith('new-')) {
+            // Extract inscriptionSubjectId from the id
+            const inscriptionSubjectId = (id === null || id === void 0 ? void 0 : id.toString().replace('new-', '')) || req.body.inscriptionSubjectId;
+            if (!inscriptionSubjectId) {
+                return res.status(400).json({ message: 'Se requiere inscriptionSubjectId para crear nota final' });
+            }
+            // Check if SubjectFinalGrade already exists for this inscriptionSubject (regular grade)
+            const existingGrade = yield index_1.SubjectFinalGrade.findOne({
+                where: { inscriptionSubjectId: Number(inscriptionSubjectId), gradeType: 'regular' }
+            });
+            if (existingGrade) {
+                // Update existing grade instead of creating new one
+                // Store previous values for audit
+                const previousScore = existingGrade.finalScore;
+                const previousStatus = existingGrade.status;
+                // Verify permission
+                const permission = yield index_1.GradeEditPermission.findOne({
+                    where: { id: permissionId, isActive: true }
+                });
+                if (!permission) {
+                    return res.status(404).json({ message: 'Permiso no encontrado o inactivo' });
+                }
+                if (permission.grantedTo !== sessionUser.id) {
+                    return res.status(403).json({ message: 'El permiso no pertenece al usuario actual' });
+                }
+                const previousPlantelId = existingGrade.plantelId;
+                // Update the final grade
+                yield existingGrade.update(Object.assign({ finalScore: finalScore !== undefined ? finalScore : existingGrade.finalScore, status: status || existingGrade.status }, (normalizedPlantelId !== undefined ? { plantelId: normalizedPlantelId } : {})));
+                // Create audit record
+                yield (0, gradeChangeLogService_1.logGradeChange)({
+                    entityType: 'subject_final_grade',
+                    entityId: existingGrade.id,
+                    previousScore: previousScore != null ? Number(previousScore) : null,
+                    newScore: finalScore != null ? Number(finalScore) : null,
+                    previousStatus: previousStatus || null,
+                    newStatus: existingGrade.status,
+                    gradeType: existingGrade.gradeType || null,
+                    editedBy: sessionUser.id,
+                    editorRole: 'control_estudios',
+                    reason,
+                    actCode,
+                    metadata: { permissionId: permission.id, previousPlantelId, newPlantelId: existingGrade.plantelId, inscriptionSubjectId: existingGrade.inscriptionSubjectId },
+                });
+                return res.json({ message: 'Nota final actualizada correctamente', finalGrade: existingGrade });
+            }
+            // Get inscription subject to verify period
+            const inscriptionSubject = yield index_1.InscriptionSubject.findByPk(Number(inscriptionSubjectId), {
+                include: [
+                    {
+                        model: index_1.Inscription,
+                        as: 'inscription',
+                        include: [
+                            {
+                                model: index_1.SchoolPeriod,
+                                as: 'period'
+                            }
+                        ]
+                    }
+                ]
+            });
+            if (!inscriptionSubject) {
+                return res.status(404).json({ message: 'Inscripción de materia no encontrada' });
+            }
+            const schoolPeriod = (_a = inscriptionSubject.inscription) === null || _a === void 0 ? void 0 : _a.period;
+            if (!schoolPeriod) {
+                return res.status(400).json({ message: 'No se pudo determinar el período escolar' });
+            }
+            if (schoolPeriod.status === 'activo') {
+                return res.status(403).json({ message: 'No se pueden modificar notas de períodos activos' });
+            }
+            // Verify permission
+            const permission = yield index_1.GradeEditPermission.findOne({
+                where: { id: permissionId, isActive: true }
+            });
+            if (!permission) {
+                return res.status(404).json({ message: 'Permiso no encontrado o inactivo' });
+            }
+            if (permission.grantedTo !== sessionUser.id) {
+                return res.status(403).json({ message: 'El permiso no pertenece al usuario actual' });
+            }
+            if (permission.schoolPeriodId && permission.schoolPeriodId !== schoolPeriod.id) {
+                return res.status(403).json({ message: 'El permiso no cubre este período escolar' });
+            }
+            // Create new final grade
+            const passingGradeSetting = yield index_1.Setting.findOne({ where: { key: 'passing_grade' } });
+            const passingGrade = Number(passingGradeSetting === null || passingGradeSetting === void 0 ? void 0 : passingGradeSetting.value) || 10;
+            const insRecord = inscriptionSubject.inscription;
+            const newFinalGrade = yield index_1.SubjectFinalGrade.create({
+                inscriptionSubjectId: Number(inscriptionSubjectId),
+                finalScore,
+                status: status || (0, gradeEvaluationService_1.resolveGradeStatus)(finalScore, passingGrade),
+                gradeType: 'regular',
+                plantelId: normalizedPlantelId !== null && normalizedPlantelId !== void 0 ? normalizedPlantelId : null,
+                schoolPeriodId: (_b = insRecord === null || insRecord === void 0 ? void 0 : insRecord.schoolPeriodId) !== null && _b !== void 0 ? _b : null,
+                subjectId: (_c = inscriptionSubject.subjectId) !== null && _c !== void 0 ? _c : null,
+                gradeId: (_d = insRecord === null || insRecord === void 0 ? void 0 : insRecord.gradeId) !== null && _d !== void 0 ? _d : null,
+            });
+            // Create audit record
+            yield (0, gradeChangeLogService_1.logGradeChange)({
+                entityType: 'subject_final_grade',
+                entityId: newFinalGrade.id,
+                previousScore: null,
+                newScore: finalScore != null ? Number(finalScore) : null,
+                previousStatus: null,
+                newStatus: newFinalGrade.status,
+                gradeType: newFinalGrade.gradeType || null,
+                editedBy: sessionUser.id,
+                editorRole: 'control_estudios',
+                reason,
+                actCode,
+                metadata: { permissionId: permission.id, newPlantelId: newFinalGrade.plantelId, inscriptionSubjectId: newFinalGrade.inscriptionSubjectId },
+            });
+            return res.json({ message: 'Nota final creada correctamente', finalGrade: newFinalGrade });
+        }
+        // Get the final grade record
+        const finalGrade = yield index_1.SubjectFinalGrade.findByPk(Number(id), {
+            include: [
+                {
+                    model: index_1.InscriptionSubject,
+                    as: 'inscriptionSubject',
+                    include: [
+                        {
+                            model: index_1.Inscription,
+                            as: 'inscription',
+                            include: [
+                                {
+                                    model: index_1.SchoolPeriod,
+                                    as: 'period'
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        });
+        if (!finalGrade) {
+            return res.status(404).json({ message: 'Nota final no encontrada' });
+        }
+        // Verify that the school period is inactive
+        const schoolPeriod = (_f = (_e = finalGrade.inscriptionSubject) === null || _e === void 0 ? void 0 : _e.inscription) === null || _f === void 0 ? void 0 : _f.period;
+        if (!schoolPeriod) {
+            return res.status(400).json({ message: 'No se pudo determinar el período escolar' });
+        }
+        // TEMPORARY BYPASS: allow editing active periods during UI overhaul.
+        // TODO: Re-enable the active-period check once the new UI is finalized.
+        // if (schoolPeriod.status === 'activo') {
+        //   return res.status(403).json({ message: 'No se pueden modificar notas de períodos activos' });
+        // }
+        // BYPASS TEMPORAL DE PERMISOS DE EDICIÓN DE NOTAS
+        // ------------------------------------------------------------
+        // La verificación de permisos individuales está desactivada temporalmente.
+        // Cualquier usuario con rol Control de Estudios, Master o Administrador
+        // puede editar notas de períodos cerrados sin requerir un permiso explícito.
+        //
+        // Esto se mantiene mientras se diseña e implementa un sistema más robusto
+        // para controlar los permisos de edición de notas (a futuro: sistema de
+        // permisos granular por período/usuario/acción con aprobación multi-nivel).
+        //
+        // El código de verificación original (búsqueda de GradeEditPermission por id,
+        // validación de pertenencia y cobertura de período) permanece comentado abajo
+        // como referencia para la reactivación futura.
+        //
+        // TODO: Re-enable permission checks once the new permission system is implemented.
+        // const permission = await GradeEditPermission.findOne({
+        //   where: { id: permissionId, isActive: true }
+        // });
+        // if (!permission) { return res.status(404).json({ message: 'Permiso no encontrado o inactivo' }); }
+        // if (permission.grantedTo !== sessionUser.id) { return res.status(403).json({ message: 'El permiso no pertenece al usuario actual' }); }
+        // if (permission.schoolPeriodId && permission.schoolPeriodId !== schoolPeriod.id) { return res.status(403).json({ message: 'El permiso no cubre este período escolar' }); }
+        // Stub permission for audit record during bypass period
+        const permission = { id: permissionId || 0 };
+        // Store previous values for audit
+        const previousScore = finalGrade.finalScore;
+        const previousStatus = finalGrade.status;
+        const previousPlantelId = finalGrade.plantelId;
+        // Update the final grade
+        yield finalGrade.update(Object.assign(Object.assign({ finalScore: finalScore !== undefined ? finalScore : finalGrade.finalScore, status: status || finalGrade.status }, (normalizedPlantelId !== undefined ? { plantelId: normalizedPlantelId } : {})), (gradeType !== undefined ? { gradeType } : {})));
+        // Create audit record
+        yield (0, gradeChangeLogService_1.logGradeChange)({
+            entityType: 'subject_final_grade',
+            entityId: finalGrade.id,
+            previousScore: previousScore != null ? Number(previousScore) : null,
+            newScore: finalGrade.finalScore != null ? Number(finalGrade.finalScore) : null,
+            previousStatus: previousStatus || null,
+            newStatus: finalGrade.status,
+            gradeType: finalGrade.gradeType || null,
+            editedBy: sessionUser.id,
+            editorRole: 'control_estudios',
+            reason,
+            actCode,
+            metadata: { permissionId: permission.id, previousPlantelId, newPlantelId: finalGrade.plantelId, inscriptionSubjectId: finalGrade.inscriptionSubjectId },
+        });
+        res.json({ message: 'Nota final actualizada correctamente', finalGrade });
+    }
+    catch (error) {
+        console.error('[updateFinalGrade] Error:', error);
+        res.status(500).json({ message: 'Error al actualizar nota final', error: error.message });
+    }
+});
+exports.updateFinalGrade = updateFinalGrade;
+// Helper function to check if user has required role
+const hasRole = (user, roles) => {
+    if (!user || !user.roles)
+        return false;
+    const userRoles = user.roles.map((r) => typeof r === 'string' ? r : r.name);
+    return roles.some(role => userRoles.includes(role));
+};
+const getFinalGradesByPeriod = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    var _a, _b, _c;
+    try {
+        const sessionUser = req.session.user;
+        if (!sessionUser) {
+            return res.status(401).json({ message: 'No autorizado' });
+        }
+        // Only Control de Estudios can view final grades
+        if (!hasRole(sessionUser, ['Control de Estudios'])) {
+            return res.status(403).json({ message: 'Solo Control de Estudios puede ver las notas finales' });
+        }
+        const { schoolPeriodId, gradeId, sectionId, includeMp } = req.query;
+        if (!schoolPeriodId) {
+            return res.status(400).json({ message: 'schoolPeriodId es requerido' });
+        }
+        // Verify the school period exists
+        const period = yield index_1.SchoolPeriod.findByPk(Number(schoolPeriodId));
+        if (!period) {
+            return res.status(404).json({ message: 'Período escolar no encontrado' });
+        }
+        // Allow both active and inactive periods for viewing final grades
+        // The permission check will determine if editing is allowed
+        // Check if user has permission for this period
+        const globalPermission = yield index_1.GradeEditPermission.findOne({
+            where: {
+                grantedTo: sessionUser.id,
+                schoolPeriodId: null,
+                isActive: true
+            }
+        });
+        const specificPermission = yield index_1.GradeEditPermission.findOne({
+            where: {
+                grantedTo: sessionUser.id,
+                schoolPeriodId: Number(schoolPeriodId),
+                isActive: true
+            }
+        });
+        if (!globalPermission && !specificPermission) {
+            return res.status(403).json({ message: 'No tiene permiso para modificar notas de este período' });
+        }
+        // Get all inscriptions for this period, excluding MP by default
+        const inscWhere = { schoolPeriodId: Number(schoolPeriodId) };
+        if (gradeId)
+            inscWhere.gradeId = Number(gradeId);
+        if (sectionId)
+            inscWhere.sectionId = Number(sectionId);
+        // Exclude materia_pendiente inscriptions unless explicitly requested
+        if (includeMp !== 'true') {
+            inscWhere.escolaridad = { [sequelize_1.Op.ne]: 'materia_pendiente' };
+        }
+        const inscriptions = yield index_1.Inscription.findAll({
+            where: inscWhere,
+            include: [
+                {
+                    model: index_1.Person,
+                    as: 'student',
+                    attributes: ['id', 'firstName', 'lastName', 'document']
+                },
+                {
+                    model: index_1.Grade,
+                    as: 'grade'
+                },
+                {
+                    model: index_1.Section,
+                    as: 'section'
+                },
+                {
+                    model: index_1.SchoolPeriod,
+                    as: 'period'
+                }
+            ],
+            order: [
+                [{ model: index_1.Person, as: 'student' }, 'lastName', 'ASC'],
+                [{ model: index_1.Person, as: 'student' }, 'firstName', 'ASC']
+            ]
+        });
+        // Sort students canonically: document type → document number → lastName → firstName → grade → section
+        (0, studentSortService_1.sortInscriptions)(inscriptions);
+        // Get all subjects for this period's grades
+        const periodGrades = yield index_1.PeriodGrade.findAll({
+            where: { schoolPeriodId: Number(schoolPeriodId) },
+            include: [
+                {
+                    model: index_1.Subject,
+                    as: 'subjects'
+                }
+            ]
+        });
+        // Collect all subjects across all grades
+        const allSubjects = periodGrades.flatMap(pg => pg.subjects || []);
+        // Build includeInAverage map from PeriodGradeSubject
+        const pgsRecords = periodGrades.length > 0
+            ? yield index_1.PeriodGradeSubject.findAll({
+                where: { periodGradeId: periodGrades.map((pg) => pg.id) },
+                attributes: ['subjectId', 'includeInAverage'],
+            })
+            : [];
+        const includeInAverageMap = new Map();
+        for (const pgs of pgsRecords) {
+            includeInAverageMap.set(pgs.subjectId, pgs.includeInAverage !== false);
+        }
+        // Build result array
+        const result = [];
+        // Cache orderMaps por gradeId (todas las inscripciones comparten schoolPeriodId)
+        const orderMapCache = new Map();
+        const resolveOrderMap = (gradeId) => __awaiter(void 0, void 0, void 0, function* () {
+            if (!gradeId)
+                return new Map();
+            if (orderMapCache.has(gradeId))
+                return orderMapCache.get(gradeId);
+            const map = yield (0, subjectOrderService_1.getSubjectOrderMapByGradeAndPeriod)(gradeId, Number(schoolPeriodId));
+            orderMapCache.set(gradeId, map);
+            return map;
+        });
+        for (const inscription of inscriptions) {
+            let inscriptionSubjects = yield index_1.InscriptionSubject.findAll({
+                where: { inscriptionId: inscription.id },
+                include: [
+                    {
+                        model: index_1.Subject,
+                        as: 'subject'
+                    },
+                    {
+                        model: index_1.SubjectFinalGrade,
+                        as: 'finalGrade',
+                        required: false,
+                        attributes: ['id', 'inscriptionSubjectId', 'finalScore', 'rawScore', 'councilPoints', 'status', 'calculatedAt', 'plantelId', 'gradeType'],
+                        include: [{ model: index_1.Plantel, as: 'plantel', required: false }]
+                    }
+                ]
+            });
+            // If student has no subjects, create them based on their grade's subjects
+            if (inscriptionSubjects.length === 0) {
+                const periodGrade = yield index_1.PeriodGrade.findOne({
+                    where: { schoolPeriodId: Number(schoolPeriodId), gradeId: inscription.gradeId },
+                    include: [
+                        {
+                            model: index_1.Subject,
+                            as: 'subjects'
+                        }
+                    ]
+                });
+                if (periodGrade && periodGrade.subjects) {
+                    const subjectsToCreate = periodGrade.subjects.map((subject) => ({
+                        inscriptionId: inscription.id,
+                        subjectId: subject.id,
+                        schoolPeriodId: inscription.schoolPeriodId,
+                        gradeId: inscription.gradeId,
+                        sectionId: inscription.sectionId
+                    }));
+                    yield index_1.InscriptionSubject.bulkCreate(subjectsToCreate);
+                    // Reload after creation
+                    inscriptionSubjects = yield index_1.InscriptionSubject.findAll({
+                        where: { inscriptionId: inscription.id },
+                        include: [
+                            {
+                                model: index_1.Subject,
+                                as: 'subject'
+                            },
+                            {
+                                model: index_1.SubjectFinalGrade,
+                                as: 'finalGrade',
+                                required: false,
+                                attributes: ['id', 'inscriptionSubjectId', 'finalScore', 'rawScore', 'councilPoints', 'status', 'calculatedAt', 'plantelId', 'gradeType'],
+                                include: [{ model: index_1.Plantel, as: 'plantel', required: false }]
+                            }
+                        ]
+                    });
+                }
+            }
+            // Apply canonical subject order.
+            // Use the term-aware filter so students who switched group subjects
+            // mid-year show the subject they're currently taking (active term).
+            const activeTerm = yield index_1.Term.findOne({
+                where: { schoolPeriodId: Number(schoolPeriodId), isActive: true },
+            });
+            const filteredSubjects = activeTerm
+                ? yield (0, subjectGroupService_1.filterActiveGroupSubjectsForTerm)(inscriptionSubjects, activeTerm.id)
+                : (0, subjectGroupService_1.filterActiveGroupSubjects)(inscriptionSubjects);
+            const orderMap = yield resolveOrderMap(inscription.gradeId);
+            inscriptionSubjects = (0, subjectOrderService_1.sortSubjectsByOrder)(filteredSubjects, (is) => is.subjectId, (is) => { var _a; return (_a = is.subject) === null || _a === void 0 ? void 0 : _a.name; }, orderMap);
+            for (const insSubject of inscriptionSubjects) {
+                const finalGrade = insSubject.finalGrade;
+                result.push({
+                    id: (finalGrade === null || finalGrade === void 0 ? void 0 : finalGrade.id) || null,
+                    inscriptionSubjectId: insSubject.id,
+                    finalScore: (finalGrade === null || finalGrade === void 0 ? void 0 : finalGrade.finalScore) || gradeEvaluationService_1.MIN_FINAL_GRADE,
+                    rawScore: (finalGrade === null || finalGrade === void 0 ? void 0 : finalGrade.rawScore) || null,
+                    councilPoints: (finalGrade === null || finalGrade === void 0 ? void 0 : finalGrade.councilPoints) || null,
+                    status: (finalGrade === null || finalGrade === void 0 ? void 0 : finalGrade.status) || 'reprobada',
+                    calculatedAt: (finalGrade === null || finalGrade === void 0 ? void 0 : finalGrade.calculatedAt) || new Date(),
+                    plantelId: (finalGrade === null || finalGrade === void 0 ? void 0 : finalGrade.plantelId) || null,
+                    plantel: (finalGrade === null || finalGrade === void 0 ? void 0 : finalGrade.plantel) || null,
+                    gradeType: (finalGrade === null || finalGrade === void 0 ? void 0 : finalGrade.gradeType) || 'regular',
+                    includeInAverage: includeInAverageMap.get(insSubject.subjectId) !== false,
+                    inscriptionSubject: {
+                        id: insSubject.id,
+                        subject: insSubject.subject,
+                        inscription: inscription
+                    }
+                });
+            }
+        }
+        // Enrich result with qualification audit data from GradeChangeLog
+        // so Control de Estudios can see which grades were altered
+        const allInscriptionSubjectIds = result.map((r) => r.inscriptionSubjectId);
+        if (allInscriptionSubjectIds.length > 0) {
+            // Get qualification IDs grouped by inscriptionSubjectId
+            const qualifications = yield index_1.Qualification.findAll({
+                where: { inscriptionSubjectId: { [sequelize_1.Op.in]: allInscriptionSubjectIds } },
+                attributes: ['id', 'inscriptionSubjectId'],
+            });
+            const qualIdsByInscriptionSubject = new Map();
+            const allQualIds = [];
+            for (const q of qualifications) {
+                const arr = qualIdsByInscriptionSubject.get(q.inscriptionSubjectId) || [];
+                arr.push(q.id);
+                qualIdsByInscriptionSubject.set(q.inscriptionSubjectId, arr);
+                allQualIds.push(q.id);
+            }
+            if (allQualIds.length > 0) {
+                const audits = yield index_1.GradeChangeLog.findAll({
+                    where: {
+                        entityType: 'qualification',
+                        entityId: { [sequelize_1.Op.in]: allQualIds },
+                    },
+                    include: [
+                        {
+                            model: index_1.User,
+                            as: 'editor',
+                            attributes: ['id', 'username'],
+                            include: [{ model: index_1.Person, as: 'person', attributes: ['firstName', 'lastName'] }],
+                        },
+                    ],
+                    order: [['editedAt', 'DESC']],
+                });
+                // Build map: qualificationId → audits[]
+                const auditMap = new Map();
+                for (const a of audits) {
+                    const arr = auditMap.get(a.entityId) || [];
+                    arr.push(a.toJSON());
+                    auditMap.set(a.entityId, arr);
+                }
+                // Enrich each result item with audit metadata
+                for (const r of result) {
+                    const qualIds = qualIdsByInscriptionSubject.get(r.inscriptionSubjectId) || [];
+                    const itemAudits = [];
+                    for (const qid of qualIds) {
+                        const qAudits = auditMap.get(qid) || [];
+                        qAudits.forEach(a => itemAudits.push(a));
+                    }
+                    // Sort all audits by editedAt DESC
+                    itemAudits.sort((a, b) => new Date(b.editedAt).getTime() - new Date(a.editedAt).getTime());
+                    r.editedByOther = itemAudits.length > 0;
+                    if (itemAudits.length > 0) {
+                        const last = itemAudits[0];
+                        const editorPerson = (_a = last === null || last === void 0 ? void 0 : last.editor) === null || _a === void 0 ? void 0 : _a.person;
+                        r.lastEditDate = (_b = last === null || last === void 0 ? void 0 : last.editedAt) !== null && _b !== void 0 ? _b : null;
+                        r.lastEditUser = editorPerson
+                            ? `${editorPerson.firstName || ''} ${editorPerson.lastName || ''}`.trim()
+                            : ((_c = last === null || last === void 0 ? void 0 : last.editor) === null || _c === void 0 ? void 0 : _c.username) || '';
+                    }
+                    else {
+                        r.lastEditDate = null;
+                        r.lastEditUser = null;
+                    }
+                    r.auditHistory = itemAudits;
+                }
+            }
+            else {
+                // No qualifications found, set defaults
+                for (const r of result) {
+                    r.editedByOther = false;
+                    r.lastEditDate = null;
+                    r.lastEditUser = null;
+                    r.auditHistory = [];
+                }
+            }
+        }
+        res.json(result);
+    }
+    catch (error) {
+        console.error('Error fetching final grades by period:', error);
+        res.status(500).json({ message: 'Error al obtener notas finales', error: error.message });
+    }
+});
+exports.getFinalGradesByPeriod = getFinalGradesByPeriod;
+const exportPlanningExcel = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    var _a, _b, _c, _d, _e, _f, _g;
+    try {
+        const assignmentId = Number(req.params.assignmentId);
+        const termId = req.query.term ? Number(req.query.term) : null;
+        const assignment = yield index_1.TeacherAssignment.findByPk(assignmentId, {
+            include: [
+                { model: index_1.Person, as: 'teacher' },
+                { model: index_1.Section, as: 'section' },
+                {
+                    model: index_1.PeriodGradeSubject,
+                    as: 'periodGradeSubject',
+                    include: [
+                        { model: index_1.Subject, as: 'subject' },
+                        { model: index_1.PeriodGrade, as: 'periodGrade', include: [{ model: index_1.Grade, as: 'grade' }, { model: index_1.SchoolPeriod, as: 'schoolPeriod' }] },
+                    ],
+                },
+            ],
+        });
+        if (!assignment)
+            return res.status(404).json({ message: 'Asignación no encontrada' });
+        const assignmentData = assignment;
+        const pgs = assignmentData.periodGradeSubject;
+        const periodGrade = pgs.periodGrade;
+        const [term, components, plans] = yield Promise.all([
+            termId ? index_1.Term.findByPk(termId) : Promise.resolve(null),
+            index_1.ThematicComponent.findAll({
+                where: Object.assign({ periodGradeSubjectId: pgs.id }, (termId ? { termId } : {})),
+                include: [{ model: index_1.ThematicContent, as: 'contents', include: [{ model: index_1.ExpectedLearning, as: 'learnings' }] }],
+                order: [['order', 'ASC']],
+            }),
+            index_1.EvaluationPlan.findAll({
+                where: Object.assign({ periodGradeSubjectId: pgs.id, sectionId: assignmentData.sectionId }, (termId ? { termId } : {})),
+                include: [
+                    { model: index_1.EvaluationCriteria, as: 'criteria', include: [{ model: index_1.EvaluationIndicator, as: 'indicators' }] },
+                    { model: index_1.EvaluationCatalog, as: 'tecnicaCatalog' },
+                    { model: index_1.EvaluationCatalog, as: 'instrumentoCatalog' },
+                ],
+                order: [['date', 'ASC']],
+            }),
+        ]);
+        // Build a map: contentId → { componentIndex, contentIndex, componentTitle, contentTitle, learningIndices }
+        const contentMap = new Map();
+        components.forEach((component, compIdx) => {
+            const componentData = component.toJSON();
+            const orderedContents = componentData.contents || [];
+            orderedContents.forEach((content, contentIdx) => {
+                const learningIndices = [`${compIdx + 1}.${contentIdx + 1}`];
+                const learningDescriptions = [];
+                (content.learnings || []).forEach((l) => learningDescriptions.push(l.description));
+                contentMap.set(content.id, {
+                    componentIndex: compIdx,
+                    contentIndex: contentIdx,
+                    componentTitle: componentData.title,
+                    contentTitle: content.title,
+                    learningIndices,
+                    learningDescriptions,
+                });
+            });
+        });
+        const thematicRows = components.map((component, componentIndex) => {
+            const componentData = component.toJSON();
+            const contents = componentData.contents || [];
+            return {
+                component: `${componentIndex + 1}. ${componentData.title}`,
+                content: contents.map((content, contentIndex) => `${componentIndex + 1}.${contentIndex + 1} ${content.title}`).join('\n'),
+                learnings: [...new Set(contents.flatMap((content) => (content.learnings || []).map((learning) => `• ${learning.description}`)))].join('\n'),
+            };
+        });
+        const componentNames = new Map();
+        components.forEach((component, componentIndex) => {
+            const componentData = component.toJSON();
+            componentNames.set(componentData.id, `${componentIndex + 1}. ${componentData.title}`);
+        });
+        const formatPlanDate = (value) => {
+            if (!value)
+                return '';
+            const datePart = value instanceof Date ? value.toISOString().slice(0, 10) : String(value).slice(0, 10);
+            const match = datePart.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+            return match ? `${match[3]}/${match[2]}/${match[1]}` : datePart;
+        };
+        const orderedPlans = plans.map((plan) => {
+            const planData = plan.toJSON();
+            const contentIds = Array.isArray(plan.thematicContentIds) ? plan.thematicContentIds : [];
+            const linkedContents = contentIds
+                .map((id) => contentMap.get(id))
+                .filter(Boolean)
+                .sort((a, b) => (a.componentIndex - b.componentIndex) || (a.contentIndex - b.contentIndex));
+            const linkedComponents = [...new Set(linkedContents.map((content) => `${content.componentIndex + 1}. ${content.componentTitle}`))];
+            if (linkedComponents.length === 0 && plan.thematicComponentId) {
+                const componentName = componentNames.get(plan.thematicComponentId);
+                if (componentName)
+                    linkedComponents.push(componentName);
+            }
+            const indices = [...new Set(linkedContents.flatMap((content) => content.learningIndices))];
+            return Object.assign(Object.assign({}, planData), { componentNames: linkedComponents.join('\n'), indicesStr: indices.length > 0 ? `(${indices.join(', ')})` : '' });
+        }).sort((a, b) => String(a.date).localeCompare(String(b.date)));
+        const evaluationRows = orderedPlans.flatMap((plan) => {
+            const planRows = [];
+            const criteria = plan.criteria || [];
+            if (criteria.length === 0) {
+                planRows.push({ plan, criterion: null, indicator: null, criterionRowIndex: 0, criterionRowCount: 1 });
+            }
+            else {
+                criteria.forEach((criterion) => {
+                    var _a;
+                    const indicators = ((_a = criterion.indicators) === null || _a === void 0 ? void 0 : _a.length) ? criterion.indicators : [null];
+                    indicators.forEach((indicator, criterionRowIndex) => {
+                        planRows.push({
+                            plan,
+                            criterion,
+                            indicator,
+                            criterionRowIndex,
+                            criterionRowCount: indicators.length,
+                        });
+                    });
+                });
+            }
+            return planRows.map((detail, planRowIndex) => (Object.assign(Object.assign({}, detail), { planRowIndex, planRowCount: planRows.length })));
+        });
+        const thematicSpanSizes = thematicRows.map((row) => Math.max(1, row.content ? row.content.split('\n').length : 0, row.learnings ? row.learnings.split('\n').length : 0));
+        const thematicUnits = thematicSpanSizes.reduce((sum, size) => sum + size, 0);
+        const rowCount = Math.max(1, thematicUnits, evaluationRows.length);
+        for (let index = 0; index < rowCount - thematicUnits && thematicSpanSizes.length > 0; index++) {
+            thematicSpanSizes[index % thematicSpanSizes.length]++;
+        }
+        let thematicStartIndex = 0;
+        const thematicSpans = thematicRows.map((data, index) => {
+            const size = thematicSpanSizes[index];
+            const span = { data, startIndex: thematicStartIndex, endIndex: thematicStartIndex + size - 1 };
+            thematicStartIndex += size;
+            return span;
+        });
+        const thematicRowsByStart = new Map(thematicSpans.map((span) => [span.startIndex, span.data]));
+        const workbook = new exceljs_1.default.Workbook();
+        const sheet = workbook.addWorksheet('Planificación');
+        const planningLogoPath = path_1.default.resolve(process.cwd(), 'public', 'uploads', 'images', 'Logo_ME_Batalla_H.png');
+        const planningLogoId = fs_1.default.existsSync(planningLogoPath)
+            ? workbook.addImage({ filename: planningLogoPath, extension: 'png' })
+            : null;
+        const border = { style: 'thin', color: { argb: 'FF666666' } };
+        const tableSeparator = { style: 'medium', color: { argb: 'FF333333' } };
+        const outerBorder = { style: 'medium', color: { argb: 'FF000000' } };
+        const criterionSeparatorBorder = { style: 'thin', color: { argb: 'FFA6A6A6' } };
+        const instrumentSeparatorBorder = { style: 'thin', color: { argb: 'FF000000' } };
+        const headerFill = 'FFD9E2F3';
+        const groupFill = 'FFB4C6E7';
+        const evaluationHeaderFill = 'FFF2F2F2';
+        const columns = [
+            ['COMPONENTE TEMÁTICO', 24], ['CONTENIDO', 28], ['APRENDIZAJES ESPERADOS', 32], ['ESTRATEGIA DE APRENDIZAJE', 28],
+            ['TÉCNICA', 18], ['INSTRUMENTO', 18], ['CRITERIOS', 28], ['INDICADORES', 30], ['PUNTOS', 3.71], ['', 3.71],
+            ['INTRA', 5.71], ['INTER', 5.71], ['TRANS', 5.71], ['FECHA', 14], ['PORCENTAJE', 12],
+        ];
+        columns.forEach(([name, width], index) => { sheet.getColumn(index + 1).width = width; });
+        sheet.getRow(1).height = 95.25;
+        sheet.getRow(2).height = 24.75;
+        sheet.getRow(3).height = 16;
+        sheet.getRow(4).height = 24.75;
+        sheet.getRow(5).height = 24.75;
+        sheet.getRow(6).height = 24.75;
+        sheet.getRow(7).height = 15;
+        sheet.getRow(8).height = 15;
+        sheet.mergeCells('A1:D1');
+        if (planningLogoId !== null) {
+            sheet.addImage(planningLogoId, {
+                tl: { col: 0.238125, row: 0.06 },
+                ext: { width: 120 * (1140 / 185), height: 120 },
+                editAs: 'absolute',
+            });
+        }
+        sheet.mergeCells('A2:O2');
+        sheet.getCell('A2').value = 'PLANIFICACIÓN';
+        sheet.getCell('A2').font = { bold: true, size: 16 };
+        sheet.getCell('A2').alignment = { horizontal: 'center', vertical: 'middle' };
+        sheet.getCell('A3').value = 'PEIC: ________________________';
+        sheet.getCell('B3').value = 'PA: ________________________';
+        sheet.getCell('A3').font = { size: 9 };
+        sheet.getCell('B3').font = { size: 9 };
+        sheet.mergeCells('A4:C4');
+        sheet.mergeCells('D4:O4');
+        sheet.getCell('A4').value = (term === null || term === void 0 ? void 0 : term.getDataValue('name')) || 'Lapso';
+        sheet.getCell('A4').font = { bold: true, size: 14 };
+        sheet.getCell('A4').alignment = { horizontal: 'left', vertical: 'middle' };
+        const periodName = String(((_a = periodGrade.schoolPeriod) === null || _a === void 0 ? void 0 : _a.name) || '');
+        const schoolYear = ((_b = periodName.match(/\d{4}\s*-\s*\d{4}/)) === null || _b === void 0 ? void 0 : _b[0]) || periodName;
+        sheet.getCell('D4').value = `Año Escolar: ${schoolYear}`;
+        sheet.getCell('D4').font = { bold: true, size: 14 };
+        sheet.getCell('D4').alignment = { horizontal: 'right', vertical: 'middle' };
+        const sectionName = String(((_c = assignmentData.section) === null || _c === void 0 ? void 0 : _c.name) || '').replace(/^Secci[oó]n\s*/i, '');
+        sheet.getCell('A5').value = 'Profesor:';
+        sheet.getCell('A5').font = { size: 14 };
+        sheet.mergeCells('B5:O5');
+        sheet.getCell('B5').value = assignmentData.teacher
+            ? `${assignmentData.teacher.firstName} ${assignmentData.teacher.lastName}`
+            : '—';
+        sheet.getCell('B5').font = { bold: true, size: 14 };
+        sheet.getCell('B5').alignment = { horizontal: 'left', vertical: 'middle' };
+        sheet.getCell('A6').value = 'Área de Formación:';
+        sheet.getCell('A6').font = { size: 14 };
+        sheet.mergeCells('B6:C6');
+        sheet.getCell('B6').value = ((_d = pgs.subject) === null || _d === void 0 ? void 0 : _d.name) || '';
+        sheet.getCell('B6').font = { bold: true, size: 14 };
+        sheet.getCell('B6').alignment = { horizontal: 'left', vertical: 'middle' };
+        sheet.mergeCells('D6:O6');
+        sheet.getCell('D6').value = `${((_e = periodGrade.grade) === null || _e === void 0 ? void 0 : _e.name) || ''}${sectionName ? `, sección ${sectionName}` : ''}`;
+        sheet.getCell('D6').font = { bold: true, size: 14 };
+        sheet.getCell('D6').alignment = { horizontal: 'left', vertical: 'middle' };
+        ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'N', 'O'].forEach((column) => {
+            sheet.mergeCells(`${column}7:${column}8`);
+        });
+        sheet.mergeCells('I7:J8');
+        sheet.mergeCells('K7:M7');
+        ['A7', 'B7', 'C7', 'D7', 'E7', 'F7', 'G7', 'H7'].forEach((cell, index) => {
+            sheet.getCell(cell).value = columns[index][0];
+        });
+        sheet.getCell('I7').value = 'PUNTOS';
+        sheet.getCell('I7').alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+        sheet.getCell('K7').value = 'TIPO DE EVALUACIÓN';
+        sheet.getCell('K7').alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+        ['K8', 'L8', 'M8'].forEach((cell, index) => { sheet.getCell(cell).value = columns[index + 10][0]; });
+        sheet.getCell('N7').value = columns[13][0];
+        sheet.getCell('O7').value = columns[14][0];
+        for (let row = 7; row <= 8; row++) {
+            for (let col = 1; col <= 15; col++) {
+                const cell = sheet.getCell(row, col);
+                cell.font = { bold: true, size: 9 };
+                cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+                cell.fill = {
+                    type: 'pattern',
+                    pattern: 'solid',
+                    fgColor: { argb: col >= 4 ? evaluationHeaderFill : row === 7 ? groupFill : headerFill },
+                };
+                cell.border = {
+                    top: border,
+                    bottom: border,
+                    left: col === 4 ? tableSeparator : border,
+                    right: col === 3 ? tableSeparator : border,
+                };
+            }
+        }
+        for (let index = 0; index < rowCount; index++) {
+            const row = sheet.getRow(9 + index);
+            const thematicData = thematicRowsByStart.get(index);
+            const evaluationData = evaluationRows[index];
+            const planData = evaluationData === null || evaluationData === void 0 ? void 0 : evaluationData.plan;
+            const criterion = evaluationData === null || evaluationData === void 0 ? void 0 : evaluationData.criterion;
+            const indicator = evaluationData === null || evaluationData === void 0 ? void 0 : evaluationData.indicator;
+            const isFirstPlanRow = (evaluationData === null || evaluationData === void 0 ? void 0 : evaluationData.planRowIndex) === 0;
+            const isFirstCriterionRow = (evaluationData === null || evaluationData === void 0 ? void 0 : evaluationData.criterionRowIndex) === 0;
+            const types = planData
+                ? (planData.evaluationType || '').split(',').filter(Boolean).map((type) => type.toUpperCase())
+                : [];
+            const strategyValue = (() => {
+                if (!planData || !isFirstPlanRow)
+                    return '';
+                const richText = [];
+                if (planData.description)
+                    richText.push({ font: { size: 11 }, text: planData.description });
+                if (planData.componentNames) {
+                    richText.push({ font: { size: 11, italic: true, color: { argb: 'FF888888' } }, text: `\n${planData.componentNames}` });
+                }
+                if (planData.indicesStr) {
+                    richText.push({ font: { size: 11, color: { argb: 'FF555555' } }, text: `\n${planData.indicesStr}` });
+                }
+                return richText.length > 0 ? { richText } : '';
+            })();
+            const criterionTotalPoints = criterion
+                ? (criterion.indicators || []).reduce((sum, ind) => sum + Number((ind === null || ind === void 0 ? void 0 : ind.points) || 0), 0)
+                : '';
+            const values = [
+                (thematicData === null || thematicData === void 0 ? void 0 : thematicData.component) || '', (thematicData === null || thematicData === void 0 ? void 0 : thematicData.content) || '', (thematicData === null || thematicData === void 0 ? void 0 : thematicData.learnings) || '',
+                strategyValue,
+                isFirstPlanRow ? ((_f = planData === null || planData === void 0 ? void 0 : planData.tecnicaCatalog) === null || _f === void 0 ? void 0 : _f.name) || '' : '',
+                isFirstPlanRow ? ((_g = planData === null || planData === void 0 ? void 0 : planData.instrumentoCatalog) === null || _g === void 0 ? void 0 : _g.name) || '' : '',
+                isFirstCriterionRow ? (criterion === null || criterion === void 0 ? void 0 : criterion.name) || '' : '',
+                (indicator === null || indicator === void 0 ? void 0 : indicator.name) || '',
+                (indicator === null || indicator === void 0 ? void 0 : indicator.points) != null ? Number(indicator.points) : '',
+                isFirstCriterionRow ? criterionTotalPoints : '',
+                isFirstPlanRow && types.includes('INTRA') ? 'X' : '',
+                isFirstPlanRow && types.includes('INTER') ? 'X' : '',
+                isFirstPlanRow && types.includes('TRANS') ? 'X' : '',
+                isFirstPlanRow ? formatPlanDate(planData === null || planData === void 0 ? void 0 : planData.date) : '',
+                isFirstPlanRow && planData ? `${Number(planData.percentage)}%` : '',
+            ];
+            values.forEach((value, col) => {
+                const cell = row.getCell(col + 1);
+                cell.value = value;
+                cell.alignment = (col === 4 || col === 5)
+                    ? { horizontal: 'center', vertical: 'middle', wrapText: true }
+                    : { vertical: 'middle', wrapText: true };
+                cell.border = {
+                    top: border,
+                    bottom: border,
+                    left: col === 3 ? tableSeparator : border,
+                    right: col === 2 ? tableSeparator : border,
+                };
+            });
+            row.height = 15;
+        }
+        thematicSpans.forEach((span) => {
+            const startRow = 9 + span.startIndex;
+            const endRow = 9 + span.endIndex;
+            if (endRow > startRow) {
+                ['A', 'B', 'C'].forEach((column) => {
+                    sheet.mergeCells(`${column}${startRow}:${column}${endRow}`);
+                    sheet.getCell(`${column}${startRow}`).alignment = { vertical: 'middle', wrapText: true };
+                });
+            }
+        });
+        evaluationRows.forEach((evaluationData, index) => {
+            const startRow = 9 + index;
+            if (evaluationData.planRowIndex === 0 && evaluationData.planRowCount > 1) {
+                const endRow = startRow + evaluationData.planRowCount - 1;
+                ['D', 'E', 'F', 'K', 'L', 'M', 'N', 'O'].forEach((column) => {
+                    sheet.mergeCells(`${column}${startRow}:${column}${endRow}`);
+                    const isEF = column === 'E' || column === 'F';
+                    sheet.getCell(`${column}${startRow}`).alignment = isEF
+                        ? { horizontal: 'center', vertical: 'middle', wrapText: true }
+                        : { vertical: 'middle', wrapText: true };
+                });
+            }
+            if (evaluationData.criterionRowIndex === 0 && evaluationData.criterionRowCount > 1) {
+                const endRow = startRow + evaluationData.criterionRowCount - 1;
+                sheet.mergeCells(`G${startRow}:G${endRow}`);
+                sheet.getCell(`G${startRow}`).alignment = { vertical: 'middle', wrapText: true };
+                sheet.mergeCells(`J${startRow}:J${endRow}`);
+                sheet.getCell(`J${startRow}`).alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+            }
+        });
+        const lastTableRow = 8 + rowCount;
+        for (let rowIndex = 1; rowIndex <= lastTableRow; rowIndex++) {
+            const row = sheet.getRow(rowIndex);
+            if (rowIndex >= 7)
+                row.height = 15;
+            for (let columnIndex = 1; columnIndex <= 15; columnIndex++) {
+                const cell = row.getCell(columnIndex);
+                const isMergedSlave = cell.isMerged && cell.master.address !== cell.address;
+                if (!isMergedSlave) {
+                    cell.alignment = Object.assign(Object.assign(Object.assign({}, (cell.alignment || {})), { vertical: 'middle' }), (columnIndex === 9 || columnIndex === 10 || (columnIndex >= 11 && rowIndex >= 9)
+                        ? { horizontal: 'center' }
+                        : {}));
+                }
+                if (rowIndex >= 7) {
+                    const currentBorder = cell.border || {};
+                    cell.border = {
+                        top: rowIndex === 7 ? outerBorder : currentBorder.top,
+                        bottom: rowIndex === 8 || rowIndex === lastTableRow ? outerBorder : currentBorder.bottom,
+                        left: columnIndex === 1 ? outerBorder : currentBorder.left,
+                        right: columnIndex === 15 ? outerBorder : currentBorder.right,
+                    };
+                }
+            }
+        }
+        evaluationRows.forEach((evaluationData, index) => {
+            const rowIndex = 9 + index;
+            const isPlanEnd = evaluationData.planRowIndex === evaluationData.planRowCount - 1;
+            const isCriterionEnd = evaluationData.criterionRowIndex === evaluationData.criterionRowCount - 1;
+            if (rowIndex >= lastTableRow)
+                return;
+            if (!isCriterionEnd) {
+                for (let columnIndex = 8; columnIndex <= 10; columnIndex++) {
+                    const cell = sheet.getCell(rowIndex, columnIndex);
+                    const currentBorder = Object.assign({}, (cell.border || {}));
+                    delete currentBorder.bottom;
+                    cell.border = currentBorder;
+                    const nextCell = sheet.getCell(rowIndex + 1, columnIndex);
+                    const nextBorder = Object.assign({}, (nextCell.border || {}));
+                    delete nextBorder.top;
+                    nextCell.border = nextBorder;
+                }
+                return;
+            }
+            const separatorBorder = isPlanEnd ? instrumentSeparatorBorder : criterionSeparatorBorder;
+            for (let columnIndex = 7; columnIndex <= 10; columnIndex++) {
+                const cell = sheet.getCell(rowIndex, columnIndex);
+                const borderCell = (columnIndex === 7 || columnIndex === 10) ? cell.master : cell;
+                borderCell.border = Object.assign(Object.assign({}, (borderCell.border || {})), { bottom: separatorBorder });
+                const nextCell = sheet.getCell(rowIndex + 1, columnIndex);
+                const nextBorderCell = (columnIndex === 7 || columnIndex === 10) ? nextCell.master : nextCell;
+                nextBorderCell.border = Object.assign(Object.assign({}, (nextBorderCell.border || {})), { top: separatorBorder });
+                if (columnIndex === 7 || columnIndex === 10) {
+                    cell.border = Object.assign(Object.assign({}, (cell.border || {})), { bottom: separatorBorder });
+                    nextCell.border = Object.assign(Object.assign({}, (nextCell.border || {})), { top: separatorBorder });
+                }
+            }
+        });
+        for (let rowIndex = 7; rowIndex <= lastTableRow; rowIndex++) {
+            for (let columnIndex = 1; columnIndex <= 15; columnIndex++) {
+                const cell = sheet.getCell(rowIndex, columnIndex);
+                const currentBorder = Object.assign({}, (cell.border || {}));
+                cell.border = Object.assign(Object.assign({}, currentBorder), { top: rowIndex === 7 ? outerBorder : currentBorder.top, bottom: rowIndex === lastTableRow ? outerBorder : currentBorder.bottom, left: columnIndex === 1 ? outerBorder : currentBorder.left, right: columnIndex === 15 ? outerBorder : currentBorder.right });
+            }
+        }
+        sheet.pageSetup = { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0, paperSize: 9 };
+        sheet.pageSetup.horizontalCentered = true;
+        sheet.headerFooter.oddFooter = 'Página &P de &N';
+        const buffer = yield workbook.xlsx.writeBuffer();
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', `attachment; filename="planificacion-${assignmentId}.xlsx"`);
+        res.send(buffer);
+    }
+    catch (error) {
+        console.error('[exportPlanningExcel] Error:', error);
+        res.status(500).json({ message: 'Error al generar Excel de planificación' });
+    }
+});
+exports.exportPlanningExcel = exportPlanningExcel;
+const exportGradesExcelOficial = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    var _a, _b, _c, _d, _e, _f, _g;
+    try {
+        const { assignmentId } = req.params;
+        const { filled } = req.query;
+        const assignment = yield index_1.TeacherAssignment.findByPk(Number(assignmentId), {
+            include: [
+                {
+                    model: index_1.PeriodGradeSubject,
+                    as: 'periodGradeSubject',
+                    include: [
+                        { model: index_1.Subject, as: 'subject' },
+                        {
+                            model: index_1.PeriodGrade,
+                            as: 'periodGrade',
+                            include: [
+                                { model: index_1.Grade, as: 'grade' },
+                                { model: index_1.SchoolPeriod, as: 'schoolPeriod' }
+                            ]
+                        }
+                    ]
+                },
+                { model: index_1.Section, as: 'section' },
+                { model: index_1.Person, as: 'teacher' }
+            ]
+        });
+        if (!assignment)
+            return res.status(404).json({ message: 'Asignación no encontrada' });
+        const pg = yield index_1.PeriodGrade.findByPk(assignment.periodGradeSubject.periodGradeId);
+        if (!pg)
+            return res.status(404).json({ message: 'Estructura no encontrada' });
+        const termId = req.query.term ? Number(req.query.term) : null;
+        let termName = '';
+        if (termId) {
+            const term = yield index_1.Term.findByPk(termId);
+            termName = term ? term.getDataValue('name') : '';
+        }
+        const evaluationPlans = yield index_1.EvaluationPlan.findAll({
+            where: Object.assign({ periodGradeSubjectId: assignment.periodGradeSubjectId, sectionId: assignment.sectionId }, (termId ? { termId } : {})),
+            order: [['date', 'ASC']]
+        });
+        const [institutionShortName, institutionCode] = yield Promise.all([
+            index_1.Setting.findOne({ where: { key: 'institution_short_name' } }),
+            index_1.Setting.findOne({ where: { key: 'institution_code' } })
+        ]);
+        const instName = (institutionShortName === null || institutionShortName === void 0 ? void 0 : institutionShortName.getDataValue('value')) || '';
+        const studyModeCode = (institutionCode === null || institutionCode === void 0 ? void 0 : institutionCode.getDataValue('value')) || '';
+        const inscriptions = yield index_1.Inscription.findAll({
+            where: {
+                schoolPeriodId: pg.schoolPeriodId,
+                sectionId: assignment.sectionId,
+                gradeId: pg.gradeId,
+            },
+            include: [
+                {
+                    model: index_1.Person,
+                    as: 'student',
+                    attributes: ['id', 'firstName', 'lastName', 'document', 'documentType']
+                },
+                {
+                    model: index_1.InscriptionSubject,
+                    as: 'inscriptionSubjects',
+                    where: { subjectId: assignment.periodGradeSubject.subjectId },
+                    required: true,
+                    include: [
+                        {
+                            model: index_1.Qualification,
+                            as: 'qualifications',
+                            include: [{ model: index_1.EvaluationPlan, as: 'evaluationPlan' }]
+                        }
+                    ]
+                }
+            ],
+            order: [
+                [{ model: index_1.Person, as: 'student' }, 'document', 'ASC']
+            ]
+        });
+        // Sort students canonically: document type → document number → lastName → firstName
+        (0, studentSortService_1.sortInscriptions)(inscriptions);
+        const subject = assignment.periodGradeSubject.subject;
+        const section = assignment.section;
+        const grade = assignment.periodGradeSubject.periodGrade.grade;
+        const period = assignment.periodGradeSubject.periodGrade.schoolPeriod;
+        const workbook = new exceljs_1.default.Workbook();
+        workbook.font = { name: 'Calibri', size: 9 };
+        const sheet = workbook.addWorksheet('Calificaciones');
+        // Column layout:
+        // 1 = #, 2 = CÉDULA, 3-4 = APELLIDOS Y NOMBRES (merged C+D),
+        // per evaluation: 3 cols (NOT | REM | %),
+        // then DEF, then Observaciones
+        const nEvals = evaluationPlans.length;
+        const firstEvalCol = 5;
+        const defCol = firstEvalCol + nEvals * 3;
+        const obsCol = defCol + 1;
+        const totalCols = obsCol;
+        const lastColLetter = sheet.getColumn(totalCols).letter;
+        const thinBorder = {
+            top: { style: 'thin' },
+            bottom: { style: 'thin' },
+            left: { style: 'thin' },
+            right: { style: 'thin' }
+        };
+        const thickSide = { style: 'medium' };
+        const thinSide2 = { style: 'thin' };
+        const DARK_BLUE = 'FF1F3864';
+        const MED_BLUE = 'FF2E5FA3';
+        const GRAY = 'FFD9D9D9';
+        const LIGHT_GREEN = 'FFE2EFDA';
+        const ZEBRA = 'FFF2F5FA';
+        // ── Encabezado institucional (filas 1-7) ──────────────────
+        // Logo: merged block A1:B7, logo centered within
+        sheet.mergeCells('A1:B7');
+        try {
+            const uploadDir = path_1.default.join(__dirname, '../../public/uploads/images');
+            const logoFile = fs_1.default.existsSync(path_1.default.join(uploadDir, 'institution_logo.png'))
+                ? 'institution_logo.png'
+                : fs_1.default.readdirSync(uploadDir).find((f) => f.startsWith('institution_logo'));
+            if (logoFile) {
+                const ext = (_a = logoFile.split('.').pop()) === null || _a === void 0 ? void 0 : _a.toLowerCase();
+                if (ext) {
+                    const imageId = workbook.addImage({ filename: path_1.default.join(uploadDir, logoFile), extension: ext });
+                    sheet.addImage(imageId, { tl: { col: 0.22, row: 0.53 }, ext: { width: 105.6, height: 105.6 } });
+                }
+            }
+        }
+        catch ( /* logo opcional */_h) { /* logo opcional */ }
+        // Left block (institution name + period) spans cols C..D, rows 1-2 / 3
+        sheet.mergeCells('C1:D2');
+        const instCell = sheet.getCell('C1');
+        instCell.value = instName || 'GradeMaster';
+        instCell.font = { bold: true, size: 18 };
+        instCell.alignment = { horizontal: 'center', vertical: 'middle' };
+        sheet.mergeCells('C3:D3');
+        const periodCell = sheet.getCell('C3');
+        periodCell.value = period.name || '';
+        periodCell.font = { bold: false, size: 11 };
+        periodCell.alignment = { horizontal: 'center', vertical: 'middle' };
+        // Right block (Educación Media General / DEA / momento) spans only eval columns
+        const rightStart = sheet.getColumn(firstEvalCol).letter;
+        const lastEvalColLetter = sheet.getColumn(defCol - 1).letter;
+        sheet.mergeCells(`${rightStart}1:${lastEvalColLetter}2`);
+        const emgCell = sheet.getCell(`${rightStart}1`);
+        emgCell.value = 'Educación Media General';
+        emgCell.font = { size: 11 };
+        emgCell.alignment = { horizontal: 'center', vertical: 'bottom' };
+        // Row 3: Código de modalidad de estudios (same row as school period)
+        sheet.mergeCells(`${rightStart}3:${lastEvalColLetter}3`);
+        const deaCell = sheet.getCell(`${rightStart}3`);
+        deaCell.value = studyModeCode || '';
+        deaCell.font = { size: 9 };
+        deaCell.alignment = { horizontal: 'center', vertical: 'middle' };
+        // Row 4: momento/lapso (left side of row 4 stays empty)
+        sheet.mergeCells(`${rightStart}4:${lastEvalColLetter}4`);
+        const momentoCell = sheet.getCell(`${rightStart}4`);
+        momentoCell.value = termName || '';
+        momentoCell.font = { bold: true, size: 12 };
+        momentoCell.alignment = { horizontal: 'center', vertical: 'middle' };
+        // Left labels: Docente / Asignatura / Sección (rows 5-7, cols C-D)
+        const teacherName = `${((_b = assignment.teacher) === null || _b === void 0 ? void 0 : _b.firstName) || ''} ${((_c = assignment.teacher) === null || _c === void 0 ? void 0 : _c.lastName) || ''}`.trim();
+        const leftInfo = [
+            [5, 'Docente:', teacherName || '—', false],
+            [6, 'Asignatura:', subject.name, false],
+            [7, 'Sección:', `${grade.name} ${section.name}`.toUpperCase(), true]
+        ];
+        const thinSide = { style: 'thin' };
+        const noSide = { style: 'thin', color: { argb: 'FFFFFFFF' } };
+        leftInfo.forEach(([r, label, value, big]) => {
+            const labelCell = sheet.getCell(`C${r}`);
+            labelCell.value = label;
+            labelCell.font = { bold: true, size: 9 };
+            // C5-C7 already bold via font above
+            labelCell.alignment = { horizontal: 'right', vertical: 'middle' };
+            // C5-C6: no borders; C7: bottom border only
+            labelCell.border = r === 7
+                ? { top: noSide, bottom: thinSide, left: noSide, right: noSide }
+                : { top: noSide, bottom: noSide, left: noSide, right: noSide };
+            const valueCell = sheet.getCell(`D${r}`);
+            valueCell.value = value;
+            valueCell.font = big ? { bold: true, size: 12 } : { size: 9 };
+            valueCell.alignment = { horizontal: 'center', vertical: 'middle' };
+            // D5-D6: right border only; D7: bottom and right border
+            valueCell.border = r === 7
+                ? { top: noSide, bottom: thinSide, left: noSide, right: thinSide }
+                : { top: noSide, bottom: noSide, left: noSide, right: thinSide };
+        });
+        // Per-evaluation header block (rows 5-7): date (blue) / name (gray) / percentage
+        evaluationPlans.forEach((plan, idx) => {
+            const c1 = firstEvalCol + idx * 3;
+            const l1 = sheet.getColumn(c1).letter;
+            const l3 = sheet.getColumn(c1 + 2).letter;
+            // Outer border for this evaluation block (thick left/right)
+            const evalOuterBorder = {
+                left: thickSide,
+                right: thickSide,
+                top: thinSide2,
+                bottom: thinSide2
+            };
+            // Row 5: date (blue background, white text)
+            sheet.mergeCells(`${l1}5:${l3}5`);
+            const dateCell = sheet.getCell(`${l1}5`);
+            dateCell.value = plan.date ? new Date(plan.date).toLocaleDateString('es-VE', { day: '2-digit', month: '2-digit', year: '2-digit' }) : '—';
+            dateCell.font = { bold: true, size: 9, color: { argb: 'FFFFFFFF' } };
+            dateCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: MED_BLUE } };
+            dateCell.alignment = { horizontal: 'center', vertical: 'middle' };
+            dateCell.border = Object.assign(Object.assign({}, evalOuterBorder), { top: thickSide });
+            // Row 6: evaluation name (gray background)
+            sheet.mergeCells(`${l1}6:${l3}6`);
+            const nameCell = sheet.getCell(`${l1}6`);
+            nameCell.value = plan.shortDescription || plan.description || 'Evaluación';
+            nameCell.font = { bold: true, size: 9 };
+            nameCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: GRAY } };
+            nameCell.alignment = { horizontal: 'center', vertical: 'middle' };
+            nameCell.border = evalOuterBorder;
+            // Row 7: percentage
+            sheet.mergeCells(`${l1}7:${l3}7`);
+            const pctCell = sheet.getCell(`${l1}7`);
+            pctCell.value = `${Number(plan.percentage)}%`;
+            pctCell.font = { bold: true, size: 9 };
+            pctCell.alignment = { horizontal: 'center', vertical: 'middle' };
+            pctCell.border = Object.assign(Object.assign({}, evalOuterBorder), { bottom: thickSide });
+        });
+        // Row heights (px → ExcelJS points: px * 0.75)
+        sheet.getRow(1).height = 19 * 0.75; // 19px
+        sheet.getRow(2).height = 20 * 0.75; // 20px
+        sheet.getRow(3).height = 16 * 0.75; // 16px
+        sheet.getRow(4).height = 20 * 0.75; // 20px
+        sheet.getRow(5).height = 16 * 0.75; // 16px
+        sheet.getRow(6).height = 16 * 0.75; // 16px
+        sheet.getRow(7).height = 20 * 0.75; // 20px
+        // ── Fila 8: encabezado de tabla ───────────────────────────
+        sheet.getRow(8).height = 26 * 0.75; // 26px
+        const headerRow = sheet.getRow(8);
+        headerRow.getCell(1).value = '#';
+        headerRow.getCell(2).value = 'CÉDULA';
+        sheet.mergeCells('C8:D8');
+        headerRow.getCell(3).value = 'APELLIDOS Y NOMBRES';
+        evaluationPlans.forEach((_plan, idx) => {
+            const c1 = firstEvalCol + idx * 3;
+            headerRow.getCell(c1).value = 'NOT';
+            headerRow.getCell(c1 + 1).value = 'REM';
+            headerRow.getCell(c1 + 2).value = '%';
+        });
+        headerRow.getCell(defCol).value = 'DEF';
+        headerRow.getCell(obsCol).value = 'Observaciones';
+        const whiteSide = { style: 'medium', color: { argb: 'FFFFFFFF' } };
+        const whiteThin = { style: 'thin', color: { argb: 'FFFFFFFF' } };
+        for (let c = 1; c <= totalCols; c++) {
+            const cell = headerRow.getCell(c);
+            cell.font = { bold: true, size: 9, color: { argb: 'FFFFFFFF' } };
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: DARK_BLUE } };
+            cell.alignment = { horizontal: 'center', vertical: 'middle' };
+            const isEvalFirstCol = evaluationPlans.some((_p, idx) => c === firstEvalCol + idx * 3);
+            const isEvalLastCol = evaluationPlans.some((_p, idx) => c === firstEvalCol + idx * 3 + 2);
+            // Outer contour stays black thick; every internal border is white, keeping its thickness
+            const isOuterLeft = c === 1;
+            const isOuterRight = c === obsCol;
+            const isThickLeft = isEvalFirstCol || c === defCol;
+            const isThickRight = isEvalLastCol || c === defCol;
+            cell.border = {
+                top: thickSide,
+                bottom: thinSide2,
+                left: isOuterLeft ? thickSide : (isThickLeft ? whiteSide : whiteThin),
+                right: isOuterRight ? thickSide : (isThickRight ? whiteSide : whiteThin)
+            };
+        }
+        headerRow.height = 22;
+        // ── Filas de estudiantes (desde fila 9) ───────────────────
+        const isFilled = filled !== 'false';
+        const firstDataRow = 9;
+        const minRows = Math.max(inscriptions.length, 35);
+        const evaluationStats = evaluationPlans.map(() => ({ approved: 0, failed: 0, absent: 0 }));
+        const finalStats = { approved: 0, failed: 0, absent: 0 };
+        for (let i = 0; i < minRows; i++) {
+            const rowNum = firstDataRow + i;
+            const row = sheet.getRow(rowNum);
+            const inscription = inscriptions[i];
+            const isZebraRow = i % 2 === 1;
+            const zebraFill = isZebraRow
+                ? { type: 'pattern', pattern: 'solid', fgColor: { argb: ZEBRA } }
+                : undefined;
+            // Column #: sequential number (also for empty rows, as in the model)
+            const numCell = row.getCell(1);
+            numCell.value = String(i + 1).padStart(2, '0');
+            numCell.font = { bold: true, size: 9 };
+            numCell.alignment = { horizontal: 'center', vertical: 'middle' };
+            numCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: GRAY } };
+            numCell.border = {
+                top: thinSide2,
+                bottom: thinSide2,
+                left: thickSide,
+                right: thinSide2
+            };
+            const cedCell = row.getCell(2);
+            sheet.mergeCells(`C${rowNum}:D${rowNum}`);
+            const nameCell = row.getCell(3);
+            if (inscription) {
+                const doc = ((_d = inscription.student) === null || _d === void 0 ? void 0 : _d.document) || '';
+                cedCell.value = doc ? `V ${doc}`.trim() : '';
+                nameCell.value = `${((_e = inscription.student) === null || _e === void 0 ? void 0 : _e.lastName) || ''} ${((_f = inscription.student) === null || _f === void 0 ? void 0 : _f.firstName) || ''}`.trim().toUpperCase();
+            }
+            cedCell.font = { size: 9 };
+            cedCell.alignment = { horizontal: 'left', vertical: 'middle' };
+            cedCell.border = thinBorder;
+            if (zebraFill)
+                cedCell.fill = zebraFill;
+            nameCell.font = { size: 9 };
+            nameCell.alignment = { horizontal: 'left', vertical: 'middle' };
+            nameCell.border = thinBorder;
+            if (zebraFill)
+                nameCell.fill = zebraFill;
+            row.getCell(4).border = thinBorder;
+            if (zebraFill)
+                row.getCell(4).fill = zebraFill;
+            const insSub = (_g = inscription === null || inscription === void 0 ? void 0 : inscription.inscriptionSubjects) === null || _g === void 0 ? void 0 : _g[0];
+            const studentQuals = (insSub === null || insSub === void 0 ? void 0 : insSub.qualifications) || [];
+            let rowTotal = 0;
+            evaluationPlans.forEach((plan, idx) => {
+                const c1 = firstEvalCol + idx * 3;
+                const notCell = row.getCell(c1);
+                const remCell = row.getCell(c1 + 1);
+                const pctCell = row.getCell(c1 + 2);
+                if (isFilled && inscription) {
+                    const q = studentQuals.find((sq) => sq.evaluationPlanId === plan.id);
+                    if (q) {
+                        const hasRem = q.remedialScore != null && Number(q.remedialScore) > 0;
+                        const effectiveScore = q.isAbsent ? 0 : (hasRem ? Number(q.remedialScore) : Number(q.score));
+                        if (q.isAbsent) {
+                            notCell.value = 'NP';
+                            evaluationStats[idx].absent += 1;
+                            evaluationStats[idx].failed += 1;
+                        }
+                        else {
+                            notCell.value = Number(q.score);
+                            if (hasRem)
+                                remCell.value = Number(q.remedialScore);
+                            if (effectiveScore >= 10)
+                                evaluationStats[idx].approved += 1;
+                            else
+                                evaluationStats[idx].failed += 1;
+                        }
+                        const weighted = (effectiveScore * Number(plan.percentage)) / 100;
+                        pctCell.value = Math.round(weighted * 100) / 100;
+                        rowTotal += weighted;
+                    }
+                    else {
+                        pctCell.value = 0;
+                        evaluationStats[idx].absent += 1;
+                        evaluationStats[idx].failed += 1;
+                    }
+                }
+                [notCell, remCell].forEach((cell, ci) => {
+                    cell.font = { size: 9 };
+                    cell.numFmt = '00';
+                    cell.alignment = { horizontal: 'center', vertical: 'middle' };
+                    if (zebraFill)
+                        cell.fill = zebraFill;
+                    cell.border = {
+                        top: thinSide2,
+                        bottom: thinSide2,
+                        left: ci === 0 ? thickSide : thinSide2,
+                        right: thinSide2
+                    };
+                });
+                pctCell.font = { bold: true, size: 9 };
+                pctCell.numFmt = '0.00';
+                pctCell.alignment = { horizontal: 'center', vertical: 'middle' };
+                if (zebraFill)
+                    pctCell.fill = zebraFill;
+                pctCell.border = {
+                    top: thinSide2,
+                    bottom: thinSide2,
+                    left: thinSide2,
+                    right: thickSide
+                };
+            });
+            // DEF column (light green)
+            const defCell = row.getCell(defCol);
+            if (isFilled && inscription) {
+                const finalGrade = (0, gradeEvaluationService_1.roundFinalGrade)(rowTotal);
+                defCell.value = finalGrade;
+                defCell.numFmt = '00';
+                const hasAnyQualification = studentQuals.some((q) => evaluationPlans.some((plan) => q.evaluationPlanId === plan.id));
+                const hasAbsentQualification = studentQuals.some((q) => evaluationPlans.some((plan) => q.evaluationPlanId === plan.id) && q.isAbsent);
+                if (!hasAnyQualification || hasAbsentQualification) {
+                    finalStats.absent += 1;
+                    finalStats.failed += 1;
+                }
+                else if (finalGrade >= 10)
+                    finalStats.approved += 1;
+                else
+                    finalStats.failed += 1;
+            }
+            defCell.font = { bold: true, size: 9 };
+            defCell.alignment = { horizontal: 'center', vertical: 'middle' };
+            defCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: LIGHT_GREEN } };
+            defCell.border = {
+                top: thinSide2,
+                bottom: thinSide2,
+                left: thickSide,
+                right: thickSide
+            };
+            // Observaciones column
+            const obsCell = row.getCell(obsCol);
+            if (zebraFill)
+                obsCell.fill = zebraFill;
+            obsCell.border = {
+                top: thinSide2,
+                bottom: thinSide2,
+                left: thinSide2,
+                right: thickSide
+            };
+            row.height = 19 * 0.75; // 19px
+        }
+        const summaryTotal = inscriptions.length || 1;
+        const summaryRows = [
+            [firstDataRow + minRows, 'Aprobados:', 'approved'],
+            [firstDataRow + minRows + 1, 'Reprobados:', 'failed'],
+            [firstDataRow + minRows + 2, 'Inasistentes:', 'absent']
+        ];
+        summaryRows.forEach(([rowNum, label, key]) => {
+            const isLastSummaryRow = key === 'absent';
+            const isFirstSummaryRow = key === 'approved';
+            const row = sheet.getRow(rowNum);
+            // Merge A:D for label, left-aligned and bold
+            sheet.mergeCells(`A${rowNum}:D${rowNum}`);
+            const labelCell = row.getCell(1);
+            labelCell.value = label;
+            labelCell.font = { bold: true, size: 9 };
+            labelCell.alignment = { horizontal: 'left', vertical: 'middle' };
+            labelCell.border = {
+                top: isFirstSummaryRow ? thickSide : thinSide2,
+                bottom: isLastSummaryRow ? thickSide : thinSide2,
+                left: thickSide,
+                right: thickSide
+            };
+            evaluationStats.forEach((stats, idx) => {
+                const c1 = firstEvalCol + idx * 3;
+                const count = stats[key];
+                const percentage = Math.round((count * 100) / summaryTotal);
+                const countCell = row.getCell(c1);
+                const percentageCell = row.getCell(c1 + 2);
+                countCell.value = count;
+                percentageCell.value = `${percentage}%`;
+                [row.getCell(c1), row.getCell(c1 + 1), percentageCell].forEach((cell, ci) => {
+                    cell.font = { size: 9 };
+                    cell.alignment = { horizontal: 'center', vertical: 'middle' };
+                    cell.border = {
+                        top: isFirstSummaryRow ? thickSide : thinSide2,
+                        bottom: isLastSummaryRow ? thickSide : thinSide2,
+                        left: ci === 0 ? thickSide : thinSide2,
+                        right: ci === 2 ? thickSide : thinSide2
+                    };
+                });
+            });
+            const finalCount = finalStats[key];
+            const finalPercentage = Math.round((finalCount * 100) / summaryTotal);
+            const finalCell = row.getCell(defCol);
+            finalCell.value = `${finalPercentage}%`;
+            finalCell.font = { size: 9 };
+            finalCell.alignment = { horizontal: 'center', vertical: 'middle' };
+            finalCell.border = {
+                top: isFirstSummaryRow ? thickSide : thinSide2,
+                bottom: isLastSummaryRow ? thickSide : thinSide2,
+                left: thickSide,
+                right: thickSide
+            };
+            row.getCell(obsCol).border = {
+                top: isFirstSummaryRow ? thickSide : thinSide2,
+                bottom: isLastSummaryRow ? thickSide : thinSide2,
+                left: thinSide2,
+                right: thickSide
+            };
+            row.height = 14 * 0.75; // 14px
+        });
+        // Column widths (pixel → character width: px / 7 ≈ char width)
+        sheet.getColumn(1).width = 3.3; // A: 23px
+        sheet.getColumn(2).width = 14.7; // B: 103px
+        sheet.getColumn(3).width = 9.4; // C: 66px
+        sheet.getColumn(4).width = 39.3; // D: 275px
+        for (let idx = 0; idx < nEvals; idx++) {
+            const c1 = firstEvalCol + idx * 3;
+            sheet.getColumn(c1).width = 6;
+            sheet.getColumn(c1 + 1).width = 6;
+            sheet.getColumn(c1 + 2).width = 7;
+        }
+        sheet.getColumn(defCol).width = 6;
+        sheet.getColumn(obsCol).width = 22;
+        sheet.pageSetup = { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0, paperSize: 9 };
+        sheet.pageSetup.horizontalCentered = true;
+        sheet.headerFooter.oddFooter = 'Página &P de &N';
+        const buffer = yield workbook.xlsx.writeBuffer();
+        const fileName = isFilled
+            ? `planilla-calificaciones-${subject.name.replace(/\s+/g, '_')}.xlsx`
+            : `planilla-vacia-calificaciones-${subject.name.replace(/\s+/g, '_')}.xlsx`;
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+        res.send(buffer);
+    }
+    catch (error) {
+        console.error('[exportGradesExcelOficial] Error:', error);
+        res.status(500).json({ message: error.message || 'Error al exportar calificaciones' });
+    }
+});
+exports.exportGradesExcelOficial = exportGradesExcelOficial;
+const exportGradesExcel = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    var _a, _b, _c;
+    try {
+        const { assignmentId } = req.params;
+        const { filled } = req.query;
+        const assignment = yield index_1.TeacherAssignment.findByPk(Number(assignmentId), {
+            include: [
+                {
+                    model: index_1.PeriodGradeSubject,
+                    as: 'periodGradeSubject',
+                    include: [
+                        { model: index_1.Subject, as: 'subject' },
+                        {
+                            model: index_1.PeriodGrade,
+                            as: 'periodGrade',
+                            include: [
+                                { model: index_1.Grade, as: 'grade' },
+                                { model: index_1.SchoolPeriod, as: 'schoolPeriod' }
+                            ]
+                        }
+                    ]
+                },
+                { model: index_1.Section, as: 'section' },
+                { model: index_1.Person, as: 'teacher' }
+            ]
+        });
+        if (!assignment)
+            return res.status(404).json({ message: 'Asignación no encontrada' });
+        const pg = yield index_1.PeriodGrade.findByPk(assignment.periodGradeSubject.periodGradeId);
+        if (!pg)
+            return res.status(404).json({ message: 'Estructura no encontrada' });
+        const termId = req.query.term ? Number(req.query.term) : null;
+        let termName = '';
+        if (termId) {
+            const term = yield index_1.Term.findByPk(termId);
+            termName = term ? term.getDataValue('name') : '';
+        }
+        const evaluationPlans = yield index_1.EvaluationPlan.findAll({
+            where: Object.assign({ periodGradeSubjectId: assignment.periodGradeSubjectId, sectionId: assignment.sectionId }, (termId ? { termId } : {})),
+            order: [['date', 'ASC']]
+        });
+        const [institutionName, institutionDeaCode] = yield Promise.all([
+            index_1.Setting.findOne({ where: { key: 'institution_name' } }),
+            index_1.Setting.findOne({ where: { key: 'institution_dea_code' } })
+        ]);
+        const instName = (institutionName === null || institutionName === void 0 ? void 0 : institutionName.getDataValue('value')) || '';
+        const deaCode = (institutionDeaCode === null || institutionDeaCode === void 0 ? void 0 : institutionDeaCode.getDataValue('value')) || '';
+        const inscriptions = yield index_1.Inscription.findAll({
+            where: {
+                schoolPeriodId: pg.schoolPeriodId,
+                sectionId: assignment.sectionId,
+                gradeId: pg.gradeId,
+            },
+            include: [
+                {
+                    model: index_1.Person,
+                    as: 'student',
+                    attributes: ['id', 'firstName', 'lastName', 'document', 'documentType']
+                },
+                {
+                    model: index_1.InscriptionSubject,
+                    as: 'inscriptionSubjects',
+                    where: { subjectId: assignment.periodGradeSubject.subjectId },
+                    required: true,
+                    include: [
+                        {
+                            model: index_1.Qualification,
+                            as: 'qualifications',
+                            include: [{ model: index_1.EvaluationPlan, as: 'evaluationPlan' }]
+                        }
+                    ]
+                }
+            ],
+            order: [
+                [{ model: index_1.Person, as: 'student' }, 'lastName', 'ASC'],
+                [{ model: index_1.Person, as: 'student' }, 'firstName', 'ASC']
+            ]
+        });
+        // Sort students canonically: document type → document number → lastName → firstName
+        (0, studentSortService_1.sortInscriptions)(inscriptions);
+        const subject = assignment.periodGradeSubject.subject;
+        const section = assignment.section;
+        const grade = assignment.periodGradeSubject.periodGrade.grade;
+        const period = assignment.periodGradeSubject.periodGrade.schoolPeriod;
+        const workbook = new exceljs_1.default.Workbook();
+        const sheet = workbook.addWorksheet('Calificaciones');
+        const totalCols = 3 + evaluationPlans.length + 1;
+        const lastCol = sheet.getColumn(totalCols).letter;
+        // ── Encabezado institucional ──────────────────────────
+        sheet.getCell('A1').value = 'Nombre de la Institución';
+        sheet.getCell('A1').font = { bold: true, size: 10 };
+        sheet.getCell('A1').alignment = { vertical: 'middle' };
+        sheet.mergeCells(`B1:${lastCol}1`);
+        const instCell = sheet.getCell('B1');
+        instCell.value = instName || 'Sin nombre configurado';
+        instCell.font = { bold: true, size: 14 };
+        instCell.alignment = { vertical: 'middle' };
+        sheet.getCell('A2').value = 'Período Escolar';
+        sheet.getCell('A2').font = { bold: true, size: 10 };
+        sheet.getCell('A2').alignment = { vertical: 'middle' };
+        sheet.mergeCells(`B2:${lastCol}2`);
+        const periodCell = sheet.getCell('B2');
+        periodCell.value = period.name || '';
+        periodCell.font = { size: 11 };
+        periodCell.alignment = { vertical: 'middle' };
+        // Logo institucional (columna A, junto a docente/asignatura/sección)
+        try {
+            const uploadDir = path_1.default.join(__dirname, '../../public/uploads/images');
+            const logoFile = fs_1.default.existsSync(path_1.default.join(uploadDir, 'institution_logo.png'))
+                ? 'institution_logo.png'
+                : fs_1.default.readdirSync(uploadDir).find((f) => f.startsWith('institution_logo'));
+            if (logoFile) {
+                const ext = (_a = logoFile.split('.').pop()) === null || _a === void 0 ? void 0 : _a.toLowerCase();
+                if (ext) {
+                    const imageId = workbook.addImage({ filename: path_1.default.join(uploadDir, logoFile), extension: ext });
+                    sheet.addImage(imageId, { tl: { col: 0, row: 2 }, ext: { width: 90, height: 90 } });
+                }
+            }
+        }
+        catch ( /* logo opcional */_d) { /* logo opcional */ }
+        const teacherName = `${((_b = assignment.teacher) === null || _b === void 0 ? void 0 : _b.firstName) || ''} ${((_c = assignment.teacher) === null || _c === void 0 ? void 0 : _c.lastName) || ''}`.trim();
+        sheet.mergeCells(`B3:${lastCol}3`);
+        sheet.getCell('B3').value = `Docente: ${teacherName || '—'}`;
+        sheet.getCell('B3').font = { size: 11 };
+        sheet.mergeCells(`B4:${lastCol}4`);
+        sheet.getCell('B4').value = `Asignatura: ${subject.name}`;
+        sheet.getCell('B4').font = { size: 11 };
+        sheet.mergeCells(`B5:${lastCol}5`);
+        sheet.getCell('B5').value = `Sección: ${section.name}   |   Grado: ${grade.name}`;
+        sheet.getCell('B5').font = { size: 11 };
+        sheet.mergeCells(`B6:${lastCol}6`);
+        sheet.getCell('B6').value = `Código DEA: ${deaCode || '—'}   |   Lapso: ${termName || '—'}`;
+        sheet.getCell('B6').font = { size: 11 };
+        sheet.getColumn(1).width = 24;
+        for (let r = 1; r <= 6; r++) {
+            sheet.getRow(r).height = 20;
+        }
+        sheet.getRow(7).values = [];
+        // Header row 1 (row 8): text labels + evaluation IDs
+        const headerRow1 = sheet.getRow(8);
+        headerRow1.getCell(1).value = 'Cédula';
+        headerRow1.getCell(2).value = 'Apellidos';
+        headerRow1.getCell(3).value = 'Nombres';
+        let col = 4;
+        evaluationPlans.forEach((plan) => {
+            headerRow1.getCell(col).value = plan.description;
+            col++;
+        });
+        headerRow1.getCell(col).value = 'Total';
+        // Merge name columns across rows 8-9
+        sheet.mergeCells('A8:A9');
+        sheet.mergeCells('B8:B9');
+        sheet.mergeCells('C8:C9');
+        // Merge Total column across rows 8-9
+        const totalCol = sheet.getColumn(col).letter;
+        sheet.mergeCells(`${totalCol}8:${totalCol}9`);
+        // Header row 2 (row 9): percentages
+        const headerRow2 = sheet.getRow(9);
+        col = 4;
+        evaluationPlans.forEach((plan) => {
+            headerRow2.getCell(col).value = `${plan.percentage}%`;
+            col++;
+        });
+        const headerStyle = (row) => {
+            row.eachCell((cell) => {
+                cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E40AF' } };
+                cell.alignment = { horizontal: 'center', vertical: 'middle' };
+                cell.border = { top: { style: 'thin' }, bottom: { style: 'thin' }, left: { style: 'thin' }, right: { style: 'thin' } };
+            });
+        };
+        headerStyle(headerRow1);
+        headerStyle(headerRow2);
+        // Student rows
+        let rowNum = 10;
+        const isFilled = filled !== 'false';
+        // Build formula parts for Total column
+        const totalFormulaParts = [];
+        evaluationPlans.forEach((plan, idx) => {
+            const colLetter = sheet.getColumn(4 + idx).letter;
+            const pct = Number(plan.percentage) / 100;
+            totalFormulaParts.push(`${colLetter}{row}*${pct}`);
+        });
+        inscriptions.forEach((inscription) => {
+            var _a, _b, _c, _d;
+            const row = sheet.getRow(rowNum);
+            row.getCell(1).value = ((_a = inscription.student) === null || _a === void 0 ? void 0 : _a.document) || '';
+            row.getCell(2).value = ((_b = inscription.student) === null || _b === void 0 ? void 0 : _b.lastName) || '';
+            row.getCell(3).value = ((_c = inscription.student) === null || _c === void 0 ? void 0 : _c.firstName) || '';
+            const insSub = (_d = inscription.inscriptionSubjects) === null || _d === void 0 ? void 0 : _d[0];
+            const studentQuals = (insSub === null || insSub === void 0 ? void 0 : insSub.qualifications) || [];
+            let colNum = 4;
+            let rowTotal = 0;
+            evaluationPlans.forEach((plan) => {
+                const q = studentQuals.find((sq) => sq.evaluationPlanId === plan.id);
+                const cell = row.getCell(colNum);
+                if (isFilled && q) {
+                    cell.value = Number(q.score);
+                    if (!q.isAbsent) {
+                        const effectiveScore = q.remedialScore != null && Number(q.remedialScore) > 0 ? Number(q.remedialScore) : Number(q.score);
+                        rowTotal += (effectiveScore * Number(plan.percentage)) / 100;
+                    }
+                }
+                cell.alignment = { horizontal: 'center' };
+                cell.numFmt = '0.00';
+                cell.border = { top: { style: 'thin' }, bottom: { style: 'thin' }, left: { style: 'thin' }, right: { style: 'thin' } };
+                colNum++;
+            });
+            const totalCell = row.getCell(colNum);
+            const formula = totalFormulaParts.map(p => p.replace('{row}', String(rowNum))).join('+');
+            if (isFilled) {
+                totalCell.value = { formula, result: Math.round(rowTotal * 100) / 100 };
+            }
+            else {
+                totalCell.value = { formula };
+            }
+            totalCell.numFmt = '0.00';
+            totalCell.font = { bold: true };
+            totalCell.alignment = { horizontal: 'center' };
+            totalCell.border = { top: { style: 'thin' }, bottom: { style: 'thin' }, left: { style: 'thin' }, right: { style: 'thin' } };
+            // Apply borders to student name columns too
+            for (let c = 1; c <= 3; c++) {
+                row.getCell(c).border = { top: { style: 'thin' }, bottom: { style: 'thin' }, left: { style: 'thin' }, right: { style: 'thin' } };
+            }
+            rowNum++;
+        });
+        // Column widths
+        sheet.getColumn(1).width = 24;
+        sheet.getColumn(2).width = 25;
+        sheet.getColumn(3).width = 25;
+        for (let i = 4; i <= 3 + evaluationPlans.length; i++) {
+            sheet.getColumn(i).width = 14;
+        }
+        sheet.getColumn(4 + evaluationPlans.length).width = 10;
+        const buffer = yield workbook.xlsx.writeBuffer();
+        const fileName = isFilled
+            ? `calificaciones-${subject.name.replace(/\s+/g, '_')}.xlsx`
+            : `plantilla-calificaciones-${subject.name.replace(/\s+/g, '_')}.xlsx`;
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+        res.send(buffer);
+    }
+    catch (error) {
+        console.error('[exportGradesExcel] Error:', error);
+        res.status(500).json({ message: error.message || 'Error al exportar calificaciones' });
+    }
+});
+exports.exportGradesExcel = exportGradesExcel;
+const getAllAssignments = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const user = req.session.user;
+        if (!user)
+            return res.status(401).json({ message: 'No autorizado' });
+        const pagination = (0, paginationService_1.parsePagination)(req.query);
+        const baseInclude = [
+            {
+                model: index_1.PeriodGradeSubject,
+                as: 'periodGradeSubject',
+                required: true,
+                include: [
+                    { model: index_1.Subject, as: 'subject' },
+                    {
+                        model: index_1.PeriodGrade,
+                        as: 'periodGrade',
+                        required: true,
+                        include: [
+                            { model: index_1.Grade, as: 'grade' },
+                            {
+                                model: index_1.SchoolPeriod,
+                                as: 'schoolPeriod',
+                                required: true,
+                                where: { status: 'activo' }
+                            }
+                        ]
+                    }
+                ]
+            },
+            { model: index_1.Section, as: 'section', required: true, where: { name: { [sequelize_1.Op.ne]: 'Materia Pendiente' } } },
+            { model: index_1.Person, as: 'teacher' }
+        ];
+        const order = [
+            [{ model: index_1.PeriodGradeSubject, as: 'periodGradeSubject' },
+                { model: index_1.PeriodGrade, as: 'periodGrade' },
+                { model: index_1.Grade, as: 'grade' }, 'id', 'ASC'],
+            [{ model: index_1.Section, as: 'section' }, 'name', 'ASC'],
+            [{ model: index_1.PeriodGradeSubject, as: 'periodGradeSubject' }, 'order', 'ASC']
+        ];
+        if (!pagination.isPaginated) {
+            const assignments = yield index_1.TeacherAssignment.findAll({ include: baseInclude, order });
+            return res.json(assignments);
+        }
+        // Paginated: IDs first, then hydrate.
+        const idRows = yield index_1.TeacherAssignment.findAll({
+            include: baseInclude,
+            attributes: ['id'],
+            order,
+            limit: pagination.limit,
+            offset: pagination.offset,
+            subQuery: false,
+            raw: true,
+        });
+        const ids = idRows.map((r) => r.id);
+        const total = yield index_1.TeacherAssignment.count({
+            include: baseInclude,
+            distinct: true,
+            col: 'id',
+        });
+        let assignments = [];
+        if (ids.length > 0) {
+            assignments = yield index_1.TeacherAssignment.findAll({
+                where: { id: { [sequelize_1.Op.in]: ids } },
+                include: baseInclude,
+                order: [(0, sequelize_1.literal)((0, studentSortService_1.fieldExpr)((0, studentSortService_1.quoteQualified)('TeacherAssignment', 'id'), ids.map(String)))],
+            });
+        }
+        return res.json((0, paginationService_1.buildPaginatedResponse)(assignments, total, pagination));
+    }
+    catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'Error al obtener asignaciones' });
+    }
+});
+exports.getAllAssignments = getAllAssignments;
+const getQualificationAudits = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const { assignmentId } = req.params;
+        const assignment = yield index_1.TeacherAssignment.findByPk(Number(assignmentId), {
+            include: [{
+                    model: index_1.PeriodGradeSubject,
+                    as: 'periodGradeSubject',
+                    include: [{ model: index_1.Subject, as: 'subject' }]
+                }]
+        });
+        if (!assignment)
+            return res.status(404).json({ message: 'Asignación no encontrada' });
+        const plans = yield index_1.EvaluationPlan.findAll({
+            where: {
+                periodGradeSubjectId: assignment.periodGradeSubjectId,
+                sectionId: assignment.sectionId
+            },
+            attributes: ['id']
+        });
+        const planIds = plans.map(p => p.id);
+        if (planIds.length === 0)
+            return res.json([]);
+        // Get qualifications for these plans to obtain qualification IDs
+        const qualifications = yield index_1.Qualification.findAll({
+            where: { evaluationPlanId: { [sequelize_1.Op.in]: planIds } },
+            attributes: ['id'],
+            include: [
+                { model: index_1.EvaluationPlan, as: 'evaluationPlan', attributes: ['id', 'description', 'percentage'] },
+                {
+                    model: index_1.InscriptionSubject,
+                    as: 'inscriptionSubject',
+                    include: [
+                        { model: index_1.Subject, as: 'subject', attributes: ['id', 'name'] },
+                        {
+                            model: index_1.Inscription,
+                            as: 'inscription',
+                            attributes: ['id'],
+                            include: [
+                                { model: index_1.Person, as: 'student', attributes: ['id', 'firstName', 'lastName', 'document'] }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        });
+        const qualificationIds = qualifications.map(q => q.id);
+        if (qualificationIds.length === 0)
+            return res.json([]);
+        // Query GradeChangeLog (unified audit) instead of legacy QualificationAudit
+        const audits = yield index_1.GradeChangeLog.findAll({
+            where: {
+                entityType: 'qualification',
+                entityId: { [sequelize_1.Op.in]: qualificationIds },
+            },
+            include: [
+                { model: index_1.User, as: 'editor', attributes: ['id', 'username'],
+                    include: [{ model: index_1.Person, as: 'person', attributes: ['id', 'firstName', 'lastName'] }]
+                }
+            ],
+            order: [['editedAt', 'DESC']],
+            limit: 200
+        });
+        // Build qualification map for joining
+        const qualMap = new Map();
+        for (const q of qualifications) {
+            qualMap.set(q.id, q.toJSON());
+        }
+        // Join audit with qualification data
+        const result = audits.map(a => {
+            const aJson = a.toJSON();
+            return Object.assign(Object.assign({}, aJson), { qualification: qualMap.get(aJson.entityId) || null });
+        });
+        res.json(result);
+    }
+    catch (error) {
+        console.error('[getQualificationAudits] Error:', error);
+        res.status(500).json({ message: 'Error al obtener auditoría' });
+    }
+});
+exports.getQualificationAudits = getQualificationAudits;
+const getAllQualificationAudits = (_req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        // Query GradeChangeLog (unified audit) instead of legacy QualificationAudit
+        const audits = yield index_1.GradeChangeLog.findAll({
+            where: { entityType: 'qualification' },
+            include: [
+                { model: index_1.User, as: 'editor', attributes: ['id', 'username'],
+                    include: [{ model: index_1.Person, as: 'person', attributes: ['id', 'firstName', 'lastName'] }]
+                }
+            ],
+            order: [['editedAt', 'DESC']],
+            limit: 200
+        });
+        // Get all unique qualification IDs from audits
+        const qualificationIds = [...new Set(audits.map(a => a.entityId))];
+        if (qualificationIds.length === 0)
+            return res.json([]);
+        // Batch query qualifications with nested data for joining
+        const qualifications = yield index_1.Qualification.findAll({
+            where: { id: { [sequelize_1.Op.in]: qualificationIds } },
+            include: [
+                {
+                    model: index_1.EvaluationPlan,
+                    as: 'evaluationPlan',
+                    attributes: ['id', 'description', 'percentage'],
+                },
+                {
+                    model: index_1.InscriptionSubject,
+                    as: 'inscriptionSubject',
+                    include: [
+                        { model: index_1.Subject, as: 'subject', attributes: ['id', 'name'] },
+                        {
+                            model: index_1.Inscription,
+                            as: 'inscription',
+                            attributes: ['id', 'schoolPeriodId', 'gradeId'],
+                            include: [
+                                { model: index_1.Person, as: 'student', attributes: ['id', 'firstName', 'lastName', 'document'] },
+                                { model: index_1.Grade, as: 'grade', attributes: ['id', 'name'] },
+                                { model: index_1.SchoolPeriod, as: 'period', attributes: ['id', 'name'] },
+                            ]
+                        }
+                    ]
+                }
+            ]
+        });
+        // Build qualification map for joining
+        const qualMap = new Map();
+        for (const q of qualifications) {
+            qualMap.set(q.id, q.toJSON());
+        }
+        // Join audit with qualification data
+        const result = audits.map(a => {
+            const aJson = a.toJSON();
+            return Object.assign(Object.assign({}, aJson), { qualification: qualMap.get(aJson.entityId) || null });
+        });
+        res.json(result);
+    }
+    catch (error) {
+        console.error('[getAllQualificationAudits] Error:', error);
+        res.status(500).json({ message: 'Error al obtener auditoría' });
+    }
+});
+exports.getAllQualificationAudits = getAllQualificationAudits;
+const copyEvaluationPlan = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const { sourcePeriodGradeSubjectId, sourceSectionId, targetPeriodGradeSubjectId, targetSectionIds, termId } = req.body;
+        if (!sourcePeriodGradeSubjectId || !sourceSectionId || !targetPeriodGradeSubjectId || !Array.isArray(targetSectionIds) || targetSectionIds.length === 0 || !termId) {
+            return res.status(400).json({ message: 'Faltan parámetros requeridos' });
+        }
+        // Check term is not blocked for any of the target sections
+        const term = yield index_1.Term.findByPk(termId);
+        if (!term) {
+            return res.status(404).json({ message: 'Lapso no encontrado' });
+        }
+        if (term.isBlocked) {
+            return res.status(403).json({ message: 'El lapso está bloqueado' });
+        }
+        // Derive gradeId from target PeriodGradeSubject → PeriodGrade
+        const targetPgs = yield index_1.PeriodGradeSubject.findByPk(targetPeriodGradeSubjectId, { attributes: ['id', 'periodGradeId'] });
+        if (!targetPgs) {
+            return res.status(404).json({ message: 'PeriodGradeSubject no encontrado' });
+        }
+        const targetPg = yield index_1.PeriodGrade.findByPk(targetPgs.periodGradeId, { attributes: ['id', 'gradeId'] });
+        if (!targetPg) {
+            return res.status(404).json({ message: 'PeriodGrade no encontrado' });
+        }
+        for (const secId of targetSectionIds) {
+            const isClosed = yield termSectionClosureService_1.TermSectionClosureService.isSectionClosed(termId, secId, targetPg.gradeId);
+            if (isClosed) {
+                return res.status(403).json({ message: `El lapso está cerrado para la sección ${secId}` });
+            }
+        }
+        // Get source plan items with criteria and indicators
+        const sourceItems = yield index_1.EvaluationPlan.findAll({
+            where: { periodGradeSubjectId: sourcePeriodGradeSubjectId, sectionId: sourceSectionId, termId },
+            include: [
+                { model: index_1.EvaluationCriteria, as: 'criteria', include: [{ model: index_1.EvaluationIndicator, as: 'indicators' }] },
+            ],
+            order: [['id', 'ASC']],
+        });
+        if (sourceItems.length === 0) {
+            return res.status(400).json({ message: 'No hay evaluaciones en la sección origen para copiar' });
+        }
+        const t = yield database_1.default.transaction();
+        try {
+            const results = [];
+            for (const targetSectionId of targetSectionIds) {
+                // Check if target already has plan items
+                const existingCount = yield index_1.EvaluationPlan.count({
+                    where: { periodGradeSubjectId: targetPeriodGradeSubjectId, sectionId: targetSectionId, termId },
+                    transaction: t,
+                });
+                if (existingCount > 0) {
+                    results.push({ sectionId: targetSectionId, created: 0, skipped: existingCount });
+                    continue;
+                }
+                let created = 0;
+                for (const item of sourceItems) {
+                    const newItem = yield index_1.EvaluationPlan.create({
+                        periodGradeSubjectId: targetPeriodGradeSubjectId,
+                        sectionId: targetSectionId,
+                        termId,
+                        description: item.description,
+                        percentage: item.percentage,
+                        date: item.date,
+                        thematicComponentId: item.thematicComponentId,
+                        thematicContentIds: item.thematicContentIds,
+                        evaluationType: item.evaluationType,
+                        tecnicaId: item.tecnicaId,
+                        instrumentoId: item.instrumentoId,
+                        estrategiaId: item.estrategiaId,
+                        shortDescription: item.shortDescription,
+                    }, { transaction: t });
+                    // Copy criteria and indicators
+                    const itemWithCriteria = item;
+                    if (itemWithCriteria.criteria && itemWithCriteria.criteria.length > 0) {
+                        for (const c of itemWithCriteria.criteria) {
+                            const criterion = yield index_1.EvaluationCriteria.create({
+                                evaluationPlanId: newItem.id,
+                                name: c.name,
+                                points: c.points,
+                            }, { transaction: t });
+                            if (c.indicators && c.indicators.length > 0) {
+                                yield index_1.EvaluationIndicator.bulkCreate(c.indicators.map((ind) => ({
+                                    evaluationCriteriaId: criterion.id,
+                                    name: ind.name,
+                                    points: ind.points,
+                                })), { transaction: t });
+                            }
+                        }
+                    }
+                    created++;
+                }
+                results.push({ sectionId: targetSectionId, created, skipped: 0 });
+            }
+            yield t.commit();
+            res.json({ message: 'Plan copiado correctamente', results });
+        }
+        catch (error) {
+            yield t.rollback();
+            throw error;
+        }
+    }
+    catch (error) {
+        console.error('[copyEvaluationPlan] Error:', error);
+        res.status(500).json({ message: error.message || 'Error al copiar el plan de evaluación' });
+    }
+});
+exports.copyEvaluationPlan = copyEvaluationPlan;
+/**
+ * Recalculate all term grades and final grades for a school period.
+ * This is needed after fixing rounding bugs so that stored values match
+ * the corrected calculation.
+ *
+ * POST /api/evaluation/recalculate/:schoolPeriodId
+ * Roles: Master, Administrador, Control de Estudios
+ */
+const recalculatePeriodGrades = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const schoolPeriodId = Number(req.params.schoolPeriodId);
+        if (!schoolPeriodId) {
+            return res.status(400).json({ message: 'schoolPeriodId es requerido' });
+        }
+        // Find all inscription subjects for this period
+        const inscriptions = yield index_1.Inscription.findAll({
+            where: { schoolPeriodId },
+            attributes: ['id'],
+        });
+        let synced = 0;
+        for (const insc of inscriptions) {
+            const insSubs = yield index_1.InscriptionSubject.findAll({
+                where: { inscriptionId: insc.id },
+                attributes: ['id'],
+            });
+            for (const is of insSubs) {
+                yield termGradeSyncService_1.TermGradeSyncService.syncForInscriptionSubject(is.id);
+                synced++;
+            }
+        }
+        res.json({
+            message: 'Notas recalculadas correctamente',
+            inscriptions: inscriptions.length,
+            inscriptionSubjects: synced,
+        });
+    }
+    catch (error) {
+        console.error('[recalculatePeriodGrades] Error:', error);
+        res.status(500).json({ message: error.message || 'Error al recalcular notas' });
+    }
+});
+exports.recalculatePeriodGrades = recalculatePeriodGrades;
+// ============================================================
+// Qualification edit request (timer-locked grade permission flow)
+// ============================================================
+const createQualificationEditRequest = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    var _a;
+    try {
+        const user = req.session.user;
+        if (!user)
+            return res.status(401).json({ message: 'No autorizado' });
+        const { qualificationId, justification, currentScore, requestedScore } = req.body;
+        if (!qualificationId)
+            return res.status(400).json({ message: 'Se requiere qualificationId' });
+        if (!justification || !justification.trim())
+            return res.status(400).json({ message: 'La justificación es obligatoria' });
+        const qualification = yield index_1.Qualification.findByPk(Number(qualificationId));
+        if (!qualification)
+            return res.status(404).json({ message: 'Calificación no encontrada' });
+        // Defense in depth: no edit requests for blocked terms or completed councils.
+        // The longpress UI should already hide the option; this is the server-side guard.
+        // isSectionReadOnly covers: term blocked ∪ section closure ∪ council done.
+        if (qualification.termId && qualification.sectionId) {
+            const sectionReadOnly = yield termSectionClosureService_1.TermSectionClosureService.isSectionReadOnly(qualification.termId, qualification.sectionId, (_a = qualification.gradeId) !== null && _a !== void 0 ? _a : undefined);
+            if (sectionReadOnly) {
+                return res.status(403).json({ message: 'El lapso está bloqueado o el consejo de curso está completado; no se pueden solicitar ediciones' });
+            }
+        }
+        // Check there is no pending request already for this qualification
+        const existing = yield index_1.QualificationEditRequest.findOne({
+            where: { qualificationId: Number(qualificationId), status: 'pending' },
+        });
+        if (existing)
+            return res.status(409).json({ message: 'Ya existe una solicitud pendiente para esta calificación' });
+        const request = yield index_1.QualificationEditRequest.create({
+            qualificationId: Number(qualificationId),
+            requestedBy: user.id,
+            justification: justification.trim(),
+            currentScore: currentScore != null ? Number(currentScore) : null,
+            requestedScore: requestedScore != null ? Number(requestedScore) : null,
+            status: 'pending',
+        });
+        return res.status(201).json(request);
+    }
+    catch (error) {
+        console.error('[createQualificationEditRequest] Error:', error);
+        return res.status(500).json({ message: 'Error al crear solicitud' });
+    }
+});
+exports.createQualificationEditRequest = createQualificationEditRequest;
+const getPendingQualificationEditRequestCount = (_req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const count = yield index_1.QualificationEditRequest.count({
+            where: { status: 'pending' },
+        });
+        return res.json({ count });
+    }
+    catch (error) {
+        console.error('[getPendingQualificationEditRequestCount] Error:', error);
+        return res.status(500).json({ message: 'Error al contar solicitudes' });
+    }
+});
+exports.getPendingQualificationEditRequestCount = getPendingQualificationEditRequestCount;
+const getPendingQualificationEditRequests = (_req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const requests = yield index_1.QualificationEditRequest.findAll({
+            where: { status: 'pending' },
+            include: [
+                {
+                    model: index_1.Qualification,
+                    as: 'qualification',
+                    include: [
+                        { model: index_1.EvaluationPlan, as: 'evaluationPlan', attributes: ['id', 'description', 'percentage'] },
+                        {
+                            model: index_1.InscriptionSubject,
+                            as: 'inscriptionSubject',
+                            include: [
+                                { model: index_1.Subject, as: 'subject', attributes: ['id', 'name'] },
+                                {
+                                    model: index_1.Inscription,
+                                    as: 'inscription',
+                                    attributes: ['id'],
+                                    include: [
+                                        { model: index_1.Person, as: 'student', attributes: ['id', 'firstName', 'lastName', 'document'] },
+                                    ],
+                                },
+                            ],
+                        },
+                    ],
+                },
+                {
+                    model: index_1.User,
+                    as: 'requester',
+                    attributes: ['id', 'username'],
+                    include: [{ model: index_1.Person, as: 'person', attributes: ['id', 'firstName', 'lastName'] }],
+                },
+            ],
+            order: [['createdAt', 'ASC']],
+        });
+        return res.json(requests);
+    }
+    catch (error) {
+        console.error('[getPendingQualificationEditRequests] Error:', error);
+        return res.status(500).json({ message: 'Error al obtener solicitudes' });
+    }
+});
+exports.getPendingQualificationEditRequests = getPendingQualificationEditRequests;
+const reviewQualificationEditRequest = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    var _a;
+    try {
+        const user = req.session.user;
+        if (!user)
+            return res.status(401).json({ message: 'No autorizado' });
+        const userRoles = user.roles || [];
+        if (!userRoles.includes('Control de Estudios') && !userRoles.includes('Master') && !userRoles.includes('Administrador')) {
+            return res.status(403).json({ message: 'No tiene permisos para revisar solicitudes' });
+        }
+        const { id } = req.params;
+        const { action, reviewNote } = req.body; // action: 'approve' | 'reject'
+        if (action !== 'approve' && action !== 'reject') {
+            return res.status(400).json({ message: 'Acción inválida. Use approve o reject' });
+        }
+        const request = yield index_1.QualificationEditRequest.findByPk(Number(id));
+        if (!request)
+            return res.status(404).json({ message: 'Solicitud no encontrada' });
+        if (request.status !== 'pending')
+            return res.status(400).json({ message: 'La solicitud ya fue revisada' });
+        // Revalidate at review time: the term may have been blocked or the council
+        // completed AFTER the request was created. Read-only sections cannot be
+        // edited even via an approved request.
+        if (action === 'approve') {
+            const targetQualification = yield index_1.Qualification.findByPk(request.qualificationId);
+            if (targetQualification && targetQualification.termId && targetQualification.sectionId) {
+                const sectionReadOnly = yield termSectionClosureService_1.TermSectionClosureService.isSectionReadOnly(targetQualification.termId, targetQualification.sectionId, (_a = targetQualification.gradeId) !== null && _a !== void 0 ? _a : undefined);
+                if (sectionReadOnly) {
+                    const rejectedAt = new Date();
+                    yield request.update({
+                        status: 'rejected',
+                        reviewedBy: user.id,
+                        reviewedAt: rejectedAt,
+                        reviewNote: reviewNote || 'Rechazada automáticamente: el lapso está bloqueado o el consejo de curso está completado',
+                    });
+                    return res.status(409).json({ message: 'El lapso está bloqueado o el consejo de curso está completado; la solicitud fue rechazada automáticamente' });
+                }
+            }
+        }
+        const now = new Date();
+        yield request.update({
+            status: action === 'approve' ? 'approved' : 'rejected',
+            reviewedBy: user.id,
+            reviewedAt: now,
+            reviewNote: reviewNote || null,
+            grantedAt: action === 'approve' ? now : null,
+        });
+        // If approved, apply the requested score change and reset the timer
+        if (action === 'approve') {
+            const qualification = yield index_1.Qualification.findByPk(request.qualificationId);
+            if (qualification) {
+                const wasAbsent = !!qualification.isAbsent;
+                const previousScore = wasAbsent ? null : (Number(qualification.score) || 0);
+                const newScore = request.requestedScore != null ? Number(request.requestedScore) : (previousScore !== null && previousScore !== void 0 ? previousScore : 0);
+                // Apply the grade change if a requestedScore was provided and differs from current state
+                // (also applies when the qualification was absent/NP, even if the numeric score matches)
+                const scoreChanged = request.requestedScore != null && (wasAbsent || newScore !== previousScore);
+                if (scoreChanged) {
+                    // Apply the grade change WITHOUT resetting the timer.
+                    // The grade was already locked; Control de Estudios approved the change,
+                    // so it should remain locked (teacher cannot freely edit again).
+                    yield qualification.update({
+                        score: newScore,
+                        isAbsent: false,
+                    });
+                    // Log the change to GradeChangeLog
+                    try {
+                        yield (0, gradeChangeLogService_1.logGradeChange)({
+                            entityType: 'qualification',
+                            entityId: qualification.id,
+                            previousScore,
+                            newScore,
+                            previousStatus: wasAbsent ? 'NP' : null,
+                            newStatus: null,
+                            editedBy: user.id,
+                            editorRole: userRoles.includes('Control de Estudios') ? 'Control de Estudios' : (userRoles[0] || null),
+                            reason: `Cambio solicitado por el profesor${request.justification ? `: ${request.justification}` : ''}`,
+                            metadata: {
+                                editRequestId: request.id,
+                                reviewedBy: user.id,
+                                reviewNote: reviewNote || null,
+                                requesterId: request.requestedBy,
+                            },
+                        });
+                    }
+                    catch (logErr) {
+                        console.error('[reviewQualificationEditRequest] logGradeChange error:', logErr);
+                    }
+                }
+                else {
+                    // No score change requested, just reset the timer
+                    yield qualification.update({
+                        scoreSetAt: now,
+                        remedialScoreSetAt: now,
+                    });
+                }
+            }
+        }
+        return res.json(request);
+    }
+    catch (error) {
+        console.error('[reviewQualificationEditRequest] Error:', error);
+        return res.status(500).json({ message: 'Error al revisar solicitud' });
+    }
+});
+exports.reviewQualificationEditRequest = reviewQualificationEditRequest;
+const resetQualificationTimer = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    var _a;
+    try {
+        const user = req.session.user;
+        if (!user)
+            return res.status(401).json({ message: 'No autorizado' });
+        const userRoles = user.roles || [];
+        if (!userRoles.includes('Control de Estudios') && !userRoles.includes('Master') && !userRoles.includes('Administrador')) {
+            return res.status(403).json({ message: 'No tiene permisos para resetear timers' });
+        }
+        const { qualificationIds, field } = req.body; // field: 'score' | 'remedial' | 'both' (default 'both')
+        if (!Array.isArray(qualificationIds) || qualificationIds.length === 0) {
+            return res.status(400).json({ message: 'Se requiere un arreglo de qualificationIds' });
+        }
+        const targetField = field || 'both';
+        // Read-only sections (blocked term / section closure / council done) must not
+        // get their timers reset — that would re-enable editing on final grades.
+        const targetQualifications = yield index_1.Qualification.findAll({
+            where: { id: { [sequelize_1.Op.in]: qualificationIds.map(Number) } },
+            attributes: ['id', 'termId', 'sectionId', 'gradeId'],
+        });
+        for (const q of targetQualifications) {
+            if (q.termId && q.sectionId) {
+                const sectionReadOnly = yield termSectionClosureService_1.TermSectionClosureService.isSectionReadOnly(q.termId, q.sectionId, (_a = q.gradeId) !== null && _a !== void 0 ? _a : undefined);
+                if (sectionReadOnly) {
+                    return res.status(403).json({ message: 'El lapso está bloqueado o el consejo de curso está completado; no se pueden resetear timers' });
+                }
+            }
+        }
+        const now = new Date();
+        const updateData = {};
+        if (targetField === 'score' || targetField === 'both')
+            updateData.scoreSetAt = now;
+        if (targetField === 'remedial' || targetField === 'both')
+            updateData.remedialScoreSetAt = now;
+        const [updated] = yield index_1.Qualification.update(updateData, {
+            where: { id: { [sequelize_1.Op.in]: qualificationIds.map(Number) } },
+        });
+        return res.json({ message: 'Timer reseteado correctamente', updated });
+    }
+    catch (error) {
+        console.error('[resetQualificationTimer] Error:', error);
+        return res.status(500).json({ message: 'Error al resetear timer' });
+    }
+});
+exports.resetQualificationTimer = resetQualificationTimer;

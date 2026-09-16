@@ -1,0 +1,10 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const termSectionClosureController_1 = require("../controllers/termSectionClosureController.js");
+const router = (0, express_1.Router)({ mergeParams: true });
+router.get('/:termId/section-closures', termSectionClosureController_1.getClosedSections);
+router.get('/:termId/closure-status', termSectionClosureController_1.getClosureStatus);
+router.post('/:termId/section-closures', termSectionClosureController_1.closeSection);
+router.delete('/:termId/section-closures/:sectionId/:gradeId', termSectionClosureController_1.reopenSection);
+exports.default = router;
