@@ -9,6 +9,7 @@
     "dev:sqlite": "concurrently \"npm run dev:sqlite:backend\" \"npm run dev:frontend\"",
     "dev:sqlite:backend": "cd backend && npm run dev:sqlite",
     "build": "npm run build:backend && npm run build:frontend",
+    "build:prod": "node build-production.js",
     "build:backend": "cd backend && npm run build",
     "build:frontend": "cd frontend && npm run build",
     "start": "cd backend && npm start",

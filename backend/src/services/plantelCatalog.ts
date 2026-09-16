@@ -15,7 +15,14 @@ let cachedPlanteles: PlantelRecord[] | null = null;
 
 const loadPlanteles = (): PlantelRecord[] => {
   // Always reload from file to get fresh data after scraping
-  const filePath = path.resolve(process.cwd(), 'src/assets/planteles.json');
+  const candidates = [
+    path.resolve(process.cwd(), 'src/assets/planteles.json'),
+    path.resolve(process.cwd(), 'assets/planteles.json'),
+    path.resolve(process.cwd(), 'dist/assets/planteles.json'),
+    path.resolve(__dirname, '../assets/planteles.json'),
+    path.resolve(__dirname, '../../src/assets/planteles.json')
+  ];
+  const filePath = candidates.find((p) => fs.existsSync(p)) || candidates[0];
   const raw = fs.readFileSync(filePath, 'utf-8');
   cachedPlanteles = JSON.parse(raw) as PlantelRecord[];
   return cachedPlanteles;

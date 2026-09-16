@@ -1,0 +1,15 @@
+{
+    "keep": {
+        "days": true,
+        "amount": 7
+    },
+    "auditLog": "D:\\JavierWorkSpace\\BatallaProject\\build - Copy\\logs\\.216dc7ad3dffe34dabc640100c58cf7300797be4-audit.json",
+    "files": [
+        {
+            "date": 1789572786851,
+            "name": "D:\\JavierWorkSpace\\BatallaProject\\build - Copy\\logs\\http-2026-09-16.log",
+            "hash": "0e937ecc20caf3cbaceea9a554be904b9cd2205fccc7127a4fa460cf392c00df"
+        }
+    ],
+    "hashType": "sha256"
+}

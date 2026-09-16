@@ -7,7 +7,15 @@ let cachedVenezuelaData: any[] | null = null;
 const loadVenezuelaData = () => {
   if (cachedVenezuelaData) return cachedVenezuelaData;
 
-  const filePath = path.resolve(process.cwd(), 'src/assets/venezuela.json');
+  const candidates = [
+    path.resolve(process.cwd(), 'src/assets/venezuela.json'),
+    path.resolve(process.cwd(), 'assets/venezuela.json'),
+    path.resolve(process.cwd(), 'dist/assets/venezuela.json'),
+    path.resolve(__dirname, '../assets/venezuela.json'),
+    path.resolve(__dirname, '../../src/assets/venezuela.json')
+  ];
+
+  const filePath = candidates.find((p) => fs.existsSync(p)) || candidates[0];
   const raw = fs.readFileSync(filePath, 'utf-8');
   cachedVenezuelaData = JSON.parse(raw);
   return cachedVenezuelaData;

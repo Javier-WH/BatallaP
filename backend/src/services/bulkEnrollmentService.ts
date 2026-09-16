@@ -126,7 +126,22 @@ const getColumnNumberByKeyInColumns = (key: string, columns: typeof BULK_ENROLLM
 };
 
 const buildLocationCatalogs = async (): Promise<LocationCatalogs> => {
-  const jsonPath = path.join(process.cwd(), 'src', 'assets', 'venezuela.json');
+  const candidates = [
+    path.join(process.cwd(), 'src', 'assets', 'venezuela.json'),
+    path.join(process.cwd(), 'assets', 'venezuela.json'),
+    path.join(process.cwd(), 'dist', 'assets', 'venezuela.json'),
+    path.join(__dirname, '..', 'assets', 'venezuela.json'),
+    path.join(__dirname, '..', '..', 'src', 'assets', 'venezuela.json')
+  ];
+
+  let jsonPath = candidates[0];
+  const fsSync = require('fs');
+  for (const candidate of candidates) {
+    if (fsSync.existsSync(candidate)) {
+      jsonPath = candidate;
+      break;
+    }
+  }
 
   try {
     const fileContent = await fs.readFile(jsonPath, 'utf-8');

@@ -2,6 +2,7 @@ import express, { Application } from 'express';
 import cors from 'cors';
 import session from 'express-session';
 import path from 'path';
+import fs from 'fs';
 import cookieParser from 'cookie-parser';
 import dotenv from 'dotenv';
 import morgan from 'morgan';
@@ -171,17 +172,48 @@ app.use('/api/attendance', attendanceRoutes);
 app.use('/api/gate', gateRoutes);
 
 // Serve uploaded files (logo, documents, dashboard images)
-const uploadsDir = path.join(__dirname, '..', 'public');
-app.use('/uploads', express.static(path.join(uploadsDir, 'uploads')));
+const findUploadsDir = (): string => {
+  const candidates = [
+    path.join(__dirname, '..', 'public', 'uploads'),
+    path.join(process.cwd(), 'public', 'uploads'),
+    path.join(__dirname, '..', '..', 'backend', 'public', 'uploads')
+  ];
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+  return candidates[0];
+};
+
+app.use('/uploads', express.static(findUploadsDir()));
 
 // Serve frontend static files (production build)
-const frontendDist = path.join(__dirname, '..', '..', 'frontend', 'dist');
+const findFrontendDist = (): string => {
+  const candidates = [
+    path.join(__dirname, '..', 'public'), // Production build folder layout (build/public)
+    path.join(process.cwd(), 'public'),
+    path.join(__dirname, '..', '..', 'frontend', 'dist'), // Dev workspace layout
+    path.join(process.cwd(), 'frontend', 'dist')
+  ];
+  for (const candidate of candidates) {
+    if (fs.existsSync(path.join(candidate, 'index.html'))) {
+      return candidate;
+    }
+  }
+  return candidates[0];
+};
+
+const frontendDist = findFrontendDist();
 app.use(express.static(frontendDist));
 
 // SPA fallback: serve index.html for any non-API route (React Router)
 app.use((req, res, next) => {
   if (req.method === 'GET' && !req.path.startsWith('/api/') && !req.path.startsWith('/uploads/')) {
-    return res.sendFile(path.join(frontendDist, 'index.html'));
+    const indexPath = path.join(frontendDist, 'index.html');
+    if (fs.existsSync(indexPath)) {
+      return res.sendFile(indexPath);
+    }
   }
   next();
 });

@@ -8,7 +8,7 @@
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "dev": "nodemon -r tsconfig-paths/register src/server.ts",
-    "build": "tsc",
+    "build": "tsc && tsc-alias",
     "start": "cross-env TS_NODE_PROJECT=tsconfig.prod.json node -r tsconfig-paths/register dist/server.js",
     "seed": "npx ts-node -r tsconfig-paths/register src/seed.ts",
     "db:sync-only": "npx ts-node -r tsconfig-paths/register -e \"(async () => { const sequelize = (await import('./src/config/database')).default; await import('./src/models/index'); await sequelize.authenticate(); await sequelize.sync({ force: true }); console.log('All models were synchronized successfully (force: true).'); })().catch((e) => { console.error(e); process.exit(1); });\"",
@@ -78,6 +78,7 @@
     "supertest": "^7.1.4",
     "ts-jest": "^29.4.6",
     "ts-node": "^10.9.2",
+    "tsc-alias": "^1.8.15",
     "typescript": "^5.9.3"
   }
 }
