@@ -77,8 +77,11 @@ try {
   emptyDirExceptGit(worktreeDir);
   copyDirSync(buildDir, worktreeDir);
 
-  // Stage everything (-f bypasses ignore rules like dist/)
+  // Stage everything (-f bypasses ignore rules like dist/),
+  // but never commit .env — secrets live only on the server and
+  // a committed .env would conflict with local edits on every pull.
   git('add -f -A .', worktreeDir);
+  gitOk('reset -q .env', worktreeDir);
   const status = git('status --porcelain', worktreeDir).trim();
 
   if (!status) {

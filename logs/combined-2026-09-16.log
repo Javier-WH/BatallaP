@@ -1,0 +1,14 @@
+{"level":"info","message":"✅ Conexión a base de datos establecida.","timestamp":"2026-09-16T16:35:12.106Z"}
+{"level":"info","message":"✅ Tabla de sesiones sincronizada.","timestamp":"2026-09-16T16:35:12.113Z"}
+{"level":"info","message":"✅ Modelos sincronizados correctamente.","timestamp":"2026-09-16T16:35:12.272Z"}
+{"level":"info","message":"✅ Catálogos de evaluación verificados.","timestamp":"2026-09-16T16:35:12.308Z"}
+{"level":"info","message":"✅ Presets de materias verificados.","timestamp":"2026-09-16T16:35:12.311Z"}
+{"level":"info","message":"✅ Presets de estructura verificados.","timestamp":"2026-09-16T16:35:12.313Z"}
+{"level":"info","message":"🚀 Backend iniciado en:","timestamp":"2026-09-16T16:35:12.319Z"}
+{"level":"info","message":"   → http://localhost:3000","timestamp":"2026-09-16T16:35:12.320Z"}
+{"level":"info","message":"   → http://192.168.0.173:3000","timestamp":"2026-09-16T16:35:12.320Z"}
+{"level":"info","message":"   → http://192.168.56.1:3000","timestamp":"2026-09-16T16:35:12.320Z"}
+{"level":"info","message":"   → http://172.18.0.1:3000","timestamp":"2026-09-16T16:35:12.321Z"}
+{"level":"info","message":"⏰ Cron de scraping BCV programado (00:00 Venezuela)","timestamp":"2026-09-16T16:35:12.341Z"}
+{"level":"info","message":"[Startup] Scraping BCV inicial...","timestamp":"2026-09-16T16:35:17.355Z"}
+{"level":"info","message":"[Startup] BCV OK: Tasas guardadas: USD=846.5131 (actualizado), EUR=977.18086211 (actualizado)","timestamp":"2026-09-16T16:35:18.016Z"}

@@ -38,8 +38,12 @@ try {
 
   // Step 3: Clean and recreate build/ folder
   console.log('\n📁 3/5 Preparando directorio /build...');
+  // Empty contents instead of deleting the dir itself — on Windows the dir can be
+  // locked if it is the cwd of another process (terminal, explorer, server).
   if (fs.existsSync(buildDir)) {
-    fs.rmSync(buildDir, { recursive: true, force: true });
+    for (const entry of fs.readdirSync(buildDir)) {
+      fs.rmSync(path.join(buildDir, entry), { recursive: true, force: true });
+    }
   }
   fs.mkdirSync(buildDir, { recursive: true });
 
@@ -108,24 +112,31 @@ require('./dist/server.js');
 `;
   fs.writeFileSync(path.join(buildDir, 'server.js'), serverEntryContent, 'utf-8');
 
-  // Create .env.example
-  const envExampleContent = `# Variables de Entorno para Producción (Netcup)
+  // Create .env.example and a ready-to-edit .env for the VPS
+  const envContent = `# Variables de Entorno - Producción (VPS)
+# Edita estos valores según tu servidor antes de arrancar.
+
 PORT=3000
 NODE_ENV=production
-CORS_ORIGIN=http://tu-dominio.com
 
-# Configuración MySQL Netcup
+# Origen permitido para CORS (tu dominio). Usa * solo para pruebas.
+CORS_ORIGIN=*
+
+# Base de datos
+# DB_DIALECT: mysql | mariadb | sqlite
+#   - MariaDB acepta tanto 'mysql' (driver mysql2) como 'mariadb' (driver mariadb)
 DB_HOST=127.0.0.1
 DB_PORT=3306
-DB_USER=usuario_db
-DB_PASSWORD=contrasena_db
-DB_NAME=nombre_db
+DB_USER=root
+DB_PASS=
+DB_NAME=bp
 DB_DIALECT=mysql
 
-# Claves de Sesión
+# Clave de sesión - CAMBIAR en producción por una cadena larga y aleatoria
 SESSION_SECRET=cambiar_por_una_clave_secreta_segura
 `;
-  fs.writeFileSync(path.join(buildDir, '.env.example'), envExampleContent, 'utf-8');
+  fs.writeFileSync(path.join(buildDir, '.env.example'), envContent, 'utf-8');
+  fs.writeFileSync(path.join(buildDir, '.env'), envContent, 'utf-8');
 
   // Create README inside build folder
   const buildReadmeContent = `# Instrucciones de Despliegue en Netcup (BatallaProject)

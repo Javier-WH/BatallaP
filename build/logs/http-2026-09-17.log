@@ -1,0 +1,10 @@
+{"level":"http","message":"GET / 200 3.291 ms - 521","timestamp":"2026-09-17T12:40:39.522Z"}
+{"level":"http","message":"GET /assets/index-BCOnGdqF.css 200 0.608 ms - 413689","timestamp":"2026-09-17T12:40:39.662Z"}
+{"level":"http","message":"GET /assets/index-1GHc5tjx.js 200 524.279 ms - 7217493","timestamp":"2026-09-17T12:40:40.287Z"}
+{"level":"http","message":"GET /api/auth/me 401 0.925 ms - 23","timestamp":"2026-09-17T12:40:40.599Z"}
+{"level":"http","message":"GET /api/settings 200 4.437 ms - 30904","timestamp":"2026-09-17T12:40:40.607Z"}
+{"level":"http","message":"GET /api/academic/active 200 7.412 ms - 224","timestamp":"2026-09-17T12:40:40.615Z"}
+{"level":"http","message":"GET /api/academic/periods 200 5.071 ms - 1836","timestamp":"2026-09-17T12:40:40.617Z"}
+{"level":"http","message":"GET /api/payments/exchange-rates/at-date 200 9.128 ms - 527","timestamp":"2026-09-17T12:40:40.627Z"}
+{"level":"http","message":"GET /api/settings/enable_grade_rounding 200 1.986 ms - 125","timestamp":"2026-09-17T12:40:40.719Z"}
+{"level":"http","message":"GET /api/upload/logo?t=1789648840624 200 1.505 ms - 2569322","timestamp":"2026-09-17T12:40:40.735Z"}
