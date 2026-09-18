@@ -22,7 +22,7 @@ import path from 'path';
 import sequelize from '@/config/database';
 import {
   Schedule, ScheduleEntry, PeriodGradeSection, PeriodGrade, PeriodGradeSubject,
-  Subject, TeacherAssignment, TeacherAvailability, Setting, Grade, Section, Person,
+  Subject, TeacherAssignment, TeacherAvailability, TeacherAdminHour, Setting, Grade, Section, Person,
   ScheduleException, ScheduleLink, ScheduleLinkItem,
 } from '@/models';
 
@@ -454,6 +454,10 @@ export async function generateSchedulesForPeriod(
   if (placedEntries.length > 0) {
     const t = await sequelize.transaction();
     try {
+      // Painted administrative hours are tied to the generated schedule — a new
+      // generation replaces it, so they must be re-painted afterwards.
+      await TeacherAdminHour.destroy({ where: { schoolPeriodId }, transaction: t });
+
       const bySection = new Map<number, typeof placedEntries>();
       placedEntries.forEach(e => {
         if (!bySection.has(e.periodGradeSectionId)) bySection.set(e.periodGradeSectionId, []);

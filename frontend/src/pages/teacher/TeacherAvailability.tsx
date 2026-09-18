@@ -413,6 +413,20 @@ export default function TeacherAvailability() {
     const map: Record<string, any[]> = {};
     scheduleEntries.forEach((e: any) => {
       const key = `${e.day}|${e.periodId}`;
+      if (!map[key]) map[key] = [];
+      // Administrative hours come as pseudo-entries (no schedule/subject)
+      if (e.isAdminHour) {
+        map[key].push({
+          isAdminHour: true,
+          subjectName: 'HORAS ADMINISTRATIVAS',
+          subjectId: null,
+          sectionLabel: '',
+          sectionSignature: 'ADMIN',
+          sectionColor: '#d97706',
+          isGroup: false,
+        });
+        return;
+      }
       const sec = e.schedule?.section;
       const gradeName = sec?.periodGrade?.grade?.name ?? '';
       const sectionName = sec?.section?.name ?? '';

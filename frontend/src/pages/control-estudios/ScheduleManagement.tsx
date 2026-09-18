@@ -114,6 +114,7 @@ interface ScheduleEntryData {
   teacherId: number | null;
   isGroupSubject: boolean;
   subjectName?: string;
+  isAdminHour?: boolean;
   subject?: { id: number; name: string; allowConsecutiveBlocks?: boolean; subjectGroupId?: number | null };
   teacher?: { id: number; firstName: string; lastName: string };
 }
@@ -135,6 +136,7 @@ function cellSignature(cellEntries: ScheduleEntryData[] | undefined): string {
   if (!cellEntries || cellEntries.length === 0) return '';
   return cellEntries
     .map(e => {
+      if (e.isAdminHour) return 'ADMIN';
       const sec = (e as any).sectionSignature ?? '';
       return `${e.subjectId}:${e.teacherId}:${sec}:${e.isGroupSubject ? 1 : 0}`;
     })
@@ -221,13 +223,15 @@ function DroppableCell({
   );
 }
 
-function ScheduleGrid({ sections, entries, onCellClick, editable, getCellLabel, colorBySection }: {
+function ScheduleGrid({ sections, entries, onCellClick, editable, getCellLabel, colorBySection, onCellMouseDown, onCellMouseEnter }: {
   sections: ScheduleSection[];
   entries: Record<string, ScheduleEntryData[]>;
   onCellClick?: (day: string, period: Period) => void;
   editable: boolean;
   getCellLabel: (day: string, period: Period, cellEntries: ScheduleEntryData[]) => React.ReactNode;
   colorBySection?: boolean;
+  onCellMouseDown?: (day: string, period: Period, span: number) => void;
+  onCellMouseEnter?: (day: string, period: Period, span: number) => void;
 }) {
   // Build an ordered list of non-break periods (row order)
   const orderedPeriods: Period[] = [];
@@ -387,6 +391,8 @@ function ScheduleGrid({ sections, entries, onCellClick, editable, getCellLabel, 
                           className={cellClassName}
                           style={cellStyle}
                           onClick={() => editable && onCellClick?.(day, period)}
+                          onMouseDown={onCellMouseDown ? (e) => { e.preventDefault(); onCellMouseDown(day, period, span); } : undefined}
+                          onMouseEnter={onCellMouseEnter ? () => onCellMouseEnter(day, period, span) : undefined}
                         >
                           {cellContent}
                         </td>
@@ -896,6 +902,19 @@ const ScheduleManagement: React.FC = () => {
   const [teacherLoading, setTeacherLoading] = useState(false);
   const [teacherRoomLookup, setTeacherRoomLookup] = useState<(day: string, periodId: string, sectionKey: string, subjectId?: number) => string>(() => () => '');
 
+  // Administrative hours paint mode (teacher schedule overlay, painted by Control de Estudios)
+  const [adminPaintMode, setAdminPaintMode] = useState(false);
+  const [adminCells, setAdminCells] = useState<Record<string, string>>({});
+  const [adminSaving, setAdminSaving] = useState(false);
+  const adminPainting = useRef(false);
+  const adminPaintValue = useRef(true); // true = paint, false = erase
+
+  useEffect(() => {
+    const stop = () => { adminPainting.current = false; };
+    window.addEventListener('mouseup', stop);
+    return () => window.removeEventListener('mouseup', stop);
+  }, []);
+
   // Exceptions modal state
   const [exceptionsModalOpen, setExceptionsModalOpen] = useState(false);
   const [exceptions, setExceptions] = useState<any[]>([]);
@@ -1197,6 +1216,19 @@ const ScheduleManagement: React.FC = () => {
     const map: Record<string, any[]> = {};
     rawEntries.forEach((e: any) => {
       const key = `${e.day}|${e.periodId}`;
+      if (!map[key]) map[key] = [];
+      if (e.isAdminHour) {
+        map[key].push({
+          isAdminHour: true,
+          subjectName: 'Horas Administrativas',
+          subjectAbbreviation: 'H.ADM',
+          subjectId: null,
+          sectionLabel: '',
+          isGroup: false,
+          room: '',
+        });
+        return;
+      }
       const sec = e.schedule?.section;
       const gradeName = sec?.periodGrade?.grade?.name ?? '';
       const sectionName = sec?.section?.name ?? '';
@@ -1205,7 +1237,6 @@ const ScheduleManagement: React.FC = () => {
       const room = roomLookup && gradeId != null && sectionId != null
         ? roomLookup(e.day, String(e.periodId), `${gradeId}-${sectionId}`, e.subjectId)
         : '';
-      if (!map[key]) map[key] = [];
       map[key].push({
         subjectName: e.subject?.name,
         subjectAbbreviation: e.subject?.abbreviation,
@@ -1309,7 +1340,14 @@ const ScheduleManagement: React.FC = () => {
         api.get(`/schedules/teacher/${personId}`, { params: { schoolPeriodId: viewPeriod.id } }),
         fetchRoomLookup(),
       ]);
-      setTeacherEntries(res.data || []);
+      // Split admin-hour pseudo-entries (merged by the backend) from class entries
+      const adminMap: Record<string, string> = {};
+      const classEntries = (res.data || []).filter((e: any) => {
+        if (e.isAdminHour) { adminMap[`${e.day}|${e.periodId}`] = 'admin'; return false; }
+        return true;
+      });
+      setAdminCells(adminMap);
+      setTeacherEntries(classEntries);
       setTeacherRoomLookup(() => roomLookup);
     } catch (e) {
       console.error('Error loading teacher schedule:', e);
@@ -1403,8 +1441,92 @@ const ScheduleManagement: React.FC = () => {
         room: (gradeId != null && sectionId != null) ? teacherRoomLookup(e.day, String(e.periodId), `${gradeId}-${sectionId}`, e.subjectId) : '',
       });
     });
+
+    // Merge painted administrative hours (they only live in adminCells state)
+    Object.keys(adminCells).forEach(key => {
+      const [day, periodId] = key.split('|');
+      if (!map[key]) map[key] = [];
+      map[key].push({
+        isAdminHour: true,
+        subjectName: 'Horas Administrativas',
+        subjectAbbreviation: 'H.ADM',
+        subjectId: null,
+        teacherId: selectedTeacherId ?? null,
+        day,
+        periodId,
+        isGroupSubject: false,
+        sectionLabel: '',
+        sectionColor: '#d97706',
+        isGroup: false,
+        room: '',
+      });
+    });
     return map;
-  }, [teacherEntries, teacherRoomLookup]);
+  }, [teacherEntries, teacherRoomLookup, adminCells, selectedTeacherId]);
+
+  // ── Administrative hours painting ──
+  // A merged cell covers `span` consecutive non-break periods of its section.
+  const adminCoveredPeriodIds = (period: Period, span: number): string[] => {
+    const sec = scheduleSections.find(s => s.id === period.section);
+    if (!sec) return [period.id];
+    const raw = sec.periods;
+    const idx = raw.findIndex(p => p.id === period.id);
+    const ids: string[] = [];
+    for (let k = idx; k >= 0 && k < raw.length && ids.length < span; k++) {
+      if (!raw[k].break) ids.push(raw[k].id);
+    }
+    return ids;
+  };
+
+  const applyAdminPaint = (day: string, periodIds: string[], value: boolean) => {
+    setAdminCells(prev => {
+      const next = { ...prev };
+      let changed = false;
+      periodIds.forEach(pid => {
+        const key = `${day}|${pid}`;
+        const hasClass = (teacherEntriesMap[key] ?? []).some((e: any) => !e.isAdminHour);
+        if (value) {
+          if (!hasClass && !next[key]) { next[key] = 'admin'; changed = true; }
+        } else if (next[key]) {
+          delete next[key];
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  };
+
+  const handleAdminMouseDown = (day: string, period: Period, span: number) => {
+    if (!adminPaintMode) return;
+    const ids = adminCoveredPeriodIds(period, span);
+    // If any covered cell is already painted, erase; otherwise paint.
+    const anyPainted = ids.some(pid => adminCells[`${day}|${pid}`]);
+    adminPainting.current = true;
+    adminPaintValue.current = !anyPainted;
+    applyAdminPaint(day, ids, !anyPainted);
+  };
+
+  const handleAdminMouseEnter = (day: string, period: Period, span: number) => {
+    if (!adminPaintMode || !adminPainting.current) return;
+    applyAdminPaint(day, adminCoveredPeriodIds(period, span), adminPaintValue.current);
+  };
+
+  const saveAdminHours = async () => {
+    if (!selectedTeacherId || !viewPeriod) return;
+    setAdminSaving(true);
+    try {
+      await api.post(`/teacher-admin-hours/${selectedTeacherId}`, {
+        schoolPeriodId: viewPeriod.id,
+        cells: adminCells,
+      });
+      message.success('Horas administrativas guardadas');
+    } catch (e: any) {
+      console.error('Error saving admin hours:', e);
+      message.error(e?.response?.data?.message || 'Error al guardar horas administrativas');
+    } finally {
+      setAdminSaving(false);
+    }
+  };
 
   // Enter edit mode
   const enterEditMode = () => {
@@ -2204,7 +2326,7 @@ const ScheduleManagement: React.FC = () => {
                     className="teacher-select"
                     popupClassName="teacher-select-dropdown"
                     value={selectedTeacherId}
-                    onChange={setSelectedTeacherId}
+                    onChange={(v) => { setSelectedTeacherId(v); setAdminPaintMode(false); }}
                     options={teachersList.map(t => ({ value: t.id, label: t.label }))}
                     showSearch
                     optionFilterProp="label"
@@ -2212,6 +2334,24 @@ const ScheduleManagement: React.FC = () => {
                   {selectedTeacherId && (
                     <>
                       <Button icon={<ReloadOutlined />} onClick={() => loadTeacherSchedule(selectedTeacherId)}>Recargar</Button>
+                      <Button
+                        icon={<EditOutlined />}
+                        type={adminPaintMode ? 'primary' : 'default'}
+                        onClick={() => setAdminPaintMode(v => !v)}
+                        disabled={scheduleLocked || isReadOnly}
+                      >
+                        Horas administrativas
+                      </Button>
+                      {adminPaintMode && (
+                        <>
+                          <Tag color="orange" style={{ marginInlineEnd: 0 }}>
+                            H. administrativas: {Object.keys(adminCells).length}
+                          </Tag>
+                          <Button icon={<SaveOutlined />} onClick={saveAdminHours} loading={adminSaving}>
+                            Guardar
+                          </Button>
+                        </>
+                      )}
                       <Button
                         type="primary"
                         icon={<FileExcelOutlined />}
@@ -2249,13 +2389,30 @@ const ScheduleManagement: React.FC = () => {
                   <div className="flex justify-center p-12"><Spin size="large" /></div>
                 ) : (
                   <Card title={`Horario: ${teachersList.find(t => t.id === selectedTeacherId)?.label ?? ''}`}>
+                    {adminPaintMode && (
+                      <Alert
+                        type="info"
+                        showIcon
+                        className="mb-3"
+                        message="Modo pintura activo: haz clic y arrastra sobre las celdas vacías para asignar horas administrativas. Haz clic sobre una celda pintada para quitarla. Recuerda guardar."
+                      />
+                    )}
                     <ScheduleGrid
                       sections={scheduleSections}
                       entries={teacherEntriesMap as any}
                       editable={false}
                       colorBySection
+                      onCellMouseDown={adminPaintMode ? handleAdminMouseDown : undefined}
+                      onCellMouseEnter={adminPaintMode ? handleAdminMouseEnter : undefined}
                       getCellLabel={(_day, _period, cellEntries: any) => {
                         const entry = Array.isArray(cellEntries) ? cellEntries[0] : cellEntries;
+                        if (entry?.isAdminHour) {
+                          return (
+                            <span className="font-bold text-amber-700" style={{ fontSize: 10 }}>
+                              HORAS ADMINISTRATIVAS
+                            </span>
+                          );
+                        }
                         if (!entry?.subjectName) return <span className="text-slate-300">—</span>;
                         return (
                           <div className="flex flex-col gap-0.5 text-left">

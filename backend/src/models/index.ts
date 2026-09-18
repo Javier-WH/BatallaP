@@ -154,6 +154,7 @@ import Payment from './Payment';
 import Charge from './Charge';
 import ConstanciaTemplate from './ConstanciaTemplate';
 import TeacherAvailability from './TeacherAvailability';
+import TeacherAdminHour from './TeacherAdminHour';
 import Schedule from './Schedule';
 import ScheduleEntry from './ScheduleEntry';
 import ScheduleException from './ScheduleException';
@@ -357,6 +358,11 @@ EnrollmentAnswer.belongsTo(Person, { foreignKey: 'personId', as: 'student' });
 // Teacher Availability
 Person.hasMany(TeacherAvailability, { foreignKey: 'personId', as: 'availability' });
 TeacherAvailability.belongsTo(Person, { foreignKey: 'personId', as: 'person' });
+
+// Teacher administrative hours (painted per-period on the teacher's schedule)
+Person.hasMany(TeacherAdminHour, { foreignKey: 'teacherId', as: 'adminHours' });
+TeacherAdminHour.belongsTo(Person, { foreignKey: 'teacherId', as: 'teacher' });
+TeacherAdminHour.belongsTo(SchoolPeriod, { foreignKey: 'schoolPeriodId', as: 'schoolPeriod' });
 
 // Schedules
 PeriodGradeSection.hasOne(Schedule, { foreignKey: 'periodGradeSectionId', as: 'schedule' });
@@ -729,6 +735,7 @@ export {
   Charge,
   ConstanciaTemplate,
   TeacherAvailability,
+  TeacherAdminHour,
   Schedule,
   ScheduleEntry,
   ScheduleException,

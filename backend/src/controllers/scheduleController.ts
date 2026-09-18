@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import sequelize from '@/config/database';
-import { Schedule, ScheduleEntry, PeriodGradeSection, Subject, Person, SchoolPeriod, PeriodGrade, Grade, Section, TeacherAssignment, PeriodGradeSubject } from '@/models';
+import { Schedule, ScheduleEntry, PeriodGradeSection, Subject, Person, SchoolPeriod, PeriodGrade, Grade, Section, TeacherAssignment, PeriodGradeSubject, TeacherAdminHour } from '@/models';
 import { generateSchedulesForPeriod } from '@/services/scheduleGeneratorService';
 
 // POST /api/schedules/generate?schoolPeriodId=
@@ -208,6 +208,28 @@ export const getTeacherSchedule = async (req: Request, res: Response) => {
         { model: Subject, as: 'subject' },
       ],
     });
+
+    // Merge painted administrative hours as pseudo-entries (flagged isAdminHour)
+    if (schoolPeriodId) {
+      const adminRows = await TeacherAdminHour.findAll({
+        where: { teacherId: Number(personId), schoolPeriodId: Number(schoolPeriodId) },
+      });
+      adminRows.forEach(r => {
+        entries.push({
+          id: -r.id,
+          scheduleId: 0,
+          day: r.day,
+          periodId: r.periodId,
+          subjectId: null,
+          teacherId: r.teacherId,
+          isGroupSubject: false,
+          isAdminHour: true,
+          schedule: null,
+          subject: null,
+        } as any);
+      });
+    }
+
     return res.json(entries);
   } catch (error) {
     console.error('[getTeacherSchedule] Error:', error);

@@ -43,6 +43,7 @@
 | `/api/external-grades` | `externalGradeRoutes.ts` |
 | `/api/attendance` | `attendanceRoutes.ts` |
 | `/api/gate` | `gateRoutes.ts` (RFID foundation) |
+| `/api/teacher-admin-hours` | `teacherAdminHourRoutes.ts` |
 
 ## Orden en `app.ts`
 

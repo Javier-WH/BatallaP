@@ -31,8 +31,13 @@ interface ScheduleEntryData {
   teacher?: { firstName: string; lastName: string };
   /** Classroom name (teacher schedule only). */
   room?: string;
+  /** Section label e.g. "1° A" (teacher schedule only — keeps cells from
+   *  merging across sections when the subject repeats). */
+  sectionLabel?: string;
   /** Subject abbreviation from the system (if available). */
   subjectAbbreviation?: string;
+  /** Administrative hour pseudo-entry (teacher schedule only). */
+  isAdminHour?: boolean;
 }
 
 export interface HorarioInput {
@@ -51,6 +56,7 @@ export interface HorarioInput {
 
 // Get the subject display name (abbreviation if available, else name) uppercased
 function subjectDisplay(e: ScheduleEntryData): string {
+  if (e.isAdminHour) return 'HORAS ADMINISTRATIVAS';
   const abbr = (e as any).subjectAbbreviation || (e as any).abbreviation;
   const name = e.subjectName || e.subject?.name || '';
   return (abbr || name).toUpperCase();
@@ -80,12 +86,67 @@ function cellRoom(cellEntries: ScheduleEntryData[] | undefined): string {
   return '';
 }
 
+// Compact section label: "Quinto Año Sección B" -> "5to B"
+// Strips "Año"/"Sección" and converts the grade ordinal to a number.
+const ORDINAL_WORDS: Record<string, number> = {
+  primer: 1, primero: 1, primera: 1,
+  segundo: 2, segunda: 2,
+  tercer: 3, tercero: 3, tercera: 3,
+  cuarto: 4, cuarta: 4,
+  quinto: 5, quinta: 5,
+  sexto: 6, sexta: 6,
+  septimo: 7, septima: 7,
+  octavo: 8, octava: 8,
+  noveno: 9, novena: 9,
+  decimo: 10, decima: 10,
+};
+const ORDINAL_SUFFIX = ['ro', 'do', 'ro', 'to', 'to', 'to', 'mo', 'vo', 'no', 'mo'];
+
+function shortenSectionLabel(label: string): string {
+  // Strip accents so word matching works regardless of "Sección"/"Año" accents
+  let s = label.normalize('NFD').replace(/[̀-ͯ]/g, '');
+  s = s.replace(/seccion/gi, '').replace(/ano/gi, '').replace(/\s+/g, ' ').trim();
+  const tokens = s.split(' ');
+  let num: number | null = null;
+  const rest: string[] = [];
+  for (const t of tokens) {
+    if (num === null) {
+      const word = ORDINAL_WORDS[t.toLowerCase()];
+      if (word != null) { num = word; continue; }
+      const m = t.match(/^(\d+)/); // "5", "5°", "5to", "1er"...
+      if (m) { num = Number(m[1]); continue; }
+    }
+    rest.push(t);
+  }
+  if (num != null) {
+    const suffix = ORDINAL_SUFFIX[num - 1] || 'to';
+    return `${num}${suffix} ${rest.join(' ').toUpperCase()}`.trim();
+  }
+  return s.toUpperCase();
+}
+
+// Get the section label(s) for a cell (teacher schedules only — group
+// subjects can span several sections in the same slot)
+function cellSectionLabel(cellEntries: ScheduleEntryData[] | undefined): string {
+  if (!cellEntries || cellEntries.length === 0) return '';
+  const seen = new Set<string>();
+  const labels: string[] = [];
+  for (const e of cellEntries) {
+    const label = shortenSectionLabel(e.sectionLabel || '');
+    if (label && !seen.has(label)) {
+      seen.add(label);
+      labels.push(label);
+    }
+  }
+  return labels.join(' / ');
+}
+
 // Build a signature to detect mergeable consecutive cells
-// Use the subject name + room as the signature — if two consecutive cells
-// show the same subject and room, they should be merged
+// Subject + section + room: consecutive cells merge only when all three
+// match — the same subject taught to different sections must NOT merge
 function cellSignature(cellEntries: ScheduleEntryData[] | undefined): string {
   if (!cellEntries || cellEntries.length === 0) return '';
-  return `${cellSubjectName(cellEntries)}|${cellRoom(cellEntries)}`;
+  return `${cellSubjectName(cellEntries)}|${cellSectionLabel(cellEntries)}|${cellRoom(cellEntries)}`;
 }
 
 const mediumBorder: Partial<ExcelJS.Borders> = {
@@ -267,18 +328,20 @@ function renderHorarioBlock(
         if (!info?.start) return;
         const cell = row.getCell(col);
         const subj = cellSubjectName(entries[key]);
-        const room = cellRoom(entries[key]);
+        const subLine = [cellSectionLabel(entries[key]), cellRoom(entries[key])]
+          .filter(Boolean)
+          .join(' · ');
         if (subj) {
-          if (room) {
-            // Rich text: subject in bold+larger, room in gray+smaller
+          if (subLine) {
+            // Rich text: subject in bold+larger, section/room in gray+smaller
             cell.value = {
               richText: [
                 { text: subj, font: cellSubjectFont as any },
-                { text: '\n' + room, font: cellRoomFont as any },
+                { text: '\n' + subLine, font: cellRoomFont as any },
               ],
             } as any;
           } else {
-            // No room: subject in bold+larger only
+            // No sub-line: subject in bold+larger only
             cell.value = {
               richText: [
                 { text: subj, font: cellSubjectFont as any },
@@ -450,6 +513,26 @@ function renderHeaderBlock(
   return currentRow;
 }
 
+// Count painted administrative hours (pseudo-entries flagged isAdminHour)
+function countAdminHours(entries: Record<string, ScheduleEntryData[]>): number {
+  let n = 0;
+  for (const arr of Object.values(entries)) {
+    for (const e of arr) if (e.isAdminHour) n++;
+  }
+  return n;
+}
+
+// Render a "HORAS ADMINISTRATIVAS SEMANALES: N" footer row; returns the next row
+function renderAdminHoursTotal(ws: ExcelJS.Worksheet, row: number, count: number): number {
+  const r = ws.getRow(row);
+  ws.mergeCells(row, 1, row, 6);
+  const c = r.getCell(1);
+  c.value = `HORAS ADMINISTRATIVAS SEMANALES: ${count}`;
+  c.font = { name: 'Cambria', size: 9, bold: true };
+  c.alignment = { horizontal: 'left', vertical: 'middle' };
+  return row + 1;
+}
+
 function formatSectionLabel(gradeOrder: number | undefined, sectionName: string | undefined, fallback: string): string {
   if (gradeOrder != null && sectionName) {
     const letter = sectionName.replace(/secci[oó]n/i, '').trim().toUpperCase();
@@ -498,7 +581,11 @@ export async function generateHorario(input: HorarioInput) {
     isTeacher: sectionLabel === 'Profesor',
   });
 
-  renderHorarioBlock(ws, afterHeader, { sections, entries });
+  const afterBlock = renderHorarioBlock(ws, afterHeader, { sections, entries });
+  if (sectionLabel === 'Profesor') {
+    const adminCount = countAdminHours(entries);
+    if (adminCount > 0) renderAdminHoursTotal(ws, afterBlock, adminCount);
+  }
 
   const buffer = await workbook.xlsx.writeBuffer();
   const fileName = `horario_${formattedSectionLabel.replace(/[^\w]/g, '_')}_${dayjs().format('YYYY-MM-DD')}.xlsx`;
@@ -685,7 +772,8 @@ export async function generateHorarioBatchTeachers(
       entries: item.entries,
     });
 
-    currentRow = afterBlock;
+    const adminCount = countAdminHours(item.entries);
+    currentRow = adminCount > 0 ? renderAdminHoursTotal(ws, afterBlock, adminCount) : afterBlock;
     countInSheet++;
 
     if (countInSheet < items.length) {

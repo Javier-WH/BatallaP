@@ -111,6 +111,7 @@
 | `ScheduleException` | Excepción de generación por materia del período: `allowConsecutiveBlocks`, `weeklyBlocks`, `maxHoursPerDay`. Sobrescribe los valores por defecto del generador. |
 | `ScheduleLink` | Vínculo manual entre materias de **diferentes grados** del mismo período para que el generador las coloque en el mismo bloque horario. Tiene `name` opcional y `schoolPeriodId`. |
 | `ScheduleLinkItem` | Item de un vínculo: `linkId` + `subjectId` + `periodGradeId`. UNIQUE(`linkId`, `subjectId`, `periodGradeId`). Un par (materia, grado) solo puede pertenecer a un vínculo por período. |
+| `TeacherAdminHour` | Hora administrativa pintada sobre el horario del profesor (no es materia ni `ScheduleEntry`). UNIQUE(`teacherId`, `schoolPeriodId`, `day`, `period_id`). Se limpian al regenerar horarios del período. Base para cuantificación de horas (futuro módulo de sueldos). |
 
 ## Asociaciones clave
 
