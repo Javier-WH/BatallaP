@@ -414,7 +414,7 @@ const MatriculationEnrollment: React.FC = () => {
       const endpoint = (viewStatus === 'completed' || isWithdrawnView) ? '/inscriptions' : '/matriculations';
       const params: any = {
         status: viewStatus === 'pending' && !isWithdrawnView ? 'pending' : undefined,
-        schoolPeriodId: filterSchoolPeriod || undefined, // Usar filtro si está seleccionado, sino no filtrar
+        schoolPeriodId: filterSchoolPeriod || activePeriod?.id || undefined, // Empty filter falls back to the active period
         includeWithdrawn: isWithdrawnView ? 'true' : undefined,
       };
       const [dataRes, structRes, locRes] = await Promise.all([
@@ -1298,7 +1298,8 @@ const MatriculationEnrollment: React.FC = () => {
       if (filterSection && item.sectionId !== filterSection) return false;
       if (filterGender && item.student.gender !== filterGender) return false;
       if (filterEscolaridad && item.tempData.escolaridad !== filterEscolaridad) return false;
-      if (filterSchoolPeriod && item.schoolPeriodId !== filterSchoolPeriod) return false;
+      const effectivePeriodId = filterSchoolPeriod ?? activePeriod?.id;
+      if (effectivePeriodId && item.schoolPeriodId !== effectivePeriodId) return false;
       if (canManageVisibility && filterInscription && filterInscription !== 'retirado') {
         const isHidden = !!item.hiddenFromControlEstudios;
         if (filterInscription === 'inscrito' && isHidden) return false;
@@ -1317,7 +1318,7 @@ const MatriculationEnrollment: React.FC = () => {
       }
       return true;
     });
-  }, [matriculations, searchValue, filterGrade, filterSection, filterGender, filterEscolaridad, filterSchoolPeriod, filterMissing, filterInscription, canManageVisibility, questions]);
+  }, [matriculations, searchValue, filterGrade, filterSection, filterGender, filterEscolaridad, filterSchoolPeriod, activePeriod, filterMissing, filterInscription, canManageVisibility, questions]);
 
   const exportToExcel = useCallback(async () => {
     try {
