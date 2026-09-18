@@ -2765,6 +2765,12 @@ export const getAllAssignments = async (req: Request, res: Response) => {
 
     const pagination = parsePagination(req.query as Record<string, unknown>);
 
+    // Allow filtering by a specific schoolPeriodId (for historical read-only views).
+    // When not provided, default to the active period.
+    const schoolPeriodId = req.query.schoolPeriodId
+      ? Number(req.query.schoolPeriodId)
+      : undefined;
+
     const baseInclude: any[] = [
       {
         model: PeriodGradeSubject,
@@ -2782,7 +2788,9 @@ export const getAllAssignments = async (req: Request, res: Response) => {
                 model: SchoolPeriod,
                 as: 'schoolPeriod',
                 required: true,
-                where: { status: 'activo' }
+                where: schoolPeriodId
+                  ? { id: schoolPeriodId }
+                  : { status: 'activo' }
               }
             ]
           }

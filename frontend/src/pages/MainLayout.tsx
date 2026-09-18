@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Layout, Button, Badge, Modal, Dropdown, Tag } from 'antd';
+import type { MenuProps } from 'antd';
 import {
   LeftOutlined,
   RightOutlined,
@@ -39,6 +40,23 @@ const MainLayout: React.FC = () => {
 
   const canSeePreinscripcion = user?.roles?.some(r => r === 'Master' || r === 'Administrador');
   const visiblePeriods = allPeriods.filter(p => p.status !== 'preinscripcion' || canSeePreinscripcion);
+
+  const periodMenu: MenuProps = {
+    items: visiblePeriods.map(p => ({
+      key: String(p.id),
+      label: (
+        <div className="flex items-center justify-between gap-3 py-0.5">
+          <span className="font-medium text-sm">{p.name}</span>
+          {p.status === 'activo'
+            ? <Tag color="green" className="ml-2 border-none rounded-full text-[10px] font-bold">Activo</Tag>
+            : p.status === 'preinscripcion'
+              ? <Tag color="blue" className="ml-2 border-none rounded-full text-[10px] font-bold">Preinscripción</Tag>
+              : <Tag color="default" className="ml-2 border-none rounded-full text-[10px] font-bold">Histórico</Tag>}
+        </div>
+      ),
+      onClick: () => setViewPeriod(p),
+    })),
+  };
 
   const handleLogout = () => {
     Modal.confirm({
@@ -291,60 +309,61 @@ const MainLayout: React.FC = () => {
             </div>
             {/* Global Context Indicator: Active Period (clickable dropdown) */}
             {viewPeriod && (
-              <Dropdown
-                trigger={['click']}
-                menu={{
-                  items: visiblePeriods.map(p => ({
-                    key: String(p.id),
-                    label: (
-                      <div className="flex items-center justify-between gap-3 py-0.5">
-                        <span className="font-medium text-sm">{p.name}</span>
-                        {p.status === 'activo'
-                          ? <Tag color="green" className="ml-2 border-none rounded-full text-[10px] font-bold">Activo</Tag>
-                          : p.status === 'preinscripcion'
-                            ? <Tag color="blue" className="ml-2 border-none rounded-full text-[10px] font-bold">Preinscripción</Tag>
-                            : <Tag color="default" className="ml-2 border-none rounded-full text-[10px] font-bold">Histórico</Tag>}
-                      </div>
-                    ),
-                    onClick: () => setViewPeriod(p),
-                  })),
-                }}
-              >
-                <div
-                  className="ml-2 hidden md:flex items-center gap-3 cursor-pointer rounded-xl px-3 py-1.5 transition-all hover:bg-slate-50"
-                  title="Cambiar período de visualización"
-                >
+              <>
+                <Dropdown trigger={['click']} menu={periodMenu}>
                   <div
-                    className="w-9 h-9 rounded-lg flex items-center justify-center"
+                    className="ml-2 hidden md:flex items-center gap-3 cursor-pointer rounded-xl px-3 py-1.5 transition-all hover:bg-slate-50"
+                    title="Cambiar período de visualización"
+                  >
+                    <div
+                      className="w-9 h-9 rounded-lg flex items-center justify-center"
+                      style={{
+                        backgroundColor: isReadOnly
+                          ? 'rgba(245,158,11,0.1)'
+                          : 'color-mix(in srgb, var(--color-accent) 10%, transparent)',
+                      }}
+                    >
+                      {isReadOnly
+                        ? <HistoryOutlined className="text-base" style={{ color: '#f59e0b' }} />
+                        : <CalendarOutlined className="text-base" style={{ color: 'var(--color-accent)' }} />}
+                    </div>
+                    <div className="flex flex-col">
+                      <span
+                        className="text-[10px] font-bold uppercase tracking-[0.18em] leading-none mb-1"
+                        style={{ color: isReadOnly ? '#f59e0b' : 'var(--color-text-muted)' }}
+                      >
+                        {isReadOnly ? 'Modo Solo Lectura' : 'Periodo Activo'}
+                      </span>
+                      <span
+                        className="text-sm font-bold leading-tight"
+                        style={{ color: 'var(--color-text-main)' }}
+                      >
+                        {viewPeriod.name}
+                      </span>
+                    </div>
+                    {isReadOnly
+                      ? <LockOutlined style={{ color: '#f59e0b', fontSize: 12 }} />
+                      : <Badge status="processing" className="ml-1" />}
+                  </div>
+                </Dropdown>
+                {/* Compact period switcher for small screens */}
+                <Dropdown trigger={['click']} menu={periodMenu}>
+                  <button
+                    type="button"
+                    className="md:hidden ml-1 w-10 h-10 rounded-lg flex items-center justify-center transition-all hover:bg-slate-50 relative"
                     style={{
                       backgroundColor: isReadOnly
                         ? 'rgba(245,158,11,0.1)'
                         : 'color-mix(in srgb, var(--color-accent) 10%, transparent)',
                     }}
+                    title="Cambiar período de visualización"
                   >
                     {isReadOnly
                       ? <HistoryOutlined className="text-base" style={{ color: '#f59e0b' }} />
                       : <CalendarOutlined className="text-base" style={{ color: 'var(--color-accent)' }} />}
-                  </div>
-                  <div className="flex flex-col">
-                    <span
-                      className="text-[10px] font-bold uppercase tracking-[0.18em] leading-none mb-1"
-                      style={{ color: isReadOnly ? '#f59e0b' : 'var(--color-text-muted)' }}
-                    >
-                      {isReadOnly ? 'Modo Solo Lectura' : 'Periodo Activo'}
-                    </span>
-                    <span
-                      className="text-sm font-bold leading-tight"
-                      style={{ color: 'var(--color-text-main)' }}
-                    >
-                      {viewPeriod.name}
-                    </span>
-                  </div>
-                  {isReadOnly
-                    ? <LockOutlined style={{ color: '#f59e0b', fontSize: 12 }} />
-                    : <Badge status="processing" className="ml-1" />}
-                </div>
-              </Dropdown>
+                  </button>
+                </Dropdown>
+              </>
             )}
           </div>
 

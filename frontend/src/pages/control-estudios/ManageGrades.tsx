@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { Card, Tabs, Table, Button, message, Tag, Typography, Alert, Empty, Spin, Space, Dropdown, Modal, Descriptions, Input, Select, Tooltip, Checkbox } from 'antd';
 import { BookOutlined, ArrowLeftOutlined, DownloadOutlined, FilePdfOutlined, EditOutlined, DeleteOutlined, PlusOutlined, HistoryOutlined, CopyOutlined, ClockCircleOutlined } from '@ant-design/icons';
 import api from '@/services/api';
+import { useSchool } from '@/context/SchoolContext';
 import dayjs from 'dayjs';
 import { compareNominaStudents } from '@/utils/studentSort';
 import EvaluationPlanPDFModal from '@/components/pdf/EvaluationPlanPDFModal';
@@ -157,6 +158,7 @@ interface StudentEnrollment {
 }
 
 const ManageGrades: React.FC = () => {
+  const { viewPeriod } = useSchool();
   const [loading, setLoading] = useState(false);
   const [allAssignments, setAllAssignments] = useState<Assignment[]>([]);
   const [selectedAssignment, setSelectedAssignment] = useState<Assignment | null>(null);
@@ -282,8 +284,6 @@ const ManageGrades: React.FC = () => {
   }, [filteredAssignments]);
 
   useEffect(() => {
-    fetchAllAssignments();
-    fetchTerms();
     fetchMaxGrade();
     const fetchCatalogs = async () => {
       try {
@@ -319,30 +319,52 @@ const ManageGrades: React.FC = () => {
     return String(Math.round(val)).padStart(gradeDigits, '0');
   };
 
-  const fetchAllAssignments = async () => {
+  const fetchAllAssignments = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await api.get('/evaluation/all-assignments');
+      const params: any = {};
+      if (viewPeriod?.id) params.schoolPeriodId = viewPeriod.id;
+      const res = await api.get('/evaluation/all-assignments', { params });
       setAllAssignments(res.data);
     } catch {
       message.error('Error al cargar asignaciones');
     } finally {
       setLoading(false);
     }
-  };
+  }, [viewPeriod]);
 
-  const fetchTerms = async () => {
+  const fetchTerms = useCallback(async () => {
     try {
-      const periodRes = await api.get('/academic/active');
-      if (periodRes.data) {
-        const termsRes = await api.get(`/terms?schoolPeriodId=${periodRes.data.id}`);
-        setAvailableTerms(termsRes.data);
-        const activeTerm = termsRes.data.find((t: Term) => !t.isBlocked);
-        if (activeTerm) setSelectedTerm(activeTerm.id);
-        else if (termsRes.data.length > 0) setSelectedTerm(termsRes.data[0].id);
-      }
+      if (!viewPeriod?.id) return;
+      const termsRes = await api.get(`/terms?schoolPeriodId=${viewPeriod.id}`);
+      setAvailableTerms(termsRes.data);
+      // Preserve the current term if it still exists in the fetched list
+      setSelectedTerm(prev => {
+        if (prev != null && termsRes.data.some((t: Term) => t.id === prev)) {
+          return prev;
+        }
+        const activeTerm = termsRes.data.find((t: Term) => t.isActive);
+        if (activeTerm) return activeTerm.id;
+        const firstOpen = termsRes.data.find((t: Term) => !t.isBlocked);
+        if (firstOpen) return firstOpen.id;
+        if (termsRes.data.length > 0) return termsRes.data[0].id;
+        return null;
+      });
     } catch { /* ignore */ }
-  };
+  }, [viewPeriod]);
+
+  const prevViewPeriodId = useRef<number | null>(null);
+  useEffect(() => {
+    if (!viewPeriod?.id || prevViewPeriodId.current === viewPeriod.id) return;
+    prevViewPeriodId.current = viewPeriod.id;
+    // Reset selections when the viewed period changes
+    setSelectedAssignment(null);
+    setSelectedTerm(null);
+    setEvaluationPlan([]);
+    setStudents([]);
+    fetchAllAssignments();
+    fetchTerms();
+  }, [viewPeriod, fetchAllAssignments, fetchTerms]);
 
   const fetchPlanAndStudents = useCallback(async () => {
     if (!selectedAssignment || !selectedTerm) return;

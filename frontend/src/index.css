@@ -1666,6 +1666,55 @@ input[type=number] {
   .teacher-panel .ant-collapse-header .flex {
     flex-wrap: wrap !important;
   }
+
+  /* ManageGrades (CE) tab bar: keep "Evaluaciones Programadas" and
+     "Calificaciones" always visible side by side instead of collapsing into
+     the "..." overflow menu; extra content (Excel button) moves below */
+  .ce-manage-grades-page .ant-tabs-nav-operations {
+    display: none !important;
+  }
+  .ce-manage-grades-page .ant-tabs-nav {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    margin-bottom: 8px !important;
+  }
+  .ce-manage-grades-page .ant-tabs-nav-wrap {
+    overflow: visible !important;
+    width: 100% !important;
+  }
+  .ce-manage-grades-page .ant-tabs-nav-list {
+    width: 100% !important;
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    transform: none !important;
+  }
+  .ce-manage-grades-page .ant-tabs-tab {
+    flex: 1 1 0 !important;
+    margin: 0 !important;
+    padding: 6px 4px !important;
+    justify-content: center !important;
+    white-space: normal !important;
+    text-align: center !important;
+    line-height: 1.2 !important;
+  }
+  .ce-manage-grades-page .ant-tabs-tab-btn,
+  .ce-manage-grades-page .ant-tabs-tab-btn span {
+    font-size: 12px !important;
+  }
+  .ce-manage-grades-page .ant-tabs-ink-bar {
+    display: none !important;
+  }
+  .ce-manage-grades-page .ant-tabs-extra-content {
+    width: 100% !important;
+    margin-top: 8px !important;
+    order: 2 !important;
+    position: relative !important;
+  }
+  .ce-manage-grades-page .ant-tabs-extra-content .ant-btn {
+    font-size: 12px !important;
+    padding: 4px 8px !important;
+    height: 30px !important;
+  }
 }
 
 /* === RESPONSIVE: Landscape mobile (phone sideways) === */
@@ -1720,6 +1769,49 @@ input[type=number] {
   }
   .teacher-panel .ant-tabs-extra-content .ant-btn .ant-btn-icon + span {
     display: inline !important;
+  }
+
+  /* ManageGrades (CE) tab bar: same visible-tabs treatment in landscape */
+  .ce-manage-grades-page .ant-tabs-nav-operations {
+    display: none !important;
+  }
+  .ce-manage-grades-page .ant-tabs-nav {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    margin-bottom: 4px !important;
+  }
+  .ce-manage-grades-page .ant-tabs-nav-wrap {
+    overflow: visible !important;
+    width: 100% !important;
+  }
+  .ce-manage-grades-page .ant-tabs-nav-list {
+    width: 100% !important;
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    transform: none !important;
+  }
+  .ce-manage-grades-page .ant-tabs-tab {
+    flex: 1 1 0 !important;
+    margin: 0 !important;
+    justify-content: center !important;
+    white-space: nowrap !important;
+    padding: 4px 8px !important;
+  }
+  .ce-manage-grades-page .ant-tabs-tab-btn {
+    font-size: 12px !important;
+  }
+  .ce-manage-grades-page .ant-tabs-ink-bar {
+    display: none !important;
+  }
+  .ce-manage-grades-page .ant-tabs-extra-content {
+    width: 100% !important;
+    margin-top: 4px !important;
+    order: 2 !important;
+  }
+  .ce-manage-grades-page .ant-tabs-extra-content .ant-btn {
+    font-size: 11px !important;
+    padding: 2px 6px !important;
+    height: 26px !important;
   }
 
   /* Reduce page padding in landscape */

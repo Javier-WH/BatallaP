@@ -137,7 +137,8 @@ Ver [`flows/enrollment.md`](./flows/enrollment.md).
 
 | Método | Ruta | Descripción |
 |--------|------|-------------|
-| GET | `/my-assignments` | Asignaciones del profesor logueado. |
+| GET | `/my-assignments` | Asignaciones del profesor logueado. `?schoolPeriodId=` filtra por período (default: activo). |
+| GET | `/all-assignments` | Todas las asignaciones (Control de Estudios). `?schoolPeriodId=` filtra por período (default: activo). |
 | GET | `/plan/:periodGradeSubjectId` | Plan de evaluación (ítems). |
 | POST | `/plan` | Crear ítem. |
 | PUT | `/plan/:id` | Editar ítem. |
