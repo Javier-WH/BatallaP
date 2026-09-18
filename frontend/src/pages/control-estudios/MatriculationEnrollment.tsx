@@ -317,6 +317,7 @@ const MatriculationEnrollment: React.FC = () => {
   const [nominaGenerating, setNominaGenerating] = useState(false);
   const [scrollY, setScrollY] = useState(500);
   const headerRef = useRef<HTMLDivElement>(null);
+  const gridWrapperRef = useRef<HTMLDivElement>(null);
   const bulkActionRef = useRef<HTMLDivElement>(null);
 
   // Save filters to localStorage whenever they change
@@ -337,26 +338,19 @@ const MatriculationEnrollment: React.FC = () => {
 
   useEffect(() => {
     const updateScrollY = () => {
-      const vh = window.innerHeight;
-      let headerBottom = 0;
-
-      if (headerRef.current) {
-        const rect = headerRef.current.getBoundingClientRect();
-        headerBottom = rect.bottom;
-      }
-
-      // Buffer: Table Header (grouped ~80px) + Horizontal Scrollbar (~15px) + Bottom Margin (~10px) + Extra safety
-      const tableOverhead = 115;
-      const calculated = vh - headerBottom - tableOverhead;
-
-      setScrollY(Math.max(200, calculated));
+      // Measure the flex-1 grid wrapper so the table fills all remaining vertical space
+      const wrapperHeight = gridWrapperRef.current?.getBoundingClientRect().height ?? 0;
+      setScrollY(Math.max(200, Math.floor(wrapperHeight) - 2));
     };
 
     updateScrollY();
     const timer = setTimeout(updateScrollY, 50);
     window.addEventListener('resize', updateScrollY);
+    const observer = new ResizeObserver(updateScrollY);
+    if (gridWrapperRef.current) observer.observe(gridWrapperRef.current);
     return () => {
       window.removeEventListener('resize', updateScrollY);
+      observer.disconnect();
       clearTimeout(timer);
     };
   }, [selectedRowKeys.length, viewStatus, structure.length]);
@@ -2158,7 +2152,7 @@ const MatriculationEnrollment: React.FC = () => {
         </div>
       </div>
 
-      <div className="flex-1 overflow-hidden min-h-0">
+      <div ref={gridWrapperRef} className="flex-1 overflow-hidden min-h-0">
         <MatriculationAgGrid
           ref={agGridRef}
           rowData={filteredData as unknown as AgGridMatriculationRow[]}

@@ -607,6 +607,41 @@ input[type=number] {
   max-width: 100%;
 }
 
+/* Module nav: allow horizontal scroll whenever the track overflows, at any viewport size */
+.control-estudios-responsive .ce-module-nav-shell {
+  min-width: 0;
+}
+
+.control-estudios-responsive .ce-module-nav {
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(100, 116, 139, 0.45) transparent;
+}
+
+.control-estudios-responsive .ce-module-nav::-webkit-scrollbar {
+  height: 5px;
+}
+
+.control-estudios-responsive .ce-module-nav::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.45);
+  border-radius: 4px;
+}
+
+.control-estudios-responsive .ce-module-nav::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.control-estudios-responsive .ce-module-nav-track {
+  flex-wrap: nowrap;
+  width: max-content;
+  min-width: 100%;
+}
+
+.control-estudios-responsive .ce-module-nav-track > * {
+  flex: 0 0 auto;
+}
+
 @media (max-width: 768px), (max-height: 500px) and (orientation: landscape) {
   .control-estudios-responsive .ce-module-nav-shell {
     width: 100%;

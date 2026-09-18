@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { Button, Tooltip, Dropdown, Badge } from 'antd';
 import type { MenuProps } from 'antd';
@@ -50,6 +50,25 @@ const ControlEstudiosLayout: React.FC = () => {
     return () => clearInterval(interval);
   }, [fetchPendingCount, location.pathname]);
 
+  const navRef = useRef<HTMLDivElement>(null);
+
+  // Map vertical mouse wheel to horizontal scroll so the nav is scrollable on desktop
+  useEffect(() => {
+    const el = navRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      if (el.scrollWidth <= el.clientWidth) return;
+      if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+      const canScroll = (e.deltaY > 0 && el.scrollLeft < el.scrollWidth - el.clientWidth - 1)
+        || (e.deltaY < 0 && el.scrollLeft > 0);
+      if (!canScroll) return;
+      e.preventDefault();
+      el.scrollLeft += e.deltaY;
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, []);
+
   const matchesPath = (path: string) => location.pathname.startsWith(path);
   const isExact = (path: string) => location.pathname === path;
 
@@ -99,7 +118,7 @@ const ControlEstudiosLayout: React.FC = () => {
     <div className="control-estudios-responsive flex flex-col h-full min-h-0 min-w-0 overflow-x-hidden">
       {/* Control de Estudios Toolbar */}
       <div className="ce-module-nav-shell sticky top-0 z-40 backdrop-blur-md pb-4 pt-0 px-6">
-        <div className="ce-module-nav bg-white/70 backdrop-blur-sm p-2 rounded-2xl border border-white/50 shadow-sm">
+        <div ref={navRef} className="ce-module-nav bg-white/70 backdrop-blur-sm p-2 rounded-2xl border border-white/50 shadow-sm">
           <div className="ce-module-nav-track flex items-center gap-2">
             <div className="ce-module-nav-label px-4 py-1 border-r border-slate-200/50 mr-2 shrink-0">
               <span className="text-[10px] uppercase font-black text-slate-500 tracking-[0.2em]">Académico</span>
