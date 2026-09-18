@@ -46,7 +46,7 @@ import { isPassingGrade, resolveGradeStatus, roundFinalGrade, MIN_FINAL_GRADE } 
 import { GradeCalculationService } from '@/services/gradeCalculationService';
 import { readTemplateNamedRanges, TemplateNamedRanges } from '@/services/templateNamedRanges';
 import { sortInscriptions } from '@/services/studentSortService';
-import { formatDateInCaracas, formatDateOnly } from '@/services/councilDateResolver';
+import { formatDateInCaracas, formatDateOnly, resolveCouncilDate } from '@/services/councilDateResolver';
 
 const gradeOrderToSheetName: Record<number, string> = {
   1: '1er Año',
@@ -527,18 +527,48 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
     const councilDates = councilChecklists
       .filter((c: any) => c.completedAt)
       .sort((a: any, b: any) => new Date(b.completedAt).getTime() - new Date(a.completedAt).getTime());
-    let lastCouncilDate = councilDates.length > 0 ? String(councilDates[0].completedAt) : null;
 
-    // For MP sections, use the date of the last encounter with a score
-    // (instead of the council completion date) for inst_date.
-    if (isMpSection && !historicalMode) {
-      const lastEncounter: any = await PendingSubjectEncounter.findOne({
-        where: { score: { [Op.ne]: null } },
-        order: [['date', 'DESC']],
+    // inst_date source depends on the summary type:
+    // - Final: last term's council date — Master override
+    //   (Term.councilCompletedAtOverride) wins via resolveCouncilDate.
+    // - Revisión: date the revision period was marked completed.
+    // - Materia Pendiente: last date set on pending-subject encounters
+    //   (encounters persist after period closure, so this also works in
+    //   historical mode).
+    let lastCouncilDate: string | null;
+    if (requestedHistoricalType === 'revision') {
+      const revPeriod: any = await RevisionPeriod.findOne({
+        where: { schoolPeriodId: Number(schoolPeriodId) },
+        attributes: ['completedAt', 'closedAt'],
         raw: true,
       });
-      if (lastEncounter?.date) {
-        lastCouncilDate = String(lastEncounter.date);
+      lastCouncilDate = formatDateInCaracas(revPeriod?.completedAt ?? revPeriod?.closedAt);
+    } else if (isMpSection) {
+      const lastEncounter: any = await PendingSubjectEncounter.findOne({
+        where: { date: { [Op.ne]: null } },
+        include: [{
+          model: PendingSubject,
+          as: 'pendingSubject',
+          required: true,
+          attributes: [],
+          include: [{
+            model: Inscription,
+            as: 'inscription',
+            required: true,
+            where: { schoolPeriodId: Number(schoolPeriodId) },
+            attributes: [],
+          }],
+        }],
+        order: [['date', 'DESC']],
+      });
+      lastCouncilDate = formatDateInCaracas(lastEncounter?.date);
+    } else {
+      lastCouncilDate = await resolveCouncilDate({
+        schoolPeriodId: Number(schoolPeriodId),
+        sectionId: Number(sectionId),
+      });
+      if (!lastCouncilDate && councilDates.length > 0) {
+        lastCouncilDate = formatDateInCaracas(councilDates[0].completedAt as Date);
       }
     }
     const isCouncilDone = GradeCalculationService.buildCouncilDoneChecker(
@@ -2196,7 +2226,9 @@ export const exportRevisionSummary = async (req: Request, res: Response) => {
         templateGradeName,
         section?.name,
         letterGradesConfig,
-        null, // lastCouncilDate — not applicable for revision
+        // inst_date: date the revision period was marked completed
+        // (closedAt as fallback — closing implies it was completed).
+        formatDateInCaracas(revisionPeriod.completedAt ?? revisionPeriod.closedAt),
         false, // isMpSection
         true,  // isRevisionSection
         isRevisionAbsent,
