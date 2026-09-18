@@ -69,6 +69,15 @@ interface CouncilStudent {
     previousTermsData?: {
       termId: number;
       termName: string;
+      termOrder?: number;
+      baseGrade: number;
+      councilPoints: number;
+      finalGrade: number;
+    }[];
+    allTermsData?: {
+      termId: number;
+      termName: string;
+      termOrder?: number;
       baseGrade: number;
       councilPoints: number;
       finalGrade: number;
@@ -508,6 +517,7 @@ const CourseCouncil: React.FC = () => {
   const [filterYear, setFilterYear] = useState<string>('');
   const [showPreviousTerms, setShowPreviousTerms] = useState<boolean>(true);
   const [showPrevCouncilPoints, setShowPrevCouncilPoints] = useState<boolean>(false);
+  const [showDefinitive, setShowDefinitive] = useState<boolean>(false);
   const [tableScrollHeight, setTableScrollHeight] = useState(300);
   const tableCardRef = useRef<HTMLDivElement>(null);
 
@@ -1782,6 +1792,68 @@ const CourseCouncil: React.FC = () => {
           }
         );
 
+        // Optional projected definitive-grade subcolumn (visual only — not exported)
+        if (showDefinitive) {
+          children.push({
+            title: <div style={{ fontSize: 9, fontWeight: 700, color: '#722ed1', textTransform: 'uppercase' }}>DEF.</div>,
+            key: `${colDef.key}-def`,
+            width: 50,
+            align: 'center' as const,
+            onCell: () => ({ style: { backgroundColor: '#faf5ff' } }),
+            onHeaderCell: () => ({ style: { backgroundColor: '#f0e6ff' } }),
+            render: (_: any, record: CouncilStudent) => {
+              const subjectData = colDef.groupId
+                ? record.subjects.find(s => s.groupId === colDef.groupId)
+                : record.subjects.find(s => s.id === colDef.subjectId);
+              if (!subjectData) return <Text type="secondary">-</Text>;
+
+              // Projected annual definitive: mirrors GradeCalculationService —
+              // roundFinalGrade per term, then roundFinalGrade of the average.
+              // The current term uses the live council points being edited.
+              const selOrder = selectedTerm?.order ?? Number.MAX_SAFE_INTEGER;
+              const liveCurrent = Math.max(1, roundGrade((subjectData.grade || 0) + (subjectData.points || 0)));
+              const counted = (subjectData.allTermsData || subjectData.previousTermsData || [])
+                .filter(t => (t.termOrder ?? 0) <= selOrder || t.baseGrade > 0 || t.councilPoints > 0);
+              const termScores = counted.map(t =>
+                t.termId === selectedTerm?.id ? liveCurrent : Math.max(1, roundGrade(t.finalGrade)));
+              const definitive = termScores.length > 0
+                ? Math.max(1, roundGrade(termScores.reduce((a, b) => a + b, 0) / termScores.length))
+                : null;
+
+              return (
+                <Tooltip
+                  title={
+                    <div style={{ padding: 4 }}>
+                      <div style={{ marginBottom: 4, fontWeight: 700 }}>Definitiva anual (proyección)</div>
+                      {counted.map(t => (
+                        <div key={t.termId}>
+                          {t.termName}: <strong>{t.termId === selectedTerm?.id ? liveCurrent : Math.max(1, roundGrade(t.finalGrade))}</strong>
+                          {t.termId === selectedTerm?.id && ` (${formatGrade(subjectData.grade, enableRounding)} +${subjectData.points || 0} pts)`}
+                        </div>
+                      ))}
+                    </div>
+                  }
+                >
+                  <div style={{
+                    width: 34,
+                    height: 24,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    background: definitive != null && !isPassingGrade(definitive, passingGrade) ? '#fff1f0' : '#f9f0ff',
+                    borderRadius: 5,
+                    border: `1px solid ${definitive != null && !isPassingGrade(definitive, passingGrade) ? '#ffa39e' : '#d3adf7'}`
+                  }}>
+                    <Text style={{ fontSize: 13, fontWeight: 800, color: definitive != null && !isPassingGrade(definitive, passingGrade) ? '#cf1322' : '#722ed1' }}>
+                      {definitive != null ? formatGrade(definitive, enableRounding) : '-'}
+                    </Text>
+                  </div>
+                </Tooltip>
+              );
+            }
+          });
+        }
+
         return {
           title: (
             <Tooltip title={colDef.title}>
@@ -1851,6 +1923,13 @@ const CourseCouncil: React.FC = () => {
                 Incluir puntos de consejos anteriores
               </Checkbox>
             )}
+            <Checkbox
+              checked={showDefinitive}
+              onChange={(e) => setShowDefinitive(e.target.checked)}
+              style={{ fontWeight: 600 }}
+            >
+              Ver definitiva anual
+            </Checkbox>
             {!isSelectedSectionClosed() && (
               <Alert
                 message="Lapso activo"

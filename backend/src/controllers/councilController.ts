@@ -148,7 +148,7 @@ export const getCouncilData = async (req: Request, res: Response) => {
 
         // Resolve the active subject independently for every previous term.
         // This is essential when a student switches group subjects between lapsos.
-        const previousTermsData = await Promise.all(previousTerms.map(async (pt: any) => {
+        const buildTermsData = (termsList: any[]) => Promise.all(termsList.map(async (pt: any) => {
           const subjectsForTerm = await filterActiveGroupSubjectsForTerm(insAny.inscriptionSubjects || [], pt.id);
           const previousSubject = is.subject?.subjectGroupId != null
             ? subjectsForTerm.find((candidate: any) => candidate.subject?.subjectGroupId === is.subject.subjectGroupId)
@@ -161,11 +161,16 @@ export const getCouncilData = async (req: Request, res: Response) => {
           return {
             termId: pt.id,
             termName: pt.name,
+            termOrder: pt.order,
             baseGrade: Math.max(MIN_FINAL_GRADE, Math.round(ptBaseGrade * 100) / 100),
             councilPoints: ptPoints,
             finalGrade: ptFinalGrade
           };
         }));
+
+        const previousTermsData = await buildTermsData(previousTerms);
+        // All terms of the period — used by the projected definitive-grade column
+        const allTermsData = await buildTermsData(allTerms);
 
         return {
           id: is.subjectId,
@@ -182,7 +187,8 @@ export const getCouncilData = async (req: Request, res: Response) => {
             termName: cp.term?.name,
             points: cp.points
           })),
-          previousTermsData
+          previousTermsData,
+          allTermsData
         };
       }));
 
