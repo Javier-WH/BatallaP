@@ -72,6 +72,12 @@ try {
     copyDirSync(backendTemplates, path.join(buildDir, 'templates'));
   }
 
+  // Python scripts (schedule solver invoked via child_process)
+  const backendScripts = path.join(backendDir, 'scripts');
+  if (fs.existsSync(backendScripts)) {
+    copyDirSync(backendScripts, path.join(buildDir, 'scripts'));
+  }
+
   // Uploads structure
   const backendPublic = path.join(backendDir, 'public');
   if (fs.existsSync(backendPublic)) {

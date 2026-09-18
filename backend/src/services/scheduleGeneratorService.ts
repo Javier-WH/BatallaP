@@ -80,6 +80,7 @@ interface ProblemJson {
   teacherPreferred: { teacherId: number; day: string; blockId: string }[];
   groupSubjects: GroupSubjectInput[];
   crossGradeLinks: CrossGradeLinkInput[];
+  syncGroupSubjects: boolean;
 }
 
 interface SolverResult {
@@ -222,6 +223,9 @@ export async function generateSchedulesForPeriod(
 
   const blockSize = Number(settings.min_academic_hours_per_block) || 1;
   const avoidLastMorningFirstAfternoon = settings.avoid_last_morning_first_afternoon === 'true';
+  // Hard-sync same-grade group subjects into the same block+day (default on).
+  // Configurable from the schedule exceptions panel via `sync_group_subjects`.
+  const syncGroupSubjects = settings.sync_group_subjects !== 'false';
 
   // 2. Build period slots and blocks
   const allSlots = buildPeriodSlots(settings);
@@ -387,11 +391,12 @@ export async function generateSchedulesForPeriod(
     teacherPreferred,
     groupSubjects,
     crossGradeLinks,
+    syncGroupSubjects,
   };
 
   // Debug: log problem summary
   console.log(`[scheduleGenerator] Problem: ${sectionInputs.length} sections, ${blocks.length} blocks, ${groupSubjects.length} group subjects, ${crossGradeLinks.length} cross-grade links, ${teacherBusy.length} busy slots, ${teacherPreferred.length} preferred slots`);
-  console.log(`[scheduleGenerator] blockSize=${blockSize}, avoidLastMorningFirstAfternoon=${avoidLastMorningFirstAfternoon}`);
+  console.log(`[scheduleGenerator] blockSize=${blockSize}, avoidLastMorningFirstAfternoon=${avoidLastMorningFirstAfternoon}, syncGroupSubjects=${syncGroupSubjects}`);
   // Log busy slots per teacher for the group subject teachers
   const groupTeacherIds = new Set<number>();
   for (const sec of sectionInputs) {

@@ -36,7 +36,10 @@ Problem format:
     // Each entry: a subjectGroupId that must be placed in the SAME block
     // across all sections of the same grade
     { "subjectGroupId": 7, "periodGradeId": 10, "subjectIds": [5, 6, 8] }
-  ]
+  ],
+  // Hard-sync same-grade groups: a block+day is only a valid group slot if EVERY
+  // section can place EVERY group subject there (default true)
+  "syncGroupSubjects": true
 }
 
 Solution format:
@@ -71,6 +74,11 @@ def main():
     teacher_preferred = problem.get("teacherPreferred", [])
     group_subjects = problem.get("groupSubjects", [])
     cross_grade_links = problem.get("crossGradeLinks", [])
+    # Hard-sync: when enabled, group subjects of the same grade can ONLY be placed
+    # in block+day slots where EVERY section can place EVERY group subject
+    # (i.e. all group teachers are free). Configurable via the exceptions panel.
+    sync_group_subjects = problem.get("syncGroupSubjects", True)
+    print(f"[solver] syncGroupSubjects={sync_group_subjects}", file=sys.stderr)
 
     # ── Index blocks ──
     # blocks: list of { id, day, section(manana/tarde), periodIds, order }
@@ -383,40 +391,50 @@ def main():
     # If slot=1, EVERY section must place ALL its group subjects in that block.
     # If slot=0, no section places any group subject in that block.
     group_slot_vars = {}  # (pgId, sgId, blockId, day) -> BoolVar
-    for gs in group_subjects:
-        pg_id = gs["periodGradeId"]
-        sg_id = gs["subjectGroupId"]
-        subject_ids = gs["subjectIds"]
-        for b in blocks:
-            # Check if any section of this grade has vars for this group in this block
-            has_vars = False
-            for sec in sections:
-                if sec["periodGradeId"] != pg_id:
-                    continue
-                sid = sec["id"]
-                for subj_id in subject_ids:
-                    if (sid, subj_id, b["id"], b["day"]) in x:
-                        has_vars = True
+    if sync_group_subjects:
+        for gs in group_subjects:
+            pg_id = gs["periodGradeId"]
+            sg_id = gs["subjectGroupId"]
+            subject_ids = gs["subjectIds"]
+            for b in blocks:
+                # Check if any section of this grade has vars for this group in this block
+                has_vars = False
+                for sec in sections:
+                    if sec["periodGradeId"] != pg_id:
+                        continue
+                    sid = sec["id"]
+                    for subj_id in subject_ids:
+                        if (sid, subj_id, b["id"], b["day"]) in x:
+                            has_vars = True
+                            break
+                    if has_vars:
                         break
-                if has_vars:
-                    break
-            if not has_vars:
-                continue
-
-            # Create the group slot variable
-            gs_var = model.NewBoolVar(f"gslot_{pg_id}_{sg_id}_{b['id']}_{b['day']}")
-            group_slot_vars[(pg_id, sg_id, b["id"], b["day"])] = gs_var
-
-            # For each section of this grade: EACH group subject var must equal the group slot
-            # (if slot=1, all group subjects are placed; if slot=0, none are placed)
-            for sec in sections:
-                if sec["periodGradeId"] != pg_id:
+                if not has_vars:
                     continue
-                sid = sec["id"]
-                for subj_id in subject_ids:
-                    k = (sid, subj_id, b["id"], b["day"])
-                    if k in x:
-                        model.Add(x[k] == gs_var)
+
+                # Create the group slot variable
+                gs_var = model.NewBoolVar(f"gslot_{pg_id}_{sg_id}_{b['id']}_{b['day']}")
+                group_slot_vars[(pg_id, sg_id, b["id"], b["day"])] = gs_var
+
+                # For each section of this grade: EACH group subject var must equal the group slot
+                # (if slot=1, all group subjects are placed; if slot=0, none are placed)
+                complete = True
+                for sec in sections:
+                    if sec["periodGradeId"] != pg_id:
+                        continue
+                    sid = sec["id"]
+                    for subj_id in subject_ids:
+                        if (sid, subj_id) not in subject_vars:
+                            continue  # this section does not offer this group subject
+                        k = (sid, subj_id, b["id"], b["day"])
+                        if k in x:
+                            model.Add(x[k] == gs_var)
+                        else:
+                            # A required placement is impossible in this block (e.g. the
+                            # teacher is busy): the whole group cannot use this slot.
+                            complete = False
+                if not complete:
+                    model.Add(gs_var == 0)
 
     # Debug: log group slot var counts
     group_slot_counts = {}
@@ -455,14 +473,23 @@ def main():
             link_slot_vars[(link_id, b["id"], b["day"])] = ls_var
 
             # Each linked subject var across all matching sections must equal the link slot
+            complete = True
             for item in items:
                 for sec in sections:
                     if sec["periodGradeId"] != item["periodGradeId"]:
                         continue
                     sid = sec["id"]
+                    if (sid, item["subjectId"]) not in subject_vars:
+                        continue
                     k = (sid, item["subjectId"], b["id"], b["day"])
                     if k in x:
                         model.Add(x[k] == ls_var)
+                    else:
+                        # A required placement is impossible in this block (e.g. the
+                        # teacher is busy): the whole link cannot use this slot.
+                        complete = False
+            if not complete:
+                model.Add(ls_var == 0)
 
     # Debug: log link slot var counts
     link_slot_counts = {}
@@ -831,10 +858,18 @@ def main():
                         placed_count += 1
 
                 if placed_count < weekly:
+                    if is_group and sync_group_subjects:
+                        reason = (f"Sin bloque común para el grupo ({placed_count} de {weekly}): "
+                                  "la disponibilidad de los profesores no coincide")
+                    elif is_linked:
+                        reason = (f"Sin bloque común para el vínculo ({placed_count} de {weekly}): "
+                                  "la disponibilidad de los profesores no coincide")
+                    else:
+                        reason = f"Sólo se colocaron {placed_count} de {weekly} bloques"
                     unplaced.append({
                         "sectionId": sid,
                         "subjectId": subj_id,
-                        "reason": f"Sólo se colocaron {placed_count} de {weekly} bloques",
+                        "reason": reason,
                     })
 
         result = {

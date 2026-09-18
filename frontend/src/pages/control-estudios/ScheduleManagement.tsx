@@ -917,6 +917,7 @@ const ScheduleManagement: React.FC = () => {
   const [newLinkName, setNewLinkName] = useState<string>('');
   const [newLinkRows, setNewLinkRows] = useState<{ subjectId: number | null; periodGradeId: number | null }[]>([{ subjectId: null, periodGradeId: null }]);
   const [linkStructure, setLinkStructure] = useState<any[]>([]);
+  const [syncGroupToggling, setSyncGroupToggling] = useState(false);
 
   // Batch export state
   const [batchExportOpen, setBatchExportOpen] = useState(false);
@@ -1820,6 +1821,23 @@ const ScheduleManagement: React.FC = () => {
     setExceptionsModalOpen(true);
   };
 
+  // Same-grade group sync: forces all subjects of a group to share the same
+  // block+day across every section of the grade. Stored as `sync_group_subjects`.
+  const toggleSyncGroupSubjects = async (checked: boolean) => {
+    setSyncGroupToggling(true);
+    try {
+      await api.post('/settings', { settings: { sync_group_subjects: checked ? 'true' : 'false' } });
+      setSettings(prev => ({ ...prev, sync_group_subjects: checked ? 'true' : 'false' }));
+      message.success(checked
+        ? 'Sincronización de grupos activada (obligatoria)'
+        : 'Sincronización de grupos desactivada');
+    } catch {
+      message.error('Error al guardar la configuración');
+    } finally {
+      setSyncGroupToggling(false);
+    }
+  };
+
   // ── Cross-grade schedule links ──
   const loadScheduleLinks = useCallback(async () => {
     if (!viewPeriod) return;
@@ -2404,6 +2422,25 @@ const ScheduleManagement: React.FC = () => {
               message="Las excepciones se aplican a la materia en todos los grados y secciones."
               style={{ marginBottom: 16 }}
             />
+
+            {/* Same-grade group sync toggle */}
+            <div className="p-3 border border-slate-200 rounded-lg bg-slate-50">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex-1">
+                  <div className="font-medium text-slate-800 text-sm">Sincronizar materias de grupo del mismo año</div>
+                  <div className="text-xs text-slate-500 mt-1">
+                    Obliga a que todas las materias de un grupo se coloquen en el mismo bloque y día
+                    en todas las secciones del año. Si los profesores del grupo no tienen ningún
+                    bloque en común, esas materias quedarán sin colocar.
+                  </div>
+                </div>
+                <Switch
+                  checked={settings.sync_group_subjects !== 'false'}
+                  loading={syncGroupToggling}
+                  onChange={toggleSyncGroupSubjects}
+                />
+              </div>
+            </div>
 
             {/* Existing exceptions */}
             {exceptions.length > 0 && (
