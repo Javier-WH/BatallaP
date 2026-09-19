@@ -306,7 +306,7 @@ export const generateMpNominaHTML = (data: MpNominaPrintData): string => {
     color:var(--ink-soft);
     white-space:nowrap;
   }
-  .col-name{
+  .nomina-table .col-name{
     text-align:left;
     min-width:150px;
     font-weight:500;
