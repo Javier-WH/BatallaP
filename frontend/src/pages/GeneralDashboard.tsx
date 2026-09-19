@@ -10,8 +10,10 @@ const GeneralDashboard: React.FC = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [dashboardReloadKey, setDashboardReloadKey] = useState(0);
 
-  // Check if user has permission to edit (Master or Admin)
-  const canEdit = user?.roles.some(role => role === 'Master' || role === 'Administrador');
+  // Check if user has permission to edit (staff roles)
+  const canEdit = user?.roles.some(role =>
+    ['Master', 'Administrador', 'Control de Estudios', 'Director'].includes(role)
+  );
 
   const handleSaved = () => {
     setIsEditing(false);

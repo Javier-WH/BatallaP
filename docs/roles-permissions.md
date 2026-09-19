@@ -55,6 +55,7 @@ Los seis roles del sistema, exactamente como aparecen en la tabla `roles` y en `
 | Notas externas | `/control-estudios/notas-externas` | `Control de Estudios`, `Administrador`, `Master` |
 | Panel profesor | `/profesor` | `Profesor` |
 | Asistencias | `/asistencias` | `Profesor` (tomar), `Control de Estudios`, `Administrador`, `Master`, `Director` (ver/editar todo) |
+| Editar dashboard general | `/dashboard` (botón Editar) + `PUT /api/dashboard-content` | `Master`, `Administrador`, `Control de Estudios`, `Director` |
 | Mis estudiantes (rep.) | `/representante` | `Representante` |
 | Mi expediente | `/estudiante` | `Alumno` |
 

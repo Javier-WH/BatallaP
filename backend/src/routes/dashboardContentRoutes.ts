@@ -4,16 +4,16 @@ import dashboardImageUpload from '@/middlewares/dashboardImageUploadMiddleware';
 
 const router = Router();
 
-// Get dashboard content (public)
+// Get dashboard content (any authenticated user)
 router.get('/', getContent);
 
-// Update dashboard content (Master/Admin only - will be protected by middleware)
+// Update dashboard content (staff roles only — enforced in controller)
 router.put('/', updateContent);
 
-// Upload dashboard image
+// Upload dashboard image (staff roles only — enforced in controller)
 router.post('/images', dashboardImageUpload.single('image'), uploadDashboardImage);
 
-// Delete dashboard image
+// Delete dashboard image (staff roles only — enforced in controller)
 router.delete('/images/:filename', deleteDashboardImage);
 
 export default router;

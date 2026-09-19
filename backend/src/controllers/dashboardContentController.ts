@@ -3,6 +3,14 @@ import { DashboardContent } from '../models';
 import path from 'path';
 import fs from 'fs';
 
+// Roles allowed to edit the general dashboard content
+const EDIT_ROLES = ['Master', 'Administrador', 'Control de Estudios', 'Director'];
+
+const canEdit = (req: Request): boolean => {
+  const roles: string[] = (req.session as any)?.user?.roles ?? [];
+  return roles.some(r => EDIT_ROLES.includes(r));
+};
+
 export const getContent = async (req: Request, res: Response) => {
   try {
     // Get the first (and only) dashboard content record
@@ -29,8 +37,11 @@ export const getContent = async (req: Request, res: Response) => {
 
 export const updateContent = async (req: Request, res: Response) => {
   try {
+    if (!canEdit(req)) {
+      return res.status(403).json({ message: 'No tiene permisos para editar el dashboard' });
+    }
     const { content } = req.body;
-    const userId = (req as any).user?.id; // Get user ID from session if available
+    const userId = (req.session as any)?.user?.id;
 
     let dashboardContent = await DashboardContent.findOne();
 
@@ -61,6 +72,9 @@ export const updateContent = async (req: Request, res: Response) => {
 
 export const uploadDashboardImage = async (req: Request, res: Response) => {
   try {
+    if (!canEdit(req)) {
+      return res.status(403).json({ message: 'No tiene permisos para editar el dashboard' });
+    }
     if (!req.file) {
       return res.status(400).json({ message: 'No se ha enviado ninguna imagen' });
     }
@@ -81,6 +95,9 @@ export const uploadDashboardImage = async (req: Request, res: Response) => {
 
 export const deleteDashboardImage = async (req: Request, res: Response) => {
   try {
+    if (!canEdit(req)) {
+      return res.status(403).json({ message: 'No tiene permisos para editar el dashboard' });
+    }
     const { filename } = req.params;
 
     // Construct the file path
