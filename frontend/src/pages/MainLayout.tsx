@@ -21,10 +21,12 @@ import {
   FileProtectOutlined,
   BankOutlined,
   CheckSquareOutlined,
+  InfoCircleOutlined,
 } from '@ant-design/icons';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { useSchool } from '@/context/SchoolContext';
+import api from '@/services/api';
 import ExchangeRateBar from '@/components/ExchangeRateBar';
 
 const { Header, Sider, Content } = Layout;
@@ -32,6 +34,8 @@ const { Header, Sider, Content } = Layout;
 const MainLayout: React.FC = () => {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [aboutOpen, setAboutOpen] = useState(false);
+  const [appVersion, setAppVersion] = useState<string | null>(null);
   const { logout, user } = useAuth();
   const { settings, viewPeriod, allPeriods, isReadOnly, setViewPeriod, resetViewPeriod, usdRate, eurRate, rateDate } = useSchool();
   const navigate = useNavigate();
@@ -175,6 +179,15 @@ const MainLayout: React.FC = () => {
     }
   ];
 
+  const openAbout = () => {
+    setAboutOpen(true);
+    if (!appVersion) {
+      api.get('/health')
+        .then(res => setAppVersion(res.data?.version ?? null))
+        .catch(() => setAppVersion(null));
+    }
+  };
+
   const menuItems = allMenuItems.filter(item =>
     user?.roles.some(userRole => item.roles.includes(userRole))
   );
@@ -262,6 +275,15 @@ const MainLayout: React.FC = () => {
               </div>
             </div>
           )}
+
+          {/* About — pinned to the very bottom of the sidebar */}
+          <div
+            onClick={() => { openAbout(); setMobileSidebarOpen(false); }}
+            className="nav-item mx-2 mb-2 mt-0"
+          >
+            <span className="text-lg flex shrink-0 items-center justify-center"><InfoCircleOutlined /></span>
+            {!collapsed && <span className="font-semibold text-sm">Acerca de</span>}
+          </div>
 
         </div>
 
@@ -414,6 +436,36 @@ const MainLayout: React.FC = () => {
           </div>
         </Content>
       </Layout>
+
+      <Modal
+        open={aboutOpen}
+        onCancel={() => setAboutOpen(false)}
+        footer={null}
+        centered
+        width={380}
+      >
+        <div className="flex flex-col items-center text-center py-4">
+          <div
+            className="w-16 h-16 bg-white/90 p-2 shadow-lg flex items-center justify-center overflow-hidden border border-slate-200 mb-4"
+            style={{ borderRadius: settings.logoShape === 'circle' ? '50%' : '1rem' }}
+          >
+            <img
+              src={settings.logo}
+              alt="Logo"
+              className="w-full h-full object-contain"
+              style={{ borderRadius: settings.logoShape === 'circle' ? '50%' : '0' }}
+            />
+          </div>
+          <h2 className="text-xl font-bold text-slate-800 m-0">{settings.name}</h2>
+          <p className="text-xs uppercase font-bold text-slate-400 tracking-widest mt-1 mb-4">Gestión Educativa</p>
+          <div className="text-sm text-slate-600">
+            <p className="font-semibold text-slate-500 m-0">Desarrollado por</p>
+            <p className="font-bold text-slate-800 m-0 mt-1">Francisco Rodriguez</p>
+            <p className="font-bold text-slate-800 m-0">Daniel Rodriguez</p>
+          </div>
+          <Tag color="blue" className="mt-4">Versión {appVersion ?? '—'}</Tag>
+        </div>
+      </Modal>
     </Layout>
   );
 };

@@ -312,7 +312,7 @@ Ver [`flows/grade-edit.md`](./flows/grade-edit.md).
 
 | Método | Ruta | Descripción |
 |--------|------|-------------|
-| GET | `/` | Liveness probe. |
+| GET | `/` | Liveness probe. Devuelve `status`, `database`, `version` (de `package.json` — se auto-incrementa el patch en cada `npm run build:prod`) y `timestamp`. |
 
 ---
 

@@ -91,11 +91,26 @@ try {
   // Step 5: Generate production package.json and server entrypoint
   console.log('\n⚙️ 5/5 Generando package.json de producción y archivos de configuración...');
 
-  const backendPkg = JSON.parse(fs.readFileSync(path.join(backendDir, 'package.json'), 'utf-8'));
-  
+  const backendPkgPath = path.join(backendDir, 'package.json');
+  const backendPkg = JSON.parse(fs.readFileSync(backendPkgPath, 'utf-8'));
+
+  // Auto-bump patch version on every production build (1.1.1 -> 1.1.2).
+  // backend/package.json is the source of truth; root package.json is kept in sync.
+  const versionParts = String(backendPkg.version || '1.0.0').split('.').map(n => parseInt(n, 10) || 0);
+  while (versionParts.length < 3) versionParts.push(0);
+  versionParts[2] += 1;
+  const newVersion = versionParts.join('.');
+  backendPkg.version = newVersion;
+  fs.writeFileSync(backendPkgPath, JSON.stringify(backendPkg, null, 2) + '\n');
+  const rootPkgPath = path.join(rootDir, 'package.json');
+  const rootPkg = JSON.parse(fs.readFileSync(rootPkgPath, 'utf-8'));
+  rootPkg.version = newVersion;
+  fs.writeFileSync(rootPkgPath, JSON.stringify(rootPkg, null, 2) + '\n');
+  console.log(`   🔢 Versión incrementada a ${newVersion}`);
+
   const prodPkg = {
     name: "batalla-project-production",
-    version: backendPkg.version || "1.0.0",
+    version: newVersion,
     description: "BatallaProject Fullstack Standalone Build for Netcup",
     main: "server.js",
     scripts: {
