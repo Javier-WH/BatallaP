@@ -13,6 +13,7 @@ import {
   ReloadOutlined,
 } from '@ant-design/icons';
 import api from '@/services/api';
+import { useSchool } from '@/context/SchoolContext';
 import { getSubjectVisual } from '@/utils/subjectVisuals';
 import { formatRelativeTime } from '@/utils/relativeTime';
 
@@ -691,6 +692,7 @@ const ContentProgressCard: React.FC<{
 };
 
 const ControlEstudiosDashboard: React.FC = () => {
+  const { viewPeriod } = useSchool();
   const [data, setData] = useState<ControlPanelData | null>(null);
   const [activity, setActivity] = useState<ActivityLogEntry[]>([]);
   const [loading, setLoading] = useState(false);
@@ -705,9 +707,10 @@ const ControlEstudiosDashboard: React.FC = () => {
   const fetchDashboard = useCallback(async () => {
     setLoading(true);
     try {
+      const params = { schoolPeriodId: viewPeriod?.id };
       const [res, activityRes] = await Promise.all([
-        api.get<ControlPanelData>('/dashboard/control'),
-        api.get<ActivityLogEntry[]>('/dashboard/activity-log'),
+        api.get<ControlPanelData>('/dashboard/control', { params }),
+        api.get<ActivityLogEntry[]>('/dashboard/activity-log', { params }),
       ]);
       setData(res.data);
       setActivity(activityRes.data);
@@ -717,12 +720,12 @@ const ControlEstudiosDashboard: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [viewPeriod?.id]);
 
   const refreshActivity = useCallback(async () => {
     setRefreshingActivity(true);
     try {
-      const activityRes = await api.get<ActivityLogEntry[]>('/dashboard/activity-log');
+      const activityRes = await api.get<ActivityLogEntry[]>('/dashboard/activity-log', { params: { schoolPeriodId: viewPeriod?.id } });
       setActivity(activityRes.data);
     } catch (error) {
       console.error(error);
@@ -730,7 +733,7 @@ const ControlEstudiosDashboard: React.FC = () => {
     } finally {
       setRefreshingActivity(false);
     }
-  }, []);
+  }, [viewPeriod?.id]);
 
   useEffect(() => {
     fetchDashboard();

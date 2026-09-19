@@ -13,6 +13,7 @@ import {
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import api from '@/services/api';
+import { useSchool } from '@/context/SchoolContext';
 
 /* ---------- Types ---------- */
 interface ActiveSchoolPeriod {
@@ -206,6 +207,7 @@ const QuickAction: React.FC<{
 
 /* ---------- Main component ---------- */
 const AdminDashboard: React.FC = () => {
+  const { viewPeriod } = useSchool();
   const [data, setData] = useState<AdminOverviewData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -218,7 +220,7 @@ const AdminDashboard: React.FC = () => {
       // The backend now computes all aggregates via SQL COUNT/GROUP BY
       // instead of downloading the full inscriptions/matriculations/teachers
       // lists. The response shape matches AdminOverviewData exactly.
-      const statsRes = await api.get<AdminOverviewData | null>('/dashboard/admin-stats');
+      const statsRes = await api.get<AdminOverviewData | null>('/dashboard/admin-stats', { params: { schoolPeriodId: viewPeriod?.id } });
       const stats = statsRes.data;
       if (!stats) {
         setData(null);
@@ -247,7 +249,7 @@ const AdminDashboard: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [viewPeriod?.id]);
 
   useEffect(() => {
     loadSnapshot();

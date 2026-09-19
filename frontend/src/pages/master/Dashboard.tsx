@@ -14,6 +14,7 @@ import {
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import api from '@/services/api';
+import { useSchool } from '@/context/SchoolContext';
 
 interface MasterDashboardData {
   academic:
@@ -205,6 +206,7 @@ const FadeIn: React.FC<{ children: React.ReactNode; delay?: number; className?: 
 };
 
 const MasterDashboard: React.FC = () => {
+  const { viewPeriod } = useSchool();
   const [data, setData] = useState<MasterDashboardData | null>(null);
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
@@ -213,7 +215,7 @@ const MasterDashboard: React.FC = () => {
     const fetchData = async () => {
       setLoading(true);
       try {
-        const res = await api.get<MasterDashboardData>('/dashboard/master');
+        const res = await api.get<MasterDashboardData>('/dashboard/master', { params: { schoolPeriodId: viewPeriod?.id } });
         setData(res.data);
       } catch (error) {
         console.error(error);
@@ -223,7 +225,7 @@ const MasterDashboard: React.FC = () => {
       }
     };
     fetchData();
-  }, []);
+  }, [viewPeriod?.id]);
 
   if (loading && !data) return <Card loading />;
 

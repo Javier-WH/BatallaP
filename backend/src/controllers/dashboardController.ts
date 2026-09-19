@@ -123,24 +123,28 @@ interface ContentGradeProgress {
   subjects: ContentSubjectProgress[];
 }
 
-const buildAcademicSnapshot = async (): Promise<AcademicSnapshot> => {
-  const activePeriod = await SchoolPeriod.findOne({ where: { status: 'activo' } });
+const buildAcademicSnapshot = async (schoolPeriodId?: number): Promise<AcademicSnapshot> => {
+  // Serve an explicit period (header selector lets users view past periods),
+  // falling back to the active period.
+  const viewPeriod = Number.isFinite(schoolPeriodId)
+    ? await SchoolPeriod.findByPk(schoolPeriodId)
+    : await SchoolPeriod.findOne({ where: { status: 'activo' } });
 
-  if (!activePeriod) {
+  if (!viewPeriod) {
     return { period: null };
   }
 
   const [matriculatedCount, pendingMatriculations, terms] = await Promise.all([
-    Inscription.count({ where: { schoolPeriodId: activePeriod.id } }),
-    Matriculation.count({ where: { schoolPeriodId: activePeriod.id, status: 'pending' } }),
+    Inscription.count({ where: { schoolPeriodId: viewPeriod.id } }),
+    Matriculation.count({ where: { schoolPeriodId: viewPeriod.id, status: 'pending' } }),
     Term.findAll({
-      where: { schoolPeriodId: activePeriod.id },
+      where: { schoolPeriodId: viewPeriod.id },
       order: [['order', 'ASC']],
       attributes: ['id', 'name', 'order', 'isBlocked', 'isActive', 'openDate', 'closeDate']
     })
   ]);
 
-  const closureStatus = await PeriodClosureService.getStatus(activePeriod.id);
+  const closureStatus = await PeriodClosureService.getStatus(viewPeriod.id);
 
   const assignments = (await TeacherAssignment.findAll({
     include: [
@@ -153,7 +157,7 @@ const buildAcademicSnapshot = async (): Promise<AcademicSnapshot> => {
             model: PeriodGrade,
             as: 'periodGrade',
             required: true,
-            where: { schoolPeriodId: activePeriod.id },
+            where: { schoolPeriodId: viewPeriod.id },
             attributes: ['id', 'schoolPeriodId', 'gradeId', 'color'],
             include: [{ model: Grade, as: 'grade', attributes: ['id', 'name', 'order'] }]
           },
@@ -176,7 +180,7 @@ const buildAcademicSnapshot = async (): Promise<AcademicSnapshot> => {
 
   if (periodGradeSubjectIds.length === 0 || sectionIds.length === 0) {
     return {
-      period: { id: activePeriod.id, name: activePeriod.name, period: activePeriod.period },
+      period: { id: viewPeriod.id, name: viewPeriod.name, period: viewPeriod.period },
       students: {
         matriculated: matriculatedCount,
         pending: pendingMatriculations,
@@ -298,8 +302,8 @@ const buildAcademicSnapshot = async (): Promise<AcademicSnapshot> => {
         .filter(n => Number.isFinite(n));
 
       // Fetch all PendingSubjects for these subjects, with their encounters + inscription (for gradeId)
-      // Only count records whose inscription belongs to the ACTIVE period —
-      // older resolved/pending rows from previous periods must not affect progress.
+      // Only count records whose inscription belongs to the VIEWED period —
+      // resolved/pending rows from other periods must not affect progress.
       const mpRecords = await PendingSubject.findAll({
         where: { subjectId: { [Op.in]: mpSubjectIds } },
         include: [
@@ -311,7 +315,7 @@ const buildAcademicSnapshot = async (): Promise<AcademicSnapshot> => {
       // Group by subjectId + gradeId (from the inscription)
       const byPair = new Map<string, any[]>();
       mpRecords.forEach(ps => {
-        if (ps.inscription?.schoolPeriodId !== activePeriod.id) return;
+        if (ps.inscription?.schoolPeriodId !== viewPeriod.id) return;
         const gradeId = ps.inscription?.gradeId;
         if (gradeId == null) return;
         const pairKey = `${ps.subjectId}:${gradeId}`;
@@ -566,7 +570,7 @@ const buildAcademicSnapshot = async (): Promise<AcademicSnapshot> => {
     .sort((a, b) => a.gradeOrder - b.gradeOrder);
 
   return {
-    period: { id: activePeriod.id, name: activePeriod.name, period: activePeriod.period },
+    period: { id: viewPeriod.id, name: viewPeriod.name, period: viewPeriod.period },
     students: {
       matriculated: matriculatedCount,
       pending: pendingMatriculations,
@@ -782,7 +786,7 @@ export const getAdminDashboardStats = async (req: Request, res: Response) => {
 
 export const getControlPanelMetrics = async (req: Request, res: Response) => {
   try {
-    const snapshot = await buildAcademicSnapshot();
+    const snapshot = await buildAcademicSnapshot(Number(req.query.schoolPeriodId) || undefined);
     return res.json(snapshot);
   } catch (error) {
     console.error('Error fetching control panel metrics:', error);
@@ -793,7 +797,7 @@ export const getControlPanelMetrics = async (req: Request, res: Response) => {
 export const getMasterDashboardMetrics = async (req: Request, res: Response) => {
   try {
     const [academic, totalUsers, settingsList] = await Promise.all([
-      buildAcademicSnapshot(),
+      buildAcademicSnapshot(Number(req.query.schoolPeriodId) || undefined),
       User.count(),
       Setting.findAll({
         where: { key: { [Op.in]: ['institution_name', 'institution_logo_shape', 'institution_motto', 'institution_code'] } }
@@ -863,12 +867,16 @@ const shortName = (firstName?: string, lastName?: string): string => {
 
 export const getActivityLog = async (req: Request, res: Response) => {
   try {
-    const activePeriod = await SchoolPeriod.findOne({ where: { status: 'activo' } });
-    if (!activePeriod) {
+    // Serve an explicit period when requested, else the active period.
+    const requestedId = Number(req.query.schoolPeriodId);
+    const viewPeriod = Number.isFinite(requestedId)
+      ? await SchoolPeriod.findByPk(requestedId)
+      : await SchoolPeriod.findOne({ where: { status: 'activo' } });
+    if (!viewPeriod) {
       return res.json([]);
     }
 
-    const periodId = activePeriod.id;
+    const periodId = viewPeriod.id;
     const entries: ActivityLogEntry[] = [];
 
     /* ---------- 1. EvaluationPlan ---------- */
@@ -1134,12 +1142,15 @@ export const getActivityLog = async (req: Request, res: Response) => {
 
     /* ---------- Build entries: GradeChangeLog ---------- */
     for (const a of audits) {
+      const meta = a.metadata || {};
+      // GradeChangeLog rows are global — skip audits attributable to a different period
+      const metaPeriodId = Number(meta.schoolPeriodId);
+      if (Number.isFinite(metaPeriodId) && metaPeriodId !== periodId) continue;
       const editor = (a as any).editor;
       const editorPerson = editor?.person;
       const actorFirstName = editorPerson?.firstName || '';
       const actorLastName = editorPerson?.lastName || '';
       const actorName = editorPerson ? shortName(actorFirstName, actorLastName) : 'Usuario';
-      const meta = a.metadata || {};
       const subjectName = meta.subjectName || null;
       const gradeName = meta.gradeName || null;
       const sectionName = meta.sectionName || null;
