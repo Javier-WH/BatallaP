@@ -100,6 +100,96 @@ function forcedLinkProblem() {
   };
 }
 
+// Same-day duplication regression: a lone mode-0 subject (weekly 2) can either
+// double up on one day (day has 2 blocks, no thin-day penalty) or spread to 2
+// days (each day has 1 block -> thin-day penalty 150 each). Old weight (3)
+// preferred doubling; the new weight (800) must prefer spreading.
+function sameDayProblem() {
+  const blocks = makeBlocks();
+  const subjects = [
+    { subjectId: 39, teacherId: 61, weeklyBlocks: 2, allowConsecutiveBlocks: 0, difficulty: 'light' },
+  ];
+  return {
+    blockSize: 2,
+    days: DAYS,
+    blocks,
+    sections: [{ id: 1, periodGradeId: 4, subjects }],
+    teacherBusy: [],
+    teacherPreferred: [],
+    syncGroupSubjects: false,
+    groupSubjects: [],
+    crossGradeLinks: [],
+    minConsolidatedBlocksPerDay: 2,
+    thinDayWeight: 150,
+    sameDaySubjectWeight: 800,
+  };
+}
+
+// Difficulty gradient regression: one day only, all three teachers free in
+// tarde only — heavy + medium + light must fill the 3-block afternoon.
+// Gradient must put heavy first and pull light to the last block.
+function difficultyGradientProblem() {
+  const blocks = makeBlocks().filter(b => b.day === 'Lunes');
+  const busy: Array<Record<string, unknown>> = [];
+  for (const b of blocks) {
+    if (b.section === 'manana') {
+      busy.push({ teacherId: 49, day: 'Lunes', blockId: b.id });
+      busy.push({ teacherId: 70, day: 'Lunes', blockId: b.id });
+      busy.push({ teacherId: 71, day: 'Lunes', blockId: b.id });
+    }
+  }
+  const subjects = [
+    { subjectId: 3, teacherId: 49, weeklyBlocks: 1, allowConsecutiveBlocks: 0, difficulty: 'heavy' },
+    { subjectId: 39, teacherId: 70, weeklyBlocks: 1, allowConsecutiveBlocks: 0, difficulty: 'light' },
+    { subjectId: 4, teacherId: 71, weeklyBlocks: 1, allowConsecutiveBlocks: 0, difficulty: 'medium' },
+  ];
+  return {
+    blockSize: 2,
+    days: ['Lunes'],
+    blocks,
+    sections: [{ id: 1, periodGradeId: 4, subjects }],
+    teacherBusy: busy,
+    teacherPreferred: [],
+    syncGroupSubjects: false,
+    groupSubjects: [],
+    crossGradeLinks: [],
+    heavyPositionWeight: 20,
+    lightPositionBonus: 10,
+  };
+}
+
+// Short-visit regression: subject X can go either lone in the morning (day
+// becomes 2 runs, one of them a single block) or merged into the afternoon run
+// at a high heavy-position cost. With only the 200 run penalty the lone visit
+// won; the 300 short-visit penalty must tip it toward merging.
+function shortVisitProblem() {
+  const blocks = makeBlocks().filter(b => b.day === 'Lunes');
+  const busy: Array<Record<string, unknown>> = [];
+  for (const b of blocks) {
+    // Y's teacher: only t1_t2 free. X's teacher: only m1_m2 and t3_t4 free.
+    if (!(b.id === 't1_t2')) busy.push({ teacherId: 80, day: 'Lunes', blockId: b.id as string });
+    if (!(b.id === 'm1_m2' || b.id === 't3_t4')) busy.push({ teacherId: 81, day: 'Lunes', blockId: b.id as string });
+  }
+  const subjects = [
+    { subjectId: 50, teacherId: 80, weeklyBlocks: 1, allowConsecutiveBlocks: 0, difficulty: 'medium' },
+    { subjectId: 51, teacherId: 81, weeklyBlocks: 1, allowConsecutiveBlocks: 0, difficulty: 'heavy' },
+  ];
+  return {
+    blockSize: 2,
+    days: ['Lunes'],
+    blocks,
+    sections: [{ id: 1, periodGradeId: 4, subjects }],
+    teacherBusy: busy,
+    teacherPreferred: [],
+    syncGroupSubjects: false,
+    groupSubjects: [],
+    crossGradeLinks: [],
+    minConsolidatedBlocksPerDay: 2,
+    heavyPositionWeight: 250,
+    shortVisitWeight: 300,
+  };
+}
+
 const hasSolver = solverAvailable();
 const maybeDescribe = hasSolver ? describe : describe.skip;
 
@@ -123,5 +213,46 @@ maybeDescribe('schedule_solver forced slot + consecutive link', () => {
         expect(new Set(ps.map(p => p.blockId))).toEqual(new Set(['t3_t4', 't5_t6']));
       }
     }
+  }, 180000);
+});
+
+maybeDescribe('schedule_solver same-day duplication', () => {
+  it('never places a non-consecutive subject twice non-adjacent in one day', () => {
+    const result = runSolver(sameDayProblem());
+    expect(result.unplaced).toEqual([]);
+    const ps = result.placed.filter(p => p.subjectId === 39);
+    expect(ps).toHaveLength(2);
+    if (ps[0].day === ps[1].day) {
+      // Same day is only acceptable as one contiguous run ("one session"):
+      // the two blocks must be adjacent in the same turn (m1_m2+m3_m4 ok,
+      // m1_m2+t1_t2 or m1_m2+m5_m6 not ok).
+      const first = (id: string) => parseInt(id.slice(1).split('_')[0], 10);
+      expect(ps[0].blockId[0]).toBe(ps[1].blockId[0]);
+      expect(Math.abs(first(ps[0].blockId) - first(ps[1].blockId))).toBe(2);
+    }
+  }, 180000);
+});
+
+maybeDescribe('schedule_solver difficulty gradient', () => {
+  it('places heavy early in the turn and pulls light to the last block', () => {
+    const result = runSolver(difficultyGradientProblem());
+    expect(result.unplaced).toEqual([]);
+    const heavy = result.placed.find(p => p.subjectId === 3);
+    const light = result.placed.find(p => p.subjectId === 39);
+    const medium = result.placed.find(p => p.subjectId === 4);
+    expect(heavy?.blockId).toBe('t1_t2');
+    expect(medium?.blockId).toBe('t3_t4');
+    expect(light?.blockId).toBe('t5_t6');
+  }, 180000);
+});
+
+maybeDescribe('schedule_solver short visit', () => {
+  it('merges a block into an existing run instead of leaving a lone visit', () => {
+    const result = runSolver(shortVisitProblem());
+    expect(result.unplaced).toEqual([]);
+    const x = result.placed.find(p => p.subjectId === 51);
+    // X merges into the afternoon run (t3_t4 next to Y's t1_t2) rather than
+    // sitting alone in the morning
+    expect(x?.blockId).toBe('t3_t4');
   }, 180000);
 });

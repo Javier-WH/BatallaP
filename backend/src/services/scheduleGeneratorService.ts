@@ -97,6 +97,12 @@ interface ProblemJson {
   heavyLateBlockWeight: number;
   heavyAvoidLastNMorning: number;
   heavyAvoidLastNAfternoon: number;
+  heavyPositionWeight: number;
+  lightPositionBonus: number;
+  // Same-day duplication
+  sameDaySubjectWeight: number;
+  // Short-visit (lone block run) penalty
+  shortVisitWeight: number;
   // Forced slot exceptions
   forcedSlotSubjects: ForcedSlotInput[];
   forcedSlotDefaultWeight: number;
@@ -256,6 +262,10 @@ export async function generateSchedulesForPeriod(
   const heavyLateBlockWeight = Number(settings.heavy_late_block_weight) || 40;
   const heavyAvoidLastNMorning = Number(settings.heavy_avoid_last_n_morning) || 1;
   const heavyAvoidLastNAfternoon = Number(settings.heavy_avoid_last_n_afternoon) || 1;
+  const heavyPositionWeight = Number(settings.heavy_position_weight) || 20;
+  const lightPositionBonus = Number(settings.light_position_bonus) || 10;
+  const sameDaySubjectWeight = Number(settings.same_day_subject_weight) || 800;
+  const shortVisitWeight = Number(settings.short_visit_weight) || 300;
   const forcedSlotDefaultWeight = Number(settings.forced_slot_default_weight) || 5000;
 
   // 2. Build period slots and blocks
@@ -441,6 +451,10 @@ export async function generateSchedulesForPeriod(
     heavyLateBlockWeight,
     heavyAvoidLastNMorning,
     heavyAvoidLastNAfternoon,
+    heavyPositionWeight,
+    lightPositionBonus,
+    sameDaySubjectWeight,
+    shortVisitWeight,
     forcedSlotSubjects,
     forcedSlotDefaultWeight,
   };

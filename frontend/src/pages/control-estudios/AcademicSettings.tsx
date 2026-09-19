@@ -186,6 +186,10 @@ const AcademicSettings: React.FC = () => {
         heavy_late_block_weight: settingsRes.data.heavy_late_block_weight !== undefined ? Number(settingsRes.data.heavy_late_block_weight) : 40,
         heavy_avoid_last_n_morning: settingsRes.data.heavy_avoid_last_n_morning !== undefined ? Number(settingsRes.data.heavy_avoid_last_n_morning) : 1,
         heavy_avoid_last_n_afternoon: settingsRes.data.heavy_avoid_last_n_afternoon !== undefined ? Number(settingsRes.data.heavy_avoid_last_n_afternoon) : 1,
+        heavy_position_weight: settingsRes.data.heavy_position_weight !== undefined ? Number(settingsRes.data.heavy_position_weight) : 20,
+        light_position_bonus: settingsRes.data.light_position_bonus !== undefined ? Number(settingsRes.data.light_position_bonus) : 10,
+        same_day_subject_weight: settingsRes.data.same_day_subject_weight !== undefined ? Number(settingsRes.data.same_day_subject_weight) : 800,
+        short_visit_weight: settingsRes.data.short_visit_weight !== undefined ? Number(settingsRes.data.short_visit_weight) : 300,
         forced_slot_default_weight: settingsRes.data.forced_slot_default_weight !== undefined ? Number(settingsRes.data.forced_slot_default_weight) : 5000,
       });
     } catch (error) {
@@ -430,6 +434,10 @@ const AcademicSettings: React.FC = () => {
           heavy_late_block_weight: String(values.heavy_late_block_weight ?? 40),
           heavy_avoid_last_n_morning: String(values.heavy_avoid_last_n_morning ?? 1),
           heavy_avoid_last_n_afternoon: String(values.heavy_avoid_last_n_afternoon ?? 1),
+          heavy_position_weight: String(values.heavy_position_weight ?? 20),
+          light_position_bonus: String(values.light_position_bonus ?? 10),
+          same_day_subject_weight: String(values.same_day_subject_weight ?? 800),
+          short_visit_weight: String(values.short_visit_weight ?? 300),
           forced_slot_default_weight: String(values.forced_slot_default_weight ?? 5000),
         },
       });
@@ -1475,13 +1483,55 @@ const AcademicSettings: React.FC = () => {
                                     </Form.Item>
                                   </Col>
                                 </Row>
-                                <Form.Item
-                                  name="forced_slot_default_weight"
-                                  label={<Text style={{ fontSize: 12, fontWeight: 600 }}>Peso: bloque forzado</Text>}
-                                  tooltip="Prioridad de las materias marcadas como 'Forzar bloque' en las excepciones (inicio de mañana / fin de tarde). Un valor alto las hace casi obligatorias."
-                                >
-                                  <InputNumber min={0} max={100000} style={{ width: '100%', height: 40 }} />
-                                </Form.Item>
+                                <Row gutter={12}>
+                                  <Col span={12}>
+                                    <Form.Item
+                                      name="heavy_position_weight"
+                                      label={<Text style={{ fontSize: 12, fontWeight: 600 }}>Gradiente: pesada temprano</Text>}
+                                      tooltip="Penalización por cada posición hacia el final del turno para materias pesadas — mientras más pesada, más temprano en el turno"
+                                    >
+                                      <InputNumber min={0} max={10000} style={{ width: '100%', height: 40 }} />
+                                    </Form.Item>
+                                  </Col>
+                                  <Col span={12}>
+                                    <Form.Item
+                                      name="light_position_bonus"
+                                      label={<Text style={{ fontSize: 12, fontWeight: 600 }}>Gradiente: bono ligera al final</Text>}
+                                      tooltip="Bonificación por cada posición hacia el final del turno para materias ligeras — empuja a las pesadas hacia bloques tempranos por competencia"
+                                    >
+                                      <InputNumber min={0} max={10000} style={{ width: '100%', height: 40 }} />
+                                    </Form.Item>
+                                  </Col>
+                                </Row>
+                                <Row gutter={12}>
+                                  <Col span={12}>
+                                    <Form.Item
+                                      name="same_day_subject_weight"
+                                      label={<Text style={{ fontSize: 12, fontWeight: 600 }}>Peso: misma materia 2 veces al día</Text>}
+                                      tooltip="Penalización por ver la misma materia dos veces en un día (salvo corridas consecutivas, que cuentan como una sola sesión). Mantener por debajo de 1000 para que duplicar siga siendo mejor que dejar horas sin colocar."
+                                    >
+                                      <InputNumber min={0} max={10000} style={{ width: '100%', height: 40 }} />
+                                    </Form.Item>
+                                  </Col>
+                                  <Col span={12}>
+                                    <Form.Item
+                                      name="short_visit_weight"
+                                      label={<Text style={{ fontSize: 12, fontWeight: 600 }}>Peso: visita de 1 solo bloque</Text>}
+                                      tooltip="Penalización por cada tramo del día con menos bloques que el mínimo consolidado — evita que el salón venga a 1 solo bloque en la mañana y regrese en la tarde"
+                                    >
+                                      <InputNumber min={0} max={10000} style={{ width: '100%', height: 40 }} />
+                                    </Form.Item>
+                                  </Col>
+                                  <Col span={12}>
+                                    <Form.Item
+                                      name="forced_slot_default_weight"
+                                      label={<Text style={{ fontSize: 12, fontWeight: 600 }}>Peso: bloque forzado</Text>}
+                                      tooltip="Prioridad de las materias marcadas como 'Forzar bloque' en las excepciones (inicio de mañana / fin de tarde). Un valor alto las hace casi obligatorias."
+                                    >
+                                      <InputNumber min={0} max={100000} style={{ width: '100%', height: 40 }} />
+                                    </Form.Item>
+                                  </Col>
+                                </Row>
                               </>
                             ),
                           },
