@@ -125,14 +125,6 @@ const MainLayout: React.FC = () => {
       path: '/constancias'
     },
     {
-      key: 'asistencias',
-      icon: <CheckSquareOutlined />,
-      label: 'Asistencias',
-      roles: ['Profesor', 'Control de Estudios', 'Administrador', 'Master', 'Director'],
-      path: '/asistencias'
-    },
-
-    {
       key: 'profesor-module',
       icon: <BookOutlined />,
       label: 'Académico',
@@ -173,6 +165,13 @@ const MainLayout: React.FC = () => {
       label: 'Mi Expediente',
       roles: ['Alumno'],
       path: '/estudiante'
+    },
+    {
+      key: 'asistencias',
+      icon: <CheckSquareOutlined />,
+      label: 'Asistencias',
+      roles: ['Profesor', 'Control de Estudios', 'Administrador', 'Master', 'Director'],
+      path: '/asistencias'
     }
   ];
 
