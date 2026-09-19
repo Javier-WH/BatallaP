@@ -44,6 +44,7 @@
 | `/api/attendance` | `attendanceRoutes.ts` |
 | `/api/gate` | `gateRoutes.ts` (RFID foundation) |
 | `/api/teacher-admin-hours` | `teacherAdminHourRoutes.ts` |
+| `/api/teacher-workload` | `teacherWorkloadRoutes.ts` |
 
 ## Orden en `app.ts`
 

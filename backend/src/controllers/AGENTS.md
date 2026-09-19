@@ -41,6 +41,7 @@
 | `uploadController` | Archivos | Logo + documentos genéricos. |
 | `attendanceController` | Asistencias en aula | Sesiones desde `ScheduleEntry` + fecha (on-demand + backfill). Bloqueo cruzado auditado. Roles: Profesor (propias), CE/Admin/Master (todas). |
 | `teacherAdminHourController` | Horas administrativas | Pintadas sobre el horario del profesor post-generación (no son materias). GET map + POST bulk-replace (solo CE/Admin/Master) + summary para cuantificación. Se limpian al regenerar. |
+| `teacherWorkloadController` | Carga horaria docente | GET `?schoolPeriodId=` → horas semanales derivadas por profesor (cátedra + admin). Staff ve todos; `Profesor` solo su fila. Delega en `teacherWorkloadService`. |
 | `healthController` | Liveness | Probe simple. |
 
 ## Al añadir un controller nuevo

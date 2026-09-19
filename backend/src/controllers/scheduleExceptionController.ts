@@ -17,7 +17,7 @@ export const listExceptions = async (_req: Request, res: Response) => {
 // POST /api/schedule-exceptions
 export const createException = async (req: Request, res: Response) => {
   try {
-    const { subjectId, allowConsecutiveBlocks, weeklyBlocks, maxHoursPerDay, difficulty, forcedSlot, endOfRun } = req.body;
+    const { subjectId, allowConsecutiveBlocks, maxHoursPerDay, difficulty, forcedSlot, endOfRun } = req.body;
     if (!subjectId) return res.status(400).json({ message: 'subjectId es requerido' });
 
     // Upsert: if exception for this subject already exists, update it
@@ -26,7 +26,6 @@ export const createException = async (req: Request, res: Response) => {
       defaults: {
         subjectId,
         allowConsecutiveBlocks: allowConsecutiveBlocks ?? null,
-        weeklyBlocks: weeklyBlocks ?? null,
         maxHoursPerDay: maxHoursPerDay ?? null,
         difficulty: difficulty ?? null,
         forcedSlot: forcedSlot ?? null,
@@ -35,7 +34,6 @@ export const createException = async (req: Request, res: Response) => {
     });
     if (!created) {
       exc.allowConsecutiveBlocks = allowConsecutiveBlocks ?? null;
-      exc.weeklyBlocks = weeklyBlocks ?? null;
       exc.maxHoursPerDay = maxHoursPerDay ?? null;
       exc.difficulty = difficulty ?? null;
       exc.forcedSlot = forcedSlot ?? null;
@@ -53,11 +51,10 @@ export const createException = async (req: Request, res: Response) => {
 export const updateException = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { allowConsecutiveBlocks, weeklyBlocks, maxHoursPerDay, difficulty, forcedSlot, endOfRun } = req.body;
+    const { allowConsecutiveBlocks, maxHoursPerDay, difficulty, forcedSlot, endOfRun } = req.body;
     const exc = await ScheduleException.findByPk(Number(id));
     if (!exc) return res.status(404).json({ message: 'Excepción no encontrada' });
     exc.allowConsecutiveBlocks = allowConsecutiveBlocks ?? null;
-    exc.weeklyBlocks = weeklyBlocks ?? null;
     exc.maxHoursPerDay = maxHoursPerDay ?? null;
     exc.difficulty = difficulty ?? null;
     exc.forcedSlot = forcedSlot ?? null;

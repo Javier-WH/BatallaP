@@ -275,7 +275,7 @@ export const getSectionScheduleOptions = async (req: Request, res: Response) => 
         periodGradeSubjectId: p.id,
         subjectId: p.subjectId,
         subjectName: subject?.name ?? '',
-        weeklyBlocks: p.weeklyBlocks,
+        weeklyBlocks: subject?.weeklyBlocks ?? p.weeklyBlocks,
         allowConsecutiveBlocks: subject?.allowConsecutiveBlocks ?? 0,
         maxHoursPerDay: (subject as any)?.maxHoursPerDay ?? null,
         subjectGroupId: subject?.subjectGroupId ?? null,

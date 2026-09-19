@@ -347,7 +347,7 @@ export async function generateSchedulesForPeriod(
       const exc = exceptionMap.get(p.subjectId);
       return {
         subjectId: p.subjectId,
-        weeklyBlocks: exc?.weeklyBlocks != null ? exc.weeklyBlocks : p.weeklyBlocks,
+        weeklyBlocks: subject?.weeklyBlocks ?? p.weeklyBlocks,
         allowConsecutiveBlocks: exc?.allowConsecutiveBlocks != null ? exc.allowConsecutiveBlocks : ((subject as any)?.allowConsecutiveBlocks ?? 0),
         maxHoursPerDay: exc?.maxHoursPerDay != null ? exc.maxHoursPerDay : ((subject as any)?.maxHoursPerDay ?? null),
         subjectGroupId: subject?.subjectGroupId ?? null,

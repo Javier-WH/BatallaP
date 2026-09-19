@@ -22,6 +22,7 @@
 | `pendingSubjectService` | CRUD/resolver sobre `PendingSubject`. | `periodOutcomeController`, `periodClosureExecutor` |
 | `studentPromotionEngine` | Decide promoción / repitencia / pendientes según reglas. | `periodClosureExecutor` |
 | `externalGradeService` | Registro de notas externas (transferencia/equivalencia) con plantel emisor y período externo. | `externalGradeController` |
+| `teacherWorkloadService` | Carga semanal derivada por profesor: `Σ(subject.weeklyBlocks ?? pgs.weeklyBlocks)` por unidad docente (links/grupos cuentan una vez) × horas/bloque + horas admin (excluye sección MP). | `teacherWorkloadController` |
 
 ## Guías
 

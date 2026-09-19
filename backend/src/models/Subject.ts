@@ -12,6 +12,7 @@ interface SubjectAttributes {
   allowConsecutiveBlocks?: number; // 0 = off, 1 = try, 2 = mandatory
   maxHoursPerDay?: number | null;
   difficulty?: string; // 'heavy' | 'medium' | 'light' — used by the schedule solver
+  weeklyBlocks?: number | null; // null = use PeriodGradeSubject.weeklyBlocks
 }
 
 interface SubjectCreationAttributes extends Optional<SubjectAttributes, 'id'> { }
@@ -27,6 +28,7 @@ class Subject extends Model<SubjectAttributes, SubjectCreationAttributes> implem
   public allowConsecutiveBlocks?: number;
   public maxHoursPerDay?: number | null;
   public difficulty?: string;
+  public weeklyBlocks?: number | null;
 
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
@@ -79,6 +81,11 @@ Subject.init(
       type: DataTypes.STRING(10),
       allowNull: false,
       defaultValue: 'medium',
+    },
+    weeklyBlocks: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      defaultValue: null,
     },
   },
   {

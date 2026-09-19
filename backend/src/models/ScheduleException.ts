@@ -6,20 +6,18 @@ interface ScheduleExceptionAttributes {
   id: number;
   subjectId: number;
   allowConsecutiveBlocks: number | null; // null = use Subject default, 0/1/2 = override
-  weeklyBlocks: number | null; // null = use PeriodGradeSubject default
   maxHoursPerDay: number | null; // null = no limit
   difficulty: string | null; // null = use Subject default, 'heavy'/'medium'/'light' = override
   forcedSlot: string | null; // null = none, 'first_morning' | 'last_afternoon' = strongly prefer that slot each day
   endOfRun: string | null; // null = none, 'soft' = prefer last in turn, 'hard' = must be last in turn
 }
 
-interface ScheduleExceptionCreationAttributes extends Optional<ScheduleExceptionAttributes, 'id' | 'allowConsecutiveBlocks' | 'weeklyBlocks' | 'maxHoursPerDay' | 'difficulty' | 'forcedSlot' | 'endOfRun'> { }
+interface ScheduleExceptionCreationAttributes extends Optional<ScheduleExceptionAttributes, 'id' | 'allowConsecutiveBlocks' | 'maxHoursPerDay' | 'difficulty' | 'forcedSlot' | 'endOfRun'> { }
 
 class ScheduleException extends Model<ScheduleExceptionAttributes, ScheduleExceptionCreationAttributes> implements ScheduleExceptionAttributes {
   public id!: number;
   public subjectId!: number;
   public allowConsecutiveBlocks!: number | null;
-  public weeklyBlocks!: number | null;
   public maxHoursPerDay!: number | null;
   public difficulty!: string | null;
   public forcedSlot!: string | null;
@@ -43,11 +41,6 @@ ScheduleException.init(
       unique: true,
     },
     allowConsecutiveBlocks: {
-      type: DataTypes.INTEGER,
-      allowNull: true,
-      defaultValue: null,
-    },
-    weeklyBlocks: {
       type: DataTypes.INTEGER,
       allowNull: true,
       defaultValue: null,
