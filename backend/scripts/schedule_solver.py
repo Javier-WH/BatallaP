@@ -173,6 +173,25 @@ def main():
     for key in blocks_by_day_section:
         blocks_by_day_section[key].sort(key=lambda b: b["order"])
 
+    # ── Compute a reliable whole-day chronological order ──
+    # "order" is only unique WITHIN a turn (morning blocks are 0,1,2,... and
+    # afternoon blocks restart at 0,1,2,...), so falling back to "order" alone
+    # when "globalOrder" is missing would interleave morning and afternoon
+    # blocks by tied sort keys (e.g. [m0, t0, m1, t1] instead of [m0, m1, t0]),
+    # making a lone morning block plus a lone afternoon block look like one
+    # adjacent, compact run to the compactness/short-run scoring below. We
+    # always compute the whole-day order ourselves (morning before afternoon,
+    # by "order" within each turn) instead of trusting the supplied field.
+    _TURN_RANK = {"manana": 0, "tarde": 1}
+    computed_global_order = {}  # (day, block_id) -> int
+    for day, day_blocks_raw in blocks_by_day.items():
+        ordered = sorted(day_blocks_raw, key=lambda b: (_TURN_RANK.get(b["section"], 2), b["order"]))
+        for i, b in enumerate(ordered):
+            computed_global_order[(day, b["id"])] = i
+
+    def global_order(b):
+        return computed_global_order[(b["day"], b["id"])]
+
     # ── Identify last morning block and first afternoon block per day ──
     last_morning_block = {}  # day -> block_id
     first_afternoon_block = {}  # day -> block_id
@@ -852,7 +871,7 @@ def main():
 
             # 4. Prefer early blocks: penalize using high-order blocks (global order)
             for (b, v) in var_list:
-                early_penalties.append(v * b.get("globalOrder", b["order"]))
+                early_penalties.append(v * global_order(b))
 
             # 5. Difficulty gradient: each step later in the turn costs
             # heavy_position_weight for a heavy subject; a light subject earns
@@ -868,7 +887,8 @@ def main():
 
     # ── NEW Constraint/Preference: class-schedule compactness ──
     # For each section+day, look at the FULL day (morning + afternoon combined, in
-    # true chronological order via globalOrder) rather than each turn separately.
+    # true whole-day chronological order — see global_order() above) rather
+    # than each turn separately.
     # Score it on:
     #   - number of separate "runs" of occupied blocks beyond the first (ideally 1
     #     run total — this alone also captures "never split morning/afternoon",
@@ -885,7 +905,7 @@ def main():
     for sec in sections:
         sid = sec["id"]
         for day in days:
-            day_blocks = sorted(blocks_by_day.get(day, []), key=lambda b: b.get("globalOrder", b["order"]))
+            day_blocks = sorted(blocks_by_day.get(day, []), key=global_order)
             if not day_blocks:
                 continue
 
