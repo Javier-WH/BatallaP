@@ -85,34 +85,42 @@ export async function addNominaSheet(
   const sheetName = `${gradeName} ${sectionName}`.slice(0, 31);
   const worksheet = workbook.addWorksheet(sheetName);
 
-  // Logo
+  // Logo: 1.03" diameter (~99px), aligned to the top-left corner
   const logoBuffer = await loadLogo();
   if (logoBuffer) {
     const logoId = workbook.addImage({ buffer: logoBuffer, extension: 'png' });
     worksheet.addImage(logoId, {
-      tl: { col: 0.31, row: 0.5 },
-      ext: { width: 119, height: 119 },
+      tl: { col: 0, row: 0 },
+      ext: { width: 99, height: 99 },
     });
   }
 
-  // Header rows
-  const titleRow = worksheet.addRow(['', '', institutionName || 'GradeMaster']);
-  const periodRow = worksheet.addRow(['', '', periodName]);
-  worksheet.addRow([]);
-  const teacherRow = worksheet.addRow(['', '', `Prof. Guía: ${teacherName}`.trim()]);
-  const sectionRow = worksheet.addRow(['', '', `${gradeName} ${sectionName}`]);
+  // Header rows: institution name merged across the full table width (A:D) so it never gets cut
+  const lastTableCol = 'D';
+  worksheet.mergeCells(`A1:${lastTableCol}1`);
+  worksheet.mergeCells(`A2:${lastTableCol}2`);
+  worksheet.mergeCells(`A4:${lastTableCol}4`);
+  worksheet.mergeCells(`A5:${lastTableCol}5`);
 
-  [titleRow, periodRow, teacherRow].forEach((row, i) => {
-    const firstCell = row.getCell(3);
-    if (i < 2) {
-      firstCell.font = { bold: true, size: 16 };
-      firstCell.alignment = { horizontal: 'center' };
-    } else {
-      firstCell.font = { bold: true, size: 11 };
-    }
-  });
-  sectionRow.getCell(3).font = { bold: true, size: 12 };
-  sectionRow.getCell(3).alignment = { horizontal: 'center' };
+  const titleCell = worksheet.getCell('A1');
+  titleCell.value = institutionName || 'GradeMaster';
+  titleCell.font = { bold: true, size: 16 };
+  titleCell.alignment = { horizontal: 'center' };
+
+  const periodCell = worksheet.getCell('A2');
+  periodCell.value = periodName;
+  periodCell.font = { bold: true, size: 16 };
+  periodCell.alignment = { horizontal: 'center' };
+
+  const teacherCell = worksheet.getCell('A4');
+  teacherCell.value = `Prof. Guía: ${teacherName}`.trim();
+  teacherCell.font = { bold: true, size: 11 };
+  teacherCell.alignment = { horizontal: 'center' };
+
+  const sectionCell = worksheet.getCell('A5');
+  sectionCell.value = `${gradeName} ${sectionName}`;
+  sectionCell.font = { bold: true, size: 12 };
+  sectionCell.alignment = { horizontal: 'center' };
 
   // Table starts at row 7
   const startRow = 7;
