@@ -252,7 +252,7 @@ describe('PeriodClosureService', () => {
       const term2 = await createTestTerm(period.id, { order: 2, isActive: false });
       const grade = await createTestGrade();
       const sectionA = await createTestSection({ name: 'SECCIÓN A' });
-      const sectionPend = await createTestSection({ name: 'MATERIA PENDIENTE' });
+      const sectionPend = await createTestSection({ name: 'MATERIA PENDIENTE', isMateriaPendiente: true });
 
       const pg = await PeriodGrade.create({ schoolPeriodId: period.id, gradeId: grade.id });
       await PeriodGradeSection.create({ periodGradeId: pg.id, sectionId: sectionA.id });

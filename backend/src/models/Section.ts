@@ -4,13 +4,15 @@ import sequelize from '@/config/database';
 interface SectionAttributes {
   id: number;
   name: string;
+  isMateriaPendiente: boolean; // true = auxiliary "Materia Pendiente" section (not a regular grade section)
 }
 
-interface SectionCreationAttributes extends Optional<SectionAttributes, 'id'> { }
+interface SectionCreationAttributes extends Optional<SectionAttributes, 'id' | 'isMateriaPendiente'> { }
 
 class Section extends Model<SectionAttributes, SectionCreationAttributes> implements SectionAttributes {
   public id!: number;
   public name!: string;
+  public isMateriaPendiente!: boolean;
 
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
@@ -27,6 +29,11 @@ Section.init(
       type: DataTypes.STRING,
       allowNull: false,
       unique: true
+    },
+    isMateriaPendiente: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false
     },
   },
   {

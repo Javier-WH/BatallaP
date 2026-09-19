@@ -1025,7 +1025,7 @@ const ScheduleManagement: React.FC = () => {
       (res.data || []).forEach((pg: any) => {
         (pg.sections || []).forEach((s: any) => {
           // Exclude the "MATERIA PENDIENTE" auxiliary section
-          if ((s.name || '').toUpperCase() === 'MATERIA PENDIENTE') return;
+          if (s.isMateriaPendiente) return;
           const pgsId = s.PeriodGradeSection?.id ?? s.id;
           flat.push({
             id: pgsId,

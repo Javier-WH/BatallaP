@@ -439,12 +439,12 @@ export class PeriodClosureExecutor {
           }
 
           if (carriedByGrade.size > 0) {
-            // 1. Find/Create "Materia Pendiente" Section (name is stored
-            // uppercase by the Section beforeCreate hook; look it up in
-            // uppercase so the find matches under case-sensitive collations)
+            // 1. Find/Create the "Materia Pendiente" Section — identified by
+            // the isMateriaPendiente flag, not by name, so the display name can
+            // be changed freely without breaking the lookup.
             const [mpSection] = await Section.findOrCreate({
-              where: { name: 'MATERIA PENDIENTE' },
-              defaults: { name: 'MATERIA PENDIENTE' },
+              where: { isMateriaPendiente: true },
+              defaults: { name: 'MATERIA PENDIENTE', isMateriaPendiente: true },
               transaction
             });
 

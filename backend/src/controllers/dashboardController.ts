@@ -270,7 +270,7 @@ const buildAcademicSnapshot = async (): Promise<AcademicSnapshot> => {
   //   4. Otherwise → incomplete (still in progress)
   // Key: must group by subjectId + gradeId, because the same subject (e.g. Inglés)
   // can have pending subjects in different grades (3rd year MP vs 4th year MP).
-  const mpSection = await Section.findOne({ where: { name: 'MATERIA PENDIENTE' } });
+  const mpSection = await Section.findOne({ where: { isMateriaPendiente: true } });
   const mpSectionId = mpSection?.id ?? null;
   // Map: `${subjectId}:${gradeId}` → { hasStudents, allApproved, allDone, hasEncounterDates }
   const mpCompletionMap = new Map<string, { hasStudents: boolean; allApproved: boolean; allDone: boolean; hasEncounterDates: boolean }>();

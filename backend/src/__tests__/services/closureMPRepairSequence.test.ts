@@ -234,8 +234,8 @@ describe('Closure MP + Repair Sequence — Integration Tests', () => {
       });
 
       const [mpSection] = await (await import('@/models/index')).Section.findOrCreate({
-        where: { name: 'Materia Pendiente' },
-        defaults: { name: 'Materia Pendiente' },
+        where: { isMateriaPendiente: true },
+        defaults: { name: 'MATERIA PENDIENTE', isMateriaPendiente: true },
       });
 
       const mpInscription = await Inscription.create({

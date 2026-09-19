@@ -98,7 +98,7 @@ export const getMyAssignments = async (req: Request, res: Response) => {
           model: Section,
           as: 'section',
           required: true,
-          where: { name: { [Op.ne]: 'Materia Pendiente' } },
+          where: { isMateriaPendiente: false },
         },
         { model: Person, as: 'teacher' }
       ],
@@ -2796,7 +2796,7 @@ export const getAllAssignments = async (req: Request, res: Response) => {
           }
         ]
       },
-      { model: Section, as: 'section', required: true, where: { name: { [Op.ne]: 'Materia Pendiente' } } },
+      { model: Section, as: 'section', required: true, where: { isMateriaPendiente: false } },
       { model: Person, as: 'teacher' }
     ];
 

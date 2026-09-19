@@ -189,7 +189,7 @@ export class PeriodClosureService {
           attributes: [],
           required: true,
           where: {
-            name: { [Op.notLike]: '%materia pendiente%' }
+            isMateriaPendiente: false
           }
         }
       ]

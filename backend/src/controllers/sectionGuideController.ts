@@ -99,8 +99,23 @@ export const setSectionGuide = async (req: Request, res: Response) => {
   try {
     const { teacherId, gradeId, sectionId, schoolPeriodId } = req.body;
 
-    if (!teacherId || !gradeId || !sectionId || !schoolPeriodId) {
-      return res.status(400).json({ message: 'Se requieren teacherId, gradeId, sectionId y schoolPeriodId' });
+    if (!gradeId || !sectionId || !schoolPeriodId) {
+      return res.status(400).json({ message: 'Se requieren gradeId, sectionId y schoolPeriodId' });
+    }
+
+    // The auxiliary MP section has no guide teacher
+    const section = await Section.findByPk(Number(sectionId));
+    if (section?.isMateriaPendiente) {
+      return res.status(400).json({ message: 'La sección de Materia Pendiente no tiene profesor guía' });
+    }
+
+    // teacherId null means "unassign": remove the existing guide row
+    if (teacherId === null || teacherId === undefined) {
+      const existing = await SectionGuide.findOne({
+        where: { gradeId: Number(gradeId), sectionId: Number(sectionId), schoolPeriodId: Number(schoolPeriodId) },
+      });
+      if (existing) await existing.destroy();
+      return res.json({ message: 'Profesor guía removido correctamente', guide: null });
     }
 
     // Verify the teacher has the Profesor role
@@ -274,7 +289,10 @@ export const getAllGuidesForPeriod = async (req: Request, res: Response) => {
       const gradeId = pg.gradeId;
       const gradeName = (pg as any).grade?.name || '';
       const sectionsForGrade = pgsRecords.filter(r => r.periodGradeId === pg.id);
-      const sections = sectionsForGrade.map(pgs => {
+      const sections = sectionsForGrade
+        // The MP auxiliary section has no guide teacher
+        .filter(pgs => !(pgs as any).section?.isMateriaPendiente)
+        .map(pgs => {
         const sectionId = pgs.sectionId;
         const sectionName = (pgs as any).section?.name || '';
         const teacherMap = sectionTeacherMap.get(sectionId);
@@ -282,7 +300,7 @@ export const getAllGuidesForPeriod = async (req: Request, res: Response) => {
         teachers.sort((a, b) => `${a.lastName} ${a.firstName}`.localeCompare(`${b.lastName} ${b.firstName}`));
         const guideTeacherId = guideMap.get(`${gradeId}-${sectionId}`) || null;
         return { sectionId, sectionName, teachers, guideTeacherId };
-      }).sort((a, b) => a.sectionName.localeCompare(b.sectionName));
+        }).sort((a, b) => a.sectionName.localeCompare(b.sectionName));
       return { gradeId, gradeName, sections };
     });
 
@@ -311,7 +329,7 @@ export const getMyGuideSections = async (req: Request, res: Response) => {
       return res.json({ sections: [], terms: [] });
     }
 
-    // Find sections where this teacher is guide
+    // Find sections where this teacher is guide (the MP auxiliary section never has a guide)
     const guides = await SectionGuide.findAll({
       where: {
         teacherId: personId,
@@ -319,7 +337,7 @@ export const getMyGuideSections = async (req: Request, res: Response) => {
       },
       include: [
         { model: Grade, as: 'grade' },
-        { model: Section, as: 'section' },
+        { model: Section, as: 'section', where: { isMateriaPendiente: false }, required: true },
       ],
     });
 

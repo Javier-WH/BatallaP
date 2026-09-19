@@ -33,15 +33,16 @@ import { logGradeChange } from '@/services/gradeChangeLogService';
 /* Helpers                                                             */
 /* ------------------------------------------------------------------ */
 
-// Stored uppercase by the Section beforeCreate hook — use the canonical
-// stored form so lookups match under case-sensitive collations too.
+// The MP section is identified by the isMateriaPendiente flag — its name is
+// display-only and can be renamed freely. The constant is only used when
+// creating the section for the first time (stored uppercase by the Section hook).
 const MP_SECTION_NAME = 'MATERIA PENDIENTE';
 
 /** Find or create the "Materia Pendiente" section. */
 async function findOrCreateMpSection(t?: any): Promise<Section> {
   const [section] = await Section.findOrCreate({
-    where: { name: MP_SECTION_NAME },
-    defaults: { name: MP_SECTION_NAME },
+    where: { isMateriaPendiente: true },
+    defaults: { name: MP_SECTION_NAME, isMateriaPendiente: true },
     transaction: t,
   });
   return section;
@@ -196,7 +197,7 @@ export const getStudentsForMpRegistration = async (req: Request, res: Response) 
     const nextGrade = allGrades[currentIdx + 1];
 
     // Get all inscriptions for the next grade in the active period (all sections, excluding MP section)
-    const mpSection = await Section.findOne({ where: { name: MP_SECTION_NAME } });
+    const mpSection = await Section.findOne({ where: { isMateriaPendiente: true } });
     const whereClause: any = {
       schoolPeriodId: activePeriod.id,
       gradeId: nextGrade.id,
@@ -440,7 +441,7 @@ export const getMpNomina = async (req: Request, res: Response) => {
       return res.json({ grade: null, subjects: [], students: [] });
     }
 
-    const mpSection = await Section.findOne({ where: { name: MP_SECTION_NAME } });
+    const mpSection = await Section.findOne({ where: { isMateriaPendiente: true } });
     if (!mpSection) {
       return res.json({ grade: null, subjects: [], students: [] });
     }
@@ -534,7 +535,7 @@ export const getMpTeacherAssignments = async (req: Request, res: Response) => {
       return res.json({ assignments: [] });
     }
 
-    const mpSection = await Section.findOne({ where: { name: MP_SECTION_NAME } });
+    const mpSection = await Section.findOne({ where: { isMateriaPendiente: true } });
     if (!mpSection) {
       return res.json({ assignments: [] });
     }
@@ -599,7 +600,7 @@ export const getMpAssignmentDetail = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Asignación no encontrada' });
     }
 
-    const mpSection = await Section.findOne({ where: { name: MP_SECTION_NAME } });
+    const mpSection = await Section.findOne({ where: { isMateriaPendiente: true } });
     if (!mpSection) {
       return res.json({ ...pgs.toJSON(), students: [] });
     }
@@ -705,7 +706,7 @@ export const getMpAssignmentEncounters = async (req: Request, res: Response) => 
       return res.status(404).json({ message: 'Asignación no encontrada' });
     }
 
-    const mpSection = await Section.findOne({ where: { name: MP_SECTION_NAME } });
+    const mpSection = await Section.findOne({ where: { isMateriaPendiente: true } });
     if (!mpSection) {
       return res.json({ subjectName: (pgs as any).subject?.name, maxEncounters: 4, students: [] });
     }
@@ -1317,7 +1318,7 @@ export const getMpEncounterDatesByPgs = async (req: Request, res: Response) => {
     const gradeId = (pgs as any).periodGrade.gradeId;
 
     // Find MP section
-    const mpSection = await Section.findOne({ where: { name: MP_SECTION_NAME } });
+    const mpSection = await Section.findOne({ where: { isMateriaPendiente: true } });
     if (!mpSection) {
       return res.json({
         periodGradeSubjectId: pgsId,
@@ -1446,7 +1447,7 @@ export const updateMpEncounterDatesByPgs = async (req: Request, res: Response) =
     const gradeId = (pgs as any).periodGrade.gradeId;
 
     // Find MP section
-    const mpSection = await Section.findOne({ where: { name: MP_SECTION_NAME }, transaction: t });
+    const mpSection = await Section.findOne({ where: { isMateriaPendiente: true }, transaction: t });
     if (!mpSection) {
       await t.commit();
       return res.json({
@@ -1805,7 +1806,7 @@ export const getMpNominaByEncounter = async (req: Request, res: Response) => {
       return res.json({ grade: null, subjects: [], students: [], encounterNumber });
     }
 
-    const mpSection = await Section.findOne({ where: { name: MP_SECTION_NAME } });
+    const mpSection = await Section.findOne({ where: { isMateriaPendiente: true } });
     if (!mpSection) {
       return res.json({ grade: null, subjects: [], students: [], encounterNumber });
     }
@@ -1920,7 +1921,7 @@ export const getMpNominaFinal = async (req: Request, res: Response) => {
       return res.json({ grade: null, subjects: [], students: [] });
     }
 
-    const mpSection = await Section.findOne({ where: { name: MP_SECTION_NAME } });
+    const mpSection = await Section.findOne({ where: { isMateriaPendiente: true } });
     if (!mpSection) {
       return res.json({ grade: null, subjects: [], students: [] });
     }

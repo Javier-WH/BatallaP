@@ -123,7 +123,7 @@ export const getHistoricalGradesBySection = async (req: Request, res: Response) 
 
       // Filter out MATERIA PENDIENTE section inscriptions — those are not regular students
       const regularInscriptions = inscriptions.filter((ins: any) =>
-        (ins.section?.name || '').toUpperCase() !== 'MATERIA PENDIENTE'
+        !ins.section?.isMateriaPendiente
       );
       // If all were MP, use original list
       const inscriptionsToUse = regularInscriptions.length > 0 ? regularInscriptions : inscriptions;
@@ -265,8 +265,7 @@ export const getHistoricalGradesBySection = async (req: Request, res: Response) 
     const currentGradeOrderMap = new Map<number, number>();
     for (const ins of allInscriptionsRaw as any[]) {
       if (ins.schoolPeriodId !== periodId) continue;
-      const secName = (ins.section?.name || '').toUpperCase();
-      if (secName === 'MATERIA PENDIENTE') continue;
+      if (ins.section?.isMateriaPendiente) continue;
       const order = ins.grade?.order ?? 0;
       const pid = ins.personId;
       if (!currentGradeOrderMap.has(pid) || order > currentGradeOrderMap.get(pid)!) {
@@ -277,7 +276,7 @@ export const getHistoricalGradesBySection = async (req: Request, res: Response) 
     const allInscriptionsForStudents = (typeFilter === 'materia_pendiente' || isConsolidated)
       ? allInscriptionsRaw  // include MP inscriptions when filtering by materia_pendiente or consolidated
       : allInscriptionsRaw.filter((ins: any) =>
-          (ins.section?.name || '').toUpperCase() !== 'MATERIA PENDIENTE'
+          !ins.section?.isMateriaPendiente
         );
 
     const allInsIds = allInscriptionsForStudents.map(i => i.id);

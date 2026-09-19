@@ -58,15 +58,8 @@ export async function loadClosureStudentGroups(
     groups.set(inscription.personId, existing);
   }
 
-  const isPendingSection = (inscription: InscriptionWithClosureRelations): boolean => {
-    const sectionName = inscription.section?.name ?? '';
-    return sectionName
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .toLowerCase()
-      .replace(/\s+/g, ' ')
-      .trim() === 'materia pendiente';
-  };
+  const isPendingSection = (inscription: InscriptionWithClosureRelations): boolean =>
+    inscription.section?.isMateriaPendiente === true;
 
   return Array.from(groups.entries()).map(([personId, groupedInscriptions]) => {
     const referenceInscription = [...groupedInscriptions].sort((a, b) => {

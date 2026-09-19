@@ -293,8 +293,8 @@ export async function generateSchedulesForPeriod(
 
   const periodGradeIds = periodGrades.map(pg => pg.id);
 
-  // 4. Load ALL sections, excluding MATERIA PENDIENTE
-  const mpSection = await Section.findOne({ where: { name: 'MATERIA PENDIENTE' } });
+  // 4. Load ALL sections, excluding the auxiliary Materia Pendiente section
+  const mpSection = await Section.findOne({ where: { isMateriaPendiente: true } });
   const allPgs = await PeriodGradeSection.findAll({
     where: { periodGradeId: periodGradeIds },
     include: [

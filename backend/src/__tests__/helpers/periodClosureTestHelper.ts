@@ -430,12 +430,11 @@ export async function createSeparateMPInscription(
     ? setup.grades[options.gradeIndex].id
     : student.inscription.gradeId;
 
-  // Find or create the "Materia Pendiente" section (stored uppercase by the
-  // Section beforeCreate hook; look it up in uppercase so the find matches
-  // under case-sensitive collations like SQLite)
+  // Find or create the "Materia Pendiente" section — identified by the
+  // isMateriaPendiente flag, not by name.
   const [mpSection] = await Section.findOrCreate({
-    where: { name: 'MATERIA PENDIENTE' },
-    defaults: { name: 'MATERIA PENDIENTE' },
+    where: { isMateriaPendiente: true },
+    defaults: { name: 'MATERIA PENDIENTE', isMateriaPendiente: true },
   });
 
   const mpInscription = await Inscription.create({

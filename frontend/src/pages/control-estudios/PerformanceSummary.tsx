@@ -227,7 +227,7 @@ const LegendRow: React.FC<{ name: string; desc: string }> = ({ name, desc }) => 
 /* Interfaces                                                          */
 /* ------------------------------------------------------------------ */
 interface Grade { id: number; name: string; isDiversified: boolean; order: number; }
-interface Section { id: number; name: string; }
+interface Section { id: number; name: string; isMateriaPendiente?: boolean; }
 interface PeriodGradeStructure { id: number; grade: Grade; sections: Section[]; }
 interface SchoolPeriod { id: number; period: string; name: string; status: 'preinscripcion' | 'activo' | 'historico' | 'externo'; isActive: boolean; }
 
@@ -288,7 +288,7 @@ const PerformanceSummary: React.FC = () => {
 
   const boletinSelectedGrade = structure.find(s => s.grade.id === boletinGradeId);
   const boletinAvailableSections = [...(boletinSelectedGrade?.sections || [])]
-    .filter(sec => sec.name.toUpperCase() !== 'MATERIA PENDIENTE')
+    .filter(sec => !sec.isMateriaPendiente)
     .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'es'));
 
   // --- Derived selection state (declared before any handler that depends on it) ---
@@ -303,7 +303,7 @@ const PerformanceSummary: React.FC = () => {
       if (!selectedGradeIds.includes(s.grade.id)) return;
       s.sections.forEach(sec => {
         // Materia Pendiente is handled by its own button, not in the section list
-        if (sec.name.toUpperCase() === 'MATERIA PENDIENTE') return;
+        if (sec.isMateriaPendiente) return;
         byId.set(sec.id, sec);
       });
     });
@@ -321,7 +321,7 @@ const PerformanceSummary: React.FC = () => {
       [...s.sections]
         .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'es', { numeric: true }))
         .forEach(sec => {
-          if (sec.name.toUpperCase() === 'MATERIA PENDIENTE') return;
+          if (sec.isMateriaPendiente) return;
           if (!selectedSectionIds.includes(sec.id)) return;
           combos.push({ gradeId: s.grade.id, gradeName: s.grade.name, sectionId: sec.id, sectionName: sec.name });
         });
@@ -605,7 +605,7 @@ const PerformanceSummary: React.FC = () => {
       message.error('No se encontró la estructura para el grado seleccionado');
       return;
     }
-    const mpSection = gradeEntry.sections.find(sec => sec.name.toUpperCase() === 'MATERIA PENDIENTE');
+    const mpSection = gradeEntry.sections.find(sec => sec.isMateriaPendiente);
     if (!mpSection) {
       message.error('No hay sección de Materia Pendiente para este grado');
       return;
@@ -1941,7 +1941,7 @@ const PerformanceSummary: React.FC = () => {
                           style={{ width: 220 }}
                           value={certSectionId ?? undefined}
                           onChange={(val: number) => { setCertSectionId(val); setCertSearchQuery(''); setCertSearchResults([]); setCertPersonId(null); }}
-                          options={[...(structure.find(s => s.grade.id === certGradeId)?.sections || [])].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'es')).filter(sec => sec.name.toUpperCase() !== 'MATERIA PENDIENTE').map(sec => ({ label: sec.name, value: sec.id }))}
+                          options={[...(structure.find(s => s.grade.id === certGradeId)?.sections || [])].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'es')).filter(sec => !sec.isMateriaPendiente).map(sec => ({ label: sec.name, value: sec.id }))}
                           placeholder="Seleccione…"
                         />
                       )}

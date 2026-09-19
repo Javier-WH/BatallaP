@@ -238,7 +238,7 @@ describe('Period Closure — Structure copy to next period', () => {
     expect(regularIns?.gradeId).toBe(setup.grades[1].id);
     expect(mpIns?.gradeId).toBe(setup.grades[0].id);
 
-    const mpSection = await Section.findOne({ where: { name: 'MATERIA PENDIENTE' } });
+    const mpSection = await Section.findOne({ where: { isMateriaPendiente: true } });
     expect(mpIns?.sectionId).toBe(mpSection?.id);
   });
 });

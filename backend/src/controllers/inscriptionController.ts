@@ -759,7 +759,7 @@ export const getInscriptions = async (req: Request, res: Response) => {
     // current grade with a regular section.
     // Use includeAuxiliary=true to include them (e.g. for the pending subjects module).
     if (includeAuxiliary !== 'true' && sectionId === undefined) {
-      const mpSection = await Section.findOne({ where: { name: 'MATERIA PENDIENTE' } });
+      const mpSection = await Section.findOne({ where: { isMateriaPendiente: true } });
       if (mpSection) {
         // Exclude Materia Pendiente section, but keep null sectionIds (e.g. withdrawn students)
         andConditions.push({
@@ -994,7 +994,7 @@ export const getInscriptionsStats = async (req: Request, res: Response) => {
 
     // Exclude auxiliary "Materia Pendiente" inscriptions (same logic as getInscriptions)
     if (includeAuxiliary !== 'true' && sectionId === undefined) {
-      const mpSection = await Section.findOne({ where: { name: 'MATERIA PENDIENTE' } });
+      const mpSection = await Section.findOne({ where: { isMateriaPendiente: true } });
       if (mpSection) {
         andConditions.push({ sectionId: { [Op.ne]: mpSection.id } });
       }

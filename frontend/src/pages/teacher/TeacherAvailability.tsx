@@ -231,7 +231,7 @@ export default function TeacherAvailability() {
       const subjMap = new Map<number, { id: number; name: string; subjectGroupId?: number | null; color?: string | null }>();
       (structRes.data || []).forEach((pg: any) => {
         (pg.sections || []).forEach((s: any) => {
-          if ((s.name || '').toUpperCase() === 'MATERIA PENDIENTE') return;
+          if (s.isMateriaPendiente) return;
           const pgsId = s.PeriodGradeSection?.id ?? s.id;
           flat.push({
             id: pgsId,

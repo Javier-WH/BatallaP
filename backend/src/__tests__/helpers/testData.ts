@@ -85,7 +85,8 @@ export async function createTestSection(overrides: Partial<any> = {}) {
   testStructureCounter += 1;
   const idx = testStructureCounter;
   return await Section.create({
-    name: overrides.name || `Sección ${String.fromCharCode(65 + (idx % 26))}${Math.floor(idx / 26)}`
+    name: overrides.name || `Sección ${String.fromCharCode(65 + (idx % 26))}${Math.floor(idx / 26)}`,
+    isMateriaPendiente: overrides.isMateriaPendiente ?? false
   });
 }
 

@@ -31,7 +31,7 @@
 |--------|-------------|
 | `SchoolPeriod` | Período escolar (año académico). Campo `status` ENUM: `preinscripcion` (período en pre-inscripción), `activo` (período en curso, único), `historico` (período cerrado), `externo` (período de institución externa para notas de transferencia/equivalencia). Los virtuals `isActive` (= `status === 'activo'`) e `isExternal` (= `status === 'externo'`) se mantienen por compatibilidad pero **no** pueden usarse en cláusulas `where`. |
 | `Grade` | Grado/año escolar (1ro, 2do, ..., 5to año). Ordenable. |
-| `Section` | Sección (A, B, C, ...). |
+| `Section` | Sección (A, B, C, ...). `isMateriaPendiente` marca la sección auxiliar de Materia Pendiente — es el identificador canónico (el `name` es solo de exhibición y puede renombrarse sin romper nada). |
 | `Subject` | Materia/asignatura. Puede pertenecer a un `SubjectGroup`. Para el generador de horarios: `allowConsecutiveBlocks`, `maxHoursPerDay`, `difficulty` (`heavy`/`medium`/`light`, default `medium`). |
 | `SubjectGroup` | Agrupación de materias electivas (sólo una es cursada por estudiante). |
 | `Specialization` | Mención / especialidad (ej. "Ciencias", "Humanidades"). |

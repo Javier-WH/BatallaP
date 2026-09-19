@@ -126,13 +126,13 @@ const TeacherProjection: React.FC = () => {
     fetchAllGuides();
   }, [fetchAllGuides]);
 
-  const handleSetGuide = useCallback(async (gradeId: number, sectionId: number, teacherId: number, gradeName: string, sectionName: string) => {
+  const handleSetGuide = useCallback(async (gradeId: number, sectionId: number, teacherId: number | undefined, gradeName: string, sectionName: string) => {
     if (!guidePeriodId) return;
     const key = `${gradeId}-${sectionId}`;
     setGuideSavingId(key);
     try {
       await api.post('/section-guides', {
-        teacherId,
+        teacherId: teacherId ?? null,
         gradeId,
         sectionId,
         schoolPeriodId: guidePeriodId,
@@ -141,15 +141,17 @@ const TeacherProjection: React.FC = () => {
         g.gradeId === gradeId
           ? { ...g, sections: g.sections.map(s =>
               s.sectionId === sectionId
-                ? { ...s, guideTeacherId: teacherId }
+                ? { ...s, guideTeacherId: teacherId ?? null }
                 : s
             ) }
           : g
       ));
-      message.success(`Profesor guía asignado a ${gradeName} - Sección ${sectionName}`);
+      message.success(teacherId
+        ? `Profesor guía asignado a ${gradeName} - Sección ${sectionName}`
+        : `Profesor guía removido de ${gradeName} - Sección ${sectionName}`);
     } catch (error: any) {
       const apiErr = error as { response?: { data?: { message?: string } } };
-      message.error(apiErr?.response?.data?.message || 'Error al asignar profesor guía');
+      message.error(apiErr?.response?.data?.message || 'Error al actualizar profesor guía');
     } finally {
       setGuideSavingId(null);
     }
@@ -308,7 +310,7 @@ const TeacherProjection: React.FC = () => {
       const gradeName = gs.grade?.name || '—';
       // Exclude the "MATERIA PENDIENTE" auxiliary section — it's managed separately
       const sections: any[] = (gs.sections || []).filter(
-        (sec: any) => (sec.name || '').toUpperCase() !== 'MATERIA PENDIENTE'
+        (sec: any) => !sec.isMateriaPendiente
       );
       const subjects: any[] = gs.subjects || [];
 
@@ -765,7 +767,7 @@ const TeacherProjection: React.FC = () => {
           <Form.Item label="Sección" required>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
               {[...(availableStructure.find(gs => gs.id === selectedGradeId)?.sections || [])]
-                .filter((sec: any) => (sec.name || '').toUpperCase() !== 'MATERIA PENDIENTE')
+                .filter((sec: any) => !sec.isMateriaPendiente)
                 .sort((a: any, b: any) => a.name.localeCompare(b.name, 'es')).map((sec: any) => {
                 const selected = selectedSectionIds.includes(sec.id);
                 return (

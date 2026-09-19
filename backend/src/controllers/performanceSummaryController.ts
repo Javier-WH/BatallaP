@@ -473,7 +473,7 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
     const section = await Section.findByPk(Number(sectionId));
     if (!section) return res.status(404).json({ message: 'Seccion no encontrada' });
 
-    const isMpSection = section.name.toUpperCase() === 'MATERIA PENDIENTE';
+    const isMpSection = section.isMateriaPendiente;
 
     const gradeOrder = grade.order || 1;
     const gradeSuffix = gradeOrder === 1 || gradeOrder === 3 ? 'ER' : gradeOrder === 2 ? 'DO' : 'TO';
@@ -2391,7 +2391,7 @@ export const getBoletinData = async (req: Request, res: Response) => {
     if (!period) return res.status(404).json({ message: 'Período no encontrado' });
     if (!grade) return res.status(404).json({ message: 'Grado no encontrado' });
     const boletinSection = sectionId ? await Section.findByPk(sectionId) : null;
-    const isMpSection = boletinSection?.name?.toUpperCase() === 'MATERIA PENDIENTE';
+    const isMpSection = boletinSection?.isMateriaPendiente === true;
 
     const settings: Record<string, string> = {};
     settingsRows.forEach((s: any) => { settings[s.key] = s.value; });
@@ -2891,7 +2891,7 @@ export const getGeneralAverages = async (req: Request, res: Response) => {
 
     // Exclude "MATERIA PENDIENTE" sections — those are not regular grades
     const regularInscriptions = inscriptions.filter((ins: any) =>
-      (ins.section?.name || '').toUpperCase() !== 'MATERIA PENDIENTE'
+      !ins.section?.isMateriaPendiente
     );
 
     const students = regularInscriptions.map((ins: any) => {

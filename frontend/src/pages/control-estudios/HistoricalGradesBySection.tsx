@@ -425,7 +425,7 @@ const HistoricalGradesBySection: React.FC = () => {
           seenGradeIds.add(s.grade.id);
           gradeOrderMap.set(s.grade.id, s.grade.order ?? 999);
           for (const sec of s.sections) {
-            if (sec.name?.toUpperCase() === 'MATERIA PENDIENTE') continue;
+            if ((sec as any).isMateriaPendiente) continue;
             secs.push({ id: sec.id, name: sec.name, gradeName: s.grade.name, gradeId: s.grade.id });
           }
         }

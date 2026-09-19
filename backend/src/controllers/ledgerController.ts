@@ -365,11 +365,12 @@ export const getSectionsForPeriod = async (req: Request, res: Response) => {
       .map((i: any) => ({
         sectionId: i.sectionId,
         sectionName: (i.section as any)?.name ?? 'Sin sección',
+        isMateriaPendiente: (i.section as any)?.isMateriaPendiente === true,
         gradeId: i.gradeId,
         gradeName: (i.grade as any)?.name ?? '—',
       }))
       .filter((v: any, idx: number, arr: any[]) => arr.findIndex((a: any) => a.gradeId === v.gradeId && a.sectionId === v.sectionId) === idx)
-      .filter((s: any) => (s.sectionName || '').toUpperCase() !== 'MATERIA PENDIENTE')
+      .filter((s: any) => !s.isMateriaPendiente)
       .sort((a: any, b: any) => a.gradeName.localeCompare(b.gradeName) || a.sectionName.localeCompare(b.sectionName));
 
     return res.json(sections);
