@@ -119,7 +119,7 @@ const SortableCollapseItem: React.FC<SortableCollapseItemProps> = ({
                     value={editingComponentTitle}
                     onChange={e => onEditTitleChange(e.target.value)}
                     onPressEnter={onEditSave}
-                    style={{ width: 300 }}
+                    style={{ width: 'min(300px, 65vw)' }}
                   />
                   <Button size="small" icon={<CheckOutlined />} onClick={onEditSave} />
                   <Button size="small" icon={<CloseOutlined />} onClick={onEditCancel} />
@@ -207,7 +207,7 @@ const SortableContentItem: React.FC<SortableContentItemProps> = ({
               value={editingContentTitle}
               onChange={e => onEditTitleChange(e.target.value)}
               onPressEnter={onEditSave}
-              style={{ width: 300 }}
+              style={{ width: 'min(300px, 65vw)' }}
             />
             <Button size="small" icon={<CheckOutlined />} onClick={onEditSave} />
             <Button size="small" icon={<CloseOutlined />} onClick={onEditCancel} />
@@ -603,7 +603,7 @@ const ContentTab: React.FC<ContentTabProps> = ({
                         value={newContentTitle}
                         onChange={e => setNewContentTitle(e.target.value)}
                         onPressEnter={() => handleAddContent(comp.id)}
-                        style={{ width: 300 }}
+                        style={{ width: 'min(300px, 65vw)' }}
                       />
                       <Button size="small" icon={<CheckOutlined />} onClick={() => handleAddContent(comp.id)} />
                       <Button size="small" icon={<CloseOutlined />} onClick={() => setNewContentForComponent(null)} />
@@ -643,7 +643,7 @@ const ContentTab: React.FC<ContentTabProps> = ({
             value={newComponentTitle}
             onChange={e => setNewComponentTitle(e.target.value)}
             onPressEnter={handleAddComponent}
-            style={{ width: 300 }}
+            style={{ width: 'min(300px, 65vw)' }}
           />
           <Button type="primary" icon={<CheckOutlined />} onClick={handleAddComponent} />
           <Button icon={<CloseOutlined />} onClick={() => { setAddingComponent(false); setNewComponentTitle(''); }} />
@@ -689,7 +689,7 @@ const ContentTab: React.FC<ContentTabProps> = ({
                         value={editingLearningDesc}
                         onChange={e => setEditingLearningDesc(e.target.value)}
                         onPressEnter={handleSaveLearningEdit}
-                        style={{ width: 350 }}
+                        style={{ width: 'min(350px, 65vw)' }}
                       />
                       <Button size="small" icon={<CheckOutlined />} onClick={handleSaveLearningEdit} />
                       <Button size="small" icon={<CloseOutlined />} onClick={() => setEditingLearningId(null)} />

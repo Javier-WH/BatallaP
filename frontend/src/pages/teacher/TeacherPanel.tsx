@@ -1771,7 +1771,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                         );
                       })}
                     </div>
-                    <div className="flex gap-2 mt-3 w-full" style={{ minHeight: 40 }}>
+                    <div className="tp-selector-row flex gap-2 mt-3 w-full" style={{ minHeight: 40 }}>
                       {revisionGradesBySubject.map(gradeName => {
                         const isSelected = selectedRevisionAssignment?.gradeName === gradeName;
                         const firstAssignment = revisionAssignments.find(a => a.subjectName === selectedRevisionAssignment?.subjectName && a.gradeName === gradeName);
@@ -1787,7 +1787,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                         );
                       })}
                     </div>
-                    <div className="flex gap-2 mt-2 w-full" style={{ minHeight: 40 }}>
+                    <div className="tp-selector-row flex gap-2 mt-2 w-full" style={{ minHeight: 40 }}>
                       {revisionSections.map(assignment => {
                         const isSelected = `${assignment.periodGradeSubjectId}-${assignment.sectionId}` === selectedRevisionKey;
                         return (
@@ -1859,7 +1859,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
             </div>
 
             {/* Nivel 2: Año — altura fija para evitar layout shift */}
-            <div className="flex gap-2 mt-3 w-full" style={{ minHeight: 40 }}>
+            <div className="tp-selector-row flex gap-2 mt-3 w-full" style={{ minHeight: 40 }}>
               {selectedSubjectId && availableGrades.map(g => {
                 const isSelected = g.id === selectedGradeId;
                 return (
@@ -1881,7 +1881,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
             </div>
 
             {/* Nivel 3: Sección — altura fija para evitar layout shift */}
-            <div className="flex gap-2 mt-2 w-full" style={{ minHeight: 40 }}>
+            <div className="tp-selector-row flex gap-2 mt-2 w-full" style={{ minHeight: 40 }}>
               {selectedGradeId && availableSections.map(sec => {
                 const isSelected = sec.assignmentId === selectedAssignmentId;
                 return (
@@ -2009,7 +2009,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
         <Tabs
           activeKey={activeTab}
           tabBarExtraContent={(
-            <div className="flex items-center gap-4">
+            <div className="tp-tab-extra flex items-center gap-4">
               {repairMode && activeTab === 'repair-grades' && revisionDetail && (
                 <Button
                   type="primary"

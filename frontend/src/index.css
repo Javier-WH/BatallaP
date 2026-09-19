@@ -1438,7 +1438,110 @@ input[type=number] {
   .nf-logo, .nf-glow, .nf-orb, .nf-particle, .nf-number-zero, .nf-rise, .nf-rise-delay-1, .nf-rise-delay-2, .nf-rise-delay-3 { animation: none; }
 }
 
-/* === RESPONSIVE: Teacher Panel (/profesor) === */
+/* === RESPONSIVE: Teacher Panel (/profesor) — tab bar (<1280px) === */
+/* Below 1280px the 260px sidebar still takes space, so the tab bar (3-5 tabs
+   + up to 4 action buttons) overflows and AntD collapses tabs into the "..."
+   operations menu. Stack the tab nav and move the action buttons below. */
+@media (max-width: 1280px) {
+  .teacher-panel .ant-tabs-nav-operations {
+    display: none !important;
+  }
+  .teacher-panel .ant-tabs-nav {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    margin-bottom: 8px !important;
+  }
+  .teacher-panel .ant-tabs-nav-wrap {
+    overflow: visible !important;
+    width: 100% !important;
+  }
+  .teacher-panel .ant-tabs-nav-list {
+    width: 100% !important;
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    transform: none !important;
+  }
+  .teacher-panel .ant-tabs-tab {
+    flex: 1 1 0 !important;
+    margin: 0 !important;
+    justify-content: center !important;
+    white-space: normal !important;
+    text-align: center !important;
+    line-height: 1.2 !important;
+  }
+  .teacher-panel .ant-tabs-ink-bar {
+    display: none !important;
+  }
+  .teacher-panel .ant-tabs-extra-content {
+    width: 100% !important;
+    margin-top: 8px !important;
+    order: 2 !important;
+    position: relative !important;
+  }
+  .teacher-panel .tp-tab-extra {
+    flex-wrap: wrap !important;
+    gap: 6px !important;
+    justify-content: flex-start !important;
+  }
+}
+
+/* === RESPONSIVE: Teacher Panel (/profesor) — mid screens (<1080px) === */
+@media (max-width: 1080px) {
+  /* Lapso Académico: horizontal scroll instead of squeezing buttons */
+  .teacher-panel .term-selector {
+    overflow-x: auto !important;
+    scrollbar-width: none !important;
+    -ms-overflow-style: none !important;
+    flex-wrap: nowrap !important;
+  }
+  .teacher-panel .term-selector::-webkit-scrollbar {
+    display: none !important;
+  }
+  .teacher-panel .term-selector > button {
+    flex: 0 0 auto !important;
+    min-width: 90px !important;
+    white-space: nowrap !important;
+  }
+
+  /* Year/section selector rows: wrap instead of squeezing */
+  .teacher-panel .tp-selector-row {
+    flex-wrap: wrap !important;
+  }
+  .teacher-panel .tp-selector-row > button {
+    flex: 1 1 80px !important;
+    white-space: nowrap !important;
+  }
+
+  /* Top grid: stack subject card over lapso card (usable width is small) */
+  .teacher-panel .teacher-top-grid {
+    grid-template-columns: 1fr !important;
+  }
+  .teacher-panel .grid {
+    gap: 16px !important;
+  }
+
+  /* Footer/header flex rows: stack vertically */
+  .teacher-panel .flex.justify-between.items-center.px-2 {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 4px !important;
+  }
+  .teacher-panel .flex.items-center.justify-between.mb-4.flex-wrap {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 8px !important;
+  }
+
+  /* ContentTab: allow section headers and selects to wrap/shrink */
+  .teacher-panel .content-section-header {
+    flex-wrap: wrap !important;
+  }
+  .teacher-panel .content-section .ant-select {
+    max-width: 100% !important;
+  }
+}
+
+/* === RESPONSIVE: Teacher Panel (/profesor) — phones === */
 @media (max-width: 768px) {
   /* Reduce page padding on mobile */
   .teacher-panel {

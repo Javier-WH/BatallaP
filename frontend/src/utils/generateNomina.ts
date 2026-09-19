@@ -63,6 +63,7 @@ async function loadPendingSubjects(schoolPeriodId: number): Promise<Map<number, 
 interface InscriptionStudent {
   id: number;
   student?: {
+    id?: number;
     document?: string;
     documentType?: string;
     firstName?: string;
