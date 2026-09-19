@@ -776,25 +776,16 @@ const AcademicSettings: React.FC = () => {
                 </Col>
               </Row>
 
-              <div style={{
-                background: '#f9f9f9',
-                padding: '16px 20px',
-                borderRadius: 16,
-                marginTop: 8,
-                marginBottom: 24,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                border: '1px dashed #d9d9d9'
-              }}>
-                <div>
-                  <Text style={{ display: 'block', fontWeight: 700, fontSize: 14 }}>Bloqueo Inteligente</Text>
-                  <Text style={{ fontSize: 11, color: '#8c8c8c' }}>Restringir por fecha automáticamente</Text>
-                </div>
-                <Form.Item name="grade_lock_mode" valuePropName="checked" noStyle>
-                  <Switch />
-                </Form.Item>
-              </div>
+              {/*
+                "Bloqueo Inteligente" (grade_lock_mode) — UI hidden on purpose.
+                The field stays registered so the stored setting round-trips
+                unchanged on save. The backend feature it was meant to drive
+                (auto-lock grade entry outside Term.openDate/closeDate) is not
+                implemented; see comments in Term.ts / evaluationController.ts.
+              */}
+              <Form.Item name="grade_lock_mode" valuePropName="checked" hidden>
+                <Switch />
+              </Form.Item>
 
               <div style={{
                 background: '#fff7e6',

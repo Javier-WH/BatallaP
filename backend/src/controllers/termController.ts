@@ -83,6 +83,8 @@ export const createTerm = async (req: Request, res: Response) => {
         name,
         isBlocked: isBlocked || false,
         isActive: isActive || false,
+        // openDate/closeDate: stored for the planned "Bloqueo Inteligente"
+        // (grade_lock_mode) date-window lock — not enforced yet; see Term.ts.
         openDate: openDate ? new Date(openDate) : undefined,
         closeDate: closeDate ? new Date(closeDate) : undefined,
         schoolPeriodId,

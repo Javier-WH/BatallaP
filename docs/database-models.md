@@ -32,7 +32,7 @@
 | `SchoolPeriod` | Período escolar (año académico). Campo `status` ENUM: `preinscripcion` (período en pre-inscripción), `activo` (período en curso, único), `historico` (período cerrado), `externo` (período de institución externa para notas de transferencia/equivalencia). Los virtuals `isActive` (= `status === 'activo'`) e `isExternal` (= `status === 'externo'`) se mantienen por compatibilidad pero **no** pueden usarse en cláusulas `where`. |
 | `Grade` | Grado/año escolar (1ro, 2do, ..., 5to año). Ordenable. |
 | `Section` | Sección (A, B, C, ...). `isMateriaPendiente` marca la sección auxiliar de Materia Pendiente — es el identificador canónico (el `name` es solo de exhibición y puede renombrarse sin romper nada). |
-| `Subject` | Materia/asignatura. Puede pertenecer a un `SubjectGroup`. Para el generador de horarios: `allowConsecutiveBlocks`, `maxHoursPerDay`, `difficulty` (`heavy`/`medium`/`light`, default `medium`). |
+| `Subject` | Materia/asignatura. Puede pertenecer a un `SubjectGroup`. Para el generador de horarios: `allowConsecutiveBlocks`, `maxHoursPerDay`, `difficulty` (`heavy`/`medium`/`light`, default `medium`), `weeklyBlocks` (nullable — override global de bloques semanales; `null` = usa `PeriodGradeSubject.weeklyBlocks`). |
 | `SubjectGroup` | Agrupación de materias electivas (sólo una es cursada por estudiante). |
 | `Specialization` | Mención / especialidad (ej. "Ciencias", "Humanidades"). |
 | `PeriodGrade` | Relación `SchoolPeriod` ↔ `Grade` (+ `Specialization` opcional). Unidad base de la estructura anual. |
@@ -108,7 +108,7 @@
 |--------|-------------|
 | `Schedule` | Horario de una `PeriodGradeSection` en un `SchoolPeriod`. |
 | `ScheduleEntry` | Bloque horario: día + período + materia (+ profesor) dentro de un `Schedule`. `isGroupSubject` marca materias de grupo que varias secciones ven simultáneamente. |
-| `ScheduleException` | Excepción de generación por materia del período: `allowConsecutiveBlocks`, `weeklyBlocks`, `maxHoursPerDay`, `difficulty` (`heavy`/`medium`/`light`), `forcedSlot` (`first_morning`/`last_afternoon`), `endOfRun` (`soft`/`hard` = debe ser la última materia ocupada de su turno). Sobrescribe los valores por defecto del generador (y de `Subject`). |
+| `ScheduleException` | Excepción de generación por materia: `allowConsecutiveBlocks`, `maxHoursPerDay`, `difficulty` (`heavy`/`medium`/`light`), `forcedSlot` (`first_morning`/`last_afternoon`), `endOfRun` (`soft`/`hard` = debe ser la última materia ocupada de su turno). Sobrescribe los valores por defecto del generador (y de `Subject`). El override de bloques semanales vive en `Subject.weeklyBlocks`. |
 | `ScheduleLink` | Vínculo manual entre materias de **diferentes grados** del mismo período para que el generador las coloque en el mismo bloque horario. Tiene `name` opcional y `schoolPeriodId`. |
 | `ScheduleLinkItem` | Item de un vínculo: `linkId` + `subjectId` + `periodGradeId`. UNIQUE(`linkId`, `subjectId`, `periodGradeId`). Un par (materia, grado) solo puede pertenecer a un vínculo por período. |
 | `TeacherAdminHour` | Hora administrativa pintada sobre el horario del profesor (no es materia ni `ScheduleEntry`). UNIQUE(`teacherId`, `schoolPeriodId`, `day`, `period_id`). Se limpian al regenerar horarios del período. Base para cuantificación de horas (futuro módulo de sueldos). |

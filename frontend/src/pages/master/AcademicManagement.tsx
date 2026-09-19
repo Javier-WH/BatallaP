@@ -21,7 +21,8 @@ import {
   Tooltip,
   Empty,
   ColorPicker,
-  Switch
+  Switch,
+  InputNumber
 } from 'antd';
 import {
   PlusOutlined,
@@ -42,7 +43,6 @@ import {
   ThunderboltOutlined
 } from '@ant-design/icons';
 import api from '@/services/api';
-import PeriodClosurePanel from '@/pages/admin/components/PeriodClosurePanel';
 import {
   DndContext,
   closestCenter,
@@ -945,6 +945,7 @@ const AcademicManagement: React.FC = () => {
         icon: subjectRecord.icon ?? null,
         color: subjectRecord.color ?? null,
         difficulty: subjectRecord.difficulty ?? 'medium',
+        weeklyBlocks: subjectRecord.weeklyBlocks ?? null,
       });
     } else {
       editCatalogForm.setFieldsValue({ name: record.name });
@@ -952,7 +953,7 @@ const AcademicManagement: React.FC = () => {
     setEditCatalogVisible(true);
   };
 
-  const handleEditCatalog = async (values: { name: string; isDiversified?: boolean; subjectGroupId?: number | null; usesLiteralGrades?: boolean; abbreviation?: string | null; icon?: string | null; color?: unknown; difficulty?: string | null }) => {
+  const handleEditCatalog = async (values: { name: string; isDiversified?: boolean; subjectGroupId?: number | null; usesLiteralGrades?: boolean; abbreviation?: string | null; icon?: string | null; color?: unknown; difficulty?: string | null; weeklyBlocks?: number | null }) => {
     if (!editCatalogTarget) return;
     console.log('[handleEditCatalog] Form values:', values);
     try {
@@ -978,6 +979,7 @@ const AcademicManagement: React.FC = () => {
           icon: values.icon ?? null,
           color: normalizeColorValue(values.color),
           difficulty: values.difficulty ?? 'medium',
+          weeklyBlocks: values.weeklyBlocks ?? null,
         });
       } else {
         await api.put(`${url}/${editCatalogTarget.id}`, { name: values.name });
@@ -1819,13 +1821,6 @@ const AcademicManagement: React.FC = () => {
               </Row>
             </div>
           </TabPane>
-
-          {/* PERIOD CLOSURE TAB */}
-          <TabPane tab={<span><HistoryOutlined /> CIERRE</span>} key="5">
-            <div className="animate-card" style={{ padding: '24px' }}>
-              <PeriodClosurePanel />
-            </div>
-          </TabPane>
         </Tabs>
       </Card>
 
@@ -2042,6 +2037,15 @@ const AcademicManagement: React.FC = () => {
                       { value: 'medium', label: 'Media' },
                       { value: 'heavy', label: 'Pesada' },
                     ]}
+                  />
+                </Form.Item>
+                <Form.Item name="weeklyBlocks" label={<Text style={{ fontWeight: 700 }}>Bloques semanales (horarios)</Text>} extra="Cantidad de bloques que esta materia ve por semana en todos los grados. Déjelo vacío para usar la configuración por defecto de cada grado.">
+                  <InputNumber
+                    size="large"
+                    min={1}
+                    max={20}
+                    placeholder="Por defecto"
+                    style={{ width: '100%' }}
                   />
                 </Form.Item>
               </>

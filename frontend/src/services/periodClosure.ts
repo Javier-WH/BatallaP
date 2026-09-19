@@ -69,33 +69,8 @@ export interface PendingSubjectRecord {
   };
 }
 
-export const getActivePeriod = async () => {
-  const { data } = await api.get<SchoolPeriod | null>('/academic/active');
-  return data;
-};
-
 export const getClosureStatus = async (periodId: number) => {
   const { data } = await api.get<ClosureStatusResponse>(`/period-closure/${periodId}/status`);
-  return data;
-};
-
-
-export const getPeriodOutcomes = async (periodId: number, status?: OutcomeRecord['status']) => {
-  const params = status ? { status } : undefined;
-  const { data } = await api.get<OutcomeRecord[]>(`/periods/${periodId}/outcomes`, { params });
-  return data;
-};
-
-export const getPendingSubjects = async (periodId: number) => {
-  const { data } = await api.get<PendingSubjectRecord[]>(`/periods/${periodId}/pending-subjects`);
-  return data;
-};
-
-export const resolvePendingSubject = async (
-  pendingSubjectId: number,
-  status: 'aprobada' | 'convalidada'
-) => {
-  const { data } = await api.post(`/periods/pending-subjects/${pendingSubjectId}/resolve`, { status });
   return data;
 };
 

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { Button, message, Spin, Tabs, Tag, Empty, DatePicker, Input, Alert, List } from 'antd';
+import { Button, message, Spin, Tabs, Tag, Empty, DatePicker, Input, Alert, List, Tooltip } from 'antd';
 import { SaveOutlined, DeleteOutlined, ScheduleOutlined, HomeOutlined, PlusOutlined } from '@ant-design/icons';
 import api from '@/services/api';
 import { useAuth } from '@/context/AuthContext';
@@ -31,6 +31,14 @@ const STATUSES = [
   { key: 'busy', label: 'Ocupado', swatch: 'bg-rose-400', ring: 'ring-rose-500' },
   { key: 'preferred', label: 'Preferido', swatch: 'bg-sky-400', ring: 'ring-sky-500' },
 ];
+
+interface TeacherWorkload {
+  teacherId: number;
+  teachingBlocks: number;
+  teachingHours: number;
+  adminHours: number;
+  totalHours: number;
+}
 
 /** Lightens a hex color by mixing with white. amount: 0=original, 1=white */
 function lightenColor(hex: string, amount: number): string {
@@ -140,6 +148,7 @@ export default function TeacherAvailability() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [sections, setSections] = useState<Section[]>([]);
+  const [workload, setWorkload] = useState<TeacherWorkload | null>(null);
 
   // Schedule state
   const [activeTab, setActiveTab] = useState('availability');
@@ -195,6 +204,14 @@ export default function TeacherAvailability() {
     };
     load();
   }, []);
+
+  // Load own weekly workload (backend filters to the requester for non-staff)
+  useEffect(() => {
+    if (!activePeriod?.id) return;
+    api.get('/teacher-workload', { params: { schoolPeriodId: activePeriod.id } })
+      .then(res => setWorkload(res.data?.[0] ?? null))
+      .catch(() => setWorkload(null));
+  }, [activePeriod]);
 
   // Load teacher schedule
   const loadSchedule = useCallback(async () => {
@@ -529,6 +546,14 @@ export default function TeacherAvailability() {
 
   const clearAll = () => setCellStatus({});
 
+  const totalCells = useMemo(
+    () => DAYS.length * sections.reduce((n, s) => n + s.periods.filter(p => !p.break).length, 0),
+    [sections]
+  );
+  const busyCells = Object.values(cellStatus).filter(v => v === 'busy').length;
+  const preferredCells = Object.values(cellStatus).filter(v => v === 'preferred').length;
+  const availableCells = Math.max(0, totalCells - busyCells - preferredCells);
+
   const handleSave = async () => {
     setSaving(true);
     try {
@@ -561,7 +586,17 @@ export default function TeacherAvailability() {
     <div className="w-full bg-slate-100 p-4 sm:p-6 flex justify-center">
       <div className="w-full max-w-4xl bg-white rounded-lg shadow-sm border border-slate-200 p-4 sm:p-6">
         <div className="mb-4">
-          <h1 className="text-lg font-bold text-slate-800">Disponibilidad Semanal</h1>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h1 className="text-lg font-bold text-slate-800">Disponibilidad Semanal</h1>
+            {workload && (
+              <Tooltip title={`${workload.teachingHours} h de cátedra (${workload.teachingBlocks} bloques) + ${workload.adminHours} h administrativas`}>
+                <Tag color="blue" style={{ marginInlineEnd: 0 }}>Carga: {workload.totalHours} h/sem</Tag>
+              </Tooltip>
+            )}
+            <Tooltip title={`${busyCells} ocupado · ${preferredCells} preferido · ${totalCells} celdas totales`}>
+              <Tag color="green" style={{ marginInlineEnd: 0 }}>Disponibles: {availableCells}</Tag>
+            </Tooltip>
+          </div>
           <p className="text-xs text-slate-500 mt-0.5">
             Clic para marcar una celda · arrastra para marcar varias a la vez.
           </p>

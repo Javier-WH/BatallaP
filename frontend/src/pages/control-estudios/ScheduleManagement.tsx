@@ -628,19 +628,36 @@ const AVAIL_STATUSES = [
   { key: 'preferred', label: 'Preferido', swatch: 'bg-sky-400', ring: 'ring-sky-500' },
 ];
 
+interface TeacherWorkload {
+  teacherId: number;
+  teachingBlocks: number;
+  teachingHours: number;
+  adminHours: number;
+  totalHours: number;
+}
+
 interface TeacherAvailabilityPanelProps {
   teachers: { id: number; label: string }[];
   sections: ScheduleSection[];
+  schoolPeriodId?: number;
 }
 
-const TeacherAvailabilityPanel: React.FC<TeacherAvailabilityPanelProps> = ({ teachers, sections }) => {
+const TeacherAvailabilityPanel: React.FC<TeacherAvailabilityPanelProps> = ({ teachers, sections, schoolPeriodId }) => {
   const [selectedTeacherId, setSelectedTeacherId] = useState<number | undefined>();
   const [cellStatus, setCellStatus] = useState<Record<string, string>>({});
   const [activeKey, setActiveKey] = useState<string | null | undefined>(undefined);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [workload, setWorkload] = useState<Map<number, TeacherWorkload>>(new Map());
   const painting = useRef(false);
   const paintValue = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!schoolPeriodId) return;
+    api.get('/teacher-workload', { params: { schoolPeriodId } })
+      .then(res => setWorkload(new Map((res.data || []).map((w: TeacherWorkload) => [w.teacherId, w]))))
+      .catch(() => setWorkload(new Map()));
+  }, [schoolPeriodId]);
 
   useEffect(() => {
     const stop = () => { painting.current = false; };
@@ -715,6 +732,15 @@ const TeacherAvailabilityPanel: React.FC<TeacherAvailabilityPanelProps> = ({ tea
 
   const clearAll = () => setCellStatus({});
 
+  const totalCells = useMemo(
+    () => DAYS.length * sections.reduce((n, s) => n + s.periods.filter(p => !p.break).length, 0),
+    [sections]
+  );
+  const busyCells = Object.values(cellStatus).filter(v => v === 'busy').length;
+  const preferredCells = Object.values(cellStatus).filter(v => v === 'preferred').length;
+  const availableCells = Math.max(0, totalCells - busyCells - preferredCells);
+  const selectedWorkload = selectedTeacherId ? workload.get(selectedTeacherId) : undefined;
+
   return (
     <div>
       <div className="mb-4 flex items-center gap-4 flex-wrap">
@@ -725,7 +751,10 @@ const TeacherAvailabilityPanel: React.FC<TeacherAvailabilityPanelProps> = ({ tea
           popupClassName="teacher-select-dropdown"
           value={selectedTeacherId}
           onChange={setSelectedTeacherId}
-          options={teachers.map(t => ({ value: t.id, label: t.label }))}
+          options={teachers.map(t => {
+            const w = workload.get(t.id);
+            return { value: t.id, label: w ? `${t.label} — ${w.totalHours} h` : t.label };
+          })}
           showSearch
           optionFilterProp="label"
         />
@@ -739,7 +768,21 @@ const TeacherAvailabilityPanel: React.FC<TeacherAvailabilityPanelProps> = ({ tea
       ) : loading ? (
         <div className="flex justify-center p-12"><Spin size="large" /></div>
       ) : (
-        <Card title={`Disponibilidad: ${teachers.find(t => t.id === selectedTeacherId)?.label ?? ''}`}>
+        <Card
+          title={
+            <span className="flex items-center gap-2 flex-wrap">
+              <span>Disponibilidad: {teachers.find(t => t.id === selectedTeacherId)?.label ?? ''}</span>
+              {selectedWorkload && (
+                <Tooltip title={`${selectedWorkload.teachingHours} h de cátedra (${selectedWorkload.teachingBlocks} bloques) + ${selectedWorkload.adminHours} h administrativas`}>
+                  <Tag color="blue" style={{ marginInlineEnd: 0 }}>Carga: {selectedWorkload.totalHours} h/sem</Tag>
+                </Tooltip>
+              )}
+              <Tooltip title={`${busyCells} ocupado · ${preferredCells} preferido · ${totalCells} celdas totales`}>
+                <Tag color="green" style={{ marginInlineEnd: 0 }}>Disponibles: {availableCells}</Tag>
+              </Tooltip>
+            </span>
+          }
+        >
           {/* Toolbar */}
           <div className="flex flex-wrap items-center gap-2 mb-4">
             {/* Legend: Disponible (green) is shown as info only, not a button */}
@@ -928,7 +971,6 @@ const ScheduleManagement: React.FC = () => {
   const [diarioWeekDate, setDiarioWeekDate] = useState<dayjs.Dayjs | null>(null);
   const [newExcSubjectId, setNewExcSubjectId] = useState<number | null>(null);
   const [newExcConsecutive, setNewExcConsecutive] = useState<number | null>(null);
-  const [newExcWeekly, setNewExcWeekly] = useState<number | null>(null);
   const [newExcMaxHours, setNewExcMaxHours] = useState<number | null>(null);
   const [newExcDifficulty, setNewExcDifficulty] = useState<string | null>(null);
   const [newExcForcedSlot, setNewExcForcedSlot] = useState<string | null>(null);
@@ -1937,7 +1979,6 @@ const ScheduleManagement: React.FC = () => {
   const handleOpenExceptions = () => {
     setNewExcSubjectId(null);
     setNewExcConsecutive(null);
-    setNewExcWeekly(null);
     setNewExcMaxHours(null);
     setNewExcDifficulty(null);
     setNewExcForcedSlot(null);
@@ -2017,7 +2058,7 @@ const ScheduleManagement: React.FC = () => {
 
   const handleAddException = async () => {
     if (!newExcSubjectId) { message.warning('Seleccione una materia'); return; }
-    if (newExcConsecutive === null && newExcWeekly === null && newExcMaxHours === null && newExcDifficulty === null && newExcForcedSlot === null && newExcEndOfRun === null) {
+    if (newExcConsecutive === null && newExcMaxHours === null && newExcDifficulty === null && newExcForcedSlot === null && newExcEndOfRun === null) {
       message.warning('Configure al menos una excepción');
       return;
     }
@@ -2025,7 +2066,6 @@ const ScheduleManagement: React.FC = () => {
       await api.post('/schedule-exceptions', {
         subjectId: newExcSubjectId,
         allowConsecutiveBlocks: newExcConsecutive,
-        weeklyBlocks: newExcWeekly,
         maxHoursPerDay: newExcMaxHours,
         difficulty: newExcDifficulty,
         forcedSlot: newExcForcedSlot,
@@ -2034,7 +2074,6 @@ const ScheduleManagement: React.FC = () => {
       message.success('Excepción guardada');
       setNewExcSubjectId(null);
       setNewExcConsecutive(null);
-      setNewExcWeekly(null);
       setNewExcMaxHours(null);
       setNewExcDifficulty(null);
       setNewExcForcedSlot(null);
@@ -2045,12 +2084,11 @@ const ScheduleManagement: React.FC = () => {
     }
   };
 
-  const handleUpdateException = async (id: number, field: 'allowConsecutiveBlocks' | 'weeklyBlocks' | 'maxHoursPerDay' | 'difficulty' | 'forcedSlot' | 'endOfRun', value: number | string | null) => {
+  const handleUpdateException = async (id: number, field: 'allowConsecutiveBlocks' | 'maxHoursPerDay' | 'difficulty' | 'forcedSlot' | 'endOfRun', value: number | string | null) => {
     try {
       const exc = exceptions.find(e => e.id === id);
       await api.put(`/schedule-exceptions/${id}`, {
         allowConsecutiveBlocks: field === 'allowConsecutiveBlocks' ? value : exc?.allowConsecutiveBlocks ?? null,
-        weeklyBlocks: field === 'weeklyBlocks' ? value : exc?.weeklyBlocks ?? null,
         maxHoursPerDay: field === 'maxHoursPerDay' ? value : exc?.maxHoursPerDay ?? null,
         difficulty: field === 'difficulty' ? value : exc?.difficulty ?? null,
         forcedSlot: field === 'forcedSlot' ? value : exc?.forcedSlot ?? null,
@@ -2460,7 +2498,7 @@ const ScheduleManagement: React.FC = () => {
             key: 'availability',
             label: <span><ScheduleOutlined /> Disponibilidad Profesores</span>,
             children: (
-              <TeacherAvailabilityPanel teachers={teachersList} sections={scheduleSections} />
+              <TeacherAvailabilityPanel teachers={teachersList} sections={scheduleSections} schoolPeriodId={viewPeriod?.id} />
             ),
           },
           {
@@ -2673,18 +2711,6 @@ const ScheduleManagement: React.FC = () => {
                         />
                       </div>
                       <div className="flex items-center gap-2">
-                        <label className="text-xs text-slate-500">Bloques/sem:</label>
-                        <InputNumber
-                          size="small"
-                          style={{ width: 60 }}
-                          min={1}
-                          max={10}
-                          value={exc.weeklyBlocks ?? undefined}
-                          placeholder="—"
-                          onChange={(v) => handleUpdateException(exc.id, 'weeklyBlocks', v ?? null)}
-                        />
-                      </div>
-                      <div className="flex items-center gap-2">
                         <label className="text-xs text-slate-500">Máx hrs/día:</label>
                         <InputNumber
                           size="small"
@@ -2786,17 +2812,6 @@ const ScheduleManagement: React.FC = () => {
                       { value: 1, label: 'Tratar' },
                       { value: 2, label: 'Obligatorio' },
                     ]}
-                  />
-                </div>
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs text-slate-500">Bloques/sem</label>
-                  <InputNumber
-                    style={{ width: 60 }}
-                    min={1}
-                    max={10}
-                    value={newExcWeekly ?? undefined}
-                    placeholder="—"
-                    onChange={(v) => setNewExcWeekly(v ?? null)}
                   />
                 </div>
                 <div className="flex flex-col gap-1">

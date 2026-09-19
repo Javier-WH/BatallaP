@@ -24,7 +24,8 @@ Problem format:
           "allowConsecutiveBlocks": 2,  // 0=off, 1=try, 2=mandatory
           "maxHoursPerDay": null,
           "subjectGroupId": null,
-          "teacherId": 3
+          "teacherId": 3,
+          "difficulty": "medium"  // "heavy" | "medium" | "light", optional, default "medium"
         }
       ]
     }
@@ -39,7 +40,65 @@ Problem format:
   ],
   // Hard-sync same-grade groups: a block+day is only a valid group slot if EVERY
   // section can place EVERY group subject there (default true)
-  "syncGroupSubjects": true
+  "syncGroupSubjects": true,
+
+  // ── Class-schedule compactness (NEW) ──
+  // A section's day is scored on: (a) forming as few separate runs of blocks as
+  // possible (ideally one unbroken run), (b) not being "thin" (a lone block or two
+  // when the section is in that day at all), (c) never splitting into a morning
+  // visit and a separate afternoon visit. All three are captured by the same
+  // run-count + thin-day scoring below; there is no separate toggle for each.
+  "minConsolidatedBlocksPerDay": 2,   // below this, a day that IS used is penalized
+  "dayCompactnessWeight": 200,        // penalty per extra run (beyond 1) in a section's day
+  "thinDayWeight": 150,               // penalty per block short of minConsolidatedBlocksPerDay
+  "shortVisitWeight": 300,            // penalty per run shorter than minConsolidatedBlocksPerDay
+                                      // (a lone-block visit doesn't justify the trip)
+
+  // ── Subject difficulty (NEW) ──
+  // Add "difficulty": "heavy" | "medium" | "light" (default "medium") to any
+  // subject entry under sections[].subjects[]. Used for two soft preferences:
+  "heavyBackToBackWeight": 80,        // penalty when 2 heavy subjects land in adjacent blocks, same day/turn
+  "heavyLateBlockWeight": 40,         // penalty when a heavy subject lands in a "late" block
+  "heavyAvoidLastNMorning": 1,        // how many trailing morning blocks count as "late"
+  "heavyAvoidLastNAfternoon": 1,      // how many trailing afternoon blocks count as "late"
+  "heavyPositionWeight": 20,          // gradient: penalty per position step for heavy (later = worse)
+  "lightPositionBonus": 10,           // gradient: bonus per position step for light (later = better)
+
+  // ── Same-day duplication (NEW) ──
+  // A subject seen twice in one day is only acceptable as a consecutive run
+  // ("one longer session") or as a last resort. Mode 0: any same-day repeat is
+  // penalized. Mode 1: only a non-adjacent repeat is penalized (a run still
+  // counts as one session). Mode 2: handled by the run constraints.
+  "sameDaySubjectWeight": 800,        // below under-placement (1000): doubling still beats leaving hours out
+
+  // ── Forced slot exception (NEW) ──
+  // Force a subject to strongly prefer the very first morning block, or the very
+  // last afternoon block, each day it's offered. Soft (very high weight, editable,
+  // breakable only if nothing else fits).
+  "forcedSlotSubjects": [
+    {
+      "sectionId": 1,               // optional; omit/null to apply to this subjectId in every section that offers it
+      "subjectId": 5,
+      "position": "first_morning",  // or "last_afternoon"
+      "weight": 5000                // optional; falls back to forcedSlotDefaultWeight
+    }
+  ],
+  "forcedSlotDefaultWeight": 5000,
+
+  // ── End-of-run exception (NEW) ──
+  // The subject must be the LAST occupied subject of its turn whenever anything
+  // else is placed in the same turn (morning and afternoon are independent
+  // runs). Alone in the turn = free. "soft" penalizes each follower block with
+  // endOfRunWeight; "hard" forbids a follower outright.
+  "endOfRunSubjects": [
+    {
+      "sectionId": 1,               // optional; omit/null to apply in every section that offers it
+      "subjectId": 12,
+      "mode": "soft",               // or "hard"
+      "weight": 200                 // optional; falls back to endOfRunWeight (soft only)
+    }
+  ],
+  "endOfRunWeight": 200             // penalty per occupied block after it (soft only)
 }
 
 Solution format:
@@ -80,6 +139,40 @@ def main():
     sync_group_subjects = problem.get("syncGroupSubjects", True)
     print(f"[solver] syncGroupSubjects={sync_group_subjects}", file=sys.stderr)
 
+    # ── New: class-schedule compactness config ──
+    min_consolidated_blocks = problem.get("minConsolidatedBlocksPerDay", 2)
+    day_compactness_weight = problem.get("dayCompactnessWeight", 200)
+    thin_day_weight = problem.get("thinDayWeight", 150)
+
+    # ── New: subject difficulty config ──
+    heavy_b2b_weight = problem.get("heavyBackToBackWeight", 80)
+    heavy_late_weight = problem.get("heavyLateBlockWeight", 40)
+    heavy_avoid_last_n_morning = problem.get("heavyAvoidLastNMorning", 1)
+    heavy_avoid_last_n_afternoon = problem.get("heavyAvoidLastNAfternoon", 1)
+    # Positional gradient: each step later in the turn costs this much for a
+    # heavy subject; a light subject earns a bonus per step (pushes swap pressure).
+    heavy_position_weight = problem.get("heavyPositionWeight", 20)
+    light_position_bonus = problem.get("lightPositionBonus", 10)
+
+    # Same-day duplication: a subject seen twice in one day is only acceptable
+    # as a consecutive run ("one longer session") or as a last resort. Weight is
+    # kept below under-placement (1000) so doubling still beats leaving hours out.
+    same_day_subject_weight = problem.get("sameDaySubjectWeight", 800)
+
+    # Short visit: a run shorter than minConsolidatedBlocksPerDay doesn't justify
+    # the trip (e.g. one lone morning block before an afternoon session).
+    short_visit_weight = problem.get("shortVisitWeight", 300)
+
+    # ── New: forced slot exceptions ──
+    forced_slot_subjects = problem.get("forcedSlotSubjects", [])
+    forced_slot_default_weight = problem.get("forcedSlotDefaultWeight", 5000)
+
+    # ── New: end-of-run exceptions ──
+    # mode "soft": prefer being the last occupied subject of the turn
+    # mode "hard": nothing may be placed after it in the same turn
+    end_of_run_subjects = problem.get("endOfRunSubjects", [])
+    end_of_run_weight = problem.get("endOfRunWeight", 200)
+
     # ── Index blocks ──
     # blocks: list of { id, day, section(manana/tarde), periodIds, order }
     # Group blocks by day and by section-type for consecutive block detection
@@ -101,16 +194,45 @@ def main():
     for key in blocks_by_day_section:
         blocks_by_day_section[key].sort(key=lambda b: b["order"])
 
+    # ── Compute a reliable whole-day chronological order ──
+    # "order" is only unique WITHIN a turn (morning blocks are 0,1,2,... and
+    # afternoon blocks restart at 0,1,2,...), so falling back to "order" alone
+    # when "globalOrder" is missing would interleave morning and afternoon
+    # blocks by tied sort keys (e.g. [m0, t0, m1, t1] instead of [m0, m1, t0]),
+    # making a lone morning block plus a lone afternoon block look like one
+    # adjacent, compact run to the compactness/short-run scoring below. We
+    # always compute the whole-day order ourselves (morning before afternoon,
+    # by "order" within each turn) instead of trusting the supplied field.
+    _TURN_RANK = {"manana": 0, "tarde": 1}
+    computed_global_order = {}  # (day, block_id) -> int
+    for day, day_blocks_raw in blocks_by_day.items():
+        ordered = sorted(day_blocks_raw, key=lambda b: (_TURN_RANK.get(b["section"], 2), b["order"]))
+        for i, b in enumerate(ordered):
+            computed_global_order[(day, b["id"])] = i
+
+    def global_order(b):
+        return computed_global_order[(b["day"], b["id"])]
+
     # ── Identify last morning block and first afternoon block per day ──
     last_morning_block = {}  # day -> block_id
     first_afternoon_block = {}  # day -> block_id
+    first_morning_block = {}  # day -> block_id
+    last_afternoon_block = {}  # day -> block_id
+    # "Late" blocks (NEW): trailing blocks of each turn, flagged for heavy-subject avoidance.
+    late_block_ids = set()  # block ids considered unfavorable for heavy subjects
     for day in days:
         manana = sorted(blocks_by_day_section.get((day, "manana"), []), key=lambda b: b["order"])
         tarde = sorted(blocks_by_day_section.get((day, "tarde"), []), key=lambda b: b["order"])
         if manana:
             last_morning_block[day] = manana[-1]["id"]
+            first_morning_block[day] = manana[0]["id"]
+            for b in manana[-heavy_avoid_last_n_morning:] if heavy_avoid_last_n_morning > 0 else []:
+                late_block_ids.add((b["id"], day))
         if tarde:
             first_afternoon_block[day] = tarde[0]["id"]
+            last_afternoon_block[day] = tarde[-1]["id"]
+            for b in tarde[-heavy_avoid_last_n_afternoon:] if heavy_avoid_last_n_afternoon > 0 else []:
+                late_block_ids.add((b["id"], day))
 
     # Debug: log avoid_gap and block boundaries
     print(f"[solver] avoid_gap={avoid_gap}", file=sys.stderr)
@@ -153,6 +275,13 @@ def main():
             pair = (item["periodGradeId"], item["subjectId"])
             linked_pairs.add(pair)
             pair_to_link[pair] = link["id"]
+
+    # ── New: subject difficulty lookup ──
+    # (sectionId, subjectId) -> "heavy" | "medium" | "light"
+    subject_difficulty = {}
+    for sec in sections:
+        for sub in sec["subjects"]:
+            subject_difficulty[(sec["id"], sub["subjectId"])] = sub.get("difficulty", "medium")
 
     # ── Build the CP-SAT model ──
     model = cp_model.CpModel()
@@ -550,15 +679,27 @@ def main():
             if (sid, subj_id) not in subject_vars:
                 continue
 
-            # Group vars by (day, section_type)
+            # Group vars by (day, section_type), one entry per block of that turn —
+            # NOT just the blocks where this subject has a var. A block where the
+            # teacher is busy (no var in `x`) must still occupy its position in the
+            # sequence (as a constant 0), otherwise the block on either side of it
+            # gets treated as adjacent to what's actually two blocks apart. [FIX:
+            # previously this only included subject_vars, which silently merged
+            # non-adjacent blocks across a teacher-busy gap.]
             day_section_vars = {}
-            for (b, v) in subject_vars[(sid, subj_id)]:
-                key = (b["day"], b["section"])
-                if key not in day_section_vars:
-                    day_section_vars[key] = []
-                day_section_vars[key].append((b, v))
+            for key, block_list in blocks_by_day_section.items():
+                day = key[0]
+                bv_list = []
+                for b in block_list:
+                    k = (sid, subj_id, b["id"], day)
+                    v = x.get(k)
+                    if v is None:
+                        v = model.NewConstant(0)
+                    bv_list.append((b, v))
+                day_section_vars[key] = bv_list
 
-            # Sort each group by order
+            # Sort each group by order (already sorted in blocks_by_day_section, but
+            # kept explicit here since this loop reconstructs the list each time)
             for key in day_section_vars:
                 day_section_vars[key].sort(key=lambda bv: bv[0]["order"])
 
@@ -597,17 +738,22 @@ def main():
                     # Also penalize starts_sum == 0 when total_sum > 0 (not placed at all)
                     not_placed = model.NewBoolVar(f"m2notplaced_{sid}_{subj_id}")
                     model.Add(not_placed >= 1 - total_sum)
-                    penalty_terms.append(excess * 1000)  # very high penalty for non-consecutive
+                    penalty_terms.append(excess * 500)  # below under-placement (1000): prefer fully placed over a clean run
                     penalty_terms.append(not_placed * 10000)  # even higher for not placing at all
 
             elif mode == 1:
                 # Try consecutive: add penalty for each start beyond the first
                 start_vars = []
+                starts_by_day = {}   # day -> list of start vars (both turns)
+                placed_by_day = {}   # day -> list of placement vars (both turns)
                 for key, bv_list in day_section_vars.items():
+                    day = key[0]
                     n = len(bv_list)
                     for i in range(n):
                         is_start = model.NewBoolVar(f"tstart_{sid}_{subj_id}_{key[0]}_{i}")
                         start_vars.append(is_start)
+                        starts_by_day.setdefault(day, []).append(is_start)
+                        placed_by_day.setdefault(day, []).append(bv_list[i][1])
 
                         prev_not_placed = model.NewBoolVar(f"tprevnp_{sid}_{subj_id}_{key[0]}_{i}")
                         if i == 0:
@@ -628,6 +774,16 @@ def main():
                     model.Add(excess >= sum(start_vars) - 1)
                     penalty_terms.append(excess * 10)  # weight 10 per extra start
 
+                    # Same-day split: within a day, a single run counts as one
+                    # session, but two separate runs (or morning+afternoon) mean
+                    # the subject is seen twice that day — heavily discouraged.
+                    for day, day_starts in starts_by_day.items():
+                        placed_day = model.NewBoolVar(f"pday_{sid}_{subj_id}_{day}")
+                        model.AddMaxEquality(placed_day, placed_by_day[day])
+                        day_excess = model.NewIntVar(0, len(day_starts), f"dexcess_{sid}_{subj_id}_{day}")
+                        model.Add(day_excess >= sum(day_starts) - placed_day)
+                        penalty_terms.append(day_excess * same_day_subject_weight)
+
     # ── Soft preferences (not hard constraints) ──
     # 1. Minimize gaps WITHIN each turn (manana or tarde), not between turns
     # 2. Prefer "preferred" teacher slots
@@ -636,8 +792,10 @@ def main():
 
     gap_penalties = []       # penalize empty blocks between filled blocks within the same turn
     preferred_penalties = [] # penalize NOT using a preferred slot
-    spread_penalties = []    # penalize concentrating a subject on one day
+    spread_penalties = []    # penalize seeing a subject twice in one day
     early_penalties = []     # penalize using high-order (late) blocks
+    heavy_pos_penalties = [] # heavy subjects pay per position step (prefer early)
+    light_pos_penalties = [] # light subjects earn per position step (prefer late)
 
     # 1. Gap penalties within each turn (manana/tarde) per section per day
     for sec in sections:
@@ -714,7 +872,9 @@ def main():
                 if not is_pref:
                     preferred_penalties.append(v * 1)
 
-            # 3. Spread across days: penalize having more than 1 block of the same subject on the same day
+            # 3. Same-day duplication: a non-consecutive subject must not be seen
+            # twice in one day — heavily penalized (below under-placement, so it
+            # still beats leaving hours unplaced).
             mode = sub.get("allowConsecutiveBlocks", 0)
             if mode == 0 and weekly > 1:
                 day_vars = {}
@@ -728,24 +888,282 @@ def main():
                         day_sum = sum(dvars)
                         excess_day = model.NewIntVar(0, len(dvars), f"spread_{sid}_{subj_id}_{day}")
                         model.Add(excess_day >= day_sum - 1)
-                        spread_penalties.append(excess_day * 3)
+                        spread_penalties.append(excess_day * same_day_subject_weight)
 
             # 4. Prefer early blocks: penalize using high-order blocks (global order)
             for (b, v) in var_list:
-                early_penalties.append(v * b.get("globalOrder", b["order"]))
+                early_penalties.append(v * global_order(b))
+
+            # 5. Difficulty gradient: each step later in the turn costs
+            # heavy_position_weight for a heavy subject; a light subject earns
+            # light_position_bonus per step (creates swap pressure — moving a
+            # light subject late frees early blocks for heavy ones).
+            diff = sub.get("difficulty", "medium")
+            if diff == "heavy":
+                for (b, v) in var_list:
+                    heavy_pos_penalties.append(v * b["order"])
+            elif diff == "light":
+                for (b, v) in var_list:
+                    light_pos_penalties.append(v * b["order"])
+
+    # ── NEW Constraint/Preference: class-schedule compactness ──
+    # For each section+day, look at the FULL day (morning + afternoon combined, in
+    # true whole-day chronological order — see global_order() above) rather
+    # than each turn separately.
+    # Score it on:
+    #   - number of separate "runs" of occupied blocks beyond the first (ideally 1
+    #     run total — this alone also captures "never split morning/afternoon",
+    #     since a morning visit + a separate afternoon visit is 2 runs)
+    #   - how far a used day falls short of minConsolidatedBlocksPerDay (a lone
+    #     block or two on an otherwise empty day is bad even if it's a single run)
+    #   - runs shorter than minConsolidatedBlocksPerDay: a lone-block visit (e.g.
+    #     one block in the morning plus a separate afternoon run) doesn't
+    #     justify the trip
+    compactness_penalties = []  # (run-count) — weight day_compactness_weight
+    thin_day_penalties = []     # (shortfall)  — weight thin_day_weight
+    short_run_penalties = []    # (short runs) — weight short_visit_weight
+    end_of_run_penalties = []   # (end-of-run violations) — weight end_of_run_weight
+    occ_by_sec_day = {}         # (section_id, day) -> per-block occupancy BoolVars
+    day_blocks_sorted = {}      # day -> blocks in whole-day chronological order
+
+    for sec in sections:
+        sid = sec["id"]
+        for day in days:
+            day_blocks = sorted(blocks_by_day.get(day, []), key=global_order)
+            if not day_blocks:
+                continue
+            day_blocks_sorted[day] = day_blocks
+
+            occ_vars = []
+            for b in day_blocks:
+                block_subject_vars = []
+                for sub in sec["subjects"]:
+                    subj_id = sub["subjectId"]
+                    k = (sid, subj_id, b["id"], day)
+                    if k in x:
+                        block_subject_vars.append(x[k])
+                if block_subject_vars:
+                    occ = model.NewBoolVar(f"docc_{sid}_{b['id']}_{day}")
+                    model.AddMaxEquality(occ, block_subject_vars)
+                    occ_vars.append(occ)
+                else:
+                    occ_vars.append(model.NewConstant(0))
+            occ_by_sec_day[(sid, day)] = occ_vars
+
+            n = len(occ_vars)
+
+            # is_used: whether the section has anything at all this day
+            is_used = model.NewBoolVar(f"dused_{sid}_{day}")
+            model.AddMaxEquality(is_used, occ_vars)
+
+            # Run starts: a block is a "start" if occupied and the previous block
+            # (chronologically, across the whole day) was not occupied.
+            start_vars = []
+            for i in range(n):
+                is_start = model.NewBoolVar(f"dstart_{sid}_{day}_{i}")
+                if i == 0:
+                    model.Add(is_start == occ_vars[0])
+                else:
+                    prev_not_occ = model.NewBoolVar(f"dprevnp_{sid}_{day}_{i}")
+                    model.Add(prev_not_occ + occ_vars[i - 1] <= 1)
+                    model.Add(prev_not_occ >= 1 - occ_vars[i - 1])
+                    model.Add(is_start <= occ_vars[i])
+                    model.Add(is_start <= prev_not_occ)
+                    model.Add(is_start >= occ_vars[i] + prev_not_occ - 1)
+                start_vars.append(is_start)
+
+            if start_vars:
+                runs_excess = model.NewIntVar(0, n, f"drunsexcess_{sid}_{day}")
+                model.Add(runs_excess >= sum(start_vars) - 1)
+                compactness_penalties.append(runs_excess)
+
+                # Short runs: a run starting at i is "full length" iff all of the
+                # next minConsolidatedBlocks positions are occupied. Otherwise the
+                # run is a lone visit and gets penalized. A run starting with
+                # fewer than `min` blocks left in the day can never be full.
+                for i in range(n):
+                    reach = min(i + min_consolidated_blocks, n)
+                    if reach - i < min_consolidated_blocks:
+                        full_len = model.NewConstant(0)
+                    else:
+                        full_len = model.NewBoolVar(f"dfull_{sid}_{day}_{i}")
+                        model.AddMinEquality(full_len, occ_vars[i:reach])
+                    short = model.NewBoolVar(f"dshort_{sid}_{day}_{i}")
+                    model.Add(short <= start_vars[i])
+                    model.Add(short <= 1 - full_len)
+                    model.Add(short >= start_vars[i] - full_len)
+                    short_run_penalties.append(short)
+
+            # Thin day: if used, penalize shortfall against minConsolidatedBlocksPerDay.
+            total_occ = sum(occ_vars)
+            thin = model.NewIntVar(0, min_consolidated_blocks, f"dthin_{sid}_{day}")
+            model.Add(thin >= min_consolidated_blocks - total_occ - min_consolidated_blocks * (1 - is_used))
+            thin_day_penalties.append(thin)
+
+    # ── NEW Constraint/Preference: end-of-run exceptions ──
+    # A flagged subject must be the LAST occupied subject of its turn: if it is
+    # placed at block i of a turn, no OTHER subject may occupy any later block j
+    # of the SAME turn (morning and afternoon are independent runs). Its own
+    # consecutive continuation blocks don't count as "other", and a subject that
+    # is alone in the turn has no restriction at all.
+    #   soft: each (i, j) violation costs end_of_run_weight (gradient — the more
+    #         blocks follow it, the more it pays)
+    #   hard: x_i + occ_j - x_j <= 1 makes a follower infeasible outright
+    for entry in end_of_run_subjects:
+        subj_id = entry["subjectId"]
+        hard = entry.get("mode") == "hard"
+        weight = entry.get("weight", end_of_run_weight)
+        target_sections = [entry["sectionId"]] if entry.get("sectionId") is not None else [s["id"] for s in sections]
+        for sec in sections:
+            sid = sec["id"]
+            if sid not in target_sections:
+                continue
+            for day in days:
+                day_blocks = day_blocks_sorted.get(day)
+                occ_vars = occ_by_sec_day.get((sid, day))
+                if not day_blocks or occ_vars is None:
+                    continue
+                for i, bi in enumerate(day_blocks):
+                    xi = x.get((sid, subj_id, bi["id"], day))
+                    if xi is None:
+                        continue
+                    for j in range(i + 1, len(day_blocks)):
+                        bj = day_blocks[j]
+                        if bj["section"] != bi["section"]:
+                            break  # turns are contiguous in whole-day order
+                        xj = x.get((sid, subj_id, bj["id"], day))
+                        other_j = occ_vars[j] - (xj if xj is not None else 0)
+                        if hard:
+                            model.Add(xi + other_j <= 1)
+                        else:
+                            v = model.NewBoolVar(f"eor_{sid}_{subj_id}_{day}_{i}_{j}")
+                            model.Add(v >= xi + other_j - 1)
+                            end_of_run_penalties.append(v * weight)
+
+    # ── NEW Constraint/Preference: subject difficulty ──
+    # (a) Two "heavy" subjects should not land in adjacent blocks, same day/turn.
+    # (b) A "heavy" subject should avoid the flagged "late" blocks of each turn.
+    heavy_b2b_penalties = []
+    heavy_late_penalties = []
+
+    for sec in sections:
+        sid = sec["id"]
+        for key, block_list in blocks_by_day_section.items():
+            day, section_type = key
+            block_list_sorted = sorted(block_list, key=lambda b: b["order"])
+            n = len(block_list_sorted)
+
+            # Per-block "a heavy subject is placed here" indicator for this section.
+            heavy_occ = []
+            for b in block_list_sorted:
+                heavy_vars = []
+                for sub in sec["subjects"]:
+                    subj_id = sub["subjectId"]
+                    if subject_difficulty.get((sid, subj_id)) != "heavy":
+                        continue
+                    k = (sid, subj_id, b["id"], day)
+                    if k in x:
+                        heavy_vars.append(x[k])
+                if heavy_vars:
+                    hocc = model.NewBoolVar(f"hocc_{sid}_{b['id']}_{day}")
+                    model.AddMaxEquality(hocc, heavy_vars)
+                    heavy_occ.append(hocc)
+                else:
+                    heavy_occ.append(model.NewConstant(0))
+
+                # Late-block penalty
+                if (b["id"], day) in late_block_ids and heavy_vars:
+                    heavy_late_penalties.append(hocc)
+
+            # Back-to-back penalty: adjacent blocks in the same turn both heavy.
+            for i in range(n - 1):
+                both_heavy = model.NewBoolVar(f"hb2b_{sid}_{block_list_sorted[i]['id']}_{day}")
+                model.Add(both_heavy <= heavy_occ[i])
+                model.Add(both_heavy <= heavy_occ[i + 1])
+                model.Add(both_heavy >= heavy_occ[i] + heavy_occ[i + 1] - 1)
+                heavy_b2b_penalties.append(both_heavy)
+
+    # ── NEW Constraint/Preference: forced slot exceptions ──
+    # Soft, very-high-weight preference to place a subject in the first morning
+    # block or the last afternoon block, each day it's offered.
+    # For mandatory-consecutive subjects the target is the edge WINDOW of
+    # `weeklyBlocks` blocks (a run can't fit inside a single edge block, so
+    # the run that ends/starts the turn counts as on-target).
+    forced_slot_penalties = []
+    for entry in forced_slot_subjects:
+        subj_id = entry["subjectId"]
+        position = entry["position"]
+        weight = entry.get("weight", forced_slot_default_weight)
+        target_sections = [entry["sectionId"]] if entry.get("sectionId") is not None else [s["id"] for s in sections]
+
+        for sid in target_sections:
+            var_list = subject_vars.get((sid, subj_id))
+            if not var_list:
+                continue
+            subj_info = next(
+                (sub for s in sections if s["id"] == sid
+                 for sub in s["subjects"] if sub["subjectId"] == subj_id),
+                None,
+            )
+            run_len = 1
+            if subj_info and subj_info.get("allowConsecutiveBlocks", 0) == 2:
+                run_len = max(1, subj_info.get("weeklyBlocks", 1))
+            target_ids_by_day = {}
+            for day in days:
+                if position == "first_morning":
+                    turn = sorted(blocks_by_day_section.get((day, "manana"), []), key=lambda b: b["order"])
+                    target_ids_by_day[day] = {b["id"] for b in turn[:run_len]}
+                else:
+                    turn = sorted(blocks_by_day_section.get((day, "tarde"), []), key=lambda b: b["order"])
+                    target_ids_by_day[day] = {b["id"] for b in turn[-run_len:]}
+            for (b, v) in var_list:
+                if b["id"] not in target_ids_by_day.get(b["day"], set()):
+                    forced_slot_penalties.append(v * weight)
 
     # ── Objective: minimize penalties ──
-    # Priority order (highest to lowest weight):
+    # Priority order (highest to lowest weight). Classes' schedules now outrank
+    # teachers' schedules throughout — teacher-preferred slots are honored only
+    # after every class-schedule-quality preference is satisfied as well as it can be.
     #   1. Place all subjects fully (weight 1000)
     #   2. Consecutive block constraints (weight 100-10000)
-    #   3. Prefer preferred slots (weight 20) — respect teacher preferences strongly
-    #   4. Spread across days (weight 5)
-    #   5. Minimize gaps within turns (weight 3) — lower than preferred, don't pack to avoid gaps
-    #   6. Prefer early blocks (weight = order, ~0-6)
+    #   3. Forced slot exceptions (weight ~5000, editable per entry) — very strong,
+    #      but still soft: breakable if nothing else fits
+    #   4. Same-subject twice in one day (weight 800, editable) — a run counts as
+    #      one session; anything else is heavily discouraged but still beats
+    #      leaving hours unplaced
+    #   5. Class-day compactness: few runs per day (weight 200), avoid thin days
+    #      (weight 150), avoid lone-visit runs (weight 300), end-of-run
+    #      exceptions in soft mode (weight 200 per follower block)
+    #   6. Heavy-subject placement: avoid back-to-back heavy (weight 80), avoid
+    #      late blocks (weight 40), position gradient heavy +20/step, light -10/step
+    #   7. Prefer preferred teacher slots (weight 20)
+    #   8. Minimize gaps within turns (weight 3)
+    #   9. Prefer early blocks (weight = order, ~0-6) — lowest priority, tiebreaker only
     all_penalties = []
     for p in under_place_penalties:
         all_penalties.append(p * 1000)
     all_penalties.extend(penalty_terms)
+    # Forced slot exceptions (already pre-weighted per entry)
+    all_penalties.extend(forced_slot_penalties)
+    # Class-day compactness
+    for p in compactness_penalties:
+        all_penalties.append(p * day_compactness_weight)
+    for p in thin_day_penalties:
+        all_penalties.append(p * thin_day_weight)
+    for p in short_run_penalties:
+        all_penalties.append(p * short_visit_weight)
+    # End-of-run violations (soft mode; hard mode is a constraint, not a penalty)
+    all_penalties.extend(end_of_run_penalties)
+    # Heavy-subject placement
+    for p in heavy_b2b_penalties:
+        all_penalties.append(p * heavy_b2b_weight)
+    for p in heavy_late_penalties:
+        all_penalties.append(p * heavy_late_weight)
+    # Difficulty position gradient (light bonus enters as a negative penalty)
+    for p in heavy_pos_penalties:
+        all_penalties.append(p * heavy_position_weight)
+    for p in light_pos_penalties:
+        all_penalties.append(p * -light_position_bonus)
     # Preferred slots: weight 20 per non-preferred placement
     for p in preferred_penalties:
         all_penalties.append(p * 20)

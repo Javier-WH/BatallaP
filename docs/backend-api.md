@@ -53,7 +53,7 @@ Los namespaces están registrados en [`backend/src/app.ts`](../backend/src/app.t
 | Método | Ruta | Descripción |
 |--------|------|-------------|
 | GET/POST | `/grades`, `/sections`, `/subjects`, `/subject-groups`, `/specializations` | CRUD. |
-| PUT/DELETE | `/:id` para cada uno | CRUD. |
+| PUT/DELETE | `/:id` para cada uno | CRUD. `subjects` acepta `weeklyBlocks` (nullable — override global de bloques semanales para el generador de horarios; `null` = usar el default por grado). |
 | POST | `/grades/reorder` | Reordenar grados. |
 
 ### Estructura por período
@@ -418,6 +418,7 @@ automático de horarios las coloque en el mismo bloque horario.
 **Preferencias del solver (soft constraints)**: el solver CP-SAT (`backend/scripts/schedule_solver.py`) optimiza varias preferencias configurables por settings y por excepción de materia:
 
 - **Compactación del día del salón**: cada día usado por una sección se penaliza si forma más de un tramo (`day_compactness_weight`, default `200`), si tiene menos de `min_consolidated_blocks_per_day` bloques (`thin_day_weight`, default `150`; el mínimo se edita en el panel «Excepciones», default `2`), o si algún tramo tiene menos bloques que ese mínimo (`short_visit_weight`, default `300` — una visita de 1 solo bloque no justifica el viaje). En la práctica: horarios continuos y sin venir solo a la mañana y volver a la tarde.
+- **Bloques semanales por materia**: `Subject.weeklyBlocks` (nullable, se edita en el catálogo de materias — Control de Estudios → Configuración → «Académico») sobrescribe `PeriodGradeSubject.weeklyBlocks` (cuyo default es el setting `default_weekly_blocks_per_subject`). Resolución: `subject.weeklyBlocks ?? pgs.weeklyBlocks`.
 - **Dificultad de materias** (`Subject.difficulty`, override en `ScheduleException.difficulty`): `heavy` evita bloques adyacentes con otra pesada en el mismo turno (`heavy_back_to_back_weight`, default `80`) y los últimos N bloques de cada turno (`heavy_late_block_weight`, default `40`; N = `heavy_avoid_last_n_morning`/`heavy_avoid_last_n_afternoon`, default `1`). Además hay un **gradiente posicional**: cada paso hacia el final del turno cuesta `heavy_position_weight` (default `20`) a una pesada y bonifica `light_position_bonus` (default `10`) a una ligera — crea presión de intercambio para que las pesadas queden temprano y las ligeras al final.
 - **Misma materia dos veces en un día** (`same_day_subject_weight`, default `800`): una materia sin consecutividad obligatoria no debe verse dos veces el mismo día. Una corrida consecutiva cuenta como una sola sesión; cualquier otra duplicación se penaliza fuerte (por debajo de `1000`, para que duplicar siga siendo mejor que dejar horas sin colocar).
 - **Bloques forzados** (`ScheduleException.forcedSlot`): `first_morning` o `last_afternoon` fuerzan (soft, peso `forced_slot_default_weight`, default `5000`) a que la materia se coloque en el primer bloque de la mañana o el último de la tarde cada día que se imparte, en todas las secciones que la ofrecen. Si la materia tiene `allowConsecutiveBlocks = 2` (consecutivo obligatorio), el objetivo es la **ventana de borde** de `weeklyBlocks` bloques — una corrida que termina la tarde (o empieza la mañana) cuenta como en-target, ya que una corrida no cabe en un solo bloque de borde.
@@ -450,6 +451,27 @@ automático de horarios las coloque en el mismo bloque horario.
 **Integración**:
 - `GET /api/schedules/teacher/:personId` mergea las horas admin como pseudo-entries con `isAdminHour: true` → se renderizan en la vista del profesor (CE y propia, read-only) y en los Excel de profesor como «H.ADM» + fila «HORAS ADMINISTRATIVAS SEMANALES: N».
 - El solver no las conoce ni las coloca; una celda con clase no puede pintarse.
+
+---
+
+## 📊 Carga horaria – `/api/teacher-workload` (`teacherWorkloadRoutes.ts`)
+
+> Carga semanal **derivada** (no persistida) por profesor para un período escolar:
+> horas de cátedra (asignaciones × bloques semanales) + horas administrativas pintadas.
+> Reutilizable por Administración para cuantificación de horas/sueldos.
+
+| Método | Ruta | Descripción |
+|--------|------|-------------|
+| GET | `/?schoolPeriodId=` | `[{teacherId, firstName, lastName, teachingBlocks, teachingHours, adminHours, totalHours}]`. `schoolPeriodId` requerido. Staff (Master/Administrador/Control de Estudios) recibe todos los profesores; `Profesor` recibe solo su propia fila. |
+
+**Cálculo** (`teacherWorkloadService`):
+- `teachingBlocks`: Σ por **unidad docente** de `subject.weeklyBlocks ?? periodGradeSubject.weeklyBlocks`; excluye asignaciones en la sección `Materia Pendiente`. Incluye profesores sin asignaciones (carga 0).
+  - Las unidades reflejan cómo el solver coloca los bloques: un `ScheduleLink` cuenta **una vez** aunque abarque varias secciones/años (mismo bloque físico); una materia de grupo (`subjectGroupId`) sin vínculo cuenta una vez por año (sus secciones son simultáneas); cualquier otra asignación cuenta por `(periodGradeSubjectId, sectionId)`. Ej.: una materia dada a 2 secciones × 2 años en el mismo bloque suma `weeklyBlocks` una sola vez.
+- `teachingHours`: `teachingBlocks × min_academic_hours_per_block`.
+- `adminHours`: conteo de `TeacherAdminHour` del período.
+- `totalHours`: `teachingHours + adminHours`.
+
+**Uso en frontend**: CE → Horarios → «Disponibilidad Profesores» (tag «Carga: N h/sem» junto al nombre + «Disponibles: N») y el propio profesor en `/profesor` → «Disponibilidad Semanal». Los bloques disponibles se calculan en vivo: `celdas totales − busy − preferred` (las celdas sin marcar cuentan como disponibles; los recreos no cuentan).
 
 ---
 

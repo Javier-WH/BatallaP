@@ -196,6 +196,8 @@ export const createEvaluationItem = async (req: Request, res: Response) => {
       if (!term) {
         return res.status(404).json({ message: 'Lapso no encontrado' });
       }
+      // grade_lock_mode hook point: with the "Bloqueo Inteligente" feature,
+      // also treat as closed when now is outside term.openDate/closeDate.
       let sectionClosed = term.isBlocked;
       if (sectionId && !sectionClosed) {
         // Derive gradeId from PeriodGradeSubject → PeriodGrade
@@ -286,6 +288,7 @@ export const updateEvaluationItem = async (req: Request, res: Response) => {
     if (!term) {
       return res.status(404).json({ message: 'Lapso no encontrado' });
     }
+    // grade_lock_mode hook point: see Term.openDate/closeDate.
     let sectionClosed = term.isBlocked;
     if (targetSectionId && !sectionClosed) {
       // Derive gradeId from PeriodGradeSubject → PeriodGrade
@@ -383,6 +386,7 @@ export const deleteEvaluationItem = async (req: Request, res: Response) => {
     if (!term) {
       return res.status(404).json({ message: 'Lapso no encontrado' });
     }
+    // grade_lock_mode hook point: see Term.openDate/closeDate.
     let sectionClosed = term.isBlocked;
     if (item.sectionId && !sectionClosed) {
       const pgs = await PeriodGradeSubject.findByPk(item.periodGradeSubjectId, { attributes: ['id', 'periodGradeId'] });
@@ -635,6 +639,7 @@ export const saveQualification = async (req: Request, res: Response) => {
       await t.rollback();
       return res.status(404).json({ message: 'Lapso no encontrado' });
     }
+    // grade_lock_mode hook point: see Term.openDate/closeDate.
     let sectionClosed = term.isBlocked;
     if (evalPlan.sectionId && !sectionClosed) {
       const pgs = await PeriodGradeSubject.findByPk(evalPlan.periodGradeSubjectId, { attributes: ['id', 'periodGradeId'] });
@@ -3018,6 +3023,7 @@ export const copyEvaluationPlan = async (req: Request, res: Response) => {
     if (!term) {
       return res.status(404).json({ message: 'Lapso no encontrado' });
     }
+    // grade_lock_mode hook point: also block when outside term.openDate/closeDate.
     if (term.isBlocked) {
       return res.status(403).json({ message: 'El lapso está bloqueado' });
     }

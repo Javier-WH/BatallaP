@@ -51,6 +51,13 @@ Term.init(
       defaultValue: false,
       allowNull: false,
     },
+    // openDate/closeDate are the date window reserved for the "Bloqueo
+    // Inteligente" feature (settings key: grade_lock_mode): automatically
+    // restrict grade entry/editing outside this window. NOT enforced today —
+    // the UI switch was hidden in AcademicSettings and the actual lock gates
+    // are term.isBlocked (manual) + TermSectionClosureService (per section).
+    // Hook point if the feature is enabled: every `term.isBlocked` read in
+    // evaluationController.
     openDate: {
       type: DataTypes.DATE,
       allowNull: true,
