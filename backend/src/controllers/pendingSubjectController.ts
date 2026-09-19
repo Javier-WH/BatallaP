@@ -67,30 +67,44 @@ async function linkMpSection(pgId: number, sectionId: number, t?: any): Promise<
   });
 }
 
+/**
+ * Resolve which period a read endpoint should serve: an explicit
+ * ?schoolPeriodId= query param (the header period selector lets users view
+ * past periods), falling back to the active period.
+ */
+async function resolveViewPeriod(req: Request): Promise<SchoolPeriod | null> {
+  const periodId = Number(req.query.schoolPeriodId);
+  if (Number.isFinite(periodId)) {
+    return SchoolPeriod.findByPk(periodId);
+  }
+  return SchoolPeriod.findOne({ where: { status: 'activo' } });
+}
+
 /* ------------------------------------------------------------------ */
 /* GET /pending-subjects/structure                                     */
 /* ------------------------------------------------------------------ */
 export const getMpStructure = async (req: Request, res: Response) => {
   try {
-    const activePeriod = await SchoolPeriod.findOne({ where: { status: 'activo' } });
-    if (!activePeriod) {
+    const viewPeriod = await resolveViewPeriod(req);
+    if (!viewPeriod) {
       return res.json({ period: null, grades: [] });
     }
+    const isActivePeriod = viewPeriod.status === 'activo';
 
     // Get all grades ordered by `order`
     const allGrades = await Grade.findAll({ order: [['order', 'ASC'], ['name', 'ASC']] });
 
     // Exclude the last grade (highest order) — MP only goes up to penultimate
     if (allGrades.length <= 1) {
-      return res.json({ period: activePeriod, grades: [] });
+      return res.json({ period: viewPeriod, grades: [] });
     }
     const mpGrades = allGrades.slice(0, -1);
 
-    // Get the PeriodGrade for each grade in the active period
+    // Get the PeriodGrade for each grade in the viewed period
     const result = [];
     for (const grade of mpGrades) {
       const pg = await PeriodGrade.findOne({
-        where: { schoolPeriodId: activePeriod.id, gradeId: grade.id },
+        where: { schoolPeriodId: viewPeriod.id, gradeId: grade.id },
         include: [
           {
             model: Subject,
@@ -110,9 +124,19 @@ export const getMpStructure = async (req: Request, res: Response) => {
         continue;
       }
 
-      // Ensure MP section exists and is linked
-      const mpSection = await findOrCreateMpSection();
-      await linkMpSection(pg.id, mpSection.id);
+      // Ensure MP section exists and is linked — only for the active period.
+      // When viewing a past period, just look it up (no writes on read).
+      const mpSection = isActivePeriod
+        ? await (async () => {
+            const s = await findOrCreateMpSection();
+            await linkMpSection(pg.id, s.id);
+            return s;
+          })()
+        : await Section.findOne({ where: { isMateriaPendiente: true } });
+      if (!mpSection) {
+        result.push({ grade, periodGrade: pg, subjects: [], mpSection: null });
+        continue;
+      }
 
       // Get subjects in canonical order, excluding "No Reparable" subjects
       const subjectOrderMap = await getSubjectOrderMap(pg.id);
@@ -128,10 +152,10 @@ export const getMpStructure = async (req: Request, res: Response) => {
       // For each subject, count how many students are registered
       const subjectsWithCount = [];
       for (const subj of sortedSubjects) {
-        // Find MP inscriptions for this grade in the active period
+        // Find MP inscriptions for this grade in the viewed period
         const mpInscriptions = await Inscription.findAll({
           where: {
-            schoolPeriodId: activePeriod.id,
+            schoolPeriodId: viewPeriod.id,
             gradeId: grade.id,
             sectionId: mpSection.id,
           },
@@ -159,7 +183,7 @@ export const getMpStructure = async (req: Request, res: Response) => {
       });
     }
 
-    return res.json({ period: activePeriod, grades: result });
+    return res.json({ period: viewPeriod, grades: result });
   } catch (error) {
     console.error('[getMpStructure] Error:', error);
     return res.status(500).json({ message: 'Error al obtener estructura de materia pendiente' });
@@ -436,8 +460,8 @@ export const getMpNomina = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'gradeId inválido' });
     }
 
-    const activePeriod = await SchoolPeriod.findOne({ where: { status: 'activo' } });
-    if (!activePeriod) {
+    const viewPeriod = await resolveViewPeriod(req);
+    if (!viewPeriod) {
       return res.json({ grade: null, subjects: [], students: [] });
     }
 
@@ -448,7 +472,7 @@ export const getMpNomina = async (req: Request, res: Response) => {
 
     // Get the PeriodGrade for this grade
     const pg = await PeriodGrade.findOne({
-      where: { schoolPeriodId: activePeriod.id, gradeId: gradeIdNum },
+      where: { schoolPeriodId: viewPeriod.id, gradeId: gradeIdNum },
     });
     if (!pg) {
       return res.json({ grade: null, subjects: [], students: [] });
@@ -472,7 +496,7 @@ export const getMpNomina = async (req: Request, res: Response) => {
     // Get all MP inscriptions for this grade
     const inscriptions = await Inscription.findAll({
       where: {
-        schoolPeriodId: activePeriod.id,
+        schoolPeriodId: viewPeriod.id,
         gradeId: gradeIdNum,
         sectionId: mpSection.id,
       },
@@ -1801,8 +1825,8 @@ export const getMpNominaByEncounter = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'gradeId inválido' });
     }
 
-    const activePeriod = await SchoolPeriod.findOne({ where: { status: 'activo' } });
-    if (!activePeriod) {
+    const viewPeriod = await resolveViewPeriod(req);
+    if (!viewPeriod) {
       return res.json({ grade: null, subjects: [], students: [], encounterNumber });
     }
 
@@ -1812,7 +1836,7 @@ export const getMpNominaByEncounter = async (req: Request, res: Response) => {
     }
 
     const pg = await PeriodGrade.findOne({
-      where: { schoolPeriodId: activePeriod.id, gradeId: gradeIdNum },
+      where: { schoolPeriodId: viewPeriod.id, gradeId: gradeIdNum },
     });
     if (!pg) {
       return res.json({ grade: null, subjects: [], students: [], encounterNumber });
@@ -1836,7 +1860,7 @@ export const getMpNominaByEncounter = async (req: Request, res: Response) => {
     // even if the student already approved.
     const inscriptions = await Inscription.findAll({
       where: {
-        schoolPeriodId: activePeriod.id,
+        schoolPeriodId: viewPeriod.id,
         gradeId: gradeIdNum,
         sectionId: mpSection.id,
       },
@@ -1916,8 +1940,8 @@ export const getMpNominaFinal = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'gradeId inválido' });
     }
 
-    const activePeriod = await SchoolPeriod.findOne({ where: { status: 'activo' } });
-    if (!activePeriod) {
+    const viewPeriod = await resolveViewPeriod(req);
+    if (!viewPeriod) {
       return res.json({ grade: null, subjects: [], students: [] });
     }
 
@@ -1927,7 +1951,7 @@ export const getMpNominaFinal = async (req: Request, res: Response) => {
     }
 
     const pg = await PeriodGrade.findOne({
-      where: { schoolPeriodId: activePeriod.id, gradeId: gradeIdNum },
+      where: { schoolPeriodId: viewPeriod.id, gradeId: gradeIdNum },
     });
     if (!pg) {
       return res.json({ grade: null, subjects: [], students: [] });
@@ -1949,7 +1973,7 @@ export const getMpNominaFinal = async (req: Request, res: Response) => {
     // Get ALL MP inscriptions (regardless of status) with their pending subjects + encounters
     const inscriptions = await Inscription.findAll({
       where: {
-        schoolPeriodId: activePeriod.id,
+        schoolPeriodId: viewPeriod.id,
         gradeId: gradeIdNum,
         sectionId: mpSection.id,
       },

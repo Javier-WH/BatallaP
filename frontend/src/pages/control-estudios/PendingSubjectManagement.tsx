@@ -13,6 +13,7 @@ import {
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import api from '@/services/api';
+import { useSchool } from '@/context/SchoolContext';
 import { generateMpNominaHTML } from '@/components/pdf/MpNominaHTML';
 import type { MpNominaPrintData } from '@/components/pdf/MpNominaHTML';
 
@@ -181,6 +182,7 @@ interface MpContent {
 /* Component                                                           */
 /* ------------------------------------------------------------------ */
 const PendingSubjectManagement: React.FC = () => {
+  const { viewPeriod, isReadOnly } = useSchool();
   const [loading, setLoading] = useState(false);
   const [acting, setActing] = useState(false);
   const [structure, setStructure] = useState<MpStructureResponse | null>(null);
@@ -261,7 +263,9 @@ const PendingSubjectManagement: React.FC = () => {
   const fetchStructure = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await api.get<MpStructureResponse>('/pending-subjects/structure');
+      const res = await api.get<MpStructureResponse>('/pending-subjects/structure', {
+        params: { schoolPeriodId: viewPeriod?.id },
+      });
       setStructure(res.data);
       if (res.data.grades.length > 0 && !expandedGradeId) {
         setExpandedGradeId(res.data.grades[0].grade.id);
@@ -272,7 +276,15 @@ const PendingSubjectManagement: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [expandedGradeId]);
+  }, [expandedGradeId, viewPeriod?.id]);
+
+  // Reset per-period state when the header period selector changes
+  useEffect(() => {
+    setExpandedGradeId(null);
+    setNominaEncounter(null);
+    setNominaFinal(null);
+    setEncounterDatesMap({});
+  }, [viewPeriod?.id]);
 
   useEffect(() => { fetchStructure(); }, [fetchStructure]);
 
@@ -313,6 +325,7 @@ const PendingSubjectManagement: React.FC = () => {
   }, []);
 
   const toggleEncounterLock = async (encounterNum: number) => {
+    if (isReadOnly) { message.warning('Período histórico: solo lectura'); return; }
     const newValue = lockedEncounters.includes(encounterNum)
       ? lockedEncounters.filter(n => n !== encounterNum)
       : [...lockedEncounters, encounterNum].sort((a, b) => a - b);
@@ -380,7 +393,7 @@ const PendingSubjectManagement: React.FC = () => {
       // Fetch nómina final for ALL grades in parallel
       const results = await Promise.all(
         structure.grades.map(g =>
-          api.get(`/pending-subjects/nomina-final/${g.grade.id}`)
+          api.get(`/pending-subjects/nomina-final/${g.grade.id}`, { params: { schoolPeriodId: viewPeriod?.id } })
             .then(res => ({ grade: g.grade, data: res.data }))
             .catch(() => ({ grade: g.grade, data: null }))
         )
@@ -445,14 +458,14 @@ const PendingSubjectManagement: React.FC = () => {
   const fetchNominaEncounter = useCallback(async (gradeId: number, encounter: number) => {
     setNominaEncounterLoading(true);
     try {
-      const res = await api.get(`/pending-subjects/nomina/${gradeId}/encounter`, { params: { encounter } });
+      const res = await api.get(`/pending-subjects/nomina/${gradeId}/encounter`, { params: { encounter, schoolPeriodId: viewPeriod?.id } });
       setNominaEncounter(res.data);
     } catch (error: any) {
       message.error(error?.response?.data?.message || 'Error al cargar nómina por encuentro');
     } finally {
       setNominaEncounterLoading(false);
     }
-  }, []);
+  }, [viewPeriod?.id]);
 
   useEffect(() => {
     if (expandedGradeId && nominaView === 'encounter') {
@@ -466,14 +479,14 @@ const PendingSubjectManagement: React.FC = () => {
   const fetchNominaFinal = useCallback(async (gradeId: number) => {
     setNominaFinalLoading(true);
     try {
-      const res = await api.get(`/pending-subjects/nomina-final/${gradeId}`);
+      const res = await api.get(`/pending-subjects/nomina-final/${gradeId}`, { params: { schoolPeriodId: viewPeriod?.id } });
       setNominaFinal(res.data);
     } catch (error: any) {
       message.error(error?.response?.data?.message || 'Error al cargar nómina final');
     } finally {
       setNominaFinalLoading(false);
     }
-  }, []);
+  }, [viewPeriod?.id]);
 
   useEffect(() => {
     if (expandedGradeId && nominaView === 'final') {
@@ -487,6 +500,7 @@ const PendingSubjectManagement: React.FC = () => {
   const encScoreInputRef = React.useRef<any>(null);
 
   const openEncScoreModal = (student: NominaEncounterStudent, subject: NominaSubject) => {
+    if (isReadOnly) { message.warning('Período histórico: solo lectura'); return; }
     const subj = student.subjects.find(s => s.subjectId === subject.id);
     setEncScoreStudent(student);
     setEncScoreSubject(subject);
@@ -524,6 +538,7 @@ const PendingSubjectManagement: React.FC = () => {
 
   /* ------------------- Open encounter dates modal ------------------- */
   const openEncDatesModal = async (subject: NominaSubject) => {
+    if (isReadOnly) { message.warning('Período histórico: solo lectura'); return; }
     setEncDatesSubject(subject);
     setEncDatesModalOpen(true);
     setEncDatesLoading(true);
@@ -569,7 +584,7 @@ const PendingSubjectManagement: React.FC = () => {
     setContentItems([]);
     try {
       // Find pendingSubjectId
-      const encRes = await api.get(`/pending-subjects/nomina/${expandedGradeId}/encounter`, { params: { encounter: 1 } });
+      const encRes = await api.get(`/pending-subjects/nomina/${expandedGradeId}/encounter`, { params: { encounter: 1, schoolPeriodId: viewPeriod?.id } });
       const encStudent = encRes.data.students.find((s: NominaEncounterStudent) => s.subjects.find(sb => sb.subjectId === subject.id));
       const pendingSubj = encStudent?.subjects.find((sb: any) => sb.subjectId === subject.id);
       if (!pendingSubj) {
@@ -588,10 +603,10 @@ const PendingSubjectManagement: React.FC = () => {
   };
 
   const handleSaveContent = async () => {
-    if (!contentSubject) return;
+    if (isReadOnly || !contentSubject) return;
     setContentSaving(true);
     try {
-      const encRes = await api.get(`/pending-subjects/nomina/${expandedGradeId}/encounter`, { params: { encounter: 1 } });
+      const encRes = await api.get(`/pending-subjects/nomina/${expandedGradeId}/encounter`, { params: { encounter: 1, schoolPeriodId: viewPeriod?.id } });
       const encStudent = encRes.data.students.find((s: NominaEncounterStudent) => s.subjects.find(sb => sb.subjectId === contentSubject.id));
       const pendingSubj = encStudent?.subjects.find((sb: any) => sb.subjectId === contentSubject.id);
       if (!pendingSubj) {
@@ -679,6 +694,7 @@ const PendingSubjectManagement: React.FC = () => {
 
   /* ------------------- Remove student from subject ------------------- */
   const handleRemove = async (inscriptionSubjectId: number, studentName: string) => {
+    if (isReadOnly) { message.warning('Período histórico: solo lectura'); return; }
     Modal.confirm({
       title: 'Remover estudiante',
       content: `¿Remover a ${studentName} de esta materia pendiente?`,
@@ -703,7 +719,7 @@ const PendingSubjectManagement: React.FC = () => {
 
   /* ------------------- Save qualification for a plan item (from CE) ------------------- */
   const handleSaveQualification = async (student: MpAssignmentStudent, planItem: MpPlanItem, score: number | null) => {
-    if (score == null) return;
+    if (isReadOnly || score == null) return;
     setGradeSaving(true);
     try {
       await api.post('/pending-subjects/qualification', {
@@ -735,7 +751,7 @@ const PendingSubjectManagement: React.FC = () => {
 
   /* ------------------- Save direct final grade (with date) ------------------- */
   const handleSaveGrade = async () => {
-    if (!gradeModalStudent || !gradeModalSubject || gradeValue == null) return;
+    if (isReadOnly || !gradeModalStudent || !gradeModalSubject || gradeValue == null) return;
     const insSubj = gradeModalStudent.subjects.find(s => s.subjectId === gradeModalSubject.id);
     if (!insSubj) {
       message.error('El estudiante no está registrado en esta materia');
@@ -924,6 +940,7 @@ const PendingSubjectManagement: React.FC = () => {
                         type="primary"
                         size="small"
                         icon={<UserAddOutlined />}
+                        disabled={isReadOnly}
                         onClick={() => {
                           const group = structure.grades.find(g => g.grade.id === expandedGradeId)!;
                           openRegModal(group, subject);

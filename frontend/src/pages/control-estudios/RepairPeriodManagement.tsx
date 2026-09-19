@@ -4,6 +4,7 @@ import { PlayCircleOutlined, StopOutlined, ReloadOutlined, CheckCircleOutlined, 
 import dayjs from 'dayjs';
 import api from '@/services/api';
 import { useAuth } from '@/context/AuthContext';
+import { useSchool } from '@/context/SchoolContext';
 
 const { Title, Text } = Typography;
 
@@ -97,6 +98,7 @@ interface GradeSubjectColumn {
 
 const RepairPeriodManagement: React.FC = () => {
   const { user } = useAuth();
+  const { viewPeriod, isReadOnly } = useSchool();
   const isMaster = user?.roles.includes('Master');
   const [loading, setLoading] = useState(false);
   const [acting, setActing] = useState(false);
@@ -132,18 +134,17 @@ const RepairPeriodManagement: React.FC = () => {
     // spinner (used after inline grade saves to avoid screen flicker).
     if (!opts?.silent) setLoading(true);
     try {
-      const periodsRes = await api.get('/academic/periods');
-      const activePeriod = (periodsRes.data as any[]).find((p: any) => p.status === 'activo');
-      if (!activePeriod) {
-        message.warning('No hay un período activo');
+      // Serve the period selected in the header selector (falls back to active)
+      const period = viewPeriod;
+      if (!period) {
         setLoading(false);
         return;
       }
-      setActivePeriodId(activePeriod.id);
+      setActivePeriodId(period.id);
 
       const [summaryRes, studentsRes] = await Promise.all([
-        api.get(`/revision-periods/${activePeriod.id}`),
-        api.get(`/revision-periods/${activePeriod.id}/students`),
+        api.get(`/revision-periods/${period.id}`),
+        api.get(`/revision-periods/${period.id}/students`),
       ]);
       setSummary(summaryRes.data);
       setSelectedOpp((previous) => {
@@ -162,7 +163,7 @@ const RepairPeriodManagement: React.FC = () => {
     }
   };
 
-  useEffect(() => { fetchData(); }, []);
+  useEffect(() => { fetchData(); }, [viewPeriod?.id]);
 
   // Load max_grade for zero-padded score display (e.g. 20 -> "03")
   useEffect(() => {
@@ -494,7 +495,7 @@ const RepairPeriodManagement: React.FC = () => {
 
   const currentOpp = summary?.revisionPeriod?.currentOpportunity ?? 1;
   const gradesFinalized = summary?.revisionPeriod?.gradesFinalized === true;
-  const periodEditable = summary?.revisionPeriod && (summary.revisionPeriod.status === 'open' || summary.revisionPeriod.status === 'completed') && !gradesFinalized;
+  const periodEditable = summary?.revisionPeriod && (summary.revisionPeriod.status === 'open' || summary.revisionPeriod.status === 'completed') && !gradesFinalized && !isReadOnly;
 
   return (
     <div className="ce-page ce-repair-page" style={{ padding: 24, maxWidth: 1200, margin: '0 auto' }}>
@@ -554,7 +555,7 @@ const RepairPeriodManagement: React.FC = () => {
                     onClick={handleSaveMaxOpp}
                     loading={maxOppSaving}
                     size="small"
-                    disabled={gradesFinalized}
+                    disabled={gradesFinalized || isReadOnly}
                   >
                     Guardar
                   </Button>
@@ -573,7 +574,7 @@ const RepairPeriodManagement: React.FC = () => {
                 showIcon
                 action={
                   <Button type="primary" icon={<PlayCircleOutlined />} onClick={handleOpen} loading={acting}
-                    disabled={!summary.councilStatus.allDone || !summary.termsStatus?.allBlocked}>
+                    disabled={isReadOnly || !summary.councilStatus.allDone || !summary.termsStatus?.allBlocked}>
                     Abrir período de revisión
                   </Button>
                 }
@@ -591,7 +592,7 @@ const RepairPeriodManagement: React.FC = () => {
                 action={
                   <Space wrap>
                     <Button type="primary" icon={<ReloadOutlined />} onClick={() => fetchData()}>Actualizar</Button>
-                    <Button icon={<RetweetOutlined />} onClick={handleRecalculate} loading={acting} disabled={gradesFinalized}>Recalcular</Button>
+                    <Button icon={<RetweetOutlined />} onClick={handleRecalculate} loading={acting} disabled={gradesFinalized || isReadOnly}>Recalcular</Button>
                     <Popconfirm
                       title="¿Bloquear el período de revisión?"
                       description="El período se bloqueará y no se podrán editar las notas. Podrá reabrirlo posteriormente."
@@ -599,7 +600,7 @@ const RepairPeriodManagement: React.FC = () => {
                       cancelText="Cancelar"
                       onConfirm={handleLock}
                     >
-                      <Button danger icon={<LockOutlined />} loading={acting}>Bloquear</Button>
+                      <Button danger icon={<LockOutlined />} loading={acting} disabled={isReadOnly}>Bloquear</Button>
                     </Popconfirm>
                     {isMaster && (
                       <Popconfirm
@@ -610,7 +611,7 @@ const RepairPeriodManagement: React.FC = () => {
                         okButtonProps={{ danger: true }}
                         onConfirm={handleReset}
                       >
-                        <Button danger type="dashed" icon={<UndoOutlined />} loading={acting}>Reiniciar (Master)</Button>
+                        <Button danger type="dashed" icon={<UndoOutlined />} loading={acting} disabled={isReadOnly}>Reiniciar (Master)</Button>
                       </Popconfirm>
                     )}
                   </Space>
@@ -629,8 +630,8 @@ const RepairPeriodManagement: React.FC = () => {
                 showIcon
                 action={
                   <Space wrap>
-                    <Button danger icon={<StopOutlined />} onClick={handleLock} loading={acting} disabled={gradesFinalized}>Bloquear período</Button>
-                    <Button type="primary" icon={<UnlockOutlined />} onClick={handleReopen} loading={acting} disabled={gradesFinalized}>Reabrir</Button>
+                    <Button danger icon={<StopOutlined />} onClick={handleLock} loading={acting} disabled={gradesFinalized || isReadOnly}>Bloquear período</Button>
+                    <Button type="primary" icon={<UnlockOutlined />} onClick={handleReopen} loading={acting} disabled={gradesFinalized || isReadOnly}>Reabrir</Button>
                     {isMaster && (
                       <Popconfirm
                         title="¿Reiniciar el período de revisión?"
@@ -640,7 +641,7 @@ const RepairPeriodManagement: React.FC = () => {
                         okButtonProps={{ danger: true }}
                         onConfirm={handleReset}
                       >
-                        <Button danger type="dashed" icon={<UndoOutlined />} loading={acting}>Reiniciar (Master)</Button>
+                        <Button danger type="dashed" icon={<UndoOutlined />} loading={acting} disabled={isReadOnly}>Reiniciar (Master)</Button>
                       </Popconfirm>
                     )}
                   </Space>
@@ -657,7 +658,7 @@ const RepairPeriodManagement: React.FC = () => {
                 showIcon
                 action={
                   <Space wrap>
-                    <Button type="primary" icon={<UnlockOutlined />} onClick={handleReopen} loading={acting}>Reabrir</Button>
+                    <Button type="primary" icon={<UnlockOutlined />} onClick={handleReopen} loading={acting} disabled={isReadOnly}>Reabrir</Button>
                     {isMaster ? (
                     <Popconfirm
                       title="¿Reiniciar el período de revisión?"
@@ -667,7 +668,7 @@ const RepairPeriodManagement: React.FC = () => {
                       okButtonProps={{ danger: true }}
                       onConfirm={handleReset}
                     >
-                      <Button danger type="dashed" icon={<UndoOutlined />} loading={acting}>Reiniciar (Master)</Button>
+                      <Button danger type="dashed" icon={<UndoOutlined />} loading={acting} disabled={isReadOnly}>Reiniciar (Master)</Button>
                     </Popconfirm>
                   ) : undefined
                 }
@@ -693,7 +694,7 @@ const RepairPeriodManagement: React.FC = () => {
                     </Button>
                     <Checkbox
                       checked={summary?.revisionPeriod?.gradesFinalized === true}
-                      disabled={isPreview || !canOverride || finalizing}
+                      disabled={isPreview || !canOverride || finalizing || isReadOnly}
                       onChange={(e) => handleFinalizeRevisionGrades(e.target.checked)}
                       style={{
                         marginTop: 15,
@@ -736,7 +737,7 @@ const RepairPeriodManagement: React.FC = () => {
                         const isSelected = selectedOpp === opp;
                         const isActive = currentOpp === opp;
                         const isFuture = opp > currentOpp;
-                        const canActivate = summary.revisionPeriod?.status === 'open' && !isActive && !gradesFinalized;
+                        const canActivate = summary.revisionPeriod?.status === 'open' && !isActive && !gradesFinalized && !isReadOnly;
                         return (
                           <div
                             key={opp}
@@ -831,7 +832,7 @@ const RepairPeriodManagement: React.FC = () => {
                                   <th key={subj.abbreviation} className="repair-col-subj" title={subj.subjectName}>
                                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2 }}>
                                       <span>{subj.abbreviation}</span>
-                                      {pgsId && !gradesFinalized && canOverride && (
+                                      {pgsId && !gradesFinalized && canOverride && !isReadOnly && (
                                         <CalendarOutlined
                                           style={{ fontSize: 10, color: '#1677ff', cursor: 'pointer' }}
                                           onClick={(e) => { e.stopPropagation(); handleOpenDatesModal(pgsId, subj.subjectName, subj.abbreviation); }}
