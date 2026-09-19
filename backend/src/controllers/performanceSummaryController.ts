@@ -1332,6 +1332,7 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
       evalType: string,
       sectionTotal: number,
       pageCount: number,
+      councilDateOverride?: string | null,
     ) => {
       // Attach pre-registered images with the template's anchors
       const makeAnchor = (a: any) => ({
@@ -1417,7 +1418,7 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
         templateGradeName,
         section?.name,
         letterGradesConfig,
-        lastCouncilDate,
+        councilDateOverride !== undefined ? councilDateOverride : lastCouncilDate,
         isMpSection && !historicalMode,
         undefined,
         undefined,
@@ -1498,7 +1499,10 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
       group: any[],
       evalType: string,
       groupLabel: string,
-      isFirst: boolean
+      isFirst: boolean,
+      labelOverride?: string,
+      councilDate?: string | null,
+      sectionTotal?: number,
     ): string[] => {
       if (group.length === 0) return [];
       const pages = Math.ceil(group.length / MAX_STUDENTS_PER_SHEET);
@@ -1508,7 +1512,7 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
       // Phase 1: create all worksheets (clone from clean template).
       // Naming: 5to Año (Venezolano) (1), 5to Año (Venezolano) (2), ...
       for (let pageIdx = 0; pageIdx < pages; pageIdx++) {
-        const name = `${actualSheetName} (${groupLabel}) (${pageIdx + 1})`;
+        const name = `${actualSheetName} (${labelOverride ?? groupLabel}) (${pageIdx + 1})`;
         if (isFirst && pageIdx === 0) {
           pageSheets[0] = sheet!;
           pageNames[0] = name;
@@ -1526,21 +1530,85 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
       for (let pageIdx = 0; pageIdx < pages; pageIdx++) {
         const studentOffset = pageIdx * MAX_STUDENTS_PER_SHEET;
         const pageCount = Math.min(group.length - studentOffset, MAX_STUDENTS_PER_SHEET);
-        fillGroupPage(pageSheets[pageIdx], group, studentOffset, evalType, inscriptions.length, pageCount);
+        fillGroupPage(pageSheets[pageIdx], group, studentOffset, evalType, sectionTotal ?? inscriptions.length, pageCount, councilDate);
       }
 
       return pageNames;
     };
 
-    // Render each document-type group on its own set of sheets.
+    // For the Materia Pendiente summary, render one sheet-set PER ENCOUNTER:
+    // each encounter is a snapshot showing only the subjects the student still
+    // had pending going into it, with the score/absence recorded there.
+    // Students who approved everything disappear from later sheets; a date
+    // where nobody has anything pending produces no sheet.
+    const mpEncounterSheets: { en: number; date: string | null; students: any[] }[] = [];
+    if (isMpSection && !historicalMode) {
+      const encounterNumbers = new Set<number>();
+      const dateByEn = new Map<number, string>();
+      for (const ins of inscriptions as any[]) {
+        for (const ps of ins.pendingSubjects || []) {
+          for (const enc of ps.encounters || []) {
+            encounterNumbers.add(enc.encounterNumber);
+            if (enc.date && !dateByEn.has(enc.encounterNumber)) {
+              dateByEn.set(enc.encounterNumber, formatDateInCaracas(enc.date) as string);
+            }
+          }
+        }
+      }
+      // A subject stays "pending at encounter N" until an EARLIER encounter
+      // approves it. Subjects resolved without any encounter (e.g. convalidada)
+      // never appear in the sheets.
+      const isApprovedBefore = (ps: any, en: number) =>
+        (ps.encounters || []).some((e: any) => e.encounterNumber < en && e.score !== null && Number(e.score) >= passingGrade && !e.isAbsent);
+      const appearsInSheets = (ps: any) =>
+        (ps.encounters || []).length > 0 || ps.status === 'pendiente';
+      for (const en of [...encounterNumbers].sort((a, b) => a - b)) {
+        const students = (inscriptions as any[]).map((ins: any) => {
+          const pendingAtEn = (ins.pendingSubjects || [])
+            .filter((ps: any) => appearsInSheets(ps) && !isApprovedBefore(ps, en))
+            .map((ps: any) => {
+              const enc = (ps.encounters || []).find((e: any) => e.encounterNumber === en);
+              // No usable record for this encounter counts as an absence ("I"):
+              // the student should have attended since the subject is unresolved.
+              const usable = enc && (enc.score !== null || enc.isAbsent);
+              return {
+                ...(ps.toJSON ? ps.toJSON() : ps),
+                encounters: [usable ? enc : { encounterNumber: en, score: null, isAbsent: true, date: null }],
+              };
+            });
+          if (pendingAtEn.length === 0) return null;
+          return { ...(ins.toJSON ? ins.toJSON() : ins), pendingSubjects: pendingAtEn };
+        }).filter(Boolean);
+        if (students.length === 0) continue;
+        mpEncounterSheets.push({ en, date: dateByEn.get(en) ?? null, students });
+      }
+    }
+
+    // Render each document-type group on its own set of sheets — or, for MP,
+    // per encounter × document-type.
     let isFirst = true;
     const allSheetNames: string[] = [];
-    for (const dtg of docTypeGroups) {
-      if (dtg.students.length === 0) continue;
-      const historicalEvalType = requestedHistoricalType === 'revision' ? 'Revisión' : null;
-      const names = renderGroup(dtg.students, historicalEvalType || (isMpSection ? 'Materia Pendiente' : 'Final'), dtg.label, isFirst);
-      allSheetNames.push(...names);
-      isFirst = false;
+    if (mpEncounterSheets.length > 0) {
+      const docShort: Record<string, string> = { 'Venezolano': 'V', 'Extranjero': 'E', 'Pasaporte': 'P', 'Cedula Escolar': 'CE' };
+      for (const encSheet of mpEncounterSheets) {
+        // date is YYYY-MM-DD → DD-MM for the sheet label
+        const dateShort = encSheet.date ? encSheet.date.split('-').slice(1).reverse().join('-') : 'SF';
+        for (const dtg of docTypeGroups) {
+          const groupStudents = encSheet.students.filter((ins: any) => ins.student?.documentType === dtg.label);
+          const label = `E${encSheet.en} ${dateShort} ${docShort[dtg.label]}`;
+          const names = renderGroup(groupStudents, 'Materia Pendiente', dtg.label, isFirst, label, encSheet.date, encSheet.students.length);
+          allSheetNames.push(...names);
+          isFirst = false;
+        }
+      }
+    } else {
+      for (const dtg of docTypeGroups) {
+        if (dtg.students.length === 0) continue;
+        const historicalEvalType = requestedHistoricalType === 'revision' ? 'Revisión' : null;
+        const names = renderGroup(dtg.students, historicalEvalType || (isMpSection ? 'Materia Pendiente' : 'Final'), dtg.label, isFirst);
+        allSheetNames.push(...names);
+        isFirst = false;
+      }
     }
 
     if (allSheetNames.length === 0) {
