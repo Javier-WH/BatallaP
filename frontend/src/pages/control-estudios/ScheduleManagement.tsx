@@ -932,6 +932,7 @@ const ScheduleManagement: React.FC = () => {
   const [newExcMaxHours, setNewExcMaxHours] = useState<number | null>(null);
   const [newExcDifficulty, setNewExcDifficulty] = useState<string | null>(null);
   const [newExcForcedSlot, setNewExcForcedSlot] = useState<string | null>(null);
+  const [newExcEndOfRun, setNewExcEndOfRun] = useState<string | null>(null);
 
   // Cross-grade links state
   const [scheduleLinks, setScheduleLinks] = useState<any[]>([]);
@@ -2016,7 +2017,7 @@ const ScheduleManagement: React.FC = () => {
 
   const handleAddException = async () => {
     if (!newExcSubjectId) { message.warning('Seleccione una materia'); return; }
-    if (newExcConsecutive === null && newExcWeekly === null && newExcMaxHours === null && newExcDifficulty === null && newExcForcedSlot === null) {
+    if (newExcConsecutive === null && newExcWeekly === null && newExcMaxHours === null && newExcDifficulty === null && newExcForcedSlot === null && newExcEndOfRun === null) {
       message.warning('Configure al menos una excepción');
       return;
     }
@@ -2028,6 +2029,7 @@ const ScheduleManagement: React.FC = () => {
         maxHoursPerDay: newExcMaxHours,
         difficulty: newExcDifficulty,
         forcedSlot: newExcForcedSlot,
+        endOfRun: newExcEndOfRun,
       });
       message.success('Excepción guardada');
       setNewExcSubjectId(null);
@@ -2036,13 +2038,14 @@ const ScheduleManagement: React.FC = () => {
       setNewExcMaxHours(null);
       setNewExcDifficulty(null);
       setNewExcForcedSlot(null);
+      setNewExcEndOfRun(null);
       loadExceptions();
     } catch (e: any) {
       message.error(e?.response?.data?.message ?? 'Error al guardar excepción');
     }
   };
 
-  const handleUpdateException = async (id: number, field: 'allowConsecutiveBlocks' | 'weeklyBlocks' | 'maxHoursPerDay' | 'difficulty' | 'forcedSlot', value: number | string | null) => {
+  const handleUpdateException = async (id: number, field: 'allowConsecutiveBlocks' | 'weeklyBlocks' | 'maxHoursPerDay' | 'difficulty' | 'forcedSlot' | 'endOfRun', value: number | string | null) => {
     try {
       const exc = exceptions.find(e => e.id === id);
       await api.put(`/schedule-exceptions/${id}`, {
@@ -2051,6 +2054,7 @@ const ScheduleManagement: React.FC = () => {
         maxHoursPerDay: field === 'maxHoursPerDay' ? value : exc?.maxHoursPerDay ?? null,
         difficulty: field === 'difficulty' ? value : exc?.difficulty ?? null,
         forcedSlot: field === 'forcedSlot' ? value : exc?.forcedSlot ?? null,
+        endOfRun: field === 'endOfRun' ? value : exc?.endOfRun ?? null,
       });
       loadExceptions();
     } catch (e: any) {
@@ -2723,6 +2727,21 @@ const ScheduleManagement: React.FC = () => {
                           ]}
                         />
                       </div>
+                      <div className="flex items-center gap-2">
+                        <label className="text-xs text-slate-500">Última del turno:</label>
+                        <Select
+                          size="small"
+                          style={{ width: 120 }}
+                          value={exc.endOfRun ?? undefined}
+                          placeholder="—"
+                          allowClear
+                          onChange={(v) => handleUpdateException(exc.id, 'endOfRun', v ?? null)}
+                          options={[
+                            { value: 'soft', label: 'Preferida' },
+                            { value: 'hard', label: 'Obligatoria' },
+                          ]}
+                        />
+                      </div>
                       <Button
                         size="small"
                         type="text"
@@ -2817,6 +2836,20 @@ const ScheduleManagement: React.FC = () => {
                     options={[
                       { value: 'first_morning', label: 'Inicio mañana' },
                       { value: 'last_afternoon', label: 'Fin tarde' },
+                    ]}
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs text-slate-500">Última del turno</label>
+                  <Select
+                    style={{ width: 130 }}
+                    placeholder="—"
+                    value={newExcEndOfRun ?? undefined}
+                    allowClear
+                    onChange={(v) => setNewExcEndOfRun(v ?? null)}
+                    options={[
+                      { value: 'soft', label: 'Preferida' },
+                      { value: 'hard', label: 'Obligatoria' },
                     ]}
                   />
                 </div>

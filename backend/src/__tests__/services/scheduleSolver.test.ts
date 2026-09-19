@@ -190,6 +190,37 @@ function shortVisitProblem() {
   };
 }
 
+// End-of-run regression: two subjects must share the morning (their teachers
+// are busy all afternoon). The flagged subject (90) must land AFTER the other
+// (91) in the same turn — soft via penalty, hard via constraint.
+function endOfRunProblem(mode: 'soft' | 'hard') {
+  const blocks = makeBlocks().filter(b => b.day === 'Lunes');
+  const busy: Array<Record<string, unknown>> = [];
+  for (const b of blocks) {
+    if (b.section === 'tarde') {
+      busy.push({ teacherId: 90, day: 'Lunes', blockId: b.id });
+      busy.push({ teacherId: 91, day: 'Lunes', blockId: b.id });
+    }
+  }
+  const subjects = [
+    { subjectId: 90, teacherId: 90, weeklyBlocks: 1, allowConsecutiveBlocks: 0, difficulty: 'medium' },
+    { subjectId: 91, teacherId: 91, weeklyBlocks: 1, allowConsecutiveBlocks: 0, difficulty: 'medium' },
+  ];
+  return {
+    blockSize: 2,
+    days: ['Lunes'],
+    blocks,
+    sections: [{ id: 1, periodGradeId: 4, subjects }],
+    teacherBusy: busy,
+    teacherPreferred: [],
+    syncGroupSubjects: false,
+    groupSubjects: [],
+    crossGradeLinks: [],
+    endOfRunSubjects: [{ subjectId: 90, mode }],
+    endOfRunWeight: 200,
+  };
+}
+
 const hasSolver = solverAvailable();
 const maybeDescribe = hasSolver ? describe : describe.skip;
 
@@ -254,5 +285,19 @@ maybeDescribe('schedule_solver short visit', () => {
     // X merges into the afternoon run (t3_t4 next to Y's t1_t2) rather than
     // sitting alone in the morning
     expect(x?.blockId).toBe('t3_t4');
+  }, 180000);
+});
+
+maybeDescribe('schedule_solver end-of-run exception', () => {
+  it.each(['soft', 'hard'] as const)('keeps the flagged subject last in its turn (%s mode)', (mode) => {
+    const result = runSolver(endOfRunProblem(mode));
+    expect(result.unplaced).toEqual([]);
+    const flagged = result.placed.find(p => p.subjectId === 90);
+    const other = result.placed.find(p => p.subjectId === 91);
+    expect(flagged?.blockId.startsWith('m')).toBe(true);
+    expect(other?.blockId.startsWith('m')).toBe(true);
+    // The flagged subject must occupy a later block of the same turn
+    const start = (id?: string) => parseInt(id!.slice(1).split('_')[0], 10);
+    expect(start(flagged?.blockId)).toBeGreaterThan(start(other?.blockId));
   }, 180000);
 });

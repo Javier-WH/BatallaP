@@ -108,7 +108,7 @@
 |--------|-------------|
 | `Schedule` | Horario de una `PeriodGradeSection` en un `SchoolPeriod`. |
 | `ScheduleEntry` | Bloque horario: día + período + materia (+ profesor) dentro de un `Schedule`. `isGroupSubject` marca materias de grupo que varias secciones ven simultáneamente. |
-| `ScheduleException` | Excepción de generación por materia del período: `allowConsecutiveBlocks`, `weeklyBlocks`, `maxHoursPerDay`, `difficulty` (`heavy`/`medium`/`light`), `forcedSlot` (`first_morning`/`last_afternoon`). Sobrescribe los valores por defecto del generador (y de `Subject`). |
+| `ScheduleException` | Excepción de generación por materia del período: `allowConsecutiveBlocks`, `weeklyBlocks`, `maxHoursPerDay`, `difficulty` (`heavy`/`medium`/`light`), `forcedSlot` (`first_morning`/`last_afternoon`), `endOfRun` (`soft`/`hard` = debe ser la última materia ocupada de su turno). Sobrescribe los valores por defecto del generador (y de `Subject`). |
 | `ScheduleLink` | Vínculo manual entre materias de **diferentes grados** del mismo período para que el generador las coloque en el mismo bloque horario. Tiene `name` opcional y `schoolPeriodId`. |
 | `ScheduleLinkItem` | Item de un vínculo: `linkId` + `subjectId` + `periodGradeId`. UNIQUE(`linkId`, `subjectId`, `periodGradeId`). Un par (materia, grado) solo puede pertenecer a un vínculo por período. |
 | `TeacherAdminHour` | Hora administrativa pintada sobre el horario del profesor (no es materia ni `ScheduleEntry`). UNIQUE(`teacherId`, `schoolPeriodId`, `day`, `period_id`). Se limpian al regenerar horarios del período. Base para cuantificación de horas (futuro módulo de sueldos). |

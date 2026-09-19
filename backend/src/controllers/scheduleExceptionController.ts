@@ -17,7 +17,7 @@ export const listExceptions = async (_req: Request, res: Response) => {
 // POST /api/schedule-exceptions
 export const createException = async (req: Request, res: Response) => {
   try {
-    const { subjectId, allowConsecutiveBlocks, weeklyBlocks, maxHoursPerDay, difficulty, forcedSlot } = req.body;
+    const { subjectId, allowConsecutiveBlocks, weeklyBlocks, maxHoursPerDay, difficulty, forcedSlot, endOfRun } = req.body;
     if (!subjectId) return res.status(400).json({ message: 'subjectId es requerido' });
 
     // Upsert: if exception for this subject already exists, update it
@@ -30,6 +30,7 @@ export const createException = async (req: Request, res: Response) => {
         maxHoursPerDay: maxHoursPerDay ?? null,
         difficulty: difficulty ?? null,
         forcedSlot: forcedSlot ?? null,
+        endOfRun: endOfRun ?? null,
       },
     });
     if (!created) {
@@ -38,6 +39,7 @@ export const createException = async (req: Request, res: Response) => {
       exc.maxHoursPerDay = maxHoursPerDay ?? null;
       exc.difficulty = difficulty ?? null;
       exc.forcedSlot = forcedSlot ?? null;
+      exc.endOfRun = endOfRun ?? null;
       await exc.save();
     }
     return res.status(created ? 201 : 200).json(exc);
@@ -51,7 +53,7 @@ export const createException = async (req: Request, res: Response) => {
 export const updateException = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { allowConsecutiveBlocks, weeklyBlocks, maxHoursPerDay, difficulty, forcedSlot } = req.body;
+    const { allowConsecutiveBlocks, weeklyBlocks, maxHoursPerDay, difficulty, forcedSlot, endOfRun } = req.body;
     const exc = await ScheduleException.findByPk(Number(id));
     if (!exc) return res.status(404).json({ message: 'Excepción no encontrada' });
     exc.allowConsecutiveBlocks = allowConsecutiveBlocks ?? null;
@@ -59,6 +61,7 @@ export const updateException = async (req: Request, res: Response) => {
     exc.maxHoursPerDay = maxHoursPerDay ?? null;
     exc.difficulty = difficulty ?? null;
     exc.forcedSlot = forcedSlot ?? null;
+    exc.endOfRun = endOfRun ?? null;
     await exc.save();
     return res.json(exc);
   } catch (error) {

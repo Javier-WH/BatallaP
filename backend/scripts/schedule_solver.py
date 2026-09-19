@@ -83,7 +83,22 @@ Problem format:
       "weight": 5000                // optional; falls back to forcedSlotDefaultWeight
     }
   ],
-  "forcedSlotDefaultWeight": 5000
+  "forcedSlotDefaultWeight": 5000,
+
+  // ── End-of-run exception (NEW) ──
+  // The subject must be the LAST occupied subject of its turn whenever anything
+  // else is placed in the same turn (morning and afternoon are independent
+  // runs). Alone in the turn = free. "soft" penalizes each follower block with
+  // endOfRunWeight; "hard" forbids a follower outright.
+  "endOfRunSubjects": [
+    {
+      "sectionId": 1,               // optional; omit/null to apply in every section that offers it
+      "subjectId": 12,
+      "mode": "soft",               // or "hard"
+      "weight": 200                 // optional; falls back to endOfRunWeight (soft only)
+    }
+  ],
+  "endOfRunWeight": 200             // penalty per occupied block after it (soft only)
 }
 
 Solution format:
@@ -151,6 +166,12 @@ def main():
     # ── New: forced slot exceptions ──
     forced_slot_subjects = problem.get("forcedSlotSubjects", [])
     forced_slot_default_weight = problem.get("forcedSlotDefaultWeight", 5000)
+
+    # ── New: end-of-run exceptions ──
+    # mode "soft": prefer being the last occupied subject of the turn
+    # mode "hard": nothing may be placed after it in the same turn
+    end_of_run_subjects = problem.get("endOfRunSubjects", [])
+    end_of_run_weight = problem.get("endOfRunWeight", 200)
 
     # ── Index blocks ──
     # blocks: list of { id, day, section(manana/tarde), periodIds, order }
@@ -901,6 +922,9 @@ def main():
     compactness_penalties = []  # (run-count) — weight day_compactness_weight
     thin_day_penalties = []     # (shortfall)  — weight thin_day_weight
     short_run_penalties = []    # (short runs) — weight short_visit_weight
+    end_of_run_penalties = []   # (end-of-run violations) — weight end_of_run_weight
+    occ_by_sec_day = {}         # (section_id, day) -> per-block occupancy BoolVars
+    day_blocks_sorted = {}      # day -> blocks in whole-day chronological order
 
     for sec in sections:
         sid = sec["id"]
@@ -908,6 +932,7 @@ def main():
             day_blocks = sorted(blocks_by_day.get(day, []), key=global_order)
             if not day_blocks:
                 continue
+            day_blocks_sorted[day] = day_blocks
 
             occ_vars = []
             for b in day_blocks:
@@ -923,6 +948,7 @@ def main():
                     occ_vars.append(occ)
                 else:
                     occ_vars.append(model.NewConstant(0))
+            occ_by_sec_day[(sid, day)] = occ_vars
 
             n = len(occ_vars)
 
@@ -973,6 +999,46 @@ def main():
             thin = model.NewIntVar(0, min_consolidated_blocks, f"dthin_{sid}_{day}")
             model.Add(thin >= min_consolidated_blocks - total_occ - min_consolidated_blocks * (1 - is_used))
             thin_day_penalties.append(thin)
+
+    # ── NEW Constraint/Preference: end-of-run exceptions ──
+    # A flagged subject must be the LAST occupied subject of its turn: if it is
+    # placed at block i of a turn, no OTHER subject may occupy any later block j
+    # of the SAME turn (morning and afternoon are independent runs). Its own
+    # consecutive continuation blocks don't count as "other", and a subject that
+    # is alone in the turn has no restriction at all.
+    #   soft: each (i, j) violation costs end_of_run_weight (gradient — the more
+    #         blocks follow it, the more it pays)
+    #   hard: x_i + occ_j - x_j <= 1 makes a follower infeasible outright
+    for entry in end_of_run_subjects:
+        subj_id = entry["subjectId"]
+        hard = entry.get("mode") == "hard"
+        weight = entry.get("weight", end_of_run_weight)
+        target_sections = [entry["sectionId"]] if entry.get("sectionId") is not None else [s["id"] for s in sections]
+        for sec in sections:
+            sid = sec["id"]
+            if sid not in target_sections:
+                continue
+            for day in days:
+                day_blocks = day_blocks_sorted.get(day)
+                occ_vars = occ_by_sec_day.get((sid, day))
+                if not day_blocks or occ_vars is None:
+                    continue
+                for i, bi in enumerate(day_blocks):
+                    xi = x.get((sid, subj_id, bi["id"], day))
+                    if xi is None:
+                        continue
+                    for j in range(i + 1, len(day_blocks)):
+                        bj = day_blocks[j]
+                        if bj["section"] != bi["section"]:
+                            break  # turns are contiguous in whole-day order
+                        xj = x.get((sid, subj_id, bj["id"], day))
+                        other_j = occ_vars[j] - (xj if xj is not None else 0)
+                        if hard:
+                            model.Add(xi + other_j <= 1)
+                        else:
+                            v = model.NewBoolVar(f"eor_{sid}_{subj_id}_{day}_{i}_{j}")
+                            model.Add(v >= xi + other_j - 1)
+                            end_of_run_penalties.append(v * weight)
 
     # ── NEW Constraint/Preference: subject difficulty ──
     # (a) Two "heavy" subjects should not land in adjacent blocks, same day/turn.
@@ -1066,7 +1132,8 @@ def main():
     #      one session; anything else is heavily discouraged but still beats
     #      leaving hours unplaced
     #   5. Class-day compactness: few runs per day (weight 200), avoid thin days
-    #      (weight 150), avoid lone-visit runs (weight 300)
+    #      (weight 150), avoid lone-visit runs (weight 300), end-of-run
+    #      exceptions in soft mode (weight 200 per follower block)
     #   6. Heavy-subject placement: avoid back-to-back heavy (weight 80), avoid
     #      late blocks (weight 40), position gradient heavy +20/step, light -10/step
     #   7. Prefer preferred teacher slots (weight 20)
@@ -1085,6 +1152,8 @@ def main():
         all_penalties.append(p * thin_day_weight)
     for p in short_run_penalties:
         all_penalties.append(p * short_visit_weight)
+    # End-of-run violations (soft mode; hard mode is a constraint, not a penalty)
+    all_penalties.extend(end_of_run_penalties)
     # Heavy-subject placement
     for p in heavy_b2b_penalties:
         all_penalties.append(p * heavy_b2b_weight)

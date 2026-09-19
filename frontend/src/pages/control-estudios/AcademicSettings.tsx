@@ -191,6 +191,7 @@ const AcademicSettings: React.FC = () => {
         same_day_subject_weight: settingsRes.data.same_day_subject_weight !== undefined ? Number(settingsRes.data.same_day_subject_weight) : 800,
         short_visit_weight: settingsRes.data.short_visit_weight !== undefined ? Number(settingsRes.data.short_visit_weight) : 300,
         forced_slot_default_weight: settingsRes.data.forced_slot_default_weight !== undefined ? Number(settingsRes.data.forced_slot_default_weight) : 5000,
+        end_of_run_weight: settingsRes.data.end_of_run_weight !== undefined ? Number(settingsRes.data.end_of_run_weight) : 200,
       });
     } catch (error) {
       console.error('Error fetching terms', error);
@@ -439,6 +440,7 @@ const AcademicSettings: React.FC = () => {
           same_day_subject_weight: String(values.same_day_subject_weight ?? 800),
           short_visit_weight: String(values.short_visit_weight ?? 300),
           forced_slot_default_weight: String(values.forced_slot_default_weight ?? 5000),
+          end_of_run_weight: String(values.end_of_run_weight ?? 200),
         },
       });
       message.success('Configuración de horarios guardada');
@@ -1529,6 +1531,15 @@ const AcademicSettings: React.FC = () => {
                                       tooltip="Prioridad de las materias marcadas como 'Forzar bloque' en las excepciones (inicio de mañana / fin de tarde). Un valor alto las hace casi obligatorias."
                                     >
                                       <InputNumber min={0} max={100000} style={{ width: '100%', height: 40 }} />
+                                    </Form.Item>
+                                  </Col>
+                                  <Col span={12}>
+                                    <Form.Item
+                                      name="end_of_run_weight"
+                                      label={<Text style={{ fontSize: 12, fontWeight: 600 }}>Peso: última del turno</Text>}
+                                      tooltip="Penalización por cada bloque ocupado después de una materia marcada como 'Última del turno: Preferida' en las excepciones. No aplica al modo Obligatoria (que es prohibición absoluta)."
+                                    >
+                                      <InputNumber min={0} max={10000} style={{ width: '100%', height: 40 }} />
                                     </Form.Item>
                                   </Col>
                                 </Row>

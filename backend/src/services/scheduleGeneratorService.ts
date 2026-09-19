@@ -77,6 +77,11 @@ interface ForcedSlotInput {
   weight?: number;
 }
 
+interface EndOfRunInput {
+  subjectId: number;
+  mode: 'soft' | 'hard';
+}
+
 interface ProblemJson {
   blockSize: number;
   avoidLastMorningFirstAfternoon: boolean;
@@ -106,6 +111,9 @@ interface ProblemJson {
   // Forced slot exceptions
   forcedSlotSubjects: ForcedSlotInput[];
   forcedSlotDefaultWeight: number;
+  // End-of-run exceptions: subject must be the last one of its turn
+  endOfRunSubjects: EndOfRunInput[];
+  endOfRunWeight: number;
 }
 
 interface SolverResult {
@@ -267,6 +275,7 @@ export async function generateSchedulesForPeriod(
   const sameDaySubjectWeight = Number(settings.same_day_subject_weight) || 800;
   const shortVisitWeight = Number(settings.short_visit_weight) || 300;
   const forcedSlotDefaultWeight = Number(settings.forced_slot_default_weight) || 5000;
+  const endOfRunWeight = Number(settings.end_of_run_weight) || 200;
 
   // 2. Build period slots and blocks
   const allSlots = buildPeriodSlots(settings);
@@ -432,6 +441,15 @@ export async function generateSchedulesForPeriod(
       position: e.forcedSlot as 'first_morning' | 'last_afternoon',
     }));
 
+  // 9d. End-of-run exceptions: subjects that must be the last occupied block(s)
+  // of their turn whenever anything else is placed after them in the same turn.
+  const endOfRunSubjects: EndOfRunInput[] = exceptions
+    .filter(e => e.endOfRun === 'soft' || e.endOfRun === 'hard')
+    .map(e => ({
+      subjectId: e.subjectId,
+      mode: e.endOfRun as 'soft' | 'hard',
+    }));
+
   // 10. Build the problem JSON
   const problem: ProblemJson = {
     blockSize,
@@ -457,6 +475,8 @@ export async function generateSchedulesForPeriod(
     shortVisitWeight,
     forcedSlotSubjects,
     forcedSlotDefaultWeight,
+    endOfRunSubjects,
+    endOfRunWeight,
   };
 
   // Debug: log problem summary
