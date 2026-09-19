@@ -33,7 +33,35 @@ async function loadLogo(force = false): Promise<ArrayBuffer | null> {
   return cachedLogoBuffer ?? null;
 }
 
+// Cache pending subjects per period across sheets within a single generation pass
+const cachedPendingByPeriod = new Map<number, Map<number, string[]>>();
+
+async function loadPendingSubjects(schoolPeriodId: number): Promise<Map<number, string[]>> {
+  const cached = cachedPendingByPeriod.get(schoolPeriodId);
+  if (cached) return cached;
+  // Keyed by personId: a PendingSubject may point to the student's regular
+  // inscription OR to their auxiliary MP inscription — personId covers both.
+  const map = new Map<number, string[]>();
+  try {
+    const res = await api.get(`/periods/${schoolPeriodId}/pending-subjects`);
+    for (const p of res.data || []) {
+      if (p.status !== 'pendiente') continue;
+      const personId: number | undefined = p.inscription?.personId;
+      const label: string | undefined = p.subject?.abbreviation?.trim() || p.subject?.name;
+      if (!personId || !label) continue;
+      const list = map.get(personId) ?? [];
+      if (!list.includes(label)) list.push(label);
+      map.set(personId, list);
+    }
+  } catch (e) {
+    console.error('No se pudieron cargar las materias pendientes para la nómina', e);
+  }
+  cachedPendingByPeriod.set(schoolPeriodId, map);
+  return map;
+}
+
 interface InscriptionStudent {
+  id: number;
   student?: {
     document?: string;
     documentType?: string;
@@ -67,6 +95,9 @@ export async function addNominaSheet(
   // Sort students canonically: document type → document number → lastName → firstName
   sortNominaStudents(students);
 
+  // Fetch pending subjects for this period (personId → subject names)
+  const pendingByPerson = await loadPendingSubjects(schoolPeriodId);
+
   // Fetch guide teacher for this grade+section
   let teacherName = '';
   try {
@@ -84,6 +115,7 @@ export async function addNominaSheet(
   // Sheet name: "Quinto A" (max 31 chars for Excel)
   const sheetName = `${gradeName} ${sectionName}`.slice(0, 31);
   const worksheet = workbook.addWorksheet(sheetName);
+  worksheet.pageSetup = { fitToPage: true, fitToWidth: 1, fitToHeight: 0 };
 
   // Logo: 1.03" diameter (~99px), aligned to the top-left corner
   const logoBuffer = await loadLogo();
@@ -91,7 +123,7 @@ export async function addNominaSheet(
     const logoId = workbook.addImage({ buffer: logoBuffer, extension: 'png' });
     worksheet.addImage(logoId, {
       tl: { col: 0, row: 0 },
-      ext: { width: 99, height: 99 },
+      ext: { width: 109, height: 109 },
     });
   }
 
@@ -125,7 +157,7 @@ export async function addNominaSheet(
   // Table starts at row 7
   const startRow = 7;
   const headerRow = worksheet.getRow(startRow);
-  headerRow.values = ['#', 'CÉDULA', 'APELLIDOS Y NOMBRES', 'Teléfono'];
+  headerRow.values = ['#', 'CÉDULA', 'APELLIDOS Y NOMBRES', 'MATERIA PENDIENTE'];
   for (let c = 1; c <= 4; c++) {
     const cell = headerRow.getCell(c);
     cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
@@ -136,19 +168,20 @@ export async function addNominaSheet(
   worksheet.getColumn(1).width = 6;
   worksheet.getColumn(2).width = 18;
   worksheet.getColumn(3).width = 45;
-  worksheet.getColumn(4).width = 18;
+  worksheet.getColumn(4).width = 21;
 
   students.forEach((s, idx) => {
     const row = worksheet.getRow(startRow + 1 + idx);
+    const pendingNames = pendingByPerson.get(s.student?.id ?? -1);
     row.values = [
       idx + 1,
       s.student?.document || '',
       `${s.student?.lastName || ''} ${s.student?.firstName || ''}`.trim(),
-      s.student?.contact?.phone1 || '',
+      pendingNames && pendingNames.length > 0 ? pendingNames.join(', ') : '—',
     ];
     row.getCell(1).alignment = { horizontal: 'center' };
     row.getCell(2).alignment = { horizontal: 'center' };
-    row.getCell(4).alignment = { horizontal: 'center' };
+    row.getCell(4).alignment = { horizontal: 'center', wrapText: true };
   });
 
   // Empty rows (minimum 35 students total)
@@ -181,6 +214,7 @@ export async function addNominaSheet(
  */
 export async function generateSingleNomina(input: NominaInput): Promise<number> {
   cachedLogoBuffer = undefined; // reset cache
+  cachedPendingByPeriod.clear();
   const workbook = new ExcelJS.Workbook();
   const count = await addNominaSheet(workbook, input);
   if (count === 0 && workbook.worksheets.length === 0) {
@@ -199,6 +233,7 @@ export async function generateMultiNomina(
   combinations: NominaInput[]
 ): Promise<{ sheetsCreated: number; totalStudents: number }> {
   cachedLogoBuffer = undefined; // reset cache
+  cachedPendingByPeriod.clear();
   const workbook = new ExcelJS.Workbook();
   let totalStudents = 0;
   let sheetsCreated = 0;
