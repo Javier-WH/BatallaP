@@ -755,6 +755,14 @@ const AcademicSettings: React.FC = () => {
                   >
                     <InputNumber min={1} max={12} style={{ width: '100%', height: 44, display: 'flex', alignItems: 'center' }} />
                   </Form.Item>
+                  <Form.Item
+                    name="grade_edit_grace_hours"
+                    label={<Text style={{ fontWeight: 700, fontSize: 13 }}>Tiempo de holgura para edición de notas (horas)</Text>}
+                    tooltip="Horas que tiene el profesor para modificar libremente una nota después de colocarla. Al expirar, el profesor debe solicitar permiso a Control de Estudios. Ej: 24 = 24 horas, 0.5 = 30 minutos, 0.016 ≈ 1 minuto."
+                    rules={[{ required: true, message: 'Requerido' }]}
+                  >
+                    <InputNumber min={0} max={720} step={0.001} precision={3} style={{ width: '100%', height: 44, display: 'flex', alignItems: 'center' }} addonAfter="hrs" />
+                  </Form.Item>
                 </Col>
                 <Col span={12}>
                   <Form.Item
@@ -841,15 +849,6 @@ const AcademicSettings: React.FC = () => {
                   rules={[{ required: true, message: 'Requerido' }]}
                 >
                   <InputNumber min={0} max={100} style={{ width: '100%', height: 40 }} addonAfter="%" />
-                </Form.Item>
-
-                <Form.Item
-                  name="grade_edit_grace_hours"
-                  label={<Text style={{ fontWeight: 600, fontSize: 12 }}>Tiempo de holgura para edición de notas (horas)</Text>}
-                  tooltip="Horas que tiene el profesor para modificar libremente una nota después de colocarla. Al expirar, el profesor debe solicitar permiso a Control de Estudios. Ej: 24 = 24 horas, 0.5 = 30 minutos, 0.016 ≈ 1 minuto."
-                  rules={[{ required: true, message: 'Requerido' }]}
-                >
-                  <InputNumber min={0} max={720} step={0.001} precision={3} style={{ width: '100%', height: 40 }} addonAfter="hrs" />
                 </Form.Item>
               </div>
 
