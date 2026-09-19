@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Card, Form, Input, InputNumber, Button, Typography, Space, message, Spin, DatePicker, TimePicker, Switch, Table, Modal, Popconfirm, Tooltip, Alert, Tag, Row, Col, Empty, Tabs, Divider } from 'antd';
+import { Card, Form, Input, InputNumber, Button, Typography, Space, message, Spin, DatePicker, TimePicker, Switch, Table, Modal, Popconfirm, Tooltip, Alert, Tag, Row, Col, Empty, Tabs, Divider, Collapse } from 'antd';
 import {
   SaveOutlined,
   PlusOutlined,
@@ -180,6 +180,13 @@ const AcademicSettings: React.FC = () => {
         afternoon_block_minutes_after: settingsRes.data.afternoon_block_minutes_after !== undefined ? Number(settingsRes.data.afternoon_block_minutes_after) : 40,
         default_weekly_blocks_per_subject: settingsRes.data.default_weekly_blocks_per_subject !== undefined ? Number(settingsRes.data.default_weekly_blocks_per_subject) : 2,
         available_classrooms: settingsRes.data.available_classrooms !== undefined ? Number(settingsRes.data.available_classrooms) : null,
+        day_compactness_weight: settingsRes.data.day_compactness_weight !== undefined ? Number(settingsRes.data.day_compactness_weight) : 200,
+        thin_day_weight: settingsRes.data.thin_day_weight !== undefined ? Number(settingsRes.data.thin_day_weight) : 150,
+        heavy_back_to_back_weight: settingsRes.data.heavy_back_to_back_weight !== undefined ? Number(settingsRes.data.heavy_back_to_back_weight) : 80,
+        heavy_late_block_weight: settingsRes.data.heavy_late_block_weight !== undefined ? Number(settingsRes.data.heavy_late_block_weight) : 40,
+        heavy_avoid_last_n_morning: settingsRes.data.heavy_avoid_last_n_morning !== undefined ? Number(settingsRes.data.heavy_avoid_last_n_morning) : 1,
+        heavy_avoid_last_n_afternoon: settingsRes.data.heavy_avoid_last_n_afternoon !== undefined ? Number(settingsRes.data.heavy_avoid_last_n_afternoon) : 1,
+        forced_slot_default_weight: settingsRes.data.forced_slot_default_weight !== undefined ? Number(settingsRes.data.forced_slot_default_weight) : 5000,
       });
     } catch (error) {
       console.error('Error fetching terms', error);
@@ -417,6 +424,13 @@ const AcademicSettings: React.FC = () => {
           afternoon_block_minutes_after: String(values.afternoon_block_minutes_after),
           default_weekly_blocks_per_subject: String(values.default_weekly_blocks_per_subject),
           available_classrooms: values.available_classrooms != null ? String(values.available_classrooms) : '',
+          day_compactness_weight: String(values.day_compactness_weight ?? 200),
+          thin_day_weight: String(values.thin_day_weight ?? 150),
+          heavy_back_to_back_weight: String(values.heavy_back_to_back_weight ?? 80),
+          heavy_late_block_weight: String(values.heavy_late_block_weight ?? 40),
+          heavy_avoid_last_n_morning: String(values.heavy_avoid_last_n_morning ?? 1),
+          heavy_avoid_last_n_afternoon: String(values.heavy_avoid_last_n_afternoon ?? 1),
+          forced_slot_default_weight: String(values.forced_slot_default_weight ?? 5000),
         },
       });
       message.success('Configuración de horarios guardada');
@@ -1383,6 +1397,96 @@ const AcademicSettings: React.FC = () => {
                           );
                         }}
                       </Form.Item>
+
+                      <Divider style={{ margin: '16px 0' }} />
+
+                      <Collapse
+                        ghost
+                        items={[
+                          {
+                            key: 'solver-advanced',
+                            label: <Text style={{ fontWeight: 700, fontSize: 13, color: '#595959' }}>Ajustes avanzados del generador de horarios</Text>,
+                            children: (
+                              <>
+                                <Alert
+                                  message="Pesos del generador"
+                                  description="Valores más altos hacen que el generador priorice más esa preferencia. Los valores por defecto están calibrados; ajústelos solo si el resultado no es el esperado."
+                                  type="warning"
+                                  showIcon
+                                  style={{ marginBottom: 16, borderRadius: 12, border: 'none', background: '#fffbe6' }}
+                                />
+                                <Row gutter={12}>
+                                  <Col span={12}>
+                                    <Form.Item
+                                      name="day_compactness_weight"
+                                      label={<Text style={{ fontSize: 12, fontWeight: 600 }}>Peso: días compactos</Text>}
+                                      tooltip="Penalización por cada tramo separado dentro del día de una sección (evita venir solo a la mañana y volver a la tarde)"
+                                    >
+                                      <InputNumber min={0} max={10000} style={{ width: '100%', height: 40 }} />
+                                    </Form.Item>
+                                  </Col>
+                                  <Col span={12}>
+                                    <Form.Item
+                                      name="thin_day_weight"
+                                      label={<Text style={{ fontSize: 12, fontWeight: 600 }}>Peso: días casi vacíos</Text>}
+                                      tooltip="Penalización por bloque faltante al mínimo de bloques por día configurado en el modal de excepciones"
+                                    >
+                                      <InputNumber min={0} max={10000} style={{ width: '100%', height: 40 }} />
+                                    </Form.Item>
+                                  </Col>
+                                </Row>
+                                <Row gutter={12}>
+                                  <Col span={12}>
+                                    <Form.Item
+                                      name="heavy_back_to_back_weight"
+                                      label={<Text style={{ fontSize: 12, fontWeight: 600 }}>Peso: pesadas seguidas</Text>}
+                                      tooltip="Penalización cuando dos materias marcadas como pesadas quedan en bloques adyacentes del mismo turno"
+                                    >
+                                      <InputNumber min={0} max={10000} style={{ width: '100%', height: 40 }} />
+                                    </Form.Item>
+                                  </Col>
+                                  <Col span={12}>
+                                    <Form.Item
+                                      name="heavy_late_block_weight"
+                                      label={<Text style={{ fontSize: 12, fontWeight: 600 }}>Peso: pesada en bloque tardío</Text>}
+                                      tooltip="Penalización cuando una materia pesada cae en los últimos bloques del turno"
+                                    >
+                                      <InputNumber min={0} max={10000} style={{ width: '100%', height: 40 }} />
+                                    </Form.Item>
+                                  </Col>
+                                </Row>
+                                <Row gutter={12}>
+                                  <Col span={12}>
+                                    <Form.Item
+                                      name="heavy_avoid_last_n_morning"
+                                      label={<Text style={{ fontSize: 12, fontWeight: 600 }}>Últimos N bloques (mañana)</Text>}
+                                      tooltip="Cuántos bloques finales de la mañana se consideran tardíos para materias pesadas"
+                                    >
+                                      <InputNumber min={0} max={10} style={{ width: '100%', height: 40 }} />
+                                    </Form.Item>
+                                  </Col>
+                                  <Col span={12}>
+                                    <Form.Item
+                                      name="heavy_avoid_last_n_afternoon"
+                                      label={<Text style={{ fontSize: 12, fontWeight: 600 }}>Últimos N bloques (tarde)</Text>}
+                                      tooltip="Cuántos bloques finales de la tarde se consideran tardíos para materias pesadas"
+                                    >
+                                      <InputNumber min={0} max={10} style={{ width: '100%', height: 40 }} />
+                                    </Form.Item>
+                                  </Col>
+                                </Row>
+                                <Form.Item
+                                  name="forced_slot_default_weight"
+                                  label={<Text style={{ fontSize: 12, fontWeight: 600 }}>Peso: bloque forzado</Text>}
+                                  tooltip="Prioridad de las materias marcadas como 'Forzar bloque' en las excepciones (inicio de mañana / fin de tarde). Un valor alto las hace casi obligatorias."
+                                >
+                                  <InputNumber min={0} max={100000} style={{ width: '100%', height: 40 }} />
+                                </Form.Item>
+                              </>
+                            ),
+                          },
+                        ]}
+                      />
 
                       <Button
                         type="primary"

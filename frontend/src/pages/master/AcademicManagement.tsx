@@ -159,6 +159,7 @@ interface Subject extends BaseCatalogItem {
   includeInAverage?: boolean;
   notRepairable?: boolean;
   weeklyBlocks?: number;
+  difficulty?: string | null;
 }
 
 type Specialization = BaseCatalogItem;
@@ -943,6 +944,7 @@ const AcademicManagement: React.FC = () => {
         usesLiteralGrades: subjectRecord.usesLiteralGrades ?? false,
         icon: subjectRecord.icon ?? null,
         color: subjectRecord.color ?? null,
+        difficulty: subjectRecord.difficulty ?? 'medium',
       });
     } else {
       editCatalogForm.setFieldsValue({ name: record.name });
@@ -950,7 +952,7 @@ const AcademicManagement: React.FC = () => {
     setEditCatalogVisible(true);
   };
 
-  const handleEditCatalog = async (values: { name: string; isDiversified?: boolean; subjectGroupId?: number | null; usesLiteralGrades?: boolean; abbreviation?: string | null; icon?: string | null; color?: unknown }) => {
+  const handleEditCatalog = async (values: { name: string; isDiversified?: boolean; subjectGroupId?: number | null; usesLiteralGrades?: boolean; abbreviation?: string | null; icon?: string | null; color?: unknown; difficulty?: string | null }) => {
     if (!editCatalogTarget) return;
     console.log('[handleEditCatalog] Form values:', values);
     try {
@@ -975,6 +977,7 @@ const AcademicManagement: React.FC = () => {
           usesLiteralGrades: values.usesLiteralGrades ?? false,
           icon: values.icon ?? null,
           color: normalizeColorValue(values.color),
+          difficulty: values.difficulty ?? 'medium',
         });
       } else {
         await api.put(`${url}/${editCatalogTarget.id}`, { name: values.name });
@@ -2030,6 +2033,16 @@ const AcademicManagement: React.FC = () => {
                 </Row>
                 <Form.Item name="usesLiteralGrades" valuePropName="checked" style={{ marginBottom: 24 }}>
                   <Checkbox>Usar Notas Literales (A, B, C...)</Checkbox>
+                </Form.Item>
+                <Form.Item name="difficulty" label={<Text style={{ fontWeight: 700 }}>Dificultad (horarios)</Text>} extra="Las materias pesadas se separan entre sí y evitan los últimos bloques del turno al generar horarios.">
+                  <Select
+                    size="large"
+                    options={[
+                      { value: 'light', label: 'Ligera' },
+                      { value: 'medium', label: 'Media' },
+                      { value: 'heavy', label: 'Pesada' },
+                    ]}
+                  />
                 </Form.Item>
               </>
             )}

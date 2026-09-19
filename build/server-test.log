@@ -1,8 +1,0 @@
-◇ injected env (9) from .env // tip: ⌘ enable debugging { debug: true }
-◇ injected env (0) from .env // tip: ◈ encrypted .env [www.dotenvx.com]
-◇ injected env (0) from .env // tip: ◈ encrypted .env [www.dotenvx.com]
-2026-09-17 08:35:04 [31merror[39m: 
-❌ No se pudo conectar a MySQL: conexión rechazada.
-   - Verifica que MySQL esté encendido en 127.0.0.1:3306.
-   - Verifica las credenciales de la base de datos `bp` en backend/.env.
-   - Luego reinicia el backend con: npm run dev:backend

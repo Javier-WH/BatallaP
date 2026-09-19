@@ -51,6 +51,7 @@ interface SubjectInput {
   maxHoursPerDay: number | null;
   subjectGroupId: number | null;
   teacherId: number | null;
+  difficulty?: string; // 'heavy' | 'medium' | 'light' (solver default: 'medium')
 }
 
 interface SectionInput {
@@ -70,6 +71,12 @@ interface CrossGradeLinkInput {
   items: { subjectId: number; periodGradeId: number }[];
 }
 
+interface ForcedSlotInput {
+  subjectId: number;
+  position: 'first_morning' | 'last_afternoon';
+  weight?: number;
+}
+
 interface ProblemJson {
   blockSize: number;
   avoidLastMorningFirstAfternoon: boolean;
@@ -81,6 +88,18 @@ interface ProblemJson {
   groupSubjects: GroupSubjectInput[];
   crossGradeLinks: CrossGradeLinkInput[];
   syncGroupSubjects: boolean;
+  // Class-schedule compactness
+  minConsolidatedBlocksPerDay: number;
+  dayCompactnessWeight: number;
+  thinDayWeight: number;
+  // Subject difficulty
+  heavyBackToBackWeight: number;
+  heavyLateBlockWeight: number;
+  heavyAvoidLastNMorning: number;
+  heavyAvoidLastNAfternoon: number;
+  // Forced slot exceptions
+  forcedSlotSubjects: ForcedSlotInput[];
+  forcedSlotDefaultWeight: number;
 }
 
 interface SolverResult {
@@ -227,6 +246,18 @@ export async function generateSchedulesForPeriod(
   // Configurable from the schedule exceptions panel via `sync_group_subjects`.
   const syncGroupSubjects = settings.sync_group_subjects !== 'false';
 
+  // Solver tuning knobs (all optional — the solver has the same defaults).
+  // minConsolidatedBlocksPerDay is exposed in the schedule exceptions modal;
+  // the weights are editable from Academic Settings > advanced generator options.
+  const minConsolidatedBlocksPerDay = Number(settings.min_consolidated_blocks_per_day) || 2;
+  const dayCompactnessWeight = Number(settings.day_compactness_weight) || 200;
+  const thinDayWeight = Number(settings.thin_day_weight) || 150;
+  const heavyBackToBackWeight = Number(settings.heavy_back_to_back_weight) || 80;
+  const heavyLateBlockWeight = Number(settings.heavy_late_block_weight) || 40;
+  const heavyAvoidLastNMorning = Number(settings.heavy_avoid_last_n_morning) || 1;
+  const heavyAvoidLastNAfternoon = Number(settings.heavy_avoid_last_n_afternoon) || 1;
+  const forcedSlotDefaultWeight = Number(settings.forced_slot_default_weight) || 5000;
+
   // 2. Build period slots and blocks
   const allSlots = buildPeriodSlots(settings);
   const blocks = buildBlocks(allSlots, blockSize);
@@ -302,6 +333,7 @@ export async function generateSchedulesForPeriod(
         maxHoursPerDay: exc?.maxHoursPerDay != null ? exc.maxHoursPerDay : ((subject as any)?.maxHoursPerDay ?? null),
         subjectGroupId: subject?.subjectGroupId ?? null,
         teacherId: assignment ? (assignment as any).teacherId : null,
+        difficulty: exc?.difficulty ?? (subject as any)?.difficulty ?? 'medium',
       };
     });
 
@@ -380,6 +412,16 @@ export async function generateSchedulesForPeriod(
     }))
     .filter(l => l.items.length >= 2);
 
+  // 9c. Forced slot exceptions: subjects that must strongly prefer the first
+  // morning block or the last afternoon block each day they are offered.
+  // Scoped to every section that offers the subject (sectionId omitted).
+  const forcedSlotSubjects: ForcedSlotInput[] = exceptions
+    .filter(e => e.forcedSlot === 'first_morning' || e.forcedSlot === 'last_afternoon')
+    .map(e => ({
+      subjectId: e.subjectId,
+      position: e.forcedSlot as 'first_morning' | 'last_afternoon',
+    }));
+
   // 10. Build the problem JSON
   const problem: ProblemJson = {
     blockSize,
@@ -392,6 +434,15 @@ export async function generateSchedulesForPeriod(
     groupSubjects,
     crossGradeLinks,
     syncGroupSubjects,
+    minConsolidatedBlocksPerDay,
+    dayCompactnessWeight,
+    thinDayWeight,
+    heavyBackToBackWeight,
+    heavyLateBlockWeight,
+    heavyAvoidLastNMorning,
+    heavyAvoidLastNAfternoon,
+    forcedSlotSubjects,
+    forcedSlotDefaultWeight,
   };
 
   // Debug: log problem summary

@@ -930,6 +930,8 @@ const ScheduleManagement: React.FC = () => {
   const [newExcConsecutive, setNewExcConsecutive] = useState<number | null>(null);
   const [newExcWeekly, setNewExcWeekly] = useState<number | null>(null);
   const [newExcMaxHours, setNewExcMaxHours] = useState<number | null>(null);
+  const [newExcDifficulty, setNewExcDifficulty] = useState<string | null>(null);
+  const [newExcForcedSlot, setNewExcForcedSlot] = useState<string | null>(null);
 
   // Cross-grade links state
   const [scheduleLinks, setScheduleLinks] = useState<any[]>([]);
@@ -1936,6 +1938,8 @@ const ScheduleManagement: React.FC = () => {
     setNewExcConsecutive(null);
     setNewExcWeekly(null);
     setNewExcMaxHours(null);
+    setNewExcDifficulty(null);
+    setNewExcForcedSlot(null);
     setNewLinkName('');
     setNewLinkRows([{ subjectId: null, periodGradeId: null }]);
     loadExceptions();
@@ -2012,7 +2016,7 @@ const ScheduleManagement: React.FC = () => {
 
   const handleAddException = async () => {
     if (!newExcSubjectId) { message.warning('Seleccione una materia'); return; }
-    if (newExcConsecutive === null && newExcWeekly === null && newExcMaxHours === null) {
+    if (newExcConsecutive === null && newExcWeekly === null && newExcMaxHours === null && newExcDifficulty === null && newExcForcedSlot === null) {
       message.warning('Configure al menos una excepción');
       return;
     }
@@ -2022,29 +2026,48 @@ const ScheduleManagement: React.FC = () => {
         allowConsecutiveBlocks: newExcConsecutive,
         weeklyBlocks: newExcWeekly,
         maxHoursPerDay: newExcMaxHours,
+        difficulty: newExcDifficulty,
+        forcedSlot: newExcForcedSlot,
       });
       message.success('Excepción guardada');
       setNewExcSubjectId(null);
       setNewExcConsecutive(null);
       setNewExcWeekly(null);
       setNewExcMaxHours(null);
+      setNewExcDifficulty(null);
+      setNewExcForcedSlot(null);
       loadExceptions();
     } catch (e: any) {
       message.error(e?.response?.data?.message ?? 'Error al guardar excepción');
     }
   };
 
-  const handleUpdateException = async (id: number, field: 'allowConsecutiveBlocks' | 'weeklyBlocks' | 'maxHoursPerDay', value: number | null) => {
+  const handleUpdateException = async (id: number, field: 'allowConsecutiveBlocks' | 'weeklyBlocks' | 'maxHoursPerDay' | 'difficulty' | 'forcedSlot', value: number | string | null) => {
     try {
       const exc = exceptions.find(e => e.id === id);
       await api.put(`/schedule-exceptions/${id}`, {
         allowConsecutiveBlocks: field === 'allowConsecutiveBlocks' ? value : exc?.allowConsecutiveBlocks ?? null,
         weeklyBlocks: field === 'weeklyBlocks' ? value : exc?.weeklyBlocks ?? null,
         maxHoursPerDay: field === 'maxHoursPerDay' ? value : exc?.maxHoursPerDay ?? null,
+        difficulty: field === 'difficulty' ? value : exc?.difficulty ?? null,
+        forcedSlot: field === 'forcedSlot' ? value : exc?.forcedSlot ?? null,
       });
       loadExceptions();
     } catch (e: any) {
       message.error('Error al actualizar excepción');
+    }
+  };
+
+  // Min consolidated blocks per day: days used by a section with fewer than
+  // this many blocks get penalized by the solver (thin days). Stored in settings.
+  const saveMinConsolidatedBlocks = async (value: number | null) => {
+    const v = value ?? 2;
+    try {
+      await api.post('/settings', { settings: { min_consolidated_blocks_per_day: String(v) } });
+      setSettings(prev => ({ ...prev, min_consolidated_blocks_per_day: String(v) }));
+      message.success(`Mínimo de bloques por día: ${v}`);
+    } catch {
+      message.error('Error al guardar la configuración');
     }
   };
 
@@ -2568,7 +2591,7 @@ const ScheduleManagement: React.FC = () => {
         open={exceptionsModalOpen}
         onCancel={() => setExceptionsModalOpen(false)}
         footer={null}
-        width={700}
+        width={860}
       >
         {exceptionsLoading ? (
           <div className="flex justify-center p-8"><Spin /></div>
@@ -2599,14 +2622,34 @@ const ScheduleManagement: React.FC = () => {
               </div>
             </div>
 
+            {/* Min consolidated blocks per day */}
+            <div className="p-3 border border-slate-200 rounded-lg bg-slate-50">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex-1">
+                  <div className="font-medium text-slate-800 text-sm">Mínimo de bloques por día</div>
+                  <div className="text-xs text-slate-500 mt-1">
+                    Si una sección asiste un día con menos de este número de bloques, el generador
+                    lo penaliza (evita días casi vacíos). Use 0 para desactivar.
+                  </div>
+                </div>
+                <InputNumber
+                  min={0}
+                  max={10}
+                  value={settings.min_consolidated_blocks_per_day != null ? Number(settings.min_consolidated_blocks_per_day) : 2}
+                  onBlur={(e) => saveMinConsolidatedBlocks(Number((e.target as HTMLInputElement).value) || 0)}
+                  onPressEnter={(e) => saveMinConsolidatedBlocks(Number((e.target as HTMLInputElement).value) || 0)}
+                />
+              </div>
+            </div>
+
             {/* Existing exceptions */}
             {exceptions.length > 0 && (
               <div>
                 <h3 className="text-sm font-bold text-slate-700 mb-2">Excepciones configuradas</h3>
                 <div className="space-y-2">
                   {exceptions.map((exc: any) => (
-                    <div key={exc.id} className="flex items-center gap-3 p-3 border border-slate-200 rounded-lg">
-                      <div className="flex-1">
+                    <div key={exc.id} className="flex items-center gap-3 p-3 border border-slate-200 rounded-lg flex-wrap">
+                      <div className="flex-1 min-w-[140px]">
                         <span className="font-medium text-slate-800">{exc.subject?.name ?? `Materia ${exc.subjectId}`}</span>
                       </div>
                       <div className="flex items-center gap-2">
@@ -2647,6 +2690,37 @@ const ScheduleManagement: React.FC = () => {
                           value={exc.maxHoursPerDay ?? undefined}
                           placeholder="—"
                           onChange={(v) => handleUpdateException(exc.id, 'maxHoursPerDay', v ?? null)}
+                        />
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <label className="text-xs text-slate-500">Dificultad:</label>
+                        <Select
+                          size="small"
+                          style={{ width: 90 }}
+                          value={exc.difficulty ?? undefined}
+                          placeholder="—"
+                          allowClear
+                          onChange={(v) => handleUpdateException(exc.id, 'difficulty', v ?? null)}
+                          options={[
+                            { value: 'light', label: 'Ligera' },
+                            { value: 'medium', label: 'Media' },
+                            { value: 'heavy', label: 'Pesada' },
+                          ]}
+                        />
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <label className="text-xs text-slate-500">Forzar bloque:</label>
+                        <Select
+                          size="small"
+                          style={{ width: 120 }}
+                          value={exc.forcedSlot ?? undefined}
+                          placeholder="—"
+                          allowClear
+                          onChange={(v) => handleUpdateException(exc.id, 'forcedSlot', v ?? null)}
+                          options={[
+                            { value: 'first_morning', label: 'Inicio mañana' },
+                            { value: 'last_afternoon', label: 'Fin tarde' },
+                          ]}
                         />
                       </div>
                       <Button
@@ -2715,6 +2789,35 @@ const ScheduleManagement: React.FC = () => {
                     value={newExcMaxHours ?? undefined}
                     placeholder="—"
                     onChange={(v) => setNewExcMaxHours(v ?? null)}
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs text-slate-500">Dificultad</label>
+                  <Select
+                    style={{ width: 100 }}
+                    placeholder="—"
+                    value={newExcDifficulty ?? undefined}
+                    allowClear
+                    onChange={(v) => setNewExcDifficulty(v ?? null)}
+                    options={[
+                      { value: 'light', label: 'Ligera' },
+                      { value: 'medium', label: 'Media' },
+                      { value: 'heavy', label: 'Pesada' },
+                    ]}
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs text-slate-500">Forzar bloque</label>
+                  <Select
+                    style={{ width: 130 }}
+                    placeholder="—"
+                    value={newExcForcedSlot ?? undefined}
+                    allowClear
+                    onChange={(v) => setNewExcForcedSlot(v ?? null)}
+                    options={[
+                      { value: 'first_morning', label: 'Inicio mañana' },
+                      { value: 'last_afternoon', label: 'Fin tarde' },
+                    ]}
                   />
                 </div>
                 <Button type="primary" icon={<PlusOutlined />} onClick={handleAddException}>

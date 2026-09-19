@@ -17,7 +17,7 @@ export const listExceptions = async (_req: Request, res: Response) => {
 // POST /api/schedule-exceptions
 export const createException = async (req: Request, res: Response) => {
   try {
-    const { subjectId, allowConsecutiveBlocks, weeklyBlocks, maxHoursPerDay } = req.body;
+    const { subjectId, allowConsecutiveBlocks, weeklyBlocks, maxHoursPerDay, difficulty, forcedSlot } = req.body;
     if (!subjectId) return res.status(400).json({ message: 'subjectId es requerido' });
 
     // Upsert: if exception for this subject already exists, update it
@@ -28,12 +28,16 @@ export const createException = async (req: Request, res: Response) => {
         allowConsecutiveBlocks: allowConsecutiveBlocks ?? null,
         weeklyBlocks: weeklyBlocks ?? null,
         maxHoursPerDay: maxHoursPerDay ?? null,
+        difficulty: difficulty ?? null,
+        forcedSlot: forcedSlot ?? null,
       },
     });
     if (!created) {
       exc.allowConsecutiveBlocks = allowConsecutiveBlocks ?? null;
       exc.weeklyBlocks = weeklyBlocks ?? null;
       exc.maxHoursPerDay = maxHoursPerDay ?? null;
+      exc.difficulty = difficulty ?? null;
+      exc.forcedSlot = forcedSlot ?? null;
       await exc.save();
     }
     return res.status(created ? 201 : 200).json(exc);
@@ -47,12 +51,14 @@ export const createException = async (req: Request, res: Response) => {
 export const updateException = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { allowConsecutiveBlocks, weeklyBlocks, maxHoursPerDay } = req.body;
+    const { allowConsecutiveBlocks, weeklyBlocks, maxHoursPerDay, difficulty, forcedSlot } = req.body;
     const exc = await ScheduleException.findByPk(Number(id));
     if (!exc) return res.status(404).json({ message: 'Excepción no encontrada' });
     exc.allowConsecutiveBlocks = allowConsecutiveBlocks ?? null;
     exc.weeklyBlocks = weeklyBlocks ?? null;
     exc.maxHoursPerDay = maxHoursPerDay ?? null;
+    exc.difficulty = difficulty ?? null;
+    exc.forcedSlot = forcedSlot ?? null;
     await exc.save();
     return res.json(exc);
   } catch (error) {
