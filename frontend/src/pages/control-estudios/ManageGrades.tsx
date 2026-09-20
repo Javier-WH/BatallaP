@@ -8,6 +8,7 @@ import { compareNominaStudents } from '@/utils/studentSort';
 import EvaluationPlanPDFModal from '@/components/pdf/EvaluationPlanPDFModal';
 import type { EvaluationPlanHeaderData } from '@/components/pdf/EvaluationPlanPDF';
 import EvaluationPlanItemModal, { type CatalogOption } from '@/components/EvaluationPlanItemModal';
+import SlideToConfirmModal from '@/components/SlideToConfirmModal';
 import { getSubjectVisual, withAlpha } from '@/utils/subjectVisuals';
 
 const { Title, Text } = Typography;
@@ -178,6 +179,8 @@ const ManageGrades: React.FC = () => {
   const [copyModalOpen, setCopyModalOpen] = useState(false);
   const [copyTargetSectionIds, setCopyTargetSectionIds] = useState<number[]>([]);
   const [copySubmitting, setCopySubmitting] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState<EvaluationPlanItem | null>(null);
+  const [deletingItem, setDeletingItem] = useState(false);
   const [auditModal, setAuditModal] = useState<{ open: boolean; studentName?: string; itemLabel?: string }>({ open: false });
   const [auditHistory, setAuditHistory] = useState<any[]>([]);
   const [auditLoading, setAuditLoading] = useState(false);
@@ -757,17 +760,22 @@ const ManageGrades: React.FC = () => {
     setStudents([]);
   };
 
-  const handleDeletePlanItem = async (id: number) => {
+  const confirmDeletePlanItem = async () => {
+    if (!itemToDelete) return;
     if (isSelectedTermBlocked) {
       message.warning('Este lapso está bloqueado. No se puede modificar el plan de evaluación.');
       return;
     }
+    setDeletingItem(true);
     try {
-      await api.delete(`/evaluation/plan/${id}`);
+      await api.delete(`/evaluation/plan/${itemToDelete.id}`);
       message.success('Item eliminado');
+      setItemToDelete(null);
       fetchPlanAndStudents();
     } catch {
       message.error('Error al eliminar');
+    } finally {
+      setDeletingItem(false);
     }
   };
 
@@ -999,7 +1007,7 @@ const ManageGrades: React.FC = () => {
                   setShowPlanModal(true);
                 }}
               />
-              <Button icon={<DeleteOutlined />} danger onClick={() => handleDeletePlanItem(record.id)} />
+              <Button icon={<DeleteOutlined />} danger onClick={() => setItemToDelete(record)} />
             </>
           )}
         </Space>
@@ -1817,6 +1825,25 @@ const ManageGrades: React.FC = () => {
           maxGrade={maxGrade}
         />
       )}
+
+      <SlideToConfirmModal
+        open={!!itemToDelete}
+        title="Eliminar evaluación"
+        confirmLabel="Eliminar evaluación"
+        loading={deletingItem}
+        onCancel={() => setItemToDelete(null)}
+        onConfirm={confirmDeletePlanItem}
+        description={itemToDelete && (
+          <Descriptions size="small" column={1}>
+            <Descriptions.Item label="Estrategia">
+              {itemToDelete.estrategiaCatalog?.name || itemToDelete.description}
+            </Descriptions.Item>
+            <Descriptions.Item label="Porcentaje">{itemToDelete.percentage}%</Descriptions.Item>
+            <Descriptions.Item label="Fecha">{dayjs(itemToDelete.date).format('DD/MM/YYYY')}</Descriptions.Item>
+          </Descriptions>
+        )}
+        warning="Esta acción no se puede deshacer. Las notas que los estudiantes tengan cargadas en esta evaluación también se eliminarán."
+      />
 
       <Modal
         rootClassName="ce-responsive-modal"
