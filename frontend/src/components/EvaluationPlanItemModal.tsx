@@ -251,7 +251,7 @@ const EvaluationPlanItemModal: React.FC<EvaluationPlanItemModalProps> = ({
           description: editingItem.description,
           percentage: editingItem.percentage,
           date: editingItem.date ? dayjs(editingItem.date) : null,
-          thematicContentIds: editingItem.thematicContentIds?.length
+          thematicContentIds: Array.isArray(editingItem.thematicContentIds) && editingItem.thematicContentIds.length
             ? editingItem.thematicContentIds
             : thematicComponents
               .filter(component => component.id === editingItem.thematicComponentId)

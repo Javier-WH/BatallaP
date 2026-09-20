@@ -450,7 +450,7 @@ const TeacherPanel: React.FC = () => {
     });
 
     return evaluationPlan.flatMap(plan => {
-      const linkedContents = (plan.thematicContentIds || [])
+      const linkedContents = (Array.isArray(plan.thematicContentIds) ? plan.thematicContentIds : [])
         .map(contentId => contentMap.get(contentId))
         .filter((content): content is NonNullable<typeof content> => Boolean(content));
       const component = [...new Set(linkedContents.map(content => content.componentTitle))].join('\\n')

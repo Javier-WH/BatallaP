@@ -93,6 +93,22 @@ EvaluationPlan.init(
       type: DataTypes.JSON,
       allowNull: true,
       defaultValue: null,
+      // MariaDB stores JSON as LONGTEXT and returns a raw string;
+      // normalize so consumers always get number[] | null.
+      get() {
+        const raw = this.getDataValue('thematicContentIds') as unknown;
+        if (raw == null) return null;
+        if (Array.isArray(raw)) return raw;
+        if (typeof raw === 'string') {
+          try {
+            const parsed: unknown = JSON.parse(raw);
+            return Array.isArray(parsed) ? parsed : null;
+          } catch {
+            return null;
+          }
+        }
+        return null;
+      },
     },
     evaluationType: {
       type: DataTypes.STRING,
