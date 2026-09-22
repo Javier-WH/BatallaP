@@ -225,7 +225,7 @@ interface EnrollStructureEntry {
   gradeId: number;
   order?: number | null;
   grade?: { id: number; name: string; order?: number | null };
-  sections?: { id: number; name: string }[];
+  sections?: { id: number; name: string; isMateriaPendiente?: boolean }[];
   subjects?: { id: number; name: string; subjectGroupId?: number | null; subjectGroup?: { name: string } }[];
 }
 
@@ -587,7 +587,11 @@ const MatriculationEnrollment: React.FC = () => {
           return nameA.localeCompare(nameB, 'es');
         }).map(entry => ({
           ...entry,
-          sections: [...(entry.sections || [])].sort((a, b) => a.name.localeCompare(b.name, 'es')),
+          // The Materia Pendiente auxiliary section is managed by its own
+          // module — never offered for enrollment/reactivation here.
+          sections: [...(entry.sections || [])]
+            .filter(sec => !sec.isMateriaPendiente)
+            .sort((a, b) => a.name.localeCompare(b.name, 'es')),
         }));
         setStructure(sortedStructure);
       }
