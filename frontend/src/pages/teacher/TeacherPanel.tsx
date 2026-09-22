@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, Component, useMemo, useRef } from 'react';
 import type { ReactNode, ErrorInfo } from 'react';
-import { Tabs, Card, Table, Button, message, Space, Tag, Alert, Empty, Tooltip, Modal, Checkbox, DatePicker, Spin, InputNumber } from 'antd';
+import { Tabs, Card, Table, Button, message, Space, Tag, Alert, Empty, Tooltip, Modal, Checkbox, DatePicker, Spin, InputNumber, Popconfirm } from 'antd';
 import { BookOutlined, PlusOutlined, DeleteOutlined, EditOutlined, LockOutlined, FilePdfOutlined, DownloadOutlined, ToolOutlined, CopyOutlined, PrinterOutlined, CalendarOutlined, SaveOutlined, FormOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { isAxiosError } from 'axios';
@@ -1283,7 +1283,16 @@ const handleToggleAbsent = async (enrollment: StudentEnrollment, evalPlanId: num
                   setShowPlanModal(true);
                 }}
               />
-              <Button icon={<DeleteOutlined />} danger onClick={() => handleDeletePlanItem(record.id)} />
+              <Popconfirm
+                title="¿Eliminar esta evaluación del plan?"
+                description={`"${record.shortDescription || record.estrategiaCatalog?.name || record.description}" — se eliminarán también sus criterios y calificaciones asociadas.`}
+                okText="Eliminar"
+                cancelText="Cancelar"
+                okButtonProps={{ danger: true }}
+                onConfirm={() => handleDeletePlanItem(record.id)}
+              >
+                <Button icon={<DeleteOutlined />} danger />
+              </Popconfirm>
             </>
           )}
         </Space>

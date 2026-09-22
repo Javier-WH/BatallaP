@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { Button, message, Spin, Tabs, Tag, Empty, DatePicker, Input, Alert, List, Tooltip } from 'antd';
+import { Button, message, Spin, Tabs, Tag, Empty, DatePicker, Input, Alert, List, Tooltip, Popconfirm } from 'antd';
 import { SaveOutlined, DeleteOutlined, ScheduleOutlined, HomeOutlined, PlusOutlined } from '@ant-design/icons';
 import api from '@/services/api';
 import { useAuth } from '@/context/AuthContext';
@@ -637,12 +637,20 @@ export default function TeacherAvailability() {
 
           <span className="flex-1" />
 
-          <button
-            onClick={clearAll}
-            className="flex items-center gap-1 px-2.5 py-1.5 rounded-md text-xs font-medium text-slate-500 hover:text-slate-700 hover:bg-slate-50 border border-transparent"
+          <Popconfirm
+            title="¿Limpiar toda la disponibilidad?"
+            description="Se borrarán todos los bloques marcados en la grilla."
+            okText="Limpiar"
+            cancelText="Cancelar"
+            okButtonProps={{ danger: true }}
+            onConfirm={clearAll}
           >
-            <DeleteOutlined /> Limpiar todo
-          </button>
+            <button
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-md text-xs font-medium text-slate-500 hover:text-slate-700 hover:bg-slate-50 border border-transparent"
+            >
+              <DeleteOutlined /> Limpiar todo
+            </button>
+          </Popconfirm>
           <button
             onClick={() => setShowJson(v => !v)}
             className="px-2.5 py-1.5 rounded-md text-xs font-medium text-slate-500 hover:text-slate-700 hover:bg-slate-50 border border-slate-200"
