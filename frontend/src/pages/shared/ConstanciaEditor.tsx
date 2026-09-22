@@ -7,7 +7,7 @@ import TextAlign from '@tiptap/extension-text-align';
 import { FloatingImage } from './FloatingImage';
 import type { ImageWrapMode } from './FloatingImage';
 import { CONSTANCIA_PAGE_CSS, CONSTANCIA_PAGE_STYLE } from './constanciaPage';
-import { Button, Space, Select, Dropdown, Upload } from 'antd';
+import { Button, Space, Select, Dropdown, Upload, message } from 'antd';
 import {
   BoldOutlined, ItalicOutlined, UnderlineOutlined,
   UnorderedListOutlined, OrderedListOutlined,
@@ -140,11 +140,28 @@ const ConstanciaEditor: React.FC<ConstanciaEditorProps> = ({ content, onChange, 
     },
   });
 
-  // Insert variable at cursor position
+  // Insert variable at cursor position. Keys may contain {n} (subject number in
+  // the canonical grade order) and {m} (term/lapso number) placeholders — the
+  // user is prompted for them so e.g. subject.{n}.score becomes subject.3.score.
   const insertVariable = useCallback((varKey: string, _varLabel: string) => {
     if (!editor) return;
+    let key = varKey;
+    if (key.includes('{n}')) {
+      const raw = window.prompt('Número de materia (posición en el orden del grado):');
+      if (raw === null) return;
+      const n = parseInt(raw, 10);
+      if (!n || n < 1) { message.warning('Número de materia inválido'); return; }
+      key = key.replaceAll('{n}', String(n));
+    }
+    if (key.includes('{m}')) {
+      const raw = window.prompt('Número de lapso (1, 2, 3…):');
+      if (raw === null) return;
+      const m = parseInt(raw, 10);
+      if (!m || m < 1) { message.warning('Número de lapso inválido'); return; }
+      key = key.replaceAll('{m}', String(m));
+    }
     // Insert as a styled span so it's visually distinct
-    const html = `<span style="background-color: #e6f4ff; color: #1677ff; padding: 1px 4px; border-radius: 3px; font-weight: 600;" data-variable="${varKey}">{{${varKey}}}</span>`;
+    const html = `<span style="background-color: #e6f4ff; color: #1677ff; padding: 1px 4px; border-radius: 3px; font-weight: 600;" data-variable="${key}">{{${key}}}</span>`;
     editor.chain().focus().insertContent(html).run();
   }, [editor]);
 

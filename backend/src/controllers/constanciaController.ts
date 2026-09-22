@@ -1,7 +1,8 @@
 import { Request, Response } from 'express';
-import { ConstanciaTemplate, Person, Inscription, Matriculation, SchoolPeriod, Grade, Section, Subject, SubjectFinalGrade, InscriptionSubject, Setting } from '@/models';
+import { ConstanciaTemplate, Person, Inscription, Matriculation, SchoolPeriod, Grade, Section, Subject, SubjectFinalGrade, InscriptionSubject, SubjectTermGrade, Qualification, EvaluationPlan, CouncilPoint, CouncilChecklist, Term, PeriodGrade, PeriodGradeSubject, Setting } from '@/models';
 import sequelize from '@/config/database';
-import { Op } from 'sequelize';
+import GradeCalculationService from '@/services/gradeCalculationService';
+import { getSubjectOrderMapByGradeAndPeriod, sortSubjectsByOrder } from '@/services/subjectOrderService';
 
 // ── Role helpers ──
 const ALLOWED_ROLES = ['Master', 'Administrador', 'Control de Estudios'];
@@ -47,6 +48,39 @@ function toSpanishWords(n: number): string {
     return o === 0 ? tens[t] : `${tens[t]} y ${ones[o]}`;
   }
   return String(n);
+}
+
+// Convert a numeric score to its letter grade using the letter_grades setting
+// scale — same conversion used by boletines and certified grades.
+function numericToLetter(numericGrade: number, letterGrades: { letter: string; max: number }[]): string {
+  if (!letterGrades || letterGrades.length === 0) return String(numericGrade);
+  const sorted = [...letterGrades].sort((a, b) => b.max - a.max);
+  for (let i = 0; i < sorted.length; i++) {
+    const current = sorted[i];
+    const next = sorted[i + 1];
+    if (!next) return numericGrade <= current.max ? current.letter : String(numericGrade);
+    if (numericGrade > next.max && numericGrade <= current.max) return current.letter;
+  }
+  return String(numericGrade);
+}
+
+// Parse the `letter_grades` setting: accepts { scale: [...] } or a plain array.
+function parseLetterGrades(raw?: string): { letter: string; max: number }[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) return parsed;
+    if (Array.isArray(parsed?.scale)) return parsed.scale;
+  } catch { /* ignore malformed setting */ }
+  return [];
+}
+
+// Format a resolved score for the document: letter for literal subjects
+// (same as the boletín), rounded integer otherwise, empty when null.
+function formatScoreVar(score: number | null, usesLiteral: boolean, letterGrades: { letter: string; max: number }[]): string {
+  if (score === null || score === undefined) return '';
+  if (usesLiteral) return numericToLetter(score, letterGrades);
+  return String(Math.round(score));
 }
 
 // Parse a YYYY-MM-DD string as a local date (not UTC) to avoid timezone shifts.
@@ -112,25 +146,95 @@ async function resolveVariables(personId: number, schoolPeriodId: number, custom
 
   const period = await SchoolPeriod.findByPk(schoolPeriodId);
 
-  // Get subject final grades
-  let subjectsData: { name: string; finalScore: number | null }[] = [];
+  // ── Subjects (numbered variables: subject.N.*) ──
+  // Numbering follows the canonical subject order of the grade
+  // (PeriodGradeSubject.order via subjectOrderService) — the same order seen
+  // in nóminas, boletines and certified grades. Scores use the same sources
+  // and rules as the boletín: SubjectTermGrade gated by CouncilChecklist
+  // (status='done'), literal conversion via the letter_grades setting.
+  const gradeId = academicSource?.gradeId ?? academicSource?.grade?.id ?? null;
+  const sectionId = academicSource?.sectionId ?? academicSource?.section?.id ?? null;
+
+  const orderMap = await getSubjectOrderMapByGradeAndPeriod(gradeId, schoolPeriodId);
+  const terms = schoolPeriodId
+    ? await Term.findAll({ where: { schoolPeriodId }, order: [['order', 'ASC']] })
+    : [];
+  const termIds = terms.map(t => t.id);
+
+  const checklists = schoolPeriodId
+    ? await CouncilChecklist.findAll({
+        where: { schoolPeriodId },
+        attributes: ['termId', 'sectionId', 'status'],
+      })
+    : [];
+  const isCouncilDone = GradeCalculationService.buildCouncilDoneChecker(
+    checklists.map(c => ({ termId: c.termId, sectionId: c.sectionId, status: c.status })),
+  );
+
+  const letterGrades = parseLetterGrades(settingsMap['letter_grades']);
+  const passingGrade = Number(settingsMap['passing_grade']) || 10;
+  const isClosedPeriod = period?.status === 'historico';
+
+  interface SubjectRow {
+    name: string;
+    abbr: string;
+    usesLiteral: boolean;
+    insSub?: any; // present only for real inscriptions
+  }
+  let subjectRows: SubjectRow[] = [];
+
   if (inscription) {
     const inscriptionSubjects = await InscriptionSubject.findAll({
       where: { inscriptionId: inscription.id },
       include: [
-        { model: Subject, as: 'subject' },
+        { model: Subject, as: 'subject', attributes: ['id', 'name', 'abbreviation', 'usesLiteralGrades'] },
+        { model: SubjectTermGrade, as: 'termGrades', required: false, attributes: ['termId', 'score'] },
+        { model: SubjectFinalGrade, as: 'finalGrade', required: false, attributes: ['finalScore', 'gradeType', 'status'] },
+        {
+          model: Qualification,
+          as: 'qualifications',
+          required: false,
+          attributes: ['score', 'remedialScore', 'isAbsent'],
+          include: [{ model: EvaluationPlan, as: 'evaluationPlan', attributes: ['percentage', 'termId'] }],
+        },
+        { model: CouncilPoint, as: 'councilPoints', required: false, attributes: ['termId', 'points'] },
       ],
+    }) as any[];
+
+    const sorted = sortSubjectsByOrder(
+      inscriptionSubjects,
+      (is: any) => is.subjectId,
+      (is: any) => is.subject?.name,
+      orderMap,
+    );
+    subjectRows = sorted.map((is: any) => ({
+      name: is.subject?.name || '',
+      abbr: is.subject?.abbreviation || '',
+      usesLiteral: !!is.subject?.usesLiteralGrades,
+      insSub: is,
+    }));
+  } else if (gradeId && schoolPeriodId) {
+    // Matriculation fallback: the student isn't enrolled yet, so there are no
+    // scores — but the grade plan still tells us the subject names.
+    const pg = await PeriodGrade.findOne({
+      where: { gradeId, schoolPeriodId },
+      attributes: ['id'],
     });
-    const subjectIds = inscriptionSubjects.map(is => is.id);
-    if (subjectIds.length > 0) {
-      const finalGrades = await SubjectFinalGrade.findAll({
-        where: { inscriptionSubjectId: { [Op.in]: subjectIds } },
+    if (pg) {
+      const planRows = await PeriodGradeSubject.findAll({
+        where: { periodGradeId: pg.id },
+        include: [{ model: Subject, as: 'subject', attributes: ['id', 'name', 'abbreviation', 'usesLiteralGrades'] }],
       });
-      const gradeMap = new Map<number, number | null>();
-      finalGrades.forEach(fg => gradeMap.set(fg.inscriptionSubjectId, fg.finalScore));
-      subjectsData = inscriptionSubjects.map(is => ({
-        name: is.subject?.name || '',
-        finalScore: gradeMap.get(is.id) ?? null,
+      const sortedPlan = sortSubjectsByOrder(
+        planRows,
+        (r: any) => r.subjectId,
+        (r: any) => r.subject?.name,
+        orderMap,
+      );
+      subjectRows = sortedPlan.map((r: any) => ({
+        name: r.subject?.name || '',
+        abbr: r.subject?.abbreviation || '',
+        usesLiteral: !!r.subject?.usesLiteralGrades,
       }));
     }
   }
@@ -248,10 +352,72 @@ async function resolveVariables(personId: number, schoolPeriodId: number, custom
     'date.year': String(now.getFullYear()),
   };
 
-  // Add subject grades as variables: subject.<name> = score
-  subjectsData.forEach(s => {
-    const key = `subject.${s.name.toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
-    vars[key] = s.finalScore !== null ? String(s.finalScore) : '';
+  // ── Emit subject.N.* variables (canonical numbering) ──
+  // Scores follow the same rules as the boletín: term scores only when the
+  // council checklist for that (term, section) is 'done' — bypassed entirely
+  // for historical periods — final score via calculateFinalScore, literal
+  // subjects rendered as letters via the letter_grades scale.
+  const councilDoneFor = (termId: number) =>
+    isClosedPeriod || isCouncilDone(termId, sectionId ?? 0);
+
+  subjectRows.forEach((row, idx) => {
+    const n = idx + 1;
+    vars[`subject.${n}.name`] = row.name;
+    vars[`subject.${n}.nameUpper`] = row.name.toUpperCase();
+    vars[`subject.${n}.abbr`] = row.abbr;
+    vars[`subject.${n}.score`] = '';
+    vars[`subject.${n}.scoreWords`] = '';
+    vars[`subject.${n}.status`] = '';
+    for (const term of terms) {
+      vars[`subject.${n}.term.${term.order}.score`] = '';
+      vars[`subject.${n}.term.${term.order}.scoreWords`] = '';
+    }
+
+    const is = row.insSub;
+    if (!is) return;
+
+    // Term scores: use GradeCalculationService so the values match the
+    // boletín exactly (SubjectTermGrade + fallback from qualifications).
+    const termGrades = GradeCalculationService.buildTermGradesWithFallback(
+      is.termGrades || [],
+      is.qualifications || [],
+      is.councilPoints || [],
+      termIds,
+    );
+    const lapsos: { termId: number; finalScore: number | null }[] = [];
+    for (const term of terms) {
+      const score = GradeCalculationService.calculateFinalTermScore(
+        term.id, termGrades, councilDoneFor(term.id),
+      );
+      const m = term.order;
+      vars[`subject.${n}.term.${m}.score`] = formatScoreVar(score, row.usesLiteral, letterGrades);
+      vars[`subject.${n}.term.${m}.scoreWords`] =
+        row.usesLiteral ? '' : (score !== null ? toSpanishWords(Math.round(score)) : '');
+      lapsos.push({ termId: term.id, finalScore: score });
+    }
+
+    // Final score — same resolve logic as the boletín.
+    const finalScore = GradeCalculationService.calculateFinalScore(
+      lapsos,
+      is.finalGrade ?? null,
+      { isClosedPeriod },
+    );
+
+    if (finalScore !== null && finalScore !== undefined) {
+      vars[`subject.${n}.score`] = formatScoreVar(finalScore, row.usesLiteral, letterGrades);
+      vars[`subject.${n}.scoreWords`] = row.usesLiteral ? '' : toSpanishWords(Math.round(finalScore));
+    }
+    vars[`subject.${n}.status`] = is.finalGrade?.status ||
+      (finalScore !== null && finalScore !== undefined
+        ? GradeCalculationService.resolveStatus(finalScore, passingGrade)
+        : '');
+  });
+
+  // Legacy per-subject-name aliases → final score (e.g. {{subject.matem_tica}}).
+  subjectRows.forEach((row, idx) => {
+    const slug = row.name.toLowerCase().replace(/[^a-z0-9]/g, '_');
+    if (!slug) return;
+    vars[`subject.${slug}`] = vars[`subject.${idx + 1}.score`] || '';
   });
 
   return vars;
@@ -471,6 +637,17 @@ export const getVariables = async (_req: Request, res: Response) => {
     { group: 'Académico', key: 'grade.ordinal', label: 'Grado ordinal (ej: 5to)' },
     { group: 'Académico', key: 'section.name', label: 'Sección' },
     { group: 'Académico', key: 'period.name', label: 'Período escolar' },
+    // Subjects — {n} is the subject's canonical position in the grade plan
+    // (same numbering as nóminas/boletines); {m} is the term order (1, 2, 3).
+    // The editor prompts for these numbers when inserting.
+    { group: 'Materias', key: 'subject.{n}.name', label: 'Materia N — nombre' },
+    { group: 'Materias', key: 'subject.{n}.nameUpper', label: 'Materia N — nombre en mayúsculas' },
+    { group: 'Materias', key: 'subject.{n}.abbr', label: 'Materia N — abreviatura' },
+    { group: 'Materias', key: 'subject.{n}.score', label: 'Materia N — nota definitiva (letra si es literal)' },
+    { group: 'Materias', key: 'subject.{n}.scoreWords', label: 'Materia N — nota definitiva en letras' },
+    { group: 'Materias', key: 'subject.{n}.status', label: 'Materia N — estado (Aprobada/Reprobada)' },
+    { group: 'Materias', key: 'subject.{n}.term.{m}.score', label: 'Materia N — nota del lapso M' },
+    { group: 'Materias', key: 'subject.{n}.term.{m}.scoreWords', label: 'Materia N — nota del lapso M en letras' },
     // Date
     { group: 'Fecha', key: 'date', label: 'Fecha actual (corta)' },
     { group: 'Fecha', key: 'date.long', label: 'Fecha actual (texto)' },

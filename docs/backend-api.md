@@ -517,7 +517,23 @@ Excepciones de día+turno forzado (por grado + materia, una por par):
 - `grade.*` y `section.*` se resuelven desde la `Inscription` del estudiante en el período dado.
 - Si el estudiante **no tiene inscripción** (aún no matriculado formalmente), se hace fallback a su `Matriculation` del período — ahí vive el grado/sección al que se está inscribiendo.
 - Sin `schoolPeriodId`, el fallback toma la matrícula más reciente (`id DESC`).
-- Las variables `subject.*` (notas finales) solo se resuelven con `Inscription` real.
+- `schoolPeriodId` permite apuntar a un período `historico` (constancias de culminación). En períodos cerrados las notas usan `SubjectFinalGrade` directo y los lapsos no requieren `CouncilChecklist`.
+
+**Variables de materias numeradas** — `N` es la posición canónica de la materia en el plan del grado (`PeriodGradeSubject.order`, mismo orden que nóminas y boletines); `M` es `Term.order`:
+
+| Variable | Valor |
+|----------|-------|
+| `subject.N.name` / `subject.N.nameUpper` / `subject.N.abbr` | Nombre / mayúsculas / abreviatura |
+| `subject.N.score` | Nota definitiva (letra si la materia usa `usesLiteralGrades` — escala `letter_grades`) |
+| `subject.N.scoreWords` | Definitiva en letras («dieciséis») |
+| `subject.N.status` | `aprobada` / `reprobada` |
+| `subject.N.term.M.score` / `.scoreWords` | Nota del lapso M |
+
+Reglas de notas (idénticas al boletín, via `GradeCalculationService`):
+- `term.M.score` solo resuelve si `CouncilChecklist(periodo, sección, lapso).status === 'done'` — de lo contrario vacío. En períodos `historico` el gate se omite.
+- La definitiva usa `SubjectFinalGrade` cuando todos los lapsos tienen consejo cerrado (o el período es histórico); si solo algunos lapsos cerraron, promedia los completados.
+- Sin `Inscription` pero con `Matriculation`, `subject.N.name`/`abbr` resuelven desde el plan del grado (`PeriodGradeSubject`) y las notas quedan vacías.
+- Alias legado `subject.<nombre_slug>` (p. ej. `{{subject.matem_tica}}`) sigue emitiendo la definitiva.
 
 ---
 

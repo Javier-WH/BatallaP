@@ -81,6 +81,8 @@ Todos los servicios consumen la instancia `api` con `withCredentials: true`.
 | `shared/EditUser.tsx` | Edición unificada; habilita/deshabilita edición de roles según rol del editor. |
 | `shared/DashboardEditor.tsx` | Editor del contenido del dashboard (modo visual/WYSIWYG). |
 | `shared/DashboardEditorManual.tsx` | Variante manual del editor (edición por bloques). |
+| `shared/Constancias.tsx` | Generación y gestión de constancias. Selector «Período escolar de referencia» (default activo, marca `(cerrado)` en históricos) para documentos de períodos anteriores; alerta cuando el estudiante no tiene datos académicos en el período elegido; muestra el mapa de numeración de materias (`subject.N.*`) bajo la vista previa. |
+| `shared/ConstanciaEditor.tsx` | Editor Tiptap de plantillas con inserción de variables `{{...}}`; las claves parametrizadas (`subject.{n}.*`, `term.{m}`) piden el número al insertar. |
 
 ### Master (`/master/*`)
 | Archivo | Descripción |

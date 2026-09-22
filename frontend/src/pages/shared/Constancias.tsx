@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useSchool } from '@/context/SchoolContext';
 import api from '@/services/api';
-import { Button, Select, Input, message, Spin, Modal, Empty, Tabs, Card, DatePicker, Checkbox } from 'antd';
+import { Button, Select, Input, message, Spin, Modal, Empty, Tabs, Card, DatePicker, Checkbox, Alert } from 'antd';
 import dayjs from 'dayjs';
 import {
   PlusOutlined, EditOutlined, DeleteOutlined, EyeOutlined,
@@ -45,7 +45,7 @@ const STAFF_ROLES = ['Master', 'Administrador', 'Control de Estudios', 'Profesor
 
 const Constancias: React.FC = () => {
   const { user } = useAuth();
-  const { activePeriod } = useSchool();
+  const { activePeriod, allPeriods } = useSchool();
 
   const [activeTab, setActiveTab] = useState<'generate' | 'templates'>('generate');
   const [templates, setTemplates] = useState<Template[]>([]);
@@ -61,11 +61,15 @@ const Constancias: React.FC = () => {
   const [selectedWorker, setSelectedWorker] = useState<Student | null>(null);
   const [customValues, setCustomValues] = useState<Record<string, string>>({});
   const [previewHtml, setPreviewHtml] = useState<string | null>(null);
+  const [previewVars, setPreviewVars] = useState<Record<string, string> | null>(null);
   const [generating, setGenerating] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [showGuides, setShowGuides] = useState(false);
   const [useCustomDate, setUseCustomDate] = useState(false);
   const [customDate, setCustomDate] = useState<dayjs.Dayjs | null>(null);
+  // Academic period the constancia resolves against — defaults to the active
+  // period but can be switched to a closed one (e.g. constancias de culminación).
+  const [selectedPeriodId, setSelectedPeriodId] = useState<number | null>(null);
 
   // Template editor tab state
   const [editingTemplate, setEditingTemplate] = useState<Template | null>(null);
@@ -100,6 +104,7 @@ const Constancias: React.FC = () => {
   const handleTemplateSelect = useCallback(async (templateId: number) => {
     setSelectedTemplateId(templateId);
     setPreviewHtml(null);
+    setPreviewVars(null);
     setSelectedStudent(null);
     setSelectedWorker(null);
     setCustomValues({});
@@ -169,17 +174,18 @@ const Constancias: React.FC = () => {
       const res = await api.post('/constancias/preview', {
         templateId: selectedTemplateId,
         personId,
-        schoolPeriodId: activePeriod?.id || null,
+        schoolPeriodId: selectedPeriodId ?? activePeriod?.id ?? null,
         customVars: customValues,
         customDate: useCustomDate && customDate ? customDate.format('YYYY-MM-DD') : null,
       });
       setPreviewHtml(res.data.html);
+      setPreviewVars(res.data.variables ?? null);
     } catch (error: any) {
       message.error(error.response?.data?.message || 'Error al generar vista previa');
     } finally {
       setGenerating(false);
     }
-  }, [selectedTemplateId, selectedStudent, selectedWorker, activePeriod, customValues, templateAnalysis, useCustomDate, customDate]);
+  }, [selectedTemplateId, selectedStudent, selectedWorker, activePeriod, selectedPeriodId, customValues, templateAnalysis, useCustomDate, customDate]);
 
   // Print PDF (uses browser print)
   const handlePrintPdf = useCallback(() => {
@@ -333,6 +339,22 @@ const Constancias: React.FC = () => {
     }
   };
 
+  // Subject numbering map extracted from the last preview's resolved variables —
+  // lets the user know which {{subject.N.*}} corresponds to which materia.
+  const subjectNumbering = previewHtml && previewVars
+    ? Object.keys(previewVars)
+        .filter(k => /^subject\.\d+\.name$/.test(k) && previewVars[k])
+        .map(k => ({ n: Number(k.split('.')[1]), name: previewVars[k] }))
+        .sort((a, b) => a.n - b.n)
+    : [];
+
+  // Warn when the selected student has no academic record in the chosen period —
+  // without it the document renders silently with empty academic variables.
+  const noAcademicData = !!(
+    previewHtml && previewVars && selectedStudent && templateAnalysis?.needsStudent &&
+    !previewVars['grade.fullName'] && !previewVars['section.name']
+  );
+
   // ── Generate Tab ──
   const generateTab = (
     <div className="max-w-5xl mx-auto p-6 space-y-6">
@@ -416,6 +438,24 @@ const Constancias: React.FC = () => {
                   />
                 </div>
               )}
+
+              {/* Academic period — constancias can target closed/historical
+                  periods (e.g. culminación for already-graduated students) */}
+              <div>
+                <label className="block text-sm font-medium text-slate-600 mb-1">
+                  Período escolar de referencia
+                </label>
+                <Select
+                  className="w-full"
+                  value={selectedPeriodId ?? activePeriod?.id}
+                  onChange={(v) => { setSelectedPeriodId(v); setPreviewHtml(null); setPreviewVars(null); }}
+                  options={allPeriods.map((p: any) => ({
+                    value: p.id,
+                    label: `${p.name || p.period}${p.status === 'historico' ? ' (cerrado)' : ''}`,
+                  }))}
+                  size="large"
+                />
+              </div>
 
               {/* Custom text inputs — for each custom.* variable in the template */}
               {templateAnalysis.customVars.length > 0 && (
@@ -505,6 +545,27 @@ const Constancias: React.FC = () => {
           }
           className="shadow-sm"
         >
+          {noAcademicData && (
+            <Alert
+              type="warning"
+              showIcon
+              className="mb-4"
+              message="Este estudiante no tiene datos académicos en el período seleccionado"
+              description="Las variables académicas saldrán vacías. Si la constancia corresponde a un período anterior (p. ej. culminación), seleccione ese período escolar arriba."
+            />
+          )}
+          {subjectNumbering.length > 0 && (
+            <Alert
+              type="info"
+              className="mb-4"
+              message={
+                <span className="text-xs">
+                  <strong>Numeración de materias:</strong>{' '}
+                  {subjectNumbering.map(s => `${s.n} = ${s.name}`).join(' · ')}
+                </span>
+              }
+            />
+          )}
           <div className="bg-slate-200 p-8 rounded-lg" style={{ overflowY: 'auto' }}>
             <style>{CONSTANCIA_PAGE_CSS}</style>
             <div
