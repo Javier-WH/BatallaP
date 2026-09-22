@@ -641,6 +641,7 @@ const MatriculationEnrollment: React.FC = () => {
     } else {
       payload[field as string] = value;
     }
+    if (field === 'phone1') payload.whatsapp = value; // El teléfono principal es el WhatsApp
     saveFieldChange(id, payload);
   }, [saveFieldChange]);
 
@@ -788,6 +789,7 @@ const MatriculationEnrollment: React.FC = () => {
 
         const payload = {
           ...tempData,
+          whatsapp: tempData.phone1 || tempData.whatsapp,
           birthdate: tempData.birthdate ? tempData.birthdate.format('YYYY-MM-DD') : null,
           mother: fixGuardian(tempData.mother),
           father: fixGuardian(tempData.father),

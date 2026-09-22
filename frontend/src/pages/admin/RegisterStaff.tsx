@@ -32,7 +32,6 @@ interface StaffFormValues {
   phone1: string;
   phone2?: string;
   email?: string;
-  whatsapp?: string;
 }
 
 const { Option } = Select;
@@ -92,6 +91,7 @@ const RegisterStaff: React.FC = () => {
     try {
       const payload = {
         ...values,
+        whatsapp: values.phone1,
         birthdate: values.birthdate.format('YYYY-MM-DD'),
         roles: selectedRoles // Send array of roles
       };
@@ -259,7 +259,7 @@ const RegisterStaff: React.FC = () => {
               <h4 style={SUBTITLE_STYLE}>Datos de Contacto</h4>
               <Row gutter={16}>
                 <Col span={12}>
-                  <Form.Item name="phone1" label="Teléfono Principal" rules={[{ required: true }]}>
+                  <Form.Item name="phone1" label="Teléfono Principal / WhatsApp" rules={[{ required: true }]}>
                     <Input />
                   </Form.Item>
                 </Col>
@@ -272,11 +272,6 @@ const RegisterStaff: React.FC = () => {
               <Row gutter={16}>
                 <Col span={12}>
                   <Form.Item name="email" label="Email" rules={[{ type: 'email' }]}>
-                    <Input />
-                  </Form.Item>
-                </Col>
-                <Col span={12}>
-                  <Form.Item name="whatsapp" label="WhatsApp">
                     <Input />
                   </Form.Item>
                 </Col>

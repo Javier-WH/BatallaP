@@ -17,6 +17,7 @@ const RegisterUser: React.FC = () => {
 
       const payload = {
         ...values,
+        whatsapp: values.phone1,
         birthdate: values.birthdate.format('YYYY-MM-DD') // Ensure date format
       };
 
@@ -136,7 +137,7 @@ const RegisterUser: React.FC = () => {
 
                 <Form.Item
                   name="phone1"
-                  label="Teléfono Principal"
+                  label="Teléfono Principal / WhatsApp"
                   rules={[{ required: true, message: 'Ingrese un teléfono' }]}
                 >
                   <Input placeholder="0414-1234567" />
@@ -155,13 +156,6 @@ const RegisterUser: React.FC = () => {
                   rules={[{ type: 'email', message: 'Email inválido' }]}
                 >
                   <Input placeholder="correo@ejemplo.com" />
-                </Form.Item>
-
-                <Form.Item
-                  name="whatsapp"
-                  label="WhatsApp (Opcional)"
-                >
-                  <Input placeholder="+584141234567" />
                 </Form.Item>
               </div>
             </div>

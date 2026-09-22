@@ -267,8 +267,7 @@ export const BASE_COLUMN_OPTIONS: ColumnOption[] = [
   { key: 'representativeResidenceState', label: 'Estado Representante', group: 'Representante' },
   { key: 'representativeResidenceMunicipality', label: 'Municipio Representante', group: 'Representante' },
   { key: 'representativeResidenceParish', label: 'Parroquia Representante', group: 'Representante' },
-  { key: 'phone1', label: 'Teléfono Contacto', group: 'Representante' },
-  { key: 'whatsapp', label: 'WhatsApp', group: 'Representante' },
+  { key: 'phone1', label: 'Teléfono / WhatsApp', group: 'Representante' },
   { key: 'motherDocumentType', label: 'Tipo Doc. Madre', group: 'Representante' },
   { key: 'motherDocument', label: 'Cédula Madre', group: 'Representante' },
   { key: 'motherFirstName', label: 'Nombres Madre', group: 'Representante' },
@@ -1208,8 +1207,7 @@ export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<Matricul
   if (isCol('representativeResidenceParish')) representanteCols.push(repLocationCol('parish', 'Parroquia Rep.', 120, callbacks, locations));
 
   // Contact columns
-  if (isCol('phone1')) representanteCols.push(textCol('phone1', 'Teléfono', 140, callbacks));
-  if (isCol('whatsapp')) representanteCols.push(textCol('whatsapp', 'WhatsApp', 140, callbacks));
+  if (isCol('phone1')) representanteCols.push(textCol('phone1', 'Teléfono / WhatsApp', 140, callbacks));
 
   // Mother columns
   if (isCol('motherDocumentType')) representanteCols.push(guardianTextCol('mother', 'documentType', 'Tipo Doc. Madre', 100, callbacks));

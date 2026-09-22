@@ -18,7 +18,6 @@ interface RepresentativeFormValues {
   phone1: string;
   phone2?: string;
   email?: string;
-  whatsapp?: string;
 }
 
 const { Option } = Select;
@@ -55,6 +54,7 @@ const RegisterRepresentative: React.FC = () => {
     try {
       const payload = {
         ...values,
+        whatsapp: values.phone1,
         birthdate: values.birthdate.format('YYYY-MM-DD'),
         roles: ['Representante']
       };
@@ -201,7 +201,7 @@ const RegisterRepresentative: React.FC = () => {
                 <Col span={12}>
                   <Form.Item
                     name="phone1"
-                    label="Teléfono Principal"
+                    label="Teléfono Principal / WhatsApp"
                     rules={[{ required: true, message: 'Ingrese un número de contacto' }]}
                   >
                     <Input />
@@ -219,11 +219,6 @@ const RegisterRepresentative: React.FC = () => {
               <Row gutter={16}>
                 <Col span={12}>
                   <Form.Item name="email" label="Email" rules={[{ type: 'email', message: 'Ingrese un correo válido' }]}>
-                    <Input placeholder="Opcional" />
-                  </Form.Item>
-                </Col>
-                <Col span={12}>
-                  <Form.Item name="whatsapp" label="WhatsApp">
                     <Input placeholder="Opcional" />
                   </Form.Item>
                 </Col>

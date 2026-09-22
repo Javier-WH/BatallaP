@@ -79,7 +79,6 @@ interface EditUserFormValues {
   phone1?: string;
   phone2?: string;
   email?: string;
-  whatsapp?: string;
   roles: string[];
   gradeId?: number;
   sectionId?: number;
@@ -199,7 +198,6 @@ const EditUser: React.FC = () => {
           phone1: data.contact?.phone1,
           phone2: data.contact?.phone2,
           email: data.contact?.email,
-          whatsapp: data.contact?.whatsapp,
           roles: userRoles,
           gradeId: data.inscription?.gradeId,
           sectionId: data.inscription?.sectionId
@@ -221,6 +219,7 @@ const EditUser: React.FC = () => {
     try {
       const payload = {
         ...values,
+        whatsapp: values.phone1,
         birthdate: values.birthdate ? values.birthdate.format('YYYY-MM-DD') : null,
         hireDate: values.hireDate ? values.hireDate.format('YYYY-MM-DD') : null,
         representativeId: newRepresentativeId
@@ -413,12 +412,11 @@ const EditUser: React.FC = () => {
                 <Form.Item name="address" label="Dirección" rules={[{ required: true }]} style={{ gridColumn: 'span 2' }}>
                   <Input.TextArea rows={2} />
                 </Form.Item>
-                <Form.Item name="phone1" label="Teléfono Principal" rules={[{ required: true }]}>
+                <Form.Item name="phone1" label="Teléfono Principal / WhatsApp" rules={[{ required: true }]}>
                   <Input />
                 </Form.Item>
                 <Form.Item name="phone2" label="Teléfono Secundario"><Input /></Form.Item>
                 <Form.Item name="email" label="Email" rules={[{ type: 'email' }]}><Input /></Form.Item>
-                <Form.Item name="whatsapp" label="WhatsApp"><Input /></Form.Item>
               </div>
             </div>
 
