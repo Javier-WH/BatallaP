@@ -98,7 +98,34 @@ Problem format:
       "weight": 200                 // optional; falls back to endOfRunWeight (soft only)
     }
   ],
-  "endOfRunWeight": 200             // penalty per occupied block after it (soft only)
+  "endOfRunWeight": 200,             // penalty per occupied block after it (soft only)
+
+  // ── Forced day+turn exception (NEW) ──
+  // Lock a subject to one specific day and turn (morning/afternoon) — the
+  // solver still chooses WHICH block(s) within that turn (respecting
+  // allowConsecutiveBlocks, teacher availability, etc), it just can't place
+  // the subject on any other day or in the other turn. Scope is a whole grade
+  // (periodGradeId, every section in it) by default, or a single class
+  // (sectionId, takes precedence if both are given). E.g. "1st grade has P.E.
+  // Friday morning": {"periodGradeId": 1, "subjectId": 6, "day": "Viernes", "turn": "manana"}.
+  // mode "soft" (default): a very strong, editable preference — breakable only
+  //   if nothing else fits (e.g. teacher unavailable that day/turn).
+  // mode "hard": an absolute rule — the subject CANNOT be placed anywhere else,
+  //   even if that means it ends up under-placed for the week. Use this only
+  //   once you've confirmed the target day/turn can actually fit the subject's
+  //   weeklyBlocks (enough blocks, teacher free), since nothing overrides it.
+  "forcedDayTurnSubjects": [
+    {
+      "periodGradeId": 1,    // optional; omit/null if using sectionId instead
+      "sectionId": null,     // optional; if set, applies to this one class only
+      "subjectId": 6,
+      "day": "Viernes",
+      "turn": "manana",      // "manana" | "tarde"
+      "mode": "soft",        // "soft" (default) or "hard"
+      "weight": 8000         // optional; falls back to forcedDayTurnWeight (soft only)
+    }
+  ],
+  "forcedDayTurnWeight": 8000
 }
 
 Solution format:
@@ -172,6 +199,10 @@ def main():
     # mode "hard": nothing may be placed after it in the same turn
     end_of_run_subjects = problem.get("endOfRunSubjects", [])
     end_of_run_weight = problem.get("endOfRunWeight", 200)
+
+    # ── New: forced day+turn exceptions ──
+    forced_day_turn_subjects = problem.get("forcedDayTurnSubjects", [])
+    forced_day_turn_weight = problem.get("forcedDayTurnWeight", 8000)
 
     # ── Index blocks ──
     # blocks: list of { id, day, section(manana/tarde), periodIds, order }
@@ -1120,29 +1151,66 @@ def main():
                 if b["id"] not in target_ids_by_day.get(b["day"], set()):
                     forced_slot_penalties.append(v * weight)
 
+    # ── NEW Constraint/Preference: forced day+turn exceptions ──
+    # Lock a subject, for a grade or a single class, to one specific day+turn.
+    # The solver still picks WHICH block(s) within that turn (still respecting
+    # allowConsecutiveBlocks, teacher availability, etc) — every OTHER day/turn
+    # combination is forbidden (mode "hard") or heavily penalized (mode "soft",
+    # default) for that subject in the targeted section(s).
+    forced_day_turn_penalties = []
+    for entry in forced_day_turn_subjects:
+        subj_id = entry["subjectId"]
+        target_day = entry["day"]
+        target_turn = entry["turn"]
+        hard = entry.get("mode", "soft") == "hard"
+        weight = entry.get("weight", forced_day_turn_weight)
+
+        if entry.get("sectionId") is not None:
+            target_sections = [entry["sectionId"]]
+        elif entry.get("periodGradeId") is not None:
+            target_sections = [s["id"] for s in sections if s["periodGradeId"] == entry["periodGradeId"]]
+        else:
+            target_sections = [s["id"] for s in sections]
+
+        for sid in target_sections:
+            var_list = subject_vars.get((sid, subj_id))
+            if not var_list:
+                continue
+            for (b, v) in var_list:
+                if b["day"] == target_day and b["section"] == target_turn:
+                    continue  # this is the allowed slot — no constraint
+                if hard:
+                    model.Add(v == 0)
+                else:
+                    forced_day_turn_penalties.append(v * weight)
+
     # ── Objective: minimize penalties ──
     # Priority order (highest to lowest weight). Classes' schedules now outrank
     # teachers' schedules throughout — teacher-preferred slots are honored only
     # after every class-schedule-quality preference is satisfied as well as it can be.
     #   1. Place all subjects fully (weight 1000)
     #   2. Consecutive block constraints (weight 100-10000)
-    #   3. Forced slot exceptions (weight ~5000, editable per entry) — very strong,
+    #   3. Forced day+turn exceptions (weight ~8000, editable per entry; mode
+    #      "hard" bypasses the objective entirely and is a real constraint)
+    #   4. Forced slot exceptions (weight ~5000, editable per entry) — very strong,
     #      but still soft: breakable if nothing else fits
-    #   4. Same-subject twice in one day (weight 800, editable) — a run counts as
+    #   5. Same-subject twice in one day (weight 800, editable) — a run counts as
     #      one session; anything else is heavily discouraged but still beats
     #      leaving hours unplaced
-    #   5. Class-day compactness: few runs per day (weight 200), avoid thin days
+    #   6. Class-day compactness: few runs per day (weight 200), avoid thin days
     #      (weight 150), avoid lone-visit runs (weight 300), end-of-run
     #      exceptions in soft mode (weight 200 per follower block)
-    #   6. Heavy-subject placement: avoid back-to-back heavy (weight 80), avoid
+    #   7. Heavy-subject placement: avoid back-to-back heavy (weight 80), avoid
     #      late blocks (weight 40), position gradient heavy +20/step, light -10/step
-    #   7. Prefer preferred teacher slots (weight 20)
-    #   8. Minimize gaps within turns (weight 3)
-    #   9. Prefer early blocks (weight = order, ~0-6) — lowest priority, tiebreaker only
+    #   8. Prefer preferred teacher slots (weight 20)
+    #   9. Minimize gaps within turns (weight 3)
+    #   10. Prefer early blocks (weight = order, ~0-6) — lowest priority, tiebreaker only
     all_penalties = []
     for p in under_place_penalties:
         all_penalties.append(p * 1000)
     all_penalties.extend(penalty_terms)
+    # Forced day+turn exceptions (already pre-weighted per entry; hard mode isn't here at all)
+    all_penalties.extend(forced_day_turn_penalties)
     # Forced slot exceptions (already pre-weighted per entry)
     all_penalties.extend(forced_slot_penalties)
     # Class-day compactness

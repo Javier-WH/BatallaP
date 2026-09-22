@@ -158,6 +158,7 @@ import TeacherAdminHour from './TeacherAdminHour';
 import Schedule from './Schedule';
 import ScheduleEntry from './ScheduleEntry';
 import ScheduleException from './ScheduleException';
+import ScheduleDayTurnException from './ScheduleDayTurnException';
 import ScheduleLink from './ScheduleLink';
 import ScheduleLinkItem from './ScheduleLinkItem';
 import ClassroomAssignment from './ClassroomAssignment';
@@ -375,6 +376,12 @@ ScheduleEntry.belongsTo(Person, { foreignKey: 'teacherId', as: 'teacher' });
 // Schedule exceptions (per-subject overrides for the automatic generator)
 ScheduleException.belongsTo(Subject, { foreignKey: 'subjectId', as: 'subject' });
 Subject.hasOne(ScheduleException, { foreignKey: 'subjectId', as: 'scheduleException' });
+
+// Schedule day+turn exceptions (force a grade's subject into a specific day+turn)
+ScheduleDayTurnException.belongsTo(PeriodGrade, { foreignKey: 'periodGradeId', as: 'periodGrade' });
+PeriodGrade.hasMany(ScheduleDayTurnException, { foreignKey: 'periodGradeId', as: 'dayTurnExceptions', onDelete: 'CASCADE' });
+ScheduleDayTurnException.belongsTo(Subject, { foreignKey: 'subjectId', as: 'subject' });
+Subject.hasMany(ScheduleDayTurnException, { foreignKey: 'subjectId', as: 'dayTurnExceptions', onDelete: 'CASCADE' });
 
 // Schedule links (cross-grade subject linking for the automatic generator)
 ScheduleLink.belongsTo(SchoolPeriod, { foreignKey: 'schoolPeriodId', as: 'schoolPeriod' });
@@ -739,6 +746,7 @@ export {
   Schedule,
   ScheduleEntry,
   ScheduleException,
+  ScheduleDayTurnException,
   ScheduleLink,
   ScheduleLinkItem,
   ClassroomAssignment,

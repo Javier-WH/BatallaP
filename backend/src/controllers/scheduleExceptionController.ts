@@ -1,5 +1,9 @@
 import { Request, Response } from 'express';
-import { ScheduleException, Subject } from '@/models';
+import { ScheduleException, ScheduleDayTurnException, Subject, PeriodGrade, PeriodGradeSubject, Grade } from '@/models';
+
+const VALID_DAYS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'];
+const VALID_TURNS = ['manana', 'tarde'];
+const VALID_MODES = ['soft', 'hard'];
 
 // GET /api/schedule-exceptions
 export const listExceptions = async (_req: Request, res: Response) => {
@@ -75,6 +79,98 @@ export const deleteException = async (req: Request, res: Response) => {
     return res.json({ message: 'Excepción eliminada' });
   } catch (error) {
     console.error('[deleteException] Error:', error);
+    return res.status(500).json({ message: 'Error al eliminar excepción' });
+  }
+};
+
+// ── Day+turn forced exceptions ──
+// Force a grade's subject into one specific day and turn (manana/tarde).
+// The solver still picks which block(s) inside that turn.
+
+// GET /api/schedule-exceptions/day-turn?schoolPeriodId=
+export const listDayTurnExceptions = async (req: Request, res: Response) => {
+  try {
+    const schoolPeriodId = req.query.schoolPeriodId ? Number(req.query.schoolPeriodId) : null;
+    const exceptions = await ScheduleDayTurnException.findAll({
+      include: [
+        { model: Subject, as: 'subject', attributes: ['id', 'name', 'color'] },
+        {
+          model: PeriodGrade,
+          as: 'periodGrade',
+          attributes: ['id', 'schoolPeriodId'],
+          include: [{ model: Grade, as: 'grade', attributes: ['id', 'name'] }],
+          ...(schoolPeriodId ? { where: { schoolPeriodId }, required: true } : {}),
+        },
+      ],
+      order: [['id', 'ASC']],
+    });
+    return res.json(exceptions);
+  } catch (error) {
+    console.error('[listDayTurnExceptions] Error:', error);
+    return res.status(500).json({ message: 'Error al listar excepciones de día y turno' });
+  }
+};
+
+// POST /api/schedule-exceptions/day-turn
+export const createDayTurnException = async (req: Request, res: Response) => {
+  try {
+    const { periodGradeId, subjectId, day, turn, mode, weight } = req.body;
+    if (!periodGradeId || !subjectId || !day || !turn) {
+      return res.status(400).json({ message: 'Grado, materia, día y turno son requeridos' });
+    }
+    if (!VALID_DAYS.includes(day)) {
+      return res.status(400).json({ message: 'Día inválido' });
+    }
+    if (!VALID_TURNS.includes(turn)) {
+      return res.status(400).json({ message: 'Turno inválido (manana | tarde)' });
+    }
+    const finalMode = mode ?? 'hard';
+    if (!VALID_MODES.includes(finalMode)) {
+      return res.status(400).json({ message: 'Modo inválido (soft | hard)' });
+    }
+
+    // The subject must be active in the target grade's plan
+    const pgs = await PeriodGradeSubject.findOne({
+      where: { periodGradeId: Number(periodGradeId), subjectId: Number(subjectId), active: true },
+    });
+    if (!pgs) {
+      return res.status(400).json({ message: 'La materia no pertenece al grado seleccionado' });
+    }
+
+    // Upsert: one forced day+turn per (grade, subject)
+    const [exc, created] = await ScheduleDayTurnException.findOrCreate({
+      where: { periodGradeId: Number(periodGradeId), subjectId: Number(subjectId) },
+      defaults: {
+        periodGradeId: Number(periodGradeId),
+        subjectId: Number(subjectId),
+        day,
+        turn,
+        mode: finalMode,
+        weight: weight ?? null,
+      },
+    });
+    if (!created) {
+      exc.day = day;
+      exc.turn = turn;
+      exc.mode = finalMode;
+      exc.weight = weight ?? null;
+      await exc.save();
+    }
+    return res.status(created ? 201 : 200).json(exc);
+  } catch (error) {
+    console.error('[createDayTurnException] Error:', error);
+    return res.status(500).json({ message: 'Error al crear excepción de día y turno' });
+  }
+};
+
+// DELETE /api/schedule-exceptions/day-turn/:id
+export const deleteDayTurnException = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    await ScheduleDayTurnException.destroy({ where: { id: Number(id) } });
+    return res.json({ message: 'Excepción eliminada' });
+  } catch (error) {
+    console.error('[deleteDayTurnException] Error:', error);
     return res.status(500).json({ message: 'Error al eliminar excepción' });
   }
 };

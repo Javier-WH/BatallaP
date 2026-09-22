@@ -23,7 +23,7 @@ import sequelize from '@/config/database';
 import {
   Schedule, ScheduleEntry, PeriodGradeSection, PeriodGrade, PeriodGradeSubject,
   Subject, TeacherAssignment, TeacherAvailability, TeacherAdminHour, Setting, Grade, Section, Person,
-  ScheduleException, ScheduleLink, ScheduleLinkItem,
+  ScheduleException, ScheduleDayTurnException, ScheduleLink, ScheduleLinkItem,
 } from '@/models';
 
 // ── Types ──
@@ -82,6 +82,15 @@ interface EndOfRunInput {
   mode: 'soft' | 'hard';
 }
 
+interface ForcedDayTurnInput {
+  periodGradeId: number;
+  subjectId: number;
+  day: string;
+  turn: 'manana' | 'tarde';
+  mode: 'soft' | 'hard';
+  weight?: number;
+}
+
 interface ProblemJson {
   blockSize: number;
   avoidLastMorningFirstAfternoon: boolean;
@@ -114,6 +123,9 @@ interface ProblemJson {
   // End-of-run exceptions: subject must be the last one of its turn
   endOfRunSubjects: EndOfRunInput[];
   endOfRunWeight: number;
+  // Forced day+turn exceptions: grade's subject locked to one day+turn
+  forcedDayTurnSubjects: ForcedDayTurnInput[];
+  forcedDayTurnWeight: number;
 }
 
 interface SolverResult {
@@ -276,6 +288,7 @@ export async function generateSchedulesForPeriod(
   const shortVisitWeight = Number(settings.short_visit_weight) || 300;
   const forcedSlotDefaultWeight = Number(settings.forced_slot_default_weight) || 5000;
   const endOfRunWeight = Number(settings.end_of_run_weight) || 200;
+  const forcedDayTurnWeight = Number(settings.forced_day_turn_weight) || 8000;
 
   // 2. Build period slots and blocks
   const allSlots = buildPeriodSlots(settings);
@@ -450,6 +463,20 @@ export async function generateSchedulesForPeriod(
       mode: e.endOfRun as 'soft' | 'hard',
     }));
 
+  // 9e. Forced day+turn exceptions: lock a grade's subject to one specific
+  // day and turn. The solver picks which block(s) inside that turn.
+  const dayTurnRows = await ScheduleDayTurnException.findAll({
+    where: { periodGradeId: periodGradeIds },
+  });
+  const forcedDayTurnSubjects: ForcedDayTurnInput[] = dayTurnRows.map(e => ({
+    periodGradeId: e.periodGradeId,
+    subjectId: e.subjectId,
+    day: e.day,
+    turn: e.turn as 'manana' | 'tarde',
+    mode: (e.mode === 'soft' ? 'soft' : 'hard') as 'soft' | 'hard',
+    ...(e.weight != null ? { weight: e.weight } : {}),
+  }));
+
   // 10. Build the problem JSON
   const problem: ProblemJson = {
     blockSize,
@@ -477,6 +504,8 @@ export async function generateSchedulesForPeriod(
     forcedSlotDefaultWeight,
     endOfRunSubjects,
     endOfRunWeight,
+    forcedDayTurnSubjects,
+    forcedDayTurnWeight,
   };
 
   // Debug: log problem summary

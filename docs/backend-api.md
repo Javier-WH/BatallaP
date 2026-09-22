@@ -423,7 +423,8 @@ automático de horarios las coloque en el mismo bloque horario.
 - **Misma materia dos veces en un día** (`same_day_subject_weight`, default `800`): una materia sin consecutividad obligatoria no debe verse dos veces el mismo día. Una corrida consecutiva cuenta como una sola sesión; cualquier otra duplicación se penaliza fuerte (por debajo de `1000`, para que duplicar siga siendo mejor que dejar horas sin colocar).
 - **Bloques forzados** (`ScheduleException.forcedSlot`): `first_morning` o `last_afternoon` fuerzan (soft, peso `forced_slot_default_weight`, default `5000`) a que la materia se coloque en el primer bloque de la mañana o el último de la tarde cada día que se imparte, en todas las secciones que la ofrecen. Si la materia tiene `allowConsecutiveBlocks = 2` (consecutivo obligatorio), el objetivo es la **ventana de borde** de `weeklyBlocks` bloques — una corrida que termina la tarde (o empieza la mañana) cuenta como en-target, ya que una corrida no cabe en un solo bloque de borde.
 - **Última del turno** (`ScheduleException.endOfRun`): `'soft'` u `'hard'`. Una materia marcada debe ser la **última ocupada de su turno** siempre que haya otra cosa colocada en el mismo turno (mañana y tarde son corridas independientes; sus propios bloques consecutivos no cuentan como «otra materia»). Si es lo único del turno, queda libre. `'soft'` penaliza `end_of_run_weight` (default `200`) por cada bloque posterior ocupado por otra materia; `'hard'` lo prohíbe directamente. Caso de uso: Educación Física de 4 h seguidas — los estudiantes ven lo demás primero y cierran el turno con ella.
-- Los pesos se editan en Control de Estudios → Configuración Académica → «Ajustes avanzados del generador de horarios». Orden de prioridad del objetivo: colocar todo → bloques consecutivos → bloques forzados → no duplicar materia en un día → compactación (incluye última del turno soft) → dificultad → preferencias de profesor → sin huecos por turno → bloques tempranos.
+- **Materia forzada a día+turno** (`ScheduleDayTurnException`, panel «Excepciones» → «Forzar materia a día y turno»): fija una materia de un grado completo (todas sus secciones) a un día y turno concretos — ej. «Educación Física de 1er Año los viernes en la mañana». El solver sigue eligiendo qué bloque(s) dentro de ese turno (respeta `allowConsecutiveBlocks`, disponibilidad del profesor, etc.); cualquier otro día/turno queda prohibido (`mode='hard'`) o penalizado (`mode='soft'`, peso `forced_day_turn_weight` default `8000`, editable por entrada con `weight`). Con `hard`, si el objetivo es imposible (profesor ocupado, no cabe `weeklyBlocks`), la materia queda `unplaced` — nunca se coloca fuera.
+- Los pesos se editan en Control de Estudios → Configuración Académica → «Ajustes avanzados del generador de horarios». Orden de prioridad del objetivo: colocar todo → bloques consecutivos → día+turno forzado → bloques forzados → no duplicar materia en un día → compactación (incluye última del turno soft) → dificultad → preferencias de profesor → sin huecos por turno → bloques tempranos.
 
 **Distribución automática de aulas** (`ClassroomDistribution` → «Aplicar a la grid»):
 - Los pares `(materia, grado)` de un vínculo que comparten profesor se agrupan en un cluster `(linkId, teacherId)` y se asignan a la **misma aula** — basta configurar el aula en uno de los grados del vínculo (la primera asignación `group` configurada entre los miembros define el aula del cluster).
@@ -431,6 +432,27 @@ automático de horarios las coloque en el mismo bloque horario.
 - Las materias sin vínculo mantienen su aula por grado configurada.
 
 **Bloqueo de horarios**: el setting `schedules_locked_<schoolPeriodId>` (`'1'`/`'0'`, gestionado desde el checkbox «Bloqueado» en Control de Estudios → Horarios) pone en sólo lectura la edición manual de horarios, la distribución de aulas y la generación automática del período.
+
+---
+
+## ⚙️ Excepciones del generador – `/api/schedule-exceptions` (`scheduleExceptionRoutes.ts`)
+
+Excepciones por materia (globales, aplican en todos los grados/secciones que la ofrecen):
+
+| Método | Ruta | Descripción |
+|--------|------|-------------|
+| GET | `/api/schedule-exceptions` | Lista excepciones por materia (`allowConsecutiveBlocks`, `maxHoursPerDay`, `difficulty`, `forcedSlot`, `endOfRun`) |
+| POST | `/api/schedule-exceptions` | Upsert por `subjectId`. Body: `{ subjectId, allowConsecutiveBlocks?, maxHoursPerDay?, difficulty?, forcedSlot?, endOfRun? }` |
+| PUT | `/api/schedule-exceptions/:id` | Reemplaza los campos de la excepción (los ausentes quedan `null`) |
+| DELETE | `/api/schedule-exceptions/:id` | Elimina la excepción |
+
+Excepciones de día+turno forzado (por grado + materia, una por par):
+
+| Método | Ruta | Descripción |
+|--------|------|-------------|
+| GET | `/api/schedule-exceptions/day-turn?schoolPeriodId=` | Lista las excepciones día+turno (con `subject` y `periodGrade.grade`); `schoolPeriodId` opcional filtra por período |
+| POST | `/api/schedule-exceptions/day-turn` | Upsert por `(periodGradeId, subjectId)`. Body: `{ periodGradeId, subjectId, day, turn, mode?, weight? }`. `day` ∈ Lunes–Viernes, `turn` ∈ `manana`/`tarde`, `mode` ∈ `soft`/`hard` (default `hard`). Valida que la materia esté activa en el grado |
+| DELETE | `/api/schedule-exceptions/day-turn/:id` | Elimina la excepción |
 
 ---
 

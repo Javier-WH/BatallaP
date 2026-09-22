@@ -221,6 +221,52 @@ function endOfRunProblem(mode: 'soft' | 'hard') {
   };
 }
 
+// Forced day+turn regression: subject 60 exists in two grades (sections 1-2
+// belong to grade 4, section 3 to grade 5). The exception targets grade 4
+// only — its sections must land on Viernes manana while grade 5 stays free.
+// If `teacherBusyViernesMorning`, the forced target is impossible: hard mode
+// must leave grade-4 sections unplaced (without affecting grade 5), while a
+// soft mode with weight < under-placement must still place them elsewhere.
+function forcedDayTurnProblem(opts: { mode: 'soft' | 'hard'; weight?: number; teacherBusyViernesMorning?: boolean }) {
+  const blocks = makeBlocks();
+  const busy: Array<Record<string, unknown>> = [];
+  if (opts.teacherBusyViernesMorning) {
+    for (const b of blocks) {
+      if (b.day === 'Viernes' && b.section === 'manana') {
+        busy.push({ teacherId: 60, day: 'Viernes', blockId: b.id as string });
+      }
+    }
+  }
+  const subjects = [
+    { subjectId: 60, teacherId: 60, weeklyBlocks: 1, allowConsecutiveBlocks: 0, difficulty: 'medium' },
+  ];
+  return {
+    blockSize: 2,
+    days: DAYS,
+    blocks,
+    sections: [
+      { id: 1, periodGradeId: 4, subjects },
+      { id: 2, periodGradeId: 4, subjects },
+      { id: 3, periodGradeId: 5, subjects },
+    ],
+    teacherBusy: busy,
+    teacherPreferred: [],
+    syncGroupSubjects: false,
+    groupSubjects: [],
+    crossGradeLinks: [],
+    forcedDayTurnSubjects: [
+      {
+        periodGradeId: 4,
+        subjectId: 60,
+        day: 'Viernes',
+        turn: 'manana',
+        mode: opts.mode,
+        ...(opts.weight != null ? { weight: opts.weight } : {}),
+      },
+    ],
+  };
+}
+
 const hasSolver = solverAvailable();
 const maybeDescribe = hasSolver ? describe : describe.skip;
 
@@ -285,6 +331,38 @@ maybeDescribe('schedule_solver short visit', () => {
     // X merges into the afternoon run (t3_t4 next to Y's t1_t2) rather than
     // sitting alone in the morning
     expect(x?.blockId).toBe('t3_t4');
+  }, 180000);
+});
+
+maybeDescribe('schedule_solver forced day+turn exception', () => {
+  it('locks the grade\'s subject to the target day+turn (hard)', () => {
+    const result = runSolver(forcedDayTurnProblem({ mode: 'hard' }));
+    expect(result.unplaced).toEqual([]);
+    for (const sid of [1, 2]) {
+      const p = result.placed.find(x => x.sectionId === sid && x.subjectId === 60);
+      expect(p?.day).toBe('Viernes');
+      expect(p?.blockId.startsWith('m')).toBe(true);
+    }
+  }, 180000);
+
+  it('leaves the subject unplaced when the forced slot is impossible (hard), without affecting other grades', () => {
+    const result = runSolver(forcedDayTurnProblem({ mode: 'hard', teacherBusyViernesMorning: true }));
+    // Grade-4 sections cannot comply -> unplaced
+    for (const sid of [1, 2]) {
+      expect(result.placed.find(x => x.sectionId === sid && x.subjectId === 60)).toBeUndefined();
+      expect(result.unplaced.some(x => x.sectionId === sid && x.subjectId === 60)).toBe(true);
+    }
+    // Grade 5 is not scoped -> still placed somewhere
+    expect(result.placed.some(x => x.sectionId === 3 && x.subjectId === 60)).toBe(true);
+  }, 180000);
+
+  it('soft mode with weight below under-placement still places the subject elsewhere', () => {
+    const result = runSolver(forcedDayTurnProblem({ mode: 'soft', weight: 100, teacherBusyViernesMorning: true }));
+    for (const sid of [1, 2]) {
+      const p = result.placed.find(x => x.sectionId === sid && x.subjectId === 60);
+      expect(p).toBeDefined();
+      expect(!(p!.day === 'Viernes' && p!.blockId.startsWith('m'))).toBe(true);
+    }
   }, 180000);
 });
 

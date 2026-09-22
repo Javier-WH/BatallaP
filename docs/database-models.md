@@ -109,6 +109,7 @@
 | `Schedule` | Horario de una `PeriodGradeSection` en un `SchoolPeriod`. |
 | `ScheduleEntry` | Bloque horario: día + período + materia (+ profesor) dentro de un `Schedule`. `isGroupSubject` marca materias de grupo que varias secciones ven simultáneamente. |
 | `ScheduleException` | Excepción de generación por materia: `allowConsecutiveBlocks`, `maxHoursPerDay`, `difficulty` (`heavy`/`medium`/`light`), `forcedSlot` (`first_morning`/`last_afternoon`), `endOfRun` (`soft`/`hard` = debe ser la última materia ocupada de su turno). Sobrescribe los valores por defecto del generador (y de `Subject`). El override de bloques semanales vive en `Subject.weeklyBlocks`. |
+| `ScheduleDayTurnException` | Fuerza una materia de un grado a un día+turno específicos: `periodGradeId` + `subjectId` + `day` + `turn` (`manana`/`tarde`) + `mode` (`soft`/`hard`, default `hard`) + `weight` opcional. UNIQUE(`periodGradeId`, `subjectId`). El solver elige el/los bloque(s) dentro del turno; todo lo demás queda prohibido (hard) o penalizado (soft). |
 | `ScheduleLink` | Vínculo manual entre materias de **diferentes grados** del mismo período para que el generador las coloque en el mismo bloque horario. Tiene `name` opcional y `schoolPeriodId`. |
 | `ScheduleLinkItem` | Item de un vínculo: `linkId` + `subjectId` + `periodGradeId`. UNIQUE(`linkId`, `subjectId`, `periodGradeId`). Un par (materia, grado) solo puede pertenecer a un vínculo por período. |
 | `TeacherAdminHour` | Hora administrativa pintada sobre el horario del profesor (no es materia ni `ScheduleEntry`). UNIQUE(`teacherId`, `schoolPeriodId`, `day`, `period_id`). Se limpian al regenerar horarios del período. Base para cuantificación de horas (futuro módulo de sueldos). |
@@ -166,6 +167,7 @@ SubjectFinalGrade ──1:N──► GradeEditAudit ──N:1──► GradeEdit
 ```
 PeriodGradeSection ──1:1──► Schedule ──1:N──► ScheduleEntry ──N:1──► Subject, Person (teacher)
 SchoolPeriod ──1:N──► ScheduleException ──N:1──► PeriodGradeSubject
+PeriodGrade ──1:N──► ScheduleDayTurnException ──N:1──► Subject
 SchoolPeriod ──1:N──► ScheduleLink ──1:N──► ScheduleLinkItem ──N:1──► Subject, PeriodGrade
 ```
 

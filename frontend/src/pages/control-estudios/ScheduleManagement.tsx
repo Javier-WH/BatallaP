@@ -983,6 +983,14 @@ const ScheduleManagement: React.FC = () => {
   const [linkStructure, setLinkStructure] = useState<any[]>([]);
   const [syncGroupToggling, setSyncGroupToggling] = useState(false);
 
+  // Forced day+turn exceptions state
+  const [dayTurnExceptions, setDayTurnExceptions] = useState<any[]>([]);
+  const [newDtPeriodGradeId, setNewDtPeriodGradeId] = useState<number | null>(null);
+  const [newDtSubjectId, setNewDtSubjectId] = useState<number | null>(null);
+  const [newDtDay, setNewDtDay] = useState<string | null>(null);
+  const [newDtTurn, setNewDtTurn] = useState<string | null>(null);
+  const [newDtMode, setNewDtMode] = useState<string>('hard');
+
   // Batch export state
   const [batchExportOpen, setBatchExportOpen] = useState(false);
   const [batchSelectedGradeIds, setBatchSelectedGradeIds] = useState<number[]>([]);
@@ -1984,9 +1992,62 @@ const ScheduleManagement: React.FC = () => {
     setNewExcForcedSlot(null);
     setNewLinkName('');
     setNewLinkRows([{ subjectId: null, periodGradeId: null }]);
+    setNewDtPeriodGradeId(null);
+    setNewDtSubjectId(null);
+    setNewDtDay(null);
+    setNewDtTurn(null);
+    setNewDtMode('hard');
     loadExceptions();
     loadScheduleLinks();
+    loadDayTurnExceptions();
     setExceptionsModalOpen(true);
+  };
+
+  // ── Forced day+turn exceptions ──
+  const loadDayTurnExceptions = useCallback(async () => {
+    if (!viewPeriod) return;
+    try {
+      const res = await api.get('/schedule-exceptions/day-turn', { params: { schoolPeriodId: viewPeriod.id } });
+      setDayTurnExceptions(res.data || []);
+    } catch (e) {
+      console.error('Error loading day+turn exceptions:', e);
+      message.error('Error al cargar excepciones de día y turno');
+    }
+  }, [viewPeriod]);
+
+  const handleAddDayTurnException = async () => {
+    if (!newDtPeriodGradeId || !newDtSubjectId || !newDtDay || !newDtTurn) {
+      message.warning('Seleccione grado, materia, día y turno');
+      return;
+    }
+    try {
+      await api.post('/schedule-exceptions/day-turn', {
+        periodGradeId: newDtPeriodGradeId,
+        subjectId: newDtSubjectId,
+        day: newDtDay,
+        turn: newDtTurn,
+        mode: newDtMode,
+      });
+      message.success('Excepción de día y turno guardada');
+      setNewDtPeriodGradeId(null);
+      setNewDtSubjectId(null);
+      setNewDtDay(null);
+      setNewDtTurn(null);
+      setNewDtMode('hard');
+      loadDayTurnExceptions();
+    } catch (e: any) {
+      message.error(e?.response?.data?.message ?? 'Error al guardar excepción');
+    }
+  };
+
+  const handleDeleteDayTurnException = async (id: number) => {
+    try {
+      await api.delete(`/schedule-exceptions/day-turn/${id}`);
+      message.success('Excepción eliminada');
+      loadDayTurnExceptions();
+    } catch {
+      message.error('Error al eliminar excepción');
+    }
   };
 
   // Same-grade group sync: forces all subjects of a group to share the same
@@ -2874,6 +2935,124 @@ const ScheduleManagement: React.FC = () => {
               </div>
               <p className="text-xs text-slate-400 mt-2">
                 Deje un campo vacío si no quiere sobrescribirlo. Al menos uno debe estar configurado.
+              </p>
+            </div>
+
+            {/* Forced day+turn exceptions */}
+            <div className="border-t border-slate-200 pt-4">
+              <h3 className="text-sm font-bold text-slate-700 mb-2">Forzar materia a día y turno</h3>
+              <Alert
+                type="info"
+                showIcon
+                style={{ marginBottom: 12 }}
+                message="Obliga a que la materia del grado seleccionado se coloque en el día y turno indicados (en todas las secciones del grado). El generador decide qué bloques dentro de ese turno."
+              />
+
+              {/* Existing forced day+turn exceptions */}
+              {dayTurnExceptions.length > 0 && (
+                <div className="space-y-2 mb-4">
+                  {dayTurnExceptions.map((exc: any) => (
+                    <div key={exc.id} className="flex items-center gap-3 p-3 border border-slate-200 rounded-lg flex-wrap">
+                      <div className="flex-1 min-w-[140px]">
+                        <span className="font-medium text-slate-800">
+                          {exc.subject?.name ?? `Materia ${exc.subjectId}`}
+                        </span>
+                        <span className="text-xs text-slate-500 ml-2">
+                          {exc.periodGrade?.grade?.name ?? `Grado ${exc.periodGradeId}`}
+                        </span>
+                      </div>
+                      <Tag color="blue">{exc.day}</Tag>
+                      <Tag color={exc.turn === 'manana' ? 'cyan' : 'purple'}>
+                        {exc.turn === 'manana' ? 'Mañana' : 'Tarde'}
+                      </Tag>
+                      <Tag color={exc.mode === 'hard' ? 'red' : 'orange'}>
+                        {exc.mode === 'hard' ? 'Obligatoria' : 'Preferida'}
+                      </Tag>
+                      <Button
+                        size="small"
+                        type="text"
+                        danger
+                        icon={<DeleteOutlined />}
+                        onClick={() => handleDeleteDayTurnException(exc.id)}
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Add new forced day+turn exception */}
+              <div className="flex items-end gap-2 flex-wrap">
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs text-slate-500">Grado / Año</label>
+                  <Select
+                    showSearch
+                    style={{ width: 160 }}
+                    placeholder="Grado…"
+                    value={newDtPeriodGradeId ?? undefined}
+                    optionFilterProp="label"
+                    onChange={(v) => { setNewDtPeriodGradeId(v); setNewDtSubjectId(null); }}
+                    options={linkStructure.map((pg: any) => ({
+                      value: pg.id,
+                      label: pg.grade?.name ?? `Grado ${pg.id}`,
+                    }))}
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs text-slate-500">Materia</label>
+                  <Select
+                    showSearch
+                    style={{ width: 200 }}
+                    placeholder="Materia…"
+                    value={newDtSubjectId ?? undefined}
+                    optionFilterProp="label"
+                    disabled={!newDtPeriodGradeId}
+                    onChange={setNewDtSubjectId}
+                    options={(linkStructure.find((pg: any) => pg.id === newDtPeriodGradeId)?.subjects || [])
+                      .filter((s: any) => !dayTurnExceptions.some(e => e.periodGradeId === newDtPeriodGradeId && e.subjectId === s.id))
+                      .map((s: any) => ({ value: s.id, label: s.name }))}
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs text-slate-500">Día</label>
+                  <Select
+                    style={{ width: 120 }}
+                    placeholder="Día…"
+                    value={newDtDay ?? undefined}
+                    onChange={(v) => setNewDtDay(v)}
+                    options={DAYS.map(d => ({ value: d, label: d }))}
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs text-slate-500">Turno</label>
+                  <Select
+                    style={{ width: 110 }}
+                    placeholder="Turno…"
+                    value={newDtTurn ?? undefined}
+                    onChange={(v) => setNewDtTurn(v)}
+                    options={[
+                      { value: 'manana', label: 'Mañana' },
+                      { value: 'tarde', label: 'Tarde' },
+                    ]}
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs text-slate-500">Modo</label>
+                  <Select
+                    style={{ width: 130 }}
+                    value={newDtMode}
+                    onChange={(v) => setNewDtMode(v)}
+                    options={[
+                      { value: 'hard', label: 'Obligatoria' },
+                      { value: 'soft', label: 'Preferida' },
+                    ]}
+                  />
+                </div>
+                <Button type="primary" icon={<PlusOutlined />} onClick={handleAddDayTurnException}>
+                  Agregar
+                </Button>
+              </div>
+              <p className="text-xs text-slate-400 mt-2">
+                Ejemplo: Educación Física de 1er Año los viernes en la mañana. "Obligatoria" prohíbe cualquier otro día/turno; "Preferida" lo evita salvo que no haya otra opción.
               </p>
             </div>
 

@@ -26,7 +26,7 @@
 | **Evaluación** | `EvaluationPlan`, `Qualification`, `SubjectFinalGrade`, `CouncilPoint`, `CouncilChecklist`, `TeacherAssignment` |
 | **Cierre de período** | `PeriodClosure`, `StudentPeriodOutcome`, `PendingSubject` |
 | **Edición de notas** | `GradeEditPermission`, `GradeEditAudit` |
-| **Horarios** | `Schedule`, `ScheduleEntry`, `ScheduleException`, `ScheduleLink`, `ScheduleLinkItem`, `TeacherAvailability`, `TeacherAdminHour` |
+| **Horarios** | `Schedule`, `ScheduleEntry`, `ScheduleException`, `ScheduleDayTurnException`, `ScheduleLink`, `ScheduleLinkItem`, `TeacherAvailability`, `TeacherAdminHour` |
 | **Misceláneo** | `Setting`, `DashboardContent` |
 
 ## Constraints importantes
