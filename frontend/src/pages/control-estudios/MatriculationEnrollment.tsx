@@ -1334,8 +1334,11 @@ const MatriculationEnrollment: React.FC = () => {
       const workbook = new ExcelJS.Workbook();
       const worksheet = workbook.addWorksheet('Matrículas');
 
-      // Exportar datos filtrados (el ordenamiento lo maneja AG-Grid internamente)
-      const dataToExport = [...filteredData];
+      // Exportar las filas en el orden que muestra AG-Grid (respeta ordenamiento y filtros de columna)
+      const displayedRows = agGridRef.current?.getDisplayedRows();
+      const dataToExport = displayedRows
+        ? (displayedRows as unknown as MatriculationRow[])
+        : [...filteredData];
 
       // Mapeo de columnas con sus extractores y formateadores
       const columnConfig: Record<string, { header: string; getValue: (record: MatriculationRow) => string }> = {

@@ -73,6 +73,7 @@ export interface MatriculationAgGridHandle {
   pinColumn: (colId: string, pinned: 'left' | 'right' | null) => void;
   startEditingCell: (rowIndex: number, colKey: string) => void;
   getVisibleColumnIds: () => string[];
+  getDisplayedRows: () => MatriculationRow[] | null;
 }
 
 const MatriculationAgGrid = React.forwardRef<MatriculationAgGridHandle, MatriculationAgGridProps>((props, ref) => {
@@ -514,6 +515,14 @@ const MatriculationAgGrid = React.forwardRef<MatriculationAgGridHandle, Matricul
       return gridApi.getAllGridColumns()
         .filter(col => col.isVisible())
         .map(col => col.getColId());
+    },
+    getDisplayedRows: () => {
+      if (!gridApi) return null;
+      const rows: MatriculationRow[] = [];
+      gridApi.forEachNodeAfterFilterAndSort(node => {
+        if (node.data) rows.push(node.data);
+      });
+      return rows;
     },
   }), [handlePinColumn, handleStartEditingCell, gridApi]);
 
