@@ -1000,6 +1000,8 @@ const ScheduleManagement: React.FC = () => {
 
   // Teacher batch export state
   const [teacherBatchExporting, setTeacherBatchExporting] = useState(false);
+  const [teacherBatchExportOpen, setTeacherBatchExportOpen] = useState(false);
+  const [teacherBatchSelectedIds, setTeacherBatchSelectedIds] = useState<number[]>([]);
 
   // Unique grades sorted by order
   const batchGradeOptions = useMemo(() => {
@@ -1353,13 +1355,14 @@ const ScheduleManagement: React.FC = () => {
   }, [viewPeriod]);
 
   // Teacher batch export handler
-  const handleTeacherBatchExport = useCallback(async () => {
-    if (!viewPeriod || teachersList.length === 0) return;
+  const handleTeacherBatchExport = useCallback(async (ids?: number[]) => {
+    const selected = ids && ids.length > 0 ? teachersList.filter(t => ids.includes(t.id)) : teachersList;
+    if (!viewPeriod || selected.length === 0) return;
     setTeacherBatchExporting(true);
     try {
       const [guideMap, roomLookup] = await Promise.all([fetchAllGuideSections(), fetchRoomLookup()]);
       const items: HorarioTeacherBatchItem[] = [];
-      for (const t of teachersList) {
+      for (const t of selected) {
         const res = await api.get(`/schedules/teacher/${t.id}`, { params: { schoolPeriodId: viewPeriod.id } });
         const entries = buildTeacherEntriesMap(res.data || [], roomLookup);
         items.push({
@@ -1377,6 +1380,7 @@ const ScheduleManagement: React.FC = () => {
         institutionState: settings.institution_state,
       });
       message.success(`Exportados ${items.length} horarios de profesores`);
+      setTeacherBatchExportOpen(false);
     } catch (e) {
       console.error('Error in teacher batch export:', e);
       message.error('Error al exportar horarios de profesores');
@@ -2506,11 +2510,11 @@ const ScheduleManagement: React.FC = () => {
                   <Button
                     type="primary"
                     icon={<FileExcelOutlined />}
-                    onClick={handleTeacherBatchExport}
+                    onClick={() => setTeacherBatchExportOpen(true)}
                     loading={teacherBatchExporting}
                     disabled={teachersList.length === 0}
                   >
-                    Exportar todos
+                    Exportar horarios
                   </Button>
                 </div>
                 {!selectedTeacherId ? (
@@ -3278,6 +3282,62 @@ const ScheduleManagement: React.FC = () => {
             </div>
             <p className="text-xs text-slate-400 mt-2">
               Si selecciona secciones específicas, se exportarán solo esas. Si no, se exportarán todas las secciones de los grados seleccionados.
+            </p>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Teacher Batch Export Modal */}
+      <Modal
+        rootClassName="ce-responsive-modal"
+        title="Exportar horarios de profesores"
+        open={teacherBatchExportOpen}
+        onCancel={() => setTeacherBatchExportOpen(false)}
+        onOk={() => handleTeacherBatchExport(teacherBatchSelectedIds)}
+        okText="Exportar"
+        cancelText="Cancelar"
+        confirmLoading={teacherBatchExporting}
+        okButtonProps={{ disabled: teacherBatchSelectedIds.length === 0 }}
+        width={600}
+      >
+        <div className="space-y-4">
+          <Alert
+            type="info"
+            showIcon
+            message="Se generará un archivo Excel con el horario de cada profesor seleccionado."
+          />
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-sm font-medium">Profesores</label>
+              <div>
+                <Button type="link" size="small" onClick={() => setTeacherBatchSelectedIds(teachersList.map(t => t.id))}>Todos</Button>
+                <Button type="link" size="small" onClick={() => setTeacherBatchSelectedIds([])}>Ninguno</Button>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2" style={{ maxHeight: 300, overflowY: 'auto' }}>
+              {teachersList.map(t => {
+                const selected = teacherBatchSelectedIds.includes(t.id);
+                return (
+                  <Button
+                    key={t.id}
+                    size="small"
+                    type={selected ? 'primary' : 'default'}
+                    onClick={() => {
+                      const next = selected
+                        ? teacherBatchSelectedIds.filter(id => id !== t.id)
+                        : [...teacherBatchSelectedIds, t.id];
+                      setTeacherBatchSelectedIds(next);
+                    }}
+                  >
+                    {t.label}
+                  </Button>
+                );
+              })}
+            </div>
+            <p className="text-xs text-slate-400 mt-2">
+              {teacherBatchSelectedIds.length === 0
+                ? 'Seleccione al menos un profesor para exportar.'
+                : `${teacherBatchSelectedIds.length} profesor(es) seleccionado(s).`}
             </p>
           </div>
         </div>
