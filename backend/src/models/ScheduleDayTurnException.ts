@@ -1,11 +1,13 @@
 import { DataTypes, Model, Optional } from 'sequelize';
 import sequelize from '@/config/database';
 import PeriodGrade from './PeriodGrade';
+import PeriodGradeSection from './PeriodGradeSection';
 import Subject from './Subject';
 
 interface ScheduleDayTurnExceptionAttributes {
   id: number;
   periodGradeId: number; // scope: all sections of this grade
+  periodGradeSectionId: number | null; // null = whole grade; set = this one class only
   subjectId: number;
   day: string; // 'Lunes' | 'Martes' | 'Miércoles' | 'Jueves' | 'Viernes'
   turn: string; // 'manana' | 'tarde'
@@ -13,11 +15,12 @@ interface ScheduleDayTurnExceptionAttributes {
   weight: number | null; // soft-mode penalty override; null = solver default
 }
 
-interface ScheduleDayTurnExceptionCreationAttributes extends Optional<ScheduleDayTurnExceptionAttributes, 'id' | 'mode' | 'weight'> { }
+interface ScheduleDayTurnExceptionCreationAttributes extends Optional<ScheduleDayTurnExceptionAttributes, 'id' | 'periodGradeSectionId' | 'mode' | 'weight'> { }
 
 class ScheduleDayTurnException extends Model<ScheduleDayTurnExceptionAttributes, ScheduleDayTurnExceptionCreationAttributes> implements ScheduleDayTurnExceptionAttributes {
   public id!: number;
   public periodGradeId!: number;
+  public periodGradeSectionId!: number | null;
   public subjectId!: number;
   public day!: string;
   public turn!: string;
@@ -39,6 +42,12 @@ ScheduleDayTurnException.init(
       type: DataTypes.INTEGER,
       references: { model: PeriodGrade, key: 'id' },
       allowNull: false,
+    },
+    periodGradeSectionId: {
+      type: DataTypes.INTEGER,
+      references: { model: PeriodGradeSection, key: 'id' },
+      allowNull: true,
+      defaultValue: null,
     },
     subjectId: {
       type: DataTypes.INTEGER,
@@ -70,8 +79,8 @@ ScheduleDayTurnException.init(
     indexes: [
       {
         unique: true,
-        fields: ['periodGradeId', 'subjectId'],
-        name: 'schedule_day_turn_exceptions_pg_subject_unique',
+        fields: ['periodGradeId', 'periodGradeSectionId', 'subjectId'],
+        name: 'schedule_day_turn_exceptions_pg_section_subject_unique',
       },
     ],
   }

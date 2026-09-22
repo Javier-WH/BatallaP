@@ -986,6 +986,7 @@ const ScheduleManagement: React.FC = () => {
   // Forced day+turn exceptions state
   const [dayTurnExceptions, setDayTurnExceptions] = useState<any[]>([]);
   const [newDtPeriodGradeId, setNewDtPeriodGradeId] = useState<number | null>(null);
+  const [newDtSectionId, setNewDtSectionId] = useState<number | null>(null); // null = all sections of the grade
   const [newDtSubjectId, setNewDtSubjectId] = useState<number | null>(null);
   const [newDtDay, setNewDtDay] = useState<string | null>(null);
   const [newDtTurn, setNewDtTurn] = useState<string | null>(null);
@@ -1993,6 +1994,7 @@ const ScheduleManagement: React.FC = () => {
     setNewLinkName('');
     setNewLinkRows([{ subjectId: null, periodGradeId: null }]);
     setNewDtPeriodGradeId(null);
+    setNewDtSectionId(null);
     setNewDtSubjectId(null);
     setNewDtDay(null);
     setNewDtTurn(null);
@@ -2023,6 +2025,7 @@ const ScheduleManagement: React.FC = () => {
     try {
       await api.post('/schedule-exceptions/day-turn', {
         periodGradeId: newDtPeriodGradeId,
+        periodGradeSectionId: newDtSectionId,
         subjectId: newDtSubjectId,
         day: newDtDay,
         turn: newDtTurn,
@@ -2030,6 +2033,7 @@ const ScheduleManagement: React.FC = () => {
       });
       message.success('Excepción de día y turno guardada');
       setNewDtPeriodGradeId(null);
+      setNewDtSectionId(null);
       setNewDtSubjectId(null);
       setNewDtDay(null);
       setNewDtTurn(null);
@@ -2945,7 +2949,7 @@ const ScheduleManagement: React.FC = () => {
                 type="info"
                 showIcon
                 style={{ marginBottom: 12 }}
-                message="Obliga a que la materia del grado seleccionado se coloque en el día y turno indicados (en todas las secciones del grado). El generador decide qué bloques dentro de ese turno."
+                message="Obliga a que la materia se coloque en el día y turno indicados. Sin sección aplica a todo el grado; con sección, solo a esa clase. El generador decide qué bloques dentro de ese turno."
               />
 
               {/* Existing forced day+turn exceptions */}
@@ -2959,6 +2963,9 @@ const ScheduleManagement: React.FC = () => {
                         </span>
                         <span className="text-xs text-slate-500 ml-2">
                           {exc.periodGrade?.grade?.name ?? `Grado ${exc.periodGradeId}`}
+                          {exc.periodGradeSection?.section?.name
+                            ? ` · Sección ${exc.periodGradeSection.section.name}`
+                            : ' · Todas las secciones'}
                         </span>
                       </div>
                       <Tag color="blue">{exc.day}</Tag>
@@ -2990,11 +2997,28 @@ const ScheduleManagement: React.FC = () => {
                     placeholder="Grado…"
                     value={newDtPeriodGradeId ?? undefined}
                     optionFilterProp="label"
-                    onChange={(v) => { setNewDtPeriodGradeId(v); setNewDtSubjectId(null); }}
+                    onChange={(v) => { setNewDtPeriodGradeId(v); setNewDtSectionId(null); setNewDtSubjectId(null); }}
                     options={linkStructure.map((pg: any) => ({
                       value: pg.id,
                       label: pg.grade?.name ?? `Grado ${pg.id}`,
                     }))}
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs text-slate-500">Sección</label>
+                  <Select
+                    style={{ width: 150 }}
+                    placeholder="Todas"
+                    value={newDtSectionId ?? undefined}
+                    disabled={!newDtPeriodGradeId}
+                    onChange={(v) => { setNewDtSectionId(v ?? null); setNewDtSubjectId(null); }}
+                    allowClear
+                    options={((linkStructure.find((pg: any) => pg.id === newDtPeriodGradeId)?.sections || []) as any[])
+                      .filter((s: any) => !s.isMateriaPendiente)
+                      .map((s: any) => ({
+                        value: s.PeriodGradeSection?.id ?? s.id,
+                        label: s.name,
+                      }))}
                   />
                 </div>
                 <div className="flex flex-col gap-1">
@@ -3008,7 +3032,10 @@ const ScheduleManagement: React.FC = () => {
                     disabled={!newDtPeriodGradeId}
                     onChange={setNewDtSubjectId}
                     options={(linkStructure.find((pg: any) => pg.id === newDtPeriodGradeId)?.subjects || [])
-                      .filter((s: any) => !dayTurnExceptions.some(e => e.periodGradeId === newDtPeriodGradeId && e.subjectId === s.id))
+                      .filter((s: any) => !dayTurnExceptions.some(e =>
+                        e.periodGradeId === newDtPeriodGradeId
+                        && (e.periodGradeSectionId ?? null) === newDtSectionId
+                        && e.subjectId === s.id))
                       .map((s: any) => ({ value: s.id, label: s.name }))}
                   />
                 </div>
@@ -3052,7 +3079,7 @@ const ScheduleManagement: React.FC = () => {
                 </Button>
               </div>
               <p className="text-xs text-slate-400 mt-2">
-                Ejemplo: Educación Física de 1er Año los viernes en la mañana. "Obligatoria" prohíbe cualquier otro día/turno; "Preferida" lo evita salvo que no haya otra opción.
+                Ejemplo: Educación Física de 1er Año los viernes en la mañana. Deje «Sección» vacío para aplicar a todo el grado. "Obligatoria" prohíbe cualquier otro día/turno; "Preferida" lo evita salvo que no haya otra opción.
               </p>
             </div>
 

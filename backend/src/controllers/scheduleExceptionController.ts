@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { ScheduleException, ScheduleDayTurnException, Subject, PeriodGrade, PeriodGradeSubject, Grade } from '@/models';
+import { ScheduleException, ScheduleDayTurnException, Subject, PeriodGrade, PeriodGradeSubject, PeriodGradeSection, Grade, Section } from '@/models';
 
 const VALID_DAYS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'];
 const VALID_TURNS = ['manana', 'tarde'];
@@ -101,6 +101,12 @@ export const listDayTurnExceptions = async (req: Request, res: Response) => {
           include: [{ model: Grade, as: 'grade', attributes: ['id', 'name'] }],
           ...(schoolPeriodId ? { where: { schoolPeriodId }, required: true } : {}),
         },
+        {
+          model: PeriodGradeSection,
+          as: 'periodGradeSection',
+          attributes: ['id'],
+          include: [{ model: Section, as: 'section', attributes: ['id', 'name'] }],
+        },
       ],
       order: [['id', 'ASC']],
     });
@@ -114,7 +120,7 @@ export const listDayTurnExceptions = async (req: Request, res: Response) => {
 // POST /api/schedule-exceptions/day-turn
 export const createDayTurnException = async (req: Request, res: Response) => {
   try {
-    const { periodGradeId, subjectId, day, turn, mode, weight } = req.body;
+    const { periodGradeId, periodGradeSectionId, subjectId, day, turn, mode, weight } = req.body;
     if (!periodGradeId || !subjectId || !day || !turn) {
       return res.status(400).json({ message: 'Grado, materia, día y turno son requeridos' });
     }
@@ -129,6 +135,16 @@ export const createDayTurnException = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'Modo inválido (soft | hard)' });
     }
 
+    // If a specific class is targeted, it must belong to the grade
+    if (periodGradeSectionId != null) {
+      const pgsSection = await PeriodGradeSection.findOne({
+        where: { id: Number(periodGradeSectionId), periodGradeId: Number(periodGradeId) },
+      });
+      if (!pgsSection) {
+        return res.status(400).json({ message: 'La sección no pertenece al grado seleccionado' });
+      }
+    }
+
     // The subject must be active in the target grade's plan
     const pgs = await PeriodGradeSubject.findOne({
       where: { periodGradeId: Number(periodGradeId), subjectId: Number(subjectId), active: true },
@@ -137,11 +153,13 @@ export const createDayTurnException = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'La materia no pertenece al grado seleccionado' });
     }
 
-    // Upsert: one forced day+turn per (grade, subject)
+    // Upsert: one forced day+turn per (grade, section-or-null, subject)
+    const scopeSectionId = periodGradeSectionId != null ? Number(periodGradeSectionId) : null;
     const [exc, created] = await ScheduleDayTurnException.findOrCreate({
-      where: { periodGradeId: Number(periodGradeId), subjectId: Number(subjectId) },
+      where: { periodGradeId: Number(periodGradeId), periodGradeSectionId: scopeSectionId, subjectId: Number(subjectId) },
       defaults: {
         periodGradeId: Number(periodGradeId),
+        periodGradeSectionId: scopeSectionId,
         subjectId: Number(subjectId),
         day,
         turn,

@@ -84,6 +84,7 @@ interface EndOfRunInput {
 
 interface ForcedDayTurnInput {
   periodGradeId: number;
+  sectionId?: number; // PeriodGradeSection.id — takes precedence over periodGradeId in the solver
   subjectId: number;
   day: string;
   turn: 'manana' | 'tarde';
@@ -463,13 +464,15 @@ export async function generateSchedulesForPeriod(
       mode: e.endOfRun as 'soft' | 'hard',
     }));
 
-  // 9e. Forced day+turn exceptions: lock a grade's subject to one specific
-  // day and turn. The solver picks which block(s) inside that turn.
+  // 9e. Forced day+turn exceptions: lock a grade's (or one class's) subject
+  // to one specific day and turn. The solver picks which block(s) inside
+  // that turn; sectionId (PeriodGradeSection.id) scopes to a single class.
   const dayTurnRows = await ScheduleDayTurnException.findAll({
     where: { periodGradeId: periodGradeIds },
   });
   const forcedDayTurnSubjects: ForcedDayTurnInput[] = dayTurnRows.map(e => ({
     periodGradeId: e.periodGradeId,
+    ...(e.periodGradeSectionId != null ? { sectionId: e.periodGradeSectionId } : {}),
     subjectId: e.subjectId,
     day: e.day,
     turn: e.turn as 'manana' | 'tarde',

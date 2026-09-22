@@ -227,7 +227,9 @@ function endOfRunProblem(mode: 'soft' | 'hard') {
 // If `teacherBusyViernesMorning`, the forced target is impossible: hard mode
 // must leave grade-4 sections unplaced (without affecting grade 5), while a
 // soft mode with weight < under-placement must still place them elsewhere.
-function forcedDayTurnProblem(opts: { mode: 'soft' | 'hard'; weight?: number; teacherBusyViernesMorning?: boolean }) {
+// With `sectionId` the exception scopes to that single class instead of the
+// whole grade (sectionId takes precedence over periodGradeId in the solver).
+function forcedDayTurnProblem(opts: { mode: 'soft' | 'hard'; weight?: number; teacherBusyViernesMorning?: boolean; sectionId?: number }) {
   const blocks = makeBlocks();
   const busy: Array<Record<string, unknown>> = [];
   if (opts.teacherBusyViernesMorning) {
@@ -257,6 +259,7 @@ function forcedDayTurnProblem(opts: { mode: 'soft' | 'hard'; weight?: number; te
     forcedDayTurnSubjects: [
       {
         periodGradeId: 4,
+        ...(opts.sectionId != null ? { sectionId: opts.sectionId } : {}),
         subjectId: 60,
         day: 'Viernes',
         turn: 'manana',
@@ -353,6 +356,27 @@ maybeDescribe('schedule_solver forced day+turn exception', () => {
       expect(result.unplaced.some(x => x.sectionId === sid && x.subjectId === 60)).toBe(true);
     }
     // Grade 5 is not scoped -> still placed somewhere
+    expect(result.placed.some(x => x.sectionId === 3 && x.subjectId === 60)).toBe(true);
+  }, 180000);
+
+  it('sectionId scopes the force to a single class only (hard)', () => {
+    const result = runSolver(forcedDayTurnProblem({ mode: 'hard', sectionId: 2 }));
+    expect(result.unplaced).toEqual([]);
+    // Only section 2 is forced to Viernes manana
+    const forced = result.placed.find(x => x.sectionId === 2 && x.subjectId === 60);
+    expect(forced?.day).toBe('Viernes');
+    expect(forced?.blockId.startsWith('m')).toBe(true);
+    expect(result.placed.some(x => x.sectionId === 1 && x.subjectId === 60)).toBe(true);
+    expect(result.placed.some(x => x.sectionId === 3 && x.subjectId === 60)).toBe(true);
+  }, 180000);
+
+  it('sectionId leaves only the targeted class unplaced when the slot is impossible (hard)', () => {
+    // Teacher busy Viernes morning: section 2 is forced there -> unplaced;
+    // sibling sections are NOT scoped, so they still get placed elsewhere.
+    const result = runSolver(forcedDayTurnProblem({ mode: 'hard', sectionId: 2, teacherBusyViernesMorning: true }));
+    expect(result.placed.find(x => x.sectionId === 2 && x.subjectId === 60)).toBeUndefined();
+    expect(result.unplaced.some(x => x.sectionId === 2 && x.subjectId === 60)).toBe(true);
+    expect(result.placed.some(x => x.sectionId === 1 && x.subjectId === 60)).toBe(true);
     expect(result.placed.some(x => x.sectionId === 3 && x.subjectId === 60)).toBe(true);
   }, 180000);
 

@@ -635,7 +635,10 @@ export const getPeriodStructure = async (req: Request, res: Response) => {
         }
       ],
       order: [
-        // Order subjects within each PeriodGrade by the join-table "order" column
+        // Order grades by Grade.order, then subjects within each PeriodGrade
+        // by the join-table "order" column
+        [{ model: Grade, as: 'grade' }, 'order', 'ASC'],
+        [{ model: Grade, as: 'grade' }, 'name', 'ASC'],
         [{ model: Subject, as: 'subjects' }, PeriodGradeSubject, 'order', 'ASC'],
       ],
     });
@@ -663,7 +666,11 @@ export const getPeriodStructure = async (req: Request, res: Response) => {
               include: [{ model: SubjectGroup, as: 'subjectGroup' }],
             },
           ],
-          order: [[{ model: Subject, as: 'subjects' }, PeriodGradeSubject, 'order', 'ASC']],
+          order: [
+            [{ model: Grade, as: 'grade' }, 'order', 'ASC'],
+            [{ model: Grade, as: 'grade' }, 'name', 'ASC'],
+            [{ model: Subject, as: 'subjects' }, PeriodGradeSubject, 'order', 'ASC'],
+          ],
         });
       }
       if (structure.length > 0) return res.json(structure);

@@ -85,6 +85,47 @@ describe('Schedule day+turn exceptions endpoints', () => {
       .expect(400); // invalid turn
   });
 
+  it('scopes the exception to a single class when periodGradeSectionId is given', async () => {
+    const { period, periodGrade, periodGradeSection, subject } = await createAcademicStructure();
+
+    const res = await agent
+      .post('/api/schedule-exceptions/day-turn')
+      .send({
+        periodGradeId: periodGrade.id,
+        periodGradeSectionId: periodGradeSection.id,
+        subjectId: subject.id,
+        day: 'Viernes',
+        turn: 'manana',
+        mode: 'hard',
+      })
+      .expect(201);
+    expect(res.body.periodGradeSectionId).toBe(periodGradeSection.id);
+
+    const listRes = await agent
+      .get('/api/schedule-exceptions/day-turn')
+      .query({ schoolPeriodId: period.id })
+      .expect(200);
+    expect(listRes.body[0].periodGradeSection.id).toBe(periodGradeSection.id);
+    expect(listRes.body[0].periodGradeSection.section.id).toBe(periodGradeSection.sectionId);
+  });
+
+  it('rejects a periodGradeSectionId that belongs to another grade', async () => {
+    const { periodGrade, subject } = await createAcademicStructure();
+    const other = await createAcademicStructure(); // second grade+section+subject
+
+    // subject.id IS in periodGrade — only the section mismatch should fail
+    await agent
+      .post('/api/schedule-exceptions/day-turn')
+      .send({
+        periodGradeId: periodGrade.id,
+        periodGradeSectionId: other.periodGradeSection.id,
+        subjectId: subject.id,
+        day: 'Lunes',
+        turn: 'manana',
+      })
+      .expect(400);
+  });
+
   it('rejects a subject that does not belong to the grade', async () => {
     const { periodGrade } = await createAcademicStructure();
     const otherSubject = await createTestSubject({ name: 'Materia ajena' });
