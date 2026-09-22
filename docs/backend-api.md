@@ -497,6 +497,30 @@ Excepciones de día+turno forzado (por grado + materia, una por par):
 
 ---
 
+## 📜 Constancias – `/api/constancias` (`constanciaRoutes.ts`)
+
+> Plantillas HTML con variables `{{categoria.campo}}` que se resuelven al generar el documento.
+> Escritura restringida a Master/Administrador/Control de Estudios; la previsualización solo requiere sesión.
+
+| Método | Ruta | Descripción |
+|--------|------|-------------|
+| GET | `/api/constancias/variables` | Catálogo de variables disponibles para el editor (grupo, key, label) |
+| GET | `/api/constancias/analyze/:id` | Clasifica las variables de una plantilla (`needsStudent`, `needsWorker`, `customVars`) |
+| GET | `/api/constancias` | Lista plantillas (id, name, timestamps) |
+| GET | `/api/constancias/:id` | Plantilla completa (incluye `content` HTML) |
+| POST | `/api/constancias` | Crea plantilla `{ name, content }` |
+| PUT | `/api/constancias/:id` | Actualiza `name`/`content` |
+| DELETE | `/api/constancias/:id` | Elimina plantilla |
+| POST | `/api/constancias/preview` | Renderiza la plantilla. Body: `{ templateId, personId?, schoolPeriodId?, customVars?, customDate? }` → `{ html, variables }` |
+
+**Resolución de variables académicas** (`resolveVariables` en `constanciaController`):
+- `grade.*` y `section.*` se resuelven desde la `Inscription` del estudiante en el período dado.
+- Si el estudiante **no tiene inscripción** (aún no matriculado formalmente), se hace fallback a su `Matriculation` del período — ahí vive el grado/sección al que se está inscribiendo.
+- Sin `schoolPeriodId`, el fallback toma la matrícula más reciente (`id DESC`).
+- Las variables `subject.*` (notas finales) solo se resuelven con `Inscription` real.
+
+---
+
 ## Patrones generales
 
 - **Autenticación**: implícita por sesión. Revisar `req.session` en los controllers que requieren usuario logueado.

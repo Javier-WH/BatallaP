@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { ConstanciaTemplate, Person, Inscription, SchoolPeriod, Grade, Section, Subject, SubjectFinalGrade, InscriptionSubject, Setting } from '@/models';
+import { ConstanciaTemplate, Person, Inscription, Matriculation, SchoolPeriod, Grade, Section, Subject, SubjectFinalGrade, InscriptionSubject, Setting } from '@/models';
 import sequelize from '@/config/database';
 import { Op } from 'sequelize';
 
@@ -94,6 +94,21 @@ async function resolveVariables(personId: number, schoolPeriodId: number, custom
       { model: Section, as: 'section' },
     ],
   }) as any;
+
+  // Fallback: a not-yet-enrolled student has no Inscription but still carries
+  // grade/section info in their Matriculation (the grade they're being
+  // enrolled into). Used to resolve grade.* and section.* variables.
+  let academicSource: any = inscription;
+  if (!academicSource) {
+    academicSource = await Matriculation.findOne({
+      where: { personId, ...(schoolPeriodId ? { schoolPeriodId } : {}) },
+      include: [
+        { model: Grade, as: 'grade' },
+        { model: Section, as: 'section' },
+      ],
+      order: [['id', 'DESC']],
+    }) as any;
+  }
 
   const period = await SchoolPeriod.findByPk(schoolPeriodId);
 
@@ -214,13 +229,13 @@ async function resolveVariables(personId: number, schoolPeriodId: number, custom
     'institution.coordinatorDocument': settingsMap['control_estudios_document'] || '',
     // Academic — grade.name strips the trailing "Año" so the template can compose
     // phrases like "pertenece al Quinto (5to) Año". Use grade.fullName for the full string.
-    'grade.name': (inscription?.grade?.name || '').replace(/\s+A[ñn]o\s*$/i, '').trim(),
-    'grade.nameUpper': (inscription?.grade?.name || '').replace(/\s+A[ñn]o\s*$/i, '').trim().toUpperCase(),
-    'grade.fullName': inscription?.grade?.name || '',
-    'grade.fullNameUpper': (inscription?.grade?.name || '').toUpperCase(),
-    'grade.ordinal': gradeToOrdinal(inscription?.grade?.order),
-    'section.name': inscription?.section?.name || '',
-    'section.nameUpper': (inscription?.section?.name || '').toUpperCase(),
+    'grade.name': (academicSource?.grade?.name || '').replace(/\s+A[ñn]o\s*$/i, '').trim(),
+    'grade.nameUpper': (academicSource?.grade?.name || '').replace(/\s+A[ñn]o\s*$/i, '').trim().toUpperCase(),
+    'grade.fullName': academicSource?.grade?.name || '',
+    'grade.fullNameUpper': (academicSource?.grade?.name || '').toUpperCase(),
+    'grade.ordinal': gradeToOrdinal(academicSource?.grade?.order),
+    'section.name': academicSource?.section?.name || '',
+    'section.nameUpper': (academicSource?.section?.name || '').toUpperCase(),
     'period.name': period?.name || '',
     // Certificate
     'date': `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`,
