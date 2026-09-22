@@ -168,4 +168,66 @@ describe('Inscription Withdraw/Reactivate — withdrawnAt lifecycle', () => {
     const foundAfter = previewAfter.some(p => p.inscription.student?.id === person.id);
     expect(foundAfter).toBe(true);
   });
+
+  it('T5: Control de Estudios can unmatriculate a student back to No Matriculados', async () => {
+    const { person: ceUser } = await createTestUser({ username: 'ce_user' });
+    const ceRole = await createTestRole('Control de Estudios');
+    await PersonRole.create({ personId: ceUser.id, roleId: ceRole.id });
+
+    const ceAgent = request.agent(app);
+    await ceAgent
+      .post('/api/auth/login')
+      .send({ username: 'ce_user', password: 'password123' });
+
+    await ceAgent
+      .post(`/api/inscriptions/${inscription.id}/unmatriculate`)
+      .expect(200);
+
+    const refreshed = await Inscription.findByPk(inscription.id);
+    expect(refreshed!.sectionId).toBeNull();
+
+    const refreshedMat = await Matriculation.findOne({ where: { inscriptionId: inscription.id } });
+    expect(refreshedMat!.status).toBe('pending');
+    expect(refreshedMat!.sectionId).toBeNull();
+  });
+
+  it('T6: a role without enrollment permissions cannot unmatriculate', async () => {
+    const { person: alumno } = await createTestUser({ username: 'alumno_user' });
+    const alumnoRole = await createTestRole('Alumno');
+    await PersonRole.create({ personId: alumno.id, roleId: alumnoRole.id });
+
+    const otherAgent = request.agent(app);
+    await otherAgent
+      .post('/api/auth/login')
+      .send({ username: 'alumno_user', password: 'password123' });
+
+    await otherAgent
+      .post(`/api/inscriptions/${inscription.id}/unmatriculate`)
+      .expect(403);
+  });
+
+  it('T7: a role without enrollment permissions is rejected from all write endpoints', async () => {
+    const { person: alumno } = await createTestUser({ username: 'alumno_user2' });
+    const alumnoRole = await createTestRole('Alumno');
+    await PersonRole.create({ personId: alumno.id, roleId: alumnoRole.id });
+
+    const otherAgent = request.agent(app);
+    await otherAgent
+      .post('/api/auth/login')
+      .send({ username: 'alumno_user2', password: 'password123' });
+
+    // Inscribir (Admin/Master only)
+    await otherAgent.post('/api/inscriptions').send({}).expect(403);
+    await otherAgent.post('/api/inscriptions/register').send({}).expect(403);
+    await otherAgent.post('/api/inscriptions/quick-register').send({}).expect(403);
+    await otherAgent.delete(`/api/inscriptions/${inscription.id}`).expect(403);
+
+    // Matricular / gestionar (Admin/Master/Control de Estudios)
+    await otherAgent.post(`/api/matriculations/${matriculation.id}/enroll`).send({}).expect(403);
+    await otherAgent.put(`/api/inscriptions/${inscription.id}`).send({}).expect(403);
+    await otherAgent.patch(`/api/matriculations/${matriculation.id}`).send({}).expect(403);
+    await otherAgent.post(`/api/inscriptions/${inscription.id}/subjects`).send({}).expect(403);
+    await otherAgent.delete(`/api/inscriptions/${inscription.id}/subjects/1`).expect(403);
+    await otherAgent.post(`/api/inscriptions/${inscription.id}/withdraw`).expect(403);
+  });
 });

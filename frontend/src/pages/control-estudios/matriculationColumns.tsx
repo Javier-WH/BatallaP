@@ -253,7 +253,6 @@ export const BASE_COLUMN_OPTIONS: ColumnOption[] = [
   { key: 'gradeId', label: 'Grado', group: 'Estudiante' },
   { key: 'sectionId', label: 'Sección', group: 'Estudiante' },
   { key: 'subjectIds', label: 'Materias de Grupo', group: 'Estudiante' },
-  { key: 'participationGroup', label: 'Grupo de Participación', group: 'Estudiante' },
   { key: 'escolaridad', label: 'Escolaridad', group: 'Estudiante' },
   // Representante
   { key: 'representativeType', label: 'Vínculo', group: 'Representante' },
@@ -1020,9 +1019,11 @@ export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<Matricul
         if (!p.data) return '';
         const gradeStruct = structure.find(s => s.gradeId === p.data.tempData.gradeId);
         const groupSubjects = gradeStruct?.subjects?.filter(s => s.subjectGroupId) ?? [];
+        if (!groupSubjects.length) return '';
         const currentId = p.data.tempData.subjectIds?.[0];
         const name = groupSubjects.find(s => s.id === currentId)?.name ?? '';
-        return name ? name.toUpperCase() : '';
+        if (!name) return <span style={{ color: '#dc2626', fontSize: 12, fontWeight: 600 }}>Sin grupo</span>;
+        return name.toUpperCase();
       },
     });
   }
@@ -1100,29 +1101,6 @@ export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<Matricul
   if (isCol('residenceMunicipality')) estudianteCols.push(studentLocationCol('residence', 'municipality', 'Municipio Res.', 120, callbacks, locations));
   if (isCol('residenceParish')) estudianteCols.push(studentLocationCol('residence', 'parish', 'Parroquia Res.', 120, callbacks, locations));
   if (isCol('address')) estudianteCols.push(textCol('address', 'Dirección', 250, callbacks));
-
-  if (isCol('participationGroup')) {
-    estudianteCols.push({
-      colId: 'participationGroup',
-      headerName: 'Grupo de Participación',
-      width: 140,
-      editable: false,
-      sortable: true,
-      resizable: true,
-      valueGetter: (p) => {
-        if (!p.data) return '';
-        const data = p.data;
-        const gradeStruct = structure.find(s => s.gradeId === data.tempData.gradeId);
-        const groupSubjects = gradeStruct?.subjects?.filter(s => s.subjectGroupId) ?? [];
-        const currentId = data.tempData.subjectIds?.[0];
-        return groupSubjects.find(s => s.id === currentId)?.subjectGroup?.name ?? '';
-      },
-      cellRenderer: (p: any) => {
-        if (!p.value) return <span style={{ color: '#dc2626', fontSize: 12, fontWeight: 600 }}>Sin grupo</span>;
-        return <span style={{ fontSize: 12 }}>{p.value}</span>;
-      },
-    });
-  }
 
   if (isCol('escolaridad')) {
     estudianteCols.push({

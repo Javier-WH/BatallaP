@@ -1,6 +1,6 @@
 import request from 'supertest';
 import app from '@/app';
-import { createAcademicStructure, createTestUser } from '../helpers/testData';
+import { createAcademicStructure, createTestUser, createTestRole } from '../helpers/testData';
 import {
   Person,
   Contact,
@@ -9,6 +9,7 @@ import {
   Matriculation,
   StudentGuardian,
   GuardianProfile,
+  PersonRole,
 } from '@/models/index';
 
 describe('Enrollment Form - Data Type Validation', () => {
@@ -17,7 +18,10 @@ describe('Enrollment Form - Data Type Validation', () => {
 
   beforeEach(async () => {
     agent = request.agent(app);
-    await createTestUser({ username: 'admin_enroll', document: String(++docCounter) });
+    const { person: adminPerson } = await createTestUser({ username: 'admin_enroll', document: String(++docCounter) });
+    // registerAndEnroll requires an enrollment-capable role (Master/Admin).
+    const adminRole = await createTestRole('Administrador');
+    await PersonRole.create({ personId: adminPerson.id, roleId: adminRole.id });
     await agent
       .post('/api/auth/login')
       .send({ username: 'admin_enroll', password: 'password123' });

@@ -9,6 +9,13 @@ import { registerAndEnrollStudent, normalizeEscolaridad } from '@/services/stude
 import { generateEnrollmentReport } from '@/services/enrollmentReportService';
 import { Person, Matriculation } from '@/models/index';
 
+// Bulk enrollment is an "Inscribir" operation — Admin/Master only, matching
+// the frontend route protection on /admin/inscribir-estudiante.
+const canEnrollStudent = (req: Request): boolean => {
+  const roles: string[] = (req.session as any).user?.roles || [];
+  return roles.includes('Master') || roles.includes('Administrador');
+};
+
 export const downloadTemplate = async (_req: Request, res: Response) => {
   try {
     const { buffer, fileName } = await generateTemplate();
@@ -22,6 +29,9 @@ export const downloadTemplate = async (_req: Request, res: Response) => {
 };
 
 export const previewBulk = async (req: Request, res: Response) => {
+  if (!canEnrollStudent(req)) {
+    return res.status(403).json({ error: 'No tiene permisos para inscribir estudiantes' });
+  }
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'Debe subir un archivo Excel (.xlsx)' });
@@ -35,6 +45,9 @@ export const previewBulk = async (req: Request, res: Response) => {
 };
 
 export const processBulk = async (req: Request, res: Response) => {
+  if (!canEnrollStudent(req)) {
+    return res.status(403).json({ error: 'No tiene permisos para inscribir estudiantes' });
+  }
   try {
     const { rows } = req.body;
     if (!Array.isArray(rows)) {
@@ -58,6 +71,9 @@ export const processBulk = async (req: Request, res: Response) => {
 };
 
 export const retrySingleRow = async (req: Request, res: Response) => {
+  if (!canEnrollStudent(req)) {
+    return res.status(403).json({ error: 'No tiene permisos para inscribir estudiantes' });
+  }
   try {
     const { payload, updateExistingName } = req.body;
     if (!payload) {

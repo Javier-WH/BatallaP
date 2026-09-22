@@ -238,6 +238,9 @@ const MatriculationEnrollment: React.FC = () => {
   const { user } = useAuth();
   const { settings } = useSchool();
   const canManageVisibility = !!user?.roles.some(r => r === 'Administrador' || r === 'Master');
+  // "Sacar de Matrícula" is also allowed for Control de Estudios — unlike
+  // retirar/reactivar, which stay restricted to Admin/Master.
+  const canUnmatriculate = !!user?.roles.some(r => r === 'Administrador' || r === 'Master' || r === 'Control de Estudios');
   const [activePeriod, setActivePeriod] = useState<SchoolPeriod | null>(null);
   const [viewStatus, setViewStatus] = useState<'pending' | 'completed'>('pending');
   const [matriculations, setMatriculations] = useState<MatriculationRow[]>([]);
@@ -2140,7 +2143,7 @@ const MatriculationEnrollment: React.FC = () => {
                     </Button>
                   </div>
                 )}
-                {viewStatus === 'completed' && canManageVisibility && filterInscription !== 'retirado' && (
+                {viewStatus === 'completed' && canUnmatriculate && filterInscription !== 'retirado' && (
                   <div className="pl-4 border-l border-slate-300/50">
                     <Button
                       danger

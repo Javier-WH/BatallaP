@@ -61,6 +61,9 @@ type GuardianInput = {
 };
 
 export const quickRegister = async (req: Request, res: Response) => {
+  if (!canEnrollStudent(req)) {
+    return res.status(403).json({ error: 'No tiene permisos para inscribir estudiantes' });
+  }
   const t = await sequelize.transaction();
   try {
     const {
@@ -400,6 +403,9 @@ export const getMatriculationById = async (req: Request, res: Response) => {
 type MatriculationWithStudent = Matriculation & { student?: Person | null };
 
 export const enrollMatriculatedStudent = async (req: Request, res: Response) => {
+  if (!canManageEnrollment(req)) {
+    return res.status(403).json({ error: 'No tiene permisos para matricular estudiantes' });
+  }
   const t = await sequelize.transaction();
   try {
     const { id } = req.params;
@@ -1154,6 +1160,9 @@ export const getInscriptionById = async (req: Request, res: Response) => {
 };
 
 export const createInscription = async (req: Request, res: Response) => {
+  if (!canEnrollStudent(req)) {
+    return res.status(403).json({ error: 'No tiene permisos para inscribir estudiantes' });
+  }
   const t = await sequelize.transaction();
   try {
     const { schoolPeriodId, gradeId, personId, sectionId, enrollmentAnswers, escolaridad, documents } = req.body;
@@ -1237,6 +1246,9 @@ export const createInscription = async (req: Request, res: Response) => {
 };
 
 export const updateInscription = async (req: Request, res: Response) => {
+  if (!canManageEnrollment(req)) {
+    return res.status(403).json({ error: 'No tiene permisos para modificar inscripciones' });
+  }
   const t = await sequelize.transaction();
   try {
     const { id } = req.params;
@@ -1542,6 +1554,9 @@ export const updateInscription = async (req: Request, res: Response) => {
 };
 
 export const deleteInscription = async (req: Request, res: Response) => {
+  if (!canEnrollStudent(req)) {
+    return res.status(403).json({ error: 'No tiene permisos para eliminar inscripciones' });
+  }
   const t = await sequelize.transaction();
   try {
     const { id } = req.params;
@@ -1565,6 +1580,9 @@ export const deleteInscription = async (req: Request, res: Response) => {
 
 // Additional methods for manual subject management
 export const addSubjectToInscription = async (req: Request, res: Response) => {
+  if (!canManageEnrollment(req)) {
+    return res.status(403).json({ error: 'No tiene permisos para modificar inscripciones' });
+  }
   try {
     const { id } = req.params; // inscription id
     const { subjectId } = req.body;
@@ -1586,6 +1604,9 @@ export const addSubjectToInscription = async (req: Request, res: Response) => {
 };
 
 export const removeSubjectFromInscription = async (req: Request, res: Response) => {
+  if (!canManageEnrollment(req)) {
+    return res.status(403).json({ error: 'No tiene permisos para modificar inscripciones' });
+  }
   try {
     const { id, subjectId } = req.params; // inscription id, subject id
 
@@ -1603,6 +1624,9 @@ export const removeSubjectFromInscription = async (req: Request, res: Response) 
 
 // Register a new student (Person without User) and enroll them
 export const registerAndEnroll = async (req: Request, res: Response) => {
+  if (!canEnrollStudent(req)) {
+    return res.status(403).json({ error: 'No tiene permisos para inscribir estudiantes' });
+  }
   try {
     const { person, matriculation, reportUuid } = await registerAndEnrollStudent(req.body);
     res.status(201).json({
@@ -1618,6 +1642,9 @@ export const registerAndEnroll = async (req: Request, res: Response) => {
 };
 
 export const updateMatriculation = async (req: Request, res: Response) => {
+  if (!canManageEnrollment(req)) {
+    return res.status(403).json({ error: 'No tiene permisos para modificar matrículas' });
+  }
   const t = await sequelize.transaction();
   try {
     const { id } = req.params;
@@ -1939,6 +1966,14 @@ const canEnrollStudent = (req: Request): boolean => {
   return roles.includes('Master') || roles.includes('Administrador');
 };
 
+// Enrollment management (matricular, sacar de matrícula, editar datos de
+// inscripción/matrícula, asignar materias) is also allowed for Control de
+// Estudios — unlike withdraw/reactivate which stay Admin/Master-only.
+const canManageEnrollment = (req: Request): boolean => {
+  const roles: string[] = (req.session as any).user?.roles || [];
+  return roles.includes('Master') || roles.includes('Administrador') || roles.includes('Control de Estudios');
+};
+
 export const toggleMatriculationVisibility = async (req: Request, res: Response) => {
   try {
     if (!isPrivilegedUser(req)) {
@@ -2062,6 +2097,9 @@ export const getGroupSubjectChoices = async (req: Request, res: Response) => {
  * Explicitly sets the subject for a single term (backfill UI).
  */
 export const setGroupSubjectForTerm = async (req: Request, res: Response) => {
+  if (!canManageEnrollment(req)) {
+    return res.status(403).json({ error: 'No tiene permisos para modificar inscripciones' });
+  }
   const t = await sequelize.transaction();
   try {
     const { id } = req.params;
@@ -2090,6 +2128,9 @@ export const setGroupSubjectForTerm = async (req: Request, res: Response) => {
  * student switches back.
  */
 export const checkGroupSubjectChangeImpact = async (req: Request, res: Response) => {
+  if (!canManageEnrollment(req)) {
+    return res.status(403).json({ error: 'No tiene permisos para modificar inscripciones' });
+  }
   try {
     const { id } = req.params;
     const { subjectId } = req.body;
@@ -2142,7 +2183,7 @@ export const checkGroupSubjectChangeImpact = async (req: Request, res: Response)
  * the "Matriculados" list and reappears in "No Matriculados".
  */
 export const unmatriculateInscription = async (req: Request, res: Response) => {
-  if (!canEnrollStudent(req)) {
+  if (!canManageEnrollment(req)) {
     return res.status(403).json({ error: 'No tiene permisos para realizar esta acción' });
   }
   const t = await sequelize.transaction();
