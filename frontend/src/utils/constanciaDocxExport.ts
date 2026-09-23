@@ -18,7 +18,7 @@ import {
   type IParagraphOptions,
 } from 'docx';
 import { saveAs } from 'file-saver';
-import { FontSize, FontFamily, LineHeight, TextTransform, FloatingImage } from '@/pages/shared/ConstanciaEditor';
+import { FontSize, FontFamily, LineHeight, TextIndent, TextTransform, FloatingImage } from '@/pages/shared/ConstanciaEditor';
 
 // docx v9 declares IParagraphOptions / IRunOptions properties as `readonly`.
 // Build the objects mutably, then hand them off to docx (mutable → readonly is fine).
@@ -27,6 +27,21 @@ type Writable<T> = { -readonly [K in keyof T]: T[K] };
 // ── Node serializers ──
 // Map Tiptap's camelCase node names to prosemirror-docx's snake_case defaults,
 // and add custom handlers that read Tiptap's paragraph/heading attributes.
+
+// Convert a CSS length ("1.25cm", "24pt", "32px", "0.5in") to docx twips (1 inch = 1440)
+function cssLengthToTwips(value: string): number | undefined {
+  const match = String(value).match(/([\d.]+)\s*(cm|mm|in|pt|px)/i);
+  if (!match) return undefined;
+  const amount = parseFloat(match[1]);
+  switch (match[2].toLowerCase()) {
+    case 'cm': return Math.round(amount * 567);
+    case 'mm': return Math.round(amount * 56.7);
+    case 'in': return Math.round(amount * 1440);
+    case 'pt': return Math.round(amount * 20);
+    case 'px': return Math.round(amount * 15);
+    default: return undefined;
+  }
+}
 
 const tiptapNodes: NodeSerializer = {
   ...defaultNodes,
@@ -41,15 +56,21 @@ const tiptapNodes: NodeSerializer = {
   // Image handler — reads wrap attribute and passes through to default image serializer
   image: defaultNodes.image,
 
-  // Custom paragraph handler — reads textAlign and lineHeight attrs from Tiptap
+  // Custom paragraph handler — reads textAlign, lineHeight and textIndent attrs from Tiptap
   paragraph(state, node) {
     const textAlign = node.attrs.textAlign;
     const lineHeight = node.attrs.lineHeight;
+    const textIndent = node.attrs.textIndent;
 
     const opts: Writable<IParagraphOptions> = {};
     if (textAlign === 'center') opts.alignment = AlignmentType.CENTER;
     else if (textAlign === 'right') opts.alignment = AlignmentType.RIGHT;
     else if (textAlign === 'justify') opts.alignment = AlignmentType.JUSTIFIED;
+
+    if (textIndent) {
+      const firstLine = cssLengthToTwips(textIndent);
+      if (firstLine) opts.indent = { firstLine };
+    }
 
     // Match the editor's line height and remove Word's default paragraph spacing.
     const parsedLineHeight = lineHeight ? parseFloat(lineHeight) : 1.5;
@@ -76,11 +97,17 @@ const tiptapNodes: NodeSerializer = {
   heading(state, node) {
     const textAlign = node.attrs.textAlign;
     const lineHeight = node.attrs.lineHeight;
+    const textIndent = node.attrs.textIndent;
 
     const opts: Writable<IParagraphOptions> = {};
     if (textAlign === 'center') opts.alignment = AlignmentType.CENTER;
     else if (textAlign === 'right') opts.alignment = AlignmentType.RIGHT;
     else if (textAlign === 'justify') opts.alignment = AlignmentType.JUSTIFIED;
+
+    if (textIndent) {
+      const firstLine = cssLengthToTwips(textIndent);
+      if (firstLine) opts.indent = { firstLine };
+    }
 
     // Match the editor's line height and remove Word's default paragraph spacing.
     const parsedLineHeight = lineHeight ? parseFloat(lineHeight) : 1.5;
@@ -185,6 +212,7 @@ export async function exportConstanciaToDocx(html: string, filename = 'constanci
       FontFamily,
       TextTransform,
       LineHeight,
+      TextIndent,
       TextAlign.configure({ types: ['heading', 'paragraph'] }),
       FloatingImage,
     ],

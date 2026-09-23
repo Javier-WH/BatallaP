@@ -79,6 +79,27 @@ export const LineHeight = Extension.create({
   },
 });
 
+// Custom TextIndent extension (first-line indent, applies to paragraphs and headings)
+export const TextIndent = Extension.create({
+  name: 'textIndent',
+  addOptions() { return { types: ['paragraph', 'heading'] }; },
+  addGlobalAttributes() {
+    return [{
+      types: this.options.types,
+      attributes: {
+        textIndent: {
+          default: null,
+          parseHTML: element => element.style.textIndent || null,
+          renderHTML: attributes => {
+            if (!attributes.textIndent) return {};
+            return { style: `text-indent: ${attributes.textIndent}` };
+          },
+        },
+      },
+    }];
+  },
+});
+
 // Custom TextTransform extension (uppercase, lowercase, capitalize)
 export const TextTransform = Extension.create({
   name: 'textTransform',
@@ -125,6 +146,7 @@ const ConstanciaEditor: React.FC<ConstanciaEditorProps> = ({ content, onChange, 
       FontFamily,
       TextTransform,
       LineHeight,
+      TextIndent,
       TextAlign.configure({ types: ['heading', 'paragraph'] }),
       FloatingImage,
     ],
@@ -357,6 +379,29 @@ const ConstanciaEditor: React.FC<ConstanciaEditorProps> = ({ content, onChange, 
             { value: '2.0', label: 'Doble' },
             { value: '2.5', label: '2.5' },
             { value: '3.0', label: 'Triple' },
+          ]}
+        />
+
+        {/* First-line indent (sangría) */}
+        <Select
+          size="small"
+          style={{ width: 110 }}
+          placeholder="Sangría"
+          allowClear
+          value={editor.getAttributes('paragraph').textIndent || undefined}
+          onChange={(value) => {
+            if (value) {
+              editor.chain().focus().updateAttributes('paragraph', { textIndent: value }).run();
+            } else {
+              editor.chain().focus().resetAttributes('paragraph', 'textIndent').run();
+            }
+          }}
+          options={[
+            { value: '0.5cm', label: '0.5 cm' },
+            { value: '1cm', label: '1 cm' },
+            { value: '1.25cm', label: '1.25 cm' },
+            { value: '2cm', label: '2 cm' },
+            { value: '3cm', label: '3 cm' },
           ]}
         />
 
