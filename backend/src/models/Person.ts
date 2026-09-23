@@ -1,5 +1,6 @@
 import { DataTypes, Model, Optional } from 'sequelize';
 import sequelize from '@/config/database';
+import { normalizeDocumentNumber } from '@/utils/documentNumber';
 import User from './User';
 
 export interface PersonAttributes {
@@ -102,8 +103,12 @@ Person.init(
         if (instance.lastName) instance.lastName = instance.lastName.toUpperCase().trim();
         if (instance.pathology) instance.pathology = instance.pathology.toUpperCase().trim();
         if (instance.livingWith) instance.livingWith = instance.livingWith.toUpperCase().trim();
+        instance.document = normalizeDocumentNumber(instance.documentType, instance.document);
       },
       beforeUpdate: (instance: Person) => {
+        if (instance.changed('document') || instance.changed('documentType')) {
+          instance.document = normalizeDocumentNumber(instance.documentType, instance.document);
+        }
         if (instance.changed('firstName') && instance.firstName) instance.firstName = instance.firstName.toUpperCase().trim();
         if (instance.changed('lastName') && instance.lastName) instance.lastName = instance.lastName.toUpperCase().trim();
         if (instance.changed('pathology') && instance.pathology) instance.pathology = instance.pathology.toUpperCase().trim();

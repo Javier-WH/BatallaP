@@ -4,6 +4,7 @@ import Role from '@/models/Role';
 import Contact from '@/models/Contact';
 import PersonResidence from '@/models/PersonResidence';
 import { Transaction, Op } from 'sequelize';
+import { normalizeDocumentNumber } from '@/utils/documentNumber';
 
 export type GuardianProfilePayload = {
   firstName: string;
@@ -27,7 +28,8 @@ interface Options {
   transaction?: Transaction;
 }
 
-const normalizeDocument = (document: string) => document.trim();
+const normalizeDocument = (documentType: GuardianDocumentType, document: string) =>
+  normalizeDocumentNumber(documentType, document);
 
 // Email is optional: a blank email must not wipe the one already stored.
 const buildProfileUpdate = (payload: GuardianProfilePayload, document: string) => {
@@ -36,7 +38,7 @@ const buildProfileUpdate = (payload: GuardianProfilePayload, document: string) =
 };
 
 export const findGuardianProfile = async (documentType: GuardianDocumentType, document: string) => {
-  const normalizedDoc = normalizeDocument(document);
+  const normalizedDoc = normalizeDocument(documentType, document);
 
   // 1. Try to find in GuardianProfile table first
   const guardianProfile = await GuardianProfile.findOne({
@@ -120,7 +122,7 @@ export const findOrCreateGuardianProfile = async (
   payload: GuardianProfilePayload,
   options: Options = {}
 ): Promise<GuardianProfile> => {
-  const normalizedDocument = normalizeDocument(payload.document);
+  const normalizedDocument = normalizeDocument(payload.documentType, payload.document);
 
   if (payload.id) {
     const existing = await GuardianProfile.findByPk(payload.id, { transaction: options.transaction });

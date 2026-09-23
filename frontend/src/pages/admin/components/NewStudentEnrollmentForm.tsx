@@ -631,20 +631,8 @@ const NewStudentEnrollmentForm: React.FC<NewStudentEnrollmentFormProps> = ({
         ...values,
         pathology: values.pathology === 'ninguna' ? null : (values.pathology === 'otra' ? (values.customPathology as string) : values.pathology),
         livingWith: values.livingWith === 'otro' ? (values.customLivingWith as string) : values.livingWith,
-        document: (() => {
-          const docType = values.documentType as string;
-          const doc = values.document as string;
-          const nationality = values.nationality as string;
-          if (docType === 'Pasaporte') return doc;
-          if (docType === 'Cedula Escolar') {
-            if (nationality === 'Venezolano') return doc ? `V${doc}` : doc;
-            if (nationality === 'Extranjero') return doc ? `E${doc}` : doc;
-            return doc;
-          }
-          if (docType === 'Venezolano') return doc ? `V${doc}` : doc;
-          if (docType === 'Extranjero') return doc ? `E${doc}` : doc;
-          return doc;
-        })(),
+        // Stored as digits only; the V-/E- shown in the input is display-only.
+        document: values.document as string,
         schoolPeriodId: selectedPeriodId,
         birthdate: values.birthdate ? (values.birthdate as dayjs.Dayjs).format('YYYY-MM-DD') : null,
         mother: syncGuardianPhone(values.mother as GuardianData | undefined),

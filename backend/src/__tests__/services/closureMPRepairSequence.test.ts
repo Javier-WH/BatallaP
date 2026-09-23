@@ -224,10 +224,11 @@ describe('Closure MP + Repair Sequence — Integration Tests', () => {
 
       // Create a student with ONLY an MP inscription (no regular/repeater).
       const { Person } = await import('@/models/index');
+      const orphanDocument = `77${String(Date.now()).slice(-7)}`;
       const orphanPerson = await Person.create({
         firstName: 'Orphan',
         lastName: 'Test',
-        document: `ORPH${Date.now()}`,
+        document: orphanDocument,
         documentType: 'Venezolano',
         birthdate: new Date('2010-01-01'),
         gender: 'M',
@@ -258,7 +259,7 @@ describe('Closure MP + Repair Sequence — Integration Tests', () => {
       const validation = await validateClosure(setup);
       expect(validation.warnings).toHaveLength(1);
       expect(validation.warnings[0]).toContain('ORPHAN TEST');
-      expect(validation.warnings[0]).toContain(`Cédula: ORPH`);
+      expect(validation.warnings[0]).toContain(`Cédula: ${orphanDocument}`);
       expect(validation.warnings[0]).toContain('sección de materia_pendiente');
       expect(validation.warnings[0]).toContain('no tiene otra inscripción activa');
 

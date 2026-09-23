@@ -1,5 +1,6 @@
 import { DataTypes, Model, Optional } from 'sequelize';
 import sequelize from '@/config/database';
+import { normalizeDocumentNumber } from '@/utils/documentNumber';
 
 export type GuardianDocumentType = 'Venezolano' | 'Extranjero' | 'Pasaporte';
 
@@ -130,8 +131,12 @@ GuardianProfile.init(
         if (instance.residenceMunicipality) instance.residenceMunicipality = instance.residenceMunicipality.toUpperCase().trim();
         if (instance.residenceParish) instance.residenceParish = instance.residenceParish.toUpperCase().trim();
         if (instance.address) instance.address = instance.address.toUpperCase().trim();
+        instance.document = normalizeDocumentNumber(instance.documentType, instance.document);
       },
       beforeUpdate: (instance: GuardianProfile) => {
+        if (instance.changed('document') || instance.changed('documentType')) {
+          instance.document = normalizeDocumentNumber(instance.documentType, instance.document);
+        }
         if (instance.changed('firstName') && instance.firstName) instance.firstName = instance.firstName.toUpperCase().trim();
         if (instance.changed('lastName') && instance.lastName) instance.lastName = instance.lastName.toUpperCase().trim();
         if (instance.changed('occupation') && instance.occupation) instance.occupation = instance.occupation.toUpperCase().trim();

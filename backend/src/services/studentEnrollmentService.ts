@@ -21,6 +21,7 @@ import { GuardianDocumentType } from '@/models/GuardianProfile';
 import { GuardianRelationship } from '@/models/StudentGuardian';
 import { EscolaridadStatus } from '@/types/enrollment';
 import { generateEnrollmentReport } from '@/services/enrollmentReportService';
+import { normalizeDocumentNumber } from '@/utils/documentNumber';
 
 const ESCOLARIDAD_VALUES: EscolaridadStatus[] = ['regular', 'repitiente', 'materia_pendiente'];
 
@@ -226,7 +227,6 @@ export const registerAndEnrollStudent = async (
       lastName,
       documentType,
       document,
-      nationality,
       gender,
       birthdate,
       pathology,
@@ -273,10 +273,11 @@ export const registerAndEnrollStudent = async (
         throw new EnrollmentValidationError('La cédula de la madre es obligatoria para generar la Cédula Escolar.');
       }
 
-      const nationalityChar = nationality === 'Extranjero' ? 'E' : 'V';
+      // Documents are digits only; the nationality is not encoded as a letter.
+      const motherDocument = normalizeDocumentNumber(mother.documentType ?? 'Venezolano', mother.document);
       let birthOrder = 1;
       const motherProfile = await GuardianProfile.findOne({
-        where: { document: mother.document },
+        where: { document: motherDocument },
         transaction: t
       });
       if (motherProfile) {
@@ -288,7 +289,7 @@ export const registerAndEnrollStudent = async (
       }
 
       const birthYear = birthdate ? new Date(birthdate).getFullYear().toString().slice(-2) : '00';
-      finalDocument = `${nationalityChar}${birthOrder}${birthYear}${mother.document}`;
+      finalDocument = `${birthOrder}${birthYear}${motherDocument}`;
     }
 
     const allowedDocumentTypes: Person['documentType'][] = ['Venezolano', 'Extranjero', 'Pasaporte', 'Cedula Escolar'];

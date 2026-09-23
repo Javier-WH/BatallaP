@@ -114,19 +114,19 @@ describe('Enrollment Form - Data Type Validation', () => {
       expect(person!.userId).toBeNull(); // student has no user account
     });
 
-    it('should store document as provided for Venezolano', async () => {
+    it('should store only digits for Venezolano (strips a V prefix)', async () => {
       const structure = await createAcademicStructure();
-      const payload = createEnrollmentPayload(structure, { documentType: 'Venezolano', document: 'V11111111' });
+      const payload = createEnrollmentPayload(structure, { documentType: 'Venezolano', document: 'V-11.111.111' });
       const res = await agent
         .post('/api/inscriptions/register')
         .send(payload)
         .expect(201);
 
       const person = await Person.findByPk(res.body.person.id);
-      expect(person!.document).toBe('V11111111');
+      expect(person!.document).toBe('11111111');
     });
 
-    it('should store document as provided for Extranjero', async () => {
+    it('should store only digits for Extranjero (strips an E prefix)', async () => {
       const structure = await createAcademicStructure();
       const payload = createEnrollmentPayload(structure, { documentType: 'Extranjero', document: 'E22222222' });
       const res = await agent
@@ -135,7 +135,32 @@ describe('Enrollment Form - Data Type Validation', () => {
         .expect(201);
 
       const person = await Person.findByPk(res.body.person.id);
-      expect(person!.document).toBe('E22222222');
+      expect(person!.document).toBe('22222222');
+    });
+
+    it('should store only digits for guardian documents too', async () => {
+      const structure = await createAcademicStructure();
+      const payload = createEnrollmentPayload(structure);
+      const motherDigits = payload.mother.document;
+      payload.mother = { ...payload.mother, document: `V-${motherDigits}` };
+
+      await agent.post('/api/inscriptions/register').send(payload).expect(201);
+
+      const profile = await GuardianProfile.findOne({ where: { document: motherDigits } });
+      expect(profile).not.toBeNull();
+    });
+
+    it('should normalize the document when a person is edited', async () => {
+      const structure = await createAcademicStructure();
+      const res = await agent
+        .post('/api/inscriptions/register')
+        .send(createEnrollmentPayload(structure))
+        .expect(201);
+
+      const person = await Person.findByPk(res.body.person.id);
+      await person!.update({ document: 'V33333333' });
+      await person!.reload();
+      expect(person!.document).toBe('33333333');
     });
 
     it('should not add prefix for Pasaporte', async () => {
@@ -149,20 +174,22 @@ describe('Enrollment Form - Data Type Validation', () => {
       expect(person!.document).toBe('AB123456');
     });
 
-    it('should auto-generate document for Cedula Escolar', async () => {
+    it('should auto-generate a digits-only document for Cedula Escolar', async () => {
       const structure = await createAcademicStructure();
+      const payload = createEnrollmentPayload(structure, {
+        documentType: 'Cedula Escolar',
+        document: '',
+        nationality: 'Venezolano',
+      });
       const res = await agent
         .post('/api/inscriptions/register')
-        .send(createEnrollmentPayload(structure, {
-          documentType: 'Cedula Escolar',
-          document: '',
-          nationality: 'Venezolano',
-        }))
+        .send(payload)
         .expect(201);
 
       const person = await Person.findByPk(res.body.person.id);
       expect(person!.documentType).toBe('Cedula Escolar');
-      expect(person!.document).toMatch(/^V/); // starts with V for Venezolano nationality
+      // birth order (1) + 2-digit birth year (10) + mother's document, no letter
+      expect(person!.document).toBe(`110${payload.mother.document}`);
     });
 
     it('should store pathology correctly (text value)', async () => {

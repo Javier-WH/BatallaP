@@ -8,6 +8,7 @@ import { generateTemplate, previewBulkEnrollment, processBulkEnrollment, Process
 import { registerAndEnrollStudent, normalizeEscolaridad } from '@/services/studentEnrollmentService';
 import { generateEnrollmentReport } from '@/services/enrollmentReportService';
 import { Person, Matriculation } from '@/models/index';
+import { normalizeDocumentNumber } from '@/utils/documentNumber';
 
 // Bulk enrollment is an "Inscribir" operation — Admin/Master only, matching
 // the frontend route protection on /admin/inscribir-estudiante.
@@ -80,7 +81,7 @@ export const retrySingleRow = async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, message: 'Payload es requerido' });
     }
 
-    const doc = typeof payload.document === 'string' ? payload.document.trim() : '';
+    const doc = typeof payload.document === 'string' ? normalizeDocumentNumber(payload.documentType, payload.document) : '';
 
     if (doc) {
       const existingPerson = await Person.findOne({ where: { document: doc } });
