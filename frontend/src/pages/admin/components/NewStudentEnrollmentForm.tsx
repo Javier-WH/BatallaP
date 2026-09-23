@@ -97,6 +97,12 @@ const guardianLabels: Record<GuardianKey, string> = {
   representative: 'el representante'
 };
 
+// Auto-inserts the hyphen while typing/pasting: 04121234567 → 0412-1234567
+const formatPhoneInput = (value: string | undefined): string => {
+  const digits = (value ?? '').replace(/\D/g, '').slice(0, 11);
+  return digits.length > 4 ? `${digits.slice(0, 4)}-${digits.slice(4)}` : digits;
+};
+
 const mapProfileToGuardianForm = (profile: GuardianProfileResponse): GuardianData => ({
   firstName: profile.firstName,
   lastName: profile.lastName,
@@ -590,7 +596,7 @@ const NewStudentEnrollmentForm: React.FC<NewStudentEnrollmentFormProps> = ({
       file.preview = await getBase64(file.originFileObj as RcFile);
     }
 
-    let url = file.url || (file.preview as string);
+    const url = file.url || (file.preview as string);
     // url is already relative or base64, no need to prefix with backend host
 
     setPreviewImage(url);
@@ -866,7 +872,7 @@ const NewStudentEnrollmentForm: React.FC<NewStudentEnrollmentFormProps> = ({
                         addonBefore={prefix}
                         onChange={(e) => {
                           if (docType === 'Venezolano' || docType === 'Extranjero' || docType === 'Cedula Escolar') {
-                            let val = e.target.value.replace(/^[VE]-/, '').replace(/[^0-9]/g, '');
+                            const val = e.target.value.replace(/^[VE]-/, '').replace(/[^0-9]/g, '');
                             newStudentForm.setFieldValue('document', val);
                           }
                         }}
@@ -1269,12 +1275,12 @@ const NewStudentEnrollmentForm: React.FC<NewStudentEnrollmentFormProps> = ({
                 </Row>
                 <Row gutter={16}>
                   <Col span={12}>
-                    <Form.Item name={['mother', 'whatsapp']} label="WhatsApp / Teléfono" rules={motherFieldsRequired ? [{ required: true }, { pattern: /^(04|02)\d{2}-\d{7}$/, message: 'Formato: 04XX-XXXXXXX o 02XX-XXXXXXX' }] : [{ pattern: /^(04|02)\d{2}-\d{7}$/, message: 'Formato: 04XX-XXXXXXX o 02XX-XXXXXXX' }]}>
+                    <Form.Item name={['mother', 'whatsapp']} label="WhatsApp / Teléfono" normalize={formatPhoneInput} rules={motherFieldsRequired ? [{ required: true }, { pattern: /^(04|02)\d{2}-\d{7}$/, message: 'Formato: 04XX-XXXXXXX o 02XX-XXXXXXX' }] : [{ pattern: /^(04|02)\d{2}-\d{7}$/, message: 'Formato: 04XX-XXXXXXX o 02XX-XXXXXXX' }]}>
                       <Input />
                     </Form.Item>
                   </Col>
                   <Col span={12}>
-                    <Form.Item name={['mother', 'phone2']} label="Teléfono secundario" rules={[{ pattern: /^(04|02)\d{2}-\d{7}$/, message: 'Formato: 04XX-XXXXXXX o 02XX-XXXXXXX' }]}>
+                    <Form.Item name={['mother', 'phone2']} label="Teléfono secundario" normalize={formatPhoneInput} rules={[{ pattern: /^(04|02)\d{2}-\d{7}$/, message: 'Formato: 04XX-XXXXXXX o 02XX-XXXXXXX' }]}>
                       <Input placeholder="Opcional" />
                     </Form.Item>
                   </Col>
@@ -1347,12 +1353,12 @@ const NewStudentEnrollmentForm: React.FC<NewStudentEnrollmentFormProps> = ({
                 </Row>
                 <Row gutter={16}>
                   <Col span={12}>
-                    <Form.Item name={['father', 'whatsapp']} label="WhatsApp / Teléfono" rules={fatherFieldsRequired ? [{ required: true }, { pattern: /^(04|02)\d{2}-\d{7}$/, message: 'Formato: 04XX-XXXXXXX o 02XX-XXXXXXX' }] : [{ pattern: /^(04|02)\d{2}-\d{7}$/, message: 'Formato: 04XX-XXXXXXX o 02XX-XXXXXXX' }]}>
+                    <Form.Item name={['father', 'whatsapp']} label="WhatsApp / Teléfono" normalize={formatPhoneInput} rules={fatherFieldsRequired ? [{ required: true }, { pattern: /^(04|02)\d{2}-\d{7}$/, message: 'Formato: 04XX-XXXXXXX o 02XX-XXXXXXX' }] : [{ pattern: /^(04|02)\d{2}-\d{7}$/, message: 'Formato: 04XX-XXXXXXX o 02XX-XXXXXXX' }]}>
                       <Input />
                     </Form.Item>
                   </Col>
                   <Col span={12}>
-                    <Form.Item name={['father', 'phone2']} label="Teléfono secundario" rules={[{ pattern: /^(04|02)\d{2}-\d{7}$/, message: 'Formato: 04XX-XXXXXXX o 02XX-XXXXXXX' }]}>
+                    <Form.Item name={['father', 'phone2']} label="Teléfono secundario" normalize={formatPhoneInput} rules={[{ pattern: /^(04|02)\d{2}-\d{7}$/, message: 'Formato: 04XX-XXXXXXX o 02XX-XXXXXXX' }]}>
                       <Input placeholder="Opcional" />
                     </Form.Item>
                   </Col>
@@ -1433,12 +1439,12 @@ const NewStudentEnrollmentForm: React.FC<NewStudentEnrollmentFormProps> = ({
                   </Row>
                   <Row gutter={16}>
                     <Col span={12}>
-                      <Form.Item name={['representative', 'whatsapp']} label="WhatsApp / Teléfono" rules={representativeFieldsRequired ? [{ required: true }, { pattern: /^(04|02)\d{2}-\d{7}$/, message: 'Formato: 04XX-XXXXXXX o 02XX-XXXXXXX' }] : [{ pattern: /^(04|02)\d{2}-\d{7}$/, message: 'Formato: 04XX-XXXXXXX o 02XX-XXXXXXX' }]}>
+                      <Form.Item name={['representative', 'whatsapp']} label="WhatsApp / Teléfono" normalize={formatPhoneInput} rules={representativeFieldsRequired ? [{ required: true }, { pattern: /^(04|02)\d{2}-\d{7}$/, message: 'Formato: 04XX-XXXXXXX o 02XX-XXXXXXX' }] : [{ pattern: /^(04|02)\d{2}-\d{7}$/, message: 'Formato: 04XX-XXXXXXX o 02XX-XXXXXXX' }]}>
                         <Input />
                       </Form.Item>
                     </Col>
                     <Col span={12}>
-                      <Form.Item name={['representative', 'phone2']} label="Teléfono secundario" rules={[{ pattern: /^(04|02)\d{2}-\d{7}$/, message: 'Formato: 04XX-XXXXXXX o 02XX-XXXXXXX' }]}>
+                      <Form.Item name={['representative', 'phone2']} label="Teléfono secundario" normalize={formatPhoneInput} rules={[{ pattern: /^(04|02)\d{2}-\d{7}$/, message: 'Formato: 04XX-XXXXXXX o 02XX-XXXXXXX' }]}>
                         <Input placeholder="Opcional" />
                       </Form.Item>
                     </Col>
