@@ -600,6 +600,20 @@ input[type=number] {
   to { opacity: 1; }
 }
 
+/* Mobile browsers count their own toolbars inside 100vh, which pushes the
+   bottom of the app shell off-screen. dvh tracks the actually visible area. */
+@supports (height: 100dvh) {
+  .app-viewport-height {
+    height: 100dvh !important;
+  }
+}
+
+/* Matriculation bulk bar: the controls wrapper is transparent on desktop so
+   its children keep participating in the parent flex row. */
+.bulk-action-controls {
+  display: contents;
+}
+
 .control-estudios-responsive,
 .control-estudios-responsive .ce-module-content,
 .control-estudios-responsive .ce-page {
@@ -939,13 +953,87 @@ input[type=number] {
     width: 100% !important;
   }
 
+  /* Mobile: no reserved space when nothing is selected, and a single compact
+     row (horizontally scrollable) instead of wrapping into 3 tall rows. */
   .control-estudios-responsive .ce-matriculation-page .bulk-action-bar {
     height: auto !important;
-    min-height: 56px;
+    min-height: 0;
   }
 
-  .control-estudios-responsive .ce-matriculation-page .bulk-action-bar .flex {
-    flex-wrap: wrap;
+  .control-estudios-responsive .ce-matriculation-page .bulk-action-bar .ant-card-body {
+    padding: 4px 32px 4px 8px !important;
+  }
+
+  /* Row 1: student name/counter (full width, ellipsis).
+     Row 2: controls in a single horizontally-scrollable line. */
+  .control-estudios-responsive .ce-matriculation-page .bulk-action-row {
+    flex-direction: column;
+    align-items: stretch !important;
+    gap: 2px !important;
+  }
+
+  .control-estudios-responsive .ce-matriculation-page .bulk-action-info {
+    width: 100%;
+    min-width: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    overflow: hidden;
+  }
+
+  .control-estudios-responsive .ce-matriculation-page .bulk-action-info > div,
+  .control-estudios-responsive .ce-matriculation-page .bulk-action-info span {
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .control-estudios-responsive .ce-matriculation-page .bulk-action-info > div.flex-col {
+    flex-direction: row !important;
+    align-items: baseline;
+    gap: 6px;
+  }
+
+  .control-estudios-responsive .ce-matriculation-page .bulk-action-avatar {
+    display: none !important;
+  }
+
+  .control-estudios-responsive .ce-matriculation-page .bulk-action-controls {
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .control-estudios-responsive .ce-matriculation-page .bulk-action-controls::-webkit-scrollbar {
+    display: none;
+  }
+
+  .control-estudios-responsive .ce-matriculation-page .bulk-action-controls > div {
+    flex: 0 0 auto !important;
+    padding-left: 8px !important;
+  }
+
+  .control-estudios-responsive .ce-matriculation-page .bulk-action-controls > div:first-child {
+    padding-left: 0 !important;
+  }
+
+  .control-estudios-responsive .ce-matriculation-page .bulk-action-fields {
+    width: 240px;
+    gap: 6px !important;
+  }
+
+  .control-estudios-responsive .ce-matriculation-page .bulk-action-controls .ant-btn,
+  .control-estudios-responsive .ce-matriculation-page .bulk-action-controls .ant-select {
+    width: auto !important;
+  }
+
+  .control-estudios-responsive .ce-matriculation-page .bulk-action-fields .ant-select {
+    width: 100% !important;
   }
 
   .control-estudios-responsive .ce-settings-page > .animate-card {

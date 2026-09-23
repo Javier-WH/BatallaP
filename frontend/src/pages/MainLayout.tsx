@@ -193,7 +193,7 @@ const MainLayout: React.FC = () => {
   );
 
   return (
-    <Layout className="h-screen overflow-hidden theme-page-bg">
+    <Layout className="h-screen app-viewport-height overflow-hidden theme-page-bg">
       {/* Mobile overlay backdrop */}
       {mobileSidebarOpen && (
         <div
@@ -299,7 +299,7 @@ const MainLayout: React.FC = () => {
         </div>
       </Sider>
 
-      <Layout className="h-screen flex flex-col min-w-0">
+      <Layout className="h-screen app-viewport-height flex flex-col min-w-0">
         <Header
           className="px-6 h-16 flex items-center justify-between z-50 shrink-0"
           style={{

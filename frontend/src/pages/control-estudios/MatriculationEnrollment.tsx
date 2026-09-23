@@ -343,7 +343,8 @@ const MatriculationEnrollment: React.FC = () => {
     const updateScrollY = () => {
       // Measure the flex-1 grid wrapper so the table fills all remaining vertical space
       const wrapperHeight = gridWrapperRef.current?.getBoundingClientRect().height ?? 0;
-      setScrollY(Math.max(200, Math.floor(wrapperHeight) - 2));
+      // Never exceed the wrapper: it is overflow-hidden, so any excess would hide the last rows
+      setScrollY(Math.max(120, Math.floor(wrapperHeight) - 2));
     };
 
     updateScrollY();
@@ -1296,11 +1297,12 @@ const MatriculationEnrollment: React.FC = () => {
   const filteredData = useMemo(() => {
     return matriculations.filter(item => {
       if (searchValue) {
-        const search = searchValue.toLowerCase();
+        // Búsqueda insensible a tildes y mayúsculas/minúsculas
+        const search = normalizeRelationship(searchValue);
         const matches =
-          item.student.firstName.toLowerCase().includes(search) ||
-          item.student.lastName.toLowerCase().includes(search) ||
-          item.student.document.includes(search);
+          normalizeRelationship(item.student.firstName).includes(search) ||
+          normalizeRelationship(item.student.lastName).includes(search) ||
+          normalizeRelationship(item.student.document).includes(search);
         if (!matches) return false;
       }
       if (filterGrade && item.gradeId !== filterGrade) return false;
@@ -1954,12 +1956,12 @@ const MatriculationEnrollment: React.FC = () => {
                 }}
               />
 
-              <div className="flex items-center gap-6 h-full">
+              <div className="bulk-action-row flex items-center gap-6 h-full">
                 {/* Section 1: Counter / Student Info */}
-                <div className="flex items-center gap-2 pr-4 border-r border-slate-300/50 min-w-max">
+                <div className="bulk-action-info flex items-center gap-2 pr-4 border-r border-slate-300/50 min-w-max">
                   {selectedRowKeys.length === 1 ? (
                     <>
-                      <div className="flex items-center justify-center w-8 h-8 rounded-full bg-blue-600 text-white shadow-sm">
+                      <div className="bulk-action-avatar flex items-center justify-center w-8 h-8 rounded-full bg-blue-600 text-white shadow-sm">
                         <UserOutlined />
                       </div>
                       <div className="flex flex-col justify-center">
@@ -1990,10 +1992,13 @@ const MatriculationEnrollment: React.FC = () => {
                   )}
                 </div>
 
+                {/* Controls wrapper: display:contents on desktop (no layout change),
+                    its own horizontally-scrollable row on mobile */}
+                <div className="bulk-action-controls">
                 {/* Section 2: Actions / Inputs */}
                 <div className="flex-1 flex gap-4 items-center">
                   {viewStatus === 'pending' ? (
-                    <div className="grid grid-cols-2 gap-4 flex-1">
+                    <div className="bulk-action-fields grid grid-cols-2 gap-4 flex-1">
                       <div className="flex flex-col gap-0.5">
                         <span className="text-[9px] font-bold uppercase tracking-wider text-slate-500">Asignar Sección</span>
                         <Tooltip title={hasMixedGrades ? 'Seleccione estudiantes del mismo grado' : undefined}>
@@ -2159,6 +2164,7 @@ const MatriculationEnrollment: React.FC = () => {
                     </Button>
                   </div>
                 )}
+                </div>
               </div>
             </Card>
           )}
