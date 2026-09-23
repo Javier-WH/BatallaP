@@ -204,13 +204,36 @@ El campo `Inscription.withdrawnAt` es la fuente de verdad para excluir
 estudiantes del cierre (R10). Para mantenerlo consistente con el estado de
 la matrícula:
 
-- **`withdrawInscription`** (`POST /api/inscriptions/:id/withdraw`):
-  setea `withdrawnAt = new Date()` al retirar.
-- **`reactivateInscription`** (`POST /api/inscriptions/:id/reactivate`):
-  resetea `withdrawnAt = null` al reactivar un estudiante retirado.
+- **Retirar** (`POST /api/matriculations/:id/withdraw` o `/api/inscriptions/:id/withdraw`):
+  setea `withdrawnAt = new Date()` al retirar (si el estudiante ya tiene `Inscription`).
+- **Reactivar** (`POST /api/matriculations/:id/reactivate` o `/api/inscriptions/:id/reactivate`):
+  resetea `withdrawnAt = null` y deja al estudiante en "No Matriculados" sin sección.
 - **`enrollMatriculatedStudent`** (`POST /api/matriculations/:id/enroll`):
-  resetea `withdrawnAt = null` al reinscribir un estudiante cuya inscripción
-  existente estaba retirada.
+  resetea `withdrawnAt = null` al matricular reutilizando una inscripción existente.
+  Un retirado debe reactivarse antes de matricularse.
+
+### R15. Estudiantes inscritos sin sección ("No Matriculados")
+Lo único que importa es **en qué período está inscrito** el estudiante:
+
+- **Período que se cierra**: si hay estudiantes inscritos sin sección
+  (`Matriculation.status='pending'` en ese período), la **validación falla** y
+  lista a cada estudiante (nombre + cédula, hasta 25). No se puede ejecutar el
+  cierre hasta que Control de Estudios los matricule o Administración los retire.
+  Los retirados no bloquean.
+- **Período siguiente** (preinscripciones para el año que viene): no bloquean y
+  el cierre no los toca; siguen en "No Matriculados" del período en que se inscribieron.
+- **Estudiante del período actual con preinscripción en el siguiente**: prevalece
+  el resultado del cierre — su `Matriculation` del período siguiente se actualiza
+  (grado, sección, escolaridad) y queda matriculada y vinculada a la nueva
+  `Inscription`. Si Administración había retirado esa preinscripción, se respeta
+  el retiro (la nueva inscripción queda con `withdrawnAt`).
+
+La estructura del período actual se copia al siguiente antes de migrar
+estudiantes (`clonePeriodStructure`) y las secciones son compartidas entre
+grados ("SECCIÓN A" es la misma en todos los años), por lo que el promovido
+conserva su sección. Como salvaguarda, si aun así la sección no existiera en el
+grado destino, el promovido se crea como inscrito no matriculado — nunca como
+matriculado sin sección.
 
 Esto evita que un estudiante retirado y luego reactivado quede excluido
 del cierre por un `withdrawnAt` residual.

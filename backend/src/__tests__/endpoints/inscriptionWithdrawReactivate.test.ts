@@ -9,6 +9,36 @@ import {
 import { Inscription, Matriculation, PersonRole } from '@/models/index';
 import { PeriodClosurePreview } from '@/services/periodClosurePreview';
 
+const enrollPayload = (sectionId: number | null | undefined) => ({
+  firstName: 'Test',
+  lastName: 'Student',
+  documentType: 'Venezolano',
+  document: '12345678',
+  gender: 'M',
+  birthdate: '2000-01-01',
+  birthState: 'GUÁRICO',
+  birthMunicipality: 'JOSÉ TADEO MONAGAS',
+  birthParish: 'Altagracia de Orituco',
+  residenceState: 'Guárico',
+  residenceMunicipality: 'José Tadeo Monagas',
+  residenceParish: 'Altagracia de Orituco',
+  mother: {
+    firstName: 'Madre',
+    lastName: 'Test',
+    documentType: 'Venezolano',
+    document: '99999999',
+    phone: '0000000000',
+    email: 'no@email.com',
+    residenceState: 'GUÁRICO',
+    residenceMunicipality: 'JOSÉ TADEO MONAGAS',
+    residenceParish: 'ALTAGRACIA DE ORITUCO',
+    address: 'N/A'
+  },
+  representativeType: 'mother',
+  ...(sectionId !== undefined ? { sectionId } : {}),
+  escolaridad: 'regular'
+});
+
 describe('Inscription Withdraw/Reactivate — withdrawnAt lifecycle', () => {
   let agent: any;
   let structure: any;
@@ -69,8 +99,7 @@ describe('Inscription Withdraw/Reactivate — withdrawnAt lifecycle', () => {
     expect(refreshedMat!.status).toBe('withdrawn');
   });
 
-  it('T2: reactivate resets withdrawnAt to null', async () => {
-    // First withdraw
+  it('T2: reactivate resets withdrawnAt and sends the student to No Matriculados (no section)', async () => {
     await agent
       .post(`/api/inscriptions/${inscription.id}/withdraw`)
       .expect(200);
@@ -78,64 +107,36 @@ describe('Inscription Withdraw/Reactivate — withdrawnAt lifecycle', () => {
     const withdrawn = await Inscription.findByPk(inscription.id);
     expect(withdrawn!.withdrawnAt).not.toBeNull();
 
-    // Now reactivate
+    // No section required: Control de Estudios decides later where to place them
     const res = await agent
       .post(`/api/inscriptions/${inscription.id}/reactivate`)
-      .send({ sectionId: structure.section.id })
       .expect(200);
 
     expect(res.body.message).toContain('reactivado');
 
     const refreshed = await Inscription.findByPk(inscription.id);
     expect(refreshed!.withdrawnAt).toBeNull();
-    expect(refreshed!.sectionId).toBe(structure.section.id);
+    expect(refreshed!.sectionId).toBeNull();
 
     const refreshedMat = await Matriculation.findOne({ where: { inscriptionId: inscription.id } });
-    expect(refreshedMat!.status).toBe('completed');
+    expect(refreshedMat!.status).toBe('pending');
+    expect(refreshedMat!.sectionId).toBeNull();
   });
 
-  it('T3: enrollMatriculatedStudent clears withdrawnAt when reusing an existing withdrawn inscription', async () => {
-    // Mark the inscription as withdrawn directly
-    await inscription.update({ withdrawnAt: new Date() });
-    await matriculation.update({ status: 'withdrawn', sectionId: null });
+  it('T3: a withdrawn student must be reactivated before being matriculated; matriculating then reuses the inscription', async () => {
+    await agent.post(`/api/inscriptions/${inscription.id}/withdraw`).expect(200);
 
-    const withdrawn = await Inscription.findByPk(inscription.id);
-    expect(withdrawn!.withdrawnAt).not.toBeNull();
+    // Direct matriculation of a withdrawn student is rejected
+    await agent
+      .post(`/api/matriculations/${matriculation.id}/enroll`)
+      .send(enrollPayload(structure.section.id))
+      .expect(400);
 
-    // Re-enroll the student via enrollMatriculatedStudent endpoint
-    // This reuses the existing inscription and should clear withdrawnAt
+    await agent.post(`/api/inscriptions/${inscription.id}/reactivate`).expect(200);
+
     const res = await agent
       .post(`/api/matriculations/${matriculation.id}/enroll`)
-      .send({
-        firstName: 'Test',
-        lastName: 'Student',
-        documentType: 'Venezolano',
-        document: '12345678',
-        gender: 'M',
-        birthdate: '2000-01-01',
-        birthState: 'GUÁRICO',
-        birthMunicipality: 'JOSÉ TADEO MONAGAS',
-        birthParish: 'Altagracia de Orituco',
-        residenceState: 'Guárico',
-        residenceMunicipality: 'José Tadeo Monagas',
-        residenceParish: 'Altagracia de Orituco',
-        mother: {
-          firstName: 'Madre',
-          lastName: 'Test',
-          documentType: 'Venezolano',
-          document: '99999999',
-          phone: '0000000000',
-          email: 'no@email.com',
-          residenceState: 'GUÁRICO',
-          residenceMunicipality: 'JOSÉ TADEO MONAGAS',
-          residenceParish: 'ALTAGRACIA DE ORITUCO',
-          address: 'N/A'
-        },
-        representativeType: 'mother',
-        sectionId: structure.section.id,
-        escolaridad: 'regular'
-      });
-
+      .send(enrollPayload(structure.section.id));
     expect(res.status).toBe(200);
 
     const refreshed = await Inscription.findByPk(inscription.id);
@@ -144,26 +145,24 @@ describe('Inscription Withdraw/Reactivate — withdrawnAt lifecycle', () => {
 
     const refreshedMat = await Matriculation.findOne({ where: { inscriptionId: inscription.id } });
     expect(refreshedMat!.status).toBe('completed');
+    expect(refreshedMat!.sectionId).toBe(structure.section.id);
   });
 
-  it('T4: after reactivate, the student appears in the period closure preview', async () => {
-    // Withdraw
+  it('T4: after reactivate + matricular, the student appears in the period closure preview', async () => {
     await agent
       .post(`/api/inscriptions/${inscription.id}/withdraw`)
       .expect(200);
 
-    // Preview should NOT include the withdrawn student
     const previewBefore = await PeriodClosurePreview.calculatePreview(structure.period.id);
     const foundBefore = previewBefore.some(p => p.inscription.student?.id === person.id);
     expect(foundBefore).toBe(false);
 
-    // Reactivate
+    await agent.post(`/api/inscriptions/${inscription.id}/reactivate`).expect(200);
     await agent
-      .post(`/api/inscriptions/${inscription.id}/reactivate`)
-      .send({ sectionId: structure.section.id })
+      .post(`/api/matriculations/${matriculation.id}/enroll`)
+      .send(enrollPayload(structure.section.id))
       .expect(200);
 
-    // Preview should now include the reactivated student
     const previewAfter = await PeriodClosurePreview.calculatePreview(structure.period.id);
     const foundAfter = previewAfter.some(p => p.inscription.student?.id === person.id);
     expect(foundAfter).toBe(true);
@@ -229,5 +228,110 @@ describe('Inscription Withdraw/Reactivate — withdrawnAt lifecycle', () => {
     await otherAgent.post(`/api/inscriptions/${inscription.id}/subjects`).send({}).expect(403);
     await otherAgent.delete(`/api/inscriptions/${inscription.id}/subjects/1`).expect(403);
     await otherAgent.post(`/api/inscriptions/${inscription.id}/withdraw`).expect(403);
+  });
+});
+
+describe('Regla de negocio: matriculado ⇒ tiene sección; Retirar/Reactivar solo Administración', () => {
+  let adminAgent: any;
+  let ceAgent: any;
+  let structure: any;
+  let student: any;
+  let pendingMatriculation: any;
+
+  const loginAs = async (username: string, roleName: Parameters<typeof createTestRole>[0]) => {
+    const { person } = await createTestUser({ username });
+    const role = await createTestRole(roleName);
+    await PersonRole.create({ personId: person.id, roleId: role.id });
+    const a = request.agent(app);
+    await a.post('/api/auth/login').send({ username, password: 'password123' });
+    return a;
+  };
+
+  beforeEach(async () => {
+    adminAgent = await loginAs('admin_rule', 'Administrador');
+    ceAgent = await loginAs('ce_rule', 'Control de Estudios');
+    structure = await createAcademicStructure();
+
+    const { person } = await createTestUser({ username: 'student_rule', firstName: 'Test', lastName: 'Student' });
+    student = person;
+    // Inscrito (por Administración) pero aún no matriculado
+    pendingMatriculation = await Matriculation.create({
+      schoolPeriodId: structure.period.id,
+      gradeId: structure.grade.id,
+      sectionId: null,
+      personId: student.id,
+      status: 'pending',
+      escolaridad: 'regular',
+      hiddenFromControlEstudios: false
+    });
+  });
+
+  it('R1: matricular sin sección → 400 y el estudiante sigue en No Matriculados', async () => {
+    const res = await ceAgent
+      .post(`/api/matriculations/${pendingMatriculation.id}/enroll`)
+      .send(enrollPayload(undefined))
+      .expect(400);
+    expect(res.body.error).toMatch(/sección/i);
+
+    const refreshed = await Matriculation.findByPk(pendingMatriculation.id);
+    expect(refreshed!.status).toBe('pending');
+    expect(await Inscription.count({ where: { personId: student.id } })).toBe(0);
+  });
+
+  it('R2: matricular con una sección que no pertenece al grado → 400', async () => {
+    const other = await createAcademicStructure({ periodId: structure.period.id });
+    await ceAgent
+      .post(`/api/matriculations/${pendingMatriculation.id}/enroll`)
+      .send(enrollPayload(other.section.id))
+      .expect(400);
+  });
+
+  it('R3: Control de Estudios matricula con sección válida → matriculado con sección', async () => {
+    await ceAgent
+      .post(`/api/matriculations/${pendingMatriculation.id}/enroll`)
+      .send(enrollPayload(structure.section.id))
+      .expect(201);
+
+    const refreshed = await Matriculation.findByPk(pendingMatriculation.id);
+    expect(refreshed!.status).toBe('completed');
+    expect(refreshed!.sectionId).toBe(structure.section.id);
+    const insc = await Inscription.findByPk(refreshed!.inscriptionId!);
+    expect(insc!.sectionId).toBe(structure.section.id);
+  });
+
+  it('R4: no se puede quitar la sección a un matriculado por PATCH (solo con Sacar de Matrícula)', async () => {
+    await ceAgent
+      .post(`/api/matriculations/${pendingMatriculation.id}/enroll`)
+      .send(enrollPayload(structure.section.id))
+      .expect(201);
+    const mat = await Matriculation.findByPk(pendingMatriculation.id);
+
+    await ceAgent.patch(`/api/inscriptions/${mat!.inscriptionId}`).send({ sectionId: null }).expect(400);
+    await ceAgent.patch(`/api/matriculations/${mat!.id}`).send({ sectionId: null }).expect(400);
+
+    const after = await Matriculation.findByPk(pendingMatriculation.id);
+    expect(after!.status).toBe('completed');
+    expect(after!.sectionId).toBe(structure.section.id);
+  });
+
+  it('R5: Administración puede retirar a un estudiante que nunca fue matriculado, y reactivarlo a No Matriculados', async () => {
+    await adminAgent.post(`/api/matriculations/${pendingMatriculation.id}/withdraw`).expect(200);
+    let refreshed = await Matriculation.findByPk(pendingMatriculation.id);
+    expect(refreshed!.status).toBe('withdrawn');
+    expect(refreshed!.sectionId).toBeNull();
+
+    // Retirado: no se le puede asignar sección hasta reactivarlo
+    await ceAgent.patch(`/api/matriculations/${pendingMatriculation.id}`).send({ sectionId: structure.section.id }).expect(400);
+
+    await adminAgent.post(`/api/matriculations/${pendingMatriculation.id}/reactivate`).expect(200);
+    refreshed = await Matriculation.findByPk(pendingMatriculation.id);
+    expect(refreshed!.status).toBe('pending');
+    expect(refreshed!.sectionId).toBeNull();
+  });
+
+  it('R6: Control de Estudios no puede retirar ni reactivar', async () => {
+    await ceAgent.post(`/api/matriculations/${pendingMatriculation.id}/withdraw`).expect(403);
+    await pendingMatriculation.update({ status: 'withdrawn' });
+    await ceAgent.post(`/api/matriculations/${pendingMatriculation.id}/reactivate`).expect(403);
   });
 });

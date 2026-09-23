@@ -9,6 +9,15 @@
 
 El flujo típico es **Matriculation → Inscription**. También existe una vía directa (quick-register) para administradores.
 
+### Vocabulario y reglas (ver `rules/BUSINESS_MODEL.md` §2.3)
+
+- **Inscribir** (Admin) → `Matriculation.status='pending'` ("No Matriculados").
+- **Matricular** (Control de Estudios) → asignar a una **sección**: `POST /api/matriculations/:id/enroll` exige `sectionId` válido. No existe matriculado sin sección.
+- **Sacar de Matrícula** (CE) → `POST /api/inscriptions/:id/unmatriculate`: vuelve a `pending`, sin sección.
+- **Retirar** (Admin) → `POST /api/matriculations/:id/withdraw`: también para quienes nunca fueron matriculados.
+- **Reactivar** (Admin) → `POST /api/matriculations/:id/reactivate`: vuelve a "No Matriculados" sin sección; CE decide dónde matricularlo.
+- **Inscrito / No Inscrito** (Admin) → marca de visibilidad para Control de Estudios (`hiddenFromControlEstudios`), no cambia el estado académico.
+
 ---
 
 ## Flujo 1: Matricular → Inscribir (estándar)

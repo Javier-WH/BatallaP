@@ -85,6 +85,8 @@ Los namespaces están registrados en [`backend/src/app.ts`](../backend/src/app.t
 | DELETE | `/:id` | Eliminar inscripción. |
 | POST | `/:id/subjects` | Agregar materia manualmente. |
 | DELETE | `/:id/subjects/:subjectId` | Remover materia. |
+| POST | `/:id/unmatriculate` | **Sacar de Matrícula** (CE/Admin/Master): vuelve a `pending` y quita la sección; conserva notas y materias. |
+| POST | `/:id/withdraw` · `/:id/reactivate` | Equivalentes a `/api/matriculations/:id/withdraw|reactivate` pero por id de inscripción (solo estudiantes que ya tienen `Inscription`). Reactivar ya no recibe `sectionId`. |
 
 ### Inscripción masiva – `/api/inscriptions/bulk` (`bulkEnrollmentRoutes.ts`)
 
@@ -104,8 +106,13 @@ Ver [`flows/enrollment.md`](./flows/enrollment.md).
 | GET | `/` | Listar matrículas. Paginación opt-in vía `page`/`pageSize`. |
 | GET | `/stats` | Conteo agregado sin descargar filas. |
 | GET | `/:id` | Detalle. |
-| PATCH | `/:id` | Actualizar matrícula. |
-| POST | `/:id/enroll` | Convertir matrícula en inscripción formal. |
+| PATCH | `/:id` | Actualizar matrícula. Si está matriculado (`completed`) no acepta `sectionId: null` y valida que la sección pertenezca al grado; si está retirado no acepta sección. |
+| POST | `/:id/enroll` | **Matricular** (CE/Admin/Master): asigna el estudiante inscrito a una sección y crea/reutiliza la `Inscription`. **Exige `sectionId` válido** para el grado/período (400 si falta o no pertenece). Rechaza retirados (deben reactivarse primero). |
+| POST | `/:id/withdraw` | **Retirar** (Admin/Master): `status='withdrawn'`, sección `null`. Funciona también para estudiantes nunca matriculados. No borra datos. |
+| POST | `/:id/reactivate` | **Reactivar** (Admin/Master): vuelve a `pending` sin sección ("No Matriculados"). Solo en el período activo. |
+| PATCH | `/:id/visibility` · POST `/bulk-visibility` | Marca de Administración «Inscrito / No Inscrito» (`hiddenFromControlEstudios`): oculta estudiantes a Control de Estudios (p. ej. pagos pendientes). |
+
+> Invariante: un estudiante matriculado (`completed`) siempre tiene sección. La migración `20261122120000-enforce-matriculated-has-section` repara datos previos sin borrar filas.
 
 ## 📄 Reportes de inscripción – `/api/enrollment-reports` (`enrollmentReportRoutes.ts`)
 

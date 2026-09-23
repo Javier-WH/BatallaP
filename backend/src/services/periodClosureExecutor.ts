@@ -150,6 +150,38 @@ export class PeriodClosureExecutor {
       errors.push('El período de revisión debe estar completado antes de ejecutar el cierre de período');
     }
 
+    // Business rule: the year can't be closed while a student of THIS period is
+    // inscribed but not matriculated (no section). Control de Estudios must
+    // matricular them, or Administración must retirar them. Pre-inscriptions
+    // that belong to the next period are not affected (they simply stay in
+    // "No Matriculados" of that period).
+    const unplacedStudents = await Matriculation.findAll({
+      where: {
+        schoolPeriodId,
+        [Op.or]: [
+          { status: 'pending' },
+          { status: 'completed', sectionId: null },
+        ],
+      },
+      include: [{ model: Person, as: 'student', attributes: ['firstName', 'lastName', 'document'] }],
+      order: [['id', 'ASC']],
+    });
+    if (unplacedStudents.length > 0) {
+      errors.push(
+        `Hay ${unplacedStudents.length} estudiante(s) inscrito(s) en ${period.name} sin sección (No Matriculados). ` +
+        'Antes del cierre, Control de Estudios debe matricularlos en una sección o Administración debe retirarlos.'
+      );
+      const MAX_LISTED = 25;
+      for (const m of unplacedStudents.slice(0, MAX_LISTED)) {
+        const s = (m as Matriculation & { student?: Person }).student;
+        const name = s ? `${s.firstName} ${s.lastName}`.trim() : `Matrícula #${m.id}`;
+        errors.push(`• ${name}${s?.document ? ` — Cédula: ${s.document}` : ''}: inscrito sin sección.`);
+      }
+      if (unplacedStudents.length > MAX_LISTED) {
+        errors.push(`• …y ${unplacedStudents.length - MAX_LISTED} más (filtre "No Matriculados" en la vista de Matrícula).`);
+      }
+    }
+
     const studentGroups = await loadClosureStudentGroups(schoolPeriodId);
     const mpOnlyStudents = studentGroups.filter(group => group.isPendingOnly);
     for (const group of mpOnlyStudents) {
@@ -376,19 +408,40 @@ export class PeriodClosureExecutor {
           // Create the Matriculation record so the promoted student appears
           // in the matriculation list. The unique constraint on
           // (schoolPeriodId, personId) means we use findOrCreate to be safe.
-          await Matriculation.findOrCreate({
+          // Business rule: "matriculado" always means "has a section". If the
+          // section doesn't carry over to the new grade, the student stays
+          // inscribed but in "No Matriculados" for Control de Estudios to place.
+          const [nextMatriculation, created] = await Matriculation.findOrCreate({
             where: { schoolPeriodId: nextPeriod.id, personId: inscription.personId },
             defaults: {
               schoolPeriodId: nextPeriod.id,
               gradeId: targetGradeId,
               sectionId: finalSectionId ?? null,
               personId: inscription.personId,
-              status: 'completed',
+              status: finalSectionId ? 'completed' : 'pending',
               escolaridad: escolaridadStatus,
               inscriptionId: newInscription.id,
             },
             transaction,
           });
+
+          // The student already had a pre-inscription for the next period.
+          // The promotion result (grade/section/escolaridad) takes precedence;
+          // a pre-inscription that Administración withdrew stays withdrawn.
+          if (!created) {
+            if (nextMatriculation.status === 'withdrawn') {
+              await newInscription.update({ sectionId: null, withdrawnAt: startedAt } as any, { transaction });
+              await nextMatriculation.update({ inscriptionId: newInscription.id }, { transaction });
+            } else {
+              await nextMatriculation.update({
+                gradeId: targetGradeId,
+                sectionId: finalSectionId ?? null,
+                status: finalSectionId ? 'completed' : 'pending',
+                escolaridad: escolaridadStatus,
+                inscriptionId: newInscription.id,
+              }, { transaction });
+            }
+          }
 
           stats.newInscriptions++;
 

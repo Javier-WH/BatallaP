@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { Op, Transaction, QueryTypes, literal, fn, col } from 'sequelize';
-import { Inscription, Person, Role, Subject, PeriodGrade, InscriptionSubject, SchoolPeriod, Grade, Section, Contact, PersonRole, PersonResidence, StudentGuardian, Matriculation, GuardianProfile, StudentPreviousSchool, Plantel, EnrollmentAnswer, EnrollmentQuestion, EnrollmentDocument, Term, SubjectTermGrade, InscriptionGroupTermChoice, SubjectGroup } from '../models';
+import { Inscription, Person, Role, Subject, PeriodGrade, PeriodGradeSection, InscriptionSubject, SchoolPeriod, Grade, Section, Contact, PersonRole, PersonResidence, StudentGuardian, Matriculation, GuardianProfile, StudentPreviousSchool, Plantel, EnrollmentAnswer, EnrollmentQuestion, EnrollmentDocument, Term, SubjectTermGrade, InscriptionGroupTermChoice, SubjectGroup } from '../models';
 import { changeGroupSubjectFromTerm, setGroupSubjectForTerm as setGroupSubjectForTermSvc } from '@/services/groupSubjectChoiceService';
 import {
   getSubjectOrderMapByGradeAndPeriod,
@@ -31,6 +31,28 @@ const deriveRepresentativeType = (guardians: Array<{ relationship?: unknown; isR
   if (relationship === 'grandparent' || relationship === 'abuelo') return 'grandparent';
   if (relationship === 'uncle_aunt' || relationship === 'tio') return 'uncle_aunt';
   return 'other';
+};
+
+/**
+ * Business rule: "matricular" = assign an inscribed student to a section.
+ * A matriculated student (Matriculation.status === 'completed') can never
+ * exist without a section, and the section must be configured for that
+ * grade in that school period.
+ */
+const isSectionValidForGrade = async (
+  schoolPeriodId: number,
+  gradeId: number,
+  sectionId: number | null | undefined,
+  transaction?: Transaction
+): Promise<boolean> => {
+  if (!sectionId) return false;
+  const periodGrade = await PeriodGrade.findOne({ where: { schoolPeriodId, gradeId }, transaction });
+  if (!periodGrade) return false;
+  const link = await PeriodGradeSection.findOne({
+    where: { periodGradeId: periodGrade.id, sectionId },
+    transaction
+  });
+  return !!link;
 };
 
 const normalizeEscolaridad = (value?: unknown): EscolaridadStatus => {
@@ -452,7 +474,26 @@ export const enrollMatriculatedStudent = async (req: Request, res: Response) => 
 
     if (matriculation.status === 'completed') {
       await t.rollback();
-      return res.status(400).json({ error: 'El estudiante ya fue inscrito' });
+      return res.status(400).json({ error: 'El estudiante ya está matriculado' });
+    }
+    if (matriculation.status === 'withdrawn') {
+      await t.rollback();
+      return res.status(400).json({ error: 'El estudiante está retirado; debe ser reactivado por Administración antes de matricularlo' });
+    }
+
+    // Matricular = asignar a una sección. Sin sección válida no hay matrícula.
+    {
+      const periodForCheck = req.body.schoolPeriodId || matriculation.schoolPeriodId;
+      const gradeForCheck = req.body.gradeId || matriculation.gradeId;
+      const sectionForCheck = req.body.sectionId ?? matriculation.sectionId;
+      if (!sectionForCheck) {
+        await t.rollback();
+        return res.status(400).json({ error: 'Debe asignar una sección para matricular al estudiante' });
+      }
+      if (!(await isSectionValidForGrade(periodForCheck, gradeForCheck, sectionForCheck, t))) {
+        await t.rollback();
+        return res.status(400).json({ error: 'La sección seleccionada no pertenece al grado del estudiante en este período' });
+      }
     }
 
     const person = matriculation.student;
@@ -718,7 +759,7 @@ export const enrollMatriculatedStudent = async (req: Request, res: Response) => 
       ]
     });
     res.status(201).json({
-      message: 'Estudiante inscrito exitosamente',
+      message: 'Estudiante matriculado exitosamente',
       matriculation: result,
       reportUuid
     });
@@ -1427,6 +1468,27 @@ export const updateInscription = async (req: Request, res: Response) => {
 
     const oldGradeId = inscription.gradeId;
 
+    // A matriculated student can't lose their section here (only via "Sacar de
+    // Matrícula") and any new grade/section combo must be valid.
+    if (sectionId !== undefined || gradeId !== undefined) {
+      const linkedMatriculation = await Matriculation.findOne({ where: { inscriptionId: id }, transaction: t });
+      if (linkedMatriculation?.status === 'completed') {
+        const nextGradeId = gradeId !== undefined ? gradeId : inscription.gradeId;
+        const nextSectionId = sectionId !== undefined ? sectionId : inscription.sectionId;
+        if (!nextSectionId) {
+          await t.rollback();
+          return res.status(400).json({ error: 'Un estudiante matriculado debe tener sección. Use "Sacar de Matrícula" para desasignarlo.' });
+        }
+        if (!(await isSectionValidForGrade(inscription.schoolPeriodId, nextGradeId, nextSectionId, t))) {
+          await t.rollback();
+          return res.status(400).json({ error: 'La sección seleccionada no pertenece al grado del estudiante en este período' });
+        }
+        linkedMatriculation.gradeId = nextGradeId;
+        linkedMatriculation.sectionId = nextSectionId;
+        await linkedMatriculation.save({ transaction: t });
+      }
+    }
+
     // Update basic fields
     if (gradeId !== undefined) inscription.gradeId = gradeId;
     if (sectionId !== undefined) inscription.sectionId = sectionId;
@@ -1699,6 +1761,28 @@ export const updateMatriculation = async (req: Request, res: Response) => {
     if (!person) {
       await t.rollback();
       return res.status(400).json({ error: 'No se encontró el estudiante asociado' });
+    }
+
+    // A withdrawn student can't be placed in a section until Administración
+    // reactivates them (reactivation sends them to "No Matriculados").
+    if (matriculation.status === 'withdrawn' && sectionId) {
+      await t.rollback();
+      return res.status(400).json({ error: 'El estudiante está retirado; debe ser reactivado antes de asignarle sección' });
+    }
+
+    // A matriculated student can't lose their section here (only via "Sacar de
+    // Matrícula") and any new grade/section combo must be valid.
+    if (matriculation.status === 'completed' && (sectionId !== undefined || gradeId !== undefined)) {
+      const nextGradeId = gradeId !== undefined ? gradeId : matriculation.gradeId;
+      const nextSectionId = sectionId !== undefined ? sectionId : matriculation.sectionId;
+      if (!nextSectionId) {
+        await t.rollback();
+        return res.status(400).json({ error: 'Un estudiante matriculado debe tener sección. Use "Sacar de Matrícula" para desasignarlo.' });
+      }
+      if (!(await isSectionValidForGrade(matriculation.schoolPeriodId, nextGradeId, nextSectionId, t))) {
+        await t.rollback();
+        return res.status(400).json({ error: 'La sección seleccionada no pertenece al grado del estudiante en este período' });
+      }
     }
 
     console.log('[updateMatriculation] Person antes de actualizar:', {
@@ -2226,117 +2310,122 @@ export const unmatriculateInscription = async (req: Request, res: Response) => {
   }
 };
 
+class EnrollmentStateError extends Error {
+  constructor(public status: number, message: string) {
+    super(message);
+  }
+}
+
 /**
- * Withdraw a student: marks matriculation status as 'withdrawn' and clears sectionId.
- * All academic data (subjects, grades, etc.) is preserved.
+ * Retirar (Admin): removes the student from the academic system without
+ * deleting anything. Works for both inscribed-only ("No Matriculados") and
+ * matriculated students. Clears the section; academic data is preserved.
  */
+const withdrawMatriculationCore = async (matriculation: Matriculation, t: Transaction) => {
+  if (matriculation.status === 'withdrawn') {
+    throw new EnrollmentStateError(400, 'El estudiante ya está retirado');
+  }
+  if (matriculation.inscriptionId) {
+    const inscription = await Inscription.findByPk(matriculation.inscriptionId, { transaction: t });
+    if (inscription) {
+      (inscription as any).sectionId = null;
+      (inscription as any).withdrawnAt = new Date();
+      await inscription.save({ transaction: t });
+    }
+  }
+  matriculation.status = 'withdrawn';
+  (matriculation as any).sectionId = null;
+  await matriculation.save({ transaction: t });
+};
+
+/**
+ * Reactivar (Admin): brings a withdrawn student back to "No Matriculados"
+ * (inscribed, without section). Control de Estudios then decides which
+ * section to matriculate them into. Only allowed within the same (active)
+ * school period; otherwise the student must be re-inscribed.
+ */
+const reactivateMatriculationCore = async (matriculation: Matriculation, t: Transaction) => {
+  if (matriculation.status !== 'withdrawn') {
+    throw new EnrollmentStateError(400, 'El estudiante no está retirado');
+  }
+  const activePeriod = await SchoolPeriod.findOne({ where: { status: 'activo' }, transaction: t });
+  if (!activePeriod || activePeriod.id !== matriculation.schoolPeriodId) {
+    throw new EnrollmentStateError(400, 'No se puede reactivar: el período escolar ha cambiado. El estudiante debe reinscribirse.');
+  }
+  if (matriculation.inscriptionId) {
+    const inscription = await Inscription.findByPk(matriculation.inscriptionId, { transaction: t });
+    if (inscription) {
+      (inscription as any).sectionId = null;
+      (inscription as any).withdrawnAt = null;
+      await inscription.save({ transaction: t });
+    }
+  }
+  matriculation.status = 'pending';
+  (matriculation as any).sectionId = null;
+  await matriculation.save({ transaction: t });
+};
+
+const runEnrollmentTransition = async (
+  res: Response,
+  logPrefix: string,
+  fallbackError: string,
+  successMessage: string,
+  findMatriculation: (t: Transaction) => Promise<Matriculation | null>,
+  action: (m: Matriculation, t: Transaction) => Promise<void>
+) => {
+  const t = await sequelize.transaction();
+  try {
+    const matriculation = await findMatriculation(t);
+    if (!matriculation) throw new EnrollmentStateError(404, 'Matrícula no encontrada');
+    await action(matriculation, t);
+    await t.commit();
+    return res.json({ message: successMessage });
+  } catch (error: any) {
+    await t.rollback();
+    if (error instanceof EnrollmentStateError) {
+      return res.status(error.status).json({ error: error.message });
+    }
+    console.error(`[${logPrefix}] Error:`, error);
+    return res.status(500).json({ error: fallbackError, details: error.message });
+  }
+};
+
+/** POST /inscriptions/:id/withdraw — legacy entry point keyed by inscription id. */
 export const withdrawInscription = async (req: Request, res: Response) => {
   if (!canEnrollStudent(req)) {
     return res.status(403).json({ error: 'No tiene permisos para retirar estudiantes' });
   }
-  const t = await sequelize.transaction();
-  try {
-    const { id } = req.params;
-    const inscription = await Inscription.findByPk(id, { transaction: t });
-    if (!inscription) {
-      await t.rollback();
-      return res.status(404).json({ error: 'Inscripción no encontrada' });
-    }
-
-    // Check if already withdrawn via matriculation status
-    const matriculation = await Matriculation.findOne({
-      where: { inscriptionId: id },
-      transaction: t
-    });
-    if (!matriculation) {
-      await t.rollback();
-      return res.status(404).json({ error: 'Matrícula no encontrada' });
-    }
-    if (matriculation.status === 'withdrawn') {
-      await t.rollback();
-      return res.status(400).json({ error: 'El estudiante ya está retirado' });
-    }
-
-    (inscription as any).sectionId = null;
-    (inscription as any).withdrawnAt = new Date();
-    await inscription.save({ transaction: t });
-
-    matriculation.status = 'withdrawn';
-    (matriculation as any).sectionId = null;
-    await matriculation.save({ transaction: t });
-
-    await t.commit();
-    res.json({ message: 'Estudiante retirado de la sección correctamente' });
-  } catch (error: any) {
-    await t.rollback();
-    console.error('[withdrawInscription] Error:', error);
-    res.status(500).json({ error: 'Error al retirar estudiante', details: error.message });
-  }
+  return runEnrollmentTransition(res, 'withdrawInscription', 'Error al retirar estudiante', 'Estudiante retirado correctamente',
+    (t) => Matriculation.findOne({ where: { inscriptionId: req.params.id }, transaction: t, lock: t.LOCK.UPDATE }),
+    withdrawMatriculationCore);
 };
 
-/**
- * Reactivate a previously withdrawn student.
- * Only allowed during the same school period in which they were withdrawn.
- * Requires a sectionId to reassign the student to.
- */
+/** POST /inscriptions/:id/reactivate — legacy entry point keyed by inscription id. */
 export const reactivateInscription = async (req: Request, res: Response) => {
   if (!canEnrollStudent(req)) {
     return res.status(403).json({ error: 'No tiene permisos para reactivar estudiantes' });
   }
-  const t = await sequelize.transaction();
-  try {
-    const { id } = req.params;
-    const { sectionId } = req.body;
+  return runEnrollmentTransition(res, 'reactivateInscription', 'Error al reactivar estudiante', 'Estudiante reactivado; quedó en No Matriculados',
+    (t) => Matriculation.findOne({ where: { inscriptionId: req.params.id }, transaction: t, lock: t.LOCK.UPDATE }),
+    reactivateMatriculationCore);
+};
 
-    if (!sectionId) {
-      await t.rollback();
-      return res.status(400).json({ error: 'Debe especificar una sección para reactivar el estudiante' });
-    }
-
-    const inscription = await Inscription.findByPk(id, { transaction: t });
-    if (!inscription) {
-      await t.rollback();
-      return res.status(404).json({ error: 'Inscripción no encontrada' });
-    }
-
-    const matriculation = await Matriculation.findOne({
-      where: { inscriptionId: id },
-      transaction: t
-    });
-    if (!matriculation) {
-      await t.rollback();
-      return res.status(404).json({ error: 'Matrícula no encontrada' });
-    }
-    if (matriculation.status !== 'withdrawn') {
-      await t.rollback();
-      return res.status(400).json({ error: 'El estudiante no está retirado' });
-    }
-
-    // Verify the school period is still the active one
-    const activePeriod = await SchoolPeriod.findOne({
-      where: { status: 'activo' },
-      transaction: t
-    });
-    if (!activePeriod || activePeriod.id !== inscription.schoolPeriodId) {
-      await t.rollback();
-      return res.status(400).json({
-        error: 'No se puede reactivar: el período escolar ha cambiado. El estudiante debe reinscribirse.'
-      });
-    }
-
-    inscription.sectionId = sectionId;
-    (inscription as any).withdrawnAt = null;
-    await inscription.save({ transaction: t });
-
-    matriculation.status = 'completed';
-    matriculation.sectionId = sectionId;
-    await matriculation.save({ transaction: t });
-
-    await t.commit();
-    res.json({ message: 'Estudiante reactivado correctamente' });
-  } catch (error: any) {
-    await t.rollback();
-    console.error('[reactivateInscription] Error:', error);
-    res.status(500).json({ error: 'Error al reactivar estudiante', details: error.message });
+/** POST /matriculations/:id/withdraw — works for matriculated and not-yet-matriculated students. */
+export const withdrawMatriculation = async (req: Request, res: Response) => {
+  if (!canEnrollStudent(req)) {
+    return res.status(403).json({ error: 'No tiene permisos para retirar estudiantes' });
   }
+  return runEnrollmentTransition(res, 'withdrawMatriculation', 'Error al retirar estudiante', 'Estudiante retirado correctamente',
+    (t) => Matriculation.findByPk(req.params.id as string, { transaction: t, lock: t.LOCK.UPDATE }),
+    withdrawMatriculationCore);
+};
+
+/** POST /matriculations/:id/reactivate — sends the student back to "No Matriculados". */
+export const reactivateMatriculation = async (req: Request, res: Response) => {
+  if (!canEnrollStudent(req)) {
+    return res.status(403).json({ error: 'No tiene permisos para reactivar estudiantes' });
+  }
+  return runEnrollmentTransition(res, 'reactivateMatriculation', 'Error al reactivar estudiante', 'Estudiante reactivado; quedó en No Matriculados',
+    (t) => Matriculation.findByPk(req.params.id as string, { transaction: t, lock: t.LOCK.UPDATE }),
+    reactivateMatriculationCore);
 };

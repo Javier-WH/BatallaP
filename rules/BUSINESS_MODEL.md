@@ -48,14 +48,19 @@ Cada PeriodGradeSubject puede tener un profesor asignado (TeacherAssignment) por
 
 ### 2.3 Inscripción y matrícula
 
-**Matrícula ≠ Inscripción:**
+**Vocabulario operativo (definido por la institución):**
 
-| Concepto | Significa | Estado típico |
-|----------|-----------|---------------|
-| **Matriculation** (Matrícula) | Pre-solicitud del estudiante. Incluye documentos, preguntas, datos del representante. | `pending` → `enrolled` |
-| **Inscription** (Inscripción) | Registro formal del estudiante en un período+grado+sección específico. | Activa |
+| Acción | Quién | Significa | Efecto en BD |
+|--------|-------|-----------|--------------|
+| **Inscribir** | Administrador | Registrar al estudiante en el sistema para que luego pueda matricularse. | Crea `Matriculation` con `status='pending'` (aparece en "No Matriculados"). |
+| **Retirar** | Administrador | Sacarlo del sistema académico **sin borrar nada**. Aplica esté o no matriculado (p. ej. preinscritos que se retiran antes de clases). | `Matriculation.status='withdrawn'`, sección en `null`, `Inscription.withdrawnAt` (si existe). |
+| **Reactivar** | Administrador | Devolver al estudiante al sistema. Queda **sin sección** en "No Matriculados" para que Control de Estudios decida dónde colocarlo. Solo dentro del mismo período activo. | `status='pending'`, sección `null`, `withdrawnAt=null`. |
+| **Matricular** | Control de Estudios | **Asignar** a un estudiante inscrito **a una sección**. | `status='completed'` + `Inscription` + materias. **Exige sección válida del grado en el período.** |
+| **Sacar de Matrícula** | Control de Estudios | Desasignarlo de la sección sin asignarlo a otra. Conserva notas y materias. | `status='pending'`, sección `null` (la `Inscription` se conserva). |
 
-**Flujo normal**: Matrícula → Aprobación → Inscripción → Asignación de materias automática.
+⚠️ **Invariante**: no existe un estudiante matriculado (`Matriculation.status='completed'`) sin sección. Matricular *es* asignar sección. El backend rechaza matricular sin sección, quitar la sección por PATCH a un matriculado y asignar sección a un retirado; el **cierre de período se bloquea** mientras haya estudiantes del período que se cierra inscritos sin sección (hay que matricularlos o retirarlos); las preinscripciones del período siguiente no bloquean y siguen en "No Matriculados" de ese período. `Master` puede todo. `Materia Pendiente` tiene su propio módulo y no aplica aquí.
+
+Nota de nombres: en el código las tablas conservan nombres históricos — `Matriculation` es el registro de inscripción (con `status` pending/completed/withdrawn) e `Inscription` es el registro académico formal que se crea al matricular.
 
 **Vías de inscripción**:
 1. **Estándar**: Wizard paso a paso (datos personales → documentos → representante → confirmar).

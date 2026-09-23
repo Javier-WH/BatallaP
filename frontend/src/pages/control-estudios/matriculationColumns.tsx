@@ -966,6 +966,9 @@ export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<Matricul
         if (p.newValue !== p.oldValue && p.data) {
           const gradeStruct = structure.find(s => s.gradeId === p.data.tempData.gradeId);
           const section = (gradeStruct?.sections ?? []).find(s => s.name === p.newValue);
+          // A matriculated student can't be left without a section — that's
+          // done explicitly with "Sacar de Matrícula".
+          if (!section && p.data.status === 'completed') return false;
           callbacks.onUpdateField(p.data.id, 'sectionId', section ? section.id : null);
           return true;
         }

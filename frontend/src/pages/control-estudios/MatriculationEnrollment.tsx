@@ -413,13 +413,13 @@ const MatriculationEnrollment: React.FC = () => {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      // When filtering "Retirados", always use /inscriptions with includeWithdrawn=true
+      // "Retirados" come from /matriculations?status=withdrawn so that students
+      // withdrawn before ever being matriculated (no inscription yet) are included.
       const isWithdrawnView = filterInscription === 'retirado';
-      const endpoint = (viewStatus === 'completed' || isWithdrawnView) ? '/inscriptions' : '/matriculations';
+      const endpoint = (viewStatus === 'completed' && !isWithdrawnView) ? '/inscriptions' : '/matriculations';
       const params: any = {
-        status: viewStatus === 'pending' && !isWithdrawnView ? 'pending' : undefined,
+        status: isWithdrawnView ? 'withdrawn' : viewStatus === 'pending' ? 'pending' : undefined,
         schoolPeriodId: filterSchoolPeriod || activePeriod?.id || undefined, // Empty filter falls back to the active period
-        includeWithdrawn: isWithdrawnView ? 'true' : undefined,
       };
       const [dataRes, structRes, locRes] = await Promise.all([
         api.get(endpoint, { params }),
@@ -429,7 +429,7 @@ const MatriculationEnrollment: React.FC = () => {
       if (locRes.data) setLocations(locRes.data);
       if (dataRes.data) {
         const mapped = dataRes.data.map((item: MatriculationApiResponse) => {
-          const isInscription = viewStatus === 'completed' || isWithdrawnView;
+          const isInscription = endpoint === '/inscriptions';
           const m = isInscription ? {
             ...item.matriculation,
             id: item.matriculation?.id || -item.id,
@@ -437,7 +437,7 @@ const MatriculationEnrollment: React.FC = () => {
             gradeId: item.gradeId,
             sectionId: item.sectionId,
             schoolPeriodId: item.schoolPeriodId,
-            status: (isWithdrawnView ? 'withdrawn' : (item.matriculation?.status || 'completed')) as 'pending' | 'completed' | 'withdrawn',
+            status: (item.matriculation?.status || 'completed') as 'pending' | 'completed' | 'withdrawn',
             inscriptionId: item.id,
             escolaridad: item.escolaridad
           } : item;
@@ -620,8 +620,10 @@ const MatriculationEnrollment: React.FC = () => {
   const saveFieldChange = useCallback(async (rowId: number, changes: Record<string, unknown>) => {
     const row = matriculations.find(r => r.id === rowId);
     if (!row) return;
-    const endpoint = viewStatus === 'completed'
-      ? `/inscriptions/${row.inscriptionId || rowId}`
+    // Matriculated rows keep using the inscription endpoint; pending/withdrawn
+    // rows (and any row with a real matriculation id) use the matriculation one.
+    const endpoint = (row.status === 'completed' && row.inscriptionId) || rowId < 0
+      ? `/inscriptions/${row.inscriptionId || -rowId}`
       : `/matriculations/${rowId}`;
     try {
       await api.patch(endpoint, changes);
@@ -630,7 +632,7 @@ const MatriculationEnrollment: React.FC = () => {
       message.error('Error al guardar cambio');
       await fetchData();
     }
-  }, [matriculations, viewStatus, fetchData]);
+  }, [matriculations, fetchData]);
 
   const handleUpdateRow = useCallback(<K extends keyof TempData>(id: number, field: K, value: TempData[K]) => {
     setMatriculations(prev => prev.map(row => (
@@ -767,7 +769,14 @@ const MatriculationEnrollment: React.FC = () => {
     const selectedRows = matriculations.filter(r => selectedRowKeys.includes(r.id));
     if (selectedRows.length === 0) return;
 
-    message.loading({ content: `Procesando ${selectedRows.length} inscripciones...`, key: 'bulk' });
+    // Matricular = asignar a una sección: no se permite sin sección.
+    const withoutSection = selectedRows.filter(r => !r.tempData.sectionId);
+    if (withoutSection.length > 0) {
+      message.warning(`Asigne una sección antes de matricular (${withoutSection.length} estudiante(s) sin sección).`);
+      return;
+    }
+
+    message.loading({ content: `Matriculando ${selectedRows.length} estudiante(s)...`, key: 'bulk' });
     let successCount = 0;
     for (const row of selectedRows) {
       try {
@@ -806,7 +815,7 @@ const MatriculationEnrollment: React.FC = () => {
         message.error({ content: `Error con ${row.tempData.firstName} ${row.tempData.lastName}: ${errMsg}`, key: `err-${row.id}`, duration: 10 });
       }
     }
-    message.success({ content: `${successCount} estudiantes inscritos correctamente`, key: 'bulk' });
+    message.success({ content: `${successCount} estudiante(s) matriculado(s) correctamente`, key: 'bulk' });
     fetchData();
     setSelectedRowKeys([]);
   };
@@ -1032,84 +1041,41 @@ const MatriculationEnrollment: React.FC = () => {
       agGridRef.current?.pinColumn(contextMenuState.colId, null);
       closeContextMenu();
     }
-    if (key === 'withdraw') {
+    if (key === 'withdraw' || key === 'reactivate') {
       const row = contextMenuState.rowId !== null
         ? matriculations.find(r => r.id === contextMenuState.rowId)
         : null;
-      const inscriptionId = row?.inscriptionId;
+      // Prefer the matriculation endpoint (works for never-matriculated students);
+      // negative ids are legacy inscriptions without a matriculation record.
+      const action = key === 'withdraw' ? 'withdraw' : 'reactivate';
+      const url = row && row.id > 0
+        ? `/matriculations/${row.id}/${action}`
+        : row?.inscriptionId ? `/inscriptions/${row.inscriptionId}/${action}` : null;
       const studentName = row ? `${row.tempData.firstName} ${row.tempData.lastName}` : 'este estudiante';
-      if (inscriptionId) {
+      if (url) {
+        const isWithdraw = key === 'withdraw';
         Modal.confirm({
-          title: 'Retirar estudiante',
-          content: `¿Confirmar que ${studentName} será retirado de la sección? Sus datos académicos (notas, materias) se conservarán para futuras consultas.`,
-          okText: 'Retirar',
-          okType: 'danger',
+          title: isWithdraw ? 'Retirar estudiante' : 'Reactivar estudiante',
+          content: isWithdraw
+            ? `¿Confirmar que ${studentName} será retirado del sistema académico? No se borra ningún dato (notas, materias, expediente) y podrá ser reactivado.`
+            : `¿Reactivar a ${studentName}? Quedará en "No Matriculados", sin sección, para que Control de Estudios decida dónde matricularlo.`,
+          okText: isWithdraw ? 'Retirar' : 'Reactivar',
+          okType: isWithdraw ? 'danger' : 'primary',
           cancelText: 'Cancelar',
           onOk: async () => {
             try {
-              await api.post(`/inscriptions/${inscriptionId}/withdraw`);
-              message.success('Estudiante retirado correctamente');
+              const res = await api.post(url);
+              message.success(res.data?.message || (isWithdraw ? 'Estudiante retirado correctamente' : 'Estudiante reactivado'));
               await fetchData();
             } catch (e: any) {
-              const errMsg = e?.response?.data?.error || 'Error al retirar estudiante';
-              message.error(errMsg);
+              message.error(e?.response?.data?.error || (isWithdraw ? 'Error al retirar estudiante' : 'Error al reactivar estudiante'));
             }
           },
         });
       }
       closeContextMenu();
     }
-    if (key === 'reactivate') {
-      const row = contextMenuState.rowId !== null
-        ? matriculations.find(r => r.id === contextMenuState.rowId)
-        : null;
-      const inscriptionId = row?.inscriptionId;
-      const studentName = row ? `${row.tempData.firstName} ${row.tempData.lastName}` : 'este estudiante';
-      if (inscriptionId) {
-        // Need to pick a section to reactivate into
-        const gradeStruct = structure.find(s => s.gradeId === row?.tempData.gradeId);
-        const sections = gradeStruct?.sections || [];
-        if (sections.length === 0) {
-          message.error('No hay secciones disponibles para reactivar');
-          closeContextMenu();
-          return;
-        }
-        let selectedSectionId: number | undefined;
-        Modal.confirm({
-          title: 'Reactivar estudiante',
-          content: (
-            <div>
-              <p style={{ marginBottom: 12 }}>Seleccione la sección para reactivar a {studentName}:</p>
-              <Select
-                placeholder="Seleccionar sección..."
-                style={{ width: '100%' }}
-                onChange={v => { selectedSectionId = v; }}
-              >
-                {sections.map(sec => <Select.Option key={sec.id} value={sec.id}>{sec.name}</Select.Option>)}
-              </Select>
-            </div>
-          ),
-          okText: 'Reactivar',
-          cancelText: 'Cancelar',
-          onOk: async () => {
-            if (!selectedSectionId) {
-              message.error('Debe seleccionar una sección');
-              return;
-            }
-            try {
-              await api.post(`/inscriptions/${inscriptionId}/reactivate`, { sectionId: selectedSectionId });
-              message.success('Estudiante reactivado correctamente');
-              await fetchData();
-            } catch (e: any) {
-              const errMsg = e?.response?.data?.error || 'Error al reactivar estudiante';
-              message.error(errMsg);
-            }
-          },
-        });
-      }
-      closeContextMenu();
-    }
-  }, [handleContextEdit, closeContextMenu, contextMenuState.rowId, contextMenuState.colId, matriculations, structure, fetchData]);
+  }, [handleContextEdit, closeContextMenu, contextMenuState.rowId, contextMenuState.colId, matriculations, fetchData]);
 
   // Build context menu items dynamically — add withdraw/reactivate based on row state
   const dynamicContextMenuItems = useMemo<MenuProps['items']>(() => {
@@ -1117,8 +1083,7 @@ const MatriculationEnrollment: React.FC = () => {
       ? matriculations.find(r => r.id === contextMenuState.rowId)
       : null;
     const isWithdrawn = row?.tempData.status === 'withdrawn' || (row as any)?.status === 'withdrawn';
-    const isInscription = viewStatus === 'completed';
-    const hasInscriptionId = !!row?.inscriptionId;
+    const canTransition = !!row && (row.id > 0 || !!row.inscriptionId);
 
     const rowActions: MenuProps['items'] = [
       {
@@ -1143,9 +1108,9 @@ const MatriculationEnrollment: React.FC = () => {
       },
     ];
 
-    // Add withdraw/reactivate only for inscribed students (completed view)
-    // and only for Admin/Master (Control de Estudios can matricular but not withdraw)
-    if (isInscription && hasInscriptionId && canManageVisibility) {
+    // Retirar/Reactivar: Admin/Master only (Control de Estudios can matricular but
+    // not withdraw). Available for matriculated and not-yet-matriculated students.
+    if (canTransition && canManageVisibility) {
       if (isWithdrawn) {
         rowActions.push({
           type: 'divider',
@@ -2141,18 +2106,28 @@ const MatriculationEnrollment: React.FC = () => {
                 })()}
 
                 {/* Section 3: Primary Action */}
-                {viewStatus === 'pending' && (
-                  <div className="pl-4 border-l border-slate-300/50">
-                    <Button
-                      type="primary"
-                      icon={<CheckCircleOutlined />}
-                      onClick={handleBulkEnroll}
-                      className="bg-blue-600 hover:bg-blue-500 border-none shadow-md shadow-blue-500/30"
-                    >
-                      Matricular
-                    </Button>
-                  </div>
-                )}
+                {viewStatus === 'pending' && filterInscription !== 'retirado' && (() => {
+                  const missingSection = matriculations.filter(
+                    r => selectedRowKeys.includes(r.id) && !r.tempData.sectionId
+                  ).length;
+                  return (
+                    <div className="pl-4 border-l border-slate-300/50">
+                      <Tooltip title={missingSection > 0 ? `Asigne una sección para matricular (${missingSection} sin sección)` : undefined}>
+                        <Button
+                          type="primary"
+                          icon={<CheckCircleOutlined />}
+                          onClick={handleBulkEnroll}
+                          disabled={missingSection > 0}
+                          className={`transition-all duration-300 ${missingSection > 0
+                            ? '!bg-slate-200 !text-slate-400 !border-slate-200 shadow-none'
+                            : 'bg-blue-600 hover:bg-blue-500 border-none shadow-md shadow-blue-500/30'}`}
+                        >
+                          Matricular
+                        </Button>
+                      </Tooltip>
+                    </div>
+                  );
+                })()}
                 {viewStatus === 'completed' && canUnmatriculate && filterInscription !== 'retirado' && (
                   <div className="pl-4 border-l border-slate-300/50">
                     <Button
