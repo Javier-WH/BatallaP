@@ -29,6 +29,12 @@ interface Options {
 
 const normalizeDocument = (document: string) => document.trim();
 
+// Email is optional: a blank email must not wipe the one already stored.
+const buildProfileUpdate = (payload: GuardianProfilePayload, document: string) => {
+  const { email, ...rest } = payload;
+  return email?.trim() ? { ...rest, email, document } : { ...rest, document };
+};
+
 export const findGuardianProfile = async (documentType: GuardianDocumentType, document: string) => {
   const normalizedDoc = normalizeDocument(document);
 
@@ -119,10 +125,7 @@ export const findOrCreateGuardianProfile = async (
   if (payload.id) {
     const existing = await GuardianProfile.findByPk(payload.id, { transaction: options.transaction });
     if (existing) {
-      await existing.update(
-        { ...payload, document: normalizedDocument },
-        options
-      );
+      await existing.update(buildProfileUpdate(payload, normalizedDocument), options);
       return existing;
     }
     // If ID provided but not found, fall back to findOrCreate approach (maybe ID was wrong/deleted?)
@@ -141,13 +144,7 @@ export const findOrCreateGuardianProfile = async (
   });
 
   if (!created) {
-    await profile.update(
-      {
-        ...payload,
-        document: normalizedDocument
-      },
-      options
-    );
+    await profile.update(buildProfileUpdate(payload, normalizedDocument), options);
   }
 
   return profile;

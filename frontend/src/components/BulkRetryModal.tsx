@@ -81,6 +81,23 @@ const buildParOpts = (locs: VenezuelaState[], state?: string | null, mun?: strin
   return m ? m.parroquias.map((p) => ({ label: p, value: p })) : [];
 };
 
+// Backend guardian errors list Spanish labels (see GUARDIAN_FIELD_LABELS in studentEnrollmentService).
+const GUARDIAN_LABEL_TO_FIELD: Record<string, string> = {
+  'nombres': 'firstName',
+  'apellidos': 'lastName',
+  'tipo de documento': 'documentType',
+  'cédula': 'document',
+  'estado de residencia': 'residenceState',
+  'municipio de residencia': 'residenceMunicipality',
+  'parroquia de residencia': 'residenceParish',
+  'dirección': 'address',
+  'teléfono': 'phone',
+  'teléfono secundario': 'phone2',
+  'whatsapp': 'whatsapp',
+  'email': 'email',
+  'ocupación': 'occupation',
+};
+
 function parseErrorFields(errors: string[]): Map<string, string> {
   const map = new Map<string, string>();
   for (const err of errors) {
@@ -115,7 +132,7 @@ function parseErrorFields(errors: string[]): Map<string, string> {
       guardianMissingMatch[2]
         .split(',')
         .map((f) => f.trim())
-        .forEach((f) => map.set(`representative.${f}`, err));
+        .forEach((f) => map.set(`representative.${GUARDIAN_LABEL_TO_FIELD[f.toLowerCase()] ?? f}`, err));
     }
 
     if ((lower.includes('madre') || lower.includes('mother') || lower.includes('padre') || lower.includes('father') || lower.includes('representante') || lower.includes('representative')) && lower.includes('obligatori'))

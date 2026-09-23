@@ -24,13 +24,21 @@ import { generateEnrollmentReport } from '@/services/enrollmentReportService';
 
 const ESCOLARIDAD_VALUES: EscolaridadStatus[] = ['regular', 'repitiente', 'materia_pendiente'];
 
+/** Invalid or incomplete enrollment data — the caller should answer 400 with the message. */
+export class EnrollmentValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'EnrollmentValidationError';
+  }
+}
+
 export const normalizeEscolaridad = (value?: unknown): EscolaridadStatus => {
   if (typeof value !== 'string') return 'regular';
   const normalized = value.trim().toLowerCase() as EscolaridadStatus;
   if (ESCOLARIDAD_VALUES.includes(normalized)) {
     return normalized;
   }
-  throw new Error('Valor de escolaridad inválido. Debe ser regular, repitiente o materia_pendiente.');
+  throw new EnrollmentValidationError('Valor de escolaridad inválido. Debe ser regular, repitiente o materia_pendiente.');
 };
 
 export type GuardianInput = {
@@ -49,7 +57,8 @@ export type GuardianInput = {
   occupation?: string;
 };
 
-const guardianRequiredFields: (keyof GuardianInput)[] = [
+// Email is optional for guardians (the enrollment form marks it "Opcional").
+export const guardianRequiredFields: (keyof GuardianInput)[] = [
   'firstName',
   'lastName',
   'documentType',
@@ -58,12 +67,27 @@ const guardianRequiredFields: (keyof GuardianInput)[] = [
   'residenceMunicipality',
   'residenceParish',
   'address',
-  'phone',
-  'email'
+  'phone'
 ];
 
+export const GUARDIAN_FIELD_LABELS: Record<keyof GuardianInput, string> = {
+  firstName: 'nombres',
+  lastName: 'apellidos',
+  documentType: 'tipo de documento',
+  document: 'cédula',
+  residenceState: 'estado de residencia',
+  residenceMunicipality: 'municipio de residencia',
+  residenceParish: 'parroquia de residencia',
+  address: 'dirección',
+  phone: 'teléfono',
+  phone2: 'teléfono secundario',
+  whatsapp: 'WhatsApp',
+  email: 'email',
+  occupation: 'ocupación'
+};
+
 // Fields that can be relaxed (made optional) in the bulk enrollment flow
-const guardianContactFields: (keyof GuardianInput)[] = ['address', 'phone', 'email'];
+const guardianContactFields: (keyof GuardianInput)[] = ['address', 'phone'];
 
 const isEmptyValue = (value: unknown) => {
   if (value === null || value === undefined) return true;
@@ -90,7 +114,7 @@ export const validateGuardianPayload = (
 
   if (!hasData) {
     if (required) {
-      throw new Error(`Los datos de ${label} son obligatorios.`);
+      throw new EnrollmentValidationError(`Los datos de ${label} son obligatorios.`);
     }
     return null;
   }
@@ -111,20 +135,17 @@ export const validateGuardianPayload = (
 
   const missingFields = requiredFields.filter((field) => isEmptyValue(data?.[field]));
   if (missingFields.length > 0) {
-    throw new Error(`Faltan campos obligatorios para ${label}: ${missingFields.join(', ')}`);
+    const labels = missingFields.map((field) => GUARDIAN_FIELD_LABELS[field]);
+    throw new EnrollmentValidationError(`Faltan campos obligatorios para ${label}: ${labels.join(', ')}`);
   }
 
-  // Fill relaxed contact fields with empty string so the model's allowNull: false is satisfied
-  if (options?.relaxContactFields && data) {
-    return {
-      ...data,
-      address: data.address ?? '',
-      phone: data.phone ?? '',
-      email: data.email ?? ''
-    } as Required<GuardianInput>;
-  }
-
-  return data as Required<GuardianInput>;
+  // Fill optional/relaxed fields with empty string so the model's allowNull: false is satisfied
+  return {
+    ...data,
+    address: data?.address ?? '',
+    phone: data?.phone ?? '',
+    email: data?.email ?? ''
+  } as Required<GuardianInput>;
 };
 
 export const mapToGuardianProfilePayload = (data: Required<GuardianInput>) => ({
@@ -135,7 +156,7 @@ export const mapToGuardianProfilePayload = (data: Required<GuardianInput>) => ({
   phone: data.phone,
   phone2: data.phone2 ?? '',
   whatsapp: data.whatsapp ?? '',
-  email: data.email,
+  email: data.email ?? '',
   residenceState: data.residenceState,
   residenceMunicipality: data.residenceMunicipality,
   residenceParish: data.residenceParish,
@@ -235,21 +256,21 @@ export const registerAndEnrollStudent = async (
     } = payload;
 
     if (!firstName || !lastName || !documentType || !gender || !birthdate) {
-      throw new Error('Datos básicos del estudiante incompletos');
+      throw new EnrollmentValidationError('Datos básicos del estudiante incompletos');
     }
 
     if (!schoolPeriodId || !gradeId) {
-      throw new Error('El periodo escolar y el grado son obligatorios');
+      throw new EnrollmentValidationError('El periodo escolar y el grado son obligatorios');
     }
 
     if (!birthState || !birthMunicipality || !birthParish || !residenceState || !residenceMunicipality || !residenceParish) {
-      throw new Error('Datos de nacimiento y residencia son obligatorios para registrar estudiantes.');
+      throw new EnrollmentValidationError('Datos de nacimiento y residencia son obligatorios para registrar estudiantes.');
     }
 
     let finalDocument = document ?? undefined;
     if (documentType === 'Cedula Escolar' && (!finalDocument || finalDocument.trim() === '')) {
       if (!mother || !mother.document) {
-        throw new Error('La cédula de la madre es obligatoria para generar la Cédula Escolar.');
+        throw new EnrollmentValidationError('La cédula de la madre es obligatoria para generar la Cédula Escolar.');
       }
 
       const nationalityChar = nationality === 'Extranjero' ? 'E' : 'V';
@@ -277,7 +298,7 @@ export const registerAndEnrollStudent = async (
 
     const parsedBirthdate = new Date(birthdate);
     if (Number.isNaN(parsedBirthdate.getTime())) {
-      throw new Error('Fecha de nacimiento inválida');
+      throw new EnrollmentValidationError('Fecha de nacimiento inválida');
     }
 
     const personPayload: PersonCreationAttributes = {
@@ -314,7 +335,7 @@ export const registerAndEnrollStudent = async (
     const representativeData = validateGuardianPayload('el representante', representative, representativeDataRequired, { relaxContactFields: relaxGuardianContactFields });
 
     if (!motherIsRepresentative && !fatherIsRepresentative && !representativeData) {
-      throw new Error('Debe registrar un representante si la madre o el padre no lo son.');
+      throw new EnrollmentValidationError('Debe registrar un representante si la madre o el padre no lo son.');
     }
 
     // Inherit phone from the representative if not explicitly provided.
@@ -405,7 +426,7 @@ export const registerAndEnrollStudent = async (
     }
 
     if (!assignments.some((guardian) => guardian.isRepresentative)) {
-      throw new Error('Debe seleccionar al menos un representante legal.');
+      throw new EnrollmentValidationError('Debe seleccionar al menos un representante legal.');
     }
 
     if (assignments.length > 0) {

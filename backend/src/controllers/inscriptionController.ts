@@ -13,7 +13,7 @@ import { GuardianRelationship } from '@/models/StudentGuardian';
 import { GuardianProfilePayload } from '@/services/guardianProfileService';
 import { assignGuardians, GuardianAssignment } from '@/services/studentGuardianService';
 import { EscolaridadStatus } from '@/types/enrollment';
-import { registerAndEnrollStudent } from '@/services/studentEnrollmentService';
+import { registerAndEnrollStudent, EnrollmentValidationError, GUARDIAN_FIELD_LABELS } from '@/services/studentEnrollmentService';
 import { generateEnrollmentReport } from '@/services/enrollmentReportService';
 import { sortInscriptions, canonicalInscriptionOrder, numericDocumentSQL, fieldExpr, quoteQualified, lower } from '@/services/studentSortService';
 import { parsePagination, buildPaginatedResponse } from '@/services/paginationService';
@@ -175,8 +175,7 @@ const guardianRequiredFields: (keyof GuardianInput)[] = [
   'residenceMunicipality',
   'residenceParish',
   'address',
-  'phone',
-  'email'
+  'phone'
 ];
 
 const isEmptyValue = (value: unknown) => {
@@ -199,7 +198,7 @@ const validateGuardianPayload = (
 
   if (!hasData) {
     if (required) {
-      throw new Error(`Los datos de ${label} son obligatorios.`);
+      throw new EnrollmentValidationError(`Los datos de ${label} son obligatorios.`);
     }
     return null;
   }
@@ -213,7 +212,8 @@ const validateGuardianPayload = (
 
   const missingFields = guardianRequiredFields.filter((field) => isEmptyValue(data?.[field]));
   if (missingFields.length > 0) {
-    throw new Error(`Faltan campos obligatorios para ${label}: ${missingFields.join(', ')}`);
+    const labels = missingFields.map((field) => GUARDIAN_FIELD_LABELS[field as keyof typeof GUARDIAN_FIELD_LABELS]);
+    throw new EnrollmentValidationError(`Faltan campos obligatorios para ${label}: ${labels.join(', ')}`);
   }
 
   return data as CompleteGuardianInput;
@@ -228,7 +228,7 @@ const mapToGuardianProfilePayload = (data: CompleteGuardianInput): GuardianProfi
   phone: data.phone,
   phone2: data.phone2,
   whatsapp: data.whatsapp,
-  email: data.email,
+  email: data.email ?? '',
   residenceState: data.residenceState,
   residenceMunicipality: data.residenceMunicipality,
   residenceParish: data.residenceParish,
@@ -601,7 +601,7 @@ export const enrollMatriculatedStudent = async (req: Request, res: Response) => 
     const representativeData = validateGuardianPayload('el representante', representative, representativeDataRequired);
 
     if (!motherIsRepresentative && !fatherIsRepresentative && !representativeData) {
-      throw new Error('Debe registrar un representante si la madre o el padre no lo son.');
+      throw new EnrollmentValidationError('Debe registrar un representante si la madre o el padre no lo son.');
     }
 
     await StudentGuardian.destroy({ where: { studentId: person.id }, transaction: t });
@@ -765,6 +765,9 @@ export const enrollMatriculatedStudent = async (req: Request, res: Response) => 
     });
   } catch (error: any) {
     if (t) await t.rollback();
+    if (error instanceof EnrollmentValidationError) {
+      return res.status(400).json({ error: error.message });
+    }
     const errMsg = error?.message || (typeof error === 'string' ? error : JSON.stringify(error));
     const errStack = error?.stack;
     console.error('Error al inscribir matriculado:', errMsg, '\n', errStack);
@@ -1698,6 +1701,9 @@ export const registerAndEnroll = async (req: Request, res: Response) => {
       reportUuid
     });
   } catch (error: any) {
+    if (error instanceof EnrollmentValidationError) {
+      return res.status(400).json({ error: error.message });
+    }
     console.error('[registerAndEnroll] Error:', error);
     res.status(500).json({ error: 'Error al registrar e inscribir', details: error.message || error });
   }

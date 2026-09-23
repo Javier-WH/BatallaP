@@ -284,20 +284,63 @@ describe('Enrollment Form - Data Type Validation', () => {
       expect(matriculation!.status).toBeDefined();
     });
 
-    it('should reject missing required fields', async () => {
+    it('should reject missing required fields with 400 and the real reason', async () => {
       const structure = await createAcademicStructure();
-      await agent
+      const res = await agent
         .post('/api/inscriptions/register')
         .send({ ...createEnrollmentPayload(structure), firstName: '' })
-        .expect(500);
+        .expect(400);
+      expect(res.body.error).toBe('Datos básicos del estudiante incompletos');
     });
 
-    it('should reject invalid birthdate', async () => {
+    it('should reject invalid birthdate with 400', async () => {
       const structure = await createAcademicStructure();
-      await agent
+      const res = await agent
         .post('/api/inscriptions/register')
         .send(createEnrollmentPayload(structure, { birthdate: 'not-a-date' }))
-        .expect(500);
+        .expect(400);
+      expect(res.body.error).toBe('Fecha de nacimiento inválida');
+    });
+
+    it('should accept a representative mother without email (email is optional)', async () => {
+      const structure = await createAcademicStructure();
+      const payload = createEnrollmentPayload(structure);
+      payload.mother = { ...payload.mother, email: '' };
+
+      const res = await agent
+        .post('/api/inscriptions/register')
+        .send(payload)
+        .expect(201);
+
+      const profile = await GuardianProfile.findOne({ where: { document: payload.mother.document } });
+      expect(profile).not.toBeNull();
+      expect(profile!.email).toBe('');
+      expect(res.body.matriculation.status).toBe('pending');
+    });
+
+    it('should keep an existing guardian email when a new enrollment leaves it blank', async () => {
+      const structure = await createAcademicStructure();
+      const first = createEnrollmentPayload(structure);
+      await agent.post('/api/inscriptions/register').send(first).expect(201);
+
+      const second = createEnrollmentPayload(structure);
+      second.mother = { ...first.mother, email: '' };
+      await agent.post('/api/inscriptions/register').send(second).expect(201);
+
+      const profile = await GuardianProfile.findOne({ where: { document: first.mother.document } });
+      expect(profile!.email).toBe('maria@test.com');
+    });
+
+    it('should reject a representative mother without phone with 400 and a readable message', async () => {
+      const structure = await createAcademicStructure();
+      const payload = createEnrollmentPayload(structure);
+      payload.mother = { ...payload.mother, phone: '' };
+
+      const res = await agent
+        .post('/api/inscriptions/register')
+        .send(payload)
+        .expect(400);
+      expect(res.body.error).toBe('Faltan campos obligatorios para la madre: teléfono');
     });
 
     it('should accept enrollment without father (optional)', async () => {

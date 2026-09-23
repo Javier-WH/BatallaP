@@ -107,6 +107,8 @@ El flujo típico es **Matriculation → Inscription**. También existe una vía 
   - Si era `representative` pura, se **destroy** — evita violar UNIQUE(studentId, relationship).
 - Referencia del fix: ver historial en `AGENTS.md` sección "Historial de Contexto".
 - Frontend: `SearchGuardianModal.tsx` busca por documento; si no existe, `findOrCreateGuardianProfile` crea el perfil y devuelve su ID correcto (no confundir con `Person.id`).
+- **Campos obligatorios del representante** (madre/padre/representante legal): nombres, apellidos, tipo de documento, cédula, estado/municipio/parroquia de residencia, dirección y teléfono. El **email es opcional**: si viene vacío se guarda `''`, y si el perfil ya existía con email, un email vacío **no lo sobrescribe**.
+- **Errores de validación** de `POST /api/inscriptions/register` y `POST /api/matriculations/:id/enroll` responden **400** con `{ error: "<motivo>" }` (p. ej. `Faltan campos obligatorios para la madre: teléfono`), que el formulario muestra tal cual. Los errores inesperados siguen respondiendo 500.
 
 ## Archivos clave
 
