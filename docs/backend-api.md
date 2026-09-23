@@ -478,7 +478,7 @@ Excepciones de día+turno forzado (por grado + materia, una por par):
 | POST | `/:teacherId` | Bulk-replace de celdas. Body: `{ schoolPeriodId, cells: { "Lunes|m1": "admin" } }`. Solo staff (Master/Administrador/Control de Estudios). |
 
 **Integración**:
-- `GET /api/schedules/teacher/:personId` mergea las horas admin como pseudo-entries con `isAdminHour: true` → se renderizan en la vista del profesor (CE y propia, read-only) y en los Excel de profesor como «H.ADM» + fila «HORAS ADMINISTRATIVAS SEMANALES: N».
+- `GET /api/schedules/teacher/:personId` mergea las horas admin como pseudo-entries con `isAdminHour: true` → se renderizan en la vista del profesor (CE y propia, read-only) y en los Excel de profesor como «H.ADM», sin añadir un resumen semanal al final.
 - El solver no las conoce ni las coloca; una celda con clase no puede pintarse.
 
 ---

@@ -56,7 +56,7 @@ export interface HorarioInput {
 
 // Get the subject display name (abbreviation if available, else name) uppercased
 function subjectDisplay(e: ScheduleEntryData): string {
-  if (e.isAdminHour) return 'HORAS ADMINISTRATIVAS';
+  if (e.isAdminHour) return 'H.ADM';
   const abbr = (e as any).subjectAbbreviation || (e as any).abbreviation;
   const name = e.subjectName || e.subject?.name || '';
   return (abbr || name).toUpperCase();
@@ -513,26 +513,6 @@ function renderHeaderBlock(
   return currentRow;
 }
 
-// Count painted administrative hours (pseudo-entries flagged isAdminHour)
-function countAdminHours(entries: Record<string, ScheduleEntryData[]>): number {
-  let n = 0;
-  for (const arr of Object.values(entries)) {
-    for (const e of arr) if (e.isAdminHour) n++;
-  }
-  return n;
-}
-
-// Render a "HORAS ADMINISTRATIVAS SEMANALES: N" footer row; returns the next row
-function renderAdminHoursTotal(ws: ExcelJS.Worksheet, row: number, count: number): number {
-  const r = ws.getRow(row);
-  ws.mergeCells(row, 1, row, 6);
-  const c = r.getCell(1);
-  c.value = `HORAS ADMINISTRATIVAS SEMANALES: ${count}`;
-  c.font = { name: 'Cambria', size: 9, bold: true };
-  c.alignment = { horizontal: 'left', vertical: 'middle' };
-  return row + 1;
-}
-
 function formatSectionLabel(gradeOrder: number | undefined, sectionName: string | undefined, fallback: string): string {
   if (gradeOrder != null && sectionName) {
     const letter = sectionName.replace(/secci[oó]n/i, '').trim().toUpperCase();
@@ -581,11 +561,7 @@ export async function generateHorario(input: HorarioInput) {
     isTeacher: sectionLabel === 'Profesor',
   });
 
-  const afterBlock = renderHorarioBlock(ws, afterHeader, { sections, entries });
-  if (sectionLabel === 'Profesor') {
-    const adminCount = countAdminHours(entries);
-    if (adminCount > 0) renderAdminHoursTotal(ws, afterBlock, adminCount);
-  }
+  renderHorarioBlock(ws, afterHeader, { sections, entries });
 
   const buffer = await workbook.xlsx.writeBuffer();
   const fileName = `horario_${formattedSectionLabel.replace(/[^\w]/g, '_')}_${dayjs().format('YYYY-MM-DD')}.xlsx`;
@@ -772,8 +748,7 @@ export async function generateHorarioBatchTeachers(
       entries: item.entries,
     });
 
-    const adminCount = countAdminHours(item.entries);
-    currentRow = adminCount > 0 ? renderAdminHoursTotal(ws, afterBlock, adminCount) : afterBlock;
+    currentRow = afterBlock;
     countInSheet++;
 
     if (countInSheet < items.length) {
