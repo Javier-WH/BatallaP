@@ -54,6 +54,8 @@ import { saveAs } from 'file-saver';
 import { generateMultiNomina } from '@/utils/generateNomina';
 import SearchGuardianModal from '@/components/shared/SearchGuardianModal';
 import EditStudentModal, { type EditStudentData } from '@/components/EditStudentModal';
+import EnrollmentReportModal from '@/components/pdf/EnrollmentReportModal';
+import { generateReport } from '@/services/enrollmentReportService';
 import type { GuardianProfileResponse } from '@/services/guardians';
 import MatriculationAgGrid, { type MatriculationAgGridHandle } from './MatriculationAgGrid';
 import {
@@ -315,6 +317,8 @@ const MatriculationEnrollment: React.FC = () => {
   const [filterMissing, setFilterMissing] = useState<string | null>(savedFilters.filterMissing ?? null);
   const [filterInscription, setFilterInscription] = useState<'inscrito' | 'no_inscrito' | 'retirado' | null>(savedFilters.filterInscription ?? null);
   const [nominaModalOpen, setNominaModalOpen] = useState(false);
+  const [reportModalOpen, setReportModalOpen] = useState(false);
+  const [reportUuid, setReportUuid] = useState<string | null>(null);
   const [nominaSelectedGradeIds, setNominaSelectedGradeIds] = useState<number[]>([]);
   const [nominaSelectedSectionIds, setNominaSelectedSectionIds] = useState<number[]>([]);
   const [nominaGenerating, setNominaGenerating] = useState(false);
@@ -1041,6 +1045,27 @@ const MatriculationEnrollment: React.FC = () => {
       agGridRef.current?.pinColumn(contextMenuState.colId, null);
       closeContextMenu();
     }
+    if (key === 'generate-enrollment-report') {
+      const row = contextMenuState.rowId !== null
+        ? matriculations.find(r => r.id === contextMenuState.rowId)
+        : null;
+      closeContextMenu();
+      if (!row || row.status !== 'pending' || row.id <= 0 || viewStatus !== 'pending') return;
+
+      message.loading({ content: 'Generando planilla de inscripción...', key: 'enrollment-report', duration: 0 });
+      try {
+        const report = await generateReport(row.id);
+        setReportUuid(report.uuid);
+        setReportModalOpen(true);
+        message.destroy('enrollment-report');
+      } catch (error: unknown) {
+        const apiError = error as { response?: { data?: { error?: string } }; message?: string };
+        message.error({
+          content: apiError.response?.data?.error || apiError.message || 'Error al generar la planilla de inscripción',
+          key: 'enrollment-report',
+        });
+      }
+    }
     if (key === 'withdraw' || key === 'reactivate') {
       const row = contextMenuState.rowId !== null
         ? matriculations.find(r => r.id === contextMenuState.rowId)
@@ -1075,7 +1100,7 @@ const MatriculationEnrollment: React.FC = () => {
       }
       closeContextMenu();
     }
-  }, [handleContextEdit, closeContextMenu, contextMenuState.rowId, contextMenuState.colId, matriculations, fetchData]);
+  }, [handleContextEdit, closeContextMenu, contextMenuState.rowId, contextMenuState.colId, matriculations, fetchData, viewStatus]);
 
   // Build context menu items dynamically — add withdraw/reactivate based on row state
   const dynamicContextMenuItems = useMemo<MenuProps['items']>(() => {
@@ -1107,6 +1132,15 @@ const MatriculationEnrollment: React.FC = () => {
         label: 'Editar estudiante'
       },
     ];
+
+    if (viewStatus === 'pending' && row?.status === 'pending' && row.id > 0) {
+      rowActions.push({ type: 'divider' });
+      rowActions.push({
+        key: 'generate-enrollment-report',
+        icon: <PrinterOutlined />,
+        label: 'Generar planilla de inscripción',
+      });
+    }
 
     // Retirar/Reactivar: Admin/Master only (Control de Estudios can matricular but
     // not withdraw). Available for matriculated and not-yet-matriculated students.
@@ -2495,6 +2529,14 @@ const MatriculationEnrollment: React.FC = () => {
           )}
         </div>
       </Modal>
+      <EnrollmentReportModal
+        open={reportModalOpen}
+        uuid={reportUuid}
+        onClose={() => {
+          setReportModalOpen(false);
+          setReportUuid(null);
+        }}
+      />
     </div>
   );
 };

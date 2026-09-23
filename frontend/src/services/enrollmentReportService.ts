@@ -80,17 +80,42 @@ export interface SnapshotData {
   } | null;
 }
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+const normalizeSnapshotData = (value: unknown): SnapshotData => {
+  let parsed = value;
+  try {
+    for (let i = 0; typeof parsed === 'string' && i < 2; i++) {
+      parsed = JSON.parse(parsed) as unknown;
+    }
+  } catch {
+    throw new Error('Los datos guardados de la planilla no tienen un formato JSON válido');
+  }
+
+  if (!isRecord(parsed) || !isRecord(parsed.student)) {
+    throw new Error('La planilla no contiene los datos del estudiante necesarios para generar el PDF');
+  }
+
+  return parsed as unknown as SnapshotData;
+};
+
+const normalizeReport = (report: EnrollmentReportSummary): EnrollmentReportSummary => ({
+  ...report,
+  snapshotData: normalizeSnapshotData(report.snapshotData),
+});
+
 export const generateReport = async (matriculationId: number): Promise<EnrollmentReportSummary> => {
   const { data } = await api.post<EnrollmentReportSummary>(`/enrollment-reports/generate/${matriculationId}`);
-  return data;
+  return normalizeReport(data);
 };
 
 export const getPersonReports = async (personId: number): Promise<EnrollmentReportSummary[]> => {
   const { data } = await api.get<EnrollmentReportSummary[]>(`/enrollment-reports/person/${personId}`);
-  return data;
+  return data.map(normalizeReport);
 };
 
 export const getReportByUuid = async (uuid: string): Promise<EnrollmentReportSummary> => {
   const { data } = await api.get<EnrollmentReportSummary>(`/enrollment-reports/${uuid}`);
-  return data;
+  return normalizeReport(data);
 };

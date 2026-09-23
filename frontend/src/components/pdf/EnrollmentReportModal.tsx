@@ -22,7 +22,7 @@ const EnrollmentReportModal: React.FC<EnrollmentReportModalProps> = ({ open, uui
     setPdfUrl(null);
     try {
       const report = await getReportByUuid(uuid);
-      const snapshotData = report.snapshotData as unknown as SnapshotData;
+      const snapshotData: SnapshotData = report.snapshotData;
 
       // Fetch logo as base64
       let logoBase64: string | null = null;
@@ -52,7 +52,7 @@ const EnrollmentReportModal: React.FC<EnrollmentReportModalProps> = ({ open, uui
       setPdfUrl(url);
     } catch (error) {
       console.error('Error loading report:', error);
-      message.error('Error al cargar el reporte de inscripción');
+      message.error(error instanceof Error ? error.message : 'Error al cargar el reporte de inscripción');
     } finally {
       setLoading(false);
     }
@@ -62,12 +62,13 @@ const EnrollmentReportModal: React.FC<EnrollmentReportModalProps> = ({ open, uui
     if (open && uuid) {
       loadReport();
     }
-    return () => {
-      if (pdfUrl) {
-        URL.revokeObjectURL(pdfUrl);
-      }
-    };
   }, [open, uuid, loadReport]);
+
+  useEffect(() => () => {
+    if (pdfUrl) {
+      URL.revokeObjectURL(pdfUrl);
+    }
+  }, [pdfUrl]);
 
   const handleClose = () => {
     if (pdfUrl) {
