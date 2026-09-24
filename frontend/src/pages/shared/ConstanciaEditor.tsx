@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useState } from 'react';
 import { useEditor, EditorContent, Extension } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import { TextStyle } from '@tiptap/extension-text-style';
@@ -6,14 +6,24 @@ import Color from '@tiptap/extension-color';
 import TextAlign from '@tiptap/extension-text-align';
 import { FloatingImage } from './FloatingImage';
 import type { ImageWrapMode } from './FloatingImage';
+import { FloatingLine } from './FloatingLine';
+import {
+  FloatingTable, createCells, addTableRow, removeTableRow, addTableColumn, removeTableColumn,
+  getActiveCellPosition, formatActiveCell, alignActiveCell, insertIntoActiveCell, clearActiveCell,
+} from './FloatingTable';
+import type { CellAlign } from './FloatingTable';
+import { insertFloatingNode, setAnchorMode } from './floatingObject';
+import type { AnchorMode } from './floatingObject';
 import { CONSTANCIA_PAGE_CSS, CONSTANCIA_PAGE_STYLE } from './constanciaPage';
-import { Button, Space, Select, Dropdown, Upload, message } from 'antd';
+import { Button, Space, Select, Dropdown, Upload, Popover, InputNumber, message } from 'antd';
 import {
   BoldOutlined, ItalicOutlined, UnderlineOutlined,
   UnorderedListOutlined, OrderedListOutlined,
   AlignLeftOutlined, AlignCenterOutlined, AlignRightOutlined, MenuOutlined,
   UndoOutlined, RedoOutlined, LinkOutlined,
-  PlusOutlined, PictureOutlined,
+  PlusOutlined, PictureOutlined, LineOutlined, TableOutlined, DeleteOutlined,
+  InsertRowBelowOutlined, InsertRowRightOutlined, DeleteRowOutlined, DeleteColumnOutlined,
+  SelectOutlined,
 } from '@ant-design/icons';
 
 // Custom FontSize extension (same as DashboardEditor)
@@ -121,8 +131,54 @@ export const TextTransform = Extension.create({
   },
 });
 
-export { FloatingImage };
+export { FloatingImage, FloatingLine, FloatingTable };
 export type { ImageWrapMode };
+
+// Word-style grid to choose the rows × columns of a new table, plus numeric fields
+// for sizes the grid does not cover (grade certificates need 13+ rows).
+const TableSizePicker: React.FC<{ onPick: (rows: number, cols: number) => void }> = ({ onPick }) => {
+  const [hover, setHover] = useState<[number, number]>([0, 0]);
+  const [rows, setRows] = useState(4);
+  const [cols, setCols] = useState(3);
+  const size = 8;
+  return (
+    <div>
+      <div
+        style={{ display: 'grid', gridTemplateColumns: `repeat(${size}, 18px)`, gap: 2 }}
+        onMouseLeave={() => setHover([0, 0])}
+      >
+        {Array.from({ length: size * size }, (_, i) => {
+          const row = Math.floor(i / size) + 1;
+          const col = (i % size) + 1;
+          const on = row <= hover[0] && col <= hover[1];
+          return (
+            <div
+              key={i}
+              onMouseEnter={() => setHover([row, col])}
+              onClick={() => onPick(row, col)}
+              style={{ width: 18, height: 18, border: '1px solid #cbd5e1', background: on ? '#bae0ff' : '#fff', cursor: 'pointer' }}
+            />
+          );
+        })}
+      </div>
+      <div style={{ marginTop: 6, fontSize: 12, textAlign: 'center' }}>
+        {hover[0] ? `${hover[0]} fila(s) × ${hover[1]} columna(s)` : 'Filas × columnas'}
+      </div>
+      <Space size={6} style={{ marginTop: 8 }}>
+        <span style={{ fontSize: 12 }}>Filas</span>
+        <InputNumber size="small" min={1} max={60} value={rows} onChange={(v) => setRows(v ?? 1)} style={{ width: 58 }} />
+        <span style={{ fontSize: 12 }}>Columnas</span>
+        <InputNumber size="small" min={1} max={12} value={cols} onChange={(v) => setCols(v ?? 1)} style={{ width: 58 }} />
+        <Button size="small" type="primary" onClick={() => onPick(rows, cols)}>Insertar</Button>
+      </Space>
+    </div>
+  );
+};
+
+const FONT_SIZE_OPTIONS = ['8pt', '10pt', '11pt', '12pt', '14pt', '16pt', '18pt', '20pt', '24pt'].map((v) => ({ value: v, label: v.replace('pt', '') }));
+
+// Keeps the caret inside a table cell (or the editor) while a toolbar button is clicked.
+const keepFocus = (event: React.MouseEvent) => event.preventDefault();
 
 export interface VariableDef {
   group: string;
@@ -137,6 +193,10 @@ interface ConstanciaEditorProps {
 }
 
 const ConstanciaEditor: React.FC<ConstanciaEditorProps> = ({ content, onChange, variables }) => {
+  const [tablePickerOpen, setTablePickerOpen] = useState(false);
+  // Lets clicks pass through the text so objects placed behind it can be selected.
+  const [objectsMode, setObjectsMode] = useState(false);
+
   const editor = useEditor({
     extensions: [
       StarterKit.configure({ link: { openOnClick: false } }),
@@ -149,7 +209,11 @@ const ConstanciaEditor: React.FC<ConstanciaEditorProps> = ({ content, onChange, 
       TextIndent,
       TextAlign.configure({ types: ['heading', 'paragraph'] }),
       FloatingImage,
+      FloatingLine,
+      FloatingTable,
     ],
+    // The toolbar reflects the current selection (e.g. line/table controls).
+    shouldRerenderOnTransaction: true,
     content,
     onUpdate: ({ editor }) => {
       onChange(editor.getHTML());
@@ -184,6 +248,7 @@ const ConstanciaEditor: React.FC<ConstanciaEditorProps> = ({ content, onChange, 
     }
     // Insert as a styled span so it's visually distinct
     const html = `<span style="background-color: #e6f4ff; color: #1677ff; padding: 1px 4px; border-radius: 3px; font-weight: 600;" data-variable="${key}">{{${key}}}</span>`;
+    if (insertIntoActiveCell(html)) return;
     editor.chain().focus().insertContent(html).run();
   }, [editor]);
 
@@ -194,6 +259,43 @@ const ConstanciaEditor: React.FC<ConstanciaEditorProps> = ({ content, onChange, 
   }, [editor]);
 
   if (!editor) return <div>Cargando editor…</div>;
+
+  const lineSelected = editor.isActive('floatingLine');
+  const tableSelected = editor.isActive('floatingTable');
+  const lineAttrs = lineSelected ? editor.getAttributes('floatingLine') : {};
+  const tableAttrs = tableSelected ? editor.getAttributes('floatingTable') : {};
+
+  // No focus() here: keeps the caret inside a table cell that is being edited.
+  const updateObject = (type: 'floatingLine' | 'floatingTable', patch: Record<string, unknown>) => {
+    editor.chain().updateAttributes(type, patch).run();
+  };
+
+  const applyTablePatch = (patch: Record<string, unknown> | null) => {
+    if (patch) updateObject('floatingTable', patch);
+  };
+
+  const deleteSelectedObject = () => {
+    clearActiveCell();
+    editor.chain().focus(undefined, { scrollIntoView: false }).deleteSelection().run();
+  };
+
+  const insertTable = (rows: number, cols: number) => {
+    setTablePickerOpen(false);
+    insertFloatingNode(editor, 'floatingTable', { cells: createCells(rows, cols), width: Math.min(624, cols * 120) });
+  };
+
+  const toggleMark = (mark: 'bold' | 'italic' | 'underline') => {
+    if (formatActiveCell(mark)) return;
+    const chain = editor.chain().focus();
+    if (mark === 'bold') chain.toggleBold().run();
+    else if (mark === 'italic') chain.toggleItalic().run();
+    else chain.toggleUnderline().run();
+  };
+
+  const align = (value: CellAlign) => {
+    if (alignActiveCell(value)) return;
+    editor.chain().focus().setTextAlign(value).run();
+  };
 
   // Group variables for dropdown
   const groupedVars = variables.reduce((acc, v) => {
@@ -273,9 +375,9 @@ const ConstanciaEditor: React.FC<ConstanciaEditorProps> = ({ content, onChange, 
         <div className="w-px h-6 bg-slate-300 mx-1" />
 
         <Space>
-          <Button icon={<BoldOutlined />} onClick={() => editor.chain().focus().toggleBold().run()} type={editor.isActive('bold') ? 'primary' : 'default'} size="small" />
-          <Button icon={<ItalicOutlined />} onClick={() => editor.chain().focus().toggleItalic().run()} type={editor.isActive('italic') ? 'primary' : 'default'} size="small" />
-          <Button icon={<UnderlineOutlined />} onClick={() => editor.chain().focus().toggleUnderline().run()} type={editor.isActive('underline') ? 'primary' : 'default'} size="small" />
+          <Button icon={<BoldOutlined />} onMouseDown={keepFocus} onClick={() => toggleMark('bold')} type={editor.isActive('bold') ? 'primary' : 'default'} size="small" />
+          <Button icon={<ItalicOutlined />} onMouseDown={keepFocus} onClick={() => toggleMark('italic')} type={editor.isActive('italic') ? 'primary' : 'default'} size="small" />
+          <Button icon={<UnderlineOutlined />} onMouseDown={keepFocus} onClick={() => toggleMark('underline')} type={editor.isActive('underline') ? 'primary' : 'default'} size="small" />
         </Space>
 
         <div className="w-px h-6 bg-slate-300 mx-1" />
@@ -288,10 +390,10 @@ const ConstanciaEditor: React.FC<ConstanciaEditorProps> = ({ content, onChange, 
         <div className="w-px h-6 bg-slate-300 mx-1" />
 
         <Space>
-          <Button icon={<AlignLeftOutlined />} onClick={() => editor.chain().focus().setTextAlign('left').run()} type={editor.isActive({ textAlign: 'left' }) ? 'primary' : 'default'} size="small" />
-          <Button icon={<AlignCenterOutlined />} onClick={() => editor.chain().focus().setTextAlign('center').run()} type={editor.isActive({ textAlign: 'center' }) ? 'primary' : 'default'} size="small" />
-          <Button icon={<AlignRightOutlined />} onClick={() => editor.chain().focus().setTextAlign('right').run()} type={editor.isActive({ textAlign: 'right' }) ? 'primary' : 'default'} size="small" />
-          <Button icon={<MenuOutlined />} onClick={() => editor.chain().focus().setTextAlign('justify').run()} type={editor.isActive({ textAlign: 'justify' }) ? 'primary' : 'default'} size="small" />
+          <Button icon={<AlignLeftOutlined />} onMouseDown={keepFocus} onClick={() => align('left')} type={editor.isActive({ textAlign: 'left' }) ? 'primary' : 'default'} size="small" />
+          <Button icon={<AlignCenterOutlined />} onMouseDown={keepFocus} onClick={() => align('center')} type={editor.isActive({ textAlign: 'center' }) ? 'primary' : 'default'} size="small" />
+          <Button icon={<AlignRightOutlined />} onMouseDown={keepFocus} onClick={() => align('right')} type={editor.isActive({ textAlign: 'right' }) ? 'primary' : 'default'} size="small" />
+          <Button icon={<MenuOutlined />} onMouseDown={keepFocus} onClick={() => align('justify')} type={editor.isActive({ textAlign: 'justify' }) ? 'primary' : 'default'} size="small" />
         </Space>
 
         <div className="w-px h-6 bg-slate-300 mx-1" />
@@ -333,6 +435,203 @@ const ConstanciaEditor: React.FC<ConstanciaEditorProps> = ({ content, onChange, 
               { value: 'behind', label: 'Detrás del texto' },
             ]}
           />
+        )}
+
+        {/* Floating objects: signature lines and tables */}
+        <Button
+          icon={<LineOutlined />}
+          size="small"
+          title="Insertar línea (para firmas)"
+          onClick={() => insertFloatingNode(editor, 'floatingLine', {})}
+        >
+          Línea
+        </Button>
+
+        <Popover
+          trigger="click"
+          open={tablePickerOpen}
+          onOpenChange={setTablePickerOpen}
+          content={<TableSizePicker onPick={insertTable} />}
+          title="Insertar tabla"
+        >
+          <Button
+            icon={<TableOutlined />}
+            size="small"
+            title="Insertar tabla. Con clic derecho sobre una celda puedes agregar o quitar filas y columnas"
+          >
+            Tabla
+          </Button>
+        </Popover>
+
+        <Button
+          icon={<SelectOutlined />}
+          size="small"
+          type={objectsMode ? 'primary' : 'default'}
+          title="Permite seleccionar las líneas, tablas e imágenes colocadas detrás del texto"
+          onClick={() => setObjectsMode((on) => !on)}
+        >
+          Objetos detrás
+        </Button>
+
+        {lineSelected && (
+          <Space size={4} wrap>
+            <Select
+              size="small"
+              style={{ width: 115 }}
+              value={lineAttrs.orientation || 'horizontal'}
+              onChange={(value) => updateObject('floatingLine', { orientation: value })}
+              options={[
+                { value: 'horizontal', label: 'Horizontal' },
+                { value: 'vertical', label: 'Vertical' },
+              ]}
+            />
+            <Select
+              size="small"
+              style={{ width: 80 }}
+              value={Number(lineAttrs.thickness) || 1}
+              onChange={(value) => updateObject('floatingLine', { thickness: value })}
+              options={[1, 2, 3, 4, 6].map((v) => ({ value: v, label: `${v} px` }))}
+            />
+            <Select
+              size="small"
+              style={{ width: 115 }}
+              value={lineAttrs.lineStyle || 'solid'}
+              onChange={(value) => updateObject('floatingLine', { lineStyle: value })}
+              options={[
+                { value: 'solid', label: 'Continua' },
+                { value: 'dashed', label: 'Discontinua' },
+                { value: 'dotted', label: 'Punteada' },
+              ]}
+            />
+            <input
+              type="color"
+              title="Color de la línea"
+              value={lineAttrs.color || '#000000'}
+              onChange={(e) => updateObject('floatingLine', { color: e.target.value })}
+              style={{ width: 28, height: 28, cursor: 'pointer', border: '1px solid #d9d9d9', borderRadius: 4 }}
+            />
+            <Select
+              size="small"
+              style={{ width: 150 }}
+              value={lineAttrs.layer || 'front'}
+              onChange={(value) => updateObject('floatingLine', { layer: value })}
+              options={[
+                { value: 'front', label: 'Delante del texto' },
+                { value: 'behind', label: 'Detrás del texto' },
+              ]}
+            />
+            <Select
+              size="small"
+              style={{ width: 155 }}
+              title="Anclada al texto: la línea sigue al párrafo sobre el que está puesta, aunque las variables cambien el largo del texto"
+              value={lineAttrs.anchor === 'text' ? 'text' : 'page'}
+              onChange={(value) => setAnchorMode(editor, value as AnchorMode)}
+              options={[
+                { value: 'text', label: 'Anclada al texto' },
+                { value: 'page', label: 'Fija en la página' },
+              ]}
+            />
+            <Button icon={<DeleteOutlined />} size="small" danger title="Eliminar línea" onClick={deleteSelectedObject} />
+          </Space>
+        )}
+
+        {tableSelected && (
+          <Space size={4} wrap>
+            <Button
+              icon={<InsertRowBelowOutlined />}
+              size="small"
+              title="Insertar fila debajo de la celda activa"
+              onMouseDown={keepFocus}
+              onClick={() => applyTablePatch(addTableRow(tableAttrs, getActiveCellPosition()?.row))}
+            >
+              +Fila
+            </Button>
+            <Button
+              icon={<DeleteRowOutlined />}
+              size="small"
+              title="Eliminar la fila de la celda activa"
+              onMouseDown={keepFocus}
+              onClick={() => applyTablePatch(removeTableRow(tableAttrs, getActiveCellPosition()?.row))}
+            >
+              -Fila
+            </Button>
+            <Button
+              icon={<InsertRowRightOutlined />}
+              size="small"
+              title="Insertar columna a la derecha de la celda activa"
+              onMouseDown={keepFocus}
+              onClick={() => applyTablePatch(addTableColumn(tableAttrs, getActiveCellPosition()?.col))}
+            >
+              +Col
+            </Button>
+            <Button
+              icon={<DeleteColumnOutlined />}
+              size="small"
+              title="Eliminar la columna de la celda activa"
+              onMouseDown={keepFocus}
+              onClick={() => applyTablePatch(removeTableColumn(tableAttrs, getActiveCellPosition()?.col))}
+            >
+              -Col
+            </Button>
+            <input
+              type="color"
+              title="Color del borde"
+              value={tableAttrs.borderColor && tableAttrs.borderColor !== 'transparent' ? tableAttrs.borderColor : '#000000'}
+              onChange={(e) => updateObject('floatingTable', { borderColor: e.target.value })}
+              style={{ width: 28, height: 28, cursor: 'pointer', border: '1px solid #d9d9d9', borderRadius: 4 }}
+            />
+            <Select
+              size="small"
+              style={{ width: 120 }}
+              value={tableAttrs.borderColor === 'transparent' ? 'none' : String(tableAttrs.borderWidth ?? 1)}
+              onChange={(value) => updateObject(
+                'floatingTable',
+                value === 'none'
+                  ? { borderColor: 'transparent' }
+                  : {
+                    borderWidth: Number(value),
+                    borderColor: tableAttrs.borderColor === 'transparent' ? '#000000' : tableAttrs.borderColor,
+                  },
+              )}
+              options={[
+                { value: 'none', label: 'Sin borde' },
+                { value: '1', label: 'Borde 1 px' },
+                { value: '2', label: 'Borde 2 px' },
+                { value: '3', label: 'Borde 3 px' },
+              ]}
+            />
+            <Select
+              size="small"
+              style={{ width: 95 }}
+              placeholder="Tamaño"
+              allowClear
+              value={tableAttrs.fontSize || undefined}
+              onChange={(value) => updateObject('floatingTable', { fontSize: value ?? null })}
+              options={FONT_SIZE_OPTIONS}
+            />
+            <Select
+              size="small"
+              style={{ width: 150 }}
+              value={tableAttrs.layer || 'front'}
+              onChange={(value) => updateObject('floatingTable', { layer: value })}
+              options={[
+                { value: 'front', label: 'Delante del texto' },
+                { value: 'behind', label: 'Detrás del texto' },
+              ]}
+            />
+            <Select
+              size="small"
+              style={{ width: 155 }}
+              title="Anclada al texto: la tabla sigue al párrafo sobre el que está puesta, aunque las variables cambien el largo del texto"
+              value={tableAttrs.anchor === 'text' ? 'text' : 'page'}
+              onChange={(value) => setAnchorMode(editor, value as AnchorMode)}
+              options={[
+                { value: 'text', label: 'Anclada al texto' },
+                { value: 'page', label: 'Fija en la página' },
+              ]}
+            />
+            <Button icon={<DeleteOutlined />} size="small" danger title="Eliminar tabla" onClick={deleteSelectedObject} />
+          </Space>
         )}
 
         <div className="w-px h-6 bg-slate-300 mx-1" />
@@ -418,14 +717,17 @@ const ConstanciaEditor: React.FC<ConstanciaEditorProps> = ({ content, onChange, 
           }}
           trigger={['click']}
         >
-          <Button icon={<PlusOutlined />} size="small" type="dashed">Insertar variable</Button>
+          <Button icon={<PlusOutlined />} size="small" type="dashed" onMouseDown={keepFocus}>Insertar variable</Button>
         </Dropdown>
       </div>
 
       {/* Editor — page-like canvas with background/foreground image layers */}
       <div className="bg-slate-200 p-8 rounded-b-lg" style={{ minHeight: 'calc(100vh - 200px)', overflowY: 'auto' }}>
         <style>{CONSTANCIA_PAGE_CSS}</style>
-        <div className="constancia-page constancia-editor-page" style={CONSTANCIA_PAGE_STYLE}>
+        <div
+          className={`constancia-page constancia-editor-page${objectsMode ? ' constancia-objects-mode' : ''}`}
+          style={CONSTANCIA_PAGE_STYLE}
+        >
           <div className="constancia-layer constancia-layer-behind" />
           <EditorContent editor={editor} className="constancia-content" />
           <div className="constancia-layer constancia-layer-front" />

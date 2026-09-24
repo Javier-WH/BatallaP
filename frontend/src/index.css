@@ -526,6 +526,162 @@ input[type=number] {
 .fimg-handle-sw { bottom: -6px; left: -6px; cursor: sw-resize; }
 .fimg-handle-se { bottom: -6px; right: -6px; cursor: se-resize; }
 
+/* "Objetos detrás" mode: clicks pass through the text to objects placed behind it */
+.constancia-objects-mode .constancia-content {
+  pointer-events: none;
+}
+
+/* Floating objects (lines, tables): zero-height anchor in the text flow */
+.fobj-anchor {
+  display: block;
+  height: 0;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.fobj-box {
+  position: absolute;
+  box-sizing: border-box;
+  pointer-events: auto;
+}
+
+.fobj-box.is-selected {
+  outline: 1px dashed #1890ff;
+  outline-offset: 1px;
+}
+
+.fobj-handle {
+  display: none;
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  box-sizing: border-box;
+  background: #1890ff;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  z-index: 40;
+}
+
+.fobj-box.is-selected .fobj-handle {
+  display: block;
+}
+
+.fobj-handle-n { top: -6px; left: calc(50% - 5px); cursor: n-resize; }
+.fobj-handle-s { bottom: -6px; left: calc(50% - 5px); cursor: s-resize; }
+.fobj-handle-e { right: -6px; top: calc(50% - 5px); cursor: e-resize; }
+.fobj-handle-w { left: -6px; top: calc(50% - 5px); cursor: w-resize; }
+.fobj-handle-nw { top: -6px; left: -6px; cursor: nw-resize; }
+.fobj-handle-ne { top: -6px; right: -6px; cursor: ne-resize; }
+.fobj-handle-sw { bottom: -6px; left: -6px; cursor: sw-resize; }
+.fobj-handle-se { bottom: -6px; right: -6px; cursor: se-resize; }
+
+.fline-box {
+  cursor: move;
+}
+
+.ftable-host td {
+  cursor: text;
+  outline: none;
+}
+
+.ftable-host td:focus {
+  box-shadow: inset 0 0 0 2px rgba(24, 144, 255, 0.35);
+}
+
+.ftable-host td p,
+.ftable-host td div {
+  margin: 0;
+}
+
+/* Invisible borders still show a faint guide while editing (never printed) */
+.ftable-ghost .ftable-host td {
+  outline: 1px dashed rgba(30, 64, 175, 0.35);
+  outline-offset: -1px;
+}
+
+.ftable-grip {
+  display: none;
+  position: absolute;
+  top: -18px;
+  left: 0;
+  width: 36px;
+  height: 16px;
+  line-height: 16px;
+  font-size: 12px;
+  text-align: center;
+  color: #fff;
+  background: #1890ff;
+  border-radius: 3px 3px 0 0;
+  cursor: move;
+  user-select: none;
+  z-index: 41;
+}
+
+.ftable-box:hover .ftable-grip,
+.fobj-box.is-selected .ftable-grip {
+  display: block;
+}
+
+.ftable-col-resizers {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.ftable-col-resizer {
+  display: none;
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 7px;
+  margin-left: -3px;
+  cursor: col-resize;
+  pointer-events: auto;
+  z-index: 35;
+}
+
+.fobj-box.is-selected .ftable-col-resizer {
+  display: block;
+}
+
+/* Right-click menu for table rows/columns */
+.ftable-menu {
+  position: fixed;
+  min-width: 210px;
+  padding: 4px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
+  z-index: 2000;
+}
+
+.ftable-menu-item {
+  display: block;
+  width: 100%;
+  padding: 5px 10px;
+  border: 0;
+  background: none;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.ftable-menu-item:hover:not(:disabled) {
+  background: #f1f5f9;
+}
+
+.ftable-menu-item:disabled {
+  color: #b6bec9;
+  cursor: default;
+}
+
+.ftable-col-resizer:hover {
+  background: rgba(24, 144, 255, 0.35);
+}
+
 /* === RESPONSIVE: Mobile sidebar === */
 /* Mobile logo button — hidden on desktop, visible on mobile */
 .mobile-logo-btn {

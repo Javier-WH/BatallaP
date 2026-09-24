@@ -24,6 +24,8 @@ export const CONSTANCIA_PAGE_CSS = `
   .constancia-preview { position: relative; z-index: 10; }
   .constancia-preview p, .constancia-preview h1, .constancia-preview h2, .constancia-preview h3 { margin: 0; }
   .constancia-preview ul, .constancia-preview ol { margin: 0; padding-left: 2em; }
+  [data-float] { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  [data-float="table"] td p, [data-float="table"] td div { margin: 0; }
 `;
 
 /**
@@ -36,14 +38,17 @@ export function buildConstanciaPageHtml(html: string): string {
   const doc = new DOMParser().parseFromString(html, 'text/html');
   const body = doc.body;
 
+  // Text paragraphs only — paragraphs inside floating tables are cell content.
+  const textParagraphs = () => Array.from(body.querySelectorAll('p')).filter((p) => !p.closest('[data-float]'));
+
   // Drop the trailing empty block Tiptap keeps at the end of the document.
-  const paragraphs = Array.from(body.querySelectorAll('p'));
+  const paragraphs = textParagraphs();
   while (paragraphs.length > 0 && paragraphs[paragraphs.length - 1].innerHTML.trim() === '') {
     paragraphs.pop()?.remove();
   }
 
   // Reproduce the line breaks the editor renders so vertical rhythm matches.
-  body.querySelectorAll('p').forEach((paragraph) => {
+  textParagraphs().forEach((paragraph) => {
     if (paragraph.innerHTML.trim() === '') {
       paragraph.appendChild(doc.createElement('br'));
       return;
@@ -62,6 +67,14 @@ export function buildConstanciaPageHtml(html: string): string {
     const wrap = image.getAttribute('data-wrap');
     if (wrap === 'behind') behind.appendChild(image);
     else if (wrap === 'front') front.appendChild(image);
+  });
+
+  // Floating lines and tables are positioned against the page, like floating images.
+  // Text-anchored ones stay inside the content flow so they follow their paragraph
+  // when variables change the text length.
+  body.querySelectorAll<HTMLElement>('[data-float]').forEach((element) => {
+    if (element.getAttribute('data-anchor') === 'text') return;
+    (element.getAttribute('data-layer') === 'behind' ? behind : front).appendChild(element);
   });
 
   const content = doc.createElement('div');

@@ -18,7 +18,9 @@ import {
   type IParagraphOptions,
 } from 'docx';
 import { saveAs } from 'file-saver';
-import { FontSize, FontFamily, LineHeight, TextIndent, TextTransform, FloatingImage } from '@/pages/shared/ConstanciaEditor';
+import {
+  FontSize, FontFamily, LineHeight, TextIndent, TextTransform, FloatingImage, FloatingLine, FloatingTable,
+} from '@/pages/shared/ConstanciaEditor';
 
 // docx v9 declares IParagraphOptions / IRunOptions properties as `readonly`.
 // Build the objects mutably, then hand them off to docx (mutable → readonly is fine).
@@ -55,6 +57,10 @@ const tiptapNodes: NodeSerializer = {
 
   // Image handler — reads wrap attribute and passes through to default image serializer
   image: defaultNodes.image,
+
+  // Floating lines and tables are PDF-only; skip them so the Word export does not fail.
+  floatingLine() {},
+  floatingTable() {},
 
   // Custom paragraph handler — reads textAlign, lineHeight and textIndent attrs from Tiptap
   paragraph(state, node) {
@@ -215,6 +221,8 @@ export async function exportConstanciaToDocx(html: string, filename = 'constanci
       TextIndent,
       TextAlign.configure({ types: ['heading', 'paragraph'] }),
       FloatingImage,
+      FloatingLine,
+      FloatingTable,
     ],
     content: html,
   });
