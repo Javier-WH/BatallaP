@@ -31,6 +31,14 @@ import {
 
 const router = Router();
 
+// All payments endpoints require an authenticated session
+router.use((req, res, next) => {
+  if (!(req.session as any)?.user) {
+    return res.status(401).json({ message: 'No autenticado' });
+  }
+  next();
+});
+
 // ── Exchange Rate Types ──
 router.get('/exchange-rate-types', listExchangeRateTypes);
 router.post('/exchange-rate-types', createExchangeRateType);

@@ -70,6 +70,7 @@ Todos los servicios consumen la instancia `api` con `withCredentials: true`.
 | Archivo | Descripción |
 |---------|-------------|
 | `Login.tsx` | Pantalla de login. |
+| `shared/ExchangeCalculatorPage.tsx` | Calculadora de tasas standalone. Ruta pública `/calculadora` (SPA) y entrada MPA `calculadora.html` instalable como PWA con icono propio (`public/calculadora.webmanifest`). Sin sesión muestra login inline (los endpoints `/api/payments` exigen sesión). |
 | `MainLayout.tsx` | Layout global con sidebar y topbar. Filtra menús por roles. Incluye el item «Acerca de» (todos los roles) que abre un modal con los creadores y la versión (de `GET /api/health`). |
 | `GeneralDashboard.tsx` | Dashboard genérico post-login (antes de entrar a un módulo). |
 | `NotFound.tsx` | Página 404. |

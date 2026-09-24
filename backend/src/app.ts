@@ -46,11 +46,12 @@ app.use(session({
   store: sessionStore,
   resave: false,
   saveUninitialized: false,
+  rolling: true, // Renew cookie expiration on every request — active users stay logged in
   cookie: {
     secure: false, // Set to true for https
     httpOnly: true,
     sameSite: 'lax',
-    maxAge: 1000 * 60 * 60 * 24 // 1 day
+    maxAge: 1000 * 60 * 60 * 24 * 30 // 30 days
   }
 }));
 

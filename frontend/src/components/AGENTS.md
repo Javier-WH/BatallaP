@@ -12,6 +12,8 @@
 | `DashboardContent.tsx` | Render del contenido editable del dashboard (bloques + imágenes). Alimentado por `dashboardContentService`. |
 | `EnrollmentQuestionFields.tsx` | Genera form fields dinámicos desde `EnrollmentQuestion[]`. Usado en wizards de inscripción/matrícula. |
 | `BulkRetryModal.tsx` | Modal de reintento de filas fallidas del bulk-enrollment. Grande (~28 KB). |
+| `ExchangeRateBar.tsx` | Widget de tasas USD/EUR del header. Desktop: barra de tasas; móvil: botón-icono. Ambos abren el modal con `ExchangeRateCalculator`. |
+| `ExchangeRateCalculator.tsx` | Cuerpo de la calculadora de conversión (fecha, dirección, monedas, monto, resultados). Compartido entre el modal del header y la página standalone `/calculadora`. |
 
 ### `components/shared/`
 

@@ -39,6 +39,7 @@ import SettingsManagement from '@/pages/master/SettingsManagement';
 import GeneralDashboard from '@/pages/GeneralDashboard';
 import type { JSX } from 'react';
 import NotFound from '@/pages/NotFound';
+import ExchangeCalculatorPage from '@/pages/shared/ExchangeCalculatorPage';
 
 // Control de Estudios Module Imports
 import ControlEstudiosLayout from '@/pages/control-estudios/ControlEstudiosLayout';
@@ -208,6 +209,9 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/" element={<PublicRoute><Login /></PublicRoute>} />
+
+      {/* Standalone rate calculator — public route, inline login when unauthenticated */}
+      <Route path="/calculadora" element={<ExchangeCalculatorPage />} />
 
       {/* General Dashboard (To be defined or shared) */}
       <Route path="/" element={<RequireAuth><MainLayout /></RequireAuth>}>
