@@ -764,6 +764,85 @@ input[type=number] {
   }
 }
 
+/* Matriculation grid: extra scrollable room under the last row. The horizontal
+   scrollbar zone (9px, see below) overlays the bottom of the grid and covers
+   the last row on narrow screens; 9px of extra scroll room lifts the row just
+   clear of it — no more, so the blank space stays the size of the scrollbar.
+   .ag-grid-scrollable-area is the element whose height feeds the viewport's
+   scrollHeight (AG Grid 36 DOM); the vertical-scroll container is the fake
+   scrollbar's spacer and must grow by the same amount to keep them in sync.
+   content-box is required there because AG Grid sets an explicit inline height
+   and border-box would swallow the padding. */
+.matriculation-grid .ag-grid-scrollable-area {
+  padding-bottom: 9px;
+}
+
+.matriculation-grid .ag-body-vertical-scroll-container {
+  box-sizing: content-box;
+  width: 9px !important;
+  padding-bottom: 9px;
+}
+
+.matriculation-grid .ag-body-horizontal-scroll-container {
+  height: 9px !important;
+}
+
+/* Slim scrollbars for the matriculation grid: AG Grid's fake scrollbars are
+   only position indicators (scrolling happens by dragging the grid body), but
+   they render a solid 16px white strip behind a ~6px thumb. Make the strip
+   transparent and shrink the reserved column to roughly the thumb's size.
+   AG Grid sets width, min-width and max-width as inline styles, so all three
+   must be overridden (!important) or the width stays clamped at 16px. */
+.matriculation-grid .ag-body-vertical-scroll,
+.matriculation-grid .ag-body-vertical-scroll-viewport {
+  width: 9px !important;
+  min-width: 9px !important;
+  max-width: 9px !important;
+}
+
+.matriculation-grid .ag-body-vertical-scroll {
+  bottom: 9px !important;
+}
+
+.matriculation-grid .ag-body-horizontal-scroll,
+.matriculation-grid .ag-body-horizontal-scroll-viewport {
+  height: 9px !important;
+  min-height: 9px !important;
+  max-height: 9px !important;
+}
+
+.matriculation-grid .ag-body-vertical-scroll,
+.matriculation-grid .ag-body-vertical-scroll-viewport,
+.matriculation-grid .ag-body-horizontal-scroll,
+.matriculation-grid .ag-body-horizontal-scroll-viewport {
+  background: transparent;
+}
+
+.matriculation-grid .ag-body-vertical-scroll-viewport,
+.matriculation-grid .ag-body-horizontal-scroll-viewport {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 0, 0, 0.35) transparent;
+}
+
+.matriculation-grid .ag-body-vertical-scroll-viewport::-webkit-scrollbar {
+  width: 6px;
+}
+
+.matriculation-grid .ag-body-horizontal-scroll-viewport::-webkit-scrollbar {
+  height: 6px;
+}
+
+.matriculation-grid .ag-body-vertical-scroll-viewport::-webkit-scrollbar-track,
+.matriculation-grid .ag-body-horizontal-scroll-viewport::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.matriculation-grid .ag-body-vertical-scroll-viewport::-webkit-scrollbar-thumb,
+.matriculation-grid .ag-body-horizontal-scroll-viewport::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.35);
+  border-radius: 3px;
+}
+
 /* Matriculation bulk bar: the controls wrapper is transparent on desktop so
    its children keep participating in the parent flex row. */
 .bulk-action-controls {

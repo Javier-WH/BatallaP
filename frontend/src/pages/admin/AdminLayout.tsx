@@ -135,7 +135,9 @@ const AdminLayout: React.FC = () => {
 
       {/* Module Content */}
       <div className="flex-1 min-h-0 pt-0">
-        <div className="h-full overflow-y-auto animate-in fade-in slide-in-from-bottom-2 duration-500">
+        {/* Shares pages with Control de Estudios (e.g. Matrícula): the responsive
+            styles for .ce-page live under this class. */}
+        <div className="control-estudios-responsive h-full overflow-y-auto animate-in fade-in slide-in-from-bottom-2 duration-500">
           <Outlet />
         </div>
       </div>

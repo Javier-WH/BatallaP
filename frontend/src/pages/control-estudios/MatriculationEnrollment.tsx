@@ -345,19 +345,29 @@ const MatriculationEnrollment: React.FC = () => {
 
   useEffect(() => {
     const updateScrollY = () => {
-      // Measure the flex-1 grid wrapper so the table fills all remaining vertical space
-      const wrapperHeight = gridWrapperRef.current?.getBoundingClientRect().height ?? 0;
-      // Never exceed the wrapper: it is overflow-hidden, so any excess would hide the last rows
-      setScrollY(Math.max(120, Math.floor(wrapperHeight) - 2));
+      const wrapper = gridWrapperRef.current;
+      if (!wrapper) return;
+      const rect = wrapper.getBoundingClientRect();
+      // Clamp to the visible viewport: on mobile the page can be taller than the
+      // screen (100vh ignores the browser toolbar), which left the last rows
+      // below the fold with no way to scroll to them.
+      const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
+      const visibleHeight = Math.min(rect.height, viewportHeight - rect.top - 8);
+      setScrollY(Math.max(120, Math.floor(visibleHeight) - 2));
     };
 
     updateScrollY();
     const timer = setTimeout(updateScrollY, 50);
     window.addEventListener('resize', updateScrollY);
+    window.visualViewport?.addEventListener('resize', updateScrollY);
+    // Capture phase reaches scroll events from the layout's inner scroll containers.
+    window.addEventListener('scroll', updateScrollY, true);
     const observer = new ResizeObserver(updateScrollY);
     if (gridWrapperRef.current) observer.observe(gridWrapperRef.current);
     return () => {
       window.removeEventListener('resize', updateScrollY);
+      window.visualViewport?.removeEventListener('resize', updateScrollY);
+      window.removeEventListener('scroll', updateScrollY, true);
       observer.disconnect();
       clearTimeout(timer);
     };
