@@ -1,0 +1,26 @@
+{
+  "name": "Calculadora de Tasas",
+  "short_name": "Calculadora",
+  "description": "Conversión Bs ⇄ USD/EUR con tasas BCV",
+  "start_url": "/calculadora.html",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "lang": "es",
+  "background_color": "#ffffff",
+  "theme_color": "#2563eb",
+  "icons": [
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

@@ -3,15 +3,11 @@ import { Row, Col, Card, Tag, Empty, Alert, Progress, Spin, message } from 'antd
 import {
   TeamOutlined,
   UserOutlined,
-  UsergroupAddOutlined,
   AlertOutlined,
-  BookOutlined,
   CheckCircleOutlined,
   ExclamationCircleOutlined,
-  ArrowRightOutlined,
   IdcardOutlined,
 } from '@ant-design/icons';
-import { useNavigate } from 'react-router-dom';
 import api from '@/services/api';
 import { useSchool } from '@/context/SchoolContext';
 
@@ -28,7 +24,8 @@ interface AdminOverviewData {
   period: ActiveSchoolPeriod;
   counts: {
     representatives: number;
-    totalTeachers: number;
+    activeTeachers: number;
+    registeredTeachers: number;
     teachersWithoutAssignments: number;
     studentsWithoutSection: number;
     studentsWithoutSubjects: number;
@@ -135,7 +132,8 @@ const StatCard: React.FC<{
   color: string;
   subtitle?: string;
   delay?: number;
-}> = ({ icon, label, value, color, subtitle, delay = 0 }) => {
+  onClick?: () => void;
+}> = ({ icon, label, value, color, subtitle, delay = 0, onClick }) => {
   const animated = useCountUp(value, 1000, [value]);
   const [visible, setVisible] = useState(false);
   useEffect(() => {
@@ -144,7 +142,8 @@ const StatCard: React.FC<{
   }, [delay]);
   return (
     <div
-      className="app-card app-card-hover p-5 flex items-center gap-4"
+      className={`app-card app-card-hover p-5 flex items-center gap-4${onClick ? ' cursor-pointer' : ''}`}
+      onClick={onClick}
       style={{
         opacity: visible ? 1 : 0,
         transform: visible ? 'translateY(0)' : 'translateY(12px)',
@@ -157,7 +156,7 @@ const StatCard: React.FC<{
       <div className="min-w-0">
         <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>{label}</p>
         <p className="text-2xl font-black" style={{ color: 'var(--color-text-main)' }}>{animated}</p>
-        {subtitle && <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-muted)' }}>{subtitle}</p>}
+        {subtitle && <p className="text-xs mt-0.5 truncate" title={subtitle} style={{ color: 'var(--color-text-muted)' }}>{subtitle}</p>}
       </div>
     </div>
   );
@@ -178,40 +177,12 @@ const FadeIn: React.FC<{ children: React.ReactNode; delay?: number; className?: 
 };
 
 /* ---------- Quick action button ---------- */
-const QuickAction: React.FC<{
-  icon: React.ReactNode;
-  title: string;
-  subtitle: string;
-  color: string;
-  onClick: () => void;
-}> = ({ icon, title, subtitle, color, onClick }) => (
-  <button
-    onClick={onClick}
-    className="w-full p-4 rounded-xl text-left app-card-hover group"
-    style={{ border: '1px solid rgba(15,23,42,0.08)', backgroundColor: 'var(--color-content-bg)', cursor: 'pointer' }}
-  >
-    <div className="flex items-center justify-between">
-      <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: `color-mix(in srgb, ${color} 10%, transparent)`, color }}>
-          {icon}
-        </div>
-        <div>
-          <p className="font-bold text-sm m-0" style={{ color: 'var(--color-text-main)' }}>{title}</p>
-          <p className="text-xs m-0" style={{ color: 'var(--color-text-muted)' }}>{subtitle}</p>
-        </div>
-      </div>
-      <ArrowRightOutlined className="group-hover:translate-x-1 transition-transform" style={{ color: 'var(--color-text-muted)' }} />
-    </div>
-  </button>
-);
-
 /* ---------- Main component ---------- */
 const AdminDashboard: React.FC = () => {
   const { viewPeriod } = useSchool();
   const [data, setData] = useState<AdminOverviewData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const navigate = useNavigate();
 
   const loadSnapshot = useCallback(async () => {
     setLoading(true);
@@ -269,9 +240,9 @@ const AdminDashboard: React.FC = () => {
     );
   }
 
-  const teacherCoverage = data.counts.totalTeachers === 0
+  const teacherCoverage = data.counts.registeredTeachers === 0
     ? 0
-    : Math.round(((data.counts.totalTeachers - data.counts.teachersWithoutAssignments) / data.counts.totalTeachers) * 100);
+    : Math.round((data.counts.activeTeachers / data.counts.registeredTeachers) * 100);
 
   const matriculationRate = data.students.total > 0 ? Math.round((data.students.matriculated / data.students.total) * 100) : 0;
   const coverageColor = data.coverage.percentage >= 80 ? '#16a34a' : data.coverage.percentage >= 50 ? '#f59e0b' : '#ef4444';
@@ -320,12 +291,12 @@ const AdminDashboard: React.FC = () => {
         <Row gutter={[20, 20]}>
           <Col xs={12} md={6}>
             <FadeIn delay={50}>
-              <StatCard icon={<UserOutlined style={{ fontSize: 22 }} />} label="Estudiantes" value={data.students.total} color="#1e40af" subtitle={`${data.students.matriculated} inscritos`} />
+              <StatCard icon={<UserOutlined style={{ fontSize: 22 }} />} label="Estudiantes" value={data.students.total} color="#1e40af" subtitle={`${data.students.matriculated} matriculados · ${data.students.pending} pendientes`} />
             </FadeIn>
           </Col>
           <Col xs={12} md={6}>
             <FadeIn delay={100}>
-              <StatCard icon={<TeamOutlined style={{ fontSize: 22 }} />} label="Docentes" value={data.counts.totalTeachers} color="#0ea5e9" subtitle={`${data.counts.teachersWithoutAssignments} sin asignación`} />
+              <StatCard icon={<TeamOutlined style={{ fontSize: 22 }} />} label="Docentes" value={data.counts.activeTeachers} color="#0ea5e9" subtitle={`${data.counts.registeredTeachers} registrados · ${data.counts.teachersWithoutAssignments} sin asignación`} />
             </FadeIn>
           </Col>
           <Col xs={12} md={6}>
@@ -335,7 +306,14 @@ const AdminDashboard: React.FC = () => {
           </Col>
           <Col xs={12} md={6}>
             <FadeIn delay={200}>
-              <StatCard icon={<ExclamationCircleOutlined style={{ fontSize: 22 }} />} label="Alertas" value={data.alerts.length} color={data.alerts.length > 0 ? '#ef4444' : '#16a34a'} subtitle={data.alerts.length === 0 ? 'Sin alertas' : 'Revisar'} />
+              <StatCard
+                icon={<ExclamationCircleOutlined style={{ fontSize: 22 }} />}
+                label="Alertas"
+                value={data.alerts.length}
+                color={data.alerts.length > 0 ? '#ef4444' : '#16a34a'}
+                subtitle={data.alerts.length === 0 ? 'Sin alertas' : data.alerts.length === 1 ? data.alerts[0] : `${data.alerts[0]} (+${data.alerts.length - 1} más)`}
+                onClick={() => document.getElementById('admin-alerts-card')?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
+              />
             </FadeIn>
           </Col>
         </Row>
@@ -361,7 +339,7 @@ const AdminDashboard: React.FC = () => {
                   <div className="flex gap-6 text-sm w-full justify-center">
                     <div className="flex items-center gap-2">
                       <span className="w-3 h-3 rounded-full" style={{ backgroundColor: '#1e40af' }} />
-                      <span style={{ color: 'var(--color-text-muted)' }}>Inscritos: <strong style={{ color: 'var(--color-text-main)' }}>{data.students.matriculated}</strong></span>
+                      <span style={{ color: 'var(--color-text-muted)' }}>Matriculados: <strong style={{ color: 'var(--color-text-main)' }}>{data.students.matriculated}</strong></span>
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="w-3 h-3 rounded-full" style={{ backgroundColor: '#e2e8f0' }} />
@@ -384,8 +362,8 @@ const AdminDashboard: React.FC = () => {
                       <span className="text-sm font-medium" style={{ color: 'var(--color-text-main)' }}>Asignaciones</span>
                       <span className="text-lg font-black" style={{ color: teacherColor }}>{teacherCoverage}%</span>
                     </div>
-                    <AnimatedBar value={data.counts.totalTeachers - data.counts.teachersWithoutAssignments} max={data.counts.totalTeachers || 1} color="#0ea5e9" delay={400} />
-                    <p className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>{data.counts.totalTeachers - data.counts.teachersWithoutAssignments} de {data.counts.totalTeachers} docentes</p>
+                    <AnimatedBar value={data.counts.activeTeachers} max={data.counts.registeredTeachers || 1} color="#0ea5e9" delay={400} />
+                    <p className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>{data.counts.activeTeachers} de {data.counts.registeredTeachers} docentes con asignación</p>
                   </div>
                   <div>
                     <div className="flex justify-between items-end mb-2">
@@ -435,7 +413,7 @@ const AdminDashboard: React.FC = () => {
           {/* Alerts */}
           <Col xs={24} lg={14}>
             <FadeIn delay={400}>
-              <Card className="h-full" bodyStyle={{ padding: 24 }}>
+              <Card id="admin-alerts-card" className="h-full" bodyStyle={{ padding: 24 }}>
                 <div className="flex items-center gap-2 mb-4">
                   <AlertOutlined style={{ color: data.alerts.length > 0 ? '#f97316' : '#16a34a' }} />
                   <h3 className="text-sm font-bold uppercase tracking-wider m-0" style={{ color: 'var(--color-text-muted)' }}>Alertas de Estructura</h3>
@@ -493,24 +471,6 @@ const AdminDashboard: React.FC = () => {
             </FadeIn>
           </Col>
         </Row>
-
-        {/* ===== Quick Actions ===== */}
-        <FadeIn delay={500}>
-          <Card bodyStyle={{ padding: 24 }}>
-            <h3 className="text-sm font-bold uppercase tracking-wider mb-4" style={{ color: 'var(--color-text-muted)' }}>Acciones Rápidas</h3>
-            <Row gutter={[16, 16]}>
-              <Col xs={24} sm={8}>
-                <QuickAction icon={<UsergroupAddOutlined style={{ fontSize: 18 }} />} title="Matricular Estudiante" subtitle="Inscripción individual" color="#1e40af" onClick={() => navigate('/admin/matricular-estudiante')} />
-              </Col>
-              <Col xs={24} sm={8}>
-                <QuickAction icon={<TeamOutlined style={{ fontSize: 18 }} />} title="Directorio" subtitle="Gestión de usuarios" color="#0ea5e9" onClick={() => navigate('/admin/directorio')} />
-              </Col>
-              <Col xs={24} sm={8}>
-                <QuickAction icon={<BookOutlined style={{ fontSize: 18 }} />} title="Inscribir" subtitle="Estudiante, personal o representante" color="#8b5cf6" onClick={() => navigate('/admin/inscribir-estudiante')} />
-              </Col>
-            </Row>
-          </Card>
-        </FadeIn>
       </div>
     </div>
   );

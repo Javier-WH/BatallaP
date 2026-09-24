@@ -648,68 +648,101 @@ export const getAdminDashboardStats = async (req: Request, res: Response) => {
     ]);
 
     // Inscription counts and derived metrics via SQL.
-    // Hide hidden students from non-privileged roles (mirrors getInscriptions).
-    const inscriptionWhere: any = { schoolPeriodId };
-    if (!isPrivileged) {
-      inscriptionWhere[Op.and] = [
-        literal('`matriculation`.`hiddenFromControlEstudios` = false'),
-      ];
-    }
-
+    // Hidden students are excluded for non-privileged roles (mirrors getInscriptions)
+    // inside each query below.
     const [
-      matriculatedCount,
+      uniqueStudents,
+      matriculatedStudents,
       pendingMatriculations,
       studentsWithoutSection,
       studentsWithoutSubjects,
-      totalTeachers,
+      activeTeachers,
+      registeredTeachers,
       teachersWithoutAssignments,
       representativeCount,
     ] = await Promise.all([
-      // matriculated = inscriptions in this period (excluding hidden for non-privileged)
-      Inscription.count({
-        where: inscriptionWhere,
-        include: [{ model: Matriculation, as: 'matriculation', required: false }],
-      }),
-      // pending matriculations
-      Matriculation.count({
-        where: { schoolPeriodId, status: 'pending' },
-      }),
-      // students without section
-      Inscription.count({
-        where: { ...inscriptionWhere, sectionId: null },
-        include: [{ model: Matriculation, as: 'matriculation', required: false }],
-      }),
-      // students without subjects — raw query (HAVING not supported by Model.count typings)
+      // total students = distinct persons in the period (inscriptions ∪ matriculations)
+      // — pending matriculations are already "inscritos" awaiting section assignment
       sequelize.query(
-        `SELECT COUNT(*) AS \`cnt\` FROM (
-           SELECT i.id
-           FROM inscriptions i
+        `SELECT COUNT(DISTINCT personId) AS \`cnt\` FROM (
+           SELECT i.personId FROM inscriptions i
            LEFT JOIN matriculations m ON m.inscriptionId = i.id
-           LEFT JOIN inscription_subjects ins ON ins.inscriptionId = i.id
            WHERE i.schoolPeriodId = :spId
              ${isPrivileged ? '' : 'AND m.hiddenFromControlEstudios = false'}
-           GROUP BY i.id
-           HAVING COUNT(ins.id) = 0
+           UNION
+           SELECT m2.personId FROM matriculations m2
+           WHERE m2.schoolPeriodId = :spId
+             ${isPrivileged ? '' : 'AND m2.hiddenFromControlEstudios = false'}
          ) AS t`,
         { replacements: { spId: schoolPeriodId }, type: QueryTypes.SELECT }
       ).then((r: any) => Number(r?.[0]?.cnt ?? 0)),
-      // total teachers (Person with role Profesor)
+      // matriculated = completed matriculations (each is a distinct student)
+      Matriculation.count({
+        where: { schoolPeriodId, status: 'completed', ...(isPrivileged ? {} : { hiddenFromControlEstudios: false }) },
+      }),
+      // pending matriculations
+      Matriculation.count({
+        where: { schoolPeriodId, status: 'pending', ...(isPrivileged ? {} : { hiddenFromControlEstudios: false }) },
+      }),
+      // students without section = period students (inscriptions ∪ matriculations)
+      // with no section-bearing inscription — pending matriculations count too
+      sequelize.query(
+        `SELECT COUNT(*) AS \`cnt\` FROM (
+           SELECT i.personId FROM inscriptions i
+           LEFT JOIN matriculations m ON m.inscriptionId = i.id
+           WHERE i.schoolPeriodId = :spId
+             ${isPrivileged ? '' : 'AND m.hiddenFromControlEstudios = false'}
+           UNION
+           SELECT m2.personId FROM matriculations m2
+           WHERE m2.schoolPeriodId = :spId
+             ${isPrivileged ? '' : 'AND m2.hiddenFromControlEstudios = false'}
+         ) t
+         WHERE NOT EXISTS (
+           SELECT 1 FROM inscriptions i2
+           WHERE i2.schoolPeriodId = :spId AND i2.personId = t.personId AND i2.sectionId IS NOT NULL
+         )`,
+        { replacements: { spId: schoolPeriodId }, type: QueryTypes.SELECT }
+      ).then((r: any) => Number(r?.[0]?.cnt ?? 0)),
+      // students without subjects = students WITH a section whose inscriptions
+      // have zero subjects — pending students lack subjects by definition
+      sequelize.query(
+        `SELECT COUNT(DISTINCT i.personId) AS \`cnt\`
+           FROM inscriptions i
+           LEFT JOIN matriculations m ON m.inscriptionId = i.id
+           WHERE i.schoolPeriodId = :spId AND i.sectionId IS NOT NULL
+             ${isPrivileged ? '' : 'AND m.hiddenFromControlEstudios = false'}
+             AND NOT EXISTS (
+               SELECT 1 FROM inscriptions i3
+               JOIN inscription_subjects ins ON ins.inscriptionId = i3.id
+               WHERE i3.schoolPeriodId = :spId AND i3.personId = i.personId
+             )`,
+        { replacements: { spId: schoolPeriodId }, type: QueryTypes.SELECT }
+      ).then((r: any) => Number(r?.[0]?.cnt ?? 0)),
+      // teachers with at least one assignment in this period
+      sequelize.query(
+        `SELECT COUNT(DISTINCT ta.teacherId) AS \`cnt\`
+           FROM teacher_assignments ta
+           JOIN period_grade_subjects pgs ON pgs.id = ta.periodGradeSubjectId
+           JOIN period_grades pg ON pg.id = pgs.periodGradeId
+           WHERE pg.schoolPeriodId = :spId`,
+        { replacements: { spId: schoolPeriodId }, type: QueryTypes.SELECT }
+      ).then((r: any) => Number(r?.[0]?.cnt ?? 0)),
+      // all registered teachers (Person with role Profesor, global)
       Person.count({
         include: [{ model: Role, as: 'roles', where: { name: 'Profesor' }, through: { attributes: [] } }],
       }),
-      // teachers without assignments in this period — raw query
+      // teachers without assignments in this period — NOT EXISTS (assignments in
+      // other periods must not mark the teacher as unassigned)
       sequelize.query(
-        `SELECT COUNT(*) AS \`cnt\` FROM (
-           SELECT p.id
-           FROM people p
+        `SELECT COUNT(*) AS \`cnt\` FROM people p
            INNER JOIN person_roles pr ON pr.personId = p.id
            INNER JOIN roles r ON r.id = pr.roleId AND r.name = 'Profesor'
-           LEFT JOIN teacher_assignments ta ON ta.teacherId = p.id
-           LEFT JOIN period_grade_subjects pgs ON pgs.id = ta.periodGradeSubjectId
-           LEFT JOIN period_grades pg ON pg.id = pgs.periodGradeId AND pg.schoolPeriodId = :spId
-           WHERE pg.id IS NULL
-           GROUP BY p.id
-         ) AS t`,
+           WHERE NOT EXISTS (
+             SELECT 1 FROM teacher_assignments ta
+             JOIN period_grade_subjects pgs ON pgs.id = ta.periodGradeSubjectId
+             JOIN period_grades pg ON pg.id = pgs.periodGradeId
+             WHERE ta.teacherId = p.id AND pg.schoolPeriodId = :spId
+           )`,
         { replacements: { spId: schoolPeriodId }, type: QueryTypes.SELECT }
       ).then((r: any) => Number(r?.[0]?.cnt ?? 0)),
       // distinct representatives (GuardianProfile) referenced by inscriptions
@@ -752,8 +785,8 @@ export const getAdminDashboardStats = async (req: Request, res: Response) => {
     if (missingGrades.length) alerts.push(`Faltan ${missingGrades.length} grados por configurar: ${missingGrades.join(', ')}`);
     if (gradesWithoutSections.length) alerts.push(`Hay ${gradesWithoutSections.length} grados sin secciones asignadas.`);
     if (gradesWithoutSubjects.length) alerts.push(`Hay ${gradesWithoutSubjects.length} grados sin materias configuradas.`);
-    if (studentsWithoutSection > 0) alerts.push(`${studentsWithoutSection} alumnos inscritos no tienen sección definida.`);
-    if (studentsWithoutSubjects > 0) alerts.push(`${studentsWithoutSubjects} alumnos están inscritos sin materias asociadas.`);
+    if (studentsWithoutSection > 0) alerts.push(`${studentsWithoutSection} estudiantes del período no tienen sección asignada.`);
+    if (studentsWithoutSubjects > 0) alerts.push(`${studentsWithoutSubjects} estudiantes con sección no tienen materias asignadas.`);
 
     const period = await SchoolPeriod.findByPk(schoolPeriodId);
 
@@ -761,14 +794,15 @@ export const getAdminDashboardStats = async (req: Request, res: Response) => {
       period,
       counts: {
         representatives: representativeCount,
-        totalTeachers,
+        activeTeachers,
+        registeredTeachers,
         teachersWithoutAssignments,
         studentsWithoutSection,
         studentsWithoutSubjects,
       },
       students: {
-        total: matriculatedCount + pendingMatriculations,
-        matriculated: matriculatedCount,
+        total: uniqueStudents,
+        matriculated: matriculatedStudents,
         pending: pendingMatriculations,
       },
       coverage: {
