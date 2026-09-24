@@ -1,4 +1,4 @@
-import { Transaction } from 'sequelize';
+import { Op, Transaction } from 'sequelize';
 import {
   Grade,
   Inscription,
@@ -296,7 +296,7 @@ export const listExternalGradesForPerson = async (personId: number, transaction?
         as: 'inscriptionSubjects',
         include: [
           { model: Subject, as: 'subject' },
-          { model: SubjectFinalGrade, as: 'finalGrade', include: [{ model: Plantel, as: 'plantel' }] },
+          { model: SubjectFinalGrade, as: 'finalGrade', where: { gradeType: { [Op.in]: ['transferencia', 'equivalencia'] } }, required: false, include: [{ model: Plantel, as: 'plantel' }] },
         ],
       },
     ],

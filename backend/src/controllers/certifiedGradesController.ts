@@ -522,7 +522,7 @@ async function buildCertifiedWorkbook(personId: number, templateName: string): P
         },
         {
           model: SubjectFinalGrade,
-          as: 'finalGrade',
+          as: 'finalGrades',
           include: [{ model: Plantel, as: 'plantel', attributes: ['id', 'code', 'name', 'state'] }],
         },
         { model: SubjectTermGrade, as: 'termGrades' },
@@ -559,77 +559,109 @@ async function buildCertifiedWorkbook(personId: number, templateName: string): P
       }));
     }
 
-    // 5. Build grades list from InscriptionSubjects
+    // 5. Build grades list from InscriptionSubjects.
+    //    `finalGrades` (hasMany) carries every gradeType row — the consolidated
+    //    dedup below then applies the MP > revision > regular priority.
     const gradesMap: any[] = [];
     for (const is of insSubjects) {
       const ins = (is as any).inscription;
       const subj = (is as any).subject;
-      const fg = (is as any).finalGrade;
+      const fgRows: any[] = (is as any).finalGrades || [];
       const termGrades: any[] = (is as any).termGrades || [];
       if (!ins || !subj) continue;
 
-      let finalScore: number | null = fg?.finalScore != null ? roundGrade(Number(fg.finalScore)) : null;
-      let status: string | null = fg?.status ?? null;
-      let gradeType: string | null = fg?.gradeType ?? null;
-      let date: string | null = fg?.calculatedAt ? formatDateInCaracas(fg.calculatedAt) : null;
-      let plantelId: number | null = fg?.plantelId ?? null;
-      let plantelName: string | null = fg?.plantel?.name ?? null;
-      let plantelState: string | null = fg?.plantel?.state ?? null;
-
-      // Regular grades (F) date comes from the last term's council:
-      // Master override -> checklist completedAt. Falls back to calculatedAt.
-      if (!fg || gradeType === 'regular') {
+      if (fgRows.length === 0) {
+        // Fallback: compute from term grades if no SubjectFinalGrade exists
+        let finalScore: number | null = null;
+        let status: string | null = null;
+        let gradeType: string | null = null;
+        let date: string | null = null;
         const councilDate = await resolveCouncilDate({
           schoolPeriodId: ins.schoolPeriodId,
           sectionId: ins.sectionId ?? null,
         });
         if (councilDate) date = councilDate;
-      }
-
-      // For revision / materia_pendiente, resolve date from opportunity dates / encounter dates
-      if (fg && gradeType && (gradeType === 'revision' || gradeType === 'materia_pendiente' || gradeType === 'revision_materia_pendiente')) {
-        const resolvedDate = await resolveGradeDate(
-          is.id,
-          gradeType,
-          is.sectionId ?? null,
-          subj.id,
-          ins.gradeId ?? null,
-          ins.schoolPeriodId ?? null,
-        );
-        if (resolvedDate) date = resolvedDate;
-      }
-
-      // Fallback: compute from term grades if no SubjectFinalGrade exists
-      if (!fg && termGrades.length > 0) {
-        const sum = termGrades.reduce((acc, tg) => acc + Number(tg.score || 0), 0);
-        const avg = sum / termGrades.length;
-        finalScore = roundFinalGrade(avg);
-        status = isPassingGrade(avg, 10) ? 'aprobada' : 'reprobada';
-        gradeType = 'regular';
-        if (!date) {
-          const latestCalculated = termGrades
-            .map(tg => tg.calculatedAt)
-            .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0];
-          date = latestCalculated ? formatDateInCaracas(latestCalculated) : null;
+        if (termGrades.length > 0) {
+          const sum = termGrades.reduce((acc, tg) => acc + Number(tg.score || 0), 0);
+          const avg = sum / termGrades.length;
+          finalScore = roundFinalGrade(avg);
+          status = isPassingGrade(avg, 10) ? 'aprobada' : 'reprobada';
+          gradeType = 'regular';
+          if (!date) {
+            const latestCalculated = termGrades
+              .map(tg => tg.calculatedAt)
+              .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0];
+            date = latestCalculated ? formatDateInCaracas(latestCalculated) : null;
+          }
         }
+        gradesMap.push({
+          personId: ins.personId,
+          schoolPeriodId: ins.schoolPeriodId,
+          gradeId: ins.gradeId ?? null,
+          subjectId: subj.id,
+          subjectGroupId: subj.subjectGroupId ?? null,
+          subjectName: subj.name ?? null,
+          finalScore,
+          status,
+          gradeType,
+          plantelId: null,
+          plantelName: null,
+          plantelState: null,
+          date,
+          source: 'system',
+        });
+        continue;
       }
 
-      gradesMap.push({
-        personId: ins.personId,
-        schoolPeriodId: ins.schoolPeriodId,
-        gradeId: ins.gradeId ?? null,
-        subjectId: subj.id,
-        subjectGroupId: subj.subjectGroupId ?? null,
-        subjectName: subj.name ?? null,
-        finalScore,
-        status,
-        gradeType,
-        plantelId,
-        plantelName,
-        plantelState,
-        date,
-        source: 'system',
-      });
+      for (const fg of fgRows) {
+        const finalScore: number | null = fg.finalScore != null ? roundGrade(Number(fg.finalScore)) : null;
+        const status: string | null = fg.status ?? null;
+        const gradeType: string | null = fg.gradeType ?? null;
+        let date: string | null = fg.calculatedAt ? formatDateInCaracas(fg.calculatedAt) : null;
+        const plantelId: number | null = fg.plantelId ?? null;
+        const plantelName: string | null = fg.plantel?.name ?? null;
+        const plantelState: string | null = fg.plantel?.state ?? null;
+
+        // Regular grades (F) date comes from the last term's council:
+        // Master override -> checklist completedAt. Falls back to calculatedAt.
+        if (gradeType === 'regular' || gradeType === null) {
+          const councilDate = await resolveCouncilDate({
+            schoolPeriodId: ins.schoolPeriodId,
+            sectionId: ins.sectionId ?? null,
+          });
+          if (councilDate) date = councilDate;
+        }
+
+        // For revision / materia_pendiente, resolve date from opportunity dates / encounter dates
+        if (gradeType && (gradeType === 'revision' || gradeType === 'materia_pendiente' || gradeType === 'revision_materia_pendiente')) {
+          const resolvedDate = await resolveGradeDate(
+            is.id,
+            gradeType,
+            is.sectionId ?? null,
+            subj.id,
+            ins.gradeId ?? null,
+            ins.schoolPeriodId ?? null,
+          );
+          if (resolvedDate) date = resolvedDate;
+        }
+
+        gradesMap.push({
+          personId: ins.personId,
+          schoolPeriodId: ins.schoolPeriodId,
+          gradeId: ins.gradeId ?? null,
+          subjectId: subj.id,
+          subjectGroupId: subj.subjectGroupId ?? null,
+          subjectName: subj.name ?? null,
+          finalScore,
+          status,
+          gradeType,
+          plantelId,
+          plantelName,
+          plantelState,
+          date,
+          source: 'system',
+        });
+      }
     }
 
     // 6. Get HistoricalGrade records (legacy data entered manually)

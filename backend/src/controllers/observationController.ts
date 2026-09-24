@@ -92,7 +92,7 @@ export const getSectionObservations = async (req: Request, res: Response) => {
           include: [
             { model: Subject, as: 'subject' },
             { model: SubjectTermGrade, as: 'termGrades' },
-            { model: SubjectFinalGrade, as: 'finalGrade' },
+            { model: SubjectFinalGrade, as: 'finalGrade', where: { gradeType: 'regular' }, required: false },
           ],
         },
       ],

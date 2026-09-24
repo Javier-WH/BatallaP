@@ -398,6 +398,8 @@ ClassroomAssignment.belongsTo(Subject, { foreignKey: 'subjectId', as: 'subject' 
 
 // Subject final grades
 InscriptionSubject.hasOne(SubjectFinalGrade, { foreignKey: 'inscriptionSubjectId', as: 'finalGrade' });
+// Multi-grade views (consolidated/certified) need every gradeType row, not just one.
+InscriptionSubject.hasMany(SubjectFinalGrade, { foreignKey: 'inscriptionSubjectId', as: 'finalGrades' });
 SubjectFinalGrade.belongsTo(InscriptionSubject, { foreignKey: 'inscriptionSubjectId', as: 'inscriptionSubject' });
 
 SubjectFinalGrade.belongsTo(Plantel, { foreignKey: 'plantelId', as: 'plantel' });

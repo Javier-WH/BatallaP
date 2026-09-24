@@ -841,6 +841,7 @@ export const getStudentFullAcademicRecord = async (req: Request, res: Response) 
             {
               model: SubjectFinalGrade,
               as: 'finalGrade',
+              where: { gradeType: 'regular' },
               required: false
             }
           ]
@@ -1320,6 +1321,7 @@ export const getFinalGradesByPeriod = async (req: Request, res: Response) => {
           {
             model: SubjectFinalGrade,
             as: 'finalGrade',
+            where: { gradeType: 'regular' },
             required: false,
             attributes: ['id', 'inscriptionSubjectId', 'finalScore', 'rawScore', 'councilPoints', 'status', 'calculatedAt', 'plantelId', 'gradeType'],
             include: [{ model: Plantel, as: 'plantel', required: false }]
@@ -1361,6 +1363,7 @@ export const getFinalGradesByPeriod = async (req: Request, res: Response) => {
               {
                 model: SubjectFinalGrade,
                 as: 'finalGrade',
+                where: { gradeType: 'regular' },
                 required: false,
                 attributes: ['id', 'inscriptionSubjectId', 'finalScore', 'rawScore', 'councilPoints', 'status', 'calculatedAt', 'plantelId', 'gradeType'],
                 include: [{ model: Plantel, as: 'plantel', required: false }]

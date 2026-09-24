@@ -189,7 +189,7 @@ async function resolveVariables(personId: number, schoolPeriodId: number, custom
       include: [
         { model: Subject, as: 'subject', attributes: ['id', 'name', 'abbreviation', 'usesLiteralGrades'] },
         { model: SubjectTermGrade, as: 'termGrades', required: false, attributes: ['termId', 'score'] },
-        { model: SubjectFinalGrade, as: 'finalGrade', required: false, attributes: ['finalScore', 'gradeType', 'status'] },
+        { model: SubjectFinalGrade, as: 'finalGrade', where: { gradeType: 'regular' }, required: false, attributes: ['finalScore', 'gradeType', 'status'] },
         {
           model: Qualification,
           as: 'qualifications',

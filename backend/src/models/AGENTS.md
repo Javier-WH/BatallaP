@@ -40,7 +40,7 @@
 
 - `Person → contact`, `residence`, `guardians` (StudentGuardian), `inscriptions`, `roles`, `previousSchools`, `teachingAssignments`, `enrollmentAnswers`, `matriculations`.
 - `Inscription → student` (Person), `period` (SchoolPeriod), `grade`, `section`, `subjects` (Subject via InscriptionSubject), `inscriptionSubjects`, `matriculation`, `periodOutcome`, `pendingSubjects`.
-- `InscriptionSubject → inscription`, `subject`, `qualifications`, `finalGrade` (SubjectFinalGrade), `councilPoints`.
+- `InscriptionSubject → inscription`, `subject`, `qualifications`, `finalGrade` (SubjectFinalGrade, hasOne — usar siempre con `where: { gradeType: ... }`), `finalGrades` (hasMany, todas las filas por tipo — para vistas consolidadas), `councilPoints`.
 - `SubjectFinalGrade → inscriptionSubject`, `plantel`, `editAudits`.
 - `GradeEditPermission → granter`, `recipient`, `revoker`, `schoolPeriod`, `audits`.
 - `GradeEditAudit → subjectFinalGrade`, `permission`, `editor`.

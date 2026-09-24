@@ -426,6 +426,35 @@ export class FinalGradeCalculator {
         continue;
       }
 
+      // When a repair grade exists, the regular-process grade must ALSO be
+      // materialized as its own 'regular' row. Grade-type-filtered views
+      // (historical finals, resumen final) must not depend on term-grade
+      // fallbacks to show the original regular grade.
+      if (hasRepair) {
+        const existingRegular = await SubjectFinalGrade.findOne({
+          where: { inscriptionSubjectId: insSub.id, gradeType: 'regular' },
+          transaction: options.transaction
+        });
+        const regularPayload = {
+          inscriptionSubjectId: insSub.id,
+          rawScore: summary.rawScore,
+          councilPoints: summary.councilPoints,
+          finalScore,
+          status: resolveGradeStatus(finalScore, minApproval),
+          calculatedAt: new Date(),
+          plantelId: existingRegular?.plantelId ?? institutionPlantelId,
+          gradeType: 'regular' as const,
+          schoolPeriodId: inscriptionSimple.schoolPeriodId,
+          subjectId: insSub.subjectId,
+          gradeId: inscriptionSimple.gradeId,
+        };
+        if (existingRegular) {
+          await existingRegular.update(regularPayload, { transaction: options.transaction });
+        } else {
+          await SubjectFinalGrade.create(regularPayload, { transaction: options.transaction });
+        }
+      }
+
       const existingGrade = await SubjectFinalGrade.findOne({
         where: { inscriptionSubjectId: insSub.id, gradeType },
         transaction: options.transaction

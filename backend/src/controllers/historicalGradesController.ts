@@ -113,7 +113,7 @@ export const getHistoricalGradesBySection = async (req: Request, res: Response) 
             attributes: ['id', 'firstName', 'lastName', 'document', 'documentType'],
           },
           { model: Grade, as: 'grade', attributes: ['id', 'name', 'order'] },
-          { model: Section, as: 'section', attributes: ['id', 'name'] },
+          { model: Section, as: 'section', attributes: ['id', 'name', 'isMateriaPendiente'] },
         ],
       });
 
@@ -254,7 +254,7 @@ export const getHistoricalGradesBySection = async (req: Request, res: Response) 
       include: [
         { model: SchoolPeriod, as: 'period', attributes: ['id', 'period', 'name', 'startYear', 'endYear', 'status'] },
         { model: Grade, as: 'grade', attributes: ['id', 'name', 'order'] },
-        { model: Section, as: 'section', attributes: ['id', 'name'] },
+        { model: Section, as: 'section', attributes: ['id', 'name', 'isMateriaPendiente'] },
       ],
     });
 
@@ -292,9 +292,12 @@ export const getHistoricalGradesBySection = async (req: Request, res: Response) 
           ? 'revision'
           : ['materia_pendiente', 'revision_materia_pendiente']);
 
+    // Consolidated mode needs EVERY gradeType row per subject so the
+    // MP > revision > regular dedup can compare them — hasMany 'finalGrades'.
+    // Filtered modes keep the hasOne 'finalGrade' + gradeType where-clause.
     const finalGradeInclude: any = {
       model: SubjectFinalGrade,
-      as: 'finalGrade',
+      as: isConsolidated ? 'finalGrades' : 'finalGrade',
       include: [{ model: Plantel, as: 'plantel', attributes: ['id', 'code', 'name'] }],
     };
     if (gradeTypeForFilter) {
@@ -334,79 +337,116 @@ export const getHistoricalGradesBySection = async (req: Request, res: Response) 
       }
     }
 
-    // Build grades map from InscriptionSubjects
+    // Build grades map from InscriptionSubjects.
+    // Consolidated mode iterates every gradeType row (hasMany 'finalGrades');
+    // filtered modes iterate the single 'finalGrade' row (0 or 1 elements).
     const gradesMap: any[] = [];
     for (const is of insSubjects) {
       const ins = (is as any).inscription;
       const subj = (is as any).subject;
-      const fg = (is as any).finalGrade;
+      const fgRows: any[] = isConsolidated
+        ? ((is as any).finalGrades || [])
+        : ((is as any).finalGrade ? [(is as any).finalGrade] : []);
       const termGrades: any[] = (is as any).termGrades || [];
       if (!ins || !subj) continue;
 
-      let finalScore: number | null = fg?.finalScore != null ? roundGrade(Number(fg.finalScore)) : null;
-      let status: string | null = fg?.status ?? null;
-      let gradeType: string | null = fg?.gradeType ?? null;
-      let date: string | null = fg?.calculatedAt ? formatDateInCaracas(fg.calculatedAt) : null;
-
-      // For revision / materia_pendiente, resolve date from opportunity dates / encounter dates
-      if (fg && gradeType && (gradeType === 'revision' || gradeType === 'materia_pendiente' || gradeType === 'revision_materia_pendiente')) {
-        const resolvedDate = await resolveGradeDate(
-          is.id,
-          gradeType,
-          is.sectionId ?? null,
-          subj.id,
-          ins.gradeId ?? null,
-          ins.schoolPeriodId ?? null,
-        );
-        if (resolvedDate) date = resolvedDate;
-      }
-
-      // Fallback: compute from term grades if no SubjectFinalGrade exists
-      if (!fg && termGrades.length > 0) {
-        const sum = termGrades.reduce((acc, tg) => acc + Number(tg.score || 0), 0);
-        const avg = sum / termGrades.length;
-        finalScore = roundFinalGrade(avg);
-        status = isPassingGrade(avg, 10) ? 'aprobada' : 'reprobada';
-        gradeType = 'regular';
-        const latestCalculated = termGrades
-          .map(tg => tg.calculatedAt)
-          .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0];
-        date = latestCalculated ? formatDateInCaracas(latestCalculated) : null;
-      }
-
-      // Filter by gradeTypeFilter (skip when consolidated — show all types):
-      // - 'final': only regular + transferencia + equivalencia (exclude revision, materia_pendiente, revision_materia_pendiente)
-      // - 'revision': only revision (show repair score, not original)
-      // - 'materia_pendiente': only materia_pendiente + revision_materia_pendiente
-      if (!isConsolidated) {
-        if (typeFilter === 'final') {
-          if (gradeType === 'materia_pendiente' || gradeType === 'revision_materia_pendiente' || gradeType === 'revision') continue;
-        } else if (typeFilter === 'revision') {
-          if (gradeType !== 'revision') continue;
-          // Show the repair score (finalScore already has it), keep gradeType as revision
-        } else if (typeFilter === 'materia_pendiente') {
-          if (gradeType !== 'materia_pendiente' && gradeType !== 'revision_materia_pendiente') continue;
+      if (fgRows.length === 0) {
+        // No SubjectFinalGrade rows: compute from term grades if possible,
+        // otherwise emit an empty row (subject exists but has no grade yet).
+        let finalScore: number | null = null;
+        let status: string | null = null;
+        let gradeType: string | null = null;
+        let date: string | null = null;
+        if (termGrades.length > 0) {
+          const sum = termGrades.reduce((acc, tg) => acc + Number(tg.score || 0), 0);
+          const avg = sum / termGrades.length;
+          finalScore = roundFinalGrade(avg);
+          status = isPassingGrade(avg, 10) ? 'aprobada' : 'reprobada';
+          gradeType = 'regular';
+          const latestCalculated = termGrades
+            .map(tg => tg.calculatedAt)
+            .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0];
+          date = latestCalculated ? formatDateInCaracas(latestCalculated) : null;
         }
+
+        if (!isConsolidated) {
+          if (typeFilter === 'revision' || typeFilter === 'materia_pendiente') continue;
+        }
+
+        gradesMap.push({
+          personId: ins.personId,
+          schoolPeriodId: ins.schoolPeriodId,
+          periodShort: ins.schoolPeriodId != null ? (periodShortMap.get(ins.schoolPeriodId) ?? null) : null,
+          gradeId: ins.gradeId ?? null,
+          subjectId: subj.id,
+          subjectGroupId: subj.subjectGroupId ?? null,
+          subjectName: subj.name ?? null,
+          finalScore,
+          status,
+          gradeType,
+          plantelId: null,
+          plantelName: null,
+          finalGradeId: null,
+          inscriptionSubjectId: is.id,
+          date,
+          source: 'system',
+        });
+        continue;
       }
 
-      gradesMap.push({
-        personId: ins.personId,
-        schoolPeriodId: ins.schoolPeriodId,
-        periodShort: ins.schoolPeriodId != null ? (periodShortMap.get(ins.schoolPeriodId) ?? null) : null,
-        gradeId: ins.gradeId ?? null,
-        subjectId: subj.id,
-        subjectGroupId: subj.subjectGroupId ?? null,
-        subjectName: subj.name ?? null,
-        finalScore,
-        status,
-        gradeType,
-        plantelId: fg?.plantelId ?? null,
-        plantelName: fg?.plantel?.name ?? null,
-        finalGradeId: fg?.id ?? null,
-        inscriptionSubjectId: is.id,
-        date,
-        source: 'system',
-      });
+      for (const fg of fgRows) {
+        const finalScore: number | null = fg.finalScore != null ? roundGrade(Number(fg.finalScore)) : null;
+        const status: string | null = fg.status ?? null;
+        const gradeType: string | null = fg.gradeType ?? null;
+        let date: string | null = fg.calculatedAt ? formatDateInCaracas(fg.calculatedAt) : null;
+
+        // For revision / materia_pendiente, resolve date from opportunity dates / encounter dates
+        if (gradeType && (gradeType === 'revision' || gradeType === 'materia_pendiente' || gradeType === 'revision_materia_pendiente')) {
+          const resolvedDate = await resolveGradeDate(
+            is.id,
+            gradeType,
+            is.sectionId ?? null,
+            subj.id,
+            ins.gradeId ?? null,
+            ins.schoolPeriodId ?? null,
+          );
+          if (resolvedDate) date = resolvedDate;
+        }
+
+        // Filter by gradeTypeFilter (skip when consolidated — show all types):
+        // - 'final': only regular + transferencia + equivalencia (exclude revision, materia_pendiente, revision_materia_pendiente)
+        // - 'revision': only revision (show repair score, not original)
+        // - 'materia_pendiente': only materia_pendiente + revision_materia_pendiente
+        if (!isConsolidated) {
+          if (typeFilter === 'final') {
+            if (gradeType === 'materia_pendiente' || gradeType === 'revision_materia_pendiente' || gradeType === 'revision') continue;
+          } else if (typeFilter === 'revision') {
+            if (gradeType !== 'revision') continue;
+            // Show the repair score (finalScore already has it), keep gradeType as revision
+          } else if (typeFilter === 'materia_pendiente') {
+            if (gradeType !== 'materia_pendiente' && gradeType !== 'revision_materia_pendiente') continue;
+          }
+        }
+
+        gradesMap.push({
+          personId: ins.personId,
+          schoolPeriodId: ins.schoolPeriodId,
+          periodShort: ins.schoolPeriodId != null ? (periodShortMap.get(ins.schoolPeriodId) ?? null) : null,
+          gradeId: ins.gradeId ?? null,
+          subjectId: subj.id,
+          subjectGroupId: subj.subjectGroupId ?? null,
+          subjectName: subj.name ?? null,
+          finalScore,
+          status,
+          gradeType,
+          plantelId: fg.plantelId ?? null,
+          plantelName: fg.plantel?.name ?? null,
+          finalGradeId: fg.id ?? null,
+          inscriptionSubjectId: is.id,
+          date,
+          source: 'system',
+        });
+      }
     }
 
     // 7. PendingSubject grades are NOT shown in this view — only final grades

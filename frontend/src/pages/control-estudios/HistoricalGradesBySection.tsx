@@ -520,6 +520,9 @@ const HistoricalGradesBySection: React.FC = () => {
           // System grades take priority over historical grades for the same cell
           const existing = cells[key];
           if (existing && existing.source === 'system' && g.source !== 'system') continue;
+          // An empty system row (e.g. a subject with no grade yet) must never
+          // overwrite a cell that already holds a real score.
+          if (existing && existing.score !== '' && g.finalScore == null) continue;
           const statusCode = g.gradeType ? (GRADE_TYPE_TO_CODE[g.gradeType] || 'F') : 'F';
           let dateDisplay = '';
           if (g.date) {

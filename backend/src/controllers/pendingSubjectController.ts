@@ -507,7 +507,7 @@ export const getMpNomina = async (req: Request, res: Response) => {
           as: 'inscriptionSubjects',
           include: [
             { model: Subject, as: 'subject' },
-            { model: SubjectFinalGrade, as: 'finalGrade' },
+            { model: SubjectFinalGrade, as: 'finalGrade', where: { gradeType: { [Op.in]: ['materia_pendiente', 'revision_materia_pendiente'] } }, required: false },
           ],
         },
       ],
@@ -644,7 +644,7 @@ export const getMpAssignmentDetail = async (req: Request, res: Response) => {
           where: { subjectId: pgs.subjectId },
           required: true,
           include: [
-            { model: SubjectFinalGrade, as: 'finalGrade' },
+            { model: SubjectFinalGrade, as: 'finalGrade', where: { gradeType: { [Op.in]: ['materia_pendiente', 'revision_materia_pendiente'] } }, required: false },
             {
               model: Qualification,
               as: 'qualifications',
