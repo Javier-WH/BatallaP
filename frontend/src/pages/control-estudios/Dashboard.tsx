@@ -63,6 +63,7 @@ interface ControlPanelData {
   };
   teachers: {
     totalAssignments: number;
+    activeTeachers: number;
     withoutPlans: number;
     withoutGrades: number;
     sampleWithoutPlans: AssignmentInsight[];
@@ -800,7 +801,7 @@ const ControlEstudiosDashboard: React.FC = () => {
           </Col>
           <Col xs={12} md={6}>
             <FadeIn delay={100}>
-              <StatCard icon={<TeamOutlined style={{ fontSize: 22 }} />} label="Asignaciones" value={data.teachers.totalAssignments} color="#0ea5e9" subtitle="Docentes activos" />
+              <StatCard icon={<TeamOutlined style={{ fontSize: 22 }} />} label="Asignaciones" value={data.teachers.totalAssignments} color="#0ea5e9" subtitle={`${data.teachers.activeTeachers} docentes activos`} />
             </FadeIn>
           </Col>
           <Col xs={12} md={6}>

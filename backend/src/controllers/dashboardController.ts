@@ -56,6 +56,7 @@ type AcademicSnapshot =
       };
       teachers: {
         totalAssignments: number;
+        activeTeachers: number;
         withoutPlans: number;
         withoutGrades: number;
         sampleWithoutPlans: AssignmentInsight[];
@@ -198,6 +199,7 @@ const buildAcademicSnapshot = async (schoolPeriodId?: number): Promise<AcademicS
       },
       teachers: {
         totalAssignments: assignments.length,
+        activeTeachers: new Set(assignments.map(a => a.teacherId)).size,
         withoutPlans: 0,
         withoutGrades: 0,
         sampleWithoutPlans: [],
@@ -588,6 +590,7 @@ const buildAcademicSnapshot = async (schoolPeriodId?: number): Promise<AcademicS
     },
     teachers: {
       totalAssignments: assignments.length,
+      activeTeachers: new Set(assignments.map(a => a.teacherId)).size,
       withoutPlans: assignmentsWithoutPlan.length,
       withoutGrades: assignmentsWithoutGrades.length,
       sampleWithoutPlans: assignmentsWithoutPlan.slice(0, 6),
