@@ -444,6 +444,7 @@ function RosterScreen({
   const [selectedInscriptionId, setSelectedInscriptionId] = useState<number | null>(null);
   const [reasonDraft, setReasonDraft] = useState<{ inscriptionId: number; value: string } | null>(null);
   const rosterListRef = useRef<HTMLDivElement>(null);
+  const moveSelectionByRef = useRef<(steps: number) => void>(() => undefined);
   const touchStartY = useRef<number | null>(null);
   const touchDelta = useRef(0);
   const wheelDelta = useRef(0);
@@ -511,28 +512,38 @@ function RosterScreen({
     alignSelectedEditor();
   }, [alignSelectedEditor]);
 
-  const scrollToStudent = (inscriptionId: number) => {
+  const scrollToStudent = useCallback((inscriptionId: number) => {
     if (inscriptionId !== selectedInscriptionId) setReasonDraft(null);
     setSelectedInscriptionId(inscriptionId);
-  };
+  }, [selectedInscriptionId]);
 
-  const moveSelectionBy = (steps: number) => {
+  const moveSelectionBy = useCallback((steps: number) => {
     const currentIndex = roster.findIndex(student => student.inscriptionId === selectedInscriptionId);
     const next = roster[Math.max(0, Math.min(roster.length - 1, currentIndex + steps))];
     if (next && next.inscriptionId !== selectedInscriptionId) scrollToStudent(next.inscriptionId);
-  };
+  }, [roster, selectedInscriptionId, scrollToStudent]);
 
-  const handleRosterWheel = (event: React.WheelEvent<HTMLDivElement>) => {
-    const target = event.target as HTMLElement;
-    if (target.closest('[data-selected-editor] button, [data-selected-editor] input, [data-selected-editor] textarea')) return;
-    event.preventDefault();
-    wheelDelta.current += event.deltaY;
-    const steps = Math.trunc(wheelDelta.current / ROSTER_SCROLL_STEP);
-    if (steps !== 0) {
-      wheelDelta.current -= steps * ROSTER_SCROLL_STEP;
-      moveSelectionBy(steps);
-    }
-  };
+  useLayoutEffect(() => {
+    moveSelectionByRef.current = moveSelectionBy;
+  }, [moveSelectionBy]);
+
+  useEffect(() => {
+    const list = rosterListRef.current;
+    if (loading || !list) return;
+
+    const handleWheel = (event: WheelEvent) => {
+      event.preventDefault();
+      wheelDelta.current += event.deltaY;
+      const steps = Math.trunc(wheelDelta.current / ROSTER_SCROLL_STEP);
+      if (steps !== 0) {
+        wheelDelta.current -= steps * ROSTER_SCROLL_STEP;
+        moveSelectionByRef.current(steps);
+      }
+    };
+
+    list.addEventListener('wheel', handleWheel, { passive: false });
+    return () => list.removeEventListener('wheel', handleWheel);
+  }, [loading]);
 
   const handleRosterTouchStart = (event: React.TouchEvent<HTMLDivElement>) => {
     const target = event.target as HTMLElement;
@@ -626,8 +637,7 @@ function RosterScreen({
         <div className="relative min-h-0 flex-1">
           <div
             ref={rosterListRef}
-            onWheel={handleRosterWheel}
-            onTouchStart={handleRosterTouchStart}
+              onTouchStart={handleRosterTouchStart}
             onTouchMove={handleRosterTouchMove}
             onTouchEnd={handleRosterTouchEnd}
             className="absolute inset-0 overflow-y-auto overscroll-contain touch-pan-y px-3"
