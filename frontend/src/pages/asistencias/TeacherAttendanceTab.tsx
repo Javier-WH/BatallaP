@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Input, Spin, message } from 'antd';
 import axios from 'axios';
 import {
@@ -26,7 +26,6 @@ const DAY_FULL = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'];
 const MONTHS_ABBR = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 
 const REASON_CHIPS = ['Enfermo', 'Llegó tarde', 'Se retiró', 'Sin excusa', 'Otro'];
-
 const getApiErrorMessage = (error: unknown, fallback: string): string =>
   axios.isAxiosError<{ message?: string }>(error) ? error.response?.data?.message || fallback : fallback;
 
@@ -471,22 +470,50 @@ function RosterScreen({
     setRoster(prev => prev.map(r => (r.inscriptionId === inscriptionId ? { ...r, reason } : r)));
   };
 
-  useLayoutEffect(() => {
-    if (selectedInscriptionId == null) return;
+  const selectedStudent = roster.find(student => student.inscriptionId === selectedInscriptionId) ?? null;
+  const selectedIndex = selectedStudent ? roster.indexOf(selectedStudent) : -1;
+
+  const selectStudentAtScrollLine = () => {
     const list = rosterListRef.current;
-    const editor = list?.querySelector<HTMLElement>(`[data-selected-student-id="${selectedInscriptionId}"]`);
-    if (!list || !editor) return;
+    if (!list) return;
+
+    const rows = Array.from(list.querySelectorAll<HTMLElement>('[data-inscription-id]'));
+    if (rows.length === 0) return;
 
     const listBounds = list.getBoundingClientRect();
-    const editorBounds = editor.getBoundingClientRect();
-    const fixedEditorTop = listBounds.top + 100;
-    list.scrollTop += editorBounds.top - fixedEditorTop;
-  }, [selectedInscriptionId]);
+    const focusY = listBounds.top + list.clientHeight / 2;
+    let closestId: number | null = null;
+    let closestDistance = Number.POSITIVE_INFINITY;
+    for (const row of rows) {
+      const bounds = row.getBoundingClientRect();
+      const distance = Math.abs((bounds.top + bounds.bottom) / 2 - focusY);
+      if (distance < closestDistance) {
+        closestDistance = distance;
+        closestId = Number(row.dataset.inscriptionId);
+      }
+    }
+    if (closestId != null) setSelectedInscriptionId(current => current === closestId ? current : closestId);
+  };
+
+  const scrollToStudent = (inscriptionId: number) => {
+    const list = rosterListRef.current;
+    const row = list?.querySelector<HTMLElement>(`[data-inscription-id="${inscriptionId}"]`);
+    if (!list || !row) {
+      setSelectedInscriptionId(inscriptionId);
+      return;
+    }
+
+    const rowBounds = row.getBoundingClientRect();
+    const listBounds = list.getBoundingClientRect();
+    const focusY = listBounds.top + list.clientHeight / 2;
+    list.scrollTop += (rowBounds.top + rowBounds.bottom) / 2 - focusY;
+    setSelectedInscriptionId(inscriptionId);
+  };
 
   const handleSave = async () => {
     const missingReason = roster.find(r => r.status === 'kicked' && !(r.reason ?? '').trim());
     if (missingReason) {
-      setSelectedInscriptionId(missingReason.inscriptionId);
+      scrollToStudent(missingReason.inscriptionId);
       message.warning(`Indique el motivo de expulsión de ${missingReason.fullName}`);
       return;
     }
@@ -539,58 +566,67 @@ function RosterScreen({
       </div>
 
       {loading ? (
-        <div className="flex flex-1 justify-center py-16"><Spin /></div>
+        <div className="flex min-h-0 flex-1 justify-center py-16"><Spin /></div>
       ) : (
-        <div
-          ref={rosterListRef}
-          className="min-h-0 flex-1 overflow-y-auto overscroll-contain touch-pan-y px-3 pb-3"
-          style={{ WebkitOverflowScrolling: 'touch' }}
-        >
-          <div className="h-24" aria-hidden="true" />
-          {roster.map((student, index) => (
-            selectedInscriptionId === student.inscriptionId ? (
-              <SelectedStudentEditor
-                key={student.inscriptionId}
-                student={student}
-                index={index}
-                total={roster.length}
-                onPrev={() => setSelectedInscriptionId(roster[Math.max(0, index - 1)]?.inscriptionId ?? student.inscriptionId)}
-                onNext={() => setSelectedInscriptionId(roster[Math.min(roster.length - 1, index + 1)]?.inscriptionId ?? student.inscriptionId)}
-                onSetStatus={(status) => {
-                  setStatus(student.inscriptionId, status);
-                  const canAdvance = status === 'present' || status === 'absent' || (status === 'kicked' && Boolean(student.reason?.trim()));
-                  if (canAdvance && index < roster.length - 1) {
-                    setSelectedInscriptionId(roster[index + 1].inscriptionId);
-                  }
-                }}
-                onSetReason={(reason) => setReason(student.inscriptionId, reason)}
-                onClear={async (code, note) => {
-                  try {
-                    await api.post(`/attendance/sessions/${session.id}/clear-block`, {
-                      inscriptionId: student.inscriptionId,
-                      reasonCode: code,
-                      reasonNote: note || null,
-                    });
-                    message.success('Estudiante desbloqueado');
-                    const res = await api.get(`/attendance/sessions/${session.id}`);
-                    setRoster(res.data.roster ?? []);
-                    return true;
-                  } catch (err: unknown) {
-                    message.error(getApiErrorMessage(err, 'Error al desbloquear'));
-                    return false;
-                  }
-                }}
-              />
-            ) : (
+        <div className="relative min-h-0 flex-1">
+          <div
+            ref={rosterListRef}
+            onScroll={selectStudentAtScrollLine}
+            className="absolute inset-0 overflow-y-auto overscroll-contain touch-pan-y px-3"
+            style={{ WebkitOverflowScrolling: 'touch' }}
+          >
+            <div style={{ height: 'max(0px, calc(50% - 21px))' }} aria-hidden="true" />
+            {roster.map((student, index) => (
               <StudentListRow
                 key={student.inscriptionId}
                 student={student}
                 index={index}
-                onClick={() => setSelectedInscriptionId(student.inscriptionId)}
+                selected={student.inscriptionId === selectedInscriptionId}
+                onClick={() => scrollToStudent(student.inscriptionId)}
               />
-            )
-          ))}
-          <div className="h-[310px]" aria-hidden="true" />
+            ))}
+            <div style={{ height: 'max(0px, calc(50% - 21px))' }} aria-hidden="true" />
+          </div>
+          {selectedStudent && (
+            <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center px-3">
+              <div className="pointer-events-auto w-full max-w-sm">
+                <SelectedStudentEditor
+                  student={selectedStudent}
+                  index={selectedIndex}
+                  total={roster.length}
+                  onPrev={() => scrollToStudent(roster[Math.max(0, selectedIndex - 1)]?.inscriptionId ?? selectedStudent.inscriptionId)}
+                  onNext={() => scrollToStudent(roster[Math.min(roster.length - 1, selectedIndex + 1)]?.inscriptionId ?? selectedStudent.inscriptionId)}
+                  onSetStatus={(status) => {
+                    setStatus(selectedStudent.inscriptionId, status);
+                    const canAdvance = status === 'present' || status === 'absent' || (status === 'kicked' && Boolean(selectedStudent.reason?.trim()));
+                    if (canAdvance && selectedIndex < roster.length - 1) {
+                      scrollToStudent(roster[selectedIndex + 1].inscriptionId);
+                    }
+                  }}
+                  onSetReason={(reason) => setReason(selectedStudent.inscriptionId, reason)}
+                  onBackgroundScroll={(delta) => {
+                    if (rosterListRef.current) rosterListRef.current.scrollTop += delta;
+                  }}
+                  onClear={async (code, note) => {
+                    try {
+                      await api.post(`/attendance/sessions/${session.id}/clear-block`, {
+                        inscriptionId: selectedStudent.inscriptionId,
+                        reasonCode: code,
+                        reasonNote: note || null,
+                      });
+                      message.success('Estudiante desbloqueado');
+                      const res = await api.get(`/attendance/sessions/${session.id}`);
+                      setRoster(res.data.roster ?? []);
+                      return true;
+                    } catch (err: unknown) {
+                      message.error(getApiErrorMessage(err, 'Error al desbloquear'));
+                      return false;
+                    }
+                  }}
+                />
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -598,9 +634,10 @@ function RosterScreen({
   );
 }
 
-function StudentListRow({ student, index, onClick }: {
+function StudentListRow({ student, index, selected, onClick }: {
   student: RosterEntry;
   index: number;
+  selected: boolean;
   onClick: () => void;
 }) {
   const blocked = student.priorBlock != null;
@@ -618,7 +655,9 @@ function StudentListRow({ student, index, onClick }: {
       data-inscription-id={student.inscriptionId}
       onClick={onClick}
       aria-label={`Editar asistencia de ${student.fullName}`}
-      className="w-full flex items-center gap-2.5 px-2 py-2.5 border-b border-slate-200 text-left bg-slate-100/70 text-slate-500 opacity-75 transition-colors hover:opacity-100 hover:bg-slate-200/80"
+      aria-hidden={selected}
+      tabIndex={selected ? -1 : 0}
+      className={`w-full flex items-center gap-2.5 px-2 py-2.5 border-b border-slate-200 text-left transition-colors ${selected ? 'invisible pointer-events-none' : 'bg-slate-100/70 text-slate-500 opacity-75 hover:opacity-100 hover:bg-slate-200/80'}`}
     >
       <span className="w-6 shrink-0 text-[11px] text-slate-400 tabular-nums">
         {String(index + 1).padStart(2, '0')}
@@ -659,7 +698,7 @@ function StudentListRow({ student, index, onClick }: {
 }
 
 function SelectedStudentEditor({
-  student, index, total, onPrev, onNext, onSetStatus, onSetReason, onClear,
+  student, index, total, onPrev, onNext, onSetStatus, onSetReason, onBackgroundScroll, onClear,
 }: {
   student: RosterEntry;
   index: number;
@@ -668,14 +707,45 @@ function SelectedStudentEditor({
   onNext: () => void;
   onSetStatus: (status: AttendanceStatus) => void;
   onSetReason: (reason: string) => void;
+  onBackgroundScroll: (delta: number) => void;
   onClear: (code: string, note: string) => Promise<boolean>;
 }) {
   const [clearing, setClearing] = useState(false);
   const prior = student.priorBlock;
   const hasReason = Boolean(student.reason?.trim());
+  const touchY = useRef<number | null>(null);
+
+  const handleTouchStart = (event: React.TouchEvent<HTMLElement>) => {
+    const target = event.target as HTMLElement;
+    touchY.current = target.closest('button, input, textarea') ? null : event.touches[0]?.clientY ?? null;
+  };
+  const handleTouchMove = (event: React.TouchEvent<HTMLElement>) => {
+    if (touchY.current == null) return;
+    const currentY = event.touches[0]?.clientY;
+    if (currentY == null) return;
+    const delta = touchY.current - currentY;
+    if (Math.abs(delta) > 1) {
+      onBackgroundScroll(delta);
+      touchY.current = currentY;
+      if (event.cancelable) event.preventDefault();
+    }
+  };
 
   return (
-    <section data-selected-student-id={student.inscriptionId} className="h-[310px] my-1 overflow-y-auto rounded-xl border border-slate-300 bg-white p-3 shadow-sm" aria-label={`Asistencia de ${student.fullName}`}>
+    <section
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={() => { touchY.current = null; }}
+      onWheel={(event) => {
+        const target = event.target as HTMLElement;
+        if (!target.closest('button, input, textarea')) {
+          onBackgroundScroll(event.deltaY);
+          event.preventDefault();
+        }
+      }}
+      className="h-[310px] shrink-0 overflow-y-auto rounded-xl border border-slate-300 bg-white p-3 shadow-sm"
+      aria-label={`Asistencia de ${student.fullName}`}
+    >
       <div className="flex items-center justify-between gap-2 mb-2">
         <button type="button" onClick={onPrev} disabled={index === 0} className="px-2 py-1 text-slate-500 disabled:opacity-30" aria-label="Estudiante anterior">
           <LeftOutlined />
