@@ -796,7 +796,7 @@ const ControlEstudiosDashboard: React.FC = () => {
         <Row gutter={[20, 20]}>
           <Col xs={12} md={6}>
             <FadeIn delay={50}>
-              <StatCard icon={<UserOutlined style={{ fontSize: 22 }} />} label="Estudiantes" value={data.students.total} color="#1e40af" subtitle={`${data.students.matriculated} inscritos`} />
+              <StatCard icon={<UserOutlined style={{ fontSize: 22 }} />} label="Estudiantes" value={data.students.total} color="#1e40af" subtitle={`${data.students.matriculated} matriculados · ${data.students.pending} pendientes`} />
             </FadeIn>
           </Col>
           <Col xs={12} md={6}>
@@ -837,7 +837,7 @@ const ControlEstudiosDashboard: React.FC = () => {
                   <div className="flex gap-6 text-sm w-full justify-center">
                     <div className="flex items-center gap-2">
                       <span className="w-3 h-3 rounded-full" style={{ backgroundColor: '#1e40af' }} />
-                      <span style={{ color: 'var(--color-text-muted)' }}>Inscritos: <strong style={{ color: 'var(--color-text-main)' }}>{data.students.matriculated}</strong></span>
+                      <span style={{ color: 'var(--color-text-muted)' }}>Matriculados: <strong style={{ color: 'var(--color-text-main)' }}>{data.students.matriculated}</strong></span>
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="w-3 h-3 rounded-full" style={{ backgroundColor: '#e2e8f0' }} />

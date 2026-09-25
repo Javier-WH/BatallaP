@@ -1,6 +1,6 @@
 {
   "name": "batalla-project-production",
-  "version": "1.0.10",
+  "version": "1.0.11",
   "description": "BatallaProject Fullstack Standalone Build for Netcup",
   "main": "server.js",
   "scripts": {

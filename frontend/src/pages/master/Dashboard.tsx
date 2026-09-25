@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
-import { Row, Col, Card, Tag, Empty, message, Progress } from 'antd';
+import { Row, Col, Card, Tag, Empty, message, Progress, Modal } from 'antd';
 import {
   GlobalOutlined,
   ArrowRightOutlined,
@@ -34,6 +34,9 @@ interface MasterDashboardData {
         };
         teachers: {
           totalAssignments: number;
+          activeTeachers: number;
+          registeredTeachers: number;
+          withoutAssignments: number;
           withoutPlans: number;
           withoutGrades: number;
           sampleWithoutPlans: AssignmentInsight[];
@@ -41,6 +44,10 @@ interface MasterDashboardData {
         };
       };
   users: { total: number };
+  connectedUsers: {
+    total: number;
+    list: { id: number; username: string; name: string; roles: string[]; lastActivity: string }[];
+  };
   institution: {
     name: string;
     logoUrl: string;
@@ -56,6 +63,23 @@ interface AssignmentInsight {
   grade: string;
   section: string;
 }
+
+const ROLE_TAG_COLORS: Record<string, string> = {
+  Master: 'gold',
+  Administrador: 'blue',
+  Director: 'purple',
+  'Control de Estudios': 'cyan',
+  Profesor: 'green',
+  Representante: 'orange',
+  Alumno: 'default',
+};
+
+const minutesAgo = (iso: string) => {
+  const mins = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
+  if (mins < 1) return 'ahora';
+  if (mins === 1) return 'hace 1 min';
+  return `hace ${mins} min`;
+};
 
 /* ---------- Animated counter hook ---------- */
 function useCountUp(target: number, duration = 900, deps: unknown[] = []) {
@@ -151,8 +175,10 @@ const StatCard: React.FC<{
   value: number;
   color: string;
   suffix?: string;
+  subtitle?: string;
+  onClick?: () => void;
   delay?: number;
-}> = ({ icon, label, value, color, suffix, delay = 0 }) => {
+}> = ({ icon, label, value, color, suffix, subtitle, onClick, delay = 0 }) => {
   const animated = useCountUp(value, 1000, [value]);
   const [visible, setVisible] = useState(false);
   useEffect(() => {
@@ -162,10 +188,12 @@ const StatCard: React.FC<{
   return (
     <div
       className="app-card app-card-hover p-5 flex items-center gap-4"
+      onClick={onClick}
       style={{
         opacity: visible ? 1 : 0,
         transform: visible ? 'translateY(0)' : 'translateY(12px)',
         transition: 'opacity 0.5s ease, transform 0.5s ease',
+        cursor: onClick ? 'pointer' : undefined,
       }}
     >
       <div
@@ -179,6 +207,9 @@ const StatCard: React.FC<{
         <p className="text-2xl font-black" style={{ color: 'var(--color-text-main)' }}>
           {animated}{suffix}
         </p>
+        {subtitle && (
+          <p className="text-xs truncate" style={{ color: 'var(--color-text-muted)' }}>{subtitle}</p>
+        )}
       </div>
     </div>
   );
@@ -209,6 +240,7 @@ const MasterDashboard: React.FC = () => {
   const { viewPeriod } = useSchool();
   const [data, setData] = useState<MasterDashboardData | null>(null);
   const [loading, setLoading] = useState(false);
+  const [showConnected, setShowConnected] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -225,6 +257,9 @@ const MasterDashboard: React.FC = () => {
       }
     };
     fetchData();
+    // Refresh every minute so the connected-users metric stays current
+    const interval = setInterval(fetchData, 60_000);
+    return () => clearInterval(interval);
   }, [viewPeriod?.id]);
 
   if (loading && !data) return <Card loading />;
@@ -247,9 +282,15 @@ const MasterDashboard: React.FC = () => {
   const totalStudents = a?.students.total ?? 0;
   const matriculationRate = totalStudents > 0 ? Math.round((matriculated / totalStudents) * 100) : 0;
 
+  const activeTeachers = a?.teachers.activeTeachers ?? 0;
+  const registeredTeachers = a?.teachers.registeredTeachers ?? 0;
+  const withoutAssignments = a?.teachers.withoutAssignments ?? 0;
   const withoutPlans = a?.teachers.withoutPlans ?? 0;
   const withoutGrades = a?.teachers.withoutGrades ?? 0;
   const totalAssignments = a?.teachers.totalAssignments ?? 0;
+  const connected = data.connectedUsers ?? { total: 0, list: [] };
+  const connectedPreview = connected.list.slice(0, 2).map(u => u.name).join(', ')
+    + (connected.list.length > 2 ? ` +${connected.list.length - 2}` : '');
   const plansRate = totalAssignments > 0 ? Math.round(((totalAssignments - withoutPlans) / totalAssignments) * 100) : 100;
   const gradesRate = totalAssignments > 0 ? Math.round(((totalAssignments - withoutGrades) / totalAssignments) * 100) : 100;
 
@@ -305,17 +346,24 @@ const MasterDashboard: React.FC = () => {
           <Row gutter={[20, 20]}>
             <Col xs={12} md={6}>
               <FadeIn delay={50}>
-                <StatCard icon={<UserOutlined style={{ fontSize: 22 }} />} label="Estudiantes" value={totalStudents} color="#1e40af" />
+                <StatCard icon={<UserOutlined style={{ fontSize: 22 }} />} label="Estudiantes" value={totalStudents} color="#1e40af" subtitle={`${matriculated} matriculados · ${pending} pendientes`} />
               </FadeIn>
             </Col>
             <Col xs={12} md={6}>
               <FadeIn delay={100}>
-                <StatCard icon={<TeamOutlined style={{ fontSize: 22 }} />} label="Docentes" value={totalAssignments} color="#0ea5e9" suffix={` (${totalAssignments})`} />
+                <StatCard icon={<TeamOutlined style={{ fontSize: 22 }} />} label="Docentes" value={activeTeachers} color="#0ea5e9" subtitle={`${registeredTeachers} registrados · ${withoutAssignments} sin asignación`} />
               </FadeIn>
             </Col>
             <Col xs={12} md={6}>
               <FadeIn delay={150}>
-                <StatCard icon={<BookOutlined style={{ fontSize: 22 }} />} label="Sin Plan" value={withoutPlans} color="#f59e0b" />
+                <StatCard
+                  icon={<GlobalOutlined style={{ fontSize: 22 }} />}
+                  label="Conectados"
+                  value={connected.total}
+                  color="#16a34a"
+                  subtitle={connectedPreview || 'Nadie en línea'}
+                  onClick={() => setShowConnected(true)}
+                />
               </FadeIn>
             </Col>
             <Col xs={12} md={6}>
@@ -600,6 +648,48 @@ const MasterDashboard: React.FC = () => {
           </Card>
         </FadeIn>
       </div>
+
+      {/* ===== Connected Users Modal ===== */}
+      <Modal
+        title="Usuarios conectados ahora"
+        open={showConnected}
+        onCancel={() => setShowConnected(false)}
+        footer={null}
+      >
+        {connected.list.length === 0 ? (
+          <Empty description="Nadie conectado en este momento" />
+        ) : (
+          <div className="space-y-2">
+            {connected.list.map(u => (
+              <div
+                key={u.id}
+                className="flex items-center justify-between p-3 rounded-xl"
+                style={{ border: '1px solid rgba(15,23,42,0.06)', backgroundColor: 'var(--color-content-bg)' }}
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <span
+                    className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                    style={{ backgroundColor: '#16a34a', boxShadow: '0 0 0 3px rgba(22,163,74,0.15)' }}
+                  />
+                  <div className="min-w-0">
+                    <p className="font-semibold text-sm m-0 truncate" style={{ color: 'var(--color-text-main)' }}>{u.name}</p>
+                    <p className="text-xs m-0" style={{ color: 'var(--color-text-muted)' }}>@{u.username}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  {u.roles.map(r => (
+                    <Tag key={r} color={ROLE_TAG_COLORS[r] ?? 'default'} className="m-0">{r}</Tag>
+                  ))}
+                  <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>{minutesAgo(u.lastActivity)}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        <p className="text-xs mt-4 mb-0" style={{ color: 'var(--color-text-muted)' }}>
+          Se considera conectado quien tuvo actividad en los últimos 15 minutos. Se actualiza cada minuto.
+        </p>
+      </Modal>
     </div>
   );
 };

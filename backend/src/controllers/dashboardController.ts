@@ -57,6 +57,8 @@ type AcademicSnapshot =
       teachers: {
         totalAssignments: number;
         activeTeachers: number;
+        registeredTeachers: number;
+        withoutAssignments: number;
         withoutPlans: number;
         withoutGrades: number;
         sampleWithoutPlans: AssignmentInsight[];
@@ -124,7 +126,7 @@ interface ContentGradeProgress {
   subjects: ContentSubjectProgress[];
 }
 
-const buildAcademicSnapshot = async (schoolPeriodId?: number): Promise<AcademicSnapshot> => {
+const buildAcademicSnapshot = async (schoolPeriodId?: number, isPrivileged = false): Promise<AcademicSnapshot> => {
   // Serve an explicit period (header selector lets users view past periods),
   // falling back to the active period.
   const viewPeriod = Number.isFinite(schoolPeriodId)
@@ -135,9 +137,45 @@ const buildAcademicSnapshot = async (schoolPeriodId?: number): Promise<AcademicS
     return { period: null };
   }
 
-  const [matriculatedCount, pendingMatriculations, terms] = await Promise.all([
-    Inscription.count({ where: { schoolPeriodId: viewPeriod.id } }),
-    Matriculation.count({ where: { schoolPeriodId: viewPeriod.id, status: 'pending' } }),
+  const [uniqueStudentsRows, matriculatedCount, pendingMatriculations, registeredTeachers, teachersWithoutAssignmentsRows, terms] = await Promise.all([
+    // total students = distinct persons in the period (inscriptions ∪ matriculations)
+    // — pending matriculations are already "inscritos" awaiting section assignment
+    sequelize.query(
+      `SELECT COUNT(DISTINCT personId) AS \`cnt\` FROM (
+         SELECT i.personId FROM inscriptions i
+         LEFT JOIN matriculations m ON m.inscriptionId = i.id
+         WHERE i.schoolPeriodId = :spId
+           ${isPrivileged ? '' : 'AND m.hiddenFromControlEstudios = false'}
+         UNION
+         SELECT m2.personId FROM matriculations m2
+         WHERE m2.schoolPeriodId = :spId
+           ${isPrivileged ? '' : 'AND m2.hiddenFromControlEstudios = false'}
+       ) AS t`,
+      { replacements: { spId: viewPeriod.id }, type: QueryTypes.SELECT }
+    ),
+    // matriculated = completed matriculations (each is a distinct student)
+    Matriculation.count({
+      where: { schoolPeriodId: viewPeriod.id, status: 'completed', ...(isPrivileged ? {} : { hiddenFromControlEstudios: false }) }
+    }),
+    Matriculation.count({ where: { schoolPeriodId: viewPeriod.id, status: 'pending', ...(isPrivileged ? {} : { hiddenFromControlEstudios: false }) } }),
+    // all registered teachers (Person with role Profesor, global)
+    Person.count({
+      include: [{ model: Role, as: 'roles', where: { name: 'Profesor' }, through: { attributes: [] } }],
+    }),
+    // teachers without assignments in this period — NOT EXISTS (assignments in
+    // other periods must not mark the teacher as unassigned)
+    sequelize.query(
+      `SELECT COUNT(*) AS \`cnt\` FROM people p
+         INNER JOIN person_roles pr ON pr.personId = p.id
+         INNER JOIN roles r ON r.id = pr.roleId AND r.name = 'Profesor'
+         WHERE NOT EXISTS (
+           SELECT 1 FROM teacher_assignments ta
+           JOIN period_grade_subjects pgs ON pgs.id = ta.periodGradeSubjectId
+           JOIN period_grades pg ON pg.id = pgs.periodGradeId
+           WHERE ta.teacherId = p.id AND pg.schoolPeriodId = :spId
+         )`,
+      { replacements: { spId: viewPeriod.id }, type: QueryTypes.SELECT }
+    ),
     Term.findAll({
       where: { schoolPeriodId: viewPeriod.id },
       order: [['order', 'ASC']],
@@ -176,6 +214,7 @@ const buildAcademicSnapshot = async (schoolPeriodId?: number): Promise<AcademicS
   const activeTerm = terms.find(t => t.isActive);
   const activeTermId = activeTerm?.id ?? null;
 
+  const teachersWithoutAssignments = Number((teachersWithoutAssignmentsRows as Array<{ cnt: number | string }>)?.[0]?.cnt ?? 0);
   const periodGradeSubjectIds = assignments.map(a => a.periodGradeSubjectId);
   const sectionIds = assignments.map(a => a.sectionId);
 
@@ -185,7 +224,7 @@ const buildAcademicSnapshot = async (schoolPeriodId?: number): Promise<AcademicS
       students: {
         matriculated: matriculatedCount,
         pending: pendingMatriculations,
-        total: matriculatedCount + pendingMatriculations
+        total: Number((uniqueStudentsRows as Array<{ cnt: number | string }>)?.[0]?.cnt ?? 0)
       },
       lapses: {
         total: terms.length,
@@ -200,6 +239,8 @@ const buildAcademicSnapshot = async (schoolPeriodId?: number): Promise<AcademicS
       teachers: {
         totalAssignments: assignments.length,
         activeTeachers: new Set(assignments.map(a => a.teacherId)).size,
+        registeredTeachers,
+        withoutAssignments: teachersWithoutAssignments,
         withoutPlans: 0,
         withoutGrades: 0,
         sampleWithoutPlans: [],
@@ -576,7 +617,7 @@ const buildAcademicSnapshot = async (schoolPeriodId?: number): Promise<AcademicS
     students: {
       matriculated: matriculatedCount,
       pending: pendingMatriculations,
-      total: matriculatedCount + pendingMatriculations
+      total: Number((uniqueStudentsRows as Array<{ cnt: number | string }>)?.[0]?.cnt ?? 0)
     },
     lapses: {
       total: terms.length,
@@ -591,6 +632,8 @@ const buildAcademicSnapshot = async (schoolPeriodId?: number): Promise<AcademicS
     teachers: {
       totalAssignments: assignments.length,
       activeTeachers: new Set(assignments.map(a => a.teacherId)).size,
+      registeredTeachers,
+      withoutAssignments: teachersWithoutAssignments,
       withoutPlans: assignmentsWithoutPlan.length,
       withoutGrades: assignmentsWithoutGrades.length,
       sampleWithoutPlans: assignmentsWithoutPlan.slice(0, 6),
@@ -823,7 +866,9 @@ export const getAdminDashboardStats = async (req: Request, res: Response) => {
 
 export const getControlPanelMetrics = async (req: Request, res: Response) => {
   try {
-    const snapshot = await buildAcademicSnapshot(Number(req.query.schoolPeriodId) || undefined);
+    const userRoles: string[] = (req.session as any).user?.roles || [];
+    const isPrivileged = userRoles.includes('Master') || userRoles.includes('Administrador');
+    const snapshot = await buildAcademicSnapshot(Number(req.query.schoolPeriodId) || undefined, isPrivileged);
     return res.json(snapshot);
   } catch (error) {
     console.error('Error fetching control panel metrics:', error);
@@ -831,11 +876,59 @@ export const getControlPanelMetrics = async (req: Request, res: Response) => {
   }
 };
 
+// A user counts as "connected" when their session is valid (not expired) and the
+// session row was touched recently — rolling sessions update `updatedAt` on every
+// request, so activity within this window means the user is online right now.
+const CONNECTED_WINDOW_MS = 15 * 60 * 1000;
+
+interface ConnectedUser {
+  id: number;
+  username: string;
+  name: string;
+  roles: string[];
+  lastActivity: string;
+}
+
+const getConnectedUsers = async (): Promise<ConnectedUser[]> => {
+  const rows = (await sequelize.query(
+    'SELECT data, updatedAt FROM sessions WHERE expires > NOW()',
+    { type: QueryTypes.SELECT }
+  )) as Array<{ data: string | null; updatedAt: string }>;
+
+  const now = Date.now();
+  const byUser = new Map<number, ConnectedUser>();
+  for (const row of rows) {
+    const lastActivity = new Date(row.updatedAt).getTime();
+    if (!Number.isFinite(lastActivity) || now - lastActivity > CONNECTED_WINDOW_MS) continue;
+    try {
+      const user = JSON.parse(row.data ?? '{}')?.user;
+      if (!user?.id) continue;
+      const prev = byUser.get(user.id);
+      if (!prev || new Date(prev.lastActivity).getTime() < lastActivity) {
+        byUser.set(user.id, {
+          id: user.id,
+          username: user.username,
+          name: `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim() || user.username,
+          roles: Array.isArray(user.roles) ? user.roles : [],
+          lastActivity: row.updatedAt,
+        });
+      }
+    } catch {
+      // skip malformed session payloads
+    }
+  }
+  return Array.from(byUser.values())
+    .sort((a, b) => new Date(b.lastActivity).getTime() - new Date(a.lastActivity).getTime());
+};
+
 export const getMasterDashboardMetrics = async (req: Request, res: Response) => {
   try {
-    const [academic, totalUsers, settingsList] = await Promise.all([
-      buildAcademicSnapshot(Number(req.query.schoolPeriodId) || undefined),
+    const userRoles: string[] = (req.session as any).user?.roles || [];
+    const isPrivileged = userRoles.includes('Master') || userRoles.includes('Administrador');
+    const [academic, totalUsers, connectedUsers, settingsList] = await Promise.all([
+      buildAcademicSnapshot(Number(req.query.schoolPeriodId) || undefined, isPrivileged),
       User.count(),
+      getConnectedUsers(),
       Setting.findAll({
         where: { key: { [Op.in]: ['institution_name', 'institution_logo_shape', 'institution_motto', 'institution_code'] } }
       })
@@ -857,6 +950,7 @@ export const getMasterDashboardMetrics = async (req: Request, res: Response) => 
     return res.json({
       academic,
       users: { total: totalUsers },
+      connectedUsers: { total: connectedUsers.length, list: connectedUsers },
       institution
     });
   } catch (error) {
