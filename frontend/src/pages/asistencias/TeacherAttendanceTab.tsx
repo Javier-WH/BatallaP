@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Spin, message } from 'antd';
+import React, { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef } from 'react';
+import { Input, Spin, message } from 'antd';
+import axios from 'axios';
 import {
-  LeftOutlined, DownOutlined, WarningOutlined, StopOutlined,
+  LeftOutlined, DownOutlined, RightOutlined, WarningOutlined, StopOutlined,
   CheckOutlined, ClockCircleOutlined, UserOutlined,
 } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
@@ -25,6 +26,9 @@ const DAY_FULL = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'];
 const MONTHS_ABBR = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 
 const REASON_CHIPS = ['Enfermo', 'Llegó tarde', 'Se retiró', 'Sin excusa', 'Otro'];
+
+const getApiErrorMessage = (error: unknown, fallback: string): string =>
+  axios.isAxiosError<{ message?: string }>(error) ? error.response?.data?.message || fallback : fallback;
 
 type SessionStatus = 'done' | 'current' | 'missing' | 'upcoming';
 
@@ -54,7 +58,7 @@ const weeksOfMonth = (month: Dayjs): Dayjs[] => {
  * in chronological order. Falls back to the current Venezuelan school year
  * (Sep → Aug) when the period bounds are not loaded yet.
  */
-const periodMonths = (viewPeriod: any): Dayjs[] => {
+const periodMonths = (viewPeriod: { startYear?: number | string | null; endYear?: number | string | null } | null | undefined): Dayjs[] => {
   const today = dayjs();
   let startYear: number;
   if (viewPeriod?.startYear && viewPeriod?.endYear) {
@@ -161,7 +165,12 @@ const TeacherAttendanceTab: React.FC = () => {
   return (
     <div className="flex justify-center py-4">
       <style>{FONT_IMPORT}</style>
-      <div className="w-full max-w-sm bg-slate-50 rounded-[2rem] border border-slate-300 shadow-xl overflow-hidden min-h-[560px]">
+      <div
+        className="w-full max-w-sm bg-slate-50 rounded-[2rem] border border-slate-300 shadow-xl overflow-hidden flex flex-col"
+        style={openSession
+          ? { height: 'min(760px, calc(100dvh - 220px))', minHeight: 440 }
+          : { minHeight: 560 }}
+      >
         {openSession ? (
           <RosterScreen
             session={openSession}
@@ -415,6 +424,8 @@ function RosterScreen({
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [sessionStatus, setSessionStatus] = useState<SessionStatus>('current');
+  const [selectedInscriptionId, setSelectedInscriptionId] = useState<number | null>(null);
+  const rosterListRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -423,8 +434,14 @@ function RosterScreen({
       try {
         const res = await api.get(`/attendance/sessions/${session.id}`);
         if (cancelled) return;
-        setRoster(res.data.roster ?? []);
-        const taken = (res.data.roster ?? []).some((r: RosterEntry) => r.status !== null);
+        const loadedRoster: RosterEntry[] = res.data.roster ?? [];
+        setRoster(loadedRoster);
+        setSelectedInscriptionId(current =>
+          current && loadedRoster.some(student => student.inscriptionId === current)
+            ? current
+            : loadedRoster[0]?.inscriptionId ?? null
+        );
+        const taken = loadedRoster.some(student => student.status !== null);
         const isToday = dateStr === dayjs().format('YYYY-MM-DD');
         if (taken) setSessionStatus('done');
         else setSessionStatus(isToday ? 'current' : 'missing');
@@ -454,12 +471,23 @@ function RosterScreen({
     setRoster(prev => prev.map(r => (r.inscriptionId === inscriptionId ? { ...r, reason } : r)));
   };
 
+  useLayoutEffect(() => {
+    if (selectedInscriptionId == null) return;
+    const list = rosterListRef.current;
+    const editor = list?.querySelector<HTMLElement>(`[data-selected-student-id="${selectedInscriptionId}"]`);
+    if (!list || !editor) return;
+
+    const listBounds = list.getBoundingClientRect();
+    const editorBounds = editor.getBoundingClientRect();
+    const fixedEditorTop = listBounds.top + 100;
+    list.scrollTop += editorBounds.top - fixedEditorTop;
+  }, [selectedInscriptionId]);
+
   const handleSave = async () => {
-    const missingReason = roster.find(
-      r => (r.status === 'absent' || r.status === 'kicked') && !(r.reason ?? '').trim()
-    );
+    const missingReason = roster.find(r => r.status === 'kicked' && !(r.reason ?? '').trim());
     if (missingReason) {
-      message.warning(`Indique el motivo de ${missingReason.status === 'absent' ? 'ausencia' : 'expulsión'} de ${missingReason.fullName}`);
+      setSelectedInscriptionId(missingReason.inscriptionId);
+      message.warning(`Indique el motivo de expulsión de ${missingReason.fullName}`);
       return;
     }
     setSaving(true);
@@ -470,30 +498,36 @@ function RosterScreen({
       await api.put(`/attendance/sessions/${session.id}/records`, { records });
       message.success(isPast ? 'Cambios guardados' : 'Asistencia guardada');
       onBack();
-    } catch (err: any) {
-      message.error(err?.response?.data?.message || 'Error al guardar asistencia');
+    } catch (err: unknown) {
+      message.error(getApiErrorMessage(err, 'Error al guardar asistencia'));
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <div className="att-font-body">
-      <div className="px-5 pt-6 pb-4 border-b border-slate-200">
-        <button onClick={onBack} className="flex items-center gap-1 text-slate-500 text-sm att-font-body mb-3">
-          <LeftOutlined className="text-xs" /> Horario
-        </button>
+    <div className="att-font-body flex min-h-0 flex-1 flex-col">
+      <div className="sticky top-0 z-10 shrink-0 px-5 pt-4 pb-4 border-b border-slate-200 bg-slate-50">
+        <div className="flex items-center justify-between mb-3">
+          <button onClick={onBack} className="flex items-center gap-1 text-slate-500 text-sm att-font-body">
+            <LeftOutlined className="text-xs" /> Horario
+          </button>
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-slate-400 tabular-nums">
+              {roster.filter(r => r.status !== null).length}/{roster.length}
+            </span>
+            <button
+              onClick={handleSave}
+              disabled={saving || loading}
+              className="bg-slate-900 text-white rounded-lg px-3 py-2 att-font-body text-xs font-medium flex items-center justify-center gap-1.5 disabled:opacity-50"
+            >
+              <CheckOutlined /> {saving ? 'Guardando…' : isPast ? 'Guardar cambios' : 'Guardar'}
+            </button>
+          </div>
+        </div>
         <h1 className="att-font-head text-xl text-slate-900">{session.subjectName || 'Sin materia'}</h1>
         <p className="text-sm text-slate-400 att-font-body">{session.periodStart ?? session.periodId.toUpperCase()} · {dayName}</p>
 
-        {sessionStatus === 'missing' && (
-          <div className="mt-3 flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-            <WarningOutlined className="text-amber-600 mt-0.5 shrink-0" />
-            <p className="text-xs text-amber-800 att-font-body leading-relaxed">
-              Esta clase terminó sin registrar asistencia. Si la marca ahora, quedará registrada como ingreso tardío.
-            </p>
-          </div>
-        )}
         {sessionStatus === 'done' && (
           <div className="mt-3 flex items-start gap-2 bg-slate-100 border border-slate-200 rounded-lg px-3 py-2">
             <ClockCircleOutlined className="text-slate-500 mt-0.5 shrink-0" />
@@ -505,125 +539,251 @@ function RosterScreen({
       </div>
 
       {loading ? (
-        <div className="flex justify-center py-16"><Spin /></div>
+        <div className="flex flex-1 justify-center py-16"><Spin /></div>
       ) : (
-        <div className="px-5 py-4 space-y-2.5">
-          {roster.map(student => (
-            <StudentRow
-              key={student.inscriptionId}
-              student={student}
-              onSetStatus={setStatus}
-              onSetReason={setReason}
-              onClear={async (code, note) => {
-                try {
-                  await api.post(`/attendance/sessions/${session.id}/clear-block`, {
-                    inscriptionId: student.inscriptionId,
-                    reasonCode: code,
-                    reasonNote: note || null,
-                  });
-                  message.success('Estudiante desbloqueado');
-                  const res = await api.get(`/attendance/sessions/${session.id}`);
-                  setRoster(res.data.roster ?? []);
-                } catch (err: any) {
-                  message.error(err?.response?.data?.message || 'Error al desbloquear');
-                }
-              }}
-            />
+        <div
+          ref={rosterListRef}
+          className="min-h-0 flex-1 overflow-y-auto overscroll-contain touch-pan-y px-3 pb-3"
+          style={{ WebkitOverflowScrolling: 'touch' }}
+        >
+          <div className="h-24" aria-hidden="true" />
+          {roster.map((student, index) => (
+            selectedInscriptionId === student.inscriptionId ? (
+              <SelectedStudentEditor
+                key={student.inscriptionId}
+                student={student}
+                index={index}
+                total={roster.length}
+                onPrev={() => setSelectedInscriptionId(roster[Math.max(0, index - 1)]?.inscriptionId ?? student.inscriptionId)}
+                onNext={() => setSelectedInscriptionId(roster[Math.min(roster.length - 1, index + 1)]?.inscriptionId ?? student.inscriptionId)}
+                onSetStatus={(status) => {
+                  setStatus(student.inscriptionId, status);
+                  const canAdvance = status === 'present' || status === 'absent' || (status === 'kicked' && Boolean(student.reason?.trim()));
+                  if (canAdvance && index < roster.length - 1) {
+                    setSelectedInscriptionId(roster[index + 1].inscriptionId);
+                  }
+                }}
+                onSetReason={(reason) => setReason(student.inscriptionId, reason)}
+                onClear={async (code, note) => {
+                  try {
+                    await api.post(`/attendance/sessions/${session.id}/clear-block`, {
+                      inscriptionId: student.inscriptionId,
+                      reasonCode: code,
+                      reasonNote: note || null,
+                    });
+                    message.success('Estudiante desbloqueado');
+                    const res = await api.get(`/attendance/sessions/${session.id}`);
+                    setRoster(res.data.roster ?? []);
+                    return true;
+                  } catch (err: unknown) {
+                    message.error(getApiErrorMessage(err, 'Error al desbloquear'));
+                    return false;
+                  }
+                }}
+              />
+            ) : (
+              <StudentListRow
+                key={student.inscriptionId}
+                student={student}
+                index={index}
+                onClick={() => setSelectedInscriptionId(student.inscriptionId)}
+              />
+            )
           ))}
+          <div className="h-[310px]" aria-hidden="true" />
         </div>
       )}
 
-      <div className="px-5 pb-6 pt-2">
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className="w-full bg-slate-900 text-white rounded-xl py-3 att-font-body text-sm font-medium flex items-center justify-center gap-2 disabled:opacity-50"
-        >
-          <CheckOutlined /> {isPast ? 'Guardar cambios' : 'Guardar asistencia'}
-        </button>
-      </div>
     </div>
   );
 }
 
-function StudentRow({
-  student, onSetStatus, onSetReason, onClear,
-}: {
+function StudentListRow({ student, index, onClick }: {
   student: RosterEntry;
-  onSetStatus: (inscriptionId: number, status: AttendanceStatus) => void;
-  onSetReason: (inscriptionId: number, reason: string) => void;
-  onClear: (code: string, note: string) => Promise<void>;
+  index: number;
+  onClick: () => void;
 }) {
-  const [clearing, setClearing] = useState(false);
-  const isBlocked = student.priorBlock != null;
-
-  const pick = (status: AttendanceStatus) => {
-    onSetStatus(student.inscriptionId, status);
-  };
-
-  if (isBlocked) {
-    const prior = student.priorBlock!;
-    return (
-      <div className="bg-amber-50 border border-amber-200 rounded-xl px-3.5 py-3">
-        <div className="flex items-center gap-2.5">
-          <Avatar name={student.fullName} muted />
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-slate-800 att-font-body">{student.fullName}</p>
-            <p className="text-xs text-amber-700 att-font-body flex items-center gap-1 mt-0.5">
-              <StopOutlined className="text-[10px]" />
-              {prior.status === 'absent' ? 'Ausente' : 'Expulsado'} en {prior.subjectName || 'clase anterior'}, {prior.periodId.toUpperCase()}
-            </p>
-          </div>
-          <button
-            onClick={() => setClearing(c => !c)}
-            className="text-xs font-medium att-font-body text-amber-800 bg-amber-100 border border-amber-300 rounded-lg px-2.5 py-1.5 shrink-0"
-          >
-            Desbloquear
-          </button>
-        </div>
-        {clearing && (
-          <ClearancePanel
-            onConfirm={onClear}
-            onCancel={() => setClearing(false)}
-          />
-        )}
-      </div>
-    );
-  }
-
-  const showReason = student.status === 'absent' || student.status === 'kicked';
+  const blocked = student.priorBlock != null;
+  const badges: { code: string; label: string; status: AttendanceStatus; color: 'emerald' | 'rose' | 'slate' | 'amber' | 'blue' }[] = [
+    { code: 'P', label: 'Presente', status: 'present', color: 'emerald' },
+    { code: 'A', label: 'Ausente', status: 'absent', color: 'rose' },
+    { code: 'E', label: 'Expulsado', status: 'kicked', color: 'slate' },
+  ];
+  if (student.status === 'late') badges.push({ code: 'T', label: 'Tarde', status: 'late', color: 'amber' });
+  if (student.status === 'excused') badges.push({ code: 'J', label: 'Justificado', status: 'excused', color: 'blue' });
 
   return (
-    <div className="bg-white border border-slate-200 rounded-xl px-3.5 py-3">
-      <div className="flex items-center gap-2.5">
-        <Avatar name={student.fullName} />
-        <p className="flex-1 text-sm font-medium text-slate-800 att-font-body truncate">{student.fullName}</p>
-        <div className="flex gap-1.5 shrink-0">
-          <StatusButton label="Presente" active={student.status === 'present'} color="emerald" onClick={() => pick('present')} />
-          <StatusButton label="Ausente" active={student.status === 'absent'} color="rose" onClick={() => pick('absent')} />
-          <StatusButton label="Expulsado" active={student.status === 'kicked'} color="slate" onClick={() => pick('kicked')} />
-        </div>
-      </div>
-      {showReason && (
-        <div className="mt-2.5 pt-2.5 border-t border-slate-100">
-          <div className="flex flex-wrap gap-1.5">
-            {REASON_CHIPS.map(r => (
-              <button
-                key={r}
-                onClick={() => onSetReason(student.inscriptionId, r)}
-                className={`text-[11px] att-font-body px-2 py-1 rounded-full border ${
-                  student.reason === r
-                    ? 'bg-slate-800 text-white border-slate-800'
-                    : 'bg-white text-slate-500 border-slate-200'
-                }`}
+    <button
+      type="button"
+      data-inscription-id={student.inscriptionId}
+      onClick={onClick}
+      aria-label={`Editar asistencia de ${student.fullName}`}
+      className="w-full flex items-center gap-2.5 px-2 py-2.5 border-b border-slate-200 text-left bg-slate-100/70 text-slate-500 opacity-75 transition-colors hover:opacity-100 hover:bg-slate-200/80"
+    >
+      <span className="w-6 shrink-0 text-[11px] text-slate-400 tabular-nums">
+        {String(index + 1).padStart(2, '0')}
+      </span>
+      <span className="flex-1 min-w-0 truncate text-sm font-medium text-slate-700 att-font-body">
+        {student.fullName}
+      </span>
+      {blocked ? (
+        <span className="shrink-0 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-800">
+          Bloqueado
+        </span>
+      ) : (
+        <span className="flex shrink-0 gap-1">
+          {badges.map(badge => {
+            const active = student.status === badge.status;
+            const colors = {
+              emerald: active ? 'bg-emerald-600 border-emerald-600 text-white' : 'bg-white border-slate-200 text-slate-300',
+              rose: active ? 'bg-rose-600 border-rose-600 text-white' : 'bg-white border-slate-200 text-slate-300',
+              slate: active ? 'bg-slate-700 border-slate-700 text-white' : 'bg-white border-slate-200 text-slate-300',
+              amber: active ? 'bg-amber-500 border-amber-500 text-white' : 'bg-white border-slate-200 text-slate-300',
+              blue: active ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-slate-200 text-slate-300',
+            };
+            return (
+              <span
+                key={badge.code}
+                title={badge.label}
+                aria-label={`${badge.label}${active ? ', seleccionado' : ''}`}
+                className={`w-5 h-5 rounded-full border flex items-center justify-center text-[9px] font-semibold ${colors[badge.color]}`}
               >
-                {r}
-              </button>
-            ))}
-          </div>
-        </div>
+                {badge.code}
+              </span>
+            );
+          })}
+        </span>
       )}
-    </div>
+    </button>
+  );
+}
+
+function SelectedStudentEditor({
+  student, index, total, onPrev, onNext, onSetStatus, onSetReason, onClear,
+}: {
+  student: RosterEntry;
+  index: number;
+  total: number;
+  onPrev: () => void;
+  onNext: () => void;
+  onSetStatus: (status: AttendanceStatus) => void;
+  onSetReason: (reason: string) => void;
+  onClear: (code: string, note: string) => Promise<boolean>;
+}) {
+  const [clearing, setClearing] = useState(false);
+  const prior = student.priorBlock;
+  const hasReason = Boolean(student.reason?.trim());
+
+  return (
+    <section data-selected-student-id={student.inscriptionId} className="h-[310px] my-1 overflow-y-auto rounded-xl border border-slate-300 bg-white p-3 shadow-sm" aria-label={`Asistencia de ${student.fullName}`}>
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <button type="button" onClick={onPrev} disabled={index === 0} className="px-2 py-1 text-slate-500 disabled:opacity-30" aria-label="Estudiante anterior">
+          <LeftOutlined />
+        </button>
+        <span className="text-[11px] text-slate-400 tabular-nums">{String(index + 1).padStart(2, '0')} de {total}</span>
+        <button type="button" onClick={onNext} disabled={index >= total - 1} className="px-2 py-1 text-slate-500 disabled:opacity-30" aria-label="Estudiante siguiente">
+          <RightOutlined />
+        </button>
+      </div>
+
+      <div className="mb-2 px-1">
+        <p className="text-[11px] text-slate-400 tabular-nums m-0">{String(index + 1).padStart(2, '0')}</p>
+        <h2 className="att-font-head text-xl leading-tight text-slate-900 m-0 line-clamp-2 min-h-12">{student.fullName}</h2>
+      </div>
+
+      {prior ? (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
+          <p className="m-0 flex items-start gap-2 text-xs leading-relaxed text-amber-800">
+            <StopOutlined className="mt-0.5 shrink-0" />
+            {prior.status === 'absent' ? 'Ausente' : 'Expulsado'} en {prior.subjectName || 'clase anterior'}, {prior.periodId.toUpperCase()}. Debe desbloquearse antes de registrar asistencia.
+          </p>
+          {!clearing ? (
+            <button
+              type="button"
+              onClick={() => setClearing(true)}
+              className="mt-3 w-full rounded-lg border border-amber-300 bg-amber-100 py-2 text-xs font-medium text-amber-900"
+            >
+              Desbloquear estudiante
+            </button>
+          ) : (
+            <ClearancePanel
+              onConfirm={async (code, note) => {
+                if (await onClear(code, note)) setClearing(false);
+              }}
+              onCancel={() => setClearing(false)}
+            />
+          )}
+        </div>
+      ) : (
+        <>
+          <div className="mb-2">
+            <p className="mb-1 text-[11px] font-medium text-slate-500">Motivo (opcional para ausente; obligatorio para expulsado)</p>
+            <div className="mb-1.5 flex flex-wrap gap-1">
+              {REASON_CHIPS.map(reason => (
+                <button
+                  key={reason}
+                  type="button"
+                  onClick={() => onSetReason(reason)}
+                  className={`text-[10px] att-font-body px-2 py-1 rounded-full border ${
+                    student.reason === reason
+                      ? 'bg-slate-800 text-white border-slate-800'
+                      : 'bg-white text-slate-500 border-slate-200'
+                  }`}
+                >
+                  {reason}
+                </button>
+              ))}
+            </div>
+            <Input.TextArea
+              value={student.reason ?? ''}
+              onChange={event => onSetReason(event.target.value)}
+              placeholder="Elige una razón o escríbela…"
+              autoSize={false}
+              rows={2}
+              maxLength={250}
+              className="text-xs att-font-body"
+            />
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            <BigStatusButton label="Presente" active={student.status === 'present'} color="emerald" onClick={() => onSetStatus('present')} />
+            <BigStatusButton label="Ausente" active={student.status === 'absent'} color="rose" onClick={() => onSetStatus('absent')} />
+            <BigStatusButton
+              label="Expulsado"
+              active={student.status === 'kicked'}
+              color="slate"
+              disabled={!hasReason}
+              onClick={() => onSetStatus('kicked')}
+            />
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
+function BigStatusButton({ label, active, color, disabled = false, onClick }: {
+  label: string;
+  active: boolean;
+  color: 'emerald' | 'rose' | 'slate';
+  disabled?: boolean;
+  onClick: () => void;
+}) {
+  const colors = {
+    emerald: active ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-emerald-700 border-emerald-200',
+    rose: active ? 'bg-rose-600 text-white border-rose-600' : 'bg-white text-rose-700 border-rose-200',
+    slate: active ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-600 border-slate-200',
+  };
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-pressed={active}
+      title={disabled ? 'Indique un motivo antes de registrar una expulsión' : undefined}
+      className={`min-h-12 text-[11px] sm:text-xs font-semibold att-font-body px-2 py-2.5 rounded-lg border disabled:opacity-40 disabled:cursor-not-allowed ${colors[color]}`}
+    >
+      {label}
+    </button>
   );
 }
 
@@ -683,40 +843,6 @@ function ClearancePanel({
           Cancelar
         </button>
       </div>
-    </div>
-  );
-}
-
-function StatusButton({ label, active, color, onClick }: {
-  label: string;
-  active: boolean;
-  color: 'emerald' | 'rose' | 'slate';
-  onClick: () => void;
-}) {
-  const colors = {
-    emerald: active ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-emerald-700 border-emerald-200',
-    rose: active ? 'bg-rose-600 text-white border-rose-600' : 'bg-white text-rose-700 border-rose-200',
-    slate: active ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-600 border-slate-200',
-  };
-  return (
-    <button
-      onClick={onClick}
-      className={`text-[11px] font-medium att-font-body px-2 py-1.5 rounded-lg border ${colors[color]}`}
-    >
-      {label}
-    </button>
-  );
-}
-
-function Avatar({ name, muted }: { name: string; muted?: boolean }) {
-  const initials = name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
-  return (
-    <div
-      className={`w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-medium att-font-body shrink-0 ${
-        muted ? 'bg-amber-200 text-amber-800' : 'bg-slate-200 text-slate-600'
-      }`}
-    >
-      {initials}
     </div>
   );
 }

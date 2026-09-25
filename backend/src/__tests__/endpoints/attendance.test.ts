@@ -124,7 +124,7 @@ describe('Attendance endpoints', () => {
       expect(res.body.created).toBe(1);
     });
 
-    it('rechaza absent sin motivo', async () => {
+    it('permite absent sin motivo', async () => {
       const { agent, inscription } = await buildTeacherSetup();
 
       const sessionsRes = await agent.get(`/api/attendance/my-sessions?date=${MONDAY}`);
@@ -132,6 +132,20 @@ describe('Attendance endpoints', () => {
 
       const res = await agent.put(`/api/attendance/sessions/${sessionId}/records`).send({
         records: [{ inscriptionId: inscription.id, status: 'absent' }],
+      });
+
+      expect(res.status).toBe(200);
+      expect(res.body.created).toBe(1);
+    });
+
+    it('rechaza expulsado sin motivo', async () => {
+      const { agent, inscription } = await buildTeacherSetup();
+
+      const sessionsRes = await agent.get(`/api/attendance/my-sessions?date=${MONDAY}`);
+      const sessionId = sessionsRes.body.sessions[0].id;
+
+      const res = await agent.put(`/api/attendance/sessions/${sessionId}/records`).send({
+        records: [{ inscriptionId: inscription.id, status: 'kicked' }],
       });
 
       expect(res.status).toBe(400);

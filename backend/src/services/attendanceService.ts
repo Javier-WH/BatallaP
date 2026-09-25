@@ -330,8 +330,8 @@ export async function saveSessionRecords(
     if (!ATTENDANCE_STATUSES.includes(input.status)) {
       throw new Error(`Estado de asistencia inválido: ${input.status}`);
     }
-    if (BLOCKING_STATUSES.includes(input.status) && !input.reason?.trim()) {
-      throw new Error('Debe indicar un motivo para ausencias o expulsiones');
+    if (input.status === 'kicked' && !input.reason?.trim()) {
+      throw new Error('Debe indicar un motivo para expulsiones');
     }
   }
 

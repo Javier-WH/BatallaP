@@ -207,14 +207,18 @@ describe('attendanceService', () => {
       expect(await AttendanceAuditLog.findAll()).toHaveLength(1);
     });
 
-    it('rechaza "absent" sin motivo', async () => {
+    it('permite "absent" sin motivo', async () => {
       const { structure, person } = await setupTeacherWithSchedule('Lunes', 'm1');
       const { inscription } = await setupStudent(structure, 'A');
       const [session] = await getTeacherSessionsForDate(person.id, MONDAY);
 
       await expect(saveSessionRecords(session.id, [
         { inscriptionId: inscription.id, status: 'absent' },
-      ], person.id)).rejects.toThrow();
+      ], person.id)).resolves.toMatchObject({ created: 1 });
+      await expect(AttendanceRecord.findOne({ where: { sessionId: session.id, inscriptionId: inscription.id } }))
+        .resolves.toMatchObject({ status: 'absent', reason: null });
+      await expect(AttendanceAuditLog.findOne({ where: { action: 'marked' } }))
+        .resolves.toMatchObject({ newValue: { status: 'absent', reason: null } });
     });
 
     it('rechaza "kicked" sin motivo', async () => {
