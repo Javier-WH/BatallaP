@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef } from 'react';
 import { Input, Spin, message } from 'antd';
 import axios from 'axios';
 import {
@@ -25,9 +25,20 @@ const DAY_CHIPS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie'];
 const DAY_FULL = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'];
 const MONTHS_ABBR = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 
-const REASON_CHIPS = ['Enfermo', 'Llegó tarde', 'Se retiró', 'Sin excusa', 'Otro'];
+const REASON_CHIPS = ['Justificado', 'Enfermo', 'Comportamiento', 'Otro'];
+const SELECTED_EDITOR_HEIGHT = 310;
+const ROSTER_SCROLL_STEP = 42;
 const getApiErrorMessage = (error: unknown, fallback: string): string =>
   axios.isAxiosError<{ message?: string }>(error) ? error.response?.data?.message || fallback : fallback;
+const normalizeAttendanceReason = (reason: string | null | undefined): string | null => {
+  const value = reason?.trim() ?? '';
+  if (value === 'Otro') return null;
+  if (value.startsWith('Otro:')) {
+    const detail = value.slice(5).trim();
+    return detail ? `Otro: ${detail}` : null;
+  }
+  return value || null;
+};
 
 type SessionStatus = 'done' | 'current' | 'missing' | 'upcoming';
 
@@ -425,6 +436,9 @@ function RosterScreen({
   const [sessionStatus, setSessionStatus] = useState<SessionStatus>('current');
   const [selectedInscriptionId, setSelectedInscriptionId] = useState<number | null>(null);
   const rosterListRef = useRef<HTMLDivElement>(null);
+  const touchStartY = useRef<number | null>(null);
+  const touchDelta = useRef(0);
+  const wheelDelta = useRef(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -473,45 +487,71 @@ function RosterScreen({
   const selectedStudent = roster.find(student => student.inscriptionId === selectedInscriptionId) ?? null;
   const selectedIndex = selectedStudent ? roster.indexOf(selectedStudent) : -1;
 
-  const selectStudentAtScrollLine = () => {
+  const editorTopOffset = (list: HTMLDivElement) => Math.max(0, (list.clientHeight - SELECTED_EDITOR_HEIGHT) / 2);
+
+  useLayoutEffect(() => {
+    if (selectedInscriptionId == null) return;
     const list = rosterListRef.current;
-    if (!list) return;
+    const editorSlot = list?.querySelector<HTMLElement>(`[data-selected-slot-id="${selectedInscriptionId}"]`);
+    if (!list || !editorSlot) return;
 
-    const rows = Array.from(list.querySelectorAll<HTMLElement>('[data-inscription-id]'));
-    if (rows.length === 0) return;
+    const fixedEditorTop = list.getBoundingClientRect().top + editorTopOffset(list);
+    list.scrollTop += editorSlot.getBoundingClientRect().top - fixedEditorTop;
+  }, [selectedInscriptionId]);
 
-    const listBounds = list.getBoundingClientRect();
-    const focusY = listBounds.top + list.clientHeight / 2;
-    let closestId: number | null = null;
-    let closestDistance = Number.POSITIVE_INFINITY;
-    for (const row of rows) {
-      const bounds = row.getBoundingClientRect();
-      const distance = Math.abs((bounds.top + bounds.bottom) / 2 - focusY);
-      if (distance < closestDistance) {
-        closestDistance = distance;
-        closestId = Number(row.dataset.inscriptionId);
-      }
-    }
-    if (closestId != null) setSelectedInscriptionId(current => current === closestId ? current : closestId);
+  const scrollToStudent = (inscriptionId: number) => setSelectedInscriptionId(inscriptionId);
+
+  const moveSelectionBy = (steps: number) => {
+    const currentIndex = roster.findIndex(student => student.inscriptionId === selectedInscriptionId);
+    const next = roster[Math.max(0, Math.min(roster.length - 1, currentIndex + steps))];
+    if (next && next.inscriptionId !== selectedInscriptionId) scrollToStudent(next.inscriptionId);
   };
 
-  const scrollToStudent = (inscriptionId: number) => {
-    const list = rosterListRef.current;
-    const row = list?.querySelector<HTMLElement>(`[data-inscription-id="${inscriptionId}"]`);
-    if (!list || !row) {
-      setSelectedInscriptionId(inscriptionId);
+  const handleRosterWheel = (event: React.WheelEvent<HTMLDivElement>) => {
+    const target = event.target as HTMLElement;
+    if (target.closest('[data-selected-editor] button, [data-selected-editor] input, [data-selected-editor] textarea')) return;
+    event.preventDefault();
+    wheelDelta.current += event.deltaY;
+    const steps = Math.trunc(wheelDelta.current / ROSTER_SCROLL_STEP);
+    if (steps !== 0) {
+      wheelDelta.current -= steps * ROSTER_SCROLL_STEP;
+      moveSelectionBy(steps);
+    }
+  };
+
+  const handleRosterTouchStart = (event: React.TouchEvent<HTMLDivElement>) => {
+    const target = event.target as HTMLElement;
+    if (target.closest('[data-selected-editor] button, [data-selected-editor] input, [data-selected-editor] textarea')) {
+      touchStartY.current = null;
+      touchDelta.current = 0;
       return;
     }
+    touchStartY.current = event.touches[0]?.clientY ?? null;
+    touchDelta.current = 0;
+  };
 
-    const rowBounds = row.getBoundingClientRect();
-    const listBounds = list.getBoundingClientRect();
-    const focusY = listBounds.top + list.clientHeight / 2;
-    list.scrollTop += (rowBounds.top + rowBounds.bottom) / 2 - focusY;
-    setSelectedInscriptionId(inscriptionId);
+  const handleRosterTouchMove = (event: React.TouchEvent<HTMLDivElement>) => {
+    if (touchStartY.current == null) return;
+    const currentY = event.touches[0]?.clientY;
+    if (currentY == null) return;
+    touchDelta.current += touchStartY.current - currentY;
+    touchStartY.current = currentY;
+    const steps = Math.trunc(touchDelta.current / ROSTER_SCROLL_STEP);
+    if (steps !== 0) {
+      if (event.cancelable) event.preventDefault();
+      touchDelta.current -= steps * ROSTER_SCROLL_STEP;
+      moveSelectionBy(steps);
+    }
+  };
+
+  const handleRosterTouchEnd = () => {
+    if (touchDelta.current !== 0 && selectedInscriptionId != null) scrollToStudent(selectedInscriptionId);
+    touchStartY.current = null;
+    touchDelta.current = 0;
   };
 
   const handleSave = async () => {
-    const missingReason = roster.find(r => r.status === 'kicked' && !(r.reason ?? '').trim());
+    const missingReason = roster.find(r => r.status === 'kicked' && normalizeAttendanceReason(r.reason) === null);
     if (missingReason) {
       scrollToStudent(missingReason.inscriptionId);
       message.warning(`Indique el motivo de expulsión de ${missingReason.fullName}`);
@@ -521,7 +561,7 @@ function RosterScreen({
     try {
       const records = roster
         .filter(r => r.status !== null)
-        .map(r => ({ inscriptionId: r.inscriptionId, status: r.status, reason: r.reason || null }));
+        .map(r => ({ inscriptionId: r.inscriptionId, status: r.status, reason: normalizeAttendanceReason(r.reason) }));
       await api.put(`/attendance/sessions/${session.id}/records`, { records });
       message.success(isPast ? 'Cambios guardados' : 'Asistencia guardada');
       onBack();
@@ -571,21 +611,33 @@ function RosterScreen({
         <div className="relative min-h-0 flex-1">
           <div
             ref={rosterListRef}
-            onScroll={selectStudentAtScrollLine}
+            onWheel={handleRosterWheel}
+            onTouchStart={handleRosterTouchStart}
+            onTouchMove={handleRosterTouchMove}
+            onTouchEnd={handleRosterTouchEnd}
             className="absolute inset-0 overflow-y-auto overscroll-contain touch-pan-y px-3"
             style={{ WebkitOverflowScrolling: 'touch' }}
           >
-            <div style={{ height: 'max(0px, calc(50% - 21px))' }} aria-hidden="true" />
+            <div style={{ height: 'max(0px, calc(50% - 155px))' }} aria-hidden="true" />
             {roster.map((student, index) => (
-              <StudentListRow
-                key={student.inscriptionId}
-                student={student}
-                index={index}
-                selected={student.inscriptionId === selectedInscriptionId}
-                onClick={() => scrollToStudent(student.inscriptionId)}
-              />
+              selectedInscriptionId === student.inscriptionId ? (
+                <div
+                  key={student.inscriptionId}
+                  data-inscription-id={student.inscriptionId}
+                  data-selected-slot-id={student.inscriptionId}
+                  className="h-[310px]"
+                  aria-hidden="true"
+                />
+              ) : (
+                <StudentListRow
+                  key={student.inscriptionId}
+                  student={student}
+                  index={index}
+                  onClick={() => scrollToStudent(student.inscriptionId)}
+                />
+              )
             ))}
-            <div style={{ height: 'max(0px, calc(50% - 21px))' }} aria-hidden="true" />
+            <div style={{ height: 'max(0px, calc(50% - 155px))' }} aria-hidden="true" />
           </div>
           {selectedStudent && (
             <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center px-3">
@@ -599,14 +651,10 @@ function RosterScreen({
                   onSetStatus={(status) => {
                     setStatus(selectedStudent.inscriptionId, status);
                     const canAdvance = status === 'present' || status === 'absent' || (status === 'kicked' && Boolean(selectedStudent.reason?.trim()));
-                    if (canAdvance && selectedIndex < roster.length - 1) {
-                      scrollToStudent(roster[selectedIndex + 1].inscriptionId);
-                    }
+                    if (canAdvance && selectedIndex < roster.length - 1) scrollToStudent(roster[selectedIndex + 1].inscriptionId);
                   }}
                   onSetReason={(reason) => setReason(selectedStudent.inscriptionId, reason)}
-                  onBackgroundScroll={(delta) => {
-                    if (rosterListRef.current) rosterListRef.current.scrollTop += delta;
-                  }}
+                  onBackgroundScroll={(steps) => moveSelectionBy(steps)}
                   onClear={async (code, note) => {
                     try {
                       await api.post(`/attendance/sessions/${session.id}/clear-block`, {
@@ -634,10 +682,9 @@ function RosterScreen({
   );
 }
 
-function StudentListRow({ student, index, selected, onClick }: {
+function StudentListRow({ student, index, onClick }: {
   student: RosterEntry;
   index: number;
-  selected: boolean;
   onClick: () => void;
 }) {
   const blocked = student.priorBlock != null;
@@ -655,9 +702,7 @@ function StudentListRow({ student, index, selected, onClick }: {
       data-inscription-id={student.inscriptionId}
       onClick={onClick}
       aria-label={`Editar asistencia de ${student.fullName}`}
-      aria-hidden={selected}
-      tabIndex={selected ? -1 : 0}
-      className={`w-full flex items-center gap-2.5 px-2 py-2.5 border-b border-slate-200 text-left transition-colors ${selected ? 'invisible pointer-events-none' : 'bg-slate-100/70 text-slate-500 opacity-75 hover:opacity-100 hover:bg-slate-200/80'}`}
+      className="w-full flex items-center gap-2.5 px-2 py-2.5 border-b border-slate-200 text-left bg-slate-100/70 text-slate-500 opacity-75 transition-colors hover:opacity-100 hover:bg-slate-200/80"
     >
       <span className="w-6 shrink-0 text-[11px] text-slate-400 tabular-nums">
         {String(index + 1).padStart(2, '0')}
@@ -707,42 +752,68 @@ function SelectedStudentEditor({
   onNext: () => void;
   onSetStatus: (status: AttendanceStatus) => void;
   onSetReason: (reason: string) => void;
-  onBackgroundScroll: (delta: number) => void;
+  onBackgroundScroll: (steps: number) => void;
   onClear: (code: string, note: string) => Promise<boolean>;
 }) {
   const [clearing, setClearing] = useState(false);
   const prior = student.priorBlock;
-  const hasReason = Boolean(student.reason?.trim());
+  const reasonValue = student.reason?.trim() ?? '';
   const touchY = useRef<number | null>(null);
+  const touchDistance = useRef(0);
+  const wheelDistance = useRef(0);
+  const isOtherReason = reasonValue === 'Otro' || reasonValue.startsWith('Otro:');
+  const otherReason = reasonValue.startsWith('Otro:') ? reasonValue.slice(5).trimStart() : '';
+  const hasReason = normalizeAttendanceReason(student.reason) !== null;
 
-  const handleTouchStart = (event: React.TouchEvent<HTMLElement>) => {
+  const handlePanelWheel = (event: React.WheelEvent<HTMLElement>) => {
     const target = event.target as HTMLElement;
-    touchY.current = target.closest('button, input, textarea') ? null : event.touches[0]?.clientY ?? null;
+    if (target.closest('button, input, textarea')) return;
+    event.preventDefault();
+    wheelDistance.current += event.deltaY;
+    const steps = Math.trunc(wheelDistance.current / ROSTER_SCROLL_STEP);
+    if (steps !== 0) {
+      wheelDistance.current -= steps * ROSTER_SCROLL_STEP;
+      onBackgroundScroll(steps);
+    }
   };
-  const handleTouchMove = (event: React.TouchEvent<HTMLElement>) => {
+
+  const handlePanelTouchStart = (event: React.TouchEvent<HTMLElement>) => {
+    const target = event.target as HTMLElement;
+    if (target.closest('button, input, textarea')) {
+      touchY.current = null;
+      touchDistance.current = 0;
+      return;
+    }
+    touchY.current = event.touches[0]?.clientY ?? null;
+    touchDistance.current = 0;
+  };
+
+  const handlePanelTouchMove = (event: React.TouchEvent<HTMLElement>) => {
     if (touchY.current == null) return;
     const currentY = event.touches[0]?.clientY;
     if (currentY == null) return;
-    const delta = touchY.current - currentY;
-    if (Math.abs(delta) > 1) {
-      onBackgroundScroll(delta);
-      touchY.current = currentY;
+    touchDistance.current += touchY.current - currentY;
+    touchY.current = currentY;
+    const steps = Math.trunc(touchDistance.current / ROSTER_SCROLL_STEP);
+    if (steps !== 0) {
       if (event.cancelable) event.preventDefault();
+      touchDistance.current -= steps * ROSTER_SCROLL_STEP;
+      onBackgroundScroll(steps);
     }
+  };
+
+  const handlePanelTouchEnd = () => {
+    touchY.current = null;
+    touchDistance.current = 0;
   };
 
   return (
     <section
-      onTouchStart={handleTouchStart}
-      onTouchMove={handleTouchMove}
-      onTouchEnd={() => { touchY.current = null; }}
-      onWheel={(event) => {
-        const target = event.target as HTMLElement;
-        if (!target.closest('button, input, textarea')) {
-          onBackgroundScroll(event.deltaY);
-          event.preventDefault();
-        }
-      }}
+      data-selected-editor
+      onWheel={handlePanelWheel}
+      onTouchStart={handlePanelTouchStart}
+      onTouchMove={handlePanelTouchMove}
+      onTouchEnd={handlePanelTouchEnd}
       className="h-[310px] shrink-0 overflow-y-auto rounded-xl border border-slate-300 bg-white p-3 shadow-sm"
       aria-label={`Asistencia de ${student.fullName}`}
     >
@@ -793,9 +864,9 @@ function SelectedStudentEditor({
                 <button
                   key={reason}
                   type="button"
-                  onClick={() => onSetReason(reason)}
+                  onClick={() => onSetReason(reason === 'Otro' ? 'Otro: ' : reason)}
                   className={`text-[10px] att-font-body px-2 py-1 rounded-full border ${
-                    student.reason === reason
+                    student.reason === reason || (reason === 'Otro' && isOtherReason)
                       ? 'bg-slate-800 text-white border-slate-800'
                       : 'bg-white text-slate-500 border-slate-200'
                   }`}
@@ -804,15 +875,17 @@ function SelectedStudentEditor({
                 </button>
               ))}
             </div>
-            <Input.TextArea
-              value={student.reason ?? ''}
-              onChange={event => onSetReason(event.target.value)}
-              placeholder="Elige una razón o escríbela…"
-              autoSize={false}
-              rows={2}
-              maxLength={250}
-              className="text-xs att-font-body"
-            />
+            {isOtherReason && (
+              <Input.TextArea
+                value={otherReason}
+                onChange={event => onSetReason(`Otro: ${event.target.value}`)}
+                placeholder="Especifique la razón…"
+                autoSize={false}
+                rows={2}
+                maxLength={250}
+                className="text-xs att-font-body"
+              />
+            )}
           </div>
           <div className="grid grid-cols-3 gap-2">
             <BigStatusButton label="Presente" active={student.status === 'present'} color="emerald" onClick={() => onSetStatus('present')} />
