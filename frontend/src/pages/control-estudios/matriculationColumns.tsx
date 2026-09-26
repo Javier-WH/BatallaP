@@ -979,7 +979,19 @@ export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<Matricul
       cellRenderer: (p: any) => {
         if (!p.data) return 'N/A';
         const gradeStruct = structure.find(s => s.gradeId === p.data.tempData.gradeId);
-        return gradeStruct?.sections?.find(s => s.id === p.data.tempData.sectionId)?.name ?? 'N/A';
+        const sectionName = gradeStruct?.sections?.find(s => s.id === p.data.tempData.sectionId)?.name;
+        if (!sectionName) return 'N/A';
+        // A pending matriculation only carries the section requested during
+        // enrollment; it becomes an actual assignment when the student is
+        // matriculated (status 'completed').
+        if (p.data.status !== 'completed') {
+          return (
+            <Tooltip title="Sección solicitada al inscribir; se asigna formalmente al matricular">
+              <span style={{ color: '#8c8c8c', fontStyle: 'italic' }}>{sectionName} (sugerida)</span>
+            </Tooltip>
+          );
+        }
+        return sectionName;
       },
     });
   }
