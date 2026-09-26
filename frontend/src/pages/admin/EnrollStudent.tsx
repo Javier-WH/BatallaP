@@ -628,6 +628,12 @@ const EnrollStudent: React.FC = () => {
               form={existingStudentForm}
               layout="vertical"
               onFinish={handleExistingStudentSubmit}
+              onFinishFailed={({ errorFields }) => {
+                message.error(
+                  `Hay ${errorFields.length} campo(s) pendientes o con errores. Revise los campos marcados en rojo.`
+                );
+              }}
+              scrollToFirstError={{ behavior: 'smooth', block: 'center' }}
               style={{ maxWidth: 600, margin: '20px auto' }}
               initialValues={{ escolaridad: 'regular' }}
             >

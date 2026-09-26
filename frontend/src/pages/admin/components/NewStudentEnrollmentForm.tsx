@@ -259,6 +259,7 @@ const NewStudentEnrollmentForm: React.FC<NewStudentEnrollmentFormProps> = ({
   const [reportUuid, setReportUuid] = useState<string | null>(null);
   const [creatingPreinscription, setCreatingPreinscription] = useState(false);
   const [preinscriptionMissing, setPreinscriptionMissing] = useState(false);
+  const [optionalGuardiansOpen, setOptionalGuardiansOpen] = useState<string[]>([]);
 
   // Form watches
   const representativeTypeValue = Form.useWatch('representativeType', newStudentForm);
@@ -1018,6 +1019,28 @@ const NewStudentEnrollmentForm: React.FC<NewStudentEnrollmentFormProps> = ({
     optionalGuardianItems.push({ key: 'father', label: 'Datos del Padre (Opcional)', children: fatherFieldsContent });
   }
 
+  const handleNewStudentFailed = ({ errorFields }: { errorFields: { name: (string | number)[]; errors: string[] }[] }) => {
+    // Expand accordion panels that contain fields with errors
+    const collapsedKeys = new Set(optionalGuardianItems.map((item) => item.key));
+    const toOpen = errorFields
+      .map((field) => String(field.name[0]))
+      .filter((key) => collapsedKeys.has(key));
+    if (toOpen.length) {
+      setOptionalGuardiansOpen((prev) => Array.from(new Set([...prev, ...toOpen])));
+    }
+
+    message.error(
+      `Hay ${errorFields.length} campo(s) pendientes o con errores. Revise los campos marcados en rojo.`
+    );
+    const firstError = errorFields[0];
+    if (firstError) {
+      // Wait a tick so a just-expanded accordion panel is visible before scrolling
+      setTimeout(() => {
+        newStudentForm.scrollToField(firstError.name, { behavior: 'smooth', block: 'center' });
+      }, 100);
+    }
+  };
+
   if (loading) {
     return (
       <div style={{ padding: 40, textAlign: 'center' }}>
@@ -1071,6 +1094,7 @@ const NewStudentEnrollmentForm: React.FC<NewStudentEnrollmentFormProps> = ({
         form={newStudentForm}
         layout="vertical"
         onFinish={handleNewStudentSubmit}
+        onFinishFailed={handleNewStudentFailed}
         initialValues={{
           documentType: 'Venezolano',
           gender: 'M',
@@ -1592,7 +1616,12 @@ const NewStudentEnrollmentForm: React.FC<NewStudentEnrollmentFormProps> = ({
 
           {/* Optional guardians stay available in a closed accordion */}
           {optionalGuardianItems.length > 0 && (
-            <Collapse style={{ marginBottom: 24 }} items={optionalGuardianItems} />
+            <Collapse
+              style={{ marginBottom: 24 }}
+              items={optionalGuardianItems}
+              activeKey={optionalGuardiansOpen}
+              onChange={(keys) => setOptionalGuardiansOpen(keys as string[])}
+            />
           )}
 
         </div>
