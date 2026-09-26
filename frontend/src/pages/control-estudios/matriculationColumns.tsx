@@ -177,6 +177,7 @@ export interface EnrollmentDocumentInfo {
   receivedNotasCertificadas?: boolean;
   receivedPartidaNacimiento?: boolean;
   receivedCopiaCedulaEstudiante?: boolean;
+  receivedCopiaCedulaRepresentante?: boolean;
   receivedInformesMedicos?: boolean;
   receivedFotoCarnetEstudiante?: boolean;
 }
@@ -733,6 +734,7 @@ export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<Matricul
         const docFields: { key: keyof EnrollmentDocumentInfo; label: string }[] = [
           { key: 'receivedPartidaNacimiento', label: 'Partida de nacimiento' },
           { key: 'receivedCopiaCedulaEstudiante', label: 'Copia de cédula del estudiante' },
+          { key: 'receivedCopiaCedulaRepresentante', label: 'Fotocopia de cédula del representante' },
           { key: 'receivedFotoCarnetEstudiante', label: 'Foto carné del estudiante' },
           { key: 'receivedCertificadoAprendizaje', label: 'Certificado de aprendizaje' },
           { key: 'receivedCartaBuenaConducta', label: 'Carta de buena conducta' },

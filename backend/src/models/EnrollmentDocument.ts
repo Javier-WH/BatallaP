@@ -11,6 +11,7 @@ interface EnrollmentDocumentAttributes {
   receivedNotasCertificadas: boolean;
   receivedPartidaNacimiento: boolean;
   receivedCopiaCedulaEstudiante: boolean;
+  receivedCopiaCedulaRepresentante: boolean;
   receivedInformesMedicos: boolean;
   receivedFotoCarnetEstudiante: boolean;
   // Uploaded file paths
@@ -32,6 +33,7 @@ class EnrollmentDocument extends Model<EnrollmentDocumentAttributes, EnrollmentD
   public receivedNotasCertificadas!: boolean;
   public receivedPartidaNacimiento!: boolean;
   public receivedCopiaCedulaEstudiante!: boolean;
+  public receivedCopiaCedulaRepresentante!: boolean;
   public receivedInformesMedicos!: boolean;
   public receivedFotoCarnetEstudiante!: boolean;
   public pathCedulaRepresentante!: string | null;
@@ -76,6 +78,10 @@ EnrollmentDocument.init(
       defaultValue: false,
     },
     receivedCopiaCedulaEstudiante: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+    },
+    receivedCopiaCedulaRepresentante: {
       type: DataTypes.BOOLEAN,
       defaultValue: false,
     },

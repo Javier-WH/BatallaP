@@ -86,6 +86,7 @@ interface SnapshotData {
     receivedNotasCertificadas: boolean;
     receivedPartidaNacimiento: boolean;
     receivedCopiaCedulaEstudiante: boolean;
+    receivedCopiaCedulaRepresentante: boolean;
     receivedInformesMedicos: boolean;
     receivedFotoCarnetEstudiante: boolean;
   } | null;
@@ -230,6 +231,7 @@ export const generateEnrollmentReport = async (
           receivedNotasCertificadas: enrollmentDoc.receivedNotasCertificadas,
           receivedPartidaNacimiento: enrollmentDoc.receivedPartidaNacimiento,
           receivedCopiaCedulaEstudiante: enrollmentDoc.receivedCopiaCedulaEstudiante,
+          receivedCopiaCedulaRepresentante: enrollmentDoc.receivedCopiaCedulaRepresentante,
           receivedInformesMedicos: enrollmentDoc.receivedInformesMedicos,
           receivedFotoCarnetEstudiante: enrollmentDoc.receivedFotoCarnetEstudiante,
         }

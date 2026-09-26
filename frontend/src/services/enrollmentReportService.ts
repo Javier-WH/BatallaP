@@ -75,6 +75,7 @@ export interface SnapshotData {
     receivedNotasCertificadas: boolean;
     receivedPartidaNacimiento: boolean;
     receivedCopiaCedulaEstudiante: boolean;
+    receivedCopiaCedulaRepresentante: boolean;
     receivedInformesMedicos: boolean;
     receivedFotoCarnetEstudiante: boolean;
   } | null;

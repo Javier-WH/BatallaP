@@ -460,6 +460,7 @@ export const registerAndEnrollStudent = async (
         receivedNotasCertificadas: Boolean(documents.receivedNotasCertificadas),
         receivedPartidaNacimiento: Boolean(documents.receivedPartidaNacimiento),
         receivedCopiaCedulaEstudiante: Boolean(documents.receivedCopiaCedulaEstudiante),
+        receivedCopiaCedulaRepresentante: Boolean(documents.receivedCopiaCedulaRepresentante),
         receivedInformesMedicos: Boolean(documents.receivedInformesMedicos),
         receivedFotoCarnetEstudiante: Boolean(documents.receivedFotoCarnetEstudiante),
         pathCedulaRepresentante: toOptionalString(documents.pathCedulaRepresentante),

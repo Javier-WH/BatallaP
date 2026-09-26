@@ -51,6 +51,7 @@ type Grade = {
 type Section = {
   id: number;
   name: string;
+  isMateriaPendiente?: boolean;
   PeriodGradeSection?: { id: number };
 };
 
@@ -433,7 +434,8 @@ const EnrollStudent: React.FC = () => {
   const getSectionsForGrade = (gradeId: number | null) => {
     if (!gradeId) return [];
     const item = enrollStructure.find(s => s.gradeId === gradeId);
-    return item?.sections || [];
+    // Materia Pendiente is a period-closure artifact, not a real section.
+    return (item?.sections || []).filter(sec => !sec.isMateriaPendiente);
   };
 
   // --- Handlers ---

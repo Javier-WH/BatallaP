@@ -253,6 +253,7 @@ const EnrollmentReportPDF: React.FC<EnrollmentReportPDFProps> = ({
         { label: 'Carta de Buena Conducta', checked: data.documents.receivedCartaBuenaConducta },
         { label: 'Notas Certificadas', checked: data.documents.receivedNotasCertificadas },
         { label: 'Copia Cédula Estudiante', checked: data.documents.receivedCopiaCedulaEstudiante },
+        { label: 'Copia Cédula Representante', checked: data.documents.receivedCopiaCedulaRepresentante },
         { label: 'Informes Médicos', checked: data.documents.receivedInformesMedicos },
         { label: 'Foto Carnet Estudiante', checked: data.documents.receivedFotoCarnetEstudiante },
       ]

@@ -203,6 +203,7 @@ interface EnrollmentDocumentInfo {
   receivedNotasCertificadas?: boolean;
   receivedPartidaNacimiento?: boolean;
   receivedCopiaCedulaEstudiante?: boolean;
+  receivedCopiaCedulaRepresentante?: boolean;
   receivedInformesMedicos?: boolean;
   receivedFotoCarnetEstudiante?: boolean;
 }

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Form, message, Select, Row, Col, Input, DatePicker, Radio, Alert, Checkbox, Upload, Modal, Tag, Button } from 'antd';
+import { Form, message, Select, Row, Col, Input, DatePicker, Radio, Alert, Checkbox, Collapse, Upload, Modal, Tag, Button } from 'antd';
 import type { UploadFile, RcFile, UploadChangeParam } from 'antd/es/upload/interface';
 import { UserAddOutlined, LoadingOutlined, UploadOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
@@ -48,6 +48,7 @@ type SchoolPeriod = {
 type Section = {
   id: number;
   name: string;
+  isMateriaPendiente?: boolean;
   PeriodGradeSection?: { id: number };
 };
 
@@ -165,6 +166,7 @@ type EnrollmentDocumentsFormValues = {
   receivedNotasCertificadas?: boolean;
   receivedPartidaNacimiento?: boolean;
   receivedCopiaCedulaEstudiante?: boolean;
+  receivedCopiaCedulaRepresentante?: boolean;
   receivedInformesMedicos?: boolean;
   receivedFotoCarnetEstudiante?: boolean;
   pathCedulaRepresentante?: UploadFile<DocumentUploadResponse>[];
@@ -207,6 +209,11 @@ const getBase64 = (file: RcFile): Promise<string> =>
 const selectFilterOption = (input: string, option?: { label?: string }) =>
   (option?.label ?? '').toString().toLowerCase().includes(input.toLowerCase());
 
+// Case/accent-insensitive match so settings values like "José Tadeo Monagas"
+// still match catalog entries stored without accents.
+const normalizeLocationName = (value?: string | null) =>
+  (value ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toLowerCase();
+
 export interface NewStudentEnrollmentFormProps {
   mode: 'inscripcion' | 'preinscripcion';
   allPeriods: SchoolPeriod[];
@@ -238,6 +245,13 @@ const NewStudentEnrollmentForm: React.FC<NewStudentEnrollmentFormProps> = ({
     father: '',
     representative: ''
   });
+  // Last address value we auto-copied into each guardian, so manual edits stop the sync.
+  const repAddressSynced = React.useRef<Record<GuardianKey, string | undefined>>({
+    mother: undefined,
+    father: undefined,
+    representative: undefined
+  });
+  const institutionDefaultsApplied = React.useRef(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewImage, setPreviewImage] = useState('');
   const [previewTitle, setPreviewTitle] = useState('');
@@ -305,6 +319,38 @@ const NewStudentEnrollmentForm: React.FC<NewStudentEnrollmentFormProps> = ({
     };
     init();
   }, [allPeriods, isPreinscription]);
+
+  // Pre-fill the student residence with the institution's locality; most
+  // enrollees live nearby. Values stay editable and are only applied once.
+  useEffect(() => {
+    if (institutionDefaultsApplied.current || venezuelaLocations.length === 0) return;
+    let cancelled = false;
+    api.get('/settings')
+      .then((res) => {
+        if (cancelled || institutionDefaultsApplied.current) return;
+        const settings = (res.data ?? {}) as Record<string, string>;
+        const state = venezuelaLocations.find(
+          (s) => normalizeLocationName(s.estado) === normalizeLocationName(settings.institution_state)
+        );
+        if (!state || newStudentForm.getFieldValue('residenceState')) return;
+        const municipality = state.municipios.find(
+          (m) => normalizeLocationName(m.municipio) === normalizeLocationName(settings.institution_municipality)
+        );
+        const parish = municipality?.parroquias.find(
+          (p) => normalizeLocationName(p) === normalizeLocationName(settings.institution_parish)
+        );
+        institutionDefaultsApplied.current = true;
+        newStudentForm.setFieldsValue({
+          residenceState: state.estado,
+          residenceMunicipality: municipality?.municipio,
+          residenceParish: parish
+        });
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [venezuelaLocations, newStudentForm]);
 
   const handleCreatePreinscription = async () => {
     setCreatingPreinscription(true);
@@ -456,7 +502,8 @@ const NewStudentEnrollmentForm: React.FC<NewStudentEnrollmentFormProps> = ({
   const getSectionsForGrade = (gradeId: number | null) => {
     if (!gradeId) return [];
     const item = enrollStructure.find(s => s.gradeId === gradeId);
-    return item?.sections || [];
+    // Materia Pendiente is a period-closure artifact, not a real section.
+    return (item?.sections || []).filter(sec => !sec.isMateriaPendiente);
   };
 
   const stateOptions = useMemo(
@@ -568,6 +615,35 @@ const NewStudentEnrollmentForm: React.FC<NewStudentEnrollmentFormProps> = ({
   const showFatherDetails = !!(fatherDocumentTypeValue && fatherDocumentValue);
   const showRepresentativeDetails = !!(representativeDocumentTypeValue && representativeDocumentValue);
 
+  const activeGuardianKey: GuardianKey = motherIsRepresentative
+    ? 'mother'
+    : fatherIsRepresentative
+      ? 'father'
+      : 'representative';
+
+  // Copies the student's address into the selected representative's field while
+  // that field is empty or still holds the previously copied value. A manual
+  // edit (representative living elsewhere) stops the sync for that guardian.
+  const syncStudentAddressToRepresentative = useCallback((value: string) => {
+    const guardian = (newStudentForm.getFieldValue(activeGuardianKey) || {}) as GuardianData;
+    const syncedValue = repAddressSynced.current[activeGuardianKey];
+    if (guardian.address === undefined || guardian.address === syncedValue) {
+      repAddressSynced.current[activeGuardianKey] = value;
+      newStudentForm.setFieldsValue({
+        [activeGuardianKey]: { ...guardian, address: value }
+      });
+    }
+  }, [newStudentForm, activeGuardianKey]);
+
+  // When the selected representative changes, copy an already-typed student
+  // address into the new guardian if its address is empty or still synced.
+  useEffect(() => {
+    const studentAddress = newStudentForm.getFieldValue('address');
+    if (typeof studentAddress === 'string' && studentAddress !== '') {
+      syncStudentAddressToRepresentative(studentAddress);
+    }
+  }, [activeGuardianKey, newStudentForm, syncStudentAddressToRepresentative]);
+
   const resetGuardianMunicipality = (guardianKey: 'mother' | 'father' | 'representative') => {
     const current = newStudentForm.getFieldValue(guardianKey) as GuardianData || {};
     newStudentForm.setFieldsValue({
@@ -673,6 +749,274 @@ const NewStudentEnrollmentForm: React.FC<NewStudentEnrollmentFormProps> = ({
       message.error(err.response?.data?.error || err.response?.data?.message || 'Error al procesar la solicitud');
     }
   };
+
+  const motherFieldsContent = (
+    <>
+      {renderGuardianDocumentControls('mother', motherFieldsRequired)}
+
+      {motherIsRepresentative && (
+        <Row gutter={16} style={{ marginTop: 16 }}>
+          <Col span={12}>
+            <Form.Item
+              name={['mother', 'birthdate']}
+              label="Fecha de Nacimiento"
+              rules={[{ required: true, message: 'Ingrese la fecha de nacimiento' }]}
+            >
+              <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" placeholder="DD/MM/YYYY" />
+            </Form.Item>
+          </Col>
+        </Row>
+      )}
+
+      {showMotherDetails && (
+        <>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item name={['mother', 'firstName']} label="Nombres" rules={motherFieldsRequired ? [{ required: true }, { pattern: /^[a-zA-ZáéíóúÁÉÍÓÚüÜñÑ\s]+$/, message: 'No se permiten números' }] : [{ pattern: /^[a-zA-ZáéíóúÁÉÍÓÚüÜñÑ\s]+$/, message: 'No se permiten números' }]}>
+                <Input />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name={['mother', 'lastName']} label="Apellidos" rules={motherFieldsRequired ? [{ required: true }, { pattern: /^[a-zA-ZáéíóúÁÉÍÓÚüÜñÑ\s]+$/, message: 'No se permiten números' }] : [{ pattern: /^[a-zA-ZáéíóúÁÉÍÓÚüÜñÑ\s]+$/, message: 'No se permiten números' }]}>
+                <Input />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item name={['mother', 'whatsapp']} label="WhatsApp / Teléfono" normalize={formatPhoneInput} rules={motherFieldsRequired ? [{ required: true }, { pattern: /^(04|02)\d{2}-\d{7}$/, message: 'Formato: 04XX-XXXXXXX o 02XX-XXXXXXX' }] : [{ pattern: /^(04|02)\d{2}-\d{7}$/, message: 'Formato: 04XX-XXXXXXX o 02XX-XXXXXXX' }]}>
+                <Input />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name={['mother', 'phone2']} label="Teléfono secundario" normalize={formatPhoneInput} rules={[{ pattern: /^(04|02)\d{2}-\d{7}$/, message: 'Formato: 04XX-XXXXXXX o 02XX-XXXXXXX' }]}>
+                <Input placeholder="Opcional" />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item name={['mother', 'email']} label="Email" rules={[{ type: 'email' }]}>
+                <Input placeholder="Opcional" />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Form.Item name={['mother', 'address']} label="Dirección de habitación" rules={motherFieldsRequired ? [{ required: true }] : []}>
+            <Input.TextArea rows={2} />
+          </Form.Item>
+          <Row gutter={16}>
+            <Col span={8}>
+              <Form.Item name={['mother', 'residenceState']} label="Estado" rules={motherFieldsRequired ? [{ required: true }] : []}>
+                <Select showSearch options={stateOptions} onChange={() => resetGuardianMunicipality('mother')} />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item name={['mother', 'residenceMunicipality']} label="Municipio" rules={motherFieldsRequired ? [{ required: true }] : []}>
+                <Select showSearch options={motherMunicipalityOptions} onChange={() => resetGuardianParish('mother')} disabled={!motherStateValue} />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item name={['mother', 'residenceParish']} label="Parroquia" rules={motherFieldsRequired ? [{ required: true }] : []}>
+                <Select showSearch options={motherParishOptions} disabled={!motherMunicipalityValue} />
+              </Form.Item>
+            </Col>
+          </Row>
+        </>
+      )}
+    </>
+  );
+
+  const fatherFieldsContent = (
+    <>
+      {renderGuardianDocumentControls('father', fatherFieldsRequired)}
+
+      {fatherIsRepresentative && (
+        <Row gutter={16} style={{ marginTop: 16 }}>
+          <Col span={12}>
+            <Form.Item
+              name={['father', 'birthdate']}
+              label="Fecha de Nacimiento"
+              rules={[{ required: true, message: 'Ingrese la fecha de nacimiento' }]}
+            >
+              <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" placeholder="DD/MM/YYYY" />
+            </Form.Item>
+          </Col>
+        </Row>
+      )}
+
+      {showFatherDetails && (
+        <>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item name={['father', 'firstName']} label="Nombres" rules={fatherFieldsRequired ? [{ required: true }, { pattern: /^[a-zA-ZáéíóúÁÉÍÓÚüÜñÑ\s]+$/, message: 'No se permiten números' }] : [{ pattern: /^[a-zA-ZáéíóúÁÉÍÓÚüÜñÑ\s]+$/, message: 'No se permiten números' }]}>
+                <Input />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name={['father', 'lastName']} label="Apellidos" rules={fatherFieldsRequired ? [{ required: true }, { pattern: /^[a-zA-ZáéíóúÁÉÍÓÚüÜñÑ\s]+$/, message: 'No se permiten números' }] : [{ pattern: /^[a-zA-ZáéíóúÁÉÍÓÚüÜñÑ\s]+$/, message: 'No se permiten números' }]}>
+                <Input />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item name={['father', 'whatsapp']} label="WhatsApp / Teléfono" normalize={formatPhoneInput} rules={fatherFieldsRequired ? [{ required: true }, { pattern: /^(04|02)\d{2}-\d{7}$/, message: 'Formato: 04XX-XXXXXXX o 02XX-XXXXXXX' }] : [{ pattern: /^(04|02)\d{2}-\d{7}$/, message: 'Formato: 04XX-XXXXXXX o 02XX-XXXXXXX' }]}>
+                <Input />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name={['father', 'phone2']} label="Teléfono secundario" normalize={formatPhoneInput} rules={[{ pattern: /^(04|02)\d{2}-\d{7}$/, message: 'Formato: 04XX-XXXXXXX o 02XX-XXXXXXX' }]}>
+                <Input placeholder="Opcional" />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item name={['father', 'email']} label="Email" rules={[{ type: 'email' }]}>
+                <Input placeholder="Opcional" />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Row gutter={16}>
+            <Col span={24}>
+              <Form.Item name={['father', 'occupation']} label="Labor / Ocupación">
+                <Input placeholder="Ej: Ingeniero, Comerciante..." />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Form.Item name={['father', 'address']} label="Dirección de habitación" rules={fatherFieldsRequired ? [{ required: true }] : []}>
+            <Input.TextArea rows={2} />
+          </Form.Item>
+          <Row gutter={16}>
+            <Col span={8}>
+              <Form.Item name={['father', 'residenceState']} label="Estado" rules={fatherFieldsRequired ? [{ required: true }] : []}>
+                <Select showSearch options={stateOptions} onChange={() => resetGuardianMunicipality('father')} />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item name={['father', 'residenceMunicipality']} label="Municipio" rules={fatherFieldsRequired ? [{ required: true }] : []}>
+                <Select showSearch options={fatherMunicipalityOptions} onChange={() => resetGuardianParish('father')} disabled={!fatherStateValue} />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item name={['father', 'residenceParish']} label="Parroquia" rules={fatherFieldsRequired ? [{ required: true }] : []}>
+                <Select showSearch options={fatherParishOptions} disabled={!fatherMunicipalityValue} />
+              </Form.Item>
+            </Col>
+          </Row>
+        </>
+      )}
+    </>
+  );
+
+  const representativeFieldsContent = (
+    <>
+      {renderGuardianDocumentControls('representative', representativeFieldsRequired)}
+
+      <Row gutter={16} style={{ marginTop: 16 }}>
+        <Col span={12}>
+          <Form.Item
+            name={['representative', 'birthdate']}
+            label="Fecha de Nacimiento"
+            rules={representativeFieldsRequired ? [{ required: true, message: 'Ingrese la fecha de nacimiento' }] : []}
+          >
+            <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" placeholder="DD/MM/YYYY" />
+          </Form.Item>
+        </Col>
+      </Row>
+
+      {showRepresentativeDetails && (
+        <>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item name={['representative', 'firstName']} label="Nombres" rules={representativeFieldsRequired ? [{ required: true }, { pattern: /^[a-zA-ZáéíóúÁÉÍÓÚüÜñÑ\s]+$/, message: 'No se permiten números' }] : [{ pattern: /^[a-zA-ZáéíóúÁÉÍÓÚüÜñÑ\s]+$/, message: 'No se permiten números' }]}>
+                <Input />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name={['representative', 'lastName']} label="Apellidos" rules={representativeFieldsRequired ? [{ required: true }, { pattern: /^[a-zA-ZáéíóúÁÉÍÓÚüÜñÑ\s]+$/, message: 'No se permiten números' }] : [{ pattern: /^[a-zA-ZáéíóúÁÉÍÓÚüÜñÑ\s]+$/, message: 'No se permiten números' }]}>
+                <Input />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item name={['representative', 'whatsapp']} label="WhatsApp / Teléfono" normalize={formatPhoneInput} rules={representativeFieldsRequired ? [{ required: true }, { pattern: /^(04|02)\d{2}-\d{7}$/, message: 'Formato: 04XX-XXXXXXX o 02XX-XXXXXXX' }] : [{ pattern: /^(04|02)\d{2}-\d{7}$/, message: 'Formato: 04XX-XXXXXXX o 02XX-XXXXXXX' }]}>
+                <Input />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name={['representative', 'phone2']} label="Teléfono secundario" normalize={formatPhoneInput} rules={[{ pattern: /^(04|02)\d{2}-\d{7}$/, message: 'Formato: 04XX-XXXXXXX o 02XX-XXXXXXX' }]}>
+                <Input placeholder="Opcional" />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item name={['representative', 'email']} label="Email" rules={[{ type: 'email' }]}>
+                <Input placeholder="Opcional" />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item name={['representative', 'occupation']} label="Labor / Ocupación">
+                <Input />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Form.Item name={['representative', 'address']} label="Dirección de habitación" rules={representativeFieldsRequired ? [{ required: true }] : []}>
+            <Input.TextArea rows={2} />
+          </Form.Item>
+          <Row gutter={16}>
+            <Col span={8}>
+              <Form.Item name={['representative', 'residenceState']} label="Estado" rules={representativeFieldsRequired ? [{ required: true }] : []}>
+                <Select showSearch options={stateOptions} onChange={() => resetGuardianMunicipality('representative')} />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item name={['representative', 'residenceMunicipality']} label="Municipio" rules={representativeFieldsRequired ? [{ required: true }] : []}>
+                <Select showSearch options={representativeMunicipalityOptions} onChange={() => resetGuardianParish('representative')} disabled={!representativeStateValue} />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item name={['representative', 'residenceParish']} label="Parroquia" rules={representativeFieldsRequired ? [{ required: true }] : []}>
+                <Select showSearch options={representativeParishOptions} disabled={!representativeMunicipalityValue} />
+              </Form.Item>
+            </Col>
+          </Row>
+        </>
+      )}
+    </>
+  );
+
+  const guardianCard = (
+    title: string,
+    required: boolean,
+    content: React.ReactNode,
+    highlight = false
+  ) => (
+    <div style={{ background: highlight ? '#fff7e6' : '#fafafa', padding: 16, borderRadius: 8, marginBottom: 24, border: `1px solid ${highlight ? '#ffd591' : '#f0f0f0'}` }}>
+      <h4 style={{ color: highlight ? '#d46b08' : '#fa8c16', marginBottom: 16 }}>
+        {title} {required ? '(Obligatorio)' : '(Opcional)'}
+      </h4>
+      {content}
+    </div>
+  );
+
+  // Guardians that are neither the selected representative nor required stay
+  // available inside a closed accordion so the form keeps their data on submit.
+  const optionalGuardianItems: { key: string; label: string; children: React.ReactNode }[] = [];
+  if (!motherIsRepresentative && !motherFieldsRequired) {
+    optionalGuardianItems.push({ key: 'mother', label: 'Datos de la Madre (Opcional)', children: motherFieldsContent });
+  }
+  if (!fatherIsRepresentative) {
+    optionalGuardianItems.push({ key: 'father', label: 'Datos del Padre (Opcional)', children: fatherFieldsContent });
+  }
 
   if (loading) {
     return (
@@ -803,87 +1147,6 @@ const NewStudentEnrollmentForm: React.FC<NewStudentEnrollmentFormProps> = ({
             </Col>
           </Row>
           <Row gutter={16}>
-            <Col span={studentDocumentType === 'Cedula Escolar' ? 6 : 8}>
-              <Form.Item name="documentType" label="Tipo Doc" rules={[{ required: true }]}>
-                <Select>
-                  <Option value="Venezolano">Venezolano</Option>
-                  <Option value="Extranjero">Extranjero</Option>
-                  <Option value="Pasaporte">Pasaporte</Option>
-                  <Option value="Cedula Escolar">Cédula Escolar</Option>
-                </Select>
-              </Form.Item>
-            </Col>
-            {studentDocumentType === 'Cedula Escolar' && (
-              <Col span={6}>
-                <Form.Item
-                  name="nationality"
-                  label="Nac."
-                  rules={[{ required: true, message: 'Requerido' }]}
-                  initialValue="Venezolano"
-                >
-                  <Select>
-                    <Option value="Venezolano">Venezolano</Option>
-                    <Option value="Extranjero">Extranjero</Option>
-                  </Select>
-                </Form.Item>
-              </Col>
-            )}
-            <Col span={studentDocumentType === 'Cedula Escolar' ? 12 : 16}>
-              <Form.Item noStyle shouldUpdate={(prev, cur) => prev.documentType !== cur.documentType || prev.nationality !== cur.nationality}>
-                {({ getFieldValue }) => {
-                  const docType = getFieldValue('documentType') as string;
-                  const nat = getFieldValue('nationality') as string;
-                  const prefix = (docType === 'Venezolano' || (docType === 'Cedula Escolar' && nat === 'Venezolano')) ? 'V-'
-                    : (docType === 'Extranjero' || (docType === 'Cedula Escolar' && nat === 'Extranjero')) ? 'E-'
-                    : undefined;
-                  return (
-                    <Form.Item
-                      name="document"
-                      label="Documento"
-                      rules={[
-                        { required: true },
-                        ({ getFieldValue }) => ({
-                          validator(_, value) {
-                            if (!value) return Promise.resolve();
-                            const dt = getFieldValue('documentType');
-                            if (dt === 'Cedula Escolar') return Promise.resolve();
-                            if ((dt === 'Venezolano' || dt === 'Extranjero') && !/^\d{5,8}$/.test(value)) {
-                              return Promise.reject('Formato: solo dígitos (5-8)');
-                            }
-                            return Promise.resolve();
-                          },
-                        }),
-                        ({ getFieldValue }) => ({
-                          validator(_, value) {
-                            if (!value) return Promise.resolve();
-                            const motherDoc = getFieldValue(['mother', 'document']);
-                            const fatherDoc = getFieldValue(['father', 'document']);
-                            const repDoc = getFieldValue(['representative', 'document']);
-                            if (motherDoc && value === motherDoc) return Promise.reject('La cédula no puede ser igual a la de la madre');
-                            if (fatherDoc && value === fatherDoc) return Promise.reject('La cédula no puede ser igual a la del padre');
-                            if (repDoc && value === repDoc) return Promise.reject('La cédula no puede ser igual a la del representante');
-                            return Promise.resolve();
-                          },
-                        }),
-                      ]}
-                    >
-                      <Input
-                        placeholder={docType === 'Cedula Escolar' ? 'Vacío para autogenerar' : ''}
-                        addonBefore={prefix}
-                        onChange={(e) => {
-                          if (docType === 'Venezolano' || docType === 'Extranjero' || docType === 'Cedula Escolar') {
-                            const val = e.target.value.replace(/^[VE]-/, '').replace(/[^0-9]/g, '');
-                            newStudentForm.setFieldValue('document', val);
-                          }
-                        }}
-                      />
-                    </Form.Item>
-                  );
-                }}
-              </Form.Item>
-            </Col>
-          </Row>
-          <Row gutter={16}>
             <Col span={12}>
               <Form.Item name="gender" label="Género" rules={[{ required: true }]}>
                 <Radio.Group style={{ width: '100%' }}>
@@ -993,6 +1256,87 @@ const NewStudentEnrollmentForm: React.FC<NewStudentEnrollmentFormProps> = ({
                   options={parishOptions}
                   disabled={!birthMunicipalityValue}
                 />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={studentDocumentType === 'Cedula Escolar' ? 6 : 8}>
+              <Form.Item name="documentType" label="Tipo Doc" rules={[{ required: true }]}>
+                <Select>
+                  <Option value="Venezolano">Venezolano</Option>
+                  <Option value="Extranjero">Extranjero</Option>
+                  <Option value="Pasaporte">Pasaporte</Option>
+                  <Option value="Cedula Escolar">Cédula Escolar</Option>
+                </Select>
+              </Form.Item>
+            </Col>
+            {studentDocumentType === 'Cedula Escolar' && (
+              <Col span={6}>
+                <Form.Item
+                  name="nationality"
+                  label="Nac."
+                  rules={[{ required: true, message: 'Requerido' }]}
+                  initialValue="Venezolano"
+                >
+                  <Select>
+                    <Option value="Venezolano">Venezolano</Option>
+                    <Option value="Extranjero">Extranjero</Option>
+                  </Select>
+                </Form.Item>
+              </Col>
+            )}
+            <Col span={studentDocumentType === 'Cedula Escolar' ? 12 : 16}>
+              <Form.Item noStyle shouldUpdate={(prev, cur) => prev.documentType !== cur.documentType || prev.nationality !== cur.nationality}>
+                {({ getFieldValue }) => {
+                  const docType = getFieldValue('documentType') as string;
+                  const nat = getFieldValue('nationality') as string;
+                  const prefix = (docType === 'Venezolano' || (docType === 'Cedula Escolar' && nat === 'Venezolano')) ? 'V-'
+                    : (docType === 'Extranjero' || (docType === 'Cedula Escolar' && nat === 'Extranjero')) ? 'E-'
+                    : undefined;
+                  return (
+                    <Form.Item
+                      name="document"
+                      label="Documento"
+                      rules={[
+                        { required: true },
+                        ({ getFieldValue }) => ({
+                          validator(_, value) {
+                            if (!value) return Promise.resolve();
+                            const dt = getFieldValue('documentType');
+                            if (dt === 'Cedula Escolar') return Promise.resolve();
+                            if ((dt === 'Venezolano' || dt === 'Extranjero') && !/^\d{5,8}$/.test(value)) {
+                              return Promise.reject('Formato: solo dígitos (5-8)');
+                            }
+                            return Promise.resolve();
+                          },
+                        }),
+                        ({ getFieldValue }) => ({
+                          validator(_, value) {
+                            if (!value) return Promise.resolve();
+                            const motherDoc = getFieldValue(['mother', 'document']);
+                            const fatherDoc = getFieldValue(['father', 'document']);
+                            const repDoc = getFieldValue(['representative', 'document']);
+                            if (motherDoc && value === motherDoc) return Promise.reject('La cédula no puede ser igual a la de la madre');
+                            if (fatherDoc && value === fatherDoc) return Promise.reject('La cédula no puede ser igual a la del padre');
+                            if (repDoc && value === repDoc) return Promise.reject('La cédula no puede ser igual a la del representante');
+                            return Promise.resolve();
+                          },
+                        }),
+                      ]}
+                    >
+                      <Input
+                        placeholder={docType === 'Cedula Escolar' ? 'Vacío para autogenerar' : ''}
+                        addonBefore={prefix}
+                        onChange={(e) => {
+                          if (docType === 'Venezolano' || docType === 'Extranjero' || docType === 'Cedula Escolar') {
+                            const val = e.target.value.replace(/^[VE]-/, '').replace(/[^0-9]/g, '');
+                            newStudentForm.setFieldValue('document', val);
+                          }
+                        }}
+                      />
+                    </Form.Item>
+                  );
+                }}
               </Form.Item>
             </Col>
           </Row>
@@ -1156,7 +1500,7 @@ const NewStudentEnrollmentForm: React.FC<NewStudentEnrollmentFormProps> = ({
           <Row gutter={16}>
             <Col span={24}>
               <Form.Item name="address" label="Dirección de habitación (Usualmente la misma del representante)" rules={[{ required: true }]}>
-                <Input.TextArea rows={2} />
+                <Input.TextArea rows={2} onChange={(e) => syncStudentAddressToRepresentative(e.target.value)} />
               </Form.Item>
             </Col>
           </Row>
@@ -1238,257 +1582,19 @@ const NewStudentEnrollmentForm: React.FC<NewStudentEnrollmentFormProps> = ({
             </Radio.Group>
           </Form.Item>
 
-          {/* MADRE */}
-          <div style={{ background: '#fafafa', padding: 16, borderRadius: 8, marginBottom: 24, border: '1px solid #f0f0f0' }}>
-            <h4 style={{ color: '#fa8c16', marginBottom: 16 }}>
-              Datos de la Madre {motherFieldsRequired ? '(Obligatorio)' : '(Opcional)'}
-            </h4>
-            {renderGuardianDocumentControls('mother', motherFieldsRequired)}
+          {/* Selected representative's data is shown first */}
+          {motherIsRepresentative && guardianCard('Datos de la Madre', motherFieldsRequired, motherFieldsContent)}
+          {fatherIsRepresentative && guardianCard('Datos del Padre', fatherFieldsRequired, fatherFieldsContent)}
+          {representativeIsOther && guardianCard('Datos del Representante', representativeFieldsRequired, representativeFieldsContent, true)}
 
-            {motherIsRepresentative && (
-              <Row gutter={16} style={{ marginTop: 16 }}>
-                <Col span={12}>
-                  <Form.Item
-                    name={['mother', 'birthdate']}
-                    label="Fecha de Nacimiento"
-                    rules={[{ required: true, message: 'Ingrese la fecha de nacimiento' }]}
-                  >
-                    <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" placeholder="DD/MM/YYYY" />
-                  </Form.Item>
-                </Col>
-              </Row>
-            )}
+          {/* Mother's data stays expanded when required but she is not the representative */}
+          {!motherIsRepresentative && motherFieldsRequired && guardianCard('Datos de la Madre', motherFieldsRequired, motherFieldsContent)}
 
-            {showMotherDetails && (
-              <>
-                <Row gutter={16}>
-                  <Col span={12}>
-                    <Form.Item name={['mother', 'firstName']} label="Nombres" rules={motherFieldsRequired ? [{ required: true }, { pattern: /^[a-zA-ZáéíóúÁÉÍÓÚüÜñÑ\s]+$/, message: 'No se permiten números' }] : [{ pattern: /^[a-zA-ZáéíóúÁÉÍÓÚüÜñÑ\s]+$/, message: 'No se permiten números' }]}>
-                      <Input />
-                    </Form.Item>
-                  </Col>
-                  <Col span={12}>
-                    <Form.Item name={['mother', 'lastName']} label="Apellidos" rules={motherFieldsRequired ? [{ required: true }, { pattern: /^[a-zA-ZáéíóúÁÉÍÓÚüÜñÑ\s]+$/, message: 'No se permiten números' }] : [{ pattern: /^[a-zA-ZáéíóúÁÉÍÓÚüÜñÑ\s]+$/, message: 'No se permiten números' }]}>
-                      <Input />
-                    </Form.Item>
-                  </Col>
-                </Row>
-                <Row gutter={16}>
-                  <Col span={12}>
-                    <Form.Item name={['mother', 'whatsapp']} label="WhatsApp / Teléfono" normalize={formatPhoneInput} rules={motherFieldsRequired ? [{ required: true }, { pattern: /^(04|02)\d{2}-\d{7}$/, message: 'Formato: 04XX-XXXXXXX o 02XX-XXXXXXX' }] : [{ pattern: /^(04|02)\d{2}-\d{7}$/, message: 'Formato: 04XX-XXXXXXX o 02XX-XXXXXXX' }]}>
-                      <Input />
-                    </Form.Item>
-                  </Col>
-                  <Col span={12}>
-                    <Form.Item name={['mother', 'phone2']} label="Teléfono secundario" normalize={formatPhoneInput} rules={[{ pattern: /^(04|02)\d{2}-\d{7}$/, message: 'Formato: 04XX-XXXXXXX o 02XX-XXXXXXX' }]}>
-                      <Input placeholder="Opcional" />
-                    </Form.Item>
-                  </Col>
-                </Row>
-                <Row gutter={16}>
-                  <Col span={12}>
-                    <Form.Item name={['mother', 'email']} label="Email" rules={[{ type: 'email' }]}>
-                      <Input placeholder="Opcional" />
-                    </Form.Item>
-                  </Col>
-                </Row>
-                <Form.Item name={['mother', 'address']} label="Dirección de habitación" rules={motherFieldsRequired ? [{ required: true }] : []}>
-                  <Input.TextArea rows={2} />
-                </Form.Item>
-                <Row gutter={16}>
-                  <Col span={8}>
-                    <Form.Item name={['mother', 'residenceState']} label="Estado" rules={motherFieldsRequired ? [{ required: true }] : []}>
-                      <Select showSearch options={stateOptions} onChange={() => resetGuardianMunicipality('mother')} />
-                    </Form.Item>
-                  </Col>
-                  <Col span={8}>
-                    <Form.Item name={['mother', 'residenceMunicipality']} label="Municipio" rules={motherFieldsRequired ? [{ required: true }] : []}>
-                      <Select showSearch options={motherMunicipalityOptions} onChange={() => resetGuardianParish('mother')} disabled={!motherStateValue} />
-                    </Form.Item>
-                  </Col>
-                  <Col span={8}>
-                    <Form.Item name={['mother', 'residenceParish']} label="Parroquia" rules={motherFieldsRequired ? [{ required: true }] : []}>
-                      <Select showSearch options={motherParishOptions} disabled={!motherMunicipalityValue} />
-                    </Form.Item>
-                  </Col>
-                </Row>
-              </>
-            )}
-          </div>
-
-          {/* PADRE */}
-          <div style={{ background: '#fafafa', padding: 16, borderRadius: 8, marginBottom: 24, border: '1px solid #f0f0f0' }}>
-            <h4 style={{ color: '#fa8c16', marginBottom: 16 }}>
-              Datos del Padre {fatherFieldsRequired ? '(Obligatorio)' : '(Opcional)'}
-            </h4>
-            {renderGuardianDocumentControls('father', fatherFieldsRequired)}
-
-            {fatherIsRepresentative && (
-              <Row gutter={16} style={{ marginTop: 16 }}>
-                <Col span={12}>
-                  <Form.Item
-                    name={['father', 'birthdate']}
-                    label="Fecha de Nacimiento"
-                    rules={[{ required: true, message: 'Ingrese la fecha de nacimiento' }]}
-                  >
-                    <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" placeholder="DD/MM/YYYY" />
-                  </Form.Item>
-                </Col>
-              </Row>
-            )}
-
-            {showFatherDetails && (
-              <>
-                <Row gutter={16}>
-                  <Col span={12}>
-                    <Form.Item name={['father', 'firstName']} label="Nombres" rules={fatherFieldsRequired ? [{ required: true }, { pattern: /^[a-zA-ZáéíóúÁÉÍÓÚüÜñÑ\s]+$/, message: 'No se permiten números' }] : [{ pattern: /^[a-zA-ZáéíóúÁÉÍÓÚüÜñÑ\s]+$/, message: 'No se permiten números' }]}>
-                      <Input />
-                    </Form.Item>
-                  </Col>
-                  <Col span={12}>
-                    <Form.Item name={['father', 'lastName']} label="Apellidos" rules={fatherFieldsRequired ? [{ required: true }, { pattern: /^[a-zA-ZáéíóúÁÉÍÓÚüÜñÑ\s]+$/, message: 'No se permiten números' }] : [{ pattern: /^[a-zA-ZáéíóúÁÉÍÓÚüÜñÑ\s]+$/, message: 'No se permiten números' }]}>
-                      <Input />
-                    </Form.Item>
-                  </Col>
-                </Row>
-                <Row gutter={16}>
-                  <Col span={12}>
-                    <Form.Item name={['father', 'whatsapp']} label="WhatsApp / Teléfono" normalize={formatPhoneInput} rules={fatherFieldsRequired ? [{ required: true }, { pattern: /^(04|02)\d{2}-\d{7}$/, message: 'Formato: 04XX-XXXXXXX o 02XX-XXXXXXX' }] : [{ pattern: /^(04|02)\d{2}-\d{7}$/, message: 'Formato: 04XX-XXXXXXX o 02XX-XXXXXXX' }]}>
-                      <Input />
-                    </Form.Item>
-                  </Col>
-                  <Col span={12}>
-                    <Form.Item name={['father', 'phone2']} label="Teléfono secundario" normalize={formatPhoneInput} rules={[{ pattern: /^(04|02)\d{2}-\d{7}$/, message: 'Formato: 04XX-XXXXXXX o 02XX-XXXXXXX' }]}>
-                      <Input placeholder="Opcional" />
-                    </Form.Item>
-                  </Col>
-                </Row>
-                <Row gutter={16}>
-                  <Col span={12}>
-                    <Form.Item name={['father', 'email']} label="Email" rules={[{ type: 'email' }]}>
-                      <Input placeholder="Opcional" />
-                    </Form.Item>
-                  </Col>
-                </Row>
-
-                <Row gutter={16}>
-                  <Col span={24}>
-                    <Form.Item name={['father', 'occupation']} label="Labor / Ocupación">
-                      <Input placeholder="Ej: Ingeniero, Comerciante..." />
-                    </Form.Item>
-                  </Col>
-                </Row>
-
-                <Form.Item name={['father', 'address']} label="Dirección de habitación" rules={fatherFieldsRequired ? [{ required: true }] : []}>
-                  <Input.TextArea rows={2} />
-                </Form.Item>
-                <Row gutter={16}>
-                  <Col span={8}>
-                    <Form.Item name={['father', 'residenceState']} label="Estado" rules={fatherFieldsRequired ? [{ required: true }] : []}>
-                      <Select showSearch options={stateOptions} onChange={() => resetGuardianMunicipality('father')} />
-                    </Form.Item>
-                  </Col>
-                  <Col span={8}>
-                    <Form.Item name={['father', 'residenceMunicipality']} label="Municipio" rules={fatherFieldsRequired ? [{ required: true }] : []}>
-                      <Select showSearch options={fatherMunicipalityOptions} onChange={() => resetGuardianParish('father')} disabled={!fatherStateValue} />
-                    </Form.Item>
-                  </Col>
-                  <Col span={8}>
-                    <Form.Item name={['father', 'residenceParish']} label="Parroquia" rules={fatherFieldsRequired ? [{ required: true }] : []}>
-                      <Select showSearch options={fatherParishOptions} disabled={!fatherMunicipalityValue} />
-                    </Form.Item>
-                  </Col>
-                </Row>
-              </>
-            )}
-          </div>
-
-          {/* REPRESENTANTE (Si es otro) */}
-          {representativeIsOther && (
-            <div style={{ background: '#fff7e6', padding: 16, borderRadius: 8, marginBottom: 24, border: '1px solid #ffd591' }}>
-              <h4 style={{ color: '#d46b08', marginBottom: 16 }}>
-                Datos del Representante {representativeFieldsRequired ? '(Obligatorio)' : '(Opcional)'}
-              </h4>
-              {renderGuardianDocumentControls('representative', representativeFieldsRequired)}
-
-              <Row gutter={16} style={{ marginTop: 16 }}>
-                <Col span={12}>
-                  <Form.Item
-                    name={['representative', 'birthdate']}
-                    label="Fecha de Nacimiento"
-                    rules={representativeFieldsRequired ? [{ required: true, message: 'Ingrese la fecha de nacimiento' }] : []}
-                  >
-                    <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" placeholder="DD/MM/YYYY" />
-                  </Form.Item>
-                </Col>
-              </Row>
-
-              {showRepresentativeDetails && (
-                <>
-                  <Row gutter={16}>
-                    <Col span={12}>
-                      <Form.Item name={['representative', 'firstName']} label="Nombres" rules={representativeFieldsRequired ? [{ required: true }, { pattern: /^[a-zA-ZáéíóúÁÉÍÓÚüÜñÑ\s]+$/, message: 'No se permiten números' }] : [{ pattern: /^[a-zA-ZáéíóúÁÉÍÓÚüÜñÑ\s]+$/, message: 'No se permiten números' }]}>
-                        <Input />
-                      </Form.Item>
-                    </Col>
-                    <Col span={12}>
-                      <Form.Item name={['representative', 'lastName']} label="Apellidos" rules={representativeFieldsRequired ? [{ required: true }, { pattern: /^[a-zA-ZáéíóúÁÉÍÓÚüÜñÑ\s]+$/, message: 'No se permiten números' }] : [{ pattern: /^[a-zA-ZáéíóúÁÉÍÓÚüÜñÑ\s]+$/, message: 'No se permiten números' }]}>
-                        <Input />
-                      </Form.Item>
-                    </Col>
-                  </Row>
-                  <Row gutter={16}>
-                    <Col span={12}>
-                      <Form.Item name={['representative', 'whatsapp']} label="WhatsApp / Teléfono" normalize={formatPhoneInput} rules={representativeFieldsRequired ? [{ required: true }, { pattern: /^(04|02)\d{2}-\d{7}$/, message: 'Formato: 04XX-XXXXXXX o 02XX-XXXXXXX' }] : [{ pattern: /^(04|02)\d{2}-\d{7}$/, message: 'Formato: 04XX-XXXXXXX o 02XX-XXXXXXX' }]}>
-                        <Input />
-                      </Form.Item>
-                    </Col>
-                    <Col span={12}>
-                      <Form.Item name={['representative', 'phone2']} label="Teléfono secundario" normalize={formatPhoneInput} rules={[{ pattern: /^(04|02)\d{2}-\d{7}$/, message: 'Formato: 04XX-XXXXXXX o 02XX-XXXXXXX' }]}>
-                        <Input placeholder="Opcional" />
-                      </Form.Item>
-                    </Col>
-                  </Row>
-                  <Row gutter={16}>
-                    <Col span={12}>
-                      <Form.Item name={['representative', 'email']} label="Email" rules={[{ type: 'email' }]}>
-                        <Input placeholder="Opcional" />
-                      </Form.Item>
-                    </Col>
-                  </Row>
-
-                  <Row gutter={16}>
-                    <Col span={12}>
-                      <Form.Item name={['representative', 'occupation']} label="Labor / Ocupación">
-                        <Input />
-                      </Form.Item>
-                    </Col>
-                  </Row>
-
-                  <Form.Item name={['representative', 'address']} label="Dirección de habitación" rules={representativeFieldsRequired ? [{ required: true }] : []}>
-                    <Input.TextArea rows={2} />
-                  </Form.Item>
-                  <Row gutter={16}>
-                    <Col span={8}>
-                      <Form.Item name={['representative', 'residenceState']} label="Estado" rules={representativeFieldsRequired ? [{ required: true }] : []}>
-                        <Select showSearch options={stateOptions} onChange={() => resetGuardianMunicipality('representative')} />
-                      </Form.Item>
-                    </Col>
-                    <Col span={8}>
-                      <Form.Item name={['representative', 'residenceMunicipality']} label="Municipio" rules={representativeFieldsRequired ? [{ required: true }] : []}>
-                        <Select showSearch options={representativeMunicipalityOptions} onChange={() => resetGuardianParish('representative')} disabled={!representativeStateValue} />
-                      </Form.Item>
-                    </Col>
-                    <Col span={8}>
-                      <Form.Item name={['representative', 'residenceParish']} label="Parroquia" rules={representativeFieldsRequired ? [{ required: true }] : []}>
-                        <Select showSearch options={representativeParishOptions} disabled={!representativeMunicipalityValue} />
-                      </Form.Item>
-                    </Col>
-                  </Row>
-                </>
-              )}
-            </div>
+          {/* Optional guardians stay available in a closed accordion */}
+          {optionalGuardianItems.length > 0 && (
+            <Collapse style={{ marginBottom: 24 }} items={optionalGuardianItems} />
           )}
+
         </div>
 
         {questionsLoading ? (
@@ -1519,6 +1625,7 @@ const NewStudentEnrollmentForm: React.FC<NewStudentEnrollmentFormProps> = ({
             <Col span={12}><Form.Item name={['documents', 'receivedNotasCertificadas']} valuePropName="checked"><Checkbox>Notas certificadas (de 2do año en adelante)</Checkbox></Form.Item></Col>
             <Col span={12}><Form.Item name={['documents', 'receivedPartidaNacimiento']} valuePropName="checked"><Checkbox>Partida de nacimiento</Checkbox></Form.Item></Col>
             <Col span={12}><Form.Item name={['documents', 'receivedCopiaCedulaEstudiante']} valuePropName="checked"><Checkbox>Fotocopia de cédula del estudiante</Checkbox></Form.Item></Col>
+            <Col span={12}><Form.Item name={['documents', 'receivedCopiaCedulaRepresentante']} valuePropName="checked"><Checkbox>Fotocopia de cédula del representante</Checkbox></Form.Item></Col>
             <Col span={12}><Form.Item name={['documents', 'receivedInformesMedicos']} valuePropName="checked"><Checkbox>Informes médicos (si tiene alguno)</Checkbox></Form.Item></Col>
             <Col span={12}><Form.Item name={['documents', 'receivedFotoCarnetEstudiante']} valuePropName="checked"><Checkbox>Foto tipo carnet del estudiante</Checkbox></Form.Item></Col>
           </Row>
