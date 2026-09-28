@@ -1,15 +1,20 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ConfigProvider } from 'antd';
+import esES from 'antd/locale/es_ES';
+import dayjs from 'dayjs';
+import 'dayjs/locale/es';
 import { registerSW } from 'virtual:pwa-register';
 import ExchangeCalculatorPage from '@/pages/shared/ExchangeCalculatorPage';
 import '@/index.css';
 
 registerSW({ immediate: true });
 
+dayjs.locale('es');
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <ConfigProvider
+    <ConfigProvider locale={esES}
       theme={{
         token: {
           colorPrimary: '#1e40af',

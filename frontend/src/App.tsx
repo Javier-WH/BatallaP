@@ -1,5 +1,8 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { ConfigProvider } from 'antd';
+import esES from 'antd/locale/es_ES';
+import dayjs from 'dayjs';
+import 'dayjs/locale/es';
 import Login from '@/pages/Login';
 import MainLayout from '@/pages/MainLayout';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
@@ -40,6 +43,8 @@ import GeneralDashboard from '@/pages/GeneralDashboard';
 import type { JSX } from 'react';
 import NotFound from '@/pages/NotFound';
 import ExchangeCalculatorPage from '@/pages/shared/ExchangeCalculatorPage';
+
+dayjs.locale('es');
 
 // Control de Estudios Module Imports
 import ControlEstudiosLayout from '@/pages/control-estudios/ControlEstudiosLayout';
@@ -128,6 +133,7 @@ const ThemeWrapper = ({ children }: { children: React.ReactNode }) => {
 
   return (
     <ConfigProvider
+      locale={esES}
       theme={{
         token: {
           colorPrimary: primary,
