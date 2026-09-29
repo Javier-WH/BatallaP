@@ -409,11 +409,11 @@ const EnrollmentReportPDF: React.FC<EnrollmentReportPDFProps> = ({
         <View style={styles.signatureArea}>
           <View style={styles.signatureBlock}>
             <View style={styles.signatureLine} />
-            <Text style={styles.signatureLabel}>Firma del Emisor</Text>
+            <Text style={styles.signatureLabel}>Firma del Representante</Text>
           </View>
           <View style={styles.signatureBlock}>
             <View style={styles.signatureLine} />
-            <Text style={styles.signatureLabel}>Sello de la Institución</Text>
+            <Text style={styles.signatureLabel}>Firma del Emisor y Sello</Text>
           </View>
         </View>
 
