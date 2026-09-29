@@ -151,6 +151,7 @@ const EvaluationPlanItemModal: React.FC<EvaluationPlanItemModalProps> = ({
   const savingRef = useRef(false);
   const [criteria, setCriteria] = useState<CriteriaRow[]>([]);
   const [evaluationType, setEvaluationType] = useState<string[]>([]);
+  const [dirty, setDirty] = useState(false);
   const [percentageValue, setPercentageValue] = useState<number | null>(null);
 
   const thematicContentOptions = thematicComponents.flatMap((component, componentIndex) =>
@@ -278,6 +279,7 @@ const EvaluationPlanItemModal: React.FC<EvaluationPlanItemModalProps> = ({
         setEvaluationType([]);
         setPercentageValue(null);
       }
+      setDirty(false);
     }
   }, [open, editingItem, form, thematicComponents]);
 
@@ -368,31 +370,53 @@ const EvaluationPlanItemModal: React.FC<EvaluationPlanItemModalProps> = ({
     }
   };
 
+  const handleRequestClose = () => {
+    if (savingRef.current) return;
+    if (!dirty) {
+      onClose();
+      return;
+    }
+    Modal.confirm({
+      title: editingItem ? '¿Descartar los cambios?' : '¿Descartar esta estrategia?',
+      content: 'Tienes información sin guardar. Si cierras, se perderá todo lo ingresado.',
+      okText: 'Descartar',
+      okButtonProps: { danger: true },
+      cancelText: 'Seguir editando',
+      onOk: onClose,
+    });
+  };
+
   const addCriteria = () => {
+    setDirty(true);
     setCriteria([...criteria, { name: '', points: 0, indicators: [] }]);
   };
 
   const removeCriteria = (index: number) => {
+    setDirty(true);
     setCriteria(criteria.filter((_, i) => i !== index));
   };
 
   const updateCriteria = (index: number, field: keyof CriteriaRow, value: string | number) => {
+    setDirty(true);
     setCriteria(criteria.map((c, i) => (i === index ? { ...c, [field]: value } : c)));
   };
 
   const addIndicator = (critIndex: number) => {
+    setDirty(true);
     setCriteria(criteria.map((c, i) =>
       i === critIndex ? { ...c, indicators: [...c.indicators, { name: '', points: 0 }] } : c
     ));
   };
 
   const removeIndicator = (critIndex: number, indIndex: number) => {
+    setDirty(true);
     setCriteria(criteria.map((c, i) =>
       i === critIndex ? { ...c, indicators: c.indicators.filter((_, j) => j !== indIndex) } : c
     ));
   };
 
   const updateIndicator = (critIndex: number, indIndex: number, field: keyof IndicatorRow, value: string | number) => {
+    setDirty(true);
     setCriteria(criteria.map((c, i) =>
       i === critIndex
         ? { ...c, indicators: c.indicators.map((ind, j) => (j === indIndex ? { ...ind, [field]: value } : ind)) }
@@ -406,16 +430,17 @@ const EvaluationPlanItemModal: React.FC<EvaluationPlanItemModalProps> = ({
     <Modal
       open={open}
       title={editingItem ? 'Editar Estrategia de Evaluación' : 'Nueva Estrategia de Evaluación'}
-      onCancel={onClose}
+      onCancel={handleRequestClose}
+      maskClosable={false}
       width={640}
       footer={[
-        <Button key="cancel" onClick={onClose}>Cancelar</Button>,
+        <Button key="cancel" disabled={saving} onClick={handleRequestClose}>Cancelar</Button>,
         <Button key="save" type="primary" loading={saving} onClick={handleSave}>
           {editingItem ? 'Actualizar' : 'Crear'}
         </Button>,
       ]}
     >
-      <Form form={form} layout="vertical">
+      <Form form={form} layout="vertical" onValuesChange={() => setDirty(true)}>
         <Form.Item
           name="estrategiaId"
           label="Nombre de la estrategia"
@@ -568,6 +593,7 @@ const EvaluationPlanItemModal: React.FC<EvaluationPlanItemModalProps> = ({
           <Checkbox.Group
             value={evaluationType}
             onChange={(checkedValues) => {
+              setDirty(true);
               setEvaluationType(checkedValues as string[]);
             }}
             style={{ display: 'flex', gap: 8 }}
