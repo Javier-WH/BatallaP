@@ -14,12 +14,13 @@
  *    (backfill UI).
  */
 
-import { Transaction } from 'sequelize';
+import { Op, Transaction } from 'sequelize';
 import sequelize from '@/config/database';
 import {
   Inscription,
   InscriptionSubject,
   InscriptionGroupTermChoice,
+  Qualification,
   Subject,
   Term,
 } from '@/models/index';
@@ -267,3 +268,193 @@ export async function seedChoicesForPeriod(
     throw error;
   }
 }
+
+/**
+ * Best-guess subject for (inscription, group) when no explicit choice exists:
+ * the inscription's latest choice in another term, then the same person's
+ * latest choice in an earlier period, then the enrollment holding
+ * qualifications, else the earliest enrollment. Returns null when the student
+ * has no enrollment in the group at all.
+ */
+async function resolveGroupSubjectForInscription(
+  inscription: { id: number; personId: number; schoolPeriodId: number },
+  subjectGroupId: number,
+  t: Transaction
+): Promise<number | null> {
+  const ownChoice = await InscriptionGroupTermChoice.findOne({
+    where: { inscriptionId: inscription.id, subjectGroupId },
+    include: [{ model: Term, as: 'term', attributes: [] }],
+    order: [[{ model: Term, as: 'term' }, 'order', 'DESC']],
+    transaction: t,
+  });
+  if (ownChoice) return ownChoice.subjectId;
+
+  const priorChoice = await InscriptionGroupTermChoice.findOne({
+    where: { subjectGroupId },
+    include: [
+      { model: Term, as: 'term', attributes: [] },
+      {
+        model: Inscription,
+        as: 'inscription',
+        attributes: [],
+        where: { personId: inscription.personId, schoolPeriodId: { [Op.lt]: inscription.schoolPeriodId } },
+        required: true,
+      },
+    ],
+    order: [
+      [{ model: Inscription, as: 'inscription' }, 'schoolPeriodId', 'DESC'],
+      [{ model: Term, as: 'term' }, 'order', 'DESC'],
+    ],
+    transaction: t,
+  });
+  if (priorChoice) return priorChoice.subjectId;
+
+  const enrollments = await InscriptionSubject.findAll({
+    where: { inscriptionId: inscription.id },
+    include: [
+      { model: Subject, as: 'subject', where: { subjectGroupId }, attributes: [] },
+      { model: Qualification, as: 'qualifications', attributes: ['id'], required: false },
+    ],
+    order: [['id', 'ASC']],
+    transaction: t,
+  });
+  if (enrollments.length === 0) return null;
+  const withQuals = enrollments.find((e: any) => (e.qualifications ?? []).length > 0);
+  return (withQuals ?? enrollments[0]).subjectId;
+}
+
+/**
+ * Non-destructive gap fill: creates choice rows only for (inscription, group,
+ * term) combinations that lack one. Unlike seedChoicesForInscription it never
+ * rewrites an existing choice, so it is safe to run on live data.
+ */
+export async function ensureGroupChoicesForInscription(
+  inscriptionId: number,
+  options: { transaction?: Transaction } = {}
+): Promise<number> {
+  const { transaction: t = await sequelize.transaction() } = options;
+  const ownTransaction = !options.transaction;
+
+  try {
+    const inscription = await Inscription.findByPk(inscriptionId, { transaction: t });
+    if (!inscription) {
+      if (ownTransaction) await t.commit();
+      return 0;
+    }
+
+    const terms = await Term.findAll({
+      where: { schoolPeriodId: inscription.schoolPeriodId },
+      attributes: ['id'],
+      transaction: t,
+    });
+    if (terms.length === 0) {
+      if (ownTransaction) await t.commit();
+      return 0;
+    }
+
+    const enrollments = await InscriptionSubject.findAll({
+      where: { inscriptionId },
+      include: [{ model: Subject, as: 'subject', attributes: ['subjectGroupId'] }],
+      attributes: ['id'],
+      transaction: t,
+    });
+    const groupIds = [...new Set(
+      (enrollments as any[]).map(e => e.subject?.subjectGroupId).filter((g): g is number => g != null)
+    )];
+    if (groupIds.length === 0) {
+      if (ownTransaction) await t.commit();
+      return 0;
+    }
+
+    const existing = await InscriptionGroupTermChoice.findAll({
+      where: { inscriptionId, subjectGroupId: groupIds },
+      attributes: ['subjectGroupId', 'termId'],
+      transaction: t,
+    });
+    const have = new Set((existing as any[]).map(c => `${c.subjectGroupId}:${c.termId}`));
+
+    let created = 0;
+    for (const gid of groupIds) {
+      const missingTerms = terms.filter(term => !have.has(`${gid}:${term.id}`));
+      if (missingTerms.length === 0) continue;
+      const subjectId = await resolveGroupSubjectForInscription(inscription, gid, t);
+      if (subjectId == null) continue;
+      await InscriptionGroupTermChoice.bulkCreate(
+        missingTerms.map(term => ({ inscriptionId, subjectGroupId: gid, termId: term.id, subjectId })),
+        { transaction: t, validate: true }
+      );
+      created += missingTerms.length;
+    }
+
+    if (ownTransaction) await t.commit();
+    return created;
+  } catch (error) {
+    if (ownTransaction) await t.rollback();
+    throw error;
+  }
+}
+
+/**
+ * Seed choice rows for a newly created term: every inscription of the period
+ * with group enrollments gets the same subject it resolved for prior terms.
+ */
+export async function ensureGroupChoicesForTerm(
+  termId: number,
+  options: { transaction?: Transaction } = {}
+): Promise<number> {
+  const { transaction: t = await sequelize.transaction() } = options;
+  const ownTransaction = !options.transaction;
+
+  try {
+    const term = await Term.findByPk(termId, { transaction: t });
+    if (!term) {
+      if (ownTransaction) await t.commit();
+      return 0;
+    }
+
+    const inscriptions = await Inscription.findAll({
+      where: { schoolPeriodId: term.schoolPeriodId, withdrawnAt: null },
+      attributes: ['id', 'personId', 'schoolPeriodId'],
+      transaction: t,
+    });
+
+    let created = 0;
+    for (const ins of inscriptions as any[]) {
+      const enrollments = await InscriptionSubject.findAll({
+        where: { inscriptionId: ins.id },
+        include: [{ model: Subject, as: 'subject', attributes: ['subjectGroupId'] }],
+        attributes: ['id'],
+        transaction: t,
+      });
+      const groupIds = [...new Set(
+        (enrollments as any[]).map(e => e.subject?.subjectGroupId).filter((g): g is number => g != null)
+      )];
+      if (groupIds.length === 0) continue;
+
+      const existing = await InscriptionGroupTermChoice.findAll({
+        where: { inscriptionId: ins.id, subjectGroupId: groupIds, termId },
+        attributes: ['subjectGroupId'],
+        transaction: t,
+      });
+      const have = new Set((existing as any[]).map(c => c.subjectGroupId));
+
+      for (const gid of groupIds) {
+        if (have.has(gid)) continue;
+        const subjectId = await resolveGroupSubjectForInscription(ins, gid, t);
+        if (subjectId == null) continue;
+        await InscriptionGroupTermChoice.create(
+          { inscriptionId: ins.id, subjectGroupId: gid, termId, subjectId },
+          { transaction: t }
+        );
+        created++;
+      }
+    }
+
+    if (ownTransaction) await t.commit();
+    return created;
+  } catch (error) {
+    if (ownTransaction) await t.rollback();
+    throw error;
+  }
+}
+

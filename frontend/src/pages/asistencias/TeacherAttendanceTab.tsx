@@ -395,6 +395,9 @@ function ScheduleScreen({
                         <span className="att-font-head text-[15px] text-slate-900 truncate">{session.subjectName || 'Sin materia'}</span>
                         {status === 'missing' && <WarningOutlined className="text-amber-500 text-xs shrink-0" />}
                       </div>
+                      {session.sectionLabel && (
+                        <span className="block text-[11px] text-slate-400 att-font-body truncate">{session.sectionLabel}</span>
+                      )}
                       <span className="text-xs text-slate-400 att-font-body">
                         {status === 'done' && 'Asistencia registrada'}
                         {status === 'current' && 'En curso — toca para tomar asistencia'}
@@ -619,7 +622,10 @@ function RosterScreen({
           </div>
         </div>
         <h1 className="att-font-head text-xl text-slate-900">{session.subjectName || 'Sin materia'}</h1>
-        <p className="text-sm text-slate-400 att-font-body">{session.periodStart ?? session.periodId.toUpperCase()} · {dayName}</p>
+        <p className="text-sm text-slate-400 att-font-body">
+          {session.periodStart ?? session.periodId.toUpperCase()} · {dayName}
+          {session.sectionLabel ? ` · ${session.sectionLabel}` : ''}
+        </p>
 
         {sessionStatus === 'done' && (
           <div className="mt-3 flex items-start gap-2 bg-slate-100 border border-slate-200 rounded-lg px-3 py-2">
@@ -739,6 +745,9 @@ function StudentListRow({ student, index, onClick }: {
       <span className="flex-1 min-w-0 truncate text-sm font-medium text-slate-700 att-font-body">
         {student.fullName}
       </span>
+      {student.sectionLabel && (
+        <span className="shrink-0 text-[10px] text-slate-400 att-font-body">{student.sectionLabel}</span>
+      )}
       {blocked ? (
         <span className="shrink-0 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-800">
           Bloqueado

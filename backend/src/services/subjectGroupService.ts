@@ -14,7 +14,7 @@
  * (e.g. annual reports) and falls back to "the one with qualifications".
  */
 
-import { InscriptionGroupTermChoice } from '@/models/index';
+import { InscriptionGroupTermChoice, InscriptionSubject, Qualification, Subject } from '@/models/index';
 
 /**
  * Given an array of InscriptionSubject-like records (with `subject` eagerly
@@ -158,5 +158,74 @@ export async function filterActiveGroupSubjectsForTerm<
   }
 
   return result;
+}
+
+/**
+ * Resolves, per inscription, the single subject the student is actually taking
+ * inside a SubjectGroup for a given term.
+ *
+ * Resolution order:
+ *  1. Explicit `InscriptionGroupTermChoice` for that term.
+ *  2. The group enrollment holding qualifications (the subject they actually
+ *     took — relevant for data predating per-term choices).
+ *  3. The earliest group enrollment (deterministic fallback).
+ *
+ * Students with no choice and no group enrollment are absent from the map.
+ * Use this instead of fail-open "no choice → include" logic: data where a
+ * student holds every subject of a group (e.g. promoted inscriptions) must
+ * still resolve to exactly one subject.
+ */
+export async function resolveActiveGroupSubjectIds(
+  inscriptionIds: number[],
+  subjectGroupId: number,
+  termId?: number | null
+): Promise<Map<number, number>> {
+  const resolved = new Map<number, number>();
+  const uniqueIds = [...new Set(inscriptionIds)];
+  if (uniqueIds.length === 0) return resolved;
+
+  const groupSubjects = await Subject.findAll({
+    where: { subjectGroupId },
+    attributes: ['id'],
+    raw: true,
+  });
+  const groupSubjectIds = (groupSubjects as any[]).map(s => s.id);
+  if (groupSubjectIds.length === 0) return resolved;
+
+  const chosen = new Map<number, number>();
+  if (termId != null) {
+    const choices = await InscriptionGroupTermChoice.findAll({
+      where: { inscriptionId: uniqueIds, subjectGroupId, termId },
+      attributes: ['inscriptionId', 'subjectId'],
+      raw: true,
+    });
+    for (const c of choices as any[]) {
+      if (groupSubjectIds.includes(c.subjectId)) chosen.set(c.inscriptionId, c.subjectId);
+    }
+  }
+
+  const missing = uniqueIds.filter(id => !chosen.has(id));
+  if (missing.length > 0) {
+    const enrollments = await InscriptionSubject.findAll({
+      where: { inscriptionId: missing, subjectId: groupSubjectIds },
+      include: [{ model: Qualification, as: 'qualifications', attributes: ['id'], required: false }],
+      order: [['id', 'ASC']],
+    });
+    const byInscription = new Map<number, any[]>();
+    for (const e of enrollments as any[]) {
+      const list = byInscription.get(e.inscriptionId) ?? [];
+      list.push(e);
+      byInscription.set(e.inscriptionId, list);
+    }
+    for (const insId of missing) {
+      const rows = byInscription.get(insId) ?? [];
+      if (rows.length === 0) continue;
+      const withQuals = rows.find(r => (r.qualifications ?? []).length > 0);
+      resolved.set(insId, (withQuals ?? rows[0]).subjectId);
+    }
+  }
+
+  for (const [insId, subjectId] of chosen) resolved.set(insId, subjectId);
+  return resolved;
 }
 

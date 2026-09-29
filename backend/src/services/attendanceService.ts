@@ -15,9 +15,12 @@ import {
   Person,
   SchoolPeriod,
   Inscription,
+  InscriptionSubject,
+  Term,
   Setting,
 } from '@/models';
 import { buildPeriodsFromSettings } from './diarioService';
+import { resolveActiveGroupSubjectIds } from './subjectGroupService';
 
 export type AttendanceStatus = 'present' | 'absent' | 'late' | 'excused' | 'kicked';
 
@@ -59,6 +62,26 @@ async function getPeriodInfoMap(): Promise<Map<string, { start: string; end: str
   return map;
 }
 
+/**
+ * Term a calendar date belongs to: the term whose open/close window contains
+ * it, else the period's active term. Null when neither can be resolved —
+ * group-subject rosters then fall back to enrollment heuristics.
+ */
+async function resolveTermIdForDate(schoolPeriodId: number, dateStr: string): Promise<number | null> {
+  const byWindow = await Term.findOne({
+    where: {
+      schoolPeriodId,
+      openDate: { [Op.lte]: dateStr },
+      closeDate: { [Op.gte]: dateStr },
+    },
+    order: [['order', 'ASC']],
+    attributes: ['id'],
+  });
+  if (byWindow) return byWindow.id;
+  const active = await Term.findOne({ where: { schoolPeriodId, isActive: true }, attributes: ['id'] });
+  return active ? active.id : null;
+}
+
 export interface TeacherSessionView {
   id: number;
   scheduleEntryId: number;
@@ -72,13 +95,46 @@ export interface TeacherSessionView {
   subjectName: string | null;
   gradeName: string;
   sectionName: string;
+  /** Human label of the section(s) this session covers, e.g. "Primer año A/B". */
+  sectionLabel: string;
   counts: { present: number; absent: number; late: number; kicked: number; total: number };
+}
+
+/** Strip the "SECCIÓN" prefix so labels stay short ('SECCIÓN A' → 'A'). */
+function shortSectionName(name: string | null | undefined): string {
+  const raw = (name ?? '').trim();
+  const stripped = raw.replace(/^secci[oó]n\s*/i, '').trim();
+  return stripped || raw;
+}
+
+/**
+ * Label for the section(s) covered by a session cluster. Same grade across the
+ * cluster → 'Primer año A/B'; mixed grades → 'Cuarto año A · Quinto año B'.
+ */
+function buildSectionLabel(cluster: any[]): string {
+  const parts = cluster.map(e => ({
+    gradeName: e.schedule?.section?.periodGrade?.grade?.name ?? '',
+    sec: shortSectionName(e.schedule?.section?.section?.name),
+  }));
+  const gradeNames = new Set(parts.map(p => p.gradeName));
+  if (gradeNames.size === 1) {
+    const secs = Array.from(new Set(parts.map(p => p.sec).filter(Boolean)));
+    return `${parts[0].gradeName} ${secs.join('/')}`.trim();
+  }
+  return Array.from(new Set(parts.map(p => `${p.gradeName} ${p.sec}`.trim()))).join(' · ');
 }
 
 /**
  * Get-or-create the attendance sessions for a teacher on a calendar date,
- * derived from the published schedule entries for that weekday. Works for
- * past dates (paper backfill).
+ * derived from the schedule entries for that weekday. Works for past dates
+ * (paper backfill).
+ *
+ * Group subjects (isGroupSubject) are one physical class shared by several
+ * sections, but the schedule stores one entry per section. Entries sharing
+ * schoolPeriod+day+period merge into a single session (canonical = lowest
+ * entry id); records already saved in sibling sessions are still counted so
+ * nothing is lost on live data. Regular subjects never share a slot, so
+ * their entries always produce separate per-section sessions.
  */
 export async function getTeacherSessionsForDate(
   personId: number,
@@ -88,13 +144,21 @@ export async function getTeacherSessionsForDate(
   const dayName = getDayNameForDate(dateStr);
   if (!dayName) return [];
 
+  // Without an explicit period, default to the active one so schedules from
+  // older periods do not leak in as duplicated blocks.
+  let effectivePeriodId = schoolPeriodId;
+  if (!effectivePeriodId) {
+    const active = await SchoolPeriod.findOne({ where: { status: 'activo' }, attributes: ['id'], raw: true });
+    effectivePeriodId = (active as any)?.id;
+  }
+
   const entries = await ScheduleEntry.findAll({
     where: { day: dayName, teacherId: personId },
     include: [
       {
         model: Schedule,
         as: 'schedule',
-        where: schoolPeriodId ? { schoolPeriodId } : {},
+        where: effectivePeriodId ? { schoolPeriodId: effectivePeriodId } : {},
         include: [
           {
             model: PeriodGradeSection,
@@ -108,55 +172,86 @@ export async function getTeacherSessionsForDate(
       },
       { model: Subject, as: 'subject' },
     ],
+    order: [['id', 'ASC']],
   });
 
   if (entries.length === 0) return [];
 
   const periodInfoMap = await getPeriodInfoMap();
 
-  const sessions: TeacherSessionView[] = [];
+  // Cluster group-subject entries sharing schoolPeriod+day+period — one
+  // physical class across several sections. Regular entries stay separate.
+  const clusters = new Map<string, any[]>();
   for (const entry of entries as any[]) {
-    const schedule = entry.schedule;
-    if (!schedule) continue;
+    const sp = entry.schedule?.section?.periodGrade?.schoolPeriodId;
+    if (!sp) continue;
+    const key = entry.isGroupSubject ? `g|${sp}|${entry.day}|${entry.periodId}` : `s|${entry.id}`;
+    if (!clusters.has(key)) clusters.set(key, []);
+    clusters.get(key)!.push(entry);
+  }
+
+  const sessions: TeacherSessionView[] = [];
+  for (const cluster of clusters.values()) {
+    const canonical = cluster[0];
+    const schedule = canonical.schedule;
     const pgs = schedule.section;
-    if (!pgs) continue;
     const periodGrade = pgs.periodGrade;
-    const schoolPeriodIdResolved = periodGrade?.schoolPeriodId;
-    if (!schoolPeriodIdResolved) continue;
 
     const [session] = await AttendanceSession.findOrCreate({
-      where: { scheduleEntryId: entry.id, sessionDate: dateStr },
+      where: { scheduleEntryId: canonical.id, sessionDate: dateStr },
       defaults: {
-        scheduleEntryId: entry.id,
-        schoolPeriodId: schoolPeriodIdResolved,
+        scheduleEntryId: canonical.id,
+        schoolPeriodId: periodGrade.schoolPeriodId,
         sessionDate: dateStr,
         status: 'pending',
       },
     });
 
-    const records = await AttendanceRecord.findAll({ where: { sessionId: session.id }, raw: true });
-    const counts = { present: 0, absent: 0, late: 0, kicked: 0, total: records.length };
-    for (const r of records) {
+    // Records may also live in sibling sessions created before the merge.
+    const clusterSessions = await AttendanceSession.findAll({
+      where: { scheduleEntryId: cluster.map((e: any) => e.id), sessionDate: dateStr },
+      raw: true,
+    });
+    const clusterSessionIds = clusterSessions.map((s: any) => s.id);
+    const records = clusterSessionIds.length > 0
+      ? await AttendanceRecord.findAll({ where: { sessionId: clusterSessionIds }, raw: true })
+      : [];
+
+    // Deduplicate by inscription, preferring the canonical session's record.
+    const byInscription = new Map<number, any>();
+    for (const r of records as any[]) {
+      const prev = byInscription.get(r.inscriptionId);
+      if (!prev
+        || (r.sessionId === session.id && prev.sessionId !== session.id)
+        || (prev.sessionId !== session.id && r.sessionId !== session.id && r.id > prev.id)) {
+        byInscription.set(r.inscriptionId, r);
+      }
+    }
+    const mergedRecords = [...byInscription.values()];
+    const counts = { present: 0, absent: 0, late: 0, kicked: 0, total: mergedRecords.length };
+    for (const r of mergedRecords) {
       if (r.status === 'present') counts.present++;
       else if (r.status === 'absent') counts.absent++;
       else if (r.status === 'late') counts.late++;
       else if (r.status === 'kicked') counts.kicked++;
     }
 
-    const periodInfo = periodInfoMap.get(entry.periodId) || null;
+    const periodInfo = periodInfoMap.get(canonical.periodId) || null;
+    const subjectNames = Array.from(new Set(cluster.map((e: any) => e.subject?.name).filter(Boolean)));
     sessions.push({
       id: session.id,
-      scheduleEntryId: entry.id,
+      scheduleEntryId: canonical.id,
       sessionDate: session.sessionDate,
-      status: session.status,
-      day: entry.day,
-      periodId: entry.periodId,
+      status: clusterSessions.some((s: any) => s.status === 'completed') ? 'completed' : session.status,
+      day: canonical.day,
+      periodId: canonical.periodId,
       periodStart: periodInfo?.start ?? null,
       periodEnd: periodInfo?.end ?? null,
-      subjectId: entry.subjectId,
-      subjectName: entry.subject?.name ?? null,
+      subjectId: canonical.subjectId,
+      subjectName: subjectNames.join(' / ') || null,
       gradeName: periodGrade?.grade?.name ?? '',
       sectionName: pgs.section?.name ?? '',
+      sectionLabel: buildSectionLabel(cluster),
       counts,
     });
   }
@@ -170,6 +265,8 @@ export interface SessionRosterEntry {
   personId: number;
   document: string;
   fullName: string;
+  /** Section label (e.g. 'A', or 'Cuarto año A' in mixed-grade group classes). */
+  sectionLabel: string | null;
   status: AttendanceStatus | null;
   reason: string | null;
   blocked: boolean;
@@ -216,29 +313,138 @@ export async function getSessionDetail(sessionId: number): Promise<SessionDetail
   });
   if (!session) throw new Error('Sesión de asistencia no encontrada');
 
-  const schedule = (session as any).scheduleEntry.schedule;
+  const entry = (session as any).scheduleEntry;
+  const schedule = entry.schedule;
   const pgs = schedule.section;
   const periodGrade = pgs.periodGrade;
+
+  // A group-subject slot is one class shared by several sections: the roster
+  // holds only the students enrolled in the group subject(s) of the cluster,
+  // and records may live in sibling sessions created before the merge.
+  let clusterEntries: any[] = [entry];
+  if (entry.isGroupSubject) {
+    const siblings = await ScheduleEntry.findAll({
+      where: {
+        day: entry.day,
+        periodId: entry.periodId,
+        teacherId: entry.teacherId,
+        isGroupSubject: true,
+      },
+      include: [
+        {
+          model: Schedule,
+          as: 'schedule',
+          where: { schoolPeriodId: (session as any).schoolPeriodId },
+          required: true,
+          include: [
+            {
+              model: PeriodGradeSection,
+              as: 'section',
+              include: [
+                { model: PeriodGrade, as: 'periodGrade', include: [{ model: Grade, as: 'grade' }] },
+                { model: Section, as: 'section' },
+              ],
+            },
+          ],
+        },
+      ],
+      order: [['id', 'ASC']],
+    });
+    if (siblings.length > 0) clusterEntries = siblings as any[];
+  }
+
+  const pgsList: { gradeId: number; sectionId: number; gradeName: string; sectionName: string }[] = [];
+  const seenPgs = new Set<number>();
+  for (const e of clusterEntries) {
+    const s = e.schedule?.section;
+    if (!s || seenPgs.has(s.id)) continue;
+    seenPgs.add(s.id);
+    pgsList.push({
+      gradeId: s.periodGrade.gradeId,
+      sectionId: s.sectionId,
+      gradeName: s.periodGrade?.grade?.name ?? '',
+      sectionName: s.section?.name ?? '',
+    });
+  }
+  const singleGrade = new Set(pgsList.map(p => p.gradeName)).size === 1;
+  const sectionLabelByKey = new Map<string, string>();
+  for (const p of pgsList) {
+    const sec = shortSectionName(p.sectionName);
+    sectionLabelByKey.set(`${p.gradeId}|${p.sectionId}`, singleGrade ? sec : `${p.gradeName} ${sec}`.trim());
+  }
 
   const inscriptions = await Inscription.findAll({
     where: {
       schoolPeriodId: (session as any).schoolPeriodId,
-      gradeId: periodGrade.gradeId,
-      sectionId: pgs.sectionId,
       withdrawnAt: null,
+      [Op.or]: pgsList.map(p => ({ gradeId: p.gradeId, sectionId: p.sectionId })),
     },
     include: [{ model: Person, as: 'student' }],
     order: [[{ model: Person, as: 'student' }, 'lastName', 'ASC']],
   });
 
-  const records = await AttendanceRecord.findAll({ where: { sessionId: session.id } });
+  // Group subjects hold only the students taking them this term — a subset of
+  // each section, not the whole roster. Resolution mirrors the grades view:
+  // term choice → enrollment with qualifications → earliest enrollment.
+  let rosterInscriptions = inscriptions as any[];
+  if (entry.isGroupSubject) {
+    const clusterSubjectIds = new Set(
+      clusterEntries.map(e => e.subjectId).filter((x): x is number => x != null)
+    );
+    if (clusterSubjectIds.size > 0) {
+      const groupSubjects = await Subject.findAll({
+        where: { id: [...clusterSubjectIds] },
+        attributes: ['id', 'subjectGroupId'],
+        raw: true,
+      });
+      const groupIds = [...new Set(
+        (groupSubjects as any[]).map(s => s.subjectGroupId).filter((g): g is number => g != null)
+      )];
+      if (groupIds.length > 0) {
+        const termId = await resolveTermIdForDate(
+          (session as any).schoolPeriodId,
+          (session as any).sessionDate
+        );
+        const keep = new Set<number>();
+        for (const gid of groupIds) {
+          const resolved = await resolveActiveGroupSubjectIds(
+            rosterInscriptions.map(i => i.id), gid, termId
+          );
+          for (const [insId, subjectId] of resolved) {
+            if (clusterSubjectIds.has(subjectId)) keep.add(insId);
+          }
+        }
+        rosterInscriptions = rosterInscriptions.filter(i => keep.has(i.id));
+      }
+    }
+  }
+
+  // Merge records from the canonical session and any sibling sessions created
+  // before group slots were merged (live data may have them).
+  const clusterSessionRows = await AttendanceSession.findAll({
+    where: {
+      scheduleEntryId: clusterEntries.map(e => e.id),
+      sessionDate: (session as any).sessionDate,
+    },
+    raw: true,
+  });
+  const clusterSessionIds = clusterSessionRows.map((s: any) => s.id);
+  if (!clusterSessionIds.includes(session.id)) clusterSessionIds.push(session.id);
+  const records = await AttendanceRecord.findAll({ where: { sessionId: clusterSessionIds } });
   const byInscription = new Map<number, any>();
-  for (const r of records as any[]) byInscription.set(r.inscriptionId, r);
+  for (const r of records as any[]) {
+    const prev = byInscription.get(r.inscriptionId);
+    if (!prev
+      || (r.sessionId === session.id && prev.sessionId !== session.id)
+      || (prev.sessionId !== session.id && r.sessionId !== session.id && r.id > prev.id)) {
+      byInscription.set(r.inscriptionId, r);
+    }
+  }
 
   // Cross-session prior blocks: un-cleared absent/kicked in an EARLIER session
   // of the same day. Suppressed when the student was already cleared in THIS
   // session's record (the clearance lives on the current record).
-  const rosterInscriptionIds = (inscriptions as any[]).map(i => i.id);
+  const rosterInscriptionIds = rosterInscriptions.map(i => i.id);
   const currentEntryPeriodId = (session as any).scheduleEntry.periodId;
   const clearedInCurrent = new Set(
     (records as any[]).filter(r => r.clearedAt != null).map(r => r.inscriptionId)
@@ -278,13 +484,14 @@ export async function getSessionDetail(sessionId: number): Promise<SessionDetail
     }
   }
 
-  const roster: SessionRosterEntry[] = (inscriptions as any[]).map(ins => {
+  const roster: SessionRosterEntry[] = rosterInscriptions.map(ins => {
     const record = byInscription.get(ins.id) || null;
     return {
       inscriptionId: ins.id,
       personId: ins.personId,
       document: ins.student?.document ?? '',
       fullName: `${ins.student?.lastName ?? ''}, ${ins.student?.firstName ?? ''}`.trim(),
+      sectionLabel: sectionLabelByKey.get(`${ins.gradeId}|${ins.sectionId}`) ?? null,
       status: record?.status ?? null,
       reason: record?.reason ?? null,
       blocked: record?.blocked ?? false,

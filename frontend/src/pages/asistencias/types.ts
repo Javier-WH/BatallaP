@@ -31,6 +31,8 @@ export interface AttendanceSessionView {
   subjectName: string | null;
   gradeName: string;
   sectionName: string;
+  /** Human label of the section(s) covered, e.g. "Primer año A/B". */
+  sectionLabel: string;
   counts: { present: number; absent: number; late: number; kicked: number; total: number };
 }
 
@@ -44,6 +46,7 @@ export interface RosterEntry {
   personId: number;
   document: string;
   fullName: string;
+  sectionLabel?: string | null;
   status: AttendanceStatus | null;
   reason: string | null;
   blocked: boolean;

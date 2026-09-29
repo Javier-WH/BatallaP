@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { Op } from 'sequelize';
 import { Term, SchoolPeriod } from '@/models/index';
+import { ensureGroupChoicesForTerm } from '@/services/groupSubjectChoiceService';
 
 export const getTerms = async (req: Request, res: Response) => {
   try {
@@ -90,6 +91,10 @@ export const createTerm = async (req: Request, res: Response) => {
         schoolPeriodId,
         order: newOrder
       }, { transaction });
+
+      // Carry each student's group-subject choice into the new term so group
+      // rosters keep showing only the students actually taking each subject.
+      await ensureGroupChoicesForTerm(term.id, { transaction });
 
       await transaction?.commit();
       res.status(201).json(term);

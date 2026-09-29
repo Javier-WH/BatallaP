@@ -445,15 +445,21 @@ export class PeriodClosureExecutor {
 
           stats.newInscriptions++;
 
-          // Enroll in regular subjects for the new grade
+          // Enroll in regular subjects for the new grade. Group subjects are
+          // excluded: the specific subject within the group is chosen later
+          // (setGroupSubjectForTerm/changeGroupSubjectFromTerm create the
+          // InscriptionSubject row on demand). Enrolling all of them here
+          // would make every student appear in every group subject's roster.
           if (targetPeriodGrade.subjects && targetPeriodGrade.subjects.length > 0) {
-            const regularSubjects = targetPeriodGrade.subjects.map((s: any) => ({
-              inscriptionId: newInscription.id,
-              subjectId: s.id,
-              schoolPeriodId: nextPeriod.id,
-              gradeId: targetGradeId,
-              sectionId: finalSectionId
-            }));
+            const regularSubjects = targetPeriodGrade.subjects
+              .filter((s: any) => s.subjectGroupId == null)
+              .map((s: any) => ({
+                inscriptionId: newInscription.id,
+                subjectId: s.id,
+                schoolPeriodId: nextPeriod.id,
+                gradeId: targetGradeId,
+                sectionId: finalSectionId
+              }));
 
             if (regularSubjects.length > 0) {
               await InscriptionSubject.bulkCreate(regularSubjects, { transaction });
