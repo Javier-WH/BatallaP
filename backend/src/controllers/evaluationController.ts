@@ -49,6 +49,36 @@ import {
 import { filterActiveGroupSubjects, filterActiveGroupSubjectsForTerm } from '@/services/subjectGroupService';
 import { resolveGradeStatus, MIN_FINAL_GRADE, roundFinalGrade } from '@/services/gradeEvaluationService';
 import { resolveContentTeacherId } from '@/services/thematicScopeService';
+import { sanitizeText } from '@/utils/sanitizeText';
+import type { Transaction } from 'sequelize';
+
+interface CriterionInput {
+  name: string;
+  points: number;
+  indicators?: { name: string; points: number }[];
+}
+
+// Inserts the criteria + indicators of an evaluation inside the caller's
+// transaction, so a failing row never leaves a half-built evaluation behind.
+const createCriteria = async (evaluationPlanId: number, criteria: CriterionInput[], transaction: Transaction) => {
+  for (const c of criteria) {
+    const criterion = await EvaluationCriteria.create({
+      evaluationPlanId,
+      name: sanitizeText(c.name),
+      points: c.points,
+    }, { transaction });
+    if (Array.isArray(c.indicators) && c.indicators.length > 0) {
+      await EvaluationIndicator.bulkCreate(
+        c.indicators.map(ind => ({
+          evaluationCriteriaId: criterion.id,
+          name: sanitizeText(ind.name),
+          points: ind.points,
+        })),
+        { transaction }
+      );
+    }
+  }
+};
 import { TermSectionClosureService } from '@/services/termSectionClosureService';
 import { TermGradeSyncService } from '@/services/termGradeSyncService';
 import { sortInscriptions, fieldExpr, quoteQualified } from '@/services/studentSortService';
@@ -178,7 +208,9 @@ export const getEvaluationPlan = async (req: Request, res: Response) => {
 
 export const createEvaluationItem = async (req: Request, res: Response) => {
   try {
-    const { termId, periodGradeSubjectId, sectionId, description, percentage, date, thematicComponentId, thematicContentIds, evaluationType, criteria, tecnicaId, instrumentoId, estrategiaId, shortDescription } = req.body;
+    const { termId, periodGradeSubjectId, sectionId, percentage, date, thematicComponentId, thematicContentIds, evaluationType, criteria, tecnicaId, instrumentoId, estrategiaId } = req.body;
+    const description = sanitizeText(req.body.description);
+    const shortDescription = sanitizeText(req.body.shortDescription);
     const normalizedThematicContentIds = Array.isArray(thematicContentIds)
       ? [...new Set(thematicContentIds.map(Number).filter(Number.isInteger))]
       : null;
@@ -237,41 +269,30 @@ export const createEvaluationItem = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'La suma de los porcentajes para este lapso no puede superar el 100%' });
     }
 
-    const item = await EvaluationPlan.create({
-      periodGradeSubjectId,
-      sectionId,
-      termId,
-      description,
-      percentage,
-      date,
-      thematicComponentId: thematicComponentId || null,
-      thematicContentIds: normalizedThematicContentIds,
-      evaluationType: evaluationTypeStr,
-      tecnicaId: tecnicaId || null,
-      instrumentoId: instrumentoId || null,
-      estrategiaId: estrategiaId || null,
-      shortDescription: shortDescription || null,
-    });
+    // Evaluation + criteria + indicators are created atomically: if any row
+    // fails, nothing is kept, so retrying after an error can't duplicate it.
+    const item = await sequelize.transaction(async (transaction) => {
+      const created = await EvaluationPlan.create({
+        periodGradeSubjectId,
+        sectionId,
+        termId,
+        description,
+        percentage,
+        date,
+        thematicComponentId: thematicComponentId || null,
+        thematicContentIds: normalizedThematicContentIds,
+        evaluationType: evaluationTypeStr,
+        tecnicaId: tecnicaId || null,
+        instrumentoId: instrumentoId || null,
+        estrategiaId: estrategiaId || null,
+        shortDescription: shortDescription || null,
+      }, { transaction });
 
-    // Create criteria if provided
-    if (Array.isArray(criteria) && criteria.length > 0) {
-      for (const c of criteria) {
-        const criterion = await EvaluationCriteria.create({
-          evaluationPlanId: item.id,
-          name: c.name,
-          points: c.points,
-        });
-        if (Array.isArray(c.indicators) && c.indicators.length > 0) {
-          await EvaluationIndicator.bulkCreate(
-            c.indicators.map((ind: any) => ({
-              evaluationCriteriaId: criterion.id,
-              name: ind.name,
-              points: ind.points,
-            }))
-          );
-        }
+      if (Array.isArray(criteria) && criteria.length > 0) {
+        await createCriteria(created.id, criteria, transaction);
       }
-    }
+      return created;
+    });
 
     // Return with criteria included
     const fullItem = await EvaluationPlan.findByPk(item.id, {
@@ -347,30 +368,25 @@ export const updateEvaluationItem = async (req: Request, res: Response) => {
       updateFields.evaluationType = typesArray.join(',');
     }
 
-    await item.update(updateFields);
+    if (updateFields.description !== undefined) updateFields.description = sanitizeText(updateFields.description);
+    if (updateFields.shortDescription !== undefined) updateFields.shortDescription = sanitizeText(updateFields.shortDescription);
 
-    // Replace criteria if provided
-    if (Array.isArray(criteria)) {
-      await EvaluationCriteria.destroy({ where: { evaluationPlanId: Number(id) } });
-      if (criteria.length > 0) {
-        for (const c of criteria) {
-          const criterion = await EvaluationCriteria.create({
-            evaluationPlanId: Number(id),
-            name: c.name,
-            points: c.points,
-          });
-          if (Array.isArray(c.indicators) && c.indicators.length > 0) {
-            await EvaluationIndicator.bulkCreate(
-              c.indicators.map((ind: any) => ({
-                evaluationCriteriaId: criterion.id,
-                name: ind.name,
-                points: ind.points,
-              }))
-            );
-          }
+    // Update + criteria replacement are atomic: a failing insert must not leave
+    // the evaluation with its previous criteria already deleted.
+    await sequelize.transaction(async (transaction) => {
+      await item.update(updateFields, { transaction });
+
+      if (Array.isArray(criteria)) {
+        const oldCriteria = await EvaluationCriteria.findAll({ where: { evaluationPlanId: Number(id) }, attributes: ['id'], transaction });
+        if (oldCriteria.length > 0) {
+          await EvaluationIndicator.destroy({ where: { evaluationCriteriaId: oldCriteria.map(c => c.id) }, transaction });
+        }
+        await EvaluationCriteria.destroy({ where: { evaluationPlanId: Number(id) }, transaction });
+        if (criteria.length > 0) {
+          await createCriteria(Number(id), criteria, transaction);
         }
       }
-    }
+    });
 
     const fullItem = await EvaluationPlan.findByPk(id, {
       include: [

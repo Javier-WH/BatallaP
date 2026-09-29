@@ -7,7 +7,7 @@ import {
   ExpectedLearning,
   ExpectedLearningContent,
 } from '@/models/index';
-import { resolveContentTeacherId } from '@/services/thematicScopeService';
+import { resolveRequestTeacherId } from '@/services/thematicScopeService';
 
 // ── Thematic Components ──────────────────────────────────────────
 
@@ -41,11 +41,13 @@ const FORBIDDEN = { message: 'Este contenido pertenece a otro profesor' };
 export const getThematicComponents = async (req: Request, res: Response) => {
   try {
     const { pgsId, termId, sectionId } = req.query;
-    if (!pgsId || !termId || !sectionId) {
-      return res.status(400).json({ message: 'pgsId, termId y sectionId son requeridos' });
+    if (!pgsId || !termId) {
+      return res.status(400).json({ message: 'pgsId y termId son requeridos' });
     }
 
-    const teacherId = await resolveContentTeacherId(Number(pgsId), Number(sectionId));
+    const teacherId = await resolveRequestTeacherId(
+      Number(pgsId), sectionId ? Number(sectionId) : null, (req.session as any)?.user?.personId,
+    );
     if (!teacherId) return res.json([]);
 
     const components = await ThematicComponent.findAll({
@@ -73,15 +75,17 @@ export const getThematicComponents = async (req: Request, res: Response) => {
 export const createThematicComponent = async (req: Request, res: Response) => {
   try {
     const { periodGradeSubjectId, termId, sectionId, title } = req.body;
-    if (!periodGradeSubjectId || !termId || !sectionId || !title) {
+    if (!periodGradeSubjectId || !termId || !title) {
       return res.status(400).json({ message: 'Faltan campos requeridos' });
     }
 
-    const teacherId = await resolveContentTeacherId(Number(periodGradeSubjectId), Number(sectionId));
+    const user = (req.session as any)?.user;
+    const teacherId = await resolveRequestTeacherId(
+      Number(periodGradeSubjectId), sectionId ? Number(sectionId) : null, user?.personId,
+    );
     if (!teacherId) {
       return res.status(400).json({ message: 'La sección no tiene un profesor asignado para esta materia' });
     }
-    const user = (req.session as any)?.user;
     const roles: string[] = user?.roles || [];
     if (!roles.some(r => STAFF_ROLES.includes(r)) && teacherId !== user?.personId) {
       return res.status(403).json(FORBIDDEN);

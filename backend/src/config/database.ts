@@ -29,6 +29,12 @@ const sequelize =
         port: dbPort,
         dialect: dbDialect,
         logging: dbLogging,
+        // Full Unicode (emoji, zero-width chars, symbols) for new tables; existing
+        // ones are converted by the 20261125120000-convert-tables-to-utf8mb4 migration.
+        define: {
+          charset: 'utf8mb4',
+          collate: 'utf8mb4_unicode_ci',
+        },
         pool: {
           max: 20,
           min: 2,
