@@ -204,6 +204,24 @@ const escolaridadLabels: Record<string, string> = {
   materia_pendiente: 'Materia Pendiente',
 };
 
+const relationshipLabels: Record<string, string> = {
+  mother: 'Madre',
+  father: 'Padre',
+  sibling: 'Hermano(a)',
+  grandparent: 'Abuelo(a)',
+  uncle_aunt: 'Tío(a)',
+  representative: 'Otro',
+};
+
+const formatDocument = (type: string | undefined, doc: string | undefined): string => {
+  if (!doc) return '';
+  // Same convention as final summary sheets: cédulas escolares show the bare
+  // number (not an official document); other types keep their letter prefix.
+  if (type === 'Cedula Escolar') return doc;
+  const prefix = type === 'Venezolano' ? 'V' : type === 'Extranjero' ? 'E' : type === 'Pasaporte' ? 'P' : 'CE';
+  return `${prefix}-${doc}`;
+};
+
 interface TableRowProps {
   label: string;
   value: string | undefined | null;
@@ -236,13 +254,10 @@ const EnrollmentReportPDF: React.FC<EnrollmentReportPDFProps> = ({
   createdAt,
   logoBase64,
 }) => {
-  const { institution, period, grade, student } = data;
+  const { institution, period, grade, student, representative } = data;
 
   const genderLabel = student.gender === 'M' ? 'Masculino' : 'Femenino';
   const birthPlace = [student.birthParish, student.birthMunicipality, student.birthState]
-    .filter(Boolean)
-    .join(', ');
-  const residencePlace = [student.residenceParish, student.residenceMunicipality, student.residenceState]
     .filter(Boolean)
     .join(', ');
 
@@ -298,25 +313,38 @@ const EnrollmentReportPDF: React.FC<EnrollmentReportPDFProps> = ({
           </View>
         </View>
 
-        {/* Student Data */}
-        <SectionHeader title="Datos del Estudiante" />
+        {/* Student + Representative Data */}
         <View style={styles.twoCol}>
           <View style={styles.col}>
+            <SectionHeader title="Datos del Estudiante" />
             <View style={styles.table}>
               <TableRow label="Nombres" value={student.firstName} index={0} />
               <TableRow label="Apellidos" value={student.lastName} index={1} />
-              <TableRow label="Documento" value={`${student.documentType}-${student.document}`} index={2} />
+              <TableRow label="Documento" value={formatDocument(student.documentType, student.document)} index={2} />
               <TableRow label="Género" value={genderLabel} index={3} />
               <TableRow label="Fecha de Nac." value={student.birthdate || undefined} index={4} />
+              <TableRow label="Lugar de Nac." value={birthPlace} index={5} />
+              <TableRow label="Dirección" value={student.address} index={6} />
+              {student.pathology ? (
+                <TableRow label="Patología" value={student.pathology} index={7} />
+              ) : null}
             </View>
           </View>
           <View style={styles.col}>
+            <SectionHeader title="Datos del Representante" />
             <View style={styles.table}>
-              <TableRow label="Lugar de Nac." value={birthPlace} index={0} />
-              <TableRow label="Residencia" value={residencePlace} index={1} />
-              <TableRow label="Dirección" value={student.address} index={2} />
-              <TableRow label="Teléfono" value={student.phone1} index={3} />
-              <TableRow label="Email" value={student.email} index={4} />
+              <TableRow label="Nombres" value={representative?.data.firstName} index={0} />
+              <TableRow label="Apellidos" value={representative?.data.lastName} index={1} />
+              <TableRow label="Documento" value={formatDocument(representative?.data.documentType, representative?.data.document)} index={2} />
+              <TableRow label="Fecha de Nac." value={representative?.data.birthdate || undefined} index={3} />
+              <TableRow
+                label="Parentesco"
+                value={representative ? (relationshipLabels[representative.relationship] || representative.relationship) : undefined}
+                index={4}
+              />
+              <TableRow label="Dirección" value={representative?.data.address} index={5} />
+              <TableRow label="Teléfono" value={representative?.data.phone} index={6} />
+              <TableRow label="Ocupación" value={representative?.data.occupation} index={7} />
             </View>
           </View>
         </View>
