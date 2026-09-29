@@ -46,7 +46,7 @@ function periodSortKey(periodId: string): number {
   return (match[1] === 'm' ? 0 : 1) * 1000 + Number(match[2]);
 }
 
-async function getPeriodInfoMap(): Promise<Map<string, { start: string; end: string }>> {
+export async function getPeriodInfoMap(): Promise<Map<string, { start: string; end: string }>> {
   const settingsRows = await Setting.findAll({ where: { key: { [Op.in]: [
     'time_format',
     'morning_start_time', 'morning_blocks_before_recess', 'morning_block_minutes_before',
@@ -366,11 +366,12 @@ export async function getSessionDetail(sessionId: number): Promise<SessionDetail
       sectionName: s.section?.name ?? '',
     });
   }
-  const singleGrade = new Set(pgsList.map(p => p.gradeName)).size === 1;
   const sectionLabelByKey = new Map<string, string>();
   for (const p of pgsList) {
     const sec = shortSectionName(p.sectionName);
-    sectionLabelByKey.set(`${p.gradeId}|${p.sectionId}`, singleGrade ? sec : `${p.gradeName} ${sec}`.trim());
+    // Roster rows always carry grade + section — in mixed-grade group classes
+    // the section letter alone would be ambiguous.
+    sectionLabelByKey.set(`${p.gradeId}|${p.sectionId}`, `${p.gradeName} ${sec}`.trim());
   }
 
   const inscriptions = await Inscription.findAll({
@@ -513,7 +514,14 @@ export async function getSessionDetail(sessionId: number): Promise<SessionDetail
     };
   });
 
-  return { session, roster };
+  const periodInfoMap = await getPeriodInfoMap();
+  const periodInfo = periodInfoMap.get(entry.periodId) ?? null;
+  const sessionJson = session.toJSON() as any;
+  sessionJson.periodStart = periodInfo?.start ?? null;
+  sessionJson.periodEnd = periodInfo?.end ?? null;
+  sessionJson.sectionLabel = buildSectionLabel(clusterEntries);
+
+  return { session: sessionJson, roster };
 }
 
 export interface AttendanceRecordInput {

@@ -20,6 +20,7 @@ import {
 import {
   getTeacherSessionsForDate,
   getSessionDetail,
+  getPeriodInfoMap,
   saveSessionRecords,
   clearAttendanceBlock,
   clearSessionBlock,
@@ -294,6 +295,7 @@ export const listSessions = async (req: Request, res: Response) => {
 
     const shortSec = (name: string | null | undefined) =>
       (name ?? '').trim().replace(/^secci[oó]n\s*/i, '').trim() || (name ?? '').trim();
+    const periodInfoMap = await getPeriodInfoMap();
 
     const withCounts = await Promise.all([...clusters.values()].map(async cluster => {
       // Canonical = lowest scheduleEntryId, matching the teacher view.
@@ -330,12 +332,15 @@ export const listSessions = async (req: Request, res: Response) => {
         ? [...new Set(cluster.map((s: any) => shortSec(pgsOf(s)?.section?.name)))].join('/')
         : [...new Set(cluster.map((s: any) => `${pgsOf(s)?.periodGrade?.grade?.name ?? ''} ${shortSec(pgsOf(s)?.section?.name)}`.trim()))].join(' · ');
       const subjectNames = [...new Set(cluster.map((s: any) => s.scheduleEntry?.subject?.name).filter(Boolean))];
+      const periodInfo = periodInfoMap.get(canonical.scheduleEntry?.periodId) ?? null;
 
       return {
         id: canonical.id,
         sessionDate: canonical.sessionDate,
         status: cluster.some((s: any) => s.status === 'completed') ? 'completed' : canonical.status,
         periodId: canonical.scheduleEntry?.periodId ?? null,
+        periodStart: periodInfo?.start ?? null,
+        periodEnd: periodInfo?.end ?? null,
         subjectName: subjectNames.join(' / ') || null,
         teacherName: canonical.scheduleEntry?.teacher
           ? `${canonical.scheduleEntry.teacher.lastName}, ${canonical.scheduleEntry.teacher.firstName}`.trim()
