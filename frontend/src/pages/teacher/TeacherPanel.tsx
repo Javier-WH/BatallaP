@@ -1749,9 +1749,9 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
       {/* Top Grid Panels */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 mb-8">
         {/* Subjects & Terms combined in a single card-like block or flex */}
-        <div className="teacher-top-grid xl:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="teacher-top-grid xl:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6 min-w-0">
           {/* Asignaturas Seleccionables — 3 niveles: materia → año → sección */}
-          <div className="app-card app-card-hover p-5 flex flex-col">
+          <div className="app-card app-card-hover p-5 flex flex-col min-w-0">
             <span className="text-[10px] font-bold uppercase tracking-widest mb-2" style={{ color: 'var(--color-text-muted)' }}>Seleccionar Asignatura</span>
 
             {repairMode ? (
@@ -1760,7 +1760,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                   <Empty description="No tienes materias con estudiantes pendientes de revisión" image={Empty.PRESENTED_IMAGE_SIMPLE} />
                 ) : (
                   <>
-                    <div className="flex gap-2.5 overflow-x-auto pb-2 shrink-0" style={{ minHeight: 64, scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+                    <div className="flex gap-2.5 overflow-x-auto pb-2 shrink-0" style={{ minHeight: 64, scrollbarWidth: 'none', msOverflowStyle: 'none', overscrollBehaviorX: 'contain' }}>
                       {revisionSubjects.map(subjectName => {
                         const isSelected = selectedRevisionAssignment?.subjectName === subjectName;
                         const { Icon, color } = getSubjectVisual({ name: subjectName });
@@ -1775,7 +1775,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                             <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: isSelected ? 'rgba(255,255,255,0.2)' : withAlpha(color, 0.12) }}>
                               <Icon style={{ color: isSelected ? '#fff' : color, fontSize: 18 }} />
                             </div>
-                            <div className="font-bold text-sm leading-tight" style={{ color: 'inherit' }}>{subjectName}</div>
+                            <div className="font-bold text-sm leading-tight line-clamp-2 min-w-0" style={{ color: 'inherit' }}>{subjectName}</div>
                           </div>
                         );
                       })}
@@ -1788,7 +1788,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                           <button
                             key={gradeName}
                             onClick={() => firstAssignment && setSelectedRevisionKey(`${firstAssignment.periodGradeSubjectId}-${firstAssignment.sectionId}`)}
-                            className="flex-1 py-2.5 text-sm font-bold rounded-lg transition-all border-none cursor-pointer"
+                            className="flex-1 min-w-0 py-2.5 text-sm font-bold rounded-lg transition-all border-none cursor-pointer truncate"
                             style={{ backgroundColor: isSelected ? 'var(--color-accent)' : 'var(--color-inactive)', color: isSelected ? 'var(--color-header-text)' : 'var(--color-text-main)' }}
                           >
                             {gradeName}
@@ -1803,7 +1803,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                           <button
                             key={`${assignment.periodGradeSubjectId}-${assignment.sectionId}`}
                             onClick={() => setSelectedRevisionKey(`${assignment.periodGradeSubjectId}-${assignment.sectionId}`)}
-                            className="flex-1 py-2.5 text-sm font-bold rounded-lg transition-all border-none cursor-pointer"
+                            className="flex-1 min-w-0 py-2.5 text-sm font-bold rounded-lg transition-all border-none cursor-pointer truncate"
                             style={{ backgroundColor: isSelected ? 'var(--color-accent)' : 'var(--color-inactive)', color: isSelected ? 'var(--color-header-text)' : 'var(--color-text-main)' }}
                           >
                             {assignment.sectionName}
@@ -1825,11 +1825,8 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
               onMouseUp={dragScroll.onMouseUp}
               onMouseLeave={dragScroll.onMouseLeave}
               onClickCapture={dragScroll.onClickCapture}
-              onTouchStart={dragScroll.onTouchStart}
-              onTouchMove={dragScroll.onTouchMove}
-              onTouchEnd={dragScroll.onTouchEnd}
               className="flex gap-2.5 overflow-x-auto pb-2 shrink-0 drag-scroll-container"
-              style={{ minHeight: 64, cursor: 'grab', scrollbarWidth: 'none', msOverflowStyle: 'none', userSelect: 'none', WebkitUserSelect: 'none' }}
+              style={{ minHeight: 64, cursor: 'grab', scrollbarWidth: 'none', msOverflowStyle: 'none', userSelect: 'none', WebkitUserSelect: 'none', overscrollBehaviorX: 'contain' }}
             >
               {availableSubjects.map(s => {
                 const isSelected = s.id === selectedSubjectId;
@@ -1856,7 +1853,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                     >
                       <Icon style={{ color: isSelected ? '#fff' : color, fontSize: 18 }} />
                     </div>
-                    <div className="font-bold text-sm leading-tight" style={{ color: 'inherit' }}>
+                    <div className="font-bold text-sm leading-tight line-clamp-2 min-w-0" style={{ color: 'inherit' }}>
                       {s.name}
                     </div>
                   </div>
@@ -1877,7 +1874,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                     onClick={() => {
                       setSelectedGradeId(g.id);
                     }}
-                    className="flex-1 py-2.5 text-sm font-bold rounded-lg transition-all border-none cursor-pointer"
+                    className="flex-1 min-w-0 py-2.5 text-sm font-bold rounded-lg transition-all border-none cursor-pointer truncate"
                     style={{
                       backgroundColor: isSelected ? 'var(--color-accent)' : 'var(--color-inactive)',
                       color: isSelected ? 'var(--color-header-text)' : 'var(--color-text-main)',
@@ -1897,7 +1894,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                   <button
                     key={sec.assignmentId}
                     onClick={() => setSelectedAssignmentId(sec.assignmentId)}
-                    className="flex-1 py-2.5 text-sm font-bold rounded-lg transition-all border-none cursor-pointer"
+                    className="flex-1 min-w-0 py-2.5 text-sm font-bold rounded-lg transition-all border-none cursor-pointer truncate"
                     style={{
                       backgroundColor: isSelected ? 'var(--color-accent)' : 'var(--color-inactive)',
                       color: isSelected ? 'var(--color-header-text)' : 'var(--color-text-main)',
@@ -1913,7 +1910,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
           </div>
 
           {/* Lazos */}
-          <div className="app-card app-card-hover p-5 flex flex-col justify-center">
+          <div className="app-card app-card-hover p-5 flex flex-col justify-center min-w-0">
             <div className="flex items-center justify-between mb-3">
               <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--color-text-muted)' }}>Lapso Académico</span>
               {isSelectedTermBlocked && <Tag color="error">Cerrado</Tag>}
@@ -1932,7 +1929,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                     key={term.id}
                     onClick={() => { if (!isFuture) { if (repairMode) exitRepairMode(); setSelectedTerm(term.id); } }}
                     disabled={isFuture}
-                    className="flex-1 py-2 text-sm font-bold rounded-lg transition-all flex justify-center items-center gap-2 border-none"
+                    className="flex-1 min-w-0 py-2 text-sm font-bold rounded-lg transition-all flex justify-center items-center gap-2 border-none"
                     style={{
                       backgroundColor: isSelected ? 'var(--color-accent)' : 'var(--color-inactive)',
                       color: isSelected ? 'var(--color-header-text)' : 'var(--color-text-main)',
@@ -1940,7 +1937,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                       cursor: isFuture ? 'not-allowed' : 'pointer'
                     }}
                   >
-                    {term.name}
+                    <span className="truncate">{term.name}</span>
                     {term.isBlocked && <LockOutlined style={{ opacity: 0.8 }} />}
                   </button>
                 );
@@ -1949,7 +1946,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                 <button
                   key="repair-period"
                   onClick={enterRepairMode}
-                  className="flex-1 py-2 text-sm font-bold rounded-lg transition-all flex justify-center items-center gap-2 border-none"
+                  className="flex-1 min-w-0 py-2 text-sm font-bold rounded-lg transition-all flex justify-center items-center gap-2 border-none"
                   style={{
                     backgroundColor: repairMode ? 'var(--color-accent)' : 'var(--color-inactive)',
                     color: repairMode ? 'var(--color-header-text)' : 'var(--color-text-main)',
@@ -1966,7 +1963,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
         </div>
 
         {/* Progress Planificado */}
-        <div className="app-card app-card-hover p-6 flex flex-col justify-center relative overflow-hidden">
+        <div className="app-card app-card-hover p-6 flex flex-col justify-center relative overflow-hidden min-w-0">
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-black text-lg m-0" style={{ color: 'var(--color-text-main)' }}>Total Planificado</h3>
             <span className={`text-[10px] uppercase font-bold px-3 py-1 rounded-full ${totalPercentage === 100 ? 'bg-green-100 text-green-700' : totalPercentage > 100 ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-700'}`}>

@@ -6,7 +6,9 @@ import { useRef, useCallback, useEffect } from 'react';
  * still work: a press that moves less than `CLICK_THRESHOLD` px is treated as
  * a click; anything beyond that is a drag and the click is suppressed.
  *
- * Works on both desktop (mouse) and mobile (touch).
+ * Mouse only: on touch devices the native `overflow-x` scroll already works
+ * (React touch listeners are passive anyway), and manually setting scrollLeft
+ * on touchmove double-scrolls and chains the gesture into the page scroll.
  */
 const CLICK_THRESHOLD = 5;
 
@@ -67,32 +69,6 @@ export function useDragScroll<T extends HTMLElement>() {
     }
   }, []);
 
-  // Touch support
-  const onTouchStart = useCallback((e: React.TouchEvent) => {
-    const el = ref.current;
-    if (!el) return;
-    state.current.isDown = true;
-    state.current.dragged = false;
-    state.current.startX = e.touches[0].pageX - el.offsetLeft;
-    state.current.startScrollLeft = el.scrollLeft;
-  }, []);
-
-  const onTouchMove = useCallback((e: React.TouchEvent) => {
-    if (!state.current.isDown) return;
-    const el = ref.current;
-    if (!el) return;
-    const x = e.touches[0].pageX - el.offsetLeft;
-    const walk = x - state.current.startX;
-    if (Math.abs(walk) > CLICK_THRESHOLD) {
-      state.current.dragged = true;
-    }
-    el.scrollLeft = state.current.startScrollLeft - walk;
-  }, []);
-
-  const onTouchEnd = useCallback(() => {
-    state.current.isDown = false;
-  }, []);
-
   // Clean up on unmount
   useEffect(() => {
     return () => {
@@ -107,8 +83,5 @@ export function useDragScroll<T extends HTMLElement>() {
     onMouseUp,
     onMouseLeave,
     onClickCapture,
-    onTouchStart,
-    onTouchMove,
-    onTouchEnd,
   };
 }

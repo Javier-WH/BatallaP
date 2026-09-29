@@ -323,7 +323,7 @@ const PendingSubjectTeacherPanel: React.FC = () => {
       ) : (
         <>
           {/* Selector — materia → año (estilo TeacherPanel) */}
-          <div className="app-card app-card-hover p-5 flex flex-col" style={{ marginBottom: 16 }}>
+          <div className="app-card app-card-hover p-5 flex flex-col min-w-0" style={{ marginBottom: 16 }}>
             <span className="text-[10px] font-bold uppercase tracking-widest mb-2" style={{ color: 'var(--color-text-muted)' }}>Seleccionar Asignatura</span>
 
             {/* Nivel 1: Materia (tarjetas horizontales con icono+color) */}
@@ -334,11 +334,8 @@ const PendingSubjectTeacherPanel: React.FC = () => {
               onMouseUp={dragScroll.onMouseUp}
               onMouseLeave={dragScroll.onMouseLeave}
               onClickCapture={dragScroll.onClickCapture}
-              onTouchStart={dragScroll.onTouchStart}
-              onTouchMove={dragScroll.onTouchMove}
-              onTouchEnd={dragScroll.onTouchEnd}
               className="flex gap-2.5 overflow-x-auto pb-2 shrink-0 drag-scroll-container"
-              style={{ minHeight: 64, cursor: 'grab', scrollbarWidth: 'none', msOverflowStyle: 'none', userSelect: 'none', WebkitUserSelect: 'none' }}
+              style={{ minHeight: 64, cursor: 'grab', scrollbarWidth: 'none', msOverflowStyle: 'none', userSelect: 'none', WebkitUserSelect: 'none', overscrollBehaviorX: 'contain' }}
             >
               {uniqueSubjects.map(s => {
                 const isSelected = s.subjectId === selectedSubjectId;
@@ -367,7 +364,7 @@ const PendingSubjectTeacherPanel: React.FC = () => {
                     >
                       <Icon style={{ color: isSelected ? '#fff' : color, fontSize: 18 }} />
                     </div>
-                    <div className="font-bold text-sm leading-tight" style={{ color: 'inherit' }}>
+                    <div className="font-bold text-sm leading-tight line-clamp-2 min-w-0" style={{ color: 'inherit' }}>
                       {s.subjectName}
                     </div>
                   </div>
@@ -389,7 +386,7 @@ const PendingSubjectTeacherPanel: React.FC = () => {
                       setSelectedGradeId(g.gradeId);
                       setSelectedPgsId(g.pgsId);
                     }}
-                    className="flex-1 py-2.5 text-sm font-bold rounded-lg transition-all border-none cursor-pointer"
+                    className="flex-1 min-w-0 py-2.5 text-sm font-bold rounded-lg transition-all border-none cursor-pointer truncate"
                     style={{
                       backgroundColor: isSelected ? 'var(--color-accent)' : 'var(--color-inactive)',
                       color: isSelected ? 'var(--color-header-text)' : 'var(--color-text-main)',
