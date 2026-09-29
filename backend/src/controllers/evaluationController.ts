@@ -48,6 +48,7 @@ import {
 } from '@/services/subjectOrderService';
 import { filterActiveGroupSubjects, filterActiveGroupSubjectsForTerm } from '@/services/subjectGroupService';
 import { resolveGradeStatus, MIN_FINAL_GRADE, roundFinalGrade } from '@/services/gradeEvaluationService';
+import { resolveContentTeacherId } from '@/services/thematicScopeService';
 import { TermSectionClosureService } from '@/services/termSectionClosureService';
 import { TermGradeSyncService } from '@/services/termGradeSyncService';
 import { sortInscriptions, fieldExpr, quoteQualified } from '@/services/studentSortService';
@@ -1541,7 +1542,7 @@ export const exportPlanningExcel = async (req: Request, res: Response) => {
     const [term, components, plans] = await Promise.all([
       termId ? Term.findByPk(termId) : Promise.resolve(null),
       ThematicComponent.findAll({
-        where: { periodGradeSubjectId: pgs.id, ...(termId ? { termId } : {}) },
+        where: { periodGradeSubjectId: pgs.id, teacherId: assignmentData.teacherId, ...(termId ? { termId } : {}) },
         include: [{ model: ThematicContent, as: 'contents', include: [{ model: ExpectedLearning, as: 'learnings' }] }],
         order: [['order', 'ASC']],
       }),
@@ -3073,11 +3074,18 @@ export const copyEvaluationPlan = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'No hay evaluaciones en la sección origen para copiar' });
     }
 
+    // Thematic content is per teacher: links only stay valid when the target
+    // section is taught by the same teacher as the source section.
+    const sourceTeacherId = await resolveContentTeacherId(Number(sourcePeriodGradeSubjectId), Number(sourceSectionId));
+
     const t = await sequelize.transaction();
     try {
       const results: { sectionId: number; created: number; skipped: number }[] = [];
 
       for (const targetSectionId of targetSectionIds) {
+        const targetTeacherId = await resolveContentTeacherId(Number(targetPeriodGradeSubjectId), Number(targetSectionId));
+        const keepThematicLinks = sourceTeacherId !== null && sourceTeacherId === targetTeacherId
+          && Number(sourcePeriodGradeSubjectId) === Number(targetPeriodGradeSubjectId);
         // Check if target already has plan items
         const existingCount = await EvaluationPlan.count({
           where: { periodGradeSubjectId: targetPeriodGradeSubjectId, sectionId: targetSectionId, termId },
@@ -3098,8 +3106,8 @@ export const copyEvaluationPlan = async (req: Request, res: Response) => {
             description: item.description,
             percentage: item.percentage,
             date: item.date,
-            thematicComponentId: item.thematicComponentId,
-            thematicContentIds: item.thematicContentIds,
+            thematicComponentId: keepThematicLinks ? item.thematicComponentId : null,
+            thematicContentIds: keepThematicLinks ? item.thematicContentIds : null,
             evaluationType: item.evaluationType,
             tecnicaId: item.tecnicaId,
             instrumentoId: item.instrumentoId,

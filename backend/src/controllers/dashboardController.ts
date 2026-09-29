@@ -532,10 +532,12 @@ const buildAcademicSnapshot = async (schoolPeriodId?: number, isPrivileged = fal
   // ===== Content progress: check which pgsIds have the full chain Component → Content → Learning =====
   const pgsIdsInPeriod = [...new Set(assignments.map(a => a.periodGradeSubject?.id).filter(Boolean) as number[])];
 
+  // Content is per teacher: a subject/year is complete only when every teacher
+  // assigned to it has built their own chain.
   const pgsWithContent = new Set<number>();
   if (pgsIdsInPeriod.length > 0) {
     const contentChain = await ThematicComponent.findAll({
-      attributes: ['id', 'periodGradeSubjectId'],
+      attributes: ['id', 'periodGradeSubjectId', 'teacherId'],
       where: {
         periodGradeSubjectId: { [Op.in]: pgsIdsInPeriod },
         ...(activeTermId ? { termId: activeTermId } : {})
@@ -552,8 +554,15 @@ const buildAcademicSnapshot = async (schoolPeriodId?: number, isPrivileged = fal
         }],
       }],
     });
-    contentChain.forEach(comp => {
-      if (comp.periodGradeSubjectId) pgsWithContent.add(comp.periodGradeSubjectId);
+    const teacherHasContent = new Set(contentChain.map(comp => `${comp.periodGradeSubjectId}:${comp.teacherId}`));
+    const teachersByPgs = new Map<number, Set<number>>();
+    assignments.forEach(a => {
+      if (!a.periodGradeSubjectId || !a.teacherId) return;
+      if (!teachersByPgs.has(a.periodGradeSubjectId)) teachersByPgs.set(a.periodGradeSubjectId, new Set());
+      teachersByPgs.get(a.periodGradeSubjectId)!.add(a.teacherId);
+    });
+    teachersByPgs.forEach((teacherIds, pgsId) => {
+      if ([...teacherIds].every(tId => teacherHasContent.has(`${pgsId}:${tId}`))) pgsWithContent.add(pgsId);
     });
   }
 
@@ -1152,6 +1161,13 @@ export const getActivityLog = async (req: Request, res: Response) => {
       });
     }
 
+    const contentTeacherIds = [...new Set(contents.map((c) => (c as any).thematicComponent?.teacherId).filter(Boolean))] as number[];
+    const contentTeacherMap = new Map<number, { firstName: string; lastName: string }>();
+    if (contentTeacherIds.length > 0) {
+      const people = await Person.findAll({ where: { id: { [Op.in]: contentTeacherIds } }, attributes: ['id', 'firstName', 'lastName'] });
+      people.forEach((p) => contentTeacherMap.set(p.id, { firstName: p.firstName, lastName: p.lastName }));
+    }
+
     /* ---------- Batch-resolve sections ---------- */
     const sectionMap = new Map<number, string>();
     if (sectionIds.size > 0) {
@@ -1240,16 +1256,10 @@ export const getActivityLog = async (req: Request, res: Response) => {
       const pgs = tc?.periodGradeSubject;
       const subjectName = pgs?.subject?.name || null;
       const gradeName = pgs?.periodGrade?.grade?.name || null;
-      // ThematicContent doesn't have sectionId — find teacher by pgsId only
-      let actorFirstName = '';
-      let actorLastName = '';
-      for (const [key, t] of teacherMap.entries()) {
-        if (key.startsWith(`${pgs?.id}:`)) {
-          actorFirstName = t.firstName;
-          actorLastName = t.lastName;
-          break;
-        }
-      }
+      // Content is owned by a teacher (not a section)
+      const owner = tc?.teacherId ? contentTeacherMap.get(tc.teacherId) : undefined;
+      const actorFirstName = owner?.firstName || '';
+      const actorLastName = owner?.lastName || '';
       const actorName = shortName(actorFirstName, actorLastName) || 'Profesor';
       const created = isCreate(c.createdAt, c.updatedAt);
       const action = created ? 'content_added' : 'content_updated';

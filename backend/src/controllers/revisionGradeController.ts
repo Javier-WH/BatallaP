@@ -20,6 +20,7 @@ import {
   Term,
   ThematicComponent,
 } from '@/models/index';
+import { resolveContentTeacherId } from '@/services/thematicScopeService';
 
 export const getMyRevisionAssignments = async (req: Request, res: Response) => {
   try {
@@ -304,10 +305,12 @@ export const getRevisionThematicSelection = async (req: Request, res: Response) 
     const terms = await Term.findAll({ where: { schoolPeriodId: activePeriod.id } });
     const termIds = terms.map(t => t.id);
 
-    const components = await ThematicComponent.findAll({
+    const teacherId = await resolveContentTeacherId(periodGradeSubjectId, sectionId);
+    const components = !teacherId ? [] : await ThematicComponent.findAll({
       where: {
         periodGradeSubjectId,
         termId: { [Op.in]: termIds },
+        teacherId,
       },
       include: [{ association: 'contents' }],
       order: [['termId', 'ASC'], ['order', 'ASC'], ['id', 'ASC']],

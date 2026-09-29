@@ -7,6 +7,7 @@ import {
   ExpectedLearning,
   ExpectedLearningContent,
 } from '@/models/index';
+import { resolveContentTeacherId } from '@/services/thematicScopeService';
 
 // ── Thematic Components ──────────────────────────────────────────
 
@@ -15,17 +16,43 @@ import {
 // already-created record is returned instead of inserting a second row.
 const DUP_WINDOW_MS = 5000;
 
+const STAFF_ROLES = ['Master', 'Administrador', 'Director', 'Control de Estudios'];
+
+// Teachers may only modify their own content; staff may modify any.
+const canEditComponents = (req: Request, components: ThematicComponent[]): boolean => {
+  const user = (req.session as any)?.user;
+  const roles: string[] = user?.roles || [];
+  if (roles.some(r => STAFF_ROLES.includes(r))) return true;
+  return components.every(c => c.teacherId === user?.personId);
+};
+
+const componentsOfContents = async (contentIds: number[]): Promise<ThematicComponent[]> => {
+  if (contentIds.length === 0) return [];
+  const contents = await ThematicContent.findAll({ where: { id: contentIds }, attributes: ['thematicComponentId'] });
+  const componentIds = [...new Set(contents.map(c => c.thematicComponentId))];
+  return ThematicComponent.findAll({ where: { id: componentIds } });
+};
+
+const linkedContentIds = async (learningId: number): Promise<number[]> =>
+  (await ExpectedLearningContent.findAll({ where: { learningId }, attributes: ['contentId'] })).map(l => l.contentId);
+
+const FORBIDDEN = { message: 'Este contenido pertenece a otro profesor' };
+
 export const getThematicComponents = async (req: Request, res: Response) => {
   try {
-    const { pgsId, termId } = req.query;
-    if (!pgsId || !termId) {
-      return res.status(400).json({ message: 'pgsId, termId son requeridos' });
+    const { pgsId, termId, sectionId } = req.query;
+    if (!pgsId || !termId || !sectionId) {
+      return res.status(400).json({ message: 'pgsId, termId y sectionId son requeridos' });
     }
+
+    const teacherId = await resolveContentTeacherId(Number(pgsId), Number(sectionId));
+    if (!teacherId) return res.json([]);
 
     const components = await ThematicComponent.findAll({
       where: {
         periodGradeSubjectId: Number(pgsId),
         termId: Number(termId),
+        teacherId,
       },
       include: [
         {
@@ -45,15 +72,26 @@ export const getThematicComponents = async (req: Request, res: Response) => {
 
 export const createThematicComponent = async (req: Request, res: Response) => {
   try {
-    const { periodGradeSubjectId, termId, title } = req.body;
-    if (!periodGradeSubjectId || !termId || !title) {
+    const { periodGradeSubjectId, termId, sectionId, title } = req.body;
+    if (!periodGradeSubjectId || !termId || !sectionId || !title) {
       return res.status(400).json({ message: 'Faltan campos requeridos' });
+    }
+
+    const teacherId = await resolveContentTeacherId(Number(periodGradeSubjectId), Number(sectionId));
+    if (!teacherId) {
+      return res.status(400).json({ message: 'La sección no tiene un profesor asignado para esta materia' });
+    }
+    const user = (req.session as any)?.user;
+    const roles: string[] = user?.roles || [];
+    if (!roles.some(r => STAFF_ROLES.includes(r)) && teacherId !== user?.personId) {
+      return res.status(403).json(FORBIDDEN);
     }
 
     const duplicate = await ThematicComponent.findOne({
       where: {
         periodGradeSubjectId,
         termId,
+        teacherId,
         title,
         createdAt: { [Op.gte]: new Date(Date.now() - DUP_WINDOW_MS) },
       },
@@ -61,12 +99,13 @@ export const createThematicComponent = async (req: Request, res: Response) => {
     if (duplicate) return res.json(duplicate);
 
     const maxOrder = await ThematicComponent.max('order', {
-      where: { periodGradeSubjectId, termId },
+      where: { periodGradeSubjectId, termId, teacherId },
     }) as number || 0;
 
     const component = await ThematicComponent.create({
       periodGradeSubjectId,
       termId,
+      teacherId,
       title,
       order: maxOrder + 1,
     });
@@ -87,6 +126,7 @@ export const updateThematicComponent = async (req: Request, res: Response) => {
     if (!component) {
       return res.status(404).json({ message: 'Componente no encontrado' });
     }
+    if (!canEditComponents(req, [component])) return res.status(403).json(FORBIDDEN);
 
     await component.update({
       ...(title !== undefined && { title }),
@@ -107,6 +147,7 @@ export const deleteThematicComponent = async (req: Request, res: Response) => {
     if (!component) {
       return res.status(404).json({ message: 'Componente no encontrado' });
     }
+    if (!canEditComponents(req, [component])) return res.status(403).json(FORBIDDEN);
 
     // Cascade delete: contents and their learning associations
     const contents = await ThematicContent.findAll({ where: { thematicComponentId: Number(id) } });
@@ -143,10 +184,14 @@ export const reorderThematicComponents = async (req: Request, res: Response) => 
       throw new Error('Alguno de los componentes no existe.');
     }
 
-    // All components must belong to the same periodGradeSubject+term
-    const keys = new Set(components.map((c) => `${c.periodGradeSubjectId}-${c.termId}`));
+    // All components must belong to the same periodGradeSubject+term+teacher
+    const keys = new Set(components.map((c) => `${c.periodGradeSubjectId}-${c.termId}-${c.teacherId}`));
     if (keys.size !== 1) {
       throw new Error('Los componentes deben pertenecer al mismo lapso y asignación.');
+    }
+    if (!canEditComponents(req, components)) {
+      await transaction.rollback();
+      return res.status(403).json(FORBIDDEN);
     }
 
     const sortPosition = new Map(componentIds.map((componentId, index) => [componentId, index + 1]));
@@ -161,9 +206,9 @@ export const reorderThematicComponents = async (req: Request, res: Response) => 
 
     await transaction.commit();
 
-    const { periodGradeSubjectId, termId } = components[0];
+    const { periodGradeSubjectId, termId, teacherId } = components[0];
     const refreshed = await ThematicComponent.findAll({
-      where: { periodGradeSubjectId, termId },
+      where: { periodGradeSubjectId, termId, teacherId },
       include: [
         {
           association: 'contents',
@@ -195,6 +240,7 @@ export const createThematicContent = async (req: Request, res: Response) => {
     if (!component) {
       return res.status(404).json({ message: 'Componente no encontrado' });
     }
+    if (!canEditComponents(req, [component])) return res.status(403).json(FORBIDDEN);
 
     const duplicate = await ThematicContent.findOne({
       where: {
@@ -231,6 +277,7 @@ export const updateThematicContent = async (req: Request, res: Response) => {
     if (!content) {
       return res.status(404).json({ message: 'Contenido no encontrado' });
     }
+    if (!canEditComponents(req, await componentsOfContents([content.id]))) return res.status(403).json(FORBIDDEN);
 
     await content.update({
       ...(title !== undefined && { title }),
@@ -251,6 +298,7 @@ export const deleteThematicContent = async (req: Request, res: Response) => {
     if (!content) {
       return res.status(404).json({ message: 'Contenido no encontrado' });
     }
+    if (!canEditComponents(req, await componentsOfContents([content.id]))) return res.status(403).json(FORBIDDEN);
 
     await ExpectedLearningContent.destroy({ where: { contentId: Number(id) } });
     await content.destroy();
@@ -285,6 +333,11 @@ export const reorderThematicContents = async (req: Request, res: Response) => {
     const componentIds = new Set(contents.map((c) => c.thematicComponentId));
     if (componentIds.size !== 1) {
       throw new Error('Los contenidos deben pertenecer al mismo componente temático.');
+    }
+    const parent = await ThematicComponent.findByPk([...componentIds][0], { transaction });
+    if (!parent || !canEditComponents(req, [parent])) {
+      await transaction.rollback();
+      return res.status(403).json(FORBIDDEN);
     }
 
     const sortPosition = new Map(contentIds.map((contentId, index) => [contentId, index + 1]));
@@ -324,12 +377,14 @@ export const createExpectedLearning = async (req: Request, res: Response) => {
     if (!contentIds || !Array.isArray(contentIds) || contentIds.length === 0) {
       return res.status(400).json({ message: 'contentIds es requerido' });
     }
+    if (!canEditComponents(req, await componentsOfContents(contentIds))) return res.status(403).json(FORBIDDEN);
 
     const duplicate = await ExpectedLearning.findOne({
       where: {
         description,
         createdAt: { [Op.gte]: new Date(Date.now() - DUP_WINDOW_MS) },
       },
+      include: [{ association: 'contents', where: { id: contentIds }, attributes: ['id'], required: true }],
     });
     if (duplicate) return res.json(duplicate);
 
@@ -358,6 +413,9 @@ export const updateExpectedLearning = async (req: Request, res: Response) => {
     if (!learning) {
       return res.status(404).json({ message: 'Aprendizaje no encontrado' });
     }
+    const linkedIds = await linkedContentIds(learning.id);
+    const touched = Array.isArray(contentIds) ? [...linkedIds, ...contentIds] : linkedIds;
+    if (!canEditComponents(req, await componentsOfContents(touched))) return res.status(403).json(FORBIDDEN);
 
     await learning.update({
       ...(description !== undefined && { description }),
@@ -381,6 +439,9 @@ export const deleteExpectedLearning = async (req: Request, res: Response) => {
     const learning = await ExpectedLearning.findByPk(Number(id));
     if (!learning) {
       return res.status(404).json({ message: 'Aprendizaje no encontrado' });
+    }
+    if (!canEditComponents(req, await componentsOfContents(await linkedContentIds(learning.id)))) {
+      return res.status(403).json(FORBIDDEN);
     }
 
     await learning.destroy();
