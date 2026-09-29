@@ -7,9 +7,11 @@ interface ThematicContentAttributes {
   thematicComponentId: number;
   title: string;
   order: number;
+  createdAt?: Date;
+  updatedAt?: Date;
 }
 
-type ThematicContentCreationAttributes = Optional<ThematicContentAttributes, 'id' | 'order'>;
+type ThematicContentCreationAttributes = Optional<ThematicContentAttributes, 'id' | 'order' | 'createdAt' | 'updatedAt'>;
 
 class ThematicContent extends Model<ThematicContentAttributes, ThematicContentCreationAttributes> implements ThematicContentAttributes {
   public id!: number;

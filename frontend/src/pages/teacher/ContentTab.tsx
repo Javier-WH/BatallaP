@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { Card, Button, Input, Collapse, Space, Tag, Popconfirm, message, Alert } from 'antd';
 import { PlusOutlined, DeleteOutlined, EditOutlined, CheckOutlined, CloseOutlined, HolderOutlined } from '@ant-design/icons';
 import {
@@ -40,13 +40,13 @@ interface ThematicComponentData {
 interface ContentTabProps {
   thematicComponents: ThematicComponentData[];
   isBlocked: boolean;
-  onCreateComponent: (title: string) => void;
+  onCreateComponent: (title: string) => Promise<void>;
   onUpdateComponent: (id: number, title: string) => void;
   onDeleteComponent: (id: number) => void;
-  onCreateContent: (componentId: number, title: string) => void;
+  onCreateContent: (componentId: number, title: string) => Promise<void>;
   onUpdateContent: (contentId: number, title: string) => void;
   onDeleteContent: (contentId: number) => void;
-  onCreateLearning: (contentIds: number[], description: string) => void;
+  onCreateLearning: (contentIds: number[], description: string) => Promise<void>;
   onUpdateLearning: (learningId: number, description: string, contentIds?: number[]) => void;
   onDeleteLearning: (learningId: number) => void;
   onReorderContents: (componentId: number, contentIds: number[]) => void;
@@ -269,6 +269,19 @@ const ContentTab: React.FC<ContentTabProps> = ({
   const [localContentOrder, setLocalContentOrder] = useState<Record<number, number[]>>({});
   const [localComponentOrder, setLocalComponentOrder] = useState<number[]>([]);
   const [openComponentKeys, setOpenComponentKeys] = useState<number[]>([]);
+  const busyRef = useRef(false);
+  const [creating, setCreating] = useState(false);
+
+  const beginSubmit = () => {
+    if (busyRef.current) return false;
+    busyRef.current = true;
+    setCreating(true);
+    return true;
+  };
+  const endSubmit = () => {
+    busyRef.current = false;
+    setCreating(false);
+  };
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
@@ -338,11 +351,15 @@ const ContentTab: React.FC<ContentTabProps> = ({
     onReorderComponents(newOrder);
   };
 
-  const handleAddComponent = () => {
-    if (!newComponentTitle.trim()) return;
-    onCreateComponent(newComponentTitle.trim());
-    setNewComponentTitle('');
-    setAddingComponent(false);
+  const handleAddComponent = async () => {
+    if (!newComponentTitle.trim() || !beginSubmit()) return;
+    try {
+      await onCreateComponent(newComponentTitle.trim());
+      setNewComponentTitle('');
+      setAddingComponent(false);
+    } finally {
+      endSubmit();
+    }
   };
 
   const handleSaveComponentEdit = () => {
@@ -354,13 +371,15 @@ const ContentTab: React.FC<ContentTabProps> = ({
   };
 
   const handleAddContent = async (componentId: number) => {
-    if (!newContentTitle.trim()) return;
+    if (!newContentTitle.trim() || !beginSubmit()) return;
     try {
       await onCreateContent(componentId, newContentTitle.trim());
       setNewContentTitle('');
       setNewContentForComponent(null);
     } catch {
       // Error ya mostrado por handleCreateContent; mantener el input abierto
+    } finally {
+      endSubmit();
     }
   };
 
@@ -372,17 +391,22 @@ const ContentTab: React.FC<ContentTabProps> = ({
     setEditingContentTitle('');
   };
 
-  const handleAddLearning = () => {
+  const handleAddLearning = async () => {
     if (!newLearningDesc.trim() || selectedContentIds.length === 0) return;
     const descTrimmed = newLearningDesc.trim();
     if (allLearnings.some(l => l.description.toLowerCase() === descTrimmed.toLowerCase())) {
       message.warning('Ya existe un aprendizaje esperado con esa descripción.');
       return;
     }
-    onCreateLearning(selectedContentIds, descTrimmed);
-    setNewLearningDesc('');
-    setSelectedContentIds([]);
-    setAddingLearning(false);
+    if (!beginSubmit()) return;
+    try {
+      await onCreateLearning(selectedContentIds, descTrimmed);
+      setNewLearningDesc('');
+      setSelectedContentIds([]);
+      setAddingLearning(false);
+    } finally {
+      endSubmit();
+    }
   };
 
   const allContents = thematicComponents.flatMap(comp =>
@@ -605,7 +629,7 @@ const ContentTab: React.FC<ContentTabProps> = ({
                         onPressEnter={() => handleAddContent(comp.id)}
                         style={{ width: 'min(300px, 65vw)' }}
                       />
-                      <Button size="small" icon={<CheckOutlined />} onClick={() => handleAddContent(comp.id)} />
+                      <Button size="small" icon={<CheckOutlined />} loading={creating} onClick={() => handleAddContent(comp.id)} />
                       <Button size="small" icon={<CloseOutlined />} onClick={() => setNewContentForComponent(null)} />
                     </Space>
                   ) : (
@@ -645,7 +669,7 @@ const ContentTab: React.FC<ContentTabProps> = ({
             onPressEnter={handleAddComponent}
             style={{ width: 'min(300px, 65vw)' }}
           />
-          <Button type="primary" icon={<CheckOutlined />} onClick={handleAddComponent} />
+          <Button type="primary" icon={<CheckOutlined />} loading={creating} onClick={handleAddComponent} />
           <Button icon={<CloseOutlined />} onClick={() => { setAddingComponent(false); setNewComponentTitle(''); }} />
         </div>
       )}
@@ -844,7 +868,7 @@ const ContentTab: React.FC<ContentTabProps> = ({
             ))}
           </div>
           <Space>
-            <Button type="primary" icon={<CheckOutlined />} onClick={handleAddLearning} disabled={!newLearningDesc.trim() || selectedContentIds.length === 0}>
+            <Button type="primary" icon={<CheckOutlined />} loading={creating} onClick={handleAddLearning} disabled={!newLearningDesc.trim() || selectedContentIds.length === 0}>
               Crear
             </Button>
             <Button icon={<CloseOutlined />} onClick={() => { setAddingLearning(false); setNewLearningDesc(''); setSelectedContentIds([]); }}>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Modal, Form, Input, DatePicker, Button, Select, InputNumber, message, Checkbox, Tooltip } from 'antd';
 import { PlusOutlined, DeleteOutlined, PlusCircleOutlined } from '@ant-design/icons';
 import api from '@/services/api';
@@ -148,6 +148,7 @@ const EvaluationPlanItemModal: React.FC<EvaluationPlanItemModalProps> = ({
 }) => {
   const [form] = Form.useForm<PlanItemFormValues>();
   const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
   const [criteria, setCriteria] = useState<CriteriaRow[]>([]);
   const [evaluationType, setEvaluationType] = useState<string[]>([]);
   const [percentageValue, setPercentageValue] = useState<number | null>(null);
@@ -281,6 +282,9 @@ const EvaluationPlanItemModal: React.FC<EvaluationPlanItemModalProps> = ({
   }, [open, editingItem, form, thematicComponents]);
 
   const handleSave = async () => {
+    if (savingRef.current) return;
+    savingRef.current = true;
+    setSaving(true);
     try {
       const values = await form.validateFields();
       if (evaluationType.length === 0) {
@@ -316,7 +320,6 @@ const EvaluationPlanItemModal: React.FC<EvaluationPlanItemModalProps> = ({
           return;
         }
       }
-      setSaving(true);
 
       const selectedEstrategia = estrategiaOptionsState.find(e => e.id === values.estrategiaId);
 
@@ -360,6 +363,7 @@ const EvaluationPlanItemModal: React.FC<EvaluationPlanItemModalProps> = ({
         message.error('Error al guardar');
       }
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   };

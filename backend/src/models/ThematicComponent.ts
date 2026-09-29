@@ -9,9 +9,11 @@ interface ThematicComponentAttributes {
   termId: number;
   title: string;
   order: number;
+  createdAt?: Date;
+  updatedAt?: Date;
 }
 
-type ThematicComponentCreationAttributes = Optional<ThematicComponentAttributes, 'id' | 'order'>;
+type ThematicComponentCreationAttributes = Optional<ThematicComponentAttributes, 'id' | 'order' | 'createdAt' | 'updatedAt'>;
 
 class ThematicComponent extends Model<ThematicComponentAttributes, ThematicComponentCreationAttributes> implements ThematicComponentAttributes {
   public id!: number;

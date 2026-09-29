@@ -5,9 +5,11 @@ interface ExpectedLearningAttributes {
   id: number;
   description: string;
   order: number;
+  createdAt?: Date;
+  updatedAt?: Date;
 }
 
-type ExpectedLearningCreationAttributes = Optional<ExpectedLearningAttributes, 'id' | 'order'>;
+type ExpectedLearningCreationAttributes = Optional<ExpectedLearningAttributes, 'id' | 'order' | 'createdAt' | 'updatedAt'>;
 
 class ExpectedLearning extends Model<ExpectedLearningAttributes, ExpectedLearningCreationAttributes> implements ExpectedLearningAttributes {
   public id!: number;

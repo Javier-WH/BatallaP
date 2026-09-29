@@ -10,6 +10,11 @@ import {
 
 // ── Thematic Components ──────────────────────────────────────────
 
+// Double-submit guard: an identical create arriving within this window is
+// treated as a duplicate (e.g. user clicked twice during network lag) and the
+// already-created record is returned instead of inserting a second row.
+const DUP_WINDOW_MS = 5000;
+
 export const getThematicComponents = async (req: Request, res: Response) => {
   try {
     const { pgsId, termId } = req.query;
@@ -44,6 +49,16 @@ export const createThematicComponent = async (req: Request, res: Response) => {
     if (!periodGradeSubjectId || !termId || !title) {
       return res.status(400).json({ message: 'Faltan campos requeridos' });
     }
+
+    const duplicate = await ThematicComponent.findOne({
+      where: {
+        periodGradeSubjectId,
+        termId,
+        title,
+        createdAt: { [Op.gte]: new Date(Date.now() - DUP_WINDOW_MS) },
+      },
+    });
+    if (duplicate) return res.json(duplicate);
 
     const maxOrder = await ThematicComponent.max('order', {
       where: { periodGradeSubjectId, termId },
@@ -181,6 +196,15 @@ export const createThematicContent = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Componente no encontrado' });
     }
 
+    const duplicate = await ThematicContent.findOne({
+      where: {
+        thematicComponentId: Number(id),
+        title,
+        createdAt: { [Op.gte]: new Date(Date.now() - DUP_WINDOW_MS) },
+      },
+    });
+    if (duplicate) return res.json(duplicate);
+
     const maxOrder = await ThematicContent.max('order', {
       where: { thematicComponentId: Number(id) },
     }) as number || 0;
@@ -300,6 +324,14 @@ export const createExpectedLearning = async (req: Request, res: Response) => {
     if (!contentIds || !Array.isArray(contentIds) || contentIds.length === 0) {
       return res.status(400).json({ message: 'contentIds es requerido' });
     }
+
+    const duplicate = await ExpectedLearning.findOne({
+      where: {
+        description,
+        createdAt: { [Op.gte]: new Date(Date.now() - DUP_WINDOW_MS) },
+      },
+    });
+    if (duplicate) return res.json(duplicate);
 
     const maxOrder = await ExpectedLearning.max('order') as number || 0;
 

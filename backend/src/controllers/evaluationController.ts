@@ -214,6 +214,20 @@ export const createEvaluationItem = async (req: Request, res: Response) => {
       }
     }
 
+    // Double-submit guard: an identical item created within the last seconds is
+    // a duplicate click during network lag — return it instead of inserting again.
+    const duplicate = await EvaluationPlan.findOne({
+      where: {
+        periodGradeSubjectId,
+        sectionId,
+        termId,
+        description,
+        percentage,
+        createdAt: { [Op.gte]: new Date(Date.now() - 5000) },
+      },
+    });
+    if (duplicate) return res.json(duplicate);
+
     // Validate percentage sum does not exceed 100
     const currentSum = await EvaluationPlan.sum('percentage', {
       where: { periodGradeSubjectId, sectionId, termId },

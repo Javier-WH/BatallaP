@@ -21,9 +21,11 @@ interface EvaluationPlanAttributes {
   tecnicaId?: number | null;
   instrumentoId?: number | null;
   estrategiaId?: number | null;
+  createdAt?: Date;
+  updatedAt?: Date;
 }
 
-interface EvaluationPlanCreationAttributes extends Optional<EvaluationPlanAttributes, 'id' | 'thematicComponentId' | 'thematicContentIds' | 'evaluationType' | 'tecnica' | 'instrumento' | 'shortDescription' | 'tecnicaId' | 'instrumentoId' | 'estrategiaId'> { }
+interface EvaluationPlanCreationAttributes extends Optional<EvaluationPlanAttributes, 'id' | 'thematicComponentId' | 'thematicContentIds' | 'evaluationType' | 'tecnica' | 'instrumento' | 'shortDescription' | 'tecnicaId' | 'instrumentoId' | 'estrategiaId' | 'createdAt' | 'updatedAt'> { }
 
 class EvaluationPlan extends Model<EvaluationPlanAttributes, EvaluationPlanCreationAttributes> implements EvaluationPlanAttributes {
   public id!: number;
