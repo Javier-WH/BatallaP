@@ -419,6 +419,15 @@ export async function getSessionDetail(sessionId: number): Promise<SessionDetail
     }
   }
 
+  // Section-first ordering (A before B…) then surname — in merged group
+  // classes each section's students stay together.
+  rosterInscriptions.sort((a, b) =>
+    (a.gradeId - b.gradeId) ||
+    (a.sectionId - b.sectionId) ||
+    String(a.student?.lastName ?? '').localeCompare(String(b.student?.lastName ?? ''), 'es') ||
+    String(a.student?.firstName ?? '').localeCompare(String(b.student?.firstName ?? ''), 'es')
+  );
+
   // Merge records from the canonical session and any sibling sessions created
   // before group slots were merged (live data may have them).
   const clusterSessionRows = await AttendanceSession.findAll({

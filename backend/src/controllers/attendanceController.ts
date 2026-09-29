@@ -279,28 +279,69 @@ export const listSessions = async (req: Request, res: Response) => {
       return true;
     });
 
-    const withCounts = await Promise.all(filtered.map(async s => {
-      const records = await AttendanceRecord.findAll({ where: { sessionId: s.id }, raw: true });
-      const counts = { present: 0, absent: 0, late: 0, kicked: 0, blocked: 0, total: records.length };
-      for (const r of records) {
+    // Group-subject slots span several sections but are one physical class:
+    // merge sibling sessions the same way the teacher view does, so staff do
+    // not see duplicated rows nor partial counts.
+    const clusters = new Map<string, any[]>();
+    for (const s of filtered) {
+      const e = s.scheduleEntry;
+      const key = e?.isGroupSubject
+        ? `g|${s.sessionDate}|${e.periodId}|${e.teacherId}`
+        : `s|${s.id}`;
+      if (!clusters.has(key)) clusters.set(key, []);
+      clusters.get(key)!.push(s);
+    }
+
+    const shortSec = (name: string | null | undefined) =>
+      (name ?? '').trim().replace(/^secci[oó]n\s*/i, '').trim() || (name ?? '').trim();
+
+    const withCounts = await Promise.all([...clusters.values()].map(async cluster => {
+      // Canonical = lowest scheduleEntryId, matching the teacher view.
+      cluster.sort((a: any, b: any) => a.scheduleEntryId - b.scheduleEntryId);
+      const canonical = cluster[0];
+      const sessionIds = cluster.map((s: any) => s.id);
+      const records = await AttendanceRecord.findAll({ where: { sessionId: sessionIds }, raw: true });
+
+      // Deduplicate by inscription, preferring the canonical session's record.
+      const byInscription = new Map<number, any>();
+      for (const r of records as any[]) {
+        const prev = byInscription.get(r.inscriptionId);
+        if (!prev
+          || (r.sessionId === canonical.id && prev.sessionId !== canonical.id)
+          || (prev.sessionId !== canonical.id && r.sessionId !== canonical.id && r.id > prev.id)) {
+          byInscription.set(r.inscriptionId, r);
+        }
+      }
+      const mergedRecords = [...byInscription.values()];
+
+      const counts = { present: 0, absent: 0, late: 0, kicked: 0, blocked: 0, total: mergedRecords.length };
+      for (const r of mergedRecords) {
         if (r.status === 'present') counts.present++;
         else if (r.status === 'absent') counts.absent++;
         else if (r.status === 'late') counts.late++;
         else if (r.status === 'kicked') counts.kicked++;
         if (r.blocked) counts.blocked++;
       }
-      const pgs = s.scheduleEntry?.schedule?.section;
+
+      const pgsOf = (s: any) => s.scheduleEntry?.schedule?.section;
+      const gradeNames = [...new Set(cluster.map((s: any) => pgsOf(s)?.periodGrade?.grade?.name ?? ''))];
+      const sameGrade = gradeNames.length === 1;
+      const sectionName = sameGrade
+        ? [...new Set(cluster.map((s: any) => shortSec(pgsOf(s)?.section?.name)))].join('/')
+        : [...new Set(cluster.map((s: any) => `${pgsOf(s)?.periodGrade?.grade?.name ?? ''} ${shortSec(pgsOf(s)?.section?.name)}`.trim()))].join(' · ');
+      const subjectNames = [...new Set(cluster.map((s: any) => s.scheduleEntry?.subject?.name).filter(Boolean))];
+
       return {
-        id: s.id,
-        sessionDate: s.sessionDate,
-        status: s.status,
-        periodId: s.scheduleEntry?.periodId ?? null,
-        subjectName: s.scheduleEntry?.subject?.name ?? null,
-        teacherName: s.scheduleEntry?.teacher
-          ? `${s.scheduleEntry.teacher.lastName}, ${s.scheduleEntry.teacher.firstName}`.trim()
+        id: canonical.id,
+        sessionDate: canonical.sessionDate,
+        status: cluster.some((s: any) => s.status === 'completed') ? 'completed' : canonical.status,
+        periodId: canonical.scheduleEntry?.periodId ?? null,
+        subjectName: subjectNames.join(' / ') || null,
+        teacherName: canonical.scheduleEntry?.teacher
+          ? `${canonical.scheduleEntry.teacher.lastName}, ${canonical.scheduleEntry.teacher.firstName}`.trim()
           : null,
-        gradeName: pgs?.periodGrade?.grade?.name ?? '',
-        sectionName: pgs?.section?.name ?? '',
+        gradeName: sameGrade ? gradeNames[0] : gradeNames.filter(Boolean).join(' · '),
+        sectionName,
         counts,
       };
     }));

@@ -344,11 +344,15 @@ function ScheduleScreen({
                       : 'bg-white text-slate-500 border border-slate-200'
                 }`}
               >
-                {d}
+                <span className="block leading-tight">{d}</span>
+                <span className="block text-[11px] leading-tight opacity-70 tabular-nums">{dayDate.date()}</span>
               </button>
             );
           })}
         </div>
+        <p className="mt-3 text-center text-xs text-slate-500 att-font-body">
+          {`${DAY_FULL[dayIdx]} ${weekMonday.add(dayIdx, 'day').date()} de ${MONTHS_FULL[weekMonday.add(dayIdx, 'day').month()].toLowerCase()}`}
+        </p>
       </div>
 
       <div className="px-5 py-5">
@@ -621,10 +625,12 @@ function RosterScreen({
             </button>
           </div>
         </div>
-        <h1 className="att-font-head text-xl text-slate-900">{session.subjectName || 'Sin materia'}</h1>
+        <h1 className="att-font-head text-xl text-slate-900">
+          {session.subjectName || 'Sin materia'}
+          {session.sectionLabel ? ` — ${session.sectionLabel}` : ''}
+        </h1>
         <p className="text-sm text-slate-400 att-font-body">
-          {session.periodStart ?? session.periodId.toUpperCase()} · {dayName}
-          {session.sectionLabel ? ` · ${session.sectionLabel}` : ''}
+          {session.periodStart ?? session.periodId.toUpperCase()} · {`${dayName} ${dayjs(dateStr).date()} de ${MONTHS_FULL[dayjs(dateStr).month()].toLowerCase()}`}
         </p>
 
         {sessionStatus === 'done' && (
