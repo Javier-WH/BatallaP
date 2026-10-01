@@ -99,7 +99,7 @@ const todayWeekdayIdx = (): number => {
  * schedule (timeline of today's sessions) and roster (mark attendance).
  * Mirrors the approved attendance-app prototype.
  */
-const TeacherAttendanceTab: React.FC = () => {
+const TeacherAttendanceTab: React.FC<{ onExit?: () => void }> = ({ onExit }) => {
   const { user } = useAuth();
   const { viewPeriod } = useSchool();
   const [month, setMonth] = useState<Dayjs>(() => dayjs().startOf('month'));
@@ -213,6 +213,7 @@ const TeacherAttendanceTab: React.FC = () => {
             statusOf={statusOf}
             loading={loading}
             onSelectSession={(id) => setOpenSessionId(id)}
+            onExit={onExit}
           />
         )}
       </div>
@@ -224,7 +225,7 @@ const TeacherAttendanceTab: React.FC = () => {
 function ScheduleScreen({
   userInitials, month, months, monthPickerOpen, onToggleMonthPicker, onPickMonth,
   weekMonday, weekPickerOpen, onToggleWeekPicker, onPickWeek,
-  dayIdx, onPickDay, sessions, statusOf, loading, onSelectSession,
+  dayIdx, onPickDay, sessions, statusOf, loading, onSelectSession, onExit,
 }: {
   userInitials: string;
   month: Dayjs;
@@ -242,13 +243,24 @@ function ScheduleScreen({
   statusOf: (s: AttendanceSessionView, idx: number) => SessionStatus;
   loading: boolean;
   onSelectSession: (id: number) => void;
+  onExit?: () => void;
 }) {
   const weeks = weeksOfMonth(month);
   return (
     <div className="att-font-body">
       <div className="px-5 pt-6 pb-4 border-b border-slate-200">
         <div className="flex items-center justify-between">
-          <LeftOutlined style={{ fontSize: 14, color: '#94a3b8' }} />
+          {onExit ? (
+            <button
+              onClick={onExit}
+              aria-label="Volver"
+              className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-700 transition-colors"
+            >
+              <LeftOutlined style={{ fontSize: 14 }} />
+            </button>
+          ) : (
+            <div className="w-8 h-8" aria-hidden="true" />
+          )}
           <h1 className="att-font-head text-lg text-slate-900">Asistencias</h1>
           <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center">
             <UserOutlined className="w-4 h-4 text-slate-500" />

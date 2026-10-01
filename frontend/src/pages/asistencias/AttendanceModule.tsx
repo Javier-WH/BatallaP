@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Tabs } from 'antd';
 import { CheckSquareOutlined, TeamOutlined, AppstoreOutlined, UserOutlined } from '@ant-design/icons';
 import { useAuth } from '@/context/AuthContext';
@@ -14,9 +14,14 @@ const STAFF_ROLES = ['Master', 'Administrador', 'Control de Estudios'];
  * - Profesor: mark attendance for their scheduled sessions (with backfill).
  * - Control de Estudios / Administrador / Master: sessions, reports by
  *   section and by student (view, export; edit only exceptionally).
+ *
+ * A pure teacher has a single view, so it renders without the page title and
+ * tab bar — the phone frame gains that vertical space. When the teacher view
+ * lives inside the tabs (staff), the frame's back arrow exits to Sesiones.
  */
 const AttendanceModule: React.FC = () => {
   const { user } = useAuth();
+  const [activeKey, setActiveKey] = useState<string>();
 
   const roles = useMemo(() => user?.roles ?? [], [user]);
   const isTeacher = roles.includes('Profesor');
@@ -28,7 +33,7 @@ const AttendanceModule: React.FC = () => {
       tabs.push({
         key: 'teacher',
         label: <span><CheckSquareOutlined /> Tomar Asistencia</span>,
-        children: <TeacherAttendanceTab />,
+        children: <TeacherAttendanceTab onExit={() => setActiveKey('sessions')} />,
       });
     }
     if (isStaff) {
@@ -53,6 +58,16 @@ const AttendanceModule: React.FC = () => {
     return tabs;
   }, [isTeacher, isStaff]);
 
+  // Single-view users (teachers without staff roles) skip the redundant
+  // "Asistencias" heading and the one-item tab bar.
+  if (items.length === 1) {
+    return (
+      <div className="h-full min-h-0 overflow-y-auto px-3 py-3 sm:px-6 sm:py-4">
+        {items[0].children}
+      </div>
+    );
+  }
+
   return (
     <div className="p-6 h-full min-h-0 overflow-y-auto">
       <div className="mb-4">
@@ -62,7 +77,8 @@ const AttendanceModule: React.FC = () => {
         </p>
       </div>
       <Tabs
-        defaultActiveKey={items[0]?.key}
+        activeKey={activeKey ?? items[0]?.key}
+        onChange={setActiveKey}
         items={items}
         size="large"
       />
