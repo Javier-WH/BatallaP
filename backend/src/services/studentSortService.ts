@@ -107,13 +107,16 @@ function numericDocument(doc: string | undefined | null): number {
   return isNaN(parsed) ? 0 : parsed;
 }
 
-/** Comparación de strings case-insensitive segura para null/undefined. */
+/**
+ * Comparación de strings case-insensitive segura para null/undefined.
+ * Usa colación española insensible a tildes para alinear con el ORDER BY de
+ * MySQL (`LOWER()` bajo collation utf8mb4_*_ci, que también ignora acentos):
+ * "ÁLVAREZ" ordena con la A, no después de la Z como haría `<`/`>` por
+ * punto de código Unicode.
+ */
+const esCollator = new Intl.Collator('es', { sensitivity: 'base', numeric: true });
 function compareStrings(a: string | undefined | null, b: string | undefined | null): number {
-  const sa = (a || '').trim().toLowerCase();
-  const sb = (b || '').trim().toLowerCase();
-  if (sa < sb) return -1;
-  if (sa > sb) return 1;
-  return 0;
+  return esCollator.compare((a || '').trim(), (b || '').trim());
 }
 
 /**

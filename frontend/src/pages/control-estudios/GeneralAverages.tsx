@@ -10,6 +10,7 @@ import 'ag-grid-community/styles/ag-grid.css';
 import 'ag-grid-community/styles/ag-theme-quartz.css';
 import { useSchool } from '@/context/SchoolContext';
 import api from '@/services/api';
+import { compareText } from '@/utils/textCompare';
 
 const { Title } = Typography;
 const MOBILE_TABLE_QUERY = '(max-width: 768px), (max-height: 500px) and (orientation: landscape)';
@@ -386,6 +387,8 @@ export default function GeneralAverages() {
   const defaultColDef = useMemo<ColDef<any>>(() => ({
     resizable: true,
     sortable: groupBy.length === 0,
+    // Spanish collation so accented names ("Ángel") sort with "A", not after "Z".
+    comparator: compareText,
   }), [groupBy]);
 
   const onGridReady = useCallback((event: GridReadyEvent) => {

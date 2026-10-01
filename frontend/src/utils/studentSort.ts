@@ -15,6 +15,8 @@
  * Debe mantenerse sincronizado con `backend/src/services/studentSortService.ts`.
  */
 
+import { compareStringsEs } from './textCompare';
+
 export type StudentDocumentType =
   | 'Venezolano'
   | 'Cedula Escolar'
@@ -40,11 +42,7 @@ function numericDocument(doc: string | undefined | null): number {
 }
 
 function compareStrings(a: string | undefined | null, b: string | undefined | null): number {
-  const sa = (a || '').trim().toLowerCase();
-  const sb = (b || '').trim().toLowerCase();
-  if (sa < sb) return -1;
-  if (sa > sb) return 1;
-  return 0;
+  return compareStringsEs(a, b);
 }
 
 export interface SortableStudent {

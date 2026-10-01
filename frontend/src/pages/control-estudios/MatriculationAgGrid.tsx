@@ -12,6 +12,7 @@ import {
   type VenezuelaState,
 } from './matriculationColumns';
 import type { EnrollmentQuestionResponse } from '@/services/enrollmentQuestions';
+import { compareText } from '@/utils/textCompare';
 
 interface MatriculationAgGridProps extends ColumnCallbacks {
   rowData: MatriculationRow[];
@@ -153,6 +154,8 @@ const MatriculationAgGrid = React.forwardRef<MatriculationAgGridHandle, Matricul
       minWidth: 60,
       filter: false,
       suppressMovable: false,
+      // Spanish collation so accented names ("Ángel") sort with "A", not after "Z".
+      comparator: compareText,
     }),
     []
   );
