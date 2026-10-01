@@ -41,7 +41,7 @@ export function getDayNameForDate(dateStr: string): string {
 }
 
 /** Sort key for period ids: morning (m1, m2...) before afternoon (t1, t2...). */
-function periodSortKey(periodId: string): number {
+export function periodSortKey(periodId: string): number {
   const match = /^([mt])(\d+)$/.exec(periodId);
   if (!match) return 999;
   return (match[1] === 'm' ? 0 : 1) * 1000 + Number(match[2]);

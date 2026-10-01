@@ -1,18 +1,19 @@
 import React, { useMemo } from 'react';
 import { Tabs } from 'antd';
-import { CheckSquareOutlined, TeamOutlined, SettingOutlined } from '@ant-design/icons';
+import { CheckSquareOutlined, TeamOutlined, AppstoreOutlined, UserOutlined } from '@ant-design/icons';
 import { useAuth } from '@/context/AuthContext';
 import TeacherAttendanceTab from './TeacherAttendanceTab';
 import StaffSessionsTab from './StaffSessionsTab';
-import AdminAttendanceTab from './AdminAttendanceTab';
+import SectionReportTab from './SectionReportTab';
+import StudentReportTab from './StudentReportTab';
 
 const STAFF_ROLES = ['Master', 'Administrador', 'Control de Estudios'];
 
 /**
  * Attendance module: horizontal tabs per role.
  * - Profesor: mark attendance for their scheduled sessions (with backfill).
- * - Control de Estudios / Administrador / Master: browse and edit all sessions.
- * - Administrador / Master: reports + configuration.
+ * - Control de Estudios / Administrador / Master: sessions, reports by
+ *   section and by student (view, export; edit only exceptionally).
  */
 const AttendanceModule: React.FC = () => {
   const { user } = useAuth();
@@ -20,7 +21,6 @@ const AttendanceModule: React.FC = () => {
   const roles = useMemo(() => user?.roles ?? [], [user]);
   const isTeacher = roles.includes('Profesor');
   const isStaff = roles.some(r => STAFF_ROLES.includes(r));
-  const isAdmin = roles.includes('Administrador') || roles.includes('Master');
 
   const items = useMemo(() => {
     const tabs = [];
@@ -32,21 +32,26 @@ const AttendanceModule: React.FC = () => {
       });
     }
     if (isStaff) {
-      tabs.push({
-        key: 'sessions',
-        label: <span><TeamOutlined /> Sesiones</span>,
-        children: <StaffSessionsTab />,
-      });
-    }
-    if (isAdmin) {
-      tabs.push({
-        key: 'admin',
-        label: <span><SettingOutlined /> Administración</span>,
-        children: <AdminAttendanceTab />,
-      });
+      tabs.push(
+        {
+          key: 'sessions',
+          label: <span><TeamOutlined /> Sesiones</span>,
+          children: <StaffSessionsTab />,
+        },
+        {
+          key: 'by-section',
+          label: <span><AppstoreOutlined /> Por Sección</span>,
+          children: <SectionReportTab />,
+        },
+        {
+          key: 'by-student',
+          label: <span><UserOutlined /> Por Estudiante</span>,
+          children: <StudentReportTab />,
+        },
+      );
     }
     return tabs;
-  }, [isTeacher, isStaff, isAdmin]);
+  }, [isTeacher, isStaff]);
 
   return (
     <div className="p-6 h-full min-h-0 overflow-y-auto">

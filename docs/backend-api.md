@@ -374,11 +374,17 @@ Ver [`flows/grade-edit.md`](./flows/grade-edit.md).
 | GET | `/clearance-reasons` | Motivos de desbloqueo activos (siembra 4 defaults la primera vez). |
 | GET | `/sessions?schoolPeriodId=&dateFrom=&dateTo=` | Vista staff: sesiones con conteos (filtros opcionales `gradeId`, `sectionId`). |
 | GET | `/students/:personId/summary?schoolPeriodId=` | Historial completo de asistencia del estudiante + totales. |
+| GET | `/reports/section-week?schoolPeriodId=&gradeId=&sectionId=&dateFrom=&dateTo=` | Staff. Nómina de la sección × días hábiles; cada celda = último estado del día. |
+| GET | `/reports/section-day?schoolPeriodId=&gradeId=&sectionId=&date=` | Staff. Nómina × bloques de clase del horario de la sección ese día (materias de grupo en una sola columna con la abreviatura del grupo). |
+| GET | `/reports/student-weeks?inscriptionId=&dateFrom=&dateTo=` | Staff. Un estudiante: filas = semanas, columnas = Lun–Vie. |
+| GET | `/reports/student-day?inscriptionId=&date=` | Staff. Un estudiante × bloques de clase del día. |
+| GET | `/reports/student-search?schoolPeriodId=&q=` | Staff. Búsqueda por apellido/nombre/cédula (mín. 2 caracteres, 20 resultados). |
 
 **Reglas de negocio**:
 - `absent` y `kicked` requieren `reason` (validado en service y UI).
 - **Bloqueo cruzado**: un estudiante con `absent`/`kicked` sin desbloquear en una sesión anterior del mismo día aparece `blocked` en las siguientes sesiones. Cualquier desbloqueo exige motivo del catálogo `ClearanceReason` y queda auditado.
 - `AttendanceAuditLog` es append-only (acciones: `marked`, `blocked`, `cleared`, `status_changed`).
+- **Reportes** (`attendanceReportService`): ausencia justificada = estado `excused` o `absent` con motivo `Justificado`/`Enfermo`. Celda diaria (semana): `Expulsado` prevalece; si el último estado es una ausencia sin justificar y antes estuvo presente/tarde ese día → `Jubilado`/`Jubilada` (según `Person.gender`). Celda por bloque (día): la ausencia sin justificar posterior a un bloque con asistencia se marca `Jubilado`/`Jubilada`.
 
 ## 🚪 Gate check-in (RFID) – `/api/gate` (`gateRoutes.ts`)
 

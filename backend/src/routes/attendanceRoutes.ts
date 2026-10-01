@@ -17,5 +17,10 @@ router.get('/clearance-reasons', attendanceController.getClearanceReasons);
 // Staff views
 router.get('/sessions', attendanceController.listSessions);
 router.get('/students/:personId/summary', attendanceController.getStudentSummary);
+router.get('/reports/section-week', attendanceController.getSectionWeekReportHandler);
+router.get('/reports/section-day', attendanceController.getSectionDayReportHandler);
+router.get('/reports/student-weeks', attendanceController.getStudentWeeksReportHandler);
+router.get('/reports/student-day', attendanceController.getStudentDayReportHandler);
+router.get('/reports/student-search', attendanceController.searchReportStudentsHandler);
 
 export default router;

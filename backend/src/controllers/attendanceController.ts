@@ -28,6 +28,13 @@ import {
   listClearanceReasons,
   AttendanceRecordInput,
 } from '@/services/attendanceService';
+import {
+  getSectionWeekReport,
+  getSectionDayReport,
+  getStudentWeeksReport,
+  getStudentDayReport,
+  searchStudents,
+} from '@/services/attendanceReportService';
 
 const hasRole = (user: any, roles: string[]): boolean => {
   if (!user || !user.roles) return false;
@@ -375,6 +382,74 @@ export const listSessions = async (req: Request, res: Response) => {
     return res.status(500).json({ message: error.message || 'Error al listar sesiones' });
   }
 };
+
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Shared wrapper for staff report endpoints: role check + uniform errors. */
+const staffReport = (name: string, run: (req: Request) => Promise<unknown>) =>
+  async (req: Request, res: Response) => {
+    try {
+      if (!isStaff(req)) {
+        return res.status(403).json({ message: 'Solo personal autorizado puede consultar reportes' });
+      }
+      return res.json(await run(req));
+    } catch (error: any) {
+      console.error(`[${name}] Error:`, error);
+      const status = error?.status ?? 500;
+      return res.status(status).json({ message: error.message || 'Error al generar el reporte' });
+    }
+  };
+
+const badRequest = (message: string) => Object.assign(new Error(message), { status: 400 });
+
+const requireDate = (value: unknown, field: string): string => {
+  const s = String(value ?? '');
+  if (!DATE_RE.test(s)) throw badRequest(`${field} inválido (YYYY-MM-DD)`);
+  return s;
+};
+
+const requireId = (value: unknown, field: string): number => {
+  const n = Number(value);
+  if (!n) throw badRequest(`${field} es requerido`);
+  return n;
+};
+
+/** GET /api/attendance/reports/section-week?schoolPeriodId=&gradeId=&sectionId=&dateFrom=&dateTo= */
+export const getSectionWeekReportHandler = staffReport('getSectionWeekReport', req => getSectionWeekReport({
+  schoolPeriodId: requireId(req.query.schoolPeriodId, 'schoolPeriodId'),
+  gradeId: requireId(req.query.gradeId, 'gradeId'),
+  sectionId: requireId(req.query.sectionId, 'sectionId'),
+  dateFrom: requireDate(req.query.dateFrom, 'dateFrom'),
+  dateTo: requireDate(req.query.dateTo, 'dateTo'),
+}));
+
+/** GET /api/attendance/reports/section-day?schoolPeriodId=&gradeId=&sectionId=&date= */
+export const getSectionDayReportHandler = staffReport('getSectionDayReport', req => getSectionDayReport({
+  schoolPeriodId: requireId(req.query.schoolPeriodId, 'schoolPeriodId'),
+  gradeId: requireId(req.query.gradeId, 'gradeId'),
+  sectionId: requireId(req.query.sectionId, 'sectionId'),
+  date: requireDate(req.query.date, 'date'),
+}));
+
+/** GET /api/attendance/reports/student-weeks?inscriptionId=&dateFrom=&dateTo= */
+export const getStudentWeeksReportHandler = staffReport('getStudentWeeksReport', req => getStudentWeeksReport({
+  inscriptionId: requireId(req.query.inscriptionId, 'inscriptionId'),
+  dateFrom: requireDate(req.query.dateFrom, 'dateFrom'),
+  dateTo: requireDate(req.query.dateTo, 'dateTo'),
+}));
+
+/** GET /api/attendance/reports/student-day?inscriptionId=&date= */
+export const getStudentDayReportHandler = staffReport('getStudentDayReport', req => getStudentDayReport({
+  inscriptionId: requireId(req.query.inscriptionId, 'inscriptionId'),
+  date: requireDate(req.query.date, 'date'),
+}));
+
+/** GET /api/attendance/reports/student-search?schoolPeriodId=&q= */
+export const searchReportStudentsHandler = staffReport('searchReportStudents', async req => {
+  const schoolPeriodId = requireId(req.query.schoolPeriodId, 'schoolPeriodId');
+  const q = String(req.query.q ?? '');
+  return q.trim().length < 2 ? [] : searchStudents(schoolPeriodId, q);
+});
 
 /**
  * GET /api/attendance/students/:personId/summary?schoolPeriodId=

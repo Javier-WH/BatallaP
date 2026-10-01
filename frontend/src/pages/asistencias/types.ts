@@ -81,6 +81,65 @@ export interface StudentSummaryRecord {
   markedAt: string;
 }
 
+/* ---- Staff reports (Por Sección / Por Estudiante) ---- */
+
+export type ReportCellCode = AttendanceStatus | 'jubilado';
+
+export interface ReportCell {
+  code: ReportCellCode;
+  label: string;
+  reason: string | null;
+}
+
+export interface ReportStudent {
+  inscriptionId: number;
+  personId: number;
+  document: string;
+  lastName: string;
+  firstName: string;
+  gender: 'M' | 'F' | null;
+  gradeName: string;
+  sectionName: string;
+}
+
+export interface ReportDayColumn {
+  key: string;
+  label: string;
+  title: string;
+  periodIds: string[];
+  start: string | null;
+  end: string | null;
+}
+
+export interface SectionWeekReport {
+  gradeName: string;
+  sectionName: string;
+  dateFrom: string;
+  dateTo: string;
+  days: { date: string; dayShort: string }[];
+  students: (ReportStudent & { cells: Record<string, ReportCell | null> })[];
+}
+
+export interface SectionDayReport {
+  gradeName: string;
+  sectionName: string;
+  date: string;
+  dayShort: string;
+  columns: ReportDayColumn[];
+  students: (ReportStudent & { cells: Record<string, ReportCell | null> })[];
+}
+
+export interface StudentWeeksReport {
+  student: ReportStudent;
+  dateFrom: string;
+  dateTo: string;
+  weeks: {
+    weekStart: string;
+    weekEnd: string;
+    days: { date: string; dayShort: string; inRange: boolean; cell: ReportCell | null }[];
+  }[];
+}
+
 export interface StudentSummary {
   records: StudentSummaryRecord[];
   totals: { present: number; absent: number; late: number; excused: number; kicked: number } | null;
