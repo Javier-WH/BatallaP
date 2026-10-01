@@ -128,10 +128,11 @@ function buildSectionLabel(cluster: any[]): string {
 /**
  * Cluster schedule entries into physical class blocks.
  *
- * The timetable stores one entry per clock hour, so a two-hour class is two
- * entries (e.g. m1 + m2). Entries of the same class spanning consecutive,
- * time-contiguous periods merge into one cluster: the merged session spans
- * the whole block (7:00–8:30) instead of producing two cards.
+ * The timetable stores one entry per clock hour, so a multi-hour class is
+ * several entries (e.g. m1 + m2). Entries of the same class spanning
+ * consecutive periods merge into one cluster: the merged session spans the
+ * whole block (7:00–8:30, or 2:50–5:40 with the recess inside) instead of
+ * producing one card per hour.
  *
  *   - Regular subjects merge only within the same section schedule, subject,
  *     teacher and day.
@@ -139,9 +140,9 @@ function buildSectionLabel(cluster: any[]): string {
  *     sections, so they additionally merge across sections of the same
  *     school period for the same teacher+subject+day.
  *
- * Contiguity is decided by the period times (prev.end === cur.start) so a
- * recess or the lunch gap splits runs; when period times are unknown, a
- * sortKey step of 1 is used as fallback. Entries are returned with the
+ * Contiguity is consecutive period numbering (m2 → m3): a recess inside a
+ * class stretch does not split the block, while the morning/afternoon
+ * boundary (m → t) always does. Entries are returned with the
  * earliest-period entry first.
  */
 export function clusterEntriesIntoClassBlocks(
@@ -165,24 +166,19 @@ export function clusterEntriesIntoClassBlocks(
       periodSortKey(a.periodId) - periodSortKey(b.periodId) || a.id - b.id);
     let run: any[] = [];
     let prevKey: number | null = null;
-    let prevInfo: { start: string; end: string } | undefined;
     for (const e of list) {
       const key = periodSortKey(e.periodId);
-      const info = periodInfoMap.get(e.periodId);
       if (prevKey !== null && key !== prevKey) {
-        // New period in the run: keep the run only when it is the next,
-        // time-contiguous period (recess/lunch gaps split the block).
-        const contiguous = (prevInfo && info)
-          ? prevInfo.end === info.start
-          : key - prevKey === 1;
-        if (!contiguous) {
+        // New period in the run: keep the run only when it is the next
+        // consecutive period number. A recess between periods is a break
+        // inside the same class, not a new block.
+        if (key - prevKey !== 1) {
           blocks.push(run);
           run = [];
         }
       }
       run.push(e);
       prevKey = key;
-      prevInfo = info;
     }
     if (run.length > 0) blocks.push(run);
   }

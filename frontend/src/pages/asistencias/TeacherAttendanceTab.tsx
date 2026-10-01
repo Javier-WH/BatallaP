@@ -558,6 +558,56 @@ function RosterScreen({
     return () => list.removeEventListener('wheel', handleWheel);
   }, [loading]);
 
+  // Dragging the scrollbar (or any direct scroll) must move the selection like
+  // the wheel does: the student whose row sits under the fixed editor becomes
+  // selected, otherwise the placeholder slot drifts away from the overlay.
+  const scrollFrame = useRef(0);
+  const selectedIdRef = useRef<number | null>(null);
+  const editorHeightRef = useRef(selectedEditorHeight);
+  useLayoutEffect(() => { selectedIdRef.current = selectedInscriptionId; }, [selectedInscriptionId]);
+  useLayoutEffect(() => { editorHeightRef.current = selectedEditorHeight; }, [selectedEditorHeight]);
+
+  useEffect(() => {
+    const list = rosterListRef.current;
+    if (loading || !list) return;
+
+    const handleScroll = () => {
+      cancelAnimationFrame(scrollFrame.current);
+      scrollFrame.current = requestAnimationFrame(() => {
+        const editorTop = list.getBoundingClientRect().top
+          + getEditorTopOffset(list, editorHeightRef.current);
+        const probeY = editorTop + 6;
+        const rows = list.querySelectorAll<HTMLElement>('[data-inscription-id]');
+        let hitId: number | null = null;
+        for (const row of rows) {
+          const rect = row.getBoundingClientRect();
+          if (rect.top <= probeY && rect.bottom >= probeY) {
+            hitId = Number(row.dataset.inscriptionId);
+            break;
+          }
+        }
+        // Probe landed in a spacer: clamp the selection to the nearest end so
+        // the list never detaches from the editor overlay.
+        if (hitId === null && rows.length > 0) {
+          const firstRect = rows[0].getBoundingClientRect();
+          const lastRect = rows[rows.length - 1].getBoundingClientRect();
+          if (probeY < firstRect.top) hitId = Number(rows[0].dataset.inscriptionId);
+          else if (probeY > lastRect.bottom) hitId = Number(rows[rows.length - 1].dataset.inscriptionId);
+        }
+        if (hitId && hitId !== selectedIdRef.current) {
+          setReasonDraft(null);
+          setSelectedInscriptionId(hitId);
+        }
+      });
+    };
+
+    list.addEventListener('scroll', handleScroll, { passive: true });
+    return () => {
+      list.removeEventListener('scroll', handleScroll);
+      cancelAnimationFrame(scrollFrame.current);
+    };
+  }, [loading]);
+
   const handleRosterTouchStart = (event: React.TouchEvent<HTMLDivElement>) => {
     const target = event.target as HTMLElement;
     if (target.closest('[data-selected-editor] button, [data-selected-editor] input, [data-selected-editor] textarea')) {
@@ -889,7 +939,10 @@ function SelectedStudentEditor({
       </div>
 
       <div className="mb-2 px-1">
-        <p className="text-[11px] text-slate-400 tabular-nums m-0">{String(index + 1).padStart(2, '0')}</p>
+        <p className="text-[11px] text-slate-400 tabular-nums m-0">
+          {String(index + 1).padStart(2, '0')}
+          {student.sectionLabel ? <span className="ml-2 font-semibold text-slate-500">{student.sectionLabel}</span> : null}
+        </p>
         <h2 className="att-font-head text-xl leading-tight text-slate-900 m-0 line-clamp-2 min-h-12">{student.fullName}</h2>
       </div>
 
