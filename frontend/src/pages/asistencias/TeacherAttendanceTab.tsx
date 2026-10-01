@@ -409,7 +409,13 @@ function ScheduleScreen({
                         {status === 'upcoming' && 'Aún no comienza'}
                       </span>
                     </div>
-                    <span className="text-xs text-slate-400 att-font-body shrink-0">{session.periodStart ?? session.periodId.toUpperCase()}</span>
+                    <span className="text-xs text-slate-400 att-font-body shrink-0">
+                      {session.periodStart
+                        ? (session.periodEnd && session.periodEnd !== session.periodStart
+                          ? `${session.periodStart} – ${session.periodEnd}`
+                          : session.periodStart)
+                        : session.periodId.toUpperCase()}
+                    </span>
                   </button>
                 </div>
               );
@@ -630,7 +636,12 @@ function RosterScreen({
           {session.sectionLabel ? ` — ${session.sectionLabel}` : ''}
         </h1>
         <p className="text-sm text-slate-400 att-font-body">
-          {session.periodStart ?? session.periodId.toUpperCase()} · {`${dayName} ${dayjs(dateStr).date()} de ${MONTHS_FULL[dayjs(dateStr).month()].toLowerCase()}`}
+          {session.periodStart
+            ? (session.periodEnd && session.periodEnd !== session.periodStart
+              ? `${session.periodStart} – ${session.periodEnd}`
+              : session.periodStart)
+            : session.periodId.toUpperCase()}
+          {' · '}{`${dayName} ${dayjs(dateStr).date()} de ${MONTHS_FULL[dayjs(dateStr).month()].toLowerCase()}`}
         </p>
 
         {sessionStatus === 'done' && (

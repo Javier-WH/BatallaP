@@ -21,6 +21,7 @@ import {
 } from '@/models';
 import { buildPeriodsFromSettings } from './diarioService';
 import { resolveActiveGroupSubjectIds } from './subjectGroupService';
+import { compareStudents } from './studentSortService';
 
 export type AttendanceStatus = 'present' | 'absent' | 'late' | 'excused' | 'kicked';
 
@@ -125,16 +126,132 @@ function buildSectionLabel(cluster: any[]): string {
 }
 
 /**
+ * Cluster schedule entries into physical class blocks.
+ *
+ * The timetable stores one entry per clock hour, so a two-hour class is two
+ * entries (e.g. m1 + m2). Entries of the same class spanning consecutive,
+ * time-contiguous periods merge into one cluster: the merged session spans
+ * the whole block (7:00–8:30) instead of producing two cards.
+ *
+ *   - Regular subjects merge only within the same section schedule, subject,
+ *     teacher and day.
+ *   - Group subjects (isGroupSubject) are one class shared by several
+ *     sections, so they additionally merge across sections of the same
+ *     school period for the same teacher+subject+day.
+ *
+ * Contiguity is decided by the period times (prev.end === cur.start) so a
+ * recess or the lunch gap splits runs; when period times are unknown, a
+ * sortKey step of 1 is used as fallback. Entries are returned with the
+ * earliest-period entry first.
+ */
+export function clusterEntriesIntoClassBlocks(
+  entries: any[],
+  periodInfoMap: Map<string, { start: string; end: string }>
+): any[][] {
+  const groups = new Map<string, any[]>();
+  for (const e of entries) {
+    const sp = e.schedule?.schoolPeriodId ?? e.schedule?.section?.periodGrade?.schoolPeriodId;
+    if (!sp) continue;
+    const key = e.isGroupSubject
+      ? `g|${sp}|${e.day}|${e.teacherId}|${e.subjectId}`
+      : `s|${e.scheduleId ?? e.schedule?.id}|${e.day}|${e.teacherId}|${e.subjectId}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(e);
+  }
+
+  const blocks: any[][] = [];
+  for (const list of groups.values()) {
+    list.sort((a, b) =>
+      periodSortKey(a.periodId) - periodSortKey(b.periodId) || a.id - b.id);
+    let run: any[] = [];
+    let prevKey: number | null = null;
+    let prevInfo: { start: string; end: string } | undefined;
+    for (const e of list) {
+      const key = periodSortKey(e.periodId);
+      const info = periodInfoMap.get(e.periodId);
+      if (prevKey !== null && key !== prevKey) {
+        // New period in the run: keep the run only when it is the next,
+        // time-contiguous period (recess/lunch gaps split the block).
+        const contiguous = (prevInfo && info)
+          ? prevInfo.end === info.start
+          : key - prevKey === 1;
+        if (!contiguous) {
+          blocks.push(run);
+          run = [];
+        }
+      }
+      run.push(e);
+      prevKey = key;
+      prevInfo = info;
+    }
+    if (run.length > 0) blocks.push(run);
+  }
+  return blocks;
+}
+
+/** Period label for a merged block: 'm1' or 'm1-m2' when it spans periods. */
+function blockPeriodLabel(block: any[]): string {
+  const first = block[0]?.periodId ?? '';
+  const last = block[block.length - 1]?.periodId ?? '';
+  return first === last ? first : `${first}-${last}`;
+}
+
+/**
+ * Entries of the class block a schedule entry belongs to (see
+ * clusterEntriesIntoClassBlocks). Returns the entry alone when no siblings
+ * exist. Entries come back ordered by period.
+ */
+async function findClassBlockEntries(
+  entry: any,
+  schoolPeriodId: number
+): Promise<{ entries: any[]; periodInfoMap: Map<string, { start: string; end: string }> }> {
+  const candidateWhere: any = entry.isGroupSubject
+    ? { day: entry.day, teacherId: entry.teacherId, isGroupSubject: true }
+    : {
+        day: entry.day,
+        teacherId: entry.teacherId,
+        subjectId: entry.subjectId,
+        scheduleId: entry.scheduleId,
+      };
+  const candidates = await ScheduleEntry.findAll({
+    where: candidateWhere,
+    include: [
+      {
+        model: Schedule,
+        as: 'schedule',
+        where: { schoolPeriodId },
+        required: true,
+        include: [
+          {
+            model: PeriodGradeSection,
+            as: 'section',
+            include: [
+              { model: PeriodGrade, as: 'periodGrade', include: [{ model: Grade, as: 'grade' }] },
+              { model: Section, as: 'section' },
+            ],
+          },
+        ],
+      },
+    ],
+    order: [['id', 'ASC']],
+  });
+  const periodInfoMap = await getPeriodInfoMap();
+  if (candidates.length === 0) return { entries: [entry], periodInfoMap };
+  const blocks = clusterEntriesIntoClassBlocks(candidates as any[], periodInfoMap);
+  const mine = blocks.find(b => b.some(e => e.id === entry.id));
+  return { entries: mine ?? [entry], periodInfoMap };
+}
+
+/**
  * Get-or-create the attendance sessions for a teacher on a calendar date,
  * derived from the schedule entries for that weekday. Works for past dates
  * (paper backfill).
  *
- * Group subjects (isGroupSubject) are one physical class shared by several
- * sections, but the schedule stores one entry per section. Entries sharing
- * schoolPeriod+day+period merge into a single session (canonical = lowest
- * entry id); records already saved in sibling sessions are still counted so
- * nothing is lost on live data. Regular subjects never share a slot, so
- * their entries always produce separate per-section sessions.
+ * Entries are clustered into physical class blocks by
+ * clusterEntriesIntoClassBlocks: consecutive periods of the same class and
+ * group-subject sections of one shared class merge into a single session
+ * (canonical = lowest entry id). Records already saved in sibling sessions
+ * are still counted so nothing is lost on live data.
  */
 export async function getTeacherSessionsForDate(
   personId: number,
@@ -178,21 +295,11 @@ export async function getTeacherSessionsForDate(
   if (entries.length === 0) return [];
 
   const periodInfoMap = await getPeriodInfoMap();
-
-  // Cluster group-subject entries sharing schoolPeriod+day+period — one
-  // physical class across several sections. Regular entries stay separate.
-  const clusters = new Map<string, any[]>();
-  for (const entry of entries as any[]) {
-    const sp = entry.schedule?.section?.periodGrade?.schoolPeriodId;
-    if (!sp) continue;
-    const key = entry.isGroupSubject ? `g|${sp}|${entry.day}|${entry.periodId}` : `s|${entry.id}`;
-    if (!clusters.has(key)) clusters.set(key, []);
-    clusters.get(key)!.push(entry);
-  }
+  const blocks = clusterEntriesIntoClassBlocks(entries as any[], periodInfoMap);
 
   const sessions: TeacherSessionView[] = [];
-  for (const cluster of clusters.values()) {
-    const canonical = cluster[0];
+  for (const cluster of blocks) {
+    const canonical = [...cluster].sort((a: any, b: any) => a.id - b.id)[0];
     const schedule = canonical.schedule;
     const pgs = schedule.section;
     const periodGrade = pgs.periodGrade;
@@ -236,7 +343,8 @@ export async function getTeacherSessionsForDate(
       else if (r.status === 'kicked') counts.kicked++;
     }
 
-    const periodInfo = periodInfoMap.get(canonical.periodId) || null;
+    const firstInfo = periodInfoMap.get(cluster[0].periodId) || null;
+    const lastInfo = periodInfoMap.get(cluster[cluster.length - 1].periodId) || null;
     const subjectNames = Array.from(new Set(cluster.map((e: any) => e.subject?.name).filter(Boolean)));
     sessions.push({
       id: session.id,
@@ -244,9 +352,9 @@ export async function getTeacherSessionsForDate(
       sessionDate: session.sessionDate,
       status: clusterSessions.some((s: any) => s.status === 'completed') ? 'completed' : session.status,
       day: canonical.day,
-      periodId: canonical.periodId,
-      periodStart: periodInfo?.start ?? null,
-      periodEnd: periodInfo?.end ?? null,
+      periodId: blockPeriodLabel(cluster),
+      periodStart: firstInfo?.start ?? null,
+      periodEnd: lastInfo?.end ?? null,
       subjectId: canonical.subjectId,
       subjectName: subjectNames.join(' / ') || null,
       gradeName: periodGrade?.grade?.name ?? '',
@@ -256,7 +364,9 @@ export async function getTeacherSessionsForDate(
     });
   }
 
-  sessions.sort((a, b) => periodSortKey(a.periodId) - periodSortKey(b.periodId));
+  // Sort by the block's first real period id (periodId may be a 'm1-m2' range).
+  sessions.sort((a, b) =>
+    periodSortKey(a.periodId.split('-')[0]) - periodSortKey(b.periodId.split('-')[0]));
   return sessions;
 }
 
@@ -318,42 +428,18 @@ export async function getSessionDetail(sessionId: number): Promise<SessionDetail
   const pgs = schedule.section;
   const periodGrade = pgs.periodGrade;
 
-  // A group-subject slot is one class shared by several sections: the roster
-  // holds only the students enrolled in the group subject(s) of the cluster,
-  // and records may live in sibling sessions created before the merge.
-  let clusterEntries: any[] = [entry];
-  if (entry.isGroupSubject) {
-    const siblings = await ScheduleEntry.findAll({
-      where: {
-        day: entry.day,
-        periodId: entry.periodId,
-        teacherId: entry.teacherId,
-        isGroupSubject: true,
-      },
-      include: [
-        {
-          model: Schedule,
-          as: 'schedule',
-          where: { schoolPeriodId: (session as any).schoolPeriodId },
-          required: true,
-          include: [
-            {
-              model: PeriodGradeSection,
-              as: 'section',
-              include: [
-                { model: PeriodGrade, as: 'periodGrade', include: [{ model: Grade, as: 'grade' }] },
-                { model: Section, as: 'section' },
-              ],
-            },
-          ],
-        },
-      ],
-      order: [['id', 'ASC']],
-    });
-    if (siblings.length > 0) clusterEntries = siblings as any[];
-  }
+  // The roster belongs to the whole class block: a class spanning several
+  // consecutive periods merges its entries (records may live in sibling
+  // sessions created before the merge), and group subjects additionally span
+  // the sections sharing the class.
+  const { entries: clusterEntries, periodInfoMap } = await findClassBlockEntries(
+    entry, (session as any).schoolPeriodId
+  );
 
-  const pgsList: { gradeId: number; sectionId: number; gradeName: string; sectionName: string }[] = [];
+  const pgsList: {
+    gradeId: number; sectionId: number; gradeName: string; sectionName: string;
+    gradeOrder: number | null;
+  }[] = [];
   const seenPgs = new Set<number>();
   for (const e of clusterEntries) {
     const s = e.schedule?.section;
@@ -364,14 +450,21 @@ export async function getSessionDetail(sessionId: number): Promise<SessionDetail
       sectionId: s.sectionId,
       gradeName: s.periodGrade?.grade?.name ?? '',
       sectionName: s.section?.name ?? '',
+      gradeOrder: s.periodGrade?.grade?.order ?? null,
     });
   }
   const sectionLabelByKey = new Map<string, string>();
+  const sortMetaByKey = new Map<string, { gradeOrder: number; gradeName: string; sectionName: string }>();
   for (const p of pgsList) {
     const sec = shortSectionName(p.sectionName);
     // Roster rows always carry grade + section — in mixed-grade group classes
     // the section letter alone would be ambiguous.
     sectionLabelByKey.set(`${p.gradeId}|${p.sectionId}`, `${p.gradeName} ${sec}`.trim());
+    sortMetaByKey.set(`${p.gradeId}|${p.sectionId}`, {
+      gradeOrder: p.gradeOrder ?? 9999,
+      gradeName: p.gradeName,
+      sectionName: sec,
+    });
   }
 
   const inscriptions = await Inscription.findAll({
@@ -420,14 +513,22 @@ export async function getSessionDetail(sessionId: number): Promise<SessionDetail
     }
   }
 
-  // Section-first ordering (A before B…) then surname — in merged group
-  // classes each section's students stay together.
-  rosterInscriptions.sort((a, b) =>
-    (a.gradeId - b.gradeId) ||
-    (a.sectionId - b.sectionId) ||
-    String(a.student?.lastName ?? '').localeCompare(String(b.student?.lastName ?? ''), 'es') ||
-    String(a.student?.firstName ?? '').localeCompare(String(b.student?.firstName ?? ''), 'es')
-  );
+  // Sections grouped in order (A before B…) — within each section, the
+  // canonical nomina order: document type → document number → surname → name.
+  // Single-section rosters reduce to the canonical order alone.
+  const sortMeta = (ins: any) =>
+    sortMetaByKey.get(`${ins.gradeId}|${ins.sectionId}`)
+    ?? { gradeOrder: 9999, gradeName: '', sectionName: '' };
+  const cmpStr = (a: string, b: string) =>
+    (a || '').trim().toLowerCase().localeCompare((b || '').trim().toLowerCase(), 'es');
+  rosterInscriptions.sort((a, b) => {
+    const ma = sortMeta(a);
+    const mb = sortMeta(b);
+    return (ma.gradeOrder - mb.gradeOrder)
+      || cmpStr(ma.gradeName, mb.gradeName)
+      || cmpStr(ma.sectionName, mb.sectionName)
+      || compareStudents(a.student, b.student);
+  });
 
   // Merge records from the canonical session and any sibling sessions created
   // before group slots were merged (live data may have them).
@@ -452,10 +553,12 @@ export async function getSessionDetail(sessionId: number): Promise<SessionDetail
   }
 
   // Cross-session prior blocks: un-cleared absent/kicked in an EARLIER session
-  // of the same day. Suppressed when the student was already cleared in THIS
-  // session's record (the clearance lives on the current record).
+  // of the same day. Records inside this same class block never self-block.
+  // Suppressed when the student was already cleared in THIS session's record
+  // (the clearance lives on the current record).
   const rosterInscriptionIds = rosterInscriptions.map(i => i.id);
-  const currentEntryPeriodId = (session as any).scheduleEntry.periodId;
+  const clusterEntryIds = new Set(clusterEntries.map(e => e.id));
+  const blockStartKey = Math.min(...clusterEntries.map(e => periodSortKey(e.periodId)));
   const clearedInCurrent = new Set(
     (records as any[]).filter(r => r.clearedAt != null).map(r => r.inscriptionId)
   );
@@ -480,8 +583,8 @@ export async function getSessionDetail(sessionId: number): Promise<SessionDetail
     for (const r of priorRecords as any[]) {
       const entry = r.session?.scheduleEntry;
       if (!entry) continue;
-      if (r.session.scheduleEntryId === (session as any).scheduleEntryId) continue; // own session
-      if (periodSortKey(entry.periodId) >= periodSortKey(currentEntryPeriodId)) continue;
+      if (clusterEntryIds.has(r.session.scheduleEntryId)) continue; // same class block
+      if (periodSortKey(entry.periodId) >= blockStartKey) continue;
       if (clearedInCurrent.has(r.inscriptionId)) continue;
       const existing = priorByInscription.get(r.inscriptionId);
       if (!existing || periodSortKey(entry.periodId) < periodSortKey(existing.periodId)) {
@@ -514,11 +617,12 @@ export async function getSessionDetail(sessionId: number): Promise<SessionDetail
     };
   });
 
-  const periodInfoMap = await getPeriodInfoMap();
-  const periodInfo = periodInfoMap.get(entry.periodId) ?? null;
+  const firstInfo = periodInfoMap.get(clusterEntries[0]?.periodId ?? entry.periodId) ?? null;
+  const lastInfo = periodInfoMap.get(clusterEntries[clusterEntries.length - 1]?.periodId ?? entry.periodId) ?? null;
   const sessionJson = session.toJSON() as any;
-  sessionJson.periodStart = periodInfo?.start ?? null;
-  sessionJson.periodEnd = periodInfo?.end ?? null;
+  sessionJson.periodId = blockPeriodLabel(clusterEntries);
+  sessionJson.periodStart = firstInfo?.start ?? null;
+  sessionJson.periodEnd = lastInfo?.end ?? null;
   sessionJson.sectionLabel = buildSectionLabel(clusterEntries);
 
   return { session: sessionJson, roster };
@@ -562,6 +666,10 @@ export async function saveSessionRecords(
   const result: SaveRecordsResult = { created: 0, updated: 0, unchanged: 0 };
   const t: Transaction = await sequelize.transaction();
   try {
+    // Resolve this session's class block once: records saved in sibling
+    // sessions of the same block must not self-block the student.
+    const { blockEntryIds, blockStartKey } = await resolveSessionBlock(session, t);
+
     const existing = await AttendanceRecord.findAll({
       where: { sessionId, inscriptionId: records.map(r => r.inscriptionId) },
       transaction: t,
@@ -573,7 +681,7 @@ export async function saveSessionRecords(
       const current = byInscription.get(input.inscriptionId) || null;
 
       if (!current) {
-        const blocked = await computeBlockedFlag(session, input.inscriptionId, t);
+        const blocked = await computeBlockedFlag(session, input.inscriptionId, t, blockEntryIds, blockStartKey);
         const record = await AttendanceRecord.create({
           sessionId,
           inscriptionId: input.inscriptionId,
@@ -645,19 +753,36 @@ export async function saveSessionRecords(
   }
 }
 
+/** Resolve the class block of a session: entry ids and earliest period key. */
+async function resolveSessionBlock(
+  session: any,
+  t?: Transaction
+): Promise<{ blockEntryIds: Set<number>; blockStartKey: number }> {
+  const sessionEntry = await ScheduleEntry.findByPk((session as any).scheduleEntryId, { transaction: t });
+  const blockEntryIds = new Set<number>([(session as any).scheduleEntryId]);
+  let blockStartKey = periodSortKey(sessionEntry?.periodId ?? '');
+  if (sessionEntry) {
+    const { entries: blockEntries } = await findClassBlockEntries(sessionEntry, (session as any).schoolPeriodId);
+    for (const e of blockEntries) {
+      blockEntryIds.add(e.id);
+      blockStartKey = Math.min(blockStartKey, periodSortKey(e.periodId));
+    }
+  }
+  return { blockEntryIds, blockStartKey };
+}
+
 /**
  * A student is blocked in this session if they have an un-cleared absent/kicked
- * record in an earlier session of the same day (same enrollment).
+ * record in an earlier session of the same day (same enrollment). Records in
+ * the same class block (blockEntryIds) do not count as prior.
  */
 async function computeBlockedFlag(
   session: any,
   inscriptionId: number,
-  t: Transaction
+  t: Transaction,
+  blockEntryIds: Set<number>,
+  blockStartKey: number
 ): Promise<boolean> {
-  const entry = await ScheduleEntry.findByPk((session as any).scheduleEntryId, { transaction: t });
-  if (!entry) return false;
-  const currentOrder = periodSortKey(entry.periodId);
-
   const priorRecords = await AttendanceRecord.findAll({
     where: {
       inscriptionId,
@@ -676,7 +801,8 @@ async function computeBlockedFlag(
   });
 
   return (priorRecords as any[]).some(
-    r => periodSortKey(r.session?.scheduleEntry?.periodId ?? '') < currentOrder
+    r => !blockEntryIds.has(r.session?.scheduleEntryId)
+      && periodSortKey(r.session?.scheduleEntry?.periodId ?? '') < blockStartKey
   );
 }
 
@@ -766,7 +892,8 @@ export async function clearSessionBlock(
 
     const t: Transaction = await sequelize.transaction();
     try {
-      const blocked = await computeBlockedFlag(session, inscriptionId, t);
+      const { blockEntryIds, blockStartKey } = await resolveSessionBlock(session, t);
+      const blocked = await computeBlockedFlag(session, inscriptionId, t, blockEntryIds, blockStartKey);
       record = await AttendanceRecord.create({
         sessionId,
         inscriptionId,

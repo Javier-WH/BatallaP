@@ -21,6 +21,7 @@ import {
   getTeacherSessionsForDate,
   getSessionDetail,
   getPeriodInfoMap,
+  clusterEntriesIntoClassBlocks,
   saveSessionRecords,
   clearAttendanceBlock,
   clearSessionBlock,
@@ -280,24 +281,35 @@ export const listSessions = async (req: Request, res: Response) => {
       return true;
     });
 
-    // Group-subject slots span several sections but are one physical class:
-    // merge sibling sessions the same way the teacher view does, so staff do
+    // Sessions that belong to the same physical class block merge the same
+    // way the teacher view does: consecutive periods of one class and the
+    // sections of a group subject collapse into a single row, so staff do
     // not see duplicated rows nor partial counts.
-    const clusters = new Map<string, any[]>();
+    const periodInfoMap = await getPeriodInfoMap();
+    const clusters = new Map<string, { sessions: any[]; entries: any[] }>();
+    const sessionsByDate = new Map<string, any[]>();
     for (const s of filtered) {
-      const e = s.scheduleEntry;
-      const key = e?.isGroupSubject
-        ? `g|${s.sessionDate}|${e.periodId}|${e.teacherId}`
-        : `s|${s.id}`;
-      if (!clusters.has(key)) clusters.set(key, []);
-      clusters.get(key)!.push(s);
+      if (!sessionsByDate.has(s.sessionDate)) sessionsByDate.set(s.sessionDate, []);
+      sessionsByDate.get(s.sessionDate)!.push(s);
+    }
+    for (const [date, daySessions] of sessionsByDate) {
+      const entries = daySessions.map((s: any) => s.scheduleEntry).filter(Boolean);
+      const blocks = clusterEntriesIntoClassBlocks(entries, periodInfoMap);
+      const entryBlock = new Map<number, any[]>();
+      for (const block of blocks) for (const e of block) entryBlock.set(e.id, block);
+      for (const s of daySessions) {
+        const block = entryBlock.get(s.scheduleEntryId) ?? [s.scheduleEntry];
+        const canonicalId = Math.min(...block.map((e: any) => e.id));
+        const key = `${date}|${canonicalId}`;
+        if (!clusters.has(key)) clusters.set(key, { sessions: [], entries: block });
+        clusters.get(key)!.sessions.push(s);
+      }
     }
 
     const shortSec = (name: string | null | undefined) =>
       (name ?? '').trim().replace(/^secci[oó]n\s*/i, '').trim() || (name ?? '').trim();
-    const periodInfoMap = await getPeriodInfoMap();
 
-    const withCounts = await Promise.all([...clusters.values()].map(async cluster => {
+    const withCounts = await Promise.all([...clusters.values()].map(async ({ sessions: cluster, entries: blockEntries }) => {
       // Canonical = lowest scheduleEntryId, matching the teacher view.
       cluster.sort((a: any, b: any) => a.scheduleEntryId - b.scheduleEntryId);
       const canonical = cluster[0];
@@ -325,22 +337,28 @@ export const listSessions = async (req: Request, res: Response) => {
         if (r.blocked) counts.blocked++;
       }
 
-      const pgsOf = (s: any) => s.scheduleEntry?.schedule?.section;
-      const gradeNames = [...new Set(cluster.map((s: any) => pgsOf(s)?.periodGrade?.grade?.name ?? ''))];
+      const pgsOf = (e: any) => e?.schedule?.section;
+      const gradeNames = [...new Set(blockEntries.map((e: any) => pgsOf(e)?.periodGrade?.grade?.name ?? ''))];
       const sameGrade = gradeNames.length === 1;
       const sectionName = sameGrade
-        ? [...new Set(cluster.map((s: any) => shortSec(pgsOf(s)?.section?.name)))].join('/')
-        : [...new Set(cluster.map((s: any) => `${pgsOf(s)?.periodGrade?.grade?.name ?? ''} ${shortSec(pgsOf(s)?.section?.name)}`.trim()))].join(' · ');
-      const subjectNames = [...new Set(cluster.map((s: any) => s.scheduleEntry?.subject?.name).filter(Boolean))];
-      const periodInfo = periodInfoMap.get(canonical.scheduleEntry?.periodId) ?? null;
+        ? [...new Set(blockEntries.map((e: any) => shortSec(pgsOf(e)?.section?.name)))].join('/')
+        : [...new Set(blockEntries.map((e: any) => `${pgsOf(e)?.periodGrade?.grade?.name ?? ''} ${shortSec(pgsOf(e)?.section?.name)}`.trim()))].join(' · ');
+      const subjectNames = [...new Set(blockEntries.map((e: any) => e?.subject?.name).filter(Boolean))];
+      const firstEntry = blockEntries[0] ?? canonical.scheduleEntry;
+      const lastEntry = blockEntries[blockEntries.length - 1] ?? canonical.scheduleEntry;
+      const firstInfo = periodInfoMap.get(firstEntry?.periodId) ?? null;
+      const lastInfo = periodInfoMap.get(lastEntry?.periodId) ?? null;
+      const periodLabel = firstEntry?.periodId === lastEntry?.periodId
+        ? firstEntry?.periodId
+        : `${firstEntry?.periodId}-${lastEntry?.periodId}`;
 
       return {
         id: canonical.id,
         sessionDate: canonical.sessionDate,
         status: cluster.some((s: any) => s.status === 'completed') ? 'completed' : canonical.status,
-        periodId: canonical.scheduleEntry?.periodId ?? null,
-        periodStart: periodInfo?.start ?? null,
-        periodEnd: periodInfo?.end ?? null,
+        periodId: periodLabel ?? null,
+        periodStart: firstInfo?.start ?? null,
+        periodEnd: lastInfo?.end ?? null,
         subjectName: subjectNames.join(' / ') || null,
         teacherName: canonical.scheduleEntry?.teacher
           ? `${canonical.scheduleEntry.teacher.lastName}, ${canonical.scheduleEntry.teacher.firstName}`.trim()
