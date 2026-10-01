@@ -10,6 +10,21 @@ import { parsePagination, buildPaginatedResponse } from '@/services/paginationSe
 const EXEMPT_ROLES = ['Master', 'Administrador', 'Control de Estudios', 'Profesor', 'Representante'];
 const STUDENT_ROLES = ['Alumno'];
 
+/**
+ * Tokenized name search: every whitespace-separated word must appear in
+ * firstName, lastName or document (AND across words, OR across columns).
+ * This lets "Pérez Ángel" match "ÁNGEL DANIEL PÉREZ TORRES" even though the
+ * words live in different columns and a single LIKE never matches.
+ */
+const nameSearchConditions = (query: string) =>
+  query.trim().split(/\s+/).filter(Boolean).map((word) => ({
+    [Op.or]: [
+      { firstName: { [Op.like]: `%${word}%` } },
+      { lastName: { [Op.like]: `%${word}%` } },
+      { document: { [Op.like]: `%${word}%` } },
+    ],
+  }));
+
 export const searchUsers = async (req: Request, res: Response) => {
   try {
     const { q, activeOnly, schoolPeriodId } = req.query;
@@ -19,11 +34,7 @@ export const searchUsers = async (req: Request, res: Response) => {
 
     const whereClause: any = {};
     if (query) {
-      whereClause[Op.or] = [
-        { firstName: { [Op.like]: `%${query}%` } },
-        { lastName: { [Op.like]: `%${query}%` } },
-        { document: { [Op.like]: `%${query}%` } }
-      ];
+      whereClause[Op.and] = nameSearchConditions(query);
     }
 
     const activePeriod = await SchoolPeriod.findOne({ where: { status: 'activo' } });
@@ -90,11 +101,13 @@ export const searchUsers = async (req: Request, res: Response) => {
         )`;
 
         whereClause[Op.and] = [
+          ...(whereClause[Op.and] || []),
           literal(`(${hasExemptRoleSub} OR NOT ${hasStudentRoleSub} OR ${hasPeriodEnrollmentSub})`),
         ];
       } else {
         // No period: (exempt) OR (NOT student)
         whereClause[Op.and] = [
+          ...(whereClause[Op.and] || []),
           literal(`(${hasExemptRoleSub} OR NOT ${hasStudentRoleSub})`),
         ];
         // When no period, we don't need the inscription/matriculation includes
@@ -211,11 +224,7 @@ export const searchUsersStats = async (req: Request, res: Response) => {
 
     const whereClause: any = {};
     if (query) {
-      whereClause[Op.or] = [
-        { firstName: { [Op.like]: `%${query}%` } },
-        { lastName: { [Op.like]: `%${query}%` } },
-        { document: { [Op.like]: `%${query}%` } }
-      ];
+      whereClause[Op.and] = nameSearchConditions(query);
     }
 
     const activePeriod = await SchoolPeriod.findOne({ where: { status: 'activo' } });
@@ -238,10 +247,12 @@ export const searchUsersStats = async (req: Request, res: Response) => {
             WHERE m_per.personId = Person.id AND m_per.schoolPeriodId = ${targetPeriodId}) > 0
         )`;
         whereClause[Op.and] = [
+          ...(whereClause[Op.and] || []),
           literal(`(${hasExemptRoleSub} OR NOT ${hasStudentRoleSub} OR ${hasPeriodEnrollmentSub})`),
         ];
       } else {
         whereClause[Op.and] = [
+          ...(whereClause[Op.and] || []),
           literal(`(${hasExemptRoleSub} OR NOT ${hasStudentRoleSub})`),
         ];
       }

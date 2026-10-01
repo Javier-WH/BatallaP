@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useSchool } from '@/context/SchoolContext';
 import api from '@/services/api';
@@ -121,11 +121,18 @@ const Constancias: React.FC = () => {
     }
   }, []);
 
+  // Search sequence guards: only the latest response updates the results, so
+  // a slow earlier request can't overwrite a newer one with stale/empty data.
+  const studentSearchSeq = useRef(0);
+  const workerSearchSeq = useRef(0);
+
   // Search students (uses /users/search and filters by Alumno role client-side)
   const searchStudents = useCallback(async (query: string) => {
     if (query.trim().length < 2) { setSearchResults([]); return; }
+    const seq = ++studentSearchSeq.current;
     try {
       const res = await api.get('/users', { params: { q: query, activeOnly: true } });
+      if (seq !== studentSearchSeq.current) return;
       // Filter to students only
       const students = (res.data?.data || res.data || [])
         .filter((u: any) => u.roles?.some((r: any) => r.name === 'Alumno'))
@@ -138,15 +145,19 @@ const Constancias: React.FC = () => {
         }));
       setSearchResults(students);
     } catch {
+      if (seq !== studentSearchSeq.current) return;
       setSearchResults([]);
+      message.error('No se pudo buscar estudiantes. Intente de nuevo.');
     }
   }, []);
 
   // Search staff (workers) — filters by staff roles
   const searchWorkers = useCallback(async (query: string) => {
     if (query.trim().length < 2) { setWorkerResults([]); return; }
+    const seq = ++workerSearchSeq.current;
     try {
       const res = await api.get('/users', { params: { q: query } });
+      if (seq !== workerSearchSeq.current) return;
       const workers = (res.data?.data || res.data || [])
         .filter((u: any) => u.roles?.some((r: any) => STAFF_ROLES.includes(r.name)))
         .map((u: any) => ({
@@ -158,7 +169,9 @@ const Constancias: React.FC = () => {
         }));
       setWorkerResults(workers);
     } catch {
+      if (seq !== workerSearchSeq.current) return;
       setWorkerResults([]);
+      message.error('No se pudo buscar trabajadores. Intente de nuevo.');
     }
   }, []);
 

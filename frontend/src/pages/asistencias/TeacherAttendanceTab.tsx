@@ -370,7 +370,7 @@ function ScheduleScreen({
               const Icon = visual.Icon;
               const isLast = i === sessions.length - 1;
               return (
-                <div key={session.id} className="flex gap-3">
+                <div key={session.id} className="flex gap-3 min-w-0">
                   <div className="flex flex-col items-center">
                     <TimelineDot status={status} />
                     {!isLast && (
@@ -385,11 +385,11 @@ function ScheduleScreen({
 
                   <button
                     onClick={() => onSelectSession(session.id)}
-                    className="flex-1 mb-3 text-left bg-white rounded-xl border-y border-r border-slate-200 px-3.5 py-3 flex items-center gap-3 hover:border-slate-300 transition-colors"
+                    className="flex-1 min-w-0 mb-3 text-left bg-white rounded-xl border-y border-r border-slate-200 px-3.5 py-3 flex items-start gap-3 hover:border-slate-300 transition-colors"
                     style={{ borderLeft: `4px solid ${visual.color}` }}
                   >
                     <div
-                      className="w-9 h-9 rounded-full flex items-center justify-center shrink-0"
+                      className="w-9 h-9 rounded-full flex items-center justify-center shrink-0 mt-0.5"
                       style={{ backgroundColor: visual.color }}
                     >
                       <Icon style={{ color: '#fff', fontSize: 16 }} />
@@ -402,20 +402,20 @@ function ScheduleScreen({
                       {session.sectionLabel && (
                         <span className="block text-[11px] text-slate-400 att-font-body truncate">{session.sectionLabel}</span>
                       )}
-                      <span className="text-xs text-slate-400 att-font-body">
+                      <span className="block text-xs text-slate-400 att-font-body">
                         {status === 'done' && 'Asistencia registrada'}
                         {status === 'current' && 'En curso — toca para tomar asistencia'}
                         {status === 'missing' && 'Terminó — asistencia sin registrar'}
                         {status === 'upcoming' && 'Aún no comienza'}
                       </span>
+                      <span className="block text-xs text-slate-500 att-font-body tabular-nums mt-0.5">
+                        {session.periodStart
+                          ? (session.periodEnd && session.periodEnd !== session.periodStart
+                            ? `${session.periodStart} – ${session.periodEnd}`
+                            : session.periodStart)
+                          : session.periodId.toUpperCase()}
+                      </span>
                     </div>
-                    <span className="text-xs text-slate-400 att-font-body shrink-0">
-                      {session.periodStart
-                        ? (session.periodEnd && session.periodEnd !== session.periodStart
-                          ? `${session.periodStart} – ${session.periodEnd}`
-                          : session.periodStart)
-                        : session.periodId.toUpperCase()}
-                    </span>
                   </button>
                 </div>
               );
