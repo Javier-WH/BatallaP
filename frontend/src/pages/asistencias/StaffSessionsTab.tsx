@@ -7,7 +7,7 @@ import api from '@/services/api';
 import { useSchool } from '@/context/SchoolContext';
 import type { SessionListItem } from './types';
 import SessionRosterModal from './SessionRosterModal';
-import { exportSessionRosterExcel, exportSessionsListExcel } from './exportSessionExcel';
+import { exportSessionRosterExcel } from './exportSessionExcel';
 
 /**
  * Staff tab (Control de Estudios / Administración): browse sessions in a date
@@ -20,7 +20,7 @@ const StaffSessionsTab: React.FC = () => {
   const [dateTo, setDateTo] = useState<Dayjs>(dayjs());
   const [sessions, setSessions] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
-  const [exporting, setExporting] = useState<number | 'list' | null>(null);
+  const [exporting, setExporting] = useState<number | null>(null);
   const [selected, setSelected] = useState<SessionListItem | null>(null);
   const [editMode, setEditMode] = useState(false);
 
@@ -53,18 +53,6 @@ const StaffSessionsTab: React.FC = () => {
       await exportSessionRosterExcel(s.id);
     } catch {
       message.error('No se pudo exportar la nómina');
-    } finally {
-      setExporting(null);
-    }
-  };
-
-  const handleExportList = async () => {
-    if (sessions.length === 0) return;
-    setExporting('list');
-    try {
-      await exportSessionsListExcel(sessions, dateFrom.format('YYYY-MM-DD'), dateTo.format('YYYY-MM-DD'));
-    } catch {
-      message.error('No se pudo exportar la lista');
     } finally {
       setExporting(null);
     }
@@ -118,14 +106,6 @@ const StaffSessionsTab: React.FC = () => {
         <span className="text-xs font-semibold text-slate-500">Hasta</span>
         <DatePicker value={dateTo} onChange={d => d && setDateTo(d)} allowClear={false} />
         <Button type="primary" icon={<ReloadOutlined />} onClick={fetchSessions}>Consultar</Button>
-        <Button
-          icon={<FileExcelOutlined />}
-          disabled={sessions.length === 0}
-          loading={exporting === 'list'}
-          onClick={handleExportList}
-        >
-          Exportar lista
-        </Button>
       </div>
 
       <Table

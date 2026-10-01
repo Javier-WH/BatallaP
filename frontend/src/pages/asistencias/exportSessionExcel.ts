@@ -2,7 +2,7 @@ import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
 import dayjs from 'dayjs';
 import api from '@/services/api';
-import { STATUS_LABELS, type RosterEntry, type SessionListItem } from './types';
+import { STATUS_LABELS, type RosterEntry } from './types';
 
 const HEADER_FILL: ExcelJS.Fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF6F5F1' } };
 const THIN: ExcelJS.Border = { style: 'thin', color: { argb: 'FFD0D5DD' } };
@@ -84,62 +84,4 @@ export async function exportSessionRosterExcel(sessionId: number): Promise<void>
 
   const date = dayjs(session.sessionDate).format('YYYY-MM-DD');
   saveAs(new Blob([await wb.xlsx.writeBuffer()]), `asistencia_${subject}_${date}.xlsx`);
-}
-
-/**
- * Export the filtered sessions list (summary table for staff):
- * one row per session with attendance counts.
- */
-export async function exportSessionsListExcel(
-  sessions: SessionListItem[],
-  dateFrom: string,
-  dateTo: string,
-): Promise<void> {
-  const wb = new ExcelJS.Workbook();
-  const ws = wb.addWorksheet('Sesiones');
-
-  ws.columns = [
-    { width: 12 }, // Fecha
-    { width: 16 }, // Bloque
-    { width: 30 }, // Materia
-    { width: 16 }, // Grado
-    { width: 10 }, // Sección
-    { width: 26 }, // Profesor
-    { width: 10 }, // P
-    { width: 10 }, // A
-    { width: 10 }, // T
-    { width: 10 }, // E
-    { width: 10 }, // Bloq.
-    { width: 10 }, // Total
-  ];
-
-  ws.addRow([`Sesiones de asistencia · ${dayjs(dateFrom).format('DD/MM/YYYY')} – ${dayjs(dateTo).format('DD/MM/YYYY')}`])
-    .font = { bold: true, size: 13 };
-  ws.addRow([]);
-
-  const header = ws.addRow([
-    'FECHA', 'BLOQUE', 'MATERIA', 'GRADO', 'SECCIÓN', 'PROFESOR',
-    'PRESENTES', 'AUSENTES', 'TARDE', 'OTRO', 'BLOQ.', 'TOTAL',
-  ]);
-  styleHeaderRow(header);
-
-  for (const s of sessions) {
-    const row = ws.addRow([
-      dayjs(s.sessionDate).format('DD/MM/YYYY'),
-      `${(s.periodId ?? '').toUpperCase()}${s.periodStart ? ` ${s.periodStart}` : ''}`,
-      s.subjectName ?? '',
-      s.gradeName ?? '',
-      s.sectionName ?? '',
-      s.teacherName ?? '',
-      s.counts.present,
-      s.counts.absent,
-      s.counts.late,
-      s.counts.kicked,
-      s.counts.blocked,
-      s.counts.total,
-    ]);
-    row.eachCell(cell => { cell.border = BORDER; });
-  }
-
-  saveAs(new Blob([await wb.xlsx.writeBuffer()]), `sesiones_asistencia_${dateFrom}_${dateTo}.xlsx`);
 }

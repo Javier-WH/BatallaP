@@ -4,10 +4,13 @@ import {
 } from 'antd';
 import {
   CheckOutlined, CloseOutlined, ClockCircleOutlined, StopOutlined, UnlockOutlined,
+  FileExcelOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import api from '@/services/api';
+import { STATUS_LABELS } from './types';
 import type { RosterEntry, AttendanceStatus, ClearanceReason } from './types';
+import { exportSessionRosterExcel } from './exportSessionExcel';
 
 interface SessionRosterModalProps {
   open: boolean;
@@ -37,7 +40,7 @@ const STATUS_BTN: { code: AttendanceStatus; label: string; icon: React.ReactNode
   { code: 'present', label: 'Presente', icon: <CheckOutlined />, color: C.p },
   { code: 'absent', label: 'Ausente', icon: <CloseOutlined />, color: C.a },
   { code: 'late', label: 'Tarde', icon: <ClockCircleOutlined />, color: C.t },
-  { code: 'kicked', label: 'Otro', icon: <StopOutlined />, color: C.o },
+  { code: 'kicked', label: 'Expulsado', icon: <StopOutlined />, color: C.o },
 ];
 
 const btnStyle = (active: boolean, color: string): React.CSSProperties => ({
@@ -61,6 +64,7 @@ const SessionRosterModal: React.FC<SessionRosterModalProps> = ({
   const [sessionInfo, setSessionInfo] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [reasons, setReasons] = useState<ClearanceReason[]>([]);
   const [clearing, setClearing] = useState<RosterEntry | null>(null);
   const [clearCode, setClearCode] = useState<string | null>(null);
@@ -149,6 +153,18 @@ const SessionRosterModal: React.FC<SessionRosterModalProps> = ({
       message.error(err?.response?.data?.message || 'Error al guardar asistencia');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleExport = async () => {
+    if (!sessionId) return;
+    setExporting(true);
+    try {
+      await exportSessionRosterExcel(sessionId);
+    } catch {
+      message.error('No se pudo exportar la nómina');
+    } finally {
+      setExporting(false);
     }
   };
 
@@ -333,7 +349,7 @@ const SessionRosterModal: React.FC<SessionRosterModalProps> = ({
                       );
                     }) : (
                       <span style={{ fontSize: 13, color: '#475467' }}>
-                        {r.status ? STATUS_BTN.find(b => b.code === r.status)?.label ?? (r.status === 'excused' ? 'Justificado' : r.status) : 'Sin registrar'}
+                        {r.status ? STATUS_LABELS[r.status] : 'Sin registrar'}
                       </span>
                     )}
                   </div>
@@ -382,17 +398,31 @@ const SessionRosterModal: React.FC<SessionRosterModalProps> = ({
 
         {/* Footer */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          {canEdit ? (
+          <div style={{ display: 'flex', gap: 10 }}>
+            {canEdit && (
+              <button
+                onClick={markAllPresent}
+                style={{
+                  height: 44, padding: '0 18px', borderRadius: 10, border: '1px solid #d0d5dd',
+                  background: '#ffffff', color: '#1b1f2a', fontSize: 14, fontWeight: 500, cursor: 'pointer',
+                }}
+              >
+                Marcar todos presentes
+              </button>
+            )}
             <button
-              onClick={markAllPresent}
+              onClick={handleExport}
+              disabled={exporting || loading || roster.length === 0}
               style={{
                 height: 44, padding: '0 18px', borderRadius: 10, border: '1px solid #d0d5dd',
-                background: '#ffffff', color: '#1b1f2a', fontSize: 14, fontWeight: 500, cursor: 'pointer',
+                background: '#ffffff', color: '#1b1f2a', fontSize: 14, fontWeight: 500,
+                cursor: exporting ? 'default' : 'pointer', opacity: exporting ? 0.6 : 1,
+                display: 'flex', alignItems: 'center', gap: 8,
               }}
             >
-              Marcar todos presentes
+              <FileExcelOutlined /> {exporting ? 'Exportando…' : 'Exportar a Excel'}
             </button>
-          ) : <span />}
+          </div>
           <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
             {counts.missing > 0 && (
               <span style={{ fontSize: 13, color: '#475467', marginRight: 8 }}>
