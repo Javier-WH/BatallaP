@@ -27,6 +27,10 @@ import {
   clearSessionBlock,
   listClearanceReasons,
   AttendanceRecordInput,
+  getTeacherWeekTemplate,
+  saveOfflineRecords,
+  getScheduleEntryTeacherId,
+  OfflineRecordInput,
 } from '@/services/attendanceService';
 import {
   getSectionWeekReport,
@@ -142,6 +146,61 @@ export const putSessionRecords = async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('[putSessionRecords] Error:', error);
     return res.status(400).json({ message: error.message || 'Error al guardar asistencia' });
+  }
+};
+
+/**
+ * GET /api/attendance/my-week-template?date=YYYY-MM-DD
+ * Weekly timetable (Lunes..Viernes) of the logged-in teacher with each block's
+ * roster, for the PWA's offline cache. Creates no sessions.
+ */
+export const getMyWeekTemplate = async (req: Request, res: Response) => {
+  try {
+    if (!requireAttendanceRole(req, res)) return;
+    const personId = getSessionUserPersonId(req);
+    if (!personId) return res.status(400).json({ message: 'Sesión sin persona asociada' });
+
+    const date = String(req.query.date || '');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return res.status(400).json({ message: 'date es requerido (YYYY-MM-DD)' });
+    }
+    return res.json(await getTeacherWeekTemplate(personId, date));
+  } catch (error: any) {
+    console.error('[getMyWeekTemplate] Error:', error);
+    return res.status(500).json({ message: error.message || 'Error al obtener el horario semanal' });
+  }
+};
+
+/**
+ * POST /api/attendance/offline-sync
+ * Body: { scheduleEntryId, sessionDate, records: [{ inscriptionId, status, reason?, baseStatus, baseReason? }] }
+ * Applies attendance taken offline. Students changed on the server since the
+ * phone's copy are skipped and returned in `conflicts`.
+ */
+export const postOfflineSync = async (req: Request, res: Response) => {
+  try {
+    if (!requireAttendanceRole(req, res)) return;
+    const personId = getSessionUserPersonId(req);
+    if (!personId) return res.status(400).json({ message: 'Sesión sin persona asociada' });
+
+    const scheduleEntryId = Number(req.body?.scheduleEntryId);
+    const sessionDate = String(req.body?.sessionDate || '');
+    const records = req.body?.records as OfflineRecordInput[] | undefined;
+    if (!scheduleEntryId || !/^\d{4}-\d{2}-\d{2}$/.test(sessionDate) || !Array.isArray(records)) {
+      return res.status(400).json({ message: 'scheduleEntryId, sessionDate y records son requeridos' });
+    }
+
+    if (!isStaff(req)) {
+      const teacherId = await getScheduleEntryTeacherId(scheduleEntryId);
+      if (teacherId !== personId) {
+        return res.status(403).json({ message: 'Solo puede registrar asistencia de sus propias sesiones' });
+      }
+    }
+
+    return res.json(await saveOfflineRecords(scheduleEntryId, sessionDate, records, personId));
+  } catch (error: any) {
+    console.error('[postOfflineSync] Error:', error);
+    return res.status(400).json({ message: error.message || 'Error al sincronizar asistencia' });
   }
 };
 

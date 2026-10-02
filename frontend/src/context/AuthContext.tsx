@@ -1,5 +1,6 @@
 import { createContext, useState, useEffect, useContext } from 'react';
 import type { ReactNode } from 'react';
+import axios from 'axios';
 import api from '@/services/api';
 import { Spin } from 'antd';
 
@@ -22,6 +23,21 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+// Last user confirmed by the server. Lets the installed PWA open offline
+// (teachers taking attendance without signal); any server answer wins.
+const USER_CACHE_KEY = 'auth-user-cache';
+const readCachedUser = (): User | null => {
+  try {
+    return JSON.parse(localStorage.getItem(USER_CACHE_KEY) || 'null');
+  } catch {
+    return null;
+  }
+};
+const cacheUser = (user: User | null) => {
+  if (user) localStorage.setItem(USER_CACHE_KEY, JSON.stringify(user));
+  else localStorage.removeItem(USER_CACHE_KEY);
+};
+
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -29,14 +45,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const checkAuth = async () => {
     try {
       const { data } = await api.get('/auth/me');
-      if (data.authenticated) {
-        setUser(data.user);
-      } else {
-        setUser(null);
-      }
+      const nextUser = data.authenticated ? data.user : null;
+      cacheUser(nextUser);
+      setUser(nextUser);
     } catch (error) {
       console.error("Auth check failed", error);
-      setUser(null);
+      // No response at all = no network: keep the cached user.
+      const offline = axios.isAxiosError(error) && !error.response;
+      setUser(offline ? readCachedUser() : null);
     } finally {
       setLoading(false);
     }
@@ -47,12 +63,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   const login = (userData: User) => {
+    cacheUser(userData);
     setUser(userData);
   };
 
   const logout = async () => {
     try {
       await api.post('/auth/logout');
+      cacheUser(null);
       setUser(null);
     } catch (error) {
       console.error("Logout failed", error);

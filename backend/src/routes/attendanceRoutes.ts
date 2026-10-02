@@ -5,6 +5,8 @@ const router = Router();
 
 // Teacher module
 router.get('/my-sessions', attendanceController.getMySessions);
+router.get('/my-week-template', attendanceController.getMyWeekTemplate);
+router.post('/offline-sync', attendanceController.postOfflineSync);
 router.get('/sessions/:id', attendanceController.getSession);
 router.put('/sessions/:id/records', attendanceController.putSessionRecords);
 router.post('/sessions/:id/clear-block', attendanceController.postClearSessionBlock);

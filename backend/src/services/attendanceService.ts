@@ -239,34 +239,18 @@ async function findClassBlockEntries(
 }
 
 /**
- * Get-or-create the attendance sessions for a teacher on a calendar date,
- * derived from the schedule entries for that weekday. Works for past dates
- * (paper backfill).
- *
- * Entries are clustered into physical class blocks by
- * clusterEntriesIntoClassBlocks: consecutive periods of the same class and
- * group-subject sections of one shared class merge into a single session
- * (canonical = lowest entry id). Records already saved in sibling sessions
- * are still counted so nothing is lost on live data.
+ * A teacher's schedule entries for the given weekdays. Without an explicit
+ * period, defaults to the active one so schedules from older periods do not
+ * leak in as duplicated blocks.
  */
-export async function getTeacherSessionsForDate(
-  personId: number,
-  dateStr: string,
-  schoolPeriodId?: number
-): Promise<TeacherSessionView[]> {
-  const dayName = getDayNameForDate(dateStr);
-  if (!dayName) return [];
-
-  // Without an explicit period, default to the active one so schedules from
-  // older periods do not leak in as duplicated blocks.
+async function loadTeacherEntries(personId: number, dayNames: string[], schoolPeriodId?: number): Promise<any[]> {
   let effectivePeriodId = schoolPeriodId;
   if (!effectivePeriodId) {
     const active = await SchoolPeriod.findOne({ where: { status: 'activo' }, attributes: ['id'], raw: true });
     effectivePeriodId = (active as any)?.id;
   }
-
-  const entries = await ScheduleEntry.findAll({
-    where: { day: dayName, teacherId: personId },
+  return ScheduleEntry.findAll({
+    where: { day: dayNames, teacherId: personId },
     include: [
       {
         model: Schedule,
@@ -286,29 +270,52 @@ export async function getTeacherSessionsForDate(
       { model: Subject, as: 'subject' },
     ],
     order: [['id', 'ASC']],
-  });
+  }) as Promise<any[]>;
+}
 
+/** Get-or-create the session of a class block on a date (canonical = lowest entry id). */
+async function getOrCreateBlockSession(cluster: any[], dateStr: string) {
+  const canonical = [...cluster].sort((a: any, b: any) => a.id - b.id)[0];
+  const [session] = await AttendanceSession.findOrCreate({
+    where: { scheduleEntryId: canonical.id, sessionDate: dateStr },
+    defaults: {
+      scheduleEntryId: canonical.id,
+      schoolPeriodId: canonical.schedule.section.periodGrade.schoolPeriodId,
+      sessionDate: dateStr,
+      status: 'pending',
+    },
+  });
+  return session;
+}
+
+/**
+ * Get-or-create the attendance sessions for a teacher on a calendar date,
+ * derived from the schedule entries for that weekday. Works for past dates
+ * (paper backfill).
+ *
+ * Entries are clustered into physical class blocks by
+ * clusterEntriesIntoClassBlocks: consecutive periods of the same class and
+ * group-subject sections of one shared class merge into a single session
+ * (canonical = lowest entry id). Records already saved in sibling sessions
+ * are still counted so nothing is lost on live data.
+ */
+export async function getTeacherSessionsForDate(
+  personId: number,
+  dateStr: string,
+  schoolPeriodId?: number
+): Promise<TeacherSessionView[]> {
+  const dayName = getDayNameForDate(dateStr);
+  if (!dayName) return [];
+
+  const entries = await loadTeacherEntries(personId, [dayName], schoolPeriodId);
   if (entries.length === 0) return [];
 
   const periodInfoMap = await getPeriodInfoMap();
-  const blocks = clusterEntriesIntoClassBlocks(entries as any[], periodInfoMap);
+  const blocks = clusterEntriesIntoClassBlocks(entries, periodInfoMap);
 
   const sessions: TeacherSessionView[] = [];
   for (const cluster of blocks) {
-    const canonical = [...cluster].sort((a: any, b: any) => a.id - b.id)[0];
-    const schedule = canonical.schedule;
-    const pgs = schedule.section;
-    const periodGrade = pgs.periodGrade;
-
-    const [session] = await AttendanceSession.findOrCreate({
-      where: { scheduleEntryId: canonical.id, sessionDate: dateStr },
-      defaults: {
-        scheduleEntryId: canonical.id,
-        schoolPeriodId: periodGrade.schoolPeriodId,
-        sessionDate: dateStr,
-        status: 'pending',
-      },
-    });
+    const session = await getOrCreateBlockSession(cluster, dateStr);
 
     // Records may also live in sibling sessions created before the merge.
     const clusterSessions = await AttendanceSession.findAll({
@@ -339,31 +346,45 @@ export async function getTeacherSessionsForDate(
       else if (r.status === 'kicked') counts.kicked++;
     }
 
-    const firstInfo = periodInfoMap.get(cluster[0].periodId) || null;
-    const lastInfo = periodInfoMap.get(cluster[cluster.length - 1].periodId) || null;
-    const subjectNames = Array.from(new Set(cluster.map((e: any) => e.subject?.name).filter(Boolean)));
     sessions.push({
       id: session.id,
-      scheduleEntryId: canonical.id,
       sessionDate: session.sessionDate,
       status: clusterSessions.some((s: any) => s.status === 'completed') ? 'completed' : session.status,
-      day: canonical.day,
-      periodId: blockPeriodLabel(cluster),
-      periodStart: firstInfo?.start ?? null,
-      periodEnd: lastInfo?.end ?? null,
-      subjectId: canonical.subjectId,
-      subjectName: subjectNames.join(' / ') || null,
-      gradeName: periodGrade?.grade?.name ?? '',
-      sectionName: pgs.section?.name ?? '',
-      sectionLabel: buildSectionLabel(cluster),
+      ...buildBlockView(cluster, periodInfoMap),
       counts,
     });
   }
 
-  // Sort by the block's first real period id (periodId may be a 'm1-m2' range).
-  sessions.sort((a, b) =>
+  return sortBlocksByPeriod(sessions);
+}
+
+type BlockView = Omit<TeacherSessionView, 'id' | 'sessionDate' | 'status' | 'counts'>;
+
+/** Descriptive fields of a class block (canonical = lowest entry id). */
+function buildBlockView(cluster: any[], periodInfoMap: Map<string, { start: string; end: string }>): BlockView {
+  const canonical = [...cluster].sort((a: any, b: any) => a.id - b.id)[0];
+  const pgs = canonical.schedule.section;
+  const firstInfo = periodInfoMap.get(cluster[0].periodId) || null;
+  const lastInfo = periodInfoMap.get(cluster[cluster.length - 1].periodId) || null;
+  const subjectNames = Array.from(new Set(cluster.map((e: any) => e.subject?.name).filter(Boolean)));
+  return {
+    scheduleEntryId: canonical.id,
+    day: canonical.day,
+    periodId: blockPeriodLabel(cluster),
+    periodStart: firstInfo?.start ?? null,
+    periodEnd: lastInfo?.end ?? null,
+    subjectId: canonical.subjectId,
+    subjectName: subjectNames.join(' / ') || null,
+    gradeName: pgs.periodGrade?.grade?.name ?? '',
+    sectionName: pgs.section?.name ?? '',
+    sectionLabel: buildSectionLabel(cluster),
+  };
+}
+
+/** Sort by the block's first real period id (periodId may be a 'm1-m2' range). */
+function sortBlocksByPeriod<T extends { periodId: string }>(blocks: T[]): T[] {
+  return blocks.sort((a, b) =>
     periodSortKey(a.periodId.split('-')[0]) - periodSortKey(b.periodId.split('-')[0]));
-  return sessions;
 }
 
 export interface SessionRosterEntry {
@@ -389,48 +410,15 @@ export interface SessionDetail {
   roster: SessionRosterEntry[];
 }
 
-/** Roster of the session's section with each student's attendance record. */
-export async function getSessionDetail(sessionId: number): Promise<SessionDetail> {
-  const session = await AttendanceSession.findByPk(sessionId, {
-    include: [
-      {
-        model: ScheduleEntry,
-        as: 'scheduleEntry',
-        include: [
-          {
-            model: Schedule,
-            as: 'schedule',
-            include: [
-              {
-                model: PeriodGradeSection,
-                as: 'section',
-                include: [
-                  { model: PeriodGrade, as: 'periodGrade', include: [{ model: Grade, as: 'grade' }] },
-                  { model: Section, as: 'section' },
-                ],
-              },
-            ],
-          },
-          { model: Subject, as: 'subject' },
-          { model: Person, as: 'teacher' },
-        ],
-      },
-    ],
-  });
-  if (!session) throw new Error('Sesión de asistencia no encontrada');
-
-  const entry = (session as any).scheduleEntry;
-  const schedule = entry.schedule;
-  const pgs = schedule.section;
-  const periodGrade = pgs.periodGrade;
-
-  // The roster belongs to the whole class block: a class spanning several
-  // consecutive periods merges its entries (records may live in sibling
-  // sessions created before the merge), and group subjects additionally span
-  // the sections sharing the class.
-  const { entries: clusterEntries, periodInfoMap } = await findClassBlockEntries(
-    entry, (session as any).schoolPeriodId
-  );
+/**
+ * Students of the class block a schedule entry belongs to, in roster order.
+ * The roster belongs to the whole class block: a class spanning several
+ * consecutive periods merges its entries (records may live in sibling
+ * sessions created before the merge), and group subjects additionally span
+ * the sections sharing the class. dateStr picks the term for group subjects.
+ */
+async function resolveBlockRoster(entry: any, schoolPeriodId: number, dateStr: string) {
+  const { entries: clusterEntries, periodInfoMap } = await findClassBlockEntries(entry, schoolPeriodId);
 
   const pgsList: {
     gradeId: number; sectionId: number; gradeName: string; sectionName: string;
@@ -465,7 +453,7 @@ export async function getSessionDetail(sessionId: number): Promise<SessionDetail
 
   const inscriptions = await Inscription.findAll({
     where: {
-      schoolPeriodId: (session as any).schoolPeriodId,
+      schoolPeriodId: schoolPeriodId,
       withdrawnAt: null,
       [Op.or]: pgsList.map(p => ({ gradeId: p.gradeId, sectionId: p.sectionId })),
     },
@@ -492,8 +480,8 @@ export async function getSessionDetail(sessionId: number): Promise<SessionDetail
       )];
       if (groupIds.length > 0) {
         const termId = await resolveTermIdForDate(
-          (session as any).schoolPeriodId,
-          (session as any).sessionDate
+          schoolPeriodId,
+          dateStr
         );
         const keep = new Set<number>();
         for (const gid of groupIds) {
@@ -525,6 +513,62 @@ export async function getSessionDetail(sessionId: number): Promise<SessionDetail
       || cmpStr(ma.sectionName, mb.sectionName)
       || compareStudents(a.student, b.student);
   });
+
+  return { clusterEntries, periodInfoMap, rosterInscriptions, sectionLabelByKey };
+}
+
+export interface RosterIdentity {
+  inscriptionId: number;
+  personId: number;
+  document: string;
+  fullName: string;
+  sectionLabel: string | null;
+}
+
+function rosterIdentity(ins: any, sectionLabelByKey: Map<string, string>): RosterIdentity {
+  return {
+    inscriptionId: ins.id,
+    personId: ins.personId,
+    document: ins.student?.document ?? '',
+    fullName: `${ins.student?.lastName ?? ''}, ${ins.student?.firstName ?? ''}`.trim(),
+    sectionLabel: sectionLabelByKey.get(`${ins.gradeId}|${ins.sectionId}`) ?? null,
+  };
+}
+
+/** Roster of the session's section with each student's attendance record. */
+export async function getSessionDetail(sessionId: number): Promise<SessionDetail> {
+  const session = await AttendanceSession.findByPk(sessionId, {
+    include: [
+      {
+        model: ScheduleEntry,
+        as: 'scheduleEntry',
+        include: [
+          {
+            model: Schedule,
+            as: 'schedule',
+            include: [
+              {
+                model: PeriodGradeSection,
+                as: 'section',
+                include: [
+                  { model: PeriodGrade, as: 'periodGrade', include: [{ model: Grade, as: 'grade' }] },
+                  { model: Section, as: 'section' },
+                ],
+              },
+            ],
+          },
+          { model: Subject, as: 'subject' },
+          { model: Person, as: 'teacher' },
+        ],
+      },
+    ],
+  });
+  if (!session) throw new Error('Sesión de asistencia no encontrada');
+
+  const entry = (session as any).scheduleEntry;
+  const { clusterEntries, periodInfoMap, rosterInscriptions, sectionLabelByKey } = await resolveBlockRoster(
+    entry, (session as any).schoolPeriodId, (session as any).sessionDate
+  );
 
   // Merge records from the canonical session and any sibling sessions created
   // before group slots were merged (live data may have them).
@@ -596,11 +640,7 @@ export async function getSessionDetail(sessionId: number): Promise<SessionDetail
   const roster: SessionRosterEntry[] = rosterInscriptions.map(ins => {
     const record = byInscription.get(ins.id) || null;
     return {
-      inscriptionId: ins.id,
-      personId: ins.personId,
-      document: ins.student?.document ?? '',
-      fullName: `${ins.student?.lastName ?? ''}, ${ins.student?.firstName ?? ''}`.trim(),
-      sectionLabel: sectionLabelByKey.get(`${ins.gradeId}|${ins.sectionId}`) ?? null,
+      ...rosterIdentity(ins, sectionLabelByKey),
       status: record?.status ?? null,
       reason: record?.reason ?? null,
       blocked: record?.blocked ?? false,
@@ -747,6 +787,139 @@ export async function saveSessionRecords(
     await t.rollback();
     throw error;
   }
+}
+
+/* ---------------- Offline support (teacher PWA) ---------------- */
+
+const WEEKDAY_NAMES = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'];
+
+export interface TemplateBlock extends BlockView {
+  roster: RosterIdentity[];
+}
+
+export interface TeacherWeekTemplate {
+  schoolPeriodId: number | null;
+  generatedAt: string;
+  /** Blocks per weekday name (Lunes..Viernes), in period order. */
+  days: Record<string, TemplateBlock[]>;
+}
+
+/**
+ * The teacher's weekly timetable with each block's roster, without creating
+ * sessions. The phone caches it so attendance can be taken offline on any
+ * date: the weekday picks the blocks, the calendar date identifies the
+ * session when it syncs. Rosters resolve group subjects for dateStr's term.
+ */
+export async function getTeacherWeekTemplate(personId: number, dateStr: string): Promise<TeacherWeekTemplate> {
+  const days: Record<string, TemplateBlock[]> = Object.fromEntries(WEEKDAY_NAMES.map(d => [d, []]));
+  const active = await SchoolPeriod.findOne({ where: { status: 'activo' }, attributes: ['id'], raw: true });
+  const schoolPeriodId: number | null = (active as any)?.id ?? null;
+  if (!schoolPeriodId) return { schoolPeriodId, generatedAt: new Date().toISOString(), days };
+
+  const entries = await loadTeacherEntries(personId, WEEKDAY_NAMES, schoolPeriodId);
+  const periodInfoMap = await getPeriodInfoMap();
+  for (const cluster of clusterEntriesIntoClassBlocks(entries, periodInfoMap)) {
+    const view = buildBlockView(cluster, periodInfoMap);
+    const canonical = cluster.find((e: any) => e.id === view.scheduleEntryId);
+    const { rosterInscriptions, sectionLabelByKey } = await resolveBlockRoster(canonical, schoolPeriodId, dateStr);
+    days[view.day]?.push({ ...view, roster: rosterInscriptions.map(ins => rosterIdentity(ins, sectionLabelByKey)) });
+  }
+  for (const d of WEEKDAY_NAMES) sortBlocksByPeriod(days[d]);
+  return { schoolPeriodId, generatedAt: new Date().toISOString(), days };
+}
+
+export interface OfflineRecordInput extends AttendanceRecordInput {
+  /** Value the phone had for this student when the teacher marked it (null = empty). */
+  baseStatus: AttendanceStatus | null;
+  baseReason?: string | null;
+}
+
+export interface OfflineSyncConflict {
+  inscriptionId: number;
+  /** 1-based position in the current roster (the teacher's list number). */
+  listNumber: number;
+  fullName: string;
+  serverStatus: AttendanceStatus | null;
+  serverReason: string | null;
+}
+
+export interface OfflineSyncResult extends SaveRecordsResult {
+  sessionId: number;
+  conflicts: OfflineSyncConflict[];
+  /** Students no longer in the block's roster (withdrawn, moved section…). */
+  notInRoster: number[];
+}
+
+/** Teacher of a schedule entry (null when the entry does not exist). */
+export async function getScheduleEntryTeacherId(scheduleEntryId: number): Promise<number | null> {
+  const entry = await ScheduleEntry.findByPk(scheduleEntryId, { attributes: ['teacherId'], raw: true });
+  return (entry as any)?.teacherId ?? null;
+}
+
+/**
+ * Apply attendance taken offline, identified by (block, date) instead of a
+ * session id — the session is created on demand like when the teacher opens
+ * the day online. Optimistic concurrency: a student's mark only applies when
+ * the server still holds the value the phone had when marking it; otherwise
+ * the server value (e.g. a Control de Estudios correction) is kept and the
+ * student is reported as a conflict.
+ */
+export async function saveOfflineRecords(
+  scheduleEntryId: number,
+  sessionDate: string,
+  records: OfflineRecordInput[],
+  performedByPersonId: number
+): Promise<OfflineSyncResult> {
+  const entry = await ScheduleEntry.findByPk(scheduleEntryId, {
+    include: [{
+      model: Schedule,
+      as: 'schedule',
+      include: [{ model: PeriodGradeSection, as: 'section', include: [{ model: PeriodGrade, as: 'periodGrade' }] }],
+    }],
+  });
+  if (!entry) throw new Error('Bloque de horario no encontrado');
+  if (getDayNameForDate(sessionDate) !== (entry as any).day) {
+    throw new Error('La fecha no corresponde al día de este bloque');
+  }
+  // Allow one day of slack for the phone/server timezone difference.
+  const maxDate = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  if (sessionDate > maxDate) throw new Error('No se puede registrar asistencia de una fecha futura');
+
+  const { entries: cluster } = await findClassBlockEntries(entry, (entry as any).schedule.schoolPeriodId);
+  const session = await getOrCreateBlockSession(cluster, sessionDate);
+  const { roster } = await getSessionDetail(session.id);
+  const indexById = new Map(roster.map((r, i) => [r.inscriptionId, i]));
+
+  const norm = (reason: string | null | undefined) => reason?.trim() || null;
+  const conflicts: OfflineSyncConflict[] = [];
+  const notInRoster: number[] = [];
+  const accepted: AttendanceRecordInput[] = [];
+  for (const input of records) {
+    const idx = indexById.get(input.inscriptionId);
+    if (idx === undefined) {
+      notInRoster.push(input.inscriptionId);
+      continue;
+    }
+    const current = roster[idx];
+    const alreadyApplied = current.status === input.status && norm(current.reason) === norm(input.reason);
+    const untouched = current.status === (input.baseStatus ?? null) && norm(current.reason) === norm(input.baseReason);
+    if (!alreadyApplied && !untouched) {
+      conflicts.push({
+        inscriptionId: current.inscriptionId,
+        listNumber: idx + 1,
+        fullName: current.fullName,
+        serverStatus: current.status,
+        serverReason: current.reason,
+      });
+      continue;
+    }
+    accepted.push({ inscriptionId: input.inscriptionId, status: input.status, reason: input.reason ?? null });
+  }
+
+  const result = accepted.length > 0
+    ? await saveSessionRecords(session.id, accepted, performedByPersonId)
+    : { created: 0, updated: 0, unchanged: 0 };
+  return { sessionId: session.id, ...result, conflicts, notInRoster };
 }
 
 /** Resolve the class block of a session: entry ids and earliest period key. */

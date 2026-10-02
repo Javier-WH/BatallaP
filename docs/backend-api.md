@@ -369,6 +369,8 @@ Ver [`flows/grade-edit.md`](./flows/grade-edit.md).
 | GET | `/my-sessions?date=YYYY-MM-DD` | Sesiones del profesor para la fecha (desde su horario). Fin de semana → vacío. |
 | GET | `/sessions/:id` | Nómina de la sección + registros de asistencia. |
 | PUT | `/sessions/:id/records` | Guardado masivo. Body: `{ records: [{ inscriptionId, status, reason? }] }`. El profesor solo puede guardar en sus sesiones; staff en cualquiera. |
+| GET | `/my-week-template?date=YYYY-MM-DD` | Horario semanal del profesor (Lunes–Viernes, período activo) con la nómina de cada bloque. No crea sesiones. La PWA lo guarda para trabajar sin conexión; `date` elige el lapso de las materias de grupo. |
+| POST | `/offline-sync` | Aplica asistencia tomada sin conexión, identificada por bloque + fecha (la sesión se crea si no existe). Body: `{ scheduleEntryId, sessionDate, records: [{ inscriptionId, status, reason?, baseStatus, baseReason? }] }`. Cada estudiante solo se actualiza si el servidor aún tiene `baseStatus/baseReason` (lo que veía el teléfono); si alguien lo cambió mientras tanto se conserva el valor del servidor y vuelve en `conflicts: [{ inscriptionId, listNumber, fullName, serverStatus, serverReason }]`. Los que ya no están en la nómina vuelven en `notInRoster`. Rechaza fechas futuras o que no correspondan al día del bloque. Mismos permisos que el PUT. |
 | POST | `/records/:id/clear` | Desbloquea un registro. Body: `{ reasonCode, reasonNote? }` (nota obligatoria si el motivo lo requiere). |
 | GET | `/records/:id/audits` | Auditoría del registro (solo staff). |
 | GET | `/clearance-reasons` | Motivos de desbloqueo activos (siembra 4 defaults la primera vez). |

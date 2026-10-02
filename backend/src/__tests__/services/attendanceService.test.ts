@@ -6,6 +6,8 @@ import {
   clearAttendanceBlock,
   clearSessionBlock,
   listClearanceReasons,
+  getTeacherWeekTemplate,
+  saveOfflineRecords,
 } from '@/services/attendanceService';
 import {
   Schedule,
@@ -496,6 +498,104 @@ describe('attendanceService', () => {
       await expect(
         clearSessionBlock(s1.id, inscription.id, person.id, 'other', null)
       ).rejects.toThrow();
+    });
+  });
+
+  describe('getTeacherWeekTemplate', () => {
+    it('agrupa los bloques por día con su nómina sin crear sesiones', async () => {
+      const { structure, person, entry } = await setupTeacherWithSchedule('Lunes', 'm1');
+      const { inscription } = await setupStudent(structure, 'A');
+
+      const template = await getTeacherWeekTemplate(person.id, MONDAY);
+
+      expect(template.days.Lunes).toHaveLength(1);
+      expect(template.days.Martes).toHaveLength(0);
+      expect(template.days.Lunes[0].scheduleEntryId).toBe(entry.id);
+      expect(template.days.Lunes[0].roster.map(r => r.inscriptionId)).toEqual([inscription.id]);
+      expect(await AttendanceSession.count()).toBe(0);
+    });
+  });
+
+  describe('saveOfflineRecords', () => {
+    it('crea la sesión por (bloque, fecha) y guarda lo tomado sin conexión', async () => {
+      const { structure, person, entry } = await setupTeacherWithSchedule('Lunes', 'm1');
+      const { inscription } = await setupStudent(structure, 'A');
+
+      const result = await saveOfflineRecords(entry.id, MONDAY, [
+        { inscriptionId: inscription.id, status: 'present', baseStatus: null },
+      ], person.id);
+
+      expect(result.created).toBe(1);
+      expect(result.conflicts).toHaveLength(0);
+      const session = await AttendanceSession.findOne({ where: { scheduleEntryId: entry.id, sessionDate: MONDAY } });
+      expect(session!.id).toBe(result.sessionId);
+      const record = await AttendanceRecord.findOne({ where: { sessionId: result.sessionId } });
+      expect(record!.status).toBe('present');
+    });
+
+    it('conserva lo editado en el servidor mientras el teléfono estaba sin conexión', async () => {
+      const { structure, person, entry } = await setupTeacherWithSchedule('Lunes', 'm1');
+      const { inscription: first } = await setupStudent(structure, 'A');
+      const { inscription: second } = await setupStudent(structure, 'B');
+      const [session] = await getTeacherSessionsForDate(person.id, MONDAY);
+      const { person: staff } = await createTestUser({ firstName: 'Control', lastName: 'Estudios' });
+      // Control de Estudios fills one student while the teacher is offline.
+      await saveSessionRecords(session.id, [
+        { inscriptionId: second.id, status: 'excused', reason: 'Justificado' },
+      ], staff.id);
+
+      // The phone saw both students empty.
+      const result = await saveOfflineRecords(entry.id, MONDAY, [
+        { inscriptionId: first.id, status: 'present', baseStatus: null },
+        { inscriptionId: second.id, status: 'absent', baseStatus: null },
+      ], person.id);
+
+      const detail = await getSessionDetail(session.id);
+      const listNumber = detail.roster.findIndex(r => r.inscriptionId === second.id) + 1;
+      expect(result.created).toBe(1);
+      expect(result.conflicts).toEqual([{
+        inscriptionId: second.id,
+        listNumber,
+        fullName: detail.roster[listNumber - 1].fullName,
+        serverStatus: 'excused',
+        serverReason: 'Justificado',
+      }]);
+      const kept = await AttendanceRecord.findOne({ where: { sessionId: session.id, inscriptionId: second.id } });
+      expect(kept!.status).toBe('excused');
+      expect(kept!.teacherId).toBe(staff.id);
+    });
+
+    it('no reporta conflicto si el servidor ya tiene el mismo valor', async () => {
+      const { structure, person, entry } = await setupTeacherWithSchedule('Lunes', 'm1');
+      const { inscription } = await setupStudent(structure, 'A');
+      const [session] = await getTeacherSessionsForDate(person.id, MONDAY);
+      await saveSessionRecords(session.id, [{ inscriptionId: inscription.id, status: 'present' }], person.id);
+
+      const result = await saveOfflineRecords(entry.id, MONDAY, [
+        { inscriptionId: inscription.id, status: 'present', baseStatus: null },
+      ], person.id);
+
+      expect(result.conflicts).toHaveLength(0);
+      expect(result.unchanged).toBe(1);
+    });
+
+    it('descarta estudiantes que ya no están en la nómina', async () => {
+      const { structure, person, entry } = await setupTeacherWithSchedule('Lunes', 'm1');
+      await setupStudent(structure, 'A');
+
+      const result = await saveOfflineRecords(entry.id, MONDAY, [
+        { inscriptionId: 999999, status: 'present', baseStatus: null },
+      ], person.id);
+
+      expect(result.notInRoster).toEqual([999999]);
+      expect(await AttendanceRecord.count()).toBe(0);
+    });
+
+    it('rechaza una fecha que no corresponde al día del bloque', async () => {
+      const { person, entry } = await setupTeacherWithSchedule('Lunes', 'm1');
+
+      await expect(saveOfflineRecords(entry.id, '2026-09-15', [], person.id))
+        .rejects.toThrow('La fecha no corresponde al día de este bloque');
     });
   });
 });

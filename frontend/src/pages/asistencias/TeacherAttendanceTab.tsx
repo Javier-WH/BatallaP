@@ -1,16 +1,22 @@
 import React, { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef } from 'react';
-import { Input, Spin, message } from 'antd';
+import { Input, Modal, Spin, message } from 'antd';
 import axios from 'axios';
 import {
   LeftOutlined, DownOutlined, RightOutlined, WarningOutlined, StopOutlined,
-  CheckOutlined, ClockCircleOutlined, UserOutlined,
+  CheckOutlined, ClockCircleOutlined, SyncOutlined, CloudUploadOutlined,
 } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
 import api from '@/services/api';
 import { useAuth } from '@/context/AuthContext';
 import { useSchool } from '@/context/SchoolContext';
 import { getSubjectVisual } from '@/utils/subjectVisuals';
+import { STATUS_LABELS } from './types';
 import type { AttendanceSessionView, RosterEntry, AttendanceStatus, ClearanceReason } from './types';
+import {
+  QUEUE_EVENT, applyPending, cacheRoster, enqueue, findPending, isNetworkError, loadQueue,
+  offlineRoster, offlineSessionsFor, periodLabelOf, refreshTemplate, removePending, sessionKey, syncPending,
+} from './offlineAttendance';
+import type { PendingSubmission, SyncOutcome, SyncReport } from './offlineAttendance';
 
 /* ---------------- Design tokens (from the approved prototype) ----------------
    Fraunces (headings / subject names) + Inter (UI, body). Cool slate paper,
@@ -94,6 +100,60 @@ const todayWeekdayIdx = (): number => {
   return d >= 1 && d <= 5 ? d - 1 : 0;
 };
 
+const SYNC_INTERVAL_MS = 5 * 60 * 1000;
+const pad2 = (n: number) => String(n).padStart(2, '0');
+const surnameOf = (fullName: string) => fullName.split(',')[0].trim() || fullName;
+
+/** Students the sync could not apply, with list number and surname. */
+function showSyncReport(reports: SyncReport[]) {
+  Modal.warning({
+    title: 'Algunos estudiantes no se actualizaron',
+    width: 420,
+    content: (
+      <div className="flex flex-col gap-3 text-sm">
+        {reports.map(r => (
+          <div key={`${r.subjectName}|${r.sessionDate}|${r.periodLabel}`}>
+            <p className="m-0 font-semibold text-slate-800">
+              {r.subjectName || 'Sin materia'}{r.sectionLabel ? ` — ${r.sectionLabel}` : ''}
+            </p>
+            <p className="m-0 mb-1 text-xs text-slate-500">
+              {dayjs(r.sessionDate).format('DD/MM/YYYY')} · {r.periodLabel}
+            </p>
+            {r.conflicts.length > 0 && (
+              <>
+                <p className="m-0 text-xs text-slate-600">
+                  Fueron modificados en el sistema (por ejemplo, por Control de Estudios) mientras el teléfono
+                  estaba sin conexión. Se conservó lo registrado en el sistema:
+                </p>
+                <ul className="m-0 mt-1 pl-4 text-xs">
+                  {r.conflicts.map(s => (
+                    <li key={`c${s.listNumber}${s.fullName}`}>
+                      <span className="tabular-nums">{pad2(s.listNumber)}</span> · {surnameOf(s.fullName)}
+                      <span className="text-slate-500"> — quedó: {s.serverStatus ? STATUS_LABELS[s.serverStatus] : 'sin registro'}</span>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+            {r.notInRoster.length > 0 && (
+              <>
+                <p className="m-0 mt-1 text-xs text-slate-600">Ya no están en la nómina de este bloque (no se registraron):</p>
+                <ul className="m-0 mt-1 pl-4 text-xs">
+                  {r.notInRoster.map(s => (
+                    <li key={`n${s.listNumber}${s.fullName}`}>
+                      <span className="tabular-nums">{pad2(s.listNumber)}</span> · {surnameOf(s.fullName)}
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </div>
+        ))}
+      </div>
+    ),
+  });
+}
+
 /**
  * Teacher attendance view — mobile-first, installed via PWA. Two screens:
  * schedule (timeline of today's sessions) and roster (mark attendance).
@@ -110,6 +170,18 @@ const TeacherAttendanceTab: React.FC<{ onExit?: () => void }> = ({ onExit }) => 
   const [openSessionId, setOpenSessionId] = useState<number | null>(null);
   const [sessions, setSessions] = useState<AttendanceSessionView[]>([]);
   const [loading, setLoading] = useState(true);
+  const personId = user?.personId ?? 0;
+  const [offline, setOffline] = useState(false);
+  const [pending, setPending] = useState<PendingSubmission[]>(() => loadQueue(personId));
+  const [syncing, setSyncing] = useState(false);
+  const pendingKeys = useMemo(() => new Set(pending.map(p => p.key)), [pending]);
+
+  useEffect(() => {
+    const reload = () => setPending(loadQueue(personId));
+    reload();
+    window.addEventListener(QUEUE_EVENT, reload);
+    return () => window.removeEventListener(QUEUE_EVENT, reload);
+  }, [personId]);
 
   const months = useMemo(() => periodMonths(viewPeriod), [viewPeriod]);
 
@@ -133,16 +205,67 @@ const TeacherAttendanceTab: React.FC<{ onExit?: () => void }> = ({ onExit }) => 
         params: { date: ds, ...(periodId ? { schoolPeriodId: periodId } : {}) },
       });
       setSessions(res.data.sessions ?? []);
-    } catch {
-      setSessions([]);
+      setOffline(false);
+    } catch (err) {
+      // No signal: same weekly timetable, stamped with the selected date.
+      const noNetwork = isNetworkError(err);
+      setOffline(noNetwork);
+      setSessions(noNetwork ? offlineSessionsFor(personId, ds) : []);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [personId]);
 
   useEffect(() => {
     fetchSessions(dateStr, viewPeriod?.id);
   }, [dateStr, viewPeriod?.id, fetchSessions]);
+
+  // Latest values for the background sync (interval / 'online' listeners).
+  const refreshViewRef = useRef(() => {});
+  useEffect(() => {
+    refreshViewRef.current = () => fetchSessions(dateStr, viewPeriod?.id);
+  }, [fetchSessions, dateStr, viewPeriod?.id]);
+
+  const runSync = useCallback(async (manual: boolean) => {
+    if (!personId) return;
+    setSyncing(true);
+    try {
+      // Refresh the offline copy of the timetable whenever there is signal.
+      await refreshTemplate(personId).catch(() => undefined);
+      const outcome: SyncOutcome = await syncPending(personId);
+      setOffline(outcome.offline);
+      if (outcome.synced > 0) {
+        message.success(outcome.synced === 1 ? '1 asistencia sincronizada' : `${outcome.synced} asistencias sincronizadas`);
+        refreshViewRef.current();
+      }
+      for (const f of outcome.failed) {
+        message.error(`${f.item.subjectName || 'Sin materia'} (${dayjs(f.item.sessionDate).format('DD/MM')}): ${f.message}`);
+      }
+      if (outcome.reports.length > 0) showSyncReport(outcome.reports);
+      if (manual && outcome.offline) {
+        message.warning('Sin conexión. Las asistencias siguen guardadas en el teléfono.');
+      } else if (manual && outcome.synced === 0 && outcome.failed.length === 0) {
+        message.info('Todo está sincronizado');
+        refreshViewRef.current();
+      }
+    } finally {
+      setSyncing(false);
+    }
+  }, [personId]);
+
+  // Sync on open, when the signal comes back, and periodically.
+  useEffect(() => {
+    runSync(false);
+    const onOnline = () => runSync(false);
+    window.addEventListener('online', onOnline);
+    const timer = window.setInterval(() => {
+      if (loadQueue(personId).length > 0) runSync(false);
+    }, SYNC_INTERVAL_MS);
+    return () => {
+      window.removeEventListener('online', onOnline);
+      window.clearInterval(timer);
+    };
+  }, [runSync, personId]);
 
   const handlePickMonth = useCallback((m: Dayjs) => {
     setMonth(m);
@@ -177,8 +300,6 @@ const TeacherAttendanceTab: React.FC<{ onExit?: () => void }> = ({ onExit }) => 
 
   const openSession = openSessionId != null ? sessions.find(s => s.id === openSessionId) ?? null : null;
 
-  const initials = `${user?.firstName?.[0] ?? ''}${user?.lastName?.[0] ?? ''}`.toUpperCase();
-
   return (
     <div className="flex justify-center py-4">
       <style>{FONT_IMPORT}</style>
@@ -191,13 +312,19 @@ const TeacherAttendanceTab: React.FC<{ onExit?: () => void }> = ({ onExit }) => 
         {openSession ? (
           <RosterScreen
             session={openSession}
+            personId={personId}
             dateStr={dateStr}
             dayName={DAY_FULL[dayIdx]}
-            onBack={() => { setOpenSessionId(null); fetchSessions(dateStr); }}
+            onBack={() => { setOpenSessionId(null); fetchSessions(dateStr, viewPeriod?.id); }}
+            onQueued={() => runSync(false)}
           />
         ) : (
           <ScheduleScreen
-            userInitials={initials}
+            offline={offline}
+            pendingCount={pending.length}
+            isPending={(s) => pendingKeys.has(sessionKey(s.scheduleEntryId, dateStr))}
+            syncing={syncing}
+            onSync={() => runSync(true)}
             months={months}
             month={month}
             monthPickerOpen={monthPickerOpen}
@@ -223,11 +350,16 @@ const TeacherAttendanceTab: React.FC<{ onExit?: () => void }> = ({ onExit }) => 
 
 /* ---------------- Schedule Screen ---------------- */
 function ScheduleScreen({
-  userInitials, month, months, monthPickerOpen, onToggleMonthPicker, onPickMonth,
+  offline, pendingCount, isPending, syncing, onSync,
+  month, months, monthPickerOpen, onToggleMonthPicker, onPickMonth,
   weekMonday, weekPickerOpen, onToggleWeekPicker, onPickWeek,
   dayIdx, onPickDay, sessions, statusOf, loading, onSelectSession, onExit,
 }: {
-  userInitials: string;
+  offline: boolean;
+  pendingCount: number;
+  isPending: (s: AttendanceSessionView) => boolean;
+  syncing: boolean;
+  onSync: () => void;
   month: Dayjs;
   months: Dayjs[];
   monthPickerOpen: boolean;
@@ -262,11 +394,34 @@ function ScheduleScreen({
             <div className="w-8 h-8" aria-hidden="true" />
           )}
           <h1 className="att-font-head text-lg text-slate-900">Asistencias</h1>
-          <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center">
-            <UserOutlined className="w-4 h-4 text-slate-500" />
-            <span className="sr-only">{userInitials}</span>
-          </div>
+          <button
+            type="button"
+            onClick={onSync}
+            disabled={syncing}
+            aria-label="Sincronizar"
+            title="Sincronizar"
+            className="relative w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center text-slate-600 hover:bg-slate-300 transition-colors"
+          >
+            <SyncOutlined spin={syncing} style={{ fontSize: 14 }} />
+            {pendingCount > 0 && (
+              <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 rounded-full bg-amber-500 text-white text-[10px] leading-4 text-center tabular-nums">
+                {pendingCount}
+              </span>
+            )}
+          </button>
         </div>
+
+        {(offline || pendingCount > 0) && (
+          <div className={`mt-3 rounded-lg border px-3 py-1.5 text-center text-[11px] att-font-body ${
+            offline ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-slate-200 bg-slate-100 text-slate-600'
+          }`}>
+            {offline && 'Sin conexión · horario guardado en el teléfono'}
+            {offline && pendingCount > 0 && <br />}
+            {pendingCount > 0 && (pendingCount === 1
+              ? '1 asistencia pendiente de sincronizar'
+              : `${pendingCount} asistencias pendientes de sincronizar`)}
+          </div>
+        )}
 
         <div className="relative mt-3 flex justify-center gap-4">
           {/* Month picker — school period range: September (startYear) → August (endYear).
@@ -378,6 +533,7 @@ function ScheduleScreen({
           <div className="relative">
             {sessions.map((session, i) => {
               const status = statusOf(session, i);
+              const unsynced = isPending(session);
               const visual = getSubjectVisual({ name: session.subjectName });
               const Icon = visual.Icon;
               const isLast = i === sessions.length - 1;
@@ -414,12 +570,18 @@ function ScheduleScreen({
                       {session.sectionLabel && (
                         <span className="block text-[11px] text-slate-400 att-font-body truncate">{session.sectionLabel}</span>
                       )}
-                      <span className="block text-xs text-slate-400 att-font-body">
-                        {status === 'done' && 'Asistencia registrada'}
-                        {status === 'current' && 'En curso — toca para tomar asistencia'}
-                        {status === 'missing' && 'Terminó — asistencia sin registrar'}
-                        {status === 'upcoming' && 'Aún no comienza'}
-                      </span>
+                      {unsynced ? (
+                        <span className="flex items-center gap-1 text-xs text-amber-700 att-font-body">
+                          <CloudUploadOutlined className="shrink-0" /> Pendiente de sincronizar
+                        </span>
+                      ) : (
+                        <span className="block text-xs text-slate-400 att-font-body">
+                          {status === 'done' && 'Asistencia registrada'}
+                          {status === 'current' && 'En curso — toca para tomar asistencia'}
+                          {status === 'missing' && 'Terminó — asistencia sin registrar'}
+                          {status === 'upcoming' && 'Aún no comienza'}
+                        </span>
+                      )}
                       <span className="block text-xs text-slate-500 att-font-body tabular-nums mt-0.5">
                         {session.periodStart
                           ? (session.periodEnd && session.periodEnd !== session.periodStart
@@ -455,16 +617,24 @@ function TimelineDot({ status }: { status: SessionStatus }) {
 
 /* ---------------- Roster Screen ---------------- */
 function RosterScreen({
-  session, dateStr, dayName, onBack,
+  session, personId, dateStr, dayName, onBack, onQueued,
 }: {
   session: AttendanceSessionView;
+  personId: number;
   dateStr: string;
   dayName: string;
   onBack: () => void;
+  /** A save went to the offline queue. */
+  onQueued: () => void;
 }) {
   const [roster, setRoster] = useState<RosterEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [offlineMode, setOfflineMode] = useState(false);
+  // Server-side value of each student when the roster loaded: the base the
+  // offline sync compares against to detect edits made meanwhile.
+  const baselineRef = useRef<Map<number, { status: AttendanceStatus | null; reason: string | null }>>(new Map());
+  const key = sessionKey(session.scheduleEntryId, dateStr);
   const [sessionStatus, setSessionStatus] = useState<SessionStatus>('current');
   const [selectedInscriptionId, setSelectedInscriptionId] = useState<number | null>(null);
   const [reasonDraft, setReasonDraft] = useState<{ inscriptionId: number; value: string } | null>(null);
@@ -479,9 +649,29 @@ function RosterScreen({
     (async () => {
       setLoading(true);
       try {
-        const res = await api.get(`/attendance/sessions/${session.id}`);
+        // Negative ids are offline sessions built from the weekly template.
+        let serverRoster: RosterEntry[] | null = null;
+        let noNetwork = session.id < 0;
+        if (!noNetwork) {
+          try {
+            const res = await api.get(`/attendance/sessions/${session.id}`);
+            serverRoster = res.data.roster ?? [];
+            cacheRoster(personId, key, serverRoster!);
+          } catch (err) {
+            if (!isNetworkError(err)) throw err;
+            noNetwork = true;
+          }
+        }
+        if (noNetwork) serverRoster = offlineRoster(personId, session.scheduleEntryId, dateStr);
         if (cancelled) return;
-        const loadedRoster: RosterEntry[] = res.data.roster ?? [];
+        if (!serverRoster) {
+          message.error('Esta nómina no está guardada en el teléfono. Ábrala una vez con conexión.');
+          return;
+        }
+        baselineRef.current = new Map(serverRoster.map(r => [r.inscriptionId, { status: r.status, reason: r.reason }]));
+        // Unsynced marks of this block+date are shown on top of the server copy.
+        const loadedRoster = applyPending(serverRoster, findPending(personId, key));
+        setOfflineMode(noNetwork);
         setRoster(loadedRoster);
         setSelectedInscriptionId(current =>
           current && loadedRoster.some(student => student.inscriptionId === current)
@@ -499,7 +689,7 @@ function RosterScreen({
       }
     })();
     return () => { cancelled = true; };
-  }, [session.id, dateStr]);
+  }, [session.id, session.scheduleEntryId, dateStr, personId, key]);
 
   const isPast = sessionStatus === 'done' || sessionStatus === 'missing';
 
@@ -658,16 +848,49 @@ function RosterScreen({
       message.warning(`Indique el motivo de expulsión de ${missingReason.fullName}`);
       return;
     }
+    const queueOffline = (noNetwork: boolean) => {
+      enqueue(personId, {
+        scheduleEntryId: session.scheduleEntryId,
+        sessionDate: dateStr,
+        subjectName: session.subjectName,
+        sectionLabel: session.sectionLabel,
+        periodLabel: periodLabelOf(session),
+        records: roster.flatMap((r, index) => r.status === null ? [] : [{
+          inscriptionId: r.inscriptionId,
+          status: r.status,
+          reason: normalizeAttendanceReason(r.reason),
+          baseStatus: baselineRef.current.get(r.inscriptionId)?.status ?? null,
+          baseReason: baselineRef.current.get(r.inscriptionId)?.reason ?? null,
+          listNumber: index + 1,
+          fullName: r.fullName,
+        }]),
+      });
+      if (noNetwork) {
+        message.info('Sin conexión: la asistencia quedó guardada en el teléfono y se sincronizará al recuperar la conexión.', 5);
+      }
+      onQueued();
+      onBack();
+    };
+
+    // Offline, or this block already has unsynced marks: go through the queue
+    // so the server's conflict check protects edits made meanwhile.
+    if (offlineMode || session.id < 0 || findPending(personId, key)) {
+      queueOffline(offlineMode || session.id < 0);
+      return;
+    }
+
     setSaving(true);
     try {
       const records = roster
         .filter(r => r.status !== null)
         .map(r => ({ inscriptionId: r.inscriptionId, status: r.status, reason: normalizeAttendanceReason(r.reason) }));
       await api.put(`/attendance/sessions/${session.id}/records`, { records });
+      removePending(personId, key);
       message.success(isPast ? 'Cambios guardados' : 'Asistencia guardada');
       onBack();
     } catch (err: unknown) {
-      message.error(getApiErrorMessage(err, 'Error al guardar asistencia'));
+      if (isNetworkError(err)) queueOffline(true);
+      else message.error(getApiErrorMessage(err, 'Error al guardar asistencia'));
     } finally {
       setSaving(false);
     }
@@ -706,6 +929,14 @@ function RosterScreen({
           {' · '}{`${dayName} ${dayjs(dateStr).date()} de ${MONTHS_FULL[dayjs(dateStr).month()].toLowerCase()}`}
         </p>
 
+        {offlineMode && (
+          <div className="mt-3 flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+            <CloudUploadOutlined className="text-amber-700 mt-0.5 shrink-0" />
+            <p className="text-xs text-amber-800 att-font-body leading-relaxed m-0">
+              Sin conexión. Al guardar, la asistencia queda en el teléfono y se sincroniza cuando vuelva la señal.
+            </p>
+          </div>
+        )}
         {sessionStatus === 'done' && (
           <div className="mt-3 flex items-start gap-2 bg-slate-100 border border-slate-200 rounded-lg px-3 py-2">
             <ClockCircleOutlined className="text-slate-500 mt-0.5 shrink-0" />
