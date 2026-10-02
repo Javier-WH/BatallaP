@@ -863,6 +863,14 @@ async function buildCertifiedWorkbook(personId: number, templateName: string): P
       equivalencia: 'E',
     };
 
+    // A failed revision (or failed MP revision at the last encounter) that
+    // survives the dedup has no materia_pendiente grade above it: the subject
+    // stays pending for the next school year, so the official certificate
+    // shows P / PENDIENTE / P instead of the failing score.
+    const isPendingRevision = (g: any): boolean =>
+      (g.gradeType === 'revision' || g.gradeType === 'revision_materia_pendiente')
+      && g.status === 'reprobada';
+
     // Max grade for padding (default 20)
     const maxGrade = Number(settings.max_grade || 20);
     const padDigits = Math.max(2, String(maxGrade).length);
@@ -897,14 +905,18 @@ async function buildCertifiedWorkbook(personId: number, templateName: string): P
         if (!g) continue;
 
         // D21-D27 = grade in numbers (rounded, zero-padded)
-        if (g.finalScore != null) {
+        if (isPendingRevision(g)) {
+          setter(`y1_s${subjNum}_num`, 'P');
+          // E21-E27 = grade in letters
+          setter(`y1_s${subjNum}_letters`, 'PENDIENTE');
+        } else if (g.finalScore != null) {
           setter(`y1_s${subjNum}_num`, String(roundGradeMin1(g.finalScore)).padStart(padDigits, '0'));
           // E21-E27 = grade in letters
           setter(`y1_s${subjNum}_letters`, numberToSpanishWords(roundGradeMin1(g.finalScore)).toUpperCase());
         }
 
         // G21-G27 = evaluation type letter
-        const teCode = g.gradeType ? (GRADE_TYPE_TO_CODE[g.gradeType] || 'F') : 'F';
+        const teCode = isPendingRevision(g) ? 'P' : (g.gradeType ? (GRADE_TYPE_TO_CODE[g.gradeType] || 'F') : 'F');
         setter(`y1_s${subjNum}_te`, teCode);
 
         // H21-H27 = month (00), I21-I27 = year (0000)
@@ -932,7 +944,9 @@ async function buildCertifiedWorkbook(personId: number, templateName: string): P
         const subj = literalSubjects[0];
         const lookupKey = `${yearGrade.id}__${subj.id}`;
         const g = gradeLookup.get(lookupKey);
-        if (g && g.finalScore != null) {
+        if (g && isPendingRevision(g)) {
+          setter(literalCells[y - 1], 'PENDIENTE');
+        } else if (g && g.finalScore != null) {
           setter(literalCells[y - 1], numericToLetter(roundGradeMin1(g.finalScore), letterGradesConfig).toUpperCase());
         }
       }
@@ -986,7 +1000,9 @@ async function buildCertifiedWorkbook(personId: number, templateName: string): P
               if (calculatedGroupScore != null) groupFinalScore = calculatedGroupScore;
             }
             setter(groupNameCells[y - 1], toTitleCaseES(g.subjectName || grp.name));
-            setter(groupNumCells[y - 1], numericToLetter(roundGradeMin1(groupFinalScore), letterGradesConfig).toUpperCase());
+            setter(groupNumCells[y - 1], isPendingRevision(g)
+              ? 'PENDIENTE'
+              : numericToLetter(roundGradeMin1(groupFinalScore), letterGradesConfig).toUpperCase());
             break;
           }
         }
@@ -1011,14 +1027,18 @@ async function buildCertifiedWorkbook(personId: number, templateName: string): P
         if (!g) continue;
 
         // O21-O27 = grade in numbers (rounded, zero-padded)
-        if (g.finalScore != null) {
+        if (isPendingRevision(g)) {
+          setter(`y2_s${subjNum}_num`, 'P');
+          // P21-P27 = grade in letters
+          setter(`y2_s${subjNum}_letters`, 'PENDIENTE');
+        } else if (g.finalScore != null) {
           setter(`y2_s${subjNum}_num`, String(roundGradeMin1(g.finalScore)).padStart(padDigits, '0'));
           // P21-P27 = grade in letters
           setter(`y2_s${subjNum}_letters`, numberToSpanishWords(roundGradeMin1(g.finalScore)).toUpperCase());
         }
 
         // Q21-Q27 = evaluation type letter
-        const teCode = g.gradeType ? (GRADE_TYPE_TO_CODE[g.gradeType] || 'F') : 'F';
+        const teCode = isPendingRevision(g) ? 'P' : (g.gradeType ? (GRADE_TYPE_TO_CODE[g.gradeType] || 'F') : 'F');
         setter(`y2_s${subjNum}_te`, teCode);
 
         // R21-R27 = month (00), S21-S27 = year (0000)
@@ -1053,14 +1073,18 @@ async function buildCertifiedWorkbook(personId: number, templateName: string): P
         if (!g) continue;
 
         // D31-D38 = grade in numbers (rounded, zero-padded)
-        if (g.finalScore != null) {
+        if (isPendingRevision(g)) {
+          setter(`y3_s${subjNum}_num`, 'P');
+          // E31-E38 = grade in letters
+          setter(`y3_s${subjNum}_letters`, 'PENDIENTE');
+        } else if (g.finalScore != null) {
           setter(`y3_s${subjNum}_num`, String(roundGradeMin1(g.finalScore)).padStart(padDigits, '0'));
           // E31-E38 = grade in letters
           setter(`y3_s${subjNum}_letters`, numberToSpanishWords(roundGradeMin1(g.finalScore)).toUpperCase());
         }
 
         // G31-G38 = evaluation type letter
-        const teCode = g.gradeType ? (GRADE_TYPE_TO_CODE[g.gradeType] || 'F') : 'F';
+        const teCode = isPendingRevision(g) ? 'P' : (g.gradeType ? (GRADE_TYPE_TO_CODE[g.gradeType] || 'F') : 'F');
         setter(`y3_s${subjNum}_te`, teCode);
 
         // H31-H38 = month (00), I31-I38 = year (0000)
@@ -1095,14 +1119,18 @@ async function buildCertifiedWorkbook(personId: number, templateName: string): P
         if (!g) continue;
 
         // O31-O39 = grade in numbers (rounded, zero-padded)
-        if (g.finalScore != null) {
+        if (isPendingRevision(g)) {
+          setter(`y4_s${subjNum}_num`, 'P');
+          // P31-P39 = grade in letters
+          setter(`y4_s${subjNum}_letters`, 'PENDIENTE');
+        } else if (g.finalScore != null) {
           setter(`y4_s${subjNum}_num`, String(roundGradeMin1(g.finalScore)).padStart(padDigits, '0'));
           // P31-P39 = grade in letters
           setter(`y4_s${subjNum}_letters`, numberToSpanishWords(roundGradeMin1(g.finalScore)).toUpperCase());
         }
 
         // Q31-Q39 = evaluation type letter
-        const teCode = g.gradeType ? (GRADE_TYPE_TO_CODE[g.gradeType] || 'F') : 'F';
+        const teCode = isPendingRevision(g) ? 'P' : (g.gradeType ? (GRADE_TYPE_TO_CODE[g.gradeType] || 'F') : 'F');
         setter(`y4_s${subjNum}_te`, teCode);
 
         // R31-R39 = month (00), S31-S39 = year (0000)
@@ -1137,14 +1165,18 @@ async function buildCertifiedWorkbook(personId: number, templateName: string): P
         if (!g) continue;
 
         // D43-D52 = grade in numbers (rounded, zero-padded)
-        if (g.finalScore != null) {
+        if (isPendingRevision(g)) {
+          setter(`y5_s${subjNum}_num`, 'P');
+          // E43-E52 = grade in letters
+          setter(`y5_s${subjNum}_letters`, 'PENDIENTE');
+        } else if (g.finalScore != null) {
           setter(`y5_s${subjNum}_num`, String(roundGradeMin1(g.finalScore)).padStart(padDigits, '0'));
           // E43-E52 = grade in letters
           setter(`y5_s${subjNum}_letters`, numberToSpanishWords(roundGradeMin1(g.finalScore)).toUpperCase());
         }
 
         // G43-G52 = evaluation type letter
-        const teCode = g.gradeType ? (GRADE_TYPE_TO_CODE[g.gradeType] || 'F') : 'F';
+        const teCode = isPendingRevision(g) ? 'P' : (g.gradeType ? (GRADE_TYPE_TO_CODE[g.gradeType] || 'F') : 'F');
         setter(`y5_s${subjNum}_te`, teCode);
 
         // H43-H52 = month (00), I43-I52 = year (0000)
@@ -1171,7 +1203,7 @@ async function buildCertifiedWorkbook(personId: number, templateName: string): P
       for (const subj of subjects) {
         const lookupKey = `${yearGrade.id}__${subj.id}`;
         const g = gradeLookup.get(lookupKey);
-        if (g && g.finalScore != null) {
+        if (g && g.finalScore != null && !isPendingRevision(g)) {
           allNumericScores.push(roundGradeMin1(g.finalScore));
         }
       }
