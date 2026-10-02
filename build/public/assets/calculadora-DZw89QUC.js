@@ -1,0 +1,1 @@
+import{cN as r,c7 as a,cO as s,b_ as e,r as t,aa as o,cL as c,cM as i}from"./virtual_pwa-register-D78htTYn.js";r({immediate:!0});a.locale("es");s.createRoot(document.getElementById("root")).render(e.jsx(t.StrictMode,{children:e.jsx(o,{locale:c,theme:{token:{colorPrimary:"#1e40af",borderRadius:12,fontFamily:"Inter, system-ui, sans-serif"}},children:e.jsx(i,{})})}));
