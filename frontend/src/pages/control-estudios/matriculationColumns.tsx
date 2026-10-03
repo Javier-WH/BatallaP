@@ -1,7 +1,7 @@
 ﻿import type { ColDef, ColGroupDef, ICellEditorParams } from 'ag-grid-community';
 import type { EnrollmentQuestionResponse } from '@/services/enrollmentQuestions';
 import dayjs, { type Dayjs } from 'dayjs';
-import { Tooltip, Popover, DatePicker } from 'antd';
+import { Tooltip, Popover, DatePicker, Button } from 'antd';
 import React, { useRef, useEffect, useState } from 'react';
 
 // Custom select cell editor that auto-opens the dropdown on edit.
@@ -127,6 +127,7 @@ export interface GuardianProfile {
   address?: string;
   email?: string;
   occupation?: string;
+  birthdate?: string | null;
 }
 
 // Venezuela location catalog (GET /locations/venezuela)
@@ -197,7 +198,7 @@ export interface MatriculationRow {
     documentType: string;
     gender?: string;
     guardians: { relationship: string; isRepresentative?: boolean; profile?: GuardianProfile }[];
-    contact?: { phone1?: string; whatsapp?: string; address?: string };
+    contact?: { phone1?: string; whatsapp?: string; address?: string; email?: string };
     residence?: {
       birthState?: string;
       birthMunicipality?: string;
@@ -329,6 +330,7 @@ export interface ColumnCallbacks {
   onUpdateAnswer: (rowId: number, questionId: number, value: string | string[] | undefined) => void;
   onToggleInscription: (id: number, hidden: boolean) => void;
   onContextMenu: (rowId: number, colId: string, rowIndex: number, x: number, y: number) => void;
+  onOpenMissingEditor: (rowId: number) => void;
 }
 
 interface BuildColumnDefsParams {
@@ -706,44 +708,80 @@ export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<Matricul
       const row = p.data as MatriculationRow;
       const missing: string[] = [];
       const t = row.tempData;
+      const isBlank = (v: unknown) =>
+        v == null || String(v).trim() === '' || /^n\/?a$/i.test(String(v).trim());
+      // Conventional placeholders used when data is promised but not yet
+      // provided (e.g. enrolling without the representative's data):
+      // 'PENDIENTE'/'PLACEHOLDER' for names, '0' or a single digit for
+      // documents, '0400-0000000' for phones (the form requires the 04XX/02XX
+      // prefix) and 01/01/1900 for birthdates.
+      const isPending = (v: unknown) => typeof v === 'string' && /^(pendiente|placeholder)$/i.test(v.trim());
+      const isBlankName = (v: unknown) => isBlank(v) || isPending(v);
+      const onlyDigits = (v: unknown) => String(v ?? '').replace(/\D/g, '');
+      const isBlankDoc = (v: unknown) => {
+        const d = onlyDigits(v);
+        return isBlank(v) || isPending(v) || /^0+$/.test(d) || /^\d$/.test(d);
+      };
+      const isBlankPhone = (v: unknown) => {
+        const d = onlyDigits(v);
+        // Empty, all-zeros ('0000000000'), or a valid-format placeholder like
+        // '0400-0000000' / '0414-0000000' (04/02 prefix + all-zero subscriber
+        // digits — a real number never ends in seven zeros).
+        return !d || /^0+$/.test(d) || /^0[42]0+$/.test(d) || /^0[42]\d{2}0{7}$/.test(d);
+      };
+      const isPlaceholderDate = (v: unknown) => {
+        const d = dayjs(String(v ?? ''));
+        return d.isValid() && d.year() <= 1900;
+      };
 
       // Student basic data
-      if (!t.firstName) missing.push('Nombres del estudiante');
-      if (!t.lastName) missing.push('Apellidos del estudiante');
-      if (!t.document) missing.push('Cédula del estudiante');
-      if (!t.gender) missing.push('Género');
-      if (!t.birthdate) missing.push('Fecha de nacimiento');
+      if (isBlankName(t.firstName) || isBlankName(t.lastName)) missing.push('Nombres/apellidos del estudiante');
+      if (isBlankDoc(t.document)) missing.push('Cédula del estudiante');
+      if (isBlank(t.birthdate) || isPlaceholderDate(t.birthdate)) missing.push('Fecha de nacimiento del estudiante');
+      if (isBlank(t.birthState) || isBlank(t.birthMunicipality)) missing.push('Lugar de nacimiento del estudiante');
 
-      // Representative
-      const repLabel =
-        t.representativeType === 'mother' ? 'madre'
-        : t.representativeType === 'father' ? 'padre'
-        : 'representante';
+      // Representative — whoever is marked isRepresentative (mother, father or
+      // another person). Mother/father data is not required on its own.
       const rep = getRepProfile(row);
-      if (!rep || (!rep.firstName && !rep.lastName && !rep.document)) {
-        missing.push(`Sin ${repLabel} asignado`);
-      } else if (!rep.phone) {
-        missing.push(`Teléfono del ${repLabel}`);
+      if (!rep) {
+        missing.push('Sin representante asignado');
+      } else {
+        if (isBlankName(rep.firstName) || isBlankName(rep.lastName)) missing.push('Nombres/apellidos del representante');
+        if (isBlankDoc(rep.document)) missing.push('Cédula del representante');
+        if (isBlank(rep.birthdate) || isPlaceholderDate(rep.birthdate)) missing.push('Fecha de nacimiento del representante');
+        if (![rep.phone, rep.phone2, rep.whatsapp].some(v => !isBlankPhone(v))) missing.push('Teléfono del representante');
       }
 
-      // Enrollment documents
+      // The mother's data is required on its own when the student has no
+      // document (needed to identify him / derive the school ID), even if she
+      // is not the legal representative.
+      if (isBlankDoc(t.document) && t.representativeType !== 'mother') {
+        const mother = t.mother;
+        if (!mother) {
+          missing.push('Datos de la madre (estudiante sin cédula)');
+        } else {
+          if (isBlankName(mother.firstName) || isBlankName(mother.lastName)) missing.push('Nombres/apellidos de la madre');
+          if (isBlankDoc(mother.document)) missing.push('Cédula de la madre');
+        }
+      }
+
+      // Enrollment documents (only the ones the school actually requires)
       const docs = row.documents ?? row.matriculation?.documents;
-      if (!docs) {
-        missing.push('Documentos de inscripción no registrados');
-      } else {
-        const docFields: { key: keyof EnrollmentDocumentInfo; label: string }[] = [
-          { key: 'receivedPartidaNacimiento', label: 'Partida de nacimiento' },
-          { key: 'receivedCopiaCedulaEstudiante', label: 'Copia de cédula del estudiante' },
-          { key: 'receivedCopiaCedulaRepresentante', label: 'Fotocopia de cédula del representante' },
-          { key: 'receivedFotoCarnetEstudiante', label: 'Foto carné del estudiante' },
-          { key: 'receivedCertificadoAprendizaje', label: 'Certificado de aprendizaje' },
-          { key: 'receivedCartaBuenaConducta', label: 'Carta de buena conducta' },
-          { key: 'receivedNotasCertificadas', label: 'Notas certificadas' },
-          { key: 'receivedInformesMedicos', label: 'Informes médicos' },
-        ];
-        docFields.forEach(({ key, label }) => {
-          if (!docs[key]) missing.push(`Documento: ${label}`);
-        });
+      if (!docs?.receivedPartidaNacimiento) missing.push('Documento: Partida de nacimiento');
+      if (!docs?.receivedCopiaCedulaEstudiante) missing.push('Documento: Fotocopia de cédula del estudiante');
+      if (!docs?.receivedCopiaCedulaRepresentante) missing.push('Documento: Fotocopia de cédula del representante');
+      if (!docs?.receivedCertificadoAprendizaje) missing.push('Documento: Certificado de aprendizaje');
+      if (!docs?.receivedCartaBuenaConducta) missing.push('Documento: Carta de buena conducta');
+      const gradeOrder = structure.find(s => s.gradeId === row.gradeId)?.grade?.order
+        ?? structure.find(s => s.gradeId === row.gradeId)?.order ?? null;
+      if (gradeOrder != null && gradeOrder >= 2 && !docs?.receivedNotasCertificadas) {
+        missing.push('Documento: Notas certificadas (2do año en adelante)');
+      }
+
+      // Student email, only required in the last grade
+      const maxGradeOrder = Math.max(0, ...structure.map(s => s.grade?.order ?? s.order ?? 0));
+      if (gradeOrder != null && gradeOrder === maxGradeOrder && isBlank(row.student.contact?.email)) {
+        missing.push('Correo electrónico del estudiante');
       }
 
       const isHidden = !!row.hiddenFromControlEstudios;
@@ -767,7 +805,25 @@ export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<Matricul
         missing.forEach(m => lines.push(`• ${m}`));
       }
       const content = lines.length > 0
-        ? <div style={{ whiteSpace: 'pre-line', maxWidth: 300 }}>{lines.join('\n')}</div>
+        ? (
+          <div style={{ whiteSpace: 'pre-line', maxWidth: 300 }}>
+            {lines.join('\n')}
+            {missing.length > 0 && (
+              <div style={{ marginTop: 8 }}>
+                <Button
+                  size="small"
+                  type="primary"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (p.data) callbacks.onOpenMissingEditor((p.data as MatriculationRow).id);
+                  }}
+                >
+                  Completar datos
+                </Button>
+              </div>
+            )}
+          </div>
+        )
         : null;
       if (!content) return <></>;
       return (

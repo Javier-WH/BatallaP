@@ -1325,6 +1325,7 @@ export const updateInscription = async (req: Request, res: Response) => {
       escolaridad,
       subjectIds,
       fromTermId,
+      documents,
     } = req.body;
 
     const inscription = await Inscription.findByPk(id, {
@@ -1605,6 +1606,19 @@ export const updateInscription = async (req: Request, res: Response) => {
               transaction: t,
             });
           }
+        }
+      }
+    }
+
+    // Documents checklist lives on the linked Matriculation (if any)
+    if (documents) {
+      const linkedMatriculation = await Matriculation.findOne({ where: { inscriptionId: inscription.id }, transaction: t });
+      if (linkedMatriculation) {
+        const docRecord = await EnrollmentDocument.findOne({ where: { matriculationId: linkedMatriculation.id }, transaction: t });
+        if (docRecord) {
+          await docRecord.update(documents, { transaction: t });
+        } else {
+          await EnrollmentDocument.create({ matriculationId: linkedMatriculation.id, ...documents }, { transaction: t });
         }
       }
     }

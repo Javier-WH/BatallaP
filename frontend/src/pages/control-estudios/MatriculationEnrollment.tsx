@@ -86,12 +86,14 @@ interface GuardianProfile {
   address?: string;
   email?: string;
   occupation?: string;
+  birthdate?: string | null;
 }
 
 interface ContactInfo {
   phone1?: string;
   whatsapp?: string;
   address?: string;
+  email?: string;
 }
 
 interface ResidenceInfo {
@@ -1252,6 +1254,11 @@ const MatriculationEnrollment: React.FC = () => {
     message.success('Representante actualizado');
   }, [contextMenuState.rowId, matriculations, saveFieldChange]);
 
+  const handleOpenMissingEditor = useCallback((rowId: number) => {
+    setEditStudentRowId(rowId);
+    setEditStudentModalVisible(true);
+  }, []);
+
   const handleEditStudentSave = useCallback((data: Partial<EditStudentData>) => {
     if (editStudentRowId === null) return;
     const rowId = editStudentRowId;
@@ -1259,7 +1266,14 @@ const MatriculationEnrollment: React.FC = () => {
     setMatriculations(prev => prev.map(row => {
       if (row.id !== rowId) return row;
       const updatedTempData = { ...row.tempData, ...data } as TempData;
-      return { ...row, tempData: updatedTempData };
+      return {
+        ...row,
+        tempData: updatedTempData,
+        documents: (data.documents as MatriculationRow['documents']) ?? row.documents,
+        student: data.email !== undefined
+          ? { ...row.student, contact: { ...row.student.contact, email: data.email } }
+          : row.student,
+      };
     }));
 
     // Build payload for backend
@@ -1268,7 +1282,32 @@ const MatriculationEnrollment: React.FC = () => {
       if (k === 'birthdate') {
         payload[k] = v ? (v as dayjs.Dayjs).format('YYYY-MM-DD') : null;
       } else if (k === 'mother' || k === 'father' || k === 'representative') {
-        payload[k] = v;
+        // A guardian saved with an all-zeros document is a shared "pending"
+        // placeholder profile — updating it by id would rewrite the same
+        // profile for every student linked to it. Strip the id so a new
+        // profile is created from the real document instead.
+        const g = v as Record<string, unknown> | null | undefined;
+        if (g) {
+          const digits = (x: unknown) => String(x ?? '').replace(/\D/g, '');
+          const isBlankPh = (x: unknown) => { const d = digits(x); return !d || /^0+$/.test(d); };
+          const normalized = { ...g };
+          // The canonical phone column is `phone`; if it holds a placeholder
+          // but whatsapp has a real number, promote it so the grid shows it.
+          if (isBlankPh(normalized.phone) && !isBlankPh(normalized.whatsapp)) {
+            normalized.phone = normalized.whatsapp;
+          }
+          // Placeholder docs: '0'/all-zeros or a single digit (e.g. the legacy
+          // '7' convention) — never a real cédula.
+          const docDigits = digits(normalized.document);
+          if (/^0+$/.test(docDigits) || /^\d$/.test(docDigits)) {
+            const { id: _placeholderId, ...rest } = normalized;
+            payload[k] = rest;
+          } else {
+            payload[k] = normalized;
+          }
+        } else {
+          payload[k] = v;
+        }
       } else {
         payload[k] = v;
       }
@@ -2217,6 +2256,7 @@ const MatriculationEnrollment: React.FC = () => {
           onUpdateAnswer={handleUpdateAnswer}
           onToggleInscription={handleToggleInscription}
           onContextMenu={handleGridContextMenu}
+          onOpenMissingEditor={handleOpenMissingEditor}
           onShowFloatingButton={handleShowFloatingButton}
           onHideFloatingButton={handleHideFloatingButton}
         />
@@ -2411,6 +2451,10 @@ const MatriculationEnrollment: React.FC = () => {
         const row = matriculations.find(r => r.id === editStudentRowId);
         if (!row) return null;
         const td = row.tempData;
+        // The real phone may live in `phone` while the modal edits `whatsapp`
+        // — prefill the visible field with whichever one has a value.
+        const toModalGuardian = (g?: GuardianProfile | null) =>
+          g ? { ...g, whatsapp: g.whatsapp || g.phone } : g;
         const initialData: EditStudentData = {
           id: td.id,
           firstName: td.firstName,
@@ -2430,10 +2474,12 @@ const MatriculationEnrollment: React.FC = () => {
           livingWith: td.livingWith,
           phone1: td.phone1,
           whatsapp: td.whatsapp,
+          email: row.student.contact?.email,
+          documents: row.documents ?? row.matriculation?.documents ?? undefined,
           escolaridad: td.escolaridad,
-          mother: td.mother,
-          father: td.father,
-          representative: td.representative,
+          mother: toModalGuardian(td.mother),
+          father: toModalGuardian(td.father),
+          representative: toModalGuardian(td.representative),
           representativeType: td.representativeType,
         };
         return (
@@ -2447,6 +2493,7 @@ const MatriculationEnrollment: React.FC = () => {
             studentName={`${td.firstName} ${td.lastName}`}
             initialData={initialData}
             locations={locations}
+            documentsDisabled={!(row.id > 0 || row.matriculation)}
           />
         );
       })()}

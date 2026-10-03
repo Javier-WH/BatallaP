@@ -95,6 +95,7 @@ const MatriculationAgGrid = React.forwardRef<MatriculationAgGridHandle, Matricul
   onUpdateAnswer,
   onToggleInscription,
   onContextMenu,
+  onOpenMissingEditor,
   onShowFloatingButton,
   onHideFloatingButton,
 } = props;
@@ -116,6 +117,7 @@ const MatriculationAgGrid = React.forwardRef<MatriculationAgGridHandle, Matricul
     onUpdateAnswer,
     onToggleInscription,
     onContextMenu,
+    onOpenMissingEditor,
   });
   callbacksRef.current = {
     onUpdateField,
@@ -125,6 +127,7 @@ const MatriculationAgGrid = React.forwardRef<MatriculationAgGridHandle, Matricul
     onUpdateAnswer,
     onToggleInscription,
     onContextMenu,
+    onOpenMissingEditor,
   };
 
   const callbacks = useMemo<ColumnCallbacks>(
@@ -136,6 +139,7 @@ const MatriculationAgGrid = React.forwardRef<MatriculationAgGridHandle, Matricul
       onUpdateAnswer: (...args) => callbacksRef.current.onUpdateAnswer(...args),
       onToggleInscription: (...args) => callbacksRef.current.onToggleInscription(...args),
       onContextMenu: (...args) => callbacksRef.current.onContextMenu(...args),
+      onOpenMissingEditor: (...args) => callbacksRef.current.onOpenMissingEditor(...args),
     }),
     []
   );

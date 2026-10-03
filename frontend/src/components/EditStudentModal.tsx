@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo } from 'react';
-import { Modal, Form, Input, Select, Row, Col, Radio, DatePicker, Divider, Tabs } from 'antd';
+import { Modal, Form, Input, Select, Row, Col, Radio, DatePicker, Divider, Tabs, Checkbox } from 'antd';
 import dayjs from 'dayjs';
 
 export interface EditStudentGuardian {
@@ -18,6 +18,17 @@ export interface EditStudentGuardian {
   address?: string;
   occupation?: string;
   birthdate?: string | null;
+}
+
+export interface EditStudentDocuments {
+  receivedPartidaNacimiento?: boolean;
+  receivedCopiaCedulaEstudiante?: boolean;
+  receivedCopiaCedulaRepresentante?: boolean;
+  receivedNotasCertificadas?: boolean;
+  receivedCertificadoAprendizaje?: boolean;
+  receivedCartaBuenaConducta?: boolean;
+  receivedInformesMedicos?: boolean;
+  receivedFotoCarnetEstudiante?: boolean;
 }
 
 export interface EditStudentData {
@@ -45,6 +56,7 @@ export interface EditStudentData {
   father?: EditStudentGuardian | null;
   representative?: EditStudentGuardian | null;
   representativeType?: string;
+  documents?: EditStudentDocuments | null;
 }
 
 export interface VenezuelaLocation {
@@ -59,6 +71,8 @@ interface EditStudentModalProps {
   studentName: string;
   initialData: EditStudentData | null;
   locations: VenezuelaLocation[];
+  /** When false, the documents tab is shown disabled (row has no matriculation to attach the checklist to). */
+  documentsDisabled?: boolean;
 }
 
 const DOCUMENT_TYPES = [
@@ -84,6 +98,12 @@ const REP_TYPES = [
 ];
 
 const PHONE_RULE = { pattern: /^(04|02)\d{2}-\d{7}$/, message: 'Formato: 04XX-XXXXXXX' };
+
+// Auto-inserts the hyphen while typing/pasting: 04121234567 → 0412-1234567
+const formatPhoneInput = (value: string | undefined): string => {
+  const digits = (value ?? '').replace(/\D/g, '').slice(0, 11);
+  return digits.length > 4 ? `${digits.slice(0, 4)}-${digits.slice(4)}` : digits;
+};
 
 interface GuardianFieldsProps {
   prefix: 'mother' | 'father' | 'representative';
@@ -127,17 +147,22 @@ const GuardianFields: React.FC<GuardianFieldsProps> = ({ prefix, required, locat
         </Col>
       </Row>
       <Row gutter={12}>
-        <Col span={8}>
+        <Col span={6}>
           <Form.Item name={[prefix, 'documentType']} label="Tipo Doc">
             <Select options={GUARDIAN_DOC_TYPES} />
           </Form.Item>
         </Col>
-        <Col span={8}>
+        <Col span={6}>
           <Form.Item name={[prefix, 'document']} label="Cédula" rules={required ? [{ required: true, message: 'Requerido' }] : []}>
             <Input />
           </Form.Item>
         </Col>
-        <Col span={8}>
+        <Col span={6}>
+          <Form.Item name={[prefix, 'birthdate']} label="Fecha de nacimiento">
+            <DatePicker style={{ width: '100%' }} format="YYYY-MM-DD" />
+          </Form.Item>
+        </Col>
+        <Col span={6}>
           <Form.Item name={[prefix, 'occupation']} label="Ocupación">
             <Input />
           </Form.Item>
@@ -148,13 +173,14 @@ const GuardianFields: React.FC<GuardianFieldsProps> = ({ prefix, required, locat
           <Form.Item
             name={[prefix, 'whatsapp']}
             label="WhatsApp / Teléfono"
+            normalize={formatPhoneInput}
             rules={required ? [{ required: true, message: 'Requerido' }, PHONE_RULE] : [PHONE_RULE]}
           >
             <Input />
           </Form.Item>
         </Col>
         <Col span={8}>
-          <Form.Item name={[prefix, 'phone2']} label="Teléfono secundario" rules={[PHONE_RULE]}>
+          <Form.Item name={[prefix, 'phone2']} label="Teléfono secundario" normalize={formatPhoneInput} rules={[PHONE_RULE]}>
             <Input placeholder="Opcional" />
           </Form.Item>
         </Col>
@@ -207,6 +233,7 @@ const EditStudentModal: React.FC<EditStudentModalProps> = ({
   studentName,
   initialData,
   locations,
+  documentsDisabled = false,
 }) => {
   const [form] = Form.useForm();
 
@@ -245,12 +272,14 @@ const EditStudentModal: React.FC<EditStudentModalProps> = ({
 
   useEffect(() => {
     if (visible && initialData) {
+      const toGuardian = (g?: EditStudentGuardian | null) =>
+        g ? { ...g, birthdate: g.birthdate ? dayjs(g.birthdate) : undefined } : undefined;
       form.setFieldsValue({
         ...initialData,
         birthdate: initialData.birthdate || undefined,
-        mother: initialData.mother || undefined,
-        father: initialData.father || undefined,
-        representative: initialData.representative || undefined,
+        mother: toGuardian(initialData.mother),
+        father: toGuardian(initialData.father),
+        representative: toGuardian(initialData.representative),
       });
     }
   }, [visible, initialData, form]);
@@ -258,9 +287,14 @@ const EditStudentModal: React.FC<EditStudentModalProps> = ({
   const handleSave = async () => {
     try {
       const values = await form.validateFields();
+      const fromGuardian = (g?: EditStudentGuardian | null): EditStudentGuardian | null | undefined =>
+        g ? { ...g, birthdate: g.birthdate ? dayjs(g.birthdate as dayjs.ConfigType).format('YYYY-MM-DD') : null } : g;
       const payload: Partial<EditStudentData> = {
         ...values,
         birthdate: values.birthdate ? (values.birthdate as dayjs.Dayjs) : null,
+        mother: fromGuardian(values.mother),
+        father: fromGuardian(values.father),
+        representative: fromGuardian(values.representative),
       };
       onSave(payload);
     } catch {
@@ -368,13 +402,18 @@ const EditStudentModal: React.FC<EditStudentModalProps> = ({
                     </Col>
                   </Row>
                   <Row gutter={12}>
-                    <Col span={12}>
+                    <Col span={8}>
                       <Form.Item name="pathology" label="Patología">
                         <Input placeholder="Opcional" />
                       </Form.Item>
                     </Col>
-                    <Col span={12}>
+                    <Col span={8}>
                       <Form.Item name="livingWith" label="Vive con">
+                        <Input placeholder="Opcional" />
+                      </Form.Item>
+                    </Col>
+                    <Col span={8}>
+                      <Form.Item name="email" label="Correo electrónico" rules={[{ type: 'email' }]}>
                         <Input placeholder="Opcional" />
                       </Form.Item>
                     </Col>
@@ -435,6 +474,32 @@ const EditStudentModal: React.FC<EditStudentModalProps> = ({
                       <GuardianFields prefix="representative" required={true} locations={locations} />
                     </>
                   )}
+                </>
+              ),
+            },
+            {
+              key: 'documents',
+              label: 'Documentos',
+              children: documentsDisabled ? (
+                <p style={{ color: '#888' }}>
+                  Este estudiante no tiene una matrícula asociada; no se puede registrar el checklist de documentos.
+                </p>
+              ) : (
+                <>
+                  {([
+                    ['receivedPartidaNacimiento', 'Partida de nacimiento'],
+                    ['receivedCopiaCedulaEstudiante', 'Fotocopia de cédula del estudiante'],
+                    ['receivedCopiaCedulaRepresentante', 'Fotocopia de cédula del representante'],
+                    ['receivedNotasCertificadas', 'Notas certificadas (2do año en adelante)'],
+                    ['receivedCertificadoAprendizaje', 'Certificado de aprendizaje'],
+                    ['receivedCartaBuenaConducta', 'Carta de buena conducta'],
+                    ['receivedInformesMedicos', 'Informes médicos'],
+                    ['receivedFotoCarnetEstudiante', 'Foto carné del estudiante'],
+                  ] as [keyof EditStudentDocuments, string][]).map(([key, label]) => (
+                    <Form.Item key={key} name={['documents', key]} valuePropName="checked" style={{ marginBottom: 8 }}>
+                      <Checkbox>{label}</Checkbox>
+                    </Form.Item>
+                  ))}
                 </>
               ),
             },
