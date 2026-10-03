@@ -1307,12 +1307,15 @@ const MatriculationEnrollment: React.FC = () => {
   const filteredData = useMemo(() => {
     return matriculations.filter(item => {
       if (searchValue) {
-        // Búsqueda insensible a tildes y mayúsculas/minúsculas
-        const search = normalizeRelationship(searchValue);
-        const matches =
-          normalizeRelationship(item.student.firstName).includes(search) ||
-          normalizeRelationship(item.student.lastName).includes(search) ||
-          normalizeRelationship(item.student.document).includes(search);
+        // Búsqueda insensible a tildes y mayúsculas/minúsculas; cada palabra
+        // debe aparecer en algún campo (nombre, apellido o cédula)
+        const fields = [
+          item.student.firstName,
+          item.student.lastName,
+          item.student.document,
+        ].map(normalizeRelationship);
+        const tokens = normalizeRelationship(searchValue).split(/\s+/).filter(Boolean);
+        const matches = tokens.every(tok => fields.some(f => f.includes(tok)));
         if (!matches) return false;
       }
       if (filterGrade && item.gradeId !== filterGrade) return false;

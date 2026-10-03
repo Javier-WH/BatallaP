@@ -1002,7 +1002,7 @@ export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<Matricul
       headerName: 'Materias de Grupo',
       width: 200,
       editable: true,
-      sortable: false,
+      sortable: true,
       resizable: true,
       cellEditor: AutoOpenSelectEditor,
       cellEditorParams: (p: any) => {
