@@ -743,7 +743,7 @@ async function buildCertifiedWorkbook(personId: number, templateName: string): P
 
     const sheetName = sheet.name;
 
-    const setter = (name: string, value: string | number) => {
+    const setter = (name: string, value: string | number | null | undefined) => {
       if (value === undefined || value === null || value === '') return;
       const ref = namedRanges.getCell(sheetName, name);
       if (ref) {
@@ -902,11 +902,13 @@ async function buildCertifiedWorkbook(personId: number, templateName: string): P
         // A21-A27 = subject name (title case)
         setter(`y1_s${subjNum}_name`, toTitleCaseES(subj.name));
 
-        if (!g) continue;
+        // A fallback entry with no score means "no grade yet" — keep every
+        // cell at the template default instead of writing a spurious 'F'.
+        if (!g || (g.finalScore == null && !isPendingRevision(g))) continue;
 
         // D21-D27 = grade in numbers (rounded, zero-padded)
         if (isPendingRevision(g)) {
-          setter(`y1_s${subjNum}_num`, 'P');
+          setter(`y1_s${subjNum}_num`, 'PE');
           // E21-E27 = grade in letters
           setter(`y1_s${subjNum}_letters`, 'PENDIENTE');
         } else if (g.finalScore != null) {
@@ -916,7 +918,8 @@ async function buildCertifiedWorkbook(personId: number, templateName: string): P
         }
 
         // G21-G27 = evaluation type letter
-        const teCode = isPendingRevision(g) ? 'P' : (g.gradeType ? (GRADE_TYPE_TO_CODE[g.gradeType] || 'F') : 'F');
+        // Pending subjects keep the template's default "**" in the T.E. cell
+        const teCode = isPendingRevision(g) ? null : (g.gradeType ? (GRADE_TYPE_TO_CODE[g.gradeType] || 'F') : 'F');
         setter(`y1_s${subjNum}_te`, teCode);
 
         // H21-H27 = month (00), I21-I27 = year (0000)
@@ -1024,11 +1027,13 @@ async function buildCertifiedWorkbook(personId: number, templateName: string): P
         // L21-L27 = subject name (title case)
         setter(`y2_s${subjNum}_name`, toTitleCaseES(subj.name));
 
-        if (!g) continue;
+        // A fallback entry with no score means "no grade yet" — keep every
+        // cell at the template default instead of writing a spurious 'F'.
+        if (!g || (g.finalScore == null && !isPendingRevision(g))) continue;
 
         // O21-O27 = grade in numbers (rounded, zero-padded)
         if (isPendingRevision(g)) {
-          setter(`y2_s${subjNum}_num`, 'P');
+          setter(`y2_s${subjNum}_num`, 'PE');
           // P21-P27 = grade in letters
           setter(`y2_s${subjNum}_letters`, 'PENDIENTE');
         } else if (g.finalScore != null) {
@@ -1038,7 +1043,8 @@ async function buildCertifiedWorkbook(personId: number, templateName: string): P
         }
 
         // Q21-Q27 = evaluation type letter
-        const teCode = isPendingRevision(g) ? 'P' : (g.gradeType ? (GRADE_TYPE_TO_CODE[g.gradeType] || 'F') : 'F');
+        // Pending subjects keep the template's default "**" in the T.E. cell
+        const teCode = isPendingRevision(g) ? null : (g.gradeType ? (GRADE_TYPE_TO_CODE[g.gradeType] || 'F') : 'F');
         setter(`y2_s${subjNum}_te`, teCode);
 
         // R21-R27 = month (00), S21-S27 = year (0000)
@@ -1070,11 +1076,13 @@ async function buildCertifiedWorkbook(personId: number, templateName: string): P
         // A31-A38 = subject name (title case)
         setter(`y3_s${subjNum}_name`, toTitleCaseES(subj.name));
 
-        if (!g) continue;
+        // A fallback entry with no score means "no grade yet" — keep every
+        // cell at the template default instead of writing a spurious 'F'.
+        if (!g || (g.finalScore == null && !isPendingRevision(g))) continue;
 
         // D31-D38 = grade in numbers (rounded, zero-padded)
         if (isPendingRevision(g)) {
-          setter(`y3_s${subjNum}_num`, 'P');
+          setter(`y3_s${subjNum}_num`, 'PE');
           // E31-E38 = grade in letters
           setter(`y3_s${subjNum}_letters`, 'PENDIENTE');
         } else if (g.finalScore != null) {
@@ -1084,7 +1092,8 @@ async function buildCertifiedWorkbook(personId: number, templateName: string): P
         }
 
         // G31-G38 = evaluation type letter
-        const teCode = isPendingRevision(g) ? 'P' : (g.gradeType ? (GRADE_TYPE_TO_CODE[g.gradeType] || 'F') : 'F');
+        // Pending subjects keep the template's default "**" in the T.E. cell
+        const teCode = isPendingRevision(g) ? null : (g.gradeType ? (GRADE_TYPE_TO_CODE[g.gradeType] || 'F') : 'F');
         setter(`y3_s${subjNum}_te`, teCode);
 
         // H31-H38 = month (00), I31-I38 = year (0000)
@@ -1116,11 +1125,13 @@ async function buildCertifiedWorkbook(personId: number, templateName: string): P
         // L31-L39 = subject name (title case)
         setter(`y4_s${subjNum}_name`, toTitleCaseES(subj.name));
 
-        if (!g) continue;
+        // A fallback entry with no score means "no grade yet" — keep every
+        // cell at the template default instead of writing a spurious 'F'.
+        if (!g || (g.finalScore == null && !isPendingRevision(g))) continue;
 
         // O31-O39 = grade in numbers (rounded, zero-padded)
         if (isPendingRevision(g)) {
-          setter(`y4_s${subjNum}_num`, 'P');
+          setter(`y4_s${subjNum}_num`, 'PE');
           // P31-P39 = grade in letters
           setter(`y4_s${subjNum}_letters`, 'PENDIENTE');
         } else if (g.finalScore != null) {
@@ -1130,7 +1141,8 @@ async function buildCertifiedWorkbook(personId: number, templateName: string): P
         }
 
         // Q31-Q39 = evaluation type letter
-        const teCode = isPendingRevision(g) ? 'P' : (g.gradeType ? (GRADE_TYPE_TO_CODE[g.gradeType] || 'F') : 'F');
+        // Pending subjects keep the template's default "**" in the T.E. cell
+        const teCode = isPendingRevision(g) ? null : (g.gradeType ? (GRADE_TYPE_TO_CODE[g.gradeType] || 'F') : 'F');
         setter(`y4_s${subjNum}_te`, teCode);
 
         // R31-R39 = month (00), S31-S39 = year (0000)
@@ -1162,11 +1174,13 @@ async function buildCertifiedWorkbook(personId: number, templateName: string): P
         // A43-A52 = subject name (title case)
         setter(`y5_s${subjNum}_name`, toTitleCaseES(subj.name));
 
-        if (!g) continue;
+        // A fallback entry with no score means "no grade yet" — keep every
+        // cell at the template default instead of writing a spurious 'F'.
+        if (!g || (g.finalScore == null && !isPendingRevision(g))) continue;
 
         // D43-D52 = grade in numbers (rounded, zero-padded)
         if (isPendingRevision(g)) {
-          setter(`y5_s${subjNum}_num`, 'P');
+          setter(`y5_s${subjNum}_num`, 'PE');
           // E43-E52 = grade in letters
           setter(`y5_s${subjNum}_letters`, 'PENDIENTE');
         } else if (g.finalScore != null) {
@@ -1176,7 +1190,8 @@ async function buildCertifiedWorkbook(personId: number, templateName: string): P
         }
 
         // G43-G52 = evaluation type letter
-        const teCode = isPendingRevision(g) ? 'P' : (g.gradeType ? (GRADE_TYPE_TO_CODE[g.gradeType] || 'F') : 'F');
+        // Pending subjects keep the template's default "**" in the T.E. cell
+        const teCode = isPendingRevision(g) ? null : (g.gradeType ? (GRADE_TYPE_TO_CODE[g.gradeType] || 'F') : 'F');
         setter(`y5_s${subjNum}_te`, teCode);
 
         // H43-H52 = month (00), I43-I52 = year (0000)
