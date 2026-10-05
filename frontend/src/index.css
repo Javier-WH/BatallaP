@@ -163,6 +163,77 @@
   border-color: var(--color-accent) !important;
 }
 
+/* Composite fields (type / operator selector + number) drawn as ONE control: a single outer
+   border, the selector zone tinted and separated by a thin line, like the council section cards. */
+.composite-field {
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  width: 100%;
+  height: 32px;
+  overflow: hidden;
+  background-color: var(--color-input-bg, #fff);
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 10px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.composite-field:hover,
+.composite-field:focus-within {
+  border-color: var(--color-accent);
+}
+
+.composite-field:focus-within {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 15%, transparent);
+}
+
+.ant-form-item-has-error .composite-field {
+  border-color: var(--ant-color-error, #ff4d4f);
+}
+
+.composite-field-disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.composite-field .ant-select {
+  flex: 0 0 auto;
+  align-self: stretch;
+  background-color: #f5f5f5;
+  /* Straight divider: the select box must not keep antd's own rounded corners. */
+  border-radius: 0 !important;
+  border-right: 1px solid #e8e8e8;
+}
+
+/* Compact selector: tighter padding so the code (V, 0414) does not sit in a big box. */
+.composite-field .ant-select .ant-select-selector {
+  padding-inline: 8px !important;
+}
+
+.composite-field .ant-select .ant-select-arrow,
+.composite-field .ant-select .ant-select-clear {
+  inset-inline-end: 6px;
+}
+
+.composite-field .ant-select .ant-select-selector,
+.composite-field .ant-input,
+.composite-field .ant-input-affix-wrapper,
+.composite-field .ant-input:hover,
+.composite-field .ant-input:focus,
+.composite-field .ant-input-affix-wrapper:hover,
+.composite-field .ant-input-affix-wrapper-focused {
+  border: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  background-color: transparent !important;
+}
+
+.composite-field .ant-input,
+.composite-field .ant-input-affix-wrapper {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 /* Teacher selects: uppercase labels in both input and dropdown options */
 .teacher-select .ant-select-selection-item,
 .teacher-select .ant-select-selection-placeholder {

@@ -11,6 +11,9 @@ import { getEnrollmentQuestions } from '@/services/enrollmentQuestions';
 import type { EnrollmentQuestionResponse } from '@/services/enrollmentQuestions';
 import { searchGuardian } from '@/services/guardians';
 import type { GuardianDocumentType, GuardianProfileResponse } from '@/services/guardians';
+import DocumentField from '@/components/shared/DocumentField';
+import PhoneInput from '@/components/shared/PhoneInput';
+import { GUARDIAN_DOCUMENT_TYPE_OPTIONS, formatPhoneInput } from '@/utils/personFields';
 import EnrollmentReportModal from '@/components/pdf/EnrollmentReportModal';
 
 const { Option } = Select;
@@ -80,12 +83,6 @@ type GuardianData = {
 
 type GuardianKey = 'mother' | 'father' | 'representative';
 
-const guardianDocumentOptions: { label: string; value: GuardianDocumentType }[] = [
-  { label: 'Venezolano', value: 'Venezolano' },
-  { label: 'Extranjero', value: 'Extranjero' },
-  { label: 'Pasaporte', value: 'Pasaporte' }
-];
-
 const ESCOLARIDAD_OPTIONS = [
   { label: 'Regular', value: 'regular' },
   { label: 'Repitiente', value: 'repitiente' },
@@ -96,12 +93,6 @@ const guardianLabels: Record<GuardianKey, string> = {
   mother: 'la madre',
   father: 'el padre',
   representative: 'el representante'
-};
-
-// Auto-inserts the hyphen while typing/pasting: 04121234567 → 0412-1234567
-const formatPhoneInput = (value: string | undefined): string => {
-  const digits = (value ?? '').replace(/\D/g, '').slice(0, 11);
-  return digits.length > 4 ? `${digits.slice(0, 4)}-${digits.slice(4)}` : digits;
 };
 
 const mapProfileToGuardianForm = (profile: GuardianProfileResponse): GuardianData => ({
@@ -467,37 +458,18 @@ const NewStudentEnrollmentForm: React.FC<NewStudentEnrollmentFormProps> = ({
   }, [representativeDocumentTypeValue, representativeDocumentValue, handleGuardianLookup]);
 
   const renderGuardianDocumentControls = (guardianKey: GuardianKey, required: boolean) => (
-    <Row gutter={16}>
-      <Col span={8}>
-        <Form.Item
-          name={[guardianKey, 'documentType']}
-          label="Tipo de documento"
-          rules={
-            required
-              ? [{ required: true, message: `Seleccione el tipo de documento de ${guardianLabels[guardianKey]}` }]
-              : []
-          }
-        >
-          <Select placeholder="Seleccione" options={guardianDocumentOptions} allowClear />
-        </Form.Item>
-      </Col>
-      <Col span={16}>
-        <Form.Item
-          name={[guardianKey, 'document']}
-          label="Número de documento"
-          rules={
-            required
-              ? [{ required: true, message: `Ingrese la cédula de ${guardianLabels[guardianKey]}` }]
-              : []
-          }
-        >
-          <Input
-            placeholder="Ej: 12345678"
-            suffix={guardianLookupLoading === guardianKey ? <LoadingOutlined spin /> : undefined}
-          />
-        </Form.Item>
-      </Col>
-    </Row>
+    <DocumentField
+      label="Documento"
+      required={required}
+      typeName={[guardianKey, 'documentType']}
+      numberName={[guardianKey, 'document']}
+      typeOptions={GUARDIAN_DOCUMENT_TYPE_OPTIONS}
+      allowClearType
+      typeRules={required ? [{ required: true, message: `Seleccione el tipo de documento de ${guardianLabels[guardianKey]}` }] : []}
+      numberRules={required ? [{ required: true, message: `Ingrese la cédula de ${guardianLabels[guardianKey]}` }] : []}
+      numberPlaceholder="Ej: 12345678"
+      numberSuffix={guardianLookupLoading === guardianKey ? <LoadingOutlined spin /> : undefined}
+    />
   );
 
   const getSectionsForGrade = (gradeId: number | null) => {
@@ -785,8 +757,8 @@ const NewStudentEnrollmentForm: React.FC<NewStudentEnrollmentFormProps> = ({
           </Row>
           <Row gutter={16}>
             <Col span={12}>
-              <Form.Item name={['mother', 'whatsapp']} label="WhatsApp / Teléfono" normalize={formatPhoneInput} rules={motherFieldsRequired ? [{ required: true }, { pattern: /^(04|02)\d{2}-\d{7}$/, message: 'Formato: 04XX-XXXXXXX o 02XX-XXXXXXX' }] : [{ pattern: /^(04|02)\d{2}-\d{7}$/, message: 'Formato: 04XX-XXXXXXX o 02XX-XXXXXXX' }]}>
-                <Input />
+              <Form.Item name={['mother', 'whatsapp']} label="WhatsApp / Teléfono" rules={motherFieldsRequired ? [{ required: true }, { pattern: /^(04|02)\d{2}-\d{7}$/, message: 'Formato: 04XX-XXXXXXX o 02XX-XXXXXXX' }] : [{ pattern: /^(04|02)\d{2}-\d{7}$/, message: 'Formato: 04XX-XXXXXXX o 02XX-XXXXXXX' }]}>
+                <PhoneInput />
               </Form.Item>
             </Col>
             <Col span={12}>
@@ -861,8 +833,8 @@ const NewStudentEnrollmentForm: React.FC<NewStudentEnrollmentFormProps> = ({
           </Row>
           <Row gutter={16}>
             <Col span={12}>
-              <Form.Item name={['father', 'whatsapp']} label="WhatsApp / Teléfono" normalize={formatPhoneInput} rules={fatherFieldsRequired ? [{ required: true }, { pattern: /^(04|02)\d{2}-\d{7}$/, message: 'Formato: 04XX-XXXXXXX o 02XX-XXXXXXX' }] : [{ pattern: /^(04|02)\d{2}-\d{7}$/, message: 'Formato: 04XX-XXXXXXX o 02XX-XXXXXXX' }]}>
-                <Input />
+              <Form.Item name={['father', 'whatsapp']} label="WhatsApp / Teléfono" rules={fatherFieldsRequired ? [{ required: true }, { pattern: /^(04|02)\d{2}-\d{7}$/, message: 'Formato: 04XX-XXXXXXX o 02XX-XXXXXXX' }] : [{ pattern: /^(04|02)\d{2}-\d{7}$/, message: 'Formato: 04XX-XXXXXXX o 02XX-XXXXXXX' }]}>
+                <PhoneInput />
               </Form.Item>
             </Col>
             <Col span={12}>
@@ -944,8 +916,8 @@ const NewStudentEnrollmentForm: React.FC<NewStudentEnrollmentFormProps> = ({
           </Row>
           <Row gutter={16}>
             <Col span={12}>
-              <Form.Item name={['representative', 'whatsapp']} label="WhatsApp / Teléfono" normalize={formatPhoneInput} rules={representativeFieldsRequired ? [{ required: true }, { pattern: /^(04|02)\d{2}-\d{7}$/, message: 'Formato: 04XX-XXXXXXX o 02XX-XXXXXXX' }] : [{ pattern: /^(04|02)\d{2}-\d{7}$/, message: 'Formato: 04XX-XXXXXXX o 02XX-XXXXXXX' }]}>
-                <Input />
+              <Form.Item name={['representative', 'whatsapp']} label="WhatsApp / Teléfono" rules={representativeFieldsRequired ? [{ required: true }, { pattern: /^(04|02)\d{2}-\d{7}$/, message: 'Formato: 04XX-XXXXXXX o 02XX-XXXXXXX' }] : [{ pattern: /^(04|02)\d{2}-\d{7}$/, message: 'Formato: 04XX-XXXXXXX o 02XX-XXXXXXX' }]}>
+                <PhoneInput />
               </Form.Item>
             </Col>
             <Col span={12}>
@@ -1284,16 +1256,6 @@ const NewStudentEnrollmentForm: React.FC<NewStudentEnrollmentFormProps> = ({
             </Col>
           </Row>
           <Row gutter={16}>
-            <Col span={studentDocumentType === 'Cedula Escolar' ? 6 : 8}>
-              <Form.Item name="documentType" label="Tipo Doc" rules={[{ required: true }]}>
-                <Select>
-                  <Option value="Venezolano">Venezolano</Option>
-                  <Option value="Extranjero">Extranjero</Option>
-                  <Option value="Pasaporte">Pasaporte</Option>
-                  <Option value="Cedula Escolar">Cédula Escolar</Option>
-                </Select>
-              </Form.Item>
-            </Col>
             {studentDocumentType === 'Cedula Escolar' && (
               <Col span={6}>
                 <Form.Item
@@ -1309,59 +1271,48 @@ const NewStudentEnrollmentForm: React.FC<NewStudentEnrollmentFormProps> = ({
                 </Form.Item>
               </Col>
             )}
-            <Col span={studentDocumentType === 'Cedula Escolar' ? 12 : 16}>
-              <Form.Item noStyle shouldUpdate={(prev, cur) => prev.documentType !== cur.documentType || prev.nationality !== cur.nationality}>
-                {({ getFieldValue }) => {
-                  const docType = getFieldValue('documentType') as string;
-                  const nat = getFieldValue('nationality') as string;
-                  const prefix = (docType === 'Venezolano' || (docType === 'Cedula Escolar' && nat === 'Venezolano')) ? 'V-'
-                    : (docType === 'Extranjero' || (docType === 'Cedula Escolar' && nat === 'Extranjero')) ? 'E-'
-                    : undefined;
-                  return (
-                    <Form.Item
-                      name="document"
-                      label="Documento"
-                      rules={[
-                        { required: true },
-                        ({ getFieldValue }) => ({
-                          validator(_, value) {
-                            if (!value) return Promise.resolve();
-                            const dt = getFieldValue('documentType');
-                            if (dt === 'Cedula Escolar') return Promise.resolve();
-                            if ((dt === 'Venezolano' || dt === 'Extranjero') && !/^\d{5,8}$/.test(value)) {
-                              return Promise.reject('Formato: solo dígitos (5-8)');
-                            }
-                            return Promise.resolve();
-                          },
-                        }),
-                        ({ getFieldValue }) => ({
-                          validator(_, value) {
-                            if (!value) return Promise.resolve();
-                            const motherDoc = getFieldValue(['mother', 'document']);
-                            const fatherDoc = getFieldValue(['father', 'document']);
-                            const repDoc = getFieldValue(['representative', 'document']);
-                            if (motherDoc && value === motherDoc) return Promise.reject('La cédula no puede ser igual a la de la madre');
-                            if (fatherDoc && value === fatherDoc) return Promise.reject('La cédula no puede ser igual a la del padre');
-                            if (repDoc && value === repDoc) return Promise.reject('La cédula no puede ser igual a la del representante');
-                            return Promise.resolve();
-                          },
-                        }),
-                      ]}
-                    >
-                      <Input
-                        placeholder={docType === 'Cedula Escolar' ? 'Vacío para autogenerar' : ''}
-                        addonBefore={prefix}
-                        onChange={(e) => {
-                          if (docType === 'Venezolano' || docType === 'Extranjero' || docType === 'Cedula Escolar') {
-                            const val = e.target.value.replace(/^[VE]-/, '').replace(/[^0-9]/g, '');
-                            newStudentForm.setFieldValue('document', val);
-                          }
-                        }}
-                      />
-                    </Form.Item>
-                  );
+            <Col span={studentDocumentType === 'Cedula Escolar' ? 18 : 24}>
+              <DocumentField
+                label="Documento"
+                required
+                typeName="documentType"
+                numberName="document"
+                typeRules={[{ required: true, message: 'Seleccione el tipo' }]}
+                numberPlaceholder={studentDocumentType === 'Cedula Escolar' ? 'Vacío para autogenerar' : ''}
+                numberNormalize={(value: string | undefined, _prev: unknown, all: { documentType?: string }) => {
+                  const type = all?.documentType;
+                  if (value && (type === 'Venezolano' || type === 'Extranjero' || type === 'Cedula Escolar')) {
+                    return value.replace(/^[VE]-/, '').replace(/[^0-9]/g, '');
+                  }
+                  return value;
                 }}
-              </Form.Item>
+                numberRules={[
+                  { required: true },
+                  ({ getFieldValue }) => ({
+                    validator(_, value) {
+                      if (!value) return Promise.resolve();
+                      const dt = getFieldValue('documentType');
+                      if (dt === 'Cedula Escolar') return Promise.resolve();
+                      if ((dt === 'Venezolano' || dt === 'Extranjero') && !/^\d{5,8}$/.test(value)) {
+                        return Promise.reject('Formato: solo dígitos (5-8)');
+                      }
+                      return Promise.resolve();
+                    },
+                  }),
+                  ({ getFieldValue }) => ({
+                    validator(_, value) {
+                      if (!value) return Promise.resolve();
+                      const motherDoc = getFieldValue(['mother', 'document']);
+                      const fatherDoc = getFieldValue(['father', 'document']);
+                      const repDoc = getFieldValue(['representative', 'document']);
+                      if (motherDoc && value === motherDoc) return Promise.reject('La cédula no puede ser igual a la de la madre');
+                      if (fatherDoc && value === fatherDoc) return Promise.reject('La cédula no puede ser igual a la del padre');
+                      if (repDoc && value === repDoc) return Promise.reject('La cédula no puede ser igual a la del representante');
+                      return Promise.resolve();
+                    },
+                  }),
+                ]}
+              />
             </Col>
           </Row>
 
