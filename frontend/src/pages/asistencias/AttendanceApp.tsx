@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import axios from 'axios';
 import { Button, Form, Input, message } from 'antd';
 import { CheckSquareOutlined, LockOutlined, UserOutlined } from '@ant-design/icons';
 import api from '@/services/api';
@@ -19,14 +20,20 @@ const AttendanceApp: React.FC = () => {
   const { installed } = usePwaInstall();
   const [submitting, setSubmitting] = useState(false);
 
+  // An installed app must not pull-to-refresh / rubber-band the page while the roster is dragged.
+  useEffect(() => {
+    document.documentElement.style.overscrollBehaviorY = 'none';
+    document.body.style.overscrollBehaviorY = 'none';
+  }, []);
+
   const handleLogin = async (values: { username: string; password: string }) => {
     setSubmitting(true);
     try {
       const { data } = await api.post('/auth/login', values);
       login(data.user);
       refreshSettings();
-    } catch (err: any) {
-      message.error(err?.response?.data?.message || 'Usuario o contraseña incorrectos');
+    } catch (err) {
+      message.error((axios.isAxiosError(err) && err.response?.data?.message) || 'Usuario o contraseña incorrectos');
     } finally {
       setSubmitting(false);
     }
@@ -81,8 +88,8 @@ const AttendanceApp: React.FC = () => {
           <InstallAppButton />
         </div>
       )}
-      <div className="flex-1 min-h-0 overflow-y-auto px-3 py-3">
-        <TeacherAttendanceTab />
+      <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
+        <TeacherAttendanceTab fill />
       </div>
     </div>
   );

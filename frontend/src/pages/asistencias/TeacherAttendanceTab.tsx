@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef } from 'react';
 import { Input, Modal, Spin, message } from 'antd';
 import axios from 'axios';
+import { createPortal } from 'react-dom';
 import {
   LeftOutlined, DownOutlined, RightOutlined, WarningOutlined, StopOutlined,
-  CheckOutlined, ClockCircleOutlined, SyncOutlined, CloudUploadOutlined,
+  CheckOutlined, ClockCircleOutlined, SyncOutlined, CloudUploadOutlined, UnorderedListOutlined,
 } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
 import api from '@/services/api';
@@ -52,6 +53,75 @@ const isOtherReasonChoice = (reason: string | null | undefined): boolean => {
   const value = reason?.trim() ?? '';
   return value === 'Otro' || value.startsWith('Otro:');
 };
+
+/**
+ * Finger drags step the selection exactly like the mouse wheel does.
+ *
+ * Must be native, non-passive listeners: React attaches touchmove as passive, so a
+ * preventDefault() from a React handler is ignored and the browser also pans the list by
+ * itself, leaving the selected slot out of sync with the overlay card (blank gaps).
+ */
+function useStepTouchScroll(
+  ref: React.RefObject<HTMLElement | null>,
+  onSteps: (steps: number) => void,
+  onEnd: () => void,
+  enabled = true,
+  ignoreSelector?: string,
+) {
+  const onStepsRef = useRef(onSteps);
+  const onEndRef = useRef(onEnd);
+  useLayoutEffect(() => {
+    onStepsRef.current = onSteps;
+    onEndRef.current = onEnd;
+  });
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || !enabled) return;
+    let startY: number | null = null;
+    let distance = 0;
+
+    const handleStart = (event: TouchEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (ignoreSelector && target?.closest(ignoreSelector)) {
+        startY = null;
+        distance = 0;
+        return;
+      }
+      startY = event.touches[0]?.clientY ?? null;
+      distance = 0;
+    };
+    const handleMove = (event: TouchEvent) => {
+      if (startY == null) return;
+      const currentY = event.touches[0]?.clientY;
+      if (currentY == null) return;
+      if (event.cancelable) event.preventDefault();
+      distance += startY - currentY;
+      startY = currentY;
+      const steps = Math.trunc(distance / ROSTER_SCROLL_STEP);
+      if (steps !== 0) {
+        distance -= steps * ROSTER_SCROLL_STEP;
+        onStepsRef.current(steps);
+      }
+    };
+    const handleEnd = () => {
+      if (startY != null) onEndRef.current();
+      startY = null;
+      distance = 0;
+    };
+
+    el.addEventListener('touchstart', handleStart, { passive: true });
+    el.addEventListener('touchmove', handleMove, { passive: false });
+    el.addEventListener('touchend', handleEnd);
+    el.addEventListener('touchcancel', handleEnd);
+    return () => {
+      el.removeEventListener('touchstart', handleStart);
+      el.removeEventListener('touchmove', handleMove);
+      el.removeEventListener('touchend', handleEnd);
+      el.removeEventListener('touchcancel', handleEnd);
+    };
+  }, [ref, enabled, ignoreSelector]);
+}
 
 type SessionStatus = 'done' | 'current' | 'missing' | 'upcoming';
 
@@ -159,7 +229,12 @@ function showSyncReport(reports: SyncReport[]) {
  * schedule (timeline of today's sessions) and roster (mark attendance).
  * Mirrors the approved attendance-app prototype.
  */
-const TeacherAttendanceTab: React.FC<{ onExit?: () => void }> = ({ onExit }) => {
+/**
+ * `fill`: standalone (installed) app — the frame takes the whole available height instead of
+ * the viewport-minus-chrome estimate used inside the main layout, and drops the phone-mockup
+ * border/rounding on real phones.
+ */
+const TeacherAttendanceTab: React.FC<{ onExit?: () => void; fill?: boolean }> = ({ onExit, fill = false }) => {
   const { user } = useAuth();
   const { viewPeriod } = useSchool();
   const [month, setMonth] = useState<Dayjs>(() => dayjs().startOf('month'));
@@ -301,13 +376,17 @@ const TeacherAttendanceTab: React.FC<{ onExit?: () => void }> = ({ onExit }) => 
   const openSession = openSessionId != null ? sessions.find(s => s.id === openSessionId) ?? null : null;
 
   return (
-    <div className="flex justify-center py-4">
+    <div className={fill ? 'flex justify-center h-full' : 'flex justify-center py-4'}>
       <style>{FONT_IMPORT}</style>
       <div
-        className="w-full max-w-sm bg-slate-50 rounded-[2rem] border border-slate-300 shadow-xl overflow-hidden flex flex-col"
-        style={openSession
-          ? { height: 'min(760px, calc(100dvh - 220px))', minHeight: 440 }
-          : { minHeight: 560 }}
+        className={fill
+          ? 'w-full max-w-sm bg-slate-50 sm:rounded-[2rem] sm:border sm:border-slate-300 sm:shadow-xl overflow-hidden flex flex-col'
+          : 'w-full max-w-sm bg-slate-50 rounded-[2rem] border border-slate-300 shadow-xl overflow-hidden flex flex-col'}
+        style={fill
+          ? (openSession ? { height: '100%' } : { minHeight: '100%' })
+          : (openSession
+            ? { height: 'min(760px, calc(100dvh - 220px))', minHeight: 440 }
+            : { minHeight: 560 })}
       >
         {openSession ? (
           <RosterScreen
@@ -639,9 +718,9 @@ function RosterScreen({
   const [selectedInscriptionId, setSelectedInscriptionId] = useState<number | null>(null);
   const [reasonDraft, setReasonDraft] = useState<{ inscriptionId: number; value: string } | null>(null);
   const rosterListRef = useRef<HTMLDivElement>(null);
+  // Full-screen read-only view of every student's mark, to compare against the teacher's own records.
+  const [overviewOpen, setOverviewOpen] = useState(false);
   const moveSelectionByRef = useRef<(steps: number) => void>(() => undefined);
-  const touchStartY = useRef<number | null>(null);
-  const touchDelta = useRef(0);
   const wheelDelta = useRef(0);
 
   useEffect(() => {
@@ -810,36 +889,7 @@ function RosterScreen({
     };
   }, [loading]);
 
-  const handleRosterTouchStart = (event: React.TouchEvent<HTMLDivElement>) => {
-    const target = event.target as HTMLElement;
-    if (target.closest('[data-selected-editor] button, [data-selected-editor] input, [data-selected-editor] textarea')) {
-      touchStartY.current = null;
-      touchDelta.current = 0;
-      return;
-    }
-    touchStartY.current = event.touches[0]?.clientY ?? null;
-    touchDelta.current = 0;
-  };
-
-  const handleRosterTouchMove = (event: React.TouchEvent<HTMLDivElement>) => {
-    if (touchStartY.current == null) return;
-    const currentY = event.touches[0]?.clientY;
-    if (currentY == null) return;
-    touchDelta.current += touchStartY.current - currentY;
-    touchStartY.current = currentY;
-    const steps = Math.trunc(touchDelta.current / ROSTER_SCROLL_STEP);
-    if (steps !== 0) {
-      if (event.cancelable) event.preventDefault();
-      touchDelta.current -= steps * ROSTER_SCROLL_STEP;
-      moveSelectionBy(steps);
-    }
-  };
-
-  const handleRosterTouchEnd = () => {
-    alignSelectedEditor();
-    touchStartY.current = null;
-    touchDelta.current = 0;
-  };
+  useStepTouchScroll(rosterListRef, moveSelectionBy, alignSelectedEditor, !loading);
 
   const handleSave = async () => {
     const missingReason = roster.find(r => r.status === 'kicked' && normalizeAttendanceReason(r.reason) === null);
@@ -899,14 +949,23 @@ function RosterScreen({
   return (
     <div className="att-font-body flex min-h-0 flex-1 flex-col">
       <div className="sticky top-0 z-10 shrink-0 px-5 pt-4 pb-4 border-b border-slate-200 bg-slate-50">
-        <div className="flex items-center justify-between mb-3">
-          <button onClick={onBack} className="flex items-center gap-1 text-slate-500 text-sm att-font-body">
-            <LeftOutlined className="text-xs" /> Horario
-          </button>
-          <div className="flex items-center gap-3">
+        <div className="flex items-center justify-between gap-2 mb-3">
+          <div className="flex items-center gap-2 min-w-0">
+            <button onClick={onBack} className="flex items-center gap-1 text-slate-500 text-sm att-font-body">
+              <LeftOutlined className="text-xs" /> Horario
+            </button>
             <span className="text-xs text-slate-400 tabular-nums">
               {roster.filter(r => r.status !== null).length}/{roster.length}
             </span>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={() => setOverviewOpen(true)}
+              disabled={loading}
+              className="border border-slate-300 bg-white text-slate-700 rounded-lg px-3 py-2 att-font-body text-xs font-medium flex items-center justify-center gap-1.5 disabled:opacity-50"
+            >
+              <UnorderedListOutlined /> Ver lista
+            </button>
             <button
               onClick={handleSave}
               disabled={saving || loading}
@@ -951,12 +1010,18 @@ function RosterScreen({
         <div className="flex min-h-0 flex-1 justify-center py-16"><Spin /></div>
       ) : (
         <div className="relative min-h-0 flex-1">
+          {overviewOpen && (
+            <RosterOverview
+              roster={roster}
+              title={`${session.subjectName || 'Sin materia'}${session.sectionLabel ? ` — ${session.sectionLabel}` : ''}`}
+              subtitle={`${dayName} ${dayjs(dateStr).date()} de ${MONTHS_FULL[dayjs(dateStr).month()].toLowerCase()}`}
+              onClose={() => setOverviewOpen(false)}
+              onPick={(inscriptionId) => { scrollToStudent(inscriptionId); setOverviewOpen(false); }}
+            />
+          )}
           <div
             ref={rosterListRef}
-              onTouchStart={handleRosterTouchStart}
-            onTouchMove={handleRosterTouchMove}
-            onTouchEnd={handleRosterTouchEnd}
-            className="absolute inset-0 overflow-y-auto overscroll-contain touch-pan-y px-3"
+            className="absolute inset-0 overflow-y-auto overscroll-contain touch-none px-3"
             style={{ WebkitOverflowScrolling: 'touch' }}
           >
             <div style={{ height: `max(0px, calc(50% - ${selectedEditorHeight / 2}px))` }} aria-hidden="true" />
@@ -1027,12 +1092,8 @@ function RosterScreen({
   );
 }
 
-function StudentListRow({ student, index, onClick }: {
-  student: RosterEntry;
-  index: number;
-  onClick: () => void;
-}) {
-  const blocked = student.priorBlock != null;
+/** The P / A / E circles (plus T / J when the mark is Tarde / Justificado), the active one filled. */
+function StatusBadges({ student }: { student: RosterEntry }) {
   const badges: { code: string; label: string; status: AttendanceStatus; color: 'emerald' | 'rose' | 'slate' | 'amber' | 'blue' }[] = [
     { code: 'P', label: 'Presente', status: 'present', color: 'emerald' },
     { code: 'A', label: 'Ausente', status: 'absent', color: 'rose' },
@@ -1040,6 +1101,129 @@ function StudentListRow({ student, index, onClick }: {
   ];
   if (student.status === 'late') badges.push({ code: 'T', label: 'Tarde', status: 'late', color: 'amber' });
   if (student.status === 'excused') badges.push({ code: 'J', label: 'Justificado', status: 'excused', color: 'blue' });
+
+  return (
+    <span className="flex shrink-0 gap-1">
+      {badges.map(badge => {
+        const active = student.status === badge.status;
+        const colors = {
+          emerald: active ? 'bg-emerald-600 border-emerald-600 text-white' : 'bg-white border-slate-200 text-slate-300',
+          rose: active ? 'bg-rose-600 border-rose-600 text-white' : 'bg-white border-slate-200 text-slate-300',
+          slate: active ? 'bg-slate-700 border-slate-700 text-white' : 'bg-white border-slate-200 text-slate-300',
+          amber: active ? 'bg-amber-500 border-amber-500 text-white' : 'bg-white border-slate-200 text-slate-300',
+          blue: active ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-slate-200 text-slate-300',
+        };
+        return (
+          <span
+            key={badge.code}
+            title={badge.label}
+            aria-label={`${badge.label}${active ? ', seleccionado' : ''}`}
+            className={`w-5 h-5 rounded-full border flex items-center justify-center text-[9px] font-semibold ${colors[badge.color]}`}
+          >
+            {badge.code}
+          </span>
+        );
+      })}
+    </span>
+  );
+}
+
+/**
+ * Whole roster as its own full-screen view (rendered on <body>, above the app chrome), with an
+ * arrow at the top to go back. Tapping a student returns to the card positioned on them.
+ */
+function RosterOverview({ roster, title, subtitle, onClose, onPick }: {
+  roster: RosterEntry[];
+  title: string;
+  subtitle: string;
+  onClose: () => void;
+  onPick: (inscriptionId: number) => void;
+}) {
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  const countOf = (status: AttendanceStatus) => roster.filter(r => r.status === status).length;
+  const unmarked = roster.filter(r => r.status === null && r.priorBlock == null).length;
+  const summary: { label: string; value: number; tone: string }[] = [
+    { label: 'presentes', value: countOf('present'), tone: 'text-emerald-700' },
+    { label: 'ausentes', value: countOf('absent'), tone: 'text-rose-700' },
+    { label: 'expulsados', value: countOf('kicked'), tone: 'text-slate-700' },
+    { label: 'sin marcar', value: unmarked, tone: unmarked > 0 ? 'text-amber-700' : 'text-slate-400' },
+  ];
+
+  return createPortal(
+    <div
+      className="att-font-body fixed inset-0 z-[2000] flex flex-col bg-slate-50"
+      style={{ paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)' }}
+      role="dialog"
+      aria-label="Lista de asistencia"
+    >
+      <style>{FONT_IMPORT}</style>
+      <div className="shrink-0 border-b border-slate-200 bg-white">
+        <div className="mx-auto flex w-full max-w-xl items-center gap-2 px-2 py-2">
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Volver"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-lg text-slate-600 active:bg-slate-100"
+          >
+            <LeftOutlined />
+          </button>
+          <div className="min-w-0 flex-1">
+            <h1 className="att-font-head m-0 truncate text-base leading-tight text-slate-900">{title}</h1>
+            <p className="m-0 truncate text-xs text-slate-400">{subtitle} · {roster.length} estudiantes</p>
+          </div>
+        </div>
+        <div className="mx-auto flex w-full max-w-xl flex-wrap gap-x-4 gap-y-1 px-4 pb-2 text-[11px] text-slate-500">
+          {summary.map(item => (
+            <span key={item.label}><strong className={`tabular-nums ${item.tone}`}>{item.value}</strong> {item.label}</span>
+          ))}
+        </div>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+        <div className="mx-auto w-full max-w-xl px-3">
+          {roster.map((student, index) => {
+            const blocked = student.priorBlock != null;
+            const pending = student.status === null && !blocked;
+            return (
+              <button
+                key={student.inscriptionId}
+                type="button"
+                onClick={() => onPick(student.inscriptionId)}
+                aria-label={`Ver a ${student.fullName}`}
+                className={`flex w-full items-center gap-2.5 border-b border-slate-200 px-2 py-2.5 text-left ${pending ? 'bg-amber-50/70' : ''}`}
+              >
+                <span className="w-6 shrink-0 text-[11px] tabular-nums text-slate-400">{String(index + 1).padStart(2, '0')}</span>
+                <span className="min-w-0 flex-1 text-sm font-medium leading-tight text-slate-700">
+                  {student.fullName}
+                  {student.sectionLabel && <span className="block text-[10px] font-normal text-slate-400">{student.sectionLabel}</span>}
+                </span>
+                {blocked ? (
+                  <span className="shrink-0 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-800">
+                    Bloqueado
+                  </span>
+                ) : (
+                  <StatusBadges student={student} />
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+function StudentListRow({ student, index, onClick }: {
+  student: RosterEntry;
+  index: number;
+  onClick: () => void;
+}) {
+  const blocked = student.priorBlock != null;
 
   return (
     <button
@@ -1063,28 +1247,7 @@ function StudentListRow({ student, index, onClick }: {
           Bloqueado
         </span>
       ) : (
-        <span className="flex shrink-0 gap-1">
-          {badges.map(badge => {
-            const active = student.status === badge.status;
-            const colors = {
-              emerald: active ? 'bg-emerald-600 border-emerald-600 text-white' : 'bg-white border-slate-200 text-slate-300',
-              rose: active ? 'bg-rose-600 border-rose-600 text-white' : 'bg-white border-slate-200 text-slate-300',
-              slate: active ? 'bg-slate-700 border-slate-700 text-white' : 'bg-white border-slate-200 text-slate-300',
-              amber: active ? 'bg-amber-500 border-amber-500 text-white' : 'bg-white border-slate-200 text-slate-300',
-              blue: active ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-slate-200 text-slate-300',
-            };
-            return (
-              <span
-                key={badge.code}
-                title={badge.label}
-                aria-label={`${badge.label}${active ? ', seleccionado' : ''}`}
-                className={`w-5 h-5 rounded-full border flex items-center justify-center text-[9px] font-semibold ${colors[badge.color]}`}
-              >
-                {badge.code}
-              </span>
-            );
-          })}
-        </span>
+        <StatusBadges student={student} />
       )}
     </button>
   );
@@ -1109,9 +1272,9 @@ function SelectedStudentEditor({
   const [clearing, setClearing] = useState(false);
   const prior = student.priorBlock;
   const reasonValue = reasonDraft.trim();
-  const touchY = useRef<number | null>(null);
-  const touchDistance = useRef(0);
+  const panelRef = useRef<HTMLElement>(null);
   const wheelDistance = useRef(0);
+  useStepTouchScroll(panelRef, onBackgroundScroll, onBackgroundScrollEnd, true, 'button, input, textarea');
 
   const isOtherReason = reasonValue === 'Otro' || reasonValue.startsWith('Otro:');
   const otherReason = reasonValue.startsWith('Otro:') ? reasonValue.slice(5).trimStart() : '';
@@ -1129,44 +1292,11 @@ function SelectedStudentEditor({
     }
   };
 
-  const handlePanelTouchStart = (event: React.TouchEvent<HTMLElement>) => {
-    const target = event.target as HTMLElement;
-    if (target.closest('button, input, textarea')) {
-      touchY.current = null;
-      touchDistance.current = 0;
-      return;
-    }
-    touchY.current = event.touches[0]?.clientY ?? null;
-    touchDistance.current = 0;
-  };
-
-  const handlePanelTouchMove = (event: React.TouchEvent<HTMLElement>) => {
-    if (touchY.current == null) return;
-    const currentY = event.touches[0]?.clientY;
-    if (currentY == null) return;
-    touchDistance.current += touchY.current - currentY;
-    touchY.current = currentY;
-    const steps = Math.trunc(touchDistance.current / ROSTER_SCROLL_STEP);
-    if (steps !== 0) {
-      if (event.cancelable) event.preventDefault();
-      touchDistance.current -= steps * ROSTER_SCROLL_STEP;
-      onBackgroundScroll(steps);
-    }
-  };
-
-  const handlePanelTouchEnd = () => {
-    onBackgroundScrollEnd();
-    touchY.current = null;
-    touchDistance.current = 0;
-  };
-
   return (
     <section
+      ref={panelRef}
       data-selected-editor
       onWheel={handlePanelWheel}
-      onTouchStart={handlePanelTouchStart}
-      onTouchMove={handlePanelTouchMove}
-      onTouchEnd={handlePanelTouchEnd}
       style={{ height: editorHeight }}
       className="shrink-0 overflow-y-auto rounded-xl border border-slate-300 bg-white p-3 shadow-sm"
       aria-label={`Asistencia de ${student.fullName}`}
