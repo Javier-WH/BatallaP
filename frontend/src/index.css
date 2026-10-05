@@ -2441,3 +2441,26 @@ input[type=number] {
     font-size: 0.8rem !important;
   }
 }
+
+/* Editor-only: the text block a line / table / image is anchored to (see anchorHighlight.ts). */
+.fobj-anchor-target {
+  position: relative;
+  outline: 1.5px dashed rgba(250, 140, 22, 0.55);
+  outline-offset: 2px;
+  background-color: rgba(250, 140, 22, 0.05);
+}
+
+.fobj-anchor-target.is-selected {
+  outline-color: #fa8c16;
+  background-color: rgba(250, 140, 22, 0.1);
+}
+
+.fobj-anchor-target::before {
+  content: '\2693';
+  position: absolute;
+  left: -22px;
+  top: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #fa8c16;
+}

@@ -1,10 +1,12 @@
 import React, { useCallback, useState } from 'react';
-import { useEditor, EditorContent, Extension } from '@tiptap/react';
+import { useEditor, EditorContent, Extension, type Editor } from '@tiptap/react';
+import { NodeSelection } from '@tiptap/pm/state';
 import StarterKit from '@tiptap/starter-kit';
 import { TextStyle } from '@tiptap/extension-text-style';
 import Color from '@tiptap/extension-color';
 import TextAlign from '@tiptap/extension-text-align';
-import { FloatingImage } from './FloatingImage';
+import { FloatingImage, reanchorImage } from './FloatingImage';
+import { AnchorHighlight } from './anchorHighlight';
 import type { ImageWrapMode, ImageAnchorMode } from './FloatingImage';
 import { FloatingLine } from './FloatingLine';
 import {
@@ -12,7 +14,7 @@ import {
   getActiveCellPosition, formatActiveCell, alignActiveCell, insertIntoActiveCell, clearActiveCell,
 } from './FloatingTable';
 import type { CellAlign } from './FloatingTable';
-import { insertFloatingNode, setAnchorMode } from './floatingObject';
+import { insertFloatingNode, setAnchorMode, listAnchorBlocks, floatingAnchorBlockPos, reanchorFloating } from './floatingObject';
 import type { AnchorMode } from './floatingObject';
 import { CONSTANCIA_PAGE_CSS, CONSTANCIA_PAGE_STYLE, CONSTANCIA_MARGIN_OPTIONS } from './constanciaPage';
 import { Button, Space, Select, Dropdown, Upload, Popover, InputNumber, message } from 'antd';
@@ -23,7 +25,7 @@ import {
   UndoOutlined, RedoOutlined, LinkOutlined,
   PlusOutlined, PictureOutlined, LineOutlined, TableOutlined, DeleteOutlined,
   InsertRowBelowOutlined, InsertRowRightOutlined, DeleteRowOutlined, DeleteColumnOutlined,
-  SelectOutlined,
+  SelectOutlined, PushpinOutlined,
 } from '@ant-design/icons';
 
 // Custom FontSize extension (same as DashboardEditor)
@@ -194,6 +196,39 @@ interface ConstanciaEditorProps {
   onMarginChange: (margin: string) => void;
 }
 
+/**
+ * "Anchored to" picker for the selected line / table / image: lists the text blocks (numbered,
+ * with an excerpt) and moves the anchor to the chosen one without moving the object on the page.
+ */
+const AnchorBlockSelect: React.FC<{ editor: Editor }> = ({ editor }) => {
+  const { selection, doc } = editor.state;
+  if (!(selection instanceof NodeSelection)) return null;
+  const node = selection.node;
+  const isImage = node.type.name === 'image';
+  const blocks = listAnchorBlocks(doc).filter((block) => !isImage || block.textblock);
+  const current = isImage
+    ? (selection.$from.depth >= 1 ? selection.$from.before(1) : null)
+    : floatingAnchorBlockPos(doc, selection.from);
+
+  return (
+    <Select
+      size="small"
+      style={{ width: 250 }}
+      showSearch
+      optionFilterProp="label"
+      popupMatchSelectWidth={false}
+      placeholder="Texto al que se ancla…"
+      title="Texto al que está anclado: el objeto se mueve con él. Elige otro para cambiarlo; el objeto no cambia de lugar en la página."
+      value={current ?? undefined}
+      options={blocks.map((block) => ({ value: block.pos, label: `${block.number}. ${block.label}` }))}
+      onChange={(target: number) => {
+        if (isImage) reanchorImage(editor, selection.from, target);
+        else reanchorFloating(editor, selection.from, node, target);
+      }}
+    />
+  );
+};
+
 const ConstanciaEditor: React.FC<ConstanciaEditorProps> = ({ content, onChange, variables, margin, onMarginChange }) => {
   const [tablePickerOpen, setTablePickerOpen] = useState(false);
   // Lets clicks pass through the text so objects placed behind it can be selected.
@@ -213,6 +248,7 @@ const ConstanciaEditor: React.FC<ConstanciaEditorProps> = ({ content, onChange, 
       FloatingImage,
       FloatingLine,
       FloatingTable,
+      AnchorHighlight,
     ],
     // The toolbar reflects the current selection (e.g. line/table controls).
     shouldRerenderOnTransaction: true,
@@ -273,6 +309,9 @@ const ConstanciaEditor: React.FC<ConstanciaEditorProps> = ({ content, onChange, 
   }, [editor]);
 
   if (!editor) return <div>Cargando editor…</div>;
+
+  const showAnchors = !!editor.storage.anchorHighlight?.showAll;
+  const toggleAnchors = () => { editor.commands.toggleAnchorHighlight(); };
 
   const lineSelected = editor.isActive('floatingLine');
   const tableSelected = editor.isActive('floatingTable');
@@ -455,7 +494,7 @@ const ConstanciaEditor: React.FC<ConstanciaEditorProps> = ({ content, onChange, 
           <Select
             size="small"
             style={{ width: 155 }}
-            title="Anclada al texto: la imagen sigue al párrafo donde está puesta, aunque las variables cambien el largo del texto"
+            title="Anclada al texto: la imagen sigue al párrafo elegido en el selector de al lado, aunque las variables cambien el largo del texto"
             value={editor.getAttributes('image').anchor === 'text' ? 'text' : 'page'}
             onChange={(value: ImageAnchorMode) => { editor.chain().focus().setImageAnchor(value).run(); }}
             options={[
@@ -463,6 +502,10 @@ const ConstanciaEditor: React.FC<ConstanciaEditorProps> = ({ content, onChange, 
               { value: 'page', label: 'Fija en la página' },
             ]}
           />
+        )}
+
+        {editor.isActive('image') && ['front', 'behind'].includes(editor.getAttributes('image').wrap) && editor.getAttributes('image').anchor === 'text' && (
+          <AnchorBlockSelect editor={editor} />
         )}
 
         {editor.isActive('image') && (
@@ -526,6 +569,16 @@ const ConstanciaEditor: React.FC<ConstanciaEditorProps> = ({ content, onChange, 
           Objetos detrás
         </Button>
 
+        <Button
+          icon={<PushpinOutlined />}
+          size="small"
+          type={showAnchors ? 'primary' : 'default'}
+          title="Resalta los textos a los que están anclados las líneas, tablas e imágenes. Con un objeto seleccionado, siempre se resalta el suyo."
+          onClick={toggleAnchors}
+        >
+          Ver anclas
+        </Button>
+
         {lineSelected && (
           <Space size={4} wrap>
             <Select
@@ -576,7 +629,7 @@ const ConstanciaEditor: React.FC<ConstanciaEditorProps> = ({ content, onChange, 
             <Select
               size="small"
               style={{ width: 155 }}
-              title="Anclada al texto: la línea sigue al párrafo sobre el que está puesta, aunque las variables cambien el largo del texto"
+              title="Anclada al texto: la línea sigue al texto elegido en el selector de al lado, aunque las variables cambien el largo del texto"
               value={lineAttrs.anchor === 'text' ? 'text' : 'page'}
               onChange={(value) => setAnchorMode(editor, value as AnchorMode)}
               options={[
@@ -584,6 +637,7 @@ const ConstanciaEditor: React.FC<ConstanciaEditorProps> = ({ content, onChange, 
                 { value: 'page', label: 'Fija en la página' },
               ]}
             />
+            {lineAttrs.anchor === 'text' && <AnchorBlockSelect editor={editor} />}
             <Button icon={<DeleteOutlined />} size="small" danger title="Eliminar línea" onClick={deleteSelectedObject} />
           </Space>
         )}
@@ -675,7 +729,7 @@ const ConstanciaEditor: React.FC<ConstanciaEditorProps> = ({ content, onChange, 
             <Select
               size="small"
               style={{ width: 155 }}
-              title="Anclada al texto: la tabla sigue al párrafo sobre el que está puesta, aunque las variables cambien el largo del texto"
+              title="Anclada al texto: la tabla sigue al texto elegido en el selector de al lado, aunque las variables cambien el largo del texto"
               value={tableAttrs.anchor === 'text' ? 'text' : 'page'}
               onChange={(value) => setAnchorMode(editor, value as AnchorMode)}
               options={[
@@ -683,6 +737,7 @@ const ConstanciaEditor: React.FC<ConstanciaEditorProps> = ({ content, onChange, 
                 { value: 'page', label: 'Fija en la página' },
               ]}
             />
+            {tableAttrs.anchor === 'text' && <AnchorBlockSelect editor={editor} />}
             <Button icon={<DeleteOutlined />} size="small" danger title="Eliminar tabla" onClick={deleteSelectedObject} />
           </Space>
         )}

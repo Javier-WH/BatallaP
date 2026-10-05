@@ -1,6 +1,6 @@
 import type { Editor } from '@tiptap/core';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
-import { NodeSelection } from '@tiptap/pm/state';
+import { NodeSelection, type Selection } from '@tiptap/pm/state';
 
 // Shared plumbing for page-anchored objects (lines, tables) in the constancia editor.
 // Each object keeps a zero-height anchor in the document flow so ProseMirror can map it,
@@ -144,8 +144,11 @@ export function findAnchorBlock(editor: Editor, pageTop: number): { pos: number;
   return above[above.length - 1] ?? blocks[0] ?? null;
 }
 
-// Commits a position/size change. For text-anchored objects, pageTop is converted into
-// an offset from the paragraph under the object, and the anchor moves right before it.
+// Commits a position/size change. For text-anchored objects, pageTop is converted into an
+// offset from the object's anchor point:
+//  - already text-anchored: the anchor the user chose is KEPT (even a plain click, which ends
+//    like a zero-length drag, must not re-anchor it to whatever is under the object);
+//  - switching from "fixed on page": the anchor moves right before the block under the object.
 export function commitPlacement(
   editor: Editor,
   getPos: unknown,
@@ -164,25 +167,139 @@ export function commitPlacement(
   }
 
   const pos = resolvePos(getPos);
+  if (pos === undefined) return;
+
+  if (node.attrs.anchor === 'text') {
+    const anchorTop = pageOffsetTop(editor, editor.view.nodeDOM(pos) as Element | null);
+    if (anchorTop === null) return;
+    commitNodeAttrs(editor, getPos, node, { ...rest, top: Math.round(pageTop - anchorTop) });
+    return;
+  }
+
   const target = findAnchorBlock(editor, pageTop);
-  if (pos === undefined || !target) return;
+  if (!target) return;
 
   const attrs = { ...node.attrs, ...rest, top: Math.round(pageTop - target.top) };
+  placeBeforeBlock(editor, pos, node, attrs, target.pos);
+}
+
+// Moves a floating node so its anchor sits right before the block at `targetPos`.
+function placeBeforeBlock(
+  editor: Editor,
+  pos: number,
+  node: ProseMirrorNode,
+  attrs: Record<string, unknown>,
+  targetPos: number,
+): void {
   const nodeEnd = pos + node.nodeSize;
-  if (target.pos === nodeEnd) {
-    commitNodeAttrs(editor, getPos, node, attrs);
+  if (targetPos === nodeEnd) {
+    commitNodeAttrs(editor, () => pos, node, attrs);
     return;
   }
   editor
     .chain()
     .command(({ tr }) => {
       tr.delete(pos, nodeEnd);
-      const insertAt = tr.mapping.map(target.pos);
+      const insertAt = tr.mapping.map(targetPos);
       tr.insert(insertAt, node.type.create(attrs));
       tr.setSelection(NodeSelection.create(tr.doc, insertAt));
       return true;
     })
     .run();
+}
+
+// ── Anchor targets: which text block an object follows ──────────────────────────────
+
+const isFloatingBlock = (node: ProseMirrorNode) => FLOATING_TYPES.has(node.type.name);
+const isFloatingImage = (node: ProseMirrorNode) =>
+  node.type.name === 'image' && (node.attrs.wrap === 'front' || node.attrs.wrap === 'behind');
+
+export interface AnchorBlock {
+  /** Document offset of the block (what the anchor is inserted before). */
+  pos: number;
+  /** 1-based position among the text blocks, as shown to the user. */
+  number: number;
+  label: string;
+  textblock: boolean;
+}
+
+/** Every block a floating object could be anchored to (floating objects themselves excluded). */
+export function listAnchorBlocks(doc: ProseMirrorNode): AnchorBlock[] {
+  const blocks: AnchorBlock[] = [];
+  doc.forEach((child, offset) => {
+    if (isFloatingBlock(child)) return;
+    const text = child.textContent.replace(/\s+/g, ' ').trim();
+    const excerpt = text.length > 40 ? `${text.slice(0, 40)}…` : text;
+    const kind = child.isTextblock ? ''
+      : child.type.name === 'bulletList' ? 'Lista · '
+        : child.type.name === 'orderedList' ? 'Lista numerada · '
+          : 'Bloque · ';
+    blocks.push({ pos: offset, number: blocks.length + 1, label: `${kind}${excerpt || '(vacío)'}`, textblock: child.isTextblock });
+  });
+  return blocks;
+}
+
+/** The block a line/table at `pos` is anchored to: the next text block after it (else the last before). */
+export function floatingAnchorBlockPos(doc: ProseMirrorNode, pos: number): number | null {
+  const found = { before: null as number | null, after: null as number | null };
+  let seen = false;
+  doc.forEach((child, offset) => {
+    if (offset === pos) { seen = true; return; }
+    if (isFloatingBlock(child)) return;
+    if (!seen) found.before = offset;
+    else if (found.after === null) found.after = offset;
+  });
+  return found.after ?? found.before;
+}
+
+/** Blocks to highlight: the selected object's anchor, plus all of them when `showAll`. */
+export function anchorTargets(
+  doc: ProseMirrorNode,
+  selection: Selection,
+  showAll: boolean,
+): { pos: number; selected: boolean }[] {
+  const targets = new Map<number, boolean>();
+  const mark = (pos: number | null, selected: boolean) => {
+    if (pos === null) return;
+    targets.set(pos, (targets.get(pos) ?? false) || selected);
+  };
+
+  if (selection instanceof NodeSelection) {
+    const node = selection.node;
+    if (isFloatingBlock(node) && node.attrs.anchor === 'text') {
+      mark(floatingAnchorBlockPos(doc, selection.from), true);
+    } else if (isFloatingImage(node) && node.attrs.anchor === 'text' && selection.$from.depth >= 1) {
+      mark(selection.$from.before(1), true);
+    }
+  }
+
+  if (showAll) {
+    doc.forEach((child, offset) => {
+      if (isFloatingBlock(child)) {
+        if (child.attrs.anchor === 'text') mark(floatingAnchorBlockPos(doc, offset), false);
+      } else if (child.isTextblock) {
+        let hasAnchoredImage = false;
+        child.forEach((inline) => {
+          if (isFloatingImage(inline) && inline.attrs.anchor === 'text') hasAnchoredImage = true;
+        });
+        if (hasAnchoredImage) mark(offset, false);
+      }
+    });
+  }
+
+  return [...targets].map(([pos, selected]) => ({ pos, selected }));
+}
+
+/**
+ * Re-anchors a line/table to another block without moving it on the page: its offset is
+ * recomputed relative to the new block.
+ */
+export function reanchorFloating(editor: Editor, pos: number, node: ProseMirrorNode, targetPos: number): void {
+  const anchorDom = editor.view.nodeDOM(pos) as Element | null;
+  const blockTop = pageOffsetTop(editor, editor.view.nodeDOM(targetPos) as Element | null);
+  if (!anchorDom || blockTop === null) return;
+  const pageTop = resolvePageTop(editor, anchorDom, node.attrs);
+  placeBeforeBlock(editor, pos, node, { ...node.attrs, anchor: 'text', top: Math.round(pageTop - blockTop) }, targetPos);
 }
 
 // Switches the selected floating object between "follows the text" and "fixed on page"

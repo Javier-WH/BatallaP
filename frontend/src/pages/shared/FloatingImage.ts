@@ -1,4 +1,4 @@
-import { mergeAttributes, Node } from '@tiptap/core';
+import { mergeAttributes, Node, type Editor } from '@tiptap/core';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import { NodeSelection } from '@tiptap/pm/state';
 import { getPage as getEditorPage, watchReflow } from './floatingObject';
@@ -60,6 +60,60 @@ export function buildImageStyle(attrs: Record<string, unknown>): string {
   if (height) styles.push(`height: ${height}px`);
 
   return styles.join('; ');
+}
+
+/**
+ * Moves a text-anchored image into another paragraph (at its start) without moving it on the
+ * page: its offsets are recomputed against the new anchor point.
+ */
+export function reanchorImage(editor: Editor, pos: number, targetPos: number): void {
+  const { state, view } = editor;
+  const node = state.doc.nodeAt(pos);
+  const target = state.doc.nodeAt(targetPos);
+  if (!node || node.type.name !== 'image' || node.attrs.anchor !== 'text') return;
+  if (!target || !target.isTextblock) return;
+  if (state.doc.resolve(pos).depth < 1 || state.doc.resolve(pos).before(1) === targetPos) return;
+
+  const page = getEditorPage(editor);
+  const oldAnchor = view.nodeDOM(pos) as HTMLElement | null;
+  if (!page || !oldAnchor) return;
+  const pageRect = page.getBoundingClientRect();
+  const oldRect = oldAnchor.getBoundingClientRect();
+  const pageLeft = oldRect.left - pageRect.left + (toNumber(node.attrs.left) ?? 0);
+  const pageTop = oldRect.top - pageRect.top + (toNumber(node.attrs.top) ?? 0);
+
+  let insertedAt = -1;
+  editor
+    .chain()
+    .command(({ tr }) => {
+      tr.delete(pos, pos + node.nodeSize);
+      insertedAt = tr.mapping.map(targetPos) + 1;
+      tr.insert(insertedAt, node);
+      tr.setSelection(NodeSelection.create(tr.doc, insertedAt));
+      return true;
+    })
+    .run();
+  if (insertedAt < 0) return;
+
+  // The DOM is already updated: measure the new anchor and keep the image where it was.
+  const newAnchor = view.nodeDOM(insertedAt) as HTMLElement | null;
+  if (!newAnchor) return;
+  const newRect = newAnchor.getBoundingClientRect();
+  const nextPageRect = page.getBoundingClientRect();
+  editor
+    .chain()
+    .command(({ tr }) => {
+      const current = tr.doc.nodeAt(insertedAt);
+      if (!current) return false;
+      tr.setNodeMarkup(insertedAt, undefined, {
+        ...current.attrs,
+        left: Math.round(pageLeft - (newRect.left - nextPageRect.left)),
+        top: Math.round(pageTop - (newRect.top - nextPageRect.top)),
+      });
+      tr.setSelection(NodeSelection.create(tr.doc, insertedAt));
+      return true;
+    })
+    .run();
 }
 
 export const FloatingImage = Node.create({
