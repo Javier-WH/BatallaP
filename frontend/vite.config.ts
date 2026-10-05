@@ -14,18 +14,26 @@ export default defineConfig({
     // PWA: installable app shell for teachers' phones (attendance module).
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.ico', 'icons/icon-512.png'],
+      includeAssets: ['favicon.ico', 'icons/icon-192.png', 'icons/icon-512.png'],
       manifest: {
         name: 'Sistema de Gestión Escolar',
         short_name: 'Gestión Escolar',
         description: 'Sistema de gestión escolar — asistencias, notas y administración',
         lang: 'es',
+        id: '/',
         display: 'standalone',
         orientation: 'portrait',
         start_url: '/',
+        scope: '/',
         background_color: '#ffffff',
         theme_color: '#2563eb',
         icons: [
+          {
+            src: '/icons/icon-192.png',
+            sizes: '192x192',
+            type: 'image/png',
+            purpose: 'any',
+          },
           {
             src: '/icons/icon-512.png',
             sizes: '512x512',
@@ -59,6 +67,19 @@ export default defineConfig({
         ],
       },
     }),
+    // calculadora.html ships its own manifest (dedicated name/start_url). VitePWA also
+    // injects the main one into every entry, and a page must declare exactly one.
+    {
+      name: 'calculadora-own-manifest',
+      enforce: 'post',
+      transformIndexHtml: {
+        order: 'post',
+        handler(html: string, ctx: { filename?: string }) {
+          if (!ctx.filename?.endsWith('calculadora.html')) return html;
+          return html.replace(/<link rel="manifest" href="\/manifest\.webmanifest"\s*\/?>/g, '');
+        },
+      },
+    },
   ],
   build: {
     rollupOptions: {

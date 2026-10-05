@@ -7,6 +7,7 @@ import 'dayjs/locale/es';
 import { registerSW } from 'virtual:pwa-register';
 import ExchangeCalculatorPage from '@/pages/shared/ExchangeCalculatorPage';
 import '@/index.css';
+import '@/utils/pwaInstall';
 
 registerSW({ immediate: true });
 

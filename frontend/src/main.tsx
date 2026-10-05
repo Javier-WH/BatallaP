@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
 import { registerSW } from 'virtual:pwa-register'
+import './utils/pwaInstall'
 
 // PWA service worker registration (auto-update). The app shell is cached for
 // fast loads / installability; API calls are never cached.

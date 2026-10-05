@@ -4,6 +4,7 @@ import { CalculatorOutlined, LockOutlined, UserOutlined } from '@ant-design/icon
 import api from '@/services/api';
 import { getRatesAtDate } from '@/services/paymentsService';
 import ExchangeRateCalculator from '@/components/ExchangeRateCalculator';
+import InstallAppButton from '@/components/InstallAppButton';
 
 type PageStatus = 'checking' | 'login' | 'ready';
 
@@ -48,10 +49,11 @@ const ExchangeCalculatorPage: React.FC = () => {
           <div className="w-11 h-11 rounded-xl bg-blue-50 flex items-center justify-center">
             <CalculatorOutlined className="text-xl text-blue-600" />
           </div>
-          <div>
+          <div className="flex-1">
             <h1 className="text-lg font-black text-slate-800 leading-tight m-0">Calculadora de Tasas</h1>
             <p className="text-xs text-slate-400 m-0">Conversión Bs ⇄ USD / EUR · Tasas BCV</p>
           </div>
+          <InstallAppButton />
         </div>
 
         {status === 'checking' && (
