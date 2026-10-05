@@ -15,6 +15,19 @@ export const CONSTANCIA_PAGE_STYLE: CSSProperties = {
   boxSizing: 'border-box',
 };
 
+// Margin presets selectable at generation time. The page box never changes
+// (letter size); only the text padding does — floating objects keep their
+// page-absolute coordinates.
+export const CONSTANCIA_MARGIN_OPTIONS = [
+  { value: '0.5in', label: 'Estrechos (½″)' },
+  { value: '0.75in', label: 'Reducidos (¾″)' },
+  { value: '1in', label: 'Normales (1″)' },
+  { value: '1.5in', label: 'Amplios (1½″)' },
+  { value: '2in', label: 'Muy amplios (2″)' },
+];
+
+export const CONSTANCIA_DEFAULT_MARGIN = '1in';
+
 // Styles the preview and the print window need, since neither inherits the app stylesheet
 // the same way the editor canvas does.
 export const CONSTANCIA_PAGE_CSS = `

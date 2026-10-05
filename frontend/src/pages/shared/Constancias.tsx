@@ -11,7 +11,7 @@ import {
 } from '@ant-design/icons';
 import ConstanciaEditor from './ConstanciaEditor';
 import type { VariableDef } from './ConstanciaEditor';
-import { CONSTANCIA_PAGE_CSS, CONSTANCIA_PAGE_STYLE, buildConstanciaPageHtml } from './constanciaPage';
+import { CONSTANCIA_PAGE_CSS, CONSTANCIA_PAGE_STYLE, CONSTANCIA_DEFAULT_MARGIN, buildConstanciaPageHtml } from './constanciaPage';
 import { exportConstanciaToDocx } from '@/utils/constanciaDocxExport';
 
 function normalizeWordHtml(html: string): string {
@@ -29,6 +29,7 @@ interface Template {
   id: number;
   name: string;
   content: string;
+  margin?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -67,6 +68,9 @@ const Constancias: React.FC = () => {
   const [showGuides, setShowGuides] = useState(false);
   const [useCustomDate, setUseCustomDate] = useState(false);
   const [customDate, setCustomDate] = useState<dayjs.Dayjs | null>(null);
+  // Page margin of the generated document — defined by the template (set in the
+  // editor) and returned with the preview, so preview and print stay faithful to it.
+  const [margin, setMargin] = useState<string>(CONSTANCIA_DEFAULT_MARGIN);
   // Academic period the constancia resolves against — defaults to the active
   // period but can be switched to a closed one (e.g. constancias de culminación).
   const [selectedPeriodId, setSelectedPeriodId] = useState<number | null>(null);
@@ -75,6 +79,7 @@ const Constancias: React.FC = () => {
   const [editingTemplate, setEditingTemplate] = useState<Template | null>(null);
   const [templateName, setTemplateName] = useState('');
   const [templateContent, setTemplateContent] = useState('');
+  const [templateMargin, setTemplateMargin] = useState<string>(CONSTANCIA_DEFAULT_MARGIN);
   const [saving, setSaving] = useState(false);
   const [showNameModal, setShowNameModal] = useState(false);
 
@@ -193,6 +198,7 @@ const Constancias: React.FC = () => {
       });
       setPreviewHtml(res.data.html);
       setPreviewVars(res.data.variables ?? null);
+      setMargin(res.data.margin || CONSTANCIA_DEFAULT_MARGIN);
     } catch (error: any) {
       message.error(error.response?.data?.message || 'Error al generar vista previa');
     } finally {
@@ -240,7 +246,7 @@ const Constancias: React.FC = () => {
             font-size: 12pt;
             line-height: 1.5;
             margin: 0;
-            padding: 1in;
+            padding: ${margin};
             color: #000;
           }
           img { max-width: 100%; }
@@ -264,23 +270,24 @@ const Constancias: React.FC = () => {
         if (iframe.parentNode) document.body.removeChild(iframe);
       }, 1000);
     };
-  }, [previewHtml]);
+  }, [previewHtml, margin]);
 
   // Export to Word (uses prosemirror-docx in the frontend)
   const handleExportWord = useCallback(async () => {
     if (!previewHtml) { message.warning('Genere la vista previa primero'); return; }
     try {
-      await exportConstanciaToDocx(normalizeWordHtml(previewHtml));
+      await exportConstanciaToDocx(normalizeWordHtml(previewHtml), 'constancia.docx', margin);
     } catch (error: any) {
       console.error('Word export error:', error);
       message.error('Error al generar el documento Word');
     }
-  }, [previewHtml]);
+  }, [previewHtml, margin]);
 
   // Template CRUD
   const handleNewTemplate = () => {
     setTemplateName('');
     setTemplateContent('');
+    setTemplateMargin(CONSTANCIA_DEFAULT_MARGIN);
     setEditingTemplate(null);
     setShowNameModal(true);
   };
@@ -292,6 +299,7 @@ const Constancias: React.FC = () => {
       setEditingTemplate(full);
       setTemplateName(full.name);
       setTemplateContent(full.content || '');
+      setTemplateMargin(full.margin || CONSTANCIA_DEFAULT_MARGIN);
       setActiveTab('templates');
     } catch {
       message.error('Error al cargar la plantilla');
@@ -303,10 +311,10 @@ const Constancias: React.FC = () => {
     setSaving(true);
     try {
       if (editingTemplate && editingTemplate.id !== 0) {
-        await api.put(`/constancias/${editingTemplate.id}`, { name: templateName.trim(), content: templateContent });
+        await api.put(`/constancias/${editingTemplate.id}`, { name: templateName.trim(), content: templateContent, margin: templateMargin });
         message.success('Plantilla actualizada');
       } else {
-        await api.post('/constancias', { name: templateName.trim(), content: templateContent });
+        await api.post('/constancias', { name: templateName.trim(), content: templateContent, margin: templateMargin });
         message.success('Plantilla creada');
       }
       setShowNameModal(false);
@@ -344,7 +352,7 @@ const Constancias: React.FC = () => {
     try {
       const res = await api.get(`/constancias/${tpl.id}`);
       const full = res.data;
-      await api.post('/constancias', { name: `${full.name} (copia)`, content: full.content || '' });
+      await api.post('/constancias', { name: `${full.name} (copia)`, content: full.content || '', margin: full.margin || CONSTANCIA_DEFAULT_MARGIN });
       message.success('Plantilla copiada');
       fetchData();
     } catch (error: any) {
@@ -583,7 +591,7 @@ const Constancias: React.FC = () => {
             <style>{CONSTANCIA_PAGE_CSS}</style>
             <div
               className={`constancia-page${showGuides ? ' constancia-editor-page' : ''}`}
-              style={CONSTANCIA_PAGE_STYLE}
+              style={{ ...CONSTANCIA_PAGE_STYLE, padding: margin, '--constancia-margin': margin } as React.CSSProperties}
               dangerouslySetInnerHTML={{ __html: buildConstanciaPageHtml(previewHtml) }}
             />
           </div>
@@ -618,6 +626,8 @@ const Constancias: React.FC = () => {
             content={templateContent}
             onChange={setTemplateContent}
             variables={variables}
+            margin={templateMargin}
+            onMarginChange={setTemplateMargin}
           />
         </Card>
       ) : (

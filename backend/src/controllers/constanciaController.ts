@@ -7,6 +7,10 @@ import { getSubjectOrderMapByGradeAndPeriod, sortSubjectsByOrder } from '@/servi
 // ── Role helpers ──
 const ALLOWED_ROLES = ['Master', 'Administrador', 'Control de Estudios'];
 
+// Page margins a template may declare (kept in sync with the editor's selector).
+const ALLOWED_MARGINS = ['0.5in', '0.75in', '1in', '1.5in', '2in'];
+const DEFAULT_MARGIN = '1in';
+
 function hasRole(req: Request, roles: string[]): boolean {
   const user = (req.session as any)?.user;
   if (!user?.roles) return false;
@@ -106,7 +110,6 @@ function buildDateVars(d: Date): Record<string, string> {
     'date.dayOrdinal': toOrdinal(d.getDate()),
     'date.dayWords': toSpanishWords(d.getDate()),
     'date.month': d.toLocaleString('es-ES', { month: 'long' }),
-    'date.monthUpper': d.toLocaleString('es-ES', { month: 'long' }).toUpperCase(),
     'date.year': String(d.getFullYear()),
   };
 }
@@ -295,7 +298,6 @@ async function resolveVariables(personId: number, schoolPeriodId: number, custom
     'student.gender': gender,
     // Determined articles based on gender (el/la)
     'student.article': gender === 'F' ? 'la' : 'el',
-    'student.articleUpper': gender === 'F' ? 'La' : 'El',
     // Gendered status words for constancias (Inscrito/Inscrita, Aceptado/Aceptada)
     'student.inscrito': gender === 'F' ? 'Inscrita' : 'Inscrito',
     'student.aceptado': gender === 'F' ? 'Aceptada' : 'Aceptado',
@@ -314,7 +316,7 @@ async function resolveVariables(personId: number, schoolPeriodId: number, custom
     'worker.age': age !== null ? String(age) : '',
     'worker.gender': gender,
     'worker.article': gender === 'F' ? 'la' : 'el',
-    'worker.articleUpper': gender === 'F' ? 'La' : 'El',
+    'worker.ciudadano': gender === 'F' ? 'ciudadana' : 'ciudadano',
     'worker.hireDate': person.hireDate ? (() => { const h = parseLocalDate(String(person.hireDate)); return `${h.getFullYear()}-${String(h.getMonth() + 1).padStart(2, '0')}-${String(h.getDate()).padStart(2, '0')}`; })() : '',
     'worker.hireDateLong': person.hireDate ? formatDate(parseLocalDate(String(person.hireDate))) : '',
     // Institution
@@ -335,12 +337,9 @@ async function resolveVariables(personId: number, schoolPeriodId: number, custom
     // Academic — grade.name strips the trailing "Año" so the template can compose
     // phrases like "pertenece al Quinto (5to) Año". Use grade.fullName for the full string.
     'grade.name': (academicSource?.grade?.name || '').replace(/\s+A[ñn]o\s*$/i, '').trim(),
-    'grade.nameUpper': (academicSource?.grade?.name || '').replace(/\s+A[ñn]o\s*$/i, '').trim().toUpperCase(),
     'grade.fullName': academicSource?.grade?.name || '',
-    'grade.fullNameUpper': (academicSource?.grade?.name || '').toUpperCase(),
     'grade.ordinal': gradeToOrdinal(academicSource?.grade?.order),
     'section.name': academicSource?.section?.name || '',
-    'section.nameUpper': (academicSource?.section?.name || '').toUpperCase(),
     'period.name': period?.name || '',
     // Certificate
     'date': `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`,
@@ -349,7 +348,6 @@ async function resolveVariables(personId: number, schoolPeriodId: number, custom
     'date.dayOrdinal': toOrdinal(now.getDate()),
     'date.dayWords': toSpanishWords(now.getDate()),
     'date.month': now.toLocaleString('es-ES', { month: 'long' }),
-    'date.monthUpper': now.toLocaleString('es-ES', { month: 'long' }).toUpperCase(),
     'date.year': String(now.getFullYear()),
   };
 
@@ -364,7 +362,6 @@ async function resolveVariables(personId: number, schoolPeriodId: number, custom
   subjectRows.forEach((row, idx) => {
     const n = idx + 1;
     vars[`subject.${n}.name`] = row.name;
-    vars[`subject.${n}.nameUpper`] = row.name.toUpperCase();
     vars[`subject.${n}.abbr`] = row.abbr;
     vars[`subject.${n}.score`] = '';
     vars[`subject.${n}.scoreWords`] = '';
@@ -500,13 +497,17 @@ export const createTemplate = async (req: Request, res: Response) => {
     return res.status(403).json({ message: 'No tiene permisos para esta acción' });
   }
   try {
-    const { name, content } = req.body;
+    const { name, content, margin } = req.body;
     if (!name || !name.trim()) {
       return res.status(400).json({ message: 'El nombre es requerido' });
+    }
+    if (margin !== undefined && !ALLOWED_MARGINS.includes(margin)) {
+      return res.status(400).json({ message: 'Margen no válido' });
     }
     const template = await ConstanciaTemplate.create({
       name: name.trim(),
       content: content || '',
+      margin: margin ?? DEFAULT_MARGIN,
     } as any);
     return res.status(201).json(template);
   } catch (error) {
@@ -522,9 +523,13 @@ export const updateTemplate = async (req: Request, res: Response) => {
   try {
     const template = await ConstanciaTemplate.findByPk(req.params.id);
     if (!template) return res.status(404).json({ message: 'Plantilla no encontrada' });
-    const { name, content } = req.body;
+    const { name, content, margin } = req.body;
+    if (margin !== undefined && !ALLOWED_MARGINS.includes(margin)) {
+      return res.status(400).json({ message: 'Margen no válido' });
+    }
     if (name !== undefined) template.name = name.trim();
     if (content !== undefined) template.content = content;
+    if (margin !== undefined) template.margin = margin;
     await template.save();
     return res.json(template);
   } catch (error) {
@@ -581,7 +586,7 @@ export const generatePreview = async (req: Request, res: Response) => {
     }
 
     const html = renderTemplate(template.content, vars);
-    return res.json({ html, variables: vars });
+    return res.json({ html, variables: vars, margin: template.margin || DEFAULT_MARGIN });
   } catch (error: any) {
     console.error('[generatePreview] Error:', error);
     return res.status(500).json({ message: error.message || 'Error al generar vista previa' });
@@ -620,6 +625,7 @@ export const getVariables = async (_req: Request, res: Response) => {
     { group: 'Trabajador', key: 'worker.age', label: 'Edad' },
     { group: 'Trabajador', key: 'worker.gender', label: 'Sexo (M/F)' },
     { group: 'Trabajador', key: 'worker.article', label: 'Artículo (el/la)' },
+    { group: 'Trabajador', key: 'worker.ciudadano', label: 'Ciudadano/Ciudadana (según sexo)' },
     { group: 'Trabajador', key: 'worker.hireDate', label: 'Fecha de inicio (laboral)' },
     { group: 'Trabajador', key: 'worker.hireDateLong', label: 'Fecha de inicio (texto)' },
     // Institution
@@ -643,7 +649,6 @@ export const getVariables = async (_req: Request, res: Response) => {
     // (same numbering as nóminas/boletines); {m} is the term order (1, 2, 3).
     // The editor prompts for these numbers when inserting.
     { group: 'Materias', key: 'subject.{n}.name', label: 'Materia N — nombre' },
-    { group: 'Materias', key: 'subject.{n}.nameUpper', label: 'Materia N — nombre en mayúsculas' },
     { group: 'Materias', key: 'subject.{n}.abbr', label: 'Materia N — abreviatura' },
     { group: 'Materias', key: 'subject.{n}.score', label: 'Materia N — nota definitiva (letra si es literal)' },
     { group: 'Materias', key: 'subject.{n}.scoreWords', label: 'Materia N — nota definitiva en letras' },

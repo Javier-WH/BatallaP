@@ -14,7 +14,7 @@ import {
 import type { CellAlign } from './FloatingTable';
 import { insertFloatingNode, setAnchorMode } from './floatingObject';
 import type { AnchorMode } from './floatingObject';
-import { CONSTANCIA_PAGE_CSS, CONSTANCIA_PAGE_STYLE } from './constanciaPage';
+import { CONSTANCIA_PAGE_CSS, CONSTANCIA_PAGE_STYLE, CONSTANCIA_MARGIN_OPTIONS } from './constanciaPage';
 import { Button, Space, Select, Dropdown, Upload, Popover, InputNumber, message } from 'antd';
 import {
   BoldOutlined, ItalicOutlined, UnderlineOutlined,
@@ -190,9 +190,11 @@ interface ConstanciaEditorProps {
   content: string;
   onChange: (html: string) => void;
   variables: VariableDef[];
+  margin: string;
+  onMarginChange: (margin: string) => void;
 }
 
-const ConstanciaEditor: React.FC<ConstanciaEditorProps> = ({ content, onChange, variables }) => {
+const ConstanciaEditor: React.FC<ConstanciaEditorProps> = ({ content, onChange, variables, margin, onMarginChange }) => {
   const [tablePickerOpen, setTablePickerOpen] = useState(false);
   // Lets clicks pass through the text so objects placed behind it can be selected.
   const [objectsMode, setObjectsMode] = useState(false);
@@ -706,6 +708,18 @@ const ConstanciaEditor: React.FC<ConstanciaEditorProps> = ({ content, onChange, 
 
         <div className="w-px h-6 bg-slate-300 mx-1" />
 
+        {/* Page margins — saved with the template; preview and print reproduce them */}
+        <Select
+          size="small"
+          style={{ width: 150 }}
+          title="Márgenes de la página"
+          value={margin}
+          onChange={onMarginChange}
+          options={CONSTANCIA_MARGIN_OPTIONS.map(o => ({ value: o.value, label: `Márgenes: ${o.label}` }))}
+        />
+
+        <div className="w-px h-6 bg-slate-300 mx-1" />
+
         {/* Variable inserter */}
         <Dropdown
           menu={{
@@ -726,7 +740,7 @@ const ConstanciaEditor: React.FC<ConstanciaEditorProps> = ({ content, onChange, 
         <style>{CONSTANCIA_PAGE_CSS}</style>
         <div
           className={`constancia-page constancia-editor-page${objectsMode ? ' constancia-objects-mode' : ''}`}
-          style={CONSTANCIA_PAGE_STYLE}
+          style={{ ...CONSTANCIA_PAGE_STYLE, padding: margin, '--constancia-margin': margin } as React.CSSProperties}
         >
           <div className="constancia-layer constancia-layer-behind" />
           <EditorContent editor={editor} className="constancia-content" />

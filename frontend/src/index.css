@@ -458,7 +458,7 @@ input[type=number] {
 .constancia-editor-page::after {
   content: '';
   position: absolute;
-  inset: 1in;
+  inset: var(--constancia-margin, 1in);
   border: 1px dashed rgba(30, 64, 175, 0.28);
   pointer-events: none;
   z-index: 2;

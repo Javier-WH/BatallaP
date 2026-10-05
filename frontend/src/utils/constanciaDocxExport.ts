@@ -207,7 +207,7 @@ const tiptapMarks: MarkSerializer = {
 
 // ── Main export function ──
 
-export async function exportConstanciaToDocx(html: string, filename = 'constancia.docx'): Promise<void> {
+export async function exportConstanciaToDocx(html: string, filename = 'constancia.docx', margin = '1in'): Promise<void> {
   // Create a temporary Tiptap editor to parse the HTML into a ProseMirror doc
   const editor = new Editor({
     extensions: [
@@ -232,13 +232,14 @@ export async function exportConstanciaToDocx(html: string, filename = 'constanci
 
     const serializer = new DocxSerializer(tiptapNodes, tiptapMarks);
 
+    const marginTwips = cssLengthToTwips(margin) ?? 1440; // 1 inch = 1440 twips
     const wordDoc = serializer.serialize(doc, {
       getImageBuffer: () => new Uint8Array(0), // placeholder for images
       sections: [{
         properties: {
           page: {
             size: { width: 12240, height: 15840 }, // Letter size in twips (8.5" x 11")
-            margin: { top: 1440, right: 1440, bottom: 1440, left: 1440 }, // 1 inch = 1440 twips
+            margin: { top: marginTwips, right: marginTwips, bottom: marginTwips, left: marginTwips },
           },
         },
       }],

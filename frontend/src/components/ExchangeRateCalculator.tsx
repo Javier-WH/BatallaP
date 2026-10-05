@@ -28,6 +28,17 @@ const DivisaCoin: React.FC<{ size?: number }> = ({ size = 44 }) => (
   </svg>
 );
 
+const CURRENCY_META: Record<string, { symbol: string; color: string }> = {
+  USD: { symbol: '$', color: '#4CAF50' },
+  EUR: { symbol: '€', color: '#3F51B5' },
+};
+
+const CurrencySymbol: React.FC<{ currency: string; opacity?: number }> = ({ currency, opacity = 1 }) => {
+  const meta = CURRENCY_META[currency];
+  if (!meta) return <>{currency}</>;
+  return <span style={{ color: meta.color, opacity }}>{meta.symbol}</span>;
+};
+
 const ExchangeRateCalculator: React.FC<ExchangeRateCalculatorProps> = ({ active }) => {
   const [calcDate, setCalcDate] = useState<dayjs.Dayjs>(dayjs());
   const [calcRates, setCalcRates] = useState<RateAtDate[]>([]);
@@ -76,7 +87,7 @@ const ExchangeRateCalculator: React.FC<ExchangeRateCalculatorProps> = ({ active 
 
   const availableCurrencies = calcRates
     .filter(r => r.rate !== null)
-    .map(r => ({ value: r.currency, label: `${r.currency} (${r.name})` }));
+    .map(r => ({ value: r.currency, label: <><CurrencySymbol currency={r.currency} /> ({r.name})</> }));
 
   return (
     <Space direction="vertical" style={{ width: '100%' }} size="middle">
@@ -96,7 +107,7 @@ const ExchangeRateCalculator: React.FC<ExchangeRateCalculatorProps> = ({ active 
           <div className="mt-1 text-xs text-slate-400">
             {calcRates.filter(r => r.rate !== null).map(r => (
               <span key={r.currency} className="mr-3">
-                {r.currency}: <strong>{r.rate?.toLocaleString('es-VE', { minimumFractionDigits: 2 })}</strong> ({r.date ? dayjs(r.date).format('DD/MM/YYYY') : '—'})
+                <CurrencySymbol currency={r.currency} />: <strong>{r.rate?.toLocaleString('es-VE', { minimumFractionDigits: 2 })}</strong> ({r.date ? dayjs(r.date).format('DD/MM/YYYY') : '—'})
               </span>
             ))}
           </div>
@@ -153,13 +164,15 @@ const ExchangeRateCalculator: React.FC<ExchangeRateCalculatorProps> = ({ active 
           </button>
           <div style={{ textAlign: 'center', lineHeight: 1 }}>
             <DivisaCoin />
-            <div className="text-[10px] font-bold text-slate-500 mt-1">USD / EUR</div>
+            <div className="text-[10px] font-bold text-slate-500 mt-1">
+              <CurrencySymbol currency="USD" /> / <CurrencySymbol currency="EUR" />
+            </div>
           </div>
         </div>
         <div style={{ textAlign: 'center', fontSize: 11, color: '#94a3b8' }}>
           {calcDirection === 'from_ves'
-            ? 'Bs → Divisa (¿Cuántos USD/EUR son X Bs?)'
-            : 'Divisa → Bs (¿Cuántos Bs son X USD/EUR?)'}
+            ? <>Bs → Divisa (¿Cuántos <CurrencySymbol currency="USD" />/<CurrencySymbol currency="EUR" /> son X Bs?)</>
+            : <>Divisa → Bs (¿Cuántos Bs son X <CurrencySymbol currency="USD" />/<CurrencySymbol currency="EUR" />?)</>}
         </div>
       </div>
 
@@ -172,8 +185,8 @@ const ExchangeRateCalculator: React.FC<ExchangeRateCalculatorProps> = ({ active 
           value={calcCurrencies}
           onChange={(values) => setCalcCurrencies(values as string[])}
           options={availableCurrencies.length > 0 ? availableCurrencies : [
-            { value: 'USD', label: 'USD' },
-            { value: 'EUR', label: 'EUR' },
+            { value: 'USD', label: <CurrencySymbol currency="USD" /> },
+            { value: 'EUR', label: <CurrencySymbol currency="EUR" /> },
           ]}
         />
       </div>
@@ -201,14 +214,18 @@ const ExchangeRateCalculator: React.FC<ExchangeRateCalculatorProps> = ({ active 
           {calcResults.map(r => (
             <div key={r.currency} className="bg-slate-50 rounded-xl p-4">
               <Statistic
-                title={calcDirection === 'from_ves' ? `Equivalente en ${r.currency}` : `Equivalente en Bolívares (Bs) — ${r.currency}`}
+                title={calcDirection === 'from_ves'
+                  ? <>Equivalente en <CurrencySymbol currency={r.currency} /></>
+                  : <>Equivalente en Bolívares (Bs) — <CurrencySymbol currency={r.currency} /></>}
                 value={r.result !== null ? r.result : '—'}
                 precision={r.result !== null ? 2 : undefined}
-                prefix={calcDirection === 'from_ves' ? `${r.currency} ` : 'Bs '}
+                prefix={calcDirection === 'from_ves'
+                  ? <CurrencySymbol currency={r.currency} />
+                  : <span style={{ color: CURRENCY_META[r.currency]?.color }}>Bs </span>}
                 valueStyle={{ fontWeight: 700 }}
               />
               <div className="mt-1 text-xs text-slate-400">
-                Tasa: <strong>{r.rate?.toLocaleString('es-VE', { minimumFractionDigits: 2 })} Bs/{r.currency}</strong> — Fecha: {r.date ? dayjs(r.date).format('DD/MM/YYYY') : '—'}
+                Tasa: <strong>{r.rate?.toLocaleString('es-VE', { minimumFractionDigits: 2 })} Bs/<CurrencySymbol currency={r.currency} /></strong> — Fecha: {r.date ? dayjs(r.date).format('DD/MM/YYYY') : '—'}
               </div>
             </div>
           ))}
