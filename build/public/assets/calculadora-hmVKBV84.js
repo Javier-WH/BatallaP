@@ -1,1 +1,0 @@
-import{cI as r,c1 as s,cJ as t,bU as e,r as a,bK as o,cG as c,cH as i}from"./virtual_pwa-register-iPt62FWF.js";r({immediate:!0});s.locale("es");t.createRoot(document.getElementById("root")).render(e.jsx(a.StrictMode,{children:e.jsx(o,{locale:c,theme:{token:{colorPrimary:"#1e40af",borderRadius:12,fontFamily:"Inter, system-ui, sans-serif"}},children:e.jsx(i,{})})}));

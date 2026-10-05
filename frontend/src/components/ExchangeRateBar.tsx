@@ -3,6 +3,7 @@ import { Modal, Space } from 'antd';
 import { DollarOutlined, CalculatorOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import ExchangeRateCalculator from '@/components/ExchangeRateCalculator';
+import InstallAppButton from '@/components/InstallAppButton';
 
 interface ExchangeRateBarProps {
   usdRate: number | null;
@@ -71,10 +72,13 @@ const ExchangeRateBar: React.FC<ExchangeRateBarProps> = ({ usdRate, eurRate, rat
       {/* Calculator Modal */}
       <Modal
         title={
-          <Space>
-            <CalculatorOutlined />
-            <span>Calculadora de Conversión</span>
-          </Space>
+          <div className="flex items-center gap-2 pr-6">
+            <Space className="flex-1">
+              <CalculatorOutlined />
+              <span>Calculadora de Conversión</span>
+            </Space>
+            <InstallAppButton />
+          </div>
         }
         open={calcOpen}
         onCancel={() => setCalcOpen(false)}

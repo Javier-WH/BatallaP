@@ -51,6 +51,34 @@ export async function promptInstall(): Promise<'accepted' | 'dismissed' | 'unava
   return outcome;
 }
 
+// Resolves true if the browser confirms the install (appinstalled) within `ms`.
+export function waitForInstalled(ms: number): Promise<boolean> {
+  if (installed) return Promise.resolve(true);
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => { unsubscribe(); resolve(false); }, ms);
+    const unsubscribe = subscribePwaInstall(() => {
+      if (!installed) return;
+      clearTimeout(timer);
+      unsubscribe();
+      resolve(true);
+    });
+  });
+}
+
+// On Android only Chrome-family browsers (Chrome, Edge, Samsung Internet) mint a real
+// installed app (WebAPK); the others usually just add a home-screen shortcut.
+export async function describeBrowser(): Promise<{ name: string; installsRealApp: boolean }> {
+  const ua = navigator.userAgent;
+  const brave = await (navigator as Navigator & { brave?: { isBrave?: () => Promise<boolean> } }).brave?.isBrave?.().catch(() => false);
+  if (brave) return { name: 'Brave', installsRealApp: false };
+  if (/OPR\/|Opera/i.test(ua)) return { name: 'Opera', installsRealApp: false };
+  if (/Vivaldi/i.test(ua)) return { name: 'Vivaldi', installsRealApp: false };
+  if (/Firefox/i.test(ua)) return { name: 'Firefox', installsRealApp: false };
+  if (/SamsungBrowser/i.test(ua)) return { name: 'Samsung Internet', installsRealApp: true };
+  if (/EdgA|Edg\//i.test(ua)) return { name: 'Edge', installsRealApp: true };
+  return { name: 'Chrome u otro basado en Chromium', installsRealApp: /Chrome\//.test(ua) };
+}
+
 export interface PwaCheck {
   label: string;
   ok: boolean;
@@ -60,6 +88,15 @@ export interface PwaCheck {
 // Explains why the browser may not be offering the install option.
 export async function collectPwaDiagnostics(): Promise<PwaCheck[]> {
   const checks: PwaCheck[] = [];
+
+  const browser = await describeBrowser();
+  checks.push({
+    label: `Navegador: ${browser.name}`,
+    ok: browser.installsRealApp,
+    detail: browser.installsRealApp
+      ? 'Instala una aplicación real (aparece en el cajón de aplicaciones).'
+      : 'En Android este navegador suele crear solo un acceso directo en la pantalla de inicio, no una app. Para una instalación completa usa Chrome.',
+  });
 
   checks.push({
     label: 'Conexión segura (HTTPS con certificado válido)',

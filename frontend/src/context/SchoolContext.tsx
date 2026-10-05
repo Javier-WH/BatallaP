@@ -146,6 +146,19 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     refreshExchangeRates();
   }, []);
 
+  // An installed PWA can sit in the background for hours: refresh the header rates when it
+  // returns to the foreground (throttled), so they match what the server last scraped.
+  useEffect(() => {
+    let lastRefresh = Date.now();
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible' || Date.now() - lastRefresh < 60_000) return;
+      lastRefresh = Date.now();
+      refreshExchangeRates();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, []);
+
   const isReadOnly = viewPeriod?.id !== activePeriod?.id;
 
   const setViewPeriod = (period: any) => setViewPeriodState(period);

@@ -80,7 +80,7 @@ const ExchangeCalculatorPage: React.FC = () => {
           </>
         )}
 
-        {status === 'ready' && <ExchangeRateCalculator />}
+        {status === 'ready' && <ExchangeRateCalculator onUnauthorized={() => setStatus('login')} />}
       </div>
     </div>
   );

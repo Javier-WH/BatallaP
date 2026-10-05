@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Button, Modal, Spin, message } from 'antd';
 import { CheckCircleFilled, CloseCircleFilled, DownloadOutlined } from '@ant-design/icons';
 import { usePwaInstall } from '@/hooks/usePwaInstall';
-import { collectPwaDiagnostics, type PwaCheck } from '@/utils/pwaInstall';
+import { collectPwaDiagnostics, describeBrowser, waitForInstalled, type PwaCheck } from '@/utils/pwaInstall';
 
 /**
  * "Instalar app" button. Uses the browser's install prompt when it offered one; otherwise
@@ -25,7 +25,30 @@ const InstallAppButton: React.FC = () => {
   const handleClick = async () => {
     if (!canPrompt) { openHelp(); return; }
     const outcome = await install();
-    if (outcome === 'accepted') message.success('Instalando la aplicación…');
+    if (outcome !== 'accepted') return;
+
+    const hide = message.loading('Esperando confirmación del navegador…', 0);
+    const confirmed = await waitForInstalled(8000);
+    hide();
+    const browser = await describeBrowser();
+    Modal.info({
+      title: confirmed ? 'Instalación confirmada' : 'El navegador no confirmó la instalación',
+      content: (
+        <div className="text-sm space-y-2">
+          <p className="m-0">
+            {confirmed
+              ? 'Busca "Calculadora" en la pantalla de inicio o en el cajón de aplicaciones.'
+              : 'Aceptaste el diálogo, pero el navegador no avisó que terminó. Puede tardar unos segundos; si no aparece, intenta de nuevo.'}
+          </p>
+          {!browser.installsRealApp && (
+            <p className="m-0 text-slate-500">
+              {browser.name} en Android suele crear solo un acceso directo: revisa las demás páginas de la pantalla de
+              inicio y que el launcher permita "Crear accesos directos". Para una app completa usa Chrome.
+            </p>
+          )}
+        </div>
+      ),
+    });
   };
 
   const isIos = /iphone|ipad|ipod/i.test(navigator.userAgent);

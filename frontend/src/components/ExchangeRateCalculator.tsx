@@ -1,5 +1,7 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { InputNumber, DatePicker, Tag, Space, Divider, Statistic, Checkbox, message } from 'antd';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { InputNumber, DatePicker, Tag, Space, Divider, Statistic, Checkbox, Button, message } from 'antd';
+import { ReloadOutlined } from '@ant-design/icons';
+import axios from 'axios';
 import dayjs from 'dayjs';
 import {
   getRatesAtDate,
@@ -9,7 +11,12 @@ import {
 interface ExchangeRateCalculatorProps {
   /** When provided, rates are (re)loaded every time it turns true (e.g. modal opened). */
   active?: boolean;
+  /** Called when the server answers 401 (session expired) so the host can ask to log in again. */
+  onUnauthorized?: () => void;
 }
+
+// Rates are re-read when the app returns to the foreground after at least this long.
+const RESUME_REFRESH_MS = 60_000;
 
 const BsCoin: React.FC<{ size?: number }> = ({ size = 44 }) => (
   <svg width={size} height={size} viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
@@ -39,38 +46,73 @@ const CurrencySymbol: React.FC<{ currency: string; opacity?: number }> = ({ curr
   return <span style={{ color: meta.color, opacity }}>{meta.symbol}</span>;
 };
 
-const ExchangeRateCalculator: React.FC<ExchangeRateCalculatorProps> = ({ active }) => {
+const ExchangeRateCalculator: React.FC<ExchangeRateCalculatorProps> = ({ active, onUnauthorized }) => {
   const [calcDate, setCalcDate] = useState<dayjs.Dayjs>(dayjs());
   const [calcRates, setCalcRates] = useState<RateAtDate[]>([]);
-  const [, setCalcLoading] = useState(false);
+  const [calcLoading, setCalcLoading] = useState(false);
+  const [lastFetched, setLastFetched] = useState<dayjs.Dayjs | null>(null);
+  // While true the selected date tracks "today" (it advances if the app stays open past midnight);
+  // picking another date by hand turns it off.
+  const followToday = useRef(true);
+  const lastFetchedAt = useRef(0);
+  const calcDateRef = useRef(calcDate);
+  calcDateRef.current = calcDate;
   const [calcAmount, setCalcAmount] = useState<number>(10000);
   const [calcDirection, setCalcDirection] = useState<'from_ves' | 'to_ves'>('from_ves');
   const [calcCurrencies, setCalcCurrencies] = useState<string[]>(['USD', 'EUR']);
 
-  const loadRatesForDate = useCallback(async (date: dayjs.Dayjs) => {
+  const loadRatesForDate = useCallback(async (date: dayjs.Dayjs, silent = false): Promise<boolean> => {
     setCalcLoading(true);
     try {
       const result = await getRatesAtDate(date.format('YYYY-MM-DD'));
       setCalcRates(result.rates);
-    } catch {
-      message.error('Error al cargar tipos de cambio');
+      lastFetchedAt.current = Date.now();
+      setLastFetched(dayjs());
+      return true;
+    } catch (err) {
+      if (axios.isAxiosError(err) && err.response?.status === 401) onUnauthorized?.();
+      else if (!silent) message.error('Error al cargar tipos de cambio');
+      return false;
     } finally {
       setCalcLoading(false);
     }
-  }, []);
+  }, [onUnauthorized]);
 
   useEffect(() => {
     if (active === undefined || active) {
+      followToday.current = true;
       setCalcDate(dayjs());
       loadRatesForDate(dayjs());
     }
   }, [active, loadRatesForDate]);
 
+  // Installed PWAs stay alive in the background: when the app comes back to the foreground,
+  // re-read the rates (and roll "today" forward) instead of showing what was loaded hours ago.
+  useEffect(() => {
+    if (active === false) return;
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible') return;
+      if (Date.now() - lastFetchedAt.current < RESUME_REFRESH_MS) return;
+      const date = followToday.current ? dayjs() : calcDateRef.current;
+      setCalcDate(date);
+      loadRatesForDate(date, true);
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [active, loadRatesForDate]);
+
   const handleCalcDateChange = (date: dayjs.Dayjs | null) => {
     if (date) {
+      followToday.current = date.isSame(dayjs(), 'day');
       setCalcDate(date);
       loadRatesForDate(date);
     }
+  };
+
+  const handleRefresh = async () => {
+    const date = followToday.current ? dayjs() : calcDate;
+    setCalcDate(date);
+    if (await loadRatesForDate(date)) message.success('Tasas actualizadas desde el servidor');
   };
 
   // Find rates for selected currencies
@@ -93,9 +135,14 @@ const ExchangeRateCalculator: React.FC<ExchangeRateCalculatorProps> = ({ active 
     <Space direction="vertical" style={{ width: '100%' }} size="middle">
       {/* Date picker */}
       <div>
-        <label className="block text-xs font-bold uppercase tracking-wide text-slate-500 mb-1">
-          Fecha del tipo de cambio
-        </label>
+        <div className="flex items-center justify-between mb-1">
+          <label className="block text-xs font-bold uppercase tracking-wide text-slate-500 m-0">
+            Fecha del tipo de cambio
+          </label>
+          <Button size="small" icon={<ReloadOutlined />} loading={calcLoading} onClick={handleRefresh}>
+            Actualizar
+          </Button>
+        </div>
         <DatePicker
           value={calcDate}
           onChange={handleCalcDateChange}
@@ -110,6 +157,7 @@ const ExchangeRateCalculator: React.FC<ExchangeRateCalculatorProps> = ({ active 
                 <CurrencySymbol currency={r.currency} />: <strong>{r.rate?.toLocaleString('es-VE', { minimumFractionDigits: 2 })}</strong> ({r.date ? dayjs(r.date).format('DD/MM/YYYY') : '—'})
               </span>
             ))}
+            {lastFetched && <span className="block mt-0.5">Consultado a las {lastFetched.format('HH:mm:ss')}</span>}
           </div>
         )}
       </div>

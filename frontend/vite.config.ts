@@ -67,15 +67,15 @@ export default defineConfig({
         ],
       },
     }),
-    // calculadora.html ships its own manifest (dedicated name/start_url). VitePWA also
-    // injects the main one into every entry, and a page must declare exactly one.
+    // calculadora.html / asistencias.html ship their own manifest (dedicated name/start_url).
+    // VitePWA also injects the main one into every entry, and a page must declare exactly one.
     {
-      name: 'calculadora-own-manifest',
+      name: 'secondary-entries-own-manifest',
       enforce: 'post',
       transformIndexHtml: {
         order: 'post',
         handler(html: string, ctx: { filename?: string }) {
-          if (!ctx.filename?.endsWith('calculadora.html')) return html;
+          if (!/(calculadora|asistencias)\.html$/.test(ctx.filename ?? '')) return html;
           return html.replace(/<link rel="manifest" href="\/manifest\.webmanifest"\s*\/?>/g, '');
         },
       },
@@ -87,6 +87,8 @@ export default defineConfig({
         main: path.resolve(__dirname, 'index.html'),
         // Separate installable entry: dedicated launcher icon for the rate calculator
         calculadora: path.resolve(__dirname, 'calculadora.html'),
+        // Teacher-only installable entry: just the "Tomar Asistencia" view
+        asistencias: path.resolve(__dirname, 'asistencias.html'),
       },
     },
   },
