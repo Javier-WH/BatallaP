@@ -5,7 +5,7 @@ import { TextStyle } from '@tiptap/extension-text-style';
 import Color from '@tiptap/extension-color';
 import TextAlign from '@tiptap/extension-text-align';
 import { FloatingImage } from './FloatingImage';
-import type { ImageWrapMode } from './FloatingImage';
+import type { ImageWrapMode, ImageAnchorMode } from './FloatingImage';
 import { FloatingLine } from './FloatingLine';
 import {
   FloatingTable, createCells, addTableRow, removeTableRow, addTableColumn, removeTableColumn,
@@ -248,6 +248,18 @@ const ConstanciaEditor: React.FC<ConstanciaEditorProps> = ({ content, onChange, 
       if (!m || m < 1) { message.warning('Número de lapso inválido'); return; }
       key = key.replaceAll('{m}', String(m));
     }
+    if (key.includes('{name}')) {
+      const raw = window.prompt('Nombre del campo (ej: Monto en letras). Se mostrará al generar la constancia:');
+      if (raw === null) return;
+      // "Monto en letras" → "MontoEnLetras": letters/digits only, each word capitalized.
+      const name = raw.trim().split(/\s+/)
+        .map(w => w.replace(/[^\p{L}\p{N}_]/gu, ''))
+        .filter(Boolean)
+        .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+        .join('');
+      if (!name) { message.warning('Nombre de campo inválido'); return; }
+      key = key.replaceAll('{name}', name);
+    }
     // Insert as a styled span so it's visually distinct
     const html = `<span style="background-color: #e6f4ff; color: #1677ff; padding: 1px 4px; border-radius: 3px; font-weight: 600;" data-variable="${key}">{{${key}}}</span>`;
     if (insertIntoActiveCell(html)) return;
@@ -437,6 +449,45 @@ const ConstanciaEditor: React.FC<ConstanciaEditorProps> = ({ content, onChange, 
               { value: 'behind', label: 'Detrás del texto' },
             ]}
           />
+        )}
+
+        {editor.isActive('image') && ['front', 'behind'].includes(editor.getAttributes('image').wrap) && (
+          <Select
+            size="small"
+            style={{ width: 155 }}
+            title="Anclada al texto: la imagen sigue al párrafo donde está puesta, aunque las variables cambien el largo del texto"
+            value={editor.getAttributes('image').anchor === 'text' ? 'text' : 'page'}
+            onChange={(value: ImageAnchorMode) => { editor.chain().focus().setImageAnchor(value).run(); }}
+            options={[
+              { value: 'text', label: 'Anclada al texto' },
+              { value: 'page', label: 'Fija en la página' },
+            ]}
+          />
+        )}
+
+        {editor.isActive('image') && (
+          <Button
+            size="small"
+            type={editor.getAttributes('image').toggle ? 'primary' : 'default'}
+            title="Imagen opcional: al generar la constancia se podrá decidir si aparece o no (útil para firmas)"
+            onMouseDown={keepFocus}
+            onClick={() => {
+              const current = editor.getAttributes('image').toggle || '';
+              const raw = window.prompt(
+                'Nombre de la opción (ej: Firma del director). Se mostrará como casilla al generar la constancia.\nDeja vacío para que la imagen siempre aparezca:',
+                current,
+              );
+              if (raw === null) return;
+              const name = raw.trim().split(/\s+/)
+                .map(w => w.replace(/[^\p{L}\p{N}_]/gu, ''))
+                .filter(Boolean)
+                .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+                .join('');
+              editor.chain().focus().setImageToggle(name || null).run();
+            }}
+          >
+            {editor.getAttributes('image').toggle ? `Opcional: ${editor.getAttributes('image').toggle}` : 'Opcional'}
+          </Button>
         )}
 
         {/* Floating objects: signature lines and tables */}
@@ -714,7 +765,11 @@ const ConstanciaEditor: React.FC<ConstanciaEditorProps> = ({ content, onChange, 
           style={{ width: 150 }}
           title="Márgenes de la página"
           value={margin}
-          onChange={onMarginChange}
+          onChange={(value) => {
+            onMarginChange(value);
+            // Re-serialize so text-anchored lines/tables saved with an older inset are refreshed.
+            onChange(editor.getHTML());
+          }}
           options={CONSTANCIA_MARGIN_OPTIONS.map(o => ({ value: o.value, label: `Márgenes: ${o.label}` }))}
         />
 

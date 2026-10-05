@@ -25,6 +25,15 @@ function normalizeWordHtml(html: string): string {
   return doc.body.innerHTML;
 }
 
+// Human label for a custom.* variable: "extra.MontoEnLetras" → "Monto En Letras",
+// "recipient_name" → "recipient name".
+function customVarLabel(varName: string): string {
+  return varName
+    .replace(/^extra\./, '')
+    .replace(/_/g, ' ')
+    .replace(/([\p{Ll}\p{N}])(\p{Lu})/gu, '$1 $2');
+}
+
 interface Template {
   id: number;
   name: string;
@@ -55,12 +64,14 @@ const Constancias: React.FC = () => {
 
   // Generate tab state
   const [selectedTemplateId, setSelectedTemplateId] = useState<number | null>(null);
-  const [templateAnalysis, setTemplateAnalysis] = useState<{ needsStudent: boolean; needsWorker: boolean; customVars: string[] } | null>(null);
+  const [templateAnalysis, setTemplateAnalysis] = useState<{ needsStudent: boolean; needsWorker: boolean; customVars: string[]; imageToggles: string[] } | null>(null);
   const [searchResults, setSearchResults] = useState<Student[]>([]);
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
   const [workerResults, setWorkerResults] = useState<Student[]>([]);
   const [selectedWorker, setSelectedWorker] = useState<Student | null>(null);
   const [customValues, setCustomValues] = useState<Record<string, string>>({});
+  // Optional images (e.g. signatures): name -> shown. Missing means shown.
+  const [imageToggles, setImageToggles] = useState<Record<string, boolean>>({});
   const [previewHtml, setPreviewHtml] = useState<string | null>(null);
   const [previewVars, setPreviewVars] = useState<Record<string, string> | null>(null);
   const [generating, setGenerating] = useState(false);
@@ -113,6 +124,7 @@ const Constancias: React.FC = () => {
     setSelectedStudent(null);
     setSelectedWorker(null);
     setCustomValues({});
+    setImageToggles({});
     setTemplateAnalysis(null);
     setAnalyzing(true);
     try {
@@ -120,7 +132,7 @@ const Constancias: React.FC = () => {
       setTemplateAnalysis(res.data);
     } catch {
       // If analysis fails, assume it needs student
-      setTemplateAnalysis({ needsStudent: true, needsWorker: false, customVars: [] });
+      setTemplateAnalysis({ needsStudent: true, needsWorker: false, customVars: [], imageToggles: [] });
     } finally {
       setAnalyzing(false);
     }
@@ -194,6 +206,7 @@ const Constancias: React.FC = () => {
         personId,
         schoolPeriodId: selectedPeriodId ?? activePeriod?.id ?? null,
         customVars: customValues,
+        imageToggles,
         customDate: useCustomDate && customDate ? customDate.format('YYYY-MM-DD') : null,
       });
       setPreviewHtml(res.data.html);
@@ -204,7 +217,7 @@ const Constancias: React.FC = () => {
     } finally {
       setGenerating(false);
     }
-  }, [selectedTemplateId, selectedStudent, selectedWorker, activePeriod, selectedPeriodId, customValues, templateAnalysis, useCustomDate, customDate]);
+  }, [selectedTemplateId, selectedStudent, selectedWorker, activePeriod, selectedPeriodId, customValues, imageToggles, templateAnalysis, useCustomDate, customDate]);
 
   // Print PDF (uses browser print)
   const handlePrintPdf = useCallback(() => {
@@ -247,6 +260,7 @@ const Constancias: React.FC = () => {
             line-height: 1.5;
             margin: 0;
             padding: ${margin};
+            --constancia-margin: ${margin};
             color: #000;
           }
           img { max-width: 100%; }
@@ -487,7 +501,7 @@ const Constancias: React.FC = () => {
                   {templateAnalysis.customVars.map(varName => (
                     <div key={varName}>
                       <label className="block text-xs text-slate-500 mb-1 capitalize">
-                        {varName.replace(/_/g, ' ')}
+                        {customVarLabel(varName)}
                       </label>
                       <Input
                         value={customValues[varName] || ''}
@@ -495,9 +509,29 @@ const Constancias: React.FC = () => {
                           setCustomValues(prev => ({ ...prev, [varName]: e.target.value }));
                           setPreviewHtml(null);
                         }}
-                        placeholder={`Ingrese ${varName.replace(/_/g, ' ')}…`}
+                        placeholder={`Ingrese ${customVarLabel(varName).toLowerCase()}…`}
                         size="large"
                       />
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Optional images — each one marked "Opcional" in the template */}
+              {(templateAnalysis.imageToggles?.length ?? 0) > 0 && (
+                <div className="space-y-1">
+                  <label className="block text-sm font-medium text-slate-600">Imágenes opcionales</label>
+                  {templateAnalysis.imageToggles.map(name => (
+                    <div key={name}>
+                      <Checkbox
+                        checked={imageToggles[name] !== false}
+                        onChange={e => {
+                          setImageToggles(prev => ({ ...prev, [name]: e.target.checked }));
+                          setPreviewHtml(null);
+                        }}
+                      >
+                        Mostrar {customVarLabel(name).toLowerCase()}
+                      </Checkbox>
                     </div>
                   ))}
                 </div>

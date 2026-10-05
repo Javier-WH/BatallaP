@@ -37,6 +37,8 @@ export const CONSTANCIA_PAGE_CSS = `
   .constancia-preview { position: relative; z-index: 10; }
   .constancia-preview p, .constancia-preview h1, .constancia-preview h2, .constancia-preview h3 { margin: 0; }
   .constancia-preview ul, .constancia-preview ol { margin: 0; padding-left: 2em; }
+  .constancia-img-anchor { position: relative; display: inline-block; width: 0; height: 0; }
+  .constancia-img-anchor img { max-width: none; }
   [data-float] { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   [data-float="table"] td p, [data-float="table"] td div { margin: 0; }
 `;
@@ -76,7 +78,8 @@ export function buildConstanciaPageHtml(html: string): string {
   const front = doc.createElement('div');
   front.className = 'constancia-layer constancia-layer-front';
 
-  body.querySelectorAll<HTMLImageElement>('img[data-wrap]').forEach((image) => {
+  // Text-anchored images stay in the text flow (inside their anchor) so they follow it.
+  body.querySelectorAll<HTMLImageElement>('img[data-wrap]:not([data-anchor="text"])').forEach((image) => {
     const wrap = image.getAttribute('data-wrap');
     if (wrap === 'behind') behind.appendChild(image);
     else if (wrap === 'front') front.appendChild(image);

@@ -1,8 +1,13 @@
 import { mergeAttributes, Node } from '@tiptap/core';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import { NodeSelection } from '@tiptap/pm/state';
+import { getPage as getEditorPage, watchReflow } from './floatingObject';
 
 export type ImageWrapMode = 'inline' | 'left' | 'right' | 'front' | 'behind';
+
+// For front/behind images: 'page' pins them to page coordinates; 'text' makes top/left
+// offsets from the point in the text where the image sits, so they follow the text.
+export type ImageAnchorMode = 'text' | 'page';
 
 // Modes that take the image out of the text flow and anchor it to the page.
 const FLOATING_MODES: ImageWrapMode[] = ['front', 'behind'];
@@ -14,6 +19,8 @@ declare module '@tiptap/core' {
     image: {
       setImage: (options: { src: string; alt?: string; title?: string }) => ReturnType;
       setImageWrap: (wrap: ImageWrapMode) => ReturnType;
+      setImageAnchor: (mode: ImageAnchorMode) => ReturnType;
+      setImageToggle: (name: string | null) => ReturnType;
     };
   }
 }
@@ -38,10 +45,13 @@ export function buildImageStyle(attrs: Record<string, unknown>): string {
   if (wrap === 'right') styles.push('float: right', 'margin: 0 0 6px 12px');
 
   if (isFloating(wrap)) {
+    const textAnchored = attrs.anchor === 'text';
+    // Text-anchored images live inside the text flow, where a negative z-index keeps
+    // "behind" images under the text; page-anchored ones sit in their own layer.
     styles.push('position: absolute');
-    styles.push(`z-index: ${wrap === 'front' ? 30 : 0}`);
-    styles.push(`top: ${toNumber(attrs.top) ?? DEFAULT_OFFSET}px`);
-    styles.push(`left: ${toNumber(attrs.left) ?? DEFAULT_OFFSET}px`);
+    styles.push(`z-index: ${wrap === 'front' ? 30 : textAnchored ? -1 : 0}`);
+    styles.push(`top: ${toNumber(attrs.top) ?? (textAnchored ? 0 : DEFAULT_OFFSET)}px`);
+    styles.push(`left: ${toNumber(attrs.left) ?? (textAnchored ? 0 : DEFAULT_OFFSET)}px`);
   }
 
   const width = toNumber(attrs.width);
@@ -94,6 +104,17 @@ export const FloatingImage = Node.create({
         parseHTML: (element) => toNumber(element.getAttribute('data-left')) ?? toNumber(element.style.left),
         renderHTML: (attributes) => (attributes.left != null ? { 'data-left': attributes.left } : {}),
       },
+      anchor: {
+        default: 'page',
+        parseHTML: (element) => (element.getAttribute('data-anchor') === 'text' ? 'text' : 'page'),
+        renderHTML: (attributes) => (attributes.anchor === 'text' ? { 'data-anchor': 'text' } : {}),
+      },
+      // Optional-image flag: its name becomes a show/hide checkbox when generating.
+      toggle: {
+        default: null,
+        parseHTML: (element) => element.getAttribute('data-toggle') || null,
+        renderHTML: (attributes) => (attributes.toggle ? { 'data-toggle': attributes.toggle } : {}),
+      },
     };
   },
 
@@ -103,7 +124,17 @@ export const FloatingImage = Node.create({
 
   renderHTML({ HTMLAttributes, node }) {
     const style = buildImageStyle(node.attrs);
-    return ['img', mergeAttributes(this.options.HTMLAttributes, HTMLAttributes, style ? { style } : {})];
+    const img: [string, Record<string, unknown>] = [
+      'img',
+      mergeAttributes(this.options.HTMLAttributes, HTMLAttributes, style ? { style } : {}),
+    ];
+    // Text-anchored images hang from a zero-size, position:relative inline anchor so their
+    // offsets resolve against the point in the text. The class (not a style attribute, which
+    // the text-style mark would pick up) carries the geometry; see CONSTANCIA_PAGE_CSS.
+    if (isFloating(node.attrs.wrap) && node.attrs.anchor === 'text') {
+      return ['span', { class: 'constancia-img-anchor', 'data-img-anchor': '' }, img];
+    }
+    return img;
   },
 
   addCommands() {
@@ -126,6 +157,44 @@ export const FloatingImage = Node.create({
             attrs.left = DEFAULT_OFFSET;
           }
           return chain().updateAttributes(this.name, attrs).run();
+        },
+      // Switches a floating image between "follows the text" and "fixed on page"
+      // without moving it visually.
+      setImageAnchor:
+        (mode) =>
+        ({ state, chain, editor }) => {
+          const { from } = state.selection;
+          const node = state.doc.nodeAt(from);
+          if (!node || node.type.name !== this.name || !isFloating(node.attrs.wrap)) return false;
+          const current: ImageAnchorMode = node.attrs.anchor === 'text' ? 'text' : 'page';
+          if (current === mode) return false;
+
+          const anchorEl = editor.view.nodeDOM(from) as HTMLElement | null;
+          const page = getEditorPage(editor);
+          if (!anchorEl || !page) return false;
+          const pageRect = page.getBoundingClientRect();
+          const anchorRect = anchorEl.getBoundingClientRect();
+          const dx = anchorRect.left - pageRect.left;
+          const dy = anchorRect.top - pageRect.top;
+
+          const fallback = current === 'text' ? 0 : DEFAULT_OFFSET;
+          const left = toNumber(node.attrs.left) ?? fallback;
+          const top = toNumber(node.attrs.top) ?? fallback;
+          const sign = mode === 'text' ? -1 : 1;
+          return chain()
+            .updateAttributes(this.name, {
+              anchor: mode,
+              left: Math.round(left + sign * dx),
+              top: Math.round(top + sign * dy),
+            })
+            .run();
+        },
+      setImageToggle:
+        (name) =>
+        ({ state, chain }) => {
+          const node = state.doc.nodeAt(state.selection.from);
+          if (!node || node.type.name !== this.name) return false;
+          return chain().updateAttributes(this.name, { toggle: name || null }).run();
         },
     };
   },
@@ -185,9 +254,38 @@ export const FloatingImage = Node.create({
           .run();
       };
 
+      const isTextAnchored = (n: ProseMirrorNode) =>
+        isFloating(n.attrs.wrap || 'inline') && n.attrs.anchor === 'text';
+
+      // Offset of the in-text anchor from the page box (text-anchored images hang from it).
+      const anchorOffset = (): { dx: number; dy: number } | null => {
+        const page = getPage();
+        if (!page || !anchor.isConnected) return null;
+        const pageRect = page.getBoundingClientRect();
+        const anchorRect = anchor.getBoundingClientRect();
+        return { dx: anchorRect.left - pageRect.left, dy: anchorRect.top - pageRect.top };
+      };
+
+      const position = () => {
+        if (interacting || !isFloating(currentNode.attrs.wrap || 'inline')) return;
+        const left = toNumber(currentNode.attrs.left);
+        const top = toNumber(currentNode.attrs.top);
+        if (isTextAnchored(currentNode)) {
+          const offset = anchorOffset();
+          if (!offset) return;
+          box.style.left = `${offset.dx + (left ?? 0)}px`;
+          box.style.top = `${offset.dy + (top ?? 0)}px`;
+        } else {
+          box.style.left = `${left ?? DEFAULT_OFFSET}px`;
+          box.style.top = `${top ?? DEFAULT_OFFSET}px`;
+        }
+      };
+
       const render = (next: ProseMirrorNode) => {
         currentNode = next;
         const wrap: ImageWrapMode = next.attrs.wrap || 'inline';
+        box.title = next.attrs.toggle ? `Imagen opcional: ${next.attrs.toggle}` : '';
+        box.style.outline = next.attrs.toggle && !box.classList.contains('is-selected') ? '1px dashed #fa8c16' : '';
 
         if (img.getAttribute('src') !== next.attrs.src) img.src = next.attrs.src || '';
         img.alt = next.attrs.alt || '';
@@ -212,8 +310,7 @@ export const FloatingImage = Node.create({
           }
           box.style.position = 'absolute';
           box.style.float = '';
-          box.style.top = `${toNumber(next.attrs.top) ?? DEFAULT_OFFSET}px`;
-          box.style.left = `${toNumber(next.attrs.left) ?? DEFAULT_OFFSET}px`;
+          position();
           anchor.classList.add('fimg-anchor-detached');
         } else {
           if (box.parentElement !== anchor) anchor.appendChild(box);
@@ -260,7 +357,11 @@ export const FloatingImage = Node.create({
           document.removeEventListener('mousemove', onMove);
           document.removeEventListener('mouseup', onUp);
           interacting = false;
-          commit({ left: Math.round(parseFloat(box.style.left)), top: Math.round(parseFloat(box.style.top)) });
+          const offset = isTextAnchored(currentNode) ? anchorOffset() : null;
+          commit({
+            left: Math.round(parseFloat(box.style.left) - (offset?.dx ?? 0)),
+            top: Math.round(parseFloat(box.style.top) - (offset?.dy ?? 0)),
+          });
         };
 
         document.addEventListener('mousemove', onMove);
@@ -303,6 +404,8 @@ export const FloatingImage = Node.create({
       });
 
       render(node);
+      // Text-anchored images must follow their anchor when the text above reflows.
+      const stopWatching = watchReflow(editor, position);
 
       return {
         dom: anchor,
@@ -311,8 +414,11 @@ export const FloatingImage = Node.create({
           render(updatedNode);
           return true;
         },
-        selectNode: () => box.classList.add('is-selected'),
-        deselectNode: () => box.classList.remove('is-selected'),
+        selectNode: () => { box.classList.add('is-selected'); box.style.outline = ''; },
+        deselectNode: () => {
+          box.classList.remove('is-selected');
+          box.style.outline = currentNode.attrs.toggle ? '1px dashed #fa8c16' : '';
+        },
         stopEvent: (event) => {
           if (interacting) return true;
           const target = event.target as HTMLElement | null;
@@ -323,6 +429,7 @@ export const FloatingImage = Node.create({
         },
         ignoreMutation: () => true,
         destroy: () => {
+          stopWatching();
           if (pendingFrame) cancelAnimationFrame(pendingFrame);
           box.remove();
         },

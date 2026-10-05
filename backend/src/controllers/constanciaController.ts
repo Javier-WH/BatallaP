@@ -321,7 +321,10 @@ async function resolveVariables(personId: number, schoolPeriodId: number, custom
     'worker.hireDateLong': person.hireDate ? formatDate(parseLocalDate(String(person.hireDate))) : '',
     // Institution
     'institution.name': settingsMap['institution_name'] || '',
-    'institution.code': settingsMap['institution_code'] || '',
+    // institution_dea_code is the institution (plantel) code; institution_code is the
+    // study-modality code (e.g. 31059), exposed separately as institution.educationCode.
+    'institution.code': settingsMap['institution_dea_code'] || '',
+    'institution.educationCode': settingsMap['institution_code'] || '',
     'institution.address': settingsMap['institution_address'] || '',
     'institution.phone': settingsMap['institution_phone'] || '',
     'institution.municipality': settingsMap['institution_municipality'] || '',
@@ -440,6 +443,28 @@ function extractVariables(html: string): string[] {
   return vars;
 }
 
+// Names of the optional images (data-toggle) a template contains, in document order.
+function extractImageToggles(html: string): string[] {
+  const names: string[] = [];
+  for (const m of html.matchAll(/<img\b[^>]*\bdata-toggle="([^"]+)"/g)) {
+    if (!names.includes(m[1])) names.push(m[1]);
+  }
+  return names;
+}
+
+// Removes the optional images the user left unchecked (toggles[name] === false),
+// together with their text-anchor wrapper when they have one.
+function stripHiddenImages(html: string, toggles: Record<string, unknown>): string {
+  let out = html;
+  for (const [name, visible] of Object.entries(toggles)) {
+    if (visible !== false || !/^[\p{L}\p{N}_]+$/u.test(name)) continue;
+    const img = `<img\\b[^>]*\\bdata-toggle="${name}"[^>]*>`;
+    out = out.replace(new RegExp(`<span\\b[^>]*\\bdata-img-anchor\\b[^>]*>\\s*${img}\\s*</span>`, 'gu'), '');
+    out = out.replace(new RegExp(img, 'gu'), '');
+  }
+  return out;
+}
+
 // Analyze a template's variables and classify them
 export const analyzeTemplate = async (req: Request, res: Response) => {
   try {
@@ -459,6 +484,7 @@ export const analyzeTemplate = async (req: Request, res: Response) => {
       needsStudent,
       needsWorker,
       customVars,
+      imageToggles: extractImageToggles(template.content),
     });
   } catch (error) {
     console.error('[analyzeTemplate] Error:', error);
@@ -561,7 +587,7 @@ export const deleteTemplate = async (req: Request, res: Response) => {
 // customDate (YYYY-MM-DD) overrides the current date used for all date.* variables.
 export const generatePreview = async (req: Request, res: Response) => {
   try {
-    const { templateId, personId, schoolPeriodId, customVars, customDate } = req.body;
+    const { templateId, personId, schoolPeriodId, customVars, customDate, imageToggles } = req.body;
     if (!templateId) {
       return res.status(400).json({ message: 'templateId es requerido' });
     }
@@ -585,7 +611,8 @@ export const generatePreview = async (req: Request, res: Response) => {
       }
     }
 
-    const html = renderTemplate(template.content, vars);
+    let html = renderTemplate(template.content, vars);
+    if (imageToggles && typeof imageToggles === 'object') html = stripHiddenImages(html, imageToggles);
     return res.json({ html, variables: vars, margin: template.margin || DEFAULT_MARGIN });
   } catch (error: any) {
     console.error('[generatePreview] Error:', error);
@@ -630,7 +657,8 @@ export const getVariables = async (_req: Request, res: Response) => {
     { group: 'Trabajador', key: 'worker.hireDateLong', label: 'Fecha de inicio (texto)' },
     // Institution
     { group: 'Institución', key: 'institution.name', label: 'Nombre de la institución' },
-    { group: 'Institución', key: 'institution.code', label: 'Código' },
+    { group: 'Institución', key: 'institution.code', label: 'Código de la institución (DEA)' },
+    { group: 'Institución', key: 'institution.educationCode', label: 'Código de modalidad de estudios' },
     { group: 'Institución', key: 'institution.address', label: 'Dirección' },
     { group: 'Institución', key: 'institution.phone', label: 'Teléfono' },
     { group: 'Institución', key: 'institution.municipality', label: 'Municipio' },
@@ -667,9 +695,8 @@ export const getVariables = async (_req: Request, res: Response) => {
     { group: 'Campos personalizados', key: 'custom.title', label: 'Título/Cargo (ej: Docente)' },
     { group: 'Campos personalizados', key: 'custom.reason', label: 'Motivo/Concepto' },
     { group: 'Campos personalizados', key: 'custom.recipient', label: 'Dirigido a' },
-    { group: 'Campos personalizados', key: 'custom.extra1', label: 'Campo libre 1' },
-    { group: 'Campos personalizados', key: 'custom.extra2', label: 'Campo libre 2' },
-    { group: 'Campos personalizados', key: 'custom.extra3', label: 'Campo libre 3' },
+    // {name} is prompted by the editor (e.g. MontoEnLetras) and shown as the field label when generating.
+    { group: 'Campos personalizados', key: 'custom.extra.{name}', label: 'Campo libre con nombre (te pide el nombre)' },
   ];
   return res.json(variables);
 };

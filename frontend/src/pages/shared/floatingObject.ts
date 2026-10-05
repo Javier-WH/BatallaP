@@ -17,7 +17,7 @@ export const DEFAULT_OFFSET = 96;
 
 // Page padding: text-anchored objects sit inside the content box, so their stored
 // page-relative "left" is shifted by this inset when rendered in the text flow.
-export const CONTENT_INSET = '1in';
+export const CONTENT_INSET = 'var(--constancia-margin, 1in)';
 
 const FLOATING_TYPES = new Set(['floatingLine', 'floatingTable']);
 
