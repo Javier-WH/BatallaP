@@ -145,6 +145,15 @@ export async function collectPwaDiagnostics(): Promise<PwaCheck[]> {
         ok: res.ok && !!manifest.name && !!manifest.start_url && manifest.display === 'standalone',
         detail: `HTTP ${res.status} · ${type || 'sin content-type'} · ${manifest.name ?? 'sin name'} · display=${manifest.display ?? 'n/d'}`,
       });
+      const manifestUrl = new URL(link.href);
+      const scopeUrl = new URL(manifest.scope ?? '.', manifestUrl);
+      const startUrl = new URL(manifest.start_url ?? '.', manifestUrl);
+      const inScope = (u: URL) => u.origin === scopeUrl.origin && u.pathname.startsWith(scopeUrl.pathname);
+      checks.push({
+        label: 'La página y el inicio de la app están dentro del scope',
+        ok: inScope(new URL(window.location.href)) && inScope(startUrl),
+        detail: `scope=${scopeUrl.pathname} · start_url=${startUrl.pathname} · id=${manifest.id ?? 'n/d'} · página=${window.location.pathname}`,
+      });
       checks.push({
         label: 'Iconos de 192 y 512 px',
         ok: hasSize(192) && hasSize(512),

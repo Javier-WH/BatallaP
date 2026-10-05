@@ -1,13 +1,35 @@
 import React, { useMemo, useState } from 'react';
-import { Tabs } from 'antd';
-import { CheckSquareOutlined, TeamOutlined, AppstoreOutlined, UserOutlined } from '@ant-design/icons';
+import { Button, Tabs } from 'antd';
+import { CheckSquareOutlined, TeamOutlined, AppstoreOutlined, UserOutlined, DownloadOutlined } from '@ant-design/icons';
 import { useAuth } from '@/context/AuthContext';
 import TeacherAttendanceTab from './TeacherAttendanceTab';
 import StaffSessionsTab from './StaffSessionsTab';
 import SectionReportTab from './SectionReportTab';
 import StudentReportTab from './StudentReportTab';
+import { isRunningStandalone } from '@/utils/pwaInstall';
 
 const STAFF_ROLES = ['Master', 'Administrador', 'Control de Estudios'];
+
+/**
+ * This module lives inside the main app, whose manifest installs the whole system. The
+ * attendance-only app installs from its own page, so teachers get a shortcut to it
+ * (hidden once they are already running an installed app).
+ */
+const InstallAttendanceAppLink: React.FC = () => {
+  if (isRunningStandalone()) return null;
+  return (
+    <div className="flex justify-end px-1 pt-1">
+      <Button
+        size="small"
+        icon={<DownloadOutlined />}
+        title="Abre la app independiente de asistencias, desde donde se puede instalar sola"
+        onClick={() => window.location.assign('/asistencias.html')}
+      >
+        Instalar app de asistencias
+      </Button>
+    </div>
+  );
+};
 
 /**
  * Attendance module: horizontal tabs per role.
@@ -33,7 +55,12 @@ const AttendanceModule: React.FC = () => {
       tabs.push({
         key: 'teacher',
         label: <span><CheckSquareOutlined /> Tomar Asistencia</span>,
-        children: <TeacherAttendanceTab onExit={() => setActiveKey('sessions')} />,
+        children: (
+          <>
+            <InstallAttendanceAppLink />
+            <TeacherAttendanceTab onExit={() => setActiveKey('sessions')} />
+          </>
+        ),
       });
     }
     if (isStaff) {

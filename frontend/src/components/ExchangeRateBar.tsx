@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { Modal, Space } from 'antd';
-import { DollarOutlined, CalculatorOutlined } from '@ant-design/icons';
+import { Button, Modal, Space } from 'antd';
+import { DollarOutlined, CalculatorOutlined, DownloadOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import ExchangeRateCalculator from '@/components/ExchangeRateCalculator';
-import InstallAppButton from '@/components/InstallAppButton';
+import { isRunningStandalone } from '@/utils/pwaInstall';
 
 interface ExchangeRateBarProps {
   usdRate: number | null;
@@ -77,7 +77,18 @@ const ExchangeRateBar: React.FC<ExchangeRateBarProps> = ({ usdRate, eurRate, rat
               <CalculatorOutlined />
               <span>Calculadora de Conversión</span>
             </Space>
-            <InstallAppButton />
+            {/* This page's manifest installs the whole system; the standalone calculator
+                installs from its own page. */}
+            {!isRunningStandalone() && (
+              <Button
+                size="small"
+                icon={<DownloadOutlined />}
+                title="Abre la calculadora independiente, desde donde se puede instalar sola"
+                onClick={() => window.location.assign('/calculadora.html')}
+              >
+                Instalar calculadora
+              </Button>
+            )}
           </div>
         }
         open={calcOpen}
