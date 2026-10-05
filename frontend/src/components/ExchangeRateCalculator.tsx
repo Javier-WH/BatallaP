@@ -7,6 +7,7 @@ import {
   getRatesAtDate,
   type RateAtDate,
 } from '@/services/paymentsService';
+import { refreshRatesSnapshot } from '@/services/exchangeRatesCache';
 
 interface ExchangeRateCalculatorProps {
   /** When provided, rates are (re)loaded every time it turns true (e.g. modal opened). */
@@ -51,6 +52,8 @@ const ExchangeRateCalculator: React.FC<ExchangeRateCalculatorProps> = ({ active,
   const [calcRates, setCalcRates] = useState<RateAtDate[]>([]);
   const [calcLoading, setCalcLoading] = useState(false);
   const [lastFetched, setLastFetched] = useState<dayjs.Dayjs | null>(null);
+  // Set when the server was unreachable and the rates come from the copy stored on the device.
+  const [offlineSince, setOfflineSince] = useState<dayjs.Dayjs | null>(null);
   // While true the selected date tracks "today" (it advances if the app stays open past midnight);
   // picking another date by hand turns it off.
   const followToday = useRef(true);
@@ -61,18 +64,23 @@ const ExchangeRateCalculator: React.FC<ExchangeRateCalculatorProps> = ({ active,
   const [calcDirection, setCalcDirection] = useState<'from_ves' | 'to_ves'>('from_ves');
   const [calcCurrencies, setCalcCurrencies] = useState<string[]>(['USD', 'EUR']);
 
-  const loadRatesForDate = useCallback(async (date: dayjs.Dayjs, silent = false): Promise<boolean> => {
+  const loadRatesForDate = useCallback(async (date: dayjs.Dayjs, silent = false): Promise<'online' | 'cached' | null> => {
     setCalcLoading(true);
     try {
       const result = await getRatesAtDate(date.format('YYYY-MM-DD'));
       setCalcRates(result.rates);
       lastFetchedAt.current = Date.now();
       setLastFetched(dayjs());
-      return true;
+      setOfflineSince(result.offline && result.cachedAt ? dayjs(result.cachedAt) : null);
+      return result.offline ? 'cached' : 'online';
     } catch (err) {
       if (axios.isAxiosError(err) && err.response?.status === 401) onUnauthorized?.();
-      else if (!silent) message.error('Error al cargar tipos de cambio');
-      return false;
+      else if (!silent) {
+        message.error(axios.isAxiosError(err) && !err.response
+          ? 'Sin conexión y sin tasas guardadas. Abre la calculadora una vez con internet.'
+          : 'Error al cargar tipos de cambio');
+      }
+      return null;
     } finally {
       setCalcLoading(false);
     }
@@ -112,7 +120,13 @@ const ExchangeRateCalculator: React.FC<ExchangeRateCalculatorProps> = ({ active,
   const handleRefresh = async () => {
     const date = followToday.current ? dayjs() : calcDate;
     setCalcDate(date);
-    if (await loadRatesForDate(date)) message.success('Tasas actualizadas desde el servidor');
+    const source = await loadRatesForDate(date);
+    if (source === 'online') {
+      refreshRatesSnapshot(true);
+      message.success('Tasas actualizadas desde el servidor');
+    } else if (source === 'cached') {
+      message.warning('Sin conexión: se muestran las tasas guardadas en el teléfono');
+    }
   };
 
   // Find rates for selected currencies
@@ -157,7 +171,9 @@ const ExchangeRateCalculator: React.FC<ExchangeRateCalculatorProps> = ({ active,
                 <CurrencySymbol currency={r.currency} />: <strong>{r.rate?.toLocaleString('es-VE', { minimumFractionDigits: 2 })}</strong> ({r.date ? dayjs(r.date).format('DD/MM/YYYY') : '—'})
               </span>
             ))}
-            {lastFetched && <span className="block mt-0.5">Consultado a las {lastFetched.format('HH:mm:ss')}</span>}
+            {offlineSince
+              ? <span className="block mt-0.5 text-amber-600">Sin conexión: tasas guardadas el {offlineSince.format('DD/MM/YYYY HH:mm')}</span>
+              : lastFetched && <span className="block mt-0.5">Consultado a las {lastFetched.format('HH:mm:ss')}</span>}
           </div>
         )}
       </div>

@@ -1,4 +1,6 @@
+import axios from 'axios';
 import api from './api';
+import { ratesFromSnapshot, refreshRatesSnapshot } from './exchangeRatesCache';
 
 // ── Types ──
 
@@ -130,11 +132,30 @@ export interface RateAtDate {
   date: string | null;
 }
 
-export async function getRatesAtDate(date?: string): Promise<{ date: string; rates: RateAtDate[] }> {
-  const { data } = await api.get<{ date: string; rates: RateAtDate[] }>('/payments/exchange-rates/at-date', {
-    params: date ? { date } : undefined,
-  });
-  return data;
+export interface RatesAtDateResult {
+  date: string;
+  rates: RateAtDate[];
+  /** True when the server was unreachable and the answer comes from the copy stored on the device. */
+  offline?: boolean;
+  /** When that stored copy was downloaded (ISO), only with `offline`. */
+  cachedAt?: string;
+}
+
+export async function getRatesAtDate(date?: string): Promise<RatesAtDateResult> {
+  try {
+    const { data } = await api.get<RatesAtDateResult>('/payments/exchange-rates/at-date', {
+      params: date ? { date } : undefined,
+    });
+    void refreshRatesSnapshot();
+    return data;
+  } catch (err) {
+    // No response at all = no connection: answer from the stored history if there is one.
+    if (axios.isAxiosError(err) && !err.response) {
+      const cached = ratesFromSnapshot(date);
+      if (cached) return { ...cached, offline: true };
+    }
+    throw err;
+  }
 }
 
 export async function upsertExchangeRate(payload: { exchangeRateTypeId: number; rate: number; date: string }): Promise<ExchangeRate> {
