@@ -1814,6 +1814,25 @@ export const exportRevisionSummary = async (req: Request, res: Response) => {
       }
     }
 
+    // Students with unresolved pending subjects (PendingSubject.status='pendiente'
+    // in this school period) repeat the year — they cannot have revision grades,
+    // so they are excluded from this summary entirely (same rule that renders
+    // "P" in every subject in the final summary).
+    const pendingExcludedRows = await PendingSubject.findAll({
+      where: { status: 'pendiente' },
+      attributes: ['id'],
+      include: [{
+        model: Inscription,
+        as: 'inscription',
+        where: { schoolPeriodId: Number(schoolPeriodId) },
+        attributes: ['personId'],
+      }],
+    });
+    for (const row of pendingExcludedRows) {
+      const personId = (row as any).inscription?.personId;
+      if (typeof personId === 'number') revisionStudentIds.delete(personId);
+    }
+
     // Build a map: inscriptionSubjectId → revisions array
     const revisionsByInsSub = new Map<number, any[]>();
     for (const rev of filteredRevisionEntries) {
